@@ -3662,6 +3662,8 @@
                 <span style="font-size:11px;padding:2px 6px;border-radius:999px;background:${s.active?'#dcfce7':'#f1f5f9'};color:${s.active?'#16a34a':'#6b7280'};font-weight:700;white-space:nowrap;flex-shrink:0">${s.active?'Active':'Paused'}</span>
               </div>
               <div style="display:flex;gap:5px;flex-shrink:0">
+                ${tpl ? `<button class="btn primary" type="button" style="font-size:11px;padding:3px 10px;white-space:nowrap"
+                  onclick="fireScheduleNow('${esc(s.id)}')" title="Send this template to squad now">📤 Send now</button>` : ''}
                 <button class="btn" type="button" style="font-size:11px;padding:3px 9px;white-space:nowrap"
                   onclick="toggleLiveSchedule('${esc(s.id)}', ${!s.active})">${s.active ? '⏸ Pause' : '▶ Enable'}</button>
                 <button class="btn" type="button" style="font-size:11px;padding:3px 8px;color:#dc2626;border-color:#fca5a5"
@@ -3789,6 +3791,24 @@
         notify('Schedule deleted');
       } catch (err) {
         notify('Could not delete: ' + err.message);
+      }
+    }
+
+    // Fire a schedule's template immediately (bypasses cron timing — useful for testing)
+    async function fireScheduleNow(scheduleId) {
+      try {
+        const [schedRes, tplRes] = await Promise.all([
+          fetch('/api/schedules').then(r => r.json()),
+          fetch('/api/templates').then(r => r.json()),
+        ]);
+        const sched = (schedRes.schedules || []).find(s => s.id === scheduleId);
+        const tpl   = sched && (tplRes.templates || []).find(t => t.id === sched.templateId);
+        if (!tpl) { notify('Template not found'); return; }
+        notify('📤 Sending…');
+        await sendPushToPlayers(tpl.title || tpl.name, tpl.body, {});
+        notify(`✅ "${tpl.name}" sent to squad`);
+      } catch(e) {
+        notify('Send failed: ' + e.message);
       }
     }
 
