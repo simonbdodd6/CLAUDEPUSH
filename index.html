@@ -787,6 +787,23 @@
     .live-badge.sched { background:#f0fdf4; color:var(--green); }
     .live-badge.adhoc { background:#fef9c3; color:#92400e; }
 
+    /* ── COLLAPSIBLE SERVER PANELS ── */
+    .srv-panel { border-bottom:1px solid var(--line); }
+    .srv-panel:last-child { border-bottom:none; }
+    .srv-panel > summary {
+      cursor:pointer; padding:13px 18px; font-weight:700; font-size:14px;
+      list-style:none; display:flex; align-items:center; gap:8px;
+      user-select:none; -webkit-user-select:none;
+    }
+    .srv-panel > summary::-webkit-details-marker { display:none; }
+    .srv-panel > summary::after {
+      content:'▼'; margin-left:auto; font-size:10px; color:var(--muted);
+      transition:transform .2s;
+    }
+    .srv-panel[open] > summary::after { transform:rotate(180deg); }
+    .srv-panel > summary:hover { background:#f8fafc; }
+    .srv-panel-body { padding:0 18px 16px; }
+
     /* ── PLAYER DATABASE ── */
     .db-toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
     .filter-pill { min-height:30px; padding:0 13px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.1s; }
@@ -870,11 +887,11 @@
       <section id="coach-medical"     class="section"></section>
       <section id="coach-players"     class="section"></section>
 
-      <section id="player-week"       class="section"></section>
       <section id="player-availability" class="section"></section>
-      <section id="player-fixtures"   class="section"></section>
-      <section id="player-attendance" class="section"></section>
-      <section id="player-messages"   class="section"></section>
+      <section id="player-week"         class="section"></section>
+      <section id="player-fixtures"     class="section"></section>
+      <section id="player-attendance"   class="section" style="display:none"></section>
+      <section id="player-messages"     class="section" style="display:none"></section>
     </main>
   </div>
 
@@ -903,11 +920,9 @@
     ];
 
     const playerSections = [
-      ["week",         "My Week"],
       ["availability", "Availability"],
-      ["fixtures",     "Fixtures"],
-      ["attendance",   "Attendance"],
-      ["messages",     "Messages"]
+      ["week",         "This Week"],
+      ["fixtures",     "Calendar"],
     ];
 
     const rugbySlots = [
@@ -930,6 +945,8 @@
       currentUserId: "coach-demo",
       notification: "",
       teamCode: "BOITSFORT",
+      currentTemplateName: "Weekly Availability",
+      templateCardCollapsed: false,
       meta: { revision: 1, savedAt: "Initial seed", savedBy: "system" },
       users: structuredClone(testAccounts),
       players: playerSeed.map(([id, name, position, status, attendance], index) => ({
@@ -1482,15 +1499,14 @@
 
     // ─── AVAILABILITY TEMPLATE HELPERS ───────────────────────────────────────
     async function saveAvailabilityTemplate() {
-      const el = document.getElementById("availTpl");
-      if (el) state.availabilityTemplate = el.value;
-      const dayEl  = document.getElementById("autoDay");
-      const timeEl = document.getElementById("autoTime");
-      if (dayEl || timeEl) {
-        state.autoSendSchedule = state.autoSendSchedule || {};
-        if (dayEl)  state.autoSendSchedule.day  = dayEl.value;
-        if (timeEl) state.autoSendSchedule.time = timeEl.value;
-      }
+      const el      = document.getElementById("availTpl");
+      const nameEl  = document.getElementById("tplName");
+      const timeEl  = document.getElementById("autoTime");
+      if (el)     state.availabilityTemplate  = el.value;
+      if (nameEl) state.currentTemplateName   = nameEl.value;
+      state.autoSendSchedule = state.autoSendSchedule || {};
+      if (timeEl) state.autoSendSchedule.time = timeEl.value;
+      state.autoSendEnabled = true;
       saveState();
 
       // ── Persist to backend ────────────────────────────────────────────────
@@ -1515,21 +1531,46 @@
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({
             id:         'sch-availability',
-            name:       'Weekly availability check',
+            name:       state.currentTemplateName || 'Weekly Availability',
             templateId: 'tpl-availability',
-            day:        state.autoSendSchedule?.day  || 'monday',
+            days:       state.autoSendSchedule?.days  || ['Mon'],
+            day:        (state.autoSendSchedule?.days?.[0] || 'Mon').toLowerCase(),
             time:       state.autoSendSchedule?.time || '09:00',
-            active:     state.autoSendEnabled,
+            active:     true,
             coachName:  currentUser()?.name || 'Coach',
           })
         });
         if (!schedRes.ok) throw new Error(await schedRes.text());
 
-        notify("Availability template saved & synced to server ✓");
+        state.templateCardCollapsed = true;
+        saveState();
+        render();
+        notify("Template saved ✓");
       } catch (err) {
         console.warn('[saveAvailabilityTemplate] Backend sync failed:', err.message);
-        notify("Template saved locally — server sync failed (offline?)");
+        state.templateCardCollapsed = true;
+        saveState();
+        render();
+        notify("Template saved locally ✓");
       }
+    }
+
+    function toggleTemplateCard() {
+      state.templateCardCollapsed = !state.templateCardCollapsed;
+      saveState();
+      render();
+    }
+
+    function toggleScheduleDay(day) {
+      state.autoSendSchedule = state.autoSendSchedule || {};
+      const days = state.autoSendSchedule.days || ['Mon'];
+      const idx  = days.indexOf(day);
+      if (idx >= 0) days.splice(idx, 1); else days.push(day);
+      state.autoSendSchedule.days = days.length ? days : [day]; // always keep at least one
+      // Also keep legacy .day in sync (first selected day)
+      state.autoSendSchedule.day = days[0]?.toLowerCase() || 'monday';
+      saveState();
+      render(); // re-render to show updated day buttons
     }
 
     function toggleAutoSend() {
@@ -1656,7 +1697,7 @@
     }
 
     // ─── AUTH ────────────────────────────────────────────────────────────────
-    let authTab = 'login'; // 'login' | 'join' — not persisted
+    let authTab = 'closed'; // 'closed' | 'open' | 'open-join' — not persisted
 
     function setAuthTab(tab) { authTab = tab; renderNav(); }
 
@@ -1742,22 +1783,41 @@
       document.getElementById("playerViewBtn").classList.toggle("active", state.activeView === "player");
       document.getElementById("coachViewBtn").disabled = user.role !== "coach";
       document.getElementById("coachViewBtn").title    = user.role !== "coach" ? "Player accounts cannot open coach tools" : "";
-      document.getElementById("authPanel").innerHTML = `
-        <div><strong>${user.name}</strong><small>${user.role === "coach" ? "Coach" : "Player"} · ${user.email || user.role}</small></div>
-        <div class="auth-tabs">
-          <button class="auth-tab ${authTab==='login'?'active':''}" type="button" onclick="setAuthTab('login')">🔑 Coach login</button>
-          <button class="auth-tab ${authTab==='join'?'active':''}"  type="button" onclick="setAuthTab('join')">🏉 Join squad</button>
+      // Show compact chip when logged in — full panel only when explicitly opened
+      const isRealUser = user.id !== 'coach-demo' || state.currentUserId === 'coach-demo';
+      document.getElementById("authPanel").innerHTML = authTab === 'open' ? `
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div><strong>${user.name}</strong><small>${user.role === "coach" ? "Coach" : "Player"}</small></div>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕ Close</button>
         </div>
-        ${authTab === 'join' ? `
-          <label>Team code<input id="joinCode" placeholder="${state.teamCode||'BOITSFORT'}" style="text-transform:uppercase;letter-spacing:2px;font-weight:700"></label>
-          <label>Your name<input id="joinName" placeholder="e.g. Nick Murphy"></label>
-          <button class="btn primary" type="button" onclick="joinSquad()" style="background:#16a34a;border-color:#16a34a">📲 Join &amp; enable notifications</button>
-          <small>Ask your coach for the team code</small>
-        ` : `
-          <label>Email or phone<input id="loginIdentity" placeholder="simonbdodd@gmail.com"></label>
-          <label>PIN<input id="loginPin" placeholder="1111" type="password"></label>
-          <button class="btn" type="button" onclick="loginWithForm()">Log in</button>
-        `}
+        <div class="auth-tabs">
+          <button class="auth-tab ${authTab==='open-login'?'active':''}" type="button" onclick="setAuthTab('open-login')">🔑 Coach login</button>
+          <button class="auth-tab ${authTab==='open-join'?'active':''}"  type="button" onclick="setAuthTab('open-join')">🏉 Join squad</button>
+        </div>
+        <label>Email or phone<input id="loginIdentity" placeholder="simonbdodd@gmail.com"></label>
+        <label>PIN<input id="loginPin" placeholder="1111" type="password"></label>
+        <button class="btn" type="button" onclick="loginWithForm()">Log in</button>
+      ` : authTab === 'open-join' ? `
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div><strong>${user.name}</strong><small>${user.role === "coach" ? "Coach" : "Player"}</small></div>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕ Close</button>
+        </div>
+        <div class="auth-tabs">
+          <button class="auth-tab" type="button" onclick="setAuthTab('open')">🔑 Coach login</button>
+          <button class="auth-tab active" type="button" onclick="setAuthTab('open-join')">🏉 Join squad</button>
+        </div>
+        <label>Team code<input id="joinCode" placeholder="${state.teamCode||'BOITSFORT'}" style="text-transform:uppercase;letter-spacing:2px;font-weight:700"></label>
+        <label>Your name<input id="joinName" placeholder="e.g. Nick Murphy"></label>
+        <button class="btn primary" type="button" onclick="joinSquad()" style="background:#16a34a;border-color:#16a34a">📲 Join &amp; enable notifications</button>
+        <small>Ask your coach for the team code</small>
+      ` : `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div>
+            <strong>${user.name}</strong>
+            <small>${user.role === "coach" ? "🏉 Coach" : "👤 Player"}</small>
+          </div>
+          <button class="auth-tab" type="button" onclick="setAuthTab('open')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Switch ↓</button>
+        </div>
       `;
       renderPushSidebar();
     }
@@ -1941,10 +2001,82 @@
           noReplyRows:      rRows.filter(({status}) => status === "no-reply")
         };
       });
-      document.getElementById("coach-message").innerHTML = `
-        <div class="grid two-col">
-          <div class="card">
-            <h2>Session detail</h2>
+      const noReplyPlayers = state.players.filter(p => (p[key]||'no-reply') === 'no-reply');
+      // ── Shared blocks (used in both layouts) ────────────────────────────────
+      const templateCardCollapsed = state.templateCardCollapsed;
+
+      // templateCardHTML: slim strip when collapsed, full card when expanded
+      const templateCardHTML = templateCardCollapsed
+        ? `<div style="background:#f0fdf4;border:1.5px solid var(--green);border-radius:10px;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0">
+              <span style="color:var(--green);font-size:15px;flex-shrink:0">📋</span>
+              <div style="min-width:0">
+                <strong style="font-size:14px">${esc(state.currentTemplateName||'Weekly Availability')}</strong>
+                <span style="font-size:12px;color:var(--muted);margin-left:8px">${(state.autoSendSchedule?.days||['Mon']).join(', ')} · ${state.autoSendSchedule?.time||'09:00'}</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn" type="button" onclick="sendAvailabilityNow()" style="font-size:12px;padding:5px 12px;white-space:nowrap">📤 Send now</button>
+              <button class="btn" type="button" onclick="toggleTemplateCard()" style="font-size:12px;padding:5px 12px">✏️ Edit</button>
+            </div>
+          </div>`
+        : `<div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <h2 style="margin:0">📋 Template messages</h2>
+              <button class="btn" type="button" onclick="toggleTemplateCard()" style="font-size:12px;padding:4px 10px">▲ Collapse</button>
+            </div>
+            <p class="muted" style="font-size:13px;margin-bottom:16px">Write a message once, send it on a schedule. Use <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px">{{first_name}}</code> and <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px">{{match_day}}</code> for personalisation.</p>
+            <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:5px;margin-bottom:12px">Template name
+              <input id="tplName" placeholder="e.g. Weekly availability check" value="${esc(state.currentTemplateName||'Weekly Availability')}" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px">
+            </label>
+            <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:5px;margin-bottom:14px">Message
+              <textarea id="availTpl" rows="4" style="font-size:13px;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-family:inherit;resize:vertical">${esc(state.availabilityTemplate||"Hi {{first_name}}, please set your availability for this week's training and match at Boitsfort RFC.")}</textarea>
+            </label>
+            <label style="font-size:12px;font-weight:700;color:var(--muted);display:block;margin-bottom:8px">Send automatically on</label>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
+              ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => {
+                const active = (state.autoSendSchedule?.days||['Mon']).includes(d);
+                return `<button type="button" onclick="toggleScheduleDay('${d}')"
+                  style="padding:5px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid ${active?'var(--green)':'var(--line)'};background:${active?'#f0fdf4':'#fff'};color:${active?'var(--green)':'var(--muted)'}">
+                  ${d}</button>`;
+              }).join('')}
+              <span style="display:flex;align-items:center;gap:6px;margin-left:4px">
+                <span style="font-size:12px;color:var(--muted)">at</span>
+                <input id="autoTime" type="time" value="${state.autoSendSchedule?.time||'09:00'}" title="Times are stored as entered — the cron fires at 07:00 UTC (morning) and 18:00 UTC (evening)." style="padding:5px 8px;border:1.5px solid var(--line);border-radius:6px;font-size:13px">
+              </span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+              <button class="btn primary" type="button" onclick="saveAvailabilityTemplate()" style="flex:1">💾 Save &amp; activate schedule</button>
+              <button class="btn" type="button" onclick="sendAvailabilityNow()" style="white-space:nowrap">📤 Send now</button>
+            </div>
+          </div>`;
+
+
+      const sendCardHTML = `<div class="card">
+            <h2 style="margin-bottom:4px">✉️ Send a message</h2>
+            <p class="muted" style="font-size:13px;margin-bottom:16px">One-off push notification to the squad or an individual.</p>
+            <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:5px;margin-bottom:10px">Send to
+              <select id="messageAudience" onchange="renderAudiencePicker()" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px">
+                <option value="squad">Full squad — ${state.players.length} players</option>
+                <option value="no-reply">No-response players — ${noReplyPlayers.length} players</option>
+                <option value="individual">Individual player</option>
+              </select>
+            </label>
+            <div id="audience-picker-slot" style="margin-bottom:10px"></div>
+            <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:5px;margin-bottom:14px">Message
+              <textarea id="messageBody" rows="5" style="font-size:13px;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-family:inherit;resize:vertical" placeholder="Type your message here…"></textarea>
+            </label>
+            <button class="btn primary" type="button" onclick="sendInAppMessage()" style="width:100%">📲 Send now</button>
+          </div>`;
+
+      const sessionDetailHTML = `<div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+              <h2 style="margin:0">Session detail</h2>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span id="avail-refresh-ts" style="font-size:11px;color:var(--muted)">Loading…</span>
+                <button id="avail-refresh-btn" class="btn" type="button" onclick="refreshLiveAvailability()" style="font-size:11px;padding:4px 10px">↺ Refresh</button>
+              </div>
+            </div>
             <p class="muted">Who is coming, who is not, who still needs chasing.</p>
             <div class="session-tabs">
               ${state.schedule.map(s => `<button class="${selected.id===s.id?"active":""}" type="button" onclick="openMessageDetail('${s.id}')">${s.title}</button>`).join("")}
@@ -1962,7 +2094,49 @@
                   <span class="status ${status}">${statusLabel(status)}</span>
                 </button>`).join("")}
             </div>
-          </div>
+          </div>`;
+
+
+
+      document.getElementById("coach-message").innerHTML = templateCardCollapsed ? `
+
+        <!-- ── COLLAPSED: slim strip + active schedules + session/send side by side ── -->
+        <div style="margin-bottom:12px">${templateCardHTML}</div>
+        <div class="grid two-col" style="margin-bottom:18px">
+          ${sessionDetailHTML}
+          ${sendCardHTML}
+        </div>
+
+        <!-- ── SERVER DATA PANELS — bottom ── -->
+        <div class="card" style="margin-top:20px;padding:0;overflow:hidden">
+          <details class="srv-panel" open>
+            <summary onclick="if(!this.parentElement.open) loadLiveSchedules()">🗓️ Active schedules</summary>
+            <div id="live-schedules-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading…</p></div>
+          </details>
+          <details class="srv-panel">
+            <summary onclick="if(!this.parentElement.open) loadLiveTemplates()">📨 Message templates</summary>
+            <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click ▼ to load templates</p></div>
+          </details>
+          <details class="srv-panel">
+            <summary onclick="if(!this.parentElement.open) loadLiveResponses()">📲 Player responses</summary>
+            <div id="live-responses-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click ▼ to load responses</p></div>
+          </details>
+          <details class="srv-panel">
+            <summary onclick="if(!this.parentElement.open) loadLiveLog()">📋 Delivery log &amp; recent sends</summary>
+            <div id="live-log-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click ▼ to load history</p></div>
+          </details>
+        </div>
+
+
+      ` : `
+
+        <!-- ── EXPANDED: template + send side by side, session below ── -->
+        <div class="grid two-col" style="margin-bottom:18px">
+          ${templateCardHTML}
+          ${sendCardHTML}
+        </div>
+        <div class="grid two-col" style="margin-bottom:18px">
+          ${sessionDetailHTML}
           <div class="card">
             <h2>Training registers</h2>
             <p class="muted">Tuesday and Thursday with not-coming and no-reply split below.</p>
@@ -2005,107 +2179,52 @@
           </div>
         </div>
 
-        <div class="grid two-col">
-          <div class="card">
-            <h2>Send a message</h2>
+        <!-- ── SERVER DATA PANELS — bottom ── -->
+        <div class="card" style="margin-top:20px;padding:0;overflow:hidden">
+          <details class="srv-panel" open>
+            <summary onclick="if(!this.parentElement.open) loadLiveSchedules()">🗓️ Active schedules</summary>
+            <div id="live-schedules-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading…</p></div>
+          </details>
+          <details class="srv-panel">
+            <summary onclick="if(!this.parentElement.open) loadLiveTemplates()">📨 Message templates</summary>
+            <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click ▼ to load templates</p></div>
+          </details>
+          <details class="srv-panel">
+            <summary onclick="if(!this.parentElement.open) loadLiveResponses()">📲 Player responses</summary>
+            <div id="live-responses-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click ▼ to load responses</p></div>
+          </details>
+          <details class="srv-panel">
+            <summary onclick="if(!this.parentElement.open) loadLiveLog()">📋 Delivery log &amp; recent sends</summary>
+            <div id="live-log-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click ▼ to load history</p></div>
+          </details>
+        </div>
+`;
+    }
 
-            <!-- ── Notification status (populated async) ── -->
-            <div id="push-status-card" style="border:2px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:18px;background:#f9fafb">
-              <p class="muted" style="font-size:13px;margin:0">Checking notification status…</p>
-            </div>
-
-            <!-- ── Availability template (moved from Matchday) ── -->
-            <div style="margin-bottom:18px">
-              <label style="font-weight:700;font-size:13px;display:block;margin-bottom:6px">Weekly availability message</label>
-              <textarea id="availTpl" rows="4" style="width:100%;font-size:14px;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-family:inherit;resize:vertical">${state.availabilityTemplate||""}</textarea>
-              <p class="muted" style="font-size:11px;margin-top:4px">Use {{first_name}}, {{match_day}}, {{session_day}} — each player gets a personalised version.</p>
-            </div>
-
-            <!-- ── Compose custom ── -->
-            <label style="font-weight:700;font-size:13px;display:block;margin-bottom:6px">Or write a custom message</label>
-            <div class="form-grid" style="margin-bottom:10px">
-              <label>Send to<select id="messageAudience">
-                <option value="squad">Full squad</option>
-                <option value="available">Available players</option>
-                <option value="no-reply">No-response players</option>
-                <option value="individual">Selected player</option>
-              </select></label>
-              <label>Player (if individual)<select id="messagePlayer">
-                ${state.players.map(p => `<option value="${p.id}">${p.name}</option>`).join("")}
-              </select></label>
-            </div>
-            <label style="font-weight:700;font-size:13px;display:block;margin-bottom:6px">Message</label>
-            <textarea id="messageBody" rows="3" style="width:100%;font-size:14px;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-family:inherit;resize:vertical" placeholder="Type your message here…"></textarea>
-
-            <!-- ── Send buttons ── -->
-            <div class="button-row" style="margin-top:14px">
-              <button class="btn primary" type="button" onclick="sendAvailabilityNow()" style="flex:1">
-                📤 Send availability message now
-              </button>
-            </div>
-            <div class="button-row" style="margin-top:8px">
-              <button class="btn" type="button" onclick="sendInAppMessage()" style="flex:1">
-                💬 Send custom message above
-              </button>
-            </div>
-
-            <!-- ── Recent sends ── -->
-            <h3 style="margin-top:20px">Recent sends</h3>
-            <div class="list" style="margin-top:9px">
-              ${state.messages.slice(0,6).map(m => `
-                <div class="message-bubble ${m.unread?"unread":""}">
-                  <div class="message-meta"><span>${m.type}</span><span>${m.time}</span></div>
-                  <strong>${m.from}</strong>
-                  <p class="muted">${m.text.slice(0,120)}${m.text.length>120?"…":""}</p>
-                </div>`).join("") || '<p class="muted" style="font-size:13px">No messages sent yet.</p>'}
-            </div>
-          </div>
-          <div class="card">
-            <h2>Live scheduled sends</h2>
-            <p class="muted">These run automatically from the server — no need to have the app open.</p>
-
-            <div class="card" style="margin-top:14px;box-shadow:none;border:1.5px solid var(--line)">
-              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-                <h3 style="margin:0">🗓️ Active schedules</h3>
-                <button class="btn" type="button" onclick="loadLiveSchedules()" style="font-size:11px;padding:4px 10px">↺ Refresh</button>
-              </div>
-              <div id="live-schedules-panel" style="margin-top:10px">
-                <p class="muted" style="font-size:13px">Loading schedules from server…</p>
-              </div>
-            </div>
-
-            <div class="card" style="margin-top:14px;box-shadow:none;border:1.5px solid var(--line)">
-              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-                <h3 style="margin:0">📨 Message templates</h3>
-                <button class="btn" type="button" onclick="loadLiveTemplates()" style="font-size:11px;padding:4px 10px">↺ Refresh</button>
-              </div>
-              <div id="live-templates-panel" style="margin-top:10px">
-                <p class="muted" style="font-size:13px">Loading templates from server…</p>
-              </div>
-            </div>
-
-            <div class="card" style="margin-top:14px;box-shadow:none;border:1.5px solid var(--green);background:#f0fdf4">
-              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-                <h3 style="margin:0">📲 Player responses</h3>
-                <button class="btn" type="button" onclick="loadLiveResponses()" style="font-size:11px;padding:4px 10px">↺ Refresh</button>
-              </div>
-              <p class="muted" style="font-size:12px;margin:4px 0 10px">Replies from notification buttons — no app needed</p>
-              <div id="live-responses-panel">
-                <p class="muted" style="font-size:13px">Loading responses…</p>
-              </div>
-            </div>
-
-            <div class="card" style="margin-top:14px;box-shadow:none;border:1.5px solid var(--line)">
-              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-                <h3 style="margin:0">📋 Delivery log</h3>
-                <button class="btn" type="button" onclick="loadLiveLog()" style="font-size:11px;padding:4px 10px">↺ Refresh</button>
-              </div>
-              <div id="live-log-panel" style="margin-top:10px">
-                <p class="muted" style="font-size:13px">Loading delivery history…</p>
-              </div>
-            </div>
-          </div>
-        </div>`;
+    function renderAudiencePicker() {
+      const slot     = document.getElementById('audience-picker-slot');
+      const audience = document.getElementById('messageAudience')?.value || 'squad';
+      if (!slot) return;
+      if (audience === 'individual') {
+        slot.innerHTML = `<label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:4px;width:100%">Player
+          <select id="messagePlayer" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px">
+            ${state.players.map(p => `<option value="${p.id}">${p.name}</option>`).join("")}
+          </select></label>`;
+      } else if (audience === 'no-reply') {
+        const noReply = state.players.filter(p => {
+          const selected = state.schedule.find(s => s.id === (state.messageDetail || 'tue')) || state.schedule[0];
+          const k = selected ? sessionKey(selected.id) : 'game';
+          return (p[k]||'no-reply') === 'no-reply';
+        });
+        slot.innerHTML = noReply.length
+          ? `<label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:4px;width:100%">Target
+              <div style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;background:#fef9ec;font-size:12px">
+                ${noReply.map(p=>`<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;background:#fef3c7;border-radius:999px">${p.name}</span>`).join("")}
+              </div></label>`
+          : `<div style="padding:8px 10px;font-size:12px;color:var(--muted)">Everyone has responded ✅</div>`;
+      } else {
+        slot.innerHTML = '';
+      }
     }
 
     function setMessagePlayer(playerId) {
@@ -2880,32 +2999,29 @@
       const player = getPlayer();
       if (!player.id) { document.getElementById("player-week").innerHTML = noSquadMsg(); return; }
       document.getElementById("player-week").innerHTML = `
-        <div class="player-hero">
-          <div class="card">
-            <h2>My week</h2>
-            <p class="muted">Your schedule, availability and recent messages.</p>
-            <div style="margin-top:14px">${playerSelector()}</div>
-            <div class="grid three-col" style="margin-top:14px">
-              ${state.schedule.map(item => {
-                const key = sessionKey(item.id);
-                return `<div class="schedule-card">
-                  <span class="eyebrow">${item.type}</span>
-                  <strong>${item.title}</strong>
-                  <span class="muted">${item.date}</span>
-                  <span class="status ${player[key]}">${statusLabel(player[key])}</span>
-                </div>`;
-              }).join("")}
-            </div>
-          </div>
-          <div class="card">
-            <h2>${player.name}</h2>
-            <p class="muted">${player.position} · Boitsfort Premier</p>
-            <div style="margin-top:18px">
-              <div class="history-bar"><span style="width:${player.attendance}%"></span></div>
-              <p style="margin-top:7px"><strong>${player.attendance}%</strong> season training attendance</p>
-            </div>
-            <h3 style="margin-top:18px">Recent availability</h3>
-            <div class="pill-row">${player.history.map(h => `<span class="status ${h}">${statusLabel(h)}</span>`).join("")}</div>
+        <div class="card" style="max-width:560px;margin:0 auto">
+          <h2>This week</h2>
+          <p class="muted" style="margin-bottom:18px">Your upcoming sessions at Boitsfort RFC.</p>
+          ${state.schedule.map(item => {
+            const key    = sessionKey(item.id);
+            const status = player[key] || 'no-reply';
+            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--line)">
+              <div>
+                <strong style="font-size:15px">${item.title}</strong>
+                <div class="muted" style="font-size:13px;margin-top:2px">${item.date}</div>
+              </div>
+              <button class="btn" type="button" onclick="setSection('player','availability')"
+                style="min-width:110px;font-size:13px;
+                  background:${status==='available'?'#dcfce7':status==='unavailable'?'#fee2e2':'var(--line)'};
+                  border-color:${status==='available'?'#86efac':status==='unavailable'?'#fca5a5':'var(--line)'};
+                  color:${status==='available'?'#16a34a':status==='unavailable'?'#dc2626':'var(--muted)'}">
+                ${status==='available'?'✅ Available':status==='unavailable'?'❌ Can\'t make it':'Set availability →'}
+              </button>
+            </div>`;
+          }).join("")}
+          <div style="margin-top:20px">
+            <div class="history-bar"><span style="width:${player.attendance}%"></span></div>
+            <p style="margin-top:7px;font-size:13px"><strong>${player.attendance}%</strong> season training attendance</p>
           </div>
         </div>`;
     }
@@ -3257,21 +3373,84 @@
       renderPlayerWeek();
       renderPlayerAvailability();
       renderPlayerFixtures();
-      renderPlayerAttendance();
-      renderPlayerMessages();
       // Async live-data panels — non-blocking, fills in after render
       if (state.activeCoachSection === "message") {
         loadLiveMessaging();
+        setTimeout(renderAudiencePicker, 50); // populate picker after DOM settles
       }
     }
 
     // ─── LIVE MESSAGING API LOADERS ───────────────────────────────────────────
+    let _availPollTimer = null;
+
     async function loadLiveMessaging() {
       renderPushStatusCard();
       loadLiveSchedules();
       loadLiveTemplates();
       loadLiveLog();
       loadLiveResponses();
+      // Pull live availability from Redis into the session detail panels
+      await refreshLiveAvailability();
+      // Auto-refresh every 30 s while Message Center is open
+      clearInterval(_availPollTimer);
+      _availPollTimer = setInterval(() => {
+        if (state.activeView === 'coach' && state.activeCoachSection === 'message') {
+          refreshLiveAvailability();
+        } else {
+          clearInterval(_availPollTimer);
+        }
+      }, 30000);
+    }
+
+    // Pull player availability from Redis and update state.players + re-render session detail
+    async function refreshLiveAvailability() {
+      const btn = document.getElementById('avail-refresh-btn');
+      const ts  = document.getElementById('avail-refresh-ts');
+      if (btn) { btn.disabled = true; btn.textContent = '↺ Refreshing…'; }
+      try {
+        const [tueData, thuData, gameData] = await Promise.all([
+          fetch('/api/availability?sessionId=tue').then(r => r.json()).catch(() => ({ responses: [] })),
+          fetch('/api/availability?sessionId=thu').then(r => r.json()).catch(() => ({ responses: [] })),
+          fetch('/api/availability?sessionId=game').then(r => r.json()).catch(() => ({ responses: [] })),
+        ]);
+        // Build label (lowercased) → { tue, thu, game }
+        const byLabel = {};
+        const apply = (list, sid) => (list || []).forEach(({ label, response }) => {
+          const k = label.toLowerCase();
+          if (!byLabel[k]) byLabel[k] = {};
+          byLabel[k][sid] = response;
+        });
+        apply(tueData.responses,  'tue');
+        apply(thuData.responses,  'thu');
+        apply(gameData.responses, 'game');
+        // Patch state.players with live data
+        // Match by: 1) exact name, 2) first name only (handles "Nick Champion of the Universe" → "Nick Murphy")
+        let changed = false;
+        state.players.forEach(p => {
+          const nameLower   = p.name.toLowerCase();
+          const firstName   = nameLower.split(' ')[0];
+          // Exact match first, then first-name fallback
+          let live = byLabel[nameLower];
+          if (!live) {
+            const fallbackKey = Object.keys(byLabel).find(k => k.split(' ')[0] === firstName);
+            if (fallbackKey) live = byLabel[fallbackKey];
+          }
+          if (!live) return;
+          if (live.tue  !== undefined && p.trainingTuesday  !== live.tue)  { p.trainingTuesday  = live.tue;  changed = true; }
+          if (live.thu  !== undefined && p.trainingThursday !== live.thu)  { p.trainingThursday = live.thu;  changed = true; }
+          if (live.game !== undefined && p.game             !== live.game) { p.game              = live.game; changed = true; }
+        });
+        if (changed) saveState('Live availability synced');
+        // Update timestamp label
+        if (ts) ts.textContent = `Live · ${new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}`;
+        // Re-render the session detail panels inline (avoids full re-render flash)
+        renderMessageCenter();
+      } catch(e) {
+        console.warn('[refreshLiveAvailability]', e);
+        if (ts) ts.textContent = 'Refresh failed';
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh'; }
+      }
     }
 
     async function loadLiveResponses() {
@@ -3409,31 +3588,87 @@
       setTimeout(() => renderPushStatusCard(), 800);
     }
 
+    // Fills the #active-schedules-panel in the collapsed template strip
+    async function loadActiveSchedules() {
+      const panel = document.getElementById('active-schedules-panel');
+      if (!panel) return;
+      try {
+        const [schedRes, tplRes] = await Promise.all([
+          fetch('/api/schedules').then(r => r.json()),
+          fetch('/api/templates').then(r => r.json()),
+        ]);
+        const schedules = (schedRes.schedules || []);
+        if (!schedules.length) {
+          panel.innerHTML = `<p class="muted" style="font-size:13px">No schedules saved yet — click <strong>✏️ Edit</strong> to create one.</p>`;
+          return;
+        }
+        const tplMap = Object.fromEntries((tplRes.templates || []).map(t => [t.id, t]));
+        panel.innerHTML = schedules.map(s => {
+          const days    = s.days?.join(', ') || (s.day ? s.day.charAt(0).toUpperCase()+s.day.slice(1) : '—');
+          const lastSent = s.lastSentAt
+            ? `Last sent ${new Date(s.lastSentAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}`
+            : 'Never sent yet';
+          const statusDot = s.active
+            ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:5px;flex-shrink:0"></span>`
+            : `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#9ca3af;margin-right:5px;flex-shrink:0"></span>`;
+          return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:8px;background:${s.active?'#f0fdf4':'#f9fafb'};border:1px solid ${s.active?'#bbf7d0':'var(--line)'};margin-bottom:6px">
+            <div style="min-width:0">
+              <div style="display:flex;align-items:center;gap:4px">${statusDot}<strong style="font-size:13px">${esc(s.name)}</strong><span style="font-size:11px;color:var(--muted);margin-left:4px">${s.active?'Active':'Paused'}</span></div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">📅 ${days} &nbsp;·&nbsp; 🕐 ${s.time} &nbsp;·&nbsp; <em>${lastSent}</em></div>
+            </div>
+            <button class="btn" type="button" onclick="toggleLiveSchedule('${esc(s.id)}',${!s.active})" style="font-size:11px;padding:3px 9px;flex-shrink:0">${s.active?'⏸ Pause':'▶ Enable'}</button>
+          </div>`;
+        }).join('');
+      } catch(e) {
+        if (panel) panel.innerHTML = `<p class="muted" style="font-size:12px;color:#dc2626">Could not load schedules — ${e.message}</p>`;
+      }
+    }
+
     async function loadLiveSchedules() {
       const panel = document.getElementById("live-schedules-panel");
       if (!panel) return;
       try {
-        const res  = await fetch('/api/schedules');
-        const data = await res.json();
-        const schedules = data.schedules || [];
+        const [schedRes, tplRes] = await Promise.all([
+          fetch('/api/schedules').then(r => r.json()),
+          fetch('/api/templates').then(r => r.json()),
+        ]);
+        const schedules  = schedRes.schedules || [];
+        const templates  = tplRes.templates   || [];
+        const tplMap     = Object.fromEntries(templates.map(t => [t.id, t]));
+
         if (!schedules.length) {
-          panel.innerHTML = `<p class="muted" style="font-size:13px">No scheduled sends yet. Enable auto-send in Matchday Center to create one.</p>`;
+          panel.innerHTML = `<p class="muted" style="font-size:13px">No scheduled sends yet — create one in the Template messages builder above.</p>`;
           return;
         }
-        panel.innerHTML = schedules.map(s => `
-          <div class="live-sched-row">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span class="live-sched-dot ${s.active ? 'on' : 'off'}"></span>
-              <strong style="font-size:13px">${esc(s.name)}</strong>
-              <span class="live-badge">${esc(s.day.charAt(0).toUpperCase()+s.day.slice(1))} ${esc(s.time)} UTC</span>
-            </div>
-            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
-              <span class="muted" style="font-size:11px">Template: ${esc(s.templateId)}</span>
-              ${s.lastSentAt ? `<span class="muted" style="font-size:11px">Last sent: ${new Date(s.lastSentAt).toLocaleString([], {dateStyle:"medium",timeStyle:"short"})}</span>` : '<span class="muted" style="font-size:11px">Not yet sent</span>'}
-              <button class="btn" style="font-size:11px;padding:3px 9px;margin-left:auto" type="button"
+
+        panel.innerHTML = schedules.map(s => {
+          const tpl      = tplMap[s.templateId];
+          const days     = s.days?.join(', ') || (s.day ? s.day.charAt(0).toUpperCase()+s.day.slice(1) : '—');
+          const timeStr  = s.time || '—';
+          const slot     = parseInt((s.time||'09:00').split(':')[0],10) >= 12 ? 'Evening' : 'Morning';
+          const lastSent = s.lastSentAt
+            ? `Last sent ${new Date(s.lastSentAt).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'})}`
+            : 'Never sent yet';
+          return `
+          <div style="border:1.5px solid ${s.active?'var(--green)':'var(--line)'};border-radius:10px;padding:12px 14px;margin-bottom:10px;background:${s.active?'#f0fdf4':'#fafafa'}">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+              <div>
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span style="width:8px;height:8px;border-radius:50%;background:${s.active?'#16a34a':'#9ca3af'};flex-shrink:0"></span>
+                  <strong style="font-size:14px">${esc(s.name)}</strong>
+                  <span style="font-size:11px;padding:2px 7px;border-radius:999px;background:${s.active?'#dcfce7':'#f1f5f9'};color:${s.active?'#16a34a':'#6b7280'};font-weight:700">${s.active?'Active':'Paused'}</span>
+                </div>
+                <div style="font-size:12px;color:var(--muted)">
+                  📅 ${days} &nbsp;·&nbsp; 🕐 ${timeStr} &nbsp;·&nbsp; ${slot} send
+                </div>
+                ${tpl ? `<div style="font-size:12px;color:var(--muted);margin-top:3px">📋 ${esc(tpl.name)} — <em>${esc(tpl.body.slice(0,60))}…</em></div>` : ''}
+                <div style="font-size:11px;color:var(--muted);margin-top:4px">${lastSent}</div>
+              </div>
+              <button class="btn" type="button" style="font-size:11px;padding:4px 10px;flex-shrink:0;white-space:nowrap"
                 onclick="toggleLiveSchedule('${esc(s.id)}', ${!s.active})">${s.active ? '⏸ Pause' : '▶ Enable'}</button>
             </div>
-          </div>`).join('');
+          </div>`;
+        }).join('');
       } catch (err) {
         panel.innerHTML = `<p class="muted" style="font-size:13px;color:#dc2626">Could not load schedules — ${err.message}</p>`;
       }
@@ -3447,17 +3682,38 @@
         const data = await res.json();
         const templates = data.templates || [];
         const cats = { availability:'🟢', training:'🔵', match:'🔴', custom:'⚪' };
+        if (!templates.length) {
+          panel.innerHTML = `<p class="muted" style="font-size:13px">No templates yet — create one in the Template messages builder above.</p>`;
+          return;
+        }
         panel.innerHTML = templates.map(t => `
           <div class="live-sched-row">
-            <div style="display:flex;align-items:center;gap:6px">
-              <span>${cats[t.category] || '⚪'}</span>
-              <strong style="font-size:13px">${esc(t.name)}</strong>
-              <span class="live-badge" style="background:#f0fdf4;color:var(--green)">${esc(t.category)}</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:6px">
+                <span>${cats[t.category] || '⚪'}</span>
+                <strong style="font-size:13px">${esc(t.name)}</strong>
+                <span class="live-badge">${esc(t.category)}</span>
+              </div>
+              <button class="btn primary" type="button" onclick="sendTemplateNow('${esc(t.id)}')" style="font-size:11px;padding:4px 12px;white-space:nowrap">📤 Send to squad</button>
             </div>
-            <p class="muted" style="font-size:12px;margin:4px 0 0">${esc(t.body.slice(0,100))}${t.body.length>100?'…':''}</p>
+            <p class="muted" style="font-size:12px;margin:6px 0 0">${esc(t.body.slice(0,120))}${t.body.length>120?'…':''}</p>
           </div>`).join('');
       } catch (err) {
         panel.innerHTML = `<p class="muted" style="font-size:13px;color:#dc2626">Could not load templates — ${err.message}</p>`;
+      }
+    }
+
+    async function sendTemplateNow(templateId) {
+      try {
+        const res  = await fetch('/api/templates');
+        const data = await res.json();
+        const tpl  = (data.templates || []).find(t => t.id === templateId);
+        if (!tpl) { notify('Template not found'); return; }
+        notify('📤 Sending…');
+        await sendPushToPlayers(tpl.title || tpl.name, tpl.body, {});
+        notify(`✅ "${tpl.name}" sent to squad`);
+      } catch(e) {
+        notify('Send failed: ' + e.message);
       }
     }
 
@@ -3465,22 +3721,36 @@
       const panel = document.getElementById("live-log-panel");
       if (!panel) return;
       try {
-        const res  = await fetch('/api/log?limit=20');
+        const res  = await fetch('/api/log?limit=30');
         const data = await res.json();
-        const log  = data.log || [];
-        if (!log.length) {
+        const serverLog = data.log || [];
+
+        // Also include recent sends from localStorage (shown first if no server log)
+        const localMsgs = (state.messages || []).slice(0, 10).map(m => ({
+          _local: true,
+          title:  m.from || 'Coach',
+          body:   m.text,
+          sentAt: m.time,
+          type:   m.type || 'adhoc',
+          sent:   null,
+        }));
+
+        const combined = serverLog.length ? serverLog : localMsgs;
+
+        if (!combined.length) {
           panel.innerHTML = `<p class="muted" style="font-size:13px">No messages sent yet.</p>`;
           return;
         }
-        panel.innerHTML = log.map(entry => `
+        panel.innerHTML = combined.map(entry => `
           <div class="live-sched-row">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
-              <strong style="font-size:12px">${esc(entry.title||entry.body?.slice(0,40)||"Message")}</strong>
+              <strong style="font-size:12px">${esc(entry.title||entry.body?.slice(0,50)||'Message')}</strong>
               <span class="live-badge ${entry.type==='scheduled'?'sched':'adhoc'}">${entry.type==='scheduled'?'⏰ Scheduled':'📤 Ad-hoc'}</span>
             </div>
+            <p class="muted" style="font-size:12px;margin:3px 0 0">${esc((entry.body||'').slice(0,100))}${(entry.body||'').length>100?'…':''}</p>
             <div style="display:flex;gap:10px;margin-top:3px;flex-wrap:wrap">
-              <span class="muted" style="font-size:11px">${new Date(entry.sentAt).toLocaleString([], {dateStyle:"medium",timeStyle:"short"})}</span>
-              <span class="muted" style="font-size:11px">✓ ${entry.sent} sent${entry.failed?` · ✗ ${entry.failed} failed`:''}</span>
+              <span class="muted" style="font-size:11px">🕐 ${entry.sentAt ? new Date(entry.sentAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'}</span>
+              ${entry.sent != null ? `<span class="muted" style="font-size:11px">✓ ${entry.sent} sent${entry.failed?` · ✗ ${entry.failed} failed`:''}</span>` : ''}
             </div>
           </div>`).join('');
       } catch (err) {

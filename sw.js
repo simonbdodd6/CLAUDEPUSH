@@ -1,7 +1,7 @@
 // Coach's Eye · Boitsfort RFC · Service Worker
 // Handles push notifications and lock-screen quick replies
 
-const CACHE_NAME = 'coachseye-v4';
+const CACHE_NAME = 'coachseye-v5';
 
 self.addEventListener('install',  () => self.skipWaiting());
 self.addEventListener('activate', e  => e.waitUntil(clients.claim()));
@@ -116,7 +116,11 @@ self.addEventListener('notificationclick', event => {
   if (action === 'dismiss') return;
 
   // ── Open app → route to availability page ─────────────────────────────────
-  const targetUrl = (action === 'open-avail')
+  // For availability notifications, always land on the availability page —
+  // this covers iOS (no action buttons) and anyone who taps the notification body
+  const notifType = notifData.type || 'message';
+  const isAvailNotif = notifType === 'availability' || notifType === 'availability-reminder';
+  const targetUrl = (action === 'open-avail' || isAvailNotif)
     ? `${self.location.origin}/?to=availability`
     : `${self.location.origin}/`;
 

@@ -30,8 +30,9 @@ const SCHEDULES_KEY = 'ce:schedules';
 const TEMPLATES_KEY = 'ce:templates';
 
 const DAY_MAP = {
-  sunday:0, monday:1, tuesday:2, wednesday:3,
-  thursday:4, friday:5, saturday:6,
+  sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6,
+  // short names (from multi-day selector)
+  sun:0, mon:1, tue:2, wed:3, thu:4, fri:5, sat:6,
 };
 
 export default async function handler(req, res) {
@@ -54,13 +55,27 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'VAPID keys not configured' });
   }
 
-  const now        = new Date();
-  const currentDay = now.getUTCDay(); // 0=Sun … 6=Sat
+  const now         = new Date();
+  const currentDay  = now.getUTCDay();    // 0=Sun … 6=Sat
+  const currentHour = now.getUTCHours(); // 0–23
 
-  // Vercel free plan runs this cron once daily at 07:00 UTC.
-  // We match on DAY only — all active schedules for today fire at this run.
-  // For a weekly rugby club schedule (Monday availability, Tuesday training,
-  // Saturday match reminder) this is exactly the right cadence.
+  // Four crons run daily (all UTC):
+  //   07:00 UTC → schedules with time 00:00–10:59  (morning Belgium)
+  //   14:00 UTC → schedules with time 11:00–15:59  (afternoon Belgium)
+  //   18:00 UTC → schedules with time 16:00–18:59  (evening Belgium)
+  //   20:00 UTC → schedules with time 19:00–23:59  (late evening Belgium)
+  // Covers all Belgian times (UTC+1 winter / UTC+2 summer).
+  const WINDOWS = [
+    { cron:  7, from:  0, to: 10 },
+    { cron: 14, from: 11, to: 15 },
+    { cron: 18, from: 16, to: 18 },
+    { cron: 20, from: 19, to: 23 },
+  ];
+  // Find the window whose cron hour is closest to now (handles manual test triggers)
+  const window = WINDOWS.find(w => w.cron === currentHour)
+    ?? WINDOWS.reduce((best, w) =>
+      Math.abs(w.cron - currentHour) < Math.abs(best.cron - currentHour) ? w : best
+    );
 
   const [schedules, templates, subscriptions] = await Promise.all([
     kvGet(SCHEDULES_KEY).then(v => Array.isArray(v) ? v : []),
@@ -70,8 +85,15 @@ export default async function handler(req, res) {
 
   const due = schedules.filter(s => {
     if (!s.active) return false;
-    const schedDay = DAY_MAP[s.day?.toLowerCase()];
-    return schedDay === currentDay;
+
+    // Support both multi-day array (new UI) and single day (legacy)
+    const scheduleDays = s.days?.map(d => DAY_MAP[d.toLowerCase()]).filter(n => n !== undefined)
+      || [DAY_MAP[s.day?.toLowerCase()]].filter(n => n !== undefined);
+    if (!scheduleDays.includes(currentDay)) return false;
+
+    // Match to this cron's time window
+    const schedHour = parseInt((s.time || '09:00').split(':')[0], 10);
+    return schedHour >= window.from && schedHour <= window.to;
   });
 
   if (due.length === 0) {

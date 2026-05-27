@@ -41,16 +41,23 @@ export default async function handler(req, res) {
 
   // ── POST: create / upsert ─────────────────────────────────────────────────
   if (req.method === 'POST') {
-    const { id, templateId, name, day, time, active, coachName } = req.body || {};
-    if (!templateId || !day || !time) {
-      return res.status(400).json({ error: 'templateId, day and time are required' });
+    const { id, templateId, name, day, days, time, active, coachName } = req.body || {};
+    if (!templateId || !time) {
+      return res.status(400).json({ error: 'templateId and time are required' });
     }
+    // Normalise days: accept multi-day array (new UI) or single day (legacy)
+    const daysArr = Array.isArray(days) && days.length
+      ? days
+      : day ? [day.charAt(0).toUpperCase() + day.slice(1, 3)] : ['Mon'];
+    const dayStr  = (daysArr[0] || 'Mon').toLowerCase();
+
     const schedules = (await kvGet(SCHEDULES_KEY)) || [];
     const entry = {
       id:         id || `sch-${Date.now()}`,
       name:       (name || 'Untitled schedule').slice(0, 80),
       templateId,
-      day:        day.toLowerCase(),
+      days:       daysArr,              // full multi-day array
+      day:        dayStr,               // legacy single-day fallback
       time,
       active:     active !== false,
       coachName:  coachName || 'Coach',
