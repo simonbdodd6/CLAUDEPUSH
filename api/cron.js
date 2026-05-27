@@ -31,9 +31,15 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 const SCHEDULES_KEY = 'ce:schedules';
 const TEMPLATES_KEY = 'ce:templates';
 
-// How many minutes either side of the scheduled time we'll still fire.
-// Set to 6 so a 5-minute cron-job.org poll always overlaps.
-const FIRE_WINDOW_MINUTES = 6;
+// Tolerance windows:
+//   EXACT  (6 min) — used when cron-job.org calls every 5 minutes.
+//                    Fires within ±6 min of the scheduled time.
+//   WIDE (120 min) — used when Vercel's own daily cron calls
+//                    (detected via x-vercel-cron header).
+//                    4 daily crons at 07/14/18/20 UTC cover the whole day
+//                    with this window.
+const EXACT_WINDOW   =   6;
+const WIDE_WINDOW    = 120;
 
 const DAY_MAP = {
   sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6,
@@ -79,6 +85,11 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'VAPID keys not configured' });
   }
 
+  // Use a wide window when called by Vercel's own 4x-daily cron,
+  // exact matching when called by cron-job.org every 5 minutes.
+  const isVercelCron   = req.headers['x-vercel-cron'] === '1';
+  const fireWindow     = isVercelCron ? WIDE_WINDOW : EXACT_WINDOW;
+
   const now        = new Date();
   const currentDay = now.getUTCDay(); // 0=Sun … 6=Sat
 
@@ -121,7 +132,7 @@ export default async function handler(req, res) {
     const diff = Math.abs(nowUTCMinutes - schedUTCMinutes);
     // Handle midnight wrap (e.g. schedule at 23:58, cron at 00:02)
     const wrappedDiff = Math.min(diff, 1440 - diff);
-    return wrappedDiff <= FIRE_WINDOW_MINUTES;
+    return wrappedDiff <= fireWindow;
   });
 
   if (due.length === 0) {
