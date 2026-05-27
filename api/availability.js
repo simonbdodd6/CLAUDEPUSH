@@ -27,8 +27,12 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const sessionId = req.query?.sessionId || 'game';
     const responses = (await kvGet(AVAIL_KEY(sessionId))) || {};
-    // responses = { [label]: 'available' | 'unavailable' | 'maybe' }
-    const list = Object.entries(responses).map(([label, response]) => ({ label, response }));
+    // Normalise: old format stores a plain string, new format stores { response, respondedAt }
+    const list = Object.entries(responses).map(([label, val]) => ({
+      label,
+      response:    typeof val === 'string' ? val : val?.response,
+      respondedAt: typeof val === 'string' ? null : val?.respondedAt,
+    }));
     return res.status(200).json({ sessionId, responses: list, count: list.length });
   }
 
@@ -50,9 +54,9 @@ export default async function handler(req, res) {
     const match = subs.find(s => s.subscription?.endpoint === endpoint);
     const label = match?.label || 'Unknown player';
 
-    // Store/update their response for this session
+    // Store/update their response (with timestamp so no-reply cron can filter by recency)
     const existing = (await kvGet(AVAIL_KEY(sessionId))) || {};
-    existing[label] = response;
+    existing[label] = { response, respondedAt: new Date().toISOString() };
     await kvSet(AVAIL_KEY(sessionId), existing);
 
     console.log(`[availability] ${label} → ${response} for ${sessionId}`);

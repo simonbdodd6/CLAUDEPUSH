@@ -20,6 +20,34 @@ import { load }       from './_lib.js';
 import { kvGet, kvSet, kvLpush, kvLtrim } from './_kv.js';
 import { resolveVariables } from './_variables.js';
 
+// All session IDs that store availability responses in Redis.
+// Used when filtering for no-reply subscribers.
+const AVAIL_SESSIONS = ['tue', 'thu', 'game'];
+const AVAIL_KEY      = (id) => `ce:availability:${id}`;
+
+// Return a Set of subscriber labels that responded within the last `withinDays` days.
+// Values in Redis can be a plain string (old) or { response, respondedAt } (new).
+async function recentResponders(withinDays = 7) {
+  const cutoff = Date.now() - withinDays * 24 * 60 * 60 * 1000;
+  const allData = await Promise.all(
+    AVAIL_SESSIONS.map(id => kvGet(AVAIL_KEY(id)).then(v => v || {}))
+  );
+  const labels = new Set();
+  for (const session of allData) {
+    for (const [label, val] of Object.entries(session)) {
+      if (typeof val === 'string') {
+        // Old format — no timestamp, treat as "responded at some point" (include them)
+        labels.add(label);
+      } else if (val?.respondedAt) {
+        if (new Date(val.respondedAt).getTime() >= cutoff) {
+          labels.add(label);
+        }
+      }
+    }
+  }
+  return labels;
+}
+
 const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
 const CRON_SECRET   = process.env.CRON_SECRET;
@@ -165,11 +193,26 @@ export default async function handler(req, res) {
       continue;
     }
 
+    // ── Audience filtering ────────────────────────────────────────────────
+    // 'no-reply': only send to subscribers who haven't responded in the last 7 days
+    // 'all' (default): send to everyone
+    let targetSubs = subscriptions;
+    if (schedule.audience === 'no-reply') {
+      const responders = await recentResponders(7);
+      targetSubs = subscriptions.filter(({ label }) => !responders.has(label));
+      if (targetSubs.length === 0) {
+        console.log(`[cron] Schedule ${schedule.id}: no-reply audience — everyone has responded, skipping`);
+        results.push({ scheduleId: schedule.id, templateId: template.id, sent: 0, failed: 0, note: 'All players responded' });
+        schedule.lastSentAt = now.toISOString();
+        continue;
+      }
+    }
+
     const context = { coachName: schedule.coachName || 'Coach' };
 
-    // Send one personalised push per subscriber
+    // Send one personalised push per target subscriber
     const sendResults = await Promise.allSettled(
-      subscriptions.map(({ subscription, label }) => {
+      targetSubs.map(({ subscription, label }) => {
         const ctx     = { ...context, label: label || 'Player' };
         const title   = resolveVariables(template.title, ctx);
         const body    = resolveVariables(template.body,  ctx);
@@ -207,8 +250,9 @@ export default async function handler(req, res) {
         title:        resolveVariables(template.title, context),
         body:         resolveVariables(template.body,  context).slice(0, 200),
         sentAt:       now.toISOString(),
+        audience:     schedule.audience || 'all',
         sent, failed,
-        total: subscriptions.length,
+        total: targetSubs.length,
       });
       await kvLtrim('ce:message_log', 500);
     } catch { /* non-critical */ }

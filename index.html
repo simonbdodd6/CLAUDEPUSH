@@ -1514,9 +1514,16 @@
       // Clear the form back to blank so the next open is always a fresh "new schedule"
       state.currentTemplateName  = '';
       state.availabilityTemplate = '';
-      state.autoSendSchedule     = { days: ['Mon'], time: '09:00' };
+      state.autoSendSchedule     = { days: ['Mon'], time: '09:00', audience: 'all' };
       state._editingScheduleId   = null;
       state._editingTemplateId   = null;
+    }
+
+    function setScheduleAudience(audience) {
+      state.autoSendSchedule = state.autoSendSchedule || {};
+      state.autoSendSchedule.audience = audience;
+      saveState();
+      render();
     }
 
     async function saveAvailabilityTemplate() {
@@ -1566,9 +1573,10 @@
             id:         schedId,
             name:       sname,
             templateId: tplId,
-            days:       state.autoSendSchedule?.days  || ['Mon'],
+            days:       state.autoSendSchedule?.days     || ['Mon'],
             day:        (state.autoSendSchedule?.days?.[0] || 'Mon').toLowerCase(),
             time:       stime,
+            audience:   state.autoSendSchedule?.audience || 'all',
             active:     true,
             coachName:  currentUser()?.name || 'Coach',
           })
@@ -1626,8 +1634,9 @@
         state.currentTemplateName  = sched.name;
         state.availabilityTemplate = tpl?.body || '';
         state.autoSendSchedule     = {
-          days: sched.days || [sched.day ? sched.day.charAt(0).toUpperCase()+sched.day.slice(1,3) : 'Mon'],
-          time: sched.time || '09:00',
+          days:     sched.days || [sched.day ? sched.day.charAt(0).toUpperCase()+sched.day.slice(1,3) : 'Mon'],
+          time:     sched.time || '09:00',
+          audience: sched.audience || 'all',
         };
         state.templateCardCollapsed = false;
         saveState();
@@ -2114,6 +2123,18 @@
                 <input id="autoTime" type="time" value="${state.autoSendSchedule?.time||'09:00'}" style="padding:5px 8px;border:1.5px solid var(--line);border-radius:6px;font-size:13px">
               </span>
             </div>
+            <label style="font-size:12px;font-weight:700;color:var(--muted);display:block;margin-bottom:6px;margin-top:8px">Send to</label>
+            <div style="display:flex;gap:8px;margin-bottom:14px">
+              ${['all','no-reply'].map(a => {
+                const sel = (state.autoSendSchedule?.audience||'all') === a;
+                const label = a === 'all' ? '👥 Full squad' : '⏳ No-reply only (chase up)';
+                return `<button type="button" onclick="setScheduleAudience('${a}')"
+                  style="flex:1;padding:7px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;text-align:center;
+                  border:1.5px solid ${sel?'var(--green)':'var(--line)'};background:${sel?'#f0fdf4':'#fff'};color:${sel?'var(--green)':'var(--muted)'}">
+                  ${label}</button>`;
+              }).join('')}
+            </div>
+            ${(state.autoSendSchedule?.audience||'all') === 'no-reply' ? `<p class="muted" style="font-size:12px;margin:-8px 0 12px;padding:8px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:8px">⏳ Only sent to players who haven't responded to any availability check in the last 7 days. Good for Tuesday/Wednesday chase-ups.</p>` : ''}
             <button class="btn primary" type="button" onclick="saveAvailabilityTemplate()" style="width:100%;margin-top:4px">💾 ${state._editingScheduleId ? 'Save changes' : 'Save &amp; activate'}</button>
           </div>`;
 
@@ -3738,6 +3759,7 @@
             <div style="font-size:12px;color:var(--muted);margin-top:5px">
               📅 ${days} &nbsp;·&nbsp; 🕐 ${timeStr}
               ${tpl ? `&nbsp;·&nbsp; 📋 ${esc(tpl.name)}` : ''}
+              &nbsp;·&nbsp; ${s.audience === 'no-reply' ? '⏳ Chase-up (no-reply only)' : '👥 Full squad'}
             </div>
             <div style="font-size:11px;color:var(--muted);margin-top:3px">Last fired: ${lastSent}</div>
           </div>`;
