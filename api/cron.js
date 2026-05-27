@@ -1,13 +1,15 @@
-// api/cron.js — Hourly scheduled message dispatcher
+// api/cron.js — Scheduled message dispatcher
 //
-// Triggered every hour by Vercel Cron (vercel.json) OR by cron-job.org as backup.
-// Checks all active schedules → resolves templates → personalises per subscriber → sends.
+// PRIMARY trigger: cron-job.org calling GET /api/cron?secret=CRON_SECRET every 5 minutes.
+// FALLBACK:        Vercel Cron "0 * * * *" (hourly) defined in vercel.json.
 //
-// Security: requests must carry the CRON_SECRET header (or query param)
-//           so random internet traffic can't trigger mass sends.
+// On each call it checks all active schedules, converts their stored Belgium
+// local time to UTC, and fires any schedule within ±6 minutes of now.
+// Daily deduplication prevents double-sends: a schedule that already fired
+// today (UTC date) is skipped until tomorrow.
 //
 // Environment variables required:
-//   CRON_SECRET              — shared secret between Vercel cron and this function
+//   CRON_SECRET              — shared secret (passed as ?secret= or Authorization: Bearer)
 //   VAPID_PUBLIC_KEY         — Web Push VAPID public key
 //   VAPID_PRIVATE_KEY        — Web Push VAPID private key
 //   UPSTASH_REDIS_REST_URL   — Upstash Redis endpoint
@@ -29,24 +31,46 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 const SCHEDULES_KEY = 'ce:schedules';
 const TEMPLATES_KEY = 'ce:templates';
 
+// How many minutes either side of the scheduled time we'll still fire.
+// Set to 6 so a 5-minute cron-job.org poll always overlaps.
+const FIRE_WINDOW_MINUTES = 6;
+
 const DAY_MAP = {
   sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6,
-  // short names (from multi-day selector)
   sun:0, mon:1, tue:2, wed:3, thu:4, fri:5, sat:6,
 };
 
+// ── Belgium UTC offset (no external library needed) ───────────────────────────
+// Belgium: CET = UTC+1 (winter), CEST = UTC+2 (summer)
+// CEST runs from last Sunday of March → last Sunday of October.
+function belgiumUTCOffset(date) {
+  const y = date.getUTCFullYear();
+  // Last Sunday of March
+  const mar = new Date(Date.UTC(y, 2, 31));
+  mar.setUTCDate(31 - mar.getUTCDay());
+  // Last Sunday of October
+  const oct = new Date(Date.UTC(y, 9, 31));
+  oct.setUTCDate(31 - oct.getUTCDay());
+  return (date >= mar && date < oct) ? 2 : 1;
+}
+
+// Convert a "HH:MM" Belgium local time string to minutes-since-midnight UTC.
+function belgiumTimeToUTCMinutes(timeStr, date) {
+  const [h, m] = timeStr.split(':').map(Number);
+  const offset = belgiumUTCOffset(date);
+  return ((h - offset + 24) % 24) * 60 + (m || 0);
+}
+
 export default async function handler(req, res) {
   // ── Auth ─────────────────────────────────────────────────────────────────
-  // Accept secret via Authorization header OR ?secret= query param
-  const authHeader = req.headers['authorization'] || '';
+  const authHeader  = req.headers['authorization'] || '';
   const querySecret = req.query?.secret || '';
-  const provided = authHeader.replace('Bearer ', '').trim() || querySecret;
+  const provided    = authHeader.replace('Bearer ', '').trim() || querySecret;
 
   if (CRON_SECRET && provided !== CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // Only GET/POST accepted (Vercel cron uses GET)
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -55,27 +79,14 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'VAPID keys not configured' });
   }
 
-  const now         = new Date();
-  const currentDay  = now.getUTCDay();    // 0=Sun … 6=Sat
-  const currentHour = now.getUTCHours(); // 0–23
+  const now        = new Date();
+  const currentDay = now.getUTCDay(); // 0=Sun … 6=Sat
 
-  // Four crons run daily (all UTC):
-  //   07:00 UTC → schedules with time 00:00–10:59  (morning Belgium)
-  //   14:00 UTC → schedules with time 11:00–15:59  (afternoon Belgium)
-  //   18:00 UTC → schedules with time 16:00–18:59  (evening Belgium)
-  //   20:00 UTC → schedules with time 19:00–23:59  (late evening Belgium)
-  // Covers all Belgian times (UTC+1 winter / UTC+2 summer).
-  const WINDOWS = [
-    { cron:  7, from:  0, to: 10 },
-    { cron: 14, from: 11, to: 15 },
-    { cron: 18, from: 16, to: 18 },
-    { cron: 20, from: 19, to: 23 },
-  ];
-  // Find the window whose cron hour is closest to now (handles manual test triggers)
-  const window = WINDOWS.find(w => w.cron === currentHour)
-    ?? WINDOWS.reduce((best, w) =>
-      Math.abs(w.cron - currentHour) < Math.abs(best.cron - currentHour) ? w : best
-    );
+  // Current time as minutes since midnight UTC
+  const nowUTCMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+
+  // Today's UTC date string for deduplication (e.g. "2025-05-28")
+  const todayUTC = now.toISOString().slice(0, 10);
 
   const [schedules, templates, subscriptions] = await Promise.all([
     kvGet(SCHEDULES_KEY).then(v => Array.isArray(v) ? v : []),
@@ -86,18 +97,35 @@ export default async function handler(req, res) {
   const due = schedules.filter(s => {
     if (!s.active) return false;
 
-    // Support both multi-day array (new UI) and single day (legacy)
-    const scheduleDays = s.days?.map(d => DAY_MAP[d.toLowerCase()]).filter(n => n !== undefined)
-      || [DAY_MAP[s.day?.toLowerCase()]].filter(n => n !== undefined);
+    // ── Day check ──────────────────────────────────────────────────────────
+    const scheduleDays = (s.days || [])
+      .map(d => DAY_MAP[d.toLowerCase()])
+      .filter(n => n !== undefined);
+    // Legacy single-day fallback
+    if (!scheduleDays.length && s.day) {
+      scheduleDays.push(DAY_MAP[s.day.toLowerCase()]);
+    }
     if (!scheduleDays.includes(currentDay)) return false;
 
-    // Match to this cron's time window
-    const schedHour = parseInt((s.time || '09:00').split(':')[0], 10);
-    return schedHour >= window.from && schedHour <= window.to;
+    // ── Daily deduplication ────────────────────────────────────────────────
+    // Skip if we already sent this schedule today (prevents double-fires when
+    // both Vercel cron and cron-job.org call within the same fire window).
+    if (s.lastSentAt) {
+      const lastSentDay = new Date(s.lastSentAt).toISOString().slice(0, 10);
+      if (lastSentDay === todayUTC) return false;
+    }
+
+    // ── Exact time check (Belgium local → UTC, ±FIRE_WINDOW_MINUTES) ───────
+    // s.time is stored as entered by the coach in Belgium local time ("HH:MM").
+    const schedUTCMinutes = belgiumTimeToUTCMinutes(s.time || '09:00', now);
+    const diff = Math.abs(nowUTCMinutes - schedUTCMinutes);
+    // Handle midnight wrap (e.g. schedule at 23:58, cron at 00:02)
+    const wrappedDiff = Math.min(diff, 1440 - diff);
+    return wrappedDiff <= FIRE_WINDOW_MINUTES;
   });
 
   if (due.length === 0) {
-    return res.status(200).json({ ok: true, fired: 0, note: 'No schedules due today' });
+    return res.status(200).json({ ok: true, fired: 0, note: 'No schedules due now' });
   }
 
   if (subscriptions.length === 0) {
@@ -118,10 +146,10 @@ export default async function handler(req, res) {
     // Send one personalised push per subscriber
     const sendResults = await Promise.allSettled(
       subscriptions.map(({ subscription, label }) => {
-        const ctx      = { ...context, label: label || 'Player' };
-        const title    = resolveVariables(template.title, ctx);
-        const body     = resolveVariables(template.body,  ctx);
-        const payload  = JSON.stringify({
+        const ctx     = { ...context, label: label || 'Player' };
+        const title   = resolveVariables(template.title, ctx);
+        const body    = resolveVariables(template.body,  ctx);
+        const payload = JSON.stringify({
           title,
           body,
           from:  schedule.coachName || 'Coach',
@@ -141,20 +169,20 @@ export default async function handler(req, res) {
       }
     });
 
-    // Update lastSentAt on the schedule
+    // Update lastSentAt on the schedule object
     schedule.lastSentAt = now.toISOString();
 
     // Log to message history
     try {
       await kvLpush('ce:message_log', {
-        type:       'scheduled',
-        scheduleId: schedule.id,
+        type:         'scheduled',
+        scheduleId:   schedule.id,
         scheduleName: schedule.name,
-        templateId: template.id,
+        templateId:   template.id,
         templateName: template.name,
-        title:      resolveVariables(template.title, context),
-        body:       resolveVariables(template.body,  context).slice(0, 200),
-        sentAt:     now.toISOString(),
+        title:        resolveVariables(template.title, context),
+        body:         resolveVariables(template.body,  context).slice(0, 200),
+        sentAt:       now.toISOString(),
         sent, failed,
         total: subscriptions.length,
       });
@@ -167,8 +195,8 @@ export default async function handler(req, res) {
   // Persist updated lastSentAt values back to Redis
   try {
     const allSchedules = await kvGet(SCHEDULES_KEY).then(v => Array.isArray(v) ? v : []);
-    const updatedMap = Object.fromEntries(due.map(s => [s.id, s.lastSentAt]));
-    const merged = allSchedules.map(s =>
+    const updatedMap   = Object.fromEntries(due.map(s => [s.id, s.lastSentAt]));
+    const merged       = allSchedules.map(s =>
       updatedMap[s.id] ? { ...s, lastSentAt: updatedMap[s.id] } : s
     );
     await kvSet(SCHEDULES_KEY, merged);
