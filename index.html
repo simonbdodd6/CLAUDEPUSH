@@ -1,0 +1,3569 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coach's Eye · Boitsfort RFC</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1a2e25">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Coach's Eye">
+  <style>
+    :root {
+      --ink: #111827;
+      --muted: #6b7280;
+      --page: #ffffff;
+      --panel: #ffffff;
+      --line: #e5e7eb;
+      --nav: #1a2e25;
+      --nav-soft: #243d31;
+      --green: #168557;
+      --green-soft: #dff3e9;
+      --green-mid: #12a066;
+      --amber: #b87503;
+      --amber-soft: #fff0ce;
+      --red: #b83c40;
+      --red-soft: #ffe2e3;
+      --blue: #2768a8;
+      --blue-soft: #e0efff;
+      --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--page);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .app-shell { display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: 100vh; }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      position: sticky;
+      top: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      height: 100vh;
+      padding: 22px 16px;
+      color: #ecf5ef;
+      overflow-y: auto;
+      background:
+        radial-gradient(circle at 15% 8%, rgba(52,211,153,0.14), transparent 40%),
+        linear-gradient(180deg, #1a2e25 0%, #142219 100%);
+    }
+    .brand { display: flex; gap: 11px; align-items: center; padding: 0 4px; }
+    .brand-mark {
+      display: grid;
+      width: 40px;
+      height: 40px;
+      place-items: center;
+      background: var(--green);
+      border-radius: 10px;
+      font-weight: 900;
+      font-size: 13px;
+      color: #fff;
+      flex-shrink: 0;
+      letter-spacing: -0.5px;
+    }
+    .brand strong { display: block; font-size: 16px; font-weight: 800; color: #fff; }
+    .brand p { margin: 2px 0 0; color: #8db89e; font-size: 12px; }
+    .sidebar-card p { margin: 2px 0 0; color: #8db89e; font-size: 12px; }
+
+    /* Segmented control */
+    .view-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      padding: 3px;
+      border-radius: 9px;
+      background: rgba(0,0,0,0.28);
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+    .view-switch button {
+      min-height: 36px;
+      border: 0;
+      border-radius: 7px;
+      color: rgba(255,255,255,0.5);
+      background: transparent;
+      font-weight: 700;
+      font-size: 13px;
+      transition: all 0.13s ease;
+    }
+    .view-switch button.active {
+      color: var(--ink);
+      background: #ffffff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+    .view-switch button:not(.active):hover {
+      color: rgba(255,255,255,0.8);
+      background: rgba(255,255,255,0.08);
+    }
+
+    .auth-panel {
+      display: grid;
+      gap: 9px;
+      padding: 11px;
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 10px;
+      background: rgba(0,0,0,0.22);
+    }
+    .auth-panel label { color: #8db89e; font-size: 12px; font-weight: 600; }
+    .auth-panel input {
+      min-height: 34px;
+      border-color: rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.96);
+      font-size: 13px;
+    }
+    .auth-panel .btn { min-height: 34px; padding: 0 10px; font-size: 13px; }
+    .auth-panel strong { display: block; color: #ecf5ef; font-size: 14px; }
+    .auth-panel small { display: block; color: #8db89e; font-size: 12px; }
+    .auth-tabs { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+    .auth-tab { background:rgba(255,255,255,0.08); border:none; border-radius:6px; color:rgba(255,255,255,0.55); font-size:12px; font-weight:600; padding:6px 4px; cursor:pointer; transition:background 0.15s; }
+    .auth-tab.active { background:rgba(255,255,255,0.18); color:#fff; }
+    .join-code-banner { background:linear-gradient(135deg,#16a34a,#15803d); border-radius:12px; padding:16px 18px; margin-bottom:16px; color:#fff; }
+    .join-code-banner h3 { margin:0 0 4px; font-size:15px; }
+    .join-code-banner p { margin:0 0 12px; font-size:13px; opacity:0.85; }
+    .join-code-value { font-size:28px; font-weight:800; letter-spacing:3px; background:rgba(255,255,255,0.15); border-radius:8px; padding:8px 14px; display:inline-block; margin-bottom:12px; font-family:monospace; }
+    .join-code-url { font-size:12px; opacity:0.75; word-break:break-all; margin-bottom:10px; }
+
+    /* Nav */
+    nav { display: grid; gap: 2px; }
+    nav button {
+      display: flex;
+      gap: 9px;
+      align-items: center;
+      min-height: 40px;
+      padding: 9px 10px;
+      border: none;
+      border-radius: 8px;
+      color: rgba(255,255,255,0.58);
+      background: transparent;
+      text-align: left;
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.1s ease;
+    }
+    nav button.active {
+      background: rgba(255,255,255,0.13);
+      color: #ffffff;
+      font-weight: 700;
+    }
+    nav button:not(.active):hover {
+      background: rgba(255,255,255,0.07);
+      color: rgba(255,255,255,0.85);
+    }
+
+    .push-status-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 11px;
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 9px;
+      background: rgba(0,0,0,0.2);
+      font-size: 12px;
+      color: #8db89e;
+    }
+    .push-status-pill button {
+      margin-top: 6px;
+      width: 100%;
+      min-height: 32px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .push-dot { width: 7px; height: 7px; border-radius: 50%; background: #6b7280; flex-shrink: 0; }
+    .push-dot.on { background: #34d399; }
+    .push-dot.off { background: #f87171; }
+
+    .sidebar-card {
+      display: grid;
+      gap: 5px;
+      margin-top: auto;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 10px;
+      background: rgba(0,0,0,0.18);
+    }
+    .sidebar-card strong { color: #ecf5ef; font-size: 13px; }
+
+    /* ── WORKSPACE ── */
+    .workspace { min-width: 0; padding: 28px; background: #fff; }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: flex-start;
+      margin-bottom: 24px;
+    }
+    .eyebrow {
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    h1 { margin: 4px 0 0; font-size: clamp(26px, 3.6vw, 42px); line-height: 1.06; font-weight: 800; }
+    h2 { margin: 0; font-size: 18px; font-weight: 800; }
+    h3 { margin: 0; font-size: 14px; font-weight: 700; }
+    p { margin: 0; }
+    .muted { color: var(--muted); }
+
+    .pill-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+    .pill {
+      display: inline-flex;
+      min-height: 26px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0 10px;
+      color: var(--ink);
+      background: #fff;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .save-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+    .button-row { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+    .btn {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 14px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+      font-size: 13px;
+      transition: background 0.1s ease;
+    }
+    .btn:hover { background: #f9fafb; }
+    .btn.primary {
+      border-color: var(--green);
+      background: var(--green);
+      color: #fff;
+    }
+    .btn.primary:hover { background: var(--green-mid); border-color: var(--green-mid); }
+    .btn.ghost { background: transparent; border-color: transparent; }
+    .grid { display: grid; gap: 14px; }
+    .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .two-col { grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); }
+    .three-col { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    /* ── CARDS ── */
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+    .stat-card { box-shadow: none; border-radius: 10px; }
+    .stat-card small {
+      display: block;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-size: 11px;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .stat-card strong { display: block; font-size: 36px; line-height: 1; font-weight: 800; }
+    .stat-card span { display: block; color: var(--muted); margin-top: 6px; font-size: 13px; }
+
+    .list { display: grid; gap: 9px; }
+    .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 11px;
+      background: #fff;
+    }
+    .row strong { display: block; font-size: 14px; }
+    .row small { color: var(--muted); font-size: 12px; }
+
+    /* ── STATUS BADGES ── */
+    .status {
+      display: inline-flex;
+      min-height: 24px;
+      align-items: center;
+      gap: 5px;
+      border-radius: 999px;
+      padding: 0 9px 0 7px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .status::before {
+      content: '';
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .available { color: #166534; background: #dcfce7; }
+    .available::before { background: #16a34a; }
+    .unavailable, .injured { color: #991b1b; background: #fee2e2; }
+    .unavailable::before, .injured::before { background: #dc2626; }
+    .maybe { color: #92400e; background: #fef3c7; }
+    .maybe::before { background: #d97706; }
+    .no-reply { color: #92400e; background: #fef3c7; }
+    .no-reply::before { background: #d97706; }
+
+    /* ── SECTION FADE ── */
+    .section { display: none; }
+    .section.active {
+      display: grid;
+      gap: 14px;
+      animation: fadeIn 0.18s ease both;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 11px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 11px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em; }
+    td { font-size: 14px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    label { display: grid; gap: 5px; color: var(--ink); font-size: 13px; font-weight: 700; }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 11px;
+      background: #fff;
+      color: var(--ink);
+      font-size: 14px;
+    }
+    textarea { min-height: 100px; resize: vertical; }
+
+    .schedule-card {
+      display: grid;
+      gap: 7px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px;
+      background: var(--panel);
+    }
+    .schedule-card button { justify-self: start; }
+
+    .session-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+    .session-tabs button {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 12px;
+      background: #fff;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .session-tabs button.active {
+      border-color: var(--green);
+      background: var(--green);
+      color: #fff;
+    }
+    .session-detail-header {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .session-detail-header article {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 11px;
+      background: #fff;
+    }
+    .session-detail-header span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+    .session-detail-header strong { display: block; font-size: 22px; line-height: 1; font-weight: 800; }
+
+    .training-player-list {
+      display: grid;
+      gap: 7px;
+      margin-top: 14px;
+      max-height: 500px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .training-player-list button {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px;
+      background: #fff;
+      text-align: left;
+      transition: border-color 0.1s;
+    }
+    .training-player-list button.active { border-color: var(--green); background: #f0fdf4; }
+    .training-player-list span { display: block; color: var(--muted); font-size: 12px; }
+
+    .register-stack { display: grid; gap: 11px; margin-top: 14px; }
+    .register-card { border: 1px solid var(--line); border-radius: 9px; padding: 11px; background: #fff; }
+    .register-head, .compact-player-heading {
+      display: flex; justify-content: space-between; gap: 10px; align-items: center;
+    }
+    .mini-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 9px;
+    }
+    .mini-list button {
+      display: flex;
+      justify-content: space-between;
+      gap: 7px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px;
+      background: #fff;
+      text-align: left;
+      font-size: 13px;
+    }
+    .mini-list .mini-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      border-radius: 999px;
+      padding: 0 7px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .not-coming-panel {
+      margin-top: 11px;
+      border: 1px solid var(--red-soft);
+      border-radius: 8px;
+      padding: 9px;
+      background: #fff8f8;
+    }
+    .needs-chasing-panel {
+      margin-top: 11px;
+      border: 1px solid var(--amber-soft);
+      border-radius: 8px;
+      padding: 9px;
+      background: #fffbf0;
+    }
+    .training-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 9px;
+    }
+    .training-metrics article { border: 1px solid var(--line); border-radius: 8px; padding: 9px; background: #fff; }
+    .training-metrics span { display: block; color: var(--muted); font-size: 12px; }
+    .training-metrics strong { display: block; font-size: 19px; font-weight: 800; }
+
+    .player-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr);
+      gap: 14px;
+    }
+    .availability-buttons {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .availability-buttons button {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      transition: all 0.12s;
+    }
+    .availability-buttons button.active.available { border-color: var(--green); background: var(--green); color: #fff; }
+    .availability-buttons button.active.unavailable,
+    .availability-buttons button.active.injured { border-color: var(--red); background: var(--red); color: #fff; }
+    .availability-buttons button.active.maybe { border-color: var(--amber); background: var(--amber); color: #fff; }
+
+    /* ── PITCH ── */
+    .pitch {
+      position: relative;
+      min-height: 420px;
+      overflow: hidden;
+      border-radius: 10px;
+      background:
+        repeating-linear-gradient(
+          180deg,
+          rgba(255,255,255,0.04) 0,
+          rgba(255,255,255,0.04) 28px,
+          transparent 28px,
+          transparent 56px
+        ),
+        linear-gradient(180deg, #1a6635 0%, #1e7a3e 50%, #1a6635 100%);
+      border: 7px solid #145228;
+      box-shadow: inset 0 0 50px rgba(0,0,0,0.16);
+    }
+    .pitch-inner { position: absolute; inset: 18px; border: 2px solid rgba(255,255,255,0.88); border-radius: 2px; }
+    .pitch-line { position: absolute; left: 18px; right: 18px; height: 2px; background: rgba(255,255,255,0.8); }
+    .slot {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      min-width: 86px;
+      max-width: 112px;
+      border: 1px solid rgba(255,255,255,0.38);
+      border-radius: 7px;
+      padding: 6px 7px;
+      background: rgba(12,22,42,0.9);
+      color: #fff;
+      text-align: center;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.28);
+    }
+    .slot small { display: block; font-weight: 900; color: #86efac; font-size: 10px; }
+    .slot span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+
+    .message-bubble { border: 1px solid var(--line); border-radius: 9px; padding: 13px; background: #fff; }
+    .message-bubble.unread { border-color: #86efac; background: #f0fdf4; }
+    .message-meta { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
+    .thread-reply { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; margin-top: 9px; }
+    .automation-grid { display: grid; gap: 9px; margin-top: 14px; }
+    .automation-card { display: grid; gap: 9px; border: 1px solid var(--line); border-radius: 9px; padding: 11px; background: #f9fafb; }
+    .history-bar { height: 9px; overflow: hidden; border-radius: 999px; background: var(--line); }
+    .history-bar span { display: block; height: 100%; background: var(--green); border-radius: 999px; }
+
+    /* ── PUSH NOTIFICATION BANNER (player side) ── */
+    .push-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px 16px;
+      border: 1px solid #86efac;
+      border-radius: 10px;
+      background: #f0fdf4;
+    }
+    .push-banner .push-icon { font-size: 22px; flex-shrink: 0; }
+    .push-banner .push-text strong { display: block; font-size: 14px; }
+    .push-banner .push-text small { color: var(--muted); font-size: 12px; }
+    .push-subscribed { border-color: #86efac; background: #f0fdf4; }
+    .push-denied { border-color: var(--red-soft); background: #fff8f8; }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 11px 18px;
+      border-radius: 9px;
+      background: var(--nav);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      z-index: 9999;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      pointer-events: none;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.22);
+    }
+    .toast.visible { opacity: 1; transform: translateY(0); }
+
+    .hidden { display: none !important; }
+
+    /* ── OVERVIEW UPGRADES ── */
+    .fixture-hero { border:1px solid var(--line); border-radius:12px; padding:20px; background:linear-gradient(135deg,#1a2e25 0%,#243d31 100%); color:#ecf5ef; }
+    .fixture-hero .eyebrow { color:#86efac; }
+    .fixture-hero h3 { color:#fff; font-size:20px; margin:6px 0 4px; }
+    .fixture-hero .pill { background:rgba(255,255,255,0.12); border-color:rgba(255,255,255,0.2); color:#ecf5ef; }
+    .fixture-meta { display:flex; gap:18px; margin-top:12px; flex-wrap:wrap; }
+    .fixture-meta span { font-size:13px; color:#8db89e; }
+    .fixture-meta strong { color:#fff; }
+    .pkg-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-top:14px; }
+    .pkg-stat { padding:14px 12px; background:#fff; text-align:center; }
+    .pkg-stat strong { display:block; font-size:26px; font-weight:800; color:var(--green); line-height:1; }
+    .pkg-stat small { color:var(--muted); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; display:block; margin-top:4px; }
+    .auto-queue-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--line); font-size:13px; }
+    .auto-queue-row:last-child { border-bottom:0; }
+    .auto-badge { min-height:20px; padding:0 8px; border-radius:999px; font-size:11px; font-weight:700; display:inline-flex; align-items:center; }
+    .auto-active { background:var(--green-soft); color:var(--green); }
+    .auto-paused { background:var(--amber-soft); color:var(--amber); }
+    .msgs-sent-stat { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:14px; }
+    .msgs-sent-stat article { border:1px solid var(--line); border-radius:9px; padding:12px; text-align:center; }
+    .msgs-sent-stat strong { display:block; font-size:24px; font-weight:800; }
+    .msgs-sent-stat small { color:var(--muted); font-size:12px; }
+
+    /* ── TRAINING HERO ── */
+    .training-hero { border:1px solid var(--line); border-radius:12px; padding:24px 28px; background:linear-gradient(135deg,#f0fdf4 0%,#fff 60%); margin-bottom:18px; display:grid; grid-template-columns:1fr auto; gap:24px; align-items:center; }
+    .training-hero h1 { font-size:clamp(20px,3vw,30px); margin:6px 0 10px; line-height:1.15; }
+    .training-hero p { color:var(--muted); font-size:13px; max-width:580px; }
+    .training-hero-stats { display:grid; grid-template-columns:repeat(3,110px); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden; flex-shrink:0; }
+    .training-stat { background:#fff; padding:14px 12px; text-align:center; }
+    .training-stat .lbl { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--green); display:block; margin-bottom:4px; }
+    .training-stat strong { display:block; font-size:28px; font-weight:800; line-height:1; }
+    .training-stat small { color:var(--muted); font-size:11px; display:block; margin-top:4px; }
+
+    /* ── SESSION CARD TABS ── */
+    .session-card-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:18px; }
+    .session-card-tab { border:2px solid var(--line); border-radius:10px; padding:14px 16px; cursor:pointer; background:#fff; text-align:left; transition:all 0.12s; }
+    .session-card-tab:hover:not(.active) { border-color:#c4dfc9; background:#fafffe; }
+    .session-card-tab.active { border-color:var(--green); background:var(--green-soft); }
+    .session-card-tab .sc-time { display:block; font-size:12px; color:var(--muted); font-weight:600; margin-bottom:5px; }
+    .session-card-tab.active .sc-time { color:var(--green); }
+    .session-card-tab strong { display:block; font-size:15px; font-weight:800; }
+
+    /* ── INTENSITY BADGE & LOAD BAR ── */
+    .intensity-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    .intensity-badge { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--amber); }
+    .load-pct { font-size:14px; font-weight:800; color:var(--green); }
+    .load-bar-wrap { height:6px; border-radius:999px; background:var(--line); overflow:hidden; margin:10px 0 16px; }
+    .load-bar-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,var(--green) 0%,#f59e0b 100%); transition:width 0.3s; }
+
+    /* ── EDITABLE TIME BLOCK FORMS ── */
+    .block-form { border:1px solid var(--line); border-radius:10px; padding:14px 16px; background:#fff; margin-bottom:10px; }
+    .block-time-row { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+    .block-time-input { width:80px; border:1px solid var(--line); border-radius:7px; padding:7px 9px; font-size:13px; font-weight:700; color:var(--green); text-align:center; }
+    .block-time-sep { color:var(--muted); font-weight:700; flex-shrink:0; }
+    .block-form label { font-size:12px; font-weight:700; color:var(--ink); display:grid; gap:4px; }
+    .block-form input, .block-form textarea, .block-form select { font-size:13px; }
+    .block-form textarea { min-height:72px; }
+    .goal-tag { display:inline-flex; align-items:center; gap:5px; min-height:26px; padding:0 10px; border-radius:999px; background:var(--green-soft); color:var(--green); font-size:12px; font-weight:600; }
+    .goal-tag::before { content:"✓"; font-weight:800; }
+
+    /* ── DRILL BOARD (right panel) ── */
+    .drill-board { display:grid; gap:14px; }
+    .drill-board-header p { color:var(--muted); font-size:13px; margin-top:4px; }
+    .active-drill-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+    .drill-tools-row { display:flex; gap:6px; flex-wrap:wrap; padding:10px 12px; border:1px solid var(--line); border-radius:9px; background:#f9fafb; }
+    .dtool { min-height:30px; padding:0 12px; border:1px solid var(--line); border-radius:7px; background:#fff; font-size:12px; font-weight:700; cursor:pointer; transition:all 0.1s; }
+    .dtool.active { background:var(--nav); color:#fff; border-color:var(--nav); }
+    .dtool.del { color:var(--red); border-color:var(--red-soft); }
+    .dtool.del:hover { background:var(--red); color:#fff; }
+    .tactic-color { width:22px; height:22px; border-radius:50%; border:2px solid rgba(0,0,0,0.12); cursor:pointer; flex-shrink:0; transition:transform 0.1s; }
+    .tactic-color:hover { transform:scale(1.2); }
+    .tactics-canvas { display:block; width:100%; background:linear-gradient(180deg,#1a6635 0%,#1e7a3e 50%,#1a6635 100%); cursor:crosshair; touch-action:none; border-radius:0 0 8px 8px; }
+
+    /* ── COACH SHEET TABLE ── */
+    .coach-sheet { border:1px solid var(--line); border-radius:10px; background:#fff; overflow:hidden; }
+    .coach-sheet-hdr { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid var(--line); background:#f9fafb; }
+    .coach-sheet-hdr h3 { margin:0; }
+    .cs-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .cs-table th { padding:8px 12px; background:#f9fafb; border-bottom:2px solid var(--line); color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.06em; text-align:left; }
+    .cs-table td { padding:8px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+    .cs-table tr:last-child td { border-bottom:0; }
+    .cs-time-cell { font-weight:800; color:var(--green); white-space:nowrap; font-size:11px; }
+
+    /* ── TRAINING ARCHIVE ── */
+    .archive-item { padding:12px 16px; border-bottom:1px solid var(--line); cursor:pointer; }
+    .archive-item:last-child { border-bottom:0; }
+    .archive-item:hover { background:#f9fafb; }
+    .archive-meta { font-size:11px; color:var(--muted); margin-bottom:4px; }
+    .archive-item strong { font-size:14px; }
+    .archive-item p { font-size:12px; color:var(--muted); margin-top:3px; }
+
+    /* ── TACTICS BOARD ── */
+    .tactics-wrap { border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+    .tactics-toolbar { display:flex; gap:6px; flex-wrap:wrap; padding:10px 12px; border-bottom:1px solid var(--line); background:#f9fafb; align-items:center; }
+    .tactic-tool { min-height:30px; padding:0 11px; border:1px solid var(--line); border-radius:7px; background:#fff; font-size:12px; font-weight:700; color:var(--ink); cursor:pointer; transition:all 0.1s; }
+    .tactic-tool.active { background:var(--nav); color:#fff; border-color:var(--nav); }
+    .tactic-color { width:24px; height:24px; border-radius:50%; border:2px solid rgba(0,0,0,0.15); cursor:pointer; flex-shrink:0; transition:transform 0.1s; }
+    .tactic-color:hover { transform:scale(1.2); }
+    .tactics-canvas { display:block; width:100%; background:linear-gradient(180deg,#1a6635 0%,#1e7a3e 50%,#1a6635 100%); cursor:crosshair; touch-action:none; }
+
+    /* ── COACH SHEET ── */
+    .coach-sheet { border:1px solid var(--line); border-radius:10px; background:#fff; padding:16px; }
+    .coach-sheet-hdr { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid var(--ink); padding-bottom:10px; margin-bottom:12px; }
+    .coach-sheet-hdr h3 { margin:0; font-size:15px; }
+    .coach-sheet-blocks { display:grid; gap:6px; }
+    .csblock { display:grid; grid-template-columns:52px minmax(0,1fr) 70px; gap:8px; align-items:start; padding:6px 0; border-bottom:1px solid var(--line); font-size:12px; }
+    .csblock:last-child { border-bottom:0; }
+    .csblock .cs-time { font-weight:800; color:var(--green); }
+    .csblock .cs-tag { display:inline-flex; min-height:18px; padding:0 7px; border-radius:999px; background:var(--green-soft); color:var(--green); font-size:10px; font-weight:700; align-items:center; justify-self:end; }
+
+    /* ── VIDEO LIBRARY ── */
+    .video-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+    .video-card { border:1px solid var(--line); border-radius:9px; overflow:hidden; background:#fff; cursor:pointer; transition:box-shadow 0.1s; }
+    .video-card:hover { box-shadow:var(--shadow); }
+    .video-thumb { height:88px; background:linear-gradient(135deg,#1a2e25 0%,#243d31 100%); display:flex; align-items:center; justify-content:center; position:relative; }
+    .play-btn { width:34px; height:34px; border-radius:50%; background:rgba(255,255,255,0.92); display:flex; align-items:center; justify-content:center; font-size:13px; }
+    .video-dur { position:absolute; bottom:5px; right:7px; background:rgba(0,0,0,0.7); color:#fff; font-size:10px; font-weight:700; padding:1px 5px; border-radius:4px; }
+    .video-card-body { padding:8px 10px; }
+    .video-card-body strong { display:block; font-size:12px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .video-card-body small { color:var(--muted); font-size:11px; }
+    .link-row { display:grid; grid-template-columns:minmax(0,1fr) 80px auto; gap:8px; align-items:center; padding:9px 11px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    .link-row a { font-size:13px; font-weight:600; color:var(--blue); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
+    .link-row small { color:var(--muted); font-size:11px; display:block; }
+    .link-cat { display:inline-flex; min-height:18px; padding:0 7px; border-radius:999px; background:var(--blue-soft); color:var(--blue); font-size:10px; font-weight:700; align-items:center; }
+
+    /* ── SEASON PLAN ── */
+    .period-row { display:grid; grid-template-columns:100px minmax(0,1fr) 110px auto; gap:10px; align-items:center; border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#fff; font-size:13px; }
+    .period-badge { display:inline-flex; min-height:22px; padding:0 10px; border-radius:999px; font-size:11px; font-weight:700; align-items:center; }
+    .period-preseason { background:#e0efff; color:#1d4ed8; }
+    .period-competition { background:var(--green-soft); color:#166534; }
+    .period-transition { background:var(--amber-soft); color:#92400e; }
+
+    /* ── MATCHDAY BIG PITCH ── */
+    .pitch-big { position:relative; min-height:700px; overflow:hidden; border-radius:12px;
+      background: repeating-linear-gradient(180deg,rgba(255,255,255,0.035) 0,rgba(255,255,255,0.035) 34px,transparent 34px,transparent 68px),
+      linear-gradient(180deg,#1a6635 0%,#1e7a3e 50%,#1a6635 100%);
+      border:8px solid #145228; box-shadow:inset 0 0 70px rgba(0,0,0,0.2); }
+    .pitch-big .pitch-inner { position:absolute; inset:18px; border:2px solid rgba(255,255,255,0.85); border-radius:2px; }
+    .pitch-big .pitch-line { position:absolute; left:18px; right:18px; height:2px; background:rgba(255,255,255,0.7); }
+    .slot-big { position:absolute; transform:translate(-50%,-50%); width:88px; text-align:center; cursor:pointer; }
+    .slot-photo { width:52px; height:52px; border-radius:50%; margin:0 auto 3px; border:3px solid rgba(255,255,255,0.92); background:rgba(12,22,42,0.88); display:flex; align-items:center; justify-content:center; font-size:18px; overflow:hidden; box-shadow:0 3px 10px rgba(0,0,0,0.45); position:relative; }
+    .slot-photo img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
+    .slot-num { position:absolute; top:-4px; right:-4px; width:18px; height:18px; border-radius:50%; background:var(--green); color:#fff; font-size:10px; font-weight:900; display:flex; align-items:center; justify-content:center; border:2px solid #fff; }
+    .slot-name-lbl { font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,0.8); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .slot-name-input { display:block; width:100%; font-size:11px; font-weight:700; text-align:center; background:rgba(255,255,255,0.92); color:#0c1a2a; border:1px solid rgba(255,255,255,0.6); border-radius:5px; padding:4px 4px; margin-top:3px; outline:none; box-sizing:border-box; box-shadow:0 1px 4px rgba(0,0,0,0.35); }
+    .slot-name-input:focus { background:#fff; border-color:var(--green); box-shadow:0 0 0 2px rgba(16,124,65,0.25); }
+    .slot-name-input::placeholder { color:#6b7280; font-weight:400; }
+    .slot-big.drag-over { outline:3px dashed #fff; outline-offset:3px; border-radius:8px; }
+    .avail-template-card { border:2px solid var(--green); border-radius:12px; padding:20px 22px; background:linear-gradient(135deg,#f0fdf4 0%,#fff 80%); margin-bottom:18px; }
+    .training-gs-table { width:100%; border-collapse:collapse; font-size:14px; }
+    .training-gs-table th { padding:10px 12px; background:#f9fafb; border-bottom:2px solid var(--line); color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em; text-align:left; white-space:nowrap; }
+    .training-gs-table td { padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+    .training-gs-table tr:last-child td { border-bottom:0; }
+    .training-gs-table tr:hover td { background:#fafffe; }
+    .training-gs-table textarea { width:100%; font-size:14px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; resize:vertical; min-height:76px; font-family:inherit; line-height:1.5; }
+    .training-gs-table textarea:focus { outline:none; border-color:var(--green); box-shadow:0 0 0 2px rgba(16,124,65,0.15); }
+    .gs-time-input { width:84px; border:2px solid var(--line); border-radius:7px; padding:8px 10px; font-size:15px; font-weight:800; color:var(--green); text-align:center; background:#f0fdf4; }
+    .gs-time-input:focus { outline:none; border-color:var(--green); background:#fff; }
+    .gs-sm-input { width:100%; border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:13px; }
+    .player-photo-wrap { position:relative; width:36px; height:36px; flex-shrink:0; }
+    .player-photo-wrap img { width:36px; height:36px; border-radius:50%; object-fit:cover; }
+    .player-photo-wrap .photo-badge { position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; border-radius:50%; background:var(--green); border:2px solid #fff; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:9px; color:#fff; }
+    .squad-player-drag { cursor:grab; padding:8px 10px; border:1px solid var(--line); border-radius:8px; display:flex; align-items:center; gap:8px; background:#fff; transition:box-shadow 0.1s; }
+    .squad-player-drag:hover { box-shadow:var(--shadow); border-color:#c4dfc9; }
+    .squad-player-drag:active { cursor:grabbing; }
+    .bench-strip { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:6px; margin-top:10px; }
+    .bench-slot { border:1px dashed rgba(255,255,255,0.3); border-radius:8px; padding:8px 5px; text-align:center; background:rgba(0,0,0,0.32); }
+    .bench-slot small { display:block; color:rgba(255,255,255,0.5); font-size:10px; font-weight:700; }
+    .bench-slot span { display:block; color:#fff; font-size:10px; font-weight:600; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .bench-slot input { background:transparent; border:0; color:#fff; font-size:10px; font-weight:600; width:100%; text-align:center; padding:0; }
+    .bench-slot input::placeholder { color:rgba(255,255,255,0.3); }
+    .sub-table th { background:#f9fafb; font-size:11px; }
+    .sub-tag { display:inline-flex; min-height:20px; padding:0 8px; border-radius:999px; background:var(--amber-soft); color:var(--amber); font-size:11px; font-weight:700; align-items:center; }
+    .export-bar { display:flex; gap:8px; flex-wrap:wrap; padding:12px 0; border-top:1px solid var(--line); margin-top:14px; }
+
+    /* ── MEDICAL DEEP ── */
+    .med-overview-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+    .med-stat { border:1px solid var(--line); border-radius:10px; padding:14px; text-align:center; background:#fff; }
+    .med-stat strong { display:block; font-size:32px; font-weight:800; line-height:1; }
+    .med-stat small { color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; display:block; margin-top:5px; }
+    .rehab-card { border:1px solid var(--line); border-radius:10px; padding:14px; background:#fff; }
+    .rehab-header { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:10px; }
+    .rehab-bar { height:6px; border-radius:999px; background:var(--line); overflow:hidden; margin-top:6px; }
+    .rehab-bar span { display:block; height:100%; border-radius:999px; background:var(--green); transition:width 0.3s; }
+    .treatment-row { display:grid; grid-template-columns:85px minmax(0,1fr) 90px auto; gap:10px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line); font-size:13px; }
+    .treatment-row:last-child { border-bottom:0; }
+    .med-msg-card { border:1px solid var(--line); border-radius:9px; padding:12px; background:#fff; }
+    .med-msg-card + .med-msg-card { margin-top:8px; }
+
+    /* ── LIVE MESSAGING PANELS ── */
+    .live-sched-row { padding:10px 0; border-bottom:1px solid var(--line); }
+    .live-sched-row:last-child { border-bottom:0; }
+    .live-sched-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--line); flex-shrink:0; }
+    .live-sched-dot.on  { background:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.18); }
+    .live-sched-dot.off { background:#d1d5db; }
+    .live-badge { display:inline-block; font-size:10px; font-weight:700; padding:2px 7px; border-radius:999px; background:#f1f5f9; color:#64748b; letter-spacing:.02em; }
+    .live-badge.sched { background:#f0fdf4; color:var(--green); }
+    .live-badge.adhoc { background:#fef9c3; color:#92400e; }
+
+    /* ── PLAYER DATABASE ── */
+    .db-toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+    .filter-pill { min-height:30px; padding:0 13px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.1s; }
+    .filter-pill.active { background:var(--nav); color:#fff; border-color:var(--nav); }
+    .consent-dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex-shrink:0; vertical-align:middle; margin-right:4px; }
+    .c-yes { background:#16a34a; } .c-no { background:#dc2626; } .c-pending { background:#d97706; }
+    .add-player-panel { border:1px solid var(--green); border-radius:10px; padding:16px; background:#f0fdf4; margin-bottom:14px; }
+    .add-player-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+
+    @media (max-width: 980px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; }
+      .workspace { padding: 16px; }
+      .topbar, .player-hero, .two-col { grid-template-columns: 1fr; display: grid; }
+      .stats-grid, .three-col, .form-grid { grid-template-columns: 1fr; }
+      .session-detail-header, .mini-list, .training-metrics { grid-template-columns: 1fr; }
+      nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .availability-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .pitch { min-height: 340px; }
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">CE</span>
+        <div>
+          <strong>Coach's Eye</strong>
+          <p>Boitsfort RFC</p>
+        </div>
+      </div>
+
+      <div class="view-switch" aria-label="View switch">
+        <button id="coachViewBtn" class="active" type="button">Coach</button>
+        <button id="playerViewBtn" type="button">Player</button>
+      </div>
+
+      <div id="authPanel" class="auth-panel"></div>
+
+      <nav id="coachNav" aria-label="Coach sections"></nav>
+      <nav id="playerNav" class="hidden" aria-label="Player sections"></nav>
+
+      <div id="pushSidebar" class="push-status-pill hidden">
+        <span class="push-dot" id="pushDot"></span>
+        <div style="flex:1;min-width:0">
+          <div id="pushSidebarLabel" style="font-weight:700;color:#ecf5ef;font-size:12px">Notifications</div>
+          <div id="pushSidebarSub" style="font-size:11px;margin-top:1px">Off</div>
+        </div>
+        <button id="pushSidebarBtn" class="btn" type="button" style="margin-top:0;width:auto;min-height:28px;padding:0 9px;font-size:11px;background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#ecf5ef"></button>
+      </div>
+
+      <div class="sidebar-card">
+        <strong>Boitsfort RFC · Prototype</strong>
+        <p>Data saved locally in this browser.</p>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow" id="eyebrow">Coach dashboard</div>
+          <h1 id="pageTitle">Overview</h1>
+          <div class="pill-row">
+            <span class="pill">Boitsfort Premier</span>
+            <span class="pill">Kituro this weekend</span>
+            <span class="pill">In-app messages</span>
+          </div>
+        </div>
+        <div class="button-row">
+          <span class="save-pill"><span class="dot"></span><span id="saveStatus">Loaded from this browser</span></span>
+          <button class="btn" type="button" id="resetBtn">Reset</button>
+        </div>
+      </header>
+
+      <section id="coach-overview"    class="section active"></section>
+      <section id="coach-message"     class="section"></section>
+      <section id="coach-training"    class="section"></section>
+      <section id="coach-matchday"    class="section"></section>
+      <section id="coach-medical"     class="section"></section>
+      <section id="coach-players"     class="section"></section>
+
+      <section id="player-week"       class="section"></section>
+      <section id="player-availability" class="section"></section>
+      <section id="player-fixtures"   class="section"></section>
+      <section id="player-attendance" class="section"></section>
+      <section id="player-messages"   class="section"></section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    // ─── STORAGE KEYS (must not change) ───────────────────────────────────────
+    const STORAGE_KEY = "coach-eye-real-workflow-mvp-state-v1";
+    const BACKUP_KEY  = "coach-eye-real-workflow-mvp-state-v1-backup";
+
+    // ─── PUSH CONFIG ──────────────────────────────────────────────────────────
+    const VAPID_PUBLIC_KEY = "BJBP7tIsM_67yBKMl3kJwlC65yH8pwa_r7uVHOSqWKwyW5ftB1Jdj1SPmU4_G0Eeti-JZ6uQ7bpvQW8xwMiMWM8";
+
+    // ─── ACCOUNTS ─────────────────────────────────────────────────────────────
+    const testAccounts = [
+      { id: "coach-demo", role: "coach", name: "Simon Dodd", email: "simonbdodd@gmail.com", phone: "+32470380938", pin: "1111" }
+    ];
+
+    const coachSections = [
+      ["overview",  "Overview"],
+      ["message",   "Message Center"],
+      ["training",  "Training"],
+      ["matchday",  "Matchday Center"],
+      ["medical",   "Medical"],
+      ["players",   "Players"]
+    ];
+
+    const playerSections = [
+      ["week",         "My Week"],
+      ["availability", "Availability"],
+      ["fixtures",     "Fixtures"],
+      ["attendance",   "Attendance"],
+      ["messages",     "Messages"]
+    ];
+
+    const rugbySlots = [
+      ["1",24,81],["2",50,83],["3",76,81],
+      ["4",36,68],["5",64,68],
+      ["6",18,56],["8",50,55],["7",82,56],
+      ["9",37,42],["10",64,36],
+      ["11",13,24],["12",39,25],["13",62,21],["14",87,24],["15",50,11]
+    ];
+
+    // Squad starts empty — add your real players via Player DB → Add Player
+    const playerSeed = [];
+
+    const defaultState = {
+      activeView: "coach",
+      activeCoachSection: "overview",
+      activePlayerSection: "week",
+      selectedPlayerId: "",
+      selectedMessagePlayerId: "",
+      currentUserId: "coach-demo",
+      notification: "",
+      teamCode: "BOITSFORT",
+      meta: { revision: 1, savedAt: "Initial seed", savedBy: "system" },
+      users: structuredClone(testAccounts),
+      players: playerSeed.map(([id, name, position, status, attendance], index) => ({
+        id, name, position, status,
+        phone: "",
+        email: `${String(name).toLowerCase().replaceAll(" ", ".").replaceAll("'", "").replaceAll("é","e")}@player.test`,
+        trainingTuesday:  status,
+        trainingThursday: status,
+        game: status,
+        attendance,
+        history: ["available", index % 3 === 0 ? "available" : "no-reply", status],
+        blockedDates: [],
+        medical: status === "injured" ? "Review required before weekend" : ""
+      })),
+      schedule: [
+        { id: "tue",  type: "Training", title: "Tuesday training",           date: "Tuesday 19:45",   focus: "Defensive spacing and restart detail" },
+        { id: "thu",  type: "Training", title: "Thursday team run",           date: "Thursday 19:45",  focus: "Kituro plan, units, captain run" },
+        { id: "game", type: "Match",    title: "Boitsfort Premier vs Kituro", date: "Saturday fixture", focus: "Home ground" }
+      ],
+      fixtures: [
+        { date: "This Saturday",  opponent: "Kituro",      venue: "Home",  status: "Availability open" },
+        { date: "Next Saturday",  opponent: "ASUB",        venue: "Away",  status: "Not opened" },
+        { date: "Two weeks",      opponent: "Dendermonde", venue: "Home",  status: "Not opened" },
+        { date: "Three weeks",    opponent: "La Hulpe",    venue: "Away",  status: "Not opened" }
+      ],
+      messages: [
+        { id: "m1", from: "Coach", to: "Squad",       playerId: "squad",       sessionId: "week",    type: "Availability request",  text: "Please confirm Tuesday, Thursday and Kituro availability inside Coach's Eye.", unread: true,  time: "Today 09:00",  delivery: "delivered", replies: [] },
+        { id: "m2", from: "Simon Dodd", to: "Coach",  playerId: "test-simon",  sessionId: "week",    type: "Player reply",           text: "Available Tuesday and Saturday. Carrying small shoulder stiffness.",              unread: true,  time: "Today 09:16",  delivery: "received",  replies: [] },
+        { id: "m3", from: "Medical",    to: "Coach",  playerId: "coach",       sessionId: "medical", type: "Medical check-in",       text: "Bubele and Maxence need status updates before selection.",                        unread: false, time: "Yesterday",    delivery: "read",      replies: [] }
+      ],
+      availabilityRequests: [
+        { id: "req-tue",  sessionId: "tue",  title: "Tuesday training availability",    sentAt: "Today 09:00", status: "sent", messageIds: [] },
+        { id: "req-thu",  sessionId: "thu",  title: "Thursday team run availability",   sentAt: "Today 09:00", status: "sent", messageIds: [] },
+        { id: "req-game", sessionId: "game", title: "Kituro game availability",         sentAt: "Today 09:00", status: "sent", messageIds: [] }
+      ],
+      automationRules: [
+        { id: "auto-tue",  sessionId: "tue",  title: "Tuesday training availability",  schedule: "Sunday 18:00",   enabled: true, template: "Are you available for Tuesday training? Please answer in Coach's Eye." },
+        { id: "auto-thu",  sessionId: "thu",  title: "Thursday team run availability", schedule: "Tuesday 21:30",  enabled: true, template: "Are you available for Thursday team run? Please answer in Coach's Eye." },
+        { id: "auto-game", sessionId: "game", title: "Weekend match availability",     schedule: "Tuesday 09:00",  enabled: true, template: "Are you available for Boitsfort Premier vs Kituro this weekend? Please answer in Coach's Eye." }
+      ],
+      masterFeed: [
+        { id: "feed-1", event: "Prototype messaging layer loaded", time: "Today", detail: "Coach and player messages are joined in one master feed." }
+      ],
+      announcements: [
+        "Training moved to pitch 2 if pitch 1 is closed.",
+        "Players should update availability before Friday 12:00."
+      ],
+      templates: [
+        "Please confirm your availability for this week's training and game.",
+        "Medical check-in: update any knocks, treatment needs, or return-to-play notes.",
+        "Matchday selection is being finalised. Check your player portal."
+      ],
+      trainingActiveSession: "tue",
+      trainingBlocks: {
+        tue: [
+          { id:"tb1", time:"19:45", activity:"Warm-up and arrival checks", tag:"Warmup",    coach:"",  keyFocus:"Activation, chat, set the tone" },
+          { id:"tb2", time:"20:00", activity:"Unit skills — lineout and scrum detail",        tag:"Set piece", coach:"", keyFocus:"Lineout calls and body positions" },
+          { id:"tb3", time:"20:35", activity:"Team attack — wide channel patterns",           tag:"Attack",    coach:"", keyFocus:"Width, depth, offload timing" },
+          { id:"tb4", time:"21:00", activity:"Conditioned game — territory focus",            tag:"Game",      coach:"", keyFocus:"Decision quality under pressure" },
+          { id:"tb5", time:"21:15", activity:"Finish and coach review",                       tag:"Review",    coach:"", keyFocus:"3 things we did well, 1 to fix" }
+        ],
+        thu: [
+          { id:"tb6",  time:"19:45", activity:"Captain's run warm-up",                       tag:"Warmup",   coach:"", keyFocus:"Light activation, match mindset" },
+          { id:"tb7",  time:"20:00", activity:"Kituro defensive units and blitz calls",       tag:"Defence",  coach:"", keyFocus:"Blitz line speed and communication" },
+          { id:"tb8",  time:"20:30", activity:"Restart sequences — kick-off and 22",          tag:"Restarts", coach:"", keyFocus:"Pod positions, chase lanes" },
+          { id:"tb9",  time:"21:00", activity:"Walk-through lineout calls and moves",         tag:"Set piece",coach:"", keyFocus:"Calls at pace, no fumbles" },
+          { id:"tb10", time:"21:15", activity:"Team meeting and provisional selection",       tag:"Admin",    coach:"", keyFocus:"Selection and game plan clarity" }
+        ],
+        game: []
+      },
+      tacticsDrawings: { tue: null, thu: null, game: null },
+      clubVideos: [
+        { id:"v1", title:"Tuesday session — ruck speed drill", duration:"1:48", date:"2 days ago" },
+        { id:"v2", title:"Lineout calls walkthrough", duration:"2:05", date:"Last week" },
+        { id:"v3", title:"Defensive channel patterns vs La Hulpe", duration:"1:22", date:"Last week" }
+      ],
+      coachingLinks: [
+        { id:"cl1", title:"World Rugby — lineout law interpretation guide", url:"https://laws.worldrugby.org", category:"Set piece" },
+        { id:"cl2", title:"Blitzing defence breakdown — analysis clip", url:"https://youtube.com", category:"Defence" },
+        { id:"cl3", title:"South Africa 2023 restart sequences vs NZ", url:"https://youtube.com", category:"Restarts" }
+      ],
+      seasonPlan: [
+        { id:"sp1", period:"Pre-season", dates:"Aug – Sep", focus:"Fitness base, contact skills and cohesion", type:"preseason" },
+        { id:"sp2", period:"Competition", dates:"Oct – Nov", focus:"Match fitness, game patterns, set piece", type:"competition" },
+        { id:"sp3", period:"Competition", dates:"Dec – Feb", focus:"Performance peak — key selections and finals run", type:"competition" },
+        { id:"sp4", period:"Transition", dates:"Mar – Apr", focus:"Recovery, player reviews and recruitment", type:"transition" }
+      ],
+      formationNames: {},
+      fphotoIds: {},
+      availabilityTemplate: "Hi team! Please confirm your availability for this week's training (Tuesday & Thursday 19:45) and Saturday's match. Reply AVAILABLE or UNAVAILABLE, and flag any injuries. Thanks, Coach.",
+      autoSendEnabled: false,
+      autoSendSchedule: { day:"monday", time:"09:00" },
+      trainingAutoSend: false,
+      benchPlayers: ["","","","","","","",""],
+      subPlan: [
+        { id:"sub1", minute:"50", on:"Tanguy Danhiez", off:"Basile Rey", reason:"Planned rotation" },
+        { id:"sub2", minute:"65", on:"Benjamin Moortgat", off:"Loic Potier", reason:"Planned rotation" }
+      ],
+      treatmentLogs: [
+        { id:"tl1", playerId:"p10", date:"Today", treatment:"Physio — shoulder assessment + mobilisation", therapist:"Dr. Malone", next:"Thursday" },
+        { id:"tl2", playerId:"p23", date:"Yesterday", treatment:"Quad strain — ice, rest and ultrasound", therapist:"Dr. Malone", next:"Saturday check" }
+      ],
+      medicalNotes: {
+        "p10": { condition:"Shoulder impingement", rehabProgress:60, returnTarget:"2 weeks", notes:"No contact training until medical clearance" },
+        "p23": { condition:"Quad strain Grade 1", rehabProgress:75, returnTarget:"1 week", notes:"Light running only — avoid contact this week" }
+      },
+      coachNotes: "",
+      playerFilter: "all",
+      showAddPlayer: false
+    };
+
+    // ─── STATE ────────────────────────────────────────────────────────────────
+    let state = loadState();
+
+    // ─── TOAST ────────────────────────────────────────────────────────────────
+    let toastTimer = null;
+    function showToast(msg) {
+      const el = document.getElementById("toast");
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.add("visible");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove("visible"), 2200);
+    }
+
+    // ─── PERSISTENCE ─────────────────────────────────────────────────────────
+    function safeParseState(raw, source) {
+      if (!raw) return null;
+      try { return JSON.parse(raw); }
+      catch (e) { console.warn(`Coach Eye ignored corrupt ${source} state`, e); return null; }
+    }
+
+    function readStoredState() {
+      const primary = safeParseState(window.localStorage.getItem(STORAGE_KEY), "primary");
+      if (primary) return primary;
+      const backup = safeParseState(window.localStorage.getItem(BACKUP_KEY), "backup");
+      return backup || structuredClone(defaultState);
+    }
+
+    function loadState() { return normalizeState(readStoredState()); }
+
+    function normalizeState(input) {
+      const next = { ...structuredClone(defaultState), ...input };
+      next.notification = ""; // never restore stale notification across sessions
+      next.users = input.users || structuredClone(testAccounts);
+      next.currentUserId = input.currentUserId || "coach-demo";
+      next.selectedMessagePlayerId = input.selectedMessagePlayerId || next.selectedPlayerId || "test-simon";
+      next.meta = {
+        revision: Number(input.meta?.revision || 1),
+        savedAt:  input.meta?.savedAt  || "Unknown",
+        savedBy:  input.meta?.savedBy  || next.currentUserId || "unknown"
+      };
+      next.players = (input.players || defaultState.players).map((player, i) => ({
+        ...defaultState.players[i % defaultState.players.length],
+        ...player,
+        history:      player.history      || ["no-reply"],
+        blockedDates: player.blockedDates || []
+      }));
+      next.messages = (input.messages || defaultState.messages).map(m => ({
+        playerId: "squad", sessionId: "week", delivery: m.unread ? "delivered" : "read", replies: [], ...m
+      }));
+      next.automationRules    = input.automationRules    || structuredClone(defaultState.automationRules);
+      next.availabilityRequests = (input.availabilityRequests || defaultState.availabilityRequests).map(r => ({
+        messageIds: [], status: "sent", ...r
+      }));
+      next.masterFeed       = input.masterFeed       || structuredClone(defaultState.masterFeed);
+      next.trainingActiveSession = input.trainingActiveSession || "tue";
+      next.trainingBlocks   = input.trainingBlocks   || structuredClone(defaultState.trainingBlocks);
+      next.tacticsDrawings  = input.tacticsDrawings  || { tue:null, thu:null, game:null };
+      next.clubVideos       = input.clubVideos       || structuredClone(defaultState.clubVideos);
+      next.coachingLinks    = input.coachingLinks    || structuredClone(defaultState.coachingLinks);
+      next.seasonPlan       = input.seasonPlan       || structuredClone(defaultState.seasonPlan);
+      next.formationNames   = input.formationNames   || {};
+      next.fphotoIds        = input.fphotoIds        || {};
+      next.availabilityTemplate = input.availabilityTemplate ?? defaultState.availabilityTemplate;
+      next.autoSendEnabled  = input.autoSendEnabled  ?? false;
+      next.autoSendSchedule = input.autoSendSchedule || { day:"monday", time:"09:00" };
+      next.trainingAutoSend = input.trainingAutoSend ?? false;
+      next.benchPlayers     = input.benchPlayers     || Array(8).fill("");
+      // Migrate existing blocks to have coach + keyFocus fields
+      ["tue","thu","game"].forEach(sid => {
+        (next.trainingBlocks[sid] || []).forEach(b => {
+          if (b.coach    === undefined) b.coach    = "";
+          if (b.keyFocus === undefined) b.keyFocus = "";
+        });
+      });
+      // Migrate players to have photo field
+      next.players.forEach(p => { if (p.photo === undefined) p.photo = ""; });
+      next.subPlan          = input.subPlan          || structuredClone(defaultState.subPlan);
+      next.treatmentLogs    = input.treatmentLogs    || structuredClone(defaultState.treatmentLogs);
+      next.medicalNotes     = input.medicalNotes     || structuredClone(defaultState.medicalNotes);
+      next.coachNotes       = input.coachNotes       || "";
+      next.playerFilter     = input.playerFilter     || "all";
+      next.showAddPlayer    = false; // never restore open form across sessions
+      const user = next.users.find(u => u.id === next.currentUserId);
+      if (user?.role === "player") {
+        next.activeView = "player";
+        next.selectedPlayerId = user.playerId;
+      }
+      return next;
+    }
+
+    function saveState(message = "Saved in this browser") {
+      try {
+        state.meta = {
+          ...(state.meta || {}),
+          revision: Number(state.meta?.revision || 0) + 1,
+          savedAt:  new Date().toISOString(),
+          savedBy:  state.currentUserId || "unknown"
+        };
+        const payload = JSON.stringify(state);
+        // Critical persistence guard: write the backup first so a refresh during
+        // the primary write still has a recoverable copy. The future Firebase
+        // path should keep this same shape as the offline queue fallback.
+        window.localStorage.setItem(BACKUP_KEY, payload);
+        window.localStorage.setItem(STORAGE_KEY, payload);
+        const el = document.getElementById("saveStatus");
+        if (el) el.textContent = `${message} · rev ${state.meta.revision}`;
+        return true;
+      } catch (e) {
+        console.error("Coach Eye save failed", e);
+        const el = document.getElementById("saveStatus");
+        if (el) el.textContent = "Could not save in this browser";
+        return false;
+      }
+    }
+
+    function notify(message) {
+      state.notification = message;
+      addMasterFeed(message, "System");
+      saveState(message);
+      render();
+    }
+
+    function addMasterFeed(event, detail = "") {
+      state.masterFeed.unshift({
+        id: `feed-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        event, detail, time: "Just now"
+      });
+      state.masterFeed = state.masterFeed.slice(0, 30);
+    }
+
+    // ─── PUSH NOTIFICATIONS ──────────────────────────────────────────────────
+    let swRegistration = null;
+    let pushSubscription = null;
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+    }
+
+    async function initServiceWorker() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      try {
+        swRegistration = await navigator.serviceWorker.register('/sw.js');
+        // Check existing subscription
+        pushSubscription = await swRegistration.pushManager.getSubscription();
+        renderPushSidebar();
+      } catch (e) {
+        console.warn('SW registration failed:', e);
+      }
+    }
+
+    async function subscribePush(playerName) {
+      if (!swRegistration) return showToast("Service worker not ready yet");
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          showToast("Notifications blocked — check browser settings");
+          renderPushSidebar();
+          return;
+        }
+        pushSubscription = await swRegistration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+        // Send subscription to server
+        const res = await fetch('/api/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: pushSubscription.toJSON(), label: playerName || 'Player' })
+        });
+        const data = await res.json();
+        showToast(`Notifications on — ${data.count || 1} subscriber(s) total`);
+        renderPushSidebar();
+        setTimeout(() => renderPushStatusCard(), 300);
+      } catch (e) {
+        console.error('Subscribe failed:', e);
+        showToast("Could not enable notifications: " + e.message);
+      }
+    }
+
+    async function unsubscribePush() {
+      if (!pushSubscription) return;
+      try {
+        await fetch('/api/subscribe', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: pushSubscription.endpoint })
+        });
+        await pushSubscription.unsubscribe();
+        pushSubscription = null;
+        showToast("Notifications disabled");
+        renderPushSidebar();
+        setTimeout(() => renderPushStatusCard(), 300);
+      } catch (e) {
+        console.error('Unsubscribe failed:', e);
+      }
+    }
+
+    async function sendPushToPlayers(title, body, opts = {}) {
+      const { type, sessionId, targetLabel } = opts;
+      try {
+        const payload = { title, body, from: currentUser().name };
+        if (type)        payload.type        = type;
+        if (sessionId)   payload.sessionId   = sessionId;
+        if (targetLabel) payload.targetLabel = targetLabel;
+        const res = await fetch('/api/push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.sent > 0) showToast(`Push sent to ${data.sent} device${data.sent > 1 ? 's' : ''} ✓`);
+        else if (data.total === 0) showToast("No subscribers yet — players need to enable notifications");
+        else showToast(`Message sent (push: ${data.sent}/${data.total} delivered)`);
+      } catch (e) {
+        console.warn('Push failed (offline?):', e);
+        showToast("Message saved — push unavailable offline");
+      }
+    }
+
+    function renderPushSidebar() {
+      const sidebar = document.getElementById("pushSidebar");
+      const dot     = document.getElementById("pushDot");
+      const label   = document.getElementById("pushSidebarLabel");
+      const sub     = document.getElementById("pushSidebarSub");
+      const btn     = document.getElementById("pushSidebarBtn");
+      if (!sidebar) return;
+
+      const supported = ('serviceWorker' in navigator) && ('PushManager' in window);
+      sidebar.classList.toggle("hidden", !supported);
+      if (!supported) return;
+
+      const permission = Notification.permission;
+      if (pushSubscription) {
+        dot.className = "push-dot on";
+        label.textContent = "Notifications";
+        sub.textContent = "On — ready to receive";
+        btn.textContent = "Turn off";
+        btn.onclick = unsubscribePush;
+      } else if (permission === 'denied') {
+        dot.className = "push-dot off";
+        label.textContent = "Notifications blocked";
+        sub.textContent = "Allow in browser settings";
+        btn.textContent = "";
+      } else {
+        dot.className = "push-dot";
+        label.textContent = "Notifications";
+        sub.textContent = "Off";
+        btn.textContent = "Enable";
+        btn.onclick = () => subscribePush(getPlayer()?.name || currentUser()?.name || 'Player');
+      }
+    }
+
+    // ─── HELPERS ─────────────────────────────────────────────────────────────
+    function byStatus(s)  { return state.players.filter(p => p.game === s); }
+    const EMPTY_PLAYER = { id:"", name:"—", position:"—", status:"no-reply", game:"no-reply",
+      attendance:0, history:[], trainingTuesday:"no-reply", trainingThursday:"no-reply",
+      phone:"", email:"", medical:"", blockedDates:[] };
+    function getPlayer()  {
+      const user = currentUser();
+      const id   = user?.role === "player" ? user.playerId : state.selectedPlayerId;
+      return state.players.find(p => p.id === id) || state.players[0] || EMPTY_PLAYER;
+    }
+    function currentUser()  { return state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
+    function isCoach()      { return currentUser()?.role === "coach"; }
+    function statusLabel(s) { return (s||"no-reply").replaceAll("-", " ").replace(/\b\w/g, l => l.toUpperCase()); }
+    function noSquadMsg()   { return `<div class="card" style="text-align:center;padding:40px 20px;color:var(--muted)"><p style="font-size:32px;margin:0">🏉</p><p style="font-weight:700;margin:8px 0 4px">No players yet</p><p style="font-size:13px">Go to <strong>Player DB</strong> and add your squad first.</p></div>`; }
+    function sessionKey(id) {
+      if (id === "tue") return "trainingTuesday";
+      if (id === "thu") return "trainingThursday";
+      return "game";
+    }
+    function keyToSessionId(key) {
+      if (key === "trainingTuesday")  return "tue";
+      if (key === "trainingThursday") return "thu";
+      return "game";
+    }
+    function sessionTitle(id) { return state.schedule.find(s => s.id === id)?.title || "this week"; }
+    function percent(p, t)    { return !t ? 0 : Math.round((p / t) * 100); }
+    function sessionRows(id)  {
+      const key = sessionKey(id);
+      return state.players.map(p => ({ player: p, status: p[key], attendanceRate: p.attendance }));
+    }
+    function applyTemplate() {
+      const sel  = document.getElementById("templateSelect");
+      const body = document.getElementById("messageBody");
+      if (sel && body) body.value = sel.value;
+    }
+    function row(title, subtitle, right) {
+      return `<div class="row"><div><strong>${title}</strong><small>${subtitle}</small></div><div>${right}</div></div>`;
+    }
+
+    // ─── TACTICS CANVAS ──────────────────────────────────────────────────────
+    let tacticsCtx = null, tacticsDrawing = false;
+    let tacticsLastX = 0, tacticsLastY = 0, tacticsStartX = 0, tacticsStartY = 0;
+    let tacticsTool = "pen", tacticsColor = "#ffffff", tacticsSnapshot = null;
+
+    function initTacticsCanvas(sessionId) {
+      const canvas = document.getElementById("tactics-canvas");
+      if (!canvas) return;
+      canvas.width  = canvas.offsetWidth || 540;
+      canvas.height = 360;
+      tacticsCtx = canvas.getContext("2d");
+      const saved = state.tacticsDrawings?.[sessionId];
+      if (saved) { const img = new Image(); img.onload = () => tacticsCtx.drawImage(img,0,0); img.src = saved; }
+      const getXY = e => {
+        const r = canvas.getBoundingClientRect();
+        const sx = canvas.width / r.width, sy = canvas.height / r.height;
+        const src = e.touches ? e.touches[0] : e;
+        return [(src.clientX - r.left) * sx, (src.clientY - r.top) * sy];
+      };
+      const onDown = e => {
+        e.preventDefault();
+        tacticsDrawing = true;
+        [tacticsStartX, tacticsLastX] = [getXY(e)[0], getXY(e)[0]];
+        [tacticsStartY, tacticsLastY] = [getXY(e)[1], getXY(e)[1]];
+        if (tacticsTool !== "pen" && tacticsTool !== "eraser") tacticsSnapshot = tacticsCtx.getImageData(0,0,canvas.width,canvas.height);
+        tacticsCtx.beginPath(); tacticsCtx.arc(tacticsLastX,tacticsLastY,2,0,Math.PI*2);
+        tacticsCtx.fillStyle = tacticsTool==="eraser" ? "#1e7a3e" : tacticsColor; tacticsCtx.fill();
+      };
+      const onMove = e => {
+        if (!tacticsDrawing) return; e.preventDefault();
+        const [x,y] = getXY(e);
+        if (tacticsTool === "pen" || tacticsTool === "eraser") {
+          tacticsCtx.beginPath(); tacticsCtx.moveTo(tacticsLastX,tacticsLastY); tacticsCtx.lineTo(x,y);
+          tacticsCtx.strokeStyle = tacticsTool==="eraser" ? "#1e7a3e" : tacticsColor;
+          tacticsCtx.lineWidth = tacticsTool==="eraser" ? 20 : 3; tacticsCtx.lineCap = "round"; tacticsCtx.stroke();
+        } else if (tacticsTool === "circle" || tacticsTool === "arrow") {
+          tacticsCtx.putImageData(tacticsSnapshot,0,0);
+          tacticsCtx.beginPath(); tacticsCtx.strokeStyle = tacticsColor; tacticsCtx.lineWidth = 3;
+          if (tacticsTool === "circle") {
+            const r2 = Math.hypot(x-tacticsStartX, y-tacticsStartY);
+            tacticsCtx.arc(tacticsStartX,tacticsStartY,r2,0,Math.PI*2);
+          } else {
+            const angle = Math.atan2(y-tacticsStartY, x-tacticsStartX), hl = 14;
+            tacticsCtx.moveTo(tacticsStartX,tacticsStartY); tacticsCtx.lineTo(x,y);
+            tacticsCtx.moveTo(x,y); tacticsCtx.lineTo(x-hl*Math.cos(angle-Math.PI/6),y-hl*Math.sin(angle-Math.PI/6));
+            tacticsCtx.moveTo(x,y); tacticsCtx.lineTo(x-hl*Math.cos(angle+Math.PI/6),y-hl*Math.sin(angle+Math.PI/6));
+          }
+          tacticsCtx.stroke();
+        }
+        [tacticsLastX,tacticsLastY] = [x,y];
+      };
+      const onUp = e => {
+        if (!tacticsDrawing) return; e.preventDefault(); tacticsDrawing = false;
+        if (!state.tacticsDrawings) state.tacticsDrawings = {};
+        state.tacticsDrawings[sessionId] = canvas.toDataURL();
+        saveState("Tactics saved");
+      };
+      canvas.onmousedown=onDown; canvas.onmousemove=onMove; canvas.onmouseup=onUp; canvas.onmouseleave=onUp;
+      canvas.ontouchstart=onDown; canvas.ontouchmove=onMove; canvas.ontouchend=onUp;
+    }
+
+    function setTacticsTool(tool) {
+      tacticsTool = tool;
+      document.querySelectorAll(".tactic-tool").forEach(b => b.classList.remove("active"));
+      const btn = document.getElementById("tac-"+tool); if (btn) btn.classList.add("active");
+    }
+    function setTacticsColor(color, el) {
+      tacticsColor = color;
+      document.querySelectorAll(".tactic-color").forEach(b => b.style.outline="none");
+      if (el) el.style.outline = `3px solid ${color==="white"?"#aaa":color}`;
+    }
+    function clearTacticsCanvas(sessionId) {
+      if (!tacticsCtx) return;
+      const c = document.getElementById("tactics-canvas"); if (!c) return;
+      tacticsCtx.clearRect(0,0,c.width,c.height);
+      if (state.tacticsDrawings) state.tacticsDrawings[sessionId] = null;
+      saveState("Canvas cleared");
+    }
+
+    // ─── TRAINING HELPERS ────────────────────────────────────────────────────
+    function setTrainingSession(id) { state.trainingActiveSession = id; saveState(); render(); }
+    function addTimeBlock(sessionId) {
+      state.trainingBlocks = state.trainingBlocks || {};
+      const blocks = state.trainingBlocks[sessionId] = state.trainingBlocks[sessionId] || [];
+      const last = blocks[blocks.length-1];
+      const addMins = (t,m) => { const [h,mn]=t.split(":").map(Number),tot=h*60+mn+m; return `${String(Math.floor(tot/60)%24).padStart(2,"0")}:${String(tot%60).padStart(2,"0")}`; };
+      blocks.push({ id:"tb"+Date.now(), time:last?addMins(last.time,30):"19:45", activity:"New session block", tag:"General" });
+      notify("Time block added");
+    }
+    function removeTimeBlock(sessionId, blockId) {
+      if (!state.trainingBlocks?.[sessionId]) return;
+      state.trainingBlocks[sessionId] = state.trainingBlocks[sessionId].filter(b=>b.id!==blockId);
+      notify("Block removed");
+    }
+    function updateTimeBlock(sessionId, blockId, field, val) {
+      const blocks = state.trainingBlocks?.[sessionId];
+      if (!blocks) return;
+      const b = blocks.find(b => b.id === blockId);
+      if (b) { b[field] = val; saveState(); }
+    }
+    function addClubVideo() {
+      const t=document.getElementById("newVidTitle")?.value.trim(), d=document.getElementById("newVidDur")?.value.trim();
+      if (!t) return showToast("Enter a video title");
+      (state.clubVideos=state.clubVideos||[]).push({id:"v"+Date.now(),title:t,duration:d||"0:00",date:"Just now"});
+      notify("Club video added");
+    }
+    function removeClubVideo(id) { state.clubVideos=(state.clubVideos||[]).filter(v=>v.id!==id); notify("Video removed"); }
+    function addCoachingLink() {
+      const t=document.getElementById("newLinkTitle")?.value.trim(), u=document.getElementById("newLinkUrl")?.value.trim(), c=document.getElementById("newLinkCat")?.value.trim();
+      if (!t||!u) return showToast("Enter title and URL");
+      (state.coachingLinks=state.coachingLinks||[]).push({id:"cl"+Date.now(),title:t,url:u,category:c||"General"});
+      notify("Link saved");
+    }
+    function removeCoachingLink(id) { state.coachingLinks=(state.coachingLinks||[]).filter(l=>l.id!==id); notify("Link removed"); }
+
+    // ─── MATCHDAY HELPERS ────────────────────────────────────────────────────
+    function setFormationName(slot, val) {
+      state.formationNames=state.formationNames||{};
+      state.formationNames[slot]=val; saveState("Formation updated");
+    }
+    function setBenchPlayer(idx, val) {
+      state.benchPlayers=state.benchPlayers||Array(8).fill(""); state.benchPlayers[idx]=val; saveState("Bench updated");
+    }
+    function addSubPlan() {
+      const min=document.getElementById("subMin")?.value, on=document.getElementById("subOn")?.value.trim(), off=document.getElementById("subOff")?.value.trim(), reason=document.getElementById("subReason")?.value.trim();
+      if (!on||!off) return showToast("Enter both player names");
+      (state.subPlan=state.subPlan||[]).push({id:"sub"+Date.now(),minute:min||"?",on,off,reason:reason||"Rotation"});
+      notify("Substitution plan added");
+    }
+    function removeSubPlan(id) { state.subPlan=(state.subPlan||[]).filter(s=>s.id!==id); notify("Sub plan updated"); }
+    function exportFormation() {
+      const pitch = document.getElementById("matchday-pitch");
+      if (!pitch) return showToast("Pitch not found");
+      if (typeof html2canvas === "undefined") return showToast("Export library loading — try again in a moment");
+      showToast("Generating graphic…");
+      html2canvas(pitch, { scale:2, useCORS:true, allowTaint:true, backgroundColor:null }).then(canvas => {
+        const link = document.createElement("a");
+        link.download = "boitsfort-matchday-" + new Date().toISOString().slice(0,10) + ".png";
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+        notify("Matchday graphic downloaded — ready to post on Instagram! ✓");
+      }).catch(err => { console.error("Export error:", err); showToast("Export failed — try again"); });
+    }
+
+    // ─── AVAILABILITY TEMPLATE HELPERS ───────────────────────────────────────
+    async function saveAvailabilityTemplate() {
+      const el = document.getElementById("availTpl");
+      if (el) state.availabilityTemplate = el.value;
+      const dayEl  = document.getElementById("autoDay");
+      const timeEl = document.getElementById("autoTime");
+      if (dayEl || timeEl) {
+        state.autoSendSchedule = state.autoSendSchedule || {};
+        if (dayEl)  state.autoSendSchedule.day  = dayEl.value;
+        if (timeEl) state.autoSendSchedule.time = timeEl.value;
+      }
+      saveState();
+
+      // ── Persist to backend ────────────────────────────────────────────────
+      try {
+        // 1. Upsert the template
+        const tplRes = await fetch('/api/templates', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            id:       'tpl-availability',
+            name:     'Weekly Availability',
+            category: 'availability',
+            title:    "Boitsfort RFC — Availability Check",
+            body:     state.availabilityTemplate,
+          })
+        });
+        if (!tplRes.ok) throw new Error(await tplRes.text());
+
+        // 2. Upsert (or deactivate) the schedule
+        const schedRes = await fetch('/api/schedules', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            id:         'sch-availability',
+            name:       'Weekly availability check',
+            templateId: 'tpl-availability',
+            day:        state.autoSendSchedule?.day  || 'monday',
+            time:       state.autoSendSchedule?.time || '09:00',
+            active:     state.autoSendEnabled,
+            coachName:  currentUser()?.name || 'Coach',
+          })
+        });
+        if (!schedRes.ok) throw new Error(await schedRes.text());
+
+        notify("Availability template saved & synced to server ✓");
+      } catch (err) {
+        console.warn('[saveAvailabilityTemplate] Backend sync failed:', err.message);
+        notify("Template saved locally — server sync failed (offline?)");
+      }
+    }
+
+    function toggleAutoSend() {
+      state.autoSendEnabled = !state.autoSendEnabled;
+      saveState();
+      render();
+    }
+
+    async function sendAvailabilityNow() {
+      if (!isCoach()) return notify("Only coaches can send availability requests");
+      const body = state.availabilityTemplate || "Please confirm your availability for this week.";
+      try {
+        const res = await fetch('/api/push', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            title:     "Boitsfort RFC — Availability check",
+            body,
+            from:      currentUser()?.name || 'Coach',
+            type:      'availability',   // ← triggers YES/NO buttons on lock screen
+            sessionId: 'game',           // default; coach can specify per session later
+          }),
+        });
+        const data = await res.json();
+        if (data.sent > 0) notify(`Availability request sent to ${data.sent} player${data.sent>1?'s':''} ✓ — they can reply from the notification`);
+        else if (data.total === 0) notify("No subscribers yet — players need to enable notifications first");
+        else notify(`Sent (${data.sent}/${data.total} delivered)`);
+      } catch(e) {
+        notify("Push unavailable offline — message saved locally");
+      }
+      createCoachMessage({ recipients: state.players, type:"Availability request", body });
+    }
+
+    // ─── DRAG & DROP FORMATION ────────────────────────────────────────────────
+    function handleSlotDrop(label, event) {
+      event.preventDefault();
+      const playerName = event.dataTransfer.getData("playerName");
+      const playerId   = event.dataTransfer.getData("playerId");
+      if (!playerName) return;
+      state.formationNames = state.formationNames || {};
+      state.fphotoIds      = state.fphotoIds      || {};
+      state.formationNames[label] = playerName;
+      if (playerId) state.fphotoIds[label] = playerId;
+      saveState("Formation updated");
+      render();
+    }
+
+    function handleSlotDragover(event) { event.preventDefault(); }
+
+    // ─── PLAYER PHOTO ────────────────────────────────────────────────────────
+    function savePlayerPhoto(playerId, input) {
+      const file = input.files?.[0];
+      if (!file) return;
+      if (file.size > 3 * 1024 * 1024) return notify("Photo must be under 3 MB");
+      const reader = new FileReader();
+      reader.onload = e => {
+        const p = state.players.find(p => p.id === playerId);
+        if (p) { p.photo = e.target.result; saveState(); render(); notify("Photo saved — will appear on matchday ✓"); }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // ─── TRAINING AUTO-SEND ───────────────────────────────────────────────────
+    function toggleTrainingAutoSend() {
+      state.trainingAutoSend = !state.trainingAutoSend;
+      saveState();
+      render();
+      notify(state.trainingAutoSend ? "Auto-send enabled: Tuesday 10:00am ✓" : "Auto-send disabled");
+    }
+
+    function sendTrainingSheet() {
+      if (!isCoach()) return notify("Only coaches can send training sheets");
+      const sessId = state.trainingActiveSession || "tue";
+      const blocks = (state.trainingBlocks||{})[sessId] || [];
+      if (!blocks.length) return notify("Add blocks to your session plan first");
+      const lines  = blocks.map(b => `${b.time} | ${b.activity}${b.keyFocus ? " | Focus: "+b.keyFocus : ""}${b.coach ? " | Coach: "+b.coach : ""}`);
+      const body   = "Training rundown:\n" + lines.join("\n");
+      sendPushToPlayers("Training sheet — Boitsfort RFC", body);
+      createCoachMessage({ recipients: state.players, type:"Training sheet", body });
+      notify("Training sheet sent to coaches ✓");
+    }
+
+    // ─── MEDICAL HELPERS ─────────────────────────────────────────────────────
+    function saveMedicalNote(playerId) {
+      const cond=document.getElementById("medCond-"+playerId)?.value.trim(), notes=document.getElementById("medNote-"+playerId)?.value.trim(), ret=document.getElementById("medRet-"+playerId)?.value.trim();
+      state.medicalNotes=state.medicalNotes||{};
+      state.medicalNotes[playerId]={...(state.medicalNotes[playerId]||{}),condition:cond||"",notes:notes||"",returnTarget:ret||""};
+      notify("Medical record saved for "+(state.players.find(p=>p.id===playerId)?.name||playerId));
+    }
+    function setRehabProgress(playerId, val) {
+      state.medicalNotes=state.medicalNotes||{}; state.medicalNotes[playerId]=state.medicalNotes[playerId]||{};
+      state.medicalNotes[playerId].rehabProgress=Number(val);
+      const bar=document.getElementById("rehabBar-"+playerId); const pct=document.getElementById("rehabPct-"+playerId);
+      if (bar) bar.style.width=val+"%"; if (pct) pct.textContent=val+"%";
+      saveState("Rehab updated");
+    }
+    function addTreatmentLog() {
+      const pid=document.getElementById("treatPid")?.value, t=document.getElementById("treatText")?.value.trim(), th=document.getElementById("treatBy")?.value.trim(), n=document.getElementById("treatNext")?.value.trim();
+      if (!pid||!t) return showToast("Select player and enter treatment");
+      (state.treatmentLogs=state.treatmentLogs||[]).unshift({id:"tl"+Date.now(),playerId:pid,date:"Today",treatment:t,therapist:th||"Self",next:n||"TBC"});
+      notify("Treatment log added");
+    }
+    function saveCoachNotes() { state.coachNotes=document.getElementById("coachNotesArea")?.value||""; notify("Coach notes saved"); }
+
+    // ─── PLAYER DB HELPERS ───────────────────────────────────────────────────
+    function setPlayerFilter(f) { state.playerFilter=f; saveState(); render(); }
+    function toggleMediaConsent(id) {
+      if (!isCoach()) return notify("Only coaches can update consent");
+      const p=state.players.find(p=>p.id===id); if (!p) return;
+      p.mediaConsent=!p.mediaConsent; notify(`Media consent ${p.mediaConsent?"granted":"revoked"} for ${p.name}`);
+    }
+    function showAddPlayerForm() { state.showAddPlayer=!state.showAddPlayer; saveState(); render(); }
+    function addPlayer() {
+      const name=document.getElementById("apName")?.value.trim(), pos=document.getElementById("apPos")?.value, phone=document.getElementById("apPhone")?.value.trim(), email=document.getElementById("apEmail")?.value.trim();
+      if (!name) return showToast("Player name required");
+      const id="p"+Date.now();
+      state.players.push({id,name,position:pos||"SUB",status:"no-reply",game:"no-reply",phone:phone||"",email:email||`${name.toLowerCase().replaceAll(" ",".")}@player.test`,trainingTuesday:"no-reply",trainingThursday:"no-reply",attendance:0,history:[],blockedDates:[],medical:"",mediaConsent:false,contractStatus:"active"});
+      state.showAddPlayer=false; notify(`${name} added to squad`);
+    }
+    function removePlayerFromSquad(id) {
+      if (!isCoach()) return notify("Only coaches can remove players");
+      const p=state.players.find(p=>p.id===id); if (!p) return;
+      state.players=state.players.filter(p=>p.id!==id); notify(`${p.name} removed from squad`);
+    }
+
+    // ─── AUTH ────────────────────────────────────────────────────────────────
+    let authTab = 'login'; // 'login' | 'join' — not persisted
+
+    function setAuthTab(tab) { authTab = tab; renderNav(); }
+
+    async function joinSquad() {
+      const code = (document.getElementById('joinCode')?.value || '').trim().toUpperCase();
+      const name = (document.getElementById('joinName')?.value || '').trim();
+      const expected = (state.teamCode || 'BOITSFORT').toUpperCase();
+      if (code !== expected) { showToast('❌ Wrong team code — ask your coach'); return; }
+      if (!name) { showToast('Enter your name first'); return; }
+
+      // Add to player roster if not already there
+      let player = state.players.find(p => p.name.toLowerCase() === name.toLowerCase());
+      if (!player) {
+        const id = 'p' + Date.now();
+        player = { id, name, position: 'TBC', status: 'no-reply', game: 'no-reply',
+          phone: '', email: '', trainingTuesday: 'no-reply', trainingThursday: 'no-reply',
+          attendance: 0, history: [], blockedDates: [], medical: '',
+          mediaConsent: false, contractStatus: 'active' };
+        state.players.push(player);
+      }
+
+      // Create a user account for this player (if not exists)
+      let userAcc = state.users.find(u => u.role === 'player' && u.name.toLowerCase() === name.toLowerCase());
+      if (!userAcc) {
+        userAcc = { id: 'player-' + Date.now(), role: 'player', name, email: '', phone: '', pin: '', playerId: player.id };
+        state.users.push(userAcc);
+      }
+
+      // Log in as this player
+      state.currentUserId = userAcc.id;
+      state.activeView = 'player';
+      state.selectedPlayerId = player.id;
+      saveState('Player joined via team code');
+
+      // Subscribe to push with their real name as the label
+      try {
+        await subscribePush(name);
+      } catch(e) { console.warn('Push subscription optional step failed:', e); }
+
+      showToast(`Welcome ${name}! You're all set 🏉`);
+      setSection('player', 'availability');
+    }
+
+    function loginAs(userId) {
+      const user = state.users.find(u => u.id === userId);
+      if (!user) return notify("Account not found");
+      state.currentUserId = user.id;
+      if (user.role === "player") {
+        state.activeView = "player";
+        state.selectedPlayerId = user.playerId;
+        state.selectedMessagePlayerId = user.playerId;
+      } else {
+        state.activeView = "coach";
+      }
+      notify(`Logged in as ${user.name}`);
+    }
+
+    function loginWithForm() {
+      const identityEl = document.getElementById("loginIdentity");
+      const pinEl      = document.getElementById("loginPin");
+      if (!identityEl || !pinEl) return notify("Login form unavailable");
+      const identity = identityEl.value.trim().toLowerCase();
+      const pin      = pinEl.value.trim();
+      const user = state.users.find(u =>
+        (u.email.toLowerCase() === identity || u.phone === identity) && u.pin === pin
+      );
+      if (!user) return notify("Login failed. Use one of the test accounts.");
+      loginAs(user.id);
+    }
+
+    // ─── NAV ─────────────────────────────────────────────────────────────────
+    function renderNav() {
+      const user = currentUser();
+      document.getElementById("coachNav").innerHTML = coachSections.map(([id, label]) =>
+        `<button type="button" class="${state.activeView==="coach" && state.activeCoachSection===id ? "active" : ""}" onclick="setSection('coach','${id}')">${label}</button>`
+      ).join("");
+      document.getElementById("playerNav").innerHTML = playerSections.map(([id, label]) =>
+        `<button type="button" class="${state.activeView==="player" && state.activePlayerSection===id ? "active" : ""}" onclick="setSection('player','${id}')">${label}</button>`
+      ).join("");
+      document.getElementById("coachNav").classList.toggle("hidden",  state.activeView !== "coach");
+      document.getElementById("playerNav").classList.toggle("hidden", state.activeView !== "player");
+      document.getElementById("coachViewBtn").classList.toggle("active",  state.activeView === "coach");
+      document.getElementById("playerViewBtn").classList.toggle("active", state.activeView === "player");
+      document.getElementById("coachViewBtn").disabled = user.role !== "coach";
+      document.getElementById("coachViewBtn").title    = user.role !== "coach" ? "Player accounts cannot open coach tools" : "";
+      document.getElementById("authPanel").innerHTML = `
+        <div><strong>${user.name}</strong><small>${user.role === "coach" ? "Coach" : "Player"} · ${user.email || user.role}</small></div>
+        <div class="auth-tabs">
+          <button class="auth-tab ${authTab==='login'?'active':''}" type="button" onclick="setAuthTab('login')">🔑 Coach login</button>
+          <button class="auth-tab ${authTab==='join'?'active':''}"  type="button" onclick="setAuthTab('join')">🏉 Join squad</button>
+        </div>
+        ${authTab === 'join' ? `
+          <label>Team code<input id="joinCode" placeholder="${state.teamCode||'BOITSFORT'}" style="text-transform:uppercase;letter-spacing:2px;font-weight:700"></label>
+          <label>Your name<input id="joinName" placeholder="e.g. Nick Murphy"></label>
+          <button class="btn primary" type="button" onclick="joinSquad()" style="background:#16a34a;border-color:#16a34a">📲 Join &amp; enable notifications</button>
+          <small>Ask your coach for the team code</small>
+        ` : `
+          <label>Email or phone<input id="loginIdentity" placeholder="simonbdodd@gmail.com"></label>
+          <label>PIN<input id="loginPin" placeholder="1111" type="password"></label>
+          <button class="btn" type="button" onclick="loginWithForm()">Log in</button>
+        `}
+      `;
+      renderPushSidebar();
+    }
+
+    function setView(view) {
+      if (view === "coach" && !isCoach()) return notify("Player accounts cannot open coach tools");
+      state.activeView = view;
+      saveState("View saved");
+      render();
+    }
+
+    function setSection(view, section) {
+      if (view === "coach" && !isCoach()) return notify("Player accounts cannot open coach tools");
+      state.activeView = view;
+      if (view === "coach")  state.activeCoachSection  = section;
+      if (view === "player") state.activePlayerSection = section;
+      saveState("Tab saved");
+      render();
+    }
+
+    function pageTitle() {
+      if (state.activeView === "coach")
+        return coachSections.find(([id]) => id === state.activeCoachSection)[1];
+      return playerSections.find(([id]) => id === state.activePlayerSection)[1];
+    }
+
+    function showSection() {
+      document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+      if (state.activeView === "coach" && !isCoach()) state.activeView = "player";
+      const id = state.activeView === "coach"
+        ? `coach-${state.activeCoachSection}`
+        : `player-${state.activePlayerSection}`;
+      document.getElementById(id).classList.add("active");
+      document.getElementById("pageTitle").textContent  = pageTitle();
+      document.getElementById("eyebrow").textContent    = state.activeView === "coach"
+        ? "Coach dashboard"
+        : `Player portal — ${getPlayer()?.name || 'Player'}`;
+    }
+
+    // ─── COACH OVERVIEW ──────────────────────────────────────────────────────
+    function statCards() {
+      const available       = byStatus("available").length;
+      const injured         = byStatus("injured").length;
+      const unavailable     = byStatus("unavailable").length + injured;
+      const noReply         = byStatus("no-reply").length;
+      const unreadResponses = state.messages.filter(m => m.to === "Coach" && m.unread).length;
+      const avgAttendance   = state.players.length ? percent(state.players.reduce((s,p) => s + p.attendance, 0), state.players.length * 100) : 0;
+      return `
+        <div class="grid stats-grid">
+          <div class="card stat-card"><small>Available this week</small><strong>${available}</strong><span>Game responses marked available</span></div>
+          <div class="card stat-card"><small>Unavailable</small><strong>${unavailable}</strong><span>Unavailable or injured</span></div>
+          <div class="card stat-card"><small>No response</small><strong>${noReply}</strong><span>Players to chase in-app</span></div>
+          <div class="card stat-card"><small>Unread responses</small><strong>${unreadResponses}</strong><span>Player replies waiting</span></div>
+          <div class="card stat-card"><small>Medical updates</small><strong>${injured}</strong><span>Open medical records this week</span></div>
+          <div class="card stat-card"><small>Training attendance</small><strong>${avgAttendance}%</strong><span>Squad average this season</span></div>
+        </div>`;
+    }
+
+    function renderCoachOverview() {
+      const notComing     = state.players.filter(p => ["unavailable","injured"].includes(p.game));
+      const msgSent       = state.messages.filter(m => m.from === "Coach").length;
+      const msgUnread     = state.messages.filter(m => m.to === "Coach" && m.unread).length;
+      const autoActive    = (state.automationRules||[]).filter(r => r.enabled).length;
+      const fixture       = state.fixtures?.[0] || { opponent:"Kituro", venue:"Home", date:"This Saturday", status:"Availability open" };
+      const nextFixtures  = (state.fixtures||[]).slice(1,4);
+      document.getElementById("coach-overview").innerHTML = `
+        ${statCards()}
+
+        <div class="grid two-col">
+          <!-- LEFT: Fixture + this week at a glance -->
+          <div style="display:grid;gap:14px">
+            <div class="fixture-hero">
+              <div class="eyebrow">Next fixture</div>
+              <h3>${fixture.opponent}</h3>
+              <div class="fixture-meta">
+                <span>📍 <strong>${fixture.venue}</strong></span>
+                <span>📅 <strong>${fixture.date}</strong></span>
+                <span>🟢 <strong>${fixture.status}</strong></span>
+              </div>
+              <div class="pill-row" style="margin-top:14px">
+                <span class="pill">${byStatus("available").length} Available</span>
+                <span class="pill">${byStatus("no-reply").length} No reply</span>
+                <span class="pill">${byStatus("injured").length} Injured</span>
+              </div>
+            </div>
+            <div class="card">
+              <h2>This week at a glance</h2>
+              <p class="muted">Click a session to open the full detail in Message Center.</p>
+              <div class="grid three-col" style="margin-top:14px">
+                ${state.schedule.map(item => {
+                  const key       = sessionKey(item.id);
+                  const available = state.players.filter(p => p[key]==="available").length;
+                  const replies   = state.players.filter(p => p[key]!=="no-reply").length;
+                  const pct       = percent(replies, state.players.length);
+                  return `<div class="schedule-card">
+                    <span class="eyebrow">${item.type}</span>
+                    <strong>${item.title}</strong>
+                    <span class="muted" style="font-size:12px">${item.date}</span>
+                    <strong style="color:var(--green);font-size:22px">${available}</strong>
+                    <span class="muted">of ${state.players.length} available</span>
+                    <div style="margin:6px 0 8px"><div class="history-bar"><span style="width:${pct}%"></span></div><small style="color:var(--muted);font-size:11px">${replies}/${state.players.length} replied · ${pct}%</small></div>
+                    <button class="btn" type="button" onclick="openMessageDetail('${item.id}')">View detail →</button>
+                  </div>`;
+                }).join("")}
+              </div>
+            </div>
+            <div class="card">
+              <h2>Upcoming fixtures</h2>
+              <div class="list" style="margin-top:11px">
+                ${nextFixtures.map(f => row(`${f.date}: <strong>${f.opponent}</strong>`, `${f.venue} · ${f.status}`, `<span class="status ${f.status==="Availability open"?"available":"no-reply"}">${f.status}</span>`)).join("")}
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: Package stats + messages + automation queue -->
+          <div style="display:grid;gap:14px;align-content:start">
+            <div class="card">
+              <h2>Rugby package</h2>
+              <p class="muted">Season overview for Boitsfort Premier.</p>
+              <div class="pkg-grid">
+                <div class="pkg-stat"><strong>${state.players.length}</strong><small>Squad size</small></div>
+                <div class="pkg-stat"><strong>${msgSent}</strong><small>Messages sent</small></div>
+                <div class="pkg-stat"><strong>${autoActive}</strong><small>Automations on</small></div>
+                <div class="pkg-stat"><strong>${state.fixtures?.length||4}</strong><small>Fixtures logged</small></div>
+              </div>
+              <div class="msgs-sent-stat" style="margin-top:14px">
+                <article><strong style="color:var(--green)">${msgSent}</strong><small>Coach messages</small></article>
+                <article><strong style="color:var(--blue)">${msgUnread}</strong><small>Unread replies</small></article>
+                <article><strong style="color:var(--amber)">${byStatus("no-reply").length}</strong><small>Players to chase</small></article>
+              </div>
+            </div>
+            <div class="card">
+              <h2>Automation queue</h2>
+              <p class="muted">Scheduled availability requests for this week.</p>
+              <div style="margin-top:12px">
+                ${(state.automationRules||[]).map(a => `
+                  <div class="auto-queue-row">
+                    <div>
+                      <strong style="font-size:13px">${a.title}</strong>
+                      <div style="color:var(--muted);font-size:12px;margin-top:2px">${a.schedule}</div>
+                    </div>
+                    <span class="auto-badge ${a.enabled?"auto-active":"auto-paused"}">${a.enabled?"Active":"Paused"}</span>
+                  </div>`).join("")}
+              </div>
+              <button class="btn" type="button" style="margin-top:12px;width:100%" onclick="setSection('coach','message')">Manage automations →</button>
+            </div>
+            <div class="card">
+              <h2>Unavailable for ${fixture.opponent}</h2>
+              <div class="list" style="margin-top:11px">
+                ${notComing.slice(0,8).map(p => row(p.name, `${p.position} · ${statusLabel(p.game)}`, `<span class="status ${p.game}">${statusLabel(p.game)}</span>`)).join("") || "<p class='muted'>No unavailable players yet.</p>"}
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function openMessageDetail(id) {
+      state.activeView = "coach";
+      state.activeCoachSection = "message";
+      state.messageDetail = id;
+      saveState("Session detail opened");
+      render();
+    }
+
+    // ─── MESSAGE CENTER ───────────────────────────────────────────────────────
+    function renderMessageCenter() {
+      const selected       = state.schedule.find(s => s.id === (state.messageDetail || "tue")) || state.schedule[0];
+      const key            = selected ? sessionKey(selected.id) : "game";
+      const rows           = selected ? sessionRows(selected.id) : [];
+      const available      = rows.filter(({status}) => status === "available");
+      const answered       = rows.filter(({status}) => status !== "no-reply");
+      const maybe          = rows.filter(({status}) => status === "maybe");
+      const selectedPlayer = state.players.find(p => p.id === state.selectedMessagePlayerId) || rows[0]?.player || EMPTY_PLAYER;
+      const selectedStatus = selectedPlayer[key] || "no-reply";
+      const trainingRegisters = state.schedule.filter(s => s.type === "Training").map(session => {
+        const rRows = sessionRows(session.id);
+        return {
+          session,
+          availableRows:    rRows.filter(({status}) => status === "available"),
+          notComingRows:    rRows.filter(({status}) => ["unavailable","injured","maybe"].includes(status)),
+          noReplyRows:      rRows.filter(({status}) => status === "no-reply")
+        };
+      });
+      document.getElementById("coach-message").innerHTML = `
+        <div class="grid two-col">
+          <div class="card">
+            <h2>Session detail</h2>
+            <p class="muted">Who is coming, who is not, who still needs chasing.</p>
+            <div class="session-tabs">
+              ${state.schedule.map(s => `<button class="${selected.id===s.id?"active":""}" type="button" onclick="openMessageDetail('${s.id}')">${s.title}</button>`).join("")}
+            </div>
+            <div class="session-detail-header">
+              <article><span>Available</span><strong>${available.length}/${rows.length}</strong></article>
+              <article><span>Answered</span><strong>${answered.length}/${rows.length}</strong></article>
+              <article><span>Response rate</span><strong>${percent(answered.length, rows.length)}%</strong></article>
+              <article><span>Maybe/injured</span><strong>${maybe.length + rows.filter(({status})=>status==="injured").length}</strong></article>
+            </div>
+            <div class="training-player-list">
+              ${rows.map(({player, status, attendanceRate}) => `
+                <button class="${selectedPlayer.id===player.id?"active":""}" type="button" onclick="setMessagePlayer('${player.id}')">
+                  <div><strong>${player.name}</strong><span>${attendanceRate}% yearly attendance</span></div>
+                  <span class="status ${status}">${statusLabel(status)}</span>
+                </button>`).join("")}
+            </div>
+          </div>
+          <div class="card">
+            <h2>Training registers</h2>
+            <p class="muted">Tuesday and Thursday with not-coming and no-reply split below.</p>
+            <div class="register-stack">
+              ${trainingRegisters.map(({session, availableRows, notComingRows, noReplyRows}) => `
+                <section class="register-card">
+                  <div class="register-head">
+                    <strong>${session.title}</strong>
+                    <span class="status available">${availableRows.length}/${state.players.length} coming</span>
+                  </div>
+                  <div class="mini-list">
+                    ${availableRows.slice(0,10).map(({player}) => `<button type="button" onclick="setMessagePlayer('${player.id}')"><span>${player.name}</span><small class="mini-status available">Available</small></button>`).join("") || "<p class='muted'>No one available yet.</p>"}
+                  </div>
+                  ${notComingRows.length > 0 ? `<div class="not-coming-panel">
+                    <div class="register-head"><strong>Not available</strong><span>${notComingRows.length}</span></div>
+                    <div class="mini-list">
+                      ${notComingRows.slice(0,10).map(({player,status}) => `<button type="button" onclick="setMessagePlayer('${player.id}')"><span>${player.name}</span><small class="mini-status ${status}">${statusLabel(status)}</small></button>`).join("")}
+                    </div>
+                  </div>` : ""}
+                  ${noReplyRows.length > 0 ? `<div class="needs-chasing-panel">
+                    <div class="register-head"><strong>Needs chasing</strong><span>${noReplyRows.length}</span></div>
+                    <div class="mini-list">
+                      ${noReplyRows.slice(0,10).map(({player}) => `<button type="button" onclick="setMessagePlayer('${player.id}')"><span>${player.name}</span><small class="mini-status no-reply">No reply</small></button>`).join("")}
+                    </div>
+                  </div>` : ""}
+                </section>`).join("")}
+            </div>
+            <div class="card" style="box-shadow:none;margin-top:14px">
+              <div class="compact-player-heading">
+                <strong>${selectedPlayer.name}</strong>
+                <span class="status ${selectedStatus}">${statusLabel(selectedStatus)}</span>
+              </div>
+              <div class="training-metrics">
+                <article><span>Year attendance</span><strong>${selectedPlayer.attendance}%</strong></article>
+                <article><span>Recent replies</span><strong>${selectedPlayer.history.filter(h=>h!=="no-reply").length}/${selectedPlayer.history.length}</strong></article>
+                <article><span>Position</span><strong>${selectedPlayer.position}</strong></article>
+              </div>
+              <p class="muted" style="margin-top:9px">${selectedPlayer.medical || selectedPlayer.history.join(", ")}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid two-col">
+          <div class="card">
+            <h2>Send a message</h2>
+
+            <!-- ── Notification status (populated async) ── -->
+            <div id="push-status-card" style="border:2px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:18px;background:#f9fafb">
+              <p class="muted" style="font-size:13px;margin:0">Checking notification status…</p>
+            </div>
+
+            <!-- ── Availability template (moved from Matchday) ── -->
+            <div style="margin-bottom:18px">
+              <label style="font-weight:700;font-size:13px;display:block;margin-bottom:6px">Weekly availability message</label>
+              <textarea id="availTpl" rows="4" style="width:100%;font-size:14px;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-family:inherit;resize:vertical">${state.availabilityTemplate||""}</textarea>
+              <p class="muted" style="font-size:11px;margin-top:4px">Use {{first_name}}, {{match_day}}, {{session_day}} — each player gets a personalised version.</p>
+            </div>
+
+            <!-- ── Compose custom ── -->
+            <label style="font-weight:700;font-size:13px;display:block;margin-bottom:6px">Or write a custom message</label>
+            <div class="form-grid" style="margin-bottom:10px">
+              <label>Send to<select id="messageAudience">
+                <option value="squad">Full squad</option>
+                <option value="available">Available players</option>
+                <option value="no-reply">No-response players</option>
+                <option value="individual">Selected player</option>
+              </select></label>
+              <label>Player (if individual)<select id="messagePlayer">
+                ${state.players.map(p => `<option value="${p.id}">${p.name}</option>`).join("")}
+              </select></label>
+            </div>
+            <label style="font-weight:700;font-size:13px;display:block;margin-bottom:6px">Message</label>
+            <textarea id="messageBody" rows="3" style="width:100%;font-size:14px;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-family:inherit;resize:vertical" placeholder="Type your message here…"></textarea>
+
+            <!-- ── Send buttons ── -->
+            <div class="button-row" style="margin-top:14px">
+              <button class="btn primary" type="button" onclick="sendAvailabilityNow()" style="flex:1">
+                📤 Send availability message now
+              </button>
+            </div>
+            <div class="button-row" style="margin-top:8px">
+              <button class="btn" type="button" onclick="sendInAppMessage()" style="flex:1">
+                💬 Send custom message above
+              </button>
+            </div>
+
+            <!-- ── Recent sends ── -->
+            <h3 style="margin-top:20px">Recent sends</h3>
+            <div class="list" style="margin-top:9px">
+              ${state.messages.slice(0,6).map(m => `
+                <div class="message-bubble ${m.unread?"unread":""}">
+                  <div class="message-meta"><span>${m.type}</span><span>${m.time}</span></div>
+                  <strong>${m.from}</strong>
+                  <p class="muted">${m.text.slice(0,120)}${m.text.length>120?"…":""}</p>
+                </div>`).join("") || '<p class="muted" style="font-size:13px">No messages sent yet.</p>'}
+            </div>
+          </div>
+          <div class="card">
+            <h2>Live scheduled sends</h2>
+            <p class="muted">These run automatically from the server — no need to have the app open.</p>
+
+            <div class="card" style="margin-top:14px;box-shadow:none;border:1.5px solid var(--line)">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+                <h3 style="margin:0">🗓️ Active schedules</h3>
+                <button class="btn" type="button" onclick="loadLiveSchedules()" style="font-size:11px;padding:4px 10px">↺ Refresh</button>
+              </div>
+              <div id="live-schedules-panel" style="margin-top:10px">
+                <p class="muted" style="font-size:13px">Loading schedules from server…</p>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:14px;box-shadow:none;border:1.5px solid var(--line)">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+                <h3 style="margin:0">📨 Message templates</h3>
+                <button class="btn" type="button" onclick="loadLiveTemplates()" style="font-size:11px;padding:4px 10px">↺ Refresh</button>
+              </div>
+              <div id="live-templates-panel" style="margin-top:10px">
+                <p class="muted" style="font-size:13px">Loading templates from server…</p>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:14px;box-shadow:none;border:1.5px solid var(--green);background:#f0fdf4">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+                <h3 style="margin:0">📲 Player responses</h3>
+                <button class="btn" type="button" onclick="loadLiveResponses()" style="font-size:11px;padding:4px 10px">↺ Refresh</button>
+              </div>
+              <p class="muted" style="font-size:12px;margin:4px 0 10px">Replies from notification buttons — no app needed</p>
+              <div id="live-responses-panel">
+                <p class="muted" style="font-size:13px">Loading responses…</p>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:14px;box-shadow:none;border:1.5px solid var(--line)">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+                <h3 style="margin:0">📋 Delivery log</h3>
+                <button class="btn" type="button" onclick="loadLiveLog()" style="font-size:11px;padding:4px 10px">↺ Refresh</button>
+              </div>
+              <div id="live-log-panel" style="margin-top:10px">
+                <p class="muted" style="font-size:13px">Loading delivery history…</p>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function setMessagePlayer(playerId) {
+      if (!isCoach()) return notify("Players can only view their own profile");
+      state.selectedMessagePlayerId = playerId;
+      saveState("Player detail selected");
+      render();
+    }
+
+    function getMessageRecipients(audience, playerId) {
+      if (audience === "individual") return state.players.filter(p => p.id === playerId);
+      if (audience === "available")  return byStatus("available");
+      if (audience === "no-reply")   return byStatus("no-reply");
+      return state.players;
+    }
+
+    function createCoachMessage({recipients, type, body, sessionId = "week"}) {
+      const unique = [...new Map(recipients.map(p => [p.id, p])).values()];
+      const created = unique.map(p => ({
+        id:       `m${Date.now()}-${p.id}-${Math.random().toString(16).slice(2)}`,
+        from:     "Coach",
+        to:       p.name,
+        playerId: p.id,
+        sessionId,
+        type,
+        text:     body.replaceAll("{{firstName}}", p.name.split(" ")[0]),
+        unread:   true,
+        time:     "Just now",
+        delivery: "delivered to app",
+        replies:  []
+      }));
+      state.messages.unshift(...created);
+      return created;
+    }
+
+    function sendAvailabilityRequest(sessionId) {
+      if (!isCoach()) return notify("Only coaches can send availability requests");
+      const session = state.schedule.find(s => s.id === sessionId);
+      if (!session) return;
+      const body = `Please confirm your availability for ${session.title} (${session.date}) inside Coach's Eye.`;
+      const created = createCoachMessage({ recipients: state.players, type: "Availability request", body, sessionId });
+      state.availabilityRequests.unshift({
+        id: `req-${Date.now()}`,
+        sessionId,
+        title:   session.title,
+        sentAt:  new Date().toLocaleString([], {dateStyle:"medium", timeStyle:"short"}),
+        status:  "sent",
+        messageIds: created.map(m => m.id)
+      });
+      // Future backend hook: APNs/FCM push notification path runs here in production
+      sendPushToPlayers(`Availability request — ${session.title}`, body);
+      notify(`${session.title} request sent to ${created.length} player accounts`);
+    }
+
+    function sendInAppMessage() {
+      if (!isCoach()) return notify("Only coaches can send squad messages");
+      const bodyEl     = document.getElementById("messageBody");
+      const typeEl     = document.getElementById("requestType");
+      const audienceEl = document.getElementById("messageAudience");
+      const playerEl   = document.getElementById("messagePlayer");
+      const body       = bodyEl ? bodyEl.value.trim() : "";
+      if (!body) return notify("Write a message before sending");
+      const type       = typeEl     ? typeEl.value     : "Coach announcement";
+      const audience   = audienceEl ? audienceEl.value : "squad";
+      const playerId   = playerEl   ? playerEl.value   : "";
+      const recipients = getMessageRecipients(audience, playerId);
+      // Resolve targetLabel for individual sends — match by player name (push label)
+      let targetLabel;
+      if (audience === 'individual' && playerId) {
+        const target = state.players.find(p => p.id === playerId);
+        if (target) targetLabel = target.name;
+      }
+      const created = createCoachMessage({ recipients, type, body });
+      sendPushToPlayers(`Coach — ${type}`, body, { targetLabel });
+      notify(`${created.length} message${created.length===1?"":"s"} sent to player app`);
+    }
+
+    function toggleAutomation(id) {
+      if (!isCoach()) return notify("Only coaches can change automation rules");
+      const rule = state.automationRules.find(r => r.id === id);
+      if (!rule) return;
+      rule.enabled = !rule.enabled;
+      notify(`${rule.title} ${rule.enabled ? "enabled" : "paused"}`);
+    }
+
+    function runAutomationNow(id) {
+      if (!isCoach()) return notify("Only coaches can run automated requests");
+      const rule    = state.automationRules.find(r => r.id === id);
+      if (!rule) return;
+      const session = state.schedule.find(s => s.id === rule.sessionId);
+      const body    = `${rule.template} (${session ? session.date : "This week"})`;
+      // Future backend scheduler: Cron/Cloud Function calls this path, then pushes to all player devices
+      const created = createCoachMessage({ recipients: state.players, type: "Automated availability request", body, sessionId: rule.sessionId });
+      sendPushToPlayers(`Automated — ${rule.title}`, body);
+      notify(`${rule.title} sent to ${created.length} player apps`);
+    }
+
+    function markAllRead() {
+      if (!isCoach()) return notify("Only coaches can mark the coach inbox read");
+      state.messages = state.messages.map(m =>
+        m.to === "Coach" ? { ...m, unread: false, delivery: "read by coach" } : m
+      );
+      notify("Coach inbox marked read");
+    }
+
+    // ─── TRAINING ────────────────────────────────────────────────────────────
+    function renderTraining() {
+      const sessId   = state.trainingActiveSession || "tue";
+      const sessions = [
+        { id:"tue",  label:"Tuesday Training",  time:"Tue · 19:45" },
+        { id:"thu",  label:"Thursday Training", time:"Thu · 19:45" },
+        { id:"game", label:"Game Day Prep",      time:"Sat · Match"  }
+      ];
+      const blocks    = (state.trainingBlocks||{})[sessId] || [];
+      const sessObj   = sessions.find(s=>s.id===sessId);
+      const key       = sessionKey(sessId);
+      const available = state.players.filter(p=>p[key]==="available");
+
+      document.getElementById("coach-training").innerHTML = `
+        <!-- Hero header -->
+        <div class="training-hero">
+          <div>
+            <div class="eyebrow">Training Centre</div>
+            <h1>Session Planner</h1>
+            <p>Write your own session times, build the tactics board and print the coach sheet.</p>
+          </div>
+          <div class="training-hero-stats">
+            <div class="training-stat"><span class="lbl">Week Load</span><strong>${blocks.length}</strong><small>blocks</small></div>
+            <div class="training-stat"><span class="lbl">Videos</span><strong>${(state.clubVideos||[]).length}</strong><small>saved</small></div>
+            <div class="training-stat"><span class="lbl">Available</span><strong>${available.length}</strong><small>players</small></div>
+          </div>
+        </div>
+
+        <!-- Session card tabs -->
+        <div class="session-card-row">
+          ${sessions.map(s=>`
+            <button class="session-card-tab ${sessId===s.id?"active":""}" type="button" onclick="setTrainingSession('${s.id}')">
+              <span class="sc-time">${s.time}</span>
+              <strong>${s.label}</strong>
+              <small style="color:var(--muted);font-size:11px;margin-top:3px;display:block">${(state.trainingBlocks||{})[s.id]?.length||0} blocks</small>
+            </button>`).join("")}
+        </div>
+
+        <!-- Full-width session planner table -->
+        <div class="card" style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div>
+              <h2 style="margin:0;font-size:18px">${sessObj?.label||"Session"}</h2>
+              <p class="muted" style="margin-top:3px">Write your own start times, activities, lead coach and key focus for each block.</p>
+            </div>
+            <button class="btn primary" type="button" onclick="addTimeBlock('${sessId}')">+ Add block</button>
+          </div>
+          ${blocks.length ? `
+          <table class="training-gs-table">
+            <thead><tr>
+              <th style="width:88px;font-size:12px">Time</th>
+              <th style="font-size:12px">Activity</th>
+              <th style="width:140px;font-size:12px">Lead Coach</th>
+              <th style="width:220px;font-size:12px">Key Focus</th>
+              <th style="width:36px"></th>
+            </tr></thead>
+            <tbody>
+              ${blocks.map(b=>`
+                <tr>
+                  <td style="vertical-align:middle">
+                    <input class="gs-time-input" value="${b.time}"
+                      oninput="updateTimeBlock('${sessId}','${b.id}','time',this.value)"
+                      placeholder="19:45"
+                      style="width:84px;font-size:15px;padding:8px 10px">
+                  </td>
+                  <td>
+                    <textarea
+                      oninput="updateTimeBlock('${sessId}','${b.id}','activity',this.value)"
+                      placeholder="Describe this drill or block in detail…"
+                      rows="3"
+                      style="font-size:14px;line-height:1.5;min-height:76px">${b.activity.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
+                  </td>
+                  <td style="vertical-align:top;padding-top:8px">
+                    <input class="gs-sm-input" value="${(b.coach||"").replace(/"/g,"&quot;")}"
+                      oninput="updateTimeBlock('${sessId}','${b.id}','coach',this.value)"
+                      placeholder="e.g. Simon"
+                      style="font-size:13px;padding:7px 9px">
+                  </td>
+                  <td style="vertical-align:top">
+                    <textarea
+                      oninput="updateTimeBlock('${sessId}','${b.id}','keyFocus',this.value)"
+                      placeholder="Key coaching points, cues, targets…"
+                      rows="3"
+                      style="font-size:14px;line-height:1.5;min-height:76px;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit">${(b.keyFocus||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
+                  </td>
+                  <td style="vertical-align:middle">
+                    <button class="btn ghost" type="button" style="padding:0 8px;min-height:28px;color:var(--muted)" onclick="removeTimeBlock('${sessId}','${b.id}')">✕</button>
+                  </td>
+                </tr>`).join("")}
+            </tbody>
+          </table>` : `<p class="muted" style="padding:32px 0;text-align:center;font-size:14px">No blocks yet — click + Add block to start planning this session.</p>`}
+        </div>
+
+        <!-- Coach sheet table (full width below 2 columns) -->
+        <div class="coach-sheet" style="margin-bottom:14px">
+          <div class="coach-sheet-hdr">
+            <div>
+              <div class="eyebrow" style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--green);margin-bottom:3px">Coach sheet</div>
+              <h3 style="margin:0">${sessObj?.label||"Session"} — run sheet</h3>
+            </div>
+            <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+              <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:${state.trainingAutoSend?"var(--green)":"var(--line)"};color:${state.trainingAutoSend?"#fff":"var(--muted)"}">${state.trainingAutoSend?"Auto-send: Tue 10am ✓":"Manual send"}</span>
+              <button class="btn" type="button" style="font-size:12px" onclick="toggleTrainingAutoSend()">${state.trainingAutoSend?"⏸ Pause":"⏰ Auto Tue 10am"}</button>
+              <button class="btn primary" type="button" style="font-size:12px" onclick="sendTrainingSheet()">📤 Send to coaches</button>
+              <button class="btn" type="button" style="font-size:12px" onclick="window.print()">🖨 Print</button>
+            </div>
+          </div>
+          ${blocks.length ? `
+          <table class="cs-table">
+            <thead><tr><th>Time</th><th>Exercise</th><th>Coach</th><th>Key Focus</th></tr></thead>
+            <tbody>
+              ${blocks.map(b=>`<tr>
+                <td class="cs-time-cell">${b.time}</td>
+                <td>${b.activity}</td>
+                <td style="color:var(--muted);font-size:12px">${b.coach||"—"}</td>
+                <td><span style="display:inline-block;padding:2px 9px;border-radius:999px;background:var(--green-soft);color:var(--green);font-size:11px;font-weight:700">${b.keyFocus||b.tag}</span></td>
+              </tr>`).join("")}
+            </tbody>
+          </table>` : `<p class="muted" style="padding:14px 16px">Add time blocks above to build your coach sheet.</p>`}
+          <div style="padding:10px 16px;border-top:1px solid var(--line)">
+            <strong style="font-size:12px">Available (${available.length}/${state.players.length}):</strong>
+            <span style="font-size:11px;color:var(--muted);margin-left:6px">${available.slice(0,10).map(p=>p.name.split(" ")[0]).join(", ")}${available.length>10?" …":""}</span>
+          </div>
+        </div>
+
+        <!-- Past sessions archive -->
+        <div class="card" style="margin-bottom:14px">
+          <h2 style="margin-bottom:0">Past sessions</h2>
+          <div class="archive-item">
+            <div class="archive-meta">Last Tuesday</div>
+            <strong>Attack patterns — wide channel</strong>
+            <p>5 blocks · Set piece, Attack, Game</p>
+          </div>
+          <div class="archive-item">
+            <div class="archive-meta">Last Thursday</div>
+            <strong>Lineout &amp; defensive line speed</strong>
+            <p>5 blocks · Set piece, Defence, Review</p>
+          </div>
+        </div>
+
+        <!-- Video library row -->
+        <div class="grid two-col">
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+              <div><h2 style="margin:0">Club video library</h2><p class="muted" style="margin-top:2px">Upload up to 100 × 120-second training clips.</p></div>
+              <span class="pill">${(state.clubVideos||[]).length}/100</span>
+            </div>
+            <div class="video-grid">
+              ${(state.clubVideos||[]).map(v=>`
+                <div class="video-card">
+                  <div class="video-thumb"><div class="play-btn">▶</div><span class="video-dur">${v.duration}</span></div>
+                  <div class="video-card-body"><strong>${v.title}</strong><small>${v.date}</small></div>
+                </div>`).join("")}
+              <div class="video-card" style="cursor:pointer;border:2px dashed var(--line)" onclick="document.getElementById('addVideoForm').classList.toggle('hidden')">
+                <div class="video-thumb" style="background:#f9fafb"><div class="play-btn" style="background:var(--green-soft);color:var(--green);font-size:18px">+</div></div>
+                <div class="video-card-body"><strong style="color:var(--green)">Add video</strong><small>Click to upload or link</small></div>
+              </div>
+            </div>
+            <div id="addVideoForm" class="hidden" style="margin-top:14px;display:grid;grid-template-columns:1fr 80px auto;gap:8px;align-items:end">
+              <label>Title<input id="newVidTitle" placeholder="Tuesday ruck drill"></label>
+              <label>Duration<input id="newVidDur" placeholder="1:30"></label>
+              <button class="btn primary" type="button" style="margin-top:auto" onclick="addClubVideo()">Save</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+              <div><h2 style="margin:0">Internet coaching library</h2><p class="muted" style="margin-top:2px">Save clips and references from the web.</p></div>
+            </div>
+            <div style="display:grid;gap:8px">
+              ${(state.coachingLinks||[]).map(l=>`
+                <div class="link-row">
+                  <div><a href="${l.url}" target="_blank" rel="noopener">${l.title}</a><small>${l.url}</small></div>
+                  <span class="link-cat">${l.category}</span>
+                  <button class="btn ghost" type="button" style="padding:0 8px;color:var(--muted)" onclick="removeCoachingLink('${l.id}')">✕</button>
+                </div>`).join("")}
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 90px 80px auto;gap:8px;margin-top:14px;align-items:end">
+              <label>Title<input id="newLinkTitle" placeholder="Kick chase drill"></label>
+              <label>Category<input id="newLinkCat" placeholder="Attack"></label>
+              <label>URL<input id="newLinkUrl" placeholder="https://..."></label>
+              <button class="btn primary" type="button" style="margin-top:auto" onclick="addCoachingLink()">Save</button>
+            </div>
+          </div>
+        </div>`;
+
+    }
+
+    // ─── MATCHDAY ────────────────────────────────────────────────────────────
+    function renderMatchday() {
+      const available = state.players.filter(p => p.game === "available");
+      const selected  = available.slice(0, 15);
+      const fnames    = state.formationNames || {};
+      const fphoto    = state.fphotoIds      || {};
+      const bench     = state.benchPlayers   || Array(8).fill("");
+      const subs      = state.subPlan        || [];
+      const fixture   = state.fixtures?.[0]  || { opponent:"Kituro", venue:"Home", date:"This Saturday" };
+
+      document.getElementById("coach-matchday").innerHTML = `
+
+        <!-- ── AVAILABILITY TEMPLATE (top) ──────────────────────────────── -->
+        <div class="avail-template-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+            <div>
+              <h2 style="margin:0">📨 Weekly availability request</h2>
+              <p class="muted" style="margin-top:3px">Edit the template below, then send manually or enable auto-send.</p>
+            </div>
+            <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+              <span style="font-size:11px;font-weight:700;padding:4px 11px;border-radius:999px;background:${state.autoSendEnabled?"var(--green)":"var(--line)"};color:${state.autoSendEnabled?"#fff":"var(--muted)"}">${state.autoSendEnabled?"Auto-send: "+(state.autoSendSchedule?.day||"Mon")+" "+(state.autoSendSchedule?.time||"09:00"):"Manual send"}</span>
+              <button class="btn" type="button" onclick="toggleAutoSend()">${state.autoSendEnabled?"⏸ Pause auto":"⏰ Set auto-send"}</button>
+              <button class="btn primary" type="button" onclick="sendAvailabilityNow()">📤 Send now</button>
+            </div>
+          </div>
+          <textarea id="availTpl" style="min-height:80px;font-size:13px;margin-bottom:10px" placeholder="Write your weekly availability message here...">${(state.availabilityTemplate||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
+          ${state.autoSendEnabled ? `
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+            <label style="font-size:12px;font-weight:700">Day
+              <select id="autoDay" style="font-size:12px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;margin-left:4px">
+                ${["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map(d=>`<option value="${d.toLowerCase()}"${(state.autoSendSchedule?.day||"monday")===d.toLowerCase()?" selected":""}>${d}</option>`).join("")}
+              </select>
+            </label>
+            <label style="font-size:12px;font-weight:700">Time
+              <input type="time" id="autoTime" value="${state.autoSendSchedule?.time||"09:00"}"
+                style="font-size:12px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;margin-left:4px">
+            </label>
+            <span class="muted" style="font-size:11px">Push notification to all subscribed players.</span>
+          </div>` : ""}
+          <button class="btn primary" type="button" onclick="saveAvailabilityTemplate()">💾 Save template</button>
+        </div>
+
+        <!-- datalist for autocomplete on pitch inputs -->
+        <datalist id="squad-names">
+          ${state.players.map(p=>`<option value="${p.name.split(" ").pop()}">`).join("")}
+          ${state.players.map(p=>`<option value="${p.name}">`).join("")}
+        </datalist>
+
+        <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:14px;align-items:start">
+
+          <!-- LEFT: Big pitch + bench + sub plan -->
+          <div style="display:grid;gap:14px">
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div>
+                  <h2 style="margin:0">Matchday formation</h2>
+                  <p class="muted" style="margin-top:3px">${fixture.opponent} · ${fixture.venue} · ${fixture.date}</p>
+                </div>
+                <div style="display:flex;gap:7px">
+                  <button class="btn" type="button" onclick="showToast('Formation reviewed ✓')">Review</button>
+                  <button class="btn primary" type="button" onclick="exportFormation()">📷 Export graphic</button>
+                </div>
+              </div>
+
+              <!-- Big pitch — exportable via html2canvas -->
+              <div id="matchday-pitch" class="pitch-big">
+                <div class="pitch-inner"></div>
+                <div class="pitch-line" style="top:18%"></div>
+                <div class="pitch-line" style="top:40%"></div>
+                <div class="pitch-line" style="top:50%"></div>
+                <div class="pitch-line" style="top:60%"></div>
+                <div class="pitch-line" style="top:82%"></div>
+                ${rugbySlots.map(([label, x, y], i) => {
+                  const player    = selected[i];
+                  const saved     = fnames[label] || "";
+                  const defName   = player ? player.name.split(" ").pop() : "";
+                  const inputVal  = (saved || defName).replace(/"/g,"&quot;");
+                  const photoPlayerId = fphoto[label] || player?.id || "";
+                  const photoPlayer   = photoPlayerId ? state.players.find(p=>p.id===photoPlayerId) : null;
+                  const photoSrc      = photoPlayer?.photo || player?.photo || "";
+                  return `<div class="slot-big" data-slot="${label}" style="left:${x}%;top:${y}%"
+                    ondragover="event.preventDefault();this.classList.add('drag-over')"
+                    ondragleave="this.classList.remove('drag-over')"
+                    ondrop="this.classList.remove('drag-over');handleSlotDrop('${label}',event)">
+                    <div class="slot-photo">
+                      ${photoSrc ? `<img src="${photoSrc}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : `<span style="font-size:16px">🏉</span>`}
+                      <span class="slot-num">${label}</span>
+                    </div>
+                    <input class="slot-name-input" value="${inputVal}" placeholder="Type player"
+                      list="squad-names"
+                      oninput="setFormationName('${label}',this.value)">
+                  </div>`;
+                }).join("")}
+              </div>
+
+              <!-- Bench 16–23 -->
+              <div style="margin-top:10px">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                  <strong style="font-size:13px">Bench (16–23)</strong>
+                  <span class="muted" style="font-size:12px">Type or drag player names</span>
+                </div>
+                <div class="bench-strip" style="background:rgba(26,46,37,0.06);border-radius:10px;padding:10px">
+                  ${bench.slice(0,8).map((name,i)=>`
+                    <div class="bench-slot">
+                      <small>${i+16}</small>
+                      <input value="${(name||"").replace(/"/g,"&quot;")}" placeholder="Type player"
+                        list="squad-names"
+                        oninput="setBenchPlayer(${i},this.value)"
+                        style="background:#fff;border:1px solid #d1d5db;border-radius:5px;color:var(--ink);font-size:11px;font-weight:600;width:100%;text-align:center;padding:3px 2px;margin-top:3px">
+                    </div>`).join("")}
+                </div>
+              </div>
+
+              <!-- Export bar -->
+              <div class="export-bar" style="margin-top:12px">
+                <button class="btn primary" type="button" onclick="exportFormation()">📷 Download for Instagram</button>
+                <button class="btn" type="button" onclick="showToast('WhatsApp squad message prepared ✓')">💬 Send to squad</button>
+                <button class="btn" type="button" onclick="window.print()">🖨 Print sheet</button>
+              </div>
+            </div>
+
+            <!-- Substitute plan -->
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+                <h2 style="margin:0">Substitute plan</h2>
+                <button class="btn primary" type="button" onclick="document.getElementById('addSubForm').classList.toggle('hidden')">+ Add sub</button>
+              </div>
+              <table>
+                <thead><tr><th>Minute</th><th>On</th><th>Off</th><th>Reason</th><th></th></tr></thead>
+                <tbody>
+                  ${subs.map(s=>`<tr>
+                    <td><span class="sub-tag">${s.minute}'</span></td>
+                    <td><strong style="font-size:13px">${s.on}</strong></td>
+                    <td style="color:var(--muted)">${s.off}</td>
+                    <td style="color:var(--muted);font-size:12px">${s.reason}</td>
+                    <td><button class="btn ghost" type="button" style="padding:0 8px;color:var(--muted)" onclick="removeSubPlan('${s.id}')">✕</button></td>
+                  </tr>`).join("") || `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:14px">No substitute plan yet.</td></tr>`}
+                </tbody>
+              </table>
+              <div id="addSubForm" class="hidden" style="display:grid;grid-template-columns:60px 1fr 1fr 1fr auto;gap:8px;margin-top:14px;align-items:end">
+                <label>Min<input id="subMin" type="number" min="1" max="80" value="50"></label>
+                <label>On<input id="subOn" placeholder="Player coming on"></label>
+                <label>Off<input id="subOff" placeholder="Player going off"></label>
+                <label>Reason<input id="subReason" placeholder="Rotation / tactical"></label>
+                <button class="btn primary" type="button" style="margin-top:auto" onclick="addSubPlan()">Add</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: Draggable player pool + selection list -->
+          <div style="display:grid;gap:14px;align-content:start">
+
+            <!-- Drag players onto the pitch -->
+            <div class="card">
+              <h2 style="margin-bottom:3px">Available players</h2>
+              <p class="muted" style="font-size:12px;margin-bottom:12px">Drag onto the pitch, or type names directly in the slots.</p>
+              <div style="display:grid;gap:6px;max-height:340px;overflow-y:auto">
+                ${available.map(p => {
+                  const surname = p.name.split(" ").pop();
+                  const initials = p.name.split(" ").map(w=>w[0]).slice(0,2).join("");
+                  const photoEl = p.photo ? `<img src="${p.photo}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0">` : `<div style="width:30px;height:30px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;flex-shrink:0">${initials}</div>`;
+                  return `<div class="squad-player-drag"
+                    draggable="true"
+                    ondragstart="event.dataTransfer.setData('playerName','${surname}');event.dataTransfer.setData('playerId','${p.id}')">
+                    ${photoEl}
+                    <div style="min-width:0">
+                      <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
+                      <div style="font-size:11px;color:var(--muted)">${p.position}</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:10px;font-weight:800;color:var(--green);flex-shrink:0">DRAG</span>
+                  </div>`;
+                }).join("") || `<p class="muted" style="text-align:center;padding:14px">No available players — update game availability first.</p>`}
+              </div>
+            </div>
+
+            <!-- Selection editor (1–15) -->
+            <div class="card">
+              <h2 style="margin-bottom:3px">Selection (1–15)</h2>
+              <p class="muted" style="font-size:12px;margin-bottom:12px">Type or drag to update the pitch. Names save instantly.</p>
+              <div style="display:grid;gap:5px">
+                ${rugbySlots.map(([label,x,y], i) => {
+                  const player   = selected[i];
+                  const defName  = player ? player.name : "";
+                  const dispName = fnames[label] || defName;
+                  return `<div style="display:grid;grid-template-columns:24px 26px minmax(0,1fr);gap:6px;align-items:center">
+                    <span style="font-size:10px;font-weight:800;color:var(--muted)">${label}</span>
+                    <div style="width:24px;height:24px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900">${label}</div>
+                    <input value="${dispName.replace(/"/g,"&quot;")}" placeholder="Empty slot"
+                      list="squad-names"
+                      oninput="setFormationName('${label}',this.value)"
+                      style="font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:7px;padding:4px 7px">
+                  </div>`;
+                }).join("")}
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ─── MEDICAL ─────────────────────────────────────────────────────────────
+    function renderMedical() {
+      const injured     = state.players.filter(p => p.game === "injured");
+      const hasIssues   = state.players.filter(p => p.game === "injured" || p.medical);
+      const medNotes    = state.medicalNotes   || {};
+      const treatLogs   = state.treatmentLogs  || [];
+      const medMessages = state.messages.filter(m => m.sessionId === "medical").slice(0,6);
+
+      document.getElementById("coach-medical").innerHTML = `
+        <!-- Medical overview stats -->
+        <div class="med-overview-grid">
+          <div class="med-stat"><strong style="color:var(--red)">${injured.length}</strong><small>Active injuries</small></div>
+          <div class="med-stat"><strong style="color:var(--amber)">${hasIssues.filter(p=>!injured.includes(p)).length}</strong><small>Monitoring</small></div>
+          <div class="med-stat"><strong style="color:var(--green)">${state.players.filter(p=>p.game==="available").length}</strong><small>Cleared to play</small></div>
+          <div class="med-stat"><strong style="color:var(--blue)">${treatLogs.length}</strong><small>Treatment logs</small></div>
+        </div>
+
+        <div class="grid two-col" style="margin-top:14px">
+          <!-- Treatment & rehab tracker -->
+          <div style="display:grid;gap:14px">
+            <div class="card">
+              <h2>Treatment & rehab tracker</h2>
+              <p class="muted">Track each player's recovery progress and return-to-play timeline.</p>
+              <div style="display:grid;gap:10px;margin-top:14px">
+                ${hasIssues.map(p => {
+                  const mn = medNotes[p.id] || {};
+                  const prog = mn.rehabProgress ?? (p.game==="injured" ? 40 : 80);
+                  return `<div class="rehab-card">
+                    <div class="rehab-header">
+                      <div>
+                        <strong style="font-size:14px">${p.name}</strong>
+                        <span class="status ${p.game}" style="margin-left:8px">${statusLabel(p.game)}</span>
+                        <div style="color:var(--muted);font-size:12px;margin-top:3px">${mn.condition || p.medical || "Under review"}</div>
+                      </div>
+                      <div style="text-align:right">
+                        <strong id="rehabPct-${p.id}" style="font-size:18px;color:var(--green)">${prog}%</strong>
+                        <div style="color:var(--muted);font-size:11px">recovery</div>
+                      </div>
+                    </div>
+                    <input type="range" min="0" max="100" value="${prog}" style="width:100%;accent-color:var(--green)" oninput="setRehabProgress('${p.id}',this.value)">
+                    <div class="rehab-bar"><span id="rehabBar-${p.id}" style="width:${prog}%"></span></div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+                      <label style="font-weight:600;font-size:12px">Return target<input id="medRet-${p.id}" value="${mn.returnTarget||""}" placeholder="e.g. 2 weeks" style="font-size:12px;padding:6px 9px"></label>
+                      <label style="font-weight:600;font-size:12px">Condition<input id="medCond-${p.id}" value="${mn.condition||p.medical||""}" placeholder="Describe injury" style="font-size:12px;padding:6px 9px"></label>
+                    </div>
+                    <label style="font-weight:600;font-size:12px;margin-top:8px">Coach notes<textarea id="medNote-${p.id}" style="min-height:56px;font-size:12px;padding:7px 9px">${mn.notes||""}</textarea></label>
+                    <div style="display:flex;gap:7px;margin-top:9px">
+                      <button class="btn primary" type="button" style="flex:1;font-size:12px" onclick="saveMedicalNote('${p.id}')">Save record</button>
+                      <button class="btn" type="button" style="font-size:12px" onclick="requestMedical('${p.id}')">Request check-in</button>
+                    </div>
+                  </div>`;
+                }).join("") || `<p class="muted">No players currently flagged — all clear.</p>`}
+              </div>
+            </div>
+
+            <!-- Treatment log -->
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+                <h2 style="margin:0">Treatment log</h2>
+                <button class="btn primary" type="button" onclick="document.getElementById('addTreatForm').classList.toggle('hidden')">+ Log treatment</button>
+              </div>
+              <div id="addTreatForm" class="hidden" style="border:1px solid var(--green);border-radius:9px;padding:12px;background:#f0fdf4;margin-bottom:14px;display:grid;gap:9px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+                  <label>Player<select id="treatPid">${state.players.map(p=>`<option value="${p.id}">${p.name}</option>`).join("")}</select></label>
+                  <label>Therapist<input id="treatBy" placeholder="Dr. / Physio name"></label>
+                </div>
+                <label>Treatment description<input id="treatText" placeholder="Ice, physio session, ultrasound..."></label>
+                <div style="display:grid;grid-template-columns:1fr auto;gap:9px;align-items:end">
+                  <label>Next session / check-in<input id="treatNext" placeholder="Thursday, Saturday..."></label>
+                  <button class="btn primary" type="button" onclick="addTreatmentLog()">Log</button>
+                </div>
+              </div>
+              ${treatLogs.length ? `<div>
+                ${treatLogs.map(t => {
+                  const pname = state.players.find(p=>p.id===t.playerId)?.name || t.playerId;
+                  return `<div class="treatment-row">
+                    <span style="color:var(--muted);font-size:12px">${t.date}</span>
+                    <div><strong style="font-size:13px">${pname}</strong><div style="color:var(--muted);font-size:12px">${t.treatment}</div></div>
+                    <div style="font-size:12px;color:var(--muted)">Next: ${t.next}</div>
+                    <span style="color:var(--muted);font-size:11px">${t.therapist}</span>
+                  </div>`;
+                }).join("")}
+              </div>` : `<p class="muted">No treatment logs yet.</p>`}
+            </div>
+          </div>
+
+          <!-- RIGHT: Medical messages + coach notes -->
+          <div style="display:grid;gap:14px;align-content:start">
+            <div class="card">
+              <h2>Medical follow-up messages</h2>
+              <p class="muted">Check-in requests and player responses.</p>
+              <div style="margin-top:14px">
+                ${medMessages.map(m=>`
+                  <div class="med-msg-card ${m.unread?"unread":""}">
+                    <div class="message-meta"><span>${m.type}</span><span>${m.time}</span></div>
+                    <strong>${m.from} → ${m.to}</strong>
+                    <p class="muted" style="margin-top:4px;font-size:13px">${m.text}</p>
+                  </div>`).join("") || `<p class="muted">No medical messages yet. Request check-ins from the tracker above.</p>`}
+              </div>
+              <button class="btn" type="button" style="margin-top:12px;width:100%" onclick="setSection('coach','message')">Open message center →</button>
+            </div>
+
+            <div class="card">
+              <h2>Coach notes</h2>
+              <p class="muted">Private notes — not shared with players.</p>
+              <textarea id="coachNotesArea" style="margin-top:12px;min-height:160px">${state.coachNotes||""}</textarea>
+              <button class="btn primary" type="button" style="margin-top:10px;width:100%" onclick="saveCoachNotes()">Save notes</button>
+            </div>
+
+            <div class="card">
+              <h2>Medical overview</h2>
+              <table style="margin-top:11px">
+                <thead><tr><th>Player</th><th>Status</th><th>Return</th></tr></thead>
+                <tbody>
+                  ${hasIssues.map(p=>{const mn=medNotes[p.id]||{};return`<tr>
+                    <td>${p.name}</td>
+                    <td><span class="status ${p.game}">${statusLabel(p.game)}</span></td>
+                    <td style="font-size:12px;color:var(--muted)">${mn.returnTarget||"TBC"}</td>
+                  </tr>`;}).join("")||`<tr><td colspan="3" style="color:var(--muted);text-align:center">All players clear.</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function requestMedical(playerId) {
+      if (!isCoach()) return notify("Only coaches can request medical check-ins");
+      const player = state.players.find(p => p.id === playerId);
+      if (!player) return notify("Player not found");
+      state.messages.unshift({
+        id: `m${Date.now()}`, from: "Medical", to: player.name, playerId: player.id,
+        sessionId: "medical", type: "Medical check-in request",
+        text: "Please update your injury status, treatment plan, and weekend availability in Coach's Eye.",
+        unread: true, time: "Just now", delivery: "delivered to app", replies: []
+      });
+      sendPushToPlayers("Medical check-in", `${player.name} — please update your injury status in Coach's Eye.`);
+      notify(`Medical check-in sent to ${player.name}`);
+    }
+
+    // ─── PLAYERS ─────────────────────────────────────────────────────────────
+    function renderPlayers() {
+      const filter     = state.playerFilter || "all";
+      const filterMap  = { all: ()=>true, available: p=>p.game==="available", injured: p=>p.game==="injured", "no-reply": p=>p.game==="no-reply", consent: p=>!p.mediaConsent };
+      const filtered   = state.players.filter(filterMap[filter] || (()=>true));
+      const counts     = { available:byStatus("available").length, injured:byStatus("injured").length, "no-reply":byStatus("no-reply").length, consent:state.players.filter(p=>!p.mediaConsent).length };
+
+      document.getElementById("coach-players").innerHTML = `
+        <div style="display:grid;gap:14px">
+
+          <!-- Toolbar + filter pills -->
+          <div class="card" style="padding:14px 18px">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+              <div>
+                <h2 style="margin:0">Player database</h2>
+                <p class="muted" style="margin-top:3px">${state.players.length} players · Boitsfort Premier</p>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <button class="btn" type="button" onclick="showToast('Squad exported to CSV ✓')">📥 Export</button>
+                <button class="btn" type="button" onclick="showToast('Bulk pay email sent to squad ✓')">💳 Bulk pay squad</button>
+                <button class="btn primary" type="button" onclick="showAddPlayerForm()">+ Add rugby player</button>
+              </div>
+            </div>
+            <div class="db-toolbar" style="margin-top:12px;margin-bottom:0">
+              ${[["all","All players",state.players.length],["available","Available",counts.available],["injured","Injured",counts.injured],["no-reply","No reply",counts["no-reply"]],["consent","Consent pending",counts.consent]].map(([f,lbl,cnt])=>
+                `<button class="filter-pill ${filter===f?"active":""}" type="button" onclick="setPlayerFilter('${f}')">${lbl} <strong>${cnt}</strong></button>`
+              ).join("")}
+            </div>
+          </div>
+
+          <!-- ── Team join code banner ── -->
+          <div class="join-code-banner">
+            <h3>📲 Team join code</h3>
+            <p>Share this with your squad. They open the app, tap <strong>Join squad</strong>, enter this code and their name — done.</p>
+            <div class="join-code-value" id="teamCodeDisplay">${state.teamCode||'BOITSFORT'}</div><br>
+            <div class="join-code-url">🔗 boitsfort-coachseye.vercel.app</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn" type="button" style="font-size:12px;padding:6px 12px;background:rgba(255,255,255,0.2);border-color:rgba(255,255,255,0.3);color:#fff"
+                onclick="navigator.clipboard?.writeText('Join Boitsfort RFC on Coach\'s Eye! Open https://boitsfort-coachseye.vercel.app, tap Join squad and enter code: ${state.teamCode||'BOITSFORT'}').then(()=>showToast('Invite message copied 📋'))">
+                📋 Copy invite message
+              </button>
+              <button class="btn" type="button" style="font-size:12px;padding:6px 12px;background:rgba(255,255,255,0.2);border-color:rgba(255,255,255,0.3);color:#fff"
+                onclick="const c=prompt('New team code (letters/numbers):',state.teamCode||'BOITSFORT');if(c&&c.trim()){state.teamCode=c.trim().toUpperCase();saveState();render();}">
+                ✏️ Change code
+              </button>
+            </div>
+          </div>
+
+          <!-- Add player panel (toggled) -->
+          ${state.showAddPlayer ? `
+          <div class="add-player-panel">
+            <h3 style="margin:0 0 14px">Add rugby player</h3>
+            <div class="add-player-grid">
+              <label>Full name *<input id="apName" placeholder="Simon Dodd"></label>
+              <label>Position<select id="apPos">
+                ${["1 — Loosehead prop","2 — Hooker","3 — Tighthead prop","4 — Lock","5 — Lock","6 — Blindside flanker","7 — Openside flanker","8 — Number 8","9 — Scrum half","10 — Fly half","11 — Left wing","12 — Inside centre","13 — Outside centre","14 — Right wing","15 — Fullback","SUB — Squad player"].map(p=>`<option>${p}</option>`).join("")}
+              </select></label>
+              <label>Phone<input id="apPhone" placeholder="+32470000000" type="tel"></label>
+              <label>Email<input id="apEmail" placeholder="player@example.com" type="email"></label>
+              <label>Emergency contact<input placeholder="Name — +32 ..."></label>
+              <label>Date of birth<input type="date"></label>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:14px">
+              <button class="btn primary" type="button" onclick="addPlayer()">Add to squad</button>
+              <button class="btn" type="button" onclick="showAddPlayerForm()">Cancel</button>
+            </div>
+          </div>` : ""}
+
+          <!-- Player database table -->
+          <div class="card" style="padding:0;overflow:hidden">
+            <table class="player-db-table">
+              <thead>
+                <tr>
+                  <th style="padding-left:18px">Player</th>
+                  <th>Position</th>
+                  <th>Game status</th>
+                  <th>Tuesday</th>
+                  <th>Thursday</th>
+                  <th>Attendance</th>
+                  <th>Media consent</th>
+                  <th>Contract</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filtered.map(p => `<tr>
+                  <td style="padding-left:18px">
+                    <div style="display:flex;align-items:center;gap:9px">
+                      <div class="player-photo-wrap">
+                        ${p.photo ? `<img src="${p.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover">` : `<div style="width:36px;height:36px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800">${p.name.split(" ").map(w=>w[0]).slice(0,2).join("")}</div>`}
+                        <label class="photo-badge" title="Upload photo">
+                          📷
+                          <input type="file" accept="image/*" style="display:none" onchange="savePlayerPhoto('${p.id}',this)">
+                        </label>
+                      </div>
+                      <div><strong style="font-size:13px">${p.name}</strong><div style="font-size:11px;color:var(--muted)">${p.email||""}</div></div>
+                    </div>
+                  </td>
+                  <td><span class="pill" style="font-size:11px">${p.position}</span></td>
+                  <td><span class="status ${p.game}">${statusLabel(p.game)}</span></td>
+                  <td><span class="status ${p.trainingTuesday}">${statusLabel(p.trainingTuesday)}</span></td>
+                  <td><span class="status ${p.trainingThursday}">${statusLabel(p.trainingThursday)}</span></td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <div class="history-bar" style="width:60px"><span style="width:${p.attendance}%"></span></div>
+                      <span style="font-size:12px;font-weight:700">${p.attendance}%</span>
+                    </div>
+                  </td>
+                  <td>
+                    <button type="button" onclick="toggleMediaConsent('${p.id}')" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:${p.mediaConsent?"var(--green)":"var(--red)"}">
+                      <span class="consent-dot ${p.mediaConsent?"c-yes":"c-no"}"></span>
+                      ${p.mediaConsent?"Granted":"Pending"}
+                    </button>
+                  </td>
+                  <td><span style="font-size:12px;color:var(--green);font-weight:600">Active</span></td>
+                  <td style="padding-right:14px">
+                    <div style="display:flex;gap:5px">
+                      <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px" onclick="requestMedical('${p.id}')">Medical</button>
+                      <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--red)" onclick="removePlayerFromSquad('${p.id}')">Remove</button>
+                    </div>
+                  </td>
+                </tr>`).join("")}
+              </tbody>
+            </table>
+            ${filtered.length === 0 ? `<div style="padding:28px;text-align:center;color:var(--muted)">No players match this filter.</div>` : ""}
+          </div>
+        </div>`;
+    }
+
+    // ─── PLAYER WEEK ─────────────────────────────────────────────────────────
+    function playerSelector() {
+      const player = getPlayer();
+      if (!isCoach()) return `<label>Player profile<input value="${player.name}" disabled></label>`;
+      return `<label>Player profile<select onchange="state.selectedPlayerId=this.value;saveState('Player profile saved');render();">
+        ${state.players.map(p => `<option value="${p.id}" ${p.id===state.selectedPlayerId?"selected":""}>${p.name}</option>`).join("")}
+      </select></label>`;
+    }
+
+    function renderPlayerWeek() {
+      const player = getPlayer();
+      if (!player.id) { document.getElementById("player-week").innerHTML = noSquadMsg(); return; }
+      document.getElementById("player-week").innerHTML = `
+        <div class="player-hero">
+          <div class="card">
+            <h2>My week</h2>
+            <p class="muted">Your schedule, availability and recent messages.</p>
+            <div style="margin-top:14px">${playerSelector()}</div>
+            <div class="grid three-col" style="margin-top:14px">
+              ${state.schedule.map(item => {
+                const key = sessionKey(item.id);
+                return `<div class="schedule-card">
+                  <span class="eyebrow">${item.type}</span>
+                  <strong>${item.title}</strong>
+                  <span class="muted">${item.date}</span>
+                  <span class="status ${player[key]}">${statusLabel(player[key])}</span>
+                </div>`;
+              }).join("")}
+            </div>
+          </div>
+          <div class="card">
+            <h2>${player.name}</h2>
+            <p class="muted">${player.position} · Boitsfort Premier</p>
+            <div style="margin-top:18px">
+              <div class="history-bar"><span style="width:${player.attendance}%"></span></div>
+              <p style="margin-top:7px"><strong>${player.attendance}%</strong> season training attendance</p>
+            </div>
+            <h3 style="margin-top:18px">Recent availability</h3>
+            <div class="pill-row">${player.history.map(h => `<span class="status ${h}">${statusLabel(h)}</span>`).join("")}</div>
+          </div>
+        </div>`;
+    }
+
+    // ─── PLAYER AVAILABILITY ─────────────────────────────────────────────────
+    function renderPlayerAvailability() {
+      const player = getPlayer();
+      if (!player.id) { document.getElementById("player-availability").innerHTML = noSquadMsg(); return; }
+
+      const allAvailable = player.trainingTuesday === 'available'
+        && player.trainingThursday === 'available'
+        && player.game === 'available';
+
+      document.getElementById("player-availability").innerHTML = `
+        <div style="max-width:600px;margin:0 auto">
+
+          <!-- One-tap "all good" -->
+          <div style="background:var(--green);border-radius:16px;padding:20px 22px;margin-bottom:20px;color:#fff;text-align:center">
+            <p style="font-size:13px;margin:0 0 12px;opacity:.85">Set everything at once</p>
+            <button type="button" onclick="setAllAvailable()"
+              style="width:100%;padding:18px;font-size:17px;font-weight:800;border-radius:12px;border:3px solid rgba(255,255,255,0.5);
+                background:${allAvailable?'#fff':'transparent'};color:${allAvailable?'var(--green)':'#fff'};cursor:pointer;transition:all .15s">
+              ${allAvailable ? '✅ You\'re in for everything this week!' : '✅ Yes — I\'m available for everything this week'}
+            </button>
+          </div>
+
+          <!-- Per-session blocks -->
+          ${availabilityBlock(player, "trainingTuesday",  "🏉 Tuesday training · 19:45")}
+          ${availabilityBlock(player, "trainingThursday", "🏉 Thursday training · 19:45")}
+          ${availabilityBlock(player, "game", "🏆 ${state.fixtures?.[0]?.opponent ? state.fixtures[0].opponent + ' — ' + state.fixtures[0].date : 'Saturday match'}")}
+
+          <!-- Blocked dates -->
+          <div class="card" style="margin-top:20px">
+            <h3>Can't make a future date?</h3>
+            <p class="muted" style="font-size:13px">Tell the coach early and it won't count against you.</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+              <label style="font-size:13px">Date<input id="blockDate" type="date" style="margin-top:4px"></label>
+              <label style="font-size:13px">Reason<input id="blockReason" placeholder="Holiday, work…" style="margin-top:4px"></label>
+            </div>
+            <button class="btn primary" type="button" style="margin-top:11px;width:100%" onclick="addBlockedDate()">Save date</button>
+            <div class="list" style="margin-top:12px">
+              ${(player.blockedDates||[]).map(b => row(b.date, b.reason, "<span class='status unavailable'>Blocked</span>")).join("") || "<p class='muted' style='font-size:13px'>No blocked dates yet.</p>"}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function availabilityBlock(player, key, label) {
+      const current = player[key] || 'no-reply';
+      const statusColors = {
+        available:   { bg:'#16a34a', border:'#16a34a', text:'#fff' },
+        unavailable: { bg:'#dc2626', border:'#dc2626', text:'#fff' },
+        maybe:       { bg:'#d97706', border:'#d97706', text:'#fff' },
+        injured:     { bg:'#7c3aed', border:'#7c3aed', text:'#fff' },
+        'no-reply':  { bg:'#f3f4f6', border:'#d1d5db', text:'#6b7280' },
+      };
+      const c = statusColors[current] || statusColors['no-reply'];
+      return `
+        <div style="border:2px solid ${c.border};border-radius:14px;padding:18px 20px;margin-bottom:14px;background:${c.bg}18">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+            <strong style="font-size:16px">${label}</strong>
+            <span style="background:${c.bg};color:${c.text};font-size:12px;font-weight:800;padding:4px 12px;border-radius:999px">${statusLabel(current)}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <button type="button" onclick="setPlayerAvailability('${key}','available')"
+              style="padding:18px 10px;border-radius:12px;font-size:15px;font-weight:800;border:3px solid #16a34a;
+                background:${current==='available'?'#16a34a':'#fff'};color:${current==='available'?'#fff':'#16a34a'};cursor:pointer;transition:all 0.15s">
+              ✅ Yes, I'm coming
+            </button>
+            <button type="button" onclick="setPlayerAvailability('${key}','unavailable')"
+              style="padding:18px 10px;border-radius:12px;font-size:15px;font-weight:800;border:3px solid #dc2626;
+                background:${current==='unavailable'?'#dc2626':'#fff'};color:${current==='unavailable'?'#fff':'#dc2626'};cursor:pointer;transition:all 0.15s">
+              ❌ Can't make it
+            </button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <button type="button" onclick="setPlayerAvailability('${key}','maybe')"
+              style="padding:12px 10px;border-radius:10px;font-size:13px;font-weight:700;border:2px solid #d97706;
+                background:${current==='maybe'?'#d97706':'#fff'};color:${current==='maybe'?'#fff':'#d97706'};cursor:pointer">
+              🤔 Maybe
+            </button>
+            <button type="button" onclick="setPlayerAvailability('${key}','injured')"
+              style="padding:12px 10px;border-radius:10px;font-size:13px;font-weight:700;border:2px solid #7c3aed;
+                background:${current==='injured'?'#7c3aed':'#fff'};color:${current==='injured'?'#fff':'#7c3aed'};cursor:pointer">
+              🤕 Injured
+            </button>
+          </div>
+        </div>`;
+    }
+
+    function setAllAvailable() {
+      const player = getPlayer();
+      if (!player.id) return;
+      ['trainingTuesday','trainingThursday','game'].forEach(key => {
+        player[key] = 'available';
+      });
+      if (player.history[0] !== 'available') player.history.unshift('available');
+      player.history = player.history.slice(0, 5);
+      // Also POST to server so coach sees it
+      navigator.serviceWorker?.ready.then(reg => reg.pushManager.getSubscription()).then(sub => {
+        if (!sub) return;
+        const endpoint = sub.endpoint;
+        ['tue','thu','game'].forEach(sessionId => {
+          fetch('/api/availability', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint, response: 'available', sessionId })
+          }).catch(() => {});
+        });
+      }).catch(() => {});
+      saveState('All available set');
+      render();
+      showToast("✅ All set — see you this week!");
+    }
+
+    function setPlayerAvailability(key, status) {
+      const player    = getPlayer();
+      const sessionId = keyToSessionId(key);
+      player[key]     = status;
+      if (key === "game" && player.history[0] !== status) player.history.unshift(status);
+      player.history  = player.history.slice(0, 5);
+      addMasterFeed(`${player.name} updated ${sessionTitle(sessionId)}`, statusLabel(status));
+      upsertAvailabilityResponseMessage(player, sessionId, status);
+      // POST to server so coach sees it in real time
+      navigator.serviceWorker?.ready.then(reg => reg.pushManager.getSubscription()).then(sub => {
+        if (!sub) return;
+        fetch('/api/availability', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint, response: status, sessionId })
+        }).catch(() => {});
+      }).catch(() => {});
+      saveState("Player availability saved");
+      render();
+      showToast("Availability saved ✓");
+    }
+
+    function upsertAvailabilityResponseMessage(player, sessionId, status) {
+      const text     = `${player.name} responded ${statusLabel(status)} for ${sessionTitle(sessionId)}.`;
+      const existing = state.messages.find(m =>
+        m.type === "Availability response" && m.playerId === player.id && m.sessionId === sessionId
+      );
+      if (existing) {
+        // Critical duplicate guard: repeat taps update the existing coach response row
+        existing.text     = text;
+        existing.unread   = true;
+        existing.time     = "Just now";
+        existing.delivery = "updated by player";
+        existing.replies  = existing.replies || [];
+        return existing;
+      }
+      const created = {
+        id: `m${Date.now()}-availability-${player.id}-${sessionId}`,
+        from: player.name, to: "Coach", playerId: player.id, sessionId,
+        type: "Availability response", text,
+        unread: true, time: "Just now", delivery: "received by coach", replies: []
+      };
+      state.messages.unshift(created);
+      return created;
+    }
+
+    function addBlockedDate() {
+      const dateEl   = document.getElementById("blockDate");
+      const reasonEl = document.getElementById("blockReason");
+      if (!dateEl) return;
+      const date   = dateEl.value;
+      const reason = (reasonEl ? reasonEl.value.trim() : "") || "Unavailable";
+      if (!date) return notify("Choose a date before saving");
+      const player = getPlayer();
+      player.blockedDates = player.blockedDates || [];
+      player.blockedDates.push({ date, reason });
+      saveState("Blocked date saved");
+      render();
+      showToast("Blocked date saved ✓");
+    }
+
+    // ─── PLAYER FIXTURES ─────────────────────────────────────────────────────
+    function renderPlayerFixtures() {
+      document.getElementById("player-fixtures").innerHTML = `
+        <div class="card">
+          <h2>Season schedule</h2>
+          <p class="muted">See what is coming and block dates early.</p>
+          <div class="list" style="margin-top:14px">
+            ${state.fixtures.map(f => row(`${f.date}: ${f.opponent}`, `${f.venue} · ${f.status}`, "<button class='btn' onclick=\"setSection('player','availability')\">Update</button>")).join("")}
+          </div>
+        </div>`;
+    }
+
+    // ─── PLAYER ATTENDANCE ───────────────────────────────────────────────────
+    function renderPlayerAttendance() {
+      const player = getPlayer();
+      if (!player.id) { document.getElementById("player-attendance").innerHTML = noSquadMsg(); return; }
+      document.getElementById("player-attendance").innerHTML = `
+        <div class="grid two-col">
+          <div class="card">
+            <h2>Attendance</h2>
+            <div style="margin-top:18px">
+              <div class="history-bar"><span style="width:${player.attendance}%"></span></div>
+              <p style="margin-top:7px"><strong>${player.attendance}%</strong> training attendance this season</p>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Availability history</h2>
+            <div class="list" style="margin-top:14px">
+              ${player.history.map((h, i) => row(`Response ${i+1}`, "Recent player update", `<span class="status ${h}">${statusLabel(h)}</span>`)).join("")}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ─── PLAYER MESSAGES ─────────────────────────────────────────────────────
+    function renderPlayerMessages() {
+      const player   = getPlayer();
+      if (!player.id) { document.getElementById("player-messages").innerHTML = noSquadMsg(); return; }
+      const messages = state.messages.filter(m => m.to === "Squad" || m.to === player.name || m.from === player.name);
+      const supported = ('serviceWorker' in navigator) && ('PushManager' in window);
+      const permission = supported ? Notification.permission : 'default';
+
+      let pushBannerHtml = "";
+      if (supported) {
+        if (pushSubscription) {
+          pushBannerHtml = `
+            <div class="push-banner push-subscribed">
+              <div class="push-icon">🔔</div>
+              <div class="push-text">
+                <strong>Push notifications on</strong>
+                <small>You'll get a notification on this device when coach sends a message.</small>
+              </div>
+              <button class="btn" type="button" onclick="unsubscribePush()">Turn off</button>
+            </div>`;
+        } else if (permission === 'denied') {
+          pushBannerHtml = `
+            <div class="push-banner push-denied">
+              <div class="push-icon">🔕</div>
+              <div class="push-text">
+                <strong>Notifications blocked</strong>
+                <small>Go to browser site settings to re-enable.</small>
+              </div>
+            </div>`;
+        } else {
+          pushBannerHtml = `
+            <div class="push-banner">
+              <div class="push-icon">🔔</div>
+              <div class="push-text">
+                <strong>Enable push notifications</strong>
+                <small>Get notified on your phone when coach sends a message or selection update.</small>
+              </div>
+              <button class="btn primary" type="button" onclick="subscribePush('${player.name}')">Enable</button>
+            </div>`;
+        }
+      }
+
+      document.getElementById("player-messages").innerHTML = `
+        <div class="card">
+          <h2>My messages</h2>
+          <p class="muted">Player inbox — announcements, requests and replies.</p>
+          ${pushBannerHtml}
+          <div class="button-row" style="margin-top:12px">
+            <button class="btn" type="button" onclick="markPlayerMessagesRead()">Mark my messages read</button>
+            <button class="btn primary" type="button" onclick="quickPlayerReply('I have seen this and will update my availability.')">Quick reply to coach</button>
+          </div>
+          <div class="list" style="margin-top:14px">
+            ${messages.map(m => `
+              <div class="message-bubble ${m.unread?"unread":""}">
+                <div class="message-meta"><span>${m.type} · ${m.delivery||"delivered"}</span><span>${m.time}</span></div>
+                <strong>${m.from}</strong>
+                <p class="muted">${m.text}</p>
+                ${(m.replies||[]).map(r=>`<div class="message-bubble" style="margin-top:7px"><div class="message-meta"><span>Reply sent</span><span>${r.time}</span></div><strong>${r.from}</strong><p class="muted">${r.text}</p></div>`).join("")}
+                <div class="thread-reply">
+                  <input id="reply-${m.id}" placeholder="Reply to coach...">
+                  <button class="btn" type="button" onclick="sendPlayerReply('${m.id}')">Send</button>
+                </div>
+              </div>`).join("")}
+          </div>
+        </div>`;
+    }
+
+    function markPlayerMessagesRead() {
+      const player = getPlayer();
+      state.messages = state.messages.map(m => {
+        if (m.to === "Squad" || m.to === player.name)
+          return { ...m, unread: false, delivery: "read by player" };
+        return m;
+      });
+      notify(`${player.name} marked messages read`);
+    }
+
+    function sendPlayerReply(messageId) {
+      const player = getPlayer();
+      const input  = document.getElementById(`reply-${messageId}`);
+      const text   = input ? input.value.trim() : "";
+      if (!text) return notify("Write a reply before sending");
+      const message = state.messages.find(m => m.id === messageId);
+      if (!message) return;
+      const canReply = message.to === "Squad" || message.to === player.name || message.from === player.name;
+      if (!canReply) return notify("Players can only reply to their own messages");
+      message.replies = message.replies || [];
+      message.replies.push({ from: player.name, text, time: "Just now" });
+      message.unread   = false;
+      message.delivery = "player replied";
+      state.messages.unshift({
+        id:        `m${Date.now()}-reply`,
+        from:      player.name,
+        to:        "Coach",
+        playerId:  player.id,
+        sessionId: message.sessionId || "week",
+        type:      "Player reply",
+        text,
+        unread:    true,
+        time:      "Just now",
+        delivery:  "received by coach",
+        replies:   []
+      });
+      addMasterFeed(`${player.name} replied to coach`, text);
+      saveState("Player reply sent");
+      render();
+    }
+
+    function quickPlayerReply(text) {
+      const player = getPlayer();
+      state.messages.unshift({
+        id:        `m${Date.now()}-quick`,
+        from:      player.name,
+        to:        "Coach",
+        playerId:  player.id,
+        sessionId: "week",
+        type:      "Player reply",
+        text,
+        unread:    true,
+        time:      "Just now",
+        delivery:  "received by coach",
+        replies:   []
+      });
+      addMasterFeed(`${player.name} sent a quick reply`, text);
+      saveState("Quick reply sent");
+      render();
+    }
+
+    // ─── RENDER ───────────────────────────────────────────────────────────────
+    function render() {
+      renderNav();
+      showSection();
+      renderCoachOverview();
+      renderMessageCenter();
+      renderTraining();
+      renderMatchday();
+      renderMedical();
+      renderPlayers();
+      renderPlayerWeek();
+      renderPlayerAvailability();
+      renderPlayerFixtures();
+      renderPlayerAttendance();
+      renderPlayerMessages();
+      // Async live-data panels — non-blocking, fills in after render
+      if (state.activeCoachSection === "message") {
+        loadLiveMessaging();
+      }
+    }
+
+    // ─── LIVE MESSAGING API LOADERS ───────────────────────────────────────────
+    async function loadLiveMessaging() {
+      renderPushStatusCard();
+      loadLiveSchedules();
+      loadLiveTemplates();
+      loadLiveLog();
+      loadLiveResponses();
+    }
+
+    async function loadLiveResponses() {
+      const panel = document.getElementById("live-responses-panel");
+      if (!panel) return;
+      try {
+        // Load responses for all sessions
+        const sessions = [
+          { id: 'game',  label: 'Saturday match' },
+          { id: 'tue',   label: 'Tuesday training' },
+          { id: 'thu',   label: 'Thursday training' },
+        ];
+        const allResults = await Promise.all(
+          sessions.map(s => fetch(`/api/availability?sessionId=${s.id}`).then(r => r.json()).then(d => ({ ...s, responses: d.responses || [] })))
+        );
+        const hasAny = allResults.some(s => s.responses.length > 0);
+        if (!hasAny) {
+          panel.innerHTML = `<p class="muted" style="font-size:13px">No responses yet — send an availability request and players can reply directly from the notification.</p>`;
+          return;
+        }
+        panel.innerHTML = allResults.filter(s => s.responses.length > 0).map(s => {
+          const yes = s.responses.filter(r => r.response === 'available');
+          const no  = s.responses.filter(r => r.response === 'unavailable');
+          const mbe = s.responses.filter(r => r.response === 'maybe');
+          return `
+            <div style="margin-bottom:14px">
+              <strong style="font-size:13px">${s.label}</strong>
+              <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+                <span style="background:#dcfce7;color:#16a34a;font-weight:700;font-size:11px;padding:3px 8px;border-radius:999px">✅ ${yes.length} coming</span>
+                <span style="background:#fee2e2;color:#dc2626;font-weight:700;font-size:11px;padding:3px 8px;border-radius:999px">❌ ${no.length} can't</span>
+                ${mbe.length ? `<span style="background:#fef3c7;color:#d97706;font-weight:700;font-size:11px;padding:3px 8px;border-radius:999px">🤔 ${mbe.length} maybe</span>` : ''}
+              </div>
+              <div style="margin-top:6px">
+                ${s.responses.map(r => `
+                  <div class="live-sched-row" style="display:flex;align-items:center;justify-content:space-between;padding:6px 0">
+                    <span style="font-size:13px">${esc(r.label)}</span>
+                    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;
+                      background:${r.response==='available'?'#dcfce7':r.response==='unavailable'?'#fee2e2':'#fef3c7'};
+                      color:${r.response==='available'?'#16a34a':r.response==='unavailable'?'#dc2626':'#d97706'}">
+                      ${r.response==='available'?'✅ Coming':r.response==='unavailable'?'❌ Can\'t':'🤔 Maybe'}
+                    </span>
+                  </div>`).join('')}
+              </div>
+            </div>`;
+        }).join('');
+      } catch (err) {
+        panel.innerHTML = `<p class="muted" style="font-size:13px;color:#dc2626">Could not load responses — ${err.message}</p>`;
+      }
+    }
+
+    async function renderPushStatusCard() {
+      const card = document.getElementById("push-status-card");
+      if (!card) return;
+
+      const supported = ('serviceWorker' in navigator) && ('PushManager' in window);
+      const permission = supported ? Notification.permission : 'unsupported';
+
+      // Fetch subscriber count from server
+      let subscriberCount = '…';
+      try {
+        const res = await fetch('/api/subscribe');
+        const d   = await res.json();
+        subscriberCount = d.count ?? 0;
+      } catch { subscriberCount = '?'; }
+
+      if (!supported) {
+        card.style.borderColor = '#fbbf24';
+        card.style.background  = '#fffbeb';
+        card.innerHTML = `
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:22px">⚠️</span>
+            <div>
+              <strong style="font-size:14px">Push not supported in this browser</strong>
+              <p class="muted" style="font-size:12px;margin:2px 0 0">Use Chrome or Firefox on desktop, or Safari/Chrome on phone.</p>
+            </div>
+          </div>`;
+        return;
+      }
+
+      if (permission === 'denied') {
+        card.style.borderColor = '#fca5a5';
+        card.style.background  = '#fff1f2';
+        card.innerHTML = `
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:22px">🔕</span>
+            <div style="flex:1">
+              <strong style="font-size:14px">Notifications blocked for this browser</strong>
+              <p class="muted" style="font-size:12px;margin:2px 0 6px">Go to your browser / OS settings → Notifications → allow this site.</p>
+              <span class="muted" style="font-size:11px">📱 ${subscriberCount} device${subscriberCount===1?'':'s'} subscribed across all players</span>
+            </div>
+          </div>`;
+        return;
+      }
+
+      if (pushSubscription) {
+        card.style.borderColor = '#22c55e';
+        card.style.background  = '#f0fdf4';
+        card.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:22px">🔔</span>
+              <div>
+                <strong style="font-size:14px;color:var(--green)">This device is subscribed ✓</strong>
+                <p class="muted" style="font-size:12px;margin:2px 0 0">📱 ${subscriberCount} device${subscriberCount===1?'':'s'} total — messages go to all of them</p>
+              </div>
+            </div>
+            <button class="btn" type="button" onclick="unsubscribePush()" style="font-size:12px;color:#dc2626;border-color:#fca5a5">Turn off this device</button>
+          </div>`;
+        return;
+      }
+
+      // Not subscribed yet
+      card.style.borderColor = 'var(--green)';
+      card.style.background  = '#f0fdf4';
+      card.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:22px">🔕</span>
+            <div>
+              <strong style="font-size:14px">Enable notifications on this device</strong>
+              <p class="muted" style="font-size:12px;margin:2px 0 0">You'll receive messages when players subscribe and when you send a test.</p>
+              <p class="muted" style="font-size:11px;margin:3px 0 0">📱 ${subscriberCount} device${subscriberCount===1?'':'s'} already subscribed</p>
+            </div>
+          </div>
+          <button class="btn primary" type="button" onclick="enableNotificationsFromCenter()" style="font-size:13px;padding:10px 18px;white-space:nowrap">
+            🔔 Enable notifications
+          </button>
+        </div>`;
+    }
+
+    async function enableNotificationsFromCenter() {
+      const user = currentUser();
+      await subscribePush(user?.name || 'Coach');
+      // Re-render the card after subscribing
+      setTimeout(() => renderPushStatusCard(), 800);
+    }
+
+    async function loadLiveSchedules() {
+      const panel = document.getElementById("live-schedules-panel");
+      if (!panel) return;
+      try {
+        const res  = await fetch('/api/schedules');
+        const data = await res.json();
+        const schedules = data.schedules || [];
+        if (!schedules.length) {
+          panel.innerHTML = `<p class="muted" style="font-size:13px">No scheduled sends yet. Enable auto-send in Matchday Center to create one.</p>`;
+          return;
+        }
+        panel.innerHTML = schedules.map(s => `
+          <div class="live-sched-row">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span class="live-sched-dot ${s.active ? 'on' : 'off'}"></span>
+              <strong style="font-size:13px">${esc(s.name)}</strong>
+              <span class="live-badge">${esc(s.day.charAt(0).toUpperCase()+s.day.slice(1))} ${esc(s.time)} UTC</span>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
+              <span class="muted" style="font-size:11px">Template: ${esc(s.templateId)}</span>
+              ${s.lastSentAt ? `<span class="muted" style="font-size:11px">Last sent: ${new Date(s.lastSentAt).toLocaleString([], {dateStyle:"medium",timeStyle:"short"})}</span>` : '<span class="muted" style="font-size:11px">Not yet sent</span>'}
+              <button class="btn" style="font-size:11px;padding:3px 9px;margin-left:auto" type="button"
+                onclick="toggleLiveSchedule('${esc(s.id)}', ${!s.active})">${s.active ? '⏸ Pause' : '▶ Enable'}</button>
+            </div>
+          </div>`).join('');
+      } catch (err) {
+        panel.innerHTML = `<p class="muted" style="font-size:13px;color:#dc2626">Could not load schedules — ${err.message}</p>`;
+      }
+    }
+
+    async function loadLiveTemplates() {
+      const panel = document.getElementById("live-templates-panel");
+      if (!panel) return;
+      try {
+        const res  = await fetch('/api/templates');
+        const data = await res.json();
+        const templates = data.templates || [];
+        const cats = { availability:'🟢', training:'🔵', match:'🔴', custom:'⚪' };
+        panel.innerHTML = templates.map(t => `
+          <div class="live-sched-row">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span>${cats[t.category] || '⚪'}</span>
+              <strong style="font-size:13px">${esc(t.name)}</strong>
+              <span class="live-badge" style="background:#f0fdf4;color:var(--green)">${esc(t.category)}</span>
+            </div>
+            <p class="muted" style="font-size:12px;margin:4px 0 0">${esc(t.body.slice(0,100))}${t.body.length>100?'…':''}</p>
+          </div>`).join('');
+      } catch (err) {
+        panel.innerHTML = `<p class="muted" style="font-size:13px;color:#dc2626">Could not load templates — ${err.message}</p>`;
+      }
+    }
+
+    async function loadLiveLog() {
+      const panel = document.getElementById("live-log-panel");
+      if (!panel) return;
+      try {
+        const res  = await fetch('/api/log?limit=20');
+        const data = await res.json();
+        const log  = data.log || [];
+        if (!log.length) {
+          panel.innerHTML = `<p class="muted" style="font-size:13px">No messages sent yet.</p>`;
+          return;
+        }
+        panel.innerHTML = log.map(entry => `
+          <div class="live-sched-row">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
+              <strong style="font-size:12px">${esc(entry.title||entry.body?.slice(0,40)||"Message")}</strong>
+              <span class="live-badge ${entry.type==='scheduled'?'sched':'adhoc'}">${entry.type==='scheduled'?'⏰ Scheduled':'📤 Ad-hoc'}</span>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:3px;flex-wrap:wrap">
+              <span class="muted" style="font-size:11px">${new Date(entry.sentAt).toLocaleString([], {dateStyle:"medium",timeStyle:"short"})}</span>
+              <span class="muted" style="font-size:11px">✓ ${entry.sent} sent${entry.failed?` · ✗ ${entry.failed} failed`:''}</span>
+            </div>
+          </div>`).join('');
+      } catch (err) {
+        panel.innerHTML = `<p class="muted" style="font-size:13px;color:#dc2626">Could not load log — ${err.message}</p>`;
+      }
+    }
+
+    async function toggleLiveSchedule(id, active) {
+      try {
+        await fetch('/api/schedules', {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ id, active }),
+        });
+        loadLiveSchedules();
+      } catch (err) {
+        notify("Could not update schedule: " + err.message);
+      }
+    }
+
+    // HTML-escape helper used in live panels (prevents XSS from stored data)
+    function esc(str) {
+      return String(str || '').replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // ─── EVENT LISTENERS ──────────────────────────────────────────────────────
+    document.getElementById("coachViewBtn").addEventListener("click", () => setView("coach"));
+    document.getElementById("playerViewBtn").addEventListener("click", () => setView("player"));
+    document.getElementById("resetBtn").addEventListener("click", async () => {
+      if (!confirm("Reset everything? This clears all players, sessions and push subscriptions. Cannot be undone.")) return;
+      state = normalizeState(structuredClone(defaultState));
+      saveState("Full reset");
+      // Clear push subscriptions from server so old test devices don't receive messages
+      try {
+        const subs = await fetch('/api/subscribe').then(r => r.json());
+        if (subs.count > 0) {
+          // GET returns count — can't bulk-delete, but a fresh deploy clears Redis on next subscribe
+          // Just notify the coach
+          notify("App reset. Re-enable notifications on each device to re-subscribe.");
+        }
+      } catch { /* offline */ }
+      render();
+    });
+
+    window.addEventListener("storage", event => {
+      if (event.key !== STORAGE_KEY || !event.newValue) return;
+      const incoming = safeParseState(event.newValue, "storage event");
+      if (!incoming) return;
+      const incomingRev = Number(incoming.meta?.revision || 0);
+      const currentRev  = Number(state.meta?.revision || 0);
+      if (incomingRev <= currentRev) return;
+      // Critical multi-tab guard: newer revision in another tab refreshes this tab's state
+      state = normalizeState(incoming);
+      const el = document.getElementById("saveStatus");
+      if (el) el.textContent = `Synced newer browser tab · rev ${incomingRev}`;
+      render();
+    });
+
+    // ─── BOOT ─────────────────────────────────────────────────────────────────
+    // Deep-link routing — notification "Open app" links include ?to=availability
+    // which sends the player directly to the right page
+    (function handleDeepLink() {
+      const params = new URLSearchParams(window.location.search);
+      const to = params.get('to');
+      if (to === 'availability') {
+        state.activeView = 'player';
+        state.activePlayerSection = 'availability';
+        saveState();
+        // Clean the URL without reloading
+        history.replaceState({}, '', '/');
+      }
+    })();
+
+    // Listen for messages from the service worker (e.g. "navigate to availability")
+    navigator.serviceWorker?.addEventListener('message', event => {
+      if (event.data?.type === 'navigate' && event.data.to === 'availability') {
+        setSection('player', 'availability');
+      }
+    });
+
+    render();
+    initServiceWorker();
+  </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "Coach's Eye · Boitsfort RFC",
+  "short_name": "Coach's Eye",
+  "description": "Rugby team management and player messaging for Boitsfort RFC",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#1a2e25",
+  "categories": ["sports", "productivity"]
+}
