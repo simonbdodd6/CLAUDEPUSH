@@ -126,13 +126,26 @@ export default async function handler(req, res) {
       if (lastSentDay === todayUTC) return false;
     }
 
-    // ── Exact time check (Belgium local → UTC, ±FIRE_WINDOW_MINUTES) ───────
+    // ── Time check (Belgium local → UTC) ─────────────────────────────────
     // s.time is stored as entered by the coach in Belgium local time ("HH:MM").
     const schedUTCMinutes = belgiumTimeToUTCMinutes(s.time || '09:00', now);
-    const diff = Math.abs(nowUTCMinutes - schedUTCMinutes);
-    // Handle midnight wrap (e.g. schedule at 23:58, cron at 00:02)
-    const wrappedDiff = Math.min(diff, 1440 - diff);
-    return wrappedDiff <= fireWindow;
+
+    // ① Normal window: within ±fireWindow minutes of scheduled time
+    const diff        = nowUTCMinutes - schedUTCMinutes; // positive = we're past the time
+    const absDiff     = Math.abs(diff);
+    const wrappedDiff = Math.min(absDiff, 1440 - absDiff); // handle midnight wrap
+    if (wrappedDiff <= fireWindow) return true;
+
+    // ② Catch-up: schedule was saved AFTER its cron window already fired today.
+    //    Fire immediately if the scheduled time passed within the last 30 min
+    //    and the schedule was created less than 30 min ago (fresh save).
+    const minsOverdue = diff; // positive = past due
+    if (minsOverdue > 0 && minsOverdue <= 30 && s.createdAt) {
+      const minsOld = (now - new Date(s.createdAt)) / 60000;
+      if (minsOld <= 30) return true;
+    }
+
+    return false;
   });
 
   if (due.length === 0) {

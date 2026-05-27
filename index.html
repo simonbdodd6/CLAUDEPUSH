@@ -2024,20 +2024,12 @@
       // ── Shared blocks (used in both layouts) ────────────────────────────────
       const templateCardCollapsed = state.templateCardCollapsed;
 
-      // templateCardHTML: slim strip when collapsed, full card when expanded
+      // templateCardHTML: slim pill when collapsed, full card when expanded
       const templateCardHTML = templateCardCollapsed
-        ? `<div style="background:#f0fdf4;border:1.5px solid var(--green);border-radius:10px;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-            <div style="display:flex;align-items:center;gap:8px;min-width:0">
-              <span style="color:var(--green);font-size:15px;flex-shrink:0">📋</span>
-              <div style="min-width:0">
-                <strong style="font-size:14px">${esc(state.currentTemplateName||'Weekly Availability')}</strong>
-                <span style="font-size:12px;color:var(--muted);margin-left:8px">${(state.autoSendSchedule?.days||['Mon']).join(', ')} · ${state.autoSendSchedule?.time||'09:00'}</span>
-              </div>
-            </div>
-            <div style="display:flex;gap:6px;flex-shrink:0">
-              <button class="btn" type="button" onclick="sendAvailabilityNow()" style="font-size:12px;padding:5px 12px;white-space:nowrap">📤 Send now</button>
-              <button class="btn" type="button" onclick="toggleTemplateCard()" style="font-size:12px;padding:5px 12px">✏️ Edit</button>
-            </div>
+        ? `<div style="display:inline-flex;align-items:center;gap:8px;background:#f0fdf4;border:1.5px solid var(--green);border-radius:999px;padding:5px 12px 5px 10px">
+            <span style="font-size:13px">📋</span>
+            <strong style="font-size:13px;color:#15803d;white-space:nowrap">Template messages</strong>
+            <button class="btn" type="button" onclick="toggleTemplateCard()" style="font-size:11px;padding:2px 10px;border-radius:999px;white-space:nowrap;margin-left:2px">✏️ Edit</button>
           </div>`
         : `<div class="card">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
