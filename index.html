@@ -1545,13 +1545,16 @@
         state.templateCardCollapsed = true;
         saveState();
         render();
-        notify("Template saved ✓");
+        // Explicitly refresh the Active schedules panel so the new schedule
+        // appears immediately without needing a manual open/close
+        setTimeout(loadLiveSchedules, 200);
+        notify("Schedule saved ✓");
       } catch (err) {
         console.warn('[saveAvailabilityTemplate] Backend sync failed:', err.message);
         state.templateCardCollapsed = true;
         saveState();
         render();
-        notify("Template saved locally ✓");
+        notify("Saved locally ✓");
       }
     }
 
@@ -2109,27 +2112,23 @@
         <div style="margin-bottom:14px">${templateCardHTML}</div>
         <div style="margin-bottom:18px">${sessionDetailHTML}</div>
 
-        <!-- ── ACCORDION PANELS — send message, schedules, log ── -->
+        <!-- ── ACCORDION PANELS ── -->
         <div class="card" style="padding:0;overflow:hidden">
-          <details class="srv-panel" open>
-            <summary onclick="if(!this.parentElement.open) setTimeout(renderAudiencePicker,50)">✉️ Send a message</summary>
+          <details class="srv-panel" open ontoggle="if(this.open) setTimeout(renderAudiencePicker,50)">
+            <summary>✉️ Send a message</summary>
             <div class="srv-panel-body">${sendFormHTML}</div>
           </details>
-          <details class="srv-panel">
-            <summary onclick="if(!this.parentElement.open) loadLiveSchedules()">🗓️ Active schedules</summary>
+          <details class="srv-panel" open ontoggle="if(this.open) loadLiveSchedules()">
+            <summary>🗓️ Active schedules</summary>
             <div id="live-schedules-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading…</p></div>
           </details>
-          <details class="srv-panel">
-            <summary onclick="if(!this.parentElement.open) loadLiveTemplates()">📨 Message templates</summary>
-            <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to load</p></div>
+          <details class="srv-panel" ontoggle="if(this.open) loadLiveTemplates()">
+            <summary>📨 Message templates</summary>
+            <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to expand</p></div>
           </details>
-          <details class="srv-panel">
-            <summary onclick="if(!this.parentElement.open) loadLiveResponses()">📲 Player responses</summary>
-            <div id="live-responses-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to load</p></div>
-          </details>
-          <details class="srv-panel">
-            <summary onclick="if(!this.parentElement.open) loadLiveLog()">📋 Delivery log &amp; recent sends</summary>
-            <div id="live-log-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to load</p></div>
+          <details class="srv-panel" ontoggle="if(this.open) loadLiveLog()">
+            <summary>📋 Delivery log</summary>
+            <div id="live-log-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to expand</p></div>
           </details>
         </div>
 
@@ -2185,23 +2184,19 @@
           </div>
         </div>
 
-        <!-- ── SERVER DATA PANELS — bottom ── -->
+        <!-- ── DATA PANELS — bottom ── -->
         <div class="card" style="margin-top:20px;padding:0;overflow:hidden">
-          <details class="srv-panel" open>
-            <summary onclick="if(!this.parentElement.open) loadLiveSchedules()">🗓️ Active schedules</summary>
+          <details class="srv-panel" open ontoggle="if(this.open) loadLiveSchedules()">
+            <summary>🗓️ Active schedules</summary>
             <div id="live-schedules-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading…</p></div>
           </details>
-          <details class="srv-panel">
-            <summary onclick="if(!this.parentElement.open) loadLiveTemplates()">📨 Message templates</summary>
-            <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click ▼ to load templates</p></div>
+          <details class="srv-panel" ontoggle="if(this.open) loadLiveTemplates()">
+            <summary>📨 Message templates</summary>
+            <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to expand</p></div>
           </details>
-          <details class="srv-panel">
-            <summary onclick="if(!this.parentElement.open) loadLiveResponses()">📲 Player responses</summary>
-            <div id="live-responses-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click ▼ to load responses</p></div>
-          </details>
-          <details class="srv-panel">
-            <summary onclick="if(!this.parentElement.open) loadLiveLog()">📋 Delivery log &amp; recent sends</summary>
-            <div id="live-log-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click ▼ to load history</p></div>
+          <details class="srv-panel" ontoggle="if(this.open) loadLiveLog()">
+            <summary>📋 Delivery log</summary>
+            <div id="live-log-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to expand</p></div>
           </details>
         </div>
 `;
@@ -3642,37 +3637,42 @@
         const templates  = tplRes.templates   || [];
         const tplMap     = Object.fromEntries(templates.map(t => [t.id, t]));
 
-        if (!schedules.length) {
-          panel.innerHTML = `<p class="muted" style="font-size:13px">No scheduled sends yet — create one in the Template messages builder above.</p>`;
+        const active   = schedules.filter(s => s.active);
+        const inactive = schedules.filter(s => !s.active);
+        const ordered  = [...active, ...inactive];
+
+        if (!ordered.length) {
+          panel.innerHTML = `<p class="muted" style="font-size:13px">No scheduled sends yet — create one using the Template messages builder above.</p>`;
           return;
         }
 
-        panel.innerHTML = schedules.map(s => {
+        panel.innerHTML = ordered.map(s => {
           const tpl      = tplMap[s.templateId];
           const days     = s.days?.join(', ') || (s.day ? s.day.charAt(0).toUpperCase()+s.day.slice(1) : '—');
           const timeStr  = s.time || '—';
-          const slot     = parseInt((s.time||'09:00').split(':')[0],10) >= 12 ? 'Evening' : 'Morning';
           const lastSent = s.lastSentAt
-            ? `Last sent ${new Date(s.lastSentAt).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'})}`
-            : 'Never sent yet';
+            ? new Date(s.lastSentAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})
+            : 'Never fired';
           return `
-          <div style="border:1.5px solid ${s.active?'var(--green)':'var(--line)'};border-radius:10px;padding:12px 14px;margin-bottom:10px;background:${s.active?'#f0fdf4':'#fafafa'}">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-              <div>
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                  <span style="width:8px;height:8px;border-radius:50%;background:${s.active?'#16a34a':'#9ca3af'};flex-shrink:0"></span>
-                  <strong style="font-size:14px">${esc(s.name)}</strong>
-                  <span style="font-size:11px;padding:2px 7px;border-radius:999px;background:${s.active?'#dcfce7':'#f1f5f9'};color:${s.active?'#16a34a':'#6b7280'};font-weight:700">${s.active?'Active':'Paused'}</span>
-                </div>
-                <div style="font-size:12px;color:var(--muted)">
-                  📅 ${days} &nbsp;·&nbsp; 🕐 ${timeStr} &nbsp;·&nbsp; ${slot} send
-                </div>
-                ${tpl ? `<div style="font-size:12px;color:var(--muted);margin-top:3px">📋 ${esc(tpl.name)} — <em>${esc(tpl.body.slice(0,60))}…</em></div>` : ''}
-                <div style="font-size:11px;color:var(--muted);margin-top:4px">${lastSent}</div>
+          <div style="border:1.5px solid ${s.active?'var(--green)':'var(--line)'};border-radius:10px;padding:11px 14px;margin-bottom:8px;background:${s.active?'#f0fdf4':'#fafafa'}">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <div style="display:flex;align-items:center;gap:6px;min-width:0">
+                <span style="width:8px;height:8px;border-radius:50%;background:${s.active?'#16a34a':'#9ca3af'};flex-shrink:0"></span>
+                <strong style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</strong>
+                <span style="font-size:11px;padding:2px 6px;border-radius:999px;background:${s.active?'#dcfce7':'#f1f5f9'};color:${s.active?'#16a34a':'#6b7280'};font-weight:700;white-space:nowrap;flex-shrink:0">${s.active?'Active':'Paused'}</span>
               </div>
-              <button class="btn" type="button" style="font-size:11px;padding:4px 10px;flex-shrink:0;white-space:nowrap"
-                onclick="toggleLiveSchedule('${esc(s.id)}', ${!s.active})">${s.active ? '⏸ Pause' : '▶ Enable'}</button>
+              <div style="display:flex;gap:5px;flex-shrink:0">
+                <button class="btn" type="button" style="font-size:11px;padding:3px 9px;white-space:nowrap"
+                  onclick="toggleLiveSchedule('${esc(s.id)}', ${!s.active})">${s.active ? '⏸ Pause' : '▶ Enable'}</button>
+                <button class="btn" type="button" style="font-size:11px;padding:3px 8px;color:#dc2626;border-color:#fca5a5"
+                  onclick="deleteLiveSchedule('${esc(s.id)}')" title="Delete schedule">✕</button>
+              </div>
             </div>
+            <div style="font-size:12px;color:var(--muted);margin-top:5px">
+              📅 ${days} &nbsp;·&nbsp; 🕐 ${timeStr}
+              ${tpl ? `&nbsp;·&nbsp; 📋 ${esc(tpl.name)}` : ''}
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Last fired: ${lastSent}</div>
           </div>`;
         }).join('');
       } catch (err) {
@@ -3727,9 +3727,9 @@
       const panel = document.getElementById("live-log-panel");
       if (!panel) return;
       try {
-        const res  = await fetch('/api/log?limit=30');
+        const res  = await fetch('/api/log?limit=10');
         const data = await res.json();
-        const serverLog = data.log || [];
+        const serverLog = (data.log || []).slice(0, 10);
 
         // Also include recent sends from localStorage (shown first if no server log)
         const localMsgs = (state.messages || []).slice(0, 10).map(m => ({
@@ -3741,7 +3741,7 @@
           sent:   null,
         }));
 
-        const combined = serverLog.length ? serverLog : localMsgs;
+        const combined = (serverLog.length ? serverLog : localMsgs).slice(0, 10);
 
         if (!combined.length) {
           panel.innerHTML = `<p class="muted" style="font-size:13px">No messages sent yet.</p>`;
@@ -3774,6 +3774,21 @@
         loadLiveSchedules();
       } catch (err) {
         notify("Could not update schedule: " + err.message);
+      }
+    }
+
+    async function deleteLiveSchedule(id) {
+      if (!confirm('Delete this schedule? It will stop sending.')) return;
+      try {
+        await fetch('/api/schedules', {
+          method:  'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ id }),
+        });
+        loadLiveSchedules();
+        notify('Schedule deleted');
+      } catch (err) {
+        notify('Could not delete: ' + err.message);
       }
     }
 
