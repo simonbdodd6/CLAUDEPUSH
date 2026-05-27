@@ -2052,9 +2052,9 @@
           </div>`;
 
 
-      const sendCardHTML = `<div class="card">
-            <h2 style="margin-bottom:4px">✉️ Send a message</h2>
-            <p class="muted" style="font-size:13px;margin-bottom:16px">One-off push notification to the squad or an individual.</p>
+      // sendFormHTML: just the form fields, for use inside the collapsed accordion panel
+      const sendFormHTML = `
+            <p class="muted" style="font-size:13px;margin-bottom:14px">One-off push notification to the squad or an individual.</p>
             <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:5px;margin-bottom:10px">Send to
               <select id="messageAudience" onchange="renderAudiencePicker()" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px">
                 <option value="squad">Full squad — ${state.players.length} players</option>
@@ -2064,9 +2064,14 @@
             </label>
             <div id="audience-picker-slot" style="margin-bottom:10px"></div>
             <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:5px;margin-bottom:14px">Message
-              <textarea id="messageBody" rows="5" style="font-size:13px;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-family:inherit;resize:vertical" placeholder="Type your message here…"></textarea>
+              <textarea id="messageBody" rows="4" style="font-size:13px;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-family:inherit;resize:vertical" placeholder="Type your message here…"></textarea>
             </label>
-            <button class="btn primary" type="button" onclick="sendInAppMessage()" style="width:100%">📲 Send now</button>
+            <button class="btn primary" type="button" onclick="sendInAppMessage()" style="width:100%">📲 Send now</button>`;
+
+      // sendCardHTML: full card with heading, for the expanded two-col layout
+      const sendCardHTML = `<div class="card">
+            <h2 style="margin-bottom:4px">✉️ Send a message</h2>
+            ${sendFormHTML}
           </div>`;
 
       const sessionDetailHTML = `<div class="card">
@@ -2100,30 +2105,31 @@
 
       document.getElementById("coach-message").innerHTML = templateCardCollapsed ? `
 
-        <!-- ── COLLAPSED: slim strip + active schedules + session/send side by side ── -->
-        <div style="margin-bottom:12px">${templateCardHTML}</div>
-        <div class="grid two-col" style="margin-bottom:18px">
-          ${sessionDetailHTML}
-          ${sendCardHTML}
-        </div>
+        <!-- ── COLLAPSED: slim strip, then session detail full-width ── -->
+        <div style="margin-bottom:14px">${templateCardHTML}</div>
+        <div style="margin-bottom:18px">${sessionDetailHTML}</div>
 
-        <!-- ── SERVER DATA PANELS — bottom ── -->
-        <div class="card" style="margin-top:20px;padding:0;overflow:hidden">
+        <!-- ── ACCORDION PANELS — send message, schedules, log ── -->
+        <div class="card" style="padding:0;overflow:hidden">
           <details class="srv-panel" open>
+            <summary onclick="if(!this.parentElement.open) setTimeout(renderAudiencePicker,50)">✉️ Send a message</summary>
+            <div class="srv-panel-body">${sendFormHTML}</div>
+          </details>
+          <details class="srv-panel">
             <summary onclick="if(!this.parentElement.open) loadLiveSchedules()">🗓️ Active schedules</summary>
             <div id="live-schedules-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading…</p></div>
           </details>
           <details class="srv-panel">
             <summary onclick="if(!this.parentElement.open) loadLiveTemplates()">📨 Message templates</summary>
-            <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click ▼ to load templates</p></div>
+            <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to load</p></div>
           </details>
           <details class="srv-panel">
             <summary onclick="if(!this.parentElement.open) loadLiveResponses()">📲 Player responses</summary>
-            <div id="live-responses-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click ▼ to load responses</p></div>
+            <div id="live-responses-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to load</p></div>
           </details>
           <details class="srv-panel">
             <summary onclick="if(!this.parentElement.open) loadLiveLog()">📋 Delivery log &amp; recent sends</summary>
-            <div id="live-log-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click ▼ to load history</p></div>
+            <div id="live-log-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to load</p></div>
           </details>
         </div>
 
