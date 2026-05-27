@@ -1498,6 +1498,16 @@
     }
 
     // ─── AVAILABILITY TEMPLATE HELPERS ───────────────────────────────────────
+    // Turn a schedule name into a stable slug ID so the same name always
+    // maps to the same record (upsert), while different names get their own.
+    function scheduleSlug(prefix, name) {
+      return prefix + '-' + (name || 'schedule')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 40);
+    }
+
     async function saveAvailabilityTemplate() {
       const el      = document.getElementById("availTpl");
       const nameEl  = document.getElementById("tplName");
@@ -1509,30 +1519,36 @@
       state.autoSendEnabled = true;
       saveState();
 
+      const scheduleName = state.currentTemplateName || 'Weekly Availability';
+      const tplId        = scheduleSlug('tpl', scheduleName);
+      const schedId      = scheduleSlug('sch', scheduleName);
+
       // ── Persist to backend ────────────────────────────────────────────────
       try {
-        // 1. Upsert the template
+        // 1. Upsert the template (name-based ID so different schedules keep
+        //    their own templates and don't overwrite each other)
         const tplRes = await fetch('/api/templates', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({
-            id:       'tpl-availability',
-            name:     'Weekly Availability',
+            id:       tplId,
+            name:     scheduleName,
             category: 'availability',
-            title:    "Boitsfort RFC — Availability Check",
+            title:    `Boitsfort RFC — ${scheduleName}`,
             body:     state.availabilityTemplate,
           })
         });
         if (!tplRes.ok) throw new Error(await tplRes.text());
 
-        // 2. Upsert (or deactivate) the schedule
+        // 2. Upsert the schedule (same name → same ID → updates in place;
+        //    different name → new ID → creates a separate schedule entry)
         const schedRes = await fetch('/api/schedules', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({
-            id:         'sch-availability',
-            name:       state.currentTemplateName || 'Weekly Availability',
-            templateId: 'tpl-availability',
+            id:         schedId,
+            name:       scheduleName,
+            templateId: tplId,
             days:       state.autoSendSchedule?.days  || ['Mon'],
             day:        (state.autoSendSchedule?.days?.[0] || 'Mon').toLowerCase(),
             time:       state.autoSendSchedule?.time || '09:00',
