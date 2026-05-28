@@ -325,7 +325,7 @@
       letter-spacing: 0.01em;
       animation: countUp 0.4s ease both;
     }
-    .stat-card span { display: block; color: var(--muted); margin-top: 6px; font-size: 12px; }
+    .stat-card span { display: block; color: #94a3b8; margin-top: 6px; font-size: 12px; font-weight: 500; }
 
     .list { display: grid; gap: 9px; }
     .row {
@@ -341,7 +341,7 @@
     }
     .row:hover { border-color: #263d52; background: var(--panel-2); }
     .row strong { display: block; font-size: 14px; color: var(--ink); }
-    .row small { color: var(--muted); font-size: 12px; }
+    .row small { color: #94a3b8; font-size: 12px; font-weight: 500; }
 
     /* ── STATUS BADGES ── */
     .status {
@@ -477,7 +477,7 @@
       padding: 11px;
       background: var(--panel-2);
     }
-    .session-detail-header span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+    .session-detail-header span { display: block; color: #94a3b8; font-size: 12px; font-weight: 600; margin-bottom: 5px; }
     .session-detail-header strong { display: block; font-size: 22px; line-height: 1; font-weight: 800; color: var(--ink); }
 
     .training-player-list {
@@ -502,7 +502,7 @@
       transition: border-color 0.12s;
     }
     .training-player-list button.active { border-color: var(--green); background: rgba(16,185,129,0.07); }
-    .training-player-list span { display: block; color: var(--muted); font-size: 12px; }
+    .training-player-list span { display: block; color: #94a3b8; font-size: 12px; font-weight: 500; }
 
     .register-stack { display: grid; gap: 11px; margin-top: 14px; }
     .register-card { border: 1px solid var(--line); border-radius: 9px; padding: 11px; background: var(--panel); }
@@ -894,6 +894,11 @@
     .c-yes { background:#10b981; } .c-no { background:#ef4444; } .c-pending { background:#f59e0b; }
     .add-player-panel { border:1px solid rgba(16,185,129,0.22); border-radius:10px; padding:16px; background:rgba(16,185,129,0.05); margin-bottom:14px; }
     .add-player-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+
+    /* ── INVITE SYSTEM ── */
+    .inv-role-btn { padding:6px 14px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; border:1.5px solid var(--line); background:var(--panel-2); color:var(--muted); transition:all .14s; }
+    .inv-role-btn.active { border-color:var(--green) !important; background:rgba(16,185,129,0.1) !important; color:#10b981 !important; }
+    .inv-role-btn:hover:not(.active) { border-color:#263d52; color:var(--ink); }
 
     /* ── SCROLLBAR ── */
     ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -1457,7 +1462,7 @@
       return state.players.find(p => p.id === id) || state.players[0] || EMPTY_PLAYER;
     }
     function currentUser()  { return state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
-    function isCoach()      { return currentUser()?.role === "coach"; }
+    function isCoach()      { const r = currentUser()?.role; return r === "coach" || r === "admin" || r === "medical"; }
     function statusLabel(s) { return (s||"no-reply").replaceAll("-", " ").replace(/\b\w/g, l => l.toUpperCase()); }
     function noSquadMsg()   { return `<div class="card" style="text-align:center;padding:40px 20px;color:var(--muted)"><p style="font-size:32px;margin:0">🏉</p><p style="font-weight:700;margin:8px 0 4px">No players yet</p><p style="font-size:13px">Go to <strong>Player DB</strong> and add your squad first.</p></div>`; }
     function sessionKey(id) {
@@ -3108,22 +3113,69 @@
             </div>
           </div>
 
-          <!-- ── Team join code banner ── -->
-          <div class="join-code-banner">
-            <h3>📲 Team join code</h3>
-            <p>Share this with your squad. They open the app, tap <strong>Join squad</strong>, enter this code and their name — done.</p>
-            <div class="join-code-value" id="teamCodeDisplay">${state.teamCode||'BOITSFORT'}</div><br>
-            <div class="join-code-url">🔗 boitsfort-coachseye.vercel.app</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn" type="button" style="font-size:12px;padding:6px 12px;background:rgba(255,255,255,0.2);border-color:rgba(255,255,255,0.3);color:#fff"
-                onclick="navigator.clipboard?.writeText('Join Boitsfort RFC on Coach\'s Eye! Open https://boitsfort-coachseye.vercel.app, tap Join squad and enter code: ${state.teamCode||'BOITSFORT'}').then(()=>showToast('Invite message copied 📋'))">
-                📋 Copy invite message
-              </button>
-              <button class="btn" type="button" style="font-size:12px;padding:6px 12px;background:rgba(255,255,255,0.2);border-color:rgba(255,255,255,0.3);color:#fff"
-                onclick="const c=prompt('New team code (letters/numbers):',state.teamCode||'BOITSFORT');if(c&&c.trim()){state.teamCode=c.trim().toUpperCase();saveState();render();}">
-                ✏️ Change code
-              </button>
-            </div>
+          <!-- ── Invite & Access panel ── -->
+          <div class="card" style="padding:0;overflow:hidden">
+            <details class="srv-panel" open ontoggle="if(this.open) loadInviteList()">
+              <summary>🔗 Invite & team access</summary>
+              <div class="srv-panel-body" style="padding-top:4px">
+
+                <!-- Role tabs + name field -->
+                <p class="muted" style="font-size:13px;margin-bottom:14px">Generate a personal invite link for each person. They click it, confirm their name and are straight into the app — no password needed.</p>
+
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+                  ${[['player','🏉 Player'],['coach','🎯 Coach'],['admin','⚙️ Admin'],['medical','🏥 Medical']].map(([role,lbl],i) => `
+                    <button type="button" class="inv-role-btn ${i===0?'active':''}" data-role="${role}"
+                      onclick="setInviteRole('${role}',this)"
+                      style="padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid var(--line);background:var(--panel-2);color:var(--muted);transition:all .13s">
+                      ${lbl}</button>`).join('')}
+                </div>
+
+                <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+                  <label style="flex:1;min-width:180px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
+                    Full name
+                    <input id="inv-name" placeholder="e.g. Thomas Dupont" style="padding:9px 11px">
+                  </label>
+                  <button id="inv-create-btn" class="btn primary" type="button" onclick="createInvite()"
+                    style="white-space:nowrap;min-height:40px;padding:0 16px">
+                    🔗 Generate invite link
+                  </button>
+                </div>
+                <div id="inv-result"></div>
+
+                <!-- Invite list -->
+                <div style="margin-top:18px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                    <strong style="font-size:13px;color:#e2e8f0">Sent invites</strong>
+                    <button class="btn ghost" type="button" style="font-size:12px;padding:2px 8px" onclick="loadInviteList()">↺ Refresh</button>
+                  </div>
+                  <div id="invite-list-panel">
+                    <p class="muted" style="font-size:13px">Loading…</p>
+                  </div>
+                </div>
+
+                <!-- Fallback: team code for bulk sharing -->
+                <details style="margin-top:18px">
+                  <summary style="font-size:12px;font-weight:700;color:#64748b;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
+                    <span>▶</span> Also share a general team code (no-name signup)
+                  </summary>
+                  <div style="margin-top:10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:10px;padding:14px 16px">
+                    <p style="font-size:13px;color:#94a3b8;margin-bottom:10px">For bulk invites — players enter this code and their own name.</p>
+                    <div class="join-code-value" style="font-size:22px;letter-spacing:3px;display:inline-block;margin-bottom:10px">${state.teamCode||'BOITSFORT'}</div>
+                    <div style="font-size:12px;color:#64748b;margin-bottom:10px">boitsfort-coachseye.vercel.app</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      <button class="btn" type="button" style="font-size:12px"
+                        onclick="navigator.clipboard?.writeText('Join Boitsfort RFC on Coach\\'s Eye! Open https://boitsfort-coachseye.vercel.app — tap Join squad and enter code: ${state.teamCode||'BOITSFORT'}').then(()=>showToast('Copied 📋'))">
+                        📋 Copy message
+                      </button>
+                      <button class="btn" type="button" style="font-size:12px"
+                        onclick="const c=prompt('Set team code:',state.teamCode||'BOITSFORT');if(c?.trim()){state.teamCode=c.trim().toUpperCase();saveState();render();}">
+                        ✏️ Change code
+                      </button>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </details>
           </div>
 
           <!-- Add player panel (toggled) -->
@@ -3877,12 +3929,12 @@
             ? new Date(s.lastSentAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})
             : 'Never fired';
           return `
-          <div style="border:1.5px solid ${s.active?'var(--green)':'var(--line)'};border-radius:10px;padding:11px 14px;margin-bottom:8px;background:${s.active?'#f0fdf4':'#fafafa'}">
+          <div style="border:1.5px solid ${s.active?'var(--green)':'var(--line)'};border-radius:10px;padding:11px 14px;margin-bottom:8px;background:${s.active?'rgba(16,185,129,0.07)':'var(--panel-2)'}">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
               <div style="display:flex;align-items:center;gap:6px;min-width:0">
-                <span style="width:8px;height:8px;border-radius:50%;background:${s.active?'#16a34a':'#9ca3af'};flex-shrink:0"></span>
+                <span style="width:8px;height:8px;border-radius:50%;background:${s.active?'#10b981':'#475569'};flex-shrink:0"></span>
                 <strong style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</strong>
-                <span style="font-size:11px;padding:2px 6px;border-radius:999px;background:${s.active?'#dcfce7':'#f1f5f9'};color:${s.active?'#16a34a':'#6b7280'};font-weight:700;white-space:nowrap;flex-shrink:0">${s.active?'Active':'Paused'}</span>
+                <span style="font-size:11px;padding:2px 6px;border-radius:999px;background:${s.active?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.12)'};color:${s.active?'#34d399':'#94a3b8'};font-weight:700;white-space:nowrap;flex-shrink:0">${s.active?'Active':'Paused'}</span>
               </div>
               <div style="display:flex;gap:5px;flex-shrink:0">
                 ${tpl ? `<button class="btn primary" type="button" style="font-size:11px;padding:3px 10px;white-space:nowrap"
@@ -3891,7 +3943,7 @@
                   onclick="editLiveSchedule('${esc(s.id)}')" title="Edit this schedule">✏️</button>
                 <button class="btn" type="button" style="font-size:11px;padding:3px 9px;white-space:nowrap"
                   onclick="toggleLiveSchedule('${esc(s.id)}', ${!s.active})">${s.active ? '⏸' : '▶'}</button>
-                <button class="btn" type="button" style="font-size:11px;padding:3px 8px;color:#dc2626;border-color:#fca5a5"
+                <button class="btn" type="button" style="font-size:11px;padding:3px 8px;color:#f87171;border-color:rgba(239,68,68,0.28)"
                   onclick="deleteLiveSchedule('${esc(s.id)}')" title="Delete schedule">✕</button>
               </div>
             </div>
@@ -3904,7 +3956,7 @@
           </div>`;
         }).join('');
       } catch (err) {
-        panel.innerHTML = `<p class="muted" style="font-size:13px;color:#dc2626">Could not load schedules — ${err.message}</p>`;
+        panel.innerHTML = `<p class="muted" style="font-size:13px;color:#f87171">Could not load schedules — ${err.message}</p>`;
       }
     }
 
@@ -4084,6 +4136,219 @@
       render();
     });
 
+    // ─── INVITE SYSTEM ───────────────────────────────────────────────────────
+    let _inviteToken = null;
+    let _inviteData  = null;
+
+    async function checkInviteParam() {
+      const params = new URLSearchParams(window.location.search);
+      const token  = params.get('inv');
+      if (!token) return false;
+      try {
+        const res  = await fetch(`/api/invite?token=${encodeURIComponent(token)}`);
+        const data = await res.json();
+        if (data.valid) {
+          _inviteToken = token;
+          _inviteData  = data;
+          showInviteModal(data);
+          return true;
+        } else {
+          showToast('⚠️ This invite link is no longer valid');
+        }
+      } catch(e) {
+        console.warn('[invite] Could not validate token:', e);
+      }
+      return false;
+    }
+
+    function showInviteModal(invite) {
+      const roleLabel = { player:'🏉 Player', coach:'🎯 Coach', admin:'⚙️ Admin / Staff', medical:'🏥 Medical' };
+      const el = document.createElement('div');
+      el.id = 'invite-modal';
+      el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(4px)';
+      el.innerHTML = `
+        <div style="background:#0f1724;border:1px solid rgba(16,185,129,0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
+          <div style="font-size:52px;margin-bottom:12px">🏉</div>
+          <h2 style="margin:0 0 6px;color:#e2e8f0;font-size:22px">Welcome to Boitsfort RFC</h2>
+          <p style="color:#64748b;font-size:14px;margin-bottom:22px">You've been invited to join Coach's Eye</p>
+
+          <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:14px 16px;margin-bottom:22px;text-align:left">
+            <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Joining as</div>
+            <div style="font-size:18px;font-weight:700;color:#10b981">${roleLabel[invite.role] || invite.role}</div>
+          </div>
+
+          <div style="text-align:left;margin-bottom:18px">
+            <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px">
+              Your name
+              <input id="invite-name-input" value="${esc(invite.name)}"
+                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
+            </label>
+          </div>
+
+          <button class="btn primary" type="button" onclick="acceptInvite()"
+            style="width:100%;min-height:46px;font-size:15px;font-weight:700;margin-bottom:10px;letter-spacing:.01em">
+            Join team →
+          </button>
+          <button class="btn ghost" type="button" style="width:100%;font-size:13px"
+            onclick="document.getElementById('invite-modal')?.remove();window.history.replaceState({},'','/')">
+            Not me — close
+          </button>
+        </div>`;
+      document.body.appendChild(el);
+    }
+
+    async function acceptInvite() {
+      if (!_inviteData) return;
+      const nameInput = document.getElementById('invite-name-input');
+      const name      = nameInput?.value.trim() || _inviteData.name;
+      const role      = _inviteData.role;
+      if (!name) { showToast('Enter your name first'); return; }
+
+      const btn = document.querySelector('#invite-modal .btn.primary');
+      if (btn) { btn.disabled = true; btn.textContent = 'Joining…'; }
+
+      // Create player record if role = player
+      let playerId = null;
+      if (role === 'player') {
+        let player = state.players.find(p => p.name.toLowerCase() === name.toLowerCase());
+        if (!player) {
+          playerId = 'p' + Date.now();
+          player = { id: playerId, name, position: 'TBC', status: 'no-reply', game: 'no-reply',
+            phone: '', email: _inviteData.email || '', trainingTuesday: 'no-reply', trainingThursday: 'no-reply',
+            attendance: 0, history: [], blockedDates: [], medical: '', mediaConsent: false, contractStatus: 'active' };
+          state.players.push(player);
+        } else { playerId = player.id; }
+      }
+
+      // Create/find user account
+      let userAcc = state.users.find(u => u.name.toLowerCase() === name.toLowerCase());
+      if (!userAcc) {
+        const isStaff = ['coach','admin','medical'].includes(role);
+        userAcc = { id: (isStaff ? 'staff-' : 'player-') + Date.now(), role, name,
+          email: _inviteData.email || '', phone: '', pin: '', playerId: playerId || null };
+        state.users.push(userAcc);
+      }
+
+      state.currentUserId = userAcc.id;
+      state.activeView    = ['coach','admin','medical'].includes(role) ? 'coach' : 'player';
+      if (role === 'player') state.selectedPlayerId = playerId;
+      saveState('Joined via invite');
+
+      // Mark accepted on server
+      try { await fetch('/api/invite', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: _inviteToken }) }); } catch(e) {}
+
+      // Subscribe to push
+      try { await subscribePush(name); } catch(e) {}
+
+      document.getElementById('invite-modal')?.remove();
+      window.history.replaceState({}, '', '/');
+      _inviteToken = null; _inviteData = null;
+      render();
+      showToast(`Welcome ${name.split(' ')[0]}! 🏉`);
+    }
+
+    // ─── INVITE MANAGEMENT (coach side) ──────────────────────────────────────
+    async function createInvite() {
+      const nameEl   = document.getElementById('inv-name');
+      const activeBtn = document.querySelector('.inv-role-btn.active');
+      const name     = nameEl?.value.trim();
+      const role     = activeBtn?.dataset.role || 'player';
+      if (!name) { showToast('Enter the person\'s name first'); return; }
+
+      const btn = document.getElementById('inv-create-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+      try {
+        const res  = await fetch('/api/invite', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ name, role }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+
+        const resultEl = document.getElementById('inv-result');
+        if (resultEl) {
+          resultEl.innerHTML = `
+            <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);border-radius:10px;padding:14px 16px;margin-top:14px">
+              <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:10px">✓ Invite ready for ${esc(name)}</div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input value="${esc(data.url)}" readonly id="inv-link-field"
+                  style="flex:1;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:8px 10px;color:#94a3b8">
+                <button class="btn primary" type="button" style="font-size:12px;white-space:nowrap;padding:0 14px"
+                  onclick="navigator.clipboard.writeText(document.getElementById('inv-link-field').value).then(()=>showToast('Link copied 📋'))">
+                  📋 Copy
+                </button>
+              </div>
+              <div style="font-size:11px;color:#64748b;margin-top:8px">Send via WhatsApp, SMS or email. Works once — link is tied to ${esc(name)}.</div>
+            </div>`;
+        }
+        if (nameEl) nameEl.value = '';
+        loadInviteList();
+      } catch(e) {
+        showToast('Could not create invite — ' + e.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔗 Generate invite link'; }
+      }
+    }
+
+    function setInviteRole(role, el) {
+      document.querySelectorAll('.inv-role-btn').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+    }
+
+    async function loadInviteList() {
+      const panel = document.getElementById('invite-list-panel');
+      if (!panel) return;
+      panel.innerHTML = '<p class="muted" style="font-size:13px">Loading…</p>';
+      try {
+        const res  = await fetch('/api/invite');
+        const data = await res.json();
+        const list = data.invites || [];
+        if (!list.length) {
+          panel.innerHTML = `<p class="muted" style="font-size:13px;padding:8px 0">No invites yet. Generate one above and send the link to a player or staff member.</p>`;
+          return;
+        }
+        const roleEmoji = { player:'🏉', coach:'🎯', admin:'⚙️', medical:'🏥' };
+        panel.innerHTML = list.map(inv => {
+          const isPending  = inv.status === 'pending';
+          const isAccepted = inv.status === 'accepted';
+          const statusColor = isAccepted ? '#34d399' : isPending ? '#fbbf24' : '#475569';
+          const statusBg    = isAccepted ? 'rgba(52,211,153,0.1)' : isPending ? 'rgba(251,191,36,0.1)' : 'rgba(71,85,105,0.1)';
+          const date        = new Date(inv.createdAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+          const acceptedDate = inv.acceptedAt ? new Date(inv.acceptedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
+          return `
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+              <span style="font-size:20px;flex-shrink:0">${roleEmoji[inv.role]||'👤'}</span>
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:700;font-size:13px;color:#e2e8f0">${esc(inv.name)}</div>
+                <div style="font-size:11px;color:#64748b;margin-top:1px">${inv.role} · Invited ${date}${acceptedDate ? ' · Joined '+acceptedDate : ''}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                <span style="background:${statusBg};color:${statusColor};font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap">${inv.status}</span>
+                ${isPending ? `
+                  <button class="btn" type="button" style="font-size:11px;padding:3px 9px;white-space:nowrap"
+                    onclick="navigator.clipboard.writeText('https://boitsfort-coachseye.vercel.app/?inv=${esc(inv.token)}').then(()=>showToast('Copied 📋'))">
+                    📋
+                  </button>
+                  <button class="btn" type="button" style="font-size:11px;padding:3px 8px;color:#f87171;border-color:rgba(239,68,68,0.28)"
+                    onclick="revokeInvite('${esc(inv.token)}')">✕</button>
+                ` : ''}
+              </div>
+            </div>`;
+        }).join('');
+      } catch(e) {
+        panel.innerHTML = `<p style="color:#f87171;font-size:13px">Could not load invites</p>`;
+      }
+    }
+
+    async function revokeInvite(token) {
+      if (!confirm('Revoke this invite? The link will stop working.')) return;
+      try {
+        await fetch('/api/invite', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token }) });
+        loadInviteList();
+        showToast('Invite revoked');
+      } catch(e) { showToast('Could not revoke invite'); }
+    }
+
     // ─── BOOT ─────────────────────────────────────────────────────────────────
     // Deep-link routing — notification "Open app" links include ?to=availability
     // which sends the player directly to the right page
@@ -4094,7 +4359,6 @@
         state.activeView = 'player';
         state.activePlayerSection = 'availability';
         saveState();
-        // Clean the URL without reloading
         history.replaceState({}, '', '/');
       }
     })();
@@ -4108,6 +4372,8 @@
 
     render();
     initServiceWorker();
+    // Check for invite link AFTER render (so modal overlays on top)
+    checkInviteParam();
   </script>
 </body>
 </html>
