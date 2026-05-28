@@ -3846,6 +3846,9 @@
 
     // ─── PLAYERS ─────────────────────────────────────────────────────────────
     function renderPlayers() {
+      // Kick off a background sync of accepted invites each time this page renders
+      if (isCoach()) loadInviteList().catch(()=>{});
+
       const filter     = state.playerFilter || "all";
       const filterMap  = { all: ()=>true, available: p=>p.game==="available", injured: p=>p.game==="injured", "no-reply": p=>p.game==="no-reply", consent: p=>!p.mediaConsent };
       const filtered   = state.players.filter(filterMap[filter] || (()=>true));
@@ -5076,6 +5079,35 @@
         const res  = await fetch('/api/invite');
         const data = await res.json();
         const list = data.invites || [];
+
+        // Auto-sync accepted invites into state.players so the coach sees them in Members
+        let synced = 0;
+        for (const inv of list) {
+          if (inv.status !== 'accepted') continue;
+          const alreadyMember = state.players.some(p => p.name.toLowerCase() === inv.name.toLowerCase());
+          if (alreadyMember) continue;
+          const isStaff = ['coach','admin','medical'].includes(inv.role);
+          const position = inv.role === 'coach' ? 'Coach' : inv.role === 'admin' ? 'Admin' : inv.role === 'medical' ? 'Medical Staff' : 'TBC';
+          state.players.push({
+            id: 'inv-' + (inv.token || Date.now() + Math.random()).toString().slice(-8),
+            name: inv.name, position,
+            status: isStaff ? 'available' : 'no-reply',
+            game:   isStaff ? 'available' : 'no-reply',
+            phone: '', email: inv.email || '',
+            trainingTuesday: 'no-reply', trainingThursday: 'no-reply',
+            attendance: 0, history: [], blockedDates: [],
+            medical: '', mediaConsent: false, contractStatus: 'active',
+          });
+          // Also ensure a user account exists so they can log in
+          const hasUser = state.users.some(u => u.name.toLowerCase() === inv.name.toLowerCase());
+          if (!hasUser) {
+            state.users.push({ id: (isStaff ? 'staff-' : 'player-') + Date.now(), role: inv.role,
+              name: inv.name, email: inv.email || '', phone: '', pin: '', playerId: null });
+          }
+          synced++;
+        }
+        if (synced) { saveState('Synced accepted invites'); renderPlayers(); }
+
         if (!list.length) {
           panel.innerHTML = `<p class="muted" style="font-size:13px;padding:8px 0">No invites yet. Generate one above and send the link to a player or staff member.</p>`;
           return;
