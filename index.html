@@ -677,6 +677,28 @@
     .hidden { display: none !important; }
 
     /* ── OVERVIEW UPGRADES ── */
+    .overview-page,
+    .overview-page .card,
+    .overview-page .fixture-hero,
+    .overview-page .schedule-card,
+    .overview-page .row,
+    .overview-page .status,
+    .overview-page .pill {
+      font-family: var(--font-body);
+    }
+    .overview-page .stat-card strong,
+    .overview-page .schedule-card strong[style],
+    .overview-page .msgs-sent-stat strong,
+    .overview-page .pkg-stat strong {
+      font-family: var(--font-body) !important;
+      font-weight: 800 !important;
+      letter-spacing: 0;
+    }
+    .overview-page h2,
+    .overview-page h3 {
+      font-family: var(--font-body);
+      letter-spacing: 0;
+    }
     .fixture-hero { border:1px solid rgba(16,185,129,0.18); border-radius:12px; padding:20px; background:linear-gradient(135deg,#0a1820 0%,#0d2232 100%); color:#ecf5ef; }
     .fixture-hero .eyebrow { color:#10b981; }
     .fixture-hero h3 { color:#fff; font-size:20px; margin:6px 0 4px; }
@@ -1231,7 +1253,7 @@
       ["training",  "Training"],
       ["matchday",  "Matchday Center"],
       ["medical",   "Medical"],
-      ["players",   "Players"]
+      ["players",   "Members"]
     ];
 
     const playerSections = [
@@ -2596,12 +2618,10 @@
 
     function renderCoachOverview() {
       const notComing     = state.players.filter(p => ["unavailable","injured"].includes(p.game));
-      const msgSent       = state.messages.filter(m => m.from === "Coach").length;
-      const msgUnread     = state.messages.filter(m => m.to === "Coach" && m.unread).length;
-      const autoActive    = (state.automationRules||[]).filter(r => r.enabled).length;
       const fixture       = state.fixtures?.[0] || { opponent:"Kituro", venue:"Home", date:"This Saturday", status:"Availability open" };
       const nextFixtures  = (state.fixtures||[]).slice(1,4);
       document.getElementById("coach-overview").innerHTML = `
+        <div class="overview-page">
         ${statCards()}
 
         <div class="grid two-col">
@@ -2650,23 +2670,8 @@
             </div>
           </div>
 
-          <!-- RIGHT: Package stats + messages + automation queue -->
+          <!-- RIGHT: automation queue + match availability -->
           <div style="display:grid;gap:14px;align-content:start">
-            <div class="card">
-              <h2>Rugby package</h2>
-              <p class="muted">Season overview for Boitsfort Premier.</p>
-              <div class="pkg-grid">
-                <div class="pkg-stat"><strong>${state.players.length}</strong><small>Squad size</small></div>
-                <div class="pkg-stat"><strong>${msgSent}</strong><small>Messages sent</small></div>
-                <div class="pkg-stat"><strong>${autoActive}</strong><small>Automations on</small></div>
-                <div class="pkg-stat"><strong>${state.fixtures?.length||4}</strong><small>Fixtures logged</small></div>
-              </div>
-              <div class="msgs-sent-stat" style="margin-top:14px">
-                <article><strong style="color:var(--green)">${msgSent}</strong><small>Coach messages</small></article>
-                <article><strong style="color:var(--blue)">${msgUnread}</strong><small>Unread replies</small></article>
-                <article><strong style="color:var(--amber)">${byStatus("no-reply").length}</strong><small>Players to chase</small></article>
-              </div>
-            </div>
             <div class="card">
               <h2>Automation queue</h2>
               <p class="muted">Scheduled availability requests for this week.</p>
@@ -2689,6 +2694,7 @@
               </div>
             </div>
           </div>
+        </div>
         </div>`;
     }
 
@@ -3852,8 +3858,8 @@
           <div class="card" style="padding:14px 18px">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
               <div>
-                <h2 style="margin:0">Player database</h2>
-                <p class="muted" style="margin-top:3px">${state.players.length} players · Boitsfort Premier</p>
+                <h2 style="margin:0">Members</h2>
+                <p class="muted" style="margin-top:3px">${state.players.length} members · Boitsfort Premier</p>
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <button class="btn" type="button" onclick="showToast('Squad exported to CSV ✓')">📥 Export</button>
@@ -3863,7 +3869,7 @@
               </div>
             </div>
             <div class="db-toolbar" style="margin-top:12px;margin-bottom:0">
-              ${[["all","All players",state.players.length],["available","Available",counts.available],["injured","Injured",counts.injured],["no-reply","No reply",counts["no-reply"]],["consent","Consent pending",counts.consent]].map(([f,lbl,cnt])=>
+              ${[["all","All members",state.players.length],["available","Available",counts.available],["injured","Injured",counts.injured],["no-reply","No reply",counts["no-reply"]],["consent","Consent pending",counts.consent]].map(([f,lbl,cnt])=>
                 `<button class="filter-pill ${filter===f?"active":""}" type="button" onclick="setPlayerFilter('${f}')">${lbl} <strong>${cnt}</strong></button>`
               ).join("")}
             </div>
@@ -4972,31 +4978,33 @@
       const btn = document.querySelector('#invite-modal .btn.primary');
       if (btn) { btn.disabled = true; btn.textContent = 'Joining…'; }
 
-      // Create player record if role = player
+      // Create member record for all roles (coaches appear in Members page too)
+      const isStaffRole = ['coach','admin','medical'].includes(role);
+      const defaultPosition = role === 'coach' ? 'Coach' : role === 'admin' ? 'Admin' : role === 'medical' ? 'Medical Staff' : 'TBC';
       let playerId = null;
-      if (role === 'player') {
-        let player = state.players.find(p => p.name.toLowerCase() === name.toLowerCase());
-        if (!player) {
-          playerId = 'p' + Date.now();
-          player = { id: playerId, name, position: 'TBC', status: 'no-reply', game: 'no-reply',
-            phone: '', email: _inviteData.email || '', trainingTuesday: 'no-reply', trainingThursday: 'no-reply',
-            attendance: 0, history: [], blockedDates: [], medical: '', mediaConsent: false, contractStatus: 'active' };
-          state.players.push(player);
-        } else { playerId = player.id; }
-      }
+      let player = state.players.find(p => p.name.toLowerCase() === name.toLowerCase());
+      if (!player) {
+        playerId = 'p' + Date.now();
+        player = { id: playerId, name, position: defaultPosition, status: isStaffRole ? 'available' : 'no-reply', game: isStaffRole ? 'available' : 'no-reply',
+          phone: '', email: _inviteData.email || '', trainingTuesday: 'no-reply', trainingThursday: 'no-reply',
+          attendance: 0, history: [], blockedDates: [], medical: '', mediaConsent: false, contractStatus: 'active' };
+        state.players.push(player);
+      } else { playerId = player.id; }
 
       // Create/find user account
       let userAcc = state.users.find(u => u.name.toLowerCase() === name.toLowerCase());
       if (!userAcc) {
-        const isStaff = ['coach','admin','medical'].includes(role);
-        userAcc = { id: (isStaff ? 'staff-' : 'player-') + Date.now(), role, name,
+        userAcc = { id: (isStaffRole ? 'staff-' : 'player-') + Date.now(), role, name,
           email: _inviteData.email || '', phone: '', pin: '', playerId: playerId || null };
         state.users.push(userAcc);
+      } else {
+        // Ensure existing account is linked to the member record
+        userAcc.playerId = userAcc.playerId || playerId;
       }
 
       state.currentUserId = userAcc.id;
-      state.activeView    = ['coach','admin','medical'].includes(role) ? 'coach' : 'player';
-      if (role === 'player') state.selectedPlayerId = playerId;
+      state.activeView    = isStaffRole ? 'coach' : 'player';
+      if (!isStaffRole) state.selectedPlayerId = playerId;
       saveState('Joined via invite');
 
       // Mark accepted on server
