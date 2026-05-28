@@ -2519,44 +2519,39 @@
       ).join("");
       document.getElementById("coachNav").classList.toggle("hidden",  state.activeView !== "coach");
       document.getElementById("playerNav").classList.toggle("hidden", state.activeView !== "player");
+      // Hide the Coach|Player toggle entirely for players — they should never see it
+      const viewSwitch = document.querySelector('.view-switch');
+      if (viewSwitch) viewSwitch.style.display = isCoach() ? '' : 'none';
+
       document.getElementById("coachViewBtn").classList.toggle("active",  state.activeView === "coach");
       document.getElementById("playerViewBtn").classList.toggle("active", state.activeView === "player");
-      document.getElementById("coachViewBtn").disabled = user.role !== "coach";
-      document.getElementById("coachViewBtn").title    = user.role !== "coach" ? "Player accounts cannot open coach tools" : "";
-      // Show compact chip when logged in — full panel only when explicitly opened
-      const isRealUser = user.id !== 'coach-demo' || state.currentUserId === 'coach-demo';
-      document.getElementById("authPanel").innerHTML = authTab === 'open' ? `
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <div><strong>${user.name}</strong><small>${user.role === "coach" ? "Coach" : "Player"}</small></div>
-          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕ Close</button>
+      document.getElementById("coachViewBtn").disabled = !isCoach();
+      document.getElementById("coachViewBtn").title    = !isCoach() ? "Player accounts cannot open coach tools" : "";
+
+      const roleLabel = { coach:'🎯 Coach', admin:'⚙️ Admin', medical:'🏥 Medical', player:'🏉 Player' };
+      const rlbl = roleLabel[user.role] || '👤 Player';
+
+      document.getElementById("authPanel").innerHTML = authTab === 'switch' ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <strong style="font-size:13px">Switch account</strong>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
-        <div class="auth-tabs">
-          <button class="auth-tab ${authTab==='open-login'?'active':''}" type="button" onclick="setAuthTab('open-login')">🔑 Coach login</button>
-          <button class="auth-tab ${authTab==='open-join'?'active':''}"  type="button" onclick="setAuthTab('open-join')">🏉 Join squad</button>
-        </div>
-        <label>Email or phone<input id="loginIdentity" placeholder="simonbdodd@gmail.com"></label>
-        <label>PIN<input id="loginPin" placeholder="1111" type="password"></label>
-        <button class="btn" type="button" onclick="loginWithForm()">Log in</button>
-      ` : authTab === 'open-join' ? `
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <div><strong>${user.name}</strong><small>${user.role === "coach" ? "Coach" : "Player"}</small></div>
-          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕ Close</button>
-        </div>
-        <div class="auth-tabs">
-          <button class="auth-tab" type="button" onclick="setAuthTab('open')">🔑 Coach login</button>
-          <button class="auth-tab active" type="button" onclick="setAuthTab('open-join')">🏉 Join squad</button>
-        </div>
-        <label>Team code<input id="joinCode" placeholder="${state.teamCode||'BOITSFORT'}" style="text-transform:uppercase;letter-spacing:2px;font-weight:700"></label>
-        <label>Your name<input id="joinName" placeholder="e.g. Nick Murphy"></label>
-        <button class="btn primary" type="button" onclick="joinSquad()" style="background:var(--green);border-color:var(--green);color:#060b12">📲 Join &amp; enable notifications</button>
-        <small>Ask your coach for the team code</small>
+        ${state.users.filter(u => u.id !== state.currentUserId).map(u =>
+          `<button class="btn" type="button" onclick="switchToUser('${u.id}')"
+            style="width:100%;text-align:left;margin-bottom:6px;display:flex;align-items:center;gap:8px;padding:8px 10px">
+            <span style="font-size:16px">${{coach:'🎯',admin:'⚙️',medical:'🏥',player:'🏉'}[u.role]||'👤'}</span>
+            <span><strong style="display:block;font-size:13px">${u.name}</strong><span style="font-size:11px;color:var(--muted)">${u.role}</span></span>
+          </button>`
+        ).join('') || '<p class="muted" style="font-size:12px">No other accounts on this device.</p>'}
+        <button class="btn ghost" type="button" onclick="setAuthTab('closed')"
+          style="width:100%;margin-top:4px;font-size:12px">Cancel</button>
       ` : `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div>
             <strong>${user.name}</strong>
-            <small>${user.role === "coach" ? "🏉 Coach" : "👤 Player"}</small>
+            <small>${rlbl}</small>
           </div>
-          <button class="auth-tab" type="button" onclick="setAuthTab('open')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Switch ↓</button>
+          <button class="auth-tab" type="button" onclick="setAuthTab('switch')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Switch ↓</button>
         </div>
       `;
       renderPushSidebar();
@@ -2582,6 +2577,19 @@
       if (state.activeView === "coach")
         return coachSections.find(([id]) => id === state.activeCoachSection)[1];
       return playerSections.find(([id]) => id === state.activePlayerSection)[1];
+    }
+
+    function switchToUser(userId) {
+      const u = state.users.find(u => u.id === userId);
+      if (!u) return;
+      state.currentUserId = userId;
+      const isStaff = ['coach','admin','medical'].includes(u.role);
+      state.activeView = isStaff ? 'coach' : 'player';
+      if (!isStaff && u.playerId) state.selectedPlayerId = u.playerId;
+      authTab = 'closed';
+      saveState('Switched account');
+      render();
+      showToast(`Switched to ${u.name} (${u.role})`);
     }
 
     function showSection() {
