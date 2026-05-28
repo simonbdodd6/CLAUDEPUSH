@@ -3917,10 +3917,10 @@
                   <div style="margin-top:10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:10px;padding:14px 16px">
                     <p style="font-size:13px;color:#94a3b8;margin-bottom:10px">For bulk invites — players enter this code and their own name.</p>
                     <div class="join-code-value" style="font-size:22px;letter-spacing:3px;display:inline-block;margin-bottom:10px">${state.teamCode||'BOITSFORT'}</div>
-                    <div style="font-size:12px;color:#64748b;margin-bottom:10px">boitsfort-coachseye.vercel.app</div>
+                    <div style="font-size:12px;color:#64748b;margin-bottom:10px">boitsfort-coachseye-gpt.vercel.app</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
                       <button class="btn" type="button" style="font-size:12px"
-                        onclick="navigator.clipboard?.writeText('Join Boitsfort RFC on Coach\\'s Eye! Open https://boitsfort-coachseye.vercel.app — tap Join squad and enter code: ${state.teamCode||'BOITSFORT'}').then(()=>showToast('Copied 📋'))">
+                        onclick="navigator.clipboard?.writeText('Join Boitsfort RFC on coacheseyeGPT! Open https://boitsfort-coachseye-gpt.vercel.app — tap Join squad and enter code: ${state.teamCode||'BOITSFORT'}').then(()=>showToast('Copied 📋'))">
                         📋 Copy message
                       </button>
                       <button class="btn" type="button" style="font-size:12px"
@@ -5091,7 +5091,7 @@
                 <span style="background:${statusBg};color:${statusColor};font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap">${inv.status}</span>
                 ${isPending ? `
                   <button class="btn" type="button" style="font-size:11px;padding:3px 9px;white-space:nowrap"
-                    onclick="navigator.clipboard.writeText('https://boitsfort-coachseye.vercel.app/?inv=${esc(inv.token)}').then(()=>showToast('Copied 📋'))">
+                    onclick="navigator.clipboard.writeText('https://boitsfort-coachseye-gpt.vercel.app/?inv=${esc(inv.token)}').then(()=>showToast('Copied 📋'))">
                     📋
                   </button>
                   <button class="btn" type="button" style="font-size:11px;padding:3px 8px;color:#f87171;border-color:rgba(239,68,68,0.28)"

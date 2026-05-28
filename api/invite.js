@@ -19,7 +19,7 @@
 import { kvGet, kvSet } from './_kv.js';
 
 const INVITES_KEY = 'ce:invites';
-const APP_URL     = process.env.APP_URL || 'https://boitsfort-coachseye.vercel.app';
+const APP_URL     = process.env.APP_URL || 'https://boitsfort-coachseye-gpt.vercel.app';
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
