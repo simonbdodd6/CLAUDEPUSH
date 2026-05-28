@@ -1843,7 +1843,18 @@
       state._editingTemplateId   = null;
     }
 
+    function captureScheduleFormDraft() {
+      const nameEl = document.getElementById("tplName");
+      const bodyEl = document.getElementById("availTpl");
+      const timeEl = document.getElementById("autoTime");
+      if (nameEl) state.currentTemplateName = nameEl.value;
+      if (bodyEl) state.availabilityTemplate = bodyEl.value;
+      state.autoSendSchedule = state.autoSendSchedule || { days: ['Mon'], time: '09:00', audience: 'all' };
+      if (timeEl) state.autoSendSchedule.time = timeEl.value || '09:00';
+    }
+
     function setScheduleAudience(audience) {
+      captureScheduleFormDraft();
       state.autoSendSchedule = state.autoSendSchedule || {};
       state.autoSendSchedule.audience = audience;
       saveState();
@@ -1972,6 +1983,7 @@
     }
 
     function toggleScheduleDay(day) {
+      captureScheduleFormDraft();
       state.autoSendSchedule = state.autoSendSchedule || {};
       const days = state.autoSendSchedule.days || ['Mon'];
       const idx  = days.indexOf(day);
@@ -2140,21 +2152,31 @@
     }
 
     function mapRowToPlayer(row, headers) {
-      const find = (...keys) => {
-        for (const k of keys) {
-          const idx = headers.findIndex(h => h === k.toLowerCase());
-          if (idx >= 0 && row[idx] !== undefined) return String(row[idx]).trim();
+      // Two-pass: exact match first, then substring/partial match
+      const findCol = (...keys) => {
+        const lkeys = keys.map(k => k.toLowerCase());
+        // Pass 1: exact
+        for (const k of lkeys) {
+          const idx = headers.findIndex(h => h === k);
+          if (idx >= 0) { const v = String(row[idx] ?? '').trim(); if (v) return v; }
+        }
+        // Pass 2: header contains key OR key contains header
+        for (const k of lkeys) {
+          const idx = headers.findIndex(h => h.length > 1 && (h.includes(k) || k.includes(h)));
+          if (idx >= 0) { const v = String(row[idx] ?? '').trim(); if (v) return v; }
         }
         return '';
       };
-      const name = find('name','full name','full_name','joueur','player','nom',
-                        'prénom + nom','nom complet','firstname','first name','prenom');
+      const name = findCol('name','full name','full_name','joueur','player','nom',
+                           'prénom + nom','nom complet','firstname','first name',
+                           'prenom','surname','last name','lastname','player name',
+                           'players','noms','joueurs');
       if (!name) return null;
       return {
         name,
-        position: find('position','pos','poste','rôle','role','numero','number') || 'SUB — Squad player',
-        phone:    find('phone','mobile','gsm','tel','téléphone','telephone','phone number','mob') || '',
-        email:    find('email','mail','e-mail','e_mail','adresse email','adresse mail') || '',
+        position: findCol('position','pos','poste','rôle','role','numero','number','numéro') || 'SUB — Squad player',
+        phone:    findCol('phone','mobile','gsm','tel','téléphone','telephone','phone number','mob','gsm/mobile') || '',
+        email:    findCol('email','mail','e-mail','e_mail','adresse email','adresse mail','courriel') || '',
       };
     }
 
@@ -2182,12 +2204,45 @@
           const ws  = wb.Sheets[wb.SheetNames[0]];
           rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
         }
-        if (!rows || rows.length < 2) return showToast('⚠️ File appears empty or has only a header row');
-        const headers  = (rows[0] || []).map(h => String(h).toLowerCase().trim());
-        const dataRows = rows.slice(1).filter(r => r.some(c => String(c).trim()));
+        if (!rows || rows.length < 1) return showToast('⚠️ File appears empty');
+        // Filter out completely blank rows
+        const allRows = rows.filter(r => r.some(c => String(c).trim()));
+        if (!allRows.length) return showToast('⚠️ No data found in file');
+
+        // Detect whether row 0 is a header row or data
+        // Heuristic: if any cell in row 0 looks like a known header keyword, treat as header
+        const row0 = (allRows[0] || []).map(h => String(h).toLowerCase().trim());
+        const headerKeywords = ['name','nom','joueur','player','position','phone','email','mobile','gsm','prenom','surname'];
+        const looksLikeHeader = row0.some(h => headerKeywords.some(k => h.includes(k)));
+
+        let headers, dataRows;
+        if (looksLikeHeader) {
+          headers  = row0;
+          dataRows = allRows.slice(1).filter(r => r.some(c => String(c).trim()));
+        } else {
+          // No header row — treat first column as names, synthesise dummy headers
+          headers  = allRows[0].map((_, i) => i === 0 ? 'name' : `col${i}`);
+          dataRows = allRows;
+        }
+
         if (!dataRows.length) return showToast('⚠️ No data rows found in file');
-        const parsed = dataRows.map(r => mapRowToPlayer(r, headers)).filter(Boolean);
-        if (!parsed.length) return showToast('⚠️ No "Name" column found — rename your column header to Name');
+        let parsed = dataRows.map(r => mapRowToPlayer(r, headers)).filter(Boolean);
+
+        // Last-resort fallback: use first non-empty column as names
+        if (!parsed.length) {
+          const firstColIdx = headers.findIndex((_, i) => dataRows.some(r => String(r[i] ?? '').trim()));
+          if (firstColIdx >= 0) {
+            console.warn('[import] No name column matched — falling back to column', firstColIdx, '("' + headers[firstColIdx] + '"). Detected headers:', headers);
+            parsed = dataRows.map(r => {
+              const n = String(r[firstColIdx] ?? '').trim();
+              return n ? { name: n, position: 'SUB — Squad player', phone: '', email: '' } : null;
+            }).filter(Boolean);
+          }
+          if (!parsed.length) {
+            const detected = headers.filter(Boolean).slice(0, 8).join(', ') || '(none)';
+            return showToast(`⚠️ Couldn't find a Name column. Columns detected: ${detected}`);
+          }
+        }
         showImportPreview(parsed);
       } catch(e) {
         console.error('[import]', e);
@@ -2568,6 +2623,7 @@
 
     // ─── MESSAGE CENTER ───────────────────────────────────────────────────────
     function renderMessageCenter() {
+      return renderMessageCenterV2();
       const selected       = state.schedule.find(s => s.id === (state.messageDetail || "tue")) || state.schedule[0];
       const key            = selected ? sessionKey(selected.id) : "game";
       const rows           = selected ? sessionRows(selected.id) : [];
@@ -2784,6 +2840,259 @@
 `;
     }
 
+    function renderMessageCenterV2() {
+      const selected       = state.schedule.find(s => s.id === (state.messageDetail || "tue")) || state.schedule[0];
+      const key            = selected ? sessionKey(selected.id) : "game";
+      const rows           = selected ? sessionRows(selected.id) : [];
+      const available      = rows.filter(({status}) => status === "available");
+      const maybe          = rows.filter(({status}) => status === "maybe");
+      const unavailable    = rows.filter(({status}) => ["unavailable", "injured"].includes(status));
+      const noReply        = rows.filter(({status}) => status === "no-reply");
+      const answered       = rows.filter(({status}) => status !== "no-reply");
+      const selectedPlayer = state.players.find(p => p.id === state.selectedMessagePlayerId) || rows[0]?.player || EMPTY_PLAYER;
+      const selectedStatus = selectedPlayer[key] || "no-reply";
+      const noReplyPlayers = state.players.filter(p => (p[key] || "no-reply") === "no-reply");
+      const campaignDays   = state.autoSendSchedule?.days || ["Mon"];
+      const campaignAudience = state.autoSendSchedule?.audience || "all";
+      const responseRate   = percent(answered.length, rows.length);
+      const messagesSent   = state.messages.filter(m => m.from === "Coach").length;
+
+      const playerRows = list => list.map(({player, status, attendanceRate}) => `
+        <button class="msg-player-row ${selectedPlayer.id===player.id ? "active" : ""}" type="button" onclick="setMessagePlayer('${player.id}')">
+          <span><strong>${esc(player.name)}</strong><small>${esc(player.position)} · ${attendanceRate || 0}% attendance</small></span>
+          <span class="msg-chip ${status || "no-reply"}">${statusLabel(status)}</span>
+        </button>`).join("") || `<p class="muted" style="font-size:12px;padding:10px">No players in this group.</p>`;
+
+      const trainingRegisterHTML = state.schedule.filter(s => s.type === "Training").map(session => {
+        const rRows = sessionRows(session.id);
+        const yes   = rRows.filter(({status}) => status === "available").length;
+        const no    = rRows.filter(({status}) => ["unavailable", "injured", "maybe"].includes(status)).length;
+        const chase = rRows.filter(({status}) => status === "no-reply").length;
+        return `<article class="msg-device-card">
+          <div class="register-head">
+            <strong>${esc(session.title)}</strong>
+            <span class="msg-chip available">${yes}/${state.players.length} coming</span>
+          </div>
+          <div class="msg-pill-row" style="margin-top:10px">
+            <span class="msg-chip available">${yes} yes</span>
+            <span class="msg-chip unavailable">${no} no/maybe</span>
+            <span class="msg-chip no-reply">${chase} chase</span>
+          </div>
+        </article>`;
+      }).join("");
+
+      const quickTemplates = [
+        `Hi {{firstName}}, can you confirm your availability for ${selected?.title || "this session"}?`,
+        `Reminder: please answer your Coach's Eye availability request for ${selected?.title || "this week"}.`,
+        `Team update for ${selected?.title || "this week"}: please check the app and reply when you can.`
+      ];
+
+      document.getElementById("coach-message").innerHTML = `
+        <div class="msg-hub">
+          <section class="msg-hero">
+            <div>
+              <div class="eyebrow">Coach communications</div>
+              <h2>Messaging Command Centre</h2>
+              <p>A cleaner second option for a growing club: send now, automate later, track replies by session, and keep every player response inside Coach's Eye rather than WhatsApp.</p>
+            </div>
+            <div class="msg-hero-actions">
+              <button class="btn" id="avail-refresh-btn" type="button" onclick="refreshLiveAvailability()">Refresh replies</button>
+              <button class="btn primary" type="button" onclick="sendAvailabilityRequest('${selected?.id || "game"}')">Send ${esc(selected?.title || "session")} request</button>
+            </div>
+          </section>
+
+          <section class="msg-kpi-grid">
+            <article class="msg-kpi available"><span>Available</span><strong>${available.length}/${rows.length}</strong></article>
+            <article class="msg-kpi unavailable"><span>Unavailable</span><strong>${unavailable.length}</strong></article>
+            <article class="msg-kpi chase"><span>Needs chasing</span><strong>${noReply.length}</strong></article>
+            <article class="msg-kpi"><span>Response rate</span><strong>${responseRate}%</strong></article>
+          </section>
+
+          <section class="msg-command-grid">
+            <div class="msg-side-stack">
+              <article class="msg-card">
+                <div class="msg-card-head">
+                  <div>
+                    <h2>Audience</h2>
+                    <p>Pick the session, then send to the right group.</p>
+                  </div>
+                  <span id="avail-refresh-ts" class="msg-chip no-reply">Live sync</span>
+                </div>
+                <div style="padding:16px">
+                  <div class="msg-pill-row">
+                    ${state.schedule.map(s => `<button class="msg-session-btn ${selected?.id===s.id ? "active" : ""}" type="button" onclick="openMessageDetail('${s.id}')">${esc(s.title)}</button>`).join("")}
+                  </div>
+                  <div style="margin-top:14px">
+                    ${trainingRegisterHTML || `<p class="muted">No training sessions configured yet.</p>`}
+                  </div>
+                </div>
+              </article>
+
+              <article class="msg-card pad">
+                <div class="compact-player-heading">
+                  <strong>${esc(selectedPlayer.name)}</strong>
+                  <span class="msg-chip ${selectedStatus}">${statusLabel(selectedStatus)}</span>
+                </div>
+                <div class="training-metrics">
+                  <article><span>Year attendance</span><strong>${selectedPlayer.attendance || 0}%</strong></article>
+                  <article><span>Recent replies</span><strong>${selectedPlayer.history.filter(h => h !== "no-reply").length}/${selectedPlayer.history.length}</strong></article>
+                  <article><span>Position</span><strong>${esc(selectedPlayer.position)}</strong></article>
+                </div>
+                <p class="muted" style="font-size:12px;margin-top:10px">${esc(selectedPlayer.medical || selectedPlayer.history.join(", ") || "Click a player to view their availability profile.")}</p>
+              </article>
+            </div>
+
+            <article class="msg-card">
+              <div class="msg-card-head">
+                <div>
+                  <h2>Live Response Board</h2>
+                  <p>${esc(selected?.title || "Selected session")} · green coming, red not coming, orange chase-up.</p>
+                </div>
+                <span class="msg-chip ${noReply.length ? "no-reply" : "available"}">${answered.length}/${rows.length} answered</span>
+              </div>
+              <div class="msg-status-grid">
+                <section class="msg-status-column available">
+                  <header><span>Available</span><strong>${available.length}</strong></header>
+                  <div class="msg-player-list">${playerRows(available)}</div>
+                </section>
+                <section class="msg-status-column unavailable">
+                  <header><span>Unavailable / Maybe</span><strong>${unavailable.length + maybe.length}</strong></header>
+                  <div class="msg-player-list">${playerRows([...unavailable, ...maybe])}</div>
+                </section>
+                <section class="msg-status-column chase">
+                  <header><span>No reply</span><strong>${noReply.length}</strong></header>
+                  <div class="msg-player-list">${playerRows(noReply)}</div>
+                </section>
+              </div>
+            </article>
+
+            <div class="msg-side-stack">
+              <article class="msg-card msg-send-card">
+                <div class="msg-card-head">
+                  <div>
+                    <h2>Send now</h2>
+                    <p>Manual push message to players already on Coach's Eye.</p>
+                  </div>
+                </div>
+                <div class="msg-form-grid">
+                  <div class="msg-form-row">
+                    <label>Message type
+                      <select id="requestType">
+                        <option>Coach announcement</option>
+                        <option>Availability request</option>
+                        <option>Training update</option>
+                        <option>Medical check-in</option>
+                      </select>
+                    </label>
+                    <label>Audience
+                      <select id="messageAudience" onchange="renderAudiencePicker()">
+                        <option value="squad">Full squad - ${state.players.length} players</option>
+                        <option value="no-reply">No-response players - ${noReplyPlayers.length} players</option>
+                        <option value="individual">Individual player</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div id="audience-picker-slot"></div>
+                  <label>Message
+                    <textarea id="messageBody" placeholder="Type a clear coach message here..."></textarea>
+                  </label>
+                  <div class="msg-template-actions">
+                    ${quickTemplates.map((body, idx) => `<button class="btn" type="button" onclick="prefillCoachMessage(decodeURIComponent('${encodeURIComponent(body)}'))">Template ${idx + 1}</button>`).join("")}
+                  </div>
+                  <button class="btn primary" type="button" onclick="sendInAppMessage()">Send push message</button>
+                </div>
+              </article>
+
+              <article class="msg-card">
+                <div class="msg-card-head">
+                  <div>
+                    <h2>Devices</h2>
+                    <p>Notification health for this browser and the squad.</p>
+                  </div>
+                </div>
+                <div id="push-status-card" class="msg-device-card" style="margin:16px">Loading notification status...</div>
+              </article>
+            </div>
+          </section>
+
+          <section class="msg-command-grid" style="grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr)">
+            <article class="msg-card">
+              <div class="msg-card-head">
+                <div>
+                  <h2>${state._editingScheduleId ? "Edit automation" : "Automation builder"}</h2>
+                  <p>Build recurring messages without rewriting the same text every week. Use {{first_name}} for notification personalisation.</p>
+                </div>
+                ${state._editingScheduleId ? `<button class="btn" type="button" onclick="cancelScheduleForm()">Cancel edit</button>` : ""}
+              </div>
+              <div class="msg-form-grid">
+                <div class="msg-form-row">
+                  <label>Campaign name
+                    <input id="tplName" placeholder="e.g. Sunday injury check" value="${esc(state.currentTemplateName || "")}">
+                  </label>
+                  <label>Send time
+                    <input id="autoTime" type="time" value="${state.autoSendSchedule?.time || "09:00"}">
+                  </label>
+                </div>
+                <label>Message body
+                  <textarea id="availTpl" placeholder="Write the automated message...">${esc(state.availabilityTemplate || "")}</textarea>
+                </label>
+                <label>Send automatically on
+                  <div class="msg-day-picker">
+                    ${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => `<button class="${campaignDays.includes(d) ? "active" : ""}" type="button" onclick="toggleScheduleDay('${d}')">${d}</button>`).join("")}
+                  </div>
+                </label>
+                <label>Segment
+                  <div class="msg-segment-toggle">
+                    <button class="${campaignAudience === "all" ? "active" : ""}" type="button" onclick="setScheduleAudience('all')">Full squad</button>
+                    <button class="${campaignAudience === "no-reply" ? "active" : ""}" type="button" onclick="setScheduleAudience('no-reply')">No-reply chase-up</button>
+                  </div>
+                </label>
+                ${campaignAudience === "no-reply" ? `<p class="muted" style="font-size:12px;padding:9px 11px;border:1px solid rgba(245,158,11,0.24);border-radius:9px;background:rgba(245,158,11,0.08)">Only sends to players who have not answered an availability request in the last seven days.</p>` : ""}
+                <button class="btn primary" type="button" onclick="saveAvailabilityTemplate()">${state._editingScheduleId ? "Save automation changes" : "Save and activate automation"}</button>
+              </div>
+            </article>
+
+            <article class="msg-card">
+              <div class="msg-card-head">
+                <div>
+                  <h2>Scale path</h2>
+                  <p>The same system can later support multi-team clubs, parent accounts and native app pushes.</p>
+                </div>
+              </div>
+              <div class="msg-roadmap" style="padding:16px">
+                <article><strong>Segments</strong><small>Full squad, no-reply, injured, training group, age grade.</small></article>
+                <article><strong>Campaigns</strong><small>Training, matchday, medical, selection, staff-only.</small></article>
+                <article><strong>Audit log</strong><small>Every send has a timestamp, target count and failed count.</small></article>
+                <article><strong>Future app</strong><small>Same API can power iOS/Android notifications later.</small></article>
+              </div>
+            </article>
+          </section>
+
+          <section class="msg-card" style="padding:0;overflow:hidden">
+            <details class="srv-panel" open ontoggle="if(this.open) loadLiveSchedules()">
+              <summary>Active automations</summary>
+              <div id="live-schedules-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading...</p></div>
+            </details>
+            <details class="srv-panel" open ontoggle="if(this.open) loadLiveTemplates()">
+              <summary>Message templates</summary>
+              <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading...</p></div>
+            </details>
+            <details class="srv-panel" open ontoggle="if(this.open) loadLiveLog()">
+              <summary>Delivery log</summary>
+              <div id="live-log-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading...</p></div>
+            </details>
+          </section>
+        </div>`;
+    }
+
+    function prefillCoachMessage(body) {
+      const textarea = document.getElementById("messageBody");
+      if (textarea) {
+        textarea.value = body;
+        textarea.focus();
+      }
+    }
+
     function renderAudiencePicker() {
       const slot     = document.getElementById('audience-picker-slot');
       const audience = document.getElementById('messageAudience')?.value || 'squad';
@@ -2820,7 +3129,11 @@
     function getMessageRecipients(audience, playerId) {
       if (audience === "individual") return state.players.filter(p => p.id === playerId);
       if (audience === "available")  return byStatus("available");
-      if (audience === "no-reply")   return byStatus("no-reply");
+      if (audience === "no-reply") {
+        const selected = state.schedule.find(s => s.id === (state.messageDetail || "tue")) || state.schedule[0];
+        const k = selected ? sessionKey(selected.id) : "game";
+        return state.players.filter(p => (p[k] || "no-reply") === "no-reply");
+      }
       return state.players;
     }
 
@@ -4083,8 +4396,17 @@
         if (changed) saveState('Live availability synced');
         // Update timestamp label
         if (ts) ts.textContent = `Live · ${new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}`;
-        // Re-render the session detail panels inline (avoids full re-render flash)
+        // Re-render the session detail panels inline, then repopulate the async
+        // server-backed panels. This keeps Redis replies visible without losing
+        // the scheduled-message/log widgets after the refresh.
         renderMessageCenter();
+        setTimeout(() => {
+          renderAudiencePicker();
+          renderPushStatusCard();
+          loadLiveSchedules();
+          loadLiveTemplates();
+          loadLiveLog();
+        }, 50);
       } catch(e) {
         console.warn('[refreshLiveAvailability]', e);
         if (ts) ts.textContent = 'Refresh failed';
