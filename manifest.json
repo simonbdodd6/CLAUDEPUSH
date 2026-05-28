@@ -1,6 +1,6 @@
 {
-  "name": "Coach's Eye · Boitsfort RFC",
-  "short_name": "Coach's Eye",
+  "name": "coacheseyeGPT · Boitsfort RFC",
+  "short_name": "coacheseyeGPT",
   "description": "Rugby team management and player messaging for Boitsfort RFC",
   "start_url": "/",
   "display": "standalone",

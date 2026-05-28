@@ -1,6 +1,6 @@
-# Coach's Eye Finished MVP
+# coacheseyeGPT Finished MVP
 
-This is the current Coach's Eye coach/player availability MVP, with scheduled browser push notifications for player messaging.
+This is the current coacheseyeGPT coach/player availability MVP, with scheduled browser push notifications for player messaging.
 
 ## Main App File
 
@@ -14,7 +14,7 @@ That file contains the complete single-file prototype.
 
 ## What Is Included
 
-- `index.html` - the working Coach's Eye MVP app.
+- `index.html` - the working coacheseyeGPT MVP app.
 - `api/` - Vercel serverless push, scheduling and availability routes backed by Upstash Redis.
 - `sw.js` - browser push notification worker and availability response actions.
 - `PUSH_NOTIFICATIONS.md` - deployment and test setup instructions.

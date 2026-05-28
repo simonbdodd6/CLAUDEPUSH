@@ -1,4 +1,4 @@
-# Coach's Eye Auth Notes
+# coacheseyeGPT Auth Notes
 
 This MVP uses lightweight mock login so the coach/player workflow can be tested today without setting up Firebase credentials.
 

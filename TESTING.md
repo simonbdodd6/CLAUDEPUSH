@@ -1,4 +1,4 @@
-# Coach's Eye Real MVP Testing
+# coacheseyeGPT Real MVP Testing
 
 ## Scope
 

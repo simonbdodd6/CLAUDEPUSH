@@ -1,14 +1,14 @@
-# Coach's Eye — Midnight Stadium Design Upgrade Report
+# coacheseyeGPT — Midnight Stadium Design Upgrade Report
 
 **Date:** 2026-05-28  
-**Project:** Boitsfort RFC · Coach's Eye PWA  
+**Project:** Boitsfort RFC · coacheseyeGPT PWA
 **Scope:** Complete visual overhaul of `index.html` — dark design system from scratch
 
 ---
 
 ## Summary
 
-Transformed the Coach's Eye MVP from a light utility app into a premium dark-first sports tech product. The overhaul is 100% confined to `index.html` — zero new dependencies, all functionality preserved.
+Transformed the coacheseyeGPT MVP from a light utility app into a premium dark-first sports tech product. The overhaul is 100% confined to `index.html` — zero new dependencies, all functionality preserved.
 
 ---
 

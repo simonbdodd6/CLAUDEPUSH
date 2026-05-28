@@ -1,4 +1,4 @@
-// Coach's Eye service worker: receive push messages and record player replies.
+// coacheseyeGPT service worker: receive push messages and record player replies.
 const APP_URL = '/';
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -8,7 +8,7 @@ self.addEventListener('push', event => {
   if (!event.data) return;
   let payload;
   try { payload = event.data.json(); }
-  catch { payload = { title: "Coach's Eye", body: event.data.text() }; }
+  catch { payload = { title: "coacheseyeGPT", body: event.data.text() }; }
 
   const options = {
     body: payload.body || '',
@@ -24,7 +24,7 @@ self.addEventListener('push', event => {
     },
   };
   if (Array.isArray(payload.actions) && payload.actions.length) options.actions = payload.actions;
-  event.waitUntil(self.registration.showNotification(payload.title || "Coach's Eye", options));
+  event.waitUntil(self.registration.showNotification(payload.title || "coacheseyeGPT", options));
 });
 
 async function recordAvailability(response, sessionId) {

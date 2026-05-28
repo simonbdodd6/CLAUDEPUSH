@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   const responded = await recentResponders(7);
   const targets = subscribers.filter(item => !responded.has(item.label));
   const title = 'Availability reminder';
-  const body = "Hi {{first_name}}! Please set your availability for this week's sessions and match in Coach's Eye. - {{coach_name}}";
+  const body = "Hi {{first_name}}! Please set your availability for this week's sessions and match in coacheseyeGPT. - {{coach_name}}";
   const outcomes = await Promise.allSettled(targets.map(({ subscription, label }) =>
     webpush.sendNotification(subscription, JSON.stringify({
       title, body: resolveVariables(body, { label }), from: 'Coach',

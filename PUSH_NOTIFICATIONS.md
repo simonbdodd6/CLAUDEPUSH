@@ -1,6 +1,6 @@
 # Scheduled Push Notifications
 
-Coach's Eye now sends browser push notifications instead of WhatsApp messages. Players enable notifications once on their phone or computer, then the coach can send an availability request or schedule recurring reminders from Message Center.
+coacheseyeGPT now sends browser push notifications instead of WhatsApp messages. Players enable notifications once on their phone or computer, then the coach can send an availability request or schedule recurring reminders from Message Center.
 
 ## One-Time Vercel Setup
 

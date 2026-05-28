@@ -1,8 +1,13 @@
-# Coach's Eye Real Workflow MVP Changelog
+# coacheseyeGPT Real Workflow MVP Changelog
+
+## 2026-05-28 - Rename to coacheseyeGPT
+
+- Renamed the visible product branding to `coacheseyeGPT` across the app shell, browser title, PWA manifest, notification fallbacks and project docs.
+- Kept the existing Vercel project URL and backend storage keys stable so deployed invites, push subscriptions and Redis data continue working.
 
 ## 2026-05-28 - Messaging Command Centre v2
 
-- Added a new Coach's Eye messaging command centre as a cleaner alternative to the earlier WhatsApp-style flow.
+- Added a new coacheseyeGPT messaging command centre as a cleaner alternative to the earlier WhatsApp-style flow.
 - Kept the existing push notification backend, Redis schedules, templates, delivery log and availability reply system.
 - Reworked the Message Center into a scalable coach workflow: session audience, live response board, send-now panel, device status, automation builder and delivery history.
 - Added colour-coded player availability groups: available, unavailable/maybe and no reply.
@@ -12,7 +17,7 @@
 
 ## 2026-05-27 - Push Messaging Build
 
-- Replaced the remaining Matchday WhatsApp action with a Coach's Eye notification action.
+- Replaced the remaining Matchday WhatsApp action with a coacheseyeGPT notification action.
 - Completed Vercel serverless API routes for subscriptions, templates, schedules, availability replies, logs, manual push sends and cron delivery.
 - Added Upstash Redis storage under configurable `app:` keys with read fallback for earlier `ce:` pilot data.
 - Fixed scheduled chase-up messages so `No-reply only` is saved and respected at delivery time.

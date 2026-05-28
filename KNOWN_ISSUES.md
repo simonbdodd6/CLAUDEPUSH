@@ -1,4 +1,4 @@
-# Coach's Eye Real MVP Known Issues
+# coacheseyeGPT Real MVP Known Issues
 
 ## Current Prototype Limits
 
