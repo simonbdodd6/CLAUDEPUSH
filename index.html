@@ -2152,31 +2152,40 @@
     }
 
     function mapRowToPlayer(row, headers) {
-      // Two-pass: exact match first, then substring/partial match
-      const findCol = (...keys) => {
+      // Returns value of first column whose header matches any of the given keys.
+      // Pass 1: exact. Pass 2: substring.
+      const getCol = (...keys) => {
         const lkeys = keys.map(k => k.toLowerCase());
-        // Pass 1: exact
-        for (const k of lkeys) {
-          const idx = headers.findIndex(h => h === k);
-          if (idx >= 0) { const v = String(row[idx] ?? '').trim(); if (v) return v; }
-        }
-        // Pass 2: header contains key OR key contains header
-        for (const k of lkeys) {
-          const idx = headers.findIndex(h => h.length > 1 && (h.includes(k) || k.includes(h)));
-          if (idx >= 0) { const v = String(row[idx] ?? '').trim(); if (v) return v; }
+        for (const pass of [1, 2]) {
+          for (const k of lkeys) {
+            const idx = headers.findIndex(h =>
+              pass === 1 ? h === k : h.length > 1 && (h.includes(k) || k.includes(h))
+            );
+            if (idx >= 0) { const v = String(row[idx] ?? '').trim(); if (v) return v; }
+          }
         }
         return '';
       };
-      const name = findCol('name','full name','full_name','joueur','player','nom',
-                           'prénom + nom','nom complet','firstname','first name',
-                           'prenom','surname','last name','lastname','player name',
-                           'players','noms','joueurs');
+
+      // Handle split first-name / last-name columns (e.g. Prénom + Nom)
+      const firstName = getCol('prénom','prenom','firstname','first name','given name','voornaam','forename');
+      const lastName  = getCol('nom','last name','lastname','surname','family name','achternaam','name de famille');
+      const fullName  = getCol('name','full name','full_name','nom complet','joueur','player','players','naam');
+
+      let name = '';
+      if (firstName && lastName) name = firstName + ' ' + lastName;
+      else if (fullName)          name = fullName;
+      else if (firstName)         name = firstName;
+      else if (lastName)          name = lastName;
+
       if (!name) return null;
+
       return {
         name,
-        position: findCol('position','pos','poste','rôle','role','numero','number','numéro') || 'SUB — Squad player',
-        phone:    findCol('phone','mobile','gsm','tel','téléphone','telephone','phone number','mob','gsm/mobile') || '',
-        email:    findCol('email','mail','e-mail','e_mail','adresse email','adresse mail','courriel') || '',
+        position: getCol('position','pos','poste','rôle','role','numero','number','numéro') || 'SUB — Squad player',
+        // Numbered variants first (Email 1, GSM 1) then generic fallbacks
+        phone:    getCol('gsm 1','gsm1','gsm','téléphone','telephone','phone','mobile','mob','tel','phone number') || '',
+        email:    getCol('email 1','email1','email','mail','e-mail','courriel','adresse email') || '',
       };
     }
 
@@ -2204,35 +2213,41 @@
           const ws  = wb.Sheets[wb.SheetNames[0]];
           rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
         }
-        if (!rows || rows.length < 1) return showToast('⚠️ File appears empty');
-        // Filter out completely blank rows
+
+        if (!rows || !rows.length) return showToast('⚠️ File appears empty');
         const allRows = rows.filter(r => r.some(c => String(c).trim()));
         if (!allRows.length) return showToast('⚠️ No data found in file');
 
-        // Detect whether row 0 is a header row or data
-        // Heuristic: if any cell in row 0 looks like a known header keyword, treat as header
-        const row0 = (allRows[0] || []).map(h => String(h).toLowerCase().trim());
-        const headerKeywords = ['name','nom','joueur','player','position','phone','email','mobile','gsm','prenom','surname'];
-        const looksLikeHeader = row0.some(h => headerKeywords.some(k => h.includes(k)));
+        // Find the best header row: scan first 5 rows, pick whichever has the most
+        // cells that match known column keywords. Handles title rows above the header.
+        const hdrKW = ['prénom','prenom','nom','name','joueur','player','email','gsm',
+                       'phone','mobile','position','function','tel','téléphone',
+                       'address','adresse','surname','lastname','firstname'];
+        let headerIdx = -1, bestScore = 0;
+        for (let i = 0; i < Math.min(5, allRows.length); i++) {
+          const cells = allRows[i].map(h => String(h).toLowerCase().trim());
+          const score = cells.filter(h => h.length > 0 && hdrKW.some(k => h === k || h.includes(k) || k.includes(h))).length;
+          if (score > bestScore) { bestScore = score; headerIdx = i; }
+        }
 
         let headers, dataRows;
-        if (looksLikeHeader) {
-          headers  = row0;
-          dataRows = allRows.slice(1).filter(r => r.some(c => String(c).trim()));
+        if (headerIdx >= 0 && bestScore >= 2) {
+          // Found a real header row
+          headers  = allRows[headerIdx].map(h => String(h).toLowerCase().trim());
+          dataRows = allRows.slice(headerIdx + 1).filter(r => r.some(c => String(c).trim()));
         } else {
-          // No header row — treat first column as names, synthesise dummy headers
+          // No recognisable header — assume first column contains names
           headers  = allRows[0].map((_, i) => i === 0 ? 'name' : `col${i}`);
           dataRows = allRows;
         }
 
-        if (!dataRows.length) return showToast('⚠️ No data rows found in file');
+        if (!dataRows.length) return showToast('⚠️ No data rows found after the header');
         let parsed = dataRows.map(r => mapRowToPlayer(r, headers)).filter(Boolean);
 
-        // Last-resort fallback: use first non-empty column as names
+        // Last-resort fallback: use first populated column as names
         if (!parsed.length) {
           const firstColIdx = headers.findIndex((_, i) => dataRows.some(r => String(r[i] ?? '').trim()));
           if (firstColIdx >= 0) {
-            console.warn('[import] No name column matched — falling back to column', firstColIdx, '("' + headers[firstColIdx] + '"). Detected headers:', headers);
             parsed = dataRows.map(r => {
               const n = String(r[firstColIdx] ?? '').trim();
               return n ? { name: n, position: 'SUB — Squad player', phone: '', email: '' } : null;
@@ -2240,7 +2255,7 @@
           }
           if (!parsed.length) {
             const detected = headers.filter(Boolean).slice(0, 8).join(', ') || '(none)';
-            return showToast(`⚠️ Couldn't find a Name column. Columns detected: ${detected}`);
+            return showToast(`⚠️ Couldn't find player names. Columns seen: ${detected}`);
           }
         }
         showImportPreview(parsed);
