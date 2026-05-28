@@ -2,6 +2,10 @@
   "name": "boitsfort-coachseye",
   "version": "2.0.0",
   "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
   "dependencies": {
     "web-push": "^3.6.7"
   }

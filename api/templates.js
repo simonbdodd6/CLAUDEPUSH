@@ -1,91 +1,70 @@
-// api/templates.js — Message template CRUD
-// GET            → { templates: [...] }
-// POST   { id?, name, title, body, category? } → save / upsert
-// DELETE { id }  → remove one template
+// Message template CRUD backed by Upstash Redis.
+import { kvGet, kvSet, kvConfigured } from './_kv.js';
+import { key, legacyKey } from './_keys.js';
+import { setCors } from './_http.js';
 
-import { kvGet, kvSet } from './_kv.js';
-
-const TEMPLATES_KEY = 'ce:templates';
-
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
-// ── Seed defaults (only used when no templates exist yet) ────────────────────
+const TEMPLATES_KEY = key('templates');
+const LEGACY_TEMPLATES_KEY = legacyKey('templates');
 const DEFAULT_TEMPLATES = [
   {
-    id:       'tpl-availability',
-    name:     'Weekly Availability',
-    category: 'availability',
-    title:    "Boitsfort RFC — Availability Check",
-    body:     "Hi {{first_name}}! 👋 Please confirm your availability for {{session_day}} (19:45) and {{match_day}}. Reply AVAILABLE or UNAVAILABLE and flag any injuries. Thanks — {{coach_name}}",
+    id: 'tpl-availability', name: 'Weekly Availability', category: 'availability',
+    title: "Coach's Eye - Availability Check",
+    body: 'Hi {{first_name}}! Please confirm your availability for {{session_day}} and {{match_day}}. Tap a response below. Thanks - {{coach_name}}',
   },
   {
-    id:       'tpl-training-reminder',
-    name:     'Training Reminder',
-    category: 'training',
-    title:    "Training Tonight — {{session_day}}",
-    body:     "Hi {{first_name}}! Reminder: training tonight {{session_day}} at {{session_time}} at the usual ground. See you there! 🏉 — {{coach_name}}",
-  },
-  {
-    id:       'tpl-match-reminder',
-    name:     'Match Day Reminder',
-    category: 'match',
-    title:    "Match Day — {{match_day}} 🏉",
-    body:     "Hi {{first_name}}! Big game {{match_day}}. Check the app for kick-off time, venue, and your position. Give it everything for Boitsfort RFC! — {{coach_name}}",
-  },
-  {
-    id:       'tpl-selection',
-    name:     'Team Selection',
-    category: 'match',
-    title:    "Team Selected — {{match_day}}",
-    body:     "Hi {{first_name}}! The team for {{match_day}} has been posted. Open the Coach's Eye app to see your position. Any questions, speak to the coach. — {{coach_name}}",
+    id: 'tpl-training-reminder', name: 'Training Reminder', category: 'training',
+    title: 'Training Reminder - {{session_day}}',
+    body: 'Hi {{first_name}}! Training is at {{session_time}}. Open Coach\'s Eye for the plan. - {{coach_name}}',
   },
 ];
 
+async function readTemplates() {
+  const current = await kvGet(TEMPLATES_KEY);
+  if (Array.isArray(current) && current.length) return current;
+  const legacy = await kvGet(LEGACY_TEMPLATES_KEY);
+  if (Array.isArray(legacy) && legacy.length) return legacy;
+  const seeded = DEFAULT_TEMPLATES.map(template => ({ ...template, createdAt: new Date().toISOString() }));
+  await kvSet(TEMPLATES_KEY, seeded);
+  return seeded;
+}
+
 export default async function handler(req, res) {
-  Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
 
-  // ── GET ────────────────────────────────────────────────────────────────────
   if (req.method === 'GET') {
-    let templates = await kvGet(TEMPLATES_KEY);
-    if (!Array.isArray(templates) || templates.length === 0) {
-      templates = DEFAULT_TEMPLATES;
-      await kvSet(TEMPLATES_KEY, templates); // seed once
-    }
-    return res.status(200).json({ templates });
+    return res.status(200).json({ templates: await readTemplates() });
   }
 
-  // ── POST: create / upsert ─────────────────────────────────────────────────
   if (req.method === 'POST') {
-    const { id, name, title, body, category } = req.body || {};
-    if (!name || !body) {
-      return res.status(400).json({ error: 'name and body are required' });
+    const { id, name, category, title, body } = req.body || {};
+    if (!String(name || '').trim() || !String(title || '').trim() || !String(body || '').trim()) {
+      return res.status(400).json({ error: 'name, title and body are required' });
     }
-    const templates = (await kvGet(TEMPLATES_KEY)) || DEFAULT_TEMPLATES;
-    const entry = {
-      id:       id || `tpl-${Date.now()}`,
-      name:     name.slice(0, 80),
-      category: category || 'custom',
-      title:    (title || "Coach's Eye Message").slice(0, 120),
-      body:     body.slice(0, 500),
-      updatedAt: new Date().toISOString(),
+    const templates = await readTemplates();
+    const existing = templates.find(template => template.id === id);
+    const now = new Date().toISOString();
+    const template = {
+      id: String(id || `tpl-${Date.now()}`),
+      name: String(name).trim().slice(0, 80),
+      category: String(category || 'custom').slice(0, 30),
+      title: String(title).trim().slice(0, 120),
+      body: String(body).trim().slice(0, 1000),
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
     };
-    const idx = templates.findIndex(t => t.id === entry.id);
-    if (idx >= 0) templates[idx] = entry; else templates.push(entry);
-    await kvSet(TEMPLATES_KEY, templates);
-    return res.status(201).json({ ok: true, template: entry });
+    const next = existing
+      ? templates.map(item => item.id === template.id ? template : item)
+      : [...templates, template];
+    await kvSet(TEMPLATES_KEY, next);
+    return res.status(200).json({ ok: true, template });
   }
 
-  // ── DELETE ─────────────────────────────────────────────────────────────────
   if (req.method === 'DELETE') {
     const { id } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id required' });
-    const templates = ((await kvGet(TEMPLATES_KEY)) || DEFAULT_TEMPLATES)
-      .filter(t => t.id !== id);
+    const templates = (await readTemplates()).filter(template => template.id !== id);
     await kvSet(TEMPLATES_KEY, templates);
     return res.status(200).json({ ok: true, count: templates.length });
   }

@@ -1,99 +1,96 @@
-// api/schedules.js — Scheduled send CRUD
-// GET             → { schedules: [...] }
-// POST  { id?, templateId, name, day, time, active, coachName? } → save / upsert
-// PUT   { id, active }   → toggle active
-// DELETE { id }          → remove
+// Scheduled push-message CRUD. Times are stored exactly as entered locally.
+import { kvGet, kvSet, kvConfigured } from './_kv.js';
+import { key, legacyKey } from './_keys.js';
+import { setCors } from './_http.js';
 
-import { kvGet, kvSet } from './_kv.js';
+const SCHEDULES_KEY = key('schedules');
+const LEGACY_SCHEDULES_KEY = legacyKey('schedules');
+const DAYS = new Set(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
 
-const SCHEDULES_KEY = 'ce:schedules';
+async function readSchedules() {
+  const current = await kvGet(SCHEDULES_KEY);
+  if (Array.isArray(current)) return current;
+  const legacy = await kvGet(LEGACY_SCHEDULES_KEY);
+  return Array.isArray(legacy) ? legacy : [];
+}
 
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
-/**
- * Schedule shape:
- * {
- *   id:          string   — unique identifier
- *   name:        string   — human label  e.g. "Weekly availability check"
- *   templateId:  string   — references a template in ce:templates
- *   day:         string   — "monday" | "tuesday" | … | "sunday"
- *   time:        string   — "HH:MM" UTC  e.g. "08:00"
- *   active:      boolean
- *   coachName:   string   — injected as {{coach_name}}
- *   lastSentAt:  ISO string | null
- *   createdAt:   ISO string
- * }
- */
+function normalizeDays(days, day) {
+  const incoming = Array.isArray(days) && days.length ? days : [day || 'Mon'];
+  const normalized = incoming.map(value => {
+    const raw = String(value).trim();
+    return raw.charAt(0).toUpperCase() + raw.slice(1, 3).toLowerCase();
+  });
+  return [...new Set(normalized)].filter(value => DAYS.has(value));
+}
 
 export default async function handler(req, res) {
-  Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
 
-  // ── GET ────────────────────────────────────────────────────────────────────
   if (req.method === 'GET') {
-    const schedules = (await kvGet(SCHEDULES_KEY)) || [];
-    return res.status(200).json({ schedules });
+    return res.status(200).json({ schedules: await readSchedules() });
   }
 
-  // ── POST: create / upsert ─────────────────────────────────────────────────
   if (req.method === 'POST') {
-    const { id, templateId, name, day, days, time, active, coachName } = req.body || {};
-    if (!templateId || !time) {
-      return res.status(400).json({ error: 'templateId and time are required' });
+    const { id, templateId, name, days, day, time, audience, active, coachName, sessionId } = req.body || {};
+    const normalizedDays = normalizeDays(days, day);
+    if (!String(name || '').trim() || !templateId || !/^\d{2}:\d{2}$/.test(String(time || '')) || !normalizedDays.length) {
+      return res.status(400).json({ error: 'name, templateId, valid days and HH:MM time are required' });
     }
-    // Normalise days: accept multi-day array (new UI) or single day (legacy)
-    const daysArr = Array.isArray(days) && days.length
-      ? days
-      : day ? [day.charAt(0).toUpperCase() + day.slice(1, 3)] : ['Mon'];
-    const dayStr  = (daysArr[0] || 'Mon').toLowerCase();
-
-    const schedules = (await kvGet(SCHEDULES_KEY)) || [];
-    const entry = {
-      id:         id || `sch-${Date.now()}`,
-      name:       (name || 'Untitled schedule').slice(0, 80),
-      templateId,
-      days:       daysArr,              // full multi-day array
-      day:        dayStr,               // legacy single-day fallback
-      time,
-      active:     active !== false,
-      coachName:  coachName || 'Coach',
-      lastSentAt: null,
-      createdAt:  new Date().toISOString(),
+    if (audience && !['all', 'no-reply'].includes(audience)) {
+      return res.status(400).json({ error: 'audience must be all or no-reply' });
+    }
+    const schedules = await readSchedules();
+    const existing = schedules.find(schedule => schedule.id === id);
+    const now = new Date().toISOString();
+    const schedule = {
+      id: String(id || `sch-${Date.now()}`),
+      name: String(name).trim().slice(0, 80),
+      templateId: String(templateId),
+      days: normalizedDays,
+      day: normalizedDays[0].toLowerCase(),
+      time: String(time),
+      audience: audience || 'all',
+      active: active !== false,
+      coachName: String(coachName || 'Coach').slice(0, 80),
+      sessionId: String(sessionId || existing?.sessionId || 'game').slice(0, 80),
+      lastSentAt: existing?.lastSentAt || null,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
     };
-    const idx = schedules.findIndex(s => s.id === entry.id);
-    if (idx >= 0) {
-      // preserve lastSentAt and createdAt when updating
-      entry.lastSentAt = schedules[idx].lastSentAt;
-      entry.createdAt  = schedules[idx].createdAt;
-      schedules[idx]   = entry;
-    } else {
-      schedules.push(entry);
-    }
-    await kvSet(SCHEDULES_KEY, schedules);
-    return res.status(201).json({ ok: true, schedule: entry });
+    const next = existing
+      ? schedules.map(item => item.id === schedule.id ? schedule : item)
+      : [...schedules, schedule];
+    await kvSet(SCHEDULES_KEY, next);
+    return res.status(200).json({ ok: true, schedule });
   }
 
-  // ── PUT: toggle active / patch fields ─────────────────────────────────────
   if (req.method === 'PUT') {
     const { id, ...patch } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id required' });
-    const schedules = (await kvGet(SCHEDULES_KEY)) || [];
-    const idx = schedules.findIndex(s => s.id === id);
-    if (idx < 0) return res.status(404).json({ error: 'Schedule not found' });
-    schedules[idx] = { ...schedules[idx], ...patch };
+    const schedules = await readSchedules();
+    const index = schedules.findIndex(schedule => schedule.id === id);
+    if (index < 0) return res.status(404).json({ error: 'Schedule not found' });
+    const permitted = ['active', 'name', 'time', 'audience', 'days', 'coachName', 'sessionId'];
+    const safePatch = Object.fromEntries(Object.entries(patch).filter(([field]) => permitted.includes(field)));
+    if (safePatch.audience && !['all', 'no-reply'].includes(safePatch.audience)) {
+      return res.status(400).json({ error: 'audience must be all or no-reply' });
+    }
+    if (safePatch.days) {
+      safePatch.days = normalizeDays(safePatch.days);
+      if (!safePatch.days.length) return res.status(400).json({ error: 'At least one valid day is required' });
+      safePatch.day = safePatch.days[0].toLowerCase();
+    }
+    schedules[index] = { ...schedules[index], ...safePatch, updatedAt: new Date().toISOString() };
     await kvSet(SCHEDULES_KEY, schedules);
-    return res.status(200).json({ ok: true, schedule: schedules[idx] });
+    return res.status(200).json({ ok: true, schedule: schedules[index] });
   }
 
-  // ── DELETE ─────────────────────────────────────────────────────────────────
   if (req.method === 'DELETE') {
     const { id } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id required' });
-    const schedules = ((await kvGet(SCHEDULES_KEY)) || []).filter(s => s.id !== id);
+    const schedules = (await readSchedules()).filter(schedule => schedule.id !== id);
     await kvSet(SCHEDULES_KEY, schedules);
     return res.status(200).json({ ok: true, count: schedules.length });
   }

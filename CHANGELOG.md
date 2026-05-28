@@ -1,5 +1,26 @@
 # Coach's Eye Real Workflow MVP Changelog
 
+## 2026-05-28 - Messaging Command Centre v2
+
+- Added a new Coach's Eye messaging command centre as a cleaner alternative to the earlier WhatsApp-style flow.
+- Kept the existing push notification backend, Redis schedules, templates, delivery log and availability reply system.
+- Reworked the Message Center into a scalable coach workflow: session audience, live response board, send-now panel, device status, automation builder and delivery history.
+- Added colour-coded player availability groups: available, unavailable/maybe and no reply.
+- Fixed no-reply targeting so the coach chases players based on the currently selected session instead of only the matchday status.
+- Preserved typed automation drafts when switching schedule days or audience segments.
+- Refreshed async notification panels after live availability sync so replies, schedules, templates and logs stay visible after a refresh.
+
+## 2026-05-27 - Push Messaging Build
+
+- Replaced the remaining Matchday WhatsApp action with a Coach's Eye notification action.
+- Completed Vercel serverless API routes for subscriptions, templates, schedules, availability replies, logs, manual push sends and cron delivery.
+- Added Upstash Redis storage under configurable `app:` keys with read fallback for earlier `ce:` pilot data.
+- Fixed scheduled chase-up messages so `No-reply only` is saved and respected at delivery time.
+- Added personalized Web Push messages, notification response actions and service-worker response saving.
+- Removed the hard-coded browser push key; the public VAPID key is now supplied safely from `/api/config`.
+- Added expired-device cleanup, send logs, cron authentication and safer `lastSentAt` schedule updates.
+- Added `PUSH_NOTIFICATIONS.md`, `.env.example`, app icon, and automated backend tests.
+
 ## 2026-05-21
 
 - Created a safe new build file: `coach-eye-real-mvp.html`.

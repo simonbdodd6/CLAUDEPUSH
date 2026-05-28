@@ -1,31 +1,16 @@
-// api/log.js — Message delivery log reader
-// GET ?limit=N  → { log: [...], count: N }
-// DELETE        → clears entire log (coach use only)
-
-import { kvLrange, kvDel } from './_kv.js';
-
-const LOG_KEY = 'ce:message_log';
-
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'GET, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+import { kvLrange, kvConfigured } from './_kv.js';
+import { key, legacyKey } from './_keys.js';
+import { setCors } from './_http.js';
 
 export default async function handler(req, res) {
-  Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet', log: [] });
 
-  if (req.method === 'GET') {
-    const limit = Math.min(parseInt(req.query?.limit || '50', 10), 500);
-    const log   = await kvLrange(LOG_KEY, 0, limit - 1);
-    return res.status(200).json({ log, count: log.length });
-  }
-
-  if (req.method === 'DELETE') {
-    await kvDel(LOG_KEY);
-    return res.status(200).json({ ok: true });
-  }
-
-  return res.status(405).json({ error: 'Method not allowed' });
+  const requested = Number.parseInt(req.query?.limit || '10', 10);
+  const limit = Number.isFinite(requested) ? Math.max(1, Math.min(requested, 100)) : 10;
+  let log = await kvLrange(key('message_log'), 0, limit - 1);
+  if (!log.length) log = await kvLrange(legacyKey('message_log'), 0, limit - 1);
+  return res.status(200).json({ log });
 }

@@ -2,11 +2,11 @@
 
 ## Scope
 
-This pass audited the coach/player availability workflow without redesigning the UI or rewriting the app.
+This pass completed and audited the coach/player browser push availability workflow without redesigning the UI or rewriting the app.
 
 ## Manual Test Flow
 
-1. Open `coach-eye-real-mvp.html`.
+1. Open the deployed `index.html` application.
 2. Confirm the header shows the demo coach account and a saved status.
 3. In Coach View, open Message Center.
 4. Send a Tuesday training availability request.
@@ -22,12 +22,12 @@ This pass audited the coach/player availability workflow without redesigning the
 14. Change availability in one tab.
 15. Confirm the other tab updates when the newer saved revision is detected.
 
-## Verification Commands
+## Automated Verification Commands
 
 ```bash
 node - <<'NODE'
 const fs = require('fs');
-const html = fs.readFileSync('coach-eye-real-mvp.html', 'utf8');
+const html = fs.readFileSync('index.html', 'utf8');
 for (const [i, match] of [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].entries()) {
   new Function(match[1]);
   console.log(`script ${i + 1} syntax ok`);
@@ -38,6 +38,20 @@ NODE
 ```bash
 curl -I http://localhost:8123/coach-eye-real-mvp.html
 ```
+
+```bash
+npm test
+```
+
+The automated tests cover message template variables, timezone scheduling, saved no-reply targeting, saved availability responses, and rejection of unregistered response devices. They use simulated Redis storage and do not consume live Upstash requests.
+
+## Live Push Test
+
+1. Configure Vercel settings from `PUSH_NOTIFICATIONS.md` and redeploy.
+2. Open Player View on a phone, enable notifications, and leave the page installed/open as required by the browser.
+3. In Coach View > Message Center, send an availability message.
+4. Tap a response action on the phone notification.
+5. Refresh the Message Center status list and confirm the answer is saved.
 
 ## Test Accounts
 
@@ -55,4 +69,3 @@ curl -I http://localhost:8123/coach-eye-real-mvp.html
 - Multiple tab revision sync.
 - Blank message protection.
 - Message thread persistence.
-

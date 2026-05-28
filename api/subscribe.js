@@ -4,16 +4,13 @@
 // DELETE { endpoint: string } → removes
 
 import { load, save } from './_lib.js';
-
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+import { setCors } from './_http.js';
+import { kvConfigured } from './_kv.js';
 
 export default async function handler(req, res) {
-  Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
 
   // ── GET: subscription count ──────────────────────────────────────────────
   if (req.method === 'GET') {

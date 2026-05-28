@@ -5,6 +5,10 @@
 const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
+export function kvConfigured() {
+  return Boolean(REDIS_URL && REDIS_TOKEN);
+}
+
 /**
  * Execute a single Redis command via Upstash REST.
  * Uses POST / with JSON body — handles complex values safely.
@@ -67,6 +71,18 @@ export async function kvLrange(key, start = 0, end = 99) {
 /** Trim a list to at most `maxLen` items (keep newest) */
 export async function kvLtrim(key, maxLen = 200) {
   return redis('LTRIM', key, '0', String(maxLen - 1));
+}
+
+/** Find Redis keys matching a prefix pattern, used for recent availability responses. */
+export async function kvScanKeys(pattern) {
+  const keys = [];
+  let cursor = '0';
+  do {
+    const page = await redis('SCAN', cursor, 'MATCH', pattern, 'COUNT', '250');
+    cursor = String(page?.[0] ?? '0');
+    if (Array.isArray(page?.[1])) keys.push(...page[1]);
+  } while (cursor !== '0');
+  return [...new Set(keys)];
 }
 
 export default redis;

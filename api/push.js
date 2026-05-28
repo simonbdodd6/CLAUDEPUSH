@@ -1,92 +1,94 @@
-// api/push.js — Immediate ad-hoc push to all subscribed players
-// POST { title, body, from, tag? } → sends Web Push to every stored subscription
-// Used for "Send now" coach messages — scheduled sends go through api/cron.js
-
+// Immediate Web Push delivery for coach "Send now" actions.
 import webpush from 'web-push';
-import { load } from './_lib.js';
-import { kvLpush, kvLtrim } from './_kv.js';
+import { load, save } from './_lib.js';
+import { recentResponders } from './_availabilityStore.js';
+import { kvLpush, kvLtrim, kvConfigured } from './_kv.js';
+import { key } from './_keys.js';
+import { resolveVariables } from './_variables.js';
+import { setCors, vapidContact } from './_http.js';
 
-const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
-const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
-
-if (VAPID_PUBLIC && VAPID_PRIVATE) {
-  webpush.setVapidDetails('mailto:coach@boitsfortrfc.be', VAPID_PUBLIC, VAPID_PRIVATE);
+function configurePush() {
+  const publicKey = process.env.VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) return false;
+  webpush.setVapidDetails(vapidContact(), publicKey, privateKey);
+  return true;
 }
 
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+function actionsFor(type) {
+  return type === 'availability' || type === 'availability-reminder'
+    ? [
+        { action: 'available', title: 'Available' },
+        { action: 'unavailable', title: 'Not available' },
+        { action: 'maybe', title: 'Maybe' },
+      ]
+    : undefined;
+}
 
 export default async function handler(req, res) {
-  Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
+  if (!configurePush()) return res.status(500).json({ error: 'VAPID keys not configured' });
 
-  if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
-    return res.status(500).json({ error: 'VAPID keys not configured' });
-  }
-
-  const { title, body, from, tag, type, sessionId, targetLabel } = req.body || {};
-  if (!body) return res.status(400).json({ error: 'Message body required' });
+  const { title, body, from, tag, type = 'message', sessionId = 'game', targetLabel, audience = 'all' } = req.body || {};
+  if (!String(body || '').trim()) return res.status(400).json({ error: 'Message body required' });
+  if (!['all', 'no-reply'].includes(audience)) return res.status(400).json({ error: 'audience must be all or no-reply' });
 
   const allSubscriptions = await load();
-  if (!allSubscriptions.length) {
-    return res.status(200).json({
-      ok: true, sent: 0,
-      note: 'No subscribers yet — players need to enable notifications first',
-    });
-  }
-
-  // Filter to a specific player if targetLabel is provided
-  const subscriptions = targetLabel
-    ? allSubscriptions.filter(s => s.label === targetLabel)
+  let subscriptions = targetLabel
+    ? allSubscriptions.filter(item => item.label === targetLabel)
     : allSubscriptions;
-
-  if (targetLabel && !subscriptions.length) {
-    return res.status(200).json({
-      ok: true, sent: 0,
-      note: `No subscription found for player "${targetLabel}" — they may not have enabled notifications yet`,
-    });
+  if (audience === 'no-reply') {
+    const responded = await recentResponders(7);
+    subscriptions = subscriptions.filter(item => !responded.has(item.label));
   }
 
-  const payload = JSON.stringify({
-    title:     title     || "Coach's Eye",
-    body,
-    from:      from      || 'Coach',
-    tag:       tag       || `msg-${Date.now()}`,
-    url:       '/',
-    type:      type      || 'message',      // 'availability' triggers YES/NO buttons
-    sessionId: sessionId || 'game',         // used by SW to POST the response back
-  });
+  if (!subscriptions.length) {
+    return res.status(200).json({ ok: true, sent: 0, failed: 0, total: 0, note: 'No eligible subscribed players' });
+  }
 
-  const results = await Promise.allSettled(
-    subscriptions.map(({ subscription }) => webpush.sendNotification(subscription, payload))
-  );
+  const sendResults = await Promise.allSettled(subscriptions.map(({ subscription, label }) => {
+    const context = { label, coachName: from || 'Coach' };
+    const payload = JSON.stringify({
+      title: resolveVariables(title || "Coach's Eye", context),
+      body: resolveVariables(body, context),
+      from: from || 'Coach',
+      tag: tag || `msg-${Date.now()}`,
+      url: '/?to=availability',
+      type,
+      sessionId,
+      actions: actionsFor(type),
+    });
+    return webpush.sendNotification(subscription, payload);
+  }));
+  const sent = sendResults.filter(result => result.status === 'fulfilled').length;
+  const failed = sendResults.length - sent;
 
-  const sent   = results.filter(r => r.status === 'fulfilled').length;
-  const failed = results.filter(r => r.status === 'rejected').length;
-
-  results.forEach((r, i) => {
-    if (r.status === 'rejected') {
-      console.error(`Push failed for sub ${i}:`, r.reason?.message || r.reason);
+  // Remove endpoints permanently rejected by push services so repeated sends
+  // do not continually count a deleted phone/browser as a delivery failure.
+  const expired = new Set();
+  sendResults.forEach((result, index) => {
+    if (result.status === 'rejected' && [404, 410].includes(result.reason?.statusCode)) {
+      expired.add(subscriptions[index].subscription.endpoint);
     }
   });
+  if (expired.size) {
+    await save(allSubscriptions.filter(item => !expired.has(item.subscription.endpoint)));
+  }
 
-  // Append to message log (cap at 500 entries)
-  try {
-    await kvLpush('ce:message_log', {
-      type:   'adhoc',
-      title:  title || "Coach's Eye",
-      body:   body.slice(0, 200),
-      sentAt: new Date().toISOString(),
-      sent, failed,
-      total:  allSubscriptions.length,
-      target: targetLabel || 'all',
-    });
-    await kvLtrim('ce:message_log', 500);
-  } catch { /* non-critical */ }
-
-  return res.status(200).json({ ok: true, sent, failed, total: allSubscriptions.length, target: targetLabel || 'all' });
+  await kvLpush(key('message_log'), {
+    type: 'adhoc',
+    title: String(title || "Coach's Eye").slice(0, 120),
+    body: String(body).slice(0, 200),
+    sentAt: new Date().toISOString(),
+    audience,
+    sent,
+    failed,
+    total: subscriptions.length,
+    target: targetLabel || 'all',
+  });
+  await kvLtrim(key('message_log'), 500);
+  return res.status(200).json({ ok: true, sent, failed, total: subscriptions.length, target: targetLabel || 'all' });
 }

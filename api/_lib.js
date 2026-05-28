@@ -3,8 +3,10 @@
 // Falls back to empty array if Redis is unavailable (graceful degradation).
 
 import { kvGet, kvSet } from './_kv.js';
+import { key, legacyKey } from './_keys.js';
 
-export const SUBS_KEY = 'ce:subscriptions';
+export const SUBS_KEY = key('subscriptions');
+const LEGACY_SUBS_KEY = legacyKey('subscriptions');
 
 /**
  * Load all stored push subscriptions from Redis.
@@ -12,7 +14,10 @@ export const SUBS_KEY = 'ce:subscriptions';
  */
 export async function load() {
   try {
-    const subs = await kvGet(SUBS_KEY);
+    // Legacy fallback is intentional: deployed pilot devices subscribed before
+    // the new app: namespace must remain reachable during this migration.
+    const primary = await kvGet(SUBS_KEY);
+    const subs = Array.isArray(primary) ? primary : await kvGet(LEGACY_SUBS_KEY);
     return Array.isArray(subs) ? subs : [];
   } catch (err) {
     console.error('[_lib] load() failed:', err.message);

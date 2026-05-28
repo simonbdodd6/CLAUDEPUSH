@@ -1,67 +1,47 @@
-// api/availability.js — Player availability responses
-//
-// POST { endpoint, response, sessionId }
-//   → called by the service worker when a player taps ✅/❌ on a notification
-//   → looks up the subscriber label (player name) from the subscriptions list
-//   → stores the response in Redis
-//
-// GET ?sessionId=tue
-//   → returns all responses for a session so the coach dashboard can show them
+// Availability replies from notification actions or the player app.
+import { load } from './_lib.js';
+import { loadAvailability, saveAvailability } from './_availabilityStore.js';
+import { setCors } from './_http.js';
+import { kvConfigured } from './_kv.js';
 
-import { kvGet, kvSet } from './_kv.js';
+const RESPONSES = new Set(['available', 'unavailable', 'maybe']);
 
-const SUBS_KEY   = 'ce:subscriptions';
-const AVAIL_KEY  = (id) => `ce:availability:${id}`;
-
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+function validSessionId(sessionId) {
+  return /^[a-z0-9_-]{1,80}$/i.test(String(sessionId || ''));
+}
 
 export default async function handler(req, res) {
-  Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
 
-  // ── GET: fetch all responses for a session ────────────────────────────────
   if (req.method === 'GET') {
     const sessionId = req.query?.sessionId || 'game';
-    const responses = (await kvGet(AVAIL_KEY(sessionId))) || {};
-    // Normalise: old format stores a plain string, new format stores { response, respondedAt }
-    const list = Object.entries(responses).map(([label, val]) => ({
+    if (!validSessionId(sessionId)) return res.status(400).json({ error: 'Invalid sessionId' });
+    const responses = await loadAvailability(sessionId);
+    const list = Object.entries(responses).map(([label, value]) => ({
       label,
-      response:    typeof val === 'string' ? val : val?.response,
-      respondedAt: typeof val === 'string' ? null : val?.respondedAt,
+      response: typeof value === 'string' ? value : value?.response,
+      respondedAt: typeof value === 'string' ? null : value?.respondedAt,
     }));
     return res.status(200).json({ sessionId, responses: list, count: list.length });
   }
 
-  // ── POST: record a player's response from notification action ─────────────
   if (req.method === 'POST') {
     const { endpoint, response, sessionId } = req.body || {};
-
-    if (!endpoint || !response || !sessionId) {
-      return res.status(400).json({ error: 'endpoint, response and sessionId are required' });
+    if (!endpoint || !validSessionId(sessionId) || !RESPONSES.has(response)) {
+      return res.status(400).json({ error: 'endpoint, valid sessionId and response (available, unavailable or maybe) are required' });
     }
 
-    const validResponses = ['available', 'unavailable', 'maybe'];
-    if (!validResponses.includes(response)) {
-      return res.status(400).json({ error: `response must be one of: ${validResponses.join(', ')}` });
-    }
+    // The endpoint-to-player lookup prevents a device inventing replies for
+    // another player name. Real authenticated accounts can be added later.
+    const subscription = (await load()).find(item => item.subscription?.endpoint === endpoint);
+    if (!subscription) return res.status(404).json({ error: 'Subscription not registered' });
 
-    // Look up this endpoint to get the player's label
-    const subs  = (await kvGet(SUBS_KEY)) || [];
-    const match = subs.find(s => s.subscription?.endpoint === endpoint);
-    const label = match?.label || 'Unknown player';
-
-    // Store/update their response (with timestamp so no-reply cron can filter by recency)
-    const existing = (await kvGet(AVAIL_KEY(sessionId))) || {};
-    existing[label] = { response, respondedAt: new Date().toISOString() };
-    await kvSet(AVAIL_KEY(sessionId), existing);
-
-    console.log(`[availability] ${label} → ${response} for ${sessionId}`);
-
-    return res.status(200).json({ ok: true, label, response, sessionId });
+    const responses = await loadAvailability(sessionId);
+    responses[subscription.label] = { response, respondedAt: new Date().toISOString() };
+    await saveAvailability(sessionId, responses);
+    return res.status(200).json({ ok: true, label: subscription.label, response, sessionId });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });

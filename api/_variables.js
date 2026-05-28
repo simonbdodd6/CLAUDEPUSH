@@ -8,6 +8,7 @@
  * Available tokens:
  *   {{first_name}}     — recipient's first name (from subscription label)
  *   {{full_name}}      — full label string
+ *   {{label}}          — full label string (alias used by custom templates)
  *   {{team_name}}      — hard-coded club name
  *   {{session_day}}    — next Tuesday or Thursday depending on today
  *   {{session_time}}   — "19:45"
@@ -31,6 +32,7 @@ export function resolveVariables(template, context = {}) {
   const vars = {
     first_name:   first,
     full_name:    label,
+    label,
     team_name:    'Boitsfort RFC',
     session_day:  nextSessionDay(now),
     session_time: '19:45',
