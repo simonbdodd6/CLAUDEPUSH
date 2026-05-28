@@ -3,7 +3,10 @@
 ## 2026-05-28 - Rename to coacheseyeGPT
 
 - Renamed the visible product branding to `coacheseyeGPT` across the app shell, browser title, PWA manifest, notification fallbacks and project docs.
-- Kept the existing Vercel project URL and backend storage keys stable so deployed invites, push subscriptions and Redis data continue working.
+- Renamed the Vercel project to `boitsfort-coachseye-gpt` so the website name has GPT on the end.
+- Updated in-app invite links and API invite defaults to use `https://boitsfort-coachseye-gpt.vercel.app`.
+- Kept the existing backend storage keys stable so deployed push subscriptions and Redis data continue working.
+- Tidied the Overview page typography so the dashboard cards use the same professional font, and removed the duplicated rugby package summary card.
 
 ## 2026-05-28 - Messaging Command Centre v2
 
