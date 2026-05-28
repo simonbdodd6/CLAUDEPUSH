@@ -4510,71 +4510,234 @@
         </div>`;
     }
 
-    // ─── PLAYER MESSAGES ─────────────────────────────────────────────────────
-    function renderPlayerMessages() {
-      const player   = getPlayer();
-      if (!player.id) { document.getElementById("player-messages").innerHTML = noSquadMsg(); return; }
-      const messages = state.messages.filter(m => m.to === "Squad" || m.to === player.name || m.from === player.name);
-      const supported = ('serviceWorker' in navigator) && ('PushManager' in window);
-      const permission = supported ? Notification.permission : 'default';
+    // ─── COACH / PLAYER MESSAGES ─────────────────────────────────────────────
+    function chatInitials(name) {
+      return String(name || "?").split(/\s+/).filter(Boolean).slice(0,2).map(w => w[0]).join("").toUpperCase() || "?";
+    }
 
-      let pushBannerHtml = "";
-      if (supported) {
-        if (pushSubscription) {
-          pushBannerHtml = `
-            <div class="push-banner push-subscribed">
-              <div class="push-icon">🔔</div>
-              <div class="push-text">
-                <strong>Push notifications on</strong>
-                <small>You'll get a notification on this device when coach sends a message.</small>
+    function chatContactAvatar(contact) {
+      if (contact.photo) return `<span class="chat-avatar"><img src="${contact.photo}" alt=""></span>`;
+      return `<span class="chat-avatar">${esc(chatInitials(contact.name))}</span>`;
+    }
+
+    function chatContacts(mode) {
+      const user = currentUser();
+      if (mode === "coach") {
+        return [
+          { id: "squad", name: "Squad broadcast", sub: `${state.players.length} players`, type: "squad" },
+          ...state.players.map(p => ({ id: `player:${p.id}`, name: p.name, sub: `${p.position || "TBC"} · ${statusLabel(p.game)}`, type: "player", player: p, photo: p.photo }))
+        ];
+      }
+      const player = getPlayer();
+      return [
+        { id: "coach", name: "Coach / staff", sub: "Private coach chat", type: "coach" },
+        { id: "squad", name: "Team group", sub: `${state.players.length} players`, type: "squad" },
+        ...state.players
+          .filter(p => p.id !== player.id)
+          .map(p => ({ id: `player:${p.id}`, name: p.name, sub: `${p.position || "TBC"} · player chat`, type: "player", player: p, photo: p.photo }))
+      ];
+    }
+
+    function ensureChat(mode) {
+      const contacts = chatContacts(mode);
+      if (!contacts.some(c => c.id === state.selectedChatId)) {
+        state.selectedChatId = mode === "coach" ? "squad" : "coach";
+      }
+      return contacts;
+    }
+
+    function chatMatches(m, chatId, mode) {
+      if (chatId === "squad") return m.to === "Squad" || m.playerId === "squad";
+      if (mode === "coach") {
+        if (!chatId.startsWith("player:")) return false;
+        const playerId = chatId.replace("player:", "");
+        const player = state.players.find(p => p.id === playerId);
+        if (!player) return false;
+        return (m.playerId === playerId && (m.to === "Coach" || m.from === "Coach" || m.to === player.name || m.from === player.name))
+          || (m.from === player.name && m.to === "Coach")
+          || (m.from === "Coach" && m.to === player.name);
+      }
+      const me = getPlayer();
+      if (chatId === "coach") {
+        return (m.from === "Coach" && m.to === me.name) || (m.from === me.name && m.to === "Coach");
+      }
+      if (chatId.startsWith("player:")) {
+        const other = state.players.find(p => p.id === chatId.replace("player:", ""));
+        if (!other) return false;
+        return (m.from === me.name && m.to === other.name) || (m.from === other.name && m.to === me.name);
+      }
+      return false;
+    }
+
+    function chatMessages(chatId, mode) {
+      return state.messages.filter(m => chatMatches(m, chatId, mode)).slice().reverse();
+    }
+
+    function chatUnreadCount(chatId, mode) {
+      const me = getPlayer();
+      return state.messages.filter(m => {
+        if (!m.unread || !chatMatches(m, chatId, mode)) return false;
+        return mode === "coach" ? m.to === "Coach" : (m.to === me.name || m.to === "Squad");
+      }).length;
+    }
+
+    function latestChatPreview(chatId, mode) {
+      const latest = state.messages.find(m => chatMatches(m, chatId, mode));
+      return latest ? latest.text : "No messages yet";
+    }
+
+    function chatMessageIsMine(m, mode) {
+      if (mode === "coach") return m.from === "Coach" || m.from === currentUser().name;
+      return m.from === getPlayer().name;
+    }
+
+    function markChatRead(chatId, mode) {
+      const me = getPlayer();
+      state.messages = state.messages.map(m => {
+        const shouldRead = chatMatches(m, chatId, mode) && (mode === "coach" ? m.to === "Coach" : (m.to === me.name || m.to === "Squad"));
+        return shouldRead ? { ...m, unread: false, delivery: "read" } : m;
+      });
+    }
+
+    function selectChat(chatId) {
+      const mode = state.activeView === "coach" ? "coach" : "player";
+      state.selectedChatId = chatId;
+      markChatRead(chatId, mode);
+      saveState("Chat opened");
+      render();
+    }
+
+    function chatPushBanner() {
+      const supported = ('serviceWorker' in navigator) && ('PushManager' in window);
+      if (!supported) return "";
+      const player = getPlayer();
+      const permission = Notification.permission;
+      if (pushSubscription) {
+        return `<div class="push-banner push-subscribed" style="margin:12px">
+          <div class="push-icon">🔔</div>
+          <div class="push-text"><strong>Push notifications on</strong><small>Coach messages can alert this device.</small></div>
+          <button class="btn" type="button" onclick="unsubscribePush()">Turn off</button>
+        </div>`;
+      }
+      if (permission === "denied") {
+        return `<div class="push-banner push-denied" style="margin:12px">
+          <div class="push-icon">🔕</div>
+          <div class="push-text"><strong>Notifications blocked</strong><small>Re-enable them in browser settings.</small></div>
+        </div>`;
+      }
+      return `<div class="push-banner" style="margin:12px">
+        <div class="push-icon">🔔</div>
+        <div class="push-text"><strong>Enable push notifications</strong><small>Get alerted when coach sends a message.</small></div>
+        <button class="btn primary" type="button" onclick="subscribePush('${esc(player.name)}')">Enable</button>
+      </div>`;
+    }
+
+    function renderChatSurface(mode) {
+      const contacts = ensureChat(mode);
+      const selected = contacts.find(c => c.id === state.selectedChatId) || contacts[0];
+      const messages = selected ? chatMessages(selected.id, mode) : [];
+      const title = mode === "coach" ? "Club messages" : "Messages";
+      const subtitle = mode === "coach"
+        ? "Send direct, squad and automated messages inside coacheseyeGPT."
+        : "Your player chat inbox. Messages from coach and team mates stay here.";
+
+      return `<div class="chat-shell">
+        <aside class="chat-list">
+          <div class="chat-list-head">
+            <h2>${title}</h2>
+            <p>${subtitle}</p>
+          </div>
+          ${mode === "player" ? chatPushBanner() : ""}
+          <div class="chat-contact-list">
+            ${contacts.map(contact => {
+              const unread = chatUnreadCount(contact.id, mode);
+              return `<button class="chat-contact ${selected?.id === contact.id ? "active" : ""}" type="button" onclick="selectChat('${contact.id}')">
+                ${chatContactAvatar(contact)}
+                <span>
+                  <strong>${esc(contact.name)}</strong>
+                  <small>${esc(latestChatPreview(contact.id, mode))}</small>
+                </span>
+                ${unread ? `<span class="chat-unread">${unread}</span>` : `<small>${esc(contact.sub || "")}</small>`}
+              </button>`;
+            }).join("")}
+          </div>
+        </aside>
+        <section class="chat-window">
+          <header class="chat-header">
+            <div class="chat-header-main">
+              ${selected ? chatContactAvatar(selected) : ""}
+              <div>
+                <h2>${esc(selected?.name || "Messages")}</h2>
+                <small>${esc(selected?.sub || "In-app chat")}</small>
               </div>
-              <button class="btn" type="button" onclick="unsubscribePush()">Turn off</button>
-            </div>`;
-        } else if (permission === 'denied') {
-          pushBannerHtml = `
-            <div class="push-banner push-denied">
-              <div class="push-icon">🔕</div>
-              <div class="push-text">
-                <strong>Notifications blocked</strong>
-                <small>Go to browser site settings to re-enable.</small>
-              </div>
-            </div>`;
+            </div>
+            ${mode === "coach" ? `<button class="btn" type="button" onclick="setSection('coach','message')">Automations</button>` : `<button class="btn" type="button" onclick="setSection('player','availability')">Availability</button>`}
+          </header>
+          <div class="chat-feed" id="chatFeed">
+            <span class="chat-date-pill">Today</span>
+            ${messages.length ? messages.map(m => {
+              const mine = chatMessageIsMine(m, mode);
+              return `<article class="chat-bubble ${mine ? "mine" : "theirs"}">
+                <strong>${esc(m.from || "Coach")}</strong>
+                <p>${esc(m.text || "")}</p>
+                ${(m.replies || []).map(r => `<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.1)"><strong>${esc(r.from)}</strong><p>${esc(r.text)}</p></div>`).join("")}
+                <footer><span>${esc(m.type || "Message")}</span><span>${esc(m.time || "Just now")}</span></footer>
+              </article>`;
+            }).join("") : `<div class="chat-empty"><strong>No messages yet</strong><p style="margin-top:6px">Start the conversation below. Automatic coach messages will also appear in this thread.</p></div>`}
+          </div>
+          <div class="chat-composer">
+            <textarea id="chatComposer" placeholder="Type a message..."></textarea>
+            <button class="btn primary" type="button" onclick="sendChatMessage()">Send</button>
+          </div>
+        </section>
+      </div>`;
+    }
+
+    function renderCoachMessages() {
+      document.getElementById("coach-messages").innerHTML = renderChatSurface("coach");
+    }
+
+    function renderPlayerMessages() {
+      const player = getPlayer();
+      if (!player.id) { document.getElementById("player-messages").innerHTML = noSquadMsg(); return; }
+      document.getElementById("player-messages").innerHTML = renderChatSurface("player");
+    }
+
+    function sendChatMessage() {
+      const text = (document.getElementById("chatComposer")?.value || "").trim();
+      if (!text) return notify("Write a message before sending");
+      const mode = state.activeView === "coach" ? "coach" : "player";
+      const chatId = state.selectedChatId || (mode === "coach" ? "squad" : "coach");
+      const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      let message;
+
+      if (mode === "coach") {
+        if (chatId === "squad") {
+          message = { id:`m${Date.now()}-chat`, from:"Coach", to:"Squad", playerId:"squad", sessionId:"chat", type:"Squad message", text, unread:true, time:now, delivery:"sent", replies:[] };
+          sendPushToPlayers("Coach message", text, { type: "message", audience: "all" });
         } else {
-          pushBannerHtml = `
-            <div class="push-banner">
-              <div class="push-icon">🔔</div>
-              <div class="push-text">
-                <strong>Enable push notifications</strong>
-                <small>Get notified on your phone when coach sends a message or selection update.</small>
-              </div>
-              <button class="btn primary" type="button" onclick="subscribePush('${player.name}')">Enable</button>
-            </div>`;
+          const player = state.players.find(p => p.id === chatId.replace("player:", ""));
+          if (!player) return notify("Choose a player chat first");
+          message = { id:`m${Date.now()}-chat`, from:"Coach", to:player.name, playerId:player.id, sessionId:"chat", type:"Direct message", text, unread:true, time:now, delivery:"sent", replies:[] };
+          sendPushToPlayers("Coach message", text, { type: "message", targetLabel: player.name });
+        }
+      } else {
+        const me = getPlayer();
+        if (chatId === "coach") {
+          message = { id:`m${Date.now()}-chat`, from:me.name, to:"Coach", playerId:me.id, sessionId:"chat", type:"Player message", text, unread:true, time:now, delivery:"sent", replies:[] };
+        } else if (chatId === "squad") {
+          message = { id:`m${Date.now()}-chat`, from:me.name, to:"Squad", playerId:"squad", senderPlayerId:me.id, sessionId:"chat", type:"Team group", text, unread:true, time:now, delivery:"sent", replies:[] };
+        } else {
+          const target = state.players.find(p => p.id === chatId.replace("player:", ""));
+          if (!target) return notify("Choose a team mate first");
+          message = { id:`m${Date.now()}-chat`, from:me.name, to:target.name, playerId:me.id, targetPlayerId:target.id, sessionId:"chat", type:"Player direct", text, unread:true, time:now, delivery:"sent", replies:[] };
         }
       }
 
-      document.getElementById("player-messages").innerHTML = `
-        <div class="card">
-          <h2>My messages</h2>
-          <p class="muted">Player inbox — announcements, requests and replies.</p>
-          ${pushBannerHtml}
-          <div class="button-row" style="margin-top:12px">
-            <button class="btn" type="button" onclick="markPlayerMessagesRead()">Mark my messages read</button>
-            <button class="btn primary" type="button" onclick="quickPlayerReply('I have seen this and will update my availability.')">Quick reply to coach</button>
-          </div>
-          <div class="list" style="margin-top:14px">
-            ${messages.map(m => `
-              <div class="message-bubble ${m.unread?"unread":""}">
-                <div class="message-meta"><span>${m.type} · ${m.delivery||"delivered"}</span><span>${m.time}</span></div>
-                <strong>${m.from}</strong>
-                <p class="muted">${m.text}</p>
-                ${(m.replies||[]).map(r=>`<div class="message-bubble" style="margin-top:7px"><div class="message-meta"><span>Reply sent</span><span>${r.time}</span></div><strong>${r.from}</strong><p class="muted">${r.text}</p></div>`).join("")}
-                <div class="thread-reply">
-                  <input id="reply-${m.id}" placeholder="Reply to coach...">
-                  <button class="btn" type="button" onclick="sendPlayerReply('${m.id}')">Send</button>
-                </div>
-              </div>`).join("")}
-          </div>
-        </div>`;
+      state.messages.unshift(message);
+      addMasterFeed(`${message.from} sent a message to ${message.to}`, text);
+      saveState("Message sent");
+      render();
     }
 
     function markPlayerMessagesRead() {
@@ -4636,96 +4799,6 @@
       addMasterFeed(`${player.name} sent a quick reply`, text);
       saveState("Quick reply sent");
       render();
-    }
-
-    // ─── COACH MESSAGES (chat-style inbox) ───────────────────────────────────
-    function renderCoachMessages() {
-      const el = document.getElementById('coach-messages');
-      if (!el) return;
-      const chatId = state.selectedChatId || 'squad';
-      const playerThreads = state.players.map(p => {
-        const msgs = state.messages.filter(m => m.to === p.name || m.from === p.name);
-        const unread = msgs.filter(m => m.unread && m.to === 'Coach').length;
-        return { id: p.id, name: p.name, msgs, unread, last: msgs[0] };
-      });
-      const squadMsgs = state.messages.filter(m => m.to === 'Squad');
-      const threads = [
-        { id: 'squad', name: '📣 Squad broadcast', msgs: squadMsgs, unread: squadMsgs.filter(m=>m.unread).length, last: squadMsgs[0] },
-        ...playerThreads
-      ];
-      const active = threads.find(t => t.id === chatId) || threads[0];
-      const activeMsgs = active ? [...active.msgs].reverse() : [];
-      el.innerHTML = `
-        <div style="display:grid;grid-template-columns:260px 1fr;gap:0;height:calc(100vh - 140px);max-height:680px;border-radius:14px;overflow:hidden;border:1px solid var(--line)">
-          <div style="background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column">
-            <div style="padding:12px 16px;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Conversations</div>
-            ${threads.map(t=>`
-              <button type="button" onclick="state.selectedChatId='${t.id}';saveState();renderCoachMessages()"
-                style="display:flex;align-items:center;gap:10px;padding:11px 16px;border:none;border-bottom:1px solid var(--line);cursor:pointer;text-align:left;width:100%;background:${t.id===chatId?'rgba(16,185,129,0.08)':'transparent'};border-left:3px solid ${t.id===chatId?'var(--green)':'transparent'}">
-                <div style="width:34px;height:34px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;font-size:${t.id==='squad'?'16':'12'}px;font-weight:800;color:#fff;flex-shrink:0">
-                  ${t.id==='squad'?'📣':t.name.split(' ').map(w=>w[0]).slice(0,2).join('')}
-                </div>
-                <div style="flex:1;min-width:0">
-                  <div style="display:flex;justify-content:space-between;align-items:center">
-                    <strong style="font-size:13px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px">${t.name}</strong>
-                    ${t.unread?`<span style="background:var(--green);color:#060b12;font-size:10px;font-weight:800;padding:1px 6px;border-radius:999px">${t.unread}</span>`:''}
-                  </div>
-                  <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">${t.last?t.last.text.slice(0,38)+(t.last.text.length>38?'…':''):'No messages yet'}</div>
-                </div>
-              </button>`).join('')}
-          </div>
-          <div style="background:var(--panel-2);display:flex;flex-direction:column">
-            <div style="padding:12px 18px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:center;gap:10px">
-              <div style="width:34px;height:34px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;font-size:${active?.id==='squad'?'16':'12'}px;font-weight:800;color:#fff;flex-shrink:0">
-                ${active?.id==='squad'?'📣':(active?.name||'').split(' ').map(w=>w[0]).slice(0,2).join('')}
-              </div>
-              <div>
-                <strong style="font-size:14px">${active?.name||'Select a conversation'}</strong>
-                <div style="font-size:11px;color:var(--muted)">${active?.id==='squad'?state.players.length+' members':'Player'}</div>
-              </div>
-            </div>
-            <div style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px" id="chat-thread">
-              ${activeMsgs.length ? activeMsgs.map(m=>{
-                const fromCoach = m.from==='Coach'||m.from==='Simon Dodd'||(isCoach()&&m.from===currentUser()?.name);
-                return `<div style="display:flex;flex-direction:column;align-items:${fromCoach?'flex-end':'flex-start'}">
-                  <div style="max-width:72%;background:${fromCoach?'var(--green)':'var(--panel)'};color:${fromCoach?'#060b12':'var(--ink)'};border-radius:${fromCoach?'14px 14px 4px 14px':'14px 14px 14px 4px'};padding:10px 14px;font-size:13px;line-height:1.5">${m.text}</div>
-                  <div style="font-size:10px;color:var(--muted);margin-top:3px;padding:0 4px">${m.from} · ${m.time}</div>
-                  ${(m.replies||[]).map(r=>`<div style="display:flex;flex-direction:column;align-items:flex-start;margin-top:6px">
-                    <div style="max-width:72%;background:var(--panel);color:var(--ink);border-radius:14px 14px 14px 4px;padding:8px 12px;font-size:12px">${r.text}</div>
-                    <div style="font-size:10px;color:var(--muted);margin-top:2px;padding:0 4px">${r.from} · ${r.time}</div>
-                  </div>`).join('')}
-                </div>`;
-              }).join('') : `<div style="text-align:center;color:var(--muted);padding:40px 20px;font-size:13px">No messages yet — send the first one below.</div>`}
-            </div>
-            <div style="padding:12px 16px;border-top:1px solid var(--line);background:var(--panel);display:flex;gap:8px">
-              <input id="coach-chat-input" placeholder="${active?.id==='squad'?'Broadcast to full squad…':'Message '+(active?.name||'player')+'…'}"
-                style="flex:1;padding:10px 12px;font-size:13px"
-                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCoachChatMessage()}">
-              <button class="btn primary" type="button" onclick="sendCoachChatMessage()" style="padding:0 16px;white-space:nowrap">Send →</button>
-            </div>
-          </div>
-        </div>`;
-      const thread = document.getElementById('chat-thread');
-      if (thread) thread.scrollTop = thread.scrollHeight;
-    }
-
-    function sendCoachChatMessage() {
-      const input = document.getElementById('coach-chat-input');
-      const text = input?.value.trim();
-      if (!text) return;
-      const chatId = state.selectedChatId || 'squad';
-      const coachName = currentUser()?.name || 'Coach';
-      const isSquad = chatId === 'squad';
-      const target = isSquad ? 'Squad' : (state.players.find(p=>p.id===chatId)?.name||chatId);
-      state.messages.unshift({
-        id: 'm'+Date.now(), from: coachName, to: target,
-        playerId: isSquad ? null : chatId, sessionId: 'chat',
-        type: isSquad ? 'Squad message' : 'Direct message',
-        text, unread: true, time: 'Just now', delivery: 'sent', replies: []
-      });
-      if (input) input.value = '';
-      saveState('Message sent');
-      renderCoachMessages();
     }
 
     // ─── RENDER ───────────────────────────────────────────────────────────────
