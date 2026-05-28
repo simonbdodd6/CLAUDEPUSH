@@ -2151,14 +2151,24 @@
       });
     }
 
-    function mapRowToPlayer(row, headers) {
-      // Returns value of first column whose header matches any of the given keys.
-      // Pass 1: exact. Pass 2: substring.
+    // Normalise a string for fuzzy column matching:
+    // strips accents, lowercases, collapses whitespace.
+    // "Prénom" → "prenom", "Téléphone" → "telephone", "Numéro" → "numero"
+    function normHdr(s) {
+      return String(s).toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')  // strip combining accents
+        .replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    function mapRowToPlayer(row, normHeaders) {
+      // normHeaders is already normalised via normHdr(). row is raw values.
+      // Returns the cell value for the first column whose normalised header
+      // matches any of the given keys (exact first, then substring).
       const getCol = (...keys) => {
-        const lkeys = keys.map(k => k.toLowerCase());
+        const nkeys = keys.map(normHdr);
         for (const pass of [1, 2]) {
-          for (const k of lkeys) {
-            const idx = headers.findIndex(h =>
+          for (const k of nkeys) {
+            const idx = normHeaders.findIndex(h =>
               pass === 1 ? h === k : h.length > 1 && (h.includes(k) || k.includes(h))
             );
             if (idx >= 0) { const v = String(row[idx] ?? '').trim(); if (v) return v; }
@@ -2167,26 +2177,63 @@
         return '';
       };
 
-      // Handle split first-name / last-name columns (e.g. Prénom + Nom)
-      const firstName = getCol('prénom','prenom','firstname','first name','given name','voornaam','forename');
-      const lastName  = getCol('nom','last name','lastname','surname','family name','achternaam','name de famille');
-      const fullName  = getCol('name','full name','full_name','nom complet','joueur','player','players','naam');
+      // ── Name ────────────────────────────────────────────────────────────────
+      // Try split first+last first (most common in club exports), then a
+      // single full-name column.  Works in EN/FR/NL/DE/ES/IT because accent
+      // stripping lets "Prénom" match "prenom", "Nachname" match "nachname" etc.
+      const firstName = getCol(
+        'prenom','firstname','first name','given name',  // FR/EN
+        'voornaam','roepnaam',                           // NL
+        'vorname',                                       // DE
+        'nombre','prenombre',                            // ES
+        'nome',                                          // IT/PT
+        'forename','christian name'
+      );
+      const lastName = getCol(
+        'nom','last name','lastname','surname','family name',  // FR/EN
+        'achternaam','familienaam',                            // NL
+        'nachname','familienname',                             // DE
+        'apellido','apellidos',                                // ES
+        'cognome',                                             // IT
+        'sobrenome',                                           // PT
+        'name de famille'
+      );
+      const fullName = getCol(
+        'name','full name','fullname','nom complet',           // EN/FR
+        'naam','volledige naam',                               // NL
+        'vollstandiger name',                                  // DE
+        'nombre completo',                                     // ES
+        'nome completo',                                       // IT/PT
+        'joueur','player','players','athlete','member','membre','speler','spieler','jugador'
+      );
 
       let name = '';
       if (firstName && lastName) name = firstName + ' ' + lastName;
       else if (fullName)          name = fullName;
       else if (firstName)         name = firstName;
       else if (lastName)          name = lastName;
-
       if (!name) return null;
 
-      return {
-        name,
-        position: getCol('position','pos','poste','rôle','role','numero','number','numéro') || 'SUB — Squad player',
-        // Numbered variants first (Email 1, GSM 1) then generic fallbacks
-        phone:    getCol('gsm 1','gsm1','gsm','téléphone','telephone','phone','mobile','mob','tel','phone number') || '',
-        email:    getCol('email 1','email1','email','mail','e-mail','courriel','adresse email') || '',
-      };
+      // ── Position / jersey ───────────────────────────────────────────────────
+      const position = getCol(
+        'position','pos','poste','role','functie','funktion',
+        'numero','number','jersey','shirt','maillot','rugbyposition'
+      ) || 'SUB — Squad player';
+
+      // ── Phone (numbered variants like "GSM 1" beat generic "gsm") ───────────
+      const phone = getCol(
+        'gsm 1','gsm1','mobile 1','mobile1','phone 1','phone1','tel 1','tel1',
+        'gsm','telephone','phone','mobile','mobiel','handynummer','movil','cellulaire','mob'
+      ) || '';
+
+      // ── Email (numbered variants like "Email 1" beat generic "email") ────────
+      const email = getCol(
+        'email 1','email1','e mail 1','e mail1',
+        'email','mail','courriel','e mail','adresse email','adresse mail',
+        'correo','e posta'
+      ) || '';
+
+      return { name, position, phone, email };
     }
 
     async function importPlayersFromFile(file) {
@@ -2218,44 +2265,54 @@
         const allRows = rows.filter(r => r.some(c => String(c).trim()));
         if (!allRows.length) return showToast('⚠️ No data found in file');
 
-        // Find the best header row: scan first 5 rows, pick whichever has the most
-        // cells that match known column keywords. Handles title rows above the header.
-        const hdrKW = ['prénom','prenom','nom','name','joueur','player','email','gsm',
-                       'phone','mobile','position','function','tel','téléphone',
-                       'address','adresse','surname','lastname','firstname'];
+        // Find the best header row: scan first 5 rows, pick the one whose cells
+        // collectively match the most known header keywords after normalisation.
+        // Skips blank cells (empty string matches everything via includes, giving
+        // false scores).
+        const hdrKW = ['prenom','nom','name','joueur','player','email','gsm','phone',
+                       'mobile','position','function','tel','telephone','address',
+                       'adresse','surname','lastname','firstname','voornaam','achternaam',
+                       'vorname','nachname','nombre','apellido','nome','cognome',
+                       'athlete','member','speler','spieler','jugador'];
         let headerIdx = -1, bestScore = 0;
         for (let i = 0; i < Math.min(5, allRows.length); i++) {
-          const cells = allRows[i].map(h => String(h).toLowerCase().trim());
-          const score = cells.filter(h => h.length > 0 && hdrKW.some(k => h === k || h.includes(k) || k.includes(h))).length;
+          const cells = allRows[i].map(h => normHdr(h));
+          const score = cells.filter(h => h.length > 0 &&
+            hdrKW.some(k => h === k || h.includes(k) || k.includes(h))
+          ).length;
           if (score > bestScore) { bestScore = score; headerIdx = i; }
         }
 
-        let headers, dataRows;
+        let normHeaders, rawHeaders, dataRows;
         if (headerIdx >= 0 && bestScore >= 2) {
-          // Found a real header row
-          headers  = allRows[headerIdx].map(h => String(h).toLowerCase().trim());
-          dataRows = allRows.slice(headerIdx + 1).filter(r => r.some(c => String(c).trim()));
+          rawHeaders  = allRows[headerIdx].map(h => String(h).trim());
+          normHeaders = rawHeaders.map(normHdr);
+          dataRows    = allRows.slice(headerIdx + 1).filter(r => r.some(c => String(c).trim()));
         } else {
-          // No recognisable header — assume first column contains names
-          headers  = allRows[0].map((_, i) => i === 0 ? 'name' : `col${i}`);
-          dataRows = allRows;
+          // No recognisable header — treat first column as names
+          rawHeaders  = allRows[0].map((_, i) => i === 0 ? 'Name' : `Col ${i+1}`);
+          normHeaders = rawHeaders.map(normHdr);
+          dataRows    = allRows;
         }
 
         if (!dataRows.length) return showToast('⚠️ No data rows found after the header');
-        let parsed = dataRows.map(r => mapRowToPlayer(r, headers)).filter(Boolean);
+        let parsed = dataRows.map(r => mapRowToPlayer(r, normHeaders)).filter(Boolean);
 
-        // Last-resort fallback: use first populated column as names
+        // Last-resort fallback: use the first populated text column as names
         if (!parsed.length) {
-          const firstColIdx = headers.findIndex((_, i) => dataRows.some(r => String(r[i] ?? '').trim()));
+          const firstColIdx = normHeaders.findIndex((_, i) =>
+            dataRows.some(r => String(r[i] ?? '').trim())
+          );
           if (firstColIdx >= 0) {
+            console.warn('[import] No name column matched. normHeaders:', normHeaders);
             parsed = dataRows.map(r => {
               const n = String(r[firstColIdx] ?? '').trim();
               return n ? { name: n, position: 'SUB — Squad player', phone: '', email: '' } : null;
             }).filter(Boolean);
           }
           if (!parsed.length) {
-            const detected = headers.filter(Boolean).slice(0, 8).join(', ') || '(none)';
-            return showToast(`⚠️ Couldn't find player names. Columns seen: ${detected}`);
+            const seen = rawHeaders.filter(Boolean).slice(0, 8).join(', ') || '(none)';
+            return showToast(`⚠️ Couldn't detect player names. Columns found: ${seen}`);
           }
         }
         showImportPreview(parsed);
@@ -2271,12 +2328,11 @@
       const dupeCount  = players.length - newPlayers.length;
       _importPending   = newPlayers;
       document.getElementById('import-overlay')?.remove();
-      const posShort = p => (p.position || '—').replace(/^\d+\s*[–—\-]\s*/, '');
       const overlay = document.createElement('div');
       overlay.id = 'import-overlay';
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
       overlay.innerHTML = `
-        <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;width:100%;max-width:660px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,0.65)">
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;width:100%;max-width:780px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,0.65)">
           <div style="padding:20px 24px 16px;border-bottom:1px solid var(--line);flex-shrink:0">
             <h2 style="margin:0 0 6px;font-size:18px">Import players from spreadsheet</h2>
             <p style="font-size:13px;color:#94a3b8;margin:0">
@@ -2287,21 +2343,29 @@
           </div>
           <div style="overflow-y:auto;flex:1;padding:0 24px 8px">
             ${newPlayers.length ? `
-            <table style="width:100%;border-collapse:collapse;margin:12px 0">
+            <table style="width:100%;border-collapse:collapse;margin:12px 0;table-layout:fixed">
+              <colgroup>
+                <col style="width:45%">
+                <col style="width:35%">
+                <col style="width:20%">
+              </colgroup>
               <thead>
                 <tr style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">
-                  <th style="padding:6px 12px 6px 0;text-align:left;border-bottom:1px solid var(--line);font-weight:600">Name</th>
-                  <th style="padding:6px 12px;text-align:left;border-bottom:1px solid var(--line);font-weight:600">Position</th>
-                  <th style="padding:6px 0 6px 12px;text-align:left;border-bottom:1px solid var(--line);font-weight:600">Contact</th>
+                  <th style="padding:6px 16px 6px 0;text-align:left;border-bottom:1px solid var(--line);font-weight:600">Full name</th>
+                  <th style="padding:6px 16px;text-align:left;border-bottom:1px solid var(--line);font-weight:600">Email / Phone</th>
+                  <th style="padding:6px 0;text-align:left;border-bottom:1px solid var(--line);font-weight:600">Position</th>
                 </tr>
               </thead>
               <tbody>
-                ${newPlayers.map(p => `
-                <tr style="border-bottom:1px solid rgba(30,45,61,0.5)">
-                  <td style="padding:9px 12px 9px 0;font-size:13px;font-weight:600;color:#e2e8f0">${p.name}</td>
-                  <td style="padding:9px 12px;font-size:12px;color:#94a3b8">${posShort(p) || '—'}</td>
-                  <td style="padding:9px 0 9px 12px;font-size:11px;color:#64748b">${p.phone || p.email || '—'}</td>
-                </tr>`).join('')}
+                ${newPlayers.map(p => {
+                  const contact = [p.email, p.phone].filter(Boolean).join(' · ') || '—';
+                  const pos = (p.position || '').replace(/^\d+\s*[–—\-]\s*/, '') || '—';
+                  return `<tr style="border-bottom:1px solid rgba(30,45,61,0.5)">
+                    <td style="padding:9px 16px 9px 0;font-size:13px;font-weight:600;color:#e2e8f0;word-break:break-word">${p.name}</td>
+                    <td style="padding:9px 16px;font-size:11px;color:#64748b;word-break:break-all">${contact}</td>
+                    <td style="padding:9px 0;font-size:12px;color:#94a3b8">${pos}</td>
+                  </tr>`;
+                }).join('')}
               </tbody>
             </table>` : `
             <div style="padding:32px 0;text-align:center">
