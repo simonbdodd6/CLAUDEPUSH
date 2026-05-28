@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Coach's Eye · Boitsfort RFC</title>
+  <title>coacheseyeGPT · Boitsfort RFC</title>
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#090d14">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Coach's Eye">
+  <meta name="apple-mobile-web-app-title" content="coacheseyeGPT">
   <style>
     /* ── MIDNIGHT STADIUM ─ Dark-first premium design system ───────────────── */
     /* Palette: Page #090d14 · Card #0f1724 · Accent #10b981                   */
@@ -695,7 +695,7 @@
     .auto-paused { background:rgba(245,158,11,0.14); color:var(--amber); }
     .msgs-sent-stat { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:14px; }
     .msgs-sent-stat article { border:1px solid var(--line); border-radius:9px; padding:12px; text-align:center; background:var(--panel-2); }
-    .msgs-sent-stat strong { display:block; font-size:24px; font-weight:800; }
+    .msgs-sent-stat strong { display:block; font-size:30px; font-weight:400; font-family:var(--font-display); line-height:1; }
     .msgs-sent-stat small { color:var(--muted); font-size:12px; }
 
     /* ── TRAINING HERO ── */
@@ -928,8 +928,8 @@
       padding: 12px;
       background: var(--panel-2);
     }
-    .msg-kpi span { display: block; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
-    .msg-kpi strong { display: block; color: var(--ink); font-size: 26px; line-height: 1; margin-top: 6px; }
+    .msg-kpi span { display: block; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    .msg-kpi strong { display: block; color: var(--ink); font-size: 32px; font-weight: 400; font-family: var(--font-display); line-height: 1; margin-top: 4px; }
     .msg-kpi.available strong { color: var(--green); }
     .msg-kpi.unavailable strong { color: #ef4444; }
     .msg-kpi.chase strong { color: var(--amber); }
@@ -1012,7 +1012,7 @@
     .msg-chip.maybe { color: #fbbf24; background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.24); }
     .msg-chip.no-reply { color: var(--amber); background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.2); }
     .msg-form-grid { display: grid; gap: 12px; padding: 16px; }
-    .msg-form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .msg-form-row { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 10px; }
     .msg-form-grid label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 800; }
     .msg-day-picker { display: flex; flex-wrap: wrap; gap: 6px; }
     .msg-day-picker button {
@@ -1144,7 +1144,7 @@
       <div class="brand">
         <span class="brand-mark">CE</span>
         <div>
-          <strong>Coach's Eye</strong>
+          <strong>coacheseyeGPT</strong>
           <p>Boitsfort RFC</p>
         </div>
       </div>
@@ -1290,7 +1290,7 @@
         { date: "Three weeks",    opponent: "La Hulpe",    venue: "Away",  status: "Not opened" }
       ],
       messages: [
-        { id: "m1", from: "Coach", to: "Squad",       playerId: "squad",       sessionId: "week",    type: "Availability request",  text: "Please confirm Tuesday, Thursday and Kituro availability inside Coach's Eye.", unread: true,  time: "Today 09:00",  delivery: "delivered", replies: [] },
+        { id: "m1", from: "Coach", to: "Squad",       playerId: "squad",       sessionId: "week",    type: "Availability request",  text: "Please confirm Tuesday, Thursday and Kituro availability inside coacheseyeGPT.", unread: true,  time: "Today 09:00",  delivery: "delivered", replies: [] },
         { id: "m2", from: "Simon Dodd", to: "Coach",  playerId: "test-simon",  sessionId: "week",    type: "Player reply",           text: "Available Tuesday and Saturday. Carrying small shoulder stiffness.",              unread: true,  time: "Today 09:16",  delivery: "received",  replies: [] },
         { id: "m3", from: "Medical",    to: "Coach",  playerId: "coach",       sessionId: "medical", type: "Medical check-in",       text: "Bubele and Maxence need status updates before selection.",                        unread: false, time: "Yesterday",    delivery: "read",      replies: [] }
       ],
@@ -1300,9 +1300,9 @@
         { id: "req-game", sessionId: "game", title: "Kituro game availability",         sentAt: "Today 09:00", status: "sent", messageIds: [] }
       ],
       automationRules: [
-        { id: "auto-tue",  sessionId: "tue",  title: "Tuesday training availability",  schedule: "Sunday 18:00",   enabled: true, template: "Are you available for Tuesday training? Please answer in Coach's Eye." },
-        { id: "auto-thu",  sessionId: "thu",  title: "Thursday team run availability", schedule: "Tuesday 21:30",  enabled: true, template: "Are you available for Thursday team run? Please answer in Coach's Eye." },
-        { id: "auto-game", sessionId: "game", title: "Weekend match availability",     schedule: "Tuesday 09:00",  enabled: true, template: "Are you available for Boitsfort Premier vs Kituro this weekend? Please answer in Coach's Eye." }
+        { id: "auto-tue",  sessionId: "tue",  title: "Tuesday training availability",  schedule: "Sunday 18:00",   enabled: true, template: "Are you available for Tuesday training? Please answer in coacheseyeGPT." },
+        { id: "auto-thu",  sessionId: "thu",  title: "Thursday team run availability", schedule: "Tuesday 21:30",  enabled: true, template: "Are you available for Thursday team run? Please answer in coacheseyeGPT." },
+        { id: "auto-game", sessionId: "game", title: "Weekend match availability",     schedule: "Tuesday 09:00",  enabled: true, template: "Are you available for Boitsfort Premier vs Kituro this weekend? Please answer in coacheseyeGPT." }
       ],
       masterFeed: [
         { id: "feed-1", event: "Prototype messaging layer loaded", time: "Today", detail: "Coach and player messages are joined in one master feed." }
@@ -1393,7 +1393,7 @@
     function safeParseState(raw, source) {
       if (!raw) return null;
       try { return JSON.parse(raw); }
-      catch (e) { console.warn(`Coach Eye ignored corrupt ${source} state`, e); return null; }
+      catch (e) { console.warn(`coacheseyeGPT ignored corrupt ${source} state`, e); return null; }
     }
 
     function readStoredState() {
@@ -1484,7 +1484,7 @@
         if (el) el.textContent = `${message} · rev ${state.meta.revision}`;
         return true;
       } catch (e) {
-        console.error("Coach Eye save failed", e);
+        console.error("coacheseyeGPT save failed", e);
         const el = document.getElementById("saveStatus");
         if (el) el.textContent = "Could not save in this browser";
         return false;
@@ -2634,7 +2634,7 @@
                     <span class="eyebrow">${item.type}</span>
                     <strong>${item.title}</strong>
                     <span class="muted" style="font-size:12px">${item.date}</span>
-                    <strong style="color:var(--green);font-size:22px">${available}</strong>
+                    <strong style="color:var(--green);font-size:32px;font-family:var(--font-display);font-weight:400;line-height:1">${available}</strong>
                     <span class="muted">of ${state.players.length} available</span>
                     <div style="margin:6px 0 8px"><div class="history-bar"><span style="width:${pct}%"></span></div><small style="color:var(--muted);font-size:11px">${replies}/${state.players.length} replied · ${pct}%</small></div>
                     <button class="btn" type="button" onclick="openMessageDetail('${item.id}')">View detail →</button>
@@ -2962,7 +2962,7 @@
 
       const quickTemplates = [
         `Hi {{firstName}}, can you confirm your availability for ${selected?.title || "this session"}?`,
-        `Reminder: please answer your Coach's Eye availability request for ${selected?.title || "this week"}.`,
+        `Reminder: please answer your coacheseyeGPT availability request for ${selected?.title || "this week"}.`,
         `Team update for ${selected?.title || "this week"}: please check the app and reply when you can.`
       ];
 
@@ -2972,7 +2972,7 @@
             <div>
               <div class="eyebrow">Coach communications</div>
               <h2>Messaging Command Centre</h2>
-              <p>A cleaner second option for a growing club: send now, automate later, track replies by session, and keep every player response inside Coach's Eye rather than WhatsApp.</p>
+              <p>A cleaner second option for a growing club: send now, automate later, track replies by session, and keep every player response inside coacheseyeGPT rather than WhatsApp.</p>
             </div>
             <div class="msg-hero-actions">
               <button class="btn" id="avail-refresh-btn" type="button" onclick="refreshLiveAvailability()">Refresh replies</button>
@@ -3050,14 +3050,14 @@
                 <div class="msg-card-head">
                   <div>
                     <h2>Send now</h2>
-                    <p>Manual push message to players already on Coach's Eye.</p>
+                    <p>Manual push message to players already on coacheseyeGPT.</p>
                   </div>
                 </div>
                 <div class="msg-form-grid">
                   <div class="msg-form-row">
                     <label>Message type
                       <select id="requestType">
-                        <option>Coach announcement</option>
+                        <option>Announcement</option>
                         <option>Availability request</option>
                         <option>Training update</option>
                         <option>Medical check-in</option>
@@ -3239,7 +3239,7 @@
       if (!isCoach()) return notify("Only coaches can send availability requests");
       const session = state.schedule.find(s => s.id === sessionId);
       if (!session) return;
-      const body = `Please confirm your availability for ${session.title} (${session.date}) inside Coach's Eye.`;
+      const body = `Please confirm your availability for ${session.title} (${session.date}) inside coacheseyeGPT.`;
       const created = createCoachMessage({ recipients: state.players, type: "Availability request", body, sessionId });
       state.availabilityRequests.unshift({
         id: `req-${Date.now()}`,
@@ -3263,7 +3263,7 @@
       const playerEl   = document.getElementById("messagePlayer");
       const body       = bodyEl ? bodyEl.value.trim() : "";
       if (!body) return notify("Write a message before sending");
-      const type       = typeEl     ? typeEl.value     : "Coach announcement";
+      const type       = typeEl     ? typeEl.value     : "Announcement";
       const audience   = audienceEl ? audienceEl.value : "squad";
       const playerId   = playerEl   ? playerEl.value   : "";
       const recipients = getMessageRecipients(audience, playerId);
@@ -3831,10 +3831,10 @@
       state.messages.unshift({
         id: `m${Date.now()}`, from: "Medical", to: player.name, playerId: player.id,
         sessionId: "medical", type: "Medical check-in request",
-        text: "Please update your injury status, treatment plan, and weekend availability in Coach's Eye.",
+        text: "Please update your injury status, treatment plan, and weekend availability in coacheseyeGPT.",
         unread: true, time: "Just now", delivery: "delivered to app", replies: []
       });
-      sendPushToPlayers("Medical check-in", `${player.name} — please update your injury status in Coach's Eye.`);
+      sendPushToPlayers("Medical check-in", `${player.name} — please update your injury status in coacheseyeGPT.`);
       notify(`Medical check-in sent to ${player.name}`);
     }
 
@@ -4587,8 +4587,8 @@
       }
 
       if (pushSubscription) {
-        card.style.borderColor = '#22c55e';
-        card.style.background  = '#f0fdf4';
+        card.style.borderColor = 'rgba(16,185,129,0.35)';
+        card.style.background  = 'rgba(16,185,129,0.07)';
         card.innerHTML = `
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
             <div style="display:flex;align-items:center;gap:10px">
@@ -4598,14 +4598,14 @@
                 <p class="muted" style="font-size:12px;margin:2px 0 0">📱 ${subscriberCount} device${subscriberCount===1?'':'s'} total — messages go to all of them</p>
               </div>
             </div>
-            <button class="btn" type="button" onclick="unsubscribePush()" style="font-size:12px;color:#dc2626;border-color:#fca5a5">Turn off this device</button>
+            <button class="btn" type="button" onclick="unsubscribePush()" style="font-size:12px;color:#f87171;border-color:rgba(248,113,113,0.3)">Turn off this device</button>
           </div>`;
         return;
       }
 
       // Not subscribed yet
-      card.style.borderColor = 'var(--green)';
-      card.style.background  = '#f0fdf4';
+      card.style.borderColor = 'rgba(16,185,129,0.25)';
+      card.style.background  = 'rgba(16,185,129,0.05)';
       card.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
           <div style="display:flex;align-items:center;gap:10px">
@@ -4652,7 +4652,7 @@
           const statusDot = s.active
             ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,0.18);margin-right:5px;flex-shrink:0"></span>`
             : `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#334155;margin-right:5px;flex-shrink:0"></span>`;
-          return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:8px;background:${s.active?'#f0fdf4':'#f9fafb'};border:1px solid ${s.active?'#bbf7d0':'var(--line)'};margin-bottom:6px">
+          return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:8px;background:${s.active?'rgba(16,185,129,0.07)':'var(--panel-2)'};border:1px solid ${s.active?'rgba(16,185,129,0.25)':'var(--line)'};margin-bottom:6px">
             <div style="min-width:0">
               <div style="display:flex;align-items:center;gap:4px">${statusDot}<strong style="font-size:13px">${esc(s.name)}</strong><span style="font-size:11px;color:var(--muted);margin-left:4px">${s.active?'Active':'Paused'}</span></div>
               <div style="font-size:12px;color:var(--muted);margin-top:2px">📅 ${days} &nbsp;·&nbsp; 🕐 ${s.time} &nbsp;·&nbsp; <em>${lastSent}</em></div>
@@ -4935,7 +4935,7 @@
         <div style="background:#0f1724;border:1px solid rgba(16,185,129,0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
           <div style="font-size:52px;margin-bottom:12px">🏉</div>
           <h2 style="margin:0 0 6px;color:#e2e8f0;font-size:22px">Welcome to Boitsfort RFC</h2>
-          <p style="color:#64748b;font-size:14px;margin-bottom:22px">You've been invited to join Coach's Eye</p>
+          <p style="color:#64748b;font-size:14px;margin-bottom:22px">You've been invited to join coacheseyeGPT</p>
 
           <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:14px 16px;margin-bottom:22px;text-align:left">
             <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Joining as</div>
