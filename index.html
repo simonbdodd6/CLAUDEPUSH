@@ -868,6 +868,190 @@
     .live-badge.sched { background:rgba(16,185,129,0.12); color:#10b981; }
     .live-badge.adhoc { background:var(--amber-soft); color:var(--amber); }
 
+    /* ── MESSAGE CENTER V2 ── */
+    .msg-hub {
+      display: grid;
+      gap: 18px;
+    }
+    .msg-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: end;
+      border: 1px solid rgba(16,185,129,0.2);
+      border-radius: 14px;
+      padding: 20px;
+      background:
+        linear-gradient(135deg, rgba(16,185,129,0.12), transparent 42%),
+        var(--panel);
+    }
+    .msg-hero h2 {
+      margin: 5px 0 6px;
+      font-size: clamp(22px, 3vw, 34px);
+      letter-spacing: 0;
+    }
+    .msg-hero p { color: var(--muted); font-size: 13px; max-width: 780px; }
+    .msg-hero-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .msg-command-grid {
+      display: grid;
+      grid-template-columns: minmax(340px, 0.95fr) minmax(0, 1.25fr) minmax(300px, 0.8fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .msg-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .msg-card.pad { padding: 16px; }
+    .msg-card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 15px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.02);
+    }
+    .msg-card-head h2, .msg-card-head h3 { margin: 0; font-size: 17px; }
+    .msg-card-head p { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .msg-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .msg-kpi {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      background: var(--panel-2);
+    }
+    .msg-kpi span { display: block; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .msg-kpi strong { display: block; color: var(--ink); font-size: 26px; line-height: 1; margin-top: 6px; }
+    .msg-kpi.available strong { color: var(--green); }
+    .msg-kpi.unavailable strong { color: #ef4444; }
+    .msg-kpi.chase strong { color: var(--amber); }
+    .msg-pill-row { display: flex; flex-wrap: wrap; gap: 7px; }
+    .msg-session-btn {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0 13px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .msg-session-btn.active { border-color: var(--green); background: rgba(16,185,129,0.12); color: var(--green); }
+    .msg-status-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 16px;
+    }
+    .msg-status-column {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      min-height: 220px;
+      background: var(--panel-2);
+      overflow: hidden;
+    }
+    .msg-status-column header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 11px;
+      border-bottom: 1px solid var(--line);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .msg-status-column.available header { color: var(--green); background: rgba(16,185,129,0.07); }
+    .msg-status-column.unavailable header { color: #f87171; background: rgba(239,68,68,0.07); }
+    .msg-status-column.chase header { color: var(--amber); background: rgba(245,158,11,0.08); }
+    .msg-player-list {
+      display: grid;
+      gap: 6px;
+      padding: 10px;
+      max-height: 330px;
+      overflow: auto;
+    }
+    .msg-player-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: var(--panel);
+      color: var(--ink);
+      text-align: left;
+      cursor: pointer;
+    }
+    .msg-player-row:hover, .msg-player-row.active { border-color: var(--green); background: rgba(16,185,129,0.06); }
+    .msg-player-row strong { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .msg-player-row small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .msg-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 22px;
+      border-radius: 999px;
+      padding: 0 8px;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+    .msg-chip.available { color: #10b981; background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.22); }
+    .msg-chip.unavailable, .msg-chip.injured { color: #f87171; background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.22); }
+    .msg-chip.maybe { color: #fbbf24; background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.24); }
+    .msg-chip.no-reply { color: var(--amber); background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.2); }
+    .msg-form-grid { display: grid; gap: 12px; padding: 16px; }
+    .msg-form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .msg-form-grid label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 800; }
+    .msg-day-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+    .msg-day-picker button {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--muted);
+      padding: 0 11px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .msg-day-picker button.active { border-color: var(--green); background: rgba(16,185,129,0.12); color: var(--green); }
+    .msg-segment-toggle { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .msg-segment-toggle button {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel);
+      color: var(--muted);
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .msg-segment-toggle button.active { border-color: var(--green); background: rgba(16,185,129,0.12); color: var(--green); }
+    .msg-send-card textarea, .msg-form-grid textarea { min-height: 120px; }
+    .msg-template-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .msg-template-actions button { min-height: 38px; font-size: 12px; }
+    .msg-side-stack { display: grid; gap: 12px; }
+    .msg-device-card { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+    .msg-roadmap {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .msg-roadmap article { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--panel); }
+    .msg-roadmap strong { display: block; color: var(--ink); font-size: 13px; margin-bottom: 5px; }
+    .msg-roadmap small { color: var(--muted); font-size: 11px; line-height: 1.35; }
+
     /* ── COLLAPSIBLE SERVER PANELS ── */
     .srv-panel { border-bottom:1px solid var(--line); }
     .srv-panel:last-child { border-bottom:none; }
@@ -936,6 +1120,10 @@
       .session-card-row { grid-template-columns: 1fr; }
       .training-hero { grid-template-columns: 1fr; }
       .training-hero-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+      .msg-hero, .msg-command-grid { grid-template-columns: 1fr; }
+      .msg-hero-actions { justify-content: flex-start; }
+      .msg-status-grid { grid-template-columns: 1fr; }
+      .msg-roadmap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
     @media (max-width: 480px) {
@@ -945,6 +1133,7 @@
       .topbar { flex-direction: column; gap: 12px; }
       nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .video-grid { grid-template-columns: 1fr; }
+      .msg-kpi-grid, .msg-form-row, .msg-template-actions, .msg-segment-toggle, .msg-roadmap { grid-template-columns: 1fr; }
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
@@ -1916,6 +2105,180 @@
       const p=state.players.find(p=>p.id===id); if (!p) return;
       state.players=state.players.filter(p=>p.id!==id); notify(`${p.name} removed from squad`);
     }
+
+    // ─── SPREADSHEET IMPORT ──────────────────────────────────────────────────
+    let _importPending = [];
+
+    function triggerImportFile() {
+      if (!isCoach()) return showToast('Only coaches can import players');
+      const input = document.createElement('input');
+      input.type  = 'file';
+      input.accept = '.csv,.xlsx,.xls';
+      input.style.display = 'none';
+      input.onchange = e => { if (e.target.files[0]) importPlayersFromFile(e.target.files[0]); };
+      document.body.appendChild(input);
+      input.click();
+      setTimeout(() => input.remove(), 30000);
+    }
+
+    function parseCSV(text) {
+      const lines = text.trim().split(/\r?\n/);
+      if (!lines.length) return [];
+      const firstLine = lines[0];
+      const sep = (firstLine.split(';').length > firstLine.split(',').length) ? ';' : ',';
+      return lines.map(line => {
+        const row = []; let cur = '', inQ = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') { inQ = !inQ; continue; }
+          if (ch === sep && !inQ) { row.push(cur.trim()); cur = ''; }
+          else cur += ch;
+        }
+        row.push(cur.trim());
+        return row;
+      });
+    }
+
+    function mapRowToPlayer(row, headers) {
+      const find = (...keys) => {
+        for (const k of keys) {
+          const idx = headers.findIndex(h => h === k.toLowerCase());
+          if (idx >= 0 && row[idx] !== undefined) return String(row[idx]).trim();
+        }
+        return '';
+      };
+      const name = find('name','full name','full_name','joueur','player','nom',
+                        'prénom + nom','nom complet','firstname','first name','prenom');
+      if (!name) return null;
+      return {
+        name,
+        position: find('position','pos','poste','rôle','role','numero','number') || 'SUB — Squad player',
+        phone:    find('phone','mobile','gsm','tel','téléphone','telephone','phone number','mob') || '',
+        email:    find('email','mail','e-mail','e_mail','adresse email','adresse mail') || '',
+      };
+    }
+
+    async function importPlayersFromFile(file) {
+      if (!file) return;
+      showToast('⏳ Reading file…');
+      try {
+        let rows;
+        const ext = file.name.toLowerCase().split('.').pop();
+        if (ext === 'csv') {
+          const text = await file.text();
+          rows = parseCSV(text);
+        } else {
+          if (typeof XLSX === 'undefined') {
+            await new Promise((resolve, reject) => {
+              const s = document.createElement('script');
+              s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+              s.onload = resolve;
+              s.onerror = () => reject(new Error('SheetJS load failed'));
+              document.head.appendChild(s);
+            });
+          }
+          const buf = await file.arrayBuffer();
+          const wb  = XLSX.read(new Uint8Array(buf), { type: 'array' });
+          const ws  = wb.Sheets[wb.SheetNames[0]];
+          rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        }
+        if (!rows || rows.length < 2) return showToast('⚠️ File appears empty or has only a header row');
+        const headers  = (rows[0] || []).map(h => String(h).toLowerCase().trim());
+        const dataRows = rows.slice(1).filter(r => r.some(c => String(c).trim()));
+        if (!dataRows.length) return showToast('⚠️ No data rows found in file');
+        const parsed = dataRows.map(r => mapRowToPlayer(r, headers)).filter(Boolean);
+        if (!parsed.length) return showToast('⚠️ No "Name" column found — rename your column header to Name');
+        showImportPreview(parsed);
+      } catch(e) {
+        console.error('[import]', e);
+        showToast('❌ Could not read file — try saving as CSV and re-importing');
+      }
+    }
+
+    function showImportPreview(players) {
+      const existing   = new Set(state.players.map(p => p.name.toLowerCase()));
+      const newPlayers = players.filter(p => !existing.has(p.name.toLowerCase()));
+      const dupeCount  = players.length - newPlayers.length;
+      _importPending   = newPlayers;
+      document.getElementById('import-overlay')?.remove();
+      const posShort = p => (p.position || '—').replace(/^\d+\s*[–—\-]\s*/, '');
+      const overlay = document.createElement('div');
+      overlay.id = 'import-overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+      overlay.innerHTML = `
+        <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;width:100%;max-width:660px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,0.65)">
+          <div style="padding:20px 24px 16px;border-bottom:1px solid var(--line);flex-shrink:0">
+            <h2 style="margin:0 0 6px;font-size:18px">Import players from spreadsheet</h2>
+            <p style="font-size:13px;color:#94a3b8;margin:0">
+              ${players.length} player${players.length!==1?'s':''} detected
+              ${dupeCount ? `&nbsp;&middot;&nbsp;<span style="color:#f59e0b">${dupeCount} already in squad (skipped)</span>` : ''}
+              &nbsp;&middot;&nbsp;<strong style="color:#10b981">${newPlayers.length} new player${newPlayers.length!==1?'s':''} will be added</strong>
+            </p>
+          </div>
+          <div style="overflow-y:auto;flex:1;padding:0 24px 8px">
+            ${newPlayers.length ? `
+            <table style="width:100%;border-collapse:collapse;margin:12px 0">
+              <thead>
+                <tr style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">
+                  <th style="padding:6px 12px 6px 0;text-align:left;border-bottom:1px solid var(--line);font-weight:600">Name</th>
+                  <th style="padding:6px 12px;text-align:left;border-bottom:1px solid var(--line);font-weight:600">Position</th>
+                  <th style="padding:6px 0 6px 12px;text-align:left;border-bottom:1px solid var(--line);font-weight:600">Contact</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${newPlayers.map(p => `
+                <tr style="border-bottom:1px solid rgba(30,45,61,0.5)">
+                  <td style="padding:9px 12px 9px 0;font-size:13px;font-weight:600;color:#e2e8f0">${p.name}</td>
+                  <td style="padding:9px 12px;font-size:12px;color:#94a3b8">${posShort(p) || '—'}</td>
+                  <td style="padding:9px 0 9px 12px;font-size:11px;color:#64748b">${p.phone || p.email || '—'}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>` : `
+            <div style="padding:32px 0;text-align:center">
+              <div style="font-size:32px;margin-bottom:10px">✅</div>
+              <p style="color:#64748b;font-size:14px">All detected players are already in your squad.</p>
+            </div>`}
+          </div>
+          <div style="padding:16px 24px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;flex-shrink:0;background:var(--panel);border-radius:0 0 16px 16px">
+            <button class="btn" type="button" onclick="document.getElementById('import-overlay').remove();_importPending=[]">Cancel</button>
+            ${newPlayers.length ? `<button class="btn primary" type="button" onclick="confirmImport()">
+              ✅ Add ${newPlayers.length} player${newPlayers.length!==1?'s':''} to squad
+            </button>` : ''}
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+    }
+
+    function confirmImport() {
+      const players = _importPending;
+      _importPending = [];
+      document.getElementById('import-overlay')?.remove();
+      if (!players.length) return;
+      for (const p of players) {
+        if (!p.name) continue;
+        const id = 'p' + Date.now() + Math.floor(Math.random()*9999);
+        state.players.push({
+          id, name: p.name,
+          position:        p.position || 'SUB — Squad player',
+          status:          'no-reply',
+          game:            'no-reply',
+          phone:           p.phone || '',
+          email:           p.email || '',
+          trainingTuesday: 'no-reply',
+          trainingThursday:'no-reply',
+          attendance:      0,
+          history:         [],
+          blockedDates:    [],
+          medical:         '',
+          mediaConsent:    false,
+          contractStatus:  'active',
+        });
+      }
+      saveState();
+      render();
+      showToast(`✅ ${players.length} player${players.length!==1?'s':''} added to squad`);
+    }
+
 
     // ─── AUTH ────────────────────────────────────────────────────────────────
     let authTab = 'closed'; // 'closed' | 'open' | 'open-join' — not persisted
@@ -3102,6 +3465,7 @@
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <button class="btn" type="button" onclick="showToast('Squad exported to CSV ✓')">📥 Export</button>
+                <button class="btn" type="button" onclick="triggerImportFile()">📤 Import spreadsheet</button>
                 <button class="btn" type="button" onclick="showToast('Bulk pay email sent to squad ✓')">💳 Bulk pay squad</button>
                 <button class="btn primary" type="button" onclick="showAddPlayerForm()">+ Add rugby player</button>
               </div>
