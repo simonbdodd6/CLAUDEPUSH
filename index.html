@@ -185,6 +185,28 @@
       background: rgba(255,255,255,0.04);
       color: rgba(255,255,255,0.78);
     }
+    nav button {
+      justify-content: space-between;
+    }
+    .nav-badge {
+      min-width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: #ef4444;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 5px;
+      flex-shrink: 0;
+      animation: badgePop .2s ease;
+    }
+    @keyframes badgePop {
+      from { transform: scale(0.6); opacity: 0; }
+      to   { transform: scale(1);   opacity: 1; }
+    }
 
     .push-status-pill {
       display: flex;
@@ -1434,6 +1456,15 @@
     .msg-template-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .msg-template-actions button { min-height: 38px; font-size: 12px; }
     .msg-side-stack { display: grid; gap: 12px; }
+    .msg-two-col { grid-template-columns: minmax(0,1fr) minmax(270px,0.7fr) !important; }
+    .msg-avatar {
+      width:44px; height:44px; border-radius:50%;
+      background:linear-gradient(135deg,var(--green) 0%,#0d9488 100%);
+      display:flex; align-items:center; justify-content:center;
+      font-size:18px; font-weight:800; color:#060b12; flex-shrink:0;
+    }
+    .msg-player-detail-panel { animation: fadeSlideIn .2s ease; }
+    @keyframes fadeSlideIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
     .msg-device-card { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
     .msg-roadmap {
       display: grid;
@@ -1512,7 +1543,7 @@
       .session-card-row { grid-template-columns: 1fr; }
       .training-hero { grid-template-columns: 1fr; }
       .training-hero-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
-      .msg-hero, .msg-command-grid { grid-template-columns: 1fr; }
+      .msg-hero, .msg-command-grid, .msg-two-col { grid-template-columns: 1fr !important; }
       .msg-hero-actions { justify-content: flex-start; }
       .msg-status-grid { grid-template-columns: 1fr; }
       .msg-roadmap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2940,6 +2971,8 @@
         </div>
       `;
       renderPushSidebar();
+      // Restore badge after nav re-render
+      if (_chatNavUnread > 0) updateNavBadge();
     }
 
     function setView(view) {
@@ -3392,61 +3425,23 @@
             <article class="msg-kpi"><span>Response rate</span><strong>${responseRate}%</strong></article>
           </section>
 
-          <section class="msg-command-grid">
-            <div class="msg-side-stack">
-              <article class="msg-card">
-                <div class="msg-card-head">
-                  <div>
-                    <h2>Audience</h2>
-                    <p>Pick the session, then send to the right group.</p>
-                  </div>
-                  <span id="avail-refresh-ts" class="msg-chip no-reply">Live sync</span>
-                </div>
-                <div style="padding:16px">
-                  <div class="msg-pill-row">
-                    ${state.schedule.map(s => `<button class="msg-session-btn ${selected?.id===s.id ? "active" : ""}" type="button" onclick="openMessageDetail('${s.id}')">${esc(s.title)}</button>`).join("")}
-                  </div>
-                  <div style="margin-top:14px">
-                    ${trainingRegisterHTML || `<p class="muted">No training sessions configured yet.</p>`}
-                  </div>
-                </div>
-              </article>
-
-              <article class="msg-card pad">
-                <div class="compact-player-heading">
-                  <strong>${esc(selectedPlayer.name)}</strong>
-                  <span class="msg-chip ${selectedStatus}">${statusLabel(selectedStatus)}</span>
-                </div>
-                <div class="training-metrics">
-                  <article><span>Year attendance</span><strong>${selectedPlayer.attendance || 0}%</strong></article>
-                  <article><span>Recent replies</span><strong>${selectedPlayer.history.filter(h => h !== "no-reply").length}/${selectedPlayer.history.length}</strong></article>
-                  <article><span>Position</span><strong>${esc(selectedPlayer.position)}</strong></article>
-                </div>
-                <p class="muted" style="font-size:12px;margin-top:10px">${esc(selectedPlayer.medical || selectedPlayer.history.join(", ") || "Click a player to view their availability profile.")}</p>
-              </article>
-            </div>
-
+          <!-- ROW 1: Audience (left) + Send Now / Devices (right) -->
+          <section class="msg-command-grid msg-two-col">
             <article class="msg-card">
               <div class="msg-card-head">
                 <div>
-                  <h2>Live Response Board</h2>
-                  <p>${esc(selected?.title || "Selected session")} · green coming, red not coming, orange chase-up.</p>
+                  <h2>Audience</h2>
+                  <p>Pick the session, then send to the right group.</p>
                 </div>
-                <span class="msg-chip ${noReply.length ? "no-reply" : "available"}">${answered.length}/${rows.length} answered</span>
+                <span id="avail-refresh-ts" class="msg-chip no-reply">Live sync</span>
               </div>
-              <div class="msg-status-grid">
-                <section class="msg-status-column available">
-                  <header><span>Available</span><strong>${available.length}</strong></header>
-                  <div class="msg-player-list">${playerRows(available)}</div>
-                </section>
-                <section class="msg-status-column unavailable">
-                  <header><span>Unavailable / Maybe</span><strong>${unavailable.length + maybe.length}</strong></header>
-                  <div class="msg-player-list">${playerRows([...unavailable, ...maybe])}</div>
-                </section>
-                <section class="msg-status-column chase">
-                  <header><span>No reply</span><strong>${noReply.length}</strong></header>
-                  <div class="msg-player-list">${playerRows(noReply)}</div>
-                </section>
+              <div style="padding:16px">
+                <div class="msg-pill-row">
+                  ${state.schedule.map(s => `<button class="msg-session-btn ${selected?.id===s.id ? "active" : ""}" type="button" onclick="openMessageDetail('${s.id}')">${esc(s.title)}</button>`).join("")}
+                </div>
+                <div style="margin-top:14px">
+                  ${trainingRegisterHTML || `<p class="muted">No training sessions configured yet.</p>`}
+                </div>
               </div>
             </article>
 
@@ -3498,6 +3493,36 @@
               </article>
             </div>
           </section>
+
+          <!-- ROW 2: Live Response Board — full width -->
+          <article class="msg-card" style="margin-top:14px">
+            <div class="msg-card-head">
+              <div>
+                <h2>Live Response Board</h2>
+                <p>${esc(selected?.title || "Selected session")} · click any player to view their details.</p>
+              </div>
+              <span class="msg-chip ${noReply.length ? "no-reply" : "available"}">${answered.length}/${rows.length} answered</span>
+            </div>
+            <div class="msg-status-grid">
+              <section class="msg-status-column available">
+                <header><span>Available</span><strong>${available.length}</strong></header>
+                <div class="msg-player-list">${playerRows(available)}</div>
+              </section>
+              <section class="msg-status-column unavailable">
+                <header><span>Unavailable / Maybe</span><strong>${unavailable.length + maybe.length}</strong></header>
+                <div class="msg-player-list">${playerRows([...unavailable, ...maybe])}</div>
+              </section>
+              <section class="msg-status-column chase">
+                <header><span>No reply</span><strong>${noReply.length}</strong></header>
+                <div class="msg-player-list">${playerRows(noReply)}</div>
+              </section>
+            </div>
+          </article>
+
+          <!-- ROW 3: Player detail — appears only when a player is clicked -->
+          <div id="player-detail-panel" class="msg-player-detail-panel" style="${state.selectedMessagePlayerId ? "margin-top:14px" : "display:none"}">
+            ${state.selectedMessagePlayerId ? buildPlayerDetailHtml(selectedPlayer, selectedStatus) : ""}
+          </div>
 
           <section class="msg-command-grid" style="grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr)">
             <article class="msg-card">
@@ -3603,11 +3628,73 @@
       }
     }
 
+    function buildPlayerDetailHtml(player, status) {
+      if (!player || !player.id) return '';
+      const statusClass = status || 'no-reply';
+      const repliedCount = (player.history || []).filter(h => h !== 'no-reply').length;
+      const totalCount   = (player.history || []).length;
+      return `
+        <article class="msg-card">
+          <div class="msg-card-head">
+            <div style="display:flex;align-items:center;gap:13px">
+              <div class="msg-avatar">${(player.name || '?')[0].toUpperCase()}</div>
+              <div>
+                <strong style="font-size:16px">${esc(player.name || '')}</strong>
+                <p style="margin:3px 0 0;color:var(--muted);font-size:12px">${esc(player.position || 'Player')}</p>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="msg-chip ${statusClass}">${statusLabel(statusClass)}</span>
+              <button class="btn" type="button" onclick="closePlayerDetail()" style="padding:0 12px;min-height:32px;font-size:12px">✕ Close</button>
+            </div>
+          </div>
+          <div class="training-metrics" style="padding:16px;gap:10px">
+            <article><span>Year attendance</span><strong>${player.attendance || 0}%</strong></article>
+            <article><span>Session replies</span><strong>${repliedCount}/${totalCount}</strong></article>
+            <article><span>Position</span><strong>${esc(player.position || '—')}</strong></article>
+            <article><span>This session</span><strong style="color:var(--${statusClass === 'available' ? 'green' : statusClass === 'no-reply' ? 'amber' : statusClass})">${statusLabel(statusClass)}</strong></article>
+          </div>
+          ${(player.medical || player.notes) ? `
+            <div style="padding:0 16px 16px">
+              <p class="muted" style="font-size:12px;padding:10px 12px;background:var(--panel-2);border-radius:8px;border:1px solid var(--line);margin:0">
+                ${esc(player.medical || player.notes || '')}
+              </p>
+            </div>` : ''}
+        </article>`;
+    }
+
     function setMessagePlayer(playerId) {
       if (!isCoach()) return notify("Players can only view their own profile");
+      // Toggle off if same player clicked again
+      if (state.selectedMessagePlayerId === playerId) {
+        return closePlayerDetail();
+      }
       state.selectedMessagePlayerId = playerId;
       saveState("Player detail selected");
-      render();
+      // Update active row highlight without full re-render
+      document.querySelectorAll('.msg-player-row').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('onclick') === `setMessagePlayer('${playerId}')`);
+      });
+      // Inject player detail panel
+      const panel = document.getElementById('player-detail-panel');
+      if (panel) {
+        const player = state.players.find(p => p.id === playerId);
+        const selected = state.schedule.find(s => s.id === (state.messageDetail || 'tue')) || state.schedule[0];
+        const k = selected ? sessionKey(selected.id) : 'game';
+        const status = player ? (player[k] || 'no-reply') : 'no-reply';
+        panel.style.cssText = 'margin-top:14px';
+        panel.className = 'msg-player-detail-panel';
+        panel.innerHTML = buildPlayerDetailHtml(player, status);
+        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    function closePlayerDetail() {
+      state.selectedMessagePlayerId = '';
+      saveState('Player detail closed');
+      const panel = document.getElementById('player-detail-panel');
+      if (panel) panel.style.display = 'none';
+      document.querySelectorAll('.msg-player-row.active').forEach(b => b.classList.remove('active'));
     }
 
     function getMessageRecipients(audience, playerId) {
@@ -3643,7 +3730,7 @@
       return created;
     }
 
-    function sendAvailabilityRequest(sessionId) {
+    async function sendAvailabilityRequest(sessionId) {
       if (!isCoach()) return notify("Only coaches can send availability requests");
       const session = state.schedule.find(s => s.id === sessionId);
       if (!session) return;
@@ -3657,13 +3744,22 @@
         status:  "sent",
         messageIds: created.map(m => m.id)
       });
-      // Push delivery is persisted by the backend; a future native app can
-      // reuse this same sessionId/response workflow without changing the UI.
-      sendPushToPlayers(`Availability request - ${session.title}`, body, { type: 'availability', sessionId });
-      notify(`${session.title} request sent to ${created.length} player accounts`);
+      // Write to Redis squad chat so players see it in their Messages tab
+      try {
+        const me = currentUser();
+        await fetch('/api/chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'send', convId: 'squad',
+            senderId: me.id, senderName: me.name, senderRole: 'coach',
+            text: `Availability request — ${session.title} (${session.date}): ${body}`,
+            type: 'TEXT', isAutomated: false })
+        });
+      } catch(e) { console.warn('Chat write failed:', e); }
+      sendPushToPlayers(`Availability request — ${session.title}`, body, { type: 'availability', sessionId });
+      showToast(`${session.title} request sent to ${created.length} players ✓`);
     }
 
-    function sendInAppMessage() {
+    async function sendInAppMessage() {
       if (!isCoach()) return notify("Only coaches can send squad messages");
       const bodyEl     = document.getElementById("messageBody");
       const typeEl     = document.getElementById("requestType");
@@ -3675,21 +3771,59 @@
       const audience   = audienceEl ? audienceEl.value : "squad";
       const playerId   = playerEl   ? playerEl.value   : "";
       const recipients = getMessageRecipients(audience, playerId);
-      // Resolve targetLabel for individual sends — match by player name (push label)
+      const me = currentUser();
+
+      // Resolve targetLabel for individual sends
       let targetLabel;
       if (audience === 'individual' && playerId) {
         const target = state.players.find(p => p.id === playerId);
         if (target) targetLabel = target.name;
       }
+
       const created = createCoachMessage({ recipients, type, body });
+
+      // ── Write to Redis chat so players receive it in their Messages tab ──
+      try {
+        if (audience === 'individual' && playerId) {
+          // Direct message: ensure DM conv exists then send
+          const convId = `dm:${playerId}`;
+          const target = state.players.find(p => p.id === playerId);
+          await fetch('/api/chat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'create_conv', id: convId,
+              name: target?.name || 'Direct message', type: 'DIRECT',
+              participants: [me.id, playerId] })
+          });
+          await fetch('/api/chat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'send', convId,
+              senderId: me.id, senderName: me.name, senderRole: me.role || 'coach',
+              text: body, type: 'TEXT' })
+          });
+        } else {
+          // Squad / no-reply broadcast → write to squad channel
+          const convId = 'squad';
+          const msgText = `[${type}] ${body}`;
+          await fetch('/api/chat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'send', convId,
+              senderId: me.id, senderName: me.name, senderRole: me.role || 'coach',
+              text: msgText, type: 'TEXT' })
+          });
+        }
+      } catch(e) { console.warn('Chat write failed (offline?):', e); }
+
+      // ── Push notification ──
       const pushType = type.toLowerCase().includes('availability') ? 'availability' : 'message';
-      sendPushToPlayers(`Coach - ${type}`, body, {
+      sendPushToPlayers(`Coach — ${type}`, body, {
         targetLabel,
         audience: audience === 'no-reply' ? 'no-reply' : 'all',
         type: pushType,
         sessionId: state.messageDetail || 'game'
       });
-      notify(`${created.length} message${created.length===1?"":"s"} sent to player app`);
+
+      if (bodyEl) bodyEl.value = '';
+      showToast(`Message sent to ${created.length} player${created.length===1?'':'s'} ✓`);
     }
 
     function toggleAutomation(id) {
@@ -4484,32 +4618,37 @@
       document.getElementById("player-availability").innerHTML = `
         <div style="max-width:600px;margin:0 auto">
 
-          <!-- One-tap "all good" -->
-          <div style="background:var(--green);border-radius:16px;padding:20px 22px;margin-bottom:20px;color:#fff;text-align:center">
-            <p style="font-size:13px;margin:0 0 12px;opacity:.85">Set everything at once</p>
-            <button type="button" onclick="setAllAvailable()"
-              style="width:100%;padding:18px;font-size:17px;font-weight:800;border-radius:12px;border:3px solid rgba(255,255,255,0.5);
-                background:${allAvailable?'#fff':'transparent'};color:${allAvailable?'var(--green)':'#fff'};cursor:pointer;transition:all .15s">
-              ${allAvailable ? '✅ You\'re in for everything this week!' : '✅ Yes — I\'m available for everything this week'}
-            </button>
+          <!-- One-tap confirm all -->
+          <div style="border:1.5px solid ${allAvailable ? 'var(--green)' : 'var(--line)'};border-radius:14px;padding:18px 20px;margin-bottom:18px;background:${allAvailable ? 'rgba(16,185,129,0.07)' : 'var(--panel)'}">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <div>
+                <strong style="font-size:15px;display:block">Confirm everything this week</strong>
+                <span style="font-size:12px;color:var(--muted)">One tap to mark all sessions available</span>
+              </div>
+              <button type="button" onclick="setAllAvailable()"
+                style="min-height:42px;padding:0 22px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;
+                  border:2px solid var(--green);background:${allAvailable ? 'var(--green)' : 'transparent'};color:${allAvailable ? '#060b12' : 'var(--green)'};white-space:nowrap">
+                ${allAvailable ? 'All confirmed' : 'Yes — available for all'}
+              </button>
+            </div>
           </div>
 
           <!-- Per-session blocks -->
-          ${availabilityBlock(player, "trainingTuesday",  "🏉 Tuesday training · 19:45")}
-          ${availabilityBlock(player, "trainingThursday", "🏉 Thursday training · 19:45")}
-          ${availabilityBlock(player, "game", "🏆 ${state.fixtures?.[0]?.opponent ? state.fixtures[0].opponent + ' — ' + state.fixtures[0].date : 'Saturday match'}")}
+          ${availabilityBlock(player, "trainingTuesday",  "Tuesday training · 19:45")}
+          ${availabilityBlock(player, "trainingThursday", "Thursday training · 19:45")}
+          ${availabilityBlock(player, "game", "${state.fixtures?.[0]?.opponent ? state.fixtures[0].opponent + ' — ' + state.fixtures[0].date : 'Saturday match'}")}
 
           <!-- Blocked dates -->
-          <div class="card" style="margin-top:20px">
-            <h3>Can't make a future date?</h3>
-            <p class="muted" style="font-size:13px">Tell the coach early and it won't count against you.</p>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
-              <label style="font-size:13px">Date<input id="blockDate" type="date" style="margin-top:4px"></label>
-              <label style="font-size:13px">Reason<input id="blockReason" placeholder="Holiday, work…" style="margin-top:4px"></label>
+          <div style="border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-top:18px;background:var(--panel)">
+            <strong style="font-size:14px;display:block;margin-bottom:4px">Flag a date you can't make</strong>
+            <p class="muted" style="font-size:12px;margin:0 0 14px">Let the coach know early — it protects your attendance record.</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+              <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:4px">Date<input id="blockDate" type="date"></label>
+              <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:4px">Reason<input id="blockReason" placeholder="Holiday, work, other…"></label>
             </div>
-            <button class="btn primary" type="button" style="margin-top:11px;width:100%" onclick="addBlockedDate()">Save date</button>
+            <button class="btn primary" type="button" style="width:100%" onclick="addBlockedDate()">Save unavailable date</button>
             <div class="list" style="margin-top:12px">
-              ${(player.blockedDates||[]).map(b => row(b.date, b.reason, "<span class='status unavailable'>Blocked</span>")).join("") || "<p class='muted' style='font-size:13px'>No blocked dates yet.</p>"}
+              ${(player.blockedDates||[]).map(b => row(b.date, b.reason, "<span class='status unavailable'>Blocked</span>")).join("") || "<p class='muted' style='font-size:12px;padding-top:4px'>No blocked dates saved.</p>"}
             </div>
           </div>
         </div>`;
@@ -4517,43 +4656,35 @@
 
     function availabilityBlock(player, key, label) {
       const current = player[key] || 'no-reply';
-      const statusColors = {
-        available:   { bg:'#16a34a', border:'#16a34a', text:'#fff' },
-        unavailable: { bg:'#dc2626', border:'#dc2626', text:'#fff' },
-        maybe:       { bg:'#d97706', border:'#d97706', text:'#fff' },
-        injured:     { bg:'#7c3aed', border:'#7c3aed', text:'#fff' },
-        'no-reply':  { bg:'#f3f4f6', border:'#d1d5db', text:'#6b7280' },
+      const statusMap = {
+        available:   { border:'#16a34a', accent:'#16a34a' },
+        unavailable: { border:'#dc2626', accent:'#dc2626' },
+        maybe:       { border:'#d97706', accent:'#d97706' },
+        injured:     { border:'#7c3aed', accent:'#7c3aed' },
+        'no-reply':  { border:'var(--line)', accent:'var(--muted)' },
       };
-      const c = statusColors[current] || statusColors['no-reply'];
+      const s = statusMap[current] || statusMap['no-reply'];
+      const selBtn = (val, label, color) => `
+        <button type="button" onclick="setPlayerAvailability('${key}','${val}')"
+          style="min-height:48px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.14s;
+            border:2px solid ${color};
+            background:${current===val ? color : 'transparent'};
+            color:${current===val ? '#fff' : color}">
+          ${label}
+        </button>`;
       return `
-        <div style="border:2px solid ${c.border};border-radius:14px;padding:18px 20px;margin-bottom:14px;background:${c.bg}18">
+        <div style="border:1.5px solid ${s.border};border-radius:12px;padding:16px 18px;margin-bottom:14px;background:var(--panel)">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-            <strong style="font-size:16px">${label}</strong>
-            <span style="background:${c.bg};color:${c.text};font-size:12px;font-weight:800;padding:4px 12px;border-radius:999px">${statusLabel(current)}</span>
+            <strong style="font-size:15px;color:var(--ink)">${label}</strong>
+            <span style="border:1px solid ${s.border};color:${s.accent};font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;background:${current==='no-reply'?'transparent':s.border+'18'}">${statusLabel(current)}</span>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-            <button type="button" onclick="setPlayerAvailability('${key}','available')"
-              style="padding:18px 10px;border-radius:12px;font-size:15px;font-weight:800;border:3px solid #16a34a;
-                background:${current==='available'?'#16a34a':'#fff'};color:${current==='available'?'#fff':'#16a34a'};cursor:pointer;transition:all 0.15s">
-              ✅ Yes, I'm coming
-            </button>
-            <button type="button" onclick="setPlayerAvailability('${key}','unavailable')"
-              style="padding:18px 10px;border-radius:12px;font-size:15px;font-weight:800;border:3px solid #dc2626;
-                background:${current==='unavailable'?'#dc2626':'#fff'};color:${current==='unavailable'?'#fff':'#dc2626'};cursor:pointer;transition:all 0.15s">
-              ❌ Can't make it
-            </button>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            ${selBtn('available',   'Available',    '#16a34a')}
+            ${selBtn('unavailable', 'Not available','#dc2626')}
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <button type="button" onclick="setPlayerAvailability('${key}','maybe')"
-              style="padding:12px 10px;border-radius:10px;font-size:13px;font-weight:700;border:2px solid #d97706;
-                background:${current==='maybe'?'#d97706':'#fff'};color:${current==='maybe'?'#fff':'#d97706'};cursor:pointer">
-              🤔 Maybe
-            </button>
-            <button type="button" onclick="setPlayerAvailability('${key}','injured')"
-              style="padding:12px 10px;border-radius:10px;font-size:13px;font-weight:700;border:2px solid #7c3aed;
-                background:${current==='injured'?'#7c3aed':'#fff'};color:${current==='injured'?'#fff':'#7c3aed'};cursor:pointer">
-              🤕 Injured
-            </button>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            ${selBtn('maybe',   'Unsure',   '#d97706')}
+            ${selBtn('injured', 'Injured',  '#7c3aed')}
           </div>
         </div>`;
     }
@@ -4824,12 +4955,41 @@
       return [];
     }
 
+    let _chatNavUnread = 0; // total unread across all conversations — drives nav badge
+
     async function chatFetchConversations() {
       try {
         const me = chatMe();
         const data = await fetch(`/api/chat?action=conversations&userId=${encodeURIComponent(me.id)}`).then(r => r.json());
-        if (data.ok) _chatConversations = data.conversations || [];
+        if (data.ok) {
+          _chatConversations = data.conversations || [];
+          // Update nav badge for the current user's unread total
+          const total = _chatConversations.reduce((n, c) => n + (c.unread || 0), 0);
+          if (total !== _chatNavUnread) {
+            _chatNavUnread = total;
+            updateNavBadge();
+          }
+        }
       } catch(e) { /* offline */ }
+    }
+
+    function updateNavBadge() {
+      // Update the Messages badge in whichever nav is visible
+      const navId = state.activeView === 'coach' ? 'coachNav' : 'playerNav';
+      const nav = document.getElementById(navId);
+      if (!nav) return;
+      nav.querySelectorAll('button').forEach(btn => {
+        const onclick = btn.getAttribute('onclick') || '';
+        if (!onclick.includes("'messages'")) return;
+        // Remove old badge
+        btn.querySelectorAll('.nav-badge').forEach(b => b.remove());
+        if (_chatNavUnread > 0) {
+          const badge = document.createElement('span');
+          badge.className = 'nav-badge';
+          badge.textContent = _chatNavUnread > 9 ? '9+' : String(_chatNavUnread);
+          btn.appendChild(badge);
+        }
+      });
     }
 
     async function chatPollTyping(convId) {
