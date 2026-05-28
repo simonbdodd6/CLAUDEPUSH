@@ -3907,17 +3907,6 @@
                 </div>
                 <div id="inv-result"></div>
 
-                <!-- Invite list -->
-                <div style="margin-top:18px">
-                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-                    <strong style="font-size:13px;color:#e2e8f0">Sent invites</strong>
-                    <button class="btn ghost" type="button" style="font-size:12px;padding:2px 8px" onclick="loadInviteList()">↺ Refresh</button>
-                  </div>
-                  <div id="invite-list-panel">
-                    <p class="muted" style="font-size:13px">Loading…</p>
-                  </div>
-                </div>
-
                 <!-- Fallback: team code for bulk sharing -->
                 <details style="margin-top:18px">
                   <summary style="font-size:12px;font-weight:700;color:#64748b;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
@@ -4021,6 +4010,23 @@
             </table>
             ${filtered.length === 0 ? `<div style="padding:28px;text-align:center;color:var(--muted)">No players match this filter.</div>` : ""}
           </div>
+
+          <!-- Sent invites — collapsed by default -->
+          <details style="margin-top:4px" ontoggle="if(this.open) loadInviteList()">
+            <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);list-style:none;display:flex;align-items:center;gap:6px;padding:10px 4px;user-select:none">
+              <span style="font-size:10px">▶</span> Sent invites
+            </summary>
+            <div class="card" style="padding:14px 18px;margin-top:8px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <strong style="font-size:13px;color:var(--ink)">Sent invites</strong>
+                <button class="btn ghost" type="button" style="font-size:12px;padding:2px 8px" onclick="loadInviteList()">↺ Refresh</button>
+              </div>
+              <div id="invite-list-panel">
+                <p class="muted" style="font-size:13px">Loading…</p>
+              </div>
+            </div>
+          </details>
+
         </div>`;
     }
 
