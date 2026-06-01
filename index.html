@@ -2055,8 +2055,8 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Push delivery failed");
         if (data.sent > 0) showToast(`Push sent to ${data.sent} device${data.sent > 1 ? 's' : ''} ✓`);
-        else if (data.total === 0) showToast("No subscribers yet — players need to enable notifications");
-        else showToast(`Message sent (push: ${data.sent}/${data.total} delivered)`);
+        else if (data.total === 0) showToast(data.note || 'No subscribers — player must enable notifications in their Messages page');
+        else showToast(`Message sent — push: ${data.sent}/${data.total} delivered`);
       } catch (e) {
         console.warn('Push failed (offline?):', e);
         showToast("Message saved — push unavailable offline");
@@ -3827,32 +3827,28 @@
 
       // ── Write to Redis chat so players receive it in their Messages tab ──
       try {
+        const post = (payload) => fetch('/api/chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
         if (audience === 'individual' && playerId) {
-          // Direct message: use canonical symmetric ID so both sides see same conv
-          const convId = dmConvId(me.id, playerId);
           const target = state.players.find(p => p.id === playerId);
-          await fetch('/api/chat', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'create_conv', id: convId,
-              name: target?.name || 'Direct message', type: 'DIRECT',
-              participants: [me.id, playerId] })
-          });
-          await fetch('/api/chat', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'send', convId,
-              senderId: me.id, senderName: me.name, senderRole: me.role || 'coach',
-              text: body, type: 'TEXT' })
-          });
+          // Write to BOTH: DM by player ID (for any device that has the right ID)
+          // AND squad channel (guaranteed fallback — every player sees squad)
+          const dmId = dmConvId(me.id, playerId);
+          await post({ action: 'create_conv', id: dmId, name: target?.name || 'Direct message',
+            type: 'DIRECT', participants: [me.id, playerId] });
+          await post({ action: 'send', convId: dmId, senderId: me.id, senderName: me.name,
+            senderRole: me.role || 'coach', text: body, type: 'TEXT' });
+          // Also write to squad so player always sees it (tagged with their name)
+          await post({ action: 'send', convId: 'squad', senderId: me.id, senderName: me.name,
+            senderRole: me.role || 'coach',
+            text: `📩 ${target?.name || 'Player'}: ${body}`, type: 'TEXT' });
         } else {
           // Squad / no-reply broadcast → write to squad channel
-          const convId = 'squad';
-          const msgText = `[${type}] ${body}`;
-          await fetch('/api/chat', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'send', convId,
-              senderId: me.id, senderName: me.name, senderRole: me.role || 'coach',
-              text: msgText, type: 'TEXT' })
-          });
+          await post({ action: 'send', convId: 'squad', senderId: me.id, senderName: me.name,
+            senderRole: me.role || 'coach', text: `[${type}] ${body}`, type: 'TEXT' });
         }
       } catch(e) { console.warn('Chat write failed (offline?):', e); }
 
@@ -6387,14 +6383,17 @@
       // Mark accepted on server
       try { await fetch('/api/invite', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: _inviteToken }) }); } catch(e) {}
 
-      // Subscribe to push
-      try { await subscribePush(name); } catch(e) {}
-
       document.getElementById('invite-modal')?.remove();
       window.history.replaceState({}, '', '/');
       _inviteToken = null; _inviteData = null;
       render();
-      showToast(`Welcome ${name.split(' ')[0]}! 🏉`);
+      showToast(`Welcome ${name.split(' ')[0]}! You're in.`);
+      // Prompt for push after a short delay (must be triggered by user gesture for mobile)
+      setTimeout(() => {
+        if (Notification.permission === 'default') {
+          showToast('Tip: enable notifications so the coach can reach you directly →');
+        }
+      }, 2000);
     }
 
     // ─── INVITE MANAGEMENT (coach side) ──────────────────────────────────────
@@ -6558,6 +6557,17 @@
     initServiceWorker();
     // Check for invite link AFTER render (so modal overlays on top)
     checkInviteParam();
+
+    // ── Background unread poll ──────────────────────────────────────────────
+    // Fetch conversation counts every 30s when the app is visible.
+    // Updates the nav badge even when the user isn't on the Messages page.
+    function bgPollUnread() {
+      chatFetchConversations().catch(() => {});
+    }
+    setInterval(() => { if (!document.hidden) bgPollUnread(); }, 30000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) bgPollUnread();
+    });
   </script>
 </body>
 </html>

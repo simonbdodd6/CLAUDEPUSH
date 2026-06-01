@@ -37,8 +37,10 @@ export default async function handler(req, res) {
   if (!['all', 'no-reply'].includes(audience)) return res.status(400).json({ error: 'audience must be all or no-reply' });
 
   const allSubscriptions = await load();
-  let subscriptions = targetLabel
-    ? allSubscriptions.filter(item => item.label === targetLabel)
+  // Case-insensitive label match so "Nick Player" finds "nick player" sub
+  const targetLower = targetLabel ? targetLabel.toLowerCase().trim() : null;
+  let subscriptions = targetLower
+    ? allSubscriptions.filter(item => (item.label || '').toLowerCase().trim() === targetLower)
     : allSubscriptions;
   if (audience === 'no-reply') {
     const responded = await recentResponders(7);
@@ -46,7 +48,11 @@ export default async function handler(req, res) {
   }
 
   if (!subscriptions.length) {
-    return res.status(200).json({ ok: true, sent: 0, failed: 0, total: 0, note: 'No eligible subscribed players' });
+    const allLabels = allSubscriptions.map(s => s.label);
+    return res.status(200).json({ ok: true, sent: 0, failed: 0, total: 0,
+      note: targetLabel
+        ? `No subscription found for "${targetLabel}". Subscribed players: ${allLabels.join(', ') || 'none'}`
+        : 'No subscribers yet' });
   }
 
   const sendResults = await Promise.allSettled(subscriptions.map(({ subscription, label }) => {
