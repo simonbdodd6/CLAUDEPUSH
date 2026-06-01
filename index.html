@@ -5276,12 +5276,12 @@
         if (sub) sub.textContent = contact.sub || (contact.type === 'DIRECT' ? 'Direct message' : 'Group chat');
       }
 
-      // Ensure the composer is visible for this conv — show it if it was hidden
-      const composer = document.querySelector('.chat-composer');
-      const noSend = document.querySelector('.chat-no-send');
+      // Show composer for all channels except announce (players only)
       const isAnn = (chatId === 'announce') && !isCoach();
-      if (composer) composer.style.display = isAnn ? 'none' : '';
-      if (noSend)   noSend.style.display   = isAnn ? '' : 'none';
+      const composerWrap = document.getElementById('chatComposerWrap');
+      const noSend       = document.getElementById('chatNoSend');
+      if (composerWrap) composerWrap.style.display = isAnn ? 'none' : '';
+      if (noSend)       noSend.style.display       = isAnn ? ''     : 'none';
 
       // Load messages if not cached
       if (!_chatMessages[chatId]) await chatFetchMessages(chatId);
@@ -5512,15 +5512,16 @@
             <div class="chat-empty"><div class="ce-icon">💬</div><p>Loading…</p></div>
           </div>
           <div class="chat-typing-bar" id="chatTypingBar"></div>
-          ${canSend ? `
-          <div class="chat-composer">
+          <!-- Composer: always in DOM, shown/hidden by selectChat -->
+          <div class="chat-composer" id="chatComposerWrap" ${canSend ? '' : 'style="display:none"'}>
             <div class="chat-composer-inner">
               <div class="chat-reply-preview" id="chatReplyPreview" style="display:none"></div>
-              <textarea id="chatComposer" placeholder="${isGroup?'Message '+esc(selected.name)+'…':'Message…'}" rows="1"
+              <textarea id="chatComposer" placeholder="Message…" rows="1"
                 onkeydown="chatOnKeyInput(event)" oninput="chatOnKeyInput(event)"></textarea>
             </div>
             <button class="chat-send-btn" type="button" id="chatSendBtn" onclick="chatSendMessage()" title="Send">➤</button>
-          </div>` : `<div class="chat-no-send" style="text-align:center;padding:14px;color:var(--muted);font-size:12px;border-top:1px solid rgba(255,255,255,0.06)">Announcements channel — coaches can post here, players can react.</div>`}
+          </div>
+          <div class="chat-no-send" id="chatNoSend" ${canSend ? 'style="display:none"' : ''}>Announcements — coaches post here, players can react.</div>
           <button class="chat-scroll-btn" id="chatScrollBtn" type="button" onclick="chatScrollToBottom()" title="Scroll to bottom">↓</button>
           ` : `<div class="chat-window-empty"><div class="wi">💬</div><strong>Select a conversation</strong><p style="margin-top:8px;font-size:13px">Choose from the list on the left</p></div>`}
         </div>
