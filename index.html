@@ -1585,6 +1585,7 @@
       <nav id="coachNav" aria-label="Coach sections"></nav>
       <nav id="playerNav" class="hidden" aria-label="Player sections"></nav>
 
+      <!-- Notification prompt: prominent when off, compact chip when on -->
       <div id="pushSidebar" class="push-status-pill hidden">
         <span class="push-dot" id="pushDot"></span>
         <div style="flex:1;min-width:0">
@@ -2042,10 +2043,6 @@
 
     function renderPushSidebar() {
       const sidebar = document.getElementById("pushSidebar");
-      const dot     = document.getElementById("pushDot");
-      const label   = document.getElementById("pushSidebarLabel");
-      const sub     = document.getElementById("pushSidebarSub");
-      const btn     = document.getElementById("pushSidebarBtn");
       if (!sidebar) return;
 
       const supported = ('serviceWorker' in navigator) && ('PushManager' in window);
@@ -2053,23 +2050,41 @@
       if (!supported) return;
 
       const permission = Notification.permission;
+      const playerName = getPlayer()?.name || currentUser()?.name || 'Player';
+
       if (pushSubscription) {
-        dot.className = "push-dot on";
-        label.textContent = "Notifications";
-        sub.textContent = "On — ready to receive";
-        btn.textContent = "Turn off";
-        btn.onclick = unsubscribePush;
+        // Compact chip — notifications are on, don't distract
+        sidebar.style.cssText = '';
+        sidebar.innerHTML = `
+          <span class="push-dot on" style="flex-shrink:0"></span>
+          <span style="font-size:11px;font-weight:600;color:var(--muted);flex:1">Notifications on</span>
+          <button class="btn" type="button" onclick="unsubscribePush()"
+            style="margin:0;min-height:22px;padding:0 7px;font-size:10px;background:transparent;border-color:rgba(255,255,255,0.12);color:var(--muted)">Off</button>`;
       } else if (permission === 'denied') {
-        dot.className = "push-dot off";
-        label.textContent = "Notifications blocked";
-        sub.textContent = "Allow in browser settings";
-        btn.textContent = "";
+        // Blocked — show small warning
+        sidebar.innerHTML = `
+          <span class="push-dot off" style="flex-shrink:0"></span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;color:#f87171;font-size:12px">Notifications blocked</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:1px">Allow in browser settings</div>
+          </div>`;
       } else {
-        dot.className = "push-dot";
-        label.textContent = "Notifications";
-        sub.textContent = "Off";
-        btn.textContent = "Enable";
-        btn.onclick = () => subscribePush(getPlayer()?.name || currentUser()?.name || 'Player');
+        // NOT subscribed — make it a prominent call to action so players sign up
+        sidebar.innerHTML = `
+          <div style="width:100%">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <span class="push-dot" style="flex-shrink:0;background:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,0.18)"></span>
+              <strong style="font-size:13px;color:#ecf5ef">Enable notifications</strong>
+            </div>
+            <p style="font-size:11px;color:var(--muted);margin:0 0 10px;line-height:1.4">
+              Get instant alerts when the coach sends availability requests, team news or direct messages.
+            </p>
+            <button class="btn primary" type="button"
+              onclick="subscribePush('${playerName}')"
+              style="width:100%;min-height:36px;font-size:13px;font-weight:700">
+              Turn on notifications
+            </button>
+          </div>`;
       }
     }
 
@@ -3785,8 +3800,8 @@
       // ── Write to Redis chat so players receive it in their Messages tab ──
       try {
         if (audience === 'individual' && playerId) {
-          // Direct message: ensure DM conv exists then send
-          const convId = `dm:${playerId}`;
+          // Direct message: use canonical symmetric ID so both sides see same conv
+          const convId = dmConvId(me.id, playerId);
           const target = state.players.find(p => p.id === playerId);
           await fetch('/api/chat', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -4595,7 +4610,7 @@
                   background:${status==='available'?'#dcfce7':status==='unavailable'?'#fee2e2':'var(--line)'};
                   border-color:${status==='available'?'#86efac':status==='unavailable'?'#fca5a5':'var(--line)'};
                   color:${status==='available'?'#16a34a':status==='unavailable'?'#dc2626':'var(--muted)'}">
-                ${status==='available'?'✅ Available':status==='unavailable'?'❌ Can\'t make it':'Set availability →'}
+                ${status==='available'?'Available':status==='unavailable'?'Not available':'Set availability →'}
               </button>
             </div>`;
           }).join("")}
@@ -4636,7 +4651,7 @@
           <!-- Per-session blocks -->
           ${availabilityBlock(player, "trainingTuesday",  "Tuesday training · 19:45")}
           ${availabilityBlock(player, "trainingThursday", "Thursday training · 19:45")}
-          ${availabilityBlock(player, "game", "${state.fixtures?.[0]?.opponent ? state.fixtures[0].opponent + ' — ' + state.fixtures[0].date : 'Saturday match'}")}
+          ${availabilityBlock(player, "game", state.fixtures?.[0]?.opponent ? state.fixtures[0].opponent + ' — ' + state.fixtures[0].date : 'Saturday match')}
 
           <!-- Blocked dates -->
           <div style="border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-top:18px;background:var(--panel)">
@@ -4834,6 +4849,14 @@
     let _chatContextMenu   = null;
     let _chatEmojiPicker   = null;
 
+    // ── Canonical DM conversation ID (same for both sides) ───────────────────
+    // Sort the two user IDs so coach and player always agree on the Redis key.
+    // e.g. dmConvId('coach-1','player-2') === dmConvId('player-2','coach-1') === 'dm:coach-1:player-2'
+    function dmConvId(id1, id2) {
+      const s = [String(id1 || 'a'), String(id2 || 'b')].sort();
+      return `dm:${s[0]}:${s[1]}`;
+    }
+
     // ── Helpers ──────────────────────────────────────────
     function chatInitials(name) {
       if (!name) return '?';
@@ -4911,23 +4934,23 @@
         ];
         // Add 1-to-1 with each player
         state.players.filter(p => p.id !== me.id).forEach(p => {
-          contacts.push({ id: `dm:${p.id}`, name: p.name, sub: p.position || 'Player', type: 'DIRECT', photo: p.photo, playerId: p.id });
+          contacts.push({ id: dmConvId(me.id, p.id), name: p.name, sub: p.position || 'Player', type: 'DIRECT', photo: p.photo, playerId: p.id });
         });
       } else {
-        // Player sees: coach channel + squad + any direct convs
+        // Player sees: announcements + squad + DMs with staff + DMs with other players
         contacts = [
           { id: 'announce', name: 'Announcements',   icon: '📢', sub: 'From coach', type: 'ANNOUNCEMENT' },
           { id: 'squad',    name: 'Squad',           icon: '🏉', sub: `${state.players.length} members`, type: 'GROUP' },
         ];
-        // DM with each other member
-        state.players.filter(p => p.id !== me.id).forEach(p => {
-          contacts.push({ id: `dm:${p.id}`, name: p.name, sub: p.position || 'Member', type: 'DIRECT', photo: p.photo });
-        });
         // DM with coach/staff
         state.users.filter(u => ['coach','admin','medical'].includes(u.role) && u.id !== me.id).forEach(u => {
-          if (!contacts.some(c => c.name === u.name)) {
-            contacts.push({ id: `dm:${u.id}`, name: u.name, sub: u.role, type: 'DIRECT', icon: '🎯' });
+          if (!contacts.some(c => c.id === dmConvId(me.id, u.id))) {
+            contacts.push({ id: dmConvId(me.id, u.id), name: u.name, sub: u.role, type: 'DIRECT', icon: '🎯' });
           }
+        });
+        // DM with each other player
+        state.players.filter(p => p.id !== me.id).forEach(p => {
+          contacts.push({ id: dmConvId(me.id, p.id), name: p.name, sub: p.position || 'Member', type: 'DIRECT', photo: p.photo });
         });
       }
       // Enrich with data from _chatConversations (Redis)
@@ -5056,8 +5079,9 @@
 
       // Also add to local state.messages for backwards compat
       const now = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      const dmOtherId = convId.startsWith('dm:') ? (convId.split(':').slice(1).find(id => id !== me.id) || convId.split(':')[1]) : null;
       const target = convId === 'squad' ? 'Squad' : convId === 'announce' ? 'Squad' : convId === 'coaching' ? 'Coach' :
-        convId.startsWith('dm:') ? (state.players.find(p => p.id === convId.replace('dm:',''))?.name || state.users.find(u => u.id === convId.replace('dm:',''))?.name || convId) : convId;
+        convId.startsWith('dm:') ? (state.players.find(p => p.id === dmOtherId)?.name || state.users.find(u => u.id === dmOtherId)?.name || convId) : convId;
       state.messages.unshift({ id: optimistic.id, from: me.name, to: target, playerId: me.id, sessionId:'chat', type:'Chat message', text, unread:true, time:now, delivery:'sent', replies:[] });
 
       if (ta) { ta.value = ''; ta.style.height = 'auto'; }
@@ -5379,8 +5403,10 @@
           if (convId === 'squad' || convId === 'announce') return m.to === 'Squad';
           if (convId === 'coaching') return m.to === 'Coach' || m.from === 'Coach';
           if (convId.startsWith('dm:')) {
-            const pid = convId.replace('dm:','');
-            const p = state.players.find(pl => pl.id === pid) || state.users.find(u => u.id === pid);
+            // Canonical IDs are dm:sortedId1:sortedId2 — find the other participant
+            const parts = convId.split(':').slice(1); // ['id1','id2']
+            const otherId = parts.find(id => id !== me.id) || parts[0];
+            const p = state.players.find(pl => pl.id === otherId) || state.users.find(u => u.id === otherId);
             if (!p) return false;
             return (m.from === me.name && m.to === p.name) || (m.from === p.name && m.to === me.name) ||
               (m.from === 'Coach' && m.to === me.name) || (m.from === me.name && m.to === 'Coach');
