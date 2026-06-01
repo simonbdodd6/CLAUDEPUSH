@@ -5266,15 +5266,16 @@
       saveState('Chat opened');
       chatMarkRead(chatId);
 
-      // Update header in-place (name + subtitle)
-      const contacts = chatBuildContacts(state.activeView === 'coach' ? 'coach' : 'player');
-      const contact = contacts.find(c => c.id === chatId);
-      if (contact) {
-        const h2 = document.querySelector('.chat-header-main h2');
-        const sub = document.getElementById('chatHeaderSub');
-        if (h2) h2.textContent = contact.name;
-        if (sub) sub.textContent = contact.sub || (contact.type === 'DIRECT' ? 'Direct message' : 'Group chat');
-      }
+      // Update header in-place (name + subtitle + avatar)
+      const mode2 = state.activeView === 'coach' ? 'coach' : 'player';
+      const contacts = chatBuildContacts(mode2);
+      const contact = contacts.find(c => c.id === chatId) || { name: chatId, type: 'DIRECT' };
+      const h2  = document.getElementById('chatHeaderName');
+      const sub = document.getElementById('chatHeaderSub');
+      const av  = document.getElementById('chatHeaderAvatar');
+      if (h2)  h2.textContent  = contact.name;
+      if (sub) sub.textContent = contact.sub || (contact.type === 'DIRECT' ? 'Direct message' : 'Group chat');
+      if (av)  av.innerHTML    = chatAvatarEl(contact.name, contact.photo, contact.icon, 40, _chatOnline[contact.playerId]);
 
       // Show composer for all channels except announce (players only)
       const isAnn = (chatId === 'announce') && !isCoach();
@@ -5492,16 +5493,15 @@
           <div class="chat-contact-list" id="chatContactList"></div>
         </div>
 
-        <!-- RIGHT: Chat window -->
+        <!-- RIGHT: Chat window — structure always present so selectChat can find elements -->
         <div class="chat-window">
-          ${selected ? `
-          <header class="chat-header">
+          <header class="chat-header" id="chatHeader">
             <button class="chat-back-btn" type="button" onclick="chatGoBack()">← Back</button>
             <div class="chat-header-main">
-              ${chatAvatarEl(selected.name, selected.photo, selected.icon, 40, _chatOnline[selected.playerId])}
+              <span id="chatHeaderAvatar">${selected ? chatAvatarEl(selected.name, selected.photo, selected.icon, 40, _chatOnline[selected.playerId]) : ''}</span>
               <div>
-                <h2>${esc(selected.name)}</h2>
-                <small id="chatHeaderSub">${esc(selected.sub || (selected.type==='DIRECT'?'Direct message':'Group chat'))}</small>
+                <h2 id="chatHeaderName">${selected ? esc(selected.name) : ''}</h2>
+                <small id="chatHeaderSub">${selected ? esc(selected.sub || (selected.type==='DIRECT'?'Direct message':'Group chat')) : ''}</small>
               </div>
             </div>
             <div class="chat-header-actions">
@@ -5509,11 +5509,13 @@
             </div>
           </header>
           <div class="chat-feed" id="chatFeed" onscroll="chatOnFeedScroll(this)">
-            <div class="chat-empty"><div class="ce-icon">💬</div><p>Loading…</p></div>
+            ${selected
+              ? `<div class="chat-empty"><div class="ce-icon">💬</div><p>Loading…</p></div>`
+              : `<div class="chat-window-empty"><div class="wi">💬</div><strong>Select a conversation</strong><p style="margin-top:8px;font-size:13px">Choose from the list on the left</p></div>`}
           </div>
           <div class="chat-typing-bar" id="chatTypingBar"></div>
-          <!-- Composer: always in DOM, shown/hidden by selectChat -->
-          <div class="chat-composer" id="chatComposerWrap" ${canSend ? '' : 'style="display:none"'}>
+          <!-- Composer always in DOM — selectChat shows/hides by ID -->
+          <div class="chat-composer" id="chatComposerWrap" ${(!selected || !canSend) ? 'style="display:none"' : ''}>
             <div class="chat-composer-inner">
               <div class="chat-reply-preview" id="chatReplyPreview" style="display:none"></div>
               <textarea id="chatComposer" placeholder="Message…" rows="1"
@@ -5521,9 +5523,8 @@
             </div>
             <button class="chat-send-btn" type="button" id="chatSendBtn" onclick="chatSendMessage()" title="Send">➤</button>
           </div>
-          <div class="chat-no-send" id="chatNoSend" ${canSend ? 'style="display:none"' : ''}>Announcements — coaches post here, players can react.</div>
+          <div class="chat-no-send" id="chatNoSend" style="display:none">Announcements — coaches post here, players can react.</div>
           <button class="chat-scroll-btn" id="chatScrollBtn" type="button" onclick="chatScrollToBottom()" title="Scroll to bottom">↓</button>
-          ` : `<div class="chat-window-empty"><div class="wi">💬</div><strong>Select a conversation</strong><p style="margin-top:8px;font-size:13px">Choose from the list on the left</p></div>`}
         </div>
       </div>`;
     }
