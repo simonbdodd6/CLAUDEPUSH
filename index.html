@@ -1606,14 +1606,9 @@
         <div>
           <div class="eyebrow" id="eyebrow">Coach dashboard</div>
           <h1 id="pageTitle">Overview</h1>
-          <div class="pill-row">
-            <span class="pill">Boitsfort Premier</span>
-            <span class="pill">Kituro this weekend</span>
-            <span class="pill">In-app messages</span>
-          </div>
         </div>
         <div class="button-row">
-          <span class="save-pill"><span class="dot"></span><span id="saveStatus">Loaded from this browser</span></span>
+          <span class="save-pill" title="Auto-saved"><span class="dot" id="saveDot"></span><span id="saveStatus" style="display:none"></span></span>
           <button class="btn" type="button" id="resetBtn">Reset</button>
         </div>
       </header>
@@ -1914,13 +1909,18 @@
         // path should keep this same shape as the offline queue fallback.
         window.localStorage.setItem(BACKUP_KEY, payload);
         window.localStorage.setItem(STORAGE_KEY, payload);
-        const el = document.getElementById("saveStatus");
-        if (el) el.textContent = `${message} · rev ${state.meta.revision}`;
+        // Flash the save dot green briefly
+        const dot = document.getElementById("saveDot");
+        if (dot) {
+          dot.style.background = '#10b981';
+          clearTimeout(dot._t);
+          dot._t = setTimeout(() => { dot.style.background = ''; }, 1200);
+        }
         return true;
       } catch (e) {
         console.error("coacheseyeGPT save failed", e);
-        const el = document.getElementById("saveStatus");
-        if (el) el.textContent = "Could not save in this browser";
+        const dot = document.getElementById("saveDot");
+        if (dot) dot.style.background = '#ef4444';
         return false;
       }
     }
@@ -4953,13 +4953,32 @@
           contacts.push({ id: dmConvId(me.id, p.id), name: p.name, sub: p.position || 'Member', type: 'DIRECT', photo: p.photo });
         });
       }
-      // Enrich with data from _chatConversations (Redis)
+      // Merge in any Redis conversations not covered by local contacts.
+      // This is essential for players whose device doesn't have the coach's user
+      // in state.users — the DM still exists in Redis and should be visible.
+      _chatConversations.forEach(sc => {
+        if (!contacts.some(c => c.id === sc.id)) {
+          contacts.push({
+            id:   sc.id,
+            name: sc.name || sc.id,
+            type: sc.type || 'DIRECT',
+            icon: sc.icon || '💬',
+            sub:  sc.description || '',
+            _fromRedis: true,
+          });
+        }
+      });
+
+      // Enrich with data from _chatConversations (Redis) + local messages
       return contacts.map(c => {
         const server = _chatConversations.find(sc => sc.id === c.id);
         const msgs = _chatMessages[c.id] || [];
         const last = msgs[msgs.length - 1] || null;
-        const unread = msgs.filter(m => !isMsgMine(m) && !m.isDeleted &&
+        // Prefer server-side unread count; fall back to local calculation
+        const serverUnread = server?.unread || 0;
+        const localUnread = msgs.filter(m => !isMsgMine(m) && !m.isDeleted &&
           m.ts > (_chatLastPoll[c.id + ':read'] || 0)).length;
+        const unread = serverUnread || localUnread;
         return { ...c, ...(server || {}), lastMsg: last, unread };
       });
     }
@@ -5495,12 +5514,10 @@
     }
 
     function renderPlayerMessages() {
-      const player = getPlayer();
       const el = document.getElementById('player-messages');
       if (!el) return;
-      if (!player.id) { el.innerHTML = noSquadMsg(); return; }
-      // Default to announce channel for players
-      if (!state.selectedChatId || state.selectedChatId === 'coach') state.selectedChatId = 'announce';
+      // Default channel for players
+      if (!state.selectedChatId || state.selectedChatId === 'coach') state.selectedChatId = 'squad';
       el.innerHTML = renderChatShell('player');
       chatRenderContactList('player');
       if (state.selectedChatId) {
@@ -5508,10 +5525,14 @@
         chatScrollToBottom(true);
         chatStartPolling(state.selectedChatId);
       }
-      chatFetchConversations().then(() => chatRenderContactList('player'));
-      if (state.selectedChatId && !_chatMessages[state.selectedChatId]) {
-        chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'player'));
-      }
+      // After Redis conversations load, re-render contact list (may add DMs from coach)
+      chatFetchConversations().then(() => {
+        chatRenderContactList('player');
+        // If we have a selected conv with no messages yet, fetch now
+        if (state.selectedChatId && !(_chatMessages[state.selectedChatId]?.length)) {
+          chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'player'));
+        }
+      });
     }
 
     // Legacy stubs (keep backwards compat with other code that calls these)
