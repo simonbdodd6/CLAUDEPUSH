@@ -795,13 +795,20 @@
     }
     /* Right panel — chat window */
     .chat-window {
-      display: grid;
-      grid-template-rows: auto minmax(0,1fr) auto auto;
+      display: flex;
+      flex-direction: column;
+      height: 100%;         /* fill the grid cell */
+      min-height: 0;
       min-width: 0;
       background: #0b1118;
       position: relative;
       overflow: hidden;
     }
+    .chat-window .chat-header    { flex: 0 0 auto; }
+    .chat-window .chat-feed      { flex: 1 1 0px; min-height: 0; overflow-y: auto; }
+    .chat-window .chat-typing-bar{ flex: 0 0 auto; }
+    .chat-window .chat-composer  { flex: 0 0 auto; }
+    .chat-window .chat-no-send   { flex: 0 0 auto; }
     .chat-window-empty {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       height: 100%; color: var(--muted); text-align: center; padding: 40px;
