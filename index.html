@@ -795,18 +795,13 @@
     }
     /* Right panel — chat window */
     .chat-window {
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-rows: auto minmax(0,1fr) auto auto;
       min-width: 0;
       background: #0b1118;
       position: relative;
       overflow: hidden;
     }
-    .chat-header    { flex-shrink: 0; }
-    .chat-feed      { flex: 1; min-height: 0; }
-    .chat-typing-bar{ flex-shrink: 0; }
-    .chat-composer  { flex-shrink: 0; }
-    .chat-no-send   { flex-shrink: 0; }
     .chat-window-empty {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       height: 100%; color: var(--muted); text-align: center; padding: 40px;
@@ -5475,7 +5470,8 @@
       const selected = contacts.find(c => c.id === selId) || contacts[0];
       const isGroup = selected && ['squad','coaching','announce','GROUP','ANNOUNCEMENT'].includes(selected.id) || (selected?.type === 'GROUP');
       const isAnnounce = (selected?.id === 'announce' || selected?.type === 'ANNOUNCEMENT') && !selected?.id?.startsWith('dm:');
-      const canSend = !isAnnounce || isCoach() || (selected?.id?.startsWith('dm:'));
+      // Coaches can always send. Players can send everywhere except announce channel.
+      const canSend = isCoach() || !isAnnounce || selected?.id?.startsWith('dm:');
 
       return `<div class="chat-shell${_chatMobileOpen?' chat-open':''}">
         <!-- LEFT: Contact list -->
@@ -5514,8 +5510,8 @@
               : `<div class="chat-window-empty"><div class="wi">💬</div><strong>Select a conversation</strong><p style="margin-top:8px;font-size:13px">Choose from the list on the left</p></div>`}
           </div>
           <div class="chat-typing-bar" id="chatTypingBar"></div>
-          <!-- Composer always in DOM — selectChat shows/hides by ID -->
-          <div class="chat-composer" id="chatComposerWrap" ${(!selected || !canSend) ? 'style="display:none"' : ''}>
+          <!-- Composer — always in DOM. Hidden only for players on announce channel. -->
+          <div class="chat-composer" id="chatComposerWrap" style="${canSend ? '' : 'display:none'}">
             <div class="chat-composer-inner">
               <div class="chat-reply-preview" id="chatReplyPreview" style="display:none"></div>
               <textarea id="chatComposer" placeholder="Message…" rows="1"
@@ -5523,7 +5519,7 @@
             </div>
             <button class="chat-send-btn" type="button" id="chatSendBtn" onclick="chatSendMessage()" title="Send">➤</button>
           </div>
-          <div class="chat-no-send" id="chatNoSend" style="display:none">Announcements — coaches post here, players can react.</div>
+          <div class="chat-no-send" id="chatNoSend" style="${canSend ? 'display:none' : ''}">Announcements — coaches post here, players can react.</div>
           <button class="chat-scroll-btn" id="chatScrollBtn" type="button" onclick="chatScrollToBottom()" title="Scroll to bottom">↓</button>
         </div>
       </div>`;
