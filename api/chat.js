@@ -10,11 +10,12 @@
 
 import { kvGet, kvSet, kvLpush, kvLrange, kvLtrim } from './_kv.js';
 import { key } from './_keys.js';
+import { requireAuth } from './_auth.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 function ok(res, data) {
@@ -55,10 +56,10 @@ async function ensureDefaults() {
 }
 
 // ─── GET handler ────────────────────────────────────────────────────
-async function handleGet(req, res) {
+async function handleGet(req, res, auth) {
   const url    = new URL(req.url, `http://x`);
   const action = url.searchParams.get('action');
-  const userId = url.searchParams.get('userId') || 'anon';
+  const userId = url.searchParams.get('userId') || auth.uid;
 
   // Update presence
   await kvSet(PRESENCE_KEY(userId), { userId, ts: Date.now() }, 60);
@@ -122,7 +123,7 @@ async function handleGet(req, res) {
 }
 
 // ─── POST handler ────────────────────────────────────────────────────
-async function handlePost(req, res) {
+async function handlePost(req, res, auth) {
   const chunks = [];
   for await (const c of req) chunks.push(c);
   let body;
@@ -132,7 +133,9 @@ async function handlePost(req, res) {
   const { action } = body;
 
   if (action === 'send') {
-    const { convId, senderId, senderName, senderRole, text, type = 'TEXT', replyTo = null, mediaUrl = null, mediaType = null, isAutomated = false } = body;
+    let { convId, senderId, senderName, senderRole, text, type = 'TEXT', replyTo = null, mediaUrl = null, mediaType = null, isAutomated = false } = body;
+    senderId = senderId || auth.uid;
+    if (senderId !== auth.uid) return err(res, 403, 'Sender must match authenticated user');
     if (!convId || !senderId || !text?.trim()) return err(res, 400, 'convId, senderId, text required');
     const msg = {
       id:          `msg_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
@@ -160,7 +163,9 @@ async function handlePost(req, res) {
   }
 
   if (action === 'react') {
-    const { msgId, convId, userId, userName, emoji } = body;
+    let { msgId, convId, userId, userName, emoji } = body;
+    userId = userId || auth.uid;
+    if (userId !== auth.uid) return err(res, 403, 'User must match authenticated user');
     if (!msgId || !convId || !userId || !emoji) return err(res, 400, 'msgId, convId, userId, emoji required');
     const msgs = await kvLrange(MSGS_KEY(convId), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
@@ -185,15 +190,19 @@ async function handlePost(req, res) {
   }
 
   if (action === 'read') {
-    const { convId, userId } = body;
+    let { convId, userId } = body;
+    userId = userId || auth.uid;
     if (!convId || !userId) return err(res, 400, 'convId, userId required');
+    if (userId !== auth.uid) return err(res, 403, 'User must match authenticated user');
     await kvSet(key(`chat:read:${convId}:${userId}`), Date.now());
     return ok(res, {});
   }
 
   if (action === 'typing') {
-    const { convId, userId, userName, active } = body;
+    let { convId, userId, userName, active } = body;
+    userId = userId || auth.uid;
     if (!convId || !userId) return err(res, 400, 'convId, userId required');
+    if (userId !== auth.uid) return err(res, 403, 'User must match authenticated user');
     const current = (await kvGet(TYPING_KEY(convId))) || [];
     const filtered = current.filter(t => t.userId !== userId);
     if (active !== false) filtered.push({ userId, userName: userName || userId, ts: Date.now() });
@@ -202,7 +211,8 @@ async function handlePost(req, res) {
   }
 
   if (action === 'edit') {
-    const { msgId, convId, text, editorId } = body;
+    let { msgId, convId, text, editorId } = body;
+    editorId = editorId || auth.uid;
     if (!msgId || !convId || !text?.trim()) return err(res, 400, 'msgId, convId, text required');
     const msgs = await kvLrange(MSGS_KEY(convId), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
@@ -214,7 +224,8 @@ async function handlePost(req, res) {
   }
 
   if (action === 'delete') {
-    const { msgId, convId, deleterId } = body;
+    let { msgId, convId, deleterId } = body;
+    deleterId = deleterId || auth.uid;
     if (!msgId || !convId) return err(res, 400, 'msgId, convId required');
     const msgs = await kvLrange(MSGS_KEY(convId), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
@@ -273,9 +284,13 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, CORS); res.end(); return;
   }
+
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
+
   try {
-    if (req.method === 'GET')  return await handleGet(req, res);
-    if (req.method === 'POST') return await handlePost(req, res);
+    if (req.method === 'GET')  return await handleGet(req, res, auth);
+    if (req.method === 'POST') return await handlePost(req, res, auth);
     return err(res, 405, 'Method not allowed');
   } catch(e) {
     console.error('chat handler error:', e);

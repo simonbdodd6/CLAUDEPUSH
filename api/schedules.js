@@ -2,6 +2,7 @@
 import { kvGet, kvSet, kvConfigured } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { setCors } from './_http.js';
+import { requireAuth } from './_auth.js';
 
 const SCHEDULES_KEY = key('schedules');
 const LEGACY_SCHEDULES_KEY = legacyKey('schedules');
@@ -26,6 +27,8 @@ function normalizeDays(days, day) {
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
 
   if (req.method === 'GET') {

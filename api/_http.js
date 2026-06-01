@@ -13,6 +13,11 @@ export function readSecret(req) {
   return authorization.replace(/^Bearer\s+/i, '').trim() || req.query?.secret || '';
 }
 
+export function getBearerToken(req) {
+  const authorization = String(req.headers?.authorization || '');
+  return authorization.replace(/^Bearer\s+/i, '').trim();
+}
+
 export function vapidContact() {
   const configured = String(process.env.VAPID_CONTACT || 'mailto:coach@example.com');
   return configured.startsWith('mailto:') ? configured : `mailto:${configured}`;

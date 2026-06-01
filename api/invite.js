@@ -17,6 +17,7 @@
 //   → revokes / removes the invite
 
 import { kvGet, kvSet } from './_kv.js';
+import { requireAuth } from './_auth.js';
 
 const INVITES_KEY = 'ce:invites';
 const APP_URL     = process.env.APP_URL || 'https://boitsfort-coachseye-gpt.vercel.app';
@@ -24,7 +25,7 @@ const APP_URL     = process.env.APP_URL || 'https://boitsfort-coachseye-gpt.verc
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 // Valid roles — maps to what the joining user will see in the app
@@ -39,9 +40,39 @@ export default async function handler(req, res) {
   Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  const token = req.query?.token;
+  if (req.method !== 'GET' || !token) {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+  }
+
   // ── GET: validate token OR list all invites ────────────────────────────────
   if (req.method === 'GET') {
-    const token = req.query?.token;
+    if (token) {
+      // Validate a specific token
+      const invites = (await kvGet(INVITES_KEY)) || [];
+      const invite  = invites.find(i => i.token === token);
+      if (!invite) {
+        return res.status(404).json({ valid: false, error: 'Invite not found or expired' });
+      }
+      if (invite.status === 'revoked') {
+        return res.status(410).json({ valid: false, error: 'This invite has been revoked' });
+      }
+      return res.status(200).json({
+        valid:     true,
+        token:     invite.token,
+        name:      invite.name,
+        role:      invite.role,
+        email:     invite.email || '',
+        status:    invite.status,
+        createdAt: invite.createdAt,
+      });
+    }
+
+    // List all invites
+    const invites = (await kvGet(INVITES_KEY)) || [];
+    return res.status(200).json({ invites });
+  }
 
     if (token) {
       // Validate a specific token

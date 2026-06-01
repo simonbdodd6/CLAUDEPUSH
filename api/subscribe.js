@@ -6,11 +6,15 @@
 import { load, save } from './_lib.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
+import { requireAuth } from './_auth.js';
 
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
+
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
 
   // ── GET: subscription count ──────────────────────────────────────────────
   if (req.method === 'GET') {
@@ -26,7 +30,13 @@ export default async function handler(req, res) {
     }
     const subs  = await load();
     const idx   = subs.findIndex(s => s.subscription.endpoint === subscription.endpoint);
-    const entry = { subscription, label: label || 'Player', savedAt: new Date().toISOString() };
+    const entry = {
+      userId: auth.uid,
+      role: auth.role,
+      subscription,
+      label: label || 'Player',
+      savedAt: new Date().toISOString(),
+    };
     if (idx >= 0) subs[idx] = entry; else subs.push(entry);
     await save(subs);
     return res.status(201).json({ ok: true, count: subs.length });
@@ -36,9 +46,15 @@ export default async function handler(req, res) {
   if (req.method === 'DELETE') {
     const { endpoint } = req.body || {};
     if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
-    const subs = (await load()).filter(s => s.subscription.endpoint !== endpoint);
-    await save(subs);
-    return res.status(200).json({ ok: true, count: subs.length });
+    const subs = await load();
+    const existing = subs.find(s => s.subscription.endpoint === endpoint);
+    if (!existing) return res.status(404).json({ error: 'Subscription not found' });
+    if (existing.userId !== auth.uid) {
+      return res.status(403).json({ error: 'Cannot remove another user\'s subscription' });
+    }
+    const filtered = subs.filter(s => s.subscription.endpoint !== endpoint);
+    await save(filtered);
+    return res.status(200).json({ ok: true, count: filtered.length });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });

@@ -3,6 +3,7 @@ import { load } from './_lib.js';
 import { loadAvailability, saveAvailability } from './_availabilityStore.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
+import { requireAuth } from './_auth.js';
 
 const RESPONSES = new Set(['available', 'unavailable', 'maybe']);
 
@@ -14,6 +15,9 @@ export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
+
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
 
   if (req.method === 'GET') {
     const sessionId = req.query?.sessionId || 'game';
