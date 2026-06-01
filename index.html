@@ -795,12 +795,18 @@
     }
     /* Right panel — chat window */
     .chat-window {
-      display: grid;
-      grid-template-rows: auto minmax(0, 1fr) auto;
+      display: flex;
+      flex-direction: column;
       min-width: 0;
       background: #0b1118;
       position: relative;
+      overflow: hidden;
     }
+    .chat-header    { flex-shrink: 0; }
+    .chat-feed      { flex: 1; min-height: 0; }
+    .chat-typing-bar{ flex-shrink: 0; }
+    .chat-composer  { flex-shrink: 0; }
+    .chat-no-send   { flex-shrink: 0; }
     .chat-window-empty {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       height: 100%; color: var(--muted); text-align: center; padding: 40px;
@@ -1780,6 +1786,7 @@
       formationNames: {},
       fphotoIds: {},
       availabilityTemplate: "Hi team! Please confirm your availability for this week's training (Tuesday & Thursday 19:45) and Saturday's match. Reply AVAILABLE or UNAVAILABLE, and flag any injuries. Thanks, Coach.",
+      removedMemberNames: [],
       autoSendEnabled: false,
       autoSendSchedule: { day:"monday", time:"09:00" },
       trainingAutoSend: false,
@@ -2562,8 +2569,14 @@
     }
     function removePlayerFromSquad(id) {
       if (!isCoach()) return notify("Only coaches can remove players");
-      const p=state.players.find(p=>p.id===id); if (!p) return;
-      state.players=state.players.filter(p=>p.id!==id); notify(`${p.name} removed from squad`);
+      const p = state.players.find(pl => pl.id === id);
+      if (!p) return;
+      state.players = state.players.filter(pl => pl.id !== id);
+      // Remember this name so loadInviteList doesn't re-add them from Redis
+      if (!state.removedMemberNames) state.removedMemberNames = [];
+      const nameLower = p.name.toLowerCase();
+      if (!state.removedMemberNames.includes(nameLower)) state.removedMemberNames.push(nameLower);
+      notify(`${p.name} removed from squad`);
     }
 
     // ─── SPREADSHEET IMPORT ──────────────────────────────────────────────────
@@ -6424,10 +6437,14 @@
         const list = data.invites || [];
 
         // Auto-sync accepted invites into state.players so the coach sees them in Members
+        const removed = state.removedMemberNames || [];
         let synced = 0;
         for (const inv of list) {
           if (inv.status !== 'accepted') continue;
-          const alreadyMember = state.players.some(p => p.name.toLowerCase() === inv.name.toLowerCase());
+          const nameLower = inv.name.toLowerCase();
+          // Skip if coach manually removed this person
+          if (removed.includes(nameLower)) continue;
+          const alreadyMember = state.players.some(p => p.name.toLowerCase() === nameLower);
           if (alreadyMember) continue;
           const isStaff = ['coach','admin','medical'].includes(inv.role);
           const position = inv.role === 'coach' ? 'Coach' : inv.role === 'admin' ? 'Admin' : inv.role === 'medical' ? 'Medical Staff' : 'TBC';
