@@ -5252,6 +5252,24 @@
       if (shell) shell.classList.add('chat-open');
       saveState('Chat opened');
       chatMarkRead(chatId);
+
+      // Update header in-place (name + subtitle)
+      const contacts = chatBuildContacts(state.activeView === 'coach' ? 'coach' : 'player');
+      const contact = contacts.find(c => c.id === chatId);
+      if (contact) {
+        const h2 = document.querySelector('.chat-header-main h2');
+        const sub = document.getElementById('chatHeaderSub');
+        if (h2) h2.textContent = contact.name;
+        if (sub) sub.textContent = contact.sub || (contact.type === 'DIRECT' ? 'Direct message' : 'Group chat');
+      }
+
+      // Ensure the composer is visible for this conv — show it if it was hidden
+      const composer = document.querySelector('.chat-composer');
+      const noSend = document.querySelector('.chat-no-send');
+      const isAnn = (chatId === 'announce') && !isCoach();
+      if (composer) composer.style.display = isAnn ? 'none' : '';
+      if (noSend)   noSend.style.display   = isAnn ? '' : 'none';
+
       // Load messages if not cached
       if (!_chatMessages[chatId]) await chatFetchMessages(chatId);
       const mode = state.activeView === 'coach' ? 'coach' : 'player';
@@ -5442,8 +5460,8 @@
       const selId = state.selectedChatId || contacts[0]?.id;
       const selected = contacts.find(c => c.id === selId) || contacts[0];
       const isGroup = selected && ['squad','coaching','announce','GROUP','ANNOUNCEMENT'].includes(selected.id) || (selected?.type === 'GROUP');
-      const isAnnounce = selected?.id === 'announce' || selected?.type === 'ANNOUNCEMENT';
-      const canSend = !isAnnounce || isCoach();
+      const isAnnounce = (selected?.id === 'announce' || selected?.type === 'ANNOUNCEMENT') && !selected?.id?.startsWith('dm:');
+      const canSend = !isAnnounce || isCoach() || (selected?.id?.startsWith('dm:'));
 
       return `<div class="chat-shell${_chatMobileOpen?' chat-open':''}">
         <!-- LEFT: Contact list -->
@@ -5489,7 +5507,7 @@
                 onkeydown="chatOnKeyInput(event)" oninput="chatOnKeyInput(event)"></textarea>
             </div>
             <button class="chat-send-btn" type="button" id="chatSendBtn" onclick="chatSendMessage()" title="Send">➤</button>
-          </div>` : `<div style="text-align:center;padding:14px;color:var(--muted);font-size:12px;border-top:1px solid rgba(255,255,255,0.06)">📢 Coaches can broadcast here. Players can react to messages.</div>`}
+          </div>` : `<div class="chat-no-send" style="text-align:center;padding:14px;color:var(--muted);font-size:12px;border-top:1px solid rgba(255,255,255,0.06)">Announcements channel — coaches can post here, players can react.</div>`}
           <button class="chat-scroll-btn" id="chatScrollBtn" type="button" onclick="chatScrollToBottom()" title="Scroll to bottom">↓</button>
           ` : `<div class="chat-window-empty"><div class="wi">💬</div><strong>Select a conversation</strong><p style="margin-top:8px;font-size:13px">Choose from the list on the left</p></div>`}
         </div>
@@ -5628,12 +5646,9 @@
       });
     }
 
-    function selectChat(chatId) {
-      const mode = state.activeView === "coach" ? "coach" : "player";
-      state.selectedChatId = chatId;
-      markChatRead(chatId, mode);
-      saveState("Chat opened");
-      render();
+    // Legacy stub — use the async selectChat above instead of full render()
+    function _selectChat_LEGACY(chatId) {
+      selectChat(chatId); // delegate to async version
     }
 
     function chatPushBanner() {
