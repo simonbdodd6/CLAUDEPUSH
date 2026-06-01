@@ -652,15 +652,21 @@
     /* ══════════════════════════════════════════════════════
        WHATSAPP-STYLE CHAT SYSTEM
        ══════════════════════════════════════════════════════ */
+    /* ── WhatsApp-style chat shell ─────────────────────────
+       The shell is a fixed-height grid. Both columns MUST be
+       constrained with overflow:hidden + min-height:0 so their
+       flex children cannot grow beyond the shell boundary.
+       Without this, 100+ contacts inflate the left column and
+       push the right column's composer off-screen.
+    ─────────────────────────────────────────────────────── */
     .chat-shell {
       display: grid;
       grid-template-columns: 320px minmax(0, 1fr);
+      grid-template-rows: 1fr;           /* single row — fills shell height */
       height: calc(100vh - 100px);
       max-height: 820px;
       min-height: 560px;
       overflow: hidden;
-      overscroll-behavior: contain;
-      touch-action: pan-y;
       border: 1px solid var(--line);
       border-radius: 12px;
       background: var(--panel);
@@ -671,6 +677,8 @@
       border-right: 1px solid var(--line);
       background: #0d1520;
       min-width: 0;
+      min-height: 0;          /* allow shrink below content size */
+      overflow: hidden;       /* prevent list from inflating the grid row */
       display: flex;
       flex-direction: column;
     }
@@ -702,8 +710,10 @@
       background-position: 10px center;
     }
     .chat-contact-list {
-      flex: 1;
+      flex: 1 1 0px;
+      min-height: 0;        /* allow list to shrink and scroll, not inflate parent */
       overflow-y: auto;
+      overflow-x: hidden;
       padding: 4px 0;
       overscroll-behavior: contain;
     }
@@ -800,18 +810,18 @@
     .chat-window {
       display: flex;
       flex-direction: column;
-      height: 100%;         /* fill the grid cell */
-      min-height: 0;
+      min-height: 0;          /* allow shrink — critical for flex-in-grid */
       min-width: 0;
+      overflow: hidden;
       background: #0b1118;
       position: relative;
-      overflow: hidden;
     }
-    .chat-window .chat-header    { flex: 0 0 auto; }
-    .chat-window .chat-feed      { flex: 1 1 0px; min-height: 0; overflow-y: auto; }
-    .chat-window .chat-typing-bar{ flex: 0 0 auto; }
-    .chat-window .chat-composer  { flex: 0 0 auto; }
-    .chat-window .chat-no-send   { flex: 0 0 auto; }
+    /* Flex children: header/typing/composer are fixed; feed fills the rest */
+    .chat-window .chat-header     { flex: 0 0 auto; }
+    .chat-window .chat-feed       { flex: 1 1 0px; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+    .chat-window .chat-typing-bar { flex: 0 0 auto; }
+    .chat-window .chat-composer   { flex: 0 0 auto; }
+    .chat-window .chat-no-send    { flex: 0 0 auto; }
     .chat-window-empty {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       height: 100%; color: var(--muted); text-align: center; padding: 40px;
@@ -835,12 +845,11 @@
       font-size: 16px; transition: background .12s;
     }
     .chat-icon-btn:hover { background: rgba(255,255,255,0.08); color: var(--ink); }
-    /* Feed */
+    /* Feed — layout only; overflow/scroll handled by .chat-window .chat-feed */
     .chat-feed {
       display: flex; flex-direction: column; gap: 3px;
-      padding: 14px 16px; overflow-y: auto; overflow-x: hidden;
+      padding: 14px 16px;
       scroll-behavior: smooth;
-      overscroll-behavior: contain;
     }
     .chat-date-pill {
       align-self: center; margin: 8px 0;
