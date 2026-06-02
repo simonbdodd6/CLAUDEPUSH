@@ -160,7 +160,8 @@ async function handlePost(req, res) {
   }
 
   if (action === 'react') {
-    const { msgId, convId, userId, userName, emoji } = body;
+    let { msgId, convId, userId, userName, emoji } = body;
+    userId = userId || 'anon';
     if (!msgId || !convId || !userId || !emoji) return err(res, 400, 'msgId, convId, userId, emoji required');
     const msgs = await kvLrange(MSGS_KEY(convId), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
@@ -185,14 +186,16 @@ async function handlePost(req, res) {
   }
 
   if (action === 'read') {
-    const { convId, userId } = body;
+    let { convId, userId } = body;
+    userId = userId || 'anon';
     if (!convId || !userId) return err(res, 400, 'convId, userId required');
     await kvSet(key(`chat:read:${convId}:${userId}`), Date.now());
     return ok(res, {});
   }
 
   if (action === 'typing') {
-    const { convId, userId, userName, active } = body;
+    let { convId, userId, userName, active } = body;
+    userId = userId || 'anon';
     if (!convId || !userId) return err(res, 400, 'convId, userId required');
     const current = (await kvGet(TYPING_KEY(convId))) || [];
     const filtered = current.filter(t => t.userId !== userId);
@@ -202,7 +205,8 @@ async function handlePost(req, res) {
   }
 
   if (action === 'edit') {
-    const { msgId, convId, text, editorId } = body;
+    let { msgId, convId, text, editorId } = body;
+    editorId = editorId || 'anon';
     if (!msgId || !convId || !text?.trim()) return err(res, 400, 'msgId, convId, text required');
     const msgs = await kvLrange(MSGS_KEY(convId), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
@@ -214,7 +218,8 @@ async function handlePost(req, res) {
   }
 
   if (action === 'delete') {
-    const { msgId, convId, deleterId } = body;
+    let { msgId, convId, deleterId } = body;
+    deleterId = deleterId || 'anon';
     if (!msgId || !convId) return err(res, 400, 'msgId, convId required');
     const msgs = await kvLrange(MSGS_KEY(convId), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
@@ -273,6 +278,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, CORS); res.end(); return;
   }
+
   try {
     if (req.method === 'GET')  return await handleGet(req, res);
     if (req.method === 'POST') return await handlePost(req, res);
