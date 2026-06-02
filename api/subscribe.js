@@ -20,16 +20,15 @@ export default async function handler(req, res) {
 
   // ── POST: add / refresh subscription ────────────────────────────────────
   if (req.method === 'POST') {
-    const { subscription, label, aliases = [] } = req.body || {};
+    const { subscription, label } = req.body || {};
     if (!subscription?.endpoint) {
       return res.status(400).json({ error: 'Missing subscription endpoint' });
     }
     const subs  = await load();
     const idx   = subs.findIndex(s => s.subscription.endpoint === subscription.endpoint);
-    const entry = { subscription, label: label || 'Player', aliases: Array.isArray(aliases) ? aliases.filter(Boolean) : [], savedAt: new Date().toISOString() };
+    const entry = { subscription, label: label || 'Player', savedAt: new Date().toISOString() };
     if (idx >= 0) subs[idx] = entry; else subs.push(entry);
     await save(subs);
-    console.log('[subscribe] subscription saved', { label: entry.label, aliases: entry.aliases, count: subs.length });
     return res.status(201).json({ ok: true, count: subs.length });
   }
 

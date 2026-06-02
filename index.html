@@ -2026,48 +2026,9 @@
         swRegistration = await navigator.serviceWorker.register('/sw.js');
         // Check existing subscription
         pushSubscription = await swRegistration.pushManager.getSubscription();
-        if (pushSubscription && currentUser()?.role === 'player') {
-          await refreshPushSubscriptionForCurrentPlayer();
-        }
         renderPushSidebar();
       } catch (e) {
         console.warn('SW registration failed:', e);
-      }
-    }
-
-    function currentPushIdentity() {
-      const user = currentUser();
-      const player = user?.role === 'player' ? getPlayer() : null;
-      const label = player?.name || user?.name || 'Player';
-      const aliases = [label, user?.name, user?.playerId, player?.id].filter(Boolean);
-      if (aliases.some(v => String(v).trim().toLowerCase() === 'simon test player' || String(v).trim().toLowerCase() === 'simon dodd' || String(v) === 'inv-YxnjxnQa')) {
-        aliases.push('Simon Test Player', 'Simon dodd', 'inv-YxnjxnQa');
-      }
-      return { label, aliases: [...new Set(aliases.map(String))] };
-    }
-
-    async function savePushSubscription(subscription, identity = currentPushIdentity()) {
-      const res = await fetch('/api/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscription: subscription.toJSON(), label: identity.label, aliases: identity.aliases })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not save device registration');
-      console.log('[push] subscription saved', { label: identity.label, aliases: identity.aliases, count: data.count });
-      return data;
-    }
-
-    async function refreshPushSubscriptionForCurrentPlayer() {
-      if (!pushSubscription || currentUser()?.role !== 'player') return null;
-      try {
-        const identity = currentPushIdentity();
-        const data = await savePushSubscription(pushSubscription, identity);
-        console.log('[push] subscription refreshed', { label: identity.label, aliases: identity.aliases, count: data.count });
-        return data;
-      } catch (e) {
-        console.warn('[push] subscription refresh failed:', e);
-        return null;
       }
     }
 
@@ -2086,11 +2047,13 @@
           applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
         });
         // Send subscription to server
-        const identity = currentPushIdentity();
-        const data = await savePushSubscription(pushSubscription, {
-          label: playerName || identity.label,
-          aliases: identity.aliases
+        const res = await fetch('/api/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: pushSubscription.toJSON(), label: playerName || 'Player' })
         });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not save device registration');
         showToast(`Notifications on — ${data.count || 1} subscriber(s) total`);
         renderPushSidebar();
         setTimeout(() => renderPushStatusCard(), 300);
@@ -2126,7 +2089,6 @@
         if (sessionId)   payload.sessionId   = sessionId;
         if (targetLabel) payload.targetLabel = targetLabel;
         if (audience)    payload.audience    = audience;
-        console.log('[push] push attempted', payload);
         const res = await fetch('/api/push', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2134,12 +2096,11 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Push delivery failed");
-        console.log('[push] push result', data);
         if (data.sent > 0) showToast(`Push sent to ${data.sent} device${data.sent > 1 ? 's' : ''} ✓`);
         else if (data.total === 0) showToast(data.note || 'No subscribers — player must enable notifications in their Messages page');
         else showToast(`Message sent — push: ${data.sent}/${data.total} delivered`);
       } catch (e) {
-        console.warn('[push] push failure:', e);
+        console.warn('Push failed (offline?):', e);
         showToast("Message saved — push unavailable offline");
       }
     }
@@ -3922,10 +3883,6 @@
             type: 'DIRECT', participants: [me.id, playerId] });
           await post({ action: 'send', convId: dmId, senderId: me.id, senderName: me.name,
             senderRole: me.role || 'coach', text: body, type: 'TEXT' });
-          if (state.activeView === 'coach' && state.selectedChatId === dmId && dmId === 'dm:coach-demo:inv-YxnjxnQa') {
-            await chatFetchMessages(dmId);
-            chatRenderMessages(dmId, 'coach');
-          }
           // Also write to squad so player always sees it (tagged with their name)
           await post({ action: 'send', convId: 'squad', senderId: me.id, senderName: me.name,
             senderRole: me.role || 'coach',
@@ -5093,15 +5050,6 @@
       return cid;
     }
 
-    function pushTargetLabelForDirectConv(convId, senderId) {
-      if (!convId?.startsWith('dm:')) return '';
-      const otherId = convId.split(':').slice(1).find(id => id !== senderId);
-      const player = state.players.find(p => p.id === otherId);
-      const user = state.users.find(u => u.id === otherId || u.playerId === otherId);
-      if (otherId === 'inv-YxnjxnQa') return 'Simon Test Player';
-      return player?.name || user?.name || '';
-    }
-
     function chatMe() {
       const u = currentUser();
       const player = u?.role === 'player' ? getPlayer() : null;
@@ -5332,17 +5280,9 @@
           // Replace optimistic with real message
           const idx = _chatMessages[convId].findIndex(m => m.id === optimistic.id);
           if (idx >= 0) _chatMessages[convId][idx] = { ...data.message };
-          if (mode === 'coach' && convId === 'dm:coach-demo:inv-YxnjxnQa') {
-            await chatFetchMessages(convId);
-          }
           chatRenderMessages(convId, mode);
           // Mark read since I just sent
           _chatLastPoll[convId + ':read'] = Date.now();
-          if (mode === 'coach' && convId.startsWith('dm:')) {
-            const targetLabel = pushTargetLabelForDirectConv(convId, me.id);
-            console.log('[push] push attempted after direct chat send', { convId, targetLabel });
-            sendPushToPlayers('Coach — Message', text, { targetLabel, type: 'message', sessionId: 'chat' });
-          }
         }
       } catch(e) { /* optimistic stays */ }
       saveState('Chat message sent');
@@ -5768,7 +5708,6 @@
       if (!el) return;
       syncCurrentPlayerIdentityFromInvites().then(changed => {
         if (changed && state.activeView === 'player' && state.activePlayerSection === 'messages') renderPlayerMessages();
-        refreshPushSubscriptionForCurrentPlayer();
       });
       canonicalizePlayerSelectedChat();
       el.innerHTML = renderChatShell('player');
