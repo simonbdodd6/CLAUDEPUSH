@@ -1851,6 +1851,10 @@
       return backup || structuredClone(defaultState);
     }
 
+    function canonicalInvitePlayerId(invite) {
+      return invite?.token ? `inv-${String(invite.token).slice(-8)}` : null;
+    }
+
     function loadState() { return normalizeState(readStoredState()); }
 
     function normalizeState(input) {
@@ -4881,6 +4885,57 @@
       return `dm:${s[0]}:${s[1]}`;
     }
 
+    let _playerIdentitySyncInFlight = false;
+    let _playerIdentitySyncedFor = '';
+
+    async function syncCurrentPlayerIdentityFromInvites() {
+      const user = currentUser();
+      if (!user || user.role !== 'player' || _playerIdentitySyncInFlight || _playerIdentitySyncedFor === user.id) return false;
+      _playerIdentitySyncInFlight = true;
+      try {
+        const data = await fetch('/api/invite').then(r => r.json());
+        const nameKey = String(user.name || '').trim().toLowerCase();
+        const invite = (data.invites || []).find(inv =>
+          inv.status === 'accepted' &&
+          inv.role === 'player' &&
+          String(inv.name || '').trim().toLowerCase() === nameKey
+        );
+        const canonicalId = canonicalInvitePlayerId(invite);
+        if (!canonicalId) {
+          _playerIdentitySyncedFor = user.id;
+          return false;
+        }
+
+        const currentPlayer = getPlayer();
+        let canonicalPlayer = state.players.find(p => p.id === canonicalId);
+        if (!canonicalPlayer && currentPlayer?.id) {
+          currentPlayer.id = canonicalId;
+          canonicalPlayer = currentPlayer;
+        }
+        if (!canonicalPlayer) {
+          canonicalPlayer = { id: canonicalId, name: user.name, position: 'TBC', status: 'no-reply', game: 'no-reply',
+            phone: '', email: user.email || '', trainingTuesday: 'no-reply', trainingThursday: 'no-reply',
+            attendance: 0, history: [], blockedDates: [], medical: '', mediaConsent: false, contractStatus: 'active' };
+          state.players.push(canonicalPlayer);
+        }
+
+        const previousPlayerId = user.playerId;
+        user.playerId = canonicalId;
+        state.selectedPlayerId = canonicalId;
+        if (previousPlayerId && previousPlayerId !== canonicalId) {
+          state.messages.forEach(m => { if (m.playerId === previousPlayerId) m.playerId = canonicalId; });
+        }
+        saveState('Canonical player identity synced');
+        _playerIdentitySyncedFor = user.id;
+        return true;
+      } catch(e) {
+        console.warn('[identity] Could not sync player invite identity:', e);
+        return false;
+      } finally {
+        _playerIdentitySyncInFlight = false;
+      }
+    }
+
     // ── Helpers ──────────────────────────────────────────
     function chatInitials(name) {
       if (!name) return '?';
@@ -4936,7 +4991,8 @@
 
     function chatMe() {
       const u = currentUser();
-      return { id: u?.id || 'anon', name: u?.name || 'Me', role: u?.role || 'player' };
+      const player = u?.role === 'player' ? getPlayer() : null;
+      return { id: player?.id || u?.id || 'anon', name: u?.name || player?.name || 'Me', role: u?.role || 'player', userId: u?.id || 'anon' };
     }
 
     function isMsgMine(msg) {
@@ -4981,6 +5037,13 @@
       // This is essential for players whose device doesn't have the coach's user
       // in state.users — the DM still exists in Redis and should be visible.
       _chatConversations.forEach(sc => {
+        if (!isCoachMode && String(sc.type || '').toUpperCase() === 'DIRECT') {
+          const participants = Array.isArray(sc.participants) ? sc.participants.map(String) : [];
+          const ids = new Set([me.id, me.userId, currentUser()?.playerId].filter(Boolean).map(String));
+          const idParts = String(sc.id || '').startsWith('dm:') ? String(sc.id).split(':').slice(1) : [];
+          const visible = participants.some(id => ids.has(id)) || idParts.some(id => ids.has(id));
+          if (!visible) return;
+        }
         if (!contacts.some(c => c.id === sc.id)) {
           contacts.push({
             id:   sc.id,
@@ -5028,7 +5091,17 @@
         const me = chatMe();
         const data = await fetch(`/api/chat?action=conversations&userId=${encodeURIComponent(me.id)}`).then(r => r.json());
         if (data.ok) {
-          _chatConversations = data.conversations || [];
+          let conversations = data.conversations || [];
+          if (currentUser()?.role === 'player') {
+            const ids = new Set([me.id, me.userId, currentUser()?.playerId].filter(Boolean).map(String));
+            conversations = conversations.filter(sc => {
+              if (String(sc.type || '').toUpperCase() !== 'DIRECT') return true;
+              const participants = Array.isArray(sc.participants) ? sc.participants.map(String) : [];
+              const idParts = String(sc.id || '').startsWith('dm:') ? String(sc.id).split(':').slice(1) : [];
+              return participants.some(id => ids.has(id)) || idParts.some(id => ids.has(id));
+            });
+          }
+          _chatConversations = conversations;
           // Update nav badge for the current user's unread total
           const total = _chatConversations.reduce((n, c) => n + (c.unread || 0), 0);
           if (total !== _chatNavUnread) {
@@ -5561,6 +5634,9 @@
     function renderPlayerMessages() {
       const el = document.getElementById('player-messages');
       if (!el) return;
+      syncCurrentPlayerIdentityFromInvites().then(changed => {
+        if (changed && state.activeView === 'player' && state.activePlayerSection === 'messages') renderPlayerMessages();
+      });
       // Default channel for players
       if (!state.selectedChatId || state.selectedChatId === 'coach') state.selectedChatId = 'squad';
       el.innerHTML = renderChatShell('player');
@@ -6362,15 +6438,18 @@
       // Create member record for all roles (coaches appear in Members page too)
       const isStaffRole = ['coach','admin','medical'].includes(role);
       const defaultPosition = role === 'coach' ? 'Coach' : role === 'admin' ? 'Admin' : role === 'medical' ? 'Medical Staff' : 'TBC';
-      let playerId = null;
+      let playerId = !isStaffRole ? canonicalInvitePlayerId(_inviteData) : null;
       let player = state.players.find(p => p.name.toLowerCase() === name.toLowerCase());
       if (!player) {
-        playerId = 'p' + Date.now();
+        playerId = playerId || 'p' + Date.now();
         player = { id: playerId, name, position: defaultPosition, status: isStaffRole ? 'available' : 'no-reply', game: isStaffRole ? 'available' : 'no-reply',
           phone: '', email: _inviteData.email || '', trainingTuesday: 'no-reply', trainingThursday: 'no-reply',
           attendance: 0, history: [], blockedDates: [], medical: '', mediaConsent: false, contractStatus: 'active' };
         state.players.push(player);
-      } else { playerId = player.id; }
+      } else {
+        if (playerId && player.id !== playerId) player.id = playerId;
+        playerId = player.id;
+      }
 
       // Create/find user account
       let userAcc = state.users.find(u => u.name.toLowerCase() === name.toLowerCase());
