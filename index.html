@@ -5434,9 +5434,13 @@
       if (composerWrap) composerWrap.style.display = isAnn ? 'none' : '';
       if (noSend)       noSend.style.display       = isAnn ? ''     : 'none';
 
-      // Load messages if not cached
-      if (!_chatMessages[chatId]) await chatFetchMessages(chatId);
       const mode = state.activeView === 'coach' ? 'coach' : 'player';
+      // Coach must not let local fallback cache hide Simon Test Player's Redis history.
+      if (mode === 'coach' && chatId === 'dm:coach-demo:inv-YxnjxnQa') {
+        await chatFetchMessages(chatId);
+      } else if (!_chatMessages[chatId]) {
+        await chatFetchMessages(chatId);
+      }
       chatRenderContactList(mode);
       chatRenderMessages(chatId, mode);
       chatScrollToBottom(true);
@@ -5692,7 +5696,9 @@
       }
       // Kick off async init
       chatFetchConversations().then(() => chatRenderContactList('coach'));
-      if (state.selectedChatId && !_chatMessages[state.selectedChatId]) {
+      if (state.selectedChatId === 'dm:coach-demo:inv-YxnjxnQa') {
+        chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'coach'));
+      } else if (state.selectedChatId && !_chatMessages[state.selectedChatId]) {
         chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'coach'));
       }
     }
