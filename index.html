@@ -5128,7 +5128,21 @@
         const url = `/api/chat?action=messages&convId=${encodeURIComponent(convId)}&since=${since}&userId=${encodeURIComponent(me.id)}`;
         const data = await fetch(url).then(r => r.json());
         if (data.ok) {
-          _chatMessages[convId] = data.messages || [];
+          const fetched = data.messages || [];
+          if (since > 0) {
+            const existing = _chatMessages[convId] || [];
+            const seen = new Set(existing.map(m => m.id).filter(Boolean));
+            const merged = existing.slice();
+            fetched.forEach(m => {
+              if (m.id && seen.has(m.id)) return;
+              if (m.id) seen.add(m.id);
+              merged.push(m);
+            });
+            merged.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+            _chatMessages[convId] = merged;
+          } else {
+            _chatMessages[convId] = fetched;
+          }
           return data.messages;
         }
       } catch(e) { /* offline */ }
