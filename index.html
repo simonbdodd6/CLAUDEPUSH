@@ -5245,7 +5245,6 @@
       const mode = state.activeView === 'coach' ? 'coach' : 'player';
       const convId = chatGetConvId(mode);
       const me = chatMe();
-      const shouldHydrateCoachDm = mode === 'coach' && convId.startsWith('dm:');
 
       // Optimistic UI — add immediately
       const optimistic = {
@@ -5254,9 +5253,6 @@
         replyTo: _chatReplyTo, reactions: {}, isEdited: false, isDeleted: false,
         _optimistic: true,
       };
-      if (shouldHydrateCoachDm) {
-        await chatFetchMessages(convId);
-      }
       if (!_chatMessages[convId]) _chatMessages[convId] = [];
       _chatMessages[convId].push(optimistic);
 
@@ -5284,9 +5280,6 @@
           // Replace optimistic with real message
           const idx = _chatMessages[convId].findIndex(m => m.id === optimistic.id);
           if (idx >= 0) _chatMessages[convId][idx] = { ...data.message };
-          if (shouldHydrateCoachDm) {
-            await chatFetchMessages(convId);
-          }
           chatRenderMessages(convId, mode);
           // Mark read since I just sent
           _chatLastPoll[convId + ':read'] = Date.now();
@@ -5529,8 +5522,7 @@
       const allMsgs = _chatMessages[convId] || [];
       // Local state.messages is display-only fallback. Do not write it into
       // _chatMessages, which is the Redis-backed cache for live conversations.
-      const useLocalFallback = !String(convId || '').startsWith('dm:');
-      const msgs = allMsgs.length ? allMsgs : (useLocalFallback ? chatGetLocalMsgs(convId, mode) : []);
+      const msgs = allMsgs.length ? allMsgs : chatGetLocalMsgs(convId, mode);
       if (!msgs.length) {
         feed.innerHTML = `<div class="chat-empty"><div class="ce-icon">💬</div><strong>No messages yet</strong><p style="margin-top:6px;font-size:13px">Send the first message below.</p></div>`;
         return;
@@ -5693,6 +5685,7 @@
       const el = document.getElementById('coach-messages');
       if (!el) return;
       el.innerHTML = renderChatShell('coach');
+      chatRenderContactList('coach');
       if (state.selectedChatId) {
         chatRenderMessages(state.selectedChatId, 'coach');
         chatScrollToBottom(true);
