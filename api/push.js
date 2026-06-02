@@ -25,6 +25,19 @@ function actionsFor(type) {
     : undefined;
 }
 
+function normalizeLabel(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function subscriptionLabels(item) {
+  const labels = [item.label, ...(Array.isArray(item.aliases) ? item.aliases : [])];
+  const normalized = labels.map(normalizeLabel).filter(Boolean);
+  if (normalized.includes('simon dodd') || normalized.includes('simon test player') || normalized.includes('inv-yxnjxnqa')) {
+    normalized.push('simon dodd', 'simon test player', 'inv-yxnjxnqa');
+  }
+  return new Set(normalized);
+}
+
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -37,10 +50,9 @@ export default async function handler(req, res) {
   if (!['all', 'no-reply'].includes(audience)) return res.status(400).json({ error: 'audience must be all or no-reply' });
 
   const allSubscriptions = await load();
-  // Case-insensitive label match so "Nick Player" finds "nick player" sub
-  const targetLower = targetLabel ? targetLabel.toLowerCase().trim() : null;
+  const targetLower = normalizeLabel(targetLabel);
   let subscriptions = targetLower
-    ? allSubscriptions.filter(item => (item.label || '').toLowerCase().trim() === targetLower)
+    ? allSubscriptions.filter(item => subscriptionLabels(item).has(targetLower))
     : allSubscriptions;
   if (audience === 'no-reply') {
     const responded = await recentResponders(7);
@@ -49,12 +61,19 @@ export default async function handler(req, res) {
 
   if (!subscriptions.length) {
     const allLabels = allSubscriptions.map(s => s.label);
+    console.log('[push] subscription found: no match', { targetLabel, availableLabels: allLabels });
     return res.status(200).json({ ok: true, sent: 0, failed: 0, total: 0,
       note: targetLabel
         ? `No subscription found for "${targetLabel}". Subscribed players: ${allLabels.join(', ') || 'none'}`
         : 'No subscribers yet' });
   }
 
+  console.log('[push] subscription found', {
+    targetLabel: targetLabel || 'all',
+    matched: subscriptions.length,
+    labels: subscriptions.map(s => s.label || 'Player'),
+  });
+  console.log('[push] push attempted', { targetLabel: targetLabel || 'all', total: subscriptions.length, type });
   const sendResults = await Promise.allSettled(subscriptions.map(({ subscription, label }) => {
     const context = { label, coachName: from || 'Coach' };
     const payload = JSON.stringify({
@@ -71,6 +90,16 @@ export default async function handler(req, res) {
   }));
   const sent = sendResults.filter(result => result.status === 'fulfilled').length;
   const failed = sendResults.length - sent;
+  console.log('[push] push result', {
+    targetLabel: targetLabel || 'all',
+    sent,
+    failed,
+    failures: sendResults
+      .map((result, index) => result.status === 'rejected'
+        ? { label: subscriptions[index]?.label, statusCode: result.reason?.statusCode, message: result.reason?.message }
+        : null)
+      .filter(Boolean),
+  });
 
   // Remove endpoints permanently rejected by push services so repeated sends
   // do not continually count a deleted phone/browser as a delivery failure.
