@@ -4885,6 +4885,28 @@
       return `dm:${s[0]}:${s[1]}`;
     }
 
+    function playerCoachDmId() {
+      const me = chatMe();
+      return dmConvId('coach-demo', me.id);
+    }
+
+    function playerAllowedConversationIds() {
+      const ids = new Set(['announce', 'squad', playerCoachDmId()]);
+      return ids;
+    }
+
+    function canonicalizePlayerSelectedChat() {
+      if (currentUser()?.role !== 'player') return false;
+      const allowed = playerAllowedConversationIds();
+      const coachDm = playerCoachDmId();
+      const current = state.selectedChatId;
+      if (!current || current === 'coach' || !allowed.has(current)) {
+        state.selectedChatId = coachDm;
+        return true;
+      }
+      return false;
+    }
+
     let _playerIdentitySyncInFlight = false;
     let _playerIdentitySyncedFor = '';
 
@@ -4922,6 +4944,7 @@
         const previousPlayerId = user.playerId;
         user.playerId = canonicalId;
         state.selectedPlayerId = canonicalId;
+        canonicalizePlayerSelectedChat();
         if (previousPlayerId && previousPlayerId !== canonicalId) {
           state.messages.forEach(m => { if (m.playerId === previousPlayerId) m.playerId = canonicalId; });
         }
@@ -5017,32 +5040,21 @@
           contacts.push({ id: dmConvId(me.id, p.id), name: p.name, sub: p.position || 'Player', type: 'DIRECT', photo: p.photo, playerId: p.id });
         });
       } else {
-        // Player sees: announcements + squad + DMs with staff + DMs with other players
+        // Player sees only team channels plus their own coach DM.
+        const coachDm = playerCoachDmId();
         contacts = [
           { id: 'announce', name: 'Announcements',   icon: '📢', sub: 'From coach', type: 'ANNOUNCEMENT' },
           { id: 'squad',    name: 'Squad',           icon: '🏉', sub: `${state.players.length} members`, type: 'GROUP' },
+          { id: coachDm, name: 'Coach', icon: '🎯', sub: 'Direct message', type: 'DIRECT' },
         ];
-        // DM with coach/staff
-        state.users.filter(u => ['coach','admin','medical'].includes(u.role) && u.id !== me.id).forEach(u => {
-          if (!contacts.some(c => c.id === dmConvId(me.id, u.id))) {
-            contacts.push({ id: dmConvId(me.id, u.id), name: u.name, sub: u.role, type: 'DIRECT', icon: '🎯' });
-          }
-        });
-        // DM with each other player
-        state.players.filter(p => p.id !== me.id).forEach(p => {
-          contacts.push({ id: dmConvId(me.id, p.id), name: p.name, sub: p.position || 'Member', type: 'DIRECT', photo: p.photo });
-        });
       }
       // Merge in any Redis conversations not covered by local contacts.
       // This is essential for players whose device doesn't have the coach's user
       // in state.users — the DM still exists in Redis and should be visible.
       _chatConversations.forEach(sc => {
-        if (!isCoachMode && String(sc.type || '').toUpperCase() === 'DIRECT') {
-          const participants = Array.isArray(sc.participants) ? sc.participants.map(String) : [];
-          const ids = new Set([me.id, me.userId, currentUser()?.playerId].filter(Boolean).map(String));
-          const idParts = String(sc.id || '').startsWith('dm:') ? String(sc.id).split(':').slice(1) : [];
-          const visible = participants.some(id => ids.has(id)) || idParts.some(id => ids.has(id));
-          if (!visible) return;
+        if (!isCoachMode) {
+          const allowed = playerAllowedConversationIds();
+          if (!allowed.has(sc.id)) return;
         }
         if (!contacts.some(c => c.id === sc.id)) {
           contacts.push({
@@ -5093,12 +5105,10 @@
         if (data.ok) {
           let conversations = data.conversations || [];
           if (currentUser()?.role === 'player') {
-            const ids = new Set([me.id, me.userId, currentUser()?.playerId].filter(Boolean).map(String));
+            const allowed = playerAllowedConversationIds();
             conversations = conversations.filter(sc => {
-              if (String(sc.type || '').toUpperCase() !== 'DIRECT') return true;
-              const participants = Array.isArray(sc.participants) ? sc.participants.map(String) : [];
-              const idParts = String(sc.id || '').startsWith('dm:') ? String(sc.id).split(':').slice(1) : [];
-              return participants.some(id => ids.has(id)) || idParts.some(id => ids.has(id));
+              if (!allowed.has(sc.id)) return false;
+              return true;
             });
           }
           _chatConversations = conversations;
@@ -5637,8 +5647,7 @@
       syncCurrentPlayerIdentityFromInvites().then(changed => {
         if (changed && state.activeView === 'player' && state.activePlayerSection === 'messages') renderPlayerMessages();
       });
-      // Default channel for players
-      if (!state.selectedChatId || state.selectedChatId === 'coach') state.selectedChatId = 'squad';
+      canonicalizePlayerSelectedChat();
       el.innerHTML = renderChatShell('player');
       chatRenderContactList('player');
       if (state.selectedChatId) {
