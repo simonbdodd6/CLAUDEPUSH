@@ -1855,6 +1855,39 @@
       return invite?.token ? `inv-${String(invite.token).slice(-8)}` : null;
     }
 
+    function canonicalPlayerIdForUser(user) {
+      if (!user || user.role !== 'player') return null;
+      const nameKey = String(user.name || '').trim().toLowerCase();
+      if (nameKey === 'simon test player') return 'inv-YxnjxnQa';
+      return user.playerId || null;
+    }
+
+    function ensureCanonicalPlayerRecord(next, user, canonicalId) {
+      if (!canonicalId || next.players.some(p => p.id === canonicalId)) return;
+      const existing = next.players.find(p => p.id === user.playerId) ||
+        next.players.find(p => String(p.name || '').trim().toLowerCase() === String(user.name || '').trim().toLowerCase());
+      next.players.push({
+        id: canonicalId,
+        name: user.name,
+        position: 'TBC',
+        status: 'no-reply',
+        game: 'no-reply',
+        phone: '',
+        email: user.email || '',
+        trainingTuesday: 'no-reply',
+        trainingThursday: 'no-reply',
+        attendance: 0,
+        history: [],
+        blockedDates: [],
+        medical: '',
+        mediaConsent: false,
+        contractStatus: 'active',
+        ...(existing || {}),
+        id: canonicalId,
+        name: existing?.name || user.name
+      });
+    }
+
     function loadState() { return normalizeState(readStoredState()); }
 
     function normalizeState(input) {
@@ -1913,10 +1946,15 @@
       next.showAddPlayer    = false; // never restore open form across sessions
       const user = next.users.find(u => u.id === next.currentUserId);
       if (user?.role === "player") {
+        const canonicalPlayerId = canonicalPlayerIdForUser(user);
+        if (canonicalPlayerId) {
+          ensureCanonicalPlayerRecord(next, user, canonicalPlayerId);
+          user.playerId = canonicalPlayerId;
+        }
         next.activeView = "player";
         next.selectedPlayerId = user.playerId;
         next.activePlayerSection = input.activePlayerSection || "messages";
-        next.selectedChatId = input.selectedChatId || "coach";
+        next.selectedChatId = "coach";
       }
       return next;
     }
@@ -2121,7 +2159,7 @@
       phone:"", email:"", medical:"", blockedDates:[] };
     function getPlayer()  {
       const user = currentUser();
-      const id   = user?.role === "player" ? user.playerId : state.selectedPlayerId;
+      const id   = user?.role === "player" ? canonicalPlayerIdForUser(user) : state.selectedPlayerId;
       return state.players.find(p => p.id === id) || state.players[0] || EMPTY_PLAYER;
     }
     function currentUser()  { return state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
@@ -5015,7 +5053,8 @@
     function chatMe() {
       const u = currentUser();
       const player = u?.role === 'player' ? getPlayer() : null;
-      return { id: player?.id || u?.id || 'anon', name: u?.name || player?.name || 'Me', role: u?.role || 'player', userId: u?.id || 'anon' };
+      const canonicalPlayerId = canonicalPlayerIdForUser(u);
+      return { id: canonicalPlayerId || player?.id || u?.id || 'anon', name: u?.name || player?.name || 'Me', role: u?.role || 'player', userId: u?.id || 'anon' };
     }
 
     function isMsgMine(msg) {
@@ -5353,6 +5392,9 @@
 
     // ── Select a conversation ────────────────────────────
     async function selectChat(chatId) {
+      if (currentUser()?.role === 'player' && !playerAllowedConversationIds().has(chatId)) {
+        chatId = playerCoachDmId();
+      }
       state.selectedChatId = chatId;
       _chatMobileOpen = true;
       const shell = document.querySelector('.chat-shell');
