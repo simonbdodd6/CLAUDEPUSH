@@ -5520,12 +5520,9 @@
       const feed = document.getElementById('chatFeed');
       if (!feed) return;
       const allMsgs = _chatMessages[convId] || [];
-      // Also merge in local state.messages for this conv (backwards compat)
-      if (!allMsgs.length) {
-        const localMsgs = chatGetLocalMsgs(convId, mode);
-        if (localMsgs.length) { _chatMessages[convId] = localMsgs; }
-      }
-      const msgs = _chatMessages[convId] || [];
+      // Local state.messages is display-only fallback. Do not write it into
+      // _chatMessages, which is the Redis-backed cache for live conversations.
+      const msgs = allMsgs.length ? allMsgs : chatGetLocalMsgs(convId, mode);
       if (!msgs.length) {
         feed.innerHTML = `<div class="chat-empty"><div class="ce-icon">💬</div><strong>No messages yet</strong><p style="margin-top:6px;font-size:13px">Send the first message below.</p></div>`;
         return;
