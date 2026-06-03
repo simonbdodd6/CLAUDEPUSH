@@ -18,6 +18,70 @@ export function shouldUseLocalFallback(convId, { productionMode = true } = {}) {
   return !isRedisBackedConversation(convId);
 }
 
+export function createCoachDmConversationRequest(player, coachId = 'coach-demo') {
+  const playerId = String(player?.id || '').trim();
+  const coach = String(coachId || 'coach-demo').trim() || 'coach-demo';
+  if (!playerId) return null;
+  return {
+    action: 'create_conv',
+    id: dmConvId(coach, playerId),
+    name: String(player?.name || 'Direct message'),
+    type: 'DIRECT',
+    participants: [coach, playerId],
+  };
+}
+
+export function createCoachDmConversationRequestForPlayerId(players = [], playerId = '', coachId = 'coach-demo') {
+  const targetId = String(playerId || '').trim();
+  const player = (Array.isArray(players) ? players : []).find(item => String(item?.id || '') === targetId);
+  return createCoachDmConversationRequest(player, coachId);
+}
+
+export function filterCoachDmPlayers(players = [], query = '', coachId = 'coach-demo') {
+  const q = String(query || '').trim().toLowerCase();
+  const coach = String(coachId || '');
+  return (Array.isArray(players) ? players : []).filter(player => {
+    if (!player?.id || String(player.id) === coach) return false;
+    if (!q) return true;
+    return [player.name, player.position, player.email]
+      .some(value => String(value || '').toLowerCase().includes(q));
+  });
+}
+
+export function directConversationParticipantId(conversation = {}, currentUserId = 'coach-demo') {
+  if (!conversation || String(conversation.type || '').toUpperCase() !== 'DIRECT') return '';
+  if (conversation.playerId) return String(conversation.playerId);
+  const participants = Array.isArray(conversation.participants) ? conversation.participants : [];
+  const other = participants.find(id => String(id) !== String(currentUserId));
+  if (other) return String(other);
+  const id = String(conversation.id || '');
+  if (!id.startsWith('dm:')) return '';
+  return id.split(':').slice(1).find(part => part !== String(currentUserId)) || '';
+}
+
+export function dedupeDirectConversations(conversations = [], currentUserId = 'coach-demo') {
+  const seenDirectParticipants = new Set();
+  const result = [];
+
+  (Array.isArray(conversations) ? conversations : []).forEach(conversation => {
+    if (!conversation) return;
+    const isDirect = String(conversation.type || '').toUpperCase() === 'DIRECT' ||
+      String(conversation.id || '').startsWith('dm:');
+    if (!isDirect) {
+      result.push(conversation);
+      return;
+    }
+
+    const participantId = directConversationParticipantId(conversation, currentUserId) ||
+      String(conversation.id || '');
+    if (!participantId || seenDirectParticipants.has(participantId)) return;
+    seenDirectParticipants.add(participantId);
+    result.push(conversation);
+  });
+
+  return result;
+}
+
 function messageKey(message) {
   return message && message.id ? String(message.id) : '';
 }

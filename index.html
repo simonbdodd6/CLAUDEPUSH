@@ -845,6 +845,42 @@
       font-size: 16px; transition: background .12s;
     }
     .chat-icon-btn:hover { background: rgba(255,255,255,0.08); color: var(--ink); }
+    .chat-new-msg-btn {
+      min-height: 32px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(16,185,129,0.45);
+      background: rgba(16,185,129,0.12);
+      color: var(--green);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .chat-new-msg-btn:hover { background: rgba(16,185,129,0.18); color: #7ee7b8; }
+    .chat-new-msg-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      background: rgba(2,6,23,0.72);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+    .chat-new-msg-dialog {
+      width: min(420px, 100%);
+      max-height: min(560px, calc(100vh - 36px));
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 24px 70px rgba(0,0,0,0.42);
+      display: flex;
+      flex-direction: column;
+    }
     /* Feed — layout only; overflow/scroll handled by .chat-window .chat-feed */
     .chat-feed {
       display: flex; flex-direction: column; gap: 3px;
@@ -1028,12 +1064,33 @@
     .chat-empty .ce-icon { font-size: 40px; margin-bottom: 12px; }
     /* Mobile */
     @media (max-width: 768px) {
-      .chat-shell { grid-template-columns: 1fr; height: calc(100vh - 80px); max-height: none; border-radius: 0; border: none; }
+      .chat-shell {
+        grid-template-columns: 1fr;
+        height: calc(100vh - 74px);
+        min-height: 0;
+        max-height: none;
+        border-radius: 0;
+        border: none;
+      }
       .chat-list { display: flex; }
       .chat-window { display: none; }
       .chat-shell.chat-open .chat-list { display: none; }
-      .chat-shell.chat-open .chat-window { display: grid; }
+      .chat-shell.chat-open .chat-window { display: flex; }
       .chat-back-btn { display: flex !important; }
+      .chat-list-head { padding: 12px 14px 9px; }
+      .chat-contact { padding: 12px 14px; }
+      .chat-header { padding: 9px 12px; }
+      .chat-feed { padding: 12px 10px; }
+      .chat-bubble-wrap { max-width: 88%; }
+      .chat-composer { padding: 8px 9px; gap: 6px; }
+      .chat-composer textarea { font-size: 16px; min-height: 42px; }
+      .chat-send-btn { width: 42px; height: 42px; }
+      .chat-new-msg-modal { align-items: flex-end; padding: 10px; }
+      .chat-new-msg-dialog {
+        width: 100%;
+        max-height: min(76vh, 620px);
+        border-radius: 10px;
+      }
     }
     .chat-back-btn {
       display: none; align-items: center; gap: 6px;
@@ -4916,6 +4973,8 @@
     let _chatEmojiPicker   = null;
     let _chatStateModule   = null;
     let _chatStatePromise  = null;
+    let _chatNewDmOpen     = false;
+    let _chatNewDmQuery    = '';
 
     function chatLoadStateModule() {
       if (!_chatStatePromise) {
@@ -4929,6 +4988,135 @@
 
     function chatIsCoachDirectConversation(convId, mode = (state.activeView === 'coach' ? 'coach' : 'player')) {
       return mode === 'coach' && String(convId || '').startsWith('dm:');
+    }
+
+    function chatCoachDmPickerPlayers() {
+      const me = chatMe();
+      if (_chatStateModule?.filterCoachDmPlayers) {
+        return _chatStateModule.filterCoachDmPlayers(state.players, _chatNewDmQuery, me.id);
+      }
+      const q = String(_chatNewDmQuery || '').trim().toLowerCase();
+      return (state.players || []).filter(player => {
+        if (!player?.id || String(player.id) === me.id) return false;
+        if (!q) return true;
+        return [player.name, player.position, player.email]
+          .some(value => String(value || '').toLowerCase().includes(q));
+      });
+    }
+
+    function chatNewDmPickerResultsHtml(players) {
+      return `${players.map(player => `<button type="button" data-chat-new-dm-player="${esc(player.id)}"
+        style="display:flex;align-items:center;gap:10px;text-align:left;border:0;background:transparent;color:var(--ink);padding:9px;border-radius:7px;cursor:pointer">
+        ${chatAvatarEl(player.name, player.photo, '', 34)}
+        <span style="min-width:0"><strong style="display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(player.name)}</strong>
+        <small style="display:block;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(player.position || 'Player')}</small></span>
+      </button>`).join('') || `<p class="muted" style="font-size:12px;margin:4px 0">No members found.</p>`}`;
+    }
+
+    function chatNewDmPickerHtml() {
+      if (!_chatNewDmOpen) return '';
+      const players = chatCoachDmPickerPlayers();
+      return `<div class="chat-new-msg-modal" onclick="if(event.target===this)chatCloseNewDmPicker()">
+        <div class="chat-new-msg-dialog" role="dialog" aria-modal="true" aria-label="New message">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)">
+          <strong style="font-size:15px;color:var(--ink)">New message</strong>
+          <button class="chat-icon-btn" type="button" onclick="chatCloseNewDmPicker()" title="Close">✕</button>
+        </div>
+        <input type="search" placeholder="Search members..." value="${esc(_chatNewDmQuery)}"
+          oninput="chatSetNewDmQuery(this.value)"
+          style="width:calc(100% - 32px);height:38px;border-radius:7px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);padding:0 10px;font-size:13px;margin:12px 16px">
+        <div id="chatNewDmResults" style="display:grid;gap:4px;overflow:auto;padding:0 10px 12px">
+          ${chatNewDmPickerResultsHtml(players)}
+        </div>
+        </div>
+      </div>`;
+    }
+
+    function chatBindNewDmRows(root = document) {
+      root.querySelectorAll('[data-chat-new-dm-player]').forEach(row => {
+        row.addEventListener('click', () => chatStartCoachDm(row.dataset.chatNewDmPlayer));
+      });
+    }
+
+    function chatRenderNewDmPicker() {
+      const el = document.getElementById('chatNewDmPicker');
+      if (!el) return;
+      el.innerHTML = chatNewDmPickerHtml();
+      chatBindNewDmRows(el);
+    }
+
+    function chatRenderNewDmResults() {
+      const el = document.getElementById('chatNewDmResults');
+      if (!el) return;
+      el.innerHTML = chatNewDmPickerResultsHtml(chatCoachDmPickerPlayers());
+      chatBindNewDmRows(el);
+    }
+
+    function chatOpenNewDmPicker() {
+      if (!isCoach()) return;
+      _chatNewDmOpen = true;
+      chatLoadStateModule().then(() => {
+        chatRenderNewDmPicker();
+        setTimeout(() => document.querySelector('#chatNewDmPicker input')?.focus(), 30);
+      });
+      chatRenderNewDmPicker();
+    }
+
+    function chatCloseNewDmPicker() {
+      _chatNewDmOpen = false;
+      _chatNewDmQuery = '';
+      chatRenderNewDmPicker();
+    }
+
+    function chatSetNewDmQuery(value) {
+      _chatNewDmQuery = value || '';
+      chatRenderNewDmResults();
+    }
+
+    function chatFocusComposerSoon() {
+      setTimeout(() => {
+        const composer = document.getElementById('chatComposer');
+        if (!composer) return;
+        composer.focus();
+        if (typeof composer.setSelectionRange === 'function') {
+          const len = composer.value.length;
+          composer.setSelectionRange(len, len);
+        }
+      }, 30);
+    }
+
+    async function chatStartCoachDm(playerId) {
+      if (!isCoach()) return;
+      const player = state.players.find(p => p.id === playerId);
+      if (!player) return showToast('Member not found');
+      const me = chatMe();
+      const immediateConvId = dmConvId(me.id, playerId);
+      _chatNewDmOpen = false;
+      _chatNewDmQuery = '';
+      chatRenderNewDmPicker();
+      await selectChat(immediateConvId);
+      chatFocusComposerSoon();
+      try {
+        const { createCoachDmConversationRequestForPlayerId } = await chatLoadStateModule();
+        const request = createCoachDmConversationRequestForPlayerId(state.players, playerId, me.id);
+        if (!request) return showToast('Could not open direct message');
+        if (!_chatConversations.some(conv => conv.id === request.id)) {
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not create conversation');
+        }
+        await chatFetchConversations();
+        chatRenderContactList('coach');
+        await selectChat(request.id);
+        chatFocusComposerSoon();
+      } catch (e) {
+        console.warn('[chatStartCoachDm]', e);
+        showToast('Could not open direct message');
+      }
     }
 
     // ── Canonical DM conversation ID (same for both sides) ───────────────────
@@ -5078,6 +5266,32 @@
       return msg.senderId === me.id || msg.senderName === me.name;
     }
 
+    function chatDirectParticipantId(contact, currentUserId) {
+      if (!contact || !(contact.type === 'DIRECT' || String(contact.id || '').startsWith('dm:'))) return '';
+      if (contact.playerId) return String(contact.playerId);
+      const participants = Array.isArray(contact.participants) ? contact.participants : [];
+      const other = participants.find(id => String(id) !== String(currentUserId));
+      if (other) return String(other);
+      const id = String(contact.id || '');
+      if (!id.startsWith('dm:')) return '';
+      return id.split(':').slice(1).find(part => part !== String(currentUserId)) || '';
+    }
+
+    function chatDedupeContacts(contacts, currentUserId) {
+      if (_chatStateModule?.dedupeDirectConversations) {
+        return _chatStateModule.dedupeDirectConversations(contacts, currentUserId);
+      }
+      const seen = new Set();
+      return contacts.filter(contact => {
+        const isDirect = contact?.type === 'DIRECT' || String(contact?.id || '').startsWith('dm:');
+        if (!isDirect) return true;
+        const participantId = chatDirectParticipantId(contact, currentUserId) || contact.id;
+        if (seen.has(participantId)) return false;
+        seen.add(participantId);
+        return true;
+      });
+    }
+
     // ── Conversations list ────────────────────────────────
     function chatBuildContacts(mode) {
       const me = chatMe();
@@ -5124,7 +5338,7 @@
       });
 
       // Enrich with data from _chatConversations (Redis) + local messages
-      return contacts.map(c => {
+      const enriched = contacts.map(c => {
         const server = _chatConversations.find(sc => sc.id === c.id);
         const msgs = _chatMessages[c.id] || [];
         const last = msgs[msgs.length - 1] || null;
@@ -5135,6 +5349,7 @@
         const unread = serverUnread || localUnread;
         return { ...c, ...(server || {}), lastMsg: last, unread };
       });
+      return chatDedupeContacts(enriched, me.id);
     }
 
     // ── Fetch from Redis ─────────────────────────────────
@@ -5664,9 +5879,11 @@
           <div class="chat-list-head">
             <h2>💬 Messages</h2>
             <div style="display:flex;gap:6px">
+              ${mode==='coach'?`<button class="chat-new-msg-btn" type="button" onclick="chatOpenNewDmPicker()" title="New message"><span>+</span><span>New</span></button>`:''}
               ${mode==='coach'?`<button class="chat-icon-btn" type="button" onclick="setSection('coach','message')" title="Automations">⚙️</button>`:''}
             </div>
           </div>
+          ${mode==='coach'?`<div id="chatNewDmPicker">${chatNewDmPickerHtml()}</div>`:''}
           <div class="chat-search-bar">
             <input type="search" placeholder="Search conversations…" value="${esc(_chatSearchQuery)}"
               oninput="_chatSearchQuery=this.value;chatRenderContactList('${mode}')">
