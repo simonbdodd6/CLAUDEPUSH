@@ -4914,6 +4914,22 @@
     let _chatMobileOpen    = false;
     let _chatContextMenu   = null;
     let _chatEmojiPicker   = null;
+    let _chatStateModule   = null;
+    let _chatStatePromise  = null;
+
+    function chatLoadStateModule() {
+      if (!_chatStatePromise) {
+        _chatStatePromise = import('./src/chat-state.js').then(mod => {
+          _chatStateModule = mod;
+          return mod;
+        });
+      }
+      return _chatStatePromise;
+    }
+
+    function chatIsCoachDirectConversation(convId, mode = (state.activeView === 'coach' ? 'coach' : 'player')) {
+      return mode === 'coach' && String(convId || '').startsWith('dm:');
+    }
 
     // ── Canonical DM conversation ID (same for both sides) ───────────────────
     // Sort the two user IDs so coach and player always agree on the Redis key.
@@ -5129,7 +5145,10 @@
         const data = await fetch(url).then(r => r.json());
         if (data.ok) {
           const fetched = data.messages || [];
-          if (since > 0) {
+          if (chatIsCoachDirectConversation(convId)) {
+            const { mergeMessages } = await chatLoadStateModule();
+            _chatMessages[convId] = mergeMessages(_chatMessages[convId] || [], fetched);
+          } else if (since > 0) {
             const existing = _chatMessages[convId] || [];
             const seen = new Set(existing.map(m => m.id).filter(Boolean));
             const merged = existing.slice();
@@ -5277,9 +5296,15 @@
         });
         const data = await res.json();
         if (data.ok) {
-          // Replace optimistic with real message
-          const idx = _chatMessages[convId].findIndex(m => m.id === optimistic.id);
-          if (idx >= 0) _chatMessages[convId][idx] = { ...data.message };
+          if (chatIsCoachDirectConversation(convId, mode)) {
+            const { mergeMessages } = await chatLoadStateModule();
+            _chatMessages[convId] = mergeMessages(_chatMessages[convId] || [], [data.message]);
+            await chatFetchMessages(convId, 0);
+          } else {
+            // Replace optimistic with real message
+            const idx = _chatMessages[convId].findIndex(m => m.id === optimistic.id);
+            if (idx >= 0) _chatMessages[convId][idx] = { ...data.message };
+          }
           chatRenderMessages(convId, mode);
           // Mark read since I just sent
           _chatLastPoll[convId + ':read'] = Date.now();
@@ -5522,7 +5547,11 @@
       const allMsgs = _chatMessages[convId] || [];
       // Local state.messages is display-only fallback. Do not write it into
       // _chatMessages, which is the Redis-backed cache for live conversations.
-      const msgs = allMsgs.length ? allMsgs : chatGetLocalMsgs(convId, mode);
+      const msgs = chatIsCoachDirectConversation(convId, mode)
+        ? (_chatStateModule
+          ? _chatStateModule.resolveMessagesForRender(convId, allMsgs, [], { productionMode: true })
+          : allMsgs)
+        : (allMsgs.length ? allMsgs : chatGetLocalMsgs(convId, mode));
       if (!msgs.length) {
         feed.innerHTML = `<div class="chat-empty"><div class="ce-icon">💬</div><strong>No messages yet</strong><p style="margin-top:6px;font-size:13px">Send the first message below.</p></div>`;
         return;
