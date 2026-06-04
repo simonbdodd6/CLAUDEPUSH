@@ -591,7 +591,7 @@
     }
     .availability-buttons {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
     }
     .availability-buttons button {
@@ -1438,11 +1438,33 @@
       cursor: pointer;
     }
     .msg-session-btn.active { border-color: var(--green); background: rgba(16,185,129,0.12); color: var(--green); }
+    .msg-session-card {
+      display: grid;
+      gap: 8px;
+      width: 100%;
+      min-height: 112px;
+      text-align: left;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: var(--panel-2);
+      color: var(--ink);
+      cursor: pointer;
+      transition: border-color .14s, background .14s, transform .14s;
+    }
+    .msg-session-card:hover { border-color: rgba(16,185,129,0.45); transform: translateY(-1px); }
+    .msg-session-card.active { border-color: var(--green); background: rgba(16,185,129,0.10); }
+    .msg-session-card strong { font-size: 14px; }
+    .msg-session-card small { color: var(--muted); font-size: 12px; line-height: 1.35; }
     .msg-status-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 10px;
       padding: 16px;
+    }
+    .msg-status-grid.compact {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      padding: 12px;
     }
     .msg-status-column {
       border: 1px solid var(--line);
@@ -1451,6 +1473,7 @@
       background: var(--panel-2);
       overflow: hidden;
     }
+    .msg-status-grid.compact .msg-status-column { min-height: 180px; }
     .msg-status-column header {
       display: flex;
       justify-content: space-between;
@@ -1728,7 +1751,7 @@
 
     const coachSections = [
       ["overview",  "Overview"],
-      ["message",   "Command Center"],
+      ["message",   "Availability"],
       ["messages",  "Messages"],
       ["training",  "Training"],
       ["matchday",  "Matchday Center"],
@@ -3521,22 +3544,32 @@
           <span class="msg-chip ${status || "no-reply"}">${statusLabel(status)}</span>
         </button>`).join("") || `<p class="muted" style="font-size:12px;padding:10px">No players in this group.</p>`;
 
-      const trainingRegisterHTML = state.schedule.filter(s => s.type === "Training").map(session => {
+      const sessionDisplayTitle = session => {
+        if (session.id === "tue") return "Tuesday Training";
+        if (session.id === "thu") return "Thursday Training";
+        if (session.id === "game") return "Weekend Match";
+        return session.title;
+      };
+
+      const sessionCardsHTML = state.schedule.map(session => {
         const rRows = sessionRows(session.id);
         const yes   = rRows.filter(({status}) => status === "available").length;
-        const no    = rRows.filter(({status}) => ["unavailable", "injured", "maybe"].includes(status)).length;
+        const no    = rRows.filter(({status}) => ["unavailable", "injured"].includes(status)).length;
+        const unsure = rRows.filter(({status}) => status === "maybe").length;
         const chase = rRows.filter(({status}) => status === "no-reply").length;
-        return `<article class="msg-device-card">
+        return `<button class="msg-session-card ${selected?.id === session.id ? "active" : ""}" type="button" onclick="openMessageDetail('${session.id}')">
           <div class="register-head">
-            <strong>${esc(session.title)}</strong>
+            <strong>${esc(sessionDisplayTitle(session))}</strong>
             <span class="msg-chip available">${yes}/${state.players.length} coming</span>
           </div>
+          <small>${esc(session.date || session.focus || "Availability open")}</small>
           <div class="msg-pill-row" style="margin-top:10px">
-            <span class="msg-chip available">${yes} yes</span>
-            <span class="msg-chip unavailable">${no} no/maybe</span>
-            <span class="msg-chip no-reply">${chase} chase</span>
+            <span class="msg-chip available">${yes} available</span>
+            <span class="msg-chip unavailable">${no} unavailable</span>
+            <span class="msg-chip maybe">${unsure} maybe</span>
+            <span class="msg-chip no-reply">${chase} no reply</span>
           </div>
-        </article>`;
+        </button>`;
       }).join("");
 
       const quickTemplates = [
@@ -3550,8 +3583,8 @@
           <section class="msg-hero">
             <div>
               <div class="eyebrow">Coach communications</div>
-              <h2>Messaging Command Centre</h2>
-              <p>A cleaner second option for a growing club: send now, automate later, track replies by session, and keep every player response inside coacheseyeGPT rather than WhatsApp.</p>
+              <h2>Availability Centre</h2>
+              <p>Track Tuesday training, Thursday training and weekend match replies in one place, with every player grouped by their latest answer.</p>
             </div>
             <div class="msg-hero-actions">
               <button class="btn" type="button" onclick="setSection('coach','messages')">Open messages</button>
@@ -3563,11 +3596,11 @@
           <section class="msg-kpi-grid">
             <article class="msg-kpi available"><span>Available</span><strong>${available.length}/${rows.length}</strong></article>
             <article class="msg-kpi unavailable"><span>Unavailable</span><strong>${unavailable.length}</strong></article>
-            <article class="msg-kpi chase"><span>Needs chasing</span><strong>${noReply.length}</strong></article>
+            <article class="msg-kpi chase"><span>Maybe</span><strong>${maybe.length}</strong></article>
             <article class="msg-kpi"><span>Response rate</span><strong>${responseRate}%</strong></article>
           </section>
 
-          <!-- ROW 1: Audience (left) + Send Now / Devices (right) -->
+          <!-- ROW 1: Session picker (left) + live response board (right) -->
           <section class="msg-command-grid msg-two-col">
             <article class="msg-card">
               <div class="msg-card-head">
@@ -3579,89 +3612,46 @@
               </div>
               <div style="padding:16px">
                 <div class="msg-pill-row">
-                  ${state.schedule.map(s => `<button class="msg-session-btn ${selected?.id===s.id ? "active" : ""}" type="button" onclick="openMessageDetail('${s.id}')">${esc(s.title)}</button>`).join("")}
+                  ${state.schedule.map(s => `<button class="msg-session-btn ${selected?.id===s.id ? "active" : ""}" type="button" onclick="openMessageDetail('${s.id}')">${esc(sessionDisplayTitle(s))}</button>`).join("")}
                 </div>
                 <div style="margin-top:14px">
-                  ${trainingRegisterHTML || `<p class="muted">No training sessions configured yet.</p>`}
+                  ${sessionCardsHTML || `<p class="muted">No availability sessions configured yet.</p>`}
                 </div>
               </div>
             </article>
 
             <div class="msg-side-stack">
-              <article class="msg-card msg-send-card">
-                <div class="msg-card-head">
-                  <div>
-                    <h2>Send now</h2>
-                    <p>Manual push message to players already on coacheseyeGPT.</p>
-                  </div>
-                </div>
-                <div class="msg-form-grid">
-                  <div class="msg-form-row">
-                    <label>Message type
-                      <select id="requestType">
-                        <option>Announcement</option>
-                        <option>Availability request</option>
-                        <option>Training update</option>
-                        <option>Medical check-in</option>
-                      </select>
-                    </label>
-                    <label>Audience
-                      <select id="messageAudience" onchange="renderAudiencePicker()">
-                        <option value="squad">Full squad - ${state.players.length} players</option>
-                        <option value="no-reply">No-response players - ${noReplyPlayers.length} players</option>
-                        <option value="individual">Individual player</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div id="audience-picker-slot"></div>
-                  <label>Message
-                    <textarea id="messageBody" placeholder="Type a clear coach message here..."></textarea>
-                  </label>
-                  <div class="msg-template-actions">
-                    ${quickTemplates.map((body, idx) => `<button class="btn" type="button" onclick="prefillCoachMessage(decodeURIComponent('${encodeURIComponent(body)}'))">Template ${idx + 1}</button>`).join("")}
-                  </div>
-                  <button class="btn primary" type="button" onclick="sendInAppMessage()">Send push message</button>
-                </div>
-              </article>
-
               <article class="msg-card">
                 <div class="msg-card-head">
                   <div>
-                    <h2>Devices</h2>
-                    <p>Notification health for this browser and the squad.</p>
+                    <h2>Live Response Board</h2>
+                    <p>${esc(sessionDisplayTitle(selected || {}))} · click any player for details.</p>
                   </div>
+                  <span class="msg-chip ${noReply.length ? "no-reply" : "available"}">${answered.length}/${rows.length} answered</span>
                 </div>
-                <div id="push-status-card" class="msg-device-card" style="margin:16px">Loading notification status...</div>
+                <div class="msg-status-grid compact">
+                  <section class="msg-status-column available">
+                    <header><span>Available</span><strong>${available.length}</strong></header>
+                    <div class="msg-player-list">${playerRows(available)}</div>
+                  </section>
+                  <section class="msg-status-column unavailable">
+                    <header><span>Unavailable</span><strong>${unavailable.length}</strong></header>
+                    <div class="msg-player-list">${playerRows(unavailable)}</div>
+                  </section>
+                  <section class="msg-status-column chase">
+                    <header><span>Maybe</span><strong>${maybe.length}</strong></header>
+                    <div class="msg-player-list">${playerRows(maybe)}</div>
+                  </section>
+                  <section class="msg-status-column chase">
+                    <header><span>No Reply</span><strong>${noReply.length}</strong></header>
+                    <div class="msg-player-list">${playerRows(noReply)}</div>
+                  </section>
+                </div>
               </article>
             </div>
           </section>
 
-          <!-- ROW 2: Live Response Board — full width -->
-          <article class="msg-card" style="margin-top:14px">
-            <div class="msg-card-head">
-              <div>
-                <h2>Live Response Board</h2>
-                <p>${esc(selected?.title || "Selected session")} · click any player to view their details.</p>
-              </div>
-              <span class="msg-chip ${noReply.length ? "no-reply" : "available"}">${answered.length}/${rows.length} answered</span>
-            </div>
-            <div class="msg-status-grid">
-              <section class="msg-status-column available">
-                <header><span>Available</span><strong>${available.length}</strong></header>
-                <div class="msg-player-list">${playerRows(available)}</div>
-              </section>
-              <section class="msg-status-column unavailable">
-                <header><span>Unavailable / Maybe</span><strong>${unavailable.length + maybe.length}</strong></header>
-                <div class="msg-player-list">${playerRows([...unavailable, ...maybe])}</div>
-              </section>
-              <section class="msg-status-column chase">
-                <header><span>No reply</span><strong>${noReply.length}</strong></header>
-                <div class="msg-player-list">${playerRows(noReply)}</div>
-              </section>
-            </div>
-          </article>
-
-          <!-- ROW 3: Player detail — appears only when a player is clicked -->
+          <!-- ROW 2: Player detail — appears only when a player is clicked -->
           <div id="player-detail-panel" class="msg-player-detail-panel" style="${state.selectedMessagePlayerId ? "margin-top:14px" : "display:none"}">
             ${state.selectedMessagePlayerId ? buildPlayerDetailHtml(selectedPlayer, selectedStatus) : ""}
           </div>
