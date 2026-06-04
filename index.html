@@ -1442,7 +1442,7 @@
       display: grid;
       gap: 8px;
       width: 100%;
-      min-height: 96px;
+      min-height: 108px;
       text-align: left;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -1456,6 +1456,11 @@
     .msg-session-card.active { border-color: var(--green); background: rgba(16,185,129,0.10); }
     .msg-session-card strong { font-size: 14px; }
     .msg-session-card small { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .msg-session-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
     .msg-status-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1559,7 +1564,7 @@
     .msg-template-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .msg-template-actions button { min-height: 38px; font-size: 12px; }
     .msg-side-stack { display: grid; gap: 12px; }
-    .msg-two-col { grid-template-columns: minmax(250px,0.52fr) minmax(0,1.6fr) !important; }
+    .msg-two-col { grid-template-columns: minmax(430px,1fr) minmax(0,1fr) !important; }
     .msg-avatar {
       width:44px; height:44px; border-radius:50%;
       background:linear-gradient(135deg,var(--green) 0%,#0d9488 100%);
@@ -3613,10 +3618,7 @@
                 <span id="avail-refresh-ts" class="msg-chip no-reply">Live sync</span>
               </div>
               <div style="padding:16px">
-                <div class="msg-pill-row">
-                  ${state.schedule.map(s => `<button class="msg-session-btn ${selected?.id===s.id ? "active" : ""}" type="button" onclick="openMessageDetail('${s.id}')">${esc(sessionDisplayTitle(s))}</button>`).join("")}
-                </div>
-                <div style="margin-top:14px">
+                <div class="msg-session-grid">
                   ${sessionCardsHTML || `<p class="muted">No availability sessions configured yet.</p>`}
                 </div>
               </div>
