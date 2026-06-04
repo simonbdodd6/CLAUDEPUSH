@@ -1472,6 +1472,25 @@
       gap: 12px;
       padding: 14px;
     }
+    .availability-board-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px 0;
+      flex-wrap: wrap;
+    }
+    .availability-filter-group { display: flex; flex-wrap: wrap; gap: 7px; }
+    .availability-sort-select {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+      color: var(--ink);
+      padding: 0 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
     .msg-status-column {
       border: 1px solid var(--line);
       border-radius: 10px;
@@ -1515,8 +1534,25 @@
       cursor: pointer;
     }
     .msg-player-row:hover, .msg-player-row.active { border-color: var(--green); background: rgba(16,185,129,0.06); }
+    .msg-player-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
     .msg-player-row strong { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .msg-player-row small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .msg-attendance-chip {
+      flex-shrink: 0;
+      border: 1px solid rgba(16,185,129,0.26);
+      border-radius: 999px;
+      background: rgba(16,185,129,0.10);
+      color: var(--green);
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 900;
+    }
     .msg-chip {
       display: inline-flex;
       align-items: center;
@@ -3528,6 +3564,48 @@
 `;
     }
 
+    let availabilityBoardFilter = "all";
+    let availabilityBoardSort = "highest";
+
+    function availabilityGroupForPlayer(player = {}) {
+      const raw = `${player.position || ""} ${player.role || ""}`.toLowerCase();
+      const numberMatch = raw.match(/\b(1[0-5]|[1-9])\b/);
+      const number = numberMatch ? Number(numberMatch[1]) : null;
+      if (number && number >= 1 && number <= 8) return "forwards";
+      if (number && number >= 9 && number <= 15) return "backs";
+      if (/(prop|hooker|lock|flanker|number 8|no\.?\s*8|back row|front row|second row|scrum)/.test(raw)) return "forwards";
+      if (/(scrum[- ]?half|fly[- ]?half|centre|center|wing|fullback|back three|outside back)/.test(raw)) return "backs";
+      return "";
+    }
+
+    function availabilityRowMatchesFilter(row) {
+      const player = row?.player || {};
+      if (availabilityBoardFilter === "all") return true;
+      if (availabilityBoardFilter === "injured") {
+        return player.game === "injured" || player.status === "injured" || Boolean(player.medical);
+      }
+      return availabilityGroupForPlayer(player) === availabilityBoardFilter;
+    }
+
+    function sortAvailabilityRows(list) {
+      const direction = availabilityBoardSort === "lowest" ? 1 : -1;
+      return list.slice().sort((a, b) => {
+        const diff = (Number(a.attendanceRate || 0) - Number(b.attendanceRate || 0)) * direction;
+        if (diff) return diff;
+        return String(a.player?.name || "").localeCompare(String(b.player?.name || ""));
+      });
+    }
+
+    function setAvailabilityBoardFilter(filter) {
+      availabilityBoardFilter = ["all", "forwards", "backs", "injured"].includes(filter) ? filter : "all";
+      renderMessageCenter();
+    }
+
+    function setAvailabilityBoardSort(sort) {
+      availabilityBoardSort = sort === "lowest" ? "lowest" : "highest";
+      renderMessageCenter();
+    }
+
     function renderMessageCenterV2() {
       const selected       = state.schedule.find(s => s.id === (state.messageDetail || "tue")) || state.schedule[0];
       const key            = selected ? sessionKey(selected.id) : "game";
@@ -3537,6 +3615,12 @@
       const unavailable    = rows.filter(({status}) => ["unavailable", "injured"].includes(status));
       const noReply        = rows.filter(({status}) => status === "no-reply");
       const answered       = rows.filter(({status}) => status !== "no-reply");
+      const boardRows      = sortAvailabilityRows(rows.filter(availabilityRowMatchesFilter));
+      const boardAvailable = boardRows.filter(({status}) => status === "available");
+      const boardMaybe     = boardRows.filter(({status}) => status === "maybe");
+      const boardUnavailable = boardRows.filter(({status}) => ["unavailable", "injured"].includes(status));
+      const boardNoReply   = boardRows.filter(({status}) => status === "no-reply");
+      const boardAnswered  = boardRows.filter(({status}) => status !== "no-reply");
       const selectedPlayer = state.players.find(p => p.id === state.selectedMessagePlayerId) || rows[0]?.player || EMPTY_PLAYER;
       const selectedStatus = selectedPlayer[key] || "no-reply";
       const noReplyPlayers = state.players.filter(p => (p[key] || "no-reply") === "no-reply");
@@ -3547,7 +3631,10 @@
 
       const playerRows = list => list.map(({player, status, attendanceRate}) => `
         <button class="msg-player-row ${selectedPlayer.id===player.id ? "active" : ""}" type="button" onclick="setMessagePlayer('${player.id}')">
-          <span><strong>${esc(player.name)}</strong><small>${esc(player.position)} · ${attendanceRate || 0}% attendance</small></span>
+          <span class="msg-player-main">
+            <span style="min-width:0"><strong>${esc(player.name)}</strong><small>${esc(player.position)}</small></span>
+            <span class="msg-attendance-chip">${attendanceRate || 0}%</span>
+          </span>
           <span class="msg-chip ${status || "no-reply"}">${statusLabel(status)}</span>
         </button>`).join("") || `<p class="muted" style="font-size:12px;padding:10px">No players in this group.</p>`;
 
@@ -3578,6 +3665,13 @@
           </div>
         </button>`;
       }).join("");
+
+      const filterButtons = [
+        ["all", "All"],
+        ["forwards", "Forwards"],
+        ["backs", "Backs"],
+        ["injured", "Injured"]
+      ].map(([id, label]) => `<button class="filter-pill ${availabilityBoardFilter === id ? "active" : ""}" type="button" onclick="setAvailabilityBoardFilter('${id}')">${label}</button>`).join("");
 
       const quickTemplates = [
         `Hi {{firstName}}, can you confirm your availability for ${selected?.title || "this session"}?`,
@@ -3631,24 +3725,31 @@
                     <h2>Live Response Board</h2>
                     <p>${esc(sessionDisplayTitle(selected || {}))} · click any player for details.</p>
                   </div>
-                  <span class="msg-chip ${noReply.length ? "no-reply" : "available"}">${answered.length}/${rows.length} answered</span>
+                  <span class="msg-chip ${boardNoReply.length ? "no-reply" : "available"}">${boardAnswered.length}/${boardRows.length} shown</span>
+                </div>
+                <div class="availability-board-tools">
+                  <div class="availability-filter-group">${filterButtons}</div>
+                  <select class="availability-sort-select" onchange="setAvailabilityBoardSort(this.value)" aria-label="Sort by attendance">
+                    <option value="highest" ${availabilityBoardSort === "highest" ? "selected" : ""}>Highest attendance first</option>
+                    <option value="lowest" ${availabilityBoardSort === "lowest" ? "selected" : ""}>Lowest attendance first</option>
+                  </select>
                 </div>
                 <div class="msg-status-grid compact">
                   <section class="msg-status-column available">
-                    <header><span>Available</span><strong>${available.length}</strong></header>
-                    <div class="msg-player-list">${playerRows(available)}</div>
+                    <header><span>Available</span><strong>${boardAvailable.length}</strong></header>
+                    <div class="msg-player-list">${playerRows(boardAvailable)}</div>
                   </section>
                   <section class="msg-status-column unavailable">
-                    <header><span>Unavailable</span><strong>${unavailable.length}</strong></header>
-                    <div class="msg-player-list">${playerRows(unavailable)}</div>
+                    <header><span>Unavailable</span><strong>${boardUnavailable.length}</strong></header>
+                    <div class="msg-player-list">${playerRows(boardUnavailable)}</div>
                   </section>
                   <section class="msg-status-column chase">
-                    <header><span>Maybe</span><strong>${maybe.length}</strong></header>
-                    <div class="msg-player-list">${playerRows(maybe)}</div>
+                    <header><span>Maybe</span><strong>${boardMaybe.length}</strong></header>
+                    <div class="msg-player-list">${playerRows(boardMaybe)}</div>
                   </section>
                   <section class="msg-status-column chase">
-                    <header><span>No Reply</span><strong>${noReply.length}</strong></header>
-                    <div class="msg-player-list">${playerRows(noReply)}</div>
+                    <header><span>No Reply</span><strong>${boardNoReply.length}</strong></header>
+                    <div class="msg-player-list">${playerRows(boardNoReply)}</div>
                   </section>
                 </div>
               </article>
