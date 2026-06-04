@@ -1442,11 +1442,11 @@
       display: grid;
       gap: 8px;
       width: 100%;
-      min-height: 112px;
+      min-height: 96px;
       text-align: left;
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 12px;
+      padding: 11px;
       background: var(--panel-2);
       color: var(--ink);
       cursor: pointer;
@@ -1464,7 +1464,8 @@
     }
     .msg-status-grid.compact {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      padding: 12px;
+      gap: 12px;
+      padding: 14px;
     }
     .msg-status-column {
       border: 1px solid var(--line);
@@ -1473,7 +1474,8 @@
       background: var(--panel-2);
       overflow: hidden;
     }
-    .msg-status-grid.compact .msg-status-column { min-height: 180px; }
+    .msg-status-grid.compact .msg-status-column { min-height: 214px; }
+    .msg-status-grid.compact .msg-player-list { max-height: 260px; }
     .msg-status-column header {
       display: flex;
       justify-content: space-between;
@@ -1557,7 +1559,7 @@
     .msg-template-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .msg-template-actions button { min-height: 38px; font-size: 12px; }
     .msg-side-stack { display: grid; gap: 12px; }
-    .msg-two-col { grid-template-columns: minmax(0,1fr) minmax(270px,0.7fr) !important; }
+    .msg-two-col { grid-template-columns: minmax(250px,0.52fr) minmax(0,1.6fr) !important; }
     .msg-avatar {
       width:44px; height:44px; border-radius:50%;
       background:linear-gradient(135deg,var(--green) 0%,#0d9488 100%);
@@ -3605,8 +3607,8 @@
             <article class="msg-card">
               <div class="msg-card-head">
                 <div>
-                  <h2>Audience</h2>
-                  <p>Pick the session, then send to the right group.</p>
+                  <h2>Sessions</h2>
+                  <p>Pick the training or match view.</p>
                 </div>
                 <span id="avail-refresh-ts" class="msg-chip no-reply">Live sync</span>
               </div>
