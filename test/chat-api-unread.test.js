@@ -122,6 +122,21 @@ async function seedSessionAccount({ id, role = 'player', displayName = 'Session 
   return { session, headers: { cookie: `${SESSION_COOKIE}=${encodeURIComponent(session.token)}` } };
 }
 
+async function coachSetup() {
+  const users = JSON.parse(kv.get('app:identity:users') || '[]');
+  if (!users.find(u => u.id === 'coach-demo')) {
+    users.push({ id: 'coach-demo', email: 'coach@example.com', firstName: 'Simon', lastName: 'Coach', displayName: 'Simon Coach' });
+    kv.set('app:identity:users', JSON.stringify(users));
+  }
+  const members = JSON.parse(kv.get('app:identity:team_members') || '[]');
+  if (!members.find(m => m.userId === 'coach-demo')) {
+    members.push({ id: 'tm-coach-demo', teamId: 'boitsfort-rfc', userId: 'coach-demo', role: 'coach', status: 'active' });
+    kv.set('app:identity:team_members', JSON.stringify(members));
+  }
+  const session = await createSession({ userId: 'coach-demo', teamId: 'boitsfort-rfc', role: 'coach' });
+  return { cookie: `${SESSION_COOKIE}=${encodeURIComponent(session.token)}` };
+}
+
 async function unreadFor(userId, convId) {
   const data = await call('GET', `/api/chat?action=conversations&userId=${encodeURIComponent(userId)}`);
   const conversation = data.conversations.find(item => item.id === convId);
@@ -133,6 +148,8 @@ test('chat API unread count increments on coach DM and survives refresh and logi
   lists.clear();
   const playerId = 'user_dodsy_approved';
   const convId = dmConvId('coach-demo', playerId);
+  const { headers: playerHeaders } = await seedSessionAccount({ id: playerId, role: 'player', displayName: 'Dodsy Player' });
+  const coachHeaders = await coachSetup();
 
   await call('POST', '/api/chat', {
     action: 'create_conv',
@@ -140,7 +157,7 @@ test('chat API unread count increments on coach DM and survives refresh and logi
     name: 'Dodsy Player',
     type: 'DIRECT',
     participants: ['coach-demo', playerId],
-  });
+  }, coachHeaders);
   await call('POST', '/api/chat', {
     action: 'send',
     convId,
@@ -148,7 +165,7 @@ test('chat API unread count increments on coach DM and survives refresh and logi
     senderName: 'Simon Dodd',
     senderRole: 'coach',
     text: 'Unread ping',
-  });
+  }, coachHeaders);
 
   assert.equal(await unreadFor(playerId, convId), 1);
   assert.equal(await unreadFor('coach-demo', convId), 0);
@@ -158,7 +175,7 @@ test('chat API unread count increments on coach DM and survives refresh and logi
     action: 'read',
     convId,
     userId: playerId,
-  });
+  }, playerHeaders);
 
   assert.equal(await unreadFor(playerId, convId), 0);
   assert.equal(await unreadFor(playerId, convId), 0, 'logout/login refetch keeps cleared read state');
@@ -170,7 +187,7 @@ test('chat API unread count increments on coach DM and survives refresh and logi
     senderName: 'Simon Dodd',
     senderRole: 'coach',
     text: 'Unread ping after login',
-  });
+  }, coachHeaders);
 
   assert.equal(await unreadFor(playerId, convId), 1);
 });
@@ -181,6 +198,7 @@ test('chat API unread logic preserves Simon Test Player legacy conversation id',
   // Only Simon Test Player's legacy ID is kept — Nick Player has been removed.
   const playerId = 'inv-YxnjxnQa';
   const expectedConvId = 'dm:coach-demo:inv-YxnjxnQa';
+  const coachHeaders = await coachSetup();
 
   const convId = dmConvId('coach-demo', playerId);
   assert.equal(convId, expectedConvId);
@@ -190,7 +208,7 @@ test('chat API unread logic preserves Simon Test Player legacy conversation id',
     name: 'Simon Test Player',
     type: 'DIRECT',
     participants: ['coach-demo', playerId],
-  });
+  }, coachHeaders);
   await call('POST', '/api/chat', {
     action: 'send',
     convId,
@@ -198,7 +216,7 @@ test('chat API unread logic preserves Simon Test Player legacy conversation id',
     senderName: 'Simon Coach',
     senderRole: 'coach',
     text: 'Hello Simon Test Player',
-  });
+  }, coachHeaders);
   assert.equal(await unreadFor(playerId, convId), 1);
 });
 
@@ -234,6 +252,7 @@ test('chat API trusts authenticated session identity over browser-supplied sende
     },
   ]));
   const session = await createSession({ userId: 'user_auth_player', teamId: 'boitsfort-rfc', role: 'player' });
+  const coachHeaders = await coachSetup();
   const convId = dmConvId('coach-demo', 'user_auth_player');
   const headers = { cookie: `${SESSION_COOKIE}=${encodeURIComponent(session.token)}` };
 
@@ -243,7 +262,7 @@ test('chat API trusts authenticated session identity over browser-supplied sende
     name: 'Auth Player',
     type: 'DIRECT',
     participants: ['coach-demo', 'user_auth_player'],
-  });
+  }, coachHeaders);
   const sent = await call('POST', '/api/chat', {
     action: 'send',
     convId,
@@ -269,6 +288,7 @@ test('authenticated player can read only their own legacy direct-message convers
     email: 'simon.session@example.com',
     legacyPlayerId: 'inv-YxnjxnQa',
   });
+  const coachHeaders = await coachSetup();
   const simonConvId = dmConvId('coach-demo', 'inv-YxnjxnQa');
   // Use a non-obsolete player ID to avoid the cleanup migration wiping the conversation
   const otherConvId = dmConvId('coach-demo', 'inv-other-player-1');
@@ -279,14 +299,14 @@ test('authenticated player can read only their own legacy direct-message convers
     name: 'Simon Test Player',
     type: 'DIRECT',
     participants: ['coach-demo', 'inv-YxnjxnQa'],
-  });
+  }, coachHeaders);
   await call('POST', '/api/chat', {
     action: 'create_conv',
     id: otherConvId,
     name: 'Other Player',
     type: 'DIRECT',
     participants: ['coach-demo', 'inv-other-player-1'],
-  });
+  }, coachHeaders);
   await call('POST', '/api/chat', {
     action: 'send',
     convId: simonConvId,
@@ -294,7 +314,7 @@ test('authenticated player can read only their own legacy direct-message convers
     senderName: 'Simon Coach',
     senderRole: 'coach',
     text: 'Simon only',
-  });
+  }, coachHeaders);
 
   const ownMessages = await call('GET', `/api/chat?action=messages&convId=${encodeURIComponent(simonConvId)}&userId=spoofed`, null, simon.headers);
   assert.equal(ownMessages.messages.length, 1);

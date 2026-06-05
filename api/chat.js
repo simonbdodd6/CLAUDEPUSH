@@ -129,7 +129,10 @@ async function findConversation(convId) {
 }
 
 async function requireConversationAccess(res, sessionContext, convId, mode = 'read') {
-  if (!sessionContext?.user?.id) return true;
+  if (!sessionContext?.user?.id) {
+    err(res, 401, 'Authentication required');
+    return false;
+  }
   const conversation = await findConversation(convId);
   if (!conversation) {
     err(res, 404, 'Conversation not found');
@@ -370,7 +373,8 @@ async function handlePost(req, res) {
   }
 
   if (action === 'create_conv') {
-    if (sessionContext?.user?.id && !isStaffSession(sessionContext)) return err(res, 403, 'Only coaches can create conversations');
+    if (!sessionContext?.user?.id) return err(res, 401, 'Authentication required');
+    if (!isStaffSession(sessionContext)) return err(res, 403, 'Only coaches can create conversations');
     const { id, name, type = 'DIRECT', icon = '💬', description = '', participants = [] } = body;
     const teamId = sessionContext?.user?.id ? tenantTeamId(sessionContext) : DEFAULT_TEAM.id;
     const convId = id || `conv_${Date.now()}`;

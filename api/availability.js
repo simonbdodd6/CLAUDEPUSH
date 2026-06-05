@@ -4,6 +4,11 @@ import { loadAvailability, saveAvailability } from './_availabilityStore.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
 import { resolveSessionFromRequest } from './_identityStore.js';
+import { requireTenantRole } from './_tenant.js';
+
+function sendAuthError(res, error) {
+  return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
+}
 
 const RESPONSES = new Set(['available', 'unavailable', 'maybe']);
 
@@ -46,6 +51,11 @@ export default async function handler(req, res) {
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
 
   if (req.method === 'GET') {
+    try {
+      await requireTenantRole(req, ['coach', 'admin']);
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
     const sessionId = req.query?.sessionId || 'game';
     if (!validSessionId(sessionId)) return res.status(400).json({ error: 'Invalid sessionId' });
     const responses = await loadAvailability(sessionId);

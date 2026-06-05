@@ -1790,7 +1790,7 @@
 
     // ─── ACCOUNTS ─────────────────────────────────────────────────────────────
     const testAccounts = [
-      { id: "coach-demo", role: "coach", name: "Simon Coach", email: "simonbdodd@gmail.com", phone: "+32470380938", pin: "1111" }
+      { id: "coach-demo", role: "coach", name: "Simon Coach" }
     ];
 
     const coachSections = [
@@ -3549,17 +3549,7 @@
             _serverSessionReadyFor = current.user.id;
             return true;
           }
-          const isStaff = ['coach','admin','medical'].includes(user.role);
-          if (!isStaff || !user.email || !user.pin) return false;
-          const res = await fetch('/api/identity', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'login', email: user.email, password: user.pin }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.ok === false) return false;
-          _serverSessionReadyFor = data.user?.id || user.id;
-          return true;
+          return false; // No server session — user must log in via the login form
         } finally {
           _serverSessionPromise = null;
         }

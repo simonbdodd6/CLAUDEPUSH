@@ -349,6 +349,7 @@ test('coach can open a DM conversation channel with an invited player', async ()
     password: 'password123',
   });
 
+  const coach = await seedCoachSession();
   const convId = dmConvId('coach-demo', claimed.playerProfile.legacyPlayerId);
 
   // Create the conversation first, then send a message
@@ -358,7 +359,7 @@ test('coach can open a DM conversation channel with an invited player', async ()
     name: 'DM Player',
     type: 'DIRECT',
     participants: ['coach-demo', claimed.playerProfile.legacyPlayerId],
-  });
+  }, coach.headers);
   assert.equal(createRes.statusCode, 200, `create conv failed: ${JSON.stringify(createRes.payload)}`);
 
   const sendRes = await callChat('POST', '/api/chat', {
@@ -368,7 +369,7 @@ test('coach can open a DM conversation channel with an invited player', async ()
     senderName: 'Simon Coach',
     senderRole: 'coach',
     text: 'Welcome to Boitsfort!',
-  });
+  }, coach.headers);
   assert.equal(sendRes.statusCode, 200, `send message failed: ${JSON.stringify(sendRes.payload)}`);
   assert.equal(sendRes.payload.ok, true);
 });
@@ -394,6 +395,8 @@ test('invited player can reply to coach DM', async () => {
     password: 'password123',
   });
 
+  const coach = await seedCoachSession();
+  const playerHeaders = { cookie: `ce_session=${encodeURIComponent(claimed.session.token)}` };
   const convId = dmConvId('coach-demo', claimed.playerProfile.legacyPlayerId);
 
   // Create conv and have coach send first
@@ -403,7 +406,7 @@ test('invited player can reply to coach DM', async () => {
     name: 'Reply Player',
     type: 'DIRECT',
     participants: ['coach-demo', claimed.playerProfile.legacyPlayerId],
-  });
+  }, coach.headers);
   await callChat('POST', '/api/chat', {
     action: 'send',
     convId,
@@ -411,7 +414,7 @@ test('invited player can reply to coach DM', async () => {
     senderName: 'Simon Coach',
     senderRole: 'coach',
     text: 'Hi there',
-  });
+  }, coach.headers);
 
   // Player replies
   const replyRes = await callChat('POST', '/api/chat', {
@@ -421,13 +424,13 @@ test('invited player can reply to coach DM', async () => {
     senderName: 'Reply Player',
     senderRole: 'player',
     text: 'Hi coach!',
-  });
+  }, playerHeaders);
 
   assert.equal(replyRes.statusCode, 200, `player reply failed: ${JSON.stringify(replyRes.payload)}`);
   assert.equal(replyRes.payload.ok, true);
 
   // Verify both messages exist in the conversation
-  const msgsRes = await callChat('GET', `/api/chat?action=messages&convId=${encodeURIComponent(convId)}&userId=coach-demo`);
+  const msgsRes = await callChat('GET', `/api/chat?action=messages&convId=${encodeURIComponent(convId)}&userId=coach-demo`, null, coach.headers);
   assert.equal(msgsRes.statusCode, 200);
   const messages = msgsRes.payload.messages || [];
   assert.ok(messages.length >= 2, 'conversation should have at least 2 messages');
