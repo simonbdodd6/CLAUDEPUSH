@@ -175,34 +175,31 @@ test('chat API unread count increments on coach DM and survives refresh and logi
   assert.equal(await unreadFor(playerId, convId), 1);
 });
 
-test('chat API unread logic preserves Simon and Nick legacy conversation ids', async () => {
+test('chat API unread logic preserves Simon Test Player legacy conversation id', async () => {
   kv.clear();
   lists.clear();
-  const cases = [
-    ['inv-YxnjxnQa', 'Simon Test Player', 'dm:coach-demo:inv-YxnjxnQa'],
-    ['inv-nick1234', 'Nick Player', 'dm:coach-demo:inv-nick1234'],
-  ];
+  // Only Simon Test Player's legacy ID is kept — Nick Player has been removed.
+  const playerId = 'inv-YxnjxnQa';
+  const expectedConvId = 'dm:coach-demo:inv-YxnjxnQa';
 
-  for (const [playerId, name, expectedConvId] of cases) {
-    const convId = dmConvId('coach-demo', playerId);
-    assert.equal(convId, expectedConvId);
-    await call('POST', '/api/chat', {
-      action: 'create_conv',
-      id: convId,
-      name,
-      type: 'DIRECT',
-      participants: ['coach-demo', playerId],
-    });
-    await call('POST', '/api/chat', {
-      action: 'send',
-      convId,
-      senderId: 'coach-demo',
-      senderName: 'Simon Dodd',
-      senderRole: 'coach',
-      text: `Hello ${name}`,
-    });
-    assert.equal(await unreadFor(playerId, convId), 1);
-  }
+  const convId = dmConvId('coach-demo', playerId);
+  assert.equal(convId, expectedConvId);
+  await call('POST', '/api/chat', {
+    action: 'create_conv',
+    id: convId,
+    name: 'Simon Test Player',
+    type: 'DIRECT',
+    participants: ['coach-demo', playerId],
+  });
+  await call('POST', '/api/chat', {
+    action: 'send',
+    convId,
+    senderId: 'coach-demo',
+    senderName: 'Simon Coach',
+    senderRole: 'coach',
+    text: 'Hello Simon Test Player',
+  });
+  assert.equal(await unreadFor(playerId, convId), 1);
 });
 
 test('chat API trusts authenticated session identity over browser-supplied sender ids', async () => {

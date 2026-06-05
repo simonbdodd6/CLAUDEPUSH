@@ -64,15 +64,6 @@ async function saveConvs(list) {
   return kvSet(CONVS_KEY(), list);
 }
 
-// One-time migration: remove obsolete DM conversation list entries.
-async function migrateRemoveObsoleteDmConversations() {
-  const MIGRATION_KEY = key('migrate:conv-cleanup-v1');
-  if (await kvGet(MIGRATION_KEY)) return;
-  const convs = await getConvs();
-  const filtered = filterObsoleteDmConversations(convs);
-  if (filtered.length !== convs.length) await saveConvs(filtered);
-  await kvSet(MIGRATION_KEY, { migratedAt: new Date().toISOString() });
-}
 
 function sessionRole(sessionContext = {}) {
   return sessionContext?.teamMember?.role || sessionContext?.user?.role || sessionContext?.session?.role || '';
@@ -156,8 +147,11 @@ async function requireConversationAccess(res, sessionContext, convId, mode = 're
 
 // ─── Ensure default conversations exist ─────────────────────────────
 async function ensureDefaults() {
-  await migrateRemoveObsoleteDmConversations();
-  const convs = await getConvs();
+  // Always filter obsolete DMs — idempotent, no migration flag needed.
+  // This repairs stale Redis state on every call regardless of prior migration attempts.
+  const raw = await getConvs();
+  const convs = filterObsoleteDmConversations(raw);
+  if (convs.length !== raw.length) await saveConvs(convs);
   if (convs.some(c => c.id === 'squad')) return convs;
   const defaults = [
     { id: 'squad',    name: 'Squad',           type: 'GROUP',        icon: '🏉', description: 'All squad members & coaches', pinned: true, createdAt: Date.now() },

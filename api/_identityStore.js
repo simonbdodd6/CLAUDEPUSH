@@ -334,46 +334,9 @@ async function saveInvites(invites) {
   await kvSet(INVITES_KEY, Array.isArray(invites) ? invites : []);
 }
 
-/**
- * One-time migration: remove the 4 obsolete test accounts + update the coach
- * display name from "Simon Dodd" → "Simon Coach". Idempotent via a Redis flag.
- */
-async function migrateRemoveLegacyAccounts(teamId) {
-  const MIGRATION_KEY = key('migrate:legacy-cleanup-v1');
-  if (await kvGet(MIGRATION_KEY)) return;
-
-  const [users, members, profiles] = await Promise.all([
-    loadUsers(),
-    loadTeamMembers(),
-    loadPlayerProfiles(),
-  ]);
-
-  const { users: nextUsers, members: nextMembers, profiles: nextProfiles } =
-    filterObsoleteLegacyAccounts(users, members, profiles);
-
-  // Rename coach display name if still carrying the old value
-  const coach = nextUsers.find(u => u.id === 'coach-demo');
-  if (coach && coach.displayName === 'Simon Dodd') {
-    coach.displayName = 'Simon Coach';
-    coach.firstName = 'Simon';
-    coach.lastName = 'Coach';
-  }
-
-  await Promise.all([
-    saveUsers(nextUsers),
-    saveTeamMembers(nextMembers),
-    savePlayerProfiles(nextProfiles),
-  ]);
-
-  await kvSet(MIGRATION_KEY, {
-    migratedAt: new Date().toISOString(),
-    removed: OBSOLETE_LEGACY_ACCOUNT_IDS,
-  });
-}
-
 async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
   if (teamId !== DEFAULT_TEAM.id) return;
-  const [users, members, profiles] = await Promise.all([
+  let [users, members, profiles] = await Promise.all([
     loadUsers(),
     loadTeamMembers(),
     loadPlayerProfiles(),
@@ -381,6 +344,23 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
   let usersChanged = false;
   let membersChanged = false;
   let profilesChanged = false;
+
+  // Always remove obsolete test accounts on every call — idempotent, no migration flag.
+  // This ensures stale Redis data (predating the flag-based migration) is always cleaned.
+  const before = { u: users.length, m: members.length, p: profiles.length };
+  ({ users, members, profiles } = filterObsoleteLegacyAccounts(users, members, profiles));
+  if (users.length !== before.u) usersChanged = true;
+  if (members.length !== before.m) membersChanged = true;
+  if (profiles.length !== before.p) profilesChanged = true;
+
+  // Rename stale coach display name without waiting for a login event.
+  const coach = users.find(u => u.id === 'coach-demo');
+  if (coach && coach.displayName === 'Simon Dodd') {
+    coach.displayName = 'Simon Coach';
+    coach.firstName = 'Simon';
+    coach.lastName = 'Coach';
+    usersChanged = true;
+  }
 
   LEGACY_PLAYER_COMPATIBILITY_ACCOUNTS.forEach(account => {
     let user = users.find(item => item.id === account.id);
@@ -442,8 +422,6 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
     membersChanged ? saveTeamMembers(members) : Promise.resolve(),
     profilesChanged ? savePlayerProfiles(profiles) : Promise.resolve(),
   ]);
-
-  await migrateRemoveLegacyAccounts(teamId);
 }
 
 export function hasRole(sessionContext, roles = []) {
