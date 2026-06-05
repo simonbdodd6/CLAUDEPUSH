@@ -742,10 +742,16 @@ test('coach sees Boitsfort compatibility members and pending requests after tena
 
   assert.equal(state.statusCode, 200);
   const profileNames = state.payload.player_profiles.map(profile => profile.displayName);
+
+  // After the cleanup migration, only Simon Test Player is a legacy compat account.
   assert.equal(profileNames.includes('Simon Test Player'), true);
-  assert.equal(profileNames.includes('Nick Player'), true);
-  assert.equal(profileNames.includes('Nick Marshall'), true);
-  assert.equal(profileNames.includes('Dodsy Player'), true);
+
+  // Removed legacy test accounts must not appear in profiles.
+  assert.equal(profileNames.includes('Nick Player'), false,    'Nick Player must be removed');
+  assert.equal(profileNames.includes('Nick Marshall'), false,  'Nick Marshall must be removed');
+  assert.equal(profileNames.includes('Dodsy Player'), false,   'Dodsy Player must be removed');
+  assert.equal(profileNames.includes('Simon Player'), false,   'Simon Player must be removed');
+
   assert.equal(state.payload.pending.length, 1);
   assert.equal(state.payload.pending[0].id, 'tm-pending-boitsfort-player');
 
@@ -755,9 +761,8 @@ test('coach sees Boitsfort compatibility members and pending requests after tena
     position: profile.position || 'TBC',
     email: profile.email || '',
   }));
-  const nickResults = filterCoachDmPlayers(pickerPlayers, 'nick', 'coach-demo');
-  assert.equal(nickResults.some(player => player.name === 'Nick Player'), true);
-  assert.equal(nickResults.some(player => player.name === 'Nick Marshall'), true);
+  const simonResults = filterCoachDmPlayers(pickerPlayers, 'simon', 'coach-demo');
+  assert.equal(simonResults.some(player => player.name === 'Simon Test Player'), true);
 });
 
 test('tenant isolation scopes invite management to the coach session team', async () => {

@@ -273,7 +273,8 @@ test('authenticated player can read only their own legacy direct-message convers
     legacyPlayerId: 'inv-YxnjxnQa',
   });
   const simonConvId = dmConvId('coach-demo', 'inv-YxnjxnQa');
-  const nickConvId = dmConvId('coach-demo', 'inv-nick1234');
+  // Use a non-obsolete player ID to avoid the cleanup migration wiping the conversation
+  const otherConvId = dmConvId('coach-demo', 'inv-other-player-1');
 
   await call('POST', '/api/chat', {
     action: 'create_conv',
@@ -284,16 +285,16 @@ test('authenticated player can read only their own legacy direct-message convers
   });
   await call('POST', '/api/chat', {
     action: 'create_conv',
-    id: nickConvId,
-    name: 'Nick Player',
+    id: otherConvId,
+    name: 'Other Player',
     type: 'DIRECT',
-    participants: ['coach-demo', 'inv-nick1234'],
+    participants: ['coach-demo', 'inv-other-player-1'],
   });
   await call('POST', '/api/chat', {
     action: 'send',
     convId: simonConvId,
     senderId: 'coach-demo',
-    senderName: 'Simon Dodd',
+    senderName: 'Simon Coach',
     senderRole: 'coach',
     text: 'Simon only',
   });
@@ -302,12 +303,12 @@ test('authenticated player can read only their own legacy direct-message convers
   assert.equal(ownMessages.messages.length, 1);
   assert.equal(ownMessages.messages[0].text, 'Simon only');
 
-  const otherMessages = await callRaw('GET', `/api/chat?action=messages&convId=${encodeURIComponent(nickConvId)}`, null, simon.headers);
+  const otherMessages = await callRaw('GET', `/api/chat?action=messages&convId=${encodeURIComponent(otherConvId)}`, null, simon.headers);
   assert.equal(otherMessages.statusCode, 403);
 
   const convList = await call('GET', '/api/chat?action=conversations&userId=spoofed', null, simon.headers);
   assert.equal(convList.conversations.some(c => c.id === simonConvId), true);
-  assert.equal(convList.conversations.some(c => c.id === nickConvId), false);
+  assert.equal(convList.conversations.some(c => c.id === otherConvId), false);
 });
 
 test('authenticated role authorization allows coach conversation creation and blocks players', async () => {

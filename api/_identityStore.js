@@ -30,13 +30,14 @@ const LEGACY_STAFF_ACCOUNTS = [
     id: 'coach-demo',
     email: 'simonbdodd@gmail.com',
     firstName: 'Simon',
-    lastName: 'Dodd',
-    displayName: 'Simon Dodd',
+    lastName: 'Coach',
+    displayName: 'Simon Coach',
     role: 'coach',
     password: '1111',
   },
 ];
 
+// Only Simon Test Player remains. All other test personas were removed.
 const LEGACY_PLAYER_COMPATIBILITY_ACCOUNTS = [
   {
     id: 'player-simon-test',
@@ -46,39 +47,29 @@ const LEGACY_PLAYER_COMPATIBILITY_ACCOUNTS = [
     lastName: 'Test Player',
     displayName: 'Simon Test Player',
   },
-  {
-    id: 'player-nick',
-    legacyPlayerId: 'inv-nick1234',
-    email: 'nick.player@player.test',
-    firstName: 'Nick',
-    lastName: 'Player',
-    displayName: 'Nick Player',
-  },
-  {
-    id: 'player-simon-player',
-    legacyPlayerId: 'p-simon-player',
-    email: 'simon.player@player.test',
-    firstName: 'Simon',
-    lastName: 'Player',
-    displayName: 'Simon Player',
-  },
-  {
-    id: 'player-nick-marshall',
-    legacyPlayerId: 'p-nick-marshall',
-    email: 'nick.marshall@player.test',
-    firstName: 'Nick',
-    lastName: 'Marshall',
-    displayName: 'Nick Marshall',
-  },
-  {
-    id: 'player-dodsy-compat',
-    legacyPlayerId: 'p-dodsy-001',
-    email: 'dodsyplayer@test.com',
-    firstName: 'Dodsy',
-    lastName: 'Player',
-    displayName: 'Dodsy Player',
-  },
 ];
+
+// User IDs removed from LEGACY_PLAYER_COMPATIBILITY_ACCOUNTS. Used by the
+// one-time migration to scrub stale records from Redis.
+export const OBSOLETE_LEGACY_ACCOUNT_IDS = [
+  'player-nick',
+  'player-simon-player',
+  'player-nick-marshall',
+  'player-dodsy-compat',
+];
+
+/**
+ * Pure filter: remove obsolete legacy accounts from users / members / profiles.
+ * Returns new arrays — does not mutate the inputs or touch Redis.
+ */
+export function filterObsoleteLegacyAccounts(users = [], members = [], profiles = []) {
+  const ids = new Set(OBSOLETE_LEGACY_ACCOUNT_IDS);
+  return {
+    users:    (Array.isArray(users)    ? users    : []).filter(u => !ids.has(u.id)),
+    members:  (Array.isArray(members)  ? members  : []).filter(m => !ids.has(m.userId)),
+    profiles: (Array.isArray(profiles) ? profiles : []).filter(p => !ids.has(p.userId)),
+  };
+}
 
 export function normalizeEmail(email = '') {
   return String(email || '').trim().toLowerCase();
@@ -343,6 +334,43 @@ async function saveInvites(invites) {
   await kvSet(INVITES_KEY, Array.isArray(invites) ? invites : []);
 }
 
+/**
+ * One-time migration: remove the 4 obsolete test accounts + update the coach
+ * display name from "Simon Dodd" → "Simon Coach". Idempotent via a Redis flag.
+ */
+async function migrateRemoveLegacyAccounts(teamId) {
+  const MIGRATION_KEY = key('migrate:legacy-cleanup-v1');
+  if (await kvGet(MIGRATION_KEY)) return;
+
+  const [users, members, profiles] = await Promise.all([
+    loadUsers(),
+    loadTeamMembers(),
+    loadPlayerProfiles(),
+  ]);
+
+  const { users: nextUsers, members: nextMembers, profiles: nextProfiles } =
+    filterObsoleteLegacyAccounts(users, members, profiles);
+
+  // Rename coach display name if still carrying the old value
+  const coach = nextUsers.find(u => u.id === 'coach-demo');
+  if (coach && coach.displayName === 'Simon Dodd') {
+    coach.displayName = 'Simon Coach';
+    coach.firstName = 'Simon';
+    coach.lastName = 'Coach';
+  }
+
+  await Promise.all([
+    saveUsers(nextUsers),
+    saveTeamMembers(nextMembers),
+    savePlayerProfiles(nextProfiles),
+  ]);
+
+  await kvSet(MIGRATION_KEY, {
+    migratedAt: new Date().toISOString(),
+    removed: OBSOLETE_LEGACY_ACCOUNT_IDS,
+  });
+}
+
 async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
   if (teamId !== DEFAULT_TEAM.id) return;
   const [users, members, profiles] = await Promise.all([
@@ -414,6 +442,8 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
     membersChanged ? saveTeamMembers(members) : Promise.resolve(),
     profilesChanged ? savePlayerProfiles(profiles) : Promise.resolve(),
   ]);
+
+  await migrateRemoveLegacyAccounts(teamId);
 }
 
 export function hasRole(sessionContext, roles = []) {
@@ -563,6 +593,12 @@ async function ensureLegacyStaffAccountForLogin(email, password) {
       authProvider: user.authProvider || 'legacy-password',
       passwordSet: true,
     });
+  }
+  // Rename stale display name on next login
+  if (user.displayName === 'Simon Dodd') {
+    user.displayName = 'Simon Coach';
+    user.firstName = 'Simon';
+    user.lastName = 'Coach';
   }
   await saveUsers(users);
 

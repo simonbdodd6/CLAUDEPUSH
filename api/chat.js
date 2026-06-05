@@ -36,11 +36,42 @@ const MSGS_KEY      = (id) => key(`chat:conv:${id}:msgs`); // Redis list
 const TYPING_KEY    = (id) => key(`chat:conv:${id}:typing`);
 const PRESENCE_KEY  = (u)  => key(`chat:presence:${u}`);
 
+// DM participant IDs for removed test accounts (user IDs and legacy player IDs).
+export const OBSOLETE_DM_PARTICIPANT_IDS = new Set([
+  'player-nick',        'inv-nick1234',
+  'player-simon-player','p-simon-player',
+  'player-nick-marshall','p-nick-marshall',
+  'player-dodsy-compat','p-dodsy-001',
+]);
+
+/**
+ * Pure filter: remove DM conversations whose participants include an obsolete ID.
+ * Group conversations are always kept. Returns a new array — does not mutate input.
+ */
+export function filterObsoleteDmConversations(convs = []) {
+  return (Array.isArray(convs) ? convs : []).filter(conv => {
+    const id = String(conv?.id || '');
+    if (!id.startsWith('dm:')) return true; // keep groups
+    const parts = id.split(':').slice(1);   // ['a', 'b'] from 'dm:a:b'
+    return !parts.some(part => OBSOLETE_DM_PARTICIPANT_IDS.has(part));
+  });
+}
+
 async function getConvs() {
   return (await kvGet(CONVS_KEY())) || [];
 }
 async function saveConvs(list) {
   return kvSet(CONVS_KEY(), list);
+}
+
+// One-time migration: remove obsolete DM conversation list entries.
+async function migrateRemoveObsoleteDmConversations() {
+  const MIGRATION_KEY = key('migrate:conv-cleanup-v1');
+  if (await kvGet(MIGRATION_KEY)) return;
+  const convs = await getConvs();
+  const filtered = filterObsoleteDmConversations(convs);
+  if (filtered.length !== convs.length) await saveConvs(filtered);
+  await kvSet(MIGRATION_KEY, { migratedAt: new Date().toISOString() });
 }
 
 function sessionRole(sessionContext = {}) {
@@ -125,6 +156,7 @@ async function requireConversationAccess(res, sessionContext, convId, mode = 're
 
 // ─── Ensure default conversations exist ─────────────────────────────
 async function ensureDefaults() {
+  await migrateRemoveObsoleteDmConversations();
   const convs = await getConvs();
   if (convs.some(c => c.id === 'squad')) return convs;
   const defaults = [

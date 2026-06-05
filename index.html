@@ -1790,7 +1790,7 @@
 
     // ─── ACCOUNTS ─────────────────────────────────────────────────────────────
     const testAccounts = [
-      { id: "coach-demo", role: "coach", name: "Simon Dodd", email: "simonbdodd@gmail.com", phone: "+32470380938", pin: "1111" }
+      { id: "coach-demo", role: "coach", name: "Simon Coach", email: "simonbdodd@gmail.com", phone: "+32470380938", pin: "1111" }
     ];
 
     const coachSections = [
@@ -2029,13 +2029,7 @@
       const compact = identityCompactKey(value);
       const aliases = {
         simontestplayer: 'simontestplayer',
-        simonplayer: 'simonplayer',
-        nickplayer: 'nickplayer',
-        nickmarshall: 'nickmarshall',
-        dodsyplayer: 'dodsyplayer',
-        doddsyplayer: 'dodsyplayer',
-        dodzyplayer: 'dodsyplayer',
-        doddzyplayer: 'dodsyplayer',
+        simoncoach: 'simoncoach',
       };
       return aliases[compact] || compact;
     }
@@ -2044,10 +2038,7 @@
       const key = canonicalIdentityNameKey(value || fallback);
       const names = {
         simontestplayer: 'Simon Test Player',
-        simonplayer: 'Simon Player',
-        nickplayer: 'Nick Player',
-        nickmarshall: 'Nick Marshall',
-        dodsyplayer: 'Dodsy Player',
+        simoncoach: 'Simon Coach',
       };
       return names[key] || String(value || fallback || '').trim();
     }
@@ -3856,6 +3847,18 @@
           changed = true;
         }
       });
+
+      // Prune legacy-compat players (userId starts with 'player-') that the
+      // server no longer returns. This clears removed test accounts from
+      // localStorage after the server-side migration runs.
+      const serverUserIds = new Set(users.map(u => String(u.id || '')));
+      const beforePrune = state.players.length;
+      state.players = state.players.filter(player => {
+        const uid = String(player.userId || '');
+        if (!uid.startsWith('player-')) return true;
+        return serverUserIds.has(uid);
+      });
+      changed = changed || state.players.length !== beforePrune;
 
       const deduped = canonicalizeStatePlayers();
       changed = changed || deduped;
