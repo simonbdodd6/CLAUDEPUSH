@@ -353,6 +353,30 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
   if (members.length !== before.m) membersChanged = true;
   if (profiles.length !== before.p) profilesChanged = true;
 
+  // Also remove any real (generated-ID) accounts whose display name matches known stale
+  // test personas. These were created when legacy personas went through the invite flow
+  // and have user_XXXX_XXXX IDs that filterObsoleteLegacyAccounts cannot match by ID.
+  const STALE_DISPLAY_NAMES = new Set([
+    'nick player', 'simon player', 'nick marshall', 'dodsy player', 'doddsy player',
+  ]);
+  const staleByName = new Set(
+    users.filter(u => {
+      const dn = String(u.displayName || '').trim().toLowerCase();
+      const fn = String(u.firstName || '').trim().toLowerCase();
+      const ln = String(u.lastName  || '').trim().toLowerCase();
+      return STALE_DISPLAY_NAMES.has(dn) || STALE_DISPLAY_NAMES.has(`${fn} ${ln}`.trim());
+    }).map(u => u.id)
+  );
+  if (staleByName.size > 0) {
+    const beforeN = { u: users.length, m: members.length, p: profiles.length };
+    users    = users.filter(u => !staleByName.has(u.id));
+    members  = members.filter(m => !staleByName.has(m.userId));
+    profiles = profiles.filter(p => !staleByName.has(p.userId));
+    if (users.length    !== beforeN.u) usersChanged    = true;
+    if (members.length  !== beforeN.m) membersChanged  = true;
+    if (profiles.length !== beforeN.p) profilesChanged = true;
+  }
+
   // Rename stale coach display name without waiting for a login event.
   const coach = users.find(u => u.id === 'coach-demo');
   if (coach && coach.displayName === 'Simon Dodd') {
