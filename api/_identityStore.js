@@ -782,6 +782,69 @@ export async function claimInvite(input = {}) {
   return { user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, invite, session };
 }
 
+export async function joinViaGroupInvite(input = {}) {
+  const { token, firstName, lastName, email, password } = input;
+  if (!String(token || '').trim()) { const e = new Error('token is required'); e.status = 400; throw e; }
+  if (!String(firstName || '').trim()) { const e = new Error('First name is required'); e.status = 400; throw e; }
+  if (!String(lastName || '').trim()) { const e = new Error('Last name is required'); e.status = 400; throw e; }
+  if (!EMAIL_RE.test(normalizeEmail(email))) { const e = new Error('Valid email is required'); e.status = 400; throw e; }
+  if (String(password || '').length < 8) { const e = new Error('Password must be at least 8 characters'); e.status = 400; throw e; }
+
+  const invites = await loadInvites();
+  const invite = invites.find(i => i.token === token);
+  if (!invite) { const e = new Error('Invite not found'); e.status = 404; throw e; }
+  if (String(invite.type || 'individual') !== 'group') { const e = new Error('Not a group invite'); e.status = 400; throw e; }
+  if (invite.status === 'revoked') { const e = new Error('This invite has been revoked'); e.status = 410; throw e; }
+  if (invite.expiresAt && new Date(invite.expiresAt).getTime() <= Date.now()) { const e = new Error('This invite link has expired'); e.status = 410; throw e; }
+
+  const user = await upsertUserAccount({
+    email: normalizeEmail(email),
+    firstName: String(firstName).trim(),
+    lastName: String(lastName).trim(),
+    password,
+  });
+
+  const teamId = String(invite.teamId || DEFAULT_TEAM.id);
+  const members = await loadTeamMembers();
+  let member = members.find(item => item.teamId === teamId && item.userId === user.id);
+
+  if (!member) {
+    member = {
+      id: makeId('tm'),
+      teamId,
+      userId: user.id,
+      role: 'player',
+      status: 'pending',
+      joinedAt: nowIso(),
+      inviteToken: token,
+      approvedAt: null,
+      approvedBy: null,
+      rejectedAt: null,
+      rejectedBy: null,
+    };
+    members.push(member);
+    await saveTeamMembers(members);
+  } else if (member.status === 'rejected') {
+    member.status = 'pending';
+    member.joinedAt = nowIso();
+    member.inviteToken = token;
+    member.rejectedAt = null;
+    member.rejectedBy = null;
+    await saveTeamMembers(members);
+  } else if (member.status === 'active') {
+    const e = new Error('You already have an active account for this team'); e.status = 409; throw e;
+  }
+
+  const inviteIdx = invites.findIndex(i => i.token === token);
+  if (inviteIdx >= 0) {
+    invites[inviteIdx].usageCount = (invites[inviteIdx].usageCount || 0) + 1;
+    invites[inviteIdx].lastUsedAt = nowIso();
+    await saveInvites(invites);
+  }
+
+  return { user: publicUser(user), teamMember: member };
+}
+
 export async function createPasswordResetRequest({ email } = {}) {
   const normalized = normalizeEmail(email);
   if (!EMAIL_RE.test(normalized)) throw new Error('Valid email is required');

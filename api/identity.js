@@ -5,6 +5,7 @@ import {
   createPasswordResetRequest,
   destroySession,
   createJoinRequest,
+  joinViaGroupInvite,
   listIdentityState,
   loginUser,
   rejectJoinRequest,
@@ -95,6 +96,10 @@ export default async function handler(req, res) {
         });
         if (result.session?.token) res.setHeader('Set-Cookie', sessionCookie(result.session.token));
         return res.status(201).json({ ok: true, ...publicAuthResult(result) });
+      }
+      if (action === 'join_group_invite') {
+        const result = await joinViaGroupInvite(req.body || {});
+        return res.status(201).json({ ok: true, ...result });
       }
       if (action === 'request_password_reset') {
         await enforceRateLimit('password_reset_request', rateIdentity(req, req.body?.email), { limit: 5, windowMs: 60 * 60 * 1000 });

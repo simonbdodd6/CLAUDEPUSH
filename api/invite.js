@@ -84,14 +84,16 @@ export default async function handler(req, res) {
         return res.status(410).json({ valid: false, error: 'This invite link has expired' });
       }
       return res.status(200).json({
-        valid:     true,
-        token:     invite.token,
-        name:      invite.name,
-        role:      invite.role,
-        email:     invite.email || '',
-        status:    invite.status,
-        createdAt: invite.createdAt,
-        expiresAt: invite.expiresAt || null,
+        valid:      true,
+        token:      invite.token,
+        type:       invite.type || 'individual',
+        name:       invite.name,
+        role:       invite.role,
+        email:      invite.email || '',
+        status:     invite.status,
+        createdAt:  invite.createdAt,
+        expiresAt:  invite.expiresAt || null,
+        usageCount: invite.usageCount || 0,
       });
     }
 
@@ -117,27 +119,37 @@ export default async function handler(req, res) {
     } catch (error) {
       return sendAuthError(res, error);
     }
-    const { name, role, email, sendEmail = true } = req.body || {};
-    if (!name?.trim()) {
-      return res.status(400).json({ error: 'name is required' });
-    }
+    const { name, role, email, sendEmail = true, type } = req.body || {};
+    const normType = String(type || 'individual').toLowerCase();
     const normRole = (role || 'player').toLowerCase();
-    if (!VALID_ROLES.includes(normRole)) {
-      return res.status(400).json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` });
+
+    if (normType === 'group') {
+      if (normRole !== 'player') {
+        return res.status(400).json({ error: 'Group invites can only create player accounts' });
+      }
+    } else {
+      if (!name?.trim()) {
+        return res.status(400).json({ error: 'name is required' });
+      }
+      if (!VALID_ROLES.includes(normRole)) {
+        return res.status(400).json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` });
+      }
     }
 
     const token  = makeToken();
     const invite = {
       token,
-      name:      name.trim(),
+      type:      normType,
+      name:      normType === 'group' ? '' : name.trim(),
       role:      normRole,
       email:     email?.trim() || '',
-      status:    'pending',
+      status:    'active',
       teamId:    session.teamId,
       createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
+      expiresAt: normType === 'group' ? null : new Date(Date.now() + INVITE_TTL_MS).toISOString(),
       createdBy: session.user.id,
       acceptedAt: null,
+      usageCount: 0,
     };
 
     const invites = (await kvGet(INVITES_KEY)) || [];
@@ -155,7 +167,7 @@ export default async function handler(req, res) {
       if (emailDelivery.sent) invite.emailSentAt = new Date().toISOString();
       await kvSet(INVITES_KEY, trimmed);
     }
-    console.log(`[invite] Created ${normRole} invite for "${name.trim()}" — ${token}`);
+    console.log(`[invite] Created ${normType} ${normRole} invite${normType !== 'group' ? ` for "${name.trim()}"` : ''} — ${token}`);
     await auditLog('invite_created', {
       createdBy: session.user.id,
       role: normRole,
