@@ -7,6 +7,8 @@ import { kvGet, kvSet, kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { resolveVariables } from './_variables.js';
 import { setCors, readSecret, vapidContact } from './_http.js';
+import { OBSOLETE_LEGACY_ACCOUNT_IDS } from './_identityStore.js';
+import { OBSOLETE_DM_PARTICIPANT_IDS } from './chat.js';
 
 const DAY_MAP = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
   sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
@@ -75,6 +77,33 @@ export default async function handler(req, res) {
   if (!process.env.CRON_SECRET) return res.status(500).json({ error: 'CRON_SECRET not configured' });
   if (readSecret(req) !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
+
+  // Debug action: read raw Redis identity + chat state without triggering any cleanup.
+  if ((req.query?.action || req.body?.action) === 'debug') {
+    const [users, teamMembers, playerProfiles, convs] = await Promise.all([
+      kvGet(key('identity:users')),
+      kvGet(key('identity:team_members')),
+      kvGet(key('identity:player_profiles')),
+      kvGet(key('chat:convs')),
+    ]);
+    const safeUsers = (Array.isArray(users) ? users : []).map(u => ({ id: u.id, displayName: u.displayName, email: u.email }));
+    const safeConvs = (Array.isArray(convs) ? convs : []).map(c => ({ id: c.id, type: c.type, name: c.name }));
+    const obsoleteUserIds = new Set(OBSOLETE_LEGACY_ACCOUNT_IDS);
+    return res.status(200).json({
+      ok: true,
+      keyPrefix: process.env.APP_KEY_PREFIX || 'app',
+      users: safeUsers,
+      teamMemberCount: Array.isArray(teamMembers) ? teamMembers.length : 0,
+      profileCount: Array.isArray(playerProfiles) ? playerProfiles.length : 0,
+      conversations: safeConvs,
+      diagnosis: {
+        obsoleteUsersStillPresent: safeUsers.filter(u => obsoleteUserIds.has(u.id)).map(u => u.id),
+        obsoleteDmsStillPresent: safeConvs.filter(c => c.id?.startsWith('dm:') && c.id.split(':').slice(1).some(p => OBSOLETE_DM_PARTICIPANT_IDS.has(p))).map(c => c.id),
+        clean: safeUsers.every(u => !obsoleteUserIds.has(u.id)),
+      },
+    });
+  }
+
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
     return res.status(500).json({ error: 'VAPID keys not configured' });
   }
