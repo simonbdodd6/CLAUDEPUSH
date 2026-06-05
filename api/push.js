@@ -6,6 +6,11 @@ import { kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key } from './_keys.js';
 import { resolveVariables } from './_variables.js';
 import { setCors, vapidContact } from './_http.js';
+import { requireTenantRole } from './_tenant.js';
+
+function sendAuthError(res, error) {
+  return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
+}
 
 function configurePush() {
   const publicKey = process.env.VAPID_PUBLIC_KEY;
@@ -29,6 +34,11 @@ export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  try {
+    await requireTenantRole(req, ['coach', 'admin']);
+  } catch (error) {
+    return sendAuthError(res, error);
+  }
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
   if (!configurePush()) return res.status(500).json({ error: 'VAPID keys not configured' });
 

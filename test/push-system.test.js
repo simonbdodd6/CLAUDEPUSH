@@ -31,6 +31,7 @@ const { resolveVariables } = await import('../api/_variables.js');
 const { scheduleIsDue, scheduledInstant } = await import('../api/cron.js');
 const { default: schedulesHandler } = await import('../api/schedules.js');
 const { default: availabilityHandler } = await import('../api/availability.js');
+const { createSession, SESSION_COOKIE } = await import('../api/_identityStore.js');
 
 function response() {
   return {
@@ -59,9 +60,15 @@ test('local schedule converts to UTC and fires inside its window', () => {
 
 test('schedule API preserves no-reply audience and multi-day selections', async () => {
   store.clear();
+  store.set('app:identity:users', JSON.stringify([{ id: 'coach-demo', email: 'coach@example.com', firstName: 'Simon', lastName: 'Coach', displayName: 'Simon Coach' }]));
+  store.set('app:identity:team_members', JSON.stringify([{ id: 'tm-coach-demo', teamId: 'boitsfort-rfc', userId: 'coach-demo', role: 'coach', status: 'active' }]));
+  const coachSession = await createSession({ userId: 'coach-demo', teamId: 'boitsfort-rfc', role: 'coach' });
+  const coachCookie = `${SESSION_COOKIE}=${encodeURIComponent(coachSession.token)}`;
+
   const res = response();
   await schedulesHandler({
     method: 'POST',
+    headers: { cookie: coachCookie },
     body: { id: 'sch-test', name: 'Chase up', templateId: 'tpl-test', days: ['Tue', 'Thu'], time: '19:45', audience: 'no-reply' },
   }, res);
   assert.equal(res.statusCode, 200);

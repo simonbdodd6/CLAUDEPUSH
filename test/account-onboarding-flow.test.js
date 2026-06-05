@@ -208,6 +208,7 @@ test('coach invite to claimed player creates one permanent userId across auth ch
 
   const availabilityReadback = await callApi(availabilityHandler, 'GET', {
     query: { sessionId: 'game' },
+    headers: { cookie: coachCookie },
   });
   assert.equal(availabilityReadback.statusCode, 200);
   assert.ok(availabilityReadback.payload.responses.some(row =>

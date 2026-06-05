@@ -1790,7 +1790,7 @@
 
     // ─── ACCOUNTS ─────────────────────────────────────────────────────────────
     const testAccounts = [
-      { id: "coach-demo", role: "coach", name: "Simon Coach", email: "simonbdodd@gmail.com", phone: "+32470380938", pin: "1111" }
+      { id: "coach-demo", role: "coach", name: "Simon Coach" }
     ];
 
     const coachSections = [
@@ -2251,6 +2251,15 @@
         history:      player.history      || ["no-reply"],
         blockedDates: player.blockedDates || []
       }));
+      // Exclusion filter: remove known stale legacy test personas from localStorage restore.
+      // Uses display names so new invited players (unknown IDs) are not blocked.
+      const _STALE_PLAYER_NAMES_LC = new Set([
+        'nick player', 'simon player', 'nick marshall', 'dodsy player', 'doddsy player',
+      ]);
+      next.players = next.players.filter(player => {
+        const name = String(player.name || '').trim().toLowerCase();
+        return !_STALE_PLAYER_NAMES_LC.has(name);
+      });
       canonicalizeStatePlayers(next);
       next.messages = (input.messages || defaultState.messages).map(m => ({
         playerId: "squad", sessionId: "week", delivery: m.unread ? "delivered" : "read", replies: [], ...m
@@ -3540,17 +3549,7 @@
             _serverSessionReadyFor = current.user.id;
             return true;
           }
-          const isStaff = ['coach','admin','medical'].includes(user.role);
-          if (!isStaff || !user.email || !user.pin) return false;
-          const res = await fetch('/api/identity', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'login', email: user.email, password: user.pin }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.ok === false) return false;
-          _serverSessionReadyFor = data.user?.id || user.id;
-          return true;
+          return false; // No server session — user must log in via the login form
         } finally {
           _serverSessionPromise = null;
         }
@@ -3774,6 +3773,9 @@
         player.email = player.email || email;
       }
       ensurePlayerUserForRosterPlayer(state.users, state.players.find(player => player.id === user.id));
+      // Allow this player's DMs to show immediately (before syncIdentityStateToLocalRoster runs).
+      _allowedDmParticipantIds.add(String(user.id));
+      if (profile?.legacyPlayerId) _allowedDmParticipantIds.add(String(profile.legacyPlayerId));
     }
 
     function syncIdentityStateToLocalRoster(identity = {}) {
@@ -3848,17 +3850,32 @@
         }
       });
 
-      // Prune legacy-compat players (userId starts with 'player-') that the
-      // server no longer returns. This clears removed test accounts from
-      // localStorage after the server-side migration runs.
-      const serverUserIds = new Set(users.map(u => String(u.id || '')));
+      // Server-driven prune: only keep players whose userId or legacyPlayerId
+      // appears in the server's profile list. Allows new invited players while
+      // removing anyone the server did not return.
+      const serverProfileUserIds = new Set(profiles.map(p => String(p.userId || '')).filter(Boolean));
+      const serverProfileLegacyIds = new Set(profiles.map(p => String(p.legacyPlayerId || '')).filter(Boolean));
       const beforePrune = state.players.length;
       state.players = state.players.filter(player => {
         const uid = String(player.userId || '');
-        if (!uid.startsWith('player-')) return true;
-        return serverUserIds.has(uid);
+        const pid = String(player.id || '');
+        if (!uid && !pid) return true;
+        return serverProfileUserIds.has(uid) || serverProfileUserIds.has(pid) ||
+               serverProfileLegacyIds.has(pid) || serverProfileLegacyIds.has(uid);
       });
+      if (state.players.length !== beforePrune) {
+        console.log('[CLEANUP] Pruned', beforePrune - state.players.length, 'non-canonical players from local roster');
+      }
+      console.log('visiblePlayers =', JSON.stringify(state.players.map(p => p.name)));
       changed = changed || state.players.length !== beforePrune;
+
+      // Update the DM allowlist to match server-returned profiles so new invited
+      // players' DMs become visible without requiring a hard-coded ID.
+      _allowedDmParticipantIds = new Set(['coach-demo']);
+      profiles.forEach(p => {
+        if (p.userId)       _allowedDmParticipantIds.add(String(p.userId));
+        if (p.legacyPlayerId) _allowedDmParticipantIds.add(String(p.legacyPlayerId));
+      });
 
       const deduped = canonicalizeStatePlayers();
       changed = changed || deduped;
@@ -6281,12 +6298,27 @@
       chatSetUnreadTotal(chatUnreadTotal());
     }
 
+    // DM participant allowlist — starts with the Simon Test Player baseline and is
+    // updated by syncIdentityStateToLocalRoster (coach view) and
+    // applyApprovedIdentityLocally (player view) as new profiles arrive.
+    let _allowedDmParticipantIds = new Set([
+      'coach-demo', 'player-simon-test', 'inv-YxnjxnQa',
+    ]);
+    function _filterCanonicalConversations(convs) {
+      return (Array.isArray(convs) ? convs : []).filter(c => {
+        const id = String(c?.id || '');
+        if (!id.startsWith('dm:')) return true;
+        const parts = id.split(':').slice(1);
+        return parts.every(p => _allowedDmParticipantIds.has(p));
+      });
+    }
+
     async function chatFetchConversations() {
       try {
         const me = chatMe();
         const data = await fetch(`/api/chat?action=conversations&userId=${encodeURIComponent(me.id)}`).then(r => r.json());
         if (data.ok) {
-          let conversations = data.conversations || [];
+          let conversations = _filterCanonicalConversations(data.conversations || []);
           if (currentUser()?.role === 'player') {
             const allowed = playerAllowedConversationIds();
             conversations = conversations.filter(sc => {
@@ -7941,37 +7973,9 @@
         if (!res.ok || data.error) throw new Error(data.error || 'Could not load invites');
         const list = data.invites || [];
 
-        // Auto-sync accepted invites into state.players so the coach sees them in Members
-        const removed = state.removedMemberNames || [];
-        let synced = 0;
-        for (const inv of list) {
-          if (inv.status !== 'accepted') continue;
-          const nameLower = inv.name.toLowerCase();
-          // Skip if coach manually removed this person
-          if (removed.includes(nameLower)) continue;
-          const alreadyMember = state.players.some(p => p.name.toLowerCase() === nameLower);
-          if (alreadyMember) continue;
-          const isStaff = ['coach','admin','medical'].includes(inv.role);
-          const position = inv.role === 'coach' ? 'Coach' : inv.role === 'admin' ? 'Admin' : inv.role === 'medical' ? 'Medical Staff' : 'TBC';
-          state.players.push({
-            id: 'inv-' + (inv.token || Date.now() + Math.random()).toString().slice(-8),
-            name: inv.name, position,
-            status: isStaff ? 'available' : 'no-reply',
-            game:   isStaff ? 'available' : 'no-reply',
-            phone: '', email: inv.email || '',
-            trainingTuesday: 'no-reply', trainingThursday: 'no-reply',
-            attendance: 0, history: [], blockedDates: [],
-            medical: '', mediaConsent: false, contractStatus: 'active',
-          });
-          // Also ensure a user account exists so they can log in
-          const hasUser = state.users.some(u => u.name.toLowerCase() === inv.name.toLowerCase());
-          if (!hasUser) {
-            state.users.push({ id: (isStaff ? 'staff-' : 'player-') + Date.now(), role: inv.role,
-              name: inv.name, email: inv.email || '', phone: '', pin: '', playerId: null });
-          }
-          synced++;
-        }
-        if (synced) { saveState('Synced accepted invites'); renderPlayers(); }
+        // Invite auto-sync removed: the server identity API (GET /api/identity) is
+        // the canonical source for roster members. Auto-syncing invites here bypassed
+        // the whitelist and re-added legacy accounts after every invite list load.
 
         if (!list.length) {
           panel.innerHTML = `<p class="muted" style="font-size:13px;padding:8px 0">No invites yet. Generate one above and send the link to a player or staff member.</p>`;
@@ -8057,6 +8061,20 @@
     setInterval(() => { if (!document.hidden) bgPollUnread(); }, 5000);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) bgPollUnread();
+    });
+
+    document.addEventListener('keydown', event => {
+      const target = event.target;
+      const typing = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      );
+      if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key && event.key.toLowerCase() === 'm') {
+        window.location.href = '/mission-control';
+      }
     });
   </script>
 </body>
