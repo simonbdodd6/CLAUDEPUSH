@@ -2251,6 +2251,14 @@
         history:      player.history      || ["no-reply"],
         blockedDates: player.blockedDates || []
       }));
+      // Hard whitelist: only Simon Test Player survives localStorage restoration.
+      // This prevents stale legacy/invite-synced accounts from appearing before
+      // the server identity loads and overrides them.
+      next.players = next.players.filter(player => {
+        const uid = String(player.userId || '');
+        const pid = String(player.id || '');
+        return uid === 'player-simon-test' || pid === 'inv-YxnjxnQa' || uid === 'inv-YxnjxnQa';
+      });
       canonicalizeStatePlayers(next);
       next.messages = (input.messages || defaultState.messages).map(m => ({
         playerId: "squad", sessionId: "week", delivery: m.unread ? "delivered" : "read", replies: [], ...m
@@ -7964,37 +7972,9 @@
         if (!res.ok || data.error) throw new Error(data.error || 'Could not load invites');
         const list = data.invites || [];
 
-        // Auto-sync accepted invites into state.players so the coach sees them in Members
-        const removed = state.removedMemberNames || [];
-        let synced = 0;
-        for (const inv of list) {
-          if (inv.status !== 'accepted') continue;
-          const nameLower = inv.name.toLowerCase();
-          // Skip if coach manually removed this person
-          if (removed.includes(nameLower)) continue;
-          const alreadyMember = state.players.some(p => p.name.toLowerCase() === nameLower);
-          if (alreadyMember) continue;
-          const isStaff = ['coach','admin','medical'].includes(inv.role);
-          const position = inv.role === 'coach' ? 'Coach' : inv.role === 'admin' ? 'Admin' : inv.role === 'medical' ? 'Medical Staff' : 'TBC';
-          state.players.push({
-            id: 'inv-' + (inv.token || Date.now() + Math.random()).toString().slice(-8),
-            name: inv.name, position,
-            status: isStaff ? 'available' : 'no-reply',
-            game:   isStaff ? 'available' : 'no-reply',
-            phone: '', email: inv.email || '',
-            trainingTuesday: 'no-reply', trainingThursday: 'no-reply',
-            attendance: 0, history: [], blockedDates: [],
-            medical: '', mediaConsent: false, contractStatus: 'active',
-          });
-          // Also ensure a user account exists so they can log in
-          const hasUser = state.users.some(u => u.name.toLowerCase() === inv.name.toLowerCase());
-          if (!hasUser) {
-            state.users.push({ id: (isStaff ? 'staff-' : 'player-') + Date.now(), role: inv.role,
-              name: inv.name, email: inv.email || '', phone: '', pin: '', playerId: null });
-          }
-          synced++;
-        }
-        if (synced) { saveState('Synced accepted invites'); renderPlayers(); }
+        // Invite auto-sync removed: the server identity API (GET /api/identity) is
+        // the canonical source for roster members. Auto-syncing invites here bypassed
+        // the whitelist and re-added legacy accounts after every invite list load.
 
         if (!list.length) {
           panel.innerHTML = `<p class="muted" style="font-size:13px;padding:8px 0">No invites yet. Generate one above and send the link to a player or staff member.</p>`;
