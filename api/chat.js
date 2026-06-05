@@ -148,7 +148,6 @@ async function requireConversationAccess(res, sessionContext, convId, mode = 're
 // ─── Ensure default conversations exist ─────────────────────────────
 async function ensureDefaults() {
   // Always filter obsolete DMs — idempotent, no migration flag needed.
-  // This repairs stale Redis state on every call regardless of prior migration attempts.
   const raw = await getConvs();
   const convs = filterObsoleteDmConversations(raw);
   if (convs.length !== raw.length) await saveConvs(convs);

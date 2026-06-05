@@ -3848,16 +3848,24 @@
         }
       });
 
-      // Prune legacy-compat players (userId starts with 'player-') that the
-      // server no longer returns. This clears removed test accounts from
-      // localStorage after the server-side migration runs.
-      const serverUserIds = new Set(users.map(u => String(u.id || '')));
+      // Hard whitelist: only Simon Test Player is allowed in the roster.
+      // This removes both legacy-compat players (player-XXX) AND real accounts
+      // with generated IDs (user_XXXX) that were created for Dodsy/Nick/etc.
+      const CANONICAL_PLAYER_USER_IDS_FE = new Set(['player-simon-test']);
+      const CANONICAL_PLAYER_LEGACY_IDS_FE = new Set(['inv-YxnjxnQa']);
       const beforePrune = state.players.length;
       state.players = state.players.filter(player => {
         const uid = String(player.userId || '');
-        if (!uid.startsWith('player-')) return true;
-        return serverUserIds.has(uid);
+        const pid = String(player.id || '');
+        if (!uid && !pid) return true;
+        return CANONICAL_PLAYER_USER_IDS_FE.has(uid) ||
+               CANONICAL_PLAYER_LEGACY_IDS_FE.has(pid) ||
+               CANONICAL_PLAYER_LEGACY_IDS_FE.has(uid);
       });
+      if (state.players.length !== beforePrune) {
+        console.log('[CLEANUP] Pruned', beforePrune - state.players.length, 'non-canonical players from local roster');
+      }
+      console.log('visiblePlayers =', JSON.stringify(state.players.map(p => p.name)));
       changed = changed || state.players.length !== beforePrune;
 
       const deduped = canonicalizeStatePlayers();
@@ -6281,12 +6289,27 @@
       chatSetUnreadTotal(chatUnreadTotal());
     }
 
+    // Hard-coded DM whitelist: only DMs between coach-demo and Simon Test Player
+    // are allowed in this test environment. DMs with generated user_ IDs for
+    // Dodsy/Nick/etc. are hidden at the display layer even if they exist in Redis.
+    const _ALLOWED_DM_PARTICIPANT_IDS = new Set([
+      'coach-demo', 'player-simon-test', 'inv-YxnjxnQa',
+    ]);
+    function _filterCanonicalConversations(convs) {
+      return (Array.isArray(convs) ? convs : []).filter(c => {
+        const id = String(c?.id || '');
+        if (!id.startsWith('dm:')) return true;
+        const parts = id.split(':').slice(1);
+        return parts.every(p => _ALLOWED_DM_PARTICIPANT_IDS.has(p));
+      });
+    }
+
     async function chatFetchConversations() {
       try {
         const me = chatMe();
         const data = await fetch(`/api/chat?action=conversations&userId=${encodeURIComponent(me.id)}`).then(r => r.json());
         if (data.ok) {
-          let conversations = data.conversations || [];
+          let conversations = _filterCanonicalConversations(data.conversations || []);
           if (currentUser()?.role === 'player') {
             const allowed = playerAllowedConversationIds();
             conversations = conversations.filter(sc => {
@@ -8057,6 +8080,20 @@
     setInterval(() => { if (!document.hidden) bgPollUnread(); }, 5000);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) bgPollUnread();
+    });
+
+    document.addEventListener('keydown', event => {
+      const target = event.target;
+      const typing = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      );
+      if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key && event.key.toLowerCase() === 'm') {
+        window.location.href = '/mission-control';
+      }
     });
   </script>
 </body>
