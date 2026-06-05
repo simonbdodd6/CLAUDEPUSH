@@ -102,6 +102,48 @@ test('selecting a player from the new-message picker opens a DM request without 
   assert.equal(Object.hasOwn(request, 'text'), false);
 });
 
+test('new-message picker resolves approved account users to permanent userId conversation ids', () => {
+  const players = [
+    { id: 'p-dodsy-001', name: 'DodsyPlayer', position: 'TBC', email: 'dodsyplayer@test.com' },
+  ];
+  const users = [
+    { id: 'user_dodsy_approved', role: 'player', name: 'Dodsy Player', email: 'dodsyplayer@test.com', playerId: 'user_dodsy_approved' },
+  ];
+
+  const request = createCoachDmConversationRequestForPlayerId(players, 'p-dodsy-001', 'coach-demo', { users });
+
+  assert.deepEqual(request, {
+    action: 'create_conv',
+    id: 'dm:coach-demo:user_dodsy_approved',
+    name: 'DodsyPlayer',
+    type: 'DIRECT',
+    participants: ['coach-demo', 'user_dodsy_approved'],
+  });
+});
+
+test('new-message picker shows one canonical target per real player', () => {
+  const users = [
+    { id: 'player-simon-test', role: 'player', name: 'Simon Test Player', email: 'simon.test.player@player.test', playerId: 'inv-YxnjxnQa' },
+    { id: 'user_dodsy_approved', role: 'player', name: 'Dodsy Player', email: 'dodsyplayer@test.com', playerId: 'user_dodsy_approved' },
+  ];
+  const players = [
+    { id: 'inv-YxnjxnQa', name: 'Simon Test Player', position: 'TBC' },
+    { id: 'player-simon-test', userId: 'player-simon-test', legacyPlayerId: 'inv-YxnjxnQa', name: 'Simon Test Player', email: 'simon.test.player@player.test', position: 'TBC' },
+    { id: 'p-dodsy-001', name: 'DodsyPlayer', email: 'dodsyplayer@test.com', position: 'SUB' },
+    { id: 'p-doddsy-002', name: 'Doddsy player', email: '', position: 'Centre' },
+    { id: 'user_dodsy_approved', userId: 'user_dodsy_approved', name: 'Dodsy Player', email: 'dodsyplayer@test.com', position: 'TBC' },
+  ];
+
+  assert.deepEqual(
+    filterCoachDmPlayers(players, 'simon', 'coach-demo', { users }).map(player => player.id),
+    ['inv-YxnjxnQa']
+  );
+  assert.deepEqual(
+    filterCoachDmPlayers(players, 'dodsy', 'coach-demo', { users }).map(player => player.id),
+    ['user_dodsy_approved']
+  );
+});
+
 test('selecting an unknown player from the picker does not create a request', () => {
   const players = [
     { id: 'inv-YxnjxnQa', name: 'Simon Test Player', position: 'TBC' },
@@ -134,6 +176,55 @@ test('conversation list dedupes duplicate direct rows for the same participant',
     nickConvId,
     'dm:coach-demo:inv-YxnjxnQa',
   ]);
+});
+
+test('conversation list dedupes duplicate DMs for canonical participant pairs', () => {
+  const users = [
+    { id: 'player-simon-test', role: 'player', name: 'Simon Test Player', playerId: 'inv-YxnjxnQa' },
+    { id: 'user_dodsy_approved', role: 'player', name: 'Dodsy Player', email: 'dodsyplayer@test.com', playerId: 'user_dodsy_approved' },
+  ];
+  const players = [
+    { id: 'inv-YxnjxnQa', name: 'Simon Test Player' },
+    { id: 'player-simon-test', userId: 'player-simon-test', legacyPlayerId: 'inv-YxnjxnQa', name: 'Simon Test Player' },
+    { id: 'p-dodsy-001', name: 'DodsyPlayer', email: 'dodsyplayer@test.com' },
+    { id: 'p-doddsy-002', name: 'Doddsy player' },
+    { id: 'user_dodsy_approved', userId: 'user_dodsy_approved', name: 'Dodsy Player', email: 'dodsyplayer@test.com' },
+  ];
+  const conversations = [
+    { id: 'dm:coach-demo:player-simon-test', name: 'Simon Test Player duplicate', type: 'DIRECT', participants: ['coach-demo', 'player-simon-test'] },
+    { id: 'dm:coach-demo:inv-YxnjxnQa', name: 'Simon Test Player', type: 'DIRECT', participants: ['coach-demo', 'inv-YxnjxnQa'] },
+    { id: 'dm:coach-demo:p-dodsy-001', name: 'DodsyPlayer old', type: 'DIRECT', participants: ['coach-demo', 'p-dodsy-001'] },
+    { id: 'dm:coach-demo:p-doddsy-002', name: 'Doddsy Player duplicate', type: 'DIRECT', participants: ['coach-demo', 'p-doddsy-002'] },
+    { id: 'dm:coach-demo:user_dodsy_approved', name: 'Dodsy Player', type: 'DIRECT', participants: ['coach-demo', 'user_dodsy_approved'] },
+  ];
+
+  const deduped = dedupeDirectConversations(conversations, 'coach-demo', { users, players });
+
+  assert.deepEqual(deduped.map(c => c.id), [
+    'dm:coach-demo:inv-YxnjxnQa',
+    'dm:coach-demo:user_dodsy_approved',
+  ]);
+});
+
+test('displayed Dodsy and Simon targets resolve to the same DMs their portals read', () => {
+  const users = [
+    { id: 'player-simon-test', role: 'player', name: 'Simon Test Player', playerId: 'inv-YxnjxnQa' },
+    { id: 'user_dodsy_approved', role: 'player', name: 'Dodsy Player', email: 'dodsyplayer@test.com', playerId: 'user_dodsy_approved' },
+  ];
+  const players = [
+    { id: 'inv-YxnjxnQa', name: 'Simon Test Player' },
+    { id: 'player-simon-test', userId: 'player-simon-test', legacyPlayerId: 'inv-YxnjxnQa', name: 'Simon Test Player' },
+    { id: 'p-dodsy-001', name: 'DodsyPlayer', email: 'dodsyplayer@test.com' },
+    { id: 'p-doddsy-002', name: 'Doddsy player' },
+    { id: 'user_dodsy_approved', userId: 'user_dodsy_approved', name: 'Dodsy Player', email: 'dodsyplayer@test.com' },
+  ];
+  const simon = filterCoachDmPlayers(players, 'simon', 'coach-demo', { users })[0];
+  const dodsy = filterCoachDmPlayers(players, 'dodsy', 'coach-demo', { users })[0];
+  const simonRequest = createCoachDmConversationRequestForPlayerId(players, simon.id, 'coach-demo', { users });
+  const dodsyRequest = createCoachDmConversationRequestForPlayerId(players, dodsy.id, 'coach-demo', { users });
+
+  assert.equal(simonRequest.id, 'dm:coach-demo:inv-YxnjxnQa');
+  assert.equal(dodsyRequest.id, 'dm:coach-demo:user_dodsy_approved');
 });
 
 test('merges full Redis history with a matching optimistic send', () => {

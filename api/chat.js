@@ -10,11 +10,14 @@
 
 import { kvGet, kvSet, kvLpush, kvLrange, kvLtrim } from './_kv.js';
 import { key } from './_keys.js';
+import { unreadCountForUser } from '../src/chat-notifications.js';
+import { DEFAULT_TEAM, resolveSessionFromRequest } from './_identityStore.js';
+import { tenantTeamId } from './_tenant.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 function ok(res, data) {
@@ -40,6 +43,86 @@ async function saveConvs(list) {
   return kvSet(CONVS_KEY(), list);
 }
 
+function sessionRole(sessionContext = {}) {
+  return sessionContext?.teamMember?.role || sessionContext?.user?.role || sessionContext?.session?.role || '';
+}
+
+function isStaffSession(sessionContext = {}) {
+  return ['coach', 'admin'].includes(sessionRole(sessionContext));
+}
+
+function conversationTeamId(conversation = {}) {
+  return String(conversation?.teamId || DEFAULT_TEAM.id);
+}
+
+function sessionMatchesConversationTeam(sessionContext = {}, conversation = {}) {
+  if (!sessionContext?.user?.id) return true;
+  return tenantTeamId(sessionContext) === conversationTeamId(conversation);
+}
+
+function participantIdsForSession(sessionContext = {}) {
+  return [
+    sessionContext?.user?.id,
+    sessionContext?.playerProfile?.userId,
+    sessionContext?.playerProfile?.legacyPlayerId,
+  ].filter(Boolean).map(String);
+}
+
+function conversationParticipants(conversation = {}) {
+  return (Array.isArray(conversation?.participants) ? conversation.participants : [])
+    .filter(Boolean)
+    .map(String);
+}
+
+function sessionCanReadConversation(sessionContext, conversation = {}) {
+  if (!sessionContext?.user?.id) return true;
+  if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
+  if (isStaffSession(sessionContext)) return true;
+  const role = sessionRole(sessionContext);
+  const type = String(conversation?.type || '').toUpperCase();
+  if (role !== 'player') return false;
+  if (['squad', 'announce'].includes(conversation?.id)) return true;
+  if (conversation?.id === 'coaching' || type === 'COACHING') return false;
+  const participants = conversationParticipants(conversation);
+  const actorIds = participantIdsForSession(sessionContext);
+  return participants.some(id => actorIds.includes(id));
+}
+
+function sessionCanWriteConversation(sessionContext, conversation = {}) {
+  if (!sessionContext?.user?.id) return true;
+  if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
+  if (isStaffSession(sessionContext)) return true;
+  const role = sessionRole(sessionContext);
+  if (role !== 'player') return false;
+  const type = String(conversation?.type || '').toUpperCase();
+  if (conversation?.id === 'announce' || type === 'ANNOUNCEMENT') return false;
+  if (conversation?.id === 'coaching' || type === 'COACHING') return false;
+  if (conversation?.id === 'squad' || type === 'GROUP') return true;
+  return sessionCanReadConversation(sessionContext, conversation);
+}
+
+async function findConversation(convId) {
+  const convs = await ensureDefaults();
+  return convs.find(c => c.id === convId) || null;
+}
+
+async function requireConversationAccess(res, sessionContext, convId, mode = 'read') {
+  if (!sessionContext?.user?.id) return true;
+  const conversation = await findConversation(convId);
+  if (!conversation) {
+    err(res, 404, 'Conversation not found');
+    return false;
+  }
+  const allowed = mode === 'write'
+    ? sessionCanWriteConversation(sessionContext, conversation)
+    : sessionCanReadConversation(sessionContext, conversation);
+  if (!allowed) {
+    err(res, 403, 'Not authorized for this conversation');
+    return false;
+  }
+  return true;
+}
+
 // ─── Ensure default conversations exist ─────────────────────────────
 async function ensureDefaults() {
   const convs = await getConvs();
@@ -58,23 +141,28 @@ async function ensureDefaults() {
 async function handleGet(req, res) {
   const url    = new URL(req.url, `http://x`);
   const action = url.searchParams.get('action');
-  const userId = url.searchParams.get('userId') || 'anon';
+  const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
+  const userId = sessionContext?.user?.id || url.searchParams.get('userId') || 'anon';
 
   // Update presence
   await kvSet(PRESENCE_KEY(userId), { userId, ts: Date.now() }, 60);
 
   if (action === 'conversations') {
     const convs = await ensureDefaults();
+    const visibleConvs = sessionContext?.user?.id
+      ? convs.filter(c => sessionCanReadConversation(sessionContext, c))
+      : convs;
     // Enrich with last message + unread count per user
-    const enriched = await Promise.all(convs.map(async c => {
+    const enriched = await Promise.all(visibleConvs.map(async c => {
       const msgs = await kvLrange(MSGS_KEY(c.id), 0, 0); // last message only
       const last = msgs[0] || null;
       // Unread: messages after this user's last read timestamp
       const readKey = key(`chat:read:${c.id}:${userId}`);
       const lastRead = (await kvGet(readKey)) || 0;
-      // Count unread — read last 30 msgs and count newer than lastRead that aren't from this user
-      const recent = await kvLrange(MSGS_KEY(c.id), 0, 29);
-      const unread = recent.filter(m => m.ts > lastRead && m.senderId !== userId && !m.isDeleted).length;
+      // Count unread from the retained message window so refresh/login badge
+      // state remains consistent even after long gaps between visits.
+      const recent = await kvLrange(MSGS_KEY(c.id), 0, 499);
+      const unread = unreadCountForUser(recent, userId, lastRead);
       return { ...c, lastMessage: last, unread, lastActivity: last?.ts || c.createdAt };
     }));
     // Sort: pinned first, then by lastActivity
@@ -91,6 +179,7 @@ async function handleGet(req, res) {
     const since  = parseInt(url.searchParams.get('since') || '0', 10);
     const limit  = parseInt(url.searchParams.get('limit') || '60', 10);
     if (!convId) return err(res, 400, 'convId required');
+    if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
     // LRANGE returns newest-first; we reverse for chronological
     const raw   = await kvLrange(MSGS_KEY(convId), 0, limit - 1);
     const msgs  = raw.reverse(); // oldest first
@@ -101,6 +190,7 @@ async function handleGet(req, res) {
   if (action === 'typing') {
     const convId = url.searchParams.get('convId');
     if (!convId) return err(res, 400, 'convId required');
+    if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
     const raw = await kvGet(TYPING_KEY(convId));
     const now = Date.now();
     const active = (raw || []).filter(t => now - t.ts < 5000); // 5s window
@@ -130,10 +220,18 @@ async function handlePost(req, res) {
   catch { return err(res, 400, 'Invalid JSON'); }
 
   const { action } = body;
+  const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
+  const sessionUser = sessionContext?.user || null;
 
   if (action === 'send') {
-    const { convId, senderId, senderName, senderRole, text, type = 'TEXT', replyTo = null, mediaUrl = null, mediaType = null, isAutomated = false } = body;
+    let { convId, senderId, senderName, senderRole, text, type = 'TEXT', replyTo = null, mediaUrl = null, mediaType = null, isAutomated = false } = body;
+    if (sessionUser?.id) {
+      senderId = sessionUser.id;
+      senderName = sessionUser.displayName || [sessionUser.firstName, sessionUser.lastName].filter(Boolean).join(' ') || sessionUser.name || sessionUser.email || senderId;
+      senderRole = sessionUser.role || senderRole;
+    }
     if (!convId || !senderId || !text?.trim()) return err(res, 400, 'convId, senderId, text required');
+    if (!(await requireConversationAccess(res, sessionContext, convId, 'write'))) return;
     const msg = {
       id:          `msg_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
       convId, senderId, senderName: senderName || senderId,
@@ -161,8 +259,13 @@ async function handlePost(req, res) {
 
   if (action === 'react') {
     let { msgId, convId, userId, userName, emoji } = body;
+    if (sessionUser?.id) {
+      userId = sessionUser.id;
+      userName = sessionUser.displayName || [sessionUser.firstName, sessionUser.lastName].filter(Boolean).join(' ') || sessionUser.name || sessionUser.email || userId;
+    }
     userId = userId || 'anon';
     if (!msgId || !convId || !userId || !emoji) return err(res, 400, 'msgId, convId, userId, emoji required');
+    if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
     const msgs = await kvLrange(MSGS_KEY(convId), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
     if (idx < 0) return err(res, 404, 'Message not found');
@@ -187,16 +290,23 @@ async function handlePost(req, res) {
 
   if (action === 'read') {
     let { convId, userId } = body;
+    if (sessionUser?.id) userId = sessionUser.id;
     userId = userId || 'anon';
     if (!convId || !userId) return err(res, 400, 'convId, userId required');
+    if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
     await kvSet(key(`chat:read:${convId}:${userId}`), Date.now());
     return ok(res, {});
   }
 
   if (action === 'typing') {
     let { convId, userId, userName, active } = body;
+    if (sessionUser?.id) {
+      userId = sessionUser.id;
+      userName = sessionUser.displayName || [sessionUser.firstName, sessionUser.lastName].filter(Boolean).join(' ') || sessionUser.name || sessionUser.email || userId;
+    }
     userId = userId || 'anon';
     if (!convId || !userId) return err(res, 400, 'convId, userId required');
+    if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
     const current = (await kvGet(TYPING_KEY(convId))) || [];
     const filtered = current.filter(t => t.userId !== userId);
     if (active !== false) filtered.push({ userId, userName: userName || userId, ts: Date.now() });
@@ -206,8 +316,10 @@ async function handlePost(req, res) {
 
   if (action === 'edit') {
     let { msgId, convId, text, editorId } = body;
+    if (sessionUser?.id) editorId = sessionUser.id;
     editorId = editorId || 'anon';
     if (!msgId || !convId || !text?.trim()) return err(res, 400, 'msgId, convId, text required');
+    if (!(await requireConversationAccess(res, sessionContext, convId, 'write'))) return;
     const msgs = await kvLrange(MSGS_KEY(convId), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
     if (idx < 0) return err(res, 404, 'Message not found');
@@ -219,8 +331,10 @@ async function handlePost(req, res) {
 
   if (action === 'delete') {
     let { msgId, convId, deleterId } = body;
+    if (sessionUser?.id) deleterId = sessionUser.id;
     deleterId = deleterId || 'anon';
     if (!msgId || !convId) return err(res, 400, 'msgId, convId required');
+    if (!(await requireConversationAccess(res, sessionContext, convId, 'write'))) return;
     const msgs = await kvLrange(MSGS_KEY(convId), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
     if (idx < 0) return err(res, 404, 'Message not found');
@@ -231,11 +345,13 @@ async function handlePost(req, res) {
   }
 
   if (action === 'create_conv') {
+    if (sessionContext?.user?.id && !isStaffSession(sessionContext)) return err(res, 403, 'Only coaches can create conversations');
     const { id, name, type = 'DIRECT', icon = '💬', description = '', participants = [] } = body;
+    const teamId = sessionContext?.user?.id ? tenantTeamId(sessionContext) : DEFAULT_TEAM.id;
     const convId = id || `conv_${Date.now()}`;
     const convs = await getConvs();
     if (!convs.some(c => c.id === convId)) {
-      convs.push({ id: convId, name, type, icon, description, participants, pinned: false, createdAt: Date.now(), lastActivity: Date.now() });
+      convs.push({ id: convId, teamId, name, type, icon, description, participants, pinned: false, createdAt: Date.now(), lastActivity: Date.now() });
       await saveConvs(convs);
     }
     return ok(res, { convId });

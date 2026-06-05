@@ -1,6 +1,25 @@
 // Pure messaging state helpers. Keep this module free of DOM, fetch, and
 // localStorage so the production chat rules can be tested independently.
 
+import {
+  dedupeRosterPlayers,
+  isPermanentUserIdentity,
+  resolveMessagingParticipantId,
+  resolvePlayerPortalMessagingId,
+} from './player-identity.js';
+
+export {
+  canonicalAccountOptions,
+  canonicalIdentityAudit,
+  canonicalIdentityDisplayName,
+  canonicalIdentityNameKey,
+  dedupeRosterPlayers,
+  findPermanentUserForRosterPlayer,
+  isPermanentUserIdentity,
+  resolveMessagingParticipantId,
+  resolvePlayerPortalMessagingId,
+} from './player-identity.js';
+
 const REDIS_STATIC_CONVERSATIONS = new Set(['squad', 'announce', 'coaching']);
 
 export function dmConvId(id1, id2) {
@@ -18,8 +37,8 @@ export function shouldUseLocalFallback(convId, { productionMode = true } = {}) {
   return !isRedisBackedConversation(convId);
 }
 
-export function createCoachDmConversationRequest(player, coachId = 'coach-demo') {
-  const playerId = String(player?.id || '').trim();
+export function createCoachDmConversationRequest(player, coachId = 'coach-demo', identityContext = {}) {
+  const playerId = resolveMessagingParticipantId(player, identityContext);
   const coach = String(coachId || 'coach-demo').trim() || 'coach-demo';
   if (!playerId) return null;
   return {
@@ -31,16 +50,32 @@ export function createCoachDmConversationRequest(player, coachId = 'coach-demo')
   };
 }
 
-export function createCoachDmConversationRequestForPlayerId(players = [], playerId = '', coachId = 'coach-demo') {
+export function createCoachDmConversationRequestForPlayerId(players = [], playerId = '', coachId = 'coach-demo', identityContext = {}) {
   const targetId = String(playerId || '').trim();
-  const player = (Array.isArray(players) ? players : []).find(item => String(item?.id || '') === targetId);
-  return createCoachDmConversationRequest(player, coachId);
+  const roster = dedupeRosterPlayers(players, identityContext);
+  const player = roster.find(item =>
+    String(item?.id || '') === targetId ||
+    String(item?.userId || '') === targetId ||
+    String(resolveMessagingParticipantId(item, { ...identityContext, players: roster })) === targetId
+  );
+  return createCoachDmConversationRequest(player, coachId, { ...identityContext, players: roster });
 }
 
-export function filterCoachDmPlayers(players = [], query = '', coachId = 'coach-demo') {
+export function createCoachDmConversationRequestForPlayer(players = [], playerId = '', coachId = 'coach-demo', identityContext = {}) {
+  const targetId = String(playerId || '').trim();
+  const roster = dedupeRosterPlayers(players, identityContext);
+  const player = roster.find(item =>
+    String(item?.id || '') === targetId ||
+    String(item?.userId || '') === targetId ||
+    String(resolveMessagingParticipantId(item, { ...identityContext, players: roster })) === targetId
+  );
+  return createCoachDmConversationRequest(player, coachId, { ...identityContext, players: roster });
+}
+
+export function filterCoachDmPlayers(players = [], query = '', coachId = 'coach-demo', identityContext = {}) {
   const q = String(query || '').trim().toLowerCase();
   const coach = String(coachId || '');
-  return (Array.isArray(players) ? players : []).filter(player => {
+  return dedupeRosterPlayers(players, identityContext).filter(player => {
     if (!player?.id || String(player.id) === coach) return false;
     if (!q) return true;
     return [player.name, player.position, player.email]
@@ -59,8 +94,44 @@ export function directConversationParticipantId(conversation = {}, currentUserId
   return id.split(':').slice(1).find(part => part !== String(currentUserId)) || '';
 }
 
-export function dedupeDirectConversations(conversations = [], currentUserId = 'coach-demo') {
-  const seenDirectParticipants = new Set();
+function canonicalDirectParticipantId(participantId = '', identityContext = {}) {
+  const id = String(participantId || '').trim();
+  if (!id) return '';
+  const users = Array.isArray(identityContext.users) ? identityContext.users : [];
+  const players = Array.isArray(identityContext.players) ? identityContext.players : [];
+  const user = users.find(item => String(item?.id || '') === id);
+  if (user?.role === 'player') {
+    if (isPermanentUserIdentity(user)) return String(user.id);
+    if (user.playerId) return String(user.playerId);
+  }
+  const rawPlayer = players.find(item =>
+    String(item?.id || '') === id ||
+    String(item?.userId || '') === id ||
+    String(item?.legacyPlayerId || '') === id ||
+    String(item?.playerId || '') === id
+  );
+  if (rawPlayer) return resolveMessagingParticipantId(rawPlayer, identityContext);
+  const roster = dedupeRosterPlayers(players, identityContext);
+  const player = roster.find(item =>
+    String(item?.id || '') === id ||
+    String(item?.userId || '') === id ||
+    String(item?.legacyPlayerId || '') === id ||
+    String(resolveMessagingParticipantId(item, { ...identityContext, players: roster })) === id
+  );
+  return player ? resolveMessagingParticipantId(player, { ...identityContext, players: roster }) : id;
+}
+
+function conversationDedupeScore(conversation = {}, currentUserId = 'coach-demo', canonicalParticipant = '') {
+  const canonicalId = canonicalParticipant ? dmConvId(currentUserId, canonicalParticipant) : '';
+  let score = 0;
+  if (canonicalId && String(conversation.id || '') === canonicalId) score += 100;
+  if (Number(conversation.unread || 0) > 0) score += 10;
+  if (conversation.lastMessage?.ts) score += Math.min(9, Number(conversation.lastMessage.ts || 0) / 1000000000000);
+  return score;
+}
+
+export function dedupeDirectConversations(conversations = [], currentUserId = 'coach-demo', identityContext = {}) {
+  const seenDirectParticipants = new Map();
   const result = [];
 
   (Array.isArray(conversations) ? conversations : []).forEach(conversation => {
@@ -74,8 +145,18 @@ export function dedupeDirectConversations(conversations = [], currentUserId = 'c
 
     const participantId = directConversationParticipantId(conversation, currentUserId) ||
       String(conversation.id || '');
-    if (!participantId || seenDirectParticipants.has(participantId)) return;
-    seenDirectParticipants.add(participantId);
+    const canonicalParticipant = canonicalDirectParticipantId(participantId, identityContext);
+    if (!canonicalParticipant) return;
+    if (seenDirectParticipants.has(canonicalParticipant)) {
+      const existingIndex = seenDirectParticipants.get(canonicalParticipant);
+      const existing = result[existingIndex];
+      if (conversationDedupeScore(conversation, currentUserId, canonicalParticipant) >
+          conversationDedupeScore(existing, currentUserId, canonicalParticipant)) {
+        result[existingIndex] = conversation;
+      }
+      return;
+    }
+    seenDirectParticipants.set(canonicalParticipant, result.length);
     result.push(conversation);
   });
 

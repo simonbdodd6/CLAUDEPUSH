@@ -6,6 +6,15 @@
 import { load, save } from './_lib.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
+import { resolveSessionFromRequest } from './_identityStore.js';
+
+function displayNameFromSession(sessionContext = {}) {
+  const user = sessionContext?.user || {};
+  const profile = sessionContext?.playerProfile || {};
+  return profile.displayName || user.displayName ||
+    [user.firstName, user.lastName].filter(Boolean).join(' ') ||
+    user.name || user.email || '';
+}
 
 export default async function handler(req, res) {
   setCors(res);
@@ -20,13 +29,24 @@ export default async function handler(req, res) {
 
   // ── POST: add / refresh subscription ────────────────────────────────────
   if (req.method === 'POST') {
-    const { subscription, label } = req.body || {};
+    const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
+    const { subscription, label, userId, playerId } = req.body || {};
     if (!subscription?.endpoint) {
       return res.status(400).json({ error: 'Missing subscription endpoint' });
     }
     const subs  = await load();
     const idx   = subs.findIndex(s => s.subscription.endpoint === subscription.endpoint);
-    const entry = { subscription, label: label || 'Player', savedAt: new Date().toISOString() };
+    const sessionUserId = sessionContext?.user?.id || '';
+    const sessionPlayerId = sessionContext?.playerProfile?.userId ||
+      sessionContext?.playerProfile?.legacyPlayerId || '';
+    const entry = {
+      subscription,
+      label: displayNameFromSession(sessionContext) || label || 'Player',
+      userId: sessionUserId || userId || '',
+      playerId: sessionPlayerId || playerId || sessionUserId || '',
+      role: sessionContext?.teamMember?.role || sessionContext?.user?.role || '',
+      savedAt: new Date().toISOString(),
+    };
     if (idx >= 0) subs[idx] = entry; else subs.push(entry);
     await save(subs);
     return res.status(201).json({ ok: true, count: subs.length });

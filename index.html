@@ -1323,7 +1323,7 @@
     .player-photo-wrap { position:relative; width:36px; height:36px; flex-shrink:0; }
     .player-photo-wrap img { width:36px; height:36px; border-radius:50%; object-fit:cover; }
     .player-photo-wrap .photo-badge { position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; border-radius:50%; background:var(--green); border:2px solid var(--panel); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:9px; color:#060b12; }
-    .squad-player-drag { cursor:grab; padding:8px 10px; border:1px solid var(--line); border-radius:8px; display:flex; align-items:center; gap:8px; background:var(--panel); transition:box-shadow 0.12s; color:var(--ink); }
+    .squad-player-drag { cursor:grab; padding:8px 10px; border:1px solid var(--line); border-radius:8px; display:flex; align-items:center; gap:8px; background:var(--panel); color:var(--ink); touch-action:none; }
     .squad-player-drag:hover { box-shadow:var(--shadow); border-color:#263d52; }
     .squad-player-drag:active { cursor:grabbing; }
     .bench-strip { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:6px; margin-top:10px; }
@@ -1641,6 +1641,7 @@
     .db-toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
     .filter-pill { min-height:30px; padding:0 13px; border:1px solid var(--line); border-radius:999px; background:var(--panel); color:var(--muted); font-size:12px; font-weight:600; cursor:pointer; transition:all 0.12s; }
     .filter-pill.active { background:var(--green); color:#060b12; border-color:var(--green); }
+
     .consent-dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex-shrink:0; vertical-align:middle; margin-right:4px; }
     .c-yes { background:#10b981; } .c-no { background:#ef4444; } .c-pending { background:#f59e0b; }
     .add-player-panel { border:1px solid rgba(16,185,129,0.22); border-radius:10px; padding:16px; background:rgba(16,185,129,0.05); margin-bottom:14px; }
@@ -1797,7 +1798,7 @@
       ["message",   "Availability"],
       ["messages",  "Messages"],
       ["training",  "Training"],
-      ["matchday",  "Matchday Center"],
+      ["matchday",  "Matchday Centre"],
       ["medical",   "Medical"],
       ["players",   "Members"]
     ];
@@ -1980,8 +1981,9 @@
 
     function canonicalPlayerIdForUser(user) {
       if (!user || user.role !== 'player') return null;
-      const nameKey = String(user.name || '').trim().toLowerCase();
-      if (nameKey === 'simon test player') return 'inv-YxnjxnQa';
+      const nameKey = canonicalIdentityNameKey(user.name || user.displayName);
+      if (nameKey === 'simontestplayer') return 'inv-YxnjxnQa';
+      if (isPermanentPlayerUserId(user.id)) return user.id;
       return user.playerId || null;
     }
 
@@ -2011,6 +2013,233 @@
       });
     }
 
+    function identityNameKey(value = '') {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function identityEmailKey(value = '') {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function identityCompactKey(value = '') {
+      return identityNameKey(value).replace(/[^a-z0-9]/g, '');
+    }
+
+    function canonicalIdentityNameKey(value = '') {
+      const compact = identityCompactKey(value);
+      const aliases = {
+        simontestplayer: 'simontestplayer',
+        simonplayer: 'simonplayer',
+        nickplayer: 'nickplayer',
+        nickmarshall: 'nickmarshall',
+        dodsyplayer: 'dodsyplayer',
+        doddsyplayer: 'dodsyplayer',
+        dodzyplayer: 'dodsyplayer',
+        doddzyplayer: 'dodsyplayer',
+      };
+      return aliases[compact] || compact;
+    }
+
+    function canonicalIdentityDisplayName(value = '', fallback = '') {
+      const key = canonicalIdentityNameKey(value || fallback);
+      const names = {
+        simontestplayer: 'Simon Test Player',
+        simonplayer: 'Simon Player',
+        nickplayer: 'Nick Player',
+        nickmarshall: 'Nick Marshall',
+        dodsyplayer: 'Dodsy Player',
+      };
+      return names[key] || String(value || fallback || '').trim();
+    }
+
+    function isPermanentPlayerUserId(value = '') {
+      const id = String(value || '').trim();
+      return Boolean(id) && id.startsWith('user_');
+    }
+
+    function findPermanentRosterUser(player = {}, users = []) {
+      const emailKey = identityEmailKey(player.email);
+      const nameKey = canonicalIdentityNameKey(player.name);
+      const explicitUserId = String(player.userId || '').trim();
+      return (Array.isArray(users) ? users : []).find(user => {
+        if (user?.role !== 'player') return false;
+        const uid = String(user.id || '').trim();
+        if (!isPermanentPlayerUserId(uid)) return false;
+        if (explicitUserId && uid === explicitUserId) return true;
+        if (String(user.playerId || '') === String(player.id || '')) return true;
+        if (emailKey && identityEmailKey(user.email) === emailKey) return true;
+        return nameKey && canonicalIdentityNameKey(user.name || user.displayName) === nameKey;
+      }) || null;
+    }
+
+    function resolveRosterMessagingId(player = {}, users = []) {
+      const explicitUserId = String(player.userId || '').trim();
+      if (isPermanentPlayerUserId(explicitUserId)) return explicitUserId;
+      const permanent = findPermanentRosterUser(player, users);
+      if (permanent?.id) return String(permanent.id);
+      return String(player.legacyPlayerId || player.playerId || player.id || '').trim();
+    }
+
+    function rosterIdentityKeys(player = {}, users = []) {
+      const keys = [];
+      const permanent = findPermanentRosterUser(player, users);
+      const participantId = resolveRosterMessagingId(player, users);
+      const emailKey = identityEmailKey(player.email);
+      const nameKey = canonicalIdentityNameKey(player.name);
+      if (permanent?.id) keys.push(`user:${permanent.id}`);
+      if (isPermanentPlayerUserId(participantId)) keys.push(`user:${participantId}`);
+      if (emailKey) keys.push(`email:${emailKey}`);
+      [player.id, player.legacyPlayerId, player.playerId, permanent?.playerId]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .forEach(id => keys.push(`legacy:${id}`));
+      if (nameKey) keys.push(`name:${nameKey}`);
+      return [...new Set(keys)];
+    }
+
+    function rosterIdentityScore(player = {}, users = []) {
+      const participantId = resolveRosterMessagingId(player, users);
+      let score = 0;
+      if (isPermanentPlayerUserId(participantId)) score += 100;
+      if (String(player.id || '') === participantId) score += 30;
+      if (identityEmailKey(player.email)) score += 8;
+      if (String(player.id || '').startsWith('inv-')) score += 5;
+      return score;
+    }
+
+    function mergeRosterMember(existing = {}, incoming = {}, users = []) {
+      const incomingWins = rosterIdentityScore(incoming, users) > rosterIdentityScore(existing, users);
+      const preferred = incomingWins ? incoming : existing;
+      const other = incomingWins ? existing : incoming;
+      const participantId = resolveRosterMessagingId(preferred, users) || resolveRosterMessagingId(other, users);
+      const merged = { ...other, ...preferred };
+      merged.id = participantId || merged.id || other.id;
+      if (isPermanentPlayerUserId(participantId)) merged.userId = participantId;
+      merged.name = canonicalIdentityDisplayName(preferred.name || other.name || merged.name);
+      merged.email = preferred.email || other.email || merged.email || '';
+      merged.phone = preferred.phone || other.phone || merged.phone || '';
+      merged.position = preferred.position || other.position || merged.position || 'TBC';
+      ['status', 'game', 'trainingTuesday', 'trainingThursday'].forEach(key => {
+        if ((!merged[key] || merged[key] === 'no-reply') && other[key] && other[key] !== 'no-reply') merged[key] = other[key];
+        if (!merged[key]) merged[key] = 'no-reply';
+      });
+      merged.attendance = Number(preferred.attendance || 0) || Number(other.attendance || 0) || 0;
+      merged.history = Array.isArray(preferred.history) && preferred.history.length ? preferred.history : (Array.isArray(other.history) ? other.history : []);
+      merged.blockedDates = Array.isArray(preferred.blockedDates) && preferred.blockedDates.length ? preferred.blockedDates : (Array.isArray(other.blockedDates) ? other.blockedDates : []);
+      merged.medical = preferred.medical || other.medical || '';
+      merged.mediaConsent = Boolean(preferred.mediaConsent || other.mediaConsent);
+      merged.contractStatus = preferred.contractStatus || other.contractStatus || 'active';
+      merged.legacyPlayerId = preferred.legacyPlayerId || other.legacyPlayerId ||
+        (String(other.id || '') !== String(merged.id || '') ? other.id : '') || '';
+      return merged;
+    }
+
+    function dedupeRosterMembers(players = [], users = []) {
+      const result = [];
+      const keyToIndex = new Map();
+      (Array.isArray(players) ? players : []).forEach(player => {
+        if (!player?.id || !player?.name) return;
+        const keys = rosterIdentityKeys(player, users);
+        const existingIndex = keys.map(key => keyToIndex.get(key)).find(index => index !== undefined);
+        if (existingIndex === undefined) {
+          const index = result.length;
+          result.push({ ...player });
+          keys.forEach(key => keyToIndex.set(key, index));
+          return;
+        }
+        result[existingIndex] = mergeRosterMember(result[existingIndex], player, users);
+        rosterIdentityKeys(result[existingIndex], users).concat(keys).forEach(key => keyToIndex.set(key, existingIndex));
+      });
+      return result;
+    }
+
+    function canonicalVisiblePlayers() {
+      if (_chatStateModule?.dedupeRosterPlayers) {
+        return _chatStateModule.dedupeRosterPlayers(state.players, { users: state.users });
+      }
+      return dedupeRosterMembers(state.players, state.users);
+    }
+
+    function canonicalizeStatePlayers(target = state) {
+      const deduped = dedupeRosterMembers(target.players, target.users);
+      const changed = JSON.stringify((target.players || []).map(p => [p.id, p.userId, p.name, p.email])) !==
+        JSON.stringify(deduped.map(p => [p.id, p.userId, p.name, p.email]));
+      target.players = deduped;
+      return changed;
+    }
+
+    function upsertCanonicalPlayerRecord(player = {}) {
+      if (!player?.id || !player?.name) return false;
+      const before = JSON.stringify((state.players || []).map(p => [p.id, p.userId, p.name, p.email]));
+      state.players.push({ ...player, name: canonicalIdentityDisplayName(player.name) });
+      canonicalizeStatePlayers();
+      state.users = ensurePlayerUsersForRoster(state.players, state.users);
+      const after = JSON.stringify((state.players || []).map(p => [p.id, p.userId, p.name, p.email]));
+      return before !== after;
+    }
+
+    function isRosterPlayerRecord(player = {}) {
+      const position = identityNameKey(player.position);
+      return Boolean(player.id && player.name) && !['coach', 'admin', 'medical staff'].includes(position);
+    }
+
+    function localPlayerUserId(playerId = '') {
+      const id = String(playerId || '').trim();
+      return id ? `player-${id}` : '';
+    }
+
+    function createLocalPlayerUser(player = {}) {
+      const playerId = String(player.id || '').trim();
+      const name = String(player.name || '').trim();
+      if (!playerId || !name) return null;
+      return {
+        id: localPlayerUserId(playerId),
+        role: 'player',
+        name,
+        email: player.email || '',
+        phone: player.phone || '',
+        pin: '',
+        playerId,
+      };
+    }
+
+    function ensurePlayerUserForRosterPlayer(users = [], player = {}) {
+      if (!isRosterPlayerRecord(player)) return Array.isArray(users) ? users : [];
+      const playerId = String(player.id || '').trim();
+      const nameKey = identityNameKey(player.name);
+      const list = Array.isArray(users) ? users : [];
+      const playerUsers = list.filter(user => user?.role === 'player');
+      const linked = playerUsers.find(user => String(user.playerId || '') === playerId);
+      if (linked) {
+        linked.name = linked.name || player.name;
+        linked.email = linked.email || player.email || '';
+        linked.phone = linked.phone || player.phone || '';
+        return list;
+      }
+
+      const sameName = playerUsers.find(user => identityNameKey(user.name) === nameKey);
+      if (sameName && !sameName.playerId) {
+        sameName.playerId = playerId;
+        sameName.email = sameName.email || player.email || '';
+        sameName.phone = sameName.phone || player.phone || '';
+        return list;
+      }
+      if (sameName && String(sameName.playerId || '') === playerId) return list;
+
+      const created = createLocalPlayerUser(player);
+      if (!created) return list;
+      const ids = new Set(list.map(user => String(user.id || '')));
+      if (ids.has(created.id)) created.id = `${created.id}-${Date.now()}`;
+      list.push(created);
+      return list;
+    }
+
+    function ensurePlayerUsersForRoster(players = [], users = []) {
+      const list = Array.isArray(users) ? users : [];
+      (Array.isArray(players) ? players : []).forEach(player => ensurePlayerUserForRosterPlayer(list, player));
+      return list;
+    }
+
     function loadState() { return normalizeState(readStoredState()); }
 
     function normalizeState(input) {
@@ -2031,6 +2260,7 @@
         history:      player.history      || ["no-reply"],
         blockedDates: player.blockedDates || []
       }));
+      canonicalizeStatePlayers(next);
       next.messages = (input.messages || defaultState.messages).map(m => ({
         playerId: "squad", sessionId: "week", delivery: m.unread ? "delivered" : "read", replies: [], ...m
       }));
@@ -2061,6 +2291,7 @@
       });
       // Migrate players to have photo field
       next.players.forEach(p => { if (p.photo === undefined) p.photo = ""; });
+      next.users = ensurePlayerUsersForRoster(next.players, next.users);
       next.subPlan          = input.subPlan          || structuredClone(defaultState.subPlan);
       next.treatmentLogs    = input.treatmentLogs    || structuredClone(defaultState.treatmentLogs);
       next.medicalNotes     = input.medicalNotes     || structuredClone(defaultState.medicalNotes);
@@ -2149,10 +2380,27 @@
         swRegistration = await navigator.serviceWorker.register('/sw.js');
         // Check existing subscription
         pushSubscription = await swRegistration.pushManager.getSubscription();
+        if (pushSubscription) refreshPushSubscriptionMetadata().catch(() => {});
         renderPushSidebar();
       } catch (e) {
         console.warn('SW registration failed:', e);
       }
+    }
+
+    async function refreshPushSubscriptionMetadata(playerName = '') {
+      if (!pushSubscription) return;
+      const user = currentUser();
+      const player = user?.role === 'player' ? getPlayer() : null;
+      return fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscription: pushSubscription.toJSON(),
+          label: playerName || player?.name || user?.name || 'Player',
+          userId: user?.id || '',
+          playerId: player?.userId || player?.id || user?.playerId || user?.id || '',
+        })
+      });
     }
 
     async function subscribePush(playerName) {
@@ -2169,12 +2417,7 @@
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
         });
-        // Send subscription to server
-        const res = await fetch('/api/subscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subscription: pushSubscription.toJSON(), label: playerName || 'Player' })
-        });
+        const res = await refreshPushSubscriptionMetadata(playerName || 'Player');
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Could not save device registration');
         showToast(`Notifications on — ${data.count || 1} subscriber(s) total`);
@@ -2205,12 +2448,14 @@
     }
 
     async function sendPushToPlayers(title, body, opts = {}) {
-      const { type, sessionId, targetLabel, audience } = opts;
+      const { type, sessionId, targetLabel, targetUserId, targetPlayerId, audience } = opts;
       try {
         const payload = { title, body, from: currentUser().name };
         if (type)        payload.type        = type;
         if (sessionId)   payload.sessionId   = sessionId;
         if (targetLabel) payload.targetLabel = targetLabel;
+        if (targetUserId) payload.targetUserId = targetUserId;
+        if (targetPlayerId) payload.targetPlayerId = targetPlayerId;
         if (audience)    payload.audience    = audience;
         const res = await fetch('/api/push', {
           method: 'POST',
@@ -2283,9 +2528,14 @@
     function getPlayer()  {
       const user = currentUser();
       const id   = user?.role === "player" ? canonicalPlayerIdForUser(user) : state.selectedPlayerId;
-      return state.players.find(p => p.id === id) || state.players[0] || EMPTY_PLAYER;
+      const players = canonicalVisiblePlayers();
+      return players.find(p =>
+        String(p.id || '') === String(id || '') ||
+        String(p.userId || '') === String(id || '') ||
+        String(resolveRosterMessagingId(p, state.users)) === String(id || '')
+      ) || players[0] || EMPTY_PLAYER;
     }
-    function currentUser()  { return state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
+    function currentUser()  { return canonicalAccountForUserId(state.currentUserId) || state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
     function isCoach()      { const r = currentUser()?.role; return r === "coach" || r === "admin" || r === "medical"; }
     function statusLabel(s) { return (s||"no-reply").replaceAll("-", " ").replace(/\b\w/g, l => l.toUpperCase()); }
     function noSquadMsg()   { return `<div class="card" style="text-align:center;padding:40px 20px;color:var(--muted)"><p style="font-size:32px;margin:0">🏉</p><p style="font-weight:700;margin:8px 0 4px">No players yet</p><p style="font-size:13px">Go to <strong>Player DB</strong> and add your squad first.</p></div>`; }
@@ -2304,6 +2554,76 @@
     function sessionRows(id)  {
       const key = sessionKey(id);
       return state.players.map(p => ({ player: p, status: p[key], attendanceRate: p.attendance }));
+    }
+
+    function findUserForCanonicalPlayer(player = {}) {
+      const participantId = resolveRosterMessagingId(player, state.users);
+      const emailKey = identityEmailKey(player.email);
+      const nameKey = canonicalIdentityNameKey(player.name);
+      const exact = state.users.find(user => user?.role === 'player' && String(user.id || '') === participantId);
+      if (exact) return exact;
+      const linked = state.users.find(user => user?.role === 'player' && String(user.playerId || '') === participantId);
+      if (linked) return linked;
+      return state.users.find(user => {
+        if (user?.role !== 'player') return false;
+        if (String(user.id || '') === String(player.userId || '')) return true;
+        if (emailKey && identityEmailKey(user.email) === emailKey) return true;
+        return nameKey && canonicalIdentityNameKey(user.name || user.displayName) === nameKey;
+      }) || null;
+    }
+
+    function canonicalSwitchAccounts() {
+      if (_chatStateModule?.canonicalAccountOptions) {
+        return _chatStateModule.canonicalAccountOptions({ users: state.users, players: state.players });
+      }
+      const accounts = [];
+      const seen = new Set();
+      (state.users || []).filter(user => ['coach','admin','medical'].includes(user.role)).forEach(user => {
+        const key = `staff:${user.id}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        accounts.push({ ...user, name: user.name || user.displayName || user.email });
+      });
+      canonicalVisiblePlayers().forEach(player => {
+        const participantId = resolveRosterMessagingId(player, state.users);
+        const user = findUserForCanonicalPlayer(player);
+        if (!user?.id || !participantId) return;
+        const key = `player:${participantId}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        accounts.push({
+          ...user,
+          id: user.id,
+          role: 'player',
+          name: canonicalIdentityDisplayName(player.name || user.name || user.displayName),
+          email: player.email || user.email || '',
+          playerId: participantId,
+          _canonicalPlayerId: player.id,
+        });
+      });
+      return accounts;
+    }
+
+    function canonicalAccountForUserId(userId = '') {
+      const id = String(userId || '');
+      return canonicalSwitchAccounts().find(user => String(user.id || '') === id) ||
+        state.users.find(user => String(user.id || '') === id) ||
+        null;
+    }
+
+    async function saveAvailabilityResponseToServer(sessionId, response) {
+      if (response === 'injured') return;
+      let endpoint = '';
+      try {
+        const sub = await navigator.serviceWorker?.ready
+          .then(reg => reg.pushManager.getSubscription());
+        endpoint = sub?.endpoint || '';
+      } catch {}
+      return fetch('/api/availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint, response, sessionId })
+      }).catch(() => {});
     }
     function applyTemplate() {
       const sel  = document.getElementById("templateSelect");
@@ -2430,12 +2750,37 @@
     function removeCoachingLink(id) { state.coachingLinks=(state.coachingLinks||[]).filter(l=>l.id!==id); notify("Link removed"); }
 
     // ─── MATCHDAY HELPERS ────────────────────────────────────────────────────
+    function findPlayerByName(name) {
+      const key = String(name || "").trim().toLowerCase();
+      if (!key) return null;
+      return state.players.find(p => String(p.name || "").trim().toLowerCase() === key) || null;
+    }
+
     function setFormationName(slot, val) {
       state.formationNames=state.formationNames||{};
-      state.formationNames[slot]=val; saveState("Formation updated");
+      state.fphotoIds=state.fphotoIds||{};
+      state.formationNames[slot]=val;
+      const player = findPlayerByName(val);
+      if (player) state.fphotoIds[slot] = player.id;
+      else if (!String(val || "").trim()) delete state.fphotoIds[slot];
+      saveState("Formation updated");
     }
     function setBenchPlayer(idx, val) {
       state.benchPlayers=state.benchPlayers||Array(8).fill(""); state.benchPlayers[idx]=val; saveState("Bench updated");
+    }
+    function clearFormationSlot(slot) {
+      state.formationNames=state.formationNames||{};
+      state.fphotoIds=state.fphotoIds||{};
+      state.formationNames[slot]="";
+      delete state.fphotoIds[slot];
+      saveState("Formation updated");
+      render();
+    }
+    function clearBenchSlot(idx) {
+      state.benchPlayers=state.benchPlayers||Array(8).fill("");
+      state.benchPlayers[idx]="";
+      saveState("Bench updated");
+      render();
     }
     function addSubPlan() {
       const min=document.getElementById("subMin")?.value, on=document.getElementById("subOn")?.value.trim(), off=document.getElementById("subOff")?.value.trim(), reason=document.getElementById("subReason")?.value.trim();
@@ -2664,6 +3009,7 @@
     // ─── DRAG & DROP FORMATION ────────────────────────────────────────────────
     function handleSlotDrop(label, event) {
       event.preventDefault();
+      stopMatchdayAutoScroll();
       const playerName = event.dataTransfer.getData("playerName");
       const playerId   = event.dataTransfer.getData("playerId");
       if (!playerName) return;
@@ -2675,7 +3021,58 @@
       render();
     }
 
-    function handleSlotDragover(event) { event.preventDefault(); }
+    function handleBenchDrop(idx, event) {
+      event.preventDefault();
+      stopMatchdayAutoScroll();
+      const playerName = event.dataTransfer.getData("playerName");
+      if (!playerName) return;
+      state.benchPlayers = state.benchPlayers || Array(8).fill("");
+      state.benchPlayers[idx] = playerName;
+      saveState("Bench updated");
+      render();
+    }
+
+    let _matchdayAutoScrollFrame = 0;
+    let _matchdayAutoScrollSpeed = 0;
+
+    function handlePlayerDragStart(event) {
+      const el = event.currentTarget;
+      event.dataTransfer.effectAllowed = "copyMove";
+      event.dataTransfer.setData("playerName", el.dataset.playerName || "");
+      event.dataTransfer.setData("playerId", el.dataset.playerId || "");
+      event.dataTransfer.setData("text/plain", el.dataset.playerName || "");
+    }
+
+    function handleMatchdayDragOver(event) {
+      event.preventDefault();
+      const edge = 110;
+      const y = event.clientY;
+      const height = window.innerHeight || document.documentElement.clientHeight;
+      if (y < edge) startMatchdayAutoScroll(-Math.max(4, edge - y));
+      else if (height - y < edge) startMatchdayAutoScroll(Math.max(4, edge - (height - y)));
+      else stopMatchdayAutoScroll();
+    }
+
+    function startMatchdayAutoScroll(speed) {
+      _matchdayAutoScrollSpeed = Math.max(-22, Math.min(22, speed / 4));
+      if (_matchdayAutoScrollFrame) return;
+      const step = () => {
+        if (!_matchdayAutoScrollSpeed) { _matchdayAutoScrollFrame = 0; return; }
+        window.scrollBy(0, _matchdayAutoScrollSpeed);
+        _matchdayAutoScrollFrame = requestAnimationFrame(step);
+      };
+      _matchdayAutoScrollFrame = requestAnimationFrame(step);
+    }
+
+    function stopMatchdayAutoScroll() {
+      _matchdayAutoScrollSpeed = 0;
+      if (_matchdayAutoScrollFrame) {
+        cancelAnimationFrame(_matchdayAutoScrollFrame);
+        _matchdayAutoScrollFrame = 0;
+      }
+    }
+
+    function handleSlotDragover(event) { handleMatchdayDragOver(event); }
 
     // ─── PLAYER PHOTO ────────────────────────────────────────────────────────
     function savePlayerPhoto(playerId, input) {
@@ -2744,7 +3141,8 @@
       const name=document.getElementById("apName")?.value.trim(), pos=document.getElementById("apPos")?.value, phone=document.getElementById("apPhone")?.value.trim(), email=document.getElementById("apEmail")?.value.trim();
       if (!name) return showToast("Player name required");
       const id="p"+Date.now();
-      state.players.push({id,name,position:pos||"SUB",status:"no-reply",game:"no-reply",phone:phone||"",email:email||`${name.toLowerCase().replaceAll(" ",".")}@player.test`,trainingTuesday:"no-reply",trainingThursday:"no-reply",attendance:0,history:[],blockedDates:[],medical:"",mediaConsent:false,contractStatus:"active"});
+      const player = {id,name,position:pos||"SUB",status:"no-reply",game:"no-reply",phone:phone||"",email:email||`${name.toLowerCase().replaceAll(" ",".")}@player.test`,trainingTuesday:"no-reply",trainingThursday:"no-reply",attendance:0,history:[],blockedDates:[],medical:"",mediaConsent:false,contractStatus:"active"};
+      upsertCanonicalPlayerRecord(player);
       state.showAddPlayer=false; notify(`${name} added to squad`);
     }
     function removePlayerFromSquad(id) {
@@ -3032,7 +3430,7 @@
       for (const p of players) {
         if (!p.name) continue;
         const id = 'p' + Date.now() + Math.floor(Math.random()*9999);
-        state.players.push({
+        upsertCanonicalPlayerRecord({
           id, name: p.name,
           position:        p.position || 'SUB — Squad player',
           status:          'no-reply',
@@ -3057,49 +3455,134 @@
 
     // ─── AUTH ────────────────────────────────────────────────────────────────
     let authTab = 'closed'; // 'closed' | 'open' | 'open-join' — not persisted
+    let _identityPendingRequests = [];
+    let _identityRequestsLoading = false;
+    let _serverSessionPromise = null;
+    let _serverSessionReadyFor = '';
 
-    function setAuthTab(tab) { authTab = tab; renderNav(); }
+    function setAuthTab(tab) {
+      authTab = tab;
+      if (tab === 'switch') chatLoadStateModule().then(() => renderNav()).catch(() => {});
+      renderNav();
+    }
 
     async function joinSquad() {
       const code = (document.getElementById('joinCode')?.value || '').trim().toUpperCase();
-      const name = (document.getElementById('joinName')?.value || '').trim();
-      const expected = (state.teamCode || 'BOITSFORT').toUpperCase();
-      if (code !== expected) { showToast('❌ Wrong team code — ask your coach'); return; }
-      if (!name) { showToast('Enter your name first'); return; }
-
-      // Add to player roster if not already there
-      let player = state.players.find(p => p.name.toLowerCase() === name.toLowerCase());
-      if (!player) {
-        const id = 'p' + Date.now();
-        player = { id, name, position: 'TBC', status: 'no-reply', game: 'no-reply',
-          phone: '', email: '', trainingTuesday: 'no-reply', trainingThursday: 'no-reply',
-          attendance: 0, history: [], blockedDates: [], medical: '',
-          mediaConsent: false, contractStatus: 'active' };
-        state.players.push(player);
-      }
-
-      // Create a user account for this player (if not exists)
-      let userAcc = state.users.find(u => u.role === 'player' && u.name.toLowerCase() === name.toLowerCase());
-      if (!userAcc) {
-        userAcc = { id: 'player-' + Date.now(), role: 'player', name, email: '', phone: '', pin: '', playerId: player.id };
-        state.users.push(userAcc);
-      }
-
-      // Log in as this player
-      state.currentUserId = userAcc.id;
-      state.activeView = 'player';
-      state.activePlayerSection = 'messages';
-      state.selectedPlayerId = player.id;
-      state.selectedChatId = 'coach';
-      saveState('Player joined via team code');
-
-      // Subscribe to push with their real name as the label
+      const firstName = (document.getElementById('joinFirstName')?.value || '').trim();
+      const lastName = (document.getElementById('joinLastName')?.value || '').trim();
+      const email = (document.getElementById('joinEmail')?.value || '').trim();
+      const password = document.getElementById('joinPassword')?.value || '';
+      if (!code) return showToast('Enter your team code');
+      if (!firstName || !lastName) return showToast('Enter first and last name');
+      if (!email) return showToast('Enter your email');
+      if (password.length < 8) return showToast('Password must be at least 8 characters');
+      const btn = document.getElementById('joinSubmitBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending request...'; }
       try {
-        await subscribePush(name);
-      } catch(e) { console.warn('Push subscription optional step failed:', e); }
+        const res = await fetch('/api/identity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'join', teamCode: code, firstName, lastName, email, password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not join team');
+        authTab = 'closed';
+        renderNav();
+        showToast('Join request sent — wait for coach approval');
+      } catch(e) {
+        showToast(e.message || 'Could not join team');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Send join request'; }
+      }
+    }
 
-      showToast(`Welcome ${name}! You're all set`);
-      setSection('player', 'messages');
+    async function loginIdentityAccount() {
+      const email = (document.getElementById('identityLoginEmail')?.value || '').trim();
+      const password = document.getElementById('identityLoginPassword')?.value || '';
+      if (!email) return showToast('Enter your email');
+      if (!password) return showToast('Enter your password');
+      const btn = document.getElementById('identityLoginBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Logging in...'; }
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'login', email, password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Login failed');
+        const isStaffLogin = ['coach','admin','medical'].includes(data.user.role);
+        if (!isStaffLogin) applyApprovedIdentityLocally(data);
+        state.currentUserId = data.user.id;
+        state.activeView = isStaffLogin ? 'coach' : 'player';
+        if (isStaffLogin) {
+          state.activeCoachSection = state.activeCoachSection || 'overview';
+          state.selectedChatId = state.selectedChatId || 'squad';
+        } else {
+          state.activePlayerSection = 'messages';
+          state.selectedPlayerId = data.user.id;
+          state.selectedMessagePlayerId = data.user.id;
+          state.selectedChatId = 'coach';
+        }
+        _serverSessionReadyFor = data.user.id;
+        authTab = 'closed';
+        saveState('Logged in');
+        render();
+        refreshPushSubscriptionMetadata(data.user.displayName || data.user.email).catch(() => {});
+        showToast(`Welcome ${data.user.displayName || data.user.email}`);
+      } catch(e) {
+        showToast(e.message || 'Login failed');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Log in'; }
+      }
+    }
+
+    async function ensureServerSessionForCurrentUser() {
+      const user = currentUser();
+      if (!user?.id) return false;
+      if (_serverSessionReadyFor === user.id) return true;
+      if (_serverSessionPromise) return _serverSessionPromise;
+      _serverSessionPromise = (async () => {
+        try {
+          const current = await fetch('/api/identity?action=session').then(r => r.ok ? r.json() : null).catch(() => null);
+          if (current?.ok && current.user?.id && current.user.id === user.id) {
+            _serverSessionReadyFor = current.user.id;
+            return true;
+          }
+          const isStaff = ['coach','admin','medical'].includes(user.role);
+          if (!isStaff || !user.email || !user.pin) return false;
+          const res = await fetch('/api/identity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'login', email: user.email, password: user.pin }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.ok === false) return false;
+          _serverSessionReadyFor = data.user?.id || user.id;
+          return true;
+        } finally {
+          _serverSessionPromise = null;
+        }
+      })();
+      return _serverSessionPromise;
+    }
+
+    async function requestPasswordReset() {
+      const email = (document.getElementById('identityLoginEmail')?.value || '').trim() ||
+        prompt('Enter your account email:');
+      if (!email) return;
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'request_password_reset', email }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not start password reset');
+        showToast('If that email has an account, a reset link has been sent.');
+      } catch(e) {
+        showToast(e.message || 'Could not start password reset');
+      }
     }
 
     function loginAs(userId) {
@@ -3154,13 +3637,43 @@
 
       const roleLabel = { coach:'🎯 Coach', admin:'⚙️ Admin', medical:'🏥 Medical', player:'🏉 Player' };
       const rlbl = roleLabel[user.role] || '👤 Player';
+      const switchAccounts = canonicalSwitchAccounts().filter(u => u.id !== state.currentUserId);
 
-      document.getElementById("authPanel").innerHTML = authTab === 'switch' ? `
+      document.getElementById("authPanel").innerHTML = authTab === 'login' ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <strong style="font-size:13px">Log in</strong>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
+        </div>
+        <div style="display:grid;gap:7px">
+          <input id="identityLoginEmail" type="email" placeholder="Email" style="font-size:12px;padding:7px 9px">
+          <input id="identityLoginPassword" type="password" placeholder="Password" style="font-size:12px;padding:7px 9px">
+          <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:12px">Log in</button>
+          <button class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:11px;padding:5px 8px">Forgot password?</button>
+          <p class="muted" style="font-size:11px;margin:0">Approved players can log in after coach approval.</p>
+        </div>
+      ` : authTab === 'join' ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <strong style="font-size:13px">Join team</strong>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
+        </div>
+        <div style="display:grid;gap:7px">
+          <input id="joinCode" placeholder="Team code" value="${state.teamCode || 'BOITSFORT'}" style="font-size:12px;padding:7px 9px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <input id="joinFirstName" placeholder="First name" style="font-size:12px;padding:7px 9px">
+            <input id="joinLastName" placeholder="Last name" style="font-size:12px;padding:7px 9px">
+          </div>
+          <input id="joinEmail" type="email" placeholder="Email" style="font-size:12px;padding:7px 9px">
+          <input id="joinPassword" type="password" placeholder="Password (8+ characters)" style="font-size:12px;padding:7px 9px">
+          <button id="joinSubmitBtn" class="btn primary" type="button" onclick="joinSquad()" style="width:100%;font-size:12px">Send join request</button>
+          <p class="muted" style="font-size:11px;margin:0">A coach must approve before player access is enabled.</p>
+        </div>
+      ` : authTab === 'switch' ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <strong style="font-size:13px">Switch account</strong>
           <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
-        ${state.users.filter(u => u.id !== state.currentUserId).map(u =>
+        <p class="muted" style="font-size:11px;margin:0 0 8px">Canonical accounts only. Duplicate local identities are hidden.</p>
+        ${switchAccounts.map(u =>
           `<button class="btn" type="button" onclick="switchToUser('${u.id}')"
             style="width:100%;text-align:left;margin-bottom:6px;display:flex;align-items:center;gap:8px;padding:8px 10px">
             <span style="font-size:16px">${{coach:'🎯',admin:'⚙️',medical:'🏥',player:'🏉'}[u.role]||'👤'}</span>
@@ -3175,7 +3688,11 @@
             <strong>${user.name}</strong>
             <small>${rlbl}</small>
           </div>
-          <button class="auth-tab" type="button" onclick="setAuthTab('switch')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Switch ↓</button>
+          <div style="display:flex;gap:5px">
+            <button class="auth-tab" type="button" onclick="setAuthTab('login')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Login</button>
+            <button class="auth-tab" type="button" onclick="setAuthTab('join')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Join</button>
+            <button class="auth-tab" type="button" onclick="setAuthTab('switch')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Switch ↓</button>
+          </div>
         </div>
       `;
       renderPushSidebar();
@@ -3206,13 +3723,15 @@
     }
 
     function switchToUser(userId) {
-      const u = state.users.find(u => u.id === userId);
+      const u = canonicalAccountForUserId(userId);
       if (!u) return;
-      state.currentUserId = userId;
+      state.currentUserId = u.id;
       const isStaff = ['coach','admin','medical'].includes(u.role);
       state.activeView = isStaff ? 'coach' : 'player';
-      if (!isStaff && u.playerId) {
-        state.selectedPlayerId = u.playerId;
+      if (!isStaff) {
+        const canonicalPlayerId = u.playerId || canonicalPlayerIdForUser(u);
+        state.selectedPlayerId = canonicalPlayerId;
+        state.selectedMessagePlayerId = canonicalPlayerId;
         state.activePlayerSection = 'messages';
         state.selectedChatId = 'coach';
       }
@@ -3221,6 +3740,215 @@
       saveState('Switched account');
       render();
       showToast(`Switched to ${u.name} (${u.role})`);
+    }
+
+    function applyApprovedIdentityLocally(identity = {}) {
+      const user = identity.user;
+      const profile = identity.playerProfile;
+      if (!user?.id) return;
+      const name = canonicalIdentityDisplayName(profile?.displayName || user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email);
+      const email = profile?.email || user.email || '';
+      if (!state.users.some(item => item.id === user.id)) {
+        state.users.push({ id: user.id, role: 'player', name, email, phone: '', pin: '', playerId: user.id });
+      } else {
+        const existingUser = state.users.find(item => item.id === user.id);
+        existingUser.role = 'player';
+        existingUser.name = existingUser.name || name;
+        existingUser.email = existingUser.email || email;
+        existingUser.playerId = user.id;
+      }
+      if (!state.players.some(player => player.id === user.id)) {
+        state.players.push({
+          id: user.id,
+          userId: user.id,
+          name,
+          position: profile?.position || 'TBC',
+          status: 'no-reply',
+          game: 'no-reply',
+          phone: profile?.phone || '',
+          email,
+          trainingTuesday: 'no-reply',
+          trainingThursday: 'no-reply',
+          attendance: 0,
+          history: [],
+          blockedDates: [],
+          medical: '',
+          mediaConsent: false,
+          contractStatus: 'active',
+        });
+      } else {
+        const player = state.players.find(item => item.id === user.id);
+        player.userId = user.id;
+        player.name = player.name || name;
+        player.email = player.email || email;
+      }
+      ensurePlayerUserForRosterPlayer(state.users, state.players.find(player => player.id === user.id));
+    }
+
+    function syncIdentityStateToLocalRoster(identity = {}) {
+      const profiles = Array.isArray(identity.player_profiles) ? identity.player_profiles : [];
+      const users = Array.isArray(identity.users) ? identity.users : [];
+      const usersById = new Map(users.map(user => [String(user.id || ''), user]));
+      let changed = false;
+
+      profiles.forEach(profile => {
+        if (!profile?.userId || !profile.displayName) return;
+        const profileUser = usersById.get(String(profile.userId)) || {};
+        const useLegacyId = String(profile.userId || '').startsWith('player-') && profile.legacyPlayerId;
+        const playerId = String(useLegacyId ? profile.legacyPlayerId : profile.userId);
+        const name = canonicalIdentityDisplayName(profile.displayName || profileUser.displayName || profileUser.name || profile.email || playerId);
+        const email = profile.email || profileUser.email || '';
+        const emailKey = String(email || '').toLowerCase();
+        const nameKey = canonicalIdentityNameKey(name);
+        let player = state.players.find(item =>
+          String(item.id || '') === playerId ||
+          String(item.userId || '') === profile.userId ||
+          (emailKey && String(item.email || '').toLowerCase() === emailKey) ||
+          (nameKey && canonicalIdentityNameKey(item.name) === nameKey)
+        );
+        if (!player) {
+          player = {
+            id: playerId,
+            userId: profile.userId,
+            name,
+            position: profile.position || 'TBC',
+            status: 'no-reply',
+            game: 'no-reply',
+            phone: profile.phone || '',
+            email,
+            trainingTuesday: 'no-reply',
+            trainingThursday: 'no-reply',
+            attendance: 0,
+            history: [],
+            blockedDates: [],
+            medical: '',
+            mediaConsent: false,
+            contractStatus: 'active',
+          };
+          state.players.push(player);
+          changed = true;
+        } else {
+          const before = JSON.stringify({ id: player.id, userId: player.userId, name: player.name, email: player.email, position: player.position });
+          const profileLooksPermanent = isPermanentPlayerUserId(profile.userId);
+          if (profileLooksPermanent) player.id = profile.userId;
+          else player.id = player.id || playerId;
+          player.userId = player.userId || profile.userId;
+          player.name = player.name || name;
+          player.email = player.email || email;
+          player.position = player.position || profile.position || 'TBC';
+          changed = changed || before !== JSON.stringify({ id: player.id, userId: player.userId, name: player.name, email: player.email, position: player.position });
+        }
+
+        const existingUser = state.users.find(item => item.id === profile.userId);
+        if (!existingUser) {
+          state.users.push({
+            id: profile.userId,
+            role: 'player',
+            name,
+            email,
+            phone: profile.phone || '',
+            pin: '',
+            playerId,
+          });
+          changed = true;
+        } else if (!existingUser.playerId) {
+          existingUser.playerId = playerId;
+          changed = true;
+        }
+      });
+
+      const deduped = canonicalizeStatePlayers();
+      changed = changed || deduped;
+      if (changed) {
+        state.users = ensurePlayerUsersForRoster(state.players, state.users);
+      }
+      return changed;
+    }
+
+    function identityRequestsHtml() {
+      if (_identityRequestsLoading) return `<p class="muted" style="font-size:13px">Loading join requests...</p>`;
+      if (!_identityPendingRequests.length) return `<p class="muted" style="font-size:13px">No pending join requests.</p>`;
+      return `<div style="display:grid;gap:8px">
+        ${_identityPendingRequests.map(request => {
+          const user = request.user || {};
+          const name = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || 'Unknown player';
+          return `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:10px;background:var(--panel-2)">
+            <div>
+              <strong style="font-size:13px">${esc(name)}</strong>
+              <div class="muted" style="font-size:11px">${esc(user.email || '')} · ${esc(request.team?.name || 'Boitsfort RFC')}</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn primary" type="button" style="min-height:30px;font-size:12px;padding:0 10px" onclick="approveIdentityRequest('${request.id}')">Approve</button>
+              <button class="btn ghost" type="button" style="min-height:30px;font-size:12px;padding:0 10px;color:var(--red)" onclick="rejectIdentityRequest('${request.id}')">Reject</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+
+    function renderIdentityRequestsPanel() {
+      const panel = document.getElementById('identity-requests-panel');
+      if (panel) panel.innerHTML = identityRequestsHtml();
+    }
+
+    async function loadIdentityRequests() {
+      const panel = document.getElementById('identity-requests-panel');
+      if (!panel || _identityRequestsLoading) return;
+      _identityRequestsLoading = true;
+      renderIdentityRequestsPanel();
+      try {
+        await ensureServerSessionForCurrentUser();
+        const data = await fetch('/api/identity').then(r => r.json());
+        if (!data.ok) throw new Error(data.error || 'Could not load join requests');
+        const rosterChanged = syncIdentityStateToLocalRoster(data);
+        _identityPendingRequests = data.pending || [];
+        if (rosterChanged) {
+          saveState('Identity roster synced');
+          if (state.activeView === 'coach' && state.activeCoachSection === 'players') {
+            setTimeout(() => renderPlayers(), 0);
+          }
+        }
+      } catch(e) {
+        panel.innerHTML = `<p style="color:#f87171;font-size:13px">Could not load join requests. Try Login, then Refresh.</p>`;
+        return;
+      } finally {
+        _identityRequestsLoading = false;
+      }
+      renderIdentityRequestsPanel();
+    }
+
+    async function approveIdentityRequest(memberId) {
+      try {
+        const data = await fetch('/api/identity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'approve', memberId, approvedBy: currentUser()?.id || 'coach-demo' }),
+        }).then(r => r.json());
+        if (!data.ok) throw new Error(data.error || 'Could not approve request');
+        applyApprovedIdentityLocally(data);
+        _identityPendingRequests = _identityPendingRequests.filter(request => request.id !== memberId);
+        saveState('Join request approved');
+        render();
+        showToast('Player approved and added to roster');
+      } catch(e) {
+        showToast(e.message || 'Could not approve request');
+      }
+    }
+
+    async function rejectIdentityRequest(memberId) {
+      try {
+        const data = await fetch('/api/identity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reject', memberId, rejectedBy: currentUser()?.id || 'coach-demo' }),
+        }).then(r => r.json());
+        if (!data.ok) throw new Error(data.error || 'Could not reject request');
+        _identityPendingRequests = _identityPendingRequests.filter(request => request.id !== memberId);
+        renderIdentityRequestsPanel();
+        showToast('Join request rejected');
+      } catch(e) {
+        showToast(e.message || 'Could not reject request');
+      }
     }
 
     function showSection() {
@@ -4027,12 +4755,14 @@
         });
 
         if (audience === 'individual' && playerId) {
+          await chatLoadStateModule();
           const target = state.players.find(p => p.id === playerId);
-          // Write to BOTH: DM by player ID (for any device that has the right ID)
+          const targetParticipantId = chatResolvePlayerParticipantId(target);
+          // Write to BOTH: canonical DM participant ID (permanent userId when available)
           // AND squad channel (guaranteed fallback — every player sees squad)
-          const dmId = dmConvId(me.id, playerId);
+          const dmId = dmConvId(me.id, targetParticipantId || playerId);
           await post({ action: 'create_conv', id: dmId, name: target?.name || 'Direct message',
-            type: 'DIRECT', participants: [me.id, playerId] });
+            type: 'DIRECT', participants: [me.id, targetParticipantId || playerId] });
           await post({ action: 'send', convId: dmId, senderId: me.id, senderName: me.name,
             senderRole: me.role || 'coach', text: body, type: 'TEXT' });
           // Also write to squad so player always sees it (tagged with their name)
@@ -4276,13 +5006,23 @@
 
     // ─── MATCHDAY ────────────────────────────────────────────────────────────
     function renderMatchday() {
-      const available = state.players.filter(p => p.game === "available");
-      const selected  = available.slice(0, 15);
+      const matchdayPlayers = state.players.filter(p => p.game === "available");
+      const selected  = matchdayPlayers.slice(0, 15);
       const fnames    = state.formationNames || {};
       const fphoto    = state.fphotoIds      || {};
       const bench     = state.benchPlayers   || Array(8).fill("");
       const subs      = state.subPlan        || [];
       const fixture   = state.fixtures?.[0]  || { opponent:"Kituro", venue:"Home", date:"This Saturday" };
+      const playerNameOptions = [...new Set(state.players.map(p => p.name).filter(Boolean))];
+      const slotNames = rugbySlots.map(([label], i) =>
+        Object.prototype.hasOwnProperty.call(fnames, label)
+          ? fnames[label]
+          : (selected[i]?.name || "")
+      );
+      const assignedNames = new Set([...slotNames, ...bench.slice(0,8)]
+        .map(name => String(name || "").trim().toLowerCase())
+        .filter(Boolean));
+      const available = matchdayPlayers.filter(p => !assignedNames.has(String(p.name || "").trim().toLowerCase()));
 
       document.getElementById("coach-matchday").innerHTML = `
 
@@ -4318,8 +5058,7 @@
 
         <!-- datalist for autocomplete on pitch inputs -->
         <datalist id="squad-names">
-          ${state.players.map(p=>`<option value="${p.name.split(" ").pop()}">`).join("")}
-          ${state.players.map(p=>`<option value="${p.name}">`).join("")}
+          ${playerNameOptions.map(name=>`<option value="${esc(name)}">`).join("")}
         </datalist>
 
         <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:14px;align-items:start">
@@ -4329,7 +5068,7 @@
             <div class="card">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <div>
-                  <h2 style="margin:0">Matchday formation</h2>
+                  <h2 style="margin:0">Matchday Centre</h2>
                   <p class="muted" style="margin-top:3px">${fixture.opponent} · ${fixture.venue} · ${fixture.date}</p>
                 </div>
                 <div style="display:flex;gap:7px">
@@ -4348,15 +5087,18 @@
                 <div class="pitch-line" style="top:82%"></div>
                 ${rugbySlots.map(([label, x, y], i) => {
                   const player    = selected[i];
-                  const saved     = fnames[label] || "";
-                  const defName   = player ? player.name.split(" ").pop() : "";
-                  const inputVal  = (saved || defName).replace(/"/g,"&quot;");
-                  const photoPlayerId = fphoto[label] || player?.id || "";
+                  const hasSaved  = Object.prototype.hasOwnProperty.call(fnames, label);
+                  const saved     = hasSaved ? fnames[label] : "";
+                  const defName   = player ? player.name : "";
+                  const slotName  = hasSaved ? saved : defName;
+                  const inputVal  = slotName.replace(/"/g,"&quot;");
+                  const slotPlayer = findPlayerByName(slotName);
+                  const photoPlayerId = slotName ? (fphoto[label] || slotPlayer?.id || player?.id || "") : "";
                   const photoPlayer   = photoPlayerId ? state.players.find(p=>p.id===photoPlayerId) : null;
-                  const photoSrc      = photoPlayer?.photo || player?.photo || "";
+                  const photoSrc      = slotName ? (photoPlayer?.photo || slotPlayer?.photo || player?.photo || "") : "";
                   return `<div class="slot-big" data-slot="${label}" style="left:${x}%;top:${y}%"
-                    ondragover="event.preventDefault();this.classList.add('drag-over')"
-                    ondragleave="this.classList.remove('drag-over')"
+                    ondragover="handleSlotDragover(event);this.classList.add('drag-over')"
+                    ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()"
                     ondrop="this.classList.remove('drag-over');handleSlotDrop('${label}',event)">
                     <div class="slot-photo">
                       ${photoSrc ? `<img src="${photoSrc}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : `<span style="font-size:16px">🏉</span>`}
@@ -4365,6 +5107,8 @@
                     <input class="slot-name-input" value="${inputVal}" placeholder="Type player"
                       list="squad-names"
                       oninput="setFormationName('${label}',this.value)">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('${label}')"
+                      style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
                   </div>`;
                 }).join("")}
               </div>
@@ -4377,12 +5121,17 @@
                 </div>
                 <div class="bench-strip" style="background:rgba(26,46,37,0.06);border-radius:10px;padding:10px">
                   ${bench.slice(0,8).map((name,i)=>`
-                    <div class="bench-slot">
+                    <div class="bench-slot"
+                      ondragover="handleMatchdayDragOver(event)"
+                      ondragleave="stopMatchdayAutoScroll()"
+                      ondrop="handleBenchDrop(${i},event)">
                       <small>${i+16}</small>
                       <input value="${(name||"").replace(/"/g,"&quot;")}" placeholder="Type player"
                         list="squad-names"
                         oninput="setBenchPlayer(${i},this.value)"
                         style="background:rgba(9,13,20,0.88);border:1px solid rgba(255,255,255,0.2);border-radius:5px;color:#e2e8f0;font-size:11px;font-weight:600;width:100%;text-align:center;padding:3px 2px;margin-top:3px">
+                      <button class="btn ghost" type="button" onclick="clearBenchSlot(${i})"
+                        style="min-height:20px;padding:0 6px;font-size:10px;margin-top:4px;color:#cbd5e1">Clear</button>
                     </div>`).join("")}
                 </div>
               </div>
@@ -4423,21 +5172,23 @@
             </div>
           </div>
 
-          <!-- RIGHT: Draggable player pool + selection list -->
+          <!-- RIGHT: Draggable player pool -->
           <div style="display:grid;gap:14px;align-content:start">
 
             <!-- Drag players onto the pitch -->
             <div class="card">
               <h2 style="margin-bottom:3px">Available players</h2>
-              <p class="muted" style="font-size:12px;margin-bottom:12px">Drag onto the pitch, or type names directly in the slots.</p>
-              <div style="display:grid;gap:6px;max-height:340px;overflow-y:auto">
+              <p class="muted" style="font-size:12px;margin-bottom:12px">Players disappear from this list once placed on the pitch or bench.</p>
+              <div style="display:grid;gap:6px;max-height:70vh;overflow-y:auto">
                 ${available.map(p => {
-                  const surname = p.name.split(" ").pop();
                   const initials = p.name.split(" ").map(w=>w[0]).slice(0,2).join("");
                   const photoEl = p.photo ? `<img src="${p.photo}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0">` : `<div style="width:30px;height:30px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;flex-shrink:0">${initials}</div>`;
                   return `<div class="squad-player-drag"
                     draggable="true"
-                    ondragstart="event.dataTransfer.setData('playerName','${surname}');event.dataTransfer.setData('playerId','${p.id}')">
+                    data-player-name="${esc(p.name)}"
+                    data-player-id="${esc(p.id)}"
+                    ondragstart="handlePlayerDragStart(event)"
+                    ondragend="stopMatchdayAutoScroll()">
                     ${photoEl}
                     <div style="min-width:0">
                       <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
@@ -4445,28 +5196,7 @@
                     </div>
                     <span style="margin-left:auto;font-size:10px;font-weight:800;color:var(--green);flex-shrink:0">DRAG</span>
                   </div>`;
-                }).join("") || `<p class="muted" style="text-align:center;padding:14px">No available players — update game availability first.</p>`}
-              </div>
-            </div>
-
-            <!-- Selection editor (1–15) -->
-            <div class="card">
-              <h2 style="margin-bottom:3px">Selection (1–15)</h2>
-              <p class="muted" style="font-size:12px;margin-bottom:12px">Type or drag to update the pitch. Names save instantly.</p>
-              <div style="display:grid;gap:5px">
-                ${rugbySlots.map(([label,x,y], i) => {
-                  const player   = selected[i];
-                  const defName  = player ? player.name : "";
-                  const dispName = fnames[label] || defName;
-                  return `<div style="display:grid;grid-template-columns:24px 26px minmax(0,1fr);gap:6px;align-items:center">
-                    <span style="font-size:10px;font-weight:800;color:var(--muted)">${label}</span>
-                    <div style="width:24px;height:24px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900">${label}</div>
-                    <input value="${dispName.replace(/"/g,"&quot;")}" placeholder="Empty slot"
-                      list="squad-names"
-                      oninput="setFormationName('${label}',this.value)"
-                      style="font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:7px;padding:4px 7px">
-                  </div>`;
-                }).join("")}
+                }).join("") || `<p class="muted" style="text-align:center;padding:14px">All available players are already on the pitch or bench.</p>`}
               </div>
             </div>
           </div>
@@ -4617,11 +5347,18 @@
     function renderPlayers() {
       // Kick off a background sync of accepted invites each time this page renders
       if (isCoach()) loadInviteList().catch(()=>{});
+      if (isCoach()) setTimeout(() => loadIdentityRequests().catch(()=>{}), 0);
 
+      const members    = canonicalVisiblePlayers();
       const filter     = state.playerFilter || "all";
       const filterMap  = { all: ()=>true, available: p=>p.game==="available", injured: p=>p.game==="injured", "no-reply": p=>p.game==="no-reply", consent: p=>!p.mediaConsent };
-      const filtered   = state.players.filter(filterMap[filter] || (()=>true));
-      const counts     = { available:byStatus("available").length, injured:byStatus("injured").length, "no-reply":byStatus("no-reply").length, consent:state.players.filter(p=>!p.mediaConsent).length };
+      const filtered   = members.filter(filterMap[filter] || (()=>true));
+      const counts     = {
+        available: members.filter(p => p.game === "available").length,
+        injured: members.filter(p => p.game === "injured").length,
+        "no-reply": members.filter(p => p.game === "no-reply").length,
+        consent: members.filter(p=>!p.mediaConsent).length
+      };
 
       document.getElementById("coach-players").innerHTML = `
         <div style="display:grid;gap:14px">
@@ -4631,7 +5368,7 @@
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
               <div>
                 <h2 style="margin:0">Members</h2>
-                <p class="muted" style="margin-top:3px">${state.players.length} members · Boitsfort Premier</p>
+                <p class="muted" style="margin-top:3px">${members.length} members · Boitsfort Premier</p>
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <button class="btn" type="button" onclick="showToast('Squad exported to CSV ✓')">📥 Export</button>
@@ -4641,7 +5378,7 @@
               </div>
             </div>
             <div class="db-toolbar" style="margin-top:12px;margin-bottom:0">
-              ${[["all","All members",state.players.length],["available","Available",counts.available],["injured","Injured",counts.injured],["no-reply","No reply",counts["no-reply"]],["consent","Consent pending",counts.consent]].map(([f,lbl,cnt])=>
+              ${[["all","All members",members.length],["available","Available",counts.available],["injured","Injured",counts.injured],["no-reply","No reply",counts["no-reply"]],["consent","Consent pending",counts.consent]].map(([f,lbl,cnt])=>
                 `<button class="filter-pill ${filter===f?"active":""}" type="button" onclick="setPlayerFilter('${f}')">${lbl} <strong>${cnt}</strong></button>`
               ).join("")}
             </div>
@@ -4654,7 +5391,7 @@
               <div class="srv-panel-body" style="padding-top:4px">
 
                 <!-- Role tabs + name field -->
-                <p class="muted" style="font-size:13px;margin-bottom:14px">Generate a personal invite link for each person. They click it, confirm their name and are straight into the app — no password needed.</p>
+                <p class="muted" style="font-size:13px;margin-bottom:14px">Generate a personal invite link. Players claim the link with email and password so they get a permanent account.</p>
 
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
                   ${[['player','🏉 Player'],['coach','🎯 Coach'],['admin','⚙️ Admin'],['medical','🏥 Medical']].map(([role,lbl],i) => `
@@ -4668,6 +5405,10 @@
                   <label style="flex:1;min-width:180px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
                     Full name
                     <input id="inv-name" placeholder="e.g. Thomas Dupont" style="padding:9px 11px">
+                  </label>
+                  <label style="flex:1;min-width:210px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
+                    Email
+                    <input id="inv-email" type="email" placeholder="player@example.com" style="padding:9px 11px">
                   </label>
                   <button id="inv-create-btn" class="btn primary" type="button" onclick="createInvite()"
                     style="white-space:nowrap;min-height:40px;padding:0 16px">
@@ -4699,6 +5440,18 @@
                 </details>
               </div>
             </details>
+          </div>
+
+          <!-- Pending account join requests -->
+          <div class="card" style="padding:14px 18px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px">
+              <div>
+                <h2 style="margin:0">Pending Requests</h2>
+                <p class="muted" style="margin-top:3px">Approve players who joined with team code and email account.</p>
+              </div>
+              <button class="btn" type="button" onclick="loadIdentityRequests()" style="font-size:12px">Refresh</button>
+            </div>
+            <div id="identity-requests-panel">${identityRequestsHtml()}</div>
           </div>
 
           <!-- Add player panel (toggled) -->
@@ -4803,8 +5556,9 @@
     function playerSelector() {
       const player = getPlayer();
       if (!isCoach()) return `<label>Player profile<input value="${player.name}" disabled></label>`;
+      const players = canonicalVisiblePlayers();
       return `<label>Player profile<select onchange="state.selectedPlayerId=this.value;saveState('Player profile saved');render();">
-        ${state.players.map(p => `<option value="${p.id}" ${p.id===state.selectedPlayerId?"selected":""}>${p.name}</option>`).join("")}
+        ${players.map(p => `<option value="${p.id}" ${p.id===state.selectedPlayerId?"selected":""}>${p.name}</option>`).join("")}
       </select></label>`;
     }
 
@@ -4930,18 +5684,8 @@
       });
       if (player.history[0] !== 'available') player.history.unshift('available');
       player.history = player.history.slice(0, 5);
-      // Also POST to server so coach sees it
-      navigator.serviceWorker?.ready.then(reg => reg.pushManager.getSubscription()).then(sub => {
-        if (!sub) return;
-        const endpoint = sub.endpoint;
-        ['tue','thu','game'].forEach(sessionId => {
-          fetch('/api/availability', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ endpoint, response: 'available', sessionId })
-          }).catch(() => {});
-        });
-      }).catch(() => {});
+      // Also POST to server so coach sees it; authenticated users do not need push enabled.
+      ['tue','thu','game'].forEach(sessionId => saveAvailabilityResponseToServer(sessionId, 'available'));
       saveState('All available set');
       render();
       showToast("✅ All set — see you this week!");
@@ -4955,18 +5699,8 @@
       player.history  = player.history.slice(0, 5);
       addMasterFeed(`${player.name} updated ${sessionTitle(sessionId)}`, statusLabel(status));
       upsertAvailabilityResponseMessage(player, sessionId, status);
-      // POST to server so coach sees it in real time
-      navigator.serviceWorker?.ready.then(reg => reg.pushManager.getSubscription()).then(sub => {
-        if (!sub) return;
-        // Injury remains a medical status in the app; push action responses
-        // intentionally use the availability values supported by the API.
-        if (status === 'injured') return;
-        fetch('/api/availability', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint: sub.endpoint, response: status, sessionId })
-        }).catch(() => {});
-      }).catch(() => {});
+      // POST to server so coach sees it in real time; authenticated users do not need push enabled.
+      saveAvailabilityResponseToServer(sessionId, status);
       saveState("Player availability saved");
       render();
       showToast("Availability saved ✓");
@@ -5070,6 +5804,9 @@
     let _chatStatePromise  = null;
     let _chatNewDmOpen     = false;
     let _chatNewDmQuery    = '';
+    // Guard: tracks which view's shell is currently in the DOM so repeated render() calls
+    // don't blow away the chat feed, lose scroll position, or restart the poll timer.
+    let _chatShellRendered = null; // 'coach' | 'player' | null
 
     function chatLoadStateModule() {
       if (!_chatStatePromise) {
@@ -5085,13 +5822,43 @@
       return mode === 'coach' && String(convId || '').startsWith('dm:');
     }
 
+    function chatResolvePlayerParticipantId(player) {
+      if (!player) return '';
+      if (_chatStateModule?.resolveMessagingParticipantId) {
+        return _chatStateModule.resolveMessagingParticipantId(player, { users: state.users, players: state.players });
+      }
+      return String(player.userId || player.id || '').trim();
+    }
+
+    function chatResolveDirectParticipantId(participantId) {
+      const id = String(participantId || '').trim();
+      if (!id) return '';
+      const player = canonicalVisiblePlayers().find(p =>
+        String(p.id || '') === id ||
+        String(p.userId || '') === id ||
+        String(chatResolvePlayerParticipantId(p)) === id
+      );
+      return player ? chatResolvePlayerParticipantId(player) : id;
+    }
+
+    async function chatResolveCoachDirectChatId(chatId) {
+      const id = String(chatId || '');
+      if (!id.startsWith('dm:')) return chatId;
+      await chatLoadStateModule();
+      const me = chatMe();
+      const participant = id.split(':').slice(1).find(part => String(part) !== String(me.id)) || '';
+      const resolvedParticipant = chatResolveDirectParticipantId(participant);
+      return resolvedParticipant ? dmConvId(me.id, resolvedParticipant) : chatId;
+    }
+
     function chatCoachDmPickerPlayers() {
       const me = chatMe();
+      const players = canonicalVisiblePlayers();
       if (_chatStateModule?.filterCoachDmPlayers) {
-        return _chatStateModule.filterCoachDmPlayers(state.players, _chatNewDmQuery, me.id);
+        return _chatStateModule.filterCoachDmPlayers(players, _chatNewDmQuery, me.id, { users: state.users, players });
       }
       const q = String(_chatNewDmQuery || '').trim().toLowerCase();
-      return (state.players || []).filter(player => {
+      return players.filter(player => {
         if (!player?.id || String(player.id) === me.id) return false;
         if (!q) return true;
         return [player.name, player.position, player.email]
@@ -5182,10 +5949,17 @@
 
     async function chatStartCoachDm(playerId) {
       if (!isCoach()) return;
-      const player = state.players.find(p => p.id === playerId);
+      const visiblePlayers = canonicalVisiblePlayers();
+      const player = visiblePlayers.find(p =>
+        String(p.id || '') === String(playerId) ||
+        String(p.userId || '') === String(playerId) ||
+        String(chatResolvePlayerParticipantId(p)) === String(playerId)
+      );
       if (!player) return showToast('Member not found');
       const me = chatMe();
-      const immediateConvId = dmConvId(me.id, playerId);
+      await chatLoadStateModule();
+      const participantId = chatResolvePlayerParticipantId(player);
+      const immediateConvId = dmConvId(me.id, participantId);
       _chatNewDmOpen = false;
       _chatNewDmQuery = '';
       chatRenderNewDmPicker();
@@ -5193,7 +5967,7 @@
       chatFocusComposerSoon();
       try {
         const { createCoachDmConversationRequestForPlayerId } = await chatLoadStateModule();
-        const request = createCoachDmConversationRequestForPlayerId(state.players, playerId, me.id);
+        const request = createCoachDmConversationRequestForPlayerId(visiblePlayers, player.id, me.id, { users: state.users, players: visiblePlayers });
         if (!request) return showToast('Could not open direct message');
         if (!_chatConversations.some(conv => conv.id === request.id)) {
           const res = await fetch('/api/chat', {
@@ -5353,12 +6127,15 @@
       const u = currentUser();
       const player = u?.role === 'player' ? getPlayer() : null;
       const canonicalPlayerId = canonicalPlayerIdForUser(u);
-      return { id: canonicalPlayerId || player?.id || u?.id || 'anon', name: u?.name || player?.name || 'Me', role: u?.role || 'player', userId: u?.id || 'anon' };
+      const resolvedPlayerId = _chatStateModule?.resolvePlayerPortalMessagingId
+        ? _chatStateModule.resolvePlayerPortalMessagingId(u, { players: state.players, users: state.users })
+        : null;
+      return { id: canonicalPlayerId || resolvedPlayerId || player?.id || u?.id || 'anon', name: u?.name || player?.name || 'Me', role: u?.role || 'player', userId: u?.id || 'anon' };
     }
 
     function isMsgMine(msg) {
       const me = chatMe();
-      return msg.senderId === me.id || msg.senderName === me.name;
+      return String(msg.senderId || '') === String(me.id || '') || String(msg.senderId || '') === String(me.userId || '');
     }
 
     function chatDirectParticipantId(contact, currentUserId) {
@@ -5374,7 +6151,8 @@
 
     function chatDedupeContacts(contacts, currentUserId) {
       if (_chatStateModule?.dedupeDirectConversations) {
-        return _chatStateModule.dedupeDirectConversations(contacts, currentUserId);
+        const players = canonicalVisiblePlayers();
+        return _chatStateModule.dedupeDirectConversations(contacts, currentUserId, { users: state.users, players });
       }
       const seen = new Set();
       return contacts.filter(contact => {
@@ -5391,24 +6169,26 @@
     function chatBuildContacts(mode) {
       const me = chatMe();
       const isCoachMode = mode === 'coach';
+      const members = canonicalVisiblePlayers();
       // Fixed group convs
       let contacts = [];
       if (isCoachMode) {
         contacts = [
-          { id: 'squad',    name: 'Squad',           icon: '🏉', sub: `${state.players.length} members`, type: 'GROUP', pinned: true },
+          { id: 'squad',    name: 'Squad',           icon: '🏉', sub: `${members.length} members`, type: 'GROUP', pinned: true },
           { id: 'coaching', name: 'Coaching Team',   icon: '📋', sub: 'Coaches only', type: 'GROUP', pinned: true },
           { id: 'announce', name: 'Announcements',   icon: '📢', sub: 'Broadcast channel', type: 'ANNOUNCEMENT', pinned: true },
         ];
         // Add 1-to-1 with each player
-        state.players.filter(p => p.id !== me.id).forEach(p => {
-          contacts.push({ id: dmConvId(me.id, p.id), name: p.name, sub: p.position || 'Player', type: 'DIRECT', photo: p.photo, playerId: p.id });
+        members.filter(p => p.id !== me.id).forEach(p => {
+          const participantId = chatResolvePlayerParticipantId(p);
+          contacts.push({ id: dmConvId(me.id, participantId), name: p.name, sub: p.position || 'Player', type: 'DIRECT', photo: p.photo, playerId: participantId, rosterPlayerId: p.id });
         });
       } else {
         // Player sees only team channels plus their own coach DM.
         const coachDm = playerCoachDmId();
         contacts = [
           { id: 'announce', name: 'Announcements',   icon: '📢', sub: 'From coach', type: 'ANNOUNCEMENT' },
-          { id: 'squad',    name: 'Squad',           icon: '🏉', sub: `${state.players.length} members`, type: 'GROUP' },
+          { id: 'squad',    name: 'Squad',           icon: '🏉', sub: `${members.length} members`, type: 'GROUP' },
           { id: coachDm, name: 'Coach', icon: '🎯', sub: 'Direct message', type: 'DIRECT' },
         ];
       }
@@ -5480,6 +6260,24 @@
 
     let _chatNavUnread = 0; // total unread across all conversations — drives nav badge
 
+    function chatUnreadTotal(conversations = _chatConversations) {
+      return (conversations || []).reduce((n, c) => n + Number(c?.unread || 0), 0);
+    }
+
+    function chatSetUnreadTotal(total) {
+      _chatNavUnread = Math.max(0, Number(total || 0));
+      updateNavBadge();
+    }
+
+    function chatClearConversationUnread(convId) {
+      const id = String(convId || '');
+      if (!id) return;
+      _chatConversations = (_chatConversations || []).map(c =>
+        String(c?.id || '') === id ? { ...c, unread: 0 } : c
+      );
+      chatSetUnreadTotal(chatUnreadTotal());
+    }
+
     async function chatFetchConversations() {
       try {
         const me = chatMe();
@@ -5495,11 +6293,7 @@
           }
           _chatConversations = conversations;
           // Update nav badge for the current user's unread total
-          const total = _chatConversations.reduce((n, c) => n + (c.unread || 0), 0);
-          if (total !== _chatNavUnread) {
-            _chatNavUnread = total;
-            updateNavBadge();
-          }
+          chatSetUnreadTotal(chatUnreadTotal());
         }
       } catch(e) { /* offline */ }
     }
@@ -5572,8 +6366,12 @@
       const text = ta?.value.trim();
       if (!text) return;
       const mode = state.activeView === 'coach' ? 'coach' : 'player';
-      const convId = chatGetConvId(mode);
+      let convId = chatGetConvId(mode);
       const me = chatMe();
+      if (chatIsCoachDirectConversation(convId, mode)) {
+        convId = await chatResolveCoachDirectChatId(convId);
+        state.selectedChatId = convId;
+      }
 
       // Optimistic UI — add immediately
       const optimistic = {
@@ -5734,13 +6532,22 @@
     // ── Mark conversation read ────────────────────────────
     function chatMarkRead(convId) {
       _chatLastPoll[convId + ':read'] = Date.now();
+      chatClearConversationUnread(convId);
+      const mode = state.activeView === 'coach' ? 'coach' : 'player';
+      chatRenderContactList(mode);
       const me = chatMe();
       fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ action:'read', convId, userId: me.id }) }).catch(()=>{});
+        body: JSON.stringify({ action:'read', convId, userId: me.id }) })
+        .then(() => chatFetchConversations())
+        .then(() => chatRenderContactList(mode))
+        .catch(()=>{});
     }
 
     // ── Select a conversation ────────────────────────────
     async function selectChat(chatId) {
+      if (state.activeView === 'coach' && String(chatId || '').startsWith('dm:')) {
+        chatId = await chatResolveCoachDirectChatId(chatId);
+      }
       if (currentUser()?.role === 'player' && !playerAllowedConversationIds().has(chatId)) {
         chatId = playerCoachDmId();
       }
@@ -5792,6 +6599,11 @@
     // ── Polling ──────────────────────────────────────────
     function chatStartPolling(convId) {
       chatStopPolling();
+      // Seed the poll cursor so the first tick only fetches NEW messages.
+      // renderCoachMessages / renderPlayerMessages already called chatFetchMessages(convId, 0)
+      // to load the full history; without this the first 2500ms tick re-fetches everything,
+      // triggers chatRenderMessages(), and causes a visible scroll jump.
+      if (!_chatLastPoll[convId]) _chatLastPoll[convId] = Date.now();
       _chatPollTimer = setInterval(async () => {
         const since = _chatLastPoll[convId] || 0;
         const msgs = await chatFetchMessages(convId, since);
@@ -5799,6 +6611,9 @@
           _chatLastPoll[convId] = Date.now();
           const mode = state.activeView === 'coach' ? 'coach' : 'player';
           chatRenderMessages(convId, mode);
+          const inMessages = (state.activeView === 'coach' && state.activeCoachSection === 'messages') ||
+            (state.activeView === 'player' && state.activePlayerSection === 'messages');
+          if (inMessages && state.selectedChatId === convId) chatMarkRead(convId);
           const feed = document.getElementById('chatFeed');
           if (feed) { const atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80; if (atBottom) chatScrollToBottom(); }
         }
@@ -5916,7 +6731,7 @@
           }).join('')}
         </div>` : '';
       return `<div class="chat-bubble-wrap ${side}">
-        ${(!mine && isGroup) ? `<span class="sender-name">${esc(m.senderName || 'Unknown')}</span>` : ''}
+        ${!mine ? `<span class="sender-name">${esc(m.senderName || 'Unknown')}</span>` : ''}
         <div class="chat-bubble" data-msgid="${m.id}">
           ${automated ? `<div class="automated-badge">🤖 Scheduled message</div>` : ''}
           ${replyHtml}
@@ -5947,7 +6762,7 @@
             // Canonical IDs are dm:sortedId1:sortedId2 — find the other participant
             const parts = convId.split(':').slice(1); // ['id1','id2']
             const otherId = parts.find(id => id !== me.id) || parts[0];
-            const p = state.players.find(pl => pl.id === otherId) || state.users.find(u => u.id === otherId);
+            const p = state.players.find(pl => pl.id === otherId || pl.userId === otherId) || state.users.find(u => u.id === otherId || u.playerId === otherId);
             if (!p) return false;
             return (m.from === me.name && m.to === p.name) || (m.from === p.name && m.to === me.name) ||
               (m.from === 'Coach' && m.to === me.name) || (m.from === me.name && m.to === 'Coach');
@@ -6025,44 +6840,89 @@
     function renderCoachMessages() {
       const el = document.getElementById('coach-messages');
       if (!el) return;
-      el.innerHTML = renderChatShell('coach');
-      chatRenderContactList('coach');
-      if (state.selectedChatId) {
-        chatRenderMessages(state.selectedChatId, 'coach');
-        chatScrollToBottom(true);
-        chatStartPolling(state.selectedChatId);
-      }
-      // Kick off async init
-      chatFetchConversations().then(() => chatRenderContactList('coach'));
-      if (state.selectedChatId === 'dm:coach-demo:inv-YxnjxnQa') {
-        chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'coach'));
-      } else if (state.selectedChatId && !_chatMessages[state.selectedChatId]) {
-        chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'coach'));
+      chatLoadStateModule().then(() => {
+        if (state.activeView === 'coach' && state.activeCoachSection === 'messages') {
+          chatRenderContactList('coach');
+        }
+      });
+      // Only build the full shell once per view activation. chatFeed is removed when the
+      // opposing shell is cleared in render(), so feedExists is false only on the first call
+      // after a view switch. Subsequent render() calls (e.g. saveState, player filter changes)
+      // skip the expensive innerHTML rebuild, preventing scroll jumps and poll restarts.
+      const feedExists = Boolean(document.getElementById('chatFeed'));
+      if (!feedExists) {
+        _chatShellRendered = 'coach';
+        el.innerHTML = renderChatShell('coach');
+        chatRenderContactList('coach');
+        if (state.selectedChatId) {
+          chatRenderMessages(state.selectedChatId, 'coach');
+          chatScrollToBottom(true);
+          if (state.activeCoachSection === 'messages') chatMarkRead(state.selectedChatId);
+          chatStartPolling(state.selectedChatId);
+        }
+        // Kick off async init
+        chatFetchConversations().then(() => chatRenderContactList('coach'));
+        if (state.selectedChatId === 'dm:coach-demo:inv-YxnjxnQa') {
+          chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'coach'));
+        } else if (state.selectedChatId && !_chatMessages[state.selectedChatId]) {
+          chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'coach'));
+        }
+      } else {
+        // Shell is already in the DOM: only refresh the sidebar (badge counts, last-message previews).
+        // Do NOT rebuild chatFeed — that would destroy scroll position and restart the poll timer.
+        chatRenderContactList('coach');
+        if (!_chatPollTimer && state.selectedChatId) chatStartPolling(state.selectedChatId);
+        if (state.activeCoachSection === 'messages' && state.selectedChatId) chatMarkRead(state.selectedChatId);
+        chatFetchConversations().then(() => chatRenderContactList('coach'));
       }
     }
 
     function renderPlayerMessages() {
       const el = document.getElementById('player-messages');
       if (!el) return;
+      // Sync canonical player identity once per session. When changed, update the DM conversation
+      // ID and refresh the sidebar in-place — do NOT call renderPlayerMessages() recursively,
+      // which would do a full DOM rebuild + forced scroll every time the player opens Messages.
       syncCurrentPlayerIdentityFromInvites().then(changed => {
-        if (changed && state.activeView === 'player' && state.activePlayerSection === 'messages') renderPlayerMessages();
-      });
-      canonicalizePlayerSelectedChat();
-      el.innerHTML = renderChatShell('player');
-      chatRenderContactList('player');
-      if (state.selectedChatId) {
-        chatRenderMessages(state.selectedChatId, 'player');
-        chatScrollToBottom(true);
-        chatStartPolling(state.selectedChatId);
-      }
-      // After Redis conversations load, re-render contact list (may add DMs from coach)
-      chatFetchConversations().then(() => {
-        chatRenderContactList('player');
-        // If we have a selected conv with no messages yet, fetch now
-        if (state.selectedChatId && !(_chatMessages[state.selectedChatId]?.length)) {
-          chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'player'));
+        if (changed && state.activeView === 'player' && state.activePlayerSection === 'messages') {
+          const newConvId = playerCoachDmId();
+          if (state.selectedChatId !== newConvId) {
+            state.selectedChatId = newConvId;
+            saveState('Player chat ID updated');
+          }
+          chatRenderContactList('player');
+          if (!_chatMessages[newConvId]?.length) {
+            chatFetchMessages(newConvId).then(() => chatRenderMessages(newConvId, 'player'));
+          }
         }
       });
+      canonicalizePlayerSelectedChat();
+      const feedExists = Boolean(document.getElementById('chatFeed'));
+      if (!feedExists) {
+        _chatShellRendered = 'player';
+        el.innerHTML = renderChatShell('player');
+        chatRenderContactList('player');
+        if (state.selectedChatId) {
+          chatRenderMessages(state.selectedChatId, 'player');
+          chatScrollToBottom(true);
+          if (state.activePlayerSection === 'messages') chatMarkRead(state.selectedChatId);
+          chatStartPolling(state.selectedChatId);
+        }
+        // After Redis conversations load, re-render contact list (may add DMs from coach)
+        chatFetchConversations().then(() => {
+          chatRenderContactList('player');
+          // If we have a selected conv with no messages yet, fetch now
+          if (state.selectedChatId && !(_chatMessages[state.selectedChatId]?.length)) {
+            chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'player'));
+          }
+        });
+      } else {
+        // Shell already in DOM: refresh the sidebar only, don't touch feed or scroll.
+        chatRenderContactList('player');
+        if (!_chatPollTimer && state.selectedChatId) chatStartPolling(state.selectedChatId);
+        if (state.activePlayerSection === 'messages' && state.selectedChatId) chatMarkRead(state.selectedChatId);
+        chatFetchConversations().then(() => chatRenderContactList('player'));
+      }
     }
 
     // Legacy stubs (keep backwards compat with other code that calls these)
@@ -6262,13 +7122,20 @@
       if (!inMessages) chatStopPolling();
       // Only render ONE chat shell at a time — both sections share IDs like
       // chatContactList, chatFeed, chatComposerWrap. Rendering both causes
-      // getElementById to return the coach's element even when player is active.
+      // getElementById to return the wrong element.
+      // IMPORTANT: clear the opposing shell BEFORE rendering the active one so that
+      // document.getElementById('chatFeed') correctly returns null on view switches.
+      // This lets renderCoachMessages / renderPlayerMessages detect a genuine first
+      // render (feedExists = false) and avoid spurious full rebuilds when render() is
+      // called repeatedly for unrelated state changes (player filter, nav badge, etc.).
       if (state.activeView === 'coach') {
+        const playerEl = document.getElementById('player-messages');
+        if (playerEl && playerEl.innerHTML) { playerEl.innerHTML = ''; _chatShellRendered = null; }
         renderCoachMessages();
-        document.getElementById('player-messages').innerHTML = '';
       } else {
+        const coachEl = document.getElementById('coach-messages');
+        if (coachEl && coachEl.innerHTML) { coachEl.innerHTML = ''; _chatShellRendered = null; }
         renderPlayerMessages();
-        document.getElementById('coach-messages').innerHTML = '';
       }
       renderTraining();
       renderMatchday();
@@ -6317,12 +7184,16 @@
           fetch('/api/availability?sessionId=thu').then(r => r.json()).catch(() => ({ responses: [] })),
           fetch('/api/availability?sessionId=game').then(r => r.json()).catch(() => ({ responses: [] })),
         ]);
-        // Build label (lowercased) → { tue, thu, game }
+        // Build permanent identity keys first, then legacy label keys.
         const byLabel = {};
-        const apply = (list, sid) => (list || []).forEach(({ label, response }) => {
-          const k = label.toLowerCase();
-          if (!byLabel[k]) byLabel[k] = {};
-          byLabel[k][sid] = response;
+        const apply = (list, sid) => (list || []).forEach(({ key, label, userId, playerId, response }) => {
+          const keys = [key, userId, playerId, label]
+            .filter(Boolean)
+            .map(value => String(value).toLowerCase());
+          [...new Set(keys)].forEach(k => {
+            if (!byLabel[k]) byLabel[k] = {};
+            byLabel[k][sid] = response;
+          });
         });
         apply(tueData.responses,  'tue');
         apply(thuData.responses,  'thu');
@@ -6332,9 +7203,11 @@
         let changed = false;
         state.players.forEach(p => {
           const nameLower   = p.name.toLowerCase();
+          const idLower     = String(p.id || '').toLowerCase();
+          const userIdLower = String(p.userId || '').toLowerCase();
           const firstName   = nameLower.split(' ')[0];
-          // Exact match first, then first-name fallback
-          let live = byLabel[nameLower];
+          // Permanent user id first, then legacy id/name fallback.
+          let live = byLabel[userIdLower] || byLabel[idLower] || byLabel[nameLower];
           if (!live) {
             const fallbackKey = Object.keys(byLabel).find(k => k.split(' ')[0] === firstName);
             if (fallbackKey) live = byLabel[fallbackKey];
@@ -6776,6 +7649,7 @@
     // ─── INVITE SYSTEM ───────────────────────────────────────────────────────
     let _inviteToken = null;
     let _inviteData  = null;
+    let _resetToken = null;
 
     async function checkInviteParam() {
       const params = new URLSearchParams(window.location.search);
@@ -6796,6 +7670,68 @@
         console.warn('[invite] Could not validate token:', e);
       }
       return false;
+    }
+
+    async function checkResetParam() {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('reset');
+      if (!token) return false;
+      _resetToken = token;
+      showPasswordResetModal();
+      return true;
+    }
+
+    function showPasswordResetModal() {
+      const el = document.createElement('div');
+      el.id = 'reset-modal';
+      el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(4px)';
+      el.innerHTML = `
+        <div style="background:#0f1724;border:1px solid rgba(16,185,129,0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
+          <div style="font-size:46px;margin-bottom:12px">🔐</div>
+          <h2 style="margin:0 0 6px;color:#e2e8f0;font-size:22px">Reset password</h2>
+          <p style="color:#64748b;font-size:14px;margin-bottom:22px">Create a new Coach's Eye password.</p>
+          <div style="text-align:left;margin-bottom:18px">
+            <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px">
+              New password
+              <input id="reset-password-input" type="password" placeholder="At least 8 characters"
+                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
+            </label>
+          </div>
+          <button class="btn primary" type="button" onclick="completePasswordReset()"
+            style="width:100%;min-height:46px;font-size:15px;font-weight:700;margin-bottom:10px">
+            Save new password
+          </button>
+          <button class="btn ghost" type="button" style="width:100%;font-size:13px"
+            onclick="document.getElementById('reset-modal')?.remove();window.history.replaceState({},'','/')">
+            Cancel
+          </button>
+        </div>`;
+      document.body.appendChild(el);
+    }
+
+    async function completePasswordReset() {
+      const password = document.getElementById('reset-password-input')?.value || '';
+      if (password.length < 8) return showToast('Password must be at least 8 characters');
+      const btn = document.querySelector('#reset-modal .btn.primary');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reset_password', token: _resetToken, password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not reset password');
+        document.getElementById('reset-modal')?.remove();
+        window.history.replaceState({}, '', '/');
+        _resetToken = null;
+        authTab = 'login';
+        renderNav();
+        showToast('Password updated. You can log in now.');
+      } catch(e) {
+        showToast(e.message || 'Could not reset password');
+        if (btn) { btn.disabled = false; btn.textContent = 'Save new password'; }
+      }
     }
 
     function showInviteModal(invite) {
@@ -6820,6 +7756,16 @@
               <input id="invite-name-input" value="${esc(invite.name)}"
                 style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
             </label>
+            <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px;margin-top:10px">
+              Email
+              <input id="invite-email-input" type="email" value="${esc(invite.email || '')}" placeholder="player@example.com"
+                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
+            </label>
+            <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px;margin-top:10px">
+              Create password
+              <input id="invite-password-input" type="password" placeholder="At least 8 characters"
+                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
+            </label>
           </div>
 
           <button class="btn primary" type="button" onclick="acceptInvite()"
@@ -6837,12 +7783,49 @@
     async function acceptInvite() {
       if (!_inviteData) return;
       const nameInput = document.getElementById('invite-name-input');
+      const emailInput = document.getElementById('invite-email-input');
+      const passwordInput = document.getElementById('invite-password-input');
       const name      = nameInput?.value.trim() || _inviteData.name;
+      const email     = emailInput?.value.trim() || _inviteData.email || '';
+      const password  = passwordInput?.value || '';
       const role      = _inviteData.role;
       if (!name) { showToast('Enter your name first'); return; }
+      if (role === 'player' && !email) { showToast('Enter your email'); return; }
+      if (role === 'player' && password.length < 8) { showToast('Password must be at least 8 characters'); return; }
 
       const btn = document.querySelector('#invite-modal .btn.primary');
       if (btn) { btn.disabled = true; btn.textContent = 'Joining…'; }
+
+      if (role === 'player') {
+        try {
+          const res = await fetch('/api/identity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'claim_invite', token: _inviteToken, name, email, password }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not claim invite');
+          applyApprovedIdentityLocally(data);
+          state.currentUserId = data.user.id;
+          state.activeView = 'player';
+          state.activePlayerSection = 'messages';
+          state.selectedPlayerId = data.user.id;
+          state.selectedMessagePlayerId = data.user.id;
+          state.selectedChatId = 'coach';
+          saveState('Invite claimed');
+          document.getElementById('invite-modal')?.remove();
+          window.history.replaceState({}, '', '/');
+          _inviteToken = null; _inviteData = null;
+          render();
+          refreshPushSubscriptionMetadata(name).catch(() => {});
+          showToast(`Welcome ${name.split(' ')[0]}! Your account is ready.`);
+          return;
+        } catch(e) {
+          showToast(e.message || 'Could not claim invite');
+          if (btn) { btn.disabled = false; btn.textContent = 'Join team →'; }
+          return;
+        }
+      }
 
       // Create member record for all roles (coaches appear in Members page too)
       const isStaffRole = ['coach','admin','medical'].includes(role);
@@ -6895,17 +7878,20 @@
     // ─── INVITE MANAGEMENT (coach side) ──────────────────────────────────────
     async function createInvite() {
       const nameEl   = document.getElementById('inv-name');
+      const emailEl  = document.getElementById('inv-email');
       const activeBtn = document.querySelector('.inv-role-btn.active');
       const name     = nameEl?.value.trim();
+      const email    = emailEl?.value.trim();
       const role     = activeBtn?.dataset.role || 'player';
       if (!name) { showToast('Enter the person\'s name first'); return; }
 
       const btn = document.getElementById('inv-create-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
       try {
+        await ensureServerSessionForCurrentUser();
         const res  = await fetch('/api/invite', {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ name, role }),
+          body: JSON.stringify({ name, role, email }),
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
@@ -6927,6 +7913,7 @@
             </div>`;
         }
         if (nameEl) nameEl.value = '';
+        if (emailEl) emailEl.value = '';
         loadInviteList();
       } catch(e) {
         showToast('Could not create invite — ' + e.message);
@@ -6945,8 +7932,10 @@
       if (!panel) return;
       panel.innerHTML = '<p class="muted" style="font-size:13px">Loading…</p>';
       try {
+        await ensureServerSessionForCurrentUser();
         const res  = await fetch('/api/invite');
         const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'Could not load invites');
         const list = data.invites || [];
 
         // Auto-sync accepted invites into state.players so the coach sees them in Members
@@ -7053,14 +8042,16 @@
     initServiceWorker();
     // Check for invite link AFTER render (so modal overlays on top)
     checkInviteParam();
+    checkResetParam();
 
     // ── Background unread poll ──────────────────────────────────────────────
-    // Fetch conversation counts every 30s when the app is visible.
+    // Fetch conversation counts frequently when the app is visible.
     // Updates the nav badge even when the user isn't on the Messages page.
     function bgPollUnread() {
       chatFetchConversations().catch(() => {});
     }
-    setInterval(() => { if (!document.hidden) bgPollUnread(); }, 30000);
+    setTimeout(bgPollUnread, 0);
+    setInterval(() => { if (!document.hidden) bgPollUnread(); }, 5000);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) bgPollUnread();
     });

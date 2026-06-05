@@ -17,22 +17,49 @@
 //   → revokes / removes the invite
 
 import { kvGet, kvSet } from './_kv.js';
+import { DEFAULT_TEAM } from './_identityStore.js';
+import { inviteEmail, sendTransactionalEmail } from './_email.js';
+import { auditLog, enforceRateLimit, requestIp } from './_security.js';
+import { assertSameTenant, requireTenantRole } from './_tenant.js';
+import { randomBytes } from 'node:crypto';
 
 const INVITES_KEY = 'ce:invites';
 const APP_URL     = process.env.APP_URL || 'https://boitsfort-coachseye-gpt.vercel.app';
+const INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
+
+function sendAuthError(res, error) {
+  const status = error?.status || 403;
+  return res.status(status).json({ ok: false, error: error?.message || 'Not authorized' });
+}
 
 // Valid roles — maps to what the joining user will see in the app
 const VALID_ROLES = ['player', 'coach', 'admin', 'medical'];
 
 function makeToken() {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  return Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return randomBytes(24).toString('base64url');
+}
+
+function inviteUrl(req, token) {
+  const host = req.headers?.['x-forwarded-host'] || req.headers?.host;
+  if (host) {
+    const proto = req.headers?.['x-forwarded-proto'] || 'https';
+    return `${proto}://${host}/?inv=${encodeURIComponent(token)}`;
+  }
+  return `${APP_URL}/?inv=${encodeURIComponent(token)}`;
+}
+
+function inviteExpired(invite = {}) {
+  return Boolean(invite.expiresAt && new Date(invite.expiresAt).getTime() <= Date.now());
+}
+
+function inviteTeamId(invite = {}) {
+  return String(invite.teamId || DEFAULT_TEAM.id);
 }
 
 export default async function handler(req, res) {
@@ -53,6 +80,9 @@ export default async function handler(req, res) {
       if (invite.status === 'revoked') {
         return res.status(410).json({ valid: false, error: 'This invite has been revoked' });
       }
+      if (inviteExpired(invite)) {
+        return res.status(410).json({ valid: false, error: 'This invite link has expired' });
+      }
       return res.status(200).json({
         valid:     true,
         token:     invite.token,
@@ -61,17 +91,33 @@ export default async function handler(req, res) {
         email:     invite.email || '',
         status:    invite.status,
         createdAt: invite.createdAt,
+        expiresAt: invite.expiresAt || null,
       });
     }
 
     // List all invites
+    let session;
+    try {
+      session = await requireTenantRole(req, ['coach', 'admin']);
+      if (req.query?.teamId) assertSameTenant(session, req.query.teamId);
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
     const invites = (await kvGet(INVITES_KEY)) || [];
-    return res.status(200).json({ invites });
+    return res.status(200).json({ invites: invites.filter(invite => inviteTeamId(invite) === session.teamId) });
   }
 
   // ── POST: create a new invite ──────────────────────────────────────────────
   if (req.method === 'POST') {
-    const { name, role, email } = req.body || {};
+    let session;
+    try {
+      session = await requireTenantRole(req, ['coach', 'admin']);
+      if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
+      await enforceRateLimit('invite_create', `${session.user.id}:${requestIp(req)}`, { limit: 20, windowMs: 60 * 60 * 1000 });
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
+    const { name, role, email, sendEmail = true } = req.body || {};
     if (!name?.trim()) {
       return res.status(400).json({ error: 'name is required' });
     }
@@ -87,7 +133,10 @@ export default async function handler(req, res) {
       role:      normRole,
       email:     email?.trim() || '',
       status:    'pending',
+      teamId:    session.teamId,
       createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
+      createdBy: session.user.id,
       acceptedAt: null,
     };
 
@@ -97,20 +146,48 @@ export default async function handler(req, res) {
     const trimmed = invites.slice(0, 200);
     await kvSet(INVITES_KEY, trimmed);
 
-    const url = `${APP_URL}/?inv=${token}`;
+    const url = inviteUrl(req, token);
+    let emailDelivery = { ok: true, sent: false, skipped: true, reason: email ? 'email_not_requested' : 'missing_recipient' };
+    if (sendEmail !== false && email?.trim()) {
+      const message = inviteEmail({ name: invite.name, teamName: 'Boitsfort RFC', url });
+      emailDelivery = await sendTransactionalEmail({ to: invite.email, ...message });
+      invite.emailDelivery = emailDelivery;
+      if (emailDelivery.sent) invite.emailSentAt = new Date().toISOString();
+      await kvSet(INVITES_KEY, trimmed);
+    }
     console.log(`[invite] Created ${normRole} invite for "${name.trim()}" — ${token}`);
+    await auditLog('invite_created', {
+      createdBy: session.user.id,
+      role: normRole,
+      email: invite.email || '',
+      name: invite.name,
+      expiresAt: invite.expiresAt,
+      emailSent: Boolean(emailDelivery.sent),
+      ip: requestIp(req),
+    });
 
-    return res.status(201).json({ ok: true, token, url, invite });
+    return res.status(201).json({ ok: true, token, url, invite, emailDelivery });
   }
 
   // ── PATCH: mark invite as accepted ────────────────────────────────────────
   if (req.method === 'PATCH') {
+    let session;
+    try {
+      session = await requireTenantRole(req, ['coach', 'admin']);
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
     const { token } = req.body || {};
     if (!token) return res.status(400).json({ error: 'token required' });
 
     const invites = (await kvGet(INVITES_KEY)) || [];
     const idx     = invites.findIndex(i => i.token === token);
     if (idx < 0) return res.status(404).json({ error: 'Invite not found' });
+    try {
+      assertSameTenant(session, inviteTeamId(invites[idx]));
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
 
     invites[idx].status     = 'accepted';
     invites[idx].acceptedAt = new Date().toISOString();
@@ -122,15 +199,28 @@ export default async function handler(req, res) {
 
   // ── DELETE: revoke an invite ───────────────────────────────────────────────
   if (req.method === 'DELETE') {
+    let session;
+    try {
+      session = await requireTenantRole(req, ['coach', 'admin']);
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
     const { token } = req.body || {};
     if (!token) return res.status(400).json({ error: 'token required' });
 
     const invites = (await kvGet(INVITES_KEY)) || [];
     const idx     = invites.findIndex(i => i.token === token);
     if (idx < 0) return res.status(404).json({ error: 'Invite not found' });
+    try {
+      assertSameTenant(session, inviteTeamId(invites[idx]));
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
 
     // Soft-revoke (keep record for audit, just change status)
     invites[idx].status = 'revoked';
+    invites[idx].revokedAt = new Date().toISOString();
+    invites[idx].revokedBy = session.user.id;
     await kvSet(INVITES_KEY, invites);
 
     console.log(`[invite] Revoked: ${invites[idx].name} (${invites[idx].role})`);

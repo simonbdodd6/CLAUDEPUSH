@@ -3,11 +3,41 @@ import { load } from './_lib.js';
 import { loadAvailability, saveAvailability } from './_availabilityStore.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
+import { resolveSessionFromRequest } from './_identityStore.js';
 
 const RESPONSES = new Set(['available', 'unavailable', 'maybe']);
 
 function validSessionId(sessionId) {
   return /^[a-z0-9_-]{1,80}$/i.test(String(sessionId || ''));
+}
+
+function availabilityIdentityFromSession(sessionContext = {}) {
+  const user = sessionContext?.user || {};
+  const profile = sessionContext?.playerProfile || {};
+  const userId = user.id || '';
+  if (!userId) return null;
+  return {
+    key: userId,
+    userId,
+    playerId: profile.userId || userId,
+    legacyPlayerId: profile.legacyPlayerId || '',
+    label: profile.displayName || user.displayName ||
+      [user.firstName, user.lastName].filter(Boolean).join(' ') ||
+      user.name || user.email || userId,
+  };
+}
+
+function availabilityIdentityFromSubscription(subscription = {}) {
+  const userId = subscription.userId || '';
+  const playerId = subscription.playerId || userId || '';
+  const label = subscription.label || 'Player';
+  return {
+    key: userId || playerId || label,
+    userId,
+    playerId,
+    legacyPlayerId: subscription.legacyPlayerId || '',
+    label,
+  };
 }
 
 export default async function handler(req, res) {
@@ -19,8 +49,11 @@ export default async function handler(req, res) {
     const sessionId = req.query?.sessionId || 'game';
     if (!validSessionId(sessionId)) return res.status(400).json({ error: 'Invalid sessionId' });
     const responses = await loadAvailability(sessionId);
-    const list = Object.entries(responses).map(([label, value]) => ({
-      label,
+    const list = Object.entries(responses).map(([key, value]) => ({
+      key,
+      label: typeof value === 'string' ? key : value?.label || key,
+      userId: typeof value === 'string' ? '' : value?.userId || '',
+      playerId: typeof value === 'string' ? '' : value?.playerId || '',
       response: typeof value === 'string' ? value : value?.response,
       respondedAt: typeof value === 'string' ? null : value?.respondedAt,
     }));
@@ -28,20 +61,33 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
+    const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
     const { endpoint, response, sessionId } = req.body || {};
-    if (!endpoint || !validSessionId(sessionId) || !RESPONSES.has(response)) {
-      return res.status(400).json({ error: 'endpoint, valid sessionId and response (available, unavailable or maybe) are required' });
+    if (!validSessionId(sessionId) || !RESPONSES.has(response)) {
+      return res.status(400).json({ error: 'valid sessionId and response (available, unavailable or maybe) are required' });
     }
 
-    // The endpoint-to-player lookup prevents a device inventing replies for
-    // another player name. Real authenticated accounts can be added later.
-    const subscription = (await load()).find(item => item.subscription?.endpoint === endpoint);
-    if (!subscription) return res.status(404).json({ error: 'Subscription not registered' });
+    let identity = availabilityIdentityFromSession(sessionContext);
+    if (!identity) {
+      if (!endpoint) return res.status(400).json({ error: 'endpoint is required without an authenticated session' });
+      // The endpoint-to-player lookup prevents a device inventing replies for
+      // another player name. Authenticated accounts now use their permanent userId.
+      const subscription = (await load()).find(item => item.subscription?.endpoint === endpoint);
+      if (!subscription) return res.status(404).json({ error: 'Subscription not registered' });
+      identity = availabilityIdentityFromSubscription(subscription);
+    }
 
     const responses = await loadAvailability(sessionId);
-    responses[subscription.label] = { response, respondedAt: new Date().toISOString() };
+    responses[identity.key] = {
+      response,
+      respondedAt: new Date().toISOString(),
+      label: identity.label,
+      userId: identity.userId,
+      playerId: identity.playerId,
+      legacyPlayerId: identity.legacyPlayerId,
+    };
     await saveAvailability(sessionId, responses);
-    return res.status(200).json({ ok: true, label: subscription.label, response, sessionId });
+    return res.status(200).json({ ok: true, label: identity.label, userId: identity.userId, playerId: identity.playerId, response, sessionId });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });

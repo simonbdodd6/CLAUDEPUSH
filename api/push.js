@@ -32,23 +32,29 @@ export default async function handler(req, res) {
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
   if (!configurePush()) return res.status(500).json({ error: 'VAPID keys not configured' });
 
-  const { title, body, from, tag, type = 'message', sessionId = 'game', targetLabel, audience = 'all' } = req.body || {};
+  const { title, body, from, tag, type = 'message', sessionId = 'game', targetLabel, targetUserId, targetPlayerId, audience = 'all' } = req.body || {};
   if (!String(body || '').trim()) return res.status(400).json({ error: 'Message body required' });
   if (!['all', 'no-reply'].includes(audience)) return res.status(400).json({ error: 'audience must be all or no-reply' });
 
   const allSubscriptions = await load();
   // Case-insensitive label match so "Nick Player" finds "nick player" sub
   const targetLower = targetLabel ? targetLabel.toLowerCase().trim() : null;
-  let subscriptions = targetLower
-    ? allSubscriptions.filter(item => (item.label || '').toLowerCase().trim() === targetLower)
+  const targetId = String(targetUserId || targetPlayerId || '').trim();
+  let subscriptions = targetLower || targetId
+    ? allSubscriptions.filter(item => {
+      if (targetId && [item.userId, item.playerId, item.legacyPlayerId].some(value => String(value || '') === targetId)) return true;
+      return targetLower && (item.label || '').toLowerCase().trim() === targetLower;
+    })
     : allSubscriptions;
   if (audience === 'no-reply') {
     const responded = await recentResponders(7);
-    subscriptions = subscriptions.filter(item => !responded.has(item.label));
+    subscriptions = subscriptions.filter(item =>
+      ![item.label, item.userId, item.playerId, item.legacyPlayerId].some(value => value && responded.has(value))
+    );
   }
 
   if (!subscriptions.length) {
-    const allLabels = allSubscriptions.map(s => s.label);
+    const allLabels = allSubscriptions.map(s => s.label || s.userId || s.playerId);
     return res.status(200).json({ ok: true, sent: 0, failed: 0, total: 0,
       note: targetLabel
         ? `No subscription found for "${targetLabel}". Subscribed players: ${allLabels.join(', ') || 'none'}`
@@ -96,5 +102,5 @@ export default async function handler(req, res) {
     target: targetLabel || 'all',
   });
   await kvLtrim(key('message_log'), 500);
-  return res.status(200).json({ ok: true, sent, failed, total: subscriptions.length, target: targetLabel || 'all' });
+  return res.status(200).json({ ok: true, sent, failed, total: subscriptions.length, target: targetUserId || targetPlayerId || targetLabel || 'all' });
 }

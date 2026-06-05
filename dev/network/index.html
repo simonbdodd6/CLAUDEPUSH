@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Mission Control</title>
+    <link rel="stylesheet" href="/ai-mission-control/styles.css">
+  </head>
+  <body>
+    <nav class="mission-nav" aria-label="Developer navigation">
+      <a href="/">🏉 Coach's Eye</a>
+      <a href="/">🏠 Home</a>
+    </nav>
+    <main class="mission-shell">
+      <section class="topbar">
+        <div>
+          <span class="eyebrow">Standalone AI Operations Center</span>
+          <h1>AI Mission Control</h1>
+        </div>
+        <div class="telemetry">
+          <span><b id="nodeCount">0</b> entities</span>
+          <span><b id="edgeCount">0</b> links</span>
+          <span><b id="activityCount">0</b> live signals</span>
+        </div>
+      </section>
+
+      <section class="control-panel">
+        <div class="search-wrap">
+          <input id="searchInput" type="search" placeholder="Search commit, file, test, deployment, task..." autocomplete="off">
+          <div id="searchResults" class="search-results"></div>
+        </div>
+        <div class="filters" id="filters"></div>
+        <div class="status-strip">
+          <span class="pulse-dot"></span>
+          Neural router online
+        </div>
+      </section>
+
+      <section class="viewport">
+        <canvas id="networkCanvas"></canvas>
+        <div class="scanline"></div>
+        <aside id="infoCard" class="info-card">
+          <span class="eyebrow">Node telemetry</span>
+          <h2>Hover the graph</h2>
+          <p>Connected systems will highlight as the AI network routes signals.</p>
+        </aside>
+        <aside class="activity-log">
+          <div class="activity-head">
+            <span class="pulse-dot"></span>
+            <strong>Live Agent Activity</strong>
+          </div>
+          <div id="activityLog" class="activity-items"></div>
+        </aside>
+        <div class="hint">Drag to pan · Scroll to zoom · Hover to inspect</div>
+      </section>
+    </main>
+    <script type="module" src="/ai-mission-control/app.js"></script>
+  </body>
+</html>

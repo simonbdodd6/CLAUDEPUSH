@@ -27,6 +27,9 @@ export async function recentResponders(withinDays = 7) {
       // seven days, so they must not suppress a current chase-up reminder.
       if (value?.respondedAt && new Date(value.respondedAt).getTime() >= cutoff) {
         labels.add(label);
+        if (value.label) labels.add(value.label);
+        if (value.userId) labels.add(value.userId);
+        if (value.playerId) labels.add(value.playerId);
       }
     });
   });
