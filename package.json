@@ -9,6 +9,8 @@
     "qa:headed": "node qa/run-qa.js --headed",
     "qa:e2e:headed": "node qa/run-qa.js --headed",
     "qa:smoke": "node qa/run-qa.js --smoke",
+    "qa:login-members": "node qa/run-qa.js --login-members",
+    "qa:phase5-invite": "node qa/run-qa.js --phase5-invite",
     "qa:report": "node qa/report.js"
   },
   "dependencies": {

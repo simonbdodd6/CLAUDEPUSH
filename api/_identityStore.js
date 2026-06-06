@@ -334,7 +334,13 @@ async function saveInvites(invites) {
   await kvSet(INVITES_KEY, Array.isArray(invites) ? invites : []);
 }
 
+// Run the legacy compatibility cleanup at most once per Lambda instance lifetime.
+// The cleanup is idempotent — after it runs once and finds nothing to change, every
+// subsequent call would do 3 Redis reads for no benefit. Skip them.
+let _legacyCompatibilityChecked = false;
+
 async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
+  if (_legacyCompatibilityChecked) return;
   if (teamId !== DEFAULT_TEAM.id) return;
   let [users, members, profiles] = await Promise.all([
     loadUsers(),
@@ -446,6 +452,7 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
     membersChanged ? saveTeamMembers(members) : Promise.resolve(),
     profilesChanged ? savePlayerProfiles(profiles) : Promise.resolve(),
   ]);
+  _legacyCompatibilityChecked = true;
 }
 
 export function hasRole(sessionContext, roles = []) {
@@ -933,26 +940,43 @@ export async function createSession({ userId, teamId = DEFAULT_TEAM.id, role = '
   return { token, expiresAt: session.expiresAt, userId, teamId, role };
 }
 
+// In-process session cache — avoids 4 Redis reads per request for warm Lambda instances.
+// TTL is intentionally short (30s) so logout/role-changes take effect quickly.
+const _sessionCache = new Map(); // hashed token → { value, ts }
+const _SESSION_CACHE_TTL_MS = 30_000;
+
 export async function resolveSession(token = '') {
   const hashed = hashToken(token);
+  const cached = _sessionCache.get(hashed);
+  if (cached && (Date.now() - cached.ts) < _SESSION_CACHE_TTL_MS) {
+    return cached.value;
+  }
   const sessions = await loadSessions();
   const session = sessions.find(item => item.tokenHash === hashed);
-  if (!session) return null;
+  if (!session) {
+    _sessionCache.delete(hashed);
+    return null;
+  }
   const [users, members, profiles] = await Promise.all([
     loadUsers(),
     loadTeamMembers(),
     loadPlayerProfiles(),
   ]);
   const user = users.find(item => item.id === session.userId);
-  if (!user) return null;
+  if (!user) {
+    _sessionCache.delete(hashed);
+    return null;
+  }
   const member = members.find(item => item.teamId === session.teamId && item.userId === session.userId && item.status === 'active') || null;
   const profile = profiles.find(item => item.teamId === session.teamId && item.userId === session.userId) || null;
-  return {
+  const result = {
     session,
     user: publicUserWithRole(user, member || session),
     teamMember: member,
     playerProfile: profile,
   };
+  _sessionCache.set(hashed, { value: result, ts: Date.now() });
+  return result;
 }
 
 export async function resolveSessionFromRequest(req) {
@@ -963,6 +987,7 @@ export async function resolveSessionFromRequest(req) {
 
 export async function destroySession(token = '') {
   const hashed = hashToken(token);
+  _sessionCache.delete(hashed); // ensure logout is immediate even within TTL window
   const sessions = await loadSessions();
   await saveSessions(sessions.filter(item => item.tokenHash !== hashed));
 }

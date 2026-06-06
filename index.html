@@ -8164,7 +8164,7 @@
       chatFetchConversations().catch(() => {});
     }
     setTimeout(bgPollUnread, 0);
-    setInterval(() => { if (!document.hidden) bgPollUnread(); }, 5000);
+    setInterval(() => { if (!document.hidden) bgPollUnread(); }, 30000);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) bgPollUnread();
     });

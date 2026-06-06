@@ -187,10 +187,13 @@ async function handleGet(req, res) {
       // Unread: messages after this user's last read timestamp
       const readKey = key(`chat:read:${c.id}:${userId}`);
       const lastRead = (await kvGet(readKey)) || 0;
-      // Count unread from the retained message window so refresh/login badge
-      // state remains consistent even after long gaps between visits.
-      const recent = await kvLrange(MSGS_KEY(c.id), 0, 499);
-      const unread = unreadCountForUser(recent, userId, lastRead);
+      // Only scan the full message window when the last message is newer than the
+      // read cursor. When everything is read, skip the expensive 500-item load.
+      let unread = 0;
+      if (last && last.ts > lastRead) {
+        const recent = await kvLrange(MSGS_KEY(c.id), 0, 499);
+        unread = unreadCountForUser(recent, userId, lastRead);
+      }
       return { ...c, lastMessage: last, unread, lastActivity: last?.ts || c.createdAt };
     }));
     // Sort: pinned first, then by lastActivity

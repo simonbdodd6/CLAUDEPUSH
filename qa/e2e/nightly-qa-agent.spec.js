@@ -83,7 +83,7 @@ async function loginAsCoach(page) {
   await page.locator('#identityLoginEmail').fill(config.coachEmail);
   await page.locator('#identityLoginPassword').fill(config.coachPassword);
   await page.locator('#identityLoginBtn').click();
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await expect(page.getByRole('button', { name: 'Members' })).toBeVisible();
 
   const coachVisible = await page.getByRole('button', { name: 'Members' }).isVisible().catch(() => false);
   if (coachVisible) return 'Logged in with identity email/password.';

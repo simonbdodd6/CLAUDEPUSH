@@ -4,9 +4,19 @@ import path from 'node:path';
 
 const headed = process.argv.includes('--headed');
 const smoke = process.argv.includes('--smoke');
+const loginMembers = process.argv.includes('--login-members');
+const phase5Invite = process.argv.includes('--phase5-invite');
 const args = ['playwright', 'test', '--config=playwright.config.js'];
 if (headed) args.push('--headed');
-args.push(smoke ? 'qa/e2e/browser-smoke.spec.js' : 'qa/e2e/nightly-qa-agent.spec.js');
+args.push(
+  smoke
+    ? 'qa/e2e/browser-smoke.spec.js'
+    : loginMembers
+      ? 'qa/e2e/coach-login-members.spec.js'
+      : phase5Invite
+        ? 'qa/e2e/invite-flow.spec.js'
+        : 'qa/e2e/nightly-qa-agent.spec.js'
+);
 
 const resultPath = path.join(process.cwd(), 'qa/results/qa-run.json');
 const smokeResultPath = path.join(process.cwd(), 'qa/results/browser-smoke.json');
