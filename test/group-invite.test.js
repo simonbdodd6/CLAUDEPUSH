@@ -732,3 +732,218 @@ test('individual invite still works after group invite feature (regression)', as
   assert.equal(validated.payload.type, 'individual');
   assert.equal(validated.payload.name, 'Individual Player');
 });
+
+// ─── New tests: security fix + UI contract ────────────────────────────────────
+
+test('POST /api/invite with type group creates correct invite shape', async () => {
+  store.clear(); lists.clear();
+  const coach = await seedCoachSession();
+
+  const res = await callApi(inviteHandler, 'POST', {
+    headers: { ...coach.headers, host: 'test.example.com', 'x-forwarded-proto': 'https' },
+    body: { type: 'group', role: 'player', sendEmail: false },
+  });
+
+  assert.equal(res.statusCode, 201, `expected 201, got ${JSON.stringify(res.payload)}`);
+  assert.equal(res.payload.invite.type, 'group');
+  assert.equal(res.payload.invite.name, '');
+  assert.equal(res.payload.invite.role, 'player');
+  assert.equal(res.payload.invite.status, 'active');
+  assert.equal(res.payload.invite.expiresAt, null);
+  assert.equal(res.payload.invite.usageCount, 0);
+  assert.ok(res.payload.url.includes('?inv='), 'URL must contain invite token');
+});
+
+test('GET /api/invite?token returns type and usageCount for group invite', async () => {
+  store.clear(); lists.clear();
+  const coach = await seedCoachSession();
+
+  const created = await callApi(inviteHandler, 'POST', {
+    headers: { ...coach.headers, host: 'test.example.com', 'x-forwarded-proto': 'https' },
+    body: { type: 'group', role: 'player', sendEmail: false },
+  });
+  const token = created.payload.token;
+
+  const validated = await callApi(inviteHandler, 'GET', { query: { token } });
+  assert.equal(validated.statusCode, 200);
+  assert.equal(validated.payload.valid, true);
+  assert.equal(validated.payload.type, 'group');
+  assert.equal(validated.payload.name, '');
+  assert.equal(validated.payload.role, 'player');
+  assert.equal(validated.payload.usageCount, 0);
+});
+
+test('security: coach email via group invite returns 409 WITHOUT overwriting password', async () => {
+  store.clear(); lists.clear();
+
+  // Seed coach with known password
+  const users = [{ id: 'coach-demo', email: 'coach@example.com',
+    firstName: 'Simon', lastName: 'Coach', displayName: 'Simon Coach',
+    authProvider: 'legacy-password', passwordSet: true,
+    // scrypt hash for 'coachpass1' (stored by hashPassword) — we just want to verify
+    // the hash is NOT replaced, so we store a sentinel string
+    passwordAlgo: 'scrypt', passwordSalt: 'sentinel-salt', passwordHash: 'sentinel-hash',
+    createdAt: new Date().toISOString(), lastLoginAt: null }];
+  const members = [{ id: 'tm-coach', teamId: 'boitsfort-rfc', userId: 'coach-demo',
+    role: 'coach', status: 'active', joinedAt: new Date().toISOString(),
+    approvedAt: new Date().toISOString(), approvedBy: 'legacy-migration',
+    rejectedAt: null, rejectedBy: null }];
+  store.set('app:identity:users', JSON.stringify(users));
+  store.set('app:identity:team_members', JSON.stringify(members));
+  store.set('ce:invites', JSON.stringify([
+    { token: 'SecurityToken0001', type: 'group', name: '', role: 'player',
+      teamId: 'boitsfort-rfc', status: 'active',
+      createdAt: new Date().toISOString(), expiresAt: null, usageCount: 0 },
+  ]));
+
+  // Attacker submits group invite with coach's email
+  await assert.rejects(
+    () => joinViaGroupInvite({
+      token: 'SecurityToken0001',
+      firstName: 'Attacker',
+      lastName: 'X',
+      email: 'coach@example.com',
+      password: 'attackerpassword123',
+    }),
+    (err) => { assert.equal(err.status, 409, `expected 409 got ${err.status}: ${err.message}`); return true; }
+  );
+
+  // Verify coach's password hash was NOT changed
+  const storedUsers = JSON.parse(store.get('app:identity:users'));
+  const coachUser = storedUsers.find(u => u.id === 'coach-demo');
+  assert.equal(coachUser.passwordHash, 'sentinel-hash', 'coach password hash must be unchanged');
+  assert.equal(coachUser.passwordSalt, 'sentinel-salt', 'coach password salt must be unchanged');
+});
+
+test('security: new player email (no team membership) can still register', async () => {
+  store.clear(); lists.clear();
+  store.set('ce:invites', JSON.stringify([
+    { token: 'SecurityToken0002', type: 'group', name: '', role: 'player',
+      teamId: 'boitsfort-rfc', status: 'active',
+      createdAt: new Date().toISOString(), expiresAt: null, usageCount: 0 },
+  ]));
+
+  const result = await joinViaGroupInvite({
+    token: 'SecurityToken0002',
+    firstName: 'Valid',
+    lastName: 'Player',
+    email: 'valid.newplayer@example.com',
+    password: 'validpassword123',
+  });
+
+  assert.ok(result.user.id, 'user should be created');
+  assert.equal(result.teamMember.status, 'pending');
+});
+
+test('security: player with pending status can re-register (password update allowed)', async () => {
+  store.clear(); lists.clear();
+  store.set('ce:invites', JSON.stringify([
+    { token: 'SecurityToken0003', type: 'group', name: '', role: 'player',
+      teamId: 'boitsfort-rfc', status: 'active',
+      createdAt: new Date().toISOString(), expiresAt: null, usageCount: 0 },
+  ]));
+
+  // First registration
+  await joinViaGroupInvite({
+    token: 'SecurityToken0003',
+    firstName: 'Pending',
+    lastName: 'Player',
+    email: 'pending.reregister@example.com',
+    password: 'firstpassword1',
+  });
+
+  // Re-registration while still pending — should succeed (pending members can re-register)
+  const result = await joinViaGroupInvite({
+    token: 'SecurityToken0003',
+    firstName: 'Pending',
+    lastName: 'Player',
+    email: 'pending.reregister@example.com',
+    password: 'newpassword123',
+  });
+
+  assert.equal(result.teamMember.status, 'pending', 'still pending after re-registration');
+});
+
+test('full end-to-end: group invite → register → approve → login → DM', async () => {
+  store.clear(); lists.clear();
+  const coach = await seedCoachSession();
+
+  // 1. Coach creates group invite via API
+  const inviteRes = await callApi(inviteHandler, 'POST', {
+    headers: { ...coach.headers, host: 'test.example.com', 'x-forwarded-proto': 'https' },
+    body: { type: 'group', role: 'player', sendEmail: false },
+  });
+  assert.equal(inviteRes.statusCode, 201);
+  const token = inviteRes.payload.token;
+
+  // 2. Player validates token (simulates opening the link)
+  const tokenCheck = await callApi(inviteHandler, 'GET', { query: { token } });
+  assert.equal(tokenCheck.payload.valid, true);
+  assert.equal(tokenCheck.payload.type, 'group');
+
+  // 3. Player registers
+  const coachSession = await seedCoachSession();
+  const regRes = await callApi(identityHandler, 'POST', {
+    headers: {},
+    body: { action: 'join_group_invite', token, firstName: 'E2E', lastName: 'Player', email: 'e2e.player@example.com', password: 'e2epassword1' },
+  });
+  assert.equal(regRes.statusCode, 201, `registration failed: ${JSON.stringify(regRes.payload)}`);
+  assert.equal(regRes.payload.teamMember.status, 'pending');
+  assert.equal(regRes.payload.ok, true);
+  // No session returned for pending player
+  assert.ok(!regRes.headers['set-cookie'], 'no session cookie for pending player');
+
+  const memberId = regRes.payload.teamMember.id;
+
+  // 4. Pending player cannot log in
+  await assert.rejects(
+    () => loginUser({ email: 'e2e.player@example.com', password: 'e2epassword1', teamId: 'boitsfort-rfc' }),
+    (err) => { assert.ok(err.status >= 400); return true; }
+  );
+
+  // 5. Coach approves
+  const approvalRes = await callApi(identityHandler, 'POST', {
+    headers: coach.headers,
+    body: { action: 'approve', memberId },
+  });
+  assert.equal(approvalRes.statusCode, 200, `approval failed: ${JSON.stringify(approvalRes.payload)}`);
+  assert.equal(approvalRes.payload.teamMember.status, 'active');
+  assert.ok(approvalRes.payload.playerProfile, 'player profile created on approval');
+
+  // 6. Approved player can log in
+  const loginResult = await loginUser({ email: 'e2e.player@example.com', password: 'e2epassword1', teamId: 'boitsfort-rfc' });
+  assert.ok(loginResult.session?.token, 'approved player must get a session');
+  assert.equal(loginResult.user.role, 'player');
+  assert.equal(loginResult.teamMember.status, 'active');
+
+  const playerHeaders = { cookie: `${SESSION_COOKIE}=${encodeURIComponent(loginResult.session.token)}` };
+  const legacyId = approvalRes.payload.playerProfile.legacyPlayerId;
+  const convId = dmConvId('coach-demo', legacyId);
+
+  // 7. Coach creates DM and sends first message
+  const createRes = await callChat('POST', '/api/chat', {
+    action: 'create_conv', id: convId, name: 'E2E Player',
+    type: 'DIRECT', participants: ['coach-demo', legacyId],
+  }, coach.headers);
+  assert.equal(createRes.statusCode, 200, `create_conv failed: ${JSON.stringify(createRes.payload)}`);
+
+  const coachMsgRes = await callChat('POST', '/api/chat', {
+    action: 'send', convId,
+    senderId: 'coach-demo', senderName: 'Simon Coach', senderRole: 'coach',
+    text: 'Welcome to the squad, E2E Player!',
+  }, coach.headers);
+  assert.equal(coachMsgRes.statusCode, 200);
+
+  // 8. Player replies
+  const playerMsgRes = await callChat('POST', '/api/chat', {
+    action: 'send', convId,
+    senderId: legacyId, senderName: 'E2E Player', senderRole: 'player',
+    text: 'Thanks coach!',
+  }, playerHeaders);
+  assert.equal(playerMsgRes.statusCode, 200, `player reply failed: ${JSON.stringify(playerMsgRes.payload)}`);
+
+  // 9. Both messages visible
+  const msgsRes = await callChat('GET', `/api/chat?action=messages&convId=${encodeURIComponent(convId)}&userId=coach-demo`, null, coach.headers);
+  assert.equal(msgsRes.statusCode, 200);
+  assert.ok((msgsRes.payload.messages || []).length >= 2, 'at least 2 messages in DM');
+});

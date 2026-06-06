@@ -797,6 +797,21 @@ export async function joinViaGroupInvite(input = {}) {
   if (invite.status === 'revoked') { const e = new Error('This invite has been revoked'); e.status = 410; throw e; }
   if (invite.expiresAt && new Date(invite.expiresAt).getTime() <= Date.now()) { const e = new Error('This invite link has expired'); e.status = 410; throw e; }
 
+  const teamId = String(invite.teamId || DEFAULT_TEAM.id);
+
+  // Guard: check for existing active membership BEFORE touching any password.
+  // Without this, upsertUserAccount would overwrite an existing user's password
+  // (e.g. the coach's) before the active-member 409 check below could fire.
+  const preUsers = await loadUsers();
+  const preUser = preUsers.find(u => normalizeEmail(u.email) === normalizeEmail(email));
+  if (preUser) {
+    const preMembers = await loadTeamMembers();
+    const preMember = preMembers.find(m => m.teamId === teamId && m.userId === preUser.id && m.status === 'active');
+    if (preMember) {
+      const e = new Error('You already have an active account for this team'); e.status = 409; throw e;
+    }
+  }
+
   const user = await upsertUserAccount({
     email: normalizeEmail(email),
     firstName: String(firstName).trim(),
@@ -804,7 +819,6 @@ export async function joinViaGroupInvite(input = {}) {
     password,
   });
 
-  const teamId = String(invite.teamId || DEFAULT_TEAM.id);
   const members = await loadTeamMembers();
   let member = members.find(item => item.teamId === teamId && item.userId === user.id);
 

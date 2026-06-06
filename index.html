@@ -5410,10 +5410,21 @@
               <summary>🔗 Invite & team access</summary>
               <div class="srv-panel-body" style="padding-top:4px">
 
-                <!-- Role tabs + name field -->
-                <p class="muted" style="font-size:13px;margin-bottom:14px">Generate a personal invite link. Players claim the link with email and password so they get a permanent account.</p>
+                <!-- Invite type selector -->
+                <div style="display:flex;gap:6px;margin-bottom:14px">
+                  <button type="button" id="inv-type-individual" class="inv-role-btn active" data-invtype="individual"
+                    onclick="setInviteType('individual')"
+                    style="padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid var(--line);background:var(--panel-2);color:var(--muted);transition:all .13s">
+                    👤 Individual</button>
+                  <button type="button" id="inv-type-group" class="inv-role-btn" data-invtype="group"
+                    onclick="setInviteType('group')"
+                    style="padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid var(--line);background:var(--panel-2);color:var(--muted);transition:all .13s">
+                    🔗 Group (reusable)</button>
+                </div>
+                <p id="inv-type-desc" class="muted" style="font-size:13px;margin-bottom:14px">Generate a personal invite link. The player claims it with their email and password to get a permanent account.</p>
 
-                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+                <!-- Role tabs — hidden for group type -->
+                <div id="inv-role-row" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
                   ${[['player','🏉 Player'],['coach','🎯 Coach'],['admin','⚙️ Admin'],['medical','🏥 Medical']].map(([role,lbl],i) => `
                     <button type="button" class="inv-role-btn ${i===0?'active':''}" data-role="${role}"
                       onclick="setInviteRole('${role}',this)"
@@ -5422,12 +5433,12 @@
                 </div>
 
                 <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-                  <label style="flex:1;min-width:180px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
+                  <label id="inv-name-label" style="flex:1;min-width:180px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
                     Full name
                     <input id="inv-name" placeholder="e.g. Thomas Dupont" style="padding:9px 11px">
                   </label>
                   <label style="flex:1;min-width:210px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
-                    Email
+                    Email (optional)
                     <input id="inv-email" type="email" placeholder="player@example.com" style="padding:9px 11px">
                   </label>
                   <button id="inv-create-btn" class="btn primary" type="button" onclick="createInvite()"
@@ -7957,54 +7968,96 @@
     }
 
     // ─── INVITE MANAGEMENT (coach side) ──────────────────────────────────────
+    function setInviteType(type) {
+      document.getElementById('inv-type-individual')?.classList.toggle('active', type === 'individual');
+      document.getElementById('inv-type-group')?.classList.toggle('active', type === 'group');
+      const nameLabel = document.getElementById('inv-name-label');
+      const roleRow   = document.getElementById('inv-role-row');
+      const desc      = document.getElementById('inv-type-desc');
+      const btn       = document.getElementById('inv-create-btn');
+      if (type === 'group') {
+        if (nameLabel) nameLabel.style.display = 'none';
+        if (roleRow)   roleRow.style.display   = 'none';
+        if (desc) desc.textContent = 'Generate a reusable group invite link. Any player can register via this link and will need your approval before accessing the app.';
+        if (btn)  btn.textContent  = '🔗 Generate group link';
+      } else {
+        if (nameLabel) nameLabel.style.display = '';
+        if (roleRow)   roleRow.style.display   = '';
+        if (desc) desc.textContent = "Generate a personal invite link. The player claims it with their email and password to get a permanent account.";
+        if (btn)  btn.textContent  = '🔗 Generate invite link';
+      }
+      document.getElementById('inv-result').innerHTML = '';
+    }
+
     async function createInvite() {
+      const isGroup  = document.getElementById('inv-type-group')?.classList.contains('active');
       const nameEl   = document.getElementById('inv-name');
       const emailEl  = document.getElementById('inv-email');
-      const activeBtn = document.querySelector('.inv-role-btn.active');
+      const activeRoleBtn = document.querySelector('#inv-role-row .inv-role-btn.active');
       const name     = nameEl?.value.trim();
       const email    = emailEl?.value.trim();
-      const role     = activeBtn?.dataset.role || 'player';
-      if (!name) { showToast('Enter the person\'s name first'); return; }
+      const role     = isGroup ? 'player' : (activeRoleBtn?.dataset.role || 'player');
+
+      if (!isGroup && !name) { showToast('Enter the person\'s name first'); return; }
 
       const btn = document.getElementById('inv-create-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
       try {
         await ensureServerSessionForCurrentUser();
+        const body = isGroup
+          ? { type: 'group', role: 'player', email, sendEmail: false }
+          : { name, role, email };
         const res  = await fetch('/api/invite', {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ name, role, email }),
+          body: JSON.stringify(body),
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
 
         const resultEl = document.getElementById('inv-result');
         if (resultEl) {
-          resultEl.innerHTML = `
-            <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);border-radius:10px;padding:14px 16px;margin-top:14px">
-              <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:10px">✓ Invite ready for ${esc(name)}</div>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input value="${esc(data.url)}" readonly id="inv-link-field"
-                  style="flex:1;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:8px 10px;color:#94a3b8">
-                <button class="btn primary" type="button" style="font-size:12px;white-space:nowrap;padding:0 14px"
-                  onclick="navigator.clipboard.writeText(document.getElementById('inv-link-field').value).then(()=>showToast('Link copied 📋'))">
-                  📋 Copy
-                </button>
-              </div>
-              <div style="font-size:11px;color:#64748b;margin-top:8px">Send via WhatsApp, SMS or email. Works once — link is tied to ${esc(name)}.</div>
-            </div>`;
+          if (isGroup) {
+            resultEl.innerHTML = `
+              <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);border-radius:10px;padding:14px 16px;margin-top:14px">
+                <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:10px">✓ Group invite link created</div>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <input value="${esc(data.url)}" readonly id="inv-link-field"
+                    style="flex:1;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:8px 10px;color:#94a3b8">
+                  <button class="btn primary" type="button" style="font-size:12px;white-space:nowrap;padding:0 14px"
+                    onclick="navigator.clipboard.writeText(document.getElementById('inv-link-field').value).then(()=>showToast('Link copied 📋'))">
+                    📋 Copy
+                  </button>
+                </div>
+                <div style="font-size:11px;color:#64748b;margin-top:8px">Reusable — share with the whole squad. Each player registers and needs your approval.</div>
+              </div>`;
+          } else {
+            resultEl.innerHTML = `
+              <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);border-radius:10px;padding:14px 16px;margin-top:14px">
+                <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:10px">✓ Invite ready for ${esc(name)}</div>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <input value="${esc(data.url)}" readonly id="inv-link-field"
+                    style="flex:1;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:8px 10px;color:#94a3b8">
+                  <button class="btn primary" type="button" style="font-size:12px;white-space:nowrap;padding:0 14px"
+                    onclick="navigator.clipboard.writeText(document.getElementById('inv-link-field').value).then(()=>showToast('Link copied 📋'))">
+                    📋 Copy
+                  </button>
+                </div>
+                <div style="font-size:11px;color:#64748b;margin-top:8px">Send via WhatsApp, SMS or email. Works once — link is tied to ${esc(name)}.</div>
+              </div>`;
+          }
         }
-        if (nameEl) nameEl.value = '';
+        if (!isGroup && nameEl) nameEl.value = '';
         if (emailEl) emailEl.value = '';
         loadInviteList();
       } catch(e) {
         showToast('Could not create invite — ' + e.message);
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '🔗 Generate invite link'; }
+        if (btn) { btn.disabled = false; btn.textContent = isGroup ? '🔗 Generate group link' : '🔗 Generate invite link'; }
       }
     }
 
     function setInviteRole(role, el) {
-      document.querySelectorAll('.inv-role-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('#inv-role-row .inv-role-btn').forEach(b => b.classList.remove('active'));
       el.classList.add('active');
     }
 
@@ -8028,25 +8081,32 @@
           return;
         }
         const roleEmoji = { player:'🏉', coach:'🎯', admin:'⚙️', medical:'🏥' };
+        const inviteOrigin = window.location.origin;
         panel.innerHTML = list.map(inv => {
+          const isGroup    = inv.type === 'group';
           const isPending  = inv.status === 'pending';
           const isAccepted = inv.status === 'accepted';
-          const statusColor = isAccepted ? '#34d399' : isPending ? '#fbbf24' : '#475569';
-          const statusBg    = isAccepted ? 'rgba(52,211,153,0.1)' : isPending ? 'rgba(251,191,36,0.1)' : 'rgba(71,85,105,0.1)';
+          const isActive   = inv.status === 'active';
+          const canCopyRevoke = isPending || (isGroup && isActive);
+          const statusColor = isAccepted ? '#34d399' : (isPending || isActive) ? '#fbbf24' : '#475569';
+          const statusBg    = isAccepted ? 'rgba(52,211,153,0.1)' : (isPending || isActive) ? 'rgba(251,191,36,0.1)' : 'rgba(71,85,105,0.1)';
+          const displayStatus = isGroup && isActive ? `active · used ${inv.usageCount || 0}×` : inv.status;
           const date        = new Date(inv.createdAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
           const acceptedDate = inv.acceptedAt ? new Date(inv.acceptedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
+          const displayName = isGroup ? 'Group invite (players)' : (inv.name || '—');
+          const invUrl = `${inviteOrigin}/?inv=${encodeURIComponent(inv.token)}`;
           return `
             <div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
-              <span style="font-size:20px;flex-shrink:0">${roleEmoji[inv.role]||'👤'}</span>
+              <span style="font-size:20px;flex-shrink:0">${isGroup ? '🔗' : (roleEmoji[inv.role]||'👤')}</span>
               <div style="flex:1;min-width:0">
-                <div style="font-weight:700;font-size:13px;color:#e2e8f0">${esc(inv.name)}</div>
+                <div style="font-weight:700;font-size:13px;color:#e2e8f0">${esc(displayName)}</div>
                 <div style="font-size:11px;color:#64748b;margin-top:1px">${inv.role} · Invited ${date}${acceptedDate ? ' · Joined '+acceptedDate : ''}</div>
               </div>
               <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-                <span style="background:${statusBg};color:${statusColor};font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap">${inv.status}</span>
-                ${isPending ? `
+                <span style="background:${statusBg};color:${statusColor};font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap">${esc(displayStatus)}</span>
+                ${canCopyRevoke ? `
                   <button class="btn" type="button" style="font-size:11px;padding:3px 9px;white-space:nowrap"
-                    onclick="navigator.clipboard.writeText('https://boitsfort-coachseye-gpt.vercel.app/?inv=${esc(inv.token)}').then(()=>showToast('Copied 📋'))">
+                    onclick="navigator.clipboard.writeText('${invUrl}').then(()=>showToast('Copied 📋'))">
                     📋
                   </button>
                   <button class="btn" type="button" style="font-size:11px;padding:3px 8px;color:#f87171;border-color:rgba(239,68,68,0.28)"
