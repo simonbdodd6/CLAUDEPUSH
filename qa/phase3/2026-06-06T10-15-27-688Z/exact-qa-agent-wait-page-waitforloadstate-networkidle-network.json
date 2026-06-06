@@ -1,0 +1,223 @@
+{
+  "requests": [
+    {
+      "url": "http://localhost:3000/",
+      "method": "GET",
+      "resourceType": "document",
+      "at": "2026-06-06T10:15:31.311Z"
+    },
+    {
+      "url": "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300..900;1,9..40,300..900&family=JetBrains+Mono:wght@400;700&display=swap",
+      "method": "GET",
+      "resourceType": "stylesheet",
+      "at": "2026-06-06T10:15:31.486Z"
+    },
+    {
+      "url": "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
+      "method": "GET",
+      "resourceType": "script",
+      "at": "2026-06-06T10:15:31.486Z"
+    },
+    {
+      "url": "http://localhost:3000/src/chat-state.js",
+      "method": "GET",
+      "resourceType": "script",
+      "at": "2026-06-06T10:15:31.884Z"
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/dmsans/v17/rP2Hp2ywxg089UriCZOIHTWEBlw.woff2",
+      "method": "GET",
+      "resourceType": "font",
+      "at": "2026-06-06T10:15:31.884Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=conversations&userId=coach-demo",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:31.885Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=messages&convId=coach&since=0&userId=coach-demo",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:31.885Z"
+    },
+    {
+      "url": "http://localhost:3000/api/config",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:31.885Z"
+    },
+    {
+      "url": "http://localhost:3000/api/schedules",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:31.960Z"
+    },
+    {
+      "url": "http://localhost:3000/api/templates",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:31.960Z"
+    },
+    {
+      "url": "http://localhost:3000/api/templates",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:31.960Z"
+    },
+    {
+      "url": "http://localhost:3000/api/log?limit=10",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:31.960Z"
+    },
+    {
+      "url": "http://localhost:3000/api/identity?action=session",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:31.966Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=conversations&userId=coach-demo",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:31.966Z"
+    },
+    {
+      "url": "http://localhost:3000/src/player-identity.js",
+      "method": "GET",
+      "resourceType": "script",
+      "at": "2026-06-06T10:15:31.966Z"
+    },
+    {
+      "url": "http://localhost:3000/api/identity",
+      "method": "POST",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:33.182Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=messages&convId=coach&since=1780740931860&userId=coach-demo",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:34.366Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=messages&convId=coach&since=1780740931860&userId=coach-demo",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:36.866Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=conversations&userId=coach-demo",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:36.881Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=messages&convId=coach&since=1780740931860&userId=coach-demo",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:39.366Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=messages&convId=coach&since=1780740931860&userId=coach-demo",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:41.864Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=conversations&userId=coach-demo",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:41.876Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=messages&convId=coach&since=1780740931860&userId=coach-demo",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:44.365Z"
+    },
+    {
+      "url": "http://localhost:3000/api/identity",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:44.781Z"
+    },
+    {
+      "url": "http://localhost:3000/api/invite",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:44.781Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=typing&convId=coach&userId=coach-demo",
+      "method": "GET",
+      "resourceType": "fetch",
+      "at": "2026-06-06T10:15:46.553Z"
+    }
+  ],
+  "requestFailures": [],
+  "responses": [
+    {
+      "url": "http://localhost:3000/api/log?limit=10",
+      "status": 503,
+      "statusText": "Service Unavailable",
+      "at": "2026-06-06T10:15:39.856Z"
+    },
+    {
+      "url": "http://localhost:3000/api/templates",
+      "status": 503,
+      "statusText": "Service Unavailable",
+      "at": "2026-06-06T10:15:40.515Z"
+    },
+    {
+      "url": "http://localhost:3000/api/schedules",
+      "status": 503,
+      "statusText": "Service Unavailable",
+      "at": "2026-06-06T10:15:40.518Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=conversations&userId=coach-demo",
+      "status": 500,
+      "statusText": "Internal Server Error",
+      "at": "2026-06-06T10:15:40.523Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=messages&convId=coach&since=0&userId=coach-demo",
+      "status": 500,
+      "statusText": "Internal Server Error",
+      "at": "2026-06-06T10:15:40.749Z"
+    },
+    {
+      "url": "http://localhost:3000/api/identity?action=session",
+      "status": 503,
+      "statusText": "Service Unavailable",
+      "at": "2026-06-06T10:15:44.780Z"
+    },
+    {
+      "url": "http://localhost:3000/api/templates",
+      "status": 503,
+      "statusText": "Service Unavailable",
+      "at": "2026-06-06T10:15:46.549Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=messages&convId=coach&since=1780740931860&userId=coach-demo",
+      "status": 500,
+      "statusText": "Internal Server Error",
+      "at": "2026-06-06T10:15:46.552Z"
+    },
+    {
+      "url": "http://localhost:3000/api/identity",
+      "status": 503,
+      "statusText": "Service Unavailable",
+      "at": "2026-06-06T10:15:46.554Z"
+    },
+    {
+      "url": "http://localhost:3000/api/chat?action=conversations&userId=coach-demo",
+      "status": 500,
+      "statusText": "Internal Server Error",
+      "at": "2026-06-06T10:15:46.555Z"
+    }
+  ]
+}

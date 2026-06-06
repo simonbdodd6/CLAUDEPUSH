@@ -404,22 +404,21 @@ async function rebuildConvMsgs(convId, msgs) {
   // First delete the key
   const { default: redis } = await import('./_kv.js');
   try {
-    // Delete old list
     const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
     const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
     if (REDIS_URL && REDIS_TOKEN) {
-      // Delete and repopulate
       await fetch(REDIS_URL, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(['DEL', k]),
       });
-      // lpush all in order from oldest to newest (so newest ends up at index 0)
       for (const m of msgs) {
         await kvLpush(k, m);
       }
     }
-  } catch(e) { /* best effort */ }
+  } catch(e) {
+    console.error('[chat] rebuildConvMsgs failed for', convId, ':', e.message);
+  }
 }
 
 export default async function handler(req, res) {

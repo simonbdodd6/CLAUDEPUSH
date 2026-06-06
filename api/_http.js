@@ -10,7 +10,7 @@ export function setCors(res) {
 
 export function readSecret(req) {
   const authorization = String(req.headers?.authorization || '');
-  return authorization.replace(/^Bearer\s+/i, '').trim() || req.query?.secret || '';
+  return authorization.replace(/^Bearer\s+/i, '').trim();
 }
 
 export function vapidContact() {

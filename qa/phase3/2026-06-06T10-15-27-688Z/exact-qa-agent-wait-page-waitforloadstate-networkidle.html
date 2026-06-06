@@ -1,6 +1,4 @@
-<!doctype html>
-<html lang="en">
-<head>
+<!DOCTYPE html><html lang="en"><head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>coacheseyeGPT · Boitsfort RFC</title>
@@ -1707,7 +1705,7 @@
       .chat-bubble-wrap { max-width: 90%; }
     }
   </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer=""></script>
 </head>
 <body>
   <div class="app-shell">
@@ -1721,24 +1719,41 @@
       </div>
 
       <div class="view-switch" aria-label="View switch">
-        <button id="coachViewBtn" class="active" type="button">Coach</button>
+        <button id="coachViewBtn" class="active" type="button" title="">Coach</button>
         <button id="playerViewBtn" type="button">Player</button>
       </div>
 
-      <div id="authPanel" class="auth-panel"></div>
+      <div id="authPanel" class="auth-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <strong style="font-size:13px">Log in</strong>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
+        </div>
+        <div style="display:grid;gap:7px">
+          <input id="identityLoginEmail" type="email" placeholder="Email" style="font-size: 12px; padding: 7px 9px;">
+          <input id="identityLoginPassword" type="password" placeholder="Password" style="font-size: 12px; padding: 7px 9px;">
+          <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:12px">Log in</button>
+          <button class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:11px;padding:5px 8px">Forgot password?</button>
+          <p class="muted" style="font-size:11px;margin:0">Approved players can log in after coach approval.</p>
+        </div>
+      </div>
 
-      <nav id="coachNav" aria-label="Coach sections"></nav>
-      <nav id="playerNav" class="hidden" aria-label="Player sections"></nav>
+      <nav id="coachNav" aria-label="Coach sections"><button type="button" class="active" onclick="setSection('coach','overview')">Overview</button><button type="button" class="" onclick="setSection('coach','message')">Availability</button><button type="button" class="" onclick="setSection('coach','messages')">Messages</button><button type="button" class="" onclick="setSection('coach','training')">Training</button><button type="button" class="" onclick="setSection('coach','matchday')">Matchday Centre</button><button type="button" class="" onclick="setSection('coach','medical')">Medical</button><button type="button" class="" onclick="setSection('coach','players')">Members</button></nav>
+      <nav id="playerNav" class="hidden" aria-label="Player sections"><button type="button" class="" onclick="setSection('player','messages')">Messages</button><button type="button" class="" onclick="setSection('player','availability')">Availability</button><button type="button" class="" onclick="setSection('player','week')">This Week</button><button type="button" class="" onclick="setSection('player','fixtures')">Calendar</button></nav>
 
       <!-- Notification prompt: prominent when off, compact chip when on -->
-      <div id="pushSidebar" class="push-status-pill hidden">
-        <span class="push-dot" id="pushDot"></span>
-        <div style="flex:1;min-width:0">
-          <div id="pushSidebarLabel" style="font-weight:700;color:#ecf5ef;font-size:12px">Notifications</div>
-          <div id="pushSidebarSub" style="font-size:11px;margin-top:1px">Off</div>
-        </div>
-        <button id="pushSidebarBtn" class="btn" type="button" style="margin-top:0;width:auto;min-height:28px;padding:0 9px;font-size:11px;background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#ecf5ef"></button>
-      </div>
+      <div id="pushSidebar" class="push-status-pill">
+          <div style="width:100%">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <span class="push-dot" style="flex-shrink:0;background:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,0.18)"></span>
+              <strong style="font-size:13px;color:#ecf5ef">Enable notifications</strong>
+            </div>
+            <p style="font-size:11px;color:var(--muted);margin:0 0 10px;line-height:1.4">
+              Get instant alerts when the coach sends availability requests, team news or direct messages.
+            </p>
+            <button class="btn primary" type="button" onclick="subscribePush('—')" style="width:100%;min-height:36px;font-size:13px;font-weight:700">
+              Turn on notifications
+            </button>
+          </div></div>
 
       <div class="sidebar-card">
         <strong>Boitsfort RFC · Prototype</strong>
@@ -1758,23 +1773,1190 @@
         </div>
       </header>
 
-      <section id="coach-overview"    class="section active"></section>
-      <section id="coach-message"     class="section"></section>
-      <section id="coach-messages"    class="section"></section>
-      <section id="coach-training"    class="section"></section>
-      <section id="coach-matchday"    class="section"></section>
-      <section id="coach-medical"     class="section"></section>
-      <section id="coach-players"     class="section"></section>
+      <section id="coach-overview" class="section active">
+        <div class="overview-page">
+        
+        <div class="grid stats-grid">
+          <div class="card stat-card"><small>Available this week</small><strong>0</strong><span>Game responses marked available</span></div>
+          <div class="card stat-card"><small>Unavailable</small><strong>0</strong><span>Unavailable or injured</span></div>
+          <div class="card stat-card"><small>No response</small><strong>0</strong><span>Players to chase in-app</span></div>
+          <div class="card stat-card"><small>Unread responses</small><strong>1</strong><span>Player replies waiting</span></div>
+          <div class="card stat-card"><small>Medical updates</small><strong>0</strong><span>Open medical records this week</span></div>
+          <div class="card stat-card"><small>Training attendance</small><strong>0%</strong><span>Squad average this season</span></div>
+        </div>
 
-      <section id="player-availability" class="section"></section>
-      <section id="player-week"         class="section"></section>
-      <section id="player-fixtures"     class="section"></section>
-      <section id="player-attendance"   class="section" style="display:none"></section>
-      <section id="player-messages"     class="section"></section>
+        <div class="grid two-col">
+          <!-- LEFT: Fixture + this week at a glance -->
+          <div style="display:grid;gap:14px">
+            <div class="fixture-hero">
+              <div class="eyebrow">Next fixture</div>
+              <h3>Kituro</h3>
+              <div class="fixture-meta">
+                <span>📍 <strong>Home</strong></span>
+                <span>📅 <strong>This Saturday</strong></span>
+                <span>🟢 <strong>Availability open</strong></span>
+              </div>
+              <div class="pill-row" style="margin-top:14px">
+                <span class="pill">0 Available</span>
+                <span class="pill">0 No reply</span>
+                <span class="pill">0 Injured</span>
+              </div>
+            </div>
+            <div class="card">
+              <h2>This week at a glance</h2>
+              <p class="muted">Click a session to open the full detail in Command Center.</p>
+              <div class="grid three-col" style="margin-top:14px">
+                <div class="schedule-card">
+                    <span class="eyebrow">Training</span>
+                    <strong>Tuesday training</strong>
+                    <span class="muted" style="font-size:12px">Tuesday 19:45</span>
+                    <strong style="color:var(--green);font-size:32px;font-family:var(--font-display);font-weight:400;line-height:1">0</strong>
+                    <span class="muted">of 0 available</span>
+                    <div style="margin:6px 0 8px"><div class="history-bar"><span style="width:0%"></span></div><small style="color:var(--muted);font-size:11px">0/0 replied · 0%</small></div>
+                    <button class="btn" type="button" onclick="openMessageDetail('tue')">View detail →</button>
+                  </div><div class="schedule-card">
+                    <span class="eyebrow">Training</span>
+                    <strong>Thursday team run</strong>
+                    <span class="muted" style="font-size:12px">Thursday 19:45</span>
+                    <strong style="color:var(--green);font-size:32px;font-family:var(--font-display);font-weight:400;line-height:1">0</strong>
+                    <span class="muted">of 0 available</span>
+                    <div style="margin:6px 0 8px"><div class="history-bar"><span style="width:0%"></span></div><small style="color:var(--muted);font-size:11px">0/0 replied · 0%</small></div>
+                    <button class="btn" type="button" onclick="openMessageDetail('thu')">View detail →</button>
+                  </div><div class="schedule-card">
+                    <span class="eyebrow">Match</span>
+                    <strong>Boitsfort Premier vs Kituro</strong>
+                    <span class="muted" style="font-size:12px">Saturday fixture</span>
+                    <strong style="color:var(--green);font-size:32px;font-family:var(--font-display);font-weight:400;line-height:1">0</strong>
+                    <span class="muted">of 0 available</span>
+                    <div style="margin:6px 0 8px"><div class="history-bar"><span style="width:0%"></span></div><small style="color:var(--muted);font-size:11px">0/0 replied · 0%</small></div>
+                    <button class="btn" type="button" onclick="openMessageDetail('game')">View detail →</button>
+                  </div>
+              </div>
+            </div>
+            <div class="card">
+              <h2>Upcoming fixtures</h2>
+              <div class="list" style="margin-top:11px">
+                <div class="row"><div><strong>Next Saturday: <strong>ASUB</strong></strong><small>Away · Not opened</small></div><div><span class="status no-reply">Not opened</span></div></div><div class="row"><div><strong>Two weeks: <strong>Dendermonde</strong></strong><small>Home · Not opened</small></div><div><span class="status no-reply">Not opened</span></div></div><div class="row"><div><strong>Three weeks: <strong>La Hulpe</strong></strong><small>Away · Not opened</small></div><div><span class="status no-reply">Not opened</span></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: automation queue + match availability -->
+          <div style="display:grid;gap:14px;align-content:start">
+            <div class="card">
+              <h2>Automation queue</h2>
+              <p class="muted">Scheduled availability requests for this week.</p>
+              <div style="margin-top:12px">
+                
+                  <div class="auto-queue-row">
+                    <div>
+                      <strong style="font-size:13px">Tuesday training availability</strong>
+                      <div style="color:var(--muted);font-size:12px;margin-top:2px">Sunday 18:00</div>
+                    </div>
+                    <span class="auto-badge auto-active">Active</span>
+                  </div>
+                  <div class="auto-queue-row">
+                    <div>
+                      <strong style="font-size:13px">Thursday team run availability</strong>
+                      <div style="color:var(--muted);font-size:12px;margin-top:2px">Tuesday 21:30</div>
+                    </div>
+                    <span class="auto-badge auto-active">Active</span>
+                  </div>
+                  <div class="auto-queue-row">
+                    <div>
+                      <strong style="font-size:13px">Weekend match availability</strong>
+                      <div style="color:var(--muted);font-size:12px;margin-top:2px">Tuesday 09:00</div>
+                    </div>
+                    <span class="auto-badge auto-active">Active</span>
+                  </div>
+              </div>
+              <button class="btn" type="button" style="margin-top:12px;width:100%" onclick="setSection('coach','message')">Manage automations →</button>
+            </div>
+            <div class="card">
+              <h2>Unavailable for Kituro</h2>
+              <div class="list" style="margin-top:11px">
+                <p class="muted">No unavailable players yet.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div></section>
+      <section id="coach-message" class="section">
+        <div class="msg-hub">
+          <section class="msg-hero">
+            <div>
+              <div class="eyebrow">Coach communications</div>
+              <h2>Availability Centre</h2>
+              <p>Track Tuesday training, Thursday training and weekend match replies in one place, with every player grouped by their latest answer.</p>
+            </div>
+            <div class="msg-hero-actions">
+              <button class="btn" type="button" onclick="setSection('coach','messages')">Open messages</button>
+              <button class="btn" id="avail-refresh-btn" type="button" onclick="refreshLiveAvailability()">Refresh replies</button>
+              <button class="btn primary" type="button" onclick="sendAvailabilityRequest('tue')">Send Tuesday training request</button>
+            </div>
+          </section>
+
+          <section class="msg-kpi-grid">
+            <article class="msg-kpi available"><span>Available</span><strong>0/0</strong></article>
+            <article class="msg-kpi unavailable"><span>Unavailable</span><strong>0</strong></article>
+            <article class="msg-kpi chase"><span>Maybe</span><strong>0</strong></article>
+            <article class="msg-kpi"><span>Response rate</span><strong>0%</strong></article>
+          </section>
+
+          <!-- ROW 1: Session picker (left) + live response board (right) -->
+          <section class="msg-command-grid msg-two-col">
+            <article class="msg-card">
+              <div class="msg-card-head">
+                <div>
+                  <h2>Sessions</h2>
+                  <p>Pick the training or match view.</p>
+                </div>
+                <span id="avail-refresh-ts" class="msg-chip no-reply">Live sync</span>
+              </div>
+              <div style="padding:16px">
+                <div class="msg-session-grid">
+                  <button class="msg-session-card active" type="button" onclick="openMessageDetail('tue')">
+          <div class="register-head">
+            <strong>Tuesday Training</strong>
+            <span class="msg-chip available">0/0 coming</span>
+          </div>
+          <small>Tuesday 19:45</small>
+          <div class="msg-pill-row" style="margin-top:10px">
+            <span class="msg-chip available">0 available</span>
+            <span class="msg-chip unavailable">0 unavailable</span>
+            <span class="msg-chip maybe">0 maybe</span>
+            <span class="msg-chip no-reply">0 no reply</span>
+          </div>
+        </button><button class="msg-session-card " type="button" onclick="openMessageDetail('thu')">
+          <div class="register-head">
+            <strong>Thursday Training</strong>
+            <span class="msg-chip available">0/0 coming</span>
+          </div>
+          <small>Thursday 19:45</small>
+          <div class="msg-pill-row" style="margin-top:10px">
+            <span class="msg-chip available">0 available</span>
+            <span class="msg-chip unavailable">0 unavailable</span>
+            <span class="msg-chip maybe">0 maybe</span>
+            <span class="msg-chip no-reply">0 no reply</span>
+          </div>
+        </button><button class="msg-session-card " type="button" onclick="openMessageDetail('game')">
+          <div class="register-head">
+            <strong>Weekend Match</strong>
+            <span class="msg-chip available">0/0 coming</span>
+          </div>
+          <small>Saturday fixture</small>
+          <div class="msg-pill-row" style="margin-top:10px">
+            <span class="msg-chip available">0 available</span>
+            <span class="msg-chip unavailable">0 unavailable</span>
+            <span class="msg-chip maybe">0 maybe</span>
+            <span class="msg-chip no-reply">0 no reply</span>
+          </div>
+        </button>
+                </div>
+              </div>
+            </article>
+
+            <div class="msg-side-stack">
+              <article class="msg-card">
+                <div class="msg-card-head">
+                  <div>
+                    <h2>Live Response Board</h2>
+                    <p>Tuesday Training · click any player for details.</p>
+                  </div>
+                  <span class="msg-chip available">0/0 shown</span>
+                </div>
+                <div class="availability-board-tools">
+                  <div class="availability-filter-group"><button class="filter-pill active" type="button" onclick="setAvailabilityBoardFilter('all')">All</button><button class="filter-pill " type="button" onclick="setAvailabilityBoardFilter('forwards')">Forwards</button><button class="filter-pill " type="button" onclick="setAvailabilityBoardFilter('backs')">Backs</button><button class="filter-pill " type="button" onclick="setAvailabilityBoardFilter('injured')">Injured</button></div>
+                  <select class="availability-sort-select" onchange="setAvailabilityBoardSort(this.value)" aria-label="Sort by attendance">
+                    <option value="highest" selected="">Highest attendance first</option>
+                    <option value="lowest">Lowest attendance first</option>
+                  </select>
+                </div>
+                <div class="msg-status-grid compact">
+                  <section class="msg-status-column available">
+                    <header><span>Available</span><strong>0</strong></header>
+                    <div class="msg-player-list"><p class="muted" style="font-size:12px;padding:10px">No players in this group.</p></div>
+                  </section>
+                  <section class="msg-status-column unavailable">
+                    <header><span>Unavailable</span><strong>0</strong></header>
+                    <div class="msg-player-list"><p class="muted" style="font-size:12px;padding:10px">No players in this group.</p></div>
+                  </section>
+                  <section class="msg-status-column chase">
+                    <header><span>Maybe</span><strong>0</strong></header>
+                    <div class="msg-player-list"><p class="muted" style="font-size:12px;padding:10px">No players in this group.</p></div>
+                  </section>
+                  <section class="msg-status-column chase">
+                    <header><span>No Reply</span><strong>0</strong></header>
+                    <div class="msg-player-list"><p class="muted" style="font-size:12px;padding:10px">No players in this group.</p></div>
+                  </section>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <!-- ROW 2: Player detail — appears only when a player is clicked -->
+          <div id="player-detail-panel" class="msg-player-detail-panel" style="margin-top:14px">
+            
+          </div>
+
+          <section class="msg-command-grid" style="grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr)">
+            <article class="msg-card">
+              <div class="msg-card-head">
+                <div>
+                  <h2>Automation builder</h2>
+                  <p>Build recurring messages without rewriting the same text every week. Use {{first_name}} for notification personalisation.</p>
+                </div>
+                
+              </div>
+              <div class="msg-form-grid">
+                <div class="msg-form-row">
+                  <label>Campaign name
+                    <input id="tplName" placeholder="e.g. Sunday injury check" value="" style="">
+                  </label>
+                  <label>Send time
+                    <input id="autoTime" type="time" value="09:00" style="">
+                  </label>
+                </div>
+                <label>Message body
+                  <textarea id="availTpl" placeholder="Write the automated message..." style="">Hi team! Please confirm your availability for this week's training (Tuesday &amp; Thursday 19:45) and Saturday's match. Reply AVAILABLE or UNAVAILABLE, and flag any injuries. Thanks, Coach.</textarea>
+                </label>
+                <label>Send automatically on
+                  <div class="msg-day-picker">
+                    <button class="active" type="button" onclick="toggleScheduleDay('Mon')">Mon</button><button class="" type="button" onclick="toggleScheduleDay('Tue')">Tue</button><button class="" type="button" onclick="toggleScheduleDay('Wed')">Wed</button><button class="" type="button" onclick="toggleScheduleDay('Thu')">Thu</button><button class="" type="button" onclick="toggleScheduleDay('Fri')">Fri</button><button class="" type="button" onclick="toggleScheduleDay('Sat')">Sat</button><button class="" type="button" onclick="toggleScheduleDay('Sun')">Sun</button>
+                  </div>
+                </label>
+                <label>Segment
+                  <div class="msg-segment-toggle">
+                    <button class="active" type="button" onclick="setScheduleAudience('all')">Full squad</button>
+                    <button class="" type="button" onclick="setScheduleAudience('no-reply')">No-reply chase-up</button>
+                  </div>
+                </label>
+                
+                <button class="btn primary" type="button" onclick="saveAvailabilityTemplate()">Save and activate automation</button>
+              </div>
+            </article>
+
+            <article class="msg-card">
+              <div class="msg-card-head">
+                <div>
+                  <h2>Scale path</h2>
+                  <p>The same system can later support multi-team clubs, parent accounts and native app pushes.</p>
+                </div>
+              </div>
+              <div class="msg-roadmap" style="padding:16px">
+                <article><strong>Segments</strong><small>Full squad, no-reply, injured, training group, age grade.</small></article>
+                <article><strong>Campaigns</strong><small>Training, matchday, medical, selection, staff-only.</small></article>
+                <article><strong>Audit log</strong><small>Every send has a timestamp, target count and failed count.</small></article>
+                <article><strong>Future app</strong><small>Same API can power iOS/Android notifications later.</small></article>
+              </div>
+            </article>
+          </section>
+
+          <section class="msg-card" style="padding:0;overflow:hidden">
+            <details class="srv-panel" open="" ontoggle="if(this.open) loadLiveSchedules()">
+              <summary>Active automations</summary>
+              <div id="live-schedules-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">No scheduled sends yet — create one using the Template messages builder above.</p></div>
+            </details>
+            <details class="srv-panel" open="" ontoggle="if(this.open) loadLiveTemplates()">
+              <summary>Message templates</summary>
+              <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">No templates yet — create one in the Template messages builder above.</p></div>
+            </details>
+            <details class="srv-panel" open="" ontoggle="if(this.open) loadLiveLog()">
+              <summary>Delivery log</summary>
+              <div id="live-log-panel" class="srv-panel-body">
+          <div class="live-sched-row">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
+              <strong style="font-size:12px">Coach</strong>
+              <span class="live-badge adhoc">📤 Ad-hoc</span>
+            </div>
+            <p class="muted" style="font-size:12px;margin:3px 0 0">Please confirm Tuesday, Thursday and Kituro availability inside coacheseyeGPT.</p>
+            <div style="display:flex;gap:10px;margin-top:3px;flex-wrap:wrap">
+              <span class="muted" style="font-size:11px">🕐 Invalid Date</span>
+              
+            </div>
+          </div>
+          <div class="live-sched-row">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
+              <strong style="font-size:12px">Simon Dodd</strong>
+              <span class="live-badge adhoc">📤 Ad-hoc</span>
+            </div>
+            <p class="muted" style="font-size:12px;margin:3px 0 0">Available Tuesday and Saturday. Carrying small shoulder stiffness.</p>
+            <div style="display:flex;gap:10px;margin-top:3px;flex-wrap:wrap">
+              <span class="muted" style="font-size:11px">🕐 Invalid Date</span>
+              
+            </div>
+          </div>
+          <div class="live-sched-row">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
+              <strong style="font-size:12px">Medical</strong>
+              <span class="live-badge adhoc">📤 Ad-hoc</span>
+            </div>
+            <p class="muted" style="font-size:12px;margin:3px 0 0">Bubele and Maxence need status updates before selection.</p>
+            <div style="display:flex;gap:10px;margin-top:3px;flex-wrap:wrap">
+              <span class="muted" style="font-size:11px">🕐 Invalid Date</span>
+              
+            </div>
+          </div></div>
+            </details>
+          </section>
+        </div></section>
+      <section id="coach-messages" class="section"><div class="chat-shell">
+        <!-- LEFT: Contact list -->
+        <div class="chat-list">
+          <div class="chat-list-head">
+            <h2>💬 Messages</h2>
+            <div style="display:flex;gap:6px">
+              <button class="chat-new-msg-btn" type="button" onclick="chatOpenNewDmPicker()" title="New message"><span>+</span><span>New</span></button>
+              <button class="chat-icon-btn" type="button" onclick="setSection('coach','message')" title="Automations">⚙️</button>
+            </div>
+          </div>
+          <div id="chatNewDmPicker"></div>
+          <div class="chat-search-bar">
+            <input type="search" placeholder="Search conversations…" value="" oninput="_chatSearchQuery=this.value;chatRenderContactList('coach')" style="">
+          </div>
+          <div class="chat-contact-list" id="chatContactList"><button class="chat-contact" type="button" onclick="selectChat('squad')">
+          <span class="chat-avatar" style="width:46px;height:46px"><div class="av-inner" style="font-size:13.799999999999999px;font-weight:900;color:#ecf5ef">🏉</div></span>
+          <div class="chat-contact-meta">
+            <div class="name-row">
+              <strong>Squad</strong>
+              
+            </div>
+            <div class="preview-row">
+              <span class="preview">0 members</span>
+              
+            </div>
+          </div>
+        </button><button class="chat-contact" type="button" onclick="selectChat('coaching')">
+          <span class="chat-avatar" style="width:46px;height:46px"><div class="av-inner" style="font-size:13.799999999999999px;font-weight:900;color:#ecf5ef">📋</div></span>
+          <div class="chat-contact-meta">
+            <div class="name-row">
+              <strong>Coaching Team</strong>
+              
+            </div>
+            <div class="preview-row">
+              <span class="preview">Coaches only</span>
+              
+            </div>
+          </div>
+        </button><button class="chat-contact" type="button" onclick="selectChat('announce')">
+          <span class="chat-avatar" style="width:46px;height:46px"><div class="av-inner" style="font-size:13.799999999999999px;font-weight:900;color:#ecf5ef">📢</div></span>
+          <div class="chat-contact-meta">
+            <div class="name-row">
+              <strong>Announcements</strong>
+              
+            </div>
+            <div class="preview-row">
+              <span class="preview">Broadcast channel</span>
+              
+            </div>
+          </div>
+        </button></div>
+        </div>
+
+        <!-- RIGHT: Chat window — structure always present so selectChat can find elements -->
+        <div class="chat-window">
+          <header class="chat-header" id="chatHeader">
+            <button class="chat-back-btn" type="button" onclick="chatGoBack()">← Back</button>
+            <div class="chat-header-main">
+              <span id="chatHeaderAvatar"><span class="chat-avatar" style="width:40px;height:40px"><div class="av-inner" style="font-size:12px;font-weight:900;color:#ecf5ef">🏉</div></span></span>
+              <div>
+                <h2 id="chatHeaderName">Squad</h2>
+                <small id="chatHeaderSub">0 members</small>
+              </div>
+            </div>
+            <div class="chat-header-actions">
+              
+            </div>
+          </header>
+          <div class="chat-feed" id="chatFeed" onscroll="chatOnFeedScroll(this)"><div class="chat-empty"><div class="ce-icon">💬</div><strong>No messages yet</strong><p style="margin-top:6px;font-size:13px">Send the first message below.</p></div></div>
+          <div class="chat-typing-bar" id="chatTypingBar"></div>
+          <!-- Composer — always in DOM. Hidden only for players on announce channel. -->
+          <div class="chat-composer" id="chatComposerWrap" style="">
+            <div class="chat-composer-inner">
+              <div class="chat-reply-preview" id="chatReplyPreview" style="display:none"></div>
+              <textarea id="chatComposer" placeholder="Message…" rows="1" onkeydown="chatOnKeyInput(event)" oninput="chatOnKeyInput(event)" style=""></textarea>
+            </div>
+            <button class="chat-send-btn" type="button" id="chatSendBtn" onclick="chatSendMessage()" title="Send">➤</button>
+          </div>
+          <div class="chat-no-send" id="chatNoSend" style="display:none">Announcements — coaches post here, players can react.</div>
+          <button class="chat-scroll-btn" id="chatScrollBtn" type="button" onclick="chatScrollToBottom()" title="Scroll to bottom">↓</button>
+        </div>
+      </div></section>
+      <section id="coach-training" class="section">
+        <!-- Hero header -->
+        <div class="training-hero">
+          <div>
+            <div class="eyebrow">Training Centre</div>
+            <h1>Session Planner</h1>
+            <p>Write your own session times, build the tactics board and print the coach sheet.</p>
+          </div>
+          <div class="training-hero-stats">
+            <div class="training-stat"><span class="lbl">Week Load</span><strong>5</strong><small>blocks</small></div>
+            <div class="training-stat"><span class="lbl">Videos</span><strong>3</strong><small>saved</small></div>
+            <div class="training-stat"><span class="lbl">Available</span><strong>0</strong><small>players</small></div>
+          </div>
+        </div>
+
+        <!-- Session card tabs -->
+        <div class="session-card-row">
+          
+            <button class="session-card-tab active" type="button" onclick="setTrainingSession('tue')">
+              <span class="sc-time">Tue · 19:45</span>
+              <strong>Tuesday Training</strong>
+              <small style="color:var(--muted);font-size:11px;margin-top:3px;display:block">5 blocks</small>
+            </button>
+            <button class="session-card-tab " type="button" onclick="setTrainingSession('thu')">
+              <span class="sc-time">Thu · 19:45</span>
+              <strong>Thursday Training</strong>
+              <small style="color:var(--muted);font-size:11px;margin-top:3px;display:block">5 blocks</small>
+            </button>
+            <button class="session-card-tab " type="button" onclick="setTrainingSession('game')">
+              <span class="sc-time">Sat · Match</span>
+              <strong>Game Day Prep</strong>
+              <small style="color:var(--muted);font-size:11px;margin-top:3px;display:block">0 blocks</small>
+            </button>
+        </div>
+
+        <!-- Full-width session planner table -->
+        <div class="card" style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div>
+              <h2 style="margin:0;font-size:18px">Tuesday Training</h2>
+              <p class="muted" style="margin-top:3px">Write your own start times, activities, lead coach and key focus for each block.</p>
+            </div>
+            <button class="btn primary" type="button" onclick="addTimeBlock('tue')">+ Add block</button>
+          </div>
+          
+          <table class="training-gs-table">
+            <thead><tr>
+              <th style="width:88px;font-size:12px">Time</th>
+              <th style="font-size:12px">Activity</th>
+              <th style="width:140px;font-size:12px">Lead Coach</th>
+              <th style="width:220px;font-size:12px">Key Focus</th>
+              <th style="width:36px"></th>
+            </tr></thead>
+            <tbody>
+              
+                <tr>
+                  <td style="vertical-align:middle">
+                    <input class="gs-time-input" value="19:45" oninput="updateTimeBlock('tue','tb1','time',this.value)" placeholder="19:45" style="width: 84px; font-size: 15px; padding: 8px 10px;">
+                  </td>
+                  <td>
+                    <textarea oninput="updateTimeBlock('tue','tb1','activity',this.value)" placeholder="Describe this drill or block in detail…" rows="3" style="font-size: 14px; line-height: 1.5; min-height: 76px;">Warm-up and arrival checks</textarea>
+                  </td>
+                  <td style="vertical-align:top;padding-top:8px">
+                    <input class="gs-sm-input" value="" oninput="updateTimeBlock('tue','tb1','coach',this.value)" placeholder="e.g. Simon" style="font-size: 13px; padding: 7px 9px;">
+                  </td>
+                  <td style="vertical-align:top">
+                    <textarea oninput="updateTimeBlock('tue','tb1','keyFocus',this.value)" placeholder="Key coaching points, cues, targets…" rows="3" style="font-size: 14px; line-height: 1.5; min-height: 76px; width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; resize: vertical; font-family: inherit;">Activation, chat, set the tone</textarea>
+                  </td>
+                  <td style="vertical-align:middle">
+                    <button class="btn ghost" type="button" style="padding:0 8px;min-height:28px;color:var(--muted)" onclick="removeTimeBlock('tue','tb1')">✕</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="vertical-align:middle">
+                    <input class="gs-time-input" value="20:00" oninput="updateTimeBlock('tue','tb2','time',this.value)" placeholder="19:45" style="width: 84px; font-size: 15px; padding: 8px 10px;">
+                  </td>
+                  <td>
+                    <textarea oninput="updateTimeBlock('tue','tb2','activity',this.value)" placeholder="Describe this drill or block in detail…" rows="3" style="font-size: 14px; line-height: 1.5; min-height: 76px;">Unit skills — lineout and scrum detail</textarea>
+                  </td>
+                  <td style="vertical-align:top;padding-top:8px">
+                    <input class="gs-sm-input" value="" oninput="updateTimeBlock('tue','tb2','coach',this.value)" placeholder="e.g. Simon" style="font-size: 13px; padding: 7px 9px;">
+                  </td>
+                  <td style="vertical-align:top">
+                    <textarea oninput="updateTimeBlock('tue','tb2','keyFocus',this.value)" placeholder="Key coaching points, cues, targets…" rows="3" style="font-size: 14px; line-height: 1.5; min-height: 76px; width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; resize: vertical; font-family: inherit;">Lineout calls and body positions</textarea>
+                  </td>
+                  <td style="vertical-align:middle">
+                    <button class="btn ghost" type="button" style="padding:0 8px;min-height:28px;color:var(--muted)" onclick="removeTimeBlock('tue','tb2')">✕</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="vertical-align:middle">
+                    <input class="gs-time-input" value="20:35" oninput="updateTimeBlock('tue','tb3','time',this.value)" placeholder="19:45" style="width: 84px; font-size: 15px; padding: 8px 10px;">
+                  </td>
+                  <td>
+                    <textarea oninput="updateTimeBlock('tue','tb3','activity',this.value)" placeholder="Describe this drill or block in detail…" rows="3" style="font-size: 14px; line-height: 1.5; min-height: 76px;">Team attack — wide channel patterns</textarea>
+                  </td>
+                  <td style="vertical-align:top;padding-top:8px">
+                    <input class="gs-sm-input" value="" oninput="updateTimeBlock('tue','tb3','coach',this.value)" placeholder="e.g. Simon" style="font-size: 13px; padding: 7px 9px;">
+                  </td>
+                  <td style="vertical-align:top">
+                    <textarea oninput="updateTimeBlock('tue','tb3','keyFocus',this.value)" placeholder="Key coaching points, cues, targets…" rows="3" style="font-size: 14px; line-height: 1.5; min-height: 76px; width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; resize: vertical; font-family: inherit;">Width, depth, offload timing</textarea>
+                  </td>
+                  <td style="vertical-align:middle">
+                    <button class="btn ghost" type="button" style="padding:0 8px;min-height:28px;color:var(--muted)" onclick="removeTimeBlock('tue','tb3')">✕</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="vertical-align:middle">
+                    <input class="gs-time-input" value="21:00" oninput="updateTimeBlock('tue','tb4','time',this.value)" placeholder="19:45" style="width: 84px; font-size: 15px; padding: 8px 10px;">
+                  </td>
+                  <td>
+                    <textarea oninput="updateTimeBlock('tue','tb4','activity',this.value)" placeholder="Describe this drill or block in detail…" rows="3" style="font-size: 14px; line-height: 1.5; min-height: 76px;">Conditioned game — territory focus</textarea>
+                  </td>
+                  <td style="vertical-align:top;padding-top:8px">
+                    <input class="gs-sm-input" value="" oninput="updateTimeBlock('tue','tb4','coach',this.value)" placeholder="e.g. Simon" style="font-size: 13px; padding: 7px 9px;">
+                  </td>
+                  <td style="vertical-align:top">
+                    <textarea oninput="updateTimeBlock('tue','tb4','keyFocus',this.value)" placeholder="Key coaching points, cues, targets…" rows="3" style="font-size: 14px; line-height: 1.5; min-height: 76px; width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; resize: vertical; font-family: inherit;">Decision quality under pressure</textarea>
+                  </td>
+                  <td style="vertical-align:middle">
+                    <button class="btn ghost" type="button" style="padding:0 8px;min-height:28px;color:var(--muted)" onclick="removeTimeBlock('tue','tb4')">✕</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="vertical-align:middle">
+                    <input class="gs-time-input" value="21:15" oninput="updateTimeBlock('tue','tb5','time',this.value)" placeholder="19:45" style="width: 84px; font-size: 15px; padding: 8px 10px;">
+                  </td>
+                  <td>
+                    <textarea oninput="updateTimeBlock('tue','tb5','activity',this.value)" placeholder="Describe this drill or block in detail…" rows="3" style="font-size: 14px; line-height: 1.5; min-height: 76px;">Finish and coach review</textarea>
+                  </td>
+                  <td style="vertical-align:top;padding-top:8px">
+                    <input class="gs-sm-input" value="" oninput="updateTimeBlock('tue','tb5','coach',this.value)" placeholder="e.g. Simon" style="font-size: 13px; padding: 7px 9px;">
+                  </td>
+                  <td style="vertical-align:top">
+                    <textarea oninput="updateTimeBlock('tue','tb5','keyFocus',this.value)" placeholder="Key coaching points, cues, targets…" rows="3" style="font-size: 14px; line-height: 1.5; min-height: 76px; width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; resize: vertical; font-family: inherit;">3 things we did well, 1 to fix</textarea>
+                  </td>
+                  <td style="vertical-align:middle">
+                    <button class="btn ghost" type="button" style="padding:0 8px;min-height:28px;color:var(--muted)" onclick="removeTimeBlock('tue','tb5')">✕</button>
+                  </td>
+                </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Coach sheet table (full width below 2 columns) -->
+        <div class="coach-sheet" style="margin-bottom:14px">
+          <div class="coach-sheet-hdr">
+            <div>
+              <div class="eyebrow" style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--green);margin-bottom:3px">Coach sheet</div>
+              <h3 style="margin:0">Tuesday Training — run sheet</h3>
+            </div>
+            <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+              <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--line);color:var(--muted)">Manual send</span>
+              <button class="btn" type="button" style="font-size:12px" onclick="toggleTrainingAutoSend()">⏰ Auto Tue 10am</button>
+              <button class="btn primary" type="button" style="font-size:12px" onclick="sendTrainingSheet()">📤 Send to coaches</button>
+              <button class="btn" type="button" style="font-size:12px" onclick="window.print()">🖨 Print</button>
+            </div>
+          </div>
+          
+          <table class="cs-table">
+            <thead><tr><th>Time</th><th>Exercise</th><th>Coach</th><th>Key Focus</th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="cs-time-cell">19:45</td>
+                <td>Warm-up and arrival checks</td>
+                <td style="color:var(--muted);font-size:12px">—</td>
+                <td><span style="display:inline-block;padding:2px 9px;border-radius:999px;background:var(--green-soft);color:var(--green);font-size:11px;font-weight:700">Activation, chat, set the tone</span></td>
+              </tr><tr>
+                <td class="cs-time-cell">20:00</td>
+                <td>Unit skills — lineout and scrum detail</td>
+                <td style="color:var(--muted);font-size:12px">—</td>
+                <td><span style="display:inline-block;padding:2px 9px;border-radius:999px;background:var(--green-soft);color:var(--green);font-size:11px;font-weight:700">Lineout calls and body positions</span></td>
+              </tr><tr>
+                <td class="cs-time-cell">20:35</td>
+                <td>Team attack — wide channel patterns</td>
+                <td style="color:var(--muted);font-size:12px">—</td>
+                <td><span style="display:inline-block;padding:2px 9px;border-radius:999px;background:var(--green-soft);color:var(--green);font-size:11px;font-weight:700">Width, depth, offload timing</span></td>
+              </tr><tr>
+                <td class="cs-time-cell">21:00</td>
+                <td>Conditioned game — territory focus</td>
+                <td style="color:var(--muted);font-size:12px">—</td>
+                <td><span style="display:inline-block;padding:2px 9px;border-radius:999px;background:var(--green-soft);color:var(--green);font-size:11px;font-weight:700">Decision quality under pressure</span></td>
+              </tr><tr>
+                <td class="cs-time-cell">21:15</td>
+                <td>Finish and coach review</td>
+                <td style="color:var(--muted);font-size:12px">—</td>
+                <td><span style="display:inline-block;padding:2px 9px;border-radius:999px;background:var(--green-soft);color:var(--green);font-size:11px;font-weight:700">3 things we did well, 1 to fix</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="padding:10px 16px;border-top:1px solid var(--line)">
+            <strong style="font-size:12px">Available (0/0):</strong>
+            <span style="font-size:11px;color:var(--muted);margin-left:6px"></span>
+          </div>
+        </div>
+
+        <!-- Past sessions archive -->
+        <div class="card" style="margin-bottom:14px">
+          <h2 style="margin-bottom:0">Past sessions</h2>
+          <div class="archive-item">
+            <div class="archive-meta">Last Tuesday</div>
+            <strong>Attack patterns — wide channel</strong>
+            <p>5 blocks · Set piece, Attack, Game</p>
+          </div>
+          <div class="archive-item">
+            <div class="archive-meta">Last Thursday</div>
+            <strong>Lineout &amp; defensive line speed</strong>
+            <p>5 blocks · Set piece, Defence, Review</p>
+          </div>
+        </div>
+
+        <!-- Video library row -->
+        <div class="grid two-col">
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+              <div><h2 style="margin:0">Club video library</h2><p class="muted" style="margin-top:2px">Upload up to 100 × 120-second training clips.</p></div>
+              <span class="pill">3/100</span>
+            </div>
+            <div class="video-grid">
+              
+                <div class="video-card">
+                  <div class="video-thumb"><div class="play-btn">▶</div><span class="video-dur">1:48</span></div>
+                  <div class="video-card-body"><strong>Tuesday session — ruck speed drill</strong><small>2 days ago</small></div>
+                </div>
+                <div class="video-card">
+                  <div class="video-thumb"><div class="play-btn">▶</div><span class="video-dur">2:05</span></div>
+                  <div class="video-card-body"><strong>Lineout calls walkthrough</strong><small>Last week</small></div>
+                </div>
+                <div class="video-card">
+                  <div class="video-thumb"><div class="play-btn">▶</div><span class="video-dur">1:22</span></div>
+                  <div class="video-card-body"><strong>Defensive channel patterns vs La Hulpe</strong><small>Last week</small></div>
+                </div>
+              <div class="video-card" style="cursor:pointer;border:2px dashed var(--line)" onclick="document.getElementById('addVideoForm').classList.toggle('hidden')">
+                <div class="video-thumb" style="background:var(--panel-2)"><div class="play-btn" style="background:rgba(16,185,129,0.15);color:var(--green);font-size:18px">+</div></div>
+                <div class="video-card-body"><strong style="color:var(--green)">Add video</strong><small>Click to upload or link</small></div>
+              </div>
+            </div>
+            <div id="addVideoForm" class="hidden" style="margin-top:14px;display:grid;grid-template-columns:1fr 80px auto;gap:8px;align-items:end">
+              <label>Title<input id="newVidTitle" placeholder="Tuesday ruck drill" style=""></label>
+              <label>Duration<input id="newVidDur" placeholder="1:30" style=""></label>
+              <button class="btn primary" type="button" style="margin-top:auto" onclick="addClubVideo()">Save</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+              <div><h2 style="margin:0">Internet coaching library</h2><p class="muted" style="margin-top:2px">Save clips and references from the web.</p></div>
+            </div>
+            <div style="display:grid;gap:8px">
+              
+                <div class="link-row">
+                  <div><a href="https://laws.worldrugby.org" target="_blank" rel="noopener">World Rugby — lineout law interpretation guide</a><small>https://laws.worldrugby.org</small></div>
+                  <span class="link-cat">Set piece</span>
+                  <button class="btn ghost" type="button" style="padding:0 8px;color:var(--muted)" onclick="removeCoachingLink('cl1')">✕</button>
+                </div>
+                <div class="link-row">
+                  <div><a href="https://youtube.com" target="_blank" rel="noopener">Blitzing defence breakdown — analysis clip</a><small>https://youtube.com</small></div>
+                  <span class="link-cat">Defence</span>
+                  <button class="btn ghost" type="button" style="padding:0 8px;color:var(--muted)" onclick="removeCoachingLink('cl2')">✕</button>
+                </div>
+                <div class="link-row">
+                  <div><a href="https://youtube.com" target="_blank" rel="noopener">South Africa 2023 restart sequences vs NZ</a><small>https://youtube.com</small></div>
+                  <span class="link-cat">Restarts</span>
+                  <button class="btn ghost" type="button" style="padding:0 8px;color:var(--muted)" onclick="removeCoachingLink('cl3')">✕</button>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 90px 80px auto;gap:8px;margin-top:14px;align-items:end">
+              <label>Title<input id="newLinkTitle" placeholder="Kick chase drill" style=""></label>
+              <label>Category<input id="newLinkCat" placeholder="Attack" style=""></label>
+              <label>URL<input id="newLinkUrl" placeholder="https://..." style=""></label>
+              <button class="btn primary" type="button" style="margin-top:auto" onclick="addCoachingLink()">Save</button>
+            </div>
+          </div>
+        </div></section>
+      <section id="coach-matchday" class="section">
+
+        <!-- ── AVAILABILITY TEMPLATE (top) ──────────────────────────────── -->
+        <div class="avail-template-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+            <div>
+              <h2 style="margin:0">📨 Weekly availability request</h2>
+              <p class="muted" style="margin-top:3px">Edit the template below, then send manually or enable auto-send.</p>
+            </div>
+            <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+              <span style="font-size:11px;font-weight:700;padding:4px 11px;border-radius:999px;background:var(--line);color:var(--muted)">Manual send</span>
+              <button class="btn" type="button" onclick="toggleAutoSend()">⏰ Set auto-send</button>
+              <button class="btn primary" type="button" onclick="sendAvailabilityNow()">📤 Send now</button>
+            </div>
+          </div>
+          <textarea id="availTpl" style="min-height: 80px; font-size: 13px; margin-bottom: 10px;" placeholder="Write your weekly availability message here...">Hi team! Please confirm your availability for this week's training (Tuesday &amp; Thursday 19:45) and Saturday's match. Reply AVAILABLE or UNAVAILABLE, and flag any injuries. Thanks, Coach.</textarea>
+          
+          <button class="btn primary" type="button" onclick="saveAvailabilityTemplate()">💾 Save template</button>
+        </div>
+
+        <!-- datalist for autocomplete on pitch inputs -->
+        <datalist id="squad-names">
+          
+        </datalist>
+
+        <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:14px;align-items:start">
+
+          <!-- LEFT: Big pitch + bench + sub plan -->
+          <div style="display:grid;gap:14px">
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div>
+                  <h2 style="margin:0">Matchday Centre</h2>
+                  <p class="muted" style="margin-top:3px">Kituro · Home · This Saturday</p>
+                </div>
+                <div style="display:flex;gap:7px">
+                  <button class="btn" type="button" onclick="showToast('Formation reviewed ✓')">Review</button>
+                  <button class="btn primary" type="button" onclick="exportFormation()">📷 Export graphic</button>
+                </div>
+              </div>
+
+              <!-- Big pitch — exportable via html2canvas -->
+              <div id="matchday-pitch" class="pitch-big">
+                <div class="pitch-inner"></div>
+                <div class="pitch-line" style="top:18%"></div>
+                <div class="pitch-line" style="top:40%"></div>
+                <div class="pitch-line" style="top:50%"></div>
+                <div class="pitch-line" style="top:60%"></div>
+                <div class="pitch-line" style="top:82%"></div>
+                <div class="slot-big" data-slot="1" style="left:24%;top:81%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('1',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">1</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('1',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('1')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="2" style="left:50%;top:83%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('2',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">2</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('2',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('2')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="3" style="left:76%;top:81%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('3',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">3</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('3',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('3')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="4" style="left:36%;top:68%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('4',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">4</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('4',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('4')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="5" style="left:64%;top:68%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('5',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">5</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('5',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('5')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="6" style="left:18%;top:56%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('6',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">6</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('6',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('6')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="8" style="left:50%;top:55%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('8',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">8</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('8',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('8')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="7" style="left:82%;top:56%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('7',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">7</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('7',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('7')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="9" style="left:37%;top:42%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('9',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">9</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('9',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('9')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="10" style="left:64%;top:36%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('10',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">10</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('10',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('10')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="11" style="left:13%;top:24%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('11',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">11</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('11',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('11')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="12" style="left:39%;top:25%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('12',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">12</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('12',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('12')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="13" style="left:62%;top:21%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('13',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">13</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('13',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('13')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="14" style="left:87%;top:24%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('14',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">14</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('14',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('14')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div><div class="slot-big" data-slot="15" style="left:50%;top:11%" ondragover="handleSlotDragover(event);this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()" ondrop="this.classList.remove('drag-over');handleSlotDrop('15',event)">
+                    <div class="slot-photo">
+                      <span style="font-size:16px">🏉</span>
+                      <span class="slot-num">15</span>
+                    </div>
+                    <input class="slot-name-input" value="" placeholder="Type player" list="squad-names" oninput="setFormationName('15',this.value)" style="">
+                    <button class="btn ghost" type="button" onclick="clearFormationSlot('15')" style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                  </div>
+              </div>
+
+              <!-- Bench 16–23 -->
+              <div style="margin-top:10px">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                  <strong style="font-size:13px">Bench (16–23)</strong>
+                  <span class="muted" style="font-size:12px">Type or drag player names</span>
+                </div>
+                <div class="bench-strip" style="background:rgba(26,46,37,0.06);border-radius:10px;padding:10px">
+                  
+                    <div class="bench-slot" ondragover="handleMatchdayDragOver(event)" ondragleave="stopMatchdayAutoScroll()" ondrop="handleBenchDrop(0,event)">
+                      <small>16</small>
+                      <input value="" placeholder="Type player" list="squad-names" oninput="setBenchPlayer(0,this.value)" style="background: rgba(9, 13, 20, 0.88); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 5px; color: rgb(226, 232, 240); font-size: 11px; font-weight: 600; width: 100%; text-align: center; padding: 3px 2px; margin-top: 3px;">
+                      <button class="btn ghost" type="button" onclick="clearBenchSlot(0)" style="min-height:20px;padding:0 6px;font-size:10px;margin-top:4px;color:#cbd5e1">Clear</button>
+                    </div>
+                    <div class="bench-slot" ondragover="handleMatchdayDragOver(event)" ondragleave="stopMatchdayAutoScroll()" ondrop="handleBenchDrop(1,event)">
+                      <small>17</small>
+                      <input value="" placeholder="Type player" list="squad-names" oninput="setBenchPlayer(1,this.value)" style="background: rgba(9, 13, 20, 0.88); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 5px; color: rgb(226, 232, 240); font-size: 11px; font-weight: 600; width: 100%; text-align: center; padding: 3px 2px; margin-top: 3px;">
+                      <button class="btn ghost" type="button" onclick="clearBenchSlot(1)" style="min-height:20px;padding:0 6px;font-size:10px;margin-top:4px;color:#cbd5e1">Clear</button>
+                    </div>
+                    <div class="bench-slot" ondragover="handleMatchdayDragOver(event)" ondragleave="stopMatchdayAutoScroll()" ondrop="handleBenchDrop(2,event)">
+                      <small>18</small>
+                      <input value="" placeholder="Type player" list="squad-names" oninput="setBenchPlayer(2,this.value)" style="background: rgba(9, 13, 20, 0.88); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 5px; color: rgb(226, 232, 240); font-size: 11px; font-weight: 600; width: 100%; text-align: center; padding: 3px 2px; margin-top: 3px;">
+                      <button class="btn ghost" type="button" onclick="clearBenchSlot(2)" style="min-height:20px;padding:0 6px;font-size:10px;margin-top:4px;color:#cbd5e1">Clear</button>
+                    </div>
+                    <div class="bench-slot" ondragover="handleMatchdayDragOver(event)" ondragleave="stopMatchdayAutoScroll()" ondrop="handleBenchDrop(3,event)">
+                      <small>19</small>
+                      <input value="" placeholder="Type player" list="squad-names" oninput="setBenchPlayer(3,this.value)" style="background: rgba(9, 13, 20, 0.88); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 5px; color: rgb(226, 232, 240); font-size: 11px; font-weight: 600; width: 100%; text-align: center; padding: 3px 2px; margin-top: 3px;">
+                      <button class="btn ghost" type="button" onclick="clearBenchSlot(3)" style="min-height:20px;padding:0 6px;font-size:10px;margin-top:4px;color:#cbd5e1">Clear</button>
+                    </div>
+                    <div class="bench-slot" ondragover="handleMatchdayDragOver(event)" ondragleave="stopMatchdayAutoScroll()" ondrop="handleBenchDrop(4,event)">
+                      <small>20</small>
+                      <input value="" placeholder="Type player" list="squad-names" oninput="setBenchPlayer(4,this.value)" style="background: rgba(9, 13, 20, 0.88); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 5px; color: rgb(226, 232, 240); font-size: 11px; font-weight: 600; width: 100%; text-align: center; padding: 3px 2px; margin-top: 3px;">
+                      <button class="btn ghost" type="button" onclick="clearBenchSlot(4)" style="min-height:20px;padding:0 6px;font-size:10px;margin-top:4px;color:#cbd5e1">Clear</button>
+                    </div>
+                    <div class="bench-slot" ondragover="handleMatchdayDragOver(event)" ondragleave="stopMatchdayAutoScroll()" ondrop="handleBenchDrop(5,event)">
+                      <small>21</small>
+                      <input value="" placeholder="Type player" list="squad-names" oninput="setBenchPlayer(5,this.value)" style="background: rgba(9, 13, 20, 0.88); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 5px; color: rgb(226, 232, 240); font-size: 11px; font-weight: 600; width: 100%; text-align: center; padding: 3px 2px; margin-top: 3px;">
+                      <button class="btn ghost" type="button" onclick="clearBenchSlot(5)" style="min-height:20px;padding:0 6px;font-size:10px;margin-top:4px;color:#cbd5e1">Clear</button>
+                    </div>
+                    <div class="bench-slot" ondragover="handleMatchdayDragOver(event)" ondragleave="stopMatchdayAutoScroll()" ondrop="handleBenchDrop(6,event)">
+                      <small>22</small>
+                      <input value="" placeholder="Type player" list="squad-names" oninput="setBenchPlayer(6,this.value)" style="background: rgba(9, 13, 20, 0.88); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 5px; color: rgb(226, 232, 240); font-size: 11px; font-weight: 600; width: 100%; text-align: center; padding: 3px 2px; margin-top: 3px;">
+                      <button class="btn ghost" type="button" onclick="clearBenchSlot(6)" style="min-height:20px;padding:0 6px;font-size:10px;margin-top:4px;color:#cbd5e1">Clear</button>
+                    </div>
+                    <div class="bench-slot" ondragover="handleMatchdayDragOver(event)" ondragleave="stopMatchdayAutoScroll()" ondrop="handleBenchDrop(7,event)">
+                      <small>23</small>
+                      <input value="" placeholder="Type player" list="squad-names" oninput="setBenchPlayer(7,this.value)" style="background: rgba(9, 13, 20, 0.88); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 5px; color: rgb(226, 232, 240); font-size: 11px; font-weight: 600; width: 100%; text-align: center; padding: 3px 2px; margin-top: 3px;">
+                      <button class="btn ghost" type="button" onclick="clearBenchSlot(7)" style="min-height:20px;padding:0 6px;font-size:10px;margin-top:4px;color:#cbd5e1">Clear</button>
+                    </div>
+                </div>
+              </div>
+
+              <!-- Export bar -->
+              <div class="export-bar" style="margin-top:12px">
+                <button class="btn primary" type="button" onclick="exportFormation()">📷 Download for Instagram</button>
+                <button class="btn" type="button" onclick="sendPushToPlayers('Matchday squad selected','Your matchday squad is available in Coach\'s Eye. Open the app to view selection.')">🔔 Notify squad</button>
+                <button class="btn" type="button" onclick="window.print()">🖨 Print sheet</button>
+              </div>
+            </div>
+
+            <!-- Substitute plan -->
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+                <h2 style="margin:0">Substitute plan</h2>
+                <button class="btn primary" type="button" onclick="document.getElementById('addSubForm').classList.toggle('hidden')">+ Add sub</button>
+              </div>
+              <table>
+                <thead><tr><th>Minute</th><th>On</th><th>Off</th><th>Reason</th><th></th></tr></thead>
+                <tbody>
+                  <tr>
+                    <td><span class="sub-tag">50'</span></td>
+                    <td><strong style="font-size:13px">Tanguy Danhiez</strong></td>
+                    <td style="color:var(--muted)">Basile Rey</td>
+                    <td style="color:var(--muted);font-size:12px">Planned rotation</td>
+                    <td><button class="btn ghost" type="button" style="padding:0 8px;color:var(--muted)" onclick="removeSubPlan('sub1')">✕</button></td>
+                  </tr><tr>
+                    <td><span class="sub-tag">65'</span></td>
+                    <td><strong style="font-size:13px">Benjamin Moortgat</strong></td>
+                    <td style="color:var(--muted)">Loic Potier</td>
+                    <td style="color:var(--muted);font-size:12px">Planned rotation</td>
+                    <td><button class="btn ghost" type="button" style="padding:0 8px;color:var(--muted)" onclick="removeSubPlan('sub2')">✕</button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div id="addSubForm" class="hidden" style="display:grid;grid-template-columns:60px 1fr 1fr 1fr auto;gap:8px;margin-top:14px;align-items:end">
+                <label>Min<input id="subMin" type="number" min="1" max="80" value="50" style=""></label>
+                <label>On<input id="subOn" placeholder="Player coming on" style=""></label>
+                <label>Off<input id="subOff" placeholder="Player going off" style=""></label>
+                <label>Reason<input id="subReason" placeholder="Rotation / tactical" style=""></label>
+                <button class="btn primary" type="button" style="margin-top:auto" onclick="addSubPlan()">Add</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: Draggable player pool -->
+          <div style="display:grid;gap:14px;align-content:start">
+
+            <!-- Drag players onto the pitch -->
+            <div class="card">
+              <h2 style="margin-bottom:3px">Available players</h2>
+              <p class="muted" style="font-size:12px;margin-bottom:12px">Players disappear from this list once placed on the pitch or bench.</p>
+              <div style="display:grid;gap:6px;max-height:70vh;overflow-y:auto">
+                <p class="muted" style="text-align:center;padding:14px">All available players are already on the pitch or bench.</p>
+              </div>
+            </div>
+          </div>
+        </div></section>
+      <section id="coach-medical" class="section">
+        <!-- Medical overview stats -->
+        <div class="med-overview-grid">
+          <div class="med-stat"><strong style="color:var(--red)">0</strong><small>Active injuries</small></div>
+          <div class="med-stat"><strong style="color:var(--amber)">0</strong><small>Monitoring</small></div>
+          <div class="med-stat"><strong style="color:var(--green)">0</strong><small>Cleared to play</small></div>
+          <div class="med-stat"><strong style="color:var(--blue)">2</strong><small>Treatment logs</small></div>
+        </div>
+
+        <div class="grid two-col" style="margin-top:14px">
+          <!-- Treatment & rehab tracker -->
+          <div style="display:grid;gap:14px">
+            <div class="card">
+              <h2>Treatment &amp; rehab tracker</h2>
+              <p class="muted">Track each player's recovery progress and return-to-play timeline.</p>
+              <div style="display:grid;gap:10px;margin-top:14px">
+                <p class="muted">No players currently flagged — all clear.</p>
+              </div>
+            </div>
+
+            <!-- Treatment log -->
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+                <h2 style="margin:0">Treatment log</h2>
+                <button class="btn primary" type="button" onclick="document.getElementById('addTreatForm').classList.toggle('hidden')">+ Log treatment</button>
+              </div>
+              <div id="addTreatForm" class="hidden" style="border:1px solid var(--green);border-radius:9px;padding:12px;background:rgba(16,185,129,0.05);margin-bottom:14px;display:grid;gap:9px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+                  <label>Player<select id="treatPid"></select></label>
+                  <label>Therapist<input id="treatBy" placeholder="Dr. / Physio name" style=""></label>
+                </div>
+                <label>Treatment description<input id="treatText" placeholder="Ice, physio session, ultrasound..." style=""></label>
+                <div style="display:grid;grid-template-columns:1fr auto;gap:9px;align-items:end">
+                  <label>Next session / check-in<input id="treatNext" placeholder="Thursday, Saturday..." style=""></label>
+                  <button class="btn primary" type="button" onclick="addTreatmentLog()">Log</button>
+                </div>
+              </div>
+              <div>
+                <div class="treatment-row">
+                    <span style="color:var(--muted);font-size:12px">Today</span>
+                    <div><strong style="font-size:13px">p10</strong><div style="color:var(--muted);font-size:12px">Physio — shoulder assessment + mobilisation</div></div>
+                    <div style="font-size:12px;color:var(--muted)">Next: Thursday</div>
+                    <span style="color:var(--muted);font-size:11px">Dr. Malone</span>
+                  </div><div class="treatment-row">
+                    <span style="color:var(--muted);font-size:12px">Yesterday</span>
+                    <div><strong style="font-size:13px">p23</strong><div style="color:var(--muted);font-size:12px">Quad strain — ice, rest and ultrasound</div></div>
+                    <div style="font-size:12px;color:var(--muted)">Next: Saturday check</div>
+                    <span style="color:var(--muted);font-size:11px">Dr. Malone</span>
+                  </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: Medical messages + coach notes -->
+          <div style="display:grid;gap:14px;align-content:start">
+            <div class="card">
+              <h2>Medical follow-up messages</h2>
+              <p class="muted">Check-in requests and player responses.</p>
+              <div style="margin-top:14px">
+                
+                  <div class="med-msg-card ">
+                    <div class="message-meta"><span>Medical check-in</span><span>Yesterday</span></div>
+                    <strong>Medical → Coach</strong>
+                    <p class="muted" style="margin-top:4px;font-size:13px">Bubele and Maxence need status updates before selection.</p>
+                  </div>
+              </div>
+              <button class="btn" type="button" style="margin-top:12px;width:100%" onclick="setSection('coach','message')">Open message center →</button>
+            </div>
+
+            <div class="card">
+              <h2>Coach notes</h2>
+              <p class="muted">Private notes — not shared with players.</p>
+              <textarea id="coachNotesArea" style="margin-top: 12px; min-height: 160px;"></textarea>
+              <button class="btn primary" type="button" style="margin-top:10px;width:100%" onclick="saveCoachNotes()">Save notes</button>
+            </div>
+
+            <div class="card">
+              <h2>Medical overview</h2>
+              <table style="margin-top:11px">
+                <thead><tr><th>Player</th><th>Status</th><th>Return</th></tr></thead>
+                <tbody>
+                  <tr><td colspan="3" style="color:var(--muted);text-align:center">All players clear.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div></section>
+      <section id="coach-players" class="section">
+        <div style="display:grid;gap:14px">
+
+          <!-- Toolbar + filter pills -->
+          <div class="card" style="padding:14px 18px">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+              <div>
+                <h2 style="margin:0">Members</h2>
+                <p class="muted" style="margin-top:3px">0 members · Boitsfort Premier</p>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <button class="btn" type="button" onclick="showToast('Squad exported to CSV ✓')">📥 Export</button>
+                <button class="btn" type="button" onclick="triggerImportFile()">📤 Import spreadsheet</button>
+                <button class="btn" type="button" onclick="showToast('Bulk pay email sent to squad ✓')">💳 Bulk pay squad</button>
+                <button class="btn primary" type="button" onclick="showAddPlayerForm()">+ Add rugby player</button>
+              </div>
+            </div>
+            <div class="db-toolbar" style="margin-top:12px;margin-bottom:0">
+              <button class="filter-pill active" type="button" onclick="setPlayerFilter('all')">All members <strong>0</strong></button><button class="filter-pill " type="button" onclick="setPlayerFilter('available')">Available <strong>0</strong></button><button class="filter-pill " type="button" onclick="setPlayerFilter('injured')">Injured <strong>0</strong></button><button class="filter-pill " type="button" onclick="setPlayerFilter('no-reply')">No reply <strong>0</strong></button><button class="filter-pill " type="button" onclick="setPlayerFilter('consent')">Consent pending <strong>0</strong></button>
+            </div>
+          </div>
+
+          <!-- ── Invite & Access panel ── -->
+          <div class="card" style="padding:0;overflow:hidden">
+            <details class="srv-panel" open="" ontoggle="if(this.open) loadInviteList()">
+              <summary>🔗 Invite &amp; team access</summary>
+              <div class="srv-panel-body" style="padding-top:4px">
+
+                <!-- Role tabs + name field -->
+                <p class="muted" style="font-size:13px;margin-bottom:14px">Generate a personal invite link. Players claim the link with email and password so they get a permanent account.</p>
+
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+                  
+                    <button type="button" class="inv-role-btn active" data-role="player" onclick="setInviteRole('player',this)" style="padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid var(--line);background:var(--panel-2);color:var(--muted);transition:all .13s">
+                      🏉 Player</button>
+                    <button type="button" class="inv-role-btn " data-role="coach" onclick="setInviteRole('coach',this)" style="padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid var(--line);background:var(--panel-2);color:var(--muted);transition:all .13s">
+                      🎯 Coach</button>
+                    <button type="button" class="inv-role-btn " data-role="admin" onclick="setInviteRole('admin',this)" style="padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid var(--line);background:var(--panel-2);color:var(--muted);transition:all .13s">
+                      ⚙️ Admin</button>
+                    <button type="button" class="inv-role-btn " data-role="medical" onclick="setInviteRole('medical',this)" style="padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid var(--line);background:var(--panel-2);color:var(--muted);transition:all .13s">
+                      🏥 Medical</button>
+                </div>
+
+                <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+                  <label style="flex:1;min-width:180px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
+                    Full name
+                    <input id="inv-name" placeholder="e.g. Thomas Dupont" style="padding: 9px 11px;">
+                  </label>
+                  <label style="flex:1;min-width:210px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
+                    Email
+                    <input id="inv-email" type="email" placeholder="player@example.com" style="padding: 9px 11px;">
+                  </label>
+                  <button id="inv-create-btn" class="btn primary" type="button" onclick="createInvite()" style="white-space:nowrap;min-height:40px;padding:0 16px">
+                    🔗 Generate invite link
+                  </button>
+                </div>
+                <div id="inv-result"></div>
+
+                <!-- Fallback: team code for bulk sharing -->
+                <details style="margin-top:18px">
+                  <summary style="font-size:12px;font-weight:700;color:#64748b;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
+                    <span>▶</span> Also share a general team code (no-name signup)
+                  </summary>
+                  <div style="margin-top:10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:10px;padding:14px 16px">
+                    <p style="font-size:13px;color:#94a3b8;margin-bottom:10px">For bulk invites — players enter this code and their own name.</p>
+                    <div class="join-code-value" style="font-size:22px;letter-spacing:3px;display:inline-block;margin-bottom:10px">BOITSFORT</div>
+                    <div style="font-size:12px;color:#64748b;margin-bottom:10px">boitsfort-coachseye-gpt.vercel.app</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      <button class="btn" type="button" style="font-size:12px" onclick="navigator.clipboard?.writeText('Join Boitsfort RFC on coacheseyeGPT! Open https://boitsfort-coachseye-gpt.vercel.app — tap Join squad and enter code: BOITSFORT').then(()=&gt;showToast('Copied 📋'))">
+                        📋 Copy message
+                      </button>
+                      <button class="btn" type="button" style="font-size:12px" onclick="const c=prompt('Set team code:',state.teamCode||'BOITSFORT');if(c?.trim()){state.teamCode=c.trim().toUpperCase();saveState();render();}">
+                        ✏️ Change code
+                      </button>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </details>
+          </div>
+
+          <!-- Pending account join requests -->
+          <div class="card" style="padding:14px 18px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px">
+              <div>
+                <h2 style="margin:0">Pending Requests</h2>
+                <p class="muted" style="margin-top:3px">Approve players who joined with team code and email account.</p>
+              </div>
+              <button class="btn" type="button" onclick="loadIdentityRequests()" style="font-size:12px">Refresh</button>
+            </div>
+            <div id="identity-requests-panel"><p class="muted" style="font-size:13px">Loading join requests...</p></div>
+          </div>
+
+          <!-- Add player panel (toggled) -->
+          
+
+          <!-- Player database table -->
+          <div class="card" style="padding:0;overflow:hidden">
+            <table class="player-db-table">
+              <thead>
+                <tr>
+                  <th style="padding-left:18px">Player</th>
+                  <th>Position</th>
+                  <th>Game status</th>
+                  <th>Tuesday</th>
+                  <th>Thursday</th>
+                  <th>Attendance</th>
+                  <th>Media consent</th>
+                  <th>Contract</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                
+              </tbody>
+            </table>
+            <div style="padding:28px;text-align:center;color:var(--muted)">No players match this filter.</div>
+          </div>
+
+          <!-- Sent invites — collapsed by default -->
+          <details style="margin-top:4px" ontoggle="if(this.open) loadInviteList()">
+            <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);list-style:none;display:flex;align-items:center;gap:6px;padding:10px 4px;user-select:none">
+              <span style="font-size:10px">▶</span> Sent invites
+            </summary>
+            <div class="card" style="padding:14px 18px;margin-top:8px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <strong style="font-size:13px;color:var(--ink)">Sent invites</strong>
+                <button class="btn ghost" type="button" style="font-size:12px;padding:2px 8px" onclick="loadInviteList()">↺ Refresh</button>
+              </div>
+              <div id="invite-list-panel"><p class="muted" style="font-size:13px">Loading…</p></div>
+            </div>
+          </details>
+
+        </div></section>
+
+      <section id="player-availability" class="section"><div class="card" style="text-align:center;padding:40px 20px;color:var(--muted)"><p style="font-size:32px;margin:0">🏉</p><p style="font-weight:700;margin:8px 0 4px">No players yet</p><p style="font-size:13px">Go to <strong>Player DB</strong> and add your squad first.</p></div></section>
+      <section id="player-week" class="section"><div class="card" style="text-align:center;padding:40px 20px;color:var(--muted)"><p style="font-size:32px;margin:0">🏉</p><p style="font-weight:700;margin:8px 0 4px">No players yet</p><p style="font-size:13px">Go to <strong>Player DB</strong> and add your squad first.</p></div></section>
+      <section id="player-fixtures" class="section">
+        <div class="card">
+          <h2>Season schedule</h2>
+          <p class="muted">See what is coming and block dates early.</p>
+          <div class="list" style="margin-top:14px">
+            <div class="row"><div><strong>This Saturday: Kituro</strong><small>Home · Availability open</small></div><div><button class="btn" onclick="setSection('player','availability')">Update</button></div></div><div class="row"><div><strong>Next Saturday: ASUB</strong><small>Away · Not opened</small></div><div><button class="btn" onclick="setSection('player','availability')">Update</button></div></div><div class="row"><div><strong>Two weeks: Dendermonde</strong><small>Home · Not opened</small></div><div><button class="btn" onclick="setSection('player','availability')">Update</button></div></div><div class="row"><div><strong>Three weeks: La Hulpe</strong><small>Away · Not opened</small></div><div><button class="btn" onclick="setSection('player','availability')">Update</button></div></div>
+          </div>
+        </div></section>
+      <section id="player-attendance" class="section" style="display:none"></section>
+      <section id="player-messages" class="section"></section>
     </main>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <div id="toast" class="toast visible">Identity storage not configured yet</div>
 
   <script>
     // ─── STORAGE KEYS (must not change) ───────────────────────────────────────
@@ -5410,21 +6592,10 @@
               <summary>🔗 Invite & team access</summary>
               <div class="srv-panel-body" style="padding-top:4px">
 
-                <!-- Invite type selector -->
-                <div style="display:flex;gap:6px;margin-bottom:14px">
-                  <button type="button" id="inv-type-individual" class="inv-role-btn active" data-invtype="individual"
-                    onclick="setInviteType('individual')"
-                    style="padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid var(--line);background:var(--panel-2);color:var(--muted);transition:all .13s">
-                    👤 Individual</button>
-                  <button type="button" id="inv-type-group" class="inv-role-btn" data-invtype="group"
-                    onclick="setInviteType('group')"
-                    style="padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid var(--line);background:var(--panel-2);color:var(--muted);transition:all .13s">
-                    🔗 Group (reusable)</button>
-                </div>
-                <p id="inv-type-desc" class="muted" style="font-size:13px;margin-bottom:14px">Generate a personal invite link. The player claims it with their email and password to get a permanent account.</p>
+                <!-- Role tabs + name field -->
+                <p class="muted" style="font-size:13px;margin-bottom:14px">Generate a personal invite link. Players claim the link with email and password so they get a permanent account.</p>
 
-                <!-- Role tabs — hidden for group type -->
-                <div id="inv-role-row" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
                   ${[['player','🏉 Player'],['coach','🎯 Coach'],['admin','⚙️ Admin'],['medical','🏥 Medical']].map(([role,lbl],i) => `
                     <button type="button" class="inv-role-btn ${i===0?'active':''}" data-role="${role}"
                       onclick="setInviteRole('${role}',this)"
@@ -5433,12 +6604,12 @@
                 </div>
 
                 <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-                  <label id="inv-name-label" style="flex:1;min-width:180px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
+                  <label style="flex:1;min-width:180px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
                     Full name
                     <input id="inv-name" placeholder="e.g. Thomas Dupont" style="padding:9px 11px">
                   </label>
                   <label style="flex:1;min-width:210px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
-                    Email (optional)
+                    Email
                     <input id="inv-email" type="email" placeholder="player@example.com" style="padding:9px 11px">
                   </label>
                   <button id="inv-create-btn" class="btn primary" type="button" onclick="createInvite()"
@@ -5456,10 +6627,10 @@
                   <div style="margin-top:10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:10px;padding:14px 16px">
                     <p style="font-size:13px;color:#94a3b8;margin-bottom:10px">For bulk invites — players enter this code and their own name.</p>
                     <div class="join-code-value" style="font-size:22px;letter-spacing:3px;display:inline-block;margin-bottom:10px">${state.teamCode||'BOITSFORT'}</div>
-                    <div style="font-size:12px;color:#64748b;margin-bottom:10px">${window.location.host}</div>
+                    <div style="font-size:12px;color:#64748b;margin-bottom:10px">boitsfort-coachseye-gpt.vercel.app</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
                       <button class="btn" type="button" style="font-size:12px"
-                        onclick="navigator.clipboard?.writeText('Join Boitsfort RFC on coacheseyeGPT! Open ${window.location.origin} — tap Join squad and enter code: ${state.teamCode||'BOITSFORT'}').then(()=>showToast('Copied 📋'))">
+                        onclick="navigator.clipboard?.writeText('Join Boitsfort RFC on coacheseyeGPT! Open https://boitsfort-coachseye-gpt.vercel.app — tap Join squad and enter code: ${state.teamCode||'BOITSFORT'}').then(()=>showToast('Copied 📋'))">
                         📋 Copy message
                       </button>
                       <button class="btn" type="button" style="font-size:12px"
@@ -7740,7 +8911,7 @@
             <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px">
               New password
               <input id="reset-password-input" type="password" placeholder="At least 8 characters"
-                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:16px;width:100%">
+                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
             </label>
           </div>
           <button class="btn primary" type="button" onclick="completePasswordReset()"
@@ -7802,29 +8973,29 @@
             <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px">
               First name
               <input id="invite-firstname-input" placeholder="First name"
-                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:16px;width:100%">
+                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
             </label>
             <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px;margin-top:10px">
               Last name
               <input id="invite-lastname-input" placeholder="Last name"
-                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:16px;width:100%">
+                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
             </label>
             ` : `
             <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px">
               Your name
               <input id="invite-name-input" value="${esc(invite.name)}"
-                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:16px;width:100%">
+                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
             </label>
             `}
             <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px;margin-top:10px">
               Email
               <input id="invite-email-input" type="email" value="${esc(invite.email || '')}" placeholder="player@example.com"
-                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:16px;width:100%">
+                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
             </label>
             <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px;margin-top:10px">
               Create password
               <input id="invite-password-input" type="password" placeholder="At least 8 characters"
-                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:16px;width:100%">
+                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
             </label>
           </div>
 
@@ -7968,96 +9139,54 @@
     }
 
     // ─── INVITE MANAGEMENT (coach side) ──────────────────────────────────────
-    function setInviteType(type) {
-      document.getElementById('inv-type-individual')?.classList.toggle('active', type === 'individual');
-      document.getElementById('inv-type-group')?.classList.toggle('active', type === 'group');
-      const nameLabel = document.getElementById('inv-name-label');
-      const roleRow   = document.getElementById('inv-role-row');
-      const desc      = document.getElementById('inv-type-desc');
-      const btn       = document.getElementById('inv-create-btn');
-      if (type === 'group') {
-        if (nameLabel) nameLabel.style.display = 'none';
-        if (roleRow)   roleRow.style.display   = 'none';
-        if (desc) desc.textContent = 'Generate a reusable group invite link. Any player can register via this link and will need your approval before accessing the app.';
-        if (btn)  btn.textContent  = '🔗 Generate group link';
-      } else {
-        if (nameLabel) nameLabel.style.display = '';
-        if (roleRow)   roleRow.style.display   = '';
-        if (desc) desc.textContent = "Generate a personal invite link. The player claims it with their email and password to get a permanent account.";
-        if (btn)  btn.textContent  = '🔗 Generate invite link';
-      }
-      document.getElementById('inv-result').innerHTML = '';
-    }
-
     async function createInvite() {
-      const isGroup  = document.getElementById('inv-type-group')?.classList.contains('active');
       const nameEl   = document.getElementById('inv-name');
       const emailEl  = document.getElementById('inv-email');
-      const activeRoleBtn = document.querySelector('#inv-role-row .inv-role-btn.active');
+      const activeBtn = document.querySelector('.inv-role-btn.active');
       const name     = nameEl?.value.trim();
       const email    = emailEl?.value.trim();
-      const role     = isGroup ? 'player' : (activeRoleBtn?.dataset.role || 'player');
-
-      if (!isGroup && !name) { showToast('Enter the person\'s name first'); return; }
+      const role     = activeBtn?.dataset.role || 'player';
+      if (!name) { showToast('Enter the person\'s name first'); return; }
 
       const btn = document.getElementById('inv-create-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
       try {
         await ensureServerSessionForCurrentUser();
-        const body = isGroup
-          ? { type: 'group', role: 'player', email, sendEmail: false }
-          : { name, role, email };
         const res  = await fetch('/api/invite', {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify(body),
+          body: JSON.stringify({ name, role, email }),
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
 
         const resultEl = document.getElementById('inv-result');
         if (resultEl) {
-          if (isGroup) {
-            resultEl.innerHTML = `
-              <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);border-radius:10px;padding:14px 16px;margin-top:14px">
-                <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:10px">✓ Group invite link created</div>
-                <div style="display:flex;gap:8px;align-items:center">
-                  <input value="${esc(data.url)}" readonly id="inv-link-field"
-                    style="flex:1;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:8px 10px;color:#94a3b8">
-                  <button class="btn primary" type="button" style="font-size:12px;white-space:nowrap;padding:0 14px"
-                    onclick="navigator.clipboard.writeText(document.getElementById('inv-link-field').value).then(()=>showToast('Link copied 📋'))">
-                    📋 Copy
-                  </button>
-                </div>
-                <div style="font-size:11px;color:#64748b;margin-top:8px">Reusable — share with the whole squad. Each player registers and needs your approval.</div>
-              </div>`;
-          } else {
-            resultEl.innerHTML = `
-              <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);border-radius:10px;padding:14px 16px;margin-top:14px">
-                <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:10px">✓ Invite ready for ${esc(name)}</div>
-                <div style="display:flex;gap:8px;align-items:center">
-                  <input value="${esc(data.url)}" readonly id="inv-link-field"
-                    style="flex:1;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:8px 10px;color:#94a3b8">
-                  <button class="btn primary" type="button" style="font-size:12px;white-space:nowrap;padding:0 14px"
-                    onclick="navigator.clipboard.writeText(document.getElementById('inv-link-field').value).then(()=>showToast('Link copied 📋'))">
-                    📋 Copy
-                  </button>
-                </div>
-                <div style="font-size:11px;color:#64748b;margin-top:8px">Send via WhatsApp, SMS or email. Works once — link is tied to ${esc(name)}.</div>
-              </div>`;
-          }
+          resultEl.innerHTML = `
+            <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);border-radius:10px;padding:14px 16px;margin-top:14px">
+              <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:10px">✓ Invite ready for ${esc(name)}</div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input value="${esc(data.url)}" readonly id="inv-link-field"
+                  style="flex:1;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:8px 10px;color:#94a3b8">
+                <button class="btn primary" type="button" style="font-size:12px;white-space:nowrap;padding:0 14px"
+                  onclick="navigator.clipboard.writeText(document.getElementById('inv-link-field').value).then(()=>showToast('Link copied 📋'))">
+                  📋 Copy
+                </button>
+              </div>
+              <div style="font-size:11px;color:#64748b;margin-top:8px">Send via WhatsApp, SMS or email. Works once — link is tied to ${esc(name)}.</div>
+            </div>`;
         }
-        if (!isGroup && nameEl) nameEl.value = '';
+        if (nameEl) nameEl.value = '';
         if (emailEl) emailEl.value = '';
         loadInviteList();
       } catch(e) {
         showToast('Could not create invite — ' + e.message);
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = isGroup ? '🔗 Generate group link' : '🔗 Generate invite link'; }
+        if (btn) { btn.disabled = false; btn.textContent = '🔗 Generate invite link'; }
       }
     }
 
     function setInviteRole(role, el) {
-      document.querySelectorAll('#inv-role-row .inv-role-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.inv-role-btn').forEach(b => b.classList.remove('active'));
       el.classList.add('active');
     }
 
@@ -8081,32 +9210,25 @@
           return;
         }
         const roleEmoji = { player:'🏉', coach:'🎯', admin:'⚙️', medical:'🏥' };
-        const inviteOrigin = window.location.origin;
         panel.innerHTML = list.map(inv => {
-          const isGroup    = inv.type === 'group';
           const isPending  = inv.status === 'pending';
           const isAccepted = inv.status === 'accepted';
-          const isActive   = inv.status === 'active';
-          const canCopyRevoke = isPending || (isGroup && isActive);
-          const statusColor = isAccepted ? '#34d399' : (isPending || isActive) ? '#fbbf24' : '#475569';
-          const statusBg    = isAccepted ? 'rgba(52,211,153,0.1)' : (isPending || isActive) ? 'rgba(251,191,36,0.1)' : 'rgba(71,85,105,0.1)';
-          const displayStatus = isGroup && isActive ? `active · used ${inv.usageCount || 0}×` : inv.status;
+          const statusColor = isAccepted ? '#34d399' : isPending ? '#fbbf24' : '#475569';
+          const statusBg    = isAccepted ? 'rgba(52,211,153,0.1)' : isPending ? 'rgba(251,191,36,0.1)' : 'rgba(71,85,105,0.1)';
           const date        = new Date(inv.createdAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
           const acceptedDate = inv.acceptedAt ? new Date(inv.acceptedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
-          const displayName = isGroup ? 'Group invite (players)' : (inv.name || '—');
-          const invUrl = `${inviteOrigin}/?inv=${encodeURIComponent(inv.token)}`;
           return `
             <div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
-              <span style="font-size:20px;flex-shrink:0">${isGroup ? '🔗' : (roleEmoji[inv.role]||'👤')}</span>
+              <span style="font-size:20px;flex-shrink:0">${roleEmoji[inv.role]||'👤'}</span>
               <div style="flex:1;min-width:0">
-                <div style="font-weight:700;font-size:13px;color:#e2e8f0">${esc(displayName)}</div>
+                <div style="font-weight:700;font-size:13px;color:#e2e8f0">${esc(inv.name)}</div>
                 <div style="font-size:11px;color:#64748b;margin-top:1px">${inv.role} · Invited ${date}${acceptedDate ? ' · Joined '+acceptedDate : ''}</div>
               </div>
               <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-                <span style="background:${statusBg};color:${statusColor};font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap">${esc(displayStatus)}</span>
-                ${canCopyRevoke ? `
+                <span style="background:${statusBg};color:${statusColor};font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap">${inv.status}</span>
+                ${isPending ? `
                   <button class="btn" type="button" style="font-size:11px;padding:3px 9px;white-space:nowrap"
-                    onclick="navigator.clipboard.writeText('${invUrl}').then(()=>showToast('Copied 📋'))">
+                    onclick="navigator.clipboard.writeText('https://boitsfort-coachseye-gpt.vercel.app/?inv=${esc(inv.token)}').then(()=>showToast('Copied 📋'))">
                     📋
                   </button>
                   <button class="btn" type="button" style="font-size:11px;padding:3px 8px;color:#f87171;border-color:rgba(239,68,68,0.28)"
@@ -8164,7 +9286,7 @@
       chatFetchConversations().catch(() => {});
     }
     setTimeout(bgPollUnread, 0);
-    setInterval(() => { if (!document.hidden) bgPollUnread(); }, 30000);
+    setInterval(() => { if (!document.hidden) bgPollUnread(); }, 5000);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) bgPollUnread();
     });
@@ -8183,5 +9305,6 @@
       }
     });
   </script>
-</body>
-</html>
+
+
+</body></html>

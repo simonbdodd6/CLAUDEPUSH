@@ -917,6 +917,10 @@ export async function resetPasswordWithToken({ token, password } = {}) {
   }
   ensurePassword(user, password);
   reset.usedAt = nowIso();
+  // Invalidate all other unused resets for this user so they cannot be replayed.
+  resets.forEach(r => {
+    if (r.userId === reset.userId && r.id !== reset.id && !r.usedAt) r.usedAt = reset.usedAt;
+  });
   await Promise.all([saveUsers(users), savePasswordResets(resets)]);
   return { user: publicUser(user), reset: { id: reset.id, usedAt: reset.usedAt } };
 }

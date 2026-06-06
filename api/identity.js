@@ -98,6 +98,7 @@ export default async function handler(req, res) {
         return res.status(201).json({ ok: true, ...publicAuthResult(result) });
       }
       if (action === 'join_group_invite') {
+        await enforceRateLimit('join_group_invite', requestIp(req), { limit: 10, windowMs: 60 * 60 * 1000 });
         const result = await joinViaGroupInvite(req.body || {});
         return res.status(201).json({ ok: true, ...result });
       }
