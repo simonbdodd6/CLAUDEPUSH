@@ -1,15 +1,15 @@
 # QA Report
 
-Generated: 2026-06-06T10:08:43.566Z
-Base URL: http://localhost:3000
+Generated: 2026-06-06T12:04:08.600Z
+Base URL: https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app
 Status: failed
 
 ## Summary
 
-- Passed steps: 1
+- Passed steps: 0
 - Failed steps: 1
 - Skipped steps: 0
-- Test player email: nightly-qa-1780740167@coachseye.test
+- Test player email: not set
 - Expected baseline players: (none)
 
 ## Browser Launch
@@ -23,16 +23,15 @@ Status: failed
 
 | # | Step | Status | Screenshot | Notes |
 |---:|---|---|---|---|
-| 1 | Open latest preview or local app | passed | [02-open-latest-preview-or-local-app.png](qa/artifacts/2026-06-06T10-03-04-537Z/02-open-latest-preview-or-local-app.png) |  |
-| 2 | Log in as Simon Coach | failed |  | page.evaluate: Target page, context or browser has been closed |
+| 1 | Launch Playwright Chromium | failed |  | Playwright exited before the QA journey started (exit code 1). See qa/test-results/invite-flow-phase-5-invite-flow-chromium/error-context.md. |
 
 ## What Passes
 
-- Open latest preview or local app
+- Nothing has passed yet.
 
 ## What Fails
 
-- Log in as Simon Coach: page.evaluate: Target page, context or browser has been closed
+- Launch Playwright Chromium: Playwright exited before the QA journey started (exit code 1). See qa/test-results/invite-flow-phase-5-invite-flow-chromium/error-context.md.
 
 ## Notes
 
@@ -40,6 +39,7 @@ Status: failed
 - Group invite creation is attempted through the real invite API because the current UI only exposes personal invite links.
 - The legacy Simon Coach credential is currently a temporary seeded password/PIN (`1111`) for the seeded coach account. Keep using explicit `QA_COACH_EMAIL` and `QA_COACH_PASSWORD` until production auth is finalized.
 - Diagnosis: sandboxed local Playwright runs on macOS 12.7.6 abort Chrome/Chromium before navigation. Running the same smoke command outside the Codex sandbox launches Chrome, opens the app, screenshots, and closes successfully.
+- The browser failed before the first journey step, so no app behavior was exercised.
 
 ## GitHub Actions Nightly Next Steps
 
