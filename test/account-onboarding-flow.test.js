@@ -55,6 +55,7 @@ const { default: inviteHandler } = await import('../api/invite.js');
 const { default: chatHandler } = await import('../api/chat.js');
 const { default: subscribeHandler } = await import('../api/subscribe.js');
 const { default: availabilityHandler } = await import('../api/availability.js');
+const { createSession, SESSION_COOKIE } = await import('../api/_identityStore.js');
 const { dmConvId } = await import('../src/chat-state.js');
 
 function apiRes() {
@@ -197,6 +198,15 @@ test('coach invite to claimed player creates one permanent userId across auth ch
   assert.equal(subscriptions[0].playerId, playerUserId);
   assert.equal(subscriptions[0].label, 'Test Registered Player');
 
+  const anonymousCount = await callApi(subscribeHandler, 'GET');
+  assert.equal(anonymousCount.statusCode, 401);
+
+  const playerCount = await callApi(subscribeHandler, 'GET', {
+    headers: { cookie: playerCookie },
+  });
+  assert.equal(playerCount.statusCode, 200);
+  assert.equal(playerCount.payload.count, 1);
+
   const anonymousSubscribe = await callApi(subscribeHandler, 'POST', {
     body: {
       subscription: { endpoint: 'endpoint-anonymous', keys: { p256dh: 'p', auth: 'a' } },
@@ -213,6 +223,34 @@ test('coach invite to claimed player creates one permanent userId across auth ch
     },
   });
   assert.equal(spoofedSubscribe.statusCode, 403);
+
+  const users = JSON.parse(kv.get('app:identity:users') || '[]');
+  users.push({ id: 'attacker-user', email: 'attacker@example.com', firstName: 'Attack', lastName: 'User', displayName: 'Attack User' });
+  kv.set('app:identity:users', JSON.stringify(users));
+  const members = JSON.parse(kv.get('app:identity:team_members') || '[]');
+  members.push({ id: 'tm-attacker-user', teamId: 'boitsfort-rfc', userId: 'attacker-user', role: 'player', status: 'active' });
+  kv.set('app:identity:team_members', JSON.stringify(members));
+  const attackerSession = await createSession({ userId: 'attacker-user', teamId: 'boitsfort-rfc', role: 'player' });
+  const attackerCookie = `${SESSION_COOKIE}=${encodeURIComponent(attackerSession.token)}`;
+  const hijackSubscribe = await callApi(subscribeHandler, 'POST', {
+    headers: { cookie: attackerCookie },
+    body: {
+      subscription: { endpoint: 'endpoint-registered-player', keys: { p256dh: 'p', auth: 'a' } },
+      userId: 'attacker-user',
+    },
+  });
+  assert.equal(hijackSubscribe.statusCode, 403);
+
+  kv.set('app:identity:team_members', JSON.stringify(members.filter(member => member.userId !== playerUserId)));
+  const staleSubscribe = await callApi(subscribeHandler, 'POST', {
+    headers: { cookie: playerCookie },
+    body: {
+      subscription: { endpoint: 'endpoint-stale-player', keys: { p256dh: 'p', auth: 'a' } },
+      userId: playerUserId,
+    },
+  });
+  assert.equal(staleSubscribe.statusCode, 401);
+  kv.set('app:identity:team_members', JSON.stringify(members));
 
   const anonymousDelete = await callApi(subscribeHandler, 'DELETE', {
     body: { endpoint: 'endpoint-registered-player' },

@@ -11,8 +11,8 @@
 import { kvGet, kvSet, kvLpush, kvLrange, kvLtrim } from './_kv.js';
 import { key } from './_keys.js';
 import { unreadCountForUser } from '../src/chat-notifications.js';
-import { DEFAULT_TEAM, resolveSessionFromRequest } from './_identityStore.js';
-import { tenantTeamId } from './_tenant.js';
+import { DEFAULT_TEAM, loadPlayerProfiles, loadTeamMembers } from './_identityStore.js';
+import { requireTenantSession, tenantTeamId } from './_tenant.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -35,6 +35,7 @@ const CONV_KEY      = (id) => key(`chat:conv:${id}`);   // single conv metadata
 const MSGS_KEY      = (id) => key(`chat:conv:${id}:msgs`); // Redis list
 const TYPING_KEY    = (id) => key(`chat:conv:${id}:typing`);
 const PRESENCE_KEY  = (u)  => key(`chat:presence:${u}`);
+const MAX_MESSAGE_LIMIT = 100;
 
 // DM participant IDs for removed test accounts (user IDs and legacy player IDs).
 export const OBSOLETE_DM_PARTICIPANT_IDS = new Set([
@@ -94,6 +95,41 @@ function conversationParticipants(conversation = {}) {
   return (Array.isArray(conversation?.participants) ? conversation.participants : [])
     .filter(Boolean)
     .map(String);
+}
+
+function boundedMessageLimit(value) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return 60;
+  return Math.min(parsed, MAX_MESSAGE_LIMIT);
+}
+
+async function activeParticipantIdsForTeam(teamId) {
+  const [members, profiles] = await Promise.all([
+    loadTeamMembers(),
+    loadPlayerProfiles(),
+  ]);
+  const activeUserIds = new Set(
+    (Array.isArray(members) ? members : [])
+      .filter(member => member.teamId === teamId && member.status === 'active')
+      .map(member => String(member.userId))
+  );
+  const allowed = new Set(activeUserIds);
+  (Array.isArray(profiles) ? profiles : [])
+    .filter(profile => profile.teamId === teamId && activeUserIds.has(String(profile.userId)))
+    .forEach(profile => {
+      if (profile.userId) allowed.add(String(profile.userId));
+      if (profile.legacyPlayerId) allowed.add(String(profile.legacyPlayerId));
+    });
+  return allowed;
+}
+
+async function invalidConversationParticipants(sessionContext, participants = []) {
+  const requested = (Array.isArray(participants) ? participants : [])
+    .filter(Boolean)
+    .map(String);
+  if (!requested.length) return [];
+  const allowed = await activeParticipantIdsForTeam(tenantTeamId(sessionContext));
+  return requested.filter(id => !allowed.has(id));
 }
 
 function sessionCanReadConversation(sessionContext, conversation = {}) {
@@ -169,10 +205,11 @@ async function ensureDefaults() {
 async function handleGet(req, res) {
   const url    = new URL(req.url, `http://x`);
   const action = url.searchParams.get('action');
-  const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
+  const sessionContext = await requireTenantSession(req).catch(error => {
+    error._chatAuthError = true;
+    throw error;
+  });
   const userId = sessionContext?.user?.id || '';
-
-  if (!userId) return err(res, 401, 'Authentication required');
 
   // Update presence only for the authenticated session user.
   await kvSet(PRESENCE_KEY(userId), { userId, ts: Date.now() }, 60);
@@ -208,7 +245,7 @@ async function handleGet(req, res) {
   if (action === 'messages') {
     const convId = url.searchParams.get('convId');
     const since  = parseInt(url.searchParams.get('since') || '0', 10);
-    const limit  = parseInt(url.searchParams.get('limit') || '60', 10);
+    const limit  = boundedMessageLimit(url.searchParams.get('limit'));
     if (!convId) return err(res, 400, 'convId required');
     if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
     // LRANGE returns newest-first; we reverse for chronological
@@ -251,7 +288,10 @@ async function handlePost(req, res) {
   catch { return err(res, 400, 'Invalid JSON'); }
 
   const { action } = body;
-  const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
+  const sessionContext = await requireTenantSession(req).catch(error => {
+    error._chatAuthError = true;
+    throw error;
+  });
   const sessionUser = sessionContext?.user || null;
 
   if (action === 'send') {
@@ -376,10 +416,11 @@ async function handlePost(req, res) {
   }
 
   if (action === 'create_conv') {
-    if (!sessionContext?.user?.id) return err(res, 401, 'Authentication required');
     if (!isStaffSession(sessionContext)) return err(res, 403, 'Only coaches can create conversations');
     const { id, name, type = 'DIRECT', icon = '💬', description = '', participants = [] } = body;
-    const teamId = sessionContext?.user?.id ? tenantTeamId(sessionContext) : DEFAULT_TEAM.id;
+    const invalidParticipants = await invalidConversationParticipants(sessionContext, participants);
+    if (invalidParticipants.length) return err(res, 400, 'Conversation participants must be active team members');
+    const teamId = tenantTeamId(sessionContext);
     const convId = id || `conv_${Date.now()}`;
     const convs = await getConvs();
     if (!convs.some(c => c.id === convId)) {
@@ -431,6 +472,7 @@ export default async function handler(req, res) {
     if (req.method === 'POST') return await handlePost(req, res);
     return err(res, 405, 'Method not allowed');
   } catch(e) {
+    if (e?._chatAuthError) return err(res, e.status || 401, e.message || 'Authentication required');
     console.error('chat handler error:', e);
     return err(res, 500, e.message);
   }

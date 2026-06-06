@@ -150,6 +150,33 @@ test('chat conversations require authentication', async () => {
   assert.equal(response.statusCode, 401);
 });
 
+test('chat requires an active tenant session after membership is removed', async () => {
+  kv.clear();
+  lists.clear();
+  const user = await seedSessionAccount({
+    id: 'stale-coach',
+    role: 'coach',
+    displayName: 'Stale Coach',
+    email: 'stale.coach@example.com',
+  });
+
+  const active = await call('GET', '/api/chat?action=conversations', null, user.headers);
+  assert.ok(Array.isArray(active.conversations));
+
+  kv.set('app:identity:team_members', JSON.stringify([]));
+
+  const blockedList = await callRaw('GET', '/api/chat?action=conversations', null, user.headers);
+  assert.equal(blockedList.statusCode, 401);
+
+  const blockedSend = await callRaw('POST', '/api/chat', {
+    action: 'send',
+    convId: 'squad',
+    senderId: 'stale-coach',
+    text: 'Should not send',
+  }, user.headers);
+  assert.equal(blockedSend.statusCode, 401);
+});
+
 test('chat API unread count increments on coach DM and survives refresh and login refetches', async () => {
   kv.clear();
   lists.clear();
@@ -306,6 +333,22 @@ test('authenticated player can read only their own legacy direct-message convers
   const simonConvId = dmConvId('coach-demo', 'inv-YxnjxnQa');
   // Use a non-obsolete player ID to avoid the cleanup migration wiping the conversation
   const otherConvId = dmConvId('coach-demo', 'inv-other-player-1');
+  const users = JSON.parse(kv.get('app:identity:users') || '[]');
+  users.push({ id: 'other-player-1', email: 'other.player@example.com', firstName: 'Other', lastName: 'Player', displayName: 'Other Player' });
+  kv.set('app:identity:users', JSON.stringify(users));
+  const members = JSON.parse(kv.get('app:identity:team_members') || '[]');
+  members.push({ id: 'tm-other-player-1', teamId: 'boitsfort-rfc', userId: 'other-player-1', role: 'player', status: 'active' });
+  kv.set('app:identity:team_members', JSON.stringify(members));
+  const profiles = JSON.parse(kv.get('app:identity:player_profiles') || '[]');
+  profiles.push({
+    id: 'profile-other-player-1',
+    teamId: 'boitsfort-rfc',
+    teamMemberId: 'tm-other-player-1',
+    userId: 'other-player-1',
+    displayName: 'Other Player',
+    legacyPlayerId: 'inv-other-player-1',
+  });
+  kv.set('app:identity:player_profiles', JSON.stringify(profiles));
 
   await call('POST', '/api/chat', {
     action: 'create_conv',
@@ -366,6 +409,26 @@ test('authenticated role authorization allows coach conversation creation and bl
     displayName: 'Create Coach',
     email: 'create.coach@example.com',
   });
+  kv.set('app:identity:users', JSON.stringify([
+    ...JSON.parse(kv.get('app:identity:users') || '[]'),
+    { id: 'user_create_player', email: 'create.player@example.com', firstName: 'Create', lastName: 'Player', displayName: 'Create Player' },
+  ]));
+  kv.set('app:identity:team_members', JSON.stringify([
+    ...JSON.parse(kv.get('app:identity:team_members') || '[]'),
+    { id: 'tm_user_create_player', teamId: 'boitsfort-rfc', userId: 'user_create_player', role: 'player', status: 'active' },
+  ]));
+  kv.set('app:identity:player_profiles', JSON.stringify([
+    ...JSON.parse(kv.get('app:identity:player_profiles') || '[]'),
+    {
+      id: 'profile_user_create_player',
+      teamId: 'boitsfort-rfc',
+      teamMemberId: 'tm_user_create_player',
+      userId: 'user_create_player',
+      displayName: 'Create Player',
+      email: 'create.player@example.com',
+      legacyPlayerId: 'user_create_player',
+    },
+  ]));
   const created = await call('POST', '/api/chat', {
     action: 'create_conv',
     id: dmConvId('user_create_coach', 'user_create_player'),
@@ -374,6 +437,43 @@ test('authenticated role authorization allows coach conversation creation and bl
     participants: ['user_create_coach', 'user_create_player'],
   }, coach.headers);
   assert.equal(created.convId, 'dm:user_create_coach:user_create_player');
+
+  const invalidParticipant = await callRaw('POST', '/api/chat', {
+    action: 'create_conv',
+    id: dmConvId('user_create_coach', 'inactive-player'),
+    name: 'Inactive Player',
+    type: 'DIRECT',
+    participants: ['user_create_coach', 'inactive-player'],
+  }, coach.headers);
+  assert.equal(invalidParticipant.statusCode, 400);
+});
+
+test('chat message limit is capped to a sane upper bound', async () => {
+  kv.clear();
+  lists.clear();
+  const playerId = 'limit-player';
+  const convId = dmConvId('coach-demo', playerId);
+  const { headers: playerHeaders } = await seedSessionAccount({ id: playerId, role: 'player', displayName: 'Limit Player' });
+  const coachHeaders = await coachSetup();
+
+  await call('POST', '/api/chat', {
+    action: 'create_conv',
+    id: convId,
+    name: 'Limit Player',
+    type: 'DIRECT',
+    participants: ['coach-demo', playerId],
+  }, coachHeaders);
+
+  lists.set(`app:chat:conv:${convId}:msgs`, Array.from({ length: 150 }, (_, index) => ({
+    id: `msg-${index}`,
+    convId,
+    senderId: 'coach-demo',
+    text: `Message ${index}`,
+    ts: index + 1,
+  })));
+
+  const response = await call('GET', `/api/chat?action=messages&convId=${encodeURIComponent(convId)}&limit=999`, null, playerHeaders);
+  assert.equal(response.messages.length, 100);
 });
 
 test('tenant isolation blocks players and coaches from reading another team messages', async () => {

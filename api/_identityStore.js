@@ -462,7 +462,8 @@ export function hasRole(sessionContext, roles = []) {
 }
 
 export async function requireSession(req) {
-  const sessionContext = await resolveSessionFromRequest(req);
+  const token = sessionTokenFromRequest(req);
+  const sessionContext = token ? await resolveSession(token, { fresh: true }) : null;
   if (!sessionContext?.user?.id || sessionContext?.teamMember?.status !== 'active') {
     const error = new Error('Authentication required');
     error.status = 401;
@@ -955,9 +956,9 @@ export function resetInProcessCaches() {
   _sessionCache.clear();
 }
 
-export async function resolveSession(token = '') {
+export async function resolveSession(token = '', { fresh = false } = {}) {
   const hashed = hashToken(token);
-  const cached = _sessionCache.get(hashed);
+  const cached = fresh ? null : _sessionCache.get(hashed);
   if (cached && (Date.now() - cached.ts) < _SESSION_CACHE_TTL_MS) {
     return cached.value;
   }

@@ -6,7 +6,7 @@
 import { load, save } from './_lib.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
-import { resolveSessionFromRequest } from './_identityStore.js';
+import { requireTenantSession } from './_tenant.js';
 
 function displayNameFromSession(sessionContext = {}) {
   const user = sessionContext?.user || {};
@@ -44,10 +44,21 @@ function subscriptionBelongsToSession(subscription = {}, sessionContext = {}) {
   return false;
 }
 
+function authError(res, error) {
+  return res.status(error?.status || 401).json({ error: error?.message || 'Authentication required' });
+}
+
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
+
+  let sessionContext = null;
+  try {
+    sessionContext = await requireTenantSession(req);
+  } catch (error) {
+    return authError(res, error);
+  }
 
   // ── GET: subscription count ──────────────────────────────────────────────
   if (req.method === 'GET') {
@@ -57,11 +68,7 @@ export default async function handler(req, res) {
 
   // ── POST: add / refresh subscription ────────────────────────────────────
   if (req.method === 'POST') {
-    const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
     const { subscription, label, userId, playerId } = req.body || {};
-    if (!sessionContext?.user?.id) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
     if (!requestedIdentityAllowed(sessionContext, { userId, playerId })) {
       return res.status(403).json({ error: 'Cannot subscribe another user' });
     }
@@ -70,6 +77,9 @@ export default async function handler(req, res) {
     }
     const subs  = await load();
     const idx   = subs.findIndex(s => s.subscription.endpoint === subscription.endpoint);
+    if (idx >= 0 && !subscriptionBelongsToSession(subs[idx], sessionContext)) {
+      return res.status(403).json({ error: 'Cannot replace another user subscription' });
+    }
     const sessionUserId = sessionContext?.user?.id || '';
     const sessionPlayerId = sessionContext?.playerProfile?.userId ||
       sessionContext?.playerProfile?.legacyPlayerId || '';
@@ -88,10 +98,6 @@ export default async function handler(req, res) {
 
   // ── DELETE: remove subscription ──────────────────────────────────────────
   if (req.method === 'DELETE') {
-    const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
-    if (!sessionContext?.user?.id) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
     const { endpoint } = req.body || {};
     if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
     const current = await load();
