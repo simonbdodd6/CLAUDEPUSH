@@ -7196,11 +7196,13 @@
 
       const loading = _sysStatusLoading || !_sysStatus;
       const d = _sysStatus || {};
-      const b = d.build || {};
-      const r = d.redis || {};
-      const t = d.tests || {};
-      const q = d.qa    || {};
+      const b = d.build    || {};
+      const r = d.redis    || {};
+      const p = d.platform || {};
+      const t = d.tests    || {};
+      const q = d.qa       || {};
       const s = d.security || {};
+      const ru = r.usage   || {};
 
       function badge(ok, labels = ['OK','Error']) {
         const c = ok ? '#10b981' : '#ef4444';
@@ -7219,6 +7221,13 @@
       }
       function skRow() {
         return `<tr><td colspan="2" style="padding:10px 14px;border-bottom:1px solid var(--line)"><div style="height:13px;background:var(--line);border-radius:4px;animation:shimmer 1.4s ease infinite;background-size:200% 100%"></div></td></tr>`;
+      }
+      function statTile(label, value, color) {
+        const c = color || '#e2e8f0';
+        return `<div style="padding:18px 12px;text-align:center;border-right:1px solid var(--line)">
+          <div style="font-size:26px;font-weight:900;color:${c};line-height:1;margin-bottom:5px">${value ?? '—'}</div>
+          <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;white-space:nowrap">${label}</div>
+        </div>`;
       }
 
       el.innerHTML = `
@@ -7254,10 +7263,32 @@
                 <span>Security</span>${s.status === 'audited' ? badge(true, ['Audited','Pending']) : warnBadge('Pending')}
                 ${s.openWarnings ? `<span style="color:var(--muted);font-size:11px">${s.openWarnings} warnings</span>` : ''}
               </div>
+              <div style="display:flex;align-items:center;gap:7px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700">
+                <span>Platform</span>${badge(p.activePlayers != null, ['Live','Loading'])}
+                ${p.activePlayers != null ? `<span style="color:var(--muted);font-size:11px">${p.activePlayers} players · ${p.activeCoaches} coaches</span>` : ''}
+              </div>
             `}
           </div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+            <!-- Platform Overview (full width) -->
+            <div class="card" style="padding:0;overflow:hidden;grid-column:1/-1">
+              <div style="padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px">
+                <span style="font-size:16px">📊</span>
+                <strong style="font-size:14px">Platform Overview</strong>
+              </div>
+              ${loading
+                ? `<div style="height:80px;display:flex;align-items:center;justify-content:center"><div style="width:120px;height:16px;background:var(--line);border-radius:4px;animation:shimmer 1.4s ease infinite;background-size:200% 100%"></div></div>`
+                : `<div style="display:grid;grid-template-columns:repeat(6,1fr)">
+                    ${statTile('Active Players', p.activePlayers, '#10b981')}
+                    ${statTile('Coaches / Staff', p.activeCoaches, '#10b981')}
+                    ${statTile('Teams', p.teamCount, '#6366f1')}
+                    ${statTile('Invites', p.inviteCount, '#6366f1')}
+                    ${statTile('Pending Approvals', p.pendingApprovals, p.pendingApprovals > 0 ? '#f59e0b' : '#64748b')}
+                    ${statTile('Failed Logins (24h)', p.failedLogins24h, p.failedLogins24h > 5 ? '#ef4444' : p.failedLogins24h > 0 ? '#f59e0b' : '#10b981')}
+                  </div>`}
+            </div>
 
             <!-- Build / deployment -->
             <div class="card" style="padding:0;overflow:hidden">
@@ -7266,13 +7297,14 @@
                 <strong style="font-size:14px">Build &amp; Deployment</strong>
               </div>
               <table style="width:100%;border-collapse:collapse">
-                ${loading ? skRow()+skRow()+skRow()+skRow()+skRow() : `
-                  ${row('Branch', b.branch || '—')}
+                ${loading ? skRow()+skRow()+skRow()+skRow()+skRow()+skRow() : `
+                  ${row('Branch', `<span style="color:#10b981">${esc(b.branch || '—')}</span>`)}
                   ${row('Version', `v${b.version || '?'}`)}
-                  ${row('Commit', b.commitHash || '—', b.commitMessage ? `<span style="color:var(--muted);font-size:11px;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.commitMessage)}</span>` : '')}
+                  ${row('Commit (short)', b.commitHashShort || b.commitHash?.slice(0,12) || '—', b.commitMessage ? `<span style="color:var(--muted);font-size:11px;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.commitMessage)}</span>` : '')}
+                  ${row('Commit (full)', `<span style="font-size:11px;word-break:break-all">${esc(b.commitHash || '—')}</span>`)}
                   ${row('Deployed', b.deployedAt ? new Date(b.deployedAt).toLocaleString() : '—')}
                   ${row('Environment', b.env || 'local')}
-                  ${b.previewUrl ? row('Preview URL', `<a href="${b.previewUrl}" target="_blank" rel="noopener" style="color:#10b981;text-decoration:none">${b.previewUrl.replace('https://','')}</a>`) : row('Preview URL', '—')}
+                  ${b.previewUrl ? row('Deployment URL', `<a href="${b.previewUrl}" target="_blank" rel="noopener" style="color:#10b981;text-decoration:none;font-size:11px;word-break:break-all">${esc(b.previewUrl)}</a>`) : row('Deployment URL', '—')}
                 `}
               </table>
             </div>
@@ -7284,11 +7316,16 @@
                 <strong style="font-size:14px">Redis (Upstash)</strong>
               </div>
               <table style="width:100%;border-collapse:collapse">
-                ${loading ? skRow()+skRow()+skRow() : `
+                ${loading ? skRow()+skRow()+skRow()+skRow()+skRow() : `
                   ${row('Status', r.ok ? badge(true) : badge(false))}
                   ${row('Latency', r.latencyMs != null ? `${r.latencyMs} ms` : '—')}
                   ${r.error ? row('Error', `<span style="color:#ef4444;font-size:12px">${esc(r.error)}</span>`) : ''}
-                  ${row('Configured', badge(!!r.ok || r.latencyMs != null, ['Yes','No']))}
+                  ${row('Total Keys', ru.keyCount != null ? ru.keyCount.toLocaleString() : '—')}
+                  ${row('Data: Users', ru.users != null ? ru.users : '—')}
+                  ${row('Data: Members', ru.members != null ? ru.members : '—')}
+                  ${row('Data: Teams', ru.teams != null ? ru.teams : '—')}
+                  ${row('Data: Sessions', ru.sessions != null ? ru.sessions : '—')}
+                  ${row('Data: Invites', ru.invites != null ? ru.invites : '—')}
                 `}
               </table>
             </div>
@@ -7332,11 +7369,13 @@
                 <strong style="font-size:14px">Security Audit</strong>
               </div>
               <table style="width:100%;border-collapse:collapse">
-                ${loading ? skRow()+skRow()+skRow()+skRow() : `
+                ${loading ? skRow()+skRow()+skRow()+skRow()+skRow()+skRow() : `
                   ${row('Audit status', s.status === 'audited' ? badge(true, ['Audited','Pending']) : warnBadge('Pending'))}
                   ${row('Last audit', s.lastAuditAt ? new Date(s.lastAuditAt).toLocaleDateString() : '—')}
                   ${row('Open blockers', `<span style="color:${s.openBlockers ? '#ef4444' : '#10b981'};font-weight:700">${s.openBlockers ?? '—'}</span>`)}
                   ${row('Open warnings', s.openWarnings != null ? `<span style="color:${s.openWarnings > 0 ? '#f59e0b' : '#10b981'};font-weight:700">${s.openWarnings}</span>` : '—')}
+                  ${row('Failed logins (24h)', `<span style="color:${(p.failedLogins24h||0) > 5 ? '#ef4444' : (p.failedLogins24h||0) > 0 ? '#f59e0b' : '#10b981'};font-weight:700">${p.failedLogins24h ?? '—'}</span>`)}
+                  ${row('Failed logins (log)', `<span style="color:#94a3b8">${p.failedLoginsTotal ?? '—'}</span><span style="color:var(--muted);font-size:11px"> (last 500 audit entries)</span>`)}
                   ${row('RELEASE_READINESS.md', s.releaseReadiness === 'present' ? badge(true, ['Present','Missing']) : badge(false, ['Present','Missing']))}
                   ${row('KNOWN_ISSUES.md', s.knownIssues === 'present' ? badge(true, ['Present','Missing']) : badge(false, ['Present','Missing']))}
                 `}

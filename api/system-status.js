@@ -8,8 +8,11 @@ import { execFileSync } from 'node:child_process';
 import { kvGet, kvConfigured } from './_kv.js';
 import { setCors } from './_http.js';
 import { requireTenantRole } from './_tenant.js';
+import { loadUsers, loadTeamMembers, loadTeams, loadSessions } from './_identityStore.js';
+import { loadAuditLog } from './_security.js';
 
 const ROOT = process.cwd();
+const INVITES_KEY = 'ce:invites'; // matches _identityStore.js and invite.js — no APP_KEY_PREFIX (W5)
 
 function safeGit(args) {
   try {
@@ -44,6 +47,21 @@ async function redisProbe() {
   }
 }
 
+async function redisDbSize() {
+  const url   = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['DBSIZE']),
+    });
+    const data = await r.json();
+    return typeof data?.result === 'number' ? data.result : null;
+  } catch { return null; }
+}
+
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -64,8 +82,30 @@ export default async function handler(req, res) {
   const env         = process.env.VERCEL_ENV || 'local';
   const version     = readPackageVersion();
 
-  // ── Redis probe ────────────────────────────────────────────────────────────
-  const redis = await redisProbe();
+  // ── Parallel Redis reads — all data loaded in one concurrent batch ─────────
+  const [probe, users, members, teams, invitesRaw, auditEntries, sessions, dbSize] = await Promise.all([
+    redisProbe(),
+    loadUsers().catch(() => []),
+    loadTeamMembers().catch(() => []),
+    loadTeams().catch(() => []),
+    kvGet(INVITES_KEY).catch(() => null),
+    loadAuditLog(500).catch(() => []),
+    loadSessions().catch(() => []),
+    redisDbSize().catch(() => null),
+  ]);
+
+  // ── Platform stats ─────────────────────────────────────────────────────────
+  const inviteList  = Array.isArray(invitesRaw)    ? invitesRaw    : [];
+  const auditList   = Array.isArray(auditEntries)  ? auditEntries  : [];
+  const sessionList = Array.isArray(sessions)      ? sessions      : [];
+
+  const activePlayers  = members.filter(m => m.role === 'player'                           && m.status === 'active').length;
+  const activeCoaches  = members.filter(m => ['coach','admin','medical'].includes(m.role)  && m.status === 'active').length;
+  const pendingMembers = members.filter(m => m.status === 'pending').length;
+
+  const yesterday       = Date.now() - 24 * 60 * 60 * 1000;
+  const failedLogins24h = auditList.filter(e => e.event === 'login_failure' && e.at && new Date(e.at).getTime() > yesterday).length;
+  const failedLoginsTotal = auditList.filter(e => e.event === 'login_failure').length;
 
   // ── Test suite (static — tests run at build, not runtime) ─────────────────
   const TEST_FILES = [
@@ -92,31 +132,54 @@ export default async function handler(req, res) {
     build: {
       branch,
       version,
-      commitHash:    commitFull.slice(0, 12),
-      commitMessage: commitMsg,
+      commitHash:      commitFull,
+      commitHashShort: commitFull.slice(0, 12),
+      commitMessage:   commitMsg,
       deployedAt,
       previewUrl,
       env,
     },
-    redis,
+    redis: {
+      ...probe,
+      usage: {
+        keyCount: dbSize,
+        users:    users.length,
+        members:  members.length,
+        teams:    teams.length,
+        sessions: sessionList.length,
+        invites:  inviteList.length,
+      },
+    },
+    platform: {
+      activePlayers,
+      activeCoaches,
+      teamCount:        teams.length,
+      inviteCount:      inviteList.length,
+      pendingApprovals: pendingMembers,
+      failedLogins24h,
+      failedLoginsTotal,
+      totalUsers:       users.length,
+      totalMembers:     members.length,
+      activeSessions:   sessionList.length,
+    },
     tests: {
       total:  165,
       suites: presentSuites.length,
       status: presentSuites.length >= 14 ? 'pass' : 'degraded',
     },
     qa: {
-      status:      presentSpecs.length > 0 && fileExists('qa/run-qa.js') ? 'configured' : 'not_configured',
-      specCount:   presentSpecs.length,
-      specNames:   presentSpecs,
+      status:       presentSpecs.length > 0 && fileExists('qa/run-qa.js') ? 'configured' : 'not_configured',
+      specCount:    presentSpecs.length,
+      specNames:    presentSpecs,
       lastReportAt: qaReportMtime,
     },
     security: {
-      status:            releaseReadinessMtime ? 'audited' : 'pending',
-      lastAuditAt:       releaseReadinessMtime,
-      openBlockers:      0,
-      openWarnings:      8,
-      releaseReadiness:  releaseReadinessMtime ? 'present' : 'missing',
-      knownIssues:       knownIssuesMtime      ? 'present' : 'missing',
+      status:           releaseReadinessMtime ? 'audited' : 'pending',
+      lastAuditAt:      releaseReadinessMtime,
+      openBlockers:     0,
+      openWarnings:     8,
+      releaseReadiness: releaseReadinessMtime ? 'present' : 'missing',
+      knownIssues:      knownIssuesMtime      ? 'present' : 'missing',
     },
   });
 }
