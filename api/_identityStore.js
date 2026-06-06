@@ -716,7 +716,25 @@ export async function loginUser(input = {}) {
   }
 
   const members = await loadTeamMembers();
-  const member = legacyMember || members.find(item => item.userId === user.id && item.teamId === (input.teamId || DEFAULT_TEAM.id));
+  let member;
+  if (legacyMember) {
+    member = legacyMember;
+  } else if (input.teamId) {
+    member = members.find(item => item.userId === user.id && item.teamId === input.teamId);
+  } else {
+    // No teamId supplied — auto-select when the user has exactly one active membership.
+    // This allows Club B members to log in without knowing their teamId.
+    const activeAll = members.filter(item => item.userId === user.id && item.status === 'active');
+    if (activeAll.length === 1) {
+      member = activeAll[0];
+    } else {
+      // Multiple active memberships or none: fall back to DEFAULT_TEAM for backward compat.
+      // When no DEFAULT_TEAM row exists and zero active memberships, surface any pending
+      // membership so the caller sees "Waiting for coach approval" rather than "not active".
+      member = members.find(item => item.userId === user.id && item.teamId === DEFAULT_TEAM.id)
+            || (activeAll.length === 0 ? members.find(item => item.userId === user.id) : undefined);
+    }
+  }
   if (!member || member.status !== 'active') {
     const error = new Error(member?.status === 'pending' ? 'Waiting for coach approval' : 'Account is not active for this team');
     error.status = 403;
@@ -1021,6 +1039,70 @@ export async function rejectJoinRequest(memberId, rejectedBy = 'coach-demo', exp
   member.rejectedBy = rejectedBy || 'coach-demo';
   await saveTeamMembers(members);
   return { teamMember: member };
+}
+
+export async function provisionClub({ teamId, teamName, teamCode, coachEmail, coachFirstName, coachLastName, coachPassword } = {}) {
+  if (!String(teamId     || '').trim()) { const e = new Error('teamId is required');          e.status = 400; throw e; }
+  if (!String(teamName   || '').trim()) { const e = new Error('teamName is required');         e.status = 400; throw e; }
+  if (!String(teamCode   || '').trim()) { const e = new Error('teamCode is required');         e.status = 400; throw e; }
+  if (!EMAIL_RE.test(normalizeEmail(coachEmail))) { const e = new Error('Valid coachEmail is required'); e.status = 400; throw e; }
+  if (!String(coachFirstName || '').trim()) { const e = new Error('coachFirstName is required'); e.status = 400; throw e; }
+  if (!String(coachLastName  || '').trim()) { const e = new Error('coachLastName is required');  e.status = 400; throw e; }
+  if (String(coachPassword || '').length < 8) { const e = new Error('coachPassword must be at least 8 characters'); e.status = 400; throw e; }
+
+  const safeTeamId   = String(teamId).trim();
+  const safeTeamName = String(teamName).trim();
+  const safeCode     = normalizeTeamCode(teamCode);
+
+  const teams = await loadTeams();
+  if (teams.some(t => t.id === safeTeamId)) {
+    const e = new Error(`Team '${safeTeamId}' already exists`); e.status = 409; throw e;
+  }
+  if (teams.some(t => normalizeTeamCode(t.teamCode) === safeCode)) {
+    const e = new Error(`Team code '${safeCode}' is already in use`); e.status = 409; throw e;
+  }
+
+  const team = { id: safeTeamId, name: safeTeamName, teamCode: safeCode, createdAt: nowIso() };
+  teams.push(team);
+  await saveTeams(teams);
+
+  const email = normalizeEmail(coachEmail);
+  const users = await loadUsers();
+  if (users.some(u => normalizeEmail(u.email) === email)) {
+    const e = new Error(`Email '${email}' is already registered`); e.status = 409; throw e;
+  }
+  const coachUser = {
+    id: makeId('user'),
+    email,
+    firstName: String(coachFirstName).trim(),
+    lastName:  String(coachLastName).trim(),
+    displayName: displayName(coachFirstName, coachLastName),
+    authProvider: 'password',
+    passwordSet: true,
+    ...hashPassword(coachPassword),
+    createdAt: nowIso(),
+    lastLoginAt: null,
+  };
+  users.push(coachUser);
+  await saveUsers(users);
+
+  const members = await loadTeamMembers();
+  const coachMember = {
+    id: makeId('tm'),
+    teamId: safeTeamId,
+    userId: coachUser.id,
+    role: 'coach',
+    status: 'active',
+    joinedAt: nowIso(),
+    approvedAt: nowIso(),
+    approvedBy: 'provision_club',
+    rejectedAt: null,
+    rejectedBy: null,
+  };
+  members.push(coachMember);
+  await saveTeamMembers(members);
+
+  return { team, user: publicUser(coachUser), teamMember: coachMember };
 }
 
 export async function listIdentityState(teamId = DEFAULT_TEAM.id) {

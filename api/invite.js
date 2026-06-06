@@ -17,7 +17,7 @@
 //   → revokes / removes the invite
 
 import { kvGet, kvSet } from './_kv.js';
-import { DEFAULT_TEAM } from './_identityStore.js';
+import { DEFAULT_TEAM, loadTeams } from './_identityStore.js';
 import { inviteEmail, sendTransactionalEmail } from './_email.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
 import { assertSameTenant, requireTenantRole } from './_tenant.js';
@@ -161,7 +161,9 @@ export default async function handler(req, res) {
     const url = inviteUrl(req, token);
     let emailDelivery = { ok: true, sent: false, skipped: true, reason: email ? 'email_not_requested' : 'missing_recipient' };
     if (sendEmail !== false && email?.trim()) {
-      const message = inviteEmail({ name: invite.name, teamName: 'Boitsfort RFC', url });
+      const teams = await loadTeams();
+      const senderTeam = teams.find(t => t.id === session.teamId) || { name: DEFAULT_TEAM.name };
+      const message = inviteEmail({ name: invite.name, teamName: senderTeam.name, url });
       emailDelivery = await sendTransactionalEmail({ to: invite.email, ...message });
       invite.emailDelivery = emailDelivery;
       if (emailDelivery.sent) invite.emailSentAt = new Date().toISOString();

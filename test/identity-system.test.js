@@ -823,3 +823,156 @@ test('tenant isolation scopes invite management to the coach session team', asyn
   });
   assert.equal(ownApprove.statusCode, 200);
 });
+
+// ─── Multi-club: provisionClub ────────────────────────────────────────────────
+
+test('provision_club creates team and coach account protected by CRON_SECRET', async () => {
+  store.clear();
+  process.env.CRON_SECRET = 'test-cron-secret';
+
+  const res = await callApi(identityHandler, 'POST', {
+    headers: { authorization: 'Bearer test-cron-secret' },
+    body: {
+      action: 'provision_club',
+      teamId: 'club-b',
+      teamName: 'Club B RFC',
+      teamCode: 'CLUBB',
+      coachEmail: 'coach.b@clubb.test',
+      coachFirstName: 'Coach',
+      coachLastName: 'B',
+      coachPassword: 'strongpassword1',
+    },
+  });
+  assert.equal(res.statusCode, 201, JSON.stringify(res.payload));
+  assert.equal(res.payload.team.id, 'club-b');
+  assert.equal(res.payload.team.teamCode, 'CLUBB');
+  assert.equal(res.payload.user.email, 'coach.b@clubb.test');
+  assert.equal(res.payload.teamMember.role, 'coach');
+  assert.equal(res.payload.teamMember.status, 'active');
+  assert.equal(res.payload.teamMember.teamId, 'club-b');
+});
+
+test('provision_club rejects wrong CRON_SECRET', async () => {
+  store.clear();
+  process.env.CRON_SECRET = 'test-cron-secret';
+
+  const res = await callApi(identityHandler, 'POST', {
+    headers: { authorization: 'Bearer wrong-secret' },
+    body: { action: 'provision_club', teamId: 'club-b', teamName: 'Club B', teamCode: 'CLUBB',
+      coachEmail: 'x@x.test', coachFirstName: 'X', coachLastName: 'X', coachPassword: 'password123' },
+  });
+  assert.equal(res.statusCode, 403);
+});
+
+test('provision_club rejects duplicate teamId', async () => {
+  store.clear();
+  process.env.CRON_SECRET = 'test-cron-secret';
+
+  const headers = { authorization: 'Bearer test-cron-secret' };
+  const body = {
+    action: 'provision_club',
+    teamId: 'club-dup', teamName: 'Club Dup', teamCode: 'CLUBDUP',
+    coachEmail: 'coach.dup@clubdup.test', coachFirstName: 'Coach', coachLastName: 'Dup', coachPassword: 'password123',
+  };
+  const first = await callApi(identityHandler, 'POST', { headers, body });
+  assert.equal(first.statusCode, 201);
+
+  const second = await callApi(identityHandler, 'POST', { headers, body: { ...body, coachEmail: 'other@x.test' } });
+  assert.equal(second.statusCode, 409);
+  assert.match(second.payload.error, /already exists/i);
+});
+
+test('provision_club rejects duplicate team code', async () => {
+  store.clear();
+  process.env.CRON_SECRET = 'test-cron-secret';
+
+  const headers = { authorization: 'Bearer test-cron-secret' };
+  await callApi(identityHandler, 'POST', { headers, body: {
+    action: 'provision_club', teamId: 'club-x', teamName: 'Club X', teamCode: 'SAMECODE',
+    coachEmail: 'x@x.test', coachFirstName: 'X', coachLastName: 'X', coachPassword: 'password123',
+  }});
+
+  const res = await callApi(identityHandler, 'POST', { headers, body: {
+    action: 'provision_club', teamId: 'club-y', teamName: 'Club Y', teamCode: 'SAMECODE',
+    coachEmail: 'y@y.test', coachFirstName: 'Y', coachLastName: 'Y', coachPassword: 'password123',
+  }});
+  assert.equal(res.statusCode, 409);
+  assert.match(res.payload.error, /already in use/i);
+});
+
+// ─── Multi-club: loginUser team auto-detection ────────────────────────────────
+
+test('Club B player with no DEFAULT_TEAM membership can log in after approval', async () => {
+  store.clear();
+  process.env.CRON_SECRET = 'test-cron-secret';
+
+  // Provision Club B
+  await callApi(identityHandler, 'POST', {
+    headers: { authorization: 'Bearer test-cron-secret' },
+    body: {
+      action: 'provision_club',
+      teamId: 'club-b-login', teamName: 'Club B Login', teamCode: 'CLUBBLOGIN',
+      coachEmail: 'coach.b.login@clubb.test', coachFirstName: 'Coach', coachLastName: 'B', coachPassword: 'coachpassword1',
+    },
+  });
+
+  // Player joins Club B via team code
+  const join = await createJoinRequest({
+    teamCode: 'CLUBBLOGIN',
+    firstName: 'Club', lastName: 'BPlayer',
+    email: 'player.b@clubb.test', password: 'playerpassword1',
+  });
+  assert.equal(join.teamMember.teamId, 'club-b-login');
+  assert.equal(join.teamMember.status, 'pending');
+
+  // Player cannot log in while pending
+  await assert.rejects(
+    () => loginUser({ email: 'player.b@clubb.test', password: 'playerpassword1' }),
+    /Waiting for coach approval/,
+  );
+
+  // Coach approves
+  await approveJoinRequest(join.teamMember.id, 'coach.b.login@clubb.test', 'club-b-login');
+
+  // Player logs in without specifying teamId — auto-detects club-b-login
+  const login = await loginUser({ email: 'player.b@clubb.test', password: 'playerpassword1' });
+  assert.ok(login.session?.token, 'approved Club B player must receive a session');
+  assert.equal(login.teamMember.teamId, 'club-b-login');
+  assert.equal(login.teamMember.status, 'active');
+});
+
+test('user with memberships in multiple teams falls back to DEFAULT_TEAM on login without teamId', async () => {
+  store.clear();
+  process.env.CRON_SECRET = 'test-cron-secret';
+
+  // Provision a second team
+  await callApi(identityHandler, 'POST', {
+    headers: { authorization: 'Bearer test-cron-secret' },
+    body: {
+      action: 'provision_club',
+      teamId: 'second-club', teamName: 'Second Club', teamCode: 'SECOND',
+      coachEmail: 'coach.second@second.test', coachFirstName: 'Coach', coachLastName: 'Second', coachPassword: 'coachpassword1',
+    },
+  });
+
+  // Create a user who has an active membership in BOTH boitsfort-rfc AND second-club
+  const joinBoitsfort = await createJoinRequest({
+    teamCode: 'BOITSFORT', firstName: 'Multi', lastName: 'Club',
+    email: 'multi.club@both.test', password: 'multipassword1',
+  });
+  await approveJoinRequest(joinBoitsfort.teamMember.id, 'coach-demo', 'boitsfort-rfc');
+
+  const joinSecond = await createJoinRequest({
+    teamCode: 'SECOND', firstName: 'Multi', lastName: 'Club',
+    email: 'multi.club@both.test', password: 'multipassword1',
+  });
+  await approveJoinRequest(joinSecond.teamMember.id, 'coach-demo', 'second-club');
+
+  // Without teamId: falls back to DEFAULT_TEAM (boitsfort-rfc)
+  const login = await loginUser({ email: 'multi.club@both.test', password: 'multipassword1' });
+  assert.equal(login.teamMember.teamId, 'boitsfort-rfc');
+
+  // With explicit teamId: selects the right team
+  const loginSecond = await loginUser({ email: 'multi.club@both.test', password: 'multipassword1', teamId: 'second-club' });
+  assert.equal(loginSecond.teamMember.teamId, 'second-club');
+});

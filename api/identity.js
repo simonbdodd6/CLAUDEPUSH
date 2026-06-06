@@ -8,6 +8,7 @@ import {
   joinViaGroupInvite,
   listIdentityState,
   loginUser,
+  provisionClub,
   rejectJoinRequest,
   resetPasswordWithToken,
   resolveSessionFromRequest,
@@ -15,7 +16,7 @@ import {
   sessionTokenFromRequest,
 } from './_identityStore.js';
 import { appBaseUrl, passwordResetEmail, sendTransactionalEmail } from './_email.js';
-import { setCors } from './_http.js';
+import { setCors, readSecret } from './_http.js';
 import { kvConfigured, kvLrange } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
@@ -177,6 +178,13 @@ export default async function handler(req, res) {
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
         const result = await rejectJoinRequest(req.body?.memberId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });
+      }
+      if (action === 'provision_club') {
+        const cronSecret = process.env.CRON_SECRET;
+        if (!cronSecret) return res.status(500).json({ ok: false, error: 'CRON_SECRET not configured' });
+        if (readSecret(req) !== cronSecret) return res.status(403).json({ ok: false, error: 'Unauthorized' });
+        const result = await provisionClub(req.body || {});
+        return res.status(201).json({ ok: true, ...result });
       }
       return res.status(400).json({ ok: false, error: 'Unknown identity action' });
     } catch (error) {
