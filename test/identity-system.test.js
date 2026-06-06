@@ -33,6 +33,7 @@ const {
   listPendingJoinRequests,
   loginUser,
   rejectJoinRequest,
+  resetInProcessCaches,
   resetPasswordWithToken,
   resolveSession,
   sessionCookie,
@@ -40,6 +41,10 @@ const {
 const { default: identityHandler } = await import('../api/identity.js');
 const { default: inviteHandler } = await import('../api/invite.js');
 const { dmConvId, filterCoachDmPlayers } = await import('../src/chat-state.js');
+
+// Patch store.clear so in-process caches are also reset when Redis is wiped between tests.
+const _origStoreClear = store.clear.bind(store);
+store.clear = () => { _origStoreClear(); resetInProcessCaches(); };
 
 function apiReq(method, { query = {}, body = {}, headers = {} } = {}) {
   return { method, query, body, headers };

@@ -945,6 +945,11 @@ export async function createSession({ userId, teamId = DEFAULT_TEAM.id, role = '
 const _sessionCache = new Map(); // hashed token → { value, ts }
 const _SESSION_CACHE_TTL_MS = 30_000;
 
+export function resetInProcessCaches() {
+  _legacyCompatibilityChecked = false;
+  _sessionCache.clear();
+}
+
 export async function resolveSession(token = '') {
   const hashed = hashToken(token);
   const cached = _sessionCache.get(hashed);
