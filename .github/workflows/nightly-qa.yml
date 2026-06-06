@@ -1,0 +1,56 @@
+name: Nightly QA Agent
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  qa:
+    name: Coach's Eye Playwright QA
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      QA_BASE_URL: ${{ secrets.QA_BASE_URL }}
+      QA_COACH_EMAIL: ${{ secrets.QA_COACH_EMAIL }}
+      QA_COACH_PASSWORD: ${{ secrets.QA_COACH_PASSWORD }}
+      QA_TEST_PLAYER_EMAIL: ${{ secrets.QA_TEST_PLAYER_EMAIL }}
+      QA_TEST_PLAYER_PASSWORD: ${{ secrets.QA_TEST_PLAYER_PASSWORD }}
+      QA_BROWSER_CHANNEL: chromium
+      QA_WORKERS: 1
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate QA_BASE_URL
+        run: test -n "$QA_BASE_URL"
+
+      - name: Browser smoke
+        run: npm run qa:smoke
+
+      - name: Run QA journey
+        run: npm run qa:e2e
+
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-qa-artifacts
+          path: |
+            QA_REPORT.md
+            qa/artifacts
+            qa/results
+            qa/test-results
+            qa/playwright-report

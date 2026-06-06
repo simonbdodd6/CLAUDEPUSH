@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coach's Eye Mission Control</title>
+  <meta name="theme-color" content="#020617">
+  <link rel="manifest" href="/mission-control/manifest.json">
+  <link rel="icon" href="/icon.svg">
+  <link rel="stylesheet" href="/mission-control/styles.css">
+</head>
+<body>
+  <main class="mission-shell">
+    <canvas id="missionCanvas" aria-label="AI Mission Control project graph"></canvas>
+
+    <a class="home-link" href="/" title="Return to Coach's Eye">🏉 Coach's Eye</a>
+
+    <section class="glass overlay-left" aria-label="Deployment status">
+      <span class="kicker">Mission Control</span>
+      <strong id="deploymentStatus">SYNCING</strong>
+      <small id="branchStatus">branch: loading</small>
+      <small id="commitStatus">commit: loading</small>
+    </section>
+
+    <section class="glass overlay-right" aria-label="Live metrics">
+      <div><span>Users</span><strong id="activeUsers">0</strong></div>
+      <div><span>Messages</span><strong id="messagesToday">0</strong></div>
+      <div><span>Alerts</span><strong id="notificationsToday">0</strong></div>
+    </section>
+
+    <section id="nodePanel" class="glass node-panel hidden" aria-live="polite"></section>
+
+    <div class="ticker-wrap">
+      <div id="eventTicker" class="ticker">Booting project telemetry...</div>
+    </div>
+
+    <div class="mode-pill" id="modePill">LIVE MODE</div>
+  </main>
+  <script type="module" src="/mission-control/app.js"></script>
+</body>
+</html>

@@ -4,9 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "qa:e2e": "node qa/run-qa.js",
+    "qa:headed": "node qa/run-qa.js --headed",
+    "qa:e2e:headed": "node qa/run-qa.js --headed",
+    "qa:smoke": "node qa/run-qa.js --smoke",
+    "qa:report": "node qa/report.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
   }
 }

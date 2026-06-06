@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { test } from 'node:test';
+
+delete process.env.UPSTASH_REDIS_REST_URL;
+delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
+const { default: missionControlHandler } = await import('../api/mission-control.js');
+
+function response() {
+  return {
+    statusCode: 0,
+    headers: {},
+    payload: null,
+    writeHead(status, headers = {}) {
+      this.statusCode = status;
+      this.headers = headers;
+    },
+    end(chunk = '') {
+      this.payload = JSON.parse(String(chunk || '{}'));
+    },
+  };
+}
+
+test('/mission-control route is a standalone installable dashboard', async () => {
+  const html = await readFile(new URL('../mission-control/index.html', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../mission-control/styles.css', import.meta.url), 'utf8');
+  const app = await readFile(new URL('../mission-control/app.js', import.meta.url), 'utf8');
+  const manifest = JSON.parse(await readFile(new URL('../mission-control/manifest.json', import.meta.url), 'utf8'));
+  const sw = await readFile(new URL('../mission-control/sw.js', import.meta.url), 'utf8');
+  const vercel = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8'));
+
+  assert.match(html, /id="missionCanvas"/);
+  assert.match(css, /glass/);
+  assert.match(css, /#22d3ee/);
+  assert.match(app, /requestAnimationFrame/);
+  assert.match(app, /\/api\/mission-control/);
+  assert.equal(manifest.start_url, '/mission-control');
+  assert.equal(manifest.display, 'standalone');
+  assert.match(sw, /coach-eye-mission-control-v1/);
+  assert.ok(vercel.rewrites.some(rule => rule.source === '/mission-control' && rule.destination === '/mission-control/index.html'));
+});
+
+test('main app exposes keyboard shortcut M to open Mission Control', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+
+  assert.match(html, /event\.key[\s\S]*toLowerCase\(\)[\s\S]*=== 'm'/);
+  assert.match(html, /window\.location\.href = '\/mission-control'/);
+});
+
+test('mission-control API returns a living graph with real project surfaces and demo fallback metrics', async () => {
+  const res = response();
+  await missionControlHandler({ method: 'GET' }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.ok, true);
+  assert.ok(['live', 'demo'].includes(res.payload.mode));
+  assert.ok(res.payload.graph.nodes.length > 20);
+  assert.ok(res.payload.graph.links.length > 20);
+  assert.ok(res.payload.graph.nodes.some(node => node.type === 'API'));
+  assert.ok(res.payload.graph.nodes.some(node => node.type === 'Test'));
+  assert.ok(res.payload.graph.nodes.some(node => node.type === 'File'));
+  assert.ok(res.payload.metrics.branch);
+  assert.ok(res.payload.project.endpoints.some(endpoint => endpoint.route === '/api/chat'));
+});

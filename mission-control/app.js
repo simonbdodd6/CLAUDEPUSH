@@ -1,0 +1,451 @@
+const canvas = document.getElementById('missionCanvas');
+const ctx = canvas.getContext('2d', { alpha: true });
+const panel = document.getElementById('nodePanel');
+
+const colors = {
+  Core: '#22d3ee',
+  System: '#38bdf8',
+  Commit: '#34d399',
+  Branch: '#2dd4bf',
+  'Pull Request': '#fbbf24',
+  Deployment: '#a78bfa',
+  Test: '#4ade80',
+  API: '#60a5fa',
+  'API File': '#7dd3fc',
+  'Test File': '#86efac',
+  File: '#93c5fd',
+  User: '#f472b6',
+  Message: '#fb7185',
+  Notification: '#f59e0b',
+  Conversation: '#fda4af',
+};
+
+const state = {
+  graph: { nodes: [], links: [] },
+  nodes: [],
+  links: [],
+  nodeById: new Map(),
+  adjacency: new Map(),
+  width: 0,
+  height: 0,
+  dpr: 1,
+  zoom: 0.86,
+  panX: 0,
+  panY: 0,
+  tick: 0,
+  selected: null,
+  hovered: null,
+  dragging: false,
+  lastPointer: null,
+  mode: 'demo',
+  events: [],
+};
+
+function demoPayload() {
+  const now = new Date().toISOString();
+  return {
+    ok: true,
+    generatedAt: now,
+    mode: 'demo',
+    metrics: {
+      branch: 'feature/ai-mission-control-live',
+      latestCommit: 'local-demo',
+      latestCommitMessage: 'Mission Control offline telemetry',
+      deploymentStatus: 'DEMO',
+      activeUsers: 5,
+      messagesToday: 34,
+      notificationsToday: 7,
+    },
+    graph: {
+      nodes: [
+        { id: 'project', label: 'Coach’s Eye', type: 'Core', meta: { status: 'Demo mode' } },
+        { id: 'api', label: 'API Surface', type: 'API', meta: { endpoints: 14 } },
+        { id: 'tests', label: 'Test Matrix', type: 'Test', meta: { cases: 92 } },
+        { id: 'deployment', label: 'Preview Radar', type: 'Deployment', meta: { status: 'Simulated' } },
+        { id: 'users', label: 'Users', type: 'User', meta: { activeUsers: 5 } },
+        { id: 'messages', label: 'Messaging', type: 'Message', meta: { messagesToday: 34 } },
+        { id: 'notifications', label: 'Notifications', type: 'Notification', meta: { notificationsToday: 7 } },
+        { id: 'file:index', label: 'index.html', type: 'File', meta: { path: 'index.html' } },
+        { id: 'file:chat', label: 'chat-state.js', type: 'File', meta: { path: 'src/chat-state.js' } },
+        { id: 'file:identity', label: 'identity.js', type: 'API File', meta: { path: 'api/identity.js' } },
+      ],
+      links: [
+        { source: 'project', target: 'api', type: 'serves' },
+        { source: 'project', target: 'tests', type: 'validated by' },
+        { source: 'project', target: 'deployment', type: 'deployed through' },
+        { source: 'api', target: 'users', type: 'identity' },
+        { source: 'api', target: 'messages', type: 'chat' },
+        { source: 'messages', target: 'notifications', type: 'triggers' },
+        { source: 'file:index', target: 'project', type: 'surface' },
+        { source: 'file:chat', target: 'messages', type: 'state' },
+        { source: 'file:identity', target: 'users', type: 'auth' },
+      ],
+    },
+  };
+}
+
+async function loadTelemetry() {
+  try {
+    const res = await fetch('/api/mission-control', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch {
+    return demoPayload();
+  }
+}
+
+function hashValue(value = '') {
+  let h = 0;
+  for (let i = 0; i < value.length; i++) h = (Math.imul(31, h) + value.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+function assignLayout(graph) {
+  const nodes = graph.nodes.map((node, index) => {
+    const h = hashValue(node.id);
+    const ring = node.type === 'Core' ? 0 : 180 + (h % 420);
+    const angle = (index / Math.max(1, graph.nodes.length)) * Math.PI * 2 + (h % 90) / 90;
+    return {
+      ...node,
+      x: node.type === 'Core' ? 0 : Math.cos(angle) * ring,
+      y: node.type === 'Core' ? 0 : Math.sin(angle) * ring * 0.62,
+      vx: 0,
+      vy: 0,
+      homeX: node.type === 'Core' ? 0 : Math.cos(angle) * ring,
+      homeY: node.type === 'Core' ? 0 : Math.sin(angle) * ring * 0.62,
+      size: node.type === 'Core' ? 24 : node.type === 'System' ? 16 : node.type === 'Conversation' ? 8 : 10,
+      pulse: (h % 100) / 100 * Math.PI * 2,
+      activity: Math.random(),
+    };
+  });
+  const nodeById = new Map(nodes.map(node => [node.id, node]));
+  const links = graph.links.filter(link => nodeById.has(link.source) && nodeById.has(link.target)).map(link => ({
+    ...link,
+    phase: Math.random() * Math.PI * 2,
+    strength: 0.8 + (hashValue(`${link.source}:${link.target}`) % 70) / 100,
+  }));
+  const adjacency = new Map(nodes.map(node => [node.id, new Set()]));
+  links.forEach(link => {
+    adjacency.get(link.source)?.add(link.target);
+    adjacency.get(link.target)?.add(link.source);
+  });
+  state.nodes = nodes;
+  state.links = links;
+  state.nodeById = nodeById;
+  state.adjacency = adjacency;
+}
+
+function updateOverlays(payload) {
+  const metrics = payload.metrics || {};
+  state.mode = payload.mode || 'demo';
+  document.getElementById('deploymentStatus').textContent = metrics.deploymentStatus || 'UNKNOWN';
+  document.getElementById('branchStatus').textContent = `branch: ${metrics.branch || 'unknown'}`;
+  document.getElementById('commitStatus').textContent = `commit: ${metrics.latestCommit || 'unknown'} · ${metrics.latestCommitMessage || ''}`;
+  document.getElementById('activeUsers').textContent = metrics.activeUsers ?? 0;
+  document.getElementById('messagesToday').textContent = metrics.messagesToday ?? 0;
+  document.getElementById('notificationsToday').textContent = metrics.notificationsToday ?? 0;
+  document.getElementById('modePill').textContent = state.mode === 'live' ? 'LIVE MODE' : 'DEMO FALLBACK';
+
+  const graph = payload.graph || { nodes: [], links: [] };
+  const latest = [
+    `${new Date(payload.generatedAt || Date.now()).toLocaleTimeString()} telemetry sync`,
+    `${graph.nodes.length} nodes`,
+    `${graph.links.length} links`,
+    `${metrics.branch || 'unknown branch'}`,
+    `${metrics.latestCommit || 'unknown commit'}`,
+    `${metrics.activeUsers || 0} users`,
+    `${metrics.messagesToday || 0} messages today`,
+  ];
+  state.events = latest;
+  document.getElementById('eventTicker').textContent = latest.join('  //  ');
+}
+
+function installGraph(payload) {
+  state.graph = payload.graph || demoPayload().graph;
+  assignLayout(state.graph);
+  updateOverlays(payload);
+}
+
+function resize() {
+  const rect = canvas.getBoundingClientRect();
+  state.width = rect.width;
+  state.height = rect.height;
+  state.dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.floor(rect.width * state.dpr);
+  canvas.height = Math.floor(rect.height * state.dpr);
+  ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+  if (!state.panX && !state.panY) {
+    state.panX = rect.width / 2;
+    state.panY = rect.height / 2;
+  }
+}
+
+function worldToScreen(x, y) {
+  return { x: x * state.zoom + state.panX, y: y * state.zoom + state.panY };
+}
+
+function screenToWorld(x, y) {
+  return { x: (x - state.panX) / state.zoom, y: (y - state.panY) / state.zoom };
+}
+
+function connectedToFocus(node) {
+  const focus = state.selected || state.hovered;
+  if (!focus) return true;
+  return node.id === focus.id || state.adjacency.get(focus.id)?.has(node.id);
+}
+
+function simulate() {
+  const focus = state.selected;
+  for (const link of state.links) {
+    const a = state.nodeById.get(link.source);
+    const b = state.nodeById.get(link.target);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const d = Math.max(1, Math.hypot(dx, dy));
+    const target = 120;
+    const force = (d - target) * 0.0009 * link.strength;
+    a.vx += dx / d * force;
+    a.vy += dy / d * force;
+    b.vx -= dx / d * force;
+    b.vy -= dy / d * force;
+  }
+  state.nodes.forEach((node, index) => {
+    const homePull = node.type === 'Core' ? 0.012 : 0.004;
+    node.vx += (node.homeX - node.x) * homePull + Math.cos(state.tick * 0.006 + index) * 0.025;
+    node.vy += (node.homeY - node.y) * homePull + Math.sin(state.tick * 0.007 + index) * 0.025;
+    if (focus && state.adjacency.get(focus.id)?.has(node.id)) node.activity = Math.max(node.activity, 0.55);
+    node.activity = Math.max(0.02, node.activity * 0.988);
+    node.vx *= 0.86;
+    node.vy *= 0.86;
+    node.x += node.vx;
+    node.y += node.vy;
+  });
+}
+
+function drawBackground() {
+  const grid = 56 * state.zoom;
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 1;
+  const ox = state.panX % grid;
+  const oy = state.panY % grid;
+  for (let x = ox; x < state.width; x += grid) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, state.height);
+    ctx.stroke();
+  }
+  for (let y = oy; y < state.height; y += grid) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(state.width, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawParticles() {
+  ctx.save();
+  for (let i = 0; i < 72; i++) {
+    const x = (Math.sin(state.tick * 0.003 + i * 8.71) * 0.5 + 0.5) * state.width;
+    const y = (Math.cos(state.tick * 0.002 + i * 13.37) * 0.5 + 0.5) * state.height;
+    ctx.globalAlpha = 0.08 + (i % 4) * 0.015;
+    ctx.fillStyle = i % 2 ? '#22d3ee' : '#60a5fa';
+    ctx.beginPath();
+    ctx.arc(x, y, 0.7 + (i % 3) * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawLink(link) {
+  const a = state.nodeById.get(link.source);
+  const b = state.nodeById.get(link.target);
+  if (!a || !b) return;
+  const pa = worldToScreen(a.x, a.y);
+  const pb = worldToScreen(b.x, b.y);
+  const focus = state.selected || state.hovered;
+  const connected = !focus || a.id === focus.id || b.id === focus.id;
+  const color = colors[b.type] || colors[a.type] || '#22d3ee';
+  const pulse = (Math.sin(state.tick * 0.055 + link.phase) + 1) / 2;
+  const alpha = connected ? 0.26 + pulse * 0.2 : 0.035;
+  const cx = (pa.x + pb.x) / 2 + Math.sin(link.phase) * 24 * state.zoom;
+  const cy = (pa.y + pb.y) / 2 + Math.cos(link.phase) * 24 * state.zoom;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = connected ? 1.2 : 0.6;
+  ctx.shadowBlur = connected ? 16 : 0;
+  ctx.shadowColor = color;
+  ctx.beginPath();
+  ctx.moveTo(pa.x, pa.y);
+  ctx.quadraticCurveTo(cx, cy, pb.x, pb.y);
+  ctx.stroke();
+
+  if (connected) {
+    const t = (state.tick * 0.006 * link.strength + link.phase) % 1;
+    const x = (1 - t) * (1 - t) * pa.x + 2 * (1 - t) * t * cx + t * t * pb.x;
+    const y = (1 - t) * (1 - t) * pa.y + 2 * (1 - t) * t * cy + t * t * pb.y;
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 2.2 + pulse * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawNode(node) {
+  const p = worldToScreen(node.x, node.y);
+  const connected = connectedToFocus(node);
+  const color = colors[node.type] || '#22d3ee';
+  const selected = state.selected?.id === node.id;
+  const hovered = state.hovered?.id === node.id;
+  const pulse = (Math.sin(state.tick * 0.05 + node.pulse) + 1) / 2;
+  const radius = Math.max(3.8, (node.size + node.activity * 5 + pulse * 1.2) * state.zoom);
+
+  ctx.save();
+  ctx.globalAlpha = connected ? 1 : 0.12;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = connected ? 24 + node.activity * 36 : 0;
+  const glow = ctx.createRadialGradient(p.x, p.y, 1, p.x, p.y, radius * 4.2);
+  glow.addColorStop(0, `${color}aa`);
+  glow.addColorStop(0.34, `${color}28`);
+  glow.addColorStop(1, `${color}00`);
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, radius * 4.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.lineWidth = selected || hovered ? 2.5 : 1;
+  ctx.strokeStyle = selected ? '#f8fafc' : 'rgba(240,249,255,0.72)';
+  ctx.stroke();
+
+  if ((selected || hovered || node.type === 'Core' || state.zoom > 0.88) && connected) {
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = '#e0f2fe';
+    ctx.font = `${Math.max(10, 11 * state.zoom)}px Inter, sans-serif`;
+    ctx.fillText(node.label, p.x + radius + 8, p.y + 4);
+  }
+  ctx.restore();
+}
+
+function render() {
+  state.tick++;
+  simulate();
+  ctx.clearRect(0, 0, state.width, state.height);
+  drawBackground();
+  drawParticles();
+  state.links.forEach(drawLink);
+  state.nodes.forEach(drawNode);
+  requestAnimationFrame(render);
+}
+
+function nearestNode(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = clientX - rect.left;
+  const sy = clientY - rect.top;
+  const world = screenToWorld(sx, sy);
+  let best = null;
+  let bestD = Infinity;
+  for (const node of state.nodes) {
+    const d = Math.hypot(node.x - world.x, node.y - world.y);
+    if (d < bestD && d < Math.max(18, node.size + 12) / state.zoom) {
+      best = node;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+function escapeHtml(value = '') {
+  return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+}
+
+function showPanel(node) {
+  if (!node) {
+    panel.classList.add('hidden');
+    return;
+  }
+  const meta = node.meta || {};
+  const rows = Object.entries(meta)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .slice(0, 8)
+    .map(([key, value]) => `<div><span>${escapeHtml(key)}</span><strong>${escapeHtml(Array.isArray(value) ? value.join(', ') : String(value))}</strong></div>`)
+    .join('');
+  const path = meta.path || meta.source || '';
+  panel.innerHTML = `
+    <span class="kicker">${escapeHtml(node.type)}</span>
+    <h2>${escapeHtml(node.label)}</h2>
+    <p>${escapeHtml(meta.status || meta.subject || meta.route || meta.path || 'Connected project node')}</p>
+    <div class="meta-grid">${rows || '<div><span>id</span><strong>' + escapeHtml(node.id) + '</strong></div>'}</div>
+    ${path ? `<button class="source-button" type="button" data-source="${escapeHtml(path)}">Open Source Location</button>` : ''}
+  `;
+  panel.querySelector('[data-source]')?.addEventListener('click', event => {
+    const source = event.currentTarget.dataset.source;
+    window.open(`/${source}`, '_blank', 'noopener,noreferrer');
+  });
+  panel.classList.remove('hidden');
+}
+
+canvas.addEventListener('pointerdown', event => {
+  state.dragging = true;
+  state.lastPointer = { x: event.clientX, y: event.clientY };
+  canvas.setPointerCapture(event.pointerId);
+});
+
+canvas.addEventListener('pointermove', event => {
+  const near = nearestNode(event.clientX, event.clientY);
+  state.hovered = near;
+  if (state.dragging && state.lastPointer) {
+    state.panX += event.clientX - state.lastPointer.x;
+    state.panY += event.clientY - state.lastPointer.y;
+    state.lastPointer = { x: event.clientX, y: event.clientY };
+  }
+});
+
+canvas.addEventListener('pointerup', event => {
+  const moved = state.lastPointer && Math.hypot(event.clientX - state.lastPointer.x, event.clientY - state.lastPointer.y) > 4;
+  state.dragging = false;
+  state.lastPointer = null;
+  if (!moved) {
+    state.selected = nearestNode(event.clientX, event.clientY);
+    showPanel(state.selected);
+  }
+});
+
+canvas.addEventListener('wheel', event => {
+  event.preventDefault();
+  const before = screenToWorld(event.clientX, event.clientY);
+  const nextZoom = Math.min(2.2, Math.max(0.32, state.zoom * (event.deltaY < 0 ? 1.08 : 0.92)));
+  state.zoom = nextZoom;
+  const after = screenToWorld(event.clientX, event.clientY);
+  state.panX += (after.x - before.x) * state.zoom;
+  state.panY += (after.y - before.y) * state.zoom;
+}, { passive: false });
+
+window.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    state.selected = null;
+    showPanel(null);
+  }
+});
+
+window.addEventListener('resize', resize);
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/mission-control/sw.js').catch(() => {});
+}
+
+resize();
+installGraph(demoPayload());
+loadTelemetry().then(installGraph);
+setInterval(() => loadTelemetry().then(installGraph), 30000);
+requestAnimationFrame(render);

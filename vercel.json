@@ -1,6 +1,14 @@
 {
   "headers": [
     {
+      "source": "/mission-control/sw.js",
+      "headers": [
+        { "key": "Service-Worker-Allowed", "value": "/mission-control/" },
+        { "key": "Cache-Control", "value": "no-store, no-cache" },
+        { "key": "Content-Type", "value": "application/javascript" }
+      ]
+    },
+    {
       "source": "/sw.js",
       "headers": [
         { "key": "Service-Worker-Allowed", "value": "/" },
@@ -22,6 +30,9 @@
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
       ]
     }
+  ],
+  "rewrites": [
+    { "source": "/mission-control", "destination": "/mission-control/index.html" }
   ],
   "crons": [
     { "path": "/api/cron",     "schedule": "0 7 * * *"   },
