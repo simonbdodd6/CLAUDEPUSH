@@ -16,7 +16,8 @@ import {
 } from './_identityStore.js';
 import { appBaseUrl, passwordResetEmail, sendTransactionalEmail } from './_email.js';
 import { setCors } from './_http.js';
-import { kvConfigured } from './_kv.js';
+import { kvConfigured, kvLrange } from './_kv.js';
+import { key, legacyKey } from './_keys.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
 import { assertSameTenant, requireTenantRole } from './_tenant.js';
 
@@ -46,6 +47,24 @@ export default async function handler(req, res) {
         const result = await resolveSessionFromRequest(req);
         if (!result) return res.status(401).json({ ok: false, error: 'No active session' });
         return res.status(200).json({ ok: true, ...result });
+      }
+      // Public browser config (merged from /api/config)
+      if (req.query?.action === 'config') {
+        const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || '';
+        return res.status(200).json({
+          vapidPublicKey,
+          pushConfigured: Boolean(vapidPublicKey && process.env.VAPID_PRIVATE_KEY && kvConfigured()),
+          storageConfigured: kvConfigured(),
+        });
+      }
+      // Audit log (merged from /api/log)
+      if (req.query?.action === 'log') {
+        await requireTenantRole(req, ['coach', 'admin']);
+        const requested = Number.parseInt(req.query?.limit || '10', 10);
+        const limit = Number.isFinite(requested) ? Math.max(1, Math.min(requested, 100)) : 10;
+        let log = await kvLrange(key('message_log'), 0, limit - 1);
+        if (!log.length) log = await kvLrange(legacyKey('message_log'), 0, limit - 1);
+        return res.status(200).json({ log });
       }
       const tenant = await requireTenantRole(req, ['coach', 'admin']);
       if (req.query?.teamId) assertSameTenant(tenant, req.query.teamId);

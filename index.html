@@ -2374,7 +2374,7 @@
     async function initServiceWorker() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
       try {
-        const configResponse = await fetch('/api/config');
+        const configResponse = await fetch('/api/identity?action=config');
         const config = await configResponse.json();
         vapidPublicKey = config.vapidPublicKey || "";
         pushConfigured = Boolean(config.pushConfigured);
@@ -7763,7 +7763,7 @@
       const panel = document.getElementById("live-log-panel");
       if (!panel) return;
       try {
-        const res  = await fetch('/api/log?limit=10');
+        const res  = await fetch('/api/identity?action=log&limit=10');
         const data = await res.json();
         const serverLog = (data.log || []).slice(0, 10);
 
