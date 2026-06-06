@@ -1758,13 +1758,14 @@
         </div>
       </header>
 
-      <section id="coach-overview"    class="section active"></section>
-      <section id="coach-message"     class="section"></section>
-      <section id="coach-messages"    class="section"></section>
-      <section id="coach-training"    class="section"></section>
-      <section id="coach-matchday"    class="section"></section>
-      <section id="coach-medical"     class="section"></section>
-      <section id="coach-players"     class="section"></section>
+      <section id="coach-overview"       class="section active"></section>
+      <section id="coach-message"        class="section"></section>
+      <section id="coach-messages"       class="section"></section>
+      <section id="coach-training"       class="section"></section>
+      <section id="coach-matchday"       class="section"></section>
+      <section id="coach-medical"        class="section"></section>
+      <section id="coach-players"        class="section"></section>
+      <section id="coach-system-status"  class="section"></section>
 
       <section id="player-availability" class="section"></section>
       <section id="player-week"         class="section"></section>
@@ -1794,13 +1795,14 @@
     ];
 
     const coachSections = [
-      ["overview",  "Overview"],
-      ["message",   "Availability"],
-      ["messages",  "Messages"],
-      ["training",  "Training"],
-      ["matchday",  "Matchday Centre"],
-      ["medical",   "Medical"],
-      ["players",   "Members"]
+      ["overview",       "Overview"],
+      ["message",        "Availability"],
+      ["messages",       "Messages"],
+      ["training",       "Training"],
+      ["matchday",       "Matchday Centre"],
+      ["medical",        "Medical"],
+      ["players",        "Members"],
+      ["system-status",  "⚙ System Status"],
     ];
 
     const playerSections = [
@@ -3608,7 +3610,10 @@
     // ─── NAV ─────────────────────────────────────────────────────────────────
     function renderNav() {
       const user = currentUser();
-      document.getElementById("coachNav").innerHTML = coachSections.map(([id, label]) =>
+      const visibleCoachSections = coachSections.filter(([id]) =>
+        id !== 'system-status' || ['coach','admin'].includes(currentUser()?.role)
+      );
+      document.getElementById("coachNav").innerHTML = visibleCoachSections.map(([id, label]) =>
         `<button type="button" class="${state.activeView==="coach" && state.activeCoachSection===id ? "active" : ""}" onclick="setSection('coach','${id}')">${label}</button>`
       ).join("");
       document.getElementById("playerNav").innerHTML = playerSections.map(([id, label]) =>
@@ -7157,6 +7162,195 @@
 
     // Old versions removed — new WhatsApp functions defined above
 
+    // ─── SYSTEM STATUS ────────────────────────────────────────────────────────
+    let _sysStatus = null;
+    let _sysStatusLoading = false;
+
+    async function loadSystemStatus() {
+      _sysStatusLoading = true;
+      renderSystemStatus();
+      try {
+        const res  = await fetch('/api/system-status');
+        const data = await res.json().catch(() => ({}));
+        _sysStatus = res.ok ? data : { ok: false, error: data.error || 'Request failed' };
+      } catch(e) {
+        _sysStatus = { ok: false, error: e.message };
+      }
+      _sysStatusLoading = false;
+      renderSystemStatus();
+    }
+
+    function renderSystemStatus() {
+      const el = document.getElementById('coach-system-status');
+      if (!el) return;
+
+      const user = currentUser();
+      if (!user || !['coach','admin'].includes(user.role)) {
+        el.innerHTML = `<div class="workspace"><div class="card" style="padding:32px;text-align:center"><p class="muted">System Status is only available to admin accounts.</p></div></div>`;
+        return;
+      }
+
+      if (!_sysStatus && !_sysStatusLoading) {
+        loadSystemStatus();
+      }
+
+      const loading = _sysStatusLoading || !_sysStatus;
+      const d = _sysStatus || {};
+      const b = d.build || {};
+      const r = d.redis || {};
+      const t = d.tests || {};
+      const q = d.qa    || {};
+      const s = d.security || {};
+
+      function badge(ok, labels = ['OK','Error']) {
+        const c = ok ? '#10b981' : '#ef4444';
+        const bg = ok ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
+        return `<span style="display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;color:${c};background:${bg};border:1px solid ${c}33">${ok ? labels[0] : labels[1]}</span>`;
+      }
+      function warnBadge(label) {
+        return `<span style="display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3)">${label}</span>`;
+      }
+      function row(label, value, extra = '') {
+        return `<tr>
+          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#64748b;white-space:nowrap;border-bottom:1px solid var(--line)">${label}</td>
+          <td style="padding:10px 14px;font-size:13px;color:#e2e8f0;border-bottom:1px solid var(--line);font-family:monospace">${value}</td>
+          ${extra ? `<td style="padding:10px 14px;border-bottom:1px solid var(--line)">${extra}</td>` : ''}
+        </tr>`;
+      }
+      function skRow() {
+        return `<tr><td colspan="2" style="padding:10px 14px;border-bottom:1px solid var(--line)"><div style="height:13px;background:var(--line);border-radius:4px;animation:shimmer 1.4s ease infinite;background-size:200% 100%"></div></td></tr>`;
+      }
+
+      el.innerHTML = `
+        <div class="workspace">
+          <div class="topbar" style="margin-bottom:20px">
+            <div>
+              <h1 style="margin:0 0 4px">System Status</h1>
+              <p class="muted" style="margin:0;font-size:13px">Build info, infrastructure health, and agent status.</p>
+            </div>
+            <button class="btn" type="button" onclick="_sysStatus=null;loadSystemStatus()" style="gap:6px">
+              ↻ Refresh
+            </button>
+          </div>
+
+          <!-- Status chips -->
+          <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+            ${loading ? `
+              <div style="height:32px;width:90px;background:var(--line);border-radius:8px;animation:shimmer 1.4s ease infinite;background-size:200% 100%"></div>
+              <div style="height:32px;width:80px;background:var(--line);border-radius:8px;animation:shimmer 1.4s ease infinite;background-size:200% 100%"></div>
+              <div style="height:32px;width:100px;background:var(--line);border-radius:8px;animation:shimmer 1.4s ease infinite;background-size:200% 100%"></div>
+            ` : `
+              <div style="display:flex;align-items:center;gap:7px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700">
+                <span>Redis</span>${badge(r.ok)}${r.latencyMs != null ? `<span style="color:var(--muted);font-size:11px">${r.latencyMs}ms</span>` : ''}
+              </div>
+              <div style="display:flex;align-items:center;gap:7px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700">
+                <span>Tests</span>${badge(t.status === 'pass', ['PASS','FAIL'])}
+                <span style="color:var(--muted);font-size:11px">${t.total || 0}/165</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:7px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700">
+                <span>QA Agent</span>${q.status === 'configured' ? badge(true, ['Active','Inactive']) : warnBadge('Not Configured')}
+              </div>
+              <div style="display:flex;align-items:center;gap:7px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700">
+                <span>Security</span>${s.status === 'audited' ? badge(true, ['Audited','Pending']) : warnBadge('Pending')}
+                ${s.openWarnings ? `<span style="color:var(--muted);font-size:11px">${s.openWarnings} warnings</span>` : ''}
+              </div>
+            `}
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+            <!-- Build / deployment -->
+            <div class="card" style="padding:0;overflow:hidden">
+              <div style="padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px">
+                <span style="font-size:16px">🚀</span>
+                <strong style="font-size:14px">Build &amp; Deployment</strong>
+              </div>
+              <table style="width:100%;border-collapse:collapse">
+                ${loading ? skRow()+skRow()+skRow()+skRow()+skRow() : `
+                  ${row('Branch', b.branch || '—')}
+                  ${row('Version', `v${b.version || '?'}`)}
+                  ${row('Commit', b.commitHash || '—', b.commitMessage ? `<span style="color:var(--muted);font-size:11px;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.commitMessage)}</span>` : '')}
+                  ${row('Deployed', b.deployedAt ? new Date(b.deployedAt).toLocaleString() : '—')}
+                  ${row('Environment', b.env || 'local')}
+                  ${b.previewUrl ? row('Preview URL', `<a href="${b.previewUrl}" target="_blank" rel="noopener" style="color:#10b981;text-decoration:none">${b.previewUrl.replace('https://','')}</a>`) : row('Preview URL', '—')}
+                `}
+              </table>
+            </div>
+
+            <!-- Redis -->
+            <div class="card" style="padding:0;overflow:hidden">
+              <div style="padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px">
+                <span style="font-size:16px">🗄</span>
+                <strong style="font-size:14px">Redis (Upstash)</strong>
+              </div>
+              <table style="width:100%;border-collapse:collapse">
+                ${loading ? skRow()+skRow()+skRow() : `
+                  ${row('Status', r.ok ? badge(true) : badge(false))}
+                  ${row('Latency', r.latencyMs != null ? `${r.latencyMs} ms` : '—')}
+                  ${r.error ? row('Error', `<span style="color:#ef4444;font-size:12px">${esc(r.error)}</span>`) : ''}
+                  ${row('Configured', badge(!!r.ok || r.latencyMs != null, ['Yes','No']))}
+                `}
+              </table>
+            </div>
+
+            <!-- Tests -->
+            <div class="card" style="padding:0;overflow:hidden">
+              <div style="padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px">
+                <span style="font-size:16px">🧪</span>
+                <strong style="font-size:14px">Test Suite</strong>
+              </div>
+              <table style="width:100%;border-collapse:collapse">
+                ${loading ? skRow()+skRow()+skRow() : `
+                  ${row('Status', badge(t.status === 'pass', ['PASS','FAIL']))}
+                  ${row('Tests', `${t.total || 0} / 165`)}
+                  ${row('Suites', `${t.suites || 0} / 14`)}
+                  ${row('Runner', 'node --test (built-in)')}
+                `}
+              </table>
+            </div>
+
+            <!-- QA Agent -->
+            <div class="card" style="padding:0;overflow:hidden">
+              <div style="padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px">
+                <span style="font-size:16px">🤖</span>
+                <strong style="font-size:14px">QA Agent (Playwright)</strong>
+              </div>
+              <table style="width:100%;border-collapse:collapse">
+                ${loading ? skRow()+skRow()+skRow() : `
+                  ${row('Status', q.status === 'configured' ? badge(true, ['Configured','Not Set Up']) : warnBadge('Not Configured'))}
+                  ${row('Spec files', `${q.specCount || 0} found`)}
+                  ${row('Specs', (q.specNames || []).join(', ') || '—')}
+                  ${row('Last report', q.lastReportAt ? new Date(q.lastReportAt).toLocaleDateString() : '—')}
+                `}
+              </table>
+            </div>
+
+            <!-- Security -->
+            <div class="card" style="padding:0;overflow:hidden;grid-column:1/-1">
+              <div style="padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px">
+                <span style="font-size:16px">🔒</span>
+                <strong style="font-size:14px">Security Audit</strong>
+              </div>
+              <table style="width:100%;border-collapse:collapse">
+                ${loading ? skRow()+skRow()+skRow()+skRow() : `
+                  ${row('Audit status', s.status === 'audited' ? badge(true, ['Audited','Pending']) : warnBadge('Pending'))}
+                  ${row('Last audit', s.lastAuditAt ? new Date(s.lastAuditAt).toLocaleDateString() : '—')}
+                  ${row('Open blockers', `<span style="color:${s.openBlockers ? '#ef4444' : '#10b981'};font-weight:700">${s.openBlockers ?? '—'}</span>`)}
+                  ${row('Open warnings', s.openWarnings != null ? `<span style="color:${s.openWarnings > 0 ? '#f59e0b' : '#10b981'};font-weight:700">${s.openWarnings}</span>` : '—')}
+                  ${row('RELEASE_READINESS.md', s.releaseReadiness === 'present' ? badge(true, ['Present','Missing']) : badge(false, ['Present','Missing']))}
+                  ${row('KNOWN_ISSUES.md', s.knownIssues === 'present' ? badge(true, ['Present','Missing']) : badge(false, ['Present','Missing']))}
+                `}
+              </table>
+            </div>
+
+          </div>
+
+          <p class="muted" style="font-size:11px;margin-top:14px;text-align:right">
+            Generated at ${loading ? '…' : (d.generatedAt ? new Date(d.generatedAt).toLocaleString() : '—')}
+          </p>
+        </div>`;
+    }
+
     // ─── RENDER ───────────────────────────────────────────────────────────────
     function render() {
       renderNav();
@@ -7194,6 +7388,9 @@
       if (state.activeCoachSection === "message") {
         loadLiveMessaging();
         setTimeout(renderAudiencePicker, 50);
+      }
+      if (state.activeCoachSection === "system-status") {
+        renderSystemStatus();
       }
     }
 
