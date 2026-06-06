@@ -33,7 +33,7 @@ const LEGACY_STAFF_ACCOUNTS = [
     lastName: 'Coach',
     displayName: 'Simon Coach',
     role: 'coach',
-    password: '1111',
+    passwordEnv: 'LEGACY_COACH_PASSWORD',
   },
 ];
 
@@ -580,7 +580,8 @@ async function ensurePlayerProfile({ teamMember, user, invite = null }) {
 
 async function ensureLegacyStaffAccountForLogin(email, password) {
   const legacy = LEGACY_STAFF_ACCOUNTS.find(account => normalizeEmail(account.email) === normalizeEmail(email));
-  if (!legacy || String(password || '') !== legacy.password) return null;
+  const legacyPassword = legacy?.passwordEnv ? process.env[legacy.passwordEnv] : '';
+  if (!legacy || !legacyPassword || String(password || '') !== legacyPassword) return null;
   const users = await loadUsers();
   let user = users.find(item => item.id === legacy.id || normalizeEmail(item.email) === normalizeEmail(legacy.email));
   if (!user) {
@@ -592,13 +593,13 @@ async function ensureLegacyStaffAccountForLogin(email, password) {
       displayName: legacy.displayName,
       authProvider: 'legacy-password',
       passwordSet: true,
-      ...hashPassword(legacy.password),
+      ...hashPassword(legacyPassword),
       createdAt: nowIso(),
       lastLoginAt: null,
     };
     users.push(user);
   } else if (!user.passwordHash) {
-    Object.assign(user, hashPassword(legacy.password), {
+    Object.assign(user, hashPassword(legacyPassword), {
       authProvider: user.authProvider || 'legacy-password',
       passwordSet: true,
     });

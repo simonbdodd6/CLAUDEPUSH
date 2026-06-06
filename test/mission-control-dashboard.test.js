@@ -48,18 +48,11 @@ test('main app exposes keyboard shortcut M to open Mission Control', async () =>
   assert.match(html, /window\.location\.href = '\/mission-control'/);
 });
 
-test('mission-control API returns a living graph with real project surfaces and demo fallback metrics', async () => {
+test('mission-control API requires coach or admin authentication', async () => {
   const res = response();
   await missionControlHandler({ method: 'GET' }, res);
 
-  assert.equal(res.statusCode, 200);
-  assert.equal(res.payload.ok, true);
-  assert.ok(['live', 'demo'].includes(res.payload.mode));
-  assert.ok(res.payload.graph.nodes.length > 20);
-  assert.ok(res.payload.graph.links.length > 20);
-  assert.ok(res.payload.graph.nodes.some(node => node.type === 'API'));
-  assert.ok(res.payload.graph.nodes.some(node => node.type === 'Test'));
-  assert.ok(res.payload.graph.nodes.some(node => node.type === 'File'));
-  assert.ok(res.payload.metrics.branch);
-  assert.ok(res.payload.project.endpoints.some(endpoint => endpoint.route === '/api/chat'));
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.payload.ok, false);
+  assert.match(res.payload.error, /session|auth/i);
 });

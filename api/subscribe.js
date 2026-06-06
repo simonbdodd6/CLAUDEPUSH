@@ -16,6 +16,34 @@ function displayNameFromSession(sessionContext = {}) {
     user.name || user.email || '';
 }
 
+function sessionIdentity(sessionContext = {}) {
+  const userId = sessionContext?.user?.id || '';
+  const playerIds = [
+    sessionContext?.playerProfile?.userId,
+    sessionContext?.playerProfile?.legacyPlayerId,
+    userId,
+  ].filter(Boolean).map(String);
+  return { userId, playerIds };
+}
+
+function requestedIdentityAllowed(sessionContext = {}, { userId = '', playerId = '' } = {}) {
+  const identity = sessionIdentity(sessionContext);
+  if (!identity.userId) return false;
+  if (userId && String(userId) !== identity.userId) return false;
+  if (playerId && !identity.playerIds.includes(String(playerId))) return false;
+  return true;
+}
+
+function subscriptionBelongsToSession(subscription = {}, sessionContext = {}) {
+  const identity = sessionIdentity(sessionContext);
+  if (!identity.userId) return false;
+  const subUserId = String(subscription.userId || '');
+  const subPlayerId = String(subscription.playerId || '');
+  if (subUserId && subUserId === identity.userId) return true;
+  if (subPlayerId && identity.playerIds.includes(subPlayerId)) return true;
+  return false;
+}
+
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -31,6 +59,12 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
     const { subscription, label, userId, playerId } = req.body || {};
+    if (!sessionContext?.user?.id) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    if (!requestedIdentityAllowed(sessionContext, { userId, playerId })) {
+      return res.status(403).json({ error: 'Cannot subscribe another user' });
+    }
     if (!subscription?.endpoint) {
       return res.status(400).json({ error: 'Missing subscription endpoint' });
     }
@@ -54,9 +88,19 @@ export default async function handler(req, res) {
 
   // ── DELETE: remove subscription ──────────────────────────────────────────
   if (req.method === 'DELETE') {
+    const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
+    if (!sessionContext?.user?.id) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
     const { endpoint } = req.body || {};
     if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
-    const subs = (await load()).filter(s => s.subscription.endpoint !== endpoint);
+    const current = await load();
+    const target = current.find(s => s.subscription.endpoint === endpoint);
+    if (!target) return res.status(404).json({ error: 'Subscription not found' });
+    if (!subscriptionBelongsToSession(target, sessionContext)) {
+      return res.status(403).json({ error: 'Cannot delete another user subscription' });
+    }
+    const subs = current.filter(s => s.subscription.endpoint !== endpoint);
     await save(subs);
     return res.status(200).json({ ok: true, count: subs.length });
   }

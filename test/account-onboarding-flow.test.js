@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.onboarding.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
 process.env.APP_KEY_PREFIX = 'app';
+process.env.LEGACY_COACH_PASSWORD = process.env.LEGACY_COACH_PASSWORD || 'test-legacy-coach-password';
 
 const kv = new Map();
 const lists = new Map();
@@ -120,7 +121,7 @@ test('coach invite to claimed player creates one permanent userId across auth ch
   process.env.RESEND_API_KEY = 'resend_test_key';
 
   const coachLogin = await callApi(identityHandler, 'POST', {
-    body: { action: 'login', email: 'simonbdodd@gmail.com', password: '1111' },
+    body: { action: 'login', email: 'simonbdodd@gmail.com', password: process.env.LEGACY_COACH_PASSWORD },
   });
   assert.equal(coachLogin.statusCode, 200);
   assert.equal(coachLogin.payload.user.id, 'coach-demo');
@@ -195,6 +196,28 @@ test('coach invite to claimed player creates one permanent userId across auth ch
   assert.equal(subscriptions[0].userId, playerUserId);
   assert.equal(subscriptions[0].playerId, playerUserId);
   assert.equal(subscriptions[0].label, 'Test Registered Player');
+
+  const anonymousSubscribe = await callApi(subscribeHandler, 'POST', {
+    body: {
+      subscription: { endpoint: 'endpoint-anonymous', keys: { p256dh: 'p', auth: 'a' } },
+      userId: playerUserId,
+    },
+  });
+  assert.equal(anonymousSubscribe.statusCode, 401);
+
+  const spoofedSubscribe = await callApi(subscribeHandler, 'POST', {
+    headers: { cookie: playerCookie },
+    body: {
+      subscription: { endpoint: 'endpoint-spoofed', keys: { p256dh: 'p', auth: 'a' } },
+      userId: 'other-user',
+    },
+  });
+  assert.equal(spoofedSubscribe.statusCode, 403);
+
+  const anonymousDelete = await callApi(subscribeHandler, 'DELETE', {
+    body: { endpoint: 'endpoint-registered-player' },
+  });
+  assert.equal(anonymousDelete.statusCode, 401);
 
   const availability = await callApi(availabilityHandler, 'POST', {
     headers: { cookie: playerCookie },

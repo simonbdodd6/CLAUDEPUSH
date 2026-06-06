@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.identity.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
 process.env.APP_KEY_PREFIX = 'app';
+process.env.LEGACY_COACH_PASSWORD = process.env.LEGACY_COACH_PASSWORD || 'test-legacy-coach-password';
 
 const store = new Map();
 globalThis.fetch = async (url, options = {}) => {
@@ -473,7 +474,7 @@ test('password reset uses expiring token and preserves permanent userId and mess
 
 test('legacy Simon coach test account can create a permanent coach session for invite management', async () => {
   store.clear();
-  const login = await loginUser({ email: 'simonbdodd@gmail.com', password: '1111' });
+  const login = await loginUser({ email: 'simonbdodd@gmail.com', password: process.env.LEGACY_COACH_PASSWORD });
 
   assert.equal(login.user.id, 'coach-demo');
   assert.equal(login.user.role, 'coach');

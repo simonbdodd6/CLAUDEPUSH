@@ -37,7 +37,7 @@ Status: failed
 
 - The QA agent does not modify app, authentication, messaging, Redis, or data architecture code.
 - Group invite creation is attempted through the real invite API because the current UI only exposes personal invite links.
-- The legacy Simon Coach credential is currently a temporary seeded password/PIN (`1111`) for the seeded coach account. Keep using explicit `QA_COACH_EMAIL` and `QA_COACH_PASSWORD` until production auth is finalized.
+- Coach login must use explicit `QA_COACH_EMAIL` and `QA_COACH_PASSWORD`; the QA agent no longer supplies a shared legacy password fallback.
 - Diagnosis: sandboxed local Playwright runs on macOS 12.7.6 abort Chrome/Chromium before navigation. Running the same smoke command outside the Codex sandbox launches Chrome, opens the app, screenshots, and closes successfully.
 - The browser failed before the first journey step, so no app behavior was exercised.
 
@@ -57,4 +57,3 @@ npm run qa:e2e:headed
 QA_BROWSER_CHANNEL=chromium npm run qa:smoke
 QA_BROWSER_CHANNEL=chrome QA_HEADLESS=false npm run qa:smoke
 ```
-

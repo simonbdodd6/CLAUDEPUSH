@@ -6,7 +6,7 @@ This MVP uses lightweight mock login so the coach/player workflow can be tested 
 
 | Role | Name | Email | Phone | PIN |
 |---|---|---|---|---|
-| Coach | Coach Simon | `coach@coachseye.test` | `+32470000001` | `1111` |
+| Coach | Coach Simon | `coach@coachseye.test` | `+32470000001` | Configure `LEGACY_COACH_PASSWORD` |
 | Player | Simon Dodd | `simon@coachseye.test` | `+32470380938` | `2222` |
 | Player | Alexis Choda | `alexis@coachseye.test` | `+32470000002` | `3333` |
 
@@ -27,4 +27,3 @@ Firebase Auth is the preferred next step:
 - Each Firebase Auth user gets a `role` claim or role document.
 - Player users are mapped to exactly one `players/{playerId}` profile.
 - Coach users are mapped to one or more `clubs/{clubId}` records.
-

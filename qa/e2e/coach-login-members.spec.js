@@ -7,10 +7,16 @@ const artifactDir = path.join(process.cwd(), 'qa/artifacts', `phase4-${runId}`);
 const resultPath = path.join(process.cwd(), 'qa/results/phase4-login-members.json');
 const reportPath = path.join(process.cwd(), 'QA_PHASE4_LOGIN_MEMBERS_REPORT.md');
 
+function requiredEnv(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required for QA login`);
+  return value;
+}
+
 const config = {
   baseURL: process.env.QA_BASE_URL || 'http://127.0.0.1:3000',
   coachEmail: process.env.QA_COACH_EMAIL || 'simonbdodd@gmail.com',
-  coachPassword: process.env.QA_COACH_PASSWORD || '1111',
+  coachPassword: requiredEnv('QA_COACH_PASSWORD'),
 };
 
 const result = {

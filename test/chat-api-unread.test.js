@@ -137,11 +137,18 @@ async function coachSetup() {
   return { cookie: `${SESSION_COOKIE}=${encodeURIComponent(session.token)}` };
 }
 
-async function unreadFor(userId, convId) {
-  const data = await call('GET', `/api/chat?action=conversations&userId=${encodeURIComponent(userId)}`);
+async function unreadFor(headers, convId) {
+  const data = await call('GET', '/api/chat?action=conversations', null, headers);
   const conversation = data.conversations.find(item => item.id === convId);
   return Number(conversation?.unread || 0);
 }
+
+test('chat conversations require authentication', async () => {
+  kv.clear();
+  lists.clear();
+  const response = await callRaw('GET', '/api/chat?action=conversations');
+  assert.equal(response.statusCode, 401);
+});
 
 test('chat API unread count increments on coach DM and survives refresh and login refetches', async () => {
   kv.clear();
@@ -167,9 +174,9 @@ test('chat API unread count increments on coach DM and survives refresh and logi
     text: 'Unread ping',
   }, coachHeaders);
 
-  assert.equal(await unreadFor(playerId, convId), 1);
-  assert.equal(await unreadFor('coach-demo', convId), 0);
-  assert.equal(await unreadFor(playerId, convId), 1, 'refresh keeps unread until opened');
+  assert.equal(await unreadFor(playerHeaders, convId), 1);
+  assert.equal(await unreadFor(coachHeaders, convId), 0);
+  assert.equal(await unreadFor(playerHeaders, convId), 1, 'refresh keeps unread until opened');
 
   await call('POST', '/api/chat', {
     action: 'read',
@@ -177,8 +184,8 @@ test('chat API unread count increments on coach DM and survives refresh and logi
     userId: playerId,
   }, playerHeaders);
 
-  assert.equal(await unreadFor(playerId, convId), 0);
-  assert.equal(await unreadFor(playerId, convId), 0, 'logout/login refetch keeps cleared read state');
+  assert.equal(await unreadFor(playerHeaders, convId), 0);
+  assert.equal(await unreadFor(playerHeaders, convId), 0, 'logout/login refetch keeps cleared read state');
 
   await call('POST', '/api/chat', {
     action: 'send',
@@ -189,7 +196,7 @@ test('chat API unread count increments on coach DM and survives refresh and logi
     text: 'Unread ping after login',
   }, coachHeaders);
 
-  assert.equal(await unreadFor(playerId, convId), 1);
+  assert.equal(await unreadFor(playerHeaders, convId), 1);
 });
 
 test('chat API unread logic preserves Simon Test Player legacy conversation id', async () => {
@@ -198,6 +205,13 @@ test('chat API unread logic preserves Simon Test Player legacy conversation id',
   // Only Simon Test Player's legacy ID is kept — Nick Player has been removed.
   const playerId = 'inv-YxnjxnQa';
   const expectedConvId = 'dm:coach-demo:inv-YxnjxnQa';
+  const simon = await seedSessionAccount({
+    id: 'player-simon-test',
+    role: 'player',
+    displayName: 'Simon Test Player',
+    email: 'simon.test.player@player.test',
+    legacyPlayerId: playerId,
+  });
   const coachHeaders = await coachSetup();
 
   const convId = dmConvId('coach-demo', playerId);
@@ -217,7 +231,7 @@ test('chat API unread logic preserves Simon Test Player legacy conversation id',
     senderRole: 'coach',
     text: 'Hello Simon Test Player',
   }, coachHeaders);
-  assert.equal(await unreadFor(playerId, convId), 1);
+  assert.equal(await unreadFor(simon.headers, convId), 1);
 });
 
 test('chat API trusts authenticated session identity over browser-supplied sender ids', async () => {
@@ -275,7 +289,7 @@ test('chat API trusts authenticated session identity over browser-supplied sende
   assert.equal(sent.message.senderId, 'user_auth_player');
   assert.equal(sent.message.senderName, 'Auth Player');
   assert.equal(sent.message.senderRole, 'player');
-  assert.equal(await unreadFor('coach-demo', convId), 1);
+  assert.equal(await unreadFor(coachHeaders, convId), 1);
 });
 
 test('authenticated player can read only their own legacy direct-message conversation', async () => {

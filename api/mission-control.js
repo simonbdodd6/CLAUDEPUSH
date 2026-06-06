@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { kvConfigured, kvGet, kvLrange } from './_kv.js';
 import { key } from './_keys.js';
+import { requireTenantRole } from './_tenant.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -17,6 +18,10 @@ const NODE_LIMIT = 220;
 function json(res, status, payload) {
   res.writeHead(status, { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(payload));
+}
+
+function authError(res, error) {
+  return json(res, error?.status || 403, { ok: false, error: error?.message || 'Not authorized' });
 }
 
 function safeGit(args = []) {
@@ -248,6 +253,12 @@ function buildGraph({ git, project, redis }) {
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return json(res, 200, { ok: true });
   if (req.method !== 'GET') return json(res, 405, { ok: false, error: 'Method not allowed' });
+
+  try {
+    await requireTenantRole(req, ['coach', 'admin']);
+  } catch (error) {
+    return authError(res, error);
+  }
 
   const git = collectGit();
   const project = collectProject();

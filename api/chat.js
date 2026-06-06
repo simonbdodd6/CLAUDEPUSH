@@ -97,7 +97,7 @@ function conversationParticipants(conversation = {}) {
 }
 
 function sessionCanReadConversation(sessionContext, conversation = {}) {
-  if (!sessionContext?.user?.id) return true;
+  if (!sessionContext?.user?.id) return false;
   if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
   if (isStaffSession(sessionContext)) return true;
   const role = sessionRole(sessionContext);
@@ -111,7 +111,7 @@ function sessionCanReadConversation(sessionContext, conversation = {}) {
 }
 
 function sessionCanWriteConversation(sessionContext, conversation = {}) {
-  if (!sessionContext?.user?.id) return true;
+  if (!sessionContext?.user?.id) return false;
   if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
   if (isStaffSession(sessionContext)) return true;
   const role = sessionRole(sessionContext);
@@ -170,16 +170,16 @@ async function handleGet(req, res) {
   const url    = new URL(req.url, `http://x`);
   const action = url.searchParams.get('action');
   const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
-  const userId = sessionContext?.user?.id || url.searchParams.get('userId') || 'anon';
+  const userId = sessionContext?.user?.id || '';
 
-  // Update presence
+  if (!userId) return err(res, 401, 'Authentication required');
+
+  // Update presence only for the authenticated session user.
   await kvSet(PRESENCE_KEY(userId), { userId, ts: Date.now() }, 60);
 
   if (action === 'conversations') {
     const convs = await ensureDefaults();
-    const visibleConvs = sessionContext?.user?.id
-      ? convs.filter(c => sessionCanReadConversation(sessionContext, c))
-      : convs;
+    const visibleConvs = convs.filter(c => sessionCanReadConversation(sessionContext, c));
     // Enrich with last message + unread count per user
     const enriched = await Promise.all(visibleConvs.map(async c => {
       const msgs = await kvLrange(MSGS_KEY(c.id), 0, 0); // last message only

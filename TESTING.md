@@ -55,7 +55,7 @@ The automated tests cover message template variables, timezone scheduling, saved
 
 ## Test Accounts
 
-- Coach: `coach@coachseye.test`, PIN `1111`
+- Coach: configure `LEGACY_COACH_PASSWORD` for temporary legacy coach login; no shared coach PIN is stored in source.
 - Simon player: `simon@coachseye.test`, PIN `2222`
 - Alexis player: `alexis@coachseye.test`, PIN `3333`
 

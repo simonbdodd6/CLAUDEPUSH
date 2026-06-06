@@ -7,10 +7,16 @@ const artifactDir = path.join(process.cwd(), 'qa/artifacts', `phase5-${runId}`);
 const resultPath = path.join(process.cwd(), 'qa/results/phase5-invite-flow.json');
 const reportPath = path.join(process.cwd(), 'QA_PHASE5_INVITE_REPORT.md');
 
+function requiredEnv(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required for QA login`);
+  return value;
+}
+
 const config = {
   baseURL: process.env.QA_BASE_URL || 'http://127.0.0.1:3000',
   coachEmail: process.env.QA_COACH_EMAIL || 'simonbdodd@gmail.com',
-  coachPassword: process.env.QA_COACH_PASSWORD || '1111',
+  coachPassword: requiredEnv('QA_COACH_PASSWORD'),
   testPlayerName: process.env.QA_TEST_PLAYER_NAME || 'QA Phase5 Player',
   testPlayerEmail: process.env.QA_TEST_PLAYER_EMAIL || `qa.phase5+${Date.now()}@coachseye.test`,
   testPlayerPassword: process.env.QA_TEST_PLAYER_PASSWORD || 'qatest12345',

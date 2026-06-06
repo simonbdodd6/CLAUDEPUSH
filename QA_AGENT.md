@@ -15,7 +15,7 @@ Then run:
 ```sh
 QA_BASE_URL=http://127.0.0.1:3000 \
 QA_COACH_EMAIL=simonbdodd@gmail.com \
-QA_COACH_PASSWORD=1111 \
+QA_COACH_PASSWORD='<set-explicit-coach-password>' \
 QA_TEST_PLAYER_EMAIL=nightly-qa-local@example.com \
 QA_TEST_PLAYER_PASSWORD='CoachEyeQA123!' \
 npm run qa:e2e
@@ -37,7 +37,7 @@ from a normal terminal, or run the GitHub Actions workflow below.
 ```sh
 QA_BASE_URL=https://your-preview-url.vercel.app \
 QA_COACH_EMAIL=simonbdodd@gmail.com \
-QA_COACH_PASSWORD=1111 \
+QA_COACH_PASSWORD='<set-explicit-coach-password>' \
 QA_TEST_PLAYER_EMAIL=nightly-qa-preview@example.com \
 QA_TEST_PLAYER_PASSWORD='CoachEyeQA123!' \
 npm run qa:e2e
@@ -54,7 +54,7 @@ For stable nightly runs, use a unique `QA_TEST_PLAYER_EMAIL` each run or add a r
 - `QA_TEST_PLAYER_PASSWORD`: new player password for this run.
 - `QA_EXPECTED_BASELINE_PLAYERS`: optional comma-separated roster names expected before the invite flow. Defaults to empty, matching the current local seed.
 
-The seeded Simon Coach account currently uses the temporary legacy password/PIN `1111`. The QA agent supports it, but this should remain documented as temporary until production authentication is finalized.
+If the deployed environment temporarily enables the legacy Simon Coach login bridge, set `QA_COACH_PASSWORD` explicitly from that environment secret. The QA agent does not include a shared password fallback.
 
 ## Artifacts
 
