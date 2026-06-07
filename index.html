@@ -3473,8 +3473,18 @@
     let _inviteListLoading = false;
     let _serverSessionPromise = null;
     let _serverSessionReadyFor = '';
+    let _sessionExpiredMessage = ''; // set by handleSessionExpiry(); cleared on login or dismiss
+
+    function handleSessionExpiry() {
+      if (_sessionExpiredMessage) return; // already surfaced — don't stack
+      _sessionExpiredMessage = 'Your session has expired. Please log in again.';
+      _serverSessionReadyFor = '';
+      authTab = 'login';
+      render();
+    }
 
     function setAuthTab(tab) {
+      if (tab === 'closed' || tab === 'join') _sessionExpiredMessage = '';
       authTab = tab;
       if (tab === 'switch') chatLoadStateModule().then(() => renderNav()).catch(() => {});
       renderNav();
@@ -3539,6 +3549,7 @@
           state.selectedChatId = 'coach';
         }
         _serverSessionReadyFor = data.user.id;
+        _sessionExpiredMessage = '';
         authTab = 'closed';
         saveState('Logged in');
         render();
@@ -3587,6 +3598,7 @@
         state.activeView = 'coach';
         state.activeCoachSection = state.activeCoachSection || 'overview';
         _serverSessionReadyFor = data.user.id;
+        _sessionExpiredMessage = '';
         authTab = 'closed';
         saveState('Logged in');
         render();
@@ -3678,6 +3690,7 @@
           <strong style="font-size:13px">Log in</strong>
           <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
+        ${_sessionExpiredMessage ? `<p style="font-size:11px;color:#f87171;background:rgba(239,68,68,0.1);border-radius:6px;padding:6px 8px;margin:0 0 8px">${esc(_sessionExpiredMessage)}</p>` : ''}
         <div style="display:grid;gap:7px">
           <input id="identityLoginEmail" type="email" placeholder="Email" style="font-size:12px;padding:7px 9px">
           <input id="identityLoginPassword" type="password" placeholder="Password" style="font-size:12px;padding:7px 9px">
@@ -8452,6 +8465,22 @@
         setSection('player', event.data.to);
       }
     });
+
+    // ─── GLOBAL 401 INTERCEPT ────────────────────────────────────────────────
+    // Any 401 from any API call while a user identity is loaded means the server
+    // session expired. Wrap window.fetch once so every call site is covered
+    // without touching individual handlers. Guard on state.currentUserId so
+    // pre-login requests (e.g. config, invite token validation) are ignored.
+    (function intercept401() {
+      const orig = window.fetch;
+      window.fetch = async function(...args) {
+        const res = await orig.apply(this, args);
+        if (res.status === 401 && state.currentUserId) {
+          handleSessionExpiry();
+        }
+        return res;
+      };
+    })();
 
     render();
     initServiceWorker();
