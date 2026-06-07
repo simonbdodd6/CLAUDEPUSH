@@ -599,7 +599,9 @@ async function ensureLegacyStaffAccountForLogin(email, password) {
       lastLoginAt: null,
     };
     users.push(user);
-  } else if (!user.passwordHash) {
+  } else {
+    // Always re-hash to match current LEGACY_COACH_PASSWORD — the plaintext check
+    // above already verified the entered password equals the env var, so this is safe.
     Object.assign(user, hashPassword(legacyPassword), {
       authProvider: user.authProvider || 'legacy-password',
       passwordSet: true,
@@ -702,10 +704,13 @@ export async function loginUser(input = {}) {
   const email = normalizeEmail(input.email);
   let user = users.find(item => normalizeEmail(item.email) === email);
   let legacyMember = null;
-  if (!user) {
-    const legacy = await ensureLegacyStaffAccountForLogin(email, input.password);
-    user = legacy?.user || null;
-    legacyMember = legacy?.member || null;
+  // Always attempt legacy bootstrap for legacy emails so that LEGACY_COACH_PASSWORD
+  // acts as an authoritative override even when the user already exists in Redis
+  // (e.g. stale hash from a previous deployment with a different env var value).
+  const legacy = await ensureLegacyStaffAccountForLogin(email, input.password);
+  if (legacy) {
+    user = legacy.user;
+    legacyMember = legacy.member;
     users = await loadUsers();
   }
   const passwordCheck = user ? verifyPassword(input.password, user) : { ok: false, needsUpgrade: false };
