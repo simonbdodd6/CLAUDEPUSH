@@ -34,8 +34,9 @@ export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  let sessionContext;
   try {
-    await requireTenantRole(req, ['coach', 'admin']);
+    sessionContext = await requireTenantRole(req, ['coach', 'admin']);
   } catch (error) {
     return sendAuthError(res, error);
   }
@@ -46,20 +47,29 @@ export default async function handler(req, res) {
   if (!String(body || '').trim()) return res.status(400).json({ error: 'Message body required' });
   if (!['all', 'no-reply'].includes(audience)) return res.status(400).json({ error: 'audience must be all or no-reply' });
 
+  const coachTeamId = sessionContext?.teamId || '';
+
   const allSubscriptions = await load();
-  // Case-insensitive label match so "Nick Player" finds "nick player" sub
+  // Only target subscriptions belonging to the same team as the coach.
+  // Subscriptions saved before teamId was added (teamId='') are treated as
+  // belonging to the default team for backward compatibility.
+  const teamSubscriptions = allSubscriptions.filter(item =>
+    !item.teamId || item.teamId === coachTeamId
+  );
+  // Case-insensitive label match so legacy subscriptions without userId can still be targeted.
   const targetLower = targetLabel ? targetLabel.toLowerCase().trim() : null;
   const targetId = String(targetUserId || targetPlayerId || '').trim();
   let subscriptions = targetLower || targetId
-    ? allSubscriptions.filter(item => {
+    ? teamSubscriptions.filter(item => {
       if (targetId && [item.userId, item.playerId, item.legacyPlayerId].some(value => String(value || '') === targetId)) return true;
       return targetLower && (item.label || '').toLowerCase().trim() === targetLower;
     })
-    : allSubscriptions;
+    : teamSubscriptions;
   if (audience === 'no-reply') {
     const responded = await recentResponders(7);
+    // Match by userId only — never by display name to avoid false collisions.
     subscriptions = subscriptions.filter(item =>
-      ![item.label, item.userId, item.playerId, item.legacyPlayerId].some(value => value && responded.has(value))
+      !item.userId || !responded.has(item.userId)
     );
   }
 
@@ -100,6 +110,8 @@ export default async function handler(req, res) {
     await save(allSubscriptions.filter(item => !expired.has(item.subscription.endpoint)));
   }
 
+  const recipients = subscriptions.map(s => ({ userId: s.userId || '', label: s.label || '', teamId: s.teamId || '' }));
+  console.log('[push] team=%s targets=%d recipients=%o', coachTeamId, subscriptions.length, recipients);
   await kvLpush(key('message_log'), {
     type: 'adhoc',
     title: String(title || "coacheseyeGPT").slice(0, 120),
@@ -110,7 +122,9 @@ export default async function handler(req, res) {
     failed,
     total: subscriptions.length,
     target: targetLabel || 'all',
+    teamId: coachTeamId,
+    recipients,
   });
   await kvLtrim(key('message_log'), 500);
-  return res.status(200).json({ ok: true, sent, failed, total: subscriptions.length, target: targetUserId || targetPlayerId || targetLabel || 'all' });
+  return res.status(200).json({ ok: true, sent, failed, total: subscriptions.length, target: targetUserId || targetPlayerId || targetLabel || 'all', recipients });
 }

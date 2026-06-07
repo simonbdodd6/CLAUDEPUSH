@@ -88,6 +88,7 @@ export default async function handler(req, res) {
       label: displayNameFromSession(sessionContext) || label || 'Player',
       userId: sessionUserId || userId || '',
       playerId: sessionPlayerId || playerId || sessionUserId || '',
+      teamId: sessionContext?.teamId || '',
       role: sessionContext?.teamMember?.role || sessionContext?.user?.role || '',
       savedAt: new Date().toISOString(),
     };

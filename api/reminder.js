@@ -6,6 +6,7 @@ import { kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key } from './_keys.js';
 import { resolveVariables } from './_variables.js';
 import { setCors, readSecret, vapidContact } from './_http.js';
+import { DEFAULT_TEAM } from './_identityStore.js';
 
 export default async function handler(req, res) {
   setCors(res);
@@ -19,9 +20,19 @@ export default async function handler(req, res) {
   }
   webpush.setVapidDetails(vapidContact(), process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
 
-  const subscribers = await load();
+  const teamId = DEFAULT_TEAM.id;
+  const allSubscribers = await load();
+  // Only send to subscriptions belonging to this team.
+  // Subscriptions saved before teamId was added (teamId='') are treated as
+  // belonging to the default team for backward compatibility.
+  const teamSubscribers = allSubscribers.filter(item =>
+    !item.teamId || item.teamId === teamId
+  );
   const responded = await recentResponders(7);
-  const targets = subscribers.filter(item => !responded.has(item.label));
+  // Match by userId only — never by display name to avoid false collisions.
+  const targets = teamSubscribers.filter(item =>
+    !item.userId || !responded.has(item.userId)
+  );
   const title = 'Availability reminder';
   const body = "Hi {{first_name}}! Please set your availability for this week's sessions and match in coacheseyeGPT. - {{coach_name}}";
   const outcomes = await Promise.allSettled(targets.map(({ subscription, label }) =>
@@ -44,11 +55,14 @@ export default async function handler(req, res) {
       expired.add(targets[index].subscription.endpoint);
     }
   });
-  if (expired.size) await save(subscribers.filter(item => !expired.has(item.subscription.endpoint)));
+  if (expired.size) await save(allSubscribers.filter(item => !expired.has(item.subscription.endpoint)));
+  const recipients = targets.map(t => ({ userId: t.userId || '', label: t.label || '', teamId: t.teamId || '' }));
+  console.log('[reminder] targets:', recipients);
   await kvLpush(key('message_log'), {
     type: 'reminder', title, body: body.slice(0, 200), sentAt: new Date().toISOString(),
     audience: 'no-reply', sent, failed, total: targets.length, skipped: responded.size,
+    recipients,
   });
   await kvLtrim(key('message_log'), 500);
-  return res.status(200).json({ ok: true, sent, failed, skipped: responded.size, total: targets.length });
+  return res.status(200).json({ ok: true, sent, failed, skipped: responded.size, total: targets.length, recipients });
 }
