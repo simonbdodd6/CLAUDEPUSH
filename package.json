@@ -11,6 +11,8 @@
     "qa:smoke": "node qa/run-qa.js --smoke",
     "qa:login-members": "node qa/run-qa.js --login-members",
     "qa:phase5-invite": "node qa/run-qa.js --phase5-invite",
+    "qa:workflow-1": "node qa/run-qa.js --workflow-1",
+    "qa:workflow-1:headed": "node qa/run-qa.js --workflow-1 --headed",
     "qa:report": "node qa/report.js"
   },
   "dependencies": {
