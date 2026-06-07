@@ -1,10 +1,10 @@
 # Beta Validation Report
 
-**Date:** 2026-06-06
+**Date:** 2026-06-07 (updated)
 **Branch:** feature/nightly-qa-agent
-**Latest commit:** a8f28d7
-**Test suite:** 168/168 passing (node --test)
-**Vercel preview:** https://boitsfort-coachseye-3627ec83r-simonbdodd-9233s-projects.vercel.app
+**Latest commit:** ce0ad7d
+**Test suite:** 174/174 passing (node --test)
+**Vercel preview:** https://boitsfort-coachseye-3627ec83r-simonbdodd-9233s-projects.vercel.app (deployed: b3c0650)
 
 ---
 
@@ -31,11 +31,27 @@
 
 ## Production Redis Blocker
 
-Phase 5 QA (Vercel preview + real Upstash, 2026-06-06) failed at login with:
+Phase 5 QA (Vercel preview + real Upstash, 2026-06-06T12:04 UTC) failed at login with:
 
 > `Upstash HTTP 400: ERR max requests limit exceeded. Limit: 500,000, Usage: 500,000`
 
-This is the Upstash free tier monthly limit. It was exhausted during development/QA testing. Until the Upstash account is upgraded or the usage resets, no workflow that requires a live Redis call (login, messaging, invite, approval) can be validated against the Vercel preview. This is the **single highest-priority blocker** for real-world validation.
+**Confirmed:** Upstash Free Tier (500,000 commands/month limit). A Pay-As-You-Go account has no monthly command cap and would not produce this error.
+
+**Investigation findings (2026-06-07):**
+
+1. **Optimization IS deployed.** The 90%+ Redis reduction (commit `6854e23`) is an ancestor of the current deployed version (`b3c0650`). The 30-second session cache, 30-second poll interval, and once-per-instance legacy compatibility check are all active in production.
+
+2. **The QA failure occurred against the already-exhausted quota.** The optimization deployment was created at 12:03:15 UTC; the QA ran at 12:04:04 UTC — 49 seconds later, while the deployment was still building. The 500,000 monthly commands were consumed by high-intensity development and QA testing across the billing period (Vercel project created 2026-05-22). The optimization had no opportunity to reduce usage in the run that exhausted the quota.
+
+3. **Blocker remains active as of 2026-06-07.** The Upstash billing cycle resets approximately 2026-06-21 (30-day rolling from project creation 2026-05-22) or 2026-07-01 (calendar month). No reset has occurred yet.
+
+4. **Under normal production use the limit should not be hit.** The intensive QA testing pattern (~16 Redis ops/poll × 5-second intervals) was the cause. With the optimization in place (30-second intervals, session cache eliminating most reads), a real-user month at low-to-moderate traffic is unlikely to approach 500k.
+
+**Unblocking options:**
+- **Wait** (~14 days for rolling reset, ~24 days for calendar reset)
+- **Upgrade** to Upstash Pay-As-You-Go (removes the cap permanently; billed only above free allowance)
+
+Until the Upstash account is upgraded or the usage resets, no workflow that requires a live Redis call (login, messaging, invite, approval) can be validated against the Vercel preview. This is the **single highest-priority blocker** for real-world validation.
 
 ---
 
