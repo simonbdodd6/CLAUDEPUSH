@@ -78,10 +78,178 @@ export async function navigateToMembers(page) {
  * Used consistently across all workflow reports.
  */
 export function redisEstimate(endpointPath, method = 'GET') {
-  if (endpointPath.startsWith('/api/identity'))    return method === 'GET' ? 6 : 8;
-  if (endpointPath.startsWith('/api/chat'))        return 8;
-  if (endpointPath.startsWith('/api/invite'))      return method === 'POST' ? 8 : 4;
+  if (endpointPath.startsWith('/api/identity'))     return method === 'GET' ? 6 : 8;
+  if (endpointPath.startsWith('/api/chat'))         return 8;
+  if (endpointPath.startsWith('/api/invite'))       return method === 'POST' ? 8 : 4;
   if (endpointPath.startsWith('/api/availability')) return 4;
-  if (endpointPath.startsWith('/api/cron'))        return 6;
+  if (endpointPath.startsWith('/api/cron'))         return 6;
   return 2;
+}
+
+// ─── Invite panel steps (Workflows 2 & 3) ────────────────────────────────────
+
+/**
+ * Step: Open invite panel — ensures details.srv-panel is open and form fields visible.
+ * result.missingSelectorWarnings is populated if the panel is not found.
+ */
+export async function openInvitePanel(page, result) {
+  const panelSummary = page
+    .locator('details.srv-panel summary')
+    .filter({ hasText: /Invite/i })
+    .first();
+
+  const panelExists = await panelSummary.isVisible({ timeout: 10_000 }).catch(() => false);
+  if (!panelExists) {
+    result.missingSelectorWarnings.push(
+      'details.srv-panel summary[Invite] not found — invite panel may not have rendered; renderPlayers() output may have changed'
+    );
+    throw new Error('Invite panel summary not found — members page may not have fully rendered');
+  }
+
+  const nameVisible = await page.locator('#inv-name').isVisible().catch(() => false);
+  if (!nameVisible) await panelSummary.click();
+
+  await expect(page.locator('#inv-name')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('#inv-email')).toBeVisible({ timeout: 3_000 });
+  await expect(page.locator('#inv-create-btn')).toBeVisible({ timeout: 3_000 });
+}
+
+/**
+ * Step: Generate invite — atomically fills name+email and clicks Generate.
+ * Uses page.evaluate to avoid loadInviteList() polling clearing the form between fill and click.
+ * Stores result.inviteLink and result.inviteToken on success.
+ * config must have: inviteName, inviteEmail  (Workflow 3 maps testPlayerName/Email to these).
+ */
+export async function generateInvite(page, config, result) {
+  const filled = await page.evaluate(({ name, email }) => {
+    const nameEl  = document.getElementById('inv-name');
+    const emailEl = document.getElementById('inv-email');
+    const btn     = document.getElementById('inv-create-btn');
+    const missing = [];
+    if (!nameEl)  missing.push('inv-name');
+    if (!emailEl) missing.push('inv-email');
+    if (!btn)     missing.push('inv-create-btn');
+    if (missing.length) return { ok: false, missing };
+    nameEl.value  = name;
+    emailEl.value = email;
+    nameEl.dispatchEvent(new Event('input', { bubbles: true }));
+    emailEl.dispatchEvent(new Event('input', { bubbles: true }));
+    btn.click();
+    return { ok: true };
+  }, { name: config.inviteName, email: config.inviteEmail });
+
+  if (!filled?.ok) {
+    const missing = filled?.missing || ['unknown'];
+    result.missingSelectorWarnings.push(
+      `Invite form elements missing in page.evaluate: ${missing.join(', ')} — IDs may have changed`
+    );
+    throw new Error(`Invite form elements not found: ${missing.join(', ')}`);
+  }
+
+  try {
+    await page.waitForSelector('#inv-link-field', { state: 'visible', timeout: 20_000 });
+  } catch {
+    const latestToast = result.toasts.at(-1)?.text || '';
+    throw new Error(latestToast.trim()
+      ? `Invite creation failed — toast: "${latestToast.trim()}"`
+      : '#inv-link-field did not appear within 20s — invite POST may have failed');
+  }
+}
+
+/**
+ * Step: Verify invite link — reads #inv-link-field, confirms /?inv=TOKEN format,
+ * extracts token. Populates result.inviteLink and result.inviteToken.
+ */
+export async function verifyInviteLink(page, result) {
+  const linkValue = await page.locator('#inv-link-field').inputValue({ timeout: 5_000 });
+
+  if (!linkValue?.trim()) {
+    result.missingSelectorWarnings.push('#inv-link-field was visible but had an empty value');
+    throw new Error('Invite link field appeared but was empty');
+  }
+
+  result.inviteLink = linkValue.trim();
+
+  const tokenMatch = result.inviteLink.match(/[?&]inv=([^&]+)/);
+  if (!tokenMatch) {
+    result.missingSelectorWarnings.push(
+      `Invite URL "${result.inviteLink}" does not contain /?inv= — api/invite.js inviteUrl() format may have changed`
+    );
+    throw new Error(`Unexpected invite URL format — expected /?inv=TOKEN, got: ${result.inviteLink}`);
+  }
+
+  result.inviteToken = decodeURIComponent(tokenMatch[1]);
+
+  if (result.inviteToken.length < 16) {
+    result.missingSelectorWarnings.push(
+      `Token "${result.inviteToken}" is suspiciously short (${result.inviteToken.length} chars) — expected ≥32`
+    );
+    throw new Error(`Invite token too short: "${result.inviteToken}"`);
+  }
+
+  await expect(page.locator('#inv-link-field')).toHaveValue(/^https?:\/\/.+/);
+}
+
+// ─── Player registration steps (Workflow 3) ──────────────────────────────────
+
+/**
+ * Step: Open invite URL in a fresh browser context page.
+ * Waits for #invite-modal to appear (rendered when /?inv=TOKEN is loaded).
+ */
+export async function openInviteUrl(playerPage, inviteUrl) {
+  await playerPage.goto(inviteUrl, { waitUntil: 'domcontentloaded' });
+  await expect(playerPage.locator('#invite-modal')).toBeVisible({ timeout: 15_000 });
+}
+
+/**
+ * Step: Fill registration form fields.
+ * #invite-name-input is pre-filled from the invite — do not clear it.
+ * Always fills email (may already be pre-filled) and creates a password.
+ */
+export async function fillRegistrationForm(playerPage, config) {
+  await playerPage.locator('#invite-email-input').fill(config.testPlayerEmail);
+  await playerPage.locator('#invite-password-input').fill(config.testPlayerPassword);
+}
+
+/**
+ * Step: Submit registration — clicks the primary button inside #invite-modal,
+ * waits for the modal to be removed from the DOM (success = acceptInvite() calls .remove()).
+ * Falls back to the most recent player toast to explain failures.
+ */
+export async function submitRegistration(playerPage, result) {
+  const submitBtn = playerPage.locator('#invite-modal .btn.primary');
+  await expect(submitBtn).toBeVisible({ timeout: 5_000 });
+  await submitBtn.click();
+
+  try {
+    await playerPage.waitForSelector('#invite-modal', { state: 'detached', timeout: 25_000 });
+  } catch {
+    // Check for a failure toast — try player toasts first, fall back to shared toasts
+    const toasts = result.playerToasts?.length ? result.playerToasts : result.toasts;
+    const latestToast = toasts.at(-1)?.text || '';
+    throw new Error(latestToast.trim()
+      ? `Registration failed — toast: "${latestToast.trim()}"`
+      : '#invite-modal did not detach within 25s — claim_invite may have failed or timed out');
+  }
+}
+
+/**
+ * Step: Verify player appears in coach's Members list.
+ * Re-clicks Members to fetch fresh data from the server.
+ * Waits up to 15s for the player name to appear.
+ */
+export async function verifyPlayerInMembers(page, playerName, result) {
+  // Re-click Members to trigger a fresh renderPlayers() call
+  await page.getByRole('button', { name: 'Members', exact: true }).click();
+  await expect(page.locator('#coach-players .filter-pill').first()).toBeVisible({ timeout: 10_000 });
+
+  try {
+    await expect(page.locator('#coach-players')).toContainText(playerName, { timeout: 15_000 });
+  } catch {
+    result.missingSelectorWarnings.push(
+      `Player "${playerName}" not found in #coach-players — may be in pending state awaiting approval, ` +
+      `or renderPlayers() did not re-fetch. Check #coach-players DOM in the failure screenshot.`
+    );
+    throw new Error(`Player "${playerName}" did not appear in #coach-players within 15s`);
+  }
 }

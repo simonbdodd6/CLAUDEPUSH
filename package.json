@@ -15,6 +15,8 @@
     "qa:workflow-1:headed": "node qa/run-qa.js --workflow-1 --headed",
     "qa:workflow-2": "node qa/run-qa.js --workflow-2",
     "qa:workflow-2:headed": "node qa/run-qa.js --workflow-2 --headed",
+    "qa:workflow-3": "node qa/run-qa.js --workflow-3",
+    "qa:workflow-3:headed": "node qa/run-qa.js --workflow-3 --headed",
     "qa:report": "node qa/report.js"
   },
   "dependencies": {

@@ -8,6 +8,7 @@ const loginMembers = process.argv.includes('--login-members');
 const phase5Invite = process.argv.includes('--phase5-invite');
 const workflow1 = process.argv.includes('--workflow-1');
 const workflow2 = process.argv.includes('--workflow-2');
+const workflow3 = process.argv.includes('--workflow-3');
 const args = ['playwright', 'test', '--config=playwright.config.js'];
 if (headed) args.push('--headed');
 args.push(
@@ -21,7 +22,9 @@ args.push(
           ? 'qa/e2e/workflow-1-coach-login-members.spec.js'
           : workflow2
             ? 'qa/e2e/workflow-2-invite-generation.spec.js'
-            : 'qa/e2e/nightly-qa-agent.spec.js'
+            : workflow3
+              ? 'qa/e2e/workflow-3-player-registration.spec.js'
+              : 'qa/e2e/nightly-qa-agent.spec.js'
 );
 
 const resultPath = path.join(process.cwd(), 'qa/results/qa-run.json');
