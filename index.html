@@ -1788,6 +1788,7 @@
     let vapidPublicKey = "";
     let pushConfigured = false;
     let pushConfigurationError = "";
+    let _devLoginAvailable = false;
 
     // ─── ACCOUNTS ─────────────────────────────────────────────────────────────
     const testAccounts = [
@@ -2378,6 +2379,7 @@
         const config = await configResponse.json();
         vapidPublicKey = config.vapidPublicKey || "";
         pushConfigured = Boolean(config.pushConfigured);
+        _devLoginAvailable = Boolean(config.devLoginAvailable);
         if (!pushConfigured) pushConfigurationError = "Push needs Vercel environment setup";
         swRegistration = await navigator.serviceWorker.register('/sw.js');
         // Check existing subscription
@@ -3570,6 +3572,32 @@
       return _serverSessionPromise;
     }
 
+    async function devCoachLogin() {
+      const btn = document.getElementById('devLoginBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Logging in…'; }
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'dev_coach_login' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Dev login failed');
+        state.currentUserId = data.user.id;
+        state.activeView = 'coach';
+        state.activeCoachSection = state.activeCoachSection || 'overview';
+        _serverSessionReadyFor = data.user.id;
+        authTab = 'closed';
+        saveState('Logged in');
+        render();
+        refreshMembersData();
+        showToast(`Welcome ${data.user.displayName || data.user.email}`);
+      } catch(e) {
+        showToast(e.message || 'Dev login failed');
+        if (btn) { btn.disabled = false; btn.textContent = 'Dev: Login as Coach'; }
+      }
+    }
+
     async function requestPasswordReset() {
       const email = (document.getElementById('identityLoginEmail')?.value || '').trim() ||
         prompt('Enter your account email:');
@@ -3655,6 +3683,7 @@
           <input id="identityLoginPassword" type="password" placeholder="Password" style="font-size:12px;padding:7px 9px">
           <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:12px">Log in</button>
           <button class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:11px;padding:5px 8px">Forgot password?</button>
+          ${_devLoginAvailable ? `<button id="devLoginBtn" class="btn" type="button" onclick="devCoachLogin()" style="width:100%;font-size:11px;margin-top:4px;opacity:0.7;border-style:dashed">Dev: Login as Coach</button>` : ''}
           <p class="muted" style="font-size:11px;margin:0">Approved players can log in after coach approval.</p>
         </div>
       ` : authTab === 'join' ? `

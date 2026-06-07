@@ -56,6 +56,7 @@ export default async function handler(req, res) {
           vapidPublicKey,
           pushConfigured: Boolean(vapidPublicKey && process.env.VAPID_PRIVATE_KEY && kvConfigured()),
           storageConfigured: kvConfigured(),
+          devLoginAvailable: process.env.VERCEL_ENV !== 'production' && Boolean(process.env.LEGACY_COACH_PASSWORD),
         });
       }
       // Audit log (merged from /api/log)
@@ -104,6 +105,18 @@ export default async function handler(req, res) {
           });
           throw error;
         }
+      }
+      if (action === 'dev_coach_login') {
+        if (process.env.VERCEL_ENV === 'production') {
+          return res.status(403).json({ ok: false, error: 'Not available in production' });
+        }
+        const password = process.env.LEGACY_COACH_PASSWORD || '';
+        if (!password) {
+          return res.status(503).json({ ok: false, error: 'LEGACY_COACH_PASSWORD not configured on this deployment' });
+        }
+        const result = await loginUser({ email: 'simonbdodd@gmail.com', password });
+        if (result.session?.token) res.setHeader('Set-Cookie', sessionCookie(result.session.token));
+        return res.status(200).json({ ok: true, ...publicAuthResult(result) });
       }
       if (action === 'claim_invite') {
         const result = await claimInvite(req.body || {});
