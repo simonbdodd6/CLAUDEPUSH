@@ -3934,7 +3934,7 @@
           }
         }
       } catch(e) {
-        panel.innerHTML = `<p style="color:#f87171;font-size:13px">Could not load join requests. Try Login, then Refresh.</p>`;
+        panel.innerHTML = `<p style="color:#f87171;font-size:13px">Could not load join requests — ${e.message || 'unknown error'}. Try Login, then Refresh.</p>`;
         return;
       } finally {
         _identityRequestsLoading = false;
