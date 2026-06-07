@@ -86,6 +86,45 @@ export function redisEstimate(endpointPath, method = 'GET') {
   return 2;
 }
 
+// ─── Group invite steps (Workflow 4) ─────────────────────────────────────────
+
+/**
+ * Step: Generate group invite via API.
+ * Uses page.evaluate to call POST /api/invite with type:'group' inside the
+ * authenticated coach session. Stores result.inviteLink and result.inviteToken.
+ */
+export async function generateGroupInvite(page, result) {
+  const data = await page.evaluate(async () => {
+    const res = await fetch('/api/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'group', role: 'player', sendEmail: false }),
+    });
+    const body = await res.json().catch(() => ({}));
+    return { status: res.status, body };
+  });
+  if (data.status >= 400 || data.body?.ok === false || !data.body?.url) {
+    throw new Error(data.body?.error || `Group invite API failed with status ${data.status}`);
+  }
+  result.inviteLink = data.body.url;
+  const tokenMatch = data.body.url.match(/[?&]inv=([^&]+)/);
+  if (tokenMatch) result.inviteToken = decodeURIComponent(tokenMatch[1]);
+  if (!result.inviteLink) throw new Error('Group invite API returned no URL');
+}
+
+/**
+ * Step: Fill the group-invite registration form (first name, last name, email, password).
+ * Group invites show #invite-firstname-input and #invite-lastname-input instead of
+ * the single #invite-name-input used by individual invites.
+ * config must have: testPlayerFirstName, testPlayerLastName, testPlayerEmail, testPlayerPassword.
+ */
+export async function fillGroupRegistrationForm(playerPage, config) {
+  await playerPage.locator('#invite-firstname-input').fill(config.testPlayerFirstName);
+  await playerPage.locator('#invite-lastname-input').fill(config.testPlayerLastName);
+  await playerPage.locator('#invite-email-input').fill(config.testPlayerEmail);
+  await playerPage.locator('#invite-password-input').fill(config.testPlayerPassword);
+}
+
 // ─── Invite panel steps (Workflows 2 & 3) ────────────────────────────────────
 
 /**
@@ -252,4 +291,70 @@ export async function verifyPlayerInMembers(page, playerName, result) {
     );
     throw new Error(`Player "${playerName}" did not appear in #coach-players within 15s`);
   }
+}
+
+// ─── Pending approval steps (Workflow 4) ─────────────────────────────────────
+
+/**
+ * Step: Wait for a player's join request to appear in the pending requests panel.
+ * loadIdentityRequests() is triggered by renderPlayers() → refreshMembersData()
+ * when the Members page loads; the panel populates async so we poll.
+ */
+export async function seePendingRequest(page, playerFullName, result) {
+  const panel = page.locator('#identity-requests-panel');
+
+  const panelExists = await panel.isVisible({ timeout: 5_000 }).catch(() => false);
+  if (!panelExists) {
+    result.missingSelectorWarnings.push(
+      '#identity-requests-panel not found — panel may not have rendered; renderPlayers() output may have changed'
+    );
+    throw new Error('#identity-requests-panel not visible — Members page may not have fully rendered');
+  }
+
+  // If the panel shows "No pending" immediately, try the Refresh button once
+  const panelText = await panel.textContent({ timeout: 3_000 }).catch(() => '');
+  if (/no pending/i.test(panelText)) {
+    const refreshBtn = page.locator('button', { hasText: /Refresh/ }).filter({
+      has: page.locator(':scope', { hasAncestor: page.locator('div:has(#identity-requests-panel)') }),
+    });
+    const btnVisible = await page.getByRole('button', { name: 'Refresh' }).isVisible().catch(() => false);
+    if (btnVisible) await page.getByRole('button', { name: 'Refresh' }).click();
+  }
+
+  try {
+    await expect(panel).toContainText(playerFullName, { timeout: 20_000 });
+  } catch {
+    const currentText = await panel.textContent().catch(() => '(unreadable)');
+    result.missingSelectorWarnings.push(
+      `"${playerFullName}" not found in #identity-requests-panel after 20s — ` +
+      `panel shows: "${currentText.slice(0, 120).trim()}"`
+    );
+    throw new Error(`Pending join request for "${playerFullName}" did not appear in 20s`);
+  }
+}
+
+/**
+ * Step: Approve a pending join request by clicking the Approve button in the
+ * player's request card. Waits for the "approved" toast to confirm the API call succeeded.
+ */
+export async function approvePendingRequest(page, playerFullName, result) {
+  // Narrow to the specific request card containing the player's name
+  const panel = page.locator('#identity-requests-panel');
+  const requestCard = panel.locator('div').filter({ hasText: playerFullName }).first();
+
+  const cardVisible = await requestCard.isVisible({ timeout: 5_000 }).catch(() => false);
+  if (!cardVisible) {
+    result.missingSelectorWarnings.push(
+      `Request card for "${playerFullName}" not found in #identity-requests-panel`
+    );
+    throw new Error(`Could not locate request card for "${playerFullName}"`);
+  }
+
+  await requestCard.getByRole('button', { name: 'Approve' }).click();
+
+  // approveIdentityRequest() calls render() + showToast('Player approved and added to roster')
+  await expect.poll(
+    () => result.toasts.at(-1)?.text || '',
+    { timeout: 10_000, message: 'Approval toast should appear within 10s' }
+  ).toMatch(/approved/i);
 }

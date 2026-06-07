@@ -8,24 +8,38 @@ const loginMembers = process.argv.includes('--login-members');
 const phase5Invite = process.argv.includes('--phase5-invite');
 const workflow1 = process.argv.includes('--workflow-1');
 const workflow2 = process.argv.includes('--workflow-2');
-const workflow3 = process.argv.includes('--workflow-3');
+const workflow3    = process.argv.includes('--workflow-3');
+const workflow4    = process.argv.includes('--workflow-4');
+const allWorkflows = process.argv.includes('--all-workflows');
 const args = ['playwright', 'test', '--config=playwright.config.js'];
 if (headed) args.push('--headed');
-args.push(
-  smoke
-    ? 'qa/e2e/browser-smoke.spec.js'
-    : loginMembers
-      ? 'qa/e2e/coach-login-members.spec.js'
-      : phase5Invite
-        ? 'qa/e2e/invite-flow.spec.js'
-        : workflow1
-          ? 'qa/e2e/workflow-1-coach-login-members.spec.js'
-          : workflow2
-            ? 'qa/e2e/workflow-2-invite-generation.spec.js'
-            : workflow3
-              ? 'qa/e2e/workflow-3-player-registration.spec.js'
-              : 'qa/e2e/nightly-qa-agent.spec.js'
-);
+if (allWorkflows) {
+  // Run all four workflow specs in sequence — the nightly suite
+  args.push(
+    'qa/e2e/workflow-1-coach-login-members.spec.js',
+    'qa/e2e/workflow-2-invite-generation.spec.js',
+    'qa/e2e/workflow-3-player-registration.spec.js',
+    'qa/e2e/workflow-4-pending-approval.spec.js'
+  );
+} else {
+  args.push(
+    smoke
+      ? 'qa/e2e/browser-smoke.spec.js'
+      : loginMembers
+        ? 'qa/e2e/coach-login-members.spec.js'
+        : phase5Invite
+          ? 'qa/e2e/invite-flow.spec.js'
+          : workflow1
+            ? 'qa/e2e/workflow-1-coach-login-members.spec.js'
+            : workflow2
+              ? 'qa/e2e/workflow-2-invite-generation.spec.js'
+              : workflow3
+                ? 'qa/e2e/workflow-3-player-registration.spec.js'
+                : workflow4
+                  ? 'qa/e2e/workflow-4-pending-approval.spec.js'
+                  : 'qa/e2e/nightly-qa-agent.spec.js'
+  );
+}
 
 const resultPath = path.join(process.cwd(), 'qa/results/qa-run.json');
 const smokeResultPath = path.join(process.cwd(), 'qa/results/browser-smoke.json');
