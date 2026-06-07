@@ -8,3 +8,4 @@ qa/artifacts/
 qa/playwright-report/
 qa/results/
 qa/test-results/
+qa/mission-control/dashboard.html
