@@ -3459,6 +3459,7 @@
     let authTab = 'closed'; // 'closed' | 'open' | 'open-join' — not persisted
     let _identityPendingRequests = [];
     let _identityRequestsLoading = false;
+    let _inviteListLoading = false;
     let _serverSessionPromise = null;
     let _serverSessionReadyFor = '';
 
@@ -3530,6 +3531,7 @@
         authTab = 'closed';
         saveState('Logged in');
         render();
+        if (isStaffLogin) refreshMembersData();
         refreshPushSubscriptionMetadata(data.user.displayName || data.user.email).catch(() => {});
         showToast(`Welcome ${data.user.displayName || data.user.email}`);
       } catch(e) {
@@ -3709,6 +3711,7 @@
       if (view === "player") state.activePlayerSection = section;
       saveState("Tab saved");
       render();
+      if (view === 'coach' && section === 'players') refreshMembersData();
     }
 
     function pageTitle() {
@@ -3922,7 +3925,11 @@
       _identityRequestsLoading = true;
       renderIdentityRequestsPanel();
       try {
-        await ensureServerSessionForCurrentUser();
+        const hasSession = await ensureServerSessionForCurrentUser();
+        if (!hasSession) {
+          panel.innerHTML = `<p class="muted" style="font-size:13px">Log in to view join requests.</p>`;
+          return;
+        }
         const data = await fetch('/api/identity').then(r => r.json());
         if (!data.ok) throw new Error(data.error || 'Could not load join requests');
         const rosterChanged = syncIdentityStateToLocalRoster(data);
@@ -5369,10 +5376,13 @@
     }
 
     // ─── PLAYERS ─────────────────────────────────────────────────────────────
+    function refreshMembersData() {
+      if (!isCoach()) return;
+      loadInviteList().catch(() => {});
+      setTimeout(() => loadIdentityRequests().catch(() => {}), 0);
+    }
+
     function renderPlayers() {
-      // Kick off a background sync of accepted invites each time this page renders
-      if (isCoach()) loadInviteList().catch(()=>{});
-      if (isCoach()) setTimeout(() => loadIdentityRequests().catch(()=>{}), 0);
 
       const members    = canonicalVisiblePlayers();
       const filter     = state.playerFilter || "all";
@@ -8304,11 +8314,14 @@
     }
 
     async function loadInviteList() {
+      if (_inviteListLoading) return;
       const panel = document.getElementById('invite-list-panel');
       if (!panel) return;
+      _inviteListLoading = true;
       panel.innerHTML = '<p class="muted" style="font-size:13px">Loading…</p>';
       try {
-        await ensureServerSessionForCurrentUser();
+        const hasSession = await ensureServerSessionForCurrentUser();
+        if (!hasSession) { panel.innerHTML = ''; return; }
         const res  = await fetch('/api/invite');
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || 'Could not load invites');
@@ -8359,6 +8372,8 @@
         }).join('');
       } catch(e) {
         panel.innerHTML = `<p style="color:#f87171;font-size:13px">Could not load invites</p>`;
+      } finally {
+        _inviteListLoading = false;
       }
     }
 
