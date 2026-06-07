@@ -3547,11 +3547,11 @@
       _serverSessionPromise = (async () => {
         try {
           const current = await fetch('/api/identity?action=session').then(r => r.ok ? r.json() : null).catch(() => null);
-          if (current?.ok && current.user?.id && current.user.id === user.id) {
+          if (current?.ok && current.user?.id && current.user.id === user.id && current.teamMember?.status === 'active') {
             _serverSessionReadyFor = current.user.id;
             return true;
           }
-          return false; // No server session — user must log in via the login form
+          return false; // No server session or inactive membership — user must log in via the login form
         } finally {
           _serverSessionPromise = null;
         }
@@ -8248,6 +8248,11 @@
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify(body),
         });
+        if (res.status === 401) {
+          _serverSessionReadyFor = '';
+          showToast('Session expired — please log in again');
+          return;
+        }
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
 
