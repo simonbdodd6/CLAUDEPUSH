@@ -2487,25 +2487,39 @@
 
       const permission = Notification.permission;
       const playerName = getPlayer()?.name || currentUser()?.name || 'Player';
+      const encodedName = encodeURIComponent(playerName);
 
       if (pushSubscription) {
-        // Compact chip — notifications are on, don't distract
+        // Enabled ✅ — compact chip, don't distract
         sidebar.style.cssText = '';
         sidebar.innerHTML = `
           <span class="push-dot on" style="flex-shrink:0"></span>
-          <span style="font-size:11px;font-weight:600;color:var(--muted);flex:1">Notifications on</span>
+          <span style="font-size:11px;font-weight:600;color:var(--muted);flex:1">Notifications on ✅</span>
           <button class="btn" type="button" onclick="unsubscribePush()"
             style="margin:0;min-height:22px;padding:0 7px;font-size:10px;background:transparent;border-color:rgba(255,255,255,0.12);color:var(--muted)">Off</button>`;
       } else if (permission === 'denied') {
-        // Blocked — show small warning
+        // Blocked ❌ — step-by-step guide so a non-technical player can fix it
         sidebar.innerHTML = `
-          <span class="push-dot off" style="flex-shrink:0"></span>
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:700;color:#f87171;font-size:12px">Notifications blocked</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:1px">Allow in browser settings</div>
+          <div style="width:100%">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="font-size:16px">🚫</span>
+              <strong style="font-size:12px;color:#f87171">Notifications blocked ❌</strong>
+            </div>
+            <p style="font-size:11px;color:var(--muted);margin:0 0 6px;line-height:1.4">To unblock, follow these steps:</p>
+            <ol style="font-size:11px;color:var(--muted);margin:0 0 10px;padding-left:16px;line-height:1.9">
+              <li>Tap the <strong style="color:#e2e8f0">🔒 lock</strong> in the address bar</li>
+              <li>Tap <strong style="color:#e2e8f0">Site settings</strong></li>
+              <li>Set <strong style="color:#e2e8f0">Notifications → Allow</strong></li>
+              <li>Come back here and tap <strong style="color:#e2e8f0">Try again</strong></li>
+            </ol>
+            <button class="btn primary" type="button"
+              onclick="subscribePush(decodeURIComponent('${encodedName}'))"
+              style="width:100%;min-height:34px;font-size:12px;font-weight:600">
+              🔔 Try again
+            </button>
           </div>`;
       } else {
-        // NOT subscribed — make it a prominent call to action so players sign up
+        // Not yet subscribed ⚠️ — prominent CTA, triggers permission prompt immediately
         sidebar.innerHTML = `
           <div style="width:100%">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -2516,9 +2530,9 @@
               Get instant alerts when the coach sends availability requests, team news or direct messages.
             </p>
             <button class="btn primary" type="button"
-              onclick="subscribePush('${playerName}')"
+              onclick="subscribePush(decodeURIComponent('${encodedName}'))"
               style="width:100%;min-height:36px;font-size:13px;font-weight:700">
-              Turn on notifications
+              🔔 Turn on notifications
             </button>
           </div>`;
       }
@@ -7156,15 +7170,20 @@
         </div>`;
       }
       if (permission === "denied") {
-        return `<div class="push-banner push-denied" style="margin:12px">
-          <div class="push-icon">🔕</div>
-          <div class="push-text"><strong>Notifications blocked</strong><small>Re-enable them in browser settings.</small></div>
+        return `<div class="push-banner push-denied" style="margin:12px;flex-direction:column;align-items:flex-start;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px"><div class="push-icon">🚫</div><strong>Notifications blocked ❌</strong></div>
+          <ol style="font-size:11px;color:var(--muted);margin:0;padding-left:18px;line-height:1.9">
+            <li>Tap the <strong style="color:#e2e8f0">🔒 lock</strong> in the address bar</li>
+            <li>Tap <strong style="color:#e2e8f0">Site settings</strong></li>
+            <li>Set <strong style="color:#e2e8f0">Notifications → Allow</strong></li>
+          </ol>
+          <button class="btn primary" type="button" onclick="subscribePush(decodeURIComponent('${encodeURIComponent(player.name)}'))" style="font-size:12px;margin-top:2px">🔔 Try again</button>
         </div>`;
       }
       return `<div class="push-banner" style="margin:12px">
         <div class="push-icon">🔔</div>
         <div class="push-text"><strong>Enable push notifications</strong><small>Get alerted when coach sends a message.</small></div>
-        <button class="btn primary" type="button" onclick="subscribePush(decodeURIComponent('${encodeURIComponent(player.name)}'))">Enable</button>
+        <button class="btn primary" type="button" onclick="subscribePush(decodeURIComponent('${encodeURIComponent(player.name)}'))">🔔 Enable</button>
       </div>`;
     }
 
