@@ -2621,11 +2621,20 @@
           .then(reg => reg.pushManager.getSubscription());
         endpoint = sub?.endpoint || '';
       } catch {}
-      return fetch('/api/availability', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endpoint, response, sessionId })
-      }).catch(() => {});
+      try {
+        const res = await fetch('/api/availability', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint, response, sessionId })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          console.warn('[availability POST]', res.status, data?.error || data);
+          showToast('Availability saved locally — could not sync to server');
+        }
+      } catch(e) {
+        console.warn('[availability POST failed]', e);
+      }
     }
     function applyTemplate() {
       const sel  = document.getElementById("templateSelect");
@@ -3711,7 +3720,10 @@
       if (view === "player") state.activePlayerSection = section;
       saveState("Tab saved");
       render();
-      if (view === 'coach' && section === 'players') refreshMembersData();
+      if (view === 'coach' && section === 'players') {
+        refreshMembersData();
+        refreshLiveAvailability().catch(() => {});
+      }
     }
 
     function pageTitle() {
@@ -7512,10 +7524,9 @@
         if (changed) saveState('Live availability synced');
         // Update timestamp label
         if (ts) ts.textContent = `Live · ${new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}`;
-        // Re-render the session detail panels inline, then repopulate the async
-        // server-backed panels. This keeps Redis replies visible without losing
-        // the scheduled-message/log widgets after the refresh.
+        // Re-render whichever coach section is currently visible.
         renderMessageCenter();
+        if (state.activeView === 'coach' && state.activeCoachSection === 'players') renderPlayers();
         setTimeout(() => {
           renderAudiencePicker();
           renderPushStatusCard();
