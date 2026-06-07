@@ -5752,9 +5752,14 @@
     function setPlayerAvailability(key, status) {
       const player    = getPlayer();
       const sessionId = keyToSessionId(key);
-      player[key]     = status;
+      // getPlayer() returns a deduplicated copy — update state.players directly so
+      // the next render() re-reads the correct value from the source array.
+      const src = state.players.find(p => p.id === player.id || (player.userId && p.userId === player.userId));
+      if (src) src[key] = status;
+      player[key] = status;
       if (key === "game" && player.history[0] !== status) player.history.unshift(status);
       player.history  = player.history.slice(0, 5);
+      if (src) src.history = player.history;
       addMasterFeed(`${player.name} updated ${sessionTitle(sessionId)}`, statusLabel(status));
       upsertAvailabilityResponseMessage(player, sessionId, status);
       // POST to server so coach sees it in real time; authenticated users do not need push enabled.
