@@ -86,6 +86,47 @@ export function redisEstimate(endpointPath, method = 'GET') {
   return 2;
 }
 
+// ─── Player login (Workflow 5) ───────────────────────────────────────────────
+
+/**
+ * Step: Log in as a player using email + password.
+ * Handles two auth panel states: default card (shows Login tab) and already-open login form.
+ * Waits for #playerNav to become visible, confirming player session is active.
+ * config must have: testPlayerEmail, testPlayerPassword.
+ */
+export async function playerLogin(playerPage, config, result) {
+  await playerPage.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(playerPage.locator('#authPanel')).toBeVisible({ timeout: 15_000 });
+
+  // The panel may show a user card with a "Login" tab, or already show the login form.
+  const loginFormVisible = await playerPage.locator('#identityLoginEmail').isVisible({ timeout: 2_000 }).catch(() => false);
+  if (!loginFormVisible) {
+    const loginTab = playerPage.locator('.auth-tab').filter({ hasText: /^Login$/ });
+    const tabVisible = await loginTab.isVisible({ timeout: 3_000 }).catch(() => false);
+    if (tabVisible) {
+      await loginTab.click();
+    } else {
+      result.missingSelectorWarnings.push('Login tab not visible and #identityLoginEmail not visible — auth panel may be in unexpected state');
+      throw new Error('Cannot open login form: neither Login tab nor email input visible');
+    }
+  }
+
+  await playerPage.locator('#identityLoginEmail').fill(config.testPlayerEmail);
+  await playerPage.locator('#identityLoginPassword').fill(config.testPlayerPassword);
+  await playerPage.locator('#identityLoginBtn').click();
+
+  // Player nav appears when session is active
+  try {
+    await expect(playerPage.locator('#playerNav:not(.hidden)')).toBeVisible({ timeout: 15_000 });
+  } catch {
+    const toasts = result.playerToasts || [];
+    const latestToast = toasts.at(-1)?.text || '';
+    throw new Error(latestToast
+      ? `Player login failed — toast: "${latestToast}"`
+      : 'Player nav did not appear within 15s — login may have failed or player is not yet approved');
+  }
+}
+
 // ─── Group invite steps (Workflow 4) ─────────────────────────────────────────
 
 /**

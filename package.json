@@ -19,6 +19,8 @@
     "qa:workflow-3:headed": "node qa/run-qa.js --workflow-3 --headed",
     "qa:workflow-4": "node qa/run-qa.js --workflow-4",
     "qa:workflow-4:headed": "node qa/run-qa.js --workflow-4 --headed",
+    "qa:workflow-5": "node qa/run-qa.js --workflow-5",
+    "qa:workflow-5:headed": "node qa/run-qa.js --workflow-5 --headed",
     "qa:all-workflows": "node qa/run-qa.js --all-workflows",
     "qa:all-workflows:headed": "node qa/run-qa.js --all-workflows --headed",
     "qa:dashboard": "node qa/mission-control/generate-dashboard.js",
