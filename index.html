@@ -8239,7 +8239,8 @@
       const btn = document.getElementById('inv-create-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
       try {
-        await ensureServerSessionForCurrentUser();
+        const hasSession = await ensureServerSessionForCurrentUser();
+        if (!hasSession) { showToast('Please log in first'); return; }
         const body = isGroup
           ? { type: 'group', role: 'player', email, sendEmail: false }
           : { name, role, email };
