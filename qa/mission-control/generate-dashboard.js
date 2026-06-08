@@ -61,6 +61,22 @@ const WORKFLOWS = [
     reportFile: 'QA_WORKFLOW_5_MESSAGING_REPORT.md',
     manualMinutes: 6,
   },
+  {
+    id: 6,
+    name: 'Squad Broadcast → Receive → Permissions',
+    description: 'Coach sends squad broadcast → player receives via poll → player replies → Announcements read-only verified',
+    resultFile: 'workflow-6.json',
+    reportFile: 'QA_WORKFLOW_6_REPORT.md',
+    manualMinutes: 7,
+  },
+  {
+    id: 7,
+    name: 'Player Session Expiry Recovery',
+    description: 'Player opens Messages → session cookie corrupted → 401 overlay appears → re-login → Messages restored',
+    resultFile: 'workflow-7.json',
+    reportFile: 'QA_WORKFLOW_7_SESSION_EXPIRY_REPORT.md',
+    manualMinutes: 4,
+  },
 ];
 
 // ─── Load result data ─────────────────────────────────────────────────────────
