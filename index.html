@@ -5711,8 +5711,15 @@
     function setAllAvailable() {
       const player = getPlayer();
       if (!player.id) return;
+      // getPlayer() returns a shallow copy; update state.players directly so the
+      // change survives the next render() call.
+      const live = state.players.find(p =>
+        String(p.id || '') === String(player.id || '') ||
+        String(p.userId || '') === String(player.id || '')
+      );
       ['trainingTuesday','trainingThursday','game'].forEach(key => {
         player[key] = 'available';
+        if (live) live[key] = 'available';
       });
       if (player.history[0] !== 'available') player.history.unshift('available');
       player.history = player.history.slice(0, 5);
@@ -5727,6 +5734,13 @@
       const player    = getPlayer();
       const sessionId = keyToSessionId(key);
       player[key]     = status;
+      // getPlayer() returns a shallow copy; update state.players directly so the
+      // change survives the next render() call.
+      const live = state.players.find(p =>
+        String(p.id || '') === String(player.id || '') ||
+        String(p.userId || '') === String(player.id || '')
+      );
+      if (live) live[key] = status;
       if (key === "game" && player.history[0] !== status) player.history.unshift(status);
       player.history  = player.history.slice(0, 5);
       addMasterFeed(`${player.name} updated ${sessionTitle(sessionId)}`, statusLabel(status));
@@ -5886,16 +5900,23 @@
     function chatCoachDmPickerPlayers() {
       const me = chatMe();
       const players = canonicalVisiblePlayers();
-      if (_chatStateModule?.filterCoachDmPlayers) {
-        return _chatStateModule.filterCoachDmPlayers(players, _chatNewDmQuery, me.id, { users: state.users, players });
-      }
       const q = String(_chatNewDmQuery || '').trim().toLowerCase();
-      return players.filter(player => {
-        if (!player?.id || String(player.id) === me.id) return false;
+      const coach = String(me.id || '');
+      // Inline filter runs on pre-deduped players — used as reliable fallback.
+      const inline = players.filter(player => {
+        if (!player?.id || String(player.id) === coach) return false;
         if (!q) return true;
         return [player.name, player.position, player.email]
           .some(value => String(value || '').toLowerCase().includes(q));
       });
+      if (_chatStateModule?.filterCoachDmPlayers) {
+        const fromModule = _chatStateModule.filterCoachDmPlayers(players, _chatNewDmQuery, me.id, { users: state.users, players });
+        // If module re-deduplication resolves any player ID to match the coach's ID (stale
+        // test-account data), fromModule will be shorter than expected. Fall back to the
+        // inline result so the picker always shows available members.
+        return fromModule.length > 0 ? fromModule : inline;
+      }
+      return inline;
     }
 
     function chatNewDmPickerResultsHtml(players) {
