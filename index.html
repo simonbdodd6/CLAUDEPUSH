@@ -2287,6 +2287,8 @@
       next.autoSendSchedule = input.autoSendSchedule || { day:"monday", time:"09:00" };
       next.trainingAutoSend = input.trainingAutoSend ?? false;
       next.benchPlayers     = input.benchPlayers     || Array(8).fill("");
+      // Always start from real data or empty — never show seed fixtures to a real club
+      next.fixtures         = Array.isArray(input.fixtures) ? input.fixtures : [];
       // Migrate existing blocks to have coach + keyFocus fields
       ["tue","thu","game"].forEach(sid => {
         (next.trainingBlocks[sid] || []).forEach(b => {
@@ -3235,6 +3237,7 @@
 
     async function deleteFixture(id) {
       if (!id) return;
+      if (!confirm('Delete this fixture? This cannot be undone.')) return;
       try {
         const res  = await fetch('/api/fixtures', {
           method:  'DELETE',
@@ -4381,7 +4384,8 @@
       const notComing     = state.players.filter(p => ["unavailable","injured"].includes(p.game));
       const fixture       = nextUpcomingFixture();
       const today         = new Date().toISOString().slice(0, 10);
-      const nextFixtures  = (state.fixtures||[]).filter(f => f.date > today).slice(1, 5);
+      const heroId        = fixture.id;
+      const nextFixtures  = (state.fixtures||[]).filter(f => f.id !== heroId && f.date >= today).slice(0, 4);
       document.getElementById("coach-overview").innerHTML = `
         <div class="overview-page">
         ${statCards()}
@@ -5501,7 +5505,7 @@
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <div>
                   <h2 style="margin:0">Matchday Centre</h2>
-                  <p class="muted" style="margin-top:3px">${fixture.opponent} · ${fixture.venue} · ${fixture.date}</p>
+                  <p class="muted" style="margin-top:3px">${fixture.opponent}${fixture.venue ? ' · ' + fixture.venue : ''}${fixture.date ? ' · ' + (formatFixtureDate(fixture.date) || fixture.date) : ''}</p>
                 </div>
                 <div style="display:flex;gap:7px">
                   <button class="btn" type="button" onclick="showToast('Formation reviewed ✓')">Review</button>
@@ -6071,7 +6075,7 @@
           <!-- Per-session blocks -->
           ${availabilityBlock(player, "trainingTuesday",  "Tuesday training · 19:45")}
           ${availabilityBlock(player, "trainingThursday", "Thursday training · 19:45")}
-          ${availabilityBlock(player, "game", state.fixtures?.[0]?.opponent ? state.fixtures[0].opponent + ' — ' + state.fixtures[0].date : 'Saturday match')}
+          ${availabilityBlock(player, "game", (function(){ const f = nextUpcomingFixture(); return f.opponent && f.opponent !== 'TBD' ? f.opponent + (f.date ? ' · ' + formatFixtureDate(f.date) : '') : 'Saturday match'; })())}
 
           <!-- Blocked dates -->
           <div style="border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-top:18px;background:var(--panel)">
