@@ -737,20 +737,24 @@ generateNightlyReport(entries, totalMs, allPassed, diff, previousRun);
 generateRegressionReport(diff, currentSummary, previousRun);
 generateStatusDashboard(entries, diff, currentSummary, previousRun);
 
-// ─── QA Analyst: auto-investigate regressions and new failures ───────────────
+// ─── Regression pipeline: Analyst → Repair Agent ────────────────────────────
+// Runs only when there are regressions or new failures.
+// Order matters: analyst writes INVESTIGATION_REPORT.md which repair agent reads.
 if (diff.regressions.length > 0 || diff.newFailures.length > 0) {
-  console.log('\n[nightly] Regressions detected — running QA Analyst…');
-  await new Promise(resolve => {
+  const spawnQa = (script, label) => new Promise(resolve => {
+    console.log(`\n[nightly] ${label}…`);
     const proc = spawn(
-      'node',
-      [path.join(ROOT, 'qa/analyst.js')],
+      'node', [path.join(ROOT, script)],
       { stdio: 'inherit', env: { ...process.env }, cwd: ROOT }
     );
-    proc.on('close',  resolve);
-    proc.on('error',  err => { console.error('[nightly] analyst error:', err.message); resolve(); });
+    proc.on('close', resolve);
+    proc.on('error', err => { console.error(`[nightly] ${label} error:`, err.message); resolve(); });
   });
+
+  await spawnQa('qa/analyst.js',      'Running QA Analyst');
+  await spawnQa('qa/repair-agent.js', 'Running Repair Agent');
 } else {
-  console.log('\n[nightly] No regressions — skipping analyst.');
+  console.log('\n[nightly] No regressions — skipping analyst and repair agent.');
 }
 
 // ─── Refresh Mission Control dashboard ───────────────────────────────────────
