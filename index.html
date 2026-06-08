@@ -3063,6 +3063,8 @@
 
     let _matchdayAutoScrollFrame = 0;
     let _matchdayAutoScrollSpeed = 0;
+    let _fixtureFormOpen = false;
+    let _fixtureEditId   = null;
 
     function handlePlayerDragStart(event) {
       const el = event.currentTarget;
@@ -3103,6 +3105,168 @@
 
     function handleSlotDragover(event) { handleMatchdayDragOver(event); }
 
+    // ─── FIXTURE MANAGER ─────────────────────────────────────────────────────
+
+    function formatFixtureDate(dateStr) {
+      if (!dateStr) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) {
+        const d = new Date(String(dateStr) + 'T12:00:00');
+        return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+      }
+      return String(dateStr); // legacy seed strings ("This Saturday" etc.)
+    }
+
+    function nextUpcomingFixture() {
+      const today = new Date().toISOString().slice(0, 10);
+      return (state.fixtures || []).find(f => !f.date || f.date >= today)
+          || (state.fixtures || [])[0]
+          || { opponent: 'TBD', venue: 'Home', date: '', kickoff: '', status: 'No fixtures set up' };
+    }
+
+    async function loadLiveFixtures() {
+      try {
+        const res  = await fetch('/api/fixtures');
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        if (!Array.isArray(data.fixtures)) return;
+        // Sort ascending by date; entries without an ISO date go last
+        state.fixtures = [...data.fixtures].sort((a, b) => {
+          const da = new Date(a.date || '9999'), db = new Date(b.date || '9999');
+          return (isNaN(da) ? Infinity : da.getTime()) - (isNaN(db) ? Infinity : db.getTime());
+        });
+        saveState('Fixtures synced');
+      } catch (e) {
+        console.warn('[loadLiveFixtures]', e);
+      }
+    }
+
+    function fixtureFormHtml() {
+      const fix = _fixtureEditId ? (state.fixtures || []).find(f => f.id === _fixtureEditId) : null;
+      return `
+        <div id="fixture-form-card" style="border-top:1px solid var(--line);padding-top:16px;margin-top:4px">
+          <h3 style="margin:0 0 16px;font-size:14px">${fix ? 'Edit fixture' : 'Add fixture'}</h3>
+          <div style="display:grid;gap:12px">
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">
+              Opponent *
+              <input id="fix-opponent" type="text" placeholder="e.g. Kituro RFC"
+                style="font-size:15px;padding:11px 13px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit"
+                value="${esc(fix?.opponent || '')}" autocomplete="off">
+            </label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">
+                Date *
+                <input id="fix-date" type="date"
+                  style="font-size:15px;padding:11px 13px;border:1.5px solid var(--line);border-radius:9px;min-height:46px"
+                  value="${fix?.date || ''}">
+              </label>
+              <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">
+                Kickoff
+                <input id="fix-kickoff" type="time"
+                  style="font-size:15px;padding:11px 13px;border:1.5px solid var(--line);border-radius:9px;min-height:46px"
+                  value="${fix?.kickoff || ''}">
+              </label>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">
+                Venue
+                <select id="fix-venue"
+                  style="font-size:15px;padding:11px 13px;border:1.5px solid var(--line);border-radius:9px;min-height:46px;background:var(--panel)">
+                  ${['Home','Away','Neutral'].map(v =>
+                    `<option value="${v}" ${(fix?.venue || 'Home') === v ? 'selected' : ''}>${v}</option>`
+                  ).join('')}
+                </select>
+              </label>
+              <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">
+                Competition
+                <input id="fix-competition" type="text" placeholder="e.g. Belgian Premiership"
+                  style="font-size:14px;padding:11px 13px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit"
+                  value="${esc(fix?.competition || '')}">
+              </label>
+            </div>
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">
+              Notes
+              <textarea id="fix-notes" placeholder="Kit colour, travel info, officials…"
+                style="font-size:13px;padding:11px 13px;border:1.5px solid var(--line);border-radius:9px;min-height:64px;resize:vertical;font-family:inherit">${esc(fix?.notes || '')}</textarea>
+            </label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px">
+              <button class="btn" type="button" onclick="cancelFixtureForm()" style="min-height:44px">Cancel</button>
+              <button id="fix-submit-btn" class="btn primary" type="button"
+                onclick="saveFixture()" style="min-height:44px">${fix ? 'Save changes' : 'Add fixture'}</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    async function saveFixture() {
+      const opponent    = (document.getElementById('fix-opponent')?.value    || '').trim();
+      const date        = (document.getElementById('fix-date')?.value        || '').trim();
+      const venue       = (document.getElementById('fix-venue')?.value       || 'Home');
+      const kickoff     = (document.getElementById('fix-kickoff')?.value     || '');
+      const competition = (document.getElementById('fix-competition')?.value || '').trim();
+      const notes       = (document.getElementById('fix-notes')?.value       || '').trim();
+      const editId      = _fixtureEditId || null;
+
+      if (!opponent) { showToast('Opponent name is required'); document.getElementById('fix-opponent')?.focus(); return; }
+      if (!date)     { showToast('Date is required'); document.getElementById('fix-date')?.focus(); return; }
+
+      const btn  = document.getElementById('fix-submit-btn');
+      const orig = btn?.textContent;
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      try {
+        const body = { opponent, date, venue, kickoff, competition, notes };
+        if (editId) body.id = editId;
+        const res  = await fetch('/api/fixtures', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Save failed');
+        _fixtureFormOpen = false;
+        _fixtureEditId   = null;
+        await loadLiveFixtures();
+        render();
+        showToast(editId ? 'Fixture updated ✓' : 'Fixture added ✓');
+      } catch (e) {
+        showToast(e.message || 'Could not save fixture');
+        if (btn) { btn.disabled = false; btn.textContent = orig; }
+      }
+    }
+
+    async function deleteFixture(id) {
+      if (!id) return;
+      try {
+        const res  = await fetch('/api/fixtures', {
+          method:  'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Delete failed');
+        await loadLiveFixtures();
+        render();
+        showToast('Fixture removed ✓');
+      } catch (e) {
+        showToast(e.message || 'Could not delete fixture');
+      }
+    }
+
+    function openFixtureForm(fixtureId) {
+      _fixtureFormOpen = true;
+      _fixtureEditId   = fixtureId || null;
+      render();
+      setTimeout(() => {
+        document.getElementById('fix-opponent')?.focus();
+        document.getElementById('fixture-form-card')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 50);
+    }
+
+    function cancelFixtureForm() {
+      _fixtureFormOpen = false;
+      _fixtureEditId   = null;
+      render();
+    }
+
     // ─── MATCHDAY SELECTION PERSISTENCE ─────────────────────────────────────
     // Computes slotPlayerIds by matching formation slot names against state.players.
     function _formationPlayerIds() {
@@ -3128,7 +3292,7 @@
     }
 
     async function saveMatchdaySelection(publish = false) {
-      const fixture   = state.fixtures?.[0] || {};
+      const fixture   = nextUpcomingFixture();
       const btn       = document.getElementById(publish ? 'matchday-publish-btn' : 'matchday-save-btn');
       const origText  = btn?.textContent;
       if (btn) { btn.disabled = true; btn.textContent = publish ? 'Publishing…' : 'Saving…'; }
@@ -3904,7 +4068,11 @@
         refreshLiveAvailability().catch(() => {});
       }
       if (view === 'coach' && section === 'matchday') {
-        loadMatchdaySelection().then(() => { renderMatchday(); renderPlayerSelection(); }).catch(() => {});
+        Promise.all([loadMatchdaySelection(), loadLiveFixtures()])
+          .then(() => { renderMatchday(); renderPlayerSelection(); }).catch(() => {});
+      }
+      if (view === 'player' && section === 'fixtures') {
+        loadLiveFixtures().then(() => renderPlayerFixtures()).catch(() => {});
       }
     }
 
@@ -4211,8 +4379,9 @@
 
     function renderCoachOverview() {
       const notComing     = state.players.filter(p => ["unavailable","injured"].includes(p.game));
-      const fixture       = state.fixtures?.[0] || { opponent:"Kituro", venue:"Home", date:"This Saturday", status:"Availability open" };
-      const nextFixtures  = (state.fixtures||[]).slice(1,4);
+      const fixture       = nextUpcomingFixture();
+      const today         = new Date().toISOString().slice(0, 10);
+      const nextFixtures  = (state.fixtures||[]).filter(f => f.date > today).slice(1, 5);
       document.getElementById("coach-overview").innerHTML = `
         <div class="overview-page">
         ${statCards()}
@@ -4222,17 +4391,19 @@
           <div style="display:grid;gap:14px">
             <div class="fixture-hero">
               <div class="eyebrow">Next fixture</div>
-              <h3>${fixture.opponent}</h3>
+              <h3>${fixture.opponent || 'No fixture'}</h3>
               <div class="fixture-meta">
-                <span>📍 <strong>${fixture.venue}</strong></span>
-                <span>📅 <strong>${fixture.date}</strong></span>
-                <span>🟢 <strong>${fixture.status}</strong></span>
+                <span>📍 <strong>${fixture.venue || 'TBD'}</strong></span>
+                <span>📅 <strong>${formatFixtureDate(fixture.date) || fixture.date || '—'}</strong></span>
+                ${fixture.kickoff ? `<span>⏰ <strong>${fixture.kickoff}</strong></span>` : ''}
+                ${fixture.competition ? `<span>🏆 <strong>${fixture.competition}</strong></span>` : ''}
               </div>
               <div class="pill-row" style="margin-top:14px">
                 <span class="pill">${byStatus("available").length} Available</span>
                 <span class="pill">${byStatus("no-reply").length} No reply</span>
                 <span class="pill">${byStatus("injured").length} Injured</span>
               </div>
+              <button class="btn" type="button" style="margin-top:14px;width:100%" onclick="setSection('coach','matchday')">Manage fixtures →</button>
             </div>
             <div class="card">
               <h2>This week at a glance</h2>
@@ -4258,7 +4429,13 @@
             <div class="card">
               <h2>Upcoming fixtures</h2>
               <div class="list" style="margin-top:11px">
-                ${nextFixtures.map(f => row(`${f.date}: <strong>${f.opponent}</strong>`, `${f.venue} · ${f.status}`, `<span class="status ${f.status==="Availability open"?"available":"no-reply"}">${f.status}</span>`)).join("")}
+                ${nextFixtures.length
+                  ? nextFixtures.map(f => row(
+                      `<strong>${f.opponent}</strong>`,
+                      `${formatFixtureDate(f.date)}${f.kickoff ? ' · ' + f.kickoff : ''}${f.venue ? ' · ' + f.venue : ''}`,
+                      f.competition ? `<span class="pill" style="font-size:11px">${f.competition}</span>` : ''
+                    )).join("")
+                  : `<p class="muted" style="padding:8px 0;font-size:13px">No further fixtures scheduled.</p>`}
               </div>
             </div>
           </div>
@@ -5238,7 +5415,9 @@
       const fphoto    = state.fphotoIds      || {};
       const bench     = state.benchPlayers   || Array(8).fill("");
       const subs      = state.subPlan        || [];
-      const fixture   = state.fixtures?.[0]  || { opponent:"Kituro", venue:"Home", date:"This Saturday" };
+      const fixture   = nextUpcomingFixture();
+      const today     = new Date().toISOString().slice(0, 10);
+      const allFix    = state.fixtures || [];
       const playerNameOptions = [...new Set(state.players.map(p => p.name).filter(Boolean))];
       const slotNames = rugbySlots.map(([label], i) =>
         Object.prototype.hasOwnProperty.call(fnames, label)
@@ -5251,6 +5430,33 @@
       const available = matchdayPlayers.filter(p => !assignedNames.has(String(p.name || "").trim().toLowerCase()));
 
       document.getElementById("coach-matchday").innerHTML = `
+
+        <!-- ── FIXTURE MANAGER ──────────────────────────────────────────── -->
+        <div class="card" style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;${allFix.length || _fixtureFormOpen ? 'margin-bottom:12px' : ''}">
+            <div>
+              <h2 style="margin:0">📅 Season fixtures</h2>
+              ${!_fixtureFormOpen ? `<p class="muted" style="margin:2px 0 0;font-size:12px">${allFix.length} fixture${allFix.length !== 1 ? 's' : ''} · ${allFix.filter(f => f.date >= today).length} upcoming</p>` : ''}
+            </div>
+            ${!_fixtureFormOpen ? `<button class="btn primary" type="button" style="font-size:12px;white-space:nowrap" onclick="openFixtureForm(null)">+ Add fixture</button>` : `<button class="btn ghost" type="button" style="font-size:12px" onclick="cancelFixtureForm()">✕ Cancel</button>`}
+          </div>
+          ${_fixtureFormOpen ? fixtureFormHtml() : `
+            ${allFix.length ? `<div>${allFix.map(f => {
+              const isPast = f.date && f.date < today;
+              return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);opacity:${isPast?'0.55':'1'}">
+                <div style="flex:1;min-width:0">
+                  <strong style="font-size:14px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.opponent)}</strong>
+                  <span class="muted" style="font-size:12px">${formatFixtureDate(f.date)}${f.kickoff?' · '+f.kickoff:''}${f.venue?' · '+f.venue:''}${f.competition?' · '+esc(f.competition):''}</span>
+                  ${f.notes ? `<div class="muted" style="font-size:11px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.notes)}</div>` : ''}
+                </div>
+                <div style="display:flex;gap:6px;flex-shrink:0">
+                  <button class="btn" type="button" style="font-size:11px;padding:3px 9px;min-height:30px" onclick="openFixtureForm('${f.id}')">Edit</button>
+                  <button class="btn ghost" type="button" style="font-size:11px;padding:3px 9px;min-height:30px;color:var(--red)" onclick="deleteFixture('${f.id}')">✕</button>
+                </div>
+              </div>`;
+            }).join('')}</div>` : `<p class="muted" style="font-size:13px;text-align:center;padding:16px 0">No fixtures yet — add your first one above.</p>`}
+          `}
+        </div>
 
         <!-- ── AVAILABILITY TEMPLATE (top) ──────────────────────────────── -->
         <div class="avail-template-card">
@@ -6122,13 +6328,33 @@
 
     // ─── PLAYER FIXTURES ─────────────────────────────────────────────────────
     function renderPlayerFixtures() {
+      const today = new Date().toISOString().slice(0, 10);
+      const fixtures = (state.fixtures || []);
+      const upcoming = fixtures.filter(f => !f.date || f.date >= today);
+      const past     = fixtures.filter(f => f.date && f.date < today);
+      function fixtureRow(f) {
+        const dateStr = formatFixtureDate(f.date);
+        const meta    = [f.venue, f.kickoff, f.competition].filter(Boolean).join(' · ');
+        return row(
+          `<strong>${f.opponent}</strong><span style="margin-left:8px;color:var(--muted);font-size:12px">${dateStr}</span>`,
+          `<span style="color:var(--muted);font-size:12px">${meta}</span>`,
+          `<button class='btn' onclick="setSection('player','availability')">Availability</button>`
+        );
+      }
       document.getElementById("player-fixtures").innerHTML = `
         <div class="card">
           <h2>Season schedule</h2>
-          <p class="muted">See what is coming and block dates early.</p>
+          <p class="muted">Upcoming matches — mark your availability early.</p>
           <div class="list" style="margin-top:14px">
-            ${state.fixtures.map(f => row(`${f.date}: ${f.opponent}`, `${f.venue} · ${f.status}`, "<button class='btn' onclick=\"setSection('player','availability')\">Update</button>")).join("")}
+            ${upcoming.length
+              ? upcoming.map(fixtureRow).join("")
+              : `<p class="muted" style="padding:12px 0">No upcoming fixtures scheduled yet.</p>`}
           </div>
+          ${past.length ? `
+          <details style="margin-top:16px">
+            <summary style="cursor:pointer;color:var(--muted);font-size:13px">${past.length} past fixture${past.length!==1?'s':''}</summary>
+            <div class="list" style="margin-top:10px;opacity:0.6">${past.map(fixtureRow).join("")}</div>
+          </details>` : ''}
         </div>`;
     }
 
@@ -8760,10 +8986,11 @@
 
     render();
     initServiceWorker();
-    // Load persisted matchday selection into state, then re-render affected sections
-    loadMatchdaySelection().then(() => {
+    // Load persisted matchday selection and live fixtures, then re-render affected sections
+    Promise.all([loadMatchdaySelection(), loadLiveFixtures()]).then(() => {
       renderMatchday();
       renderPlayerSelection();
+      renderPlayerFixtures();
     }).catch(() => {});
     // Check for invite link AFTER render (so modal overlays on top)
     checkInviteParam();
