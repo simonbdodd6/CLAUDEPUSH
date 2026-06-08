@@ -399,3 +399,121 @@ export async function approvePendingRequest(page, playerFullName, result) {
     { timeout: 10_000, message: 'Approval toast should appear within 10s' }
   ).toMatch(/approved/i);
 }
+
+// ─── Messaging steps (Workflow 5) ─────────────────────────────────────────────
+
+/**
+ * Step: Navigate to the Messages section (works for both coach and player contexts).
+ * Clicks the "Messages" nav button and waits for #chatContactList to populate.
+ */
+export async function navigateToMessages(page, result) {
+  await page.getByRole('button', { name: 'Messages', exact: true }).click();
+  try {
+    await expect(page.locator('#chatContactList')).toBeVisible({ timeout: 15_000 });
+  } catch {
+    result.missingSelectorWarnings.push(
+      '#chatContactList not visible after clicking Messages — chat shell may not have rendered; check renderChatShell()'
+    );
+    throw new Error('#chatContactList not visible — chat shell did not render after navigating to Messages');
+  }
+}
+
+/**
+ * Step: Open a DM with a player by name in the coach's contact list.
+ * Finds the .chat-contact button in #chatContactList that contains the player's name,
+ * clicks it to trigger selectChat(), and waits for #chatComposerWrap to be visible.
+ */
+export async function openPlayerDM(page, playerName, result) {
+  const contactList = page.locator('#chatContactList');
+  const contact = contactList.locator('button.chat-contact').filter({ hasText: playerName }).first();
+
+  const contactVisible = await contact.isVisible({ timeout: 10_000 }).catch(() => false);
+  if (!contactVisible) {
+    const listText = await contactList.textContent().catch(() => '(unreadable)');
+    result.missingSelectorWarnings.push(
+      `Contact "${playerName}" not found in #chatContactList. Visible contacts: "${listText.slice(0, 200).trim()}". ` +
+      `Player must be an approved member and chatResolvePlayerParticipantId() must resolve their id.`
+    );
+    throw new Error(`Player "${playerName}" not in chat contact list`);
+  }
+
+  await contact.click();
+
+  // chatFeed and chatComposerWrap are rendered by selectChat() → chatRenderMessages()
+  await expect(page.locator('#chatFeed')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('#chatComposerWrap')).toBeVisible({ timeout: 5_000 });
+}
+
+/**
+ * Step: Open the Coach DM from the player's contact list.
+ * The player sees a contact named "Coach 🎯" for their DM with the coach.
+ * After login, selectedChatId is auto-canonicalized to the coach DM, so the
+ * feed may already be open — this step makes it explicit.
+ */
+export async function openCoachDM(playerPage, result) {
+  const contactList = playerPage.locator('#chatContactList');
+
+  // Try to click Coach contact by name — text may be "Coach" with emoji
+  const coachContact = contactList.locator('button.chat-contact').filter({ hasText: /\bCoach\b/ }).first();
+  const contactVisible = await coachContact.isVisible({ timeout: 10_000 }).catch(() => false);
+
+  if (contactVisible) {
+    await coachContact.click();
+  } else {
+    // Fall back: feed may already be open from auto-canonicalization
+    const feedVisible = await playerPage.locator('#chatFeed').isVisible({ timeout: 5_000 }).catch(() => false);
+    if (!feedVisible) {
+      result.missingSelectorWarnings.push(
+        '"Coach" contact not found in #chatContactList and #chatFeed not visible — player chat may not have initialized'
+      );
+      throw new Error('Coach DM not visible from player context');
+    }
+  }
+
+  await expect(playerPage.locator('#chatFeed')).toBeVisible({ timeout: 10_000 });
+}
+
+/**
+ * Step: Type and send a message in the current conversation.
+ * Uses fill() on #chatComposer (sets value directly) then clicks #chatSendBtn.
+ * Verifies the message appears immediately via optimistic render in #chatFeed.
+ */
+export async function sendChatMessage(page, text, result) {
+  const composer = page.locator('#chatComposer');
+  await expect(composer).toBeVisible({ timeout: 5_000 });
+  await composer.fill(text);
+
+  const sendBtn = page.locator('#chatSendBtn');
+  await expect(sendBtn).toBeVisible({ timeout: 3_000 });
+  await sendBtn.click();
+
+  // Optimistic render: message appears in feed immediately (before API ack)
+  try {
+    await expect(page.locator('#chatFeed')).toContainText(text, { timeout: 8_000 });
+  } catch {
+    result.missingSelectorWarnings.push(
+      `Sent message "${text.slice(0, 60)}" did not appear in #chatFeed within 8s — ` +
+      `chatSendMessage() may have failed or the optimistic render path changed`
+    );
+    throw new Error(`Message not found in chat feed after sending: "${text.slice(0, 80)}"`);
+  }
+}
+
+/**
+ * Step: Wait for a specific message to appear in the chat feed.
+ * Used to verify a message sent from another context has arrived via polling.
+ * The chat polls every 2500ms, so 15s timeout covers 6 poll cycles.
+ */
+export async function verifyChatMessage(page, text, result, opts = {}) {
+  const timeout = opts.timeout || 15_000;
+  try {
+    await expect(page.locator('#chatFeed')).toContainText(text, { timeout });
+  } catch {
+    const feedText = await page.locator('#chatFeed').textContent().catch(() => '(unreadable)');
+    result.missingSelectorWarnings.push(
+      `Expected message "${text.slice(0, 60)}" not found in #chatFeed after ${timeout}ms. ` +
+      `Feed snapshot: "${feedText.slice(0, 200).trim()}"`
+    );
+    throw new Error(`Message not found in chat feed within ${timeout}ms: "${text.slice(0, 80)}"`);
+  }
+}

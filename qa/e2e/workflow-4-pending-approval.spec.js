@@ -553,6 +553,11 @@ test('Workflow 4 — Group Invite → Join Request → Coach Approval → Active
       }
     });
 
+    // Store player credentials so Workflow 5 can reuse this player for messaging tests
+    result.playerEmail    = config.testPlayerEmail;
+    result.playerName     = config.testPlayerName;
+    result.playerPassword = config.testPlayerPassword;
+
     writeResult('passed');
     writeReport();
   } catch (error) {

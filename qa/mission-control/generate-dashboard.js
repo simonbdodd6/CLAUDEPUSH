@@ -53,6 +53,14 @@ const WORKFLOWS = [
     reportFile: 'QA_WORKFLOW_4_REPORT.md',
     manualMinutes: 7,
   },
+  {
+    id: 5,
+    name: 'Coach ↔ Player Messaging',
+    description: 'Coach sends timestamped DM → player receives via poll → player replies → coach verifies',
+    resultFile: 'workflow-5.json',
+    reportFile: 'QA_WORKFLOW_5_MESSAGING_REPORT.md',
+    manualMinutes: 6,
+  },
 ];
 
 // ─── Load result data ─────────────────────────────────────────────────────────

@@ -21,7 +21,7 @@ if (allWorkflows) {
     'qa/e2e/workflow-2-invite-generation.spec.js',
     'qa/e2e/workflow-3-player-registration.spec.js',
     'qa/e2e/workflow-4-pending-approval.spec.js',
-    'qa/e2e/workflow-5-availability-sync.spec.js'
+    'qa/e2e/workflow-5-messaging.spec.js'
   );
 } else {
   args.push(
@@ -40,7 +40,7 @@ if (allWorkflows) {
                 : workflow4
                   ? 'qa/e2e/workflow-4-pending-approval.spec.js'
                   : workflow5
-                    ? 'qa/e2e/workflow-5-availability-sync.spec.js'
+                    ? 'qa/e2e/workflow-5-messaging.spec.js'
                     : 'qa/e2e/nightly-qa-agent.spec.js'
   );
 }
