@@ -84,11 +84,6 @@ function _isKeptUser(u) {
   return false;
 }
 
-function _isDuplicateSimon(u) {
-  const dn = _normName(u.displayName || `${u.firstName || ''} ${u.lastName || ''}`.trim());
-  return dn.startsWith('simon');
-}
-
 async function handleCleanup(req, res, dryRun) {
   const [users, members, profiles, sessions, convs, allSubs] = await Promise.all([
     kvGet(key('identity:users')).then(v => Array.isArray(v) ? v : []),
@@ -99,9 +94,9 @@ async function handleCleanup(req, res, dryRun) {
     load(),
   ]);
 
-  const kept      = users.filter(u => _isKeptUser(u));
-  const removed   = users.filter(u => !_isKeptUser(u) && _isDuplicateSimon(u));
-  const untouched = users.filter(u => !_isKeptUser(u) && !_isDuplicateSimon(u));
+  // Keep only the 3 canonical accounts — remove all others (QA artifacts etc.)
+  const kept    = users.filter(u => _isKeptUser(u));
+  const removed = users.filter(u => !_isKeptUser(u));
   const removedIds = new Set(removed.map(u => u.id));
 
   const dmConvsRemoved = convs.filter(c =>
@@ -112,7 +107,6 @@ async function handleCleanup(req, res, dryRun) {
   const report = {
     usersKept:      kept.map(u => ({ id: u.id, displayName: u.displayName })),
     usersRemoved:   removed.map(u => ({ id: u.id, displayName: u.displayName, email: u.email })),
-    usersUntouched: untouched.map(u => ({ id: u.id, displayName: u.displayName })),
     membersRemoved:  members.filter(m => removedIds.has(m.userId)).length,
     profilesRemoved: profiles.filter(p => removedIds.has(p.userId)).length,
     sessionsRemoved: sessions.filter(s => removedIds.has(s.userId)).length,
