@@ -1767,6 +1767,7 @@
       <section id="coach-players"        class="section"></section>
       <section id="coach-system-status"  class="section"></section>
 
+      <section id="player-selection"    class="section"></section>
       <section id="player-availability" class="section"></section>
       <section id="player-week"         class="section"></section>
       <section id="player-fixtures"     class="section"></section>
@@ -1808,6 +1809,7 @@
 
     const playerSections = [
       ["messages",     "Messages"],
+      ["selection",    "Selection"],
       ["availability", "Availability"],
       ["week",         "This Week"],
       ["fixtures",     "Calendar"],
@@ -3101,6 +3103,127 @@
 
     function handleSlotDragover(event) { handleMatchdayDragOver(event); }
 
+    // ─── MATCHDAY SELECTION PERSISTENCE ─────────────────────────────────────
+    // Computes slotPlayerIds by matching formation slot names against state.players.
+    function _formationPlayerIds() {
+      const fnames = state.formationNames || {};
+      const ids = {};
+      for (const [slot, name] of Object.entries(fnames)) {
+        if (!name) continue;
+        const nl = name.trim().toLowerCase();
+        const p  = state.players.find(pl => (pl.name || '').trim().toLowerCase() === nl);
+        if (p?.userId || p?.id) ids[slot] = p.userId || p.id;
+      }
+      return ids;
+    }
+
+    function _benchPlayerIds() {
+      const bench = state.benchPlayers || [];
+      return bench.map(name => {
+        if (!name) return '';
+        const nl = name.trim().toLowerCase();
+        const p  = state.players.find(pl => (pl.name || '').trim().toLowerCase() === nl);
+        return p?.userId || p?.id || '';
+      });
+    }
+
+    async function saveMatchdaySelection(publish = false) {
+      const fixture   = state.fixtures?.[0] || {};
+      const btn       = document.getElementById(publish ? 'matchday-publish-btn' : 'matchday-save-btn');
+      const origText  = btn?.textContent;
+      if (btn) { btn.disabled = true; btn.textContent = publish ? 'Publishing…' : 'Saving…'; }
+      try {
+        const body = {
+          slots:           state.formationNames || {},
+          slotPlayerIds:   _formationPlayerIds(),
+          bench:           (state.benchPlayers || []).slice(0, 8),
+          benchPlayerIds:  _benchPlayerIds().slice(0, 8),
+          fixtureOpponent: fixture.opponent || '',
+          fixtureVenue:    fixture.venue    || '',
+          fixtureDate:     fixture.date     || '',
+          publish,
+        };
+        const res  = await fetch('/api/matchday', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Save failed');
+        state._matchdaySavedAt     = data.selection.savedAt;
+        state._matchdayPublishedAt = data.selection.publishedAt || null;
+        saveState('Matchday selection saved');
+        render();
+        if (publish) {
+          // Personalized push: each subscribed player gets their own message
+          const slots      = data.selection.slots    || {};
+          const slotIds    = data.selection.slotPlayerIds || {};
+          const bench      = data.selection.bench    || [];
+          const benchIds   = data.selection.benchPlayerIds || [];
+          const opponent   = data.selection.fixtureOpponent || 'this weekend';
+          const date       = data.selection.fixtureDate || '';
+
+          // Build userId → slot number or bench index
+          const playerSlot = {};
+          for (const [slot, userId] of Object.entries(slotIds)) {
+            if (userId) playerSlot[userId] = { type: 'starter', slot };
+          }
+          benchIds.forEach((userId, i) => {
+            if (userId && bench[i]) playerSlot[userId] = { type: 'bench', benchNum: 16 + i };
+          });
+
+          // Send targeted push per known player; fall back to generic broadcast for the rest
+          let sent = 0;
+          for (const [userId, assignment] of Object.entries(playerSlot)) {
+            const msg = assignment.type === 'starter'
+              ? `You are selected at ${assignment.slot} vs ${opponent}${date ? ' · ' + date : ''}`
+              : `You are on the bench (#${assignment.benchNum}) vs ${opponent}${date ? ' · ' + date : ''}`;
+            await sendPushToPlayers(`Squad selected — ${opponent}`, msg, {
+              type: 'selection', targetUserId: userId,
+            }).catch(() => {});
+            sent++;
+          }
+          // Generic push for anyone not in slotIds/benchIds (no-reply or not found)
+          await sendPushToPlayers(
+            `Squad selected — ${opponent}`,
+            `The matchday squad for ${opponent}${date ? ' · ' + date : ''} is now available. Open the app to view.`,
+          ).catch(() => {});
+          showToast(`Selection published${sent ? ` · ${sent} personalised notifications sent` : ''} ✓`);
+        } else {
+          showToast('Selection saved ✓');
+        }
+      } catch (e) {
+        showToast(e.message || 'Could not save selection');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = origText; }
+      }
+    }
+
+    async function loadMatchdaySelection() {
+      try {
+        const res  = await fetch('/api/matchday');
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        if (!data.selection) return;
+        const sel  = data.selection;
+        // Hydrate formation names and bench from persisted selection
+        if (sel.slots && typeof sel.slots === 'object') {
+          state.formationNames = { ...sel.slots };
+        }
+        if (Array.isArray(sel.bench)) {
+          const bench = Array(8).fill('');
+          sel.bench.forEach((name, i) => { if (i < 8) bench[i] = name || ''; });
+          state.benchPlayers = bench;
+        }
+        state._matchdaySavedAt     = sel.savedAt     || null;
+        state._matchdayPublishedAt = sel.publishedAt || null;
+        state._matchdaySelection   = sel;
+        saveState('Selection loaded');
+      } catch (e) {
+        console.warn('[loadMatchdaySelection]', e);
+      }
+    }
+
     // ─── PLAYER PHOTO ────────────────────────────────────────────────────────
     function savePlayerPhoto(playerId, input) {
       const file = input.files?.[0];
@@ -3779,6 +3902,9 @@
       if (view === 'coach' && section === 'players') {
         refreshMembersData();
         refreshLiveAvailability().catch(() => {});
+      }
+      if (view === 'coach' && section === 'matchday') {
+        loadMatchdaySelection().then(() => { renderMatchday(); renderPlayerSelection(); }).catch(() => {});
       }
     }
 
@@ -5239,9 +5365,11 @@
               <!-- Export bar -->
               <div class="export-bar" style="margin-top:12px">
                 <button class="btn primary" type="button" onclick="exportFormation()">📷 Download for Instagram</button>
-                <button class="btn" type="button" onclick="sendPushToPlayers('Matchday squad selected','Your matchday squad is available in Coach\\'s Eye. Open the app to view selection.')">🔔 Notify squad</button>
+                <button class="btn" type="button" onclick="saveMatchdaySelection(false)" id="matchday-save-btn">💾 Save selection</button>
+                <button class="btn" type="button" onclick="saveMatchdaySelection(true)" id="matchday-publish-btn" style="background:var(--green);color:#060b12;border-color:var(--green)">🔔 Publish to squad</button>
                 <button class="btn" type="button" onclick="window.print()">🖨 Print sheet</button>
               </div>
+              ${state._matchdayPublishedAt ? `<p class="muted" style="font-size:11px;margin-top:6px">Last published ${new Date(state._matchdayPublishedAt).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'})}</p>` : (state._matchdaySavedAt ? `<p class="muted" style="font-size:11px;margin-top:6px">Saved (not published) · ${new Date(state._matchdaySavedAt).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'})}</p>` : '')}
             </div>
 
             <!-- Substitute plan -->
@@ -5803,6 +5931,134 @@
       saveState('All available set');
       render();
       showToast("✅ All set — see you this week!");
+    }
+
+    // ─── PLAYER SELECTION VIEW ──────────────────────────────────────────────
+    function renderPlayerSelection() {
+      const el = document.getElementById('player-selection');
+      if (!el) return;
+      const sel      = state._matchdaySelection;
+      const player   = getPlayer();
+      const userId   = player?.userId || player?.id || '';
+      const userName = (player?.name || '').trim().toLowerCase();
+
+      if (!sel || !sel.publishedAt) {
+        el.innerHTML = `
+          <div style="max-width:480px;margin:0 auto">
+            <div class="card" style="text-align:center;padding:40px 24px">
+              <div style="font-size:40px;margin-bottom:16px">🏉</div>
+              <h2 style="margin:0 0 8px">Team not yet selected</h2>
+              <p class="muted" style="margin:0">The coach hasn't published this week's selection yet. Check back soon.</p>
+              ${sel?.fixtureOpponent ? `<p style="margin-top:14px;font-size:13px;font-weight:700">${sel.fixtureOpponent}${sel.fixtureDate ? ' · ' + sel.fixtureDate : ''}</p>` : ''}
+            </div>
+          </div>`;
+        return;
+      }
+
+      const slots     = sel.slots           || {};
+      const slotIds   = sel.slotPlayerIds   || {};
+      const bench     = sel.bench           || [];
+      const benchIds  = sel.benchPlayerIds  || [];
+      const opponent  = sel.fixtureOpponent || 'this weekend';
+      const venue     = sel.fixtureVenue    || '';
+      const date      = sel.fixtureDate     || '';
+
+      // Find player's assignment by userId first, then name fallback
+      let assignment = null;
+      for (const [slot, uid] of Object.entries(slotIds)) {
+        if (uid && uid === userId) { assignment = { type: 'starter', slot }; break; }
+      }
+      if (!assignment) {
+        benchIds.forEach((uid, i) => {
+          if (!assignment && uid && uid === userId && bench[i]) {
+            assignment = { type: 'bench', benchNum: 16 + i, name: bench[i] };
+          }
+        });
+      }
+      // Name fallback for older saves without slotPlayerIds
+      if (!assignment && userName) {
+        for (const [slot, name] of Object.entries(slots)) {
+          if ((name || '').trim().toLowerCase() === userName) { assignment = { type: 'starter', slot }; break; }
+        }
+        if (!assignment) {
+          bench.forEach((name, i) => {
+            if (!assignment && (name || '').trim().toLowerCase() === userName) {
+              assignment = { type: 'bench', benchNum: 16 + i, name };
+            }
+          });
+        }
+      }
+
+      const positionLabel = assignment?.slot
+        ? { '1':'Loosehead Prop','2':'Hooker','3':'Tighthead Prop','4':'Lock','5':'Lock',
+            '6':'Blindside Flanker','7':'Openside Flanker','8':'Number 8','9':'Scrum-half',
+            '10':'Fly-half','11':'Left Wing','12':'Inside Centre','13':'Outside Centre',
+            '14':'Right Wing','15':'Fullback' }[assignment.slot] || `Position ${assignment.slot}`
+        : '';
+
+      let headline, subline, accentColor, icon;
+      if (!assignment) {
+        headline    = 'You are not in this week\'s squad';
+        subline     = `The squad for ${opponent}${date ? ' · ' + date : ''} has been selected.`;
+        accentColor = 'var(--line)';
+        icon        = '⚪';
+      } else if (assignment.type === 'starter') {
+        headline    = `#${assignment.slot} — ${positionLabel}`;
+        subline     = `Starting XV vs ${opponent}${venue ? ' · ' + venue : ''}${date ? ' · ' + date : ''}`;
+        accentColor = 'var(--green)';
+        icon        = '🟢';
+      } else {
+        headline    = `Bench — #${assignment.benchNum}`;
+        subline     = `Replacement vs ${opponent}${venue ? ' · ' + venue : ''}${date ? ' · ' + date : ''}`;
+        accentColor = '#d97706';
+        icon        = '🟡';
+      }
+
+      el.innerHTML = `
+        <div style="max-width:480px;margin:0 auto">
+          <!-- Hero card -->
+          <div style="border:2px solid ${accentColor};border-radius:16px;padding:28px 24px;text-align:center;margin-bottom:18px;background:var(--panel)">
+            <div style="font-size:36px;margin-bottom:12px">${icon}</div>
+            <h2 style="margin:0 0 6px;font-size:20px">${headline}</h2>
+            <p class="muted" style="margin:0;font-size:13px">${subline}</p>
+          </div>
+
+          <!-- Full XV -->
+          <div class="card">
+            <h3 style="margin:0 0 12px;font-size:14px">Starting XV</h3>
+            <div class="list">
+              ${Object.entries(slots).sort((a,b)=>Number(a[0])-Number(b[0])).map(([slot, name]) => {
+                const isMe = slotIds[slot] === userId || (!slotIds[slot] && (name||'').trim().toLowerCase() === userName);
+                return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
+                  <span style="min-width:28px;font-size:13px;font-weight:700;color:var(--muted)">#${slot}</span>
+                  <span style="flex:1;font-size:14px;${isMe?'font-weight:700;color:var(--green)':'color:var(--text)'}">${name || '—'}</span>
+                  ${isMe ? '<span style="font-size:11px;font-weight:700;color:var(--green);background:rgba(16,185,129,0.1);padding:2px 8px;border-radius:999px">YOU</span>' : ''}
+                </div>`;
+              }).join('')}
+            </div>
+          </div>
+
+          ${bench.filter(Boolean).length ? `
+          <div class="card" style="margin-top:14px">
+            <h3 style="margin:0 0 12px;font-size:14px">Replacements</h3>
+            <div class="list">
+              ${bench.map((name, i) => {
+                if (!name) return '';
+                const bNum = 16 + i;
+                const isMe = (benchIds[i] && benchIds[i] === userId) || (!benchIds[i] && (name||'').trim().toLowerCase() === userName);
+                return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
+                  <span style="min-width:28px;font-size:13px;font-weight:700;color:var(--muted)">#${bNum}</span>
+                  <span style="flex:1;font-size:14px;${isMe?'font-weight:700;color:#d97706':'color:var(--text)'}">${name}</span>
+                  ${isMe ? '<span style="font-size:11px;font-weight:700;color:#d97706;background:rgba(217,119,6,0.1);padding:2px 8px;border-radius:999px">YOU</span>' : ''}
+                </div>`;
+              }).filter(Boolean).join('')}
+            </div>
+          </div>` : ''}
+
+          <p class="muted" style="font-size:11px;margin-top:14px;text-align:center">
+            Published ${new Date(sel.publishedAt).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'})}
+          </p>
+        </div>`;
     }
 
     function setPlayerAvailability(key, status) {
@@ -7510,6 +7766,7 @@
       renderPlayers();
       renderPlayerWeek();
       renderPlayerAvailability();
+      renderPlayerSelection();
       renderPlayerFixtures();
       // Async live-data panels — non-blocking, fills in after render
       if (state.activeCoachSection === "message") {
@@ -8503,6 +8760,11 @@
 
     render();
     initServiceWorker();
+    // Load persisted matchday selection into state, then re-render affected sections
+    loadMatchdaySelection().then(() => {
+      renderMatchday();
+      renderPlayerSelection();
+    }).catch(() => {});
     // Check for invite link AFTER render (so modal overlays on top)
     checkInviteParam();
     checkResetParam();
