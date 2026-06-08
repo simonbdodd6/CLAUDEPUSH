@@ -1,8 +1,8 @@
 # QA Workflow 1 — Coach Login → Members
 
-**Generated:** 2026-06-07T19:14:23.696Z
-**Commit:** `5f2e20c`
-**Base URL:** http://127.0.0.1:3000
+**Generated:** 2026-06-08T13:11:26.103Z
+**Commit:** `38d31ac`
+**Base URL:** https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app
 **Login method:** dev-login-btn
 **Status:** FAILED
 
@@ -13,14 +13,14 @@
 - **Overall:** ❌ FAIL
 - **First failure:** Step 2 — "Coach login"
 - **Error:** Cannot log in: devLoginBtn not visible and QA_COACH_PASSWORD is not set
-- **Failure screenshot:** qa/artifacts/workflow1-2026-06-07T19-14-04-068Z/02-coach-login.png
+- **Failure screenshot:** qa/artifacts/workflow1-2026-06-08T13-11-17-117Z/02-coach-login.png
 
 ## Steps
 
 | # | Step | Status | Duration | Screenshot | Notes |
 |---|---|---|---|---|---|
-| 1 | Open app | PASSED | 6227ms | [png](qa/artifacts/workflow1-2026-06-07T19-14-04-068Z/01-open-app.png) |  |
-| 2 | Coach login | FAILED | 1105ms | [png](qa/artifacts/workflow1-2026-06-07T19-14-04-068Z/02-coach-login.png) | Cannot log in: devLoginBtn not visible and QA_COACH_PASSWORD is not set |
+| 1 | Open app | PASSED | 3408ms | [png](qa/artifacts/workflow1-2026-06-08T13-11-17-117Z/01-open-app.png) |  |
+| 2 | Coach login | FAILED | 582ms | [png](qa/artifacts/workflow1-2026-06-08T13-11-17-117Z/02-coach-login.png) | Cannot log in: devLoginBtn not visible and QA_COACH_PASSWORD is not set |
 
 ## Members Verification
 
@@ -33,7 +33,12 @@
 
 | Endpoint | Calls | Est. Redis ops |
 |---|---|---|
-| **Total** | **0** | **~0** |
+| `/api/chat` | 6 | ~48 |
+| `/api/identity` | 4 | ~24 |
+| `/api/fixtures` | 1 | ~2 |
+| `/api/matchday` | 1 | ~2 |
+| `/api/message-config` | 6 | ~12 |
+| **Total** | **18** | **~88** |
 
 > Estimates use post-optimisation baselines: `/api/identity` session=0–4 ops (cached), members=~10; `/api/chat` conversations=~8; others=~4.
 
@@ -49,7 +54,22 @@ These are gaps to address before higher-confidence automation:
 
 ## Console Errors & Warnings
 
-- None
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 404 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
+- `error`: Failed to load resource: the server responded with a status of 401 ()
 
 ## Toast Messages
 
@@ -57,7 +77,23 @@ These are gaps to address before higher-confidence automation:
 
 ## Network Failures
 
-- None
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=0&userId=coach-demo — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10 — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=session — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10 — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/.well-known/vercel/jwe — {"errorText":"net::ERR_ABORTED"}
+- HEAD https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/ — {"errorText":"net::ERR_ABORTED"}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780924282742&userId=coach-demo — {"errorText":"HTTP 401 "}
+- GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo — {"errorText":"HTTP 401 "}
 
 ## Page Errors
 

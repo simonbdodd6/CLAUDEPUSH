@@ -1,10 +1,10 @@
 # QA Workflow 7 — Player Session Expiry Recovery (Messages)
 
-**Generated:** 2026-06-08T12:11:55.671Z
-**Commit:** `30f697c`
-**Base URL:** https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app
+**Generated:** 2026-06-08T13:16:54.594Z
+**Commit:** `90e8125`
+**Base URL:** https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app
 **Player credentials from:** qa/results/workflow-4.json (auto-read from W4 pass)
-**Player email:** `qa.w4+1780909306779@coachseye.test`
+**Player email:** `qa.w4+1780924420801@coachseye.test`
 **ce_session cookie found after login:** ✅ yes
 **Status:** PASSED
 
@@ -21,71 +21,67 @@
 
 | # | Step | Status | Duration | Screenshot | Notes |
 |---|---|---|---|---|---|
-| 1 | Open app | PASSED | 5997ms | [png](qa/artifacts/workflow7-2026-06-08T12-11-11-101Z/01-open-app.png) |  |
-| 2 | Player login | PASSED | 5446ms | [png](qa/artifacts/workflow7-2026-06-08T12-11-11-101Z/02-player-login.png) |  |
-| 3 | Navigate to Messages | PASSED | 985ms | [png](qa/artifacts/workflow7-2026-06-08T12-11-11-101Z/03-navigate-to-messages.png) |  |
-| 4 | Open Squad channel — verify message history | PASSED | 887ms | [png](qa/artifacts/workflow7-2026-06-08T12-11-11-101Z/04-open-squad-channel-verify-message-history.png) | Squad channel open; chat feed visible |
-| 5 | Force session expiry — corrupt ce_session cookie | PASSED | 499ms | [png](qa/artifacts/workflow7-2026-06-08T12-11-11-101Z/05-force-session-expiry-corrupt-ce-session-cookie.png) | ce_session overwritten with EXPIRED_QA_SESSION_... token |
-| 6 | Verify session-expiry overlay appears | PASSED | 3326ms | [png](qa/artifacts/workflow7-2026-06-08T12-11-11-101Z/06-verify-session-expiry-overlay-appears.png) | 401 received; login form with red error banner confirmed |
-| 7 | Verify anti-loop — 5s wait, login form stable | PASSED | 6713ms | [png](qa/artifacts/workflow7-2026-06-08T12-11-11-101Z/07-verify-anti-loop-5s-wait-login-form-stable.png) | 401 storm handled; login form shown once; no JS crash |
-| 8 | Re-login as player | PASSED | 6151ms | [png](qa/artifacts/workflow7-2026-06-08T12-11-11-101Z/08-re-login-as-player.png) | Re-login successful; player nav visible |
-| 9 | Verify overlay clears — session-expired message gone | PASSED | 1780ms | [png](qa/artifacts/workflow7-2026-06-08T12-11-11-101Z/09-verify-overlay-clears-session-expired-message-gone.png) |  |
-| 10 | Verify player nav — navigate to Availability | PASSED | 1587ms | [png](qa/artifacts/workflow7-2026-06-08T12-11-11-101Z/10-verify-player-nav-navigate-to-availability.png) |  |
-| 11 | Navigate back to Messages | PASSED | 1788ms | [png](qa/artifacts/workflow7-2026-06-08T12-11-11-101Z/11-navigate-back-to-messages.png) |  |
-| 12 | Verify messages accessible — Squad history intact | PASSED | 1294ms | [png](qa/artifacts/workflow7-2026-06-08T12-11-11-101Z/12-verify-messages-accessible-squad-history-intact.png) | Squad channel opens after recovery; chat history accessible |
+| 1 | Open app | PASSED | 2373ms | [png](qa/artifacts/workflow7-2026-06-08T13-16-29-030Z/01-open-app.png) |  |
+| 2 | Player login | PASSED | 3469ms | [png](qa/artifacts/workflow7-2026-06-08T13-16-29-030Z/02-player-login.png) |  |
+| 3 | Navigate to Messages | PASSED | 1056ms | [png](qa/artifacts/workflow7-2026-06-08T13-16-29-030Z/03-navigate-to-messages.png) |  |
+| 4 | Open Squad channel — verify message history | PASSED | 1658ms | [png](qa/artifacts/workflow7-2026-06-08T13-16-29-030Z/04-open-squad-channel-verify-message-history.png) | Squad channel open; chat feed visible |
+| 5 | Force session expiry — corrupt ce_session cookie | PASSED | 581ms | [png](qa/artifacts/workflow7-2026-06-08T13-16-29-030Z/05-force-session-expiry-corrupt-ce-session-cookie.png) | ce_session overwritten with EXPIRED_QA_SESSION_... token |
+| 6 | Verify session-expiry overlay appears | PASSED | 2600ms | [png](qa/artifacts/workflow7-2026-06-08T13-16-29-030Z/06-verify-session-expiry-overlay-appears.png) | 401 received; login form with red error banner confirmed |
+| 7 | Verify anti-loop — 5s wait, login form stable | PASSED | 5848ms | [png](qa/artifacts/workflow7-2026-06-08T13-16-29-030Z/07-verify-anti-loop-5s-wait-login-form-stable.png) | 401 storm handled; login form shown once; no JS crash |
+| 8 | Re-login as player | PASSED | 2944ms | [png](qa/artifacts/workflow7-2026-06-08T13-16-29-030Z/08-re-login-as-player.png) | Re-login successful; player nav visible |
+| 9 | Verify overlay clears — session-expired message gone | PASSED | 905ms | [png](qa/artifacts/workflow7-2026-06-08T13-16-29-030Z/09-verify-overlay-clears-session-expired-message-gone.png) |  |
+| 10 | Verify player nav — navigate to Availability | PASSED | 794ms | [png](qa/artifacts/workflow7-2026-06-08T13-16-29-030Z/10-verify-player-nav-navigate-to-availability.png) |  |
+| 11 | Navigate back to Messages | PASSED | 1131ms | [png](qa/artifacts/workflow7-2026-06-08T13-16-29-030Z/11-navigate-back-to-messages.png) |  |
+| 12 | Verify messages accessible — Squad history intact | PASSED | 688ms | [png](qa/artifacts/workflow7-2026-06-08T13-16-29-030Z/12-verify-messages-accessible-squad-history-intact.png) | Squad channel opens after recovery; chat history accessible |
 
 ## Session Expiry Events
 
 | Phase | Endpoint | HTTP Status | Timestamp |
 |---|---|---|---|
-| 1 | `/api/chat` | 401 | 2026-06-08T12:11:20.937Z |
-| 2 | `/api/chat` | 401 | 2026-06-08T12:11:22.065Z |
-| 3 | `/api/chat` | 401 | 2026-06-08T12:11:22.141Z |
-| 4 | `/api/chat` | 401 | 2026-06-08T12:11:22.159Z |
-| 5 | `/api/identity` | 401 | 2026-06-08T12:11:22.556Z |
-| 6 | `/api/templates` | 401 | 2026-06-08T12:11:22.559Z |
-| 7 | `/api/identity` | 401 | 2026-06-08T12:11:22.562Z |
-| 8 | `/api/schedules` | 401 | 2026-06-08T12:11:22.562Z |
-| 9 | `/api/templates` | 401 | 2026-06-08T12:11:22.563Z |
-| 10 | `/api/schedules` | 401 | 2026-06-08T12:11:22.992Z |
-| 11 | `/api/templates` | 401 | 2026-06-08T12:11:23.009Z |
-| 12 | `/api/identity` | 401 | 2026-06-08T12:11:23.009Z |
-| 13 | `/api/templates` | 401 | 2026-06-08T12:11:23.028Z |
-| 14 | `/api/chat` | 401 | 2026-06-08T12:11:23.620Z |
-| 15 | `/api/chat` | 401 | 2026-06-08T12:11:23.854Z |
-| 16 | `/api/chat` | 401 | 2026-06-08T12:11:26.054Z |
-| 17 | `/api/chat` | 401 | 2026-06-08T12:11:26.449Z |
-| 18 | `/api/identity` | 401 | 2026-06-08T12:11:26.488Z |
-| 19 | `/api/schedules` | 401 | 2026-06-08T12:11:26.489Z |
-| 20 | `/api/templates` | 401 | 2026-06-08T12:11:26.492Z |
-| 21 | `/api/chat` | 401 | 2026-06-08T12:11:26.493Z |
-| 22 | `/api/identity` | 401 | 2026-06-08T12:11:26.497Z |
-| 23 | `/api/templates` | 401 | 2026-06-08T12:11:26.526Z |
-| 24 | `/api/chat` | 401 | 2026-06-08T12:11:26.528Z |
-| 25 | `/api/identity` | 401 | 2026-06-08T12:11:26.720Z |
-| 26 | `/api/schedules` | 401 | 2026-06-08T12:11:26.720Z |
-| 27 | `/api/templates` | 401 | 2026-06-08T12:11:26.722Z |
-| 28 | `/api/templates` | 401 | 2026-06-08T12:11:26.873Z |
-| 29 | `/api/chat` | 401 | 2026-06-08T12:11:28.779Z |
-| 30 | `/api/chat` | 401 | 2026-06-08T12:11:29.379Z |
-| 31 | `/api/chat` | 401 | 2026-06-08T12:11:35.366Z |
-| 32 | `/api/chat` | 401 | 2026-06-08T12:11:35.924Z |
-| 33 | `/api/chat` | 401 | 2026-06-08T12:11:35.926Z |
-| 34 | `/api/templates` | 401 | 2026-06-08T12:11:35.931Z |
-| 35 | `/api/schedules` | 401 | 2026-06-08T12:11:35.933Z |
-| 36 | `/api/identity` | 401 | 2026-06-08T12:11:35.934Z |
-| 37 | `/api/identity` | 401 | 2026-06-08T12:11:35.940Z |
-| 38 | `/api/chat` | 401 | 2026-06-08T12:11:35.941Z |
-| 39 | `/api/templates` | 401 | 2026-06-08T12:11:36.417Z |
-| 40 | `/api/chat` | 401 | 2026-06-08T12:11:36.417Z |
-| 41 | `/api/chat` | 401 | 2026-06-08T12:11:37.698Z |
-| 42 | `/api/chat` | 401 | 2026-06-08T12:11:38.536Z |
-| 43 | `/api/chat` | 401 | 2026-06-08T12:11:40.608Z |
-| 44 | `/api/chat` | 401 | 2026-06-08T12:11:41.134Z |
-| 45 | `/api/chat` | 401 | 2026-06-08T12:11:43.266Z |
-| 46 | `/api/chat` | 401 | 2026-06-08T12:11:43.907Z |
-| 47 | `/api/chat` | 401 | 2026-06-08T12:11:45.339Z |
-| 48 | `/api/chat` | 401 | 2026-06-08T12:11:46.080Z |
+| 1 | `/api/chat` | 401 | 2026-06-08T13:16:31.338Z |
+| 2 | `/api/message-config` | 401 | 2026-06-08T13:16:31.875Z |
+| 3 | `/api/chat` | 401 | 2026-06-08T13:16:31.875Z |
+| 4 | `/api/identity` | 401 | 2026-06-08T13:16:31.877Z |
+| 5 | `/api/identity` | 401 | 2026-06-08T13:16:31.927Z |
+| 6 | `/api/message-config` | 401 | 2026-06-08T13:16:31.931Z |
+| 7 | `/api/chat` | 401 | 2026-06-08T13:16:31.958Z |
+| 8 | `/api/message-config` | 401 | 2026-06-08T13:16:31.962Z |
+| 9 | `/api/chat` | 401 | 2026-06-08T13:16:31.965Z |
+| 10 | `/api/message-config` | 401 | 2026-06-08T13:16:32.157Z |
+| 11 | `/api/identity` | 401 | 2026-06-08T13:16:32.158Z |
+| 12 | `/api/identity` | 401 | 2026-06-08T13:16:32.160Z |
+| 13 | `/api/message-config` | 401 | 2026-06-08T13:16:32.161Z |
+| 14 | `/api/message-config` | 401 | 2026-06-08T13:16:32.265Z |
+| 15 | `/api/chat` | 401 | 2026-06-08T13:16:33.387Z |
+| 16 | `/api/chat` | 401 | 2026-06-08T13:16:33.393Z |
+| 17 | `/api/message-config` | 401 | 2026-06-08T13:16:33.393Z |
+| 18 | `/api/message-config` | 401 | 2026-06-08T13:16:33.393Z |
+| 19 | `/api/identity` | 401 | 2026-06-08T13:16:33.394Z |
+| 20 | `/api/identity` | 401 | 2026-06-08T13:16:33.513Z |
+| 21 | `/api/chat` | 401 | 2026-06-08T13:16:33.516Z |
+| 22 | `/api/message-config` | 401 | 2026-06-08T13:16:33.517Z |
+| 23 | `/api/chat` | 401 | 2026-06-08T13:16:33.569Z |
+| 24 | `/api/message-config` | 401 | 2026-06-08T13:16:33.681Z |
+| 25 | `/api/message-config` | 401 | 2026-06-08T13:16:33.687Z |
+| 26 | `/api/identity` | 401 | 2026-06-08T13:16:33.694Z |
+| 27 | `/api/identity` | 401 | 2026-06-08T13:16:33.695Z |
+| 28 | `/api/message-config` | 401 | 2026-06-08T13:16:33.792Z |
+| 29 | `/api/chat` | 401 | 2026-06-08T13:16:41.074Z |
+| 30 | `/api/chat` | 401 | 2026-06-08T13:16:41.444Z |
+| 31 | `/api/message-config` | 401 | 2026-06-08T13:16:41.601Z |
+| 32 | `/api/identity` | 401 | 2026-06-08T13:16:41.601Z |
+| 33 | `/api/message-config` | 401 | 2026-06-08T13:16:41.601Z |
+| 34 | `/api/identity` | 401 | 2026-06-08T13:16:41.602Z |
+| 35 | `/api/chat` | 401 | 2026-06-08T13:16:41.604Z |
+| 36 | `/api/chat` | 401 | 2026-06-08T13:16:41.611Z |
+| 37 | `/api/message-config` | 401 | 2026-06-08T13:16:41.940Z |
+| 38 | `/api/chat` | 401 | 2026-06-08T13:16:41.941Z |
+| 39 | `/api/chat` | 401 | 2026-06-08T13:16:43.535Z |
+| 40 | `/api/chat` | 401 | 2026-06-08T13:16:43.821Z |
+| 41 | `/api/chat` | 401 | 2026-06-08T13:16:46.026Z |
+| 42 | `/api/chat` | 401 | 2026-06-08T13:16:46.251Z |
+| 43 | `/api/chat` | 401 | 2026-06-08T13:16:48.628Z |
+| 44 | `/api/chat` | 401 | 2026-06-08T13:16:49.047Z |
 
 ## Coverage vs Requirements
 
@@ -119,12 +115,13 @@
 
 | Endpoint | Method | Calls | Est. ops |
 |---|---|---|---|
-| `/api/chat` | GET/POST | 57 | ~456 |
-| `/api/templates` | GET | 24 | ~48 |
-| `/api/identity` | GET/POST | 21 | ~130 |
-| `/api/schedules` | GET | 12 | ~24 |
-| `/api/invite` | GET | 5 | ~20 |
-| **Total** | | **119** | **~678** |
+| `/api/chat` | GET/POST | 40 | ~320 |
+| `/api/message-config` | GET | 30 | ~60 |
+| `/api/identity` | GET/POST | 19 | ~118 |
+| `/api/invite` | GET | 6 | ~24 |
+| `/api/matchday` | GET | 2 | ~4 |
+| `/api/fixtures` | GET | 2 | ~4 |
+| **Total** | | **99** | **~530** |
 
 > API calls during session expiry period return 401 with ~1-2 ops (session lookup only).
 > Full W7 run: ~2 logins × 8 ops + ~10 chat polls × 8 ops = ~96 ops estimated.
@@ -170,41 +167,6 @@
 - error: Failed to load resource: the server responded with a status of 401 ()
 - error: Failed to load resource: the server responded with a status of 401 ()
 - error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 404 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 403 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
-- error: Failed to load resource: the server responded with a status of 401 ()
 - error: Failed to load resource: the server responded with a status of 401 ()
 - error: Failed to load resource: the server responded with a status of 401 ()
 - error: Failed to load resource: the server responded with a status of 401 ()
@@ -223,6 +185,29 @@
 - error: Failed to load resource: the server responded with a status of 403 ()
 - error: Failed to load resource: the server responded with a status of 403 ()
 - error: Failed to load resource: the server responded with a status of 403 ()
+- error: Failed to load resource: the server responded with a status of 403 ()
+- error: Failed to load resource: the server responded with a status of 403 ()
+- error: Failed to load resource: the server responded with a status of 403 ()
+- error: Failed to load resource: the server responded with a status of 403 ()
+- error: Failed to load resource: the server responded with a status of 403 ()
+- error: Failed to load resource: the server responded with a status of 403 ()
+- error: Failed to load resource: the server responded with a status of 403 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
+- error: Failed to load resource: the server responded with a status of 401 ()
 - error: Failed to load resource: the server responded with a status of 403 ()
 - error: Failed to load resource: the server responded with a status of 403 ()
 - error: Failed to load resource: the server responded with a status of 403 ()
@@ -241,8 +226,8 @@
 
 ## Toast Messages
 
-- 2026-06-08T12:11:29.321Z — Welcome QA4 Player1780909306779
-- 2026-06-08T12:11:45.744Z — Welcome QA4 Player1780909306779
+- 2026-06-08T13:16:35.499Z — Welcome QA4 Player1780924420801
+- 2026-06-08T13:16:49.917Z — Welcome QA4 Player1780924420801
 
 ## Page Errors
 
@@ -250,43 +235,36 @@
 
 ## Network Failures (non-401)
 
-- net::ERR_ABORTED — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/.well-known/vercel/jwe
-- net::ERR_ABORTED — HEAD https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/
-- net::ERR_ABORTED — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/.well-known/vercel/jwe
-- net::ERR_ABORTED — HEAD https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/schedules
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/invite
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/schedules
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/invite
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/schedules
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/invite
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/schedules
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/schedules
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/schedules
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/invite
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/schedules
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/invite
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- HTTP 403  — GET https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app/api/templates
+- net::ERR_ABORTED — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/.well-known/vercel/jwe
+- net::ERR_ABORTED — HEAD https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/
+- net::ERR_ABORTED — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/.well-known/vercel/jwe
+- net::ERR_ABORTED — HEAD https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/invite
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/invite
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/invite
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/invite
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/invite
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/invite
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
+- HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
 
 ## What Passes
 

@@ -123,7 +123,9 @@ test('Workflow 13 — Role Switching Coach ↔ Player', async ({ page }) => {
   // ─── 3. Enter Player view ─────────────────────────────────────────────────────
   await step(page, 'enter-player-view', async () => {
     await page.evaluate(() => setView('player'));
-    await expect(page.locator('#player-week, #player-messages, #player-availability').first()).toBeVisible({ timeout: 8_000 });
+    // Default activePlayerSection is 'messages'; all sections are always in the DOM,
+    // only the active one has class 'section active' and is visible.
+    await expect(page.locator('#player-messages')).toBeVisible({ timeout: 8_000 });
   });
 
   // ─── 4. Dropdown shows a valid selected player ────────────────────────────────
@@ -225,7 +227,8 @@ test('Workflow 13 — Role Switching Coach ↔ Player', async ({ page }) => {
   // ─── 9. Switch back to Coach view ────────────────────────────────────────────
   await step(page, 'switch-back-to-coach', async () => {
     await page.evaluate(() => setView('coach'));
-    await expect(page.locator('#coach-players, #coach-matchday, #coach-messages').first()).toBeVisible({ timeout: 6_000 });
+    // We navigated to Members earlier, so activeCoachSection = 'players'
+    await expect(page.locator('#coach-players')).toBeVisible({ timeout: 6_000 });
 
     // currentUser().role must be 'coach' still (we haven't called switchToUser)
     const role = await page.evaluate(() =>
@@ -237,7 +240,8 @@ test('Workflow 13 — Role Switching Coach ↔ Player', async ({ page }) => {
   // ─── 10. Re-enter Player view — STP2 still selected ─────────────────────────
   await step(page, 're-enter-player-view-stp2-persists', async () => {
     await page.evaluate(() => setView('player'));
-    await expect(page.locator('#player-week, #player-messages, #player-availability').first()).toBeVisible({ timeout: 8_000 });
+    // activePlayerSection stays 'messages' from step 8
+    await expect(page.locator('#player-messages')).toBeVisible({ timeout: 8_000 });
 
     const resolvedName = await page.evaluate(() =>
       typeof getPlayer === 'function' ? getPlayer()?.name : null
