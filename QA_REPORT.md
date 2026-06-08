@@ -1,13 +1,13 @@
 # QA Report
 
-Generated: 2026-06-06T12:04:08.600Z
-Base URL: https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app
-Status: failed
+Generated: 2026-06-08T09:19:02.078Z
+Base URL: https://boitsfort-coachseye-ovqxxne9r-simonbdodd-9233s-projects.vercel.app
+Status: not-run
 
 ## Summary
 
 - Passed steps: 0
-- Failed steps: 1
+- Failed steps: 0
 - Skipped steps: 0
 - Test player email: not set
 - Expected baseline players: (none)
@@ -23,7 +23,6 @@ Status: failed
 
 | # | Step | Status | Screenshot | Notes |
 |---:|---|---|---|---|
-| 1 | Launch Playwright Chromium | failed |  | Playwright exited before the QA journey started (exit code 1). See qa/test-results/invite-flow-phase-5-invite-flow-chromium/error-context.md. |
 
 ## What Passes
 
@@ -31,7 +30,7 @@ Status: failed
 
 ## What Fails
 
-- Launch Playwright Chromium: Playwright exited before the QA journey started (exit code 1). See qa/test-results/invite-flow-phase-5-invite-flow-chromium/error-context.md.
+- No failing steps recorded.
 
 ## Notes
 
@@ -39,7 +38,7 @@ Status: failed
 - Group invite creation is attempted through the real invite API because the current UI only exposes personal invite links.
 - Coach login must use explicit `QA_COACH_EMAIL` and `QA_COACH_PASSWORD`; the QA agent no longer supplies a shared legacy password fallback.
 - Diagnosis: sandboxed local Playwright runs on macOS 12.7.6 abort Chrome/Chromium before navigation. Running the same smoke command outside the Codex sandbox launches Chrome, opens the app, screenshots, and closes successfully.
-- The browser failed before the first journey step, so no app behavior was exercised.
+- No qa/results/qa-run.json file exists yet. Run npm run qa:e2e first.
 
 ## GitHub Actions Nightly Next Steps
 
@@ -57,3 +56,4 @@ npm run qa:e2e:headed
 QA_BROWSER_CHANNEL=chromium npm run qa:smoke
 QA_BROWSER_CHANNEL=chrome QA_HEADLESS=false npm run qa:smoke
 ```
+

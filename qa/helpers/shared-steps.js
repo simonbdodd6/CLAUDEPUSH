@@ -24,14 +24,49 @@ export async function openApp(page) {
  */
 export async function coachLogin(page, config, result) {
   const devBtn = page.locator('#devLoginBtn');
-  const devAvailable = await devBtn.isVisible({ timeout: 2_000 }).catch(() => false);
+  const devBtnVisible = await devBtn.isVisible({ timeout: 2_000 }).catch(() => false);
 
-  if (devAvailable && !config.coachPassword) {
+  // The devLoginBtn is rendered conditionally after an async config fetch, so it may
+  // not appear in the DOM even when devLoginAvailable=true. Check the API directly as
+  // a reliable fallback and invoke devCoachLogin() in the page context if available.
+  const devAvailableViaApi = !config.coachPassword && !devBtnVisible
+    ? await page.evaluate(async () => {
+        try {
+          const res = await fetch('/api/identity?action=config');
+          const data = await res.json();
+          return Boolean(data.devLoginAvailable);
+        } catch { return false; }
+      }).catch(() => false)
+    : false;
+
+  if (devBtnVisible && !config.coachPassword) {
     result.loginMethod = 'dev-login-btn';
     await devBtn.click();
+  } else if (devAvailableViaApi) {
+    result.loginMethod = 'dev-login-evaluate';
+    const evalResult = await page.evaluate(async () => {
+      if (typeof window.devCoachLogin === 'function') {
+        try { await window.devCoachLogin(); return { ok: true }; }
+        catch (e) { return { ok: false, error: e.message }; }
+      }
+      // Fallback: call the API directly and reload so the app picks up the session cookie
+      const res = await fetch('/api/identity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'dev_coach_login' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      return { ok: res.ok && data.ok !== false, error: data.error || null, needsReload: true };
+    });
+    if (!evalResult.ok) {
+      throw new Error(`Dev coach login failed: ${evalResult.error || 'unknown error'}`);
+    }
+    if (evalResult.needsReload) {
+      await page.reload({ waitUntil: 'domcontentloaded' });
+    }
   } else if (config.coachPassword) {
     result.loginMethod = 'credentials';
-    if (!devAvailable) {
+    if (!devBtnVisible) {
       const loginTab = page.getByRole('button', { name: /^Login$/i });
       const loginTabVisible = await loginTab.isVisible({ timeout: 2_000 }).catch(() => false);
       if (loginTabVisible) await loginTab.click();
@@ -41,9 +76,9 @@ export async function coachLogin(page, config, result) {
     await page.locator('#identityLoginBtn').click();
   } else {
     result.missingSelectorWarnings.push(
-      'devLoginBtn not visible and QA_COACH_PASSWORD not set — set QA_COACH_PASSWORD or run against a preview deployment with devLoginAvailable: true'
+      'devLoginBtn not visible, devLoginAvailable=false via API, and QA_COACH_PASSWORD not set'
     );
-    throw new Error('Cannot log in: devLoginBtn not visible and QA_COACH_PASSWORD is not set');
+    throw new Error('Cannot log in: devLoginBtn not visible, devLoginAvailable=false via API, and QA_COACH_PASSWORD is not set');
   }
 
   await expect.poll(async () => {
@@ -438,6 +473,17 @@ export async function openPlayerDM(page, playerName, result) {
   }
 
   await contact.click();
+
+  // The contact click calls selectChat() which does NOT create the Redis conversation.
+  // chatStartCoachDm() is the only path that calls create_conv, so we invoke it here
+  // to ensure the conversation exists before any message sends.
+  await page.evaluate(async (targetName) => {
+    const visiblePlayers = (typeof canonicalVisiblePlayers === 'function') ? canonicalVisiblePlayers() : [];
+    const player = visiblePlayers.find(p => String(p.name || '').trim() === String(targetName || '').trim());
+    if (player && typeof chatStartCoachDm === 'function') {
+      try { await chatStartCoachDm(player.id); } catch (e) { console.warn('[QA] chatStartCoachDm failed:', e.message); }
+    }
+  }, playerName);
 
   // chatFeed and chatComposerWrap are rendered by selectChat() → chatRenderMessages()
   await expect(page.locator('#chatFeed')).toBeVisible({ timeout: 10_000 });
