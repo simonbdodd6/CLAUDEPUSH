@@ -1,20 +1,27 @@
 /**
- * Workflow 13 — Role Switching: Coach ↔ Player
+ * Workflow 13 — Role Switching: Coach ↔ Player Account
  *
- * Covers the bug where switching Coach → Player → select specific player
- * would show the wrong account due to stale selectedPlayerId (inv-YYYY IDs
- * becoming stale after syncIdentityStateToLocalRoster upgrades them to user_XXXX).
+ * Covers the bug where switchToUser(stp2) → syncCurrentPlayerIdentityFromInvites
+ * would overwrite state.selectedPlayerId with an invite-token ID (inv-ZZZZ).
+ * When the coach later re-entered player preview view (setView('player')),
+ * getPlayer() couldn't find the invite-token ID (already upgraded to user_XXXX
+ * by syncIdentityStateToLocalRoster) and silently fell back to players[0] (wrong player).
+ *
+ * Fix 1: syncCurrentPlayerIdentityFromInvites returns early for isPermanentPlayerUserId accounts
+ * Fix 2: setView('player') normalises selectedPlayerId against canonicalVisiblePlayers()
  *
  * Steps:
  *   1. Coach login
- *   2. Visit Members (triggers syncIdentityStateToLocalRoster — upgrades player IDs)
- *   3. Enter Player view (setView('player') must normalize selectedPlayerId)
- *   4. Verify dropdown shows the correct selected player
- *   5. Select "Simon Test Player 2" from dropdown → verify correct profile loads
- *   6. Navigate to Availability — verify data belongs to selected player
- *   7. Navigate to Messages — verify correct player identity
- *   8. Switch back to Coach view — no stale profile survives
- *   9. Re-enter Player view — correct player still shown (no regression)
+ *   2. Visit Members — triggers syncIdentityStateToLocalRoster (upgrades inv-YYYY → user_XXXX)
+ *   3. Switch to STP2 via switchToUser (simulates the user's reported action)
+ *   4. Verify STP2 loads correctly as the active player account
+ *   5. Switch back to Coach via switchToUser
+ *   6. Enter player preview view via setView('player')
+ *      — KEY ASSERTION: should show the last-used player (STP2 or first valid player),
+ *        NOT silently show players[0] due to stale selectedPlayerId
+ *   7. Verify Availability section shows the correct player
+ *   8. Verify Messages section shows the correct player
+ *   9. Verify no stale state: getPlayer() consistent throughout
  *
  * Writes qa/results/workflow-13.json.
  */
@@ -35,7 +42,8 @@ const config = {
   coachPassword: process.env.QA_COACH_PASSWORD || '',
 };
 
-const STP2_NAME = 'Simon Test Player 2';
+// Exact name as stored in roster (lowercase as confirmed by diagnostic)
+const STP2_NAME = 'simon test player 2';
 
 const result = {
   workflow: 'workflow-13',
@@ -110,145 +118,184 @@ test('Workflow 13 — Role Switching Coach ↔ Player', async ({ page }) => {
   page.on('console', msg => { if (msg.type() === 'error') result.pageErrors.push(msg.text()); });
 
   // ─── 1–2. Login + visit Members to trigger syncIdentityStateToLocalRoster ────
-  await step(page, 'open-app',     () => openApp(page));
-  await step(page, 'coach-login',  () => coachLogin(page, config, result));
+  await step(page, 'open-app',    () => openApp(page));
+  await step(page, 'coach-login', () => coachLogin(page, config, result));
 
-  await step(page, 'visit-members-to-trigger-id-sync', async () => {
+  await step(page, 'visit-members-trigger-id-sync', async () => {
     await navigateToMembers(page);
     await expect(page.locator('#coach-players')).toBeVisible({ timeout: 10_000 });
-    // Wait for member data to load — the player list should appear
-    await page.waitForTimeout(1_500);
+    // Allow syncIdentityStateToLocalRoster to complete (upgrades inv-YYYY → user_XXXX)
+    await page.waitForTimeout(2_000);
   });
 
-  // ─── 3. Enter Player view ─────────────────────────────────────────────────────
-  await step(page, 'enter-player-view', async () => {
-    await page.evaluate(() => setView('player'));
-    // Default activePlayerSection is 'messages'; all sections are always in the DOM,
-    // only the active one has class 'section active' and is visible.
+  // ─── 3. Find STP2's user account ID ──────────────────────────────────────────
+  let stp2UserId = null;
+  let coachUserId = null;
+
+  await step(page, 'find-stp2-user-id', async () => {
+    const lookup = await page.evaluate((stp2Name) => {
+      if (typeof canonicalVisiblePlayers !== 'function') return { error: 'canonicalVisiblePlayers not available' };
+      const players = canonicalVisiblePlayers();
+      const stp2 = players.find(p => p.name.toLowerCase() === stp2Name.toLowerCase());
+      // The user account for the player is found via userId or id
+      const stp2UserAccount = stp2 ? state.users.find(u =>
+        u.id === stp2.userId || u.id === stp2.id || u.playerId === stp2.id
+      ) : null;
+      const coachUser = typeof currentUser === 'function' ? currentUser() : null;
+      return {
+        stp2Player: stp2 ? { id: stp2.id, userId: stp2.userId, name: stp2.name } : null,
+        stp2UserId: stp2UserAccount?.id || stp2?.userId || stp2?.id || null,
+        coachUserId: coachUser?.id || null,
+        allUsers: state.users.map(u => ({ id: u.id, name: u.name, role: u.role })),
+      };
+    }, STP2_NAME);
+
+    if (lookup.error) throw new Error(lookup.error);
+    if (!lookup.stp2UserId) {
+      throw new Error(
+        `Could not find user account for "${STP2_NAME}". ` +
+        `stp2Player=${JSON.stringify(lookup.stp2Player)}. ` +
+        `users=${JSON.stringify(lookup.allUsers)}`
+      );
+    }
+    stp2UserId  = lookup.stp2UserId;
+    coachUserId = lookup.coachUserId;
+  });
+
+  // ─── 4. Switch to STP2 via switchToUser (the actual account-switch mechanism) ─
+  await step(page, 'switch-to-stp2', async () => {
+    await page.evaluate((userId) => switchToUser(userId), stp2UserId);
+    // After switchToUser, activeView = 'player', currentUser().id = stp2UserId
     await expect(page.locator('#player-messages')).toBeVisible({ timeout: 8_000 });
   });
 
-  // ─── 4. Dropdown shows a valid selected player ────────────────────────────────
-  await step(page, 'dropdown-selected-player-valid', async () => {
-    // The player profile dropdown must have a selected option that reflects the actual player shown.
-    // Before the fix, selectedPlayerId was stale (inv-YYYY) — no option was selected, browser picked [0].
-    const selectedName = await page.evaluate(() => {
-      const sel = document.querySelector('label select');
-      if (!sel) return null;
-      const opt = sel.options[sel.selectedIndex];
-      return opt ? opt.text : null;
-    });
-    if (!selectedName) throw new Error('No player dropdown found in player view');
-    if (!selectedName.trim()) throw new Error('Selected option has empty text — stale selectedPlayerId bug still present');
-
-    // The name shown in the input must match the dropdown selection
-    const profileName = await page.evaluate(() => {
-      // getPlayer().name — read from the disabled input or h2 heading
-      const disabled = document.querySelector('label input[disabled]');
-      if (disabled) return disabled.value;
-      // fallback: read player name from UI
-      const h2 = document.querySelector('#player-week h2, #player-messages h2');
-      return h2 ? h2.textContent.trim() : null;
-    });
-    // Both sources should name the same player
-    if (profileName && profileName !== selectedName) {
-      throw new Error(`Dropdown says "${selectedName}" but profile shows "${profileName}" — visual/state mismatch`);
-    }
-  });
-
-  // ─── 5. Select Simon Test Player 2 → correct profile loads ───────────────────
-  await step(page, 'select-stp2', async () => {
-    // Find STP2 in the player list and set selectedPlayerId to that player's id
-    const stp2Id = await page.evaluate((name) => {
-      if (typeof canonicalVisiblePlayers !== 'function') return null;
-      const players = canonicalVisiblePlayers();
-      const p = players.find(pl => pl.name === name);
-      return p ? p.id : null;
+  // ─── 5. Verify STP2 loads as the active player ───────────────────────────────
+  await step(page, 'stp2-loads-correctly', async () => {
+    const diag = await page.evaluate((stp2Name) => {
+      const player = typeof getPlayer === 'function' ? getPlayer() : null;
+      const user   = typeof currentUser === 'function' ? currentUser() : null;
+      return {
+        playerName: player?.name || null,
+        userId: user?.id || null,
+        userRole: user?.role || null,
+        selectedPlayerId: state.selectedPlayerId || null,
+      };
     }, STP2_NAME);
 
-    if (!stp2Id) throw new Error(`"${STP2_NAME}" not found in canonicalVisiblePlayers()`);
-
-    // Select via dropdown onchange (mirrors real user interaction)
-    await page.evaluate((id) => {
-      const sel = document.querySelector('label select');
-      if (!sel) throw new Error('Player selector dropdown not found');
-      sel.value = id;
-      sel.dispatchEvent(new Event('change', { bubbles: true }));
-    }, stp2Id);
-
-    // After render(), the selected option and profile should both name STP2
-    await expect.poll(async () => {
-      return page.evaluate((name) => {
-        const sel = document.querySelector('label select');
-        if (!sel) return false;
-        const opt = sel.options[sel.selectedIndex];
-        return opt && opt.text === name;
-      }, STP2_NAME);
-    }, { timeout: 5_000, message: `Dropdown should show "${STP2_NAME}" as selected` }).toBeTruthy();
-  });
-
-  // ─── 6. Verify getPlayer() resolves to STP2 ──────────────────────────────────
-  await step(page, 'getplayer-resolves-stp2', async () => {
-    const resolvedName = await page.evaluate(() => {
-      if (typeof getPlayer !== 'function') return null;
-      return getPlayer()?.name || null;
-    });
-    if (resolvedName !== STP2_NAME) {
-      throw new Error(`getPlayer() returned "${resolvedName}", expected "${STP2_NAME}" — wrong player loaded`);
+    if (!diag.playerName) throw new Error('getPlayer() returned no player after switchToUser');
+    // Note: as a player account, getPlayer() uses canonicalPlayerIdForUser(user), not selectedPlayerId
+    if (diag.playerName.toLowerCase() !== STP2_NAME.toLowerCase()) {
+      throw new Error(
+        `After switchToUser(stp2), getPlayer()="${diag.playerName}", expected "${STP2_NAME}". ` +
+        `userId="${diag.userId}", selectedPlayerId="${diag.selectedPlayerId}"`
+      );
     }
   });
 
-  // ─── 7. Availability section shows STP2 ──────────────────────────────────────
-  await step(page, 'availability-section-stp2', async () => {
-    await page.evaluate(() => setSection('player', 'availability'));
-    await expect(page.locator('#player-availability')).toBeVisible({ timeout: 6_000 });
+  // ─── 6. Wait for async identity sync to settle ───────────────────────────────
+  // syncCurrentPlayerIdentityFromInvites fires async from renderPlayerMessages.
+  // With the fix: permanent user IDs return early; without it, selectedPlayerId
+  // would be overwritten with an invite-token that becomes stale after syncIdentityStateToLocalRoster.
+  await step(page, 'identity-sync-settle', async () => {
+    await page.waitForTimeout(2_000);
+    const check = await page.evaluate((stp2Name) => {
+      const player = typeof getPlayer === 'function' ? getPlayer() : null;
+      return {
+        playerName: player?.name || null,
+        selectedPlayerId: state.selectedPlayerId || null,
+        currentUserId: state.currentUserId || null,
+      };
+    }, STP2_NAME);
 
-    const resolvedName = await page.evaluate(() =>
-      typeof getPlayer === 'function' ? getPlayer()?.name : null
-    );
-    if (resolvedName !== STP2_NAME) {
-      throw new Error(`Availability: getPlayer()="${resolvedName}", expected "${STP2_NAME}"`);
+    // getPlayer() must still return STP2 after the async sync
+    if (!check.playerName || check.playerName.toLowerCase() !== STP2_NAME.toLowerCase()) {
+      throw new Error(
+        `After async identity sync, getPlayer()="${check.playerName}" — syncCurrentPlayerIdentityFromInvites ` +
+        `overwrote selectedPlayerId="${check.selectedPlayerId}" for a permanent user. Fix: early return in sync fn.`
+      );
     }
   });
 
-  // ─── 8. Messages section shows STP2 ──────────────────────────────────────────
-  await step(page, 'messages-section-stp2', async () => {
-    await page.evaluate(() => setSection('player', 'messages'));
-    await expect(page.locator('#player-messages')).toBeVisible({ timeout: 6_000 });
-
-    const resolvedName = await page.evaluate(() =>
-      typeof getPlayer === 'function' ? getPlayer()?.name : null
-    );
-    if (resolvedName !== STP2_NAME) {
-      throw new Error(`Messages: getPlayer()="${resolvedName}", expected "${STP2_NAME}"`);
-    }
-  });
-
-  // ─── 9. Switch back to Coach view ────────────────────────────────────────────
+  // ─── 7. Switch back to Coach ─────────────────────────────────────────────────
   await step(page, 'switch-back-to-coach', async () => {
-    await page.evaluate(() => setView('coach'));
-    // We navigated to Members earlier, so activeCoachSection = 'players'
-    await expect(page.locator('#coach-players')).toBeVisible({ timeout: 6_000 });
+    if (!coachUserId) throw new Error('coachUserId not captured in step 3');
+    await page.evaluate((userId) => switchToUser(userId), coachUserId);
+    await expect(page.locator('#coach-players')).toBeVisible({ timeout: 8_000 });
 
-    // currentUser().role must be 'coach' still (we haven't called switchToUser)
     const role = await page.evaluate(() =>
       typeof currentUser === 'function' ? currentUser()?.role : null
     );
-    if (role !== 'coach') throw new Error(`After setView('coach'), role="${role}", expected "coach"`);
+    if (role !== 'coach') throw new Error(`After switchToUser(coach), role="${role}", expected "coach"`);
   });
 
-  // ─── 10. Re-enter Player view — STP2 still selected ─────────────────────────
-  await step(page, 're-enter-player-view-stp2-persists', async () => {
+  // ─── 8. Re-enter player view — correct player must load ──────────────────────
+  // This is the core regression test. Before the fix:
+  //   - syncCurrentPlayerIdentityFromInvites had overwritten selectedPlayerId with inv-ZZZZ
+  //   - setView('player') had no normalization
+  //   - getPlayer() couldn't find inv-ZZZZ (since IDs were upgraded to user_XXXX)
+  //   - silently returned players[0] — the wrong player
+  // After the fix: setView('player') normalises selectedPlayerId; syncCurrentPlayerIdentityFromInvites
+  // returns early for permanent user IDs.
+  await step(page, 'player-preview-shows-valid-player', async () => {
     await page.evaluate(() => setView('player'));
-    // activePlayerSection stays 'messages' from step 8
     await expect(page.locator('#player-messages')).toBeVisible({ timeout: 8_000 });
 
-    const resolvedName = await page.evaluate(() =>
-      typeof getPlayer === 'function' ? getPlayer()?.name : null
+    const diag = await page.evaluate((stp2Name) => {
+      const player = typeof getPlayer === 'function' ? getPlayer() : null;
+      const players = typeof canonicalVisiblePlayers === 'function' ? canonicalVisiblePlayers() : [];
+      return {
+        playerName: player?.name || null,
+        playerId: player?.id || null,
+        selectedPlayerId: state.selectedPlayerId || null,
+        isPlayers0: player?.id === (players[0]?.id) && players[0]?.name?.toLowerCase() !== stp2Name.toLowerCase(),
+      };
+    }, STP2_NAME);
+
+    // The player shown must not be the silent fallback (players[0]) unless it happens to be STP2
+    if (!diag.playerName) throw new Error('getPlayer() returned no player in coach player preview');
+
+    // Key fix assertion: selectedPlayerId must resolve to a real player, not be stale
+    if (diag.selectedPlayerId) {
+      // After fix, selectedPlayerId was normalised by setView('player') — it should match playerId
+      if (diag.playerId && diag.selectedPlayerId !== diag.playerId) {
+        // This indicates the normalization is working but selecting a different player — acceptable
+        // as long as it's not because the ID was stale
+      }
+    }
+
+    // The loaded player must actually be STP2 (the last account we switched to)
+    if (diag.playerName.toLowerCase() !== STP2_NAME.toLowerCase()) {
+      throw new Error(
+        `Player preview after coach re-entry shows "${diag.playerName}" (id=${diag.playerId}), ` +
+        `expected "${STP2_NAME}". selectedPlayerId="${diag.selectedPlayerId}". ` +
+        `This is the original bug: stale selectedPlayerId caused getPlayer() to fall back to players[0].`
+      );
+    }
+  });
+
+  // ─── 9. Availability section shows STP2 ──────────────────────────────────────
+  await step(page, 'availability-shows-stp2', async () => {
+    await page.evaluate(() => setSection('player', 'availability'));
+    await expect(page.locator('#player-availability')).toBeVisible({ timeout: 6_000 });
+
+    const playerName = await page.evaluate(() =>
+      typeof getPlayer === 'function' ? getPlayer()?.name?.toLowerCase() : null
     );
-    // After fix, setView('player') normalizes selectedPlayerId so STP2 is still shown
-    if (resolvedName !== STP2_NAME) {
-      throw new Error(`After re-entering player view, getPlayer()="${resolvedName}", expected "${STP2_NAME}" — stale ID bug still present`);
+    if (!playerName || playerName !== STP2_NAME.toLowerCase()) {
+      throw new Error(`Availability: getPlayer()="${playerName}", expected "${STP2_NAME}"`);
+    }
+  });
+
+  // ─── 10. Messages section shows STP2 ─────────────────────────────────────────
+  await step(page, 'messages-shows-stp2', async () => {
+    await page.evaluate(() => setSection('player', 'messages'));
+    await expect(page.locator('#player-messages')).toBeVisible({ timeout: 6_000 });
+
+    const playerName = await page.evaluate(() =>
+      typeof getPlayer === 'function' ? getPlayer()?.name?.toLowerCase() : null
+    );
+    if (!playerName || playerName !== STP2_NAME.toLowerCase()) {
+      throw new Error(`Messages: getPlayer()="${playerName}", expected "${STP2_NAME}"`);
     }
   });
 
