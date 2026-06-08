@@ -27,9 +27,26 @@ function configurePush() {
 
 async function sendDmPush(recipientId, senderDisplayName, text) {
   if (!configurePush()) return;
-  const allSubs = await loadSubs();
+  const [allSubs, profiles] = await Promise.all([
+    loadSubs(),
+    kvGet(key('identity:player_profiles')).then(v => Array.isArray(v) ? v : []),
+  ]);
+
+  // The convId participant ID (e.g. 'inv-YxnjxnQa') may differ from the login
+  // user ID stored in the subscription (e.g. 'player-simon-test'). Build a
+  // complete set of IDs for this recipient by looking up their player profile.
+  const recipientIds = new Set([recipientId]);
+  profiles.forEach(p => {
+    const pLegacy = String(p.legacyPlayerId || '');
+    const pUser   = String(p.userId || '');
+    if ((pLegacy && pLegacy === recipientId) || (pUser && pUser === recipientId)) {
+      if (pLegacy) recipientIds.add(pLegacy);
+      if (pUser)   recipientIds.add(pUser);
+    }
+  });
+
   const targets = allSubs.filter(item =>
-    [item.userId, item.playerId, item.legacyPlayerId].some(v => v && String(v) === recipientId)
+    [item.userId, item.playerId, item.legacyPlayerId].some(v => v && recipientIds.has(String(v)))
   );
   if (!targets.length) return;
   const payload = JSON.stringify({

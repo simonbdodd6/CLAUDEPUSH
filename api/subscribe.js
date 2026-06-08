@@ -36,16 +36,20 @@ export default async function handler(req, res) {
     }
     const subs  = await load();
     const idx   = subs.findIndex(s => s.subscription.endpoint === subscription.endpoint);
-    const sessionUserId = sessionContext?.user?.id || '';
-    const sessionPlayerId = sessionContext?.playerProfile?.userId ||
-      sessionContext?.playerProfile?.legacyPlayerId || '';
+    const sessionUserId   = sessionContext?.user?.id || '';
+    const sessionLegacyId = sessionContext?.playerProfile?.legacyPlayerId || '';
+    const sessionProfileId = sessionContext?.playerProfile?.userId || '';
+    // playerId should be the messaging participant ID (legacyPlayerId when available)
+    // so that DM push subscriptions can be found by convId participant.
+    const resolvedPlayerId = sessionLegacyId || sessionProfileId || sessionUserId;
     const entry = {
       subscription,
-      label: displayNameFromSession(sessionContext) || label || 'Player',
-      userId: sessionUserId || userId || '',
-      playerId: sessionPlayerId || playerId || sessionUserId || '',
-      role: sessionContext?.teamMember?.role || sessionContext?.user?.role || '',
-      savedAt: new Date().toISOString(),
+      label:         displayNameFromSession(sessionContext) || label || 'Player',
+      userId:        sessionUserId || userId || '',
+      playerId:      resolvedPlayerId || playerId || sessionUserId || '',
+      legacyPlayerId: sessionLegacyId || '',
+      role:          sessionContext?.teamMember?.role || sessionContext?.user?.role || '',
+      savedAt:       new Date().toISOString(),
     };
     if (idx >= 0) subs[idx] = entry; else subs.push(entry);
     await save(subs);
