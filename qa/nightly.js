@@ -753,6 +753,7 @@ if (diff.regressions.length > 0 || diff.newFailures.length > 0) {
 
   await spawnQa('qa/analyst.js',      'Running QA Analyst');
   await spawnQa('qa/repair-agent.js', 'Running Repair Agent');
+  await spawnQa('qa/github-agent.js', 'Running GitHub PR Agent');
 } else {
   console.log('\n[nightly] No regressions — skipping analyst and repair agent.');
 }

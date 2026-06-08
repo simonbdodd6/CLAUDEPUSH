@@ -40,6 +40,7 @@
     "qa:nightly": "node qa/nightly.js",
     "qa:analyst": "node qa/analyst.js",
     "qa:repair": "node qa/repair-agent.js",
+    "qa:github": "node qa/github-agent.js",
     "qa:dashboard": "node qa/mission-control/generate-dashboard.js",
     "qa:report": "node qa/report.js"
   },
