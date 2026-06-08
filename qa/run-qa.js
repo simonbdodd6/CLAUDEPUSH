@@ -12,18 +12,20 @@ const workflow3    = process.argv.includes('--workflow-3');
 const workflow4    = process.argv.includes('--workflow-4');
 const workflow5    = process.argv.includes('--workflow-5');
 const workflow6    = process.argv.includes('--workflow-6');
+const workflow7    = process.argv.includes('--workflow-7');
 const allWorkflows = process.argv.includes('--all-workflows');
 const args = ['playwright', 'test', '--config=playwright.config.js'];
 if (headed) args.push('--headed');
 if (allWorkflows) {
-  // Run all six workflow specs in sequence — the nightly suite
+  // Run all seven workflow specs in sequence — the nightly suite
   args.push(
     'qa/e2e/workflow-1-coach-login-members.spec.js',
     'qa/e2e/workflow-2-invite-generation.spec.js',
     'qa/e2e/workflow-3-player-registration.spec.js',
     'qa/e2e/workflow-4-pending-approval.spec.js',
     'qa/e2e/workflow-5-messaging.spec.js',
-    'qa/e2e/workflow-6-squad-broadcast.spec.js'
+    'qa/e2e/workflow-6-squad-broadcast.spec.js',
+    'qa/e2e/workflow-7-session-expiry.spec.js'
   );
 } else {
   args.push(
@@ -45,7 +47,9 @@ if (allWorkflows) {
                     ? 'qa/e2e/workflow-5-messaging.spec.js'
                     : workflow6
                       ? 'qa/e2e/workflow-6-squad-broadcast.spec.js'
-                      : 'qa/e2e/nightly-qa-agent.spec.js'
+                      : workflow7
+                        ? 'qa/e2e/workflow-7-session-expiry.spec.js'
+                        : 'qa/e2e/nightly-qa-agent.spec.js'
   );
 }
 
