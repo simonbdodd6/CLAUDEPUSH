@@ -6,6 +6,7 @@
   --green: #34d399;
   --violet: #a78bfa;
   --pink: #fb7185;
+  --amber: #fbbf24;
   --ink: #e0f2fe;
   --muted: #7dd3fc;
   --glass: rgba(8, 20, 38, 0.58);
@@ -243,6 +244,285 @@ body {
   to { transform: translateX(-100%); }
 }
 
+/* ─── Market Intelligence toggle button ─────────────────────────────────────── */
+
+.mi-toggle {
+  position: fixed;
+  left: 18px;
+  bottom: 52px;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  border: 1px solid rgba(251, 191, 36, 0.32);
+  border-radius: 10px;
+  background: rgba(8, 20, 38, 0.72);
+  backdrop-filter: blur(18px);
+  color: #fef3c7;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.08);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.mi-toggle:hover,
+.mi-toggle.active {
+  border-color: rgba(251, 191, 36, 0.72);
+  box-shadow: 0 0 28px rgba(251, 191, 36, 0.22);
+}
+
+.mi-toggle .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 8px #fbbf24;
+  flex-shrink: 0;
+}
+
+.mi-toggle .dot.empty {
+  background: rgba(251, 191, 36, 0.3);
+  box-shadow: none;
+}
+
+/* ─── Market Intelligence panel ──────────────────────────────────────────────── */
+
+#marketPanel {
+  left: 18px;
+  bottom: 100px;
+  width: min(420px, calc(100vw - 36px));
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  padding: 16px 18px;
+  transform-origin: bottom left;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  border-color: rgba(251, 191, 36, 0.22);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(251, 191, 36, 0.2) transparent;
+}
+
+#marketPanel.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px) scale(0.97);
+}
+
+#marketPanel .kicker {
+  color: #fbbf24;
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+}
+
+#marketPanel h2 {
+  margin: 5px 0 14px;
+  font-size: 16px;
+  letter-spacing: 0;
+  color: #fef9c3;
+}
+
+.mi-stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.mi-stat {
+  background: rgba(251, 191, 36, 0.06);
+  border: 1px solid rgba(251, 191, 36, 0.14);
+  border-radius: 9px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.mi-stat strong {
+  display: block;
+  font-size: 22px;
+  color: #fef3c7;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.mi-stat span {
+  font-size: 10px;
+  color: rgba(251, 191, 36, 0.7);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+}
+
+.mi-section {
+  margin-bottom: 14px;
+}
+
+.mi-section-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: rgba(251, 191, 36, 0.6);
+  margin-bottom: 7px;
+}
+
+.mi-lead-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px 70px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(251, 191, 36, 0.07);
+  font-size: 12px;
+}
+
+.mi-lead-row:last-child { border-bottom: none; }
+
+.mi-lead-name {
+  color: #e0f2fe;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mi-lead-country {
+  color: rgba(224, 242, 254, 0.55);
+  font-size: 11px;
+}
+
+.mi-score {
+  font-size: 13px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.mi-score.high   { color: #4ade80; }
+.mi-score.mid    { color: #fbbf24; }
+.mi-score.low    { color: #f87171; }
+
+.mi-bar-row {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) 28px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 5px;
+  font-size: 12px;
+}
+
+.mi-bar-label { color: rgba(224, 242, 254, 0.7); }
+
+.mi-bar-track {
+  height: 5px;
+  background: rgba(251, 191, 36, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.mi-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #fbbf24, #f59e0b);
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+
+.mi-bar-count {
+  color: rgba(251, 191, 36, 0.7);
+  font-size: 11px;
+  text-align: right;
+}
+
+.mi-comp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(251, 191, 36, 0.07);
+  font-size: 12px;
+}
+
+.mi-comp-row:last-child { border-bottom: none; }
+
+.mi-comp-name {
+  color: #e0f2fe;
+  font-weight: 600;
+}
+
+.mi-comp-meta {
+  color: rgba(224, 242, 254, 0.5);
+  font-size: 11px;
+}
+
+.mi-comp-price {
+  color: #fbbf24;
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mi-action {
+  margin-top: 14px;
+  padding: 11px 14px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.22);
+  border-radius: 9px;
+  font-size: 12px;
+  color: #fef9c3;
+  line-height: 1.5;
+}
+
+.mi-action .mi-action-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #fbbf24;
+  margin-bottom: 5px;
+}
+
+.mi-empty {
+  color: rgba(251, 191, 36, 0.45);
+  font-size: 12px;
+  text-align: center;
+  padding: 20px 0;
+  line-height: 1.8;
+}
+
+.mi-ts {
+  font-size: 10px;
+  color: rgba(224, 242, 254, 0.3);
+  margin-top: 14px;
+  text-align: right;
+}
+
+.mi-stat-arr strong {
+  font-size: 14px;
+  color: #4ade80;
+}
+
+.mi-contact-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(251, 191, 36, 0.07);
+  font-size: 12px;
+}
+
+.mi-contact-row:last-child { border-bottom: none; }
+
+.mi-email-link {
+  color: #67e8f9;
+  text-decoration: none;
+  font-size: 10px;
+}
+
+.mi-email-link:hover { text-decoration: underline; }
+
 @media (max-width: 720px) {
   .overlay-right {
     top: auto;
@@ -264,4 +544,19 @@ body {
   }
 
   .mode-pill { display: none; }
+
+  #marketPanel {
+    left: 0;
+    right: 0;
+    bottom: 44px;
+    width: 100%;
+    border-radius: 14px 14px 0 0;
+    max-height: 70vh;
+  }
+
+  .mi-toggle {
+    left: auto;
+    right: 18px;
+    bottom: 52px;
+  }
 }

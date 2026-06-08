@@ -435,6 +435,7 @@ window.addEventListener('keydown', event => {
   if (event.key === 'Escape') {
     state.selected = null;
     showPanel(null);
+    closeMarketPanel();
   }
 });
 
@@ -443,6 +444,165 @@ window.addEventListener('resize', resize);
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/mission-control/sw.js').catch(() => {});
 }
+
+// ─── Market Intelligence panel ────────────────────────────────────────────────
+
+const marketPanel  = document.getElementById('marketPanel');
+const marketToggle = document.getElementById('miToggle');
+const miDot        = document.getElementById('miDot');
+
+let miData = null;
+let miOpen = false;
+
+function scoreClass(score) {
+  if (score >= 8) return 'high';
+  if (score >= 6) return 'mid';
+  return 'low';
+}
+
+function renderMarketPanel(data) {
+  const content = document.getElementById('marketPanelContent');
+  if (!content) return;
+
+  if (!data || data.clubsReviewed === 0 && data.competitorsReviewed === 0) {
+    content.innerHTML = `
+      <p class="mi-empty">
+        No market data yet.<br>
+        Add club or competitor files to<br>
+        <code>qa/market-input/clubs/</code><br>
+        then run: <code>node qa/market-intel-agent.js</code>
+      </p>`;
+    return;
+  }
+
+  const topCountries = (data.topCountries ?? []).slice(0, 5);
+  const maxCount = Math.max(1, ...topCountries.map(c => c.count));
+
+  const countryBars = topCountries.map(({ country, count }) => `
+    <div class="mi-bar-row">
+      <span class="mi-bar-label">${escapeHtml(country)}</span>
+      <div class="mi-bar-track"><div class="mi-bar-fill" style="width:${Math.round(count / maxCount * 100)}%"></div></div>
+      <span class="mi-bar-count">${count}</span>
+    </div>`).join('') || '<p style="color:rgba(251,191,36,.4);font-size:12px">No country data</p>';
+
+  const leads = (data.topLeads ?? []).slice(0, 5).map(lead => `
+    <div class="mi-lead-row">
+      <div>
+        <div class="mi-lead-name">${escapeHtml(lead.name)}</div>
+        <div class="mi-lead-country">${escapeHtml(lead.country)} · ${escapeHtml(lead.contact)}</div>
+      </div>
+      <span class="mi-score ${scoreClass(lead.fitScore)}">${lead.fitScore}</span>
+      <span style="font-size:10px;color:rgba(224,242,254,.5)">${escapeHtml(lead.badge ?? '')}</span>
+    </div>`).join('') || '<p style="color:rgba(251,191,36,.4);font-size:12px">No leads yet</p>';
+
+  const competitors = (data.competitorSummary ?? []).slice(0, 6).map(c => `
+    <div class="mi-comp-row">
+      <div>
+        <div class="mi-comp-name">${escapeHtml(c.name)}</div>
+        <div class="mi-comp-meta">${c.rugbySpecific ? '🏉 Rugby-specific' : 'Generic sports'}${c.freeTier ? ' · Free tier' : ''}</div>
+      </div>
+      <span class="mi-comp-price">${escapeHtml(c.pricing || 'unknown')}</span>
+    </div>`).join('') || '<p style="color:rgba(251,191,36,.4);font-size:12px">No competitor data</p>';
+
+  const ts = data.generatedAt ? new Date(data.generatedAt).toLocaleString() : 'unknown';
+
+  const arrFormatted = data.totalExpectedARR
+    ? `€${Number(data.totalExpectedARR).toLocaleString()}`
+    : '€0';
+
+  const topContacts = (data.topContacts ?? []).slice(0, 5).map(c => `
+    <div class="mi-contact-row">
+      <div>
+        <div class="mi-lead-name">${escapeHtml(c.name)}</div>
+        <div class="mi-lead-country">${escapeHtml(c.country)} · <a class="mi-email-link" href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a></div>
+      </div>
+      <span class="mi-score ${scoreClass(c.fitScore)}">${c.fitScore}</span>
+    </div>`).join('') || '<p style="color:rgba(251,191,36,.4);font-size:12px">No contacts with email found yet</p>';
+
+  content.innerHTML = `
+    <div class="mi-stat-row">
+      <div class="mi-stat"><strong>${data.clubsReviewed ?? 0}</strong><span>Clubs</span></div>
+      <div class="mi-stat"><strong>${data.hotLeads ?? data.strongLeads ?? 0}</strong><span>Hot Leads</span></div>
+      <div class="mi-stat mi-stat-arr"><strong>${arrFormatted}</strong><span>Pipeline ARR</span></div>
+    </div>
+
+    <div class="mi-section">
+      <div class="mi-section-title">Top Clubs to Contact</div>
+      ${topContacts}
+    </div>
+
+    <div class="mi-section">
+      <div class="mi-section-title">Clubs by Country</div>
+      ${countryBars}
+    </div>
+
+    <div class="mi-section">
+      <div class="mi-section-title">Top Scored Leads</div>
+      ${leads}
+    </div>
+
+    <div class="mi-section">
+      <div class="mi-section-title">Competitor Pricing</div>
+      ${competitors}
+    </div>
+
+    ${data.nextAction ? `
+    <div class="mi-action">
+      <div class="mi-action-label">🎯 Recommended Next Action</div>
+      ${escapeHtml(data.nextAction)}
+    </div>` : ''}
+
+    <div class="mi-ts">Last run: ${escapeHtml(ts)} · Mode: ${escapeHtml(data.analysisMode ?? 'unknown')}</div>
+  `;
+}
+
+async function loadMarketData() {
+  try {
+    const res = await fetch('/api/mission-control?action=market-intel', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    miData = json.marketIntel ?? null;
+  } catch {
+    miData = null;
+  }
+  renderMarketPanel(miData);
+
+  // Update dot state
+  const hasData = miData && (miData.clubsReviewed > 0 || miData.competitorsReviewed > 0);
+  miDot.className = `dot${hasData ? '' : ' empty'}`;
+}
+
+function openMarketPanel() {
+  miOpen = true;
+  marketPanel.classList.remove('hidden');
+  marketToggle.classList.add('active');
+  marketToggle.setAttribute('aria-expanded', 'true');
+  // Close node panel to avoid overlap
+  panel.classList.add('hidden');
+  if (!miData) loadMarketData();
+}
+
+function closeMarketPanel() {
+  miOpen = false;
+  marketPanel.classList.add('hidden');
+  marketToggle.classList.remove('active');
+  marketToggle.setAttribute('aria-expanded', 'false');
+}
+
+marketToggle.addEventListener('click', () => {
+  if (miOpen) closeMarketPanel();
+  else openMarketPanel();
+});
+
+// Refresh market data every 5 minutes while panel is open
+setInterval(() => {
+  if (miOpen) loadMarketData();
+}, 5 * 60 * 1000);
+
+// Initial dot state check (non-blocking)
+loadMarketData();
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
 
 resize();
 installGraph(demoPayload());

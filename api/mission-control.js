@@ -64,8 +64,8 @@ function walk(dir, files = []) {
   return files;
 }
 
-function readText(path) {
-  try { return readFileSync(join(ROOT, path), 'utf8'); } catch { return ''; }
+function readText(filePath) {
+  try { return readFileSync(join(ROOT, filePath), 'utf8'); } catch { return ''; }
 }
 
 function collectGit() {
@@ -177,6 +177,18 @@ async function collectRedis() {
   }
 }
 
+// ─── Market Intelligence — reads the JSON summary written by qa/market-intel-agent.js ──
+
+function collectMarketIntel() {
+  const summaryPath = join(ROOT, 'qa/market-reports/market-intel-summary.json');
+  try {
+    const raw = readFileSync(summaryPath, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 function node(id, label, type, meta = {}) {
   return { id, label, type, meta };
 }
@@ -258,6 +270,12 @@ export default async function handler(req, res) {
     await requireTenantRole(req, ['coach', 'admin']);
   } catch (error) {
     return authError(res, error);
+  }
+
+  // Market Intelligence summary — reads pre-generated JSON from the agent
+  if (req.query?.action === 'market-intel') {
+    const marketIntel = collectMarketIntel();
+    return json(res, 200, { ok: true, marketIntel });
   }
 
   const git = collectGit();

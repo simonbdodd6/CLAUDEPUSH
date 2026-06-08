@@ -1,0 +1,111 @@
+{
+  "generatedAt": "2026-06-08T18:10:22.822Z",
+  "clubsReviewed": 6,
+  "competitorsReviewed": 0,
+  "avgFitScore": 7.9,
+  "strongLeads": 5,
+  "hotLeads": 5,
+  "totalExpectedARR": 848,
+  "topCountries": [
+    {
+      "country": "Ireland",
+      "count": 3
+    },
+    {
+      "country": "France",
+      "count": 2
+    },
+    {
+      "country": "Scotland",
+      "count": 1
+    }
+  ],
+  "byCountry": {
+    "Ireland": 3,
+    "France": 2,
+    "Scotland": 1
+  },
+  "topLeads": [
+    {
+      "id": "lead_d7bbc883e7",
+      "name": "Ballymena RFC",
+      "country": "Ireland",
+      "fitScore": 8.7,
+      "contact": "email",
+      "status": "new",
+      "badge": "🟢 Strong fit",
+      "expectedARR": 168
+    },
+    {
+      "id": "lead_d5fcd609d8",
+      "name": "Cork Constitution FC",
+      "country": "Ireland",
+      "fitScore": 8,
+      "contact": "facebook",
+      "status": "new",
+      "badge": "🟢 Strong fit",
+      "expectedARR": 168
+    },
+    {
+      "id": "lead_8a0dd55c49",
+      "name": "Leinster Wanderers",
+      "country": "Ireland",
+      "fitScore": 8.3,
+      "contact": "facebook",
+      "status": "new",
+      "badge": "🟢 Strong fit",
+      "expectedARR": 168
+    },
+    {
+      "id": "lead_1e335159f5",
+      "name": "Bordeaux Etudiants Club",
+      "country": "France",
+      "fitScore": 8.2,
+      "contact": "email",
+      "status": "new",
+      "badge": "🟢 Strong fit",
+      "expectedARR": 168
+    },
+    {
+      "id": "lead_d7a0a85a5c",
+      "name": "Edinburgh Academical",
+      "country": "Scotland",
+      "fitScore": 8.5,
+      "contact": "email",
+      "status": "new",
+      "badge": "🟢 Strong fit",
+      "expectedARR": 168
+    }
+  ],
+  "topContacts": [
+    {
+      "name": "Ballymena RFC",
+      "country": "Ireland",
+      "email": "sec@ballymenarufc.co.uk",
+      "fitScore": 8.7,
+      "expectedARR": 168
+    },
+    {
+      "name": "Bordeaux Etudiants Club",
+      "country": "France",
+      "email": "contact@bec-rugby.fr",
+      "fitScore": 8.2,
+      "expectedARR": 168
+    },
+    {
+      "name": "Edinburgh Academical",
+      "country": "Scotland",
+      "email": "sec@edin-acc.co.uk",
+      "fitScore": 8.5,
+      "expectedARR": 168
+    }
+  ],
+  "statusBreakdown": {
+    "new": 6
+  },
+  "competitorSummary": [],
+  "topPainPoints": [],
+  "nextAction": "Reach out to Ballymena RFC — top-scoring lead (8.7/10)",
+  "pricingRec": "€70/month or €650/year",
+  "analysisMode": "pipeline"
+}

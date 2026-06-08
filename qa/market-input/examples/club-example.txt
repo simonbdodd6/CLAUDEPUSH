@@ -1,0 +1,26 @@
+# Example club file
+# Save real club content in this format — copy-paste from their website or Facebook page.
+# The agent accepts any text. You don't need to format it.
+
+Ballymena Rugby Football Club
+
+Based in Ballymena, Co. Antrim, Northern Ireland.
+Founded 1887. Competing in Ulster Premier League Division 1.
+
+Our club runs five adult teams and three youth sections (U18, U16, U14).
+Training every Tuesday and Thursday at Eaton Park.
+
+For availability and match selection queries, contact our team secretary:
+secretary@ballymenarufc.co.uk
+
+Follow us on Facebook: facebook.com/ballymenarufc
+Follow us on Instagram: @ballymenarufc
+
+Match reports updated weekly on this website.
+
+---
+# Notes you can add manually:
+# Website looks like it was built in 2015 — WordPress, no mobile optimization.
+# Facebook page has 1,200 followers, posts multiple times per week.
+# No app mentioned anywhere. Availability likely done via WhatsApp or email.
+# Secretary is the contact — will respond to polite inquiry.

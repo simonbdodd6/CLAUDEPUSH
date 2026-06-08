@@ -30,6 +30,21 @@
 
     <section id="nodePanel" class="glass node-panel hidden" aria-live="polite"></section>
 
+    <!-- Market Intelligence panel -->
+    <section id="marketPanel" class="glass hidden" aria-label="Market Intelligence" aria-live="polite">
+      <span class="kicker">Market Intelligence</span>
+      <h2>Club &amp; Competitor Research</h2>
+      <div id="marketPanelContent">
+        <p class="mi-empty">Loading market data…</p>
+      </div>
+    </section>
+
+    <!-- Market Intelligence toggle -->
+    <button class="mi-toggle" id="miToggle" type="button" aria-controls="marketPanel" aria-expanded="false">
+      <span class="dot empty" id="miDot"></span>
+      Market Intel
+    </button>
+
     <div class="ticker-wrap">
       <div id="eventTicker" class="ticker">Booting project telemetry...</div>
     </div>
