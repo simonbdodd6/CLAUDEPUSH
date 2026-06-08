@@ -3693,6 +3693,17 @@
     function setView(view) {
       if (view === "coach" && !isCoach()) return notify("Player accounts cannot open coach tools");
       state.activeView = view;
+      if (view === 'player' && isCoach()) {
+        const players = canonicalVisiblePlayers();
+        if (players.length) {
+          const resolved = players.find(p =>
+            String(p.id || '') === String(state.selectedPlayerId || '') ||
+            String(p.userId || '') === String(state.selectedPlayerId || '') ||
+            String(resolveRosterMessagingId(p, state.users)) === String(state.selectedPlayerId || '')
+          );
+          state.selectedPlayerId = resolved ? resolved.id : players[0].id;
+        }
+      }
       saveState("View saved");
       render();
     }
@@ -5577,8 +5588,9 @@
       const player = getPlayer();
       if (!isCoach()) return `<label>Player profile<input value="${player.name}" disabled></label>`;
       const players = canonicalVisiblePlayers();
+      const effectiveId = player?.id || players[0]?.id || '';
       return `<label>Player profile<select onchange="state.selectedPlayerId=this.value;saveState('Player profile saved');render();">
-        ${players.map(p => `<option value="${p.id}" ${p.id===state.selectedPlayerId?"selected":""}>${p.name}</option>`).join("")}
+        ${players.map(p => `<option value="${p.id}" ${p.id===effectiveId?"selected":""}>${p.name}</option>`).join("")}
       </select></label>`;
     }
 
@@ -6044,6 +6056,10 @@
     async function syncCurrentPlayerIdentityFromInvites() {
       const user = currentUser();
       if (!user || user.role !== 'player' || _playerIdentitySyncInFlight || _playerIdentitySyncedFor === user.id) return false;
+      if (isPermanentPlayerUserId(user.id)) {
+        _playerIdentitySyncedFor = user.id;
+        return false;
+      }
       _playerIdentitySyncInFlight = true;
       try {
         const data = await fetch('/api/invite').then(r => r.json());
