@@ -2937,7 +2937,7 @@
       // ── Persist to backend ────────────────────────────────────────────────
       try {
         // 1. Upsert the template
-        const tplRes = await fetch('/api/templates', {
+        const tplRes = await fetch('/api/message-config?resource=templates', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({
@@ -2951,7 +2951,7 @@
         if (!tplRes.ok) throw new Error(await tplRes.text());
 
         // 2. Upsert the schedule
-        const schedRes = await fetch('/api/schedules', {
+        const schedRes = await fetch('/api/message-config?resource=schedules', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({
@@ -3006,8 +3006,8 @@
     async function editLiveSchedule(scheduleId) {
       try {
         const [schedRes, tplRes] = await Promise.all([
-          fetch('/api/schedules').then(r => r.json()),
-          fetch('/api/templates').then(r => r.json()),
+          fetch('/api/message-config?resource=schedules').then(r => r.json()),
+          fetch('/api/message-config?resource=templates').then(r => r.json()),
         ]);
         const sched = (schedRes.schedules || []).find(s => s.id === scheduleId);
         if (!sched) { notify('Schedule not found'); return; }
@@ -8289,8 +8289,8 @@
       if (!panel) return;
       try {
         const [schedRes, tplRes] = await Promise.all([
-          fetch('/api/schedules').then(r => r.json()),
-          fetch('/api/templates').then(r => r.json()),
+          fetch('/api/message-config?resource=schedules').then(r => r.json()),
+          fetch('/api/message-config?resource=templates').then(r => r.json()),
         ]);
         const schedules = (schedRes.schedules || []);
         if (!schedules.length) {
@@ -8324,8 +8324,8 @@
       if (!panel) return;
       try {
         const [schedRes, tplRes] = await Promise.all([
-          fetch('/api/schedules').then(r => r.json()),
-          fetch('/api/templates').then(r => r.json()),
+          fetch('/api/message-config?resource=schedules').then(r => r.json()),
+          fetch('/api/message-config?resource=templates').then(r => r.json()),
         ]);
         const schedules  = schedRes.schedules || [];
         const templates  = tplRes.templates   || [];
@@ -8383,7 +8383,7 @@
       const panel = document.getElementById("live-templates-panel");
       if (!panel) return;
       try {
-        const res  = await fetch('/api/templates');
+        const res  = await fetch('/api/message-config?resource=templates');
         const data = await res.json();
         const templates = data.templates || [];
         const cats = { availability:'🟢', training:'🔵', match:'🔴', custom:'⚪' };
@@ -8410,7 +8410,7 @@
 
     async function sendTemplateNow(templateId) {
       try {
-        const res  = await fetch('/api/templates');
+        const res  = await fetch('/api/message-config?resource=templates');
         const data = await res.json();
         const tpl  = (data.templates || []).find(t => t.id === templateId);
         if (!tpl) { notify('Template not found'); return; }
@@ -8468,7 +8468,7 @@
 
     async function toggleLiveSchedule(id, active) {
       try {
-        await fetch('/api/schedules', {
+        await fetch('/api/message-config?resource=schedules', {
           method:  'PUT',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ id, active }),
@@ -8482,7 +8482,7 @@
     async function deleteLiveSchedule(id) {
       if (!confirm('Delete this schedule? It will stop sending.')) return;
       try {
-        await fetch('/api/schedules', {
+        await fetch('/api/message-config?resource=schedules', {
           method:  'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ id }),
@@ -8498,8 +8498,8 @@
     async function fireScheduleNow(scheduleId) {
       try {
         const [schedRes, tplRes] = await Promise.all([
-          fetch('/api/schedules').then(r => r.json()),
-          fetch('/api/templates').then(r => r.json()),
+          fetch('/api/message-config?resource=schedules').then(r => r.json()),
+          fetch('/api/message-config?resource=templates').then(r => r.json()),
         ]);
         const sched = (schedRes.schedules || []).find(s => s.id === scheduleId);
         const tpl   = sched && (tplRes.templates || []).find(t => t.id === sched.templateId);

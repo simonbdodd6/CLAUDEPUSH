@@ -70,6 +70,44 @@ function availabilityActions(type) {
   ];
 }
 
+// ─── REMINDER (inlined from api/reminder.js to stay within Vercel Hobby 12-function limit) ──
+async function handleReminder(res) {
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    return res.status(500).json({ error: 'VAPID keys not configured' });
+  }
+  webpush.setVapidDetails(vapidContact(), process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
+  const { DEFAULT_TEAM } = await import('./_identityStore.js');
+  const teamId = DEFAULT_TEAM.id;
+  const allSubscribers = await load();
+  const teamSubscribers = allSubscribers.filter(item => !item.teamId || item.teamId === teamId);
+  const responded = await recentResponders(7);
+  const targets = teamSubscribers.filter(item => !item.userId || !responded.has(item.userId));
+  const title = 'Availability reminder';
+  const body = "Hi {{first_name}}! Please set your availability for this week's sessions and match in coacheseyeGPT. - {{coach_name}}";
+  const outcomes = await Promise.allSettled(targets.map(({ subscription, label }) =>
+    webpush.sendNotification(subscription, JSON.stringify({
+      title, body: resolveVariables(body, { label }), from: 'Coach',
+      tag: `weekly-reminder-${new Date().toISOString().slice(0, 10)}`,
+      type: 'availability', sessionId: 'game', url: '/?to=availability',
+      actions: [
+        { action: 'available', title: 'Available' },
+        { action: 'unavailable', title: 'Not available' },
+        { action: 'maybe', title: 'Maybe' },
+      ],
+    }))
+  ));
+  const sent   = outcomes.filter(r => r.status === 'fulfilled').length;
+  const failed = outcomes.length - sent;
+  const expired = new Set();
+  outcomes.forEach((r, i) => {
+    if (r.status === 'rejected' && [404, 410].includes(r.reason?.statusCode)) expired.add(targets[i].subscription.endpoint);
+  });
+  if (expired.size) await save(allSubscribers.filter(item => !expired.has(item.subscription.endpoint)));
+  await kvLpush(key('message_log'), { type: 'reminder', title, body: body.slice(0, 200), sentAt: new Date().toISOString(), audience: 'no-reply', sent, failed, total: targets.length, skipped: responded.size });
+  await kvLtrim(key('message_log'), 500);
+  return res.status(200).json({ ok: true, sent, failed, skipped: responded.size, total: targets.length });
+}
+
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -77,6 +115,8 @@ export default async function handler(req, res) {
   if (!process.env.CRON_SECRET) return res.status(500).json({ error: 'CRON_SECRET not configured' });
   if (readSecret(req) !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
+  // Reminder dispatch (previously api/reminder.js — merged to stay under Vercel Hobby limit)
+  if ((req.query?.type || req.body?.type) === 'reminder') return handleReminder(res);
 
   // Debug action: read raw Redis identity + chat state without triggering any cleanup.
   if ((req.query?.action || req.body?.action) === 'debug') {
