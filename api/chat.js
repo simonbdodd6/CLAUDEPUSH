@@ -8,11 +8,50 @@
 // POST /api/chat  { action:'delete', msgId, convId }
 // POST /api/chat  { action:'edit', msgId, convId, text }
 
+import webpush from 'web-push';
 import { kvGet, kvSet, kvLpush, kvLrange, kvLtrim } from './_kv.js';
 import { key } from './_keys.js';
 import { unreadCountForUser } from '../src/chat-notifications.js';
 import { DEFAULT_TEAM, resolveSessionFromRequest } from './_identityStore.js';
 import { tenantTeamId } from './_tenant.js';
+import { load as loadSubs, save as saveSubs } from './_lib.js';
+import { vapidContact } from './_http.js';
+
+function configurePush() {
+  const publicKey  = process.env.VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) return false;
+  webpush.setVapidDetails(vapidContact(), publicKey, privateKey);
+  return true;
+}
+
+async function sendDmPush(recipientId, senderDisplayName, text) {
+  if (!configurePush()) return;
+  const allSubs = await loadSubs();
+  const targets = allSubs.filter(item =>
+    [item.userId, item.playerId, item.legacyPlayerId].some(v => v && String(v) === recipientId)
+  );
+  if (!targets.length) return;
+  const payload = JSON.stringify({
+    title: senderDisplayName,
+    body:  String(text || '').slice(0, 200),
+    tag:   `dm-${recipientId}`,
+    url:   '/',
+    type:  'dm',
+  });
+  const results = await Promise.allSettled(
+    targets.map(({ subscription }) => webpush.sendNotification(subscription, payload))
+  );
+  const expired = new Set(
+    results.flatMap((r, i) =>
+      r.status === 'rejected' && [404, 410].includes(r.reason?.statusCode)
+        ? [targets[i].subscription.endpoint] : []
+    )
+  );
+  if (expired.size) {
+    await saveSubs(allSubs.filter(s => !expired.has(s.subscription.endpoint)));
+  }
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -282,6 +321,11 @@ async function handlePost(req, res) {
     if (idx >= 0) { convs[idx].lastActivity = msg.ts; await saveConvs(convs); }
     // Mark sender as read
     await kvSet(key(`chat:read:${convId}:${senderId}`), msg.ts);
+    // Fire push to the DM recipient — fire-and-forget, never blocks message delivery
+    if (convId.startsWith('dm:') && !isAutomated) {
+      const recipientId = convId.split(':').slice(1).find(p => p !== senderId);
+      if (recipientId) sendDmPush(recipientId, msg.senderName, msg.text).catch(() => {});
+    }
     return ok(res, { message: msg });
   }
 
