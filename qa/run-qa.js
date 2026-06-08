@@ -16,6 +16,9 @@ const workflow7    = process.argv.includes('--workflow-7');
 const workflow8    = process.argv.includes('--workflow-8');
 const workflow9    = process.argv.includes('--workflow-9');
 const workflow10   = process.argv.includes('--workflow-10');
+const workflow11   = process.argv.includes('--workflow-11');
+const workflow12   = process.argv.includes('--workflow-12');
+const workflow13   = process.argv.includes('--workflow-13');
 const allWorkflows = process.argv.includes('--all-workflows');
 const args = ['playwright', 'test', '--config=playwright.config.js'];
 if (headed) args.push('--headed');
@@ -31,7 +34,10 @@ if (allWorkflows) {
     'qa/e2e/workflow-7-session-expiry.spec.js',
     'qa/e2e/workflow-8-player-session-expiry.spec.js',
     'qa/e2e/workflow-9-approval-race.spec.js',
-    'qa/e2e/workflow-10-password-reset.spec.js'
+    'qa/e2e/workflow-10-password-reset.spec.js',
+    'qa/e2e/workflow-11-fixtures.spec.js',
+    'qa/e2e/workflow-12-squad-selection.spec.js',
+    'qa/e2e/workflow-13-role-switching.spec.js'
   );
 } else {
   args.push(
@@ -61,7 +67,13 @@ if (allWorkflows) {
                             ? 'qa/e2e/workflow-9-approval-race.spec.js'
                             : workflow10
                               ? 'qa/e2e/workflow-10-password-reset.spec.js'
-                              : 'qa/e2e/nightly-qa-agent.spec.js'
+                              : workflow11
+                                ? 'qa/e2e/workflow-11-fixtures.spec.js'
+                                : workflow12
+                                  ? 'qa/e2e/workflow-12-squad-selection.spec.js'
+                                  : workflow13
+                                    ? 'qa/e2e/workflow-13-role-switching.spec.js'
+                                    : 'qa/e2e/nightly-qa-agent.spec.js'
   );
 }
 
