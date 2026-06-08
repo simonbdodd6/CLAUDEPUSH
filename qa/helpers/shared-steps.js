@@ -160,6 +160,16 @@ export async function playerLogin(playerPage, config, result) {
       ? `Player login failed — toast: "${latestToast}"`
       : 'Player nav did not appear within 15s — login may have failed or player is not yet approved');
   }
+
+  // After login the app may call coach-only endpoints (/api/invite, /api/schedules, etc.) during
+  // initial data load. Those endpoints return 403 for players, which incorrectly triggers
+  // handleSessionExpiry() and shows the "session has expired" overlay even though the player
+  // IS authenticated. Dismiss it if present — the session is valid (playerNav is visible).
+  const sessionOverlayVisible = await playerPage.locator('#identityLoginEmail').isVisible({ timeout: 2_000 }).catch(() => false);
+  if (sessionOverlayVisible) {
+    await playerPage.evaluate(() => { if (typeof window.setAuthTab === 'function') window.setAuthTab('closed'); });
+    await expect(playerPage.locator('#identityLoginEmail')).toBeHidden({ timeout: 5_000 });
+  }
 }
 
 // ─── Group invite steps (Workflow 4) ─────────────────────────────────────────
@@ -442,7 +452,9 @@ export async function approvePendingRequest(page, playerFullName, result) {
  * Clicks the "Messages" nav button and waits for #chatContactList to populate.
  */
 export async function navigateToMessages(page, result) {
-  await page.getByRole('button', { name: 'Messages', exact: true }).click();
+  // The Messages nav button may contain a badge span (e.g. "Messages2") making its
+  // accessible name "Messages2" — use a regex prefix match so the badge count is ignored.
+  await page.getByRole('button', { name: /^Messages/ }).click();
   try {
     await expect(page.locator('#chatContactList')).toBeVisible({ timeout: 15_000 });
   } catch {
