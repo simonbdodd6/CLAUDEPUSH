@@ -1,6 +1,6 @@
 # QA Report
 
-Generated: 2026-06-08T13:58:13.996Z
+Generated: 2026-06-08T14:32:33.379Z
 Base URL: https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app
 Status: failed
 
@@ -23,7 +23,7 @@ Status: failed
 
 | # | Step | Status | Screenshot | Notes |
 |---:|---|---|---|---|
-| 1 | Launch Playwright Chromium | failed |  | Playwright exited before the QA journey started (exit code 1). See qa/test-results/workflow-13-role-switching-809a0-le-Switching-Coach-↔-Player-chromium/error-context.md. |
+| 1 | Launch Playwright Chromium | failed |  | Playwright exited before the QA journey started (exit code 1). See qa/test-results/workflow-7-session-expiry--0e13b-yer-Session-Expiry-Recovery-chromium/error-context.md. |
 
 ## What Passes
 
@@ -31,7 +31,7 @@ Status: failed
 
 ## What Fails
 
-- Launch Playwright Chromium: Playwright exited before the QA journey started (exit code 1). See qa/test-results/workflow-13-role-switching-809a0-le-Switching-Coach-↔-Player-chromium/error-context.md.
+- Launch Playwright Chromium: Playwright exited before the QA journey started (exit code 1). See qa/test-results/workflow-7-session-expiry--0e13b-yer-Session-Expiry-Recovery-chromium/error-context.md.
 
 ## Notes
 

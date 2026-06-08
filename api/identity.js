@@ -3,6 +3,7 @@ import {
   claimInvite,
   clearSessionCookie,
   createPasswordResetRequest,
+  createSession,
   destroySession,
   createJoinRequest,
   joinViaGroupInvite,
@@ -15,7 +16,7 @@ import {
   sessionCookie,
   sessionTokenFromRequest,
 } from './_identityStore.js';
-import { appBaseUrl, passwordResetEmail, sendTransactionalEmail } from './_email.js';
+import { appBaseUrl, passwordResetEmail, welcomeEmail, sendTransactionalEmail } from './_email.js';
 import { setCors, readSecret } from './_http.js';
 import { kvConfigured, kvLrange } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
@@ -201,6 +202,21 @@ export default async function handler(req, res) {
         if (readSecret(req) !== cronSecret) return res.status(403).json({ ok: false, error: 'Unauthorized' });
         const result = await provisionClub(req.body || {});
         return res.status(201).json({ ok: true, ...result });
+      }
+      if (action === 'signup') {
+        await enforceRateLimit('signup', requestIp(req), { limit: 3, windowMs: 60 * 60 * 1000 });
+        const rawCode = String(req.body?.teamCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (!rawCode) return res.status(400).json({ ok: false, error: 'Team code is required' });
+        const teamId = rawCode.toLowerCase();
+        const result = await provisionClub({ ...req.body, teamId });
+        const session = await createSession({ userId: result.user.id, teamId: result.team.id, role: 'coach' });
+        res.setHeader('Set-Cookie', sessionCookie(session.token));
+        await auditLog('signup', { email: result.user.email, teamId: result.team.id, ip: requestIp(req) });
+        sendTransactionalEmail({
+          to: result.user.email,
+          ...welcomeEmail({ firstName: result.user.firstName, teamName: result.team.name, teamCode: result.team.teamCode, appUrl: appBaseUrl(req) }),
+        }).catch(err => console.error('[signup] welcome email failed:', err.message));
+        return res.status(201).json({ ok: true, user: { ...result.user, role: 'coach' }, team: result.team, teamMember: result.teamMember });
       }
       return res.status(400).json({ ok: false, error: 'Unknown identity action' });
     } catch (error) {

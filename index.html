@@ -3953,6 +3953,77 @@
       }
     }
 
+    async function handleCoachSignup(e) {
+      e.preventDefault();
+      const clubName  = (document.getElementById('signupClubName')?.value  || '').trim();
+      const teamCode  = (document.getElementById('signupTeamCode')?.value  || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const firstName = (document.getElementById('signupFirstName')?.value || '').trim();
+      const lastName  = (document.getElementById('signupLastName')?.value  || '').trim();
+      const email     = (document.getElementById('signupEmail')?.value     || '').trim();
+      const password  = document.getElementById('signupPassword')?.value   || '';
+
+      const errEl = document.getElementById('signupErrMsg');
+      const btn   = document.getElementById('signupSubmitBtn');
+
+      const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
+      if (errEl) errEl.style.display = 'none';
+
+      if (!clubName)           return showErr('Club name is required');
+      if (!teamCode)           return showErr('Team code is required');
+      if (!firstName)          return showErr('First name is required');
+      if (!lastName)           return showErr('Last name is required');
+      if (!email)              return showErr('Email is required');
+      if (password.length < 8) return showErr('Password must be at least 8 characters');
+
+      if (btn) { btn.disabled = true; btn.textContent = 'Creating club…'; }
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action:         'signup',
+            teamName:       clubName,
+            teamCode:       teamCode,
+            coachFirstName: firstName,
+            coachLastName:  lastName,
+            coachEmail:     email,
+            coachPassword:  password,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) return showErr(data.error || 'Signup failed — please try again');
+
+        // Hydrate local state so currentUser() and isCoach() work immediately
+        const userId   = data.user.id;
+        const displayN = [data.user.firstName, data.user.lastName].filter(Boolean).join(' ') || data.user.email;
+        if (!state.users.some(u => u.id === userId)) {
+          state.users.push({ id: userId, role: 'coach', name: displayN, email: data.user.email, phone: '', pin: '' });
+        }
+        state.currentUserId      = userId;
+        state.teamCode           = data.team.teamCode;
+        state.activeView         = 'coach';
+        state.activeCoachSection = 'overview';
+        _serverSessionReadyFor   = userId;
+        _sessionExpiredMessage   = '';
+        authTab = 'closed';
+        saveState('Signed up');
+        render();
+        refreshMembersData();
+        showToast(`Welcome to Coach's Eye, ${data.user.firstName || 'Coach'}! Your squad code is ${data.team.teamCode}.`);
+      } catch(err) {
+        showErr('Network error — please try again');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Create club'; }
+      }
+    }
+
+    function signupSuggestCode() {
+      const name = (document.getElementById('signupClubName')?.value || '');
+      const el   = document.getElementById('signupTeamCode');
+      if (!el || el.dataset.edited) return;
+      el.value = name.toUpperCase().replace(/\b(RFC|FC|CC|RUGBY|CLUB)\b/g, '').replace(/[^A-Z0-9]+/g, '').slice(0, 12);
+    }
+
     async function requestPasswordReset() {
       const email = (document.getElementById('identityLoginEmail')?.value || '').trim() ||
         prompt('Enter your account email:');
@@ -4041,6 +4112,7 @@
           <button class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:11px;padding:5px 8px">Forgot password?</button>
           ${_devLoginAvailable ? `<button id="devLoginBtn" class="btn" type="button" onclick="devCoachLogin()" style="width:100%;font-size:11px;margin-top:4px;opacity:0.7;border-style:dashed">Dev: Login as Coach</button>` : ''}
           <p class="muted" style="font-size:11px;margin:0">Approved players can log in after coach approval.</p>
+          <button class="auth-tab" type="button" onclick="setAuthTab('signup')" style="font-size:11px;padding:5px 8px;margin-top:2px">New coach? Create a club →</button>
         </div>
       ` : authTab === 'join' ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -4073,6 +4145,28 @@
         ).join('') || '<p class="muted" style="font-size:12px">No other accounts on this device.</p>'}
         <button class="btn ghost" type="button" onclick="setAuthTab('closed')"
           style="width:100%;margin-top:4px;font-size:12px">Cancel</button>
+      ` : authTab === 'signup' ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <strong style="font-size:13px">Create your club</strong>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
+        </div>
+        <form onsubmit="handleCoachSignup(event)" style="display:grid;gap:7px">
+          <input id="signupClubName" type="text" placeholder="Club name (e.g. Ballymena RFC)"
+            style="font-size:12px;padding:7px 9px" oninput="signupSuggestCode()" required>
+          <input id="signupTeamCode" type="text" placeholder="Team join code (e.g. BALLYMENA)"
+            style="font-size:12px;padding:7px 9px;font-family:monospace;letter-spacing:1px;text-transform:uppercase"
+            maxlength="12" oninput="this.dataset.edited=1;this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')" required>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <input id="signupFirstName" type="text" placeholder="Your first name" style="font-size:12px;padding:7px 9px" required>
+            <input id="signupLastName"  type="text" placeholder="Last name"       style="font-size:12px;padding:7px 9px" required>
+          </div>
+          <input id="signupEmail"    type="email"    placeholder="Your email"          style="font-size:12px;padding:7px 9px" required>
+          <input id="signupPassword" type="password" placeholder="Password (8+ chars)" style="font-size:12px;padding:7px 9px" minlength="8" required>
+          <div id="signupErrMsg" style="color:#f87171;font-size:11px;display:none"></div>
+          <button id="signupSubmitBtn" class="btn primary" type="submit" style="width:100%;font-size:12px">Create club</button>
+        </form>
+        <button class="btn ghost" type="button" onclick="setAuthTab('login')"
+          style="width:100%;margin-top:6px;font-size:11px">Already have an account? Log in</button>
       ` : `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div>
@@ -4082,6 +4176,7 @@
           <div style="display:flex;gap:5px">
             <button class="auth-tab" type="button" onclick="setAuthTab('login')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Login</button>
             <button class="auth-tab" type="button" onclick="setAuthTab('join')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Join</button>
+            <button class="auth-tab" type="button" onclick="setAuthTab('signup')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Create club</button>
             <button class="auth-tab" type="button" onclick="setAuthTab('switch')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Switch ↓</button>
           </div>
         </div>

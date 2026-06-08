@@ -1,8 +1,8 @@
 # QA Workflow 5 — Coach ↔ Player Messaging
 
-**Generated:** 2026-06-08T13:15:44.798Z
-**Commit:** `38d31ac`
-**Base URL:** https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app
+**Generated:** 2026-06-08T14:27:20.048Z
+**Commit:** `7b78d44`
+**Base URL:** https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app
 **Login method (coach):** dev-login-evaluate
 **Player credentials from:** qa/results/workflow-4.json (auto-read from W4 pass)
 **Status:** PASSED
@@ -20,27 +20,27 @@
 
 | # | Step | Status | Duration | Screenshot | Notes |
 |---|---|---|---|---|---|
-| 1 | Open app [coach] | PASSED | 3038ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/01-open-app.png) |  |
-| 2 | Coach login [coach] | PASSED | 2851ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/02-coach-login.png) |  |
-| 3 | Navigate to Members [coach] | PASSED | 2165ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/03-navigate-to-members.png) |  |
-| 4 | Verify player in roster [coach] | PASSED | 2146ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/04-verify-player-in-roster.png) |  |
-| 5 | Navigate to Messages [coach] | PASSED | 1405ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/05-navigate-to-messages.png) |  |
-| 6 | Open player DM [coach] | PASSED | 4954ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/06-open-player-dm.png) |  |
-| 7 | Send coach message [coach] | PASSED | 1425ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/07-send-coach-message.png) |  |
-| 8 | Verify coach message in feed [coach] | PASSED | 971ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/08-verify-coach-message-in-feed.png) |  |
-| 9 | Player login [player] | PASSED | 5850ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/09-player-login.png) |  |
-| 10 | Player navigates to Messages [player] | PASSED | 1134ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/10-player-navigates-to-messages.png) |  |
-| 11 | Player opens Coach DM [player] | PASSED | 917ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/11-player-opens-coach-dm.png) |  |
-| 12 | Player verifies coach message [player] | PASSED | 1060ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/12-player-verifies-coach-message.png) |  |
-| 13 | Player sends reply [player] | PASSED | 1744ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/13-player-sends-reply.png) |  |
-| 14 | Coach verifies player reply [coach] | PASSED | 2116ms | [png](qa/artifacts/workflow5-2026-06-08T13-15-09-939Z/14-coach-verifies-player-reply.png) |  |
+| 1 | Open app [coach] | PASSED | 12449ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/01-open-app.png) |  |
+| 2 | Coach login [coach] | PASSED | 6455ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/02-coach-login.png) |  |
+| 3 | Navigate to Members [coach] | PASSED | 7844ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/03-navigate-to-members.png) |  |
+| 4 | Verify player in roster [coach] | PASSED | 10952ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/04-verify-player-in-roster.png) |  |
+| 5 | Navigate to Messages [coach] | PASSED | 3389ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/05-navigate-to-messages.png) |  |
+| 6 | Open player DM [coach] | PASSED | 9627ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/06-open-player-dm.png) |  |
+| 7 | Send coach message [coach] | PASSED | 6911ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/07-send-coach-message.png) |  |
+| 8 | Verify coach message in feed [coach] | PASSED | 5838ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/08-verify-coach-message-in-feed.png) |  |
+| 9 | Player login [player] | PASSED | 26950ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/09-player-login.png) |  |
+| 10 | Player navigates to Messages [player] | PASSED | 2341ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/10-player-navigates-to-messages.png) |  |
+| 11 | Player opens Coach DM [player] | PASSED | 1592ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/11-player-opens-coach-dm.png) |  |
+| 12 | Player verifies coach message [player] | PASSED | 986ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/12-player-verifies-coach-message.png) |  |
+| 13 | Player sends reply [player] | PASSED | 2217ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/13-player-sends-reply.png) |  |
+| 14 | Coach verifies player reply [coach] | PASSED | 2579ms | [png](qa/artifacts/workflow5-2026-06-08T14-25-17-347Z/14-coach-verifies-player-reply.png) |  |
 
 ## Messaging Details
 
-- **Player email:** `qa.w4+1780924420801@coachseye.test`
-- **Player name:** `QA4 Player1780924420801`
-- **Coach message:** `QA coach msg 1780924509944`
-- **Player reply:** `QA player reply 1780924509944`
+- **Player email:** `qa.w4+1780928590171@coachseye.test`
+- **Player name:** `QA4 Player1780928590171`
+- **Coach message:** `QA coach msg 1780928717360`
+- **Player reply:** `QA player reply 1780928717360`
 
 ## Browser Contexts
 
@@ -59,20 +59,20 @@
 
 | Endpoint [context] | Method | Calls | Est. ops |
 |---|---|---|---|
-| `/api/chat [coach]` | GET/POST | 47 | ~376 |
+| `/api/chat [coach]` | GET/POST | 113 | ~904 |
+| `/api/chat [player]` | GET/POST | 36 | ~288 |
 | `/api/message-config [coach]` | GET | 30 | ~60 |
-| `/api/chat [player]` | GET/POST | 22 | ~176 |
 | `/api/identity [coach]` | GET/POST | 17 | ~104 |
 | `/api/message-config [player]` | GET | 12 | ~24 |
+| `/api/invite [coach]` | GET | 8 | ~32 |
 | `/api/identity [player]` | GET/POST | 7 | ~44 |
-| `/api/invite [coach]` | GET | 6 | ~24 |
 | `/api/availability [coach]` | GET | 6 | ~24 |
-| `/api/invite [player]` | GET | 3 | ~12 |
-| `/api/matchday [coach]` | GET | 1 | ~2 |
+| `/api/invite [player]` | GET | 2 | ~8 |
 | `/api/fixtures [coach]` | GET | 1 | ~2 |
+| `/api/matchday [coach]` | GET | 1 | ~2 |
 | `/api/fixtures [player]` | GET | 1 | ~2 |
 | `/api/matchday [player]` | GET | 1 | ~2 |
-| **Total** | | **154** | **~852** |
+| **Total** | | **235** | **~1496** |
 
 > `POST /api/chat action:send` = ~8 ops (session auth + Redis RPUSH + LTRIM + mark-read)
 > `GET /api/chat action:messages` = ~8 ops per poll tick (session + LRANGE + unread)
@@ -141,6 +141,12 @@
 - [coach] error: Failed to load resource: the server responded with a status of 401 ()
 - [coach] error: Failed to load resource: the server responded with a status of 401 ()
 - [coach] error: Failed to load resource: the server responded with a status of 401 ()
+- [coach] error: Failed to load resource: the server responded with a status of 401 ()
+- [coach] error: Failed to load resource: the server responded with a status of 401 ()
+- [coach] error: Failed to load resource: the server responded with a status of 401 ()
+- [coach] error: Failed to load resource: the server responded with a status of 401 ()
+- [coach] error: Failed to load resource: the server responded with a status of 401 ()
+- [coach] error: Failed to load resource: the server responded with a status of 401 ()
 - [coach] error: Failed to load resource: the server responded with a status of 404 ()
 - [coach] error: Failed to load resource: the server responded with a status of 404 ()
 - [coach] error: Failed to load resource: the server responded with a status of 404 ()
@@ -148,6 +154,22 @@
 - [coach] error: Failed to load resource: the server responded with a status of 404 ()
 - [coach] error: Failed to load resource: the server responded with a status of 404 ()
 - [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
+- [coach] error: Failed to load resource: the server responded with a status of 404 ()
 - [player] error: Failed to load resource: the server responded with a status of 401 ()
 - [player] error: Failed to load resource: the server responded with a status of 401 ()
 - [player] error: Failed to load resource: the server responded with a status of 401 ()
@@ -163,7 +185,12 @@
 - [player] error: Failed to load resource: the server responded with a status of 401 ()
 - [player] error: Failed to load resource: the server responded with a status of 401 ()
 - [player] error: Failed to load resource: the server responded with a status of 401 ()
-- [player] error: Failed to load resource: the server responded with a status of 403 ()
+- [player] error: Failed to load resource: the server responded with a status of 401 ()
+- [player] error: Failed to load resource: the server responded with a status of 401 ()
+- [player] error: Failed to load resource: the server responded with a status of 401 ()
+- [player] error: Failed to load resource: the server responded with a status of 401 ()
+- [player] error: Failed to load resource: the server responded with a status of 401 ()
+- [player] error: Failed to load resource: the server responded with a status of 401 ()
 - [player] error: Failed to load resource: the server responded with a status of 403 ()
 - [player] error: Failed to load resource: the server responded with a status of 403 ()
 - [player] error: Failed to load resource: the server responded with a status of 403 ()
@@ -178,68 +205,95 @@
 ## Toast Messages
 
 ### Coach context
-- 2026-06-08T13:15:16.142Z — Welcome Simon Coach
+- 2026-06-08T14:25:38.443Z — Welcome Simon Coach
 
 ### Player context
-- 2026-06-08T13:15:36.733Z — Welcome QA4 Player1780924420801
+- 2026-06-08T14:27:02.600Z — Welcome QA4 Player1780928590171
 
 ## Network Failures
 
-- [coach] GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/.well-known/vercel/jwe — {"errorText":"net::ERR_ABORTED"}
-- [coach] HEAD https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/ — {"errorText":"net::ERR_ABORTED"}
-- [player] GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/.well-known/vercel/jwe — {"errorText":"net::ERR_ABORTED"}
-- [player] HEAD https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/ — {"errorText":"net::ERR_ABORTED"}
+- [coach] GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/.well-known/vercel/jwe — {"errorText":"net::ERR_ABORTED"}
+- [coach] HEAD https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/ — {"errorText":"net::ERR_ABORTED"}
+- [player] GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/.well-known/vercel/jwe — {"errorText":"net::ERR_ABORTED"}
+- [player] HEAD https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/ — {"errorText":"net::ERR_ABORTED"}
 
 ## HTTP 4xx / 5xx Responses
 
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=0&userId=coach-demo
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=session
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780924512190&userId=coach-demo
-- [coach] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
-- [coach] HTTP 404  — POST https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat
-- [coach] HTTP 404  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780924512190&userId=coach-demo
-- [coach] HTTP 404  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
-- [coach] HTTP 404  — POST https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat
-- [coach] HTTP 404  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=dm%3Acoach-demo%3Auser_1780924439313_b86ow9&since=0&userId=coach-demo
-- [coach] HTTP 404  — POST https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat
-- [coach] HTTP 404  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=dm%3Acoach-demo%3Auser_1780924439313_b86ow9&since=0&userId=coach-demo
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=0&userId=coach-demo
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=session
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780924532780&userId=coach-demo
-- [player] HTTP 401  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
-- [player] HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/invite
-- [player] HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- [player] HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
-- [player] HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
-- [player] HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/invite
-- [player] HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
-- [player] HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
-- [player] HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
-- [player] HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
-- [player] HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/invite
-- [player] HTTP 403  — GET https://boitsfort-coachseye-hudgz5599-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=0&userId=coach-demo
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=session
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 404  — POST https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928725823&userId=coach-demo
+- [coach] HTTP 404  — POST https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=dm%3Acoach-demo%3Auser_1780928677414_cx1y8w&since=0&userId=coach-demo
+- [coach] HTTP 404  — POST https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [coach] HTTP 404  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=dm%3Acoach-demo%3Auser_1780928677414_cx1y8w&since=0&userId=coach-demo
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=0&userId=coach-demo
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=session
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928809126&userId=coach-demo
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928809126&userId=coach-demo
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928809126&userId=coach-demo
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780928809126&userId=coach-demo
+- [player] HTTP 401  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo
+- [player] HTTP 403  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
+- [player] HTTP 403  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
+- [player] HTTP 403  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- [player] HTTP 403  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/invite
+- [player] HTTP 403  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- [player] HTTP 403  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10
+- [player] HTTP 403  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules
+- [player] HTTP 403  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
+- [player] HTTP 403  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/invite
+- [player] HTTP 403  — GET https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates
 
 ## Page Errors
 
