@@ -34,6 +34,7 @@
     "qa:all-workflows": "node qa/run-qa.js --all-workflows",
     "qa:all-workflows:headed": "node qa/run-qa.js --all-workflows --headed",
     "qa:nightly": "node qa/nightly.js",
+    "qa:analyst": "node qa/analyst.js",
     "qa:dashboard": "node qa/mission-control/generate-dashboard.js",
     "qa:report": "node qa/report.js"
   },

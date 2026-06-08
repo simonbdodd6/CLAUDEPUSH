@@ -140,8 +140,10 @@ function loadPreviousRun() {
 }
 
 /**
- * Build a compact run snapshot — step names + statuses only, no screenshots.
- * Stored in qa/history/ and used for future regression comparisons.
+ * Build a compact run snapshot for history storage.
+ * Passed steps store name/status/context only.
+ * Failed steps also store error + artifact paths so the analyst can read them
+ * from history without needing qa/results/ to still be on disk.
  */
 function buildRunSummary(entries, totalMs) {
   return {
@@ -160,9 +162,14 @@ function buildRunSummary(entries, totalMs) {
       durationMs: e.durationMs,
       redisOps:   computeRedis(e.result?.apiCalls),
       steps:      (e.result?.steps ?? []).map(s => ({
-        name:    s.name,
-        status:  s.status,
-        context: s.context ?? null,
+        name:        s.name,
+        status:      s.status,
+        context:     s.context     ?? null,
+        ...(s.status === 'failed' && {
+          error:       s.error       ?? null,
+          screenshot:  s.screenshot  ?? null,
+          domSnapshot: s.domSnapshot ?? null,
+        }),
       })),
     })),
   };
@@ -729,6 +736,22 @@ saveRunHistory(currentSummary);
 generateNightlyReport(entries, totalMs, allPassed, diff, previousRun);
 generateRegressionReport(diff, currentSummary, previousRun);
 generateStatusDashboard(entries, diff, currentSummary, previousRun);
+
+// ─── QA Analyst: auto-investigate regressions and new failures ───────────────
+if (diff.regressions.length > 0 || diff.newFailures.length > 0) {
+  console.log('\n[nightly] Regressions detected — running QA Analyst…');
+  await new Promise(resolve => {
+    const proc = spawn(
+      'node',
+      [path.join(ROOT, 'qa/analyst.js')],
+      { stdio: 'inherit', env: { ...process.env }, cwd: ROOT }
+    );
+    proc.on('close',  resolve);
+    proc.on('error',  err => { console.error('[nightly] analyst error:', err.message); resolve(); });
+  });
+} else {
+  console.log('\n[nightly] No regressions — skipping analyst.');
+}
 
 // ─── Refresh Mission Control dashboard ───────────────────────────────────────
 await new Promise(resolve => {
