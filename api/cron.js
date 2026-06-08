@@ -3,7 +3,7 @@
 import webpush from 'web-push';
 import { load, save } from './_lib.js';
 import { recentResponders } from './_availabilityStore.js';
-import { kvGet, kvSet, kvDel, kvLpush, kvLtrim, kvConfigured } from './_kv.js';
+import { kvGet, kvSet, kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { resolveVariables } from './_variables.js';
 import { setCors, readSecret, vapidContact } from './_http.js';
@@ -70,92 +70,13 @@ function availabilityActions(type) {
   ];
 }
 
-// ─── One-time account cleanup ────────────────────────────────────────
-// Protected by embedded token (not CRON_SECRET) so it can be called
-// without production secrets. Remove CLEANUP_TOKEN after use.
-const CLEANUP_TOKEN = 'ce-cleanup-7f4a9b2e1d3c5a8b';
-
-function _normName(v = '') { return String(v || '').trim().toLowerCase(); }
-
-function _isKeptUser(u) {
-  if (u.id === 'coach-demo') return true;         // Simon Coach
-  if (u.id === 'player-simon-test') return true;  // Simon Test Player
-  if (_normName(u.displayName) === 'simon test player 2') return true;
-  return false;
-}
-
-async function handleCleanup(req, res, dryRun) {
-  const [users, members, profiles, sessions, convs, allSubs] = await Promise.all([
-    kvGet(key('identity:users')).then(v => Array.isArray(v) ? v : []),
-    kvGet(key('identity:team_members')).then(v => Array.isArray(v) ? v : []),
-    kvGet(key('identity:player_profiles')).then(v => Array.isArray(v) ? v : []),
-    kvGet(key('identity:sessions')).then(v => Array.isArray(v) ? v : []),
-    kvGet(key('chat:convs')).then(v => Array.isArray(v) ? v : []),
-    load(),
-  ]);
-
-  // Keep only the 3 canonical accounts — remove all others (QA artifacts etc.)
-  const kept    = users.filter(u => _isKeptUser(u));
-  const removed = users.filter(u => !_isKeptUser(u));
-  const removedIds = new Set(removed.map(u => u.id));
-
-  const dmConvsRemoved = convs.filter(c =>
-    String(c.id || '').startsWith('dm:') &&
-    c.id.split(':').slice(1).some(p => removedIds.has(p))
-  );
-
-  const report = {
-    usersKept:      kept.map(u => ({ id: u.id, displayName: u.displayName })),
-    usersRemoved:   removed.map(u => ({ id: u.id, displayName: u.displayName, email: u.email })),
-    membersRemoved:  members.filter(m => removedIds.has(m.userId)).length,
-    profilesRemoved: profiles.filter(p => removedIds.has(p.userId)).length,
-    sessionsRemoved: sessions.filter(s => removedIds.has(s.userId)).length,
-    subsRemoved: allSubs.filter(s =>
-      [s.userId, s.playerId, s.legacyPlayerId].some(v => v && removedIds.has(String(v)))
-    ).length,
-    dmConvsRemoved: dmConvsRemoved.map(c => c.id),
-  };
-
-  if (dryRun) return res.status(200).json({ ok: true, dryRun: true, ...report });
-
-  const removedConvIds = new Set(dmConvsRemoved.map(c => c.id));
-  await Promise.all([
-    kvSet(key('identity:users'),           users.filter(u => !removedIds.has(u.id))),
-    kvSet(key('identity:team_members'),    members.filter(m => !removedIds.has(m.userId))),
-    kvSet(key('identity:player_profiles'), profiles.filter(p => !removedIds.has(p.userId))),
-    kvSet(key('identity:sessions'),        sessions.filter(s => !removedIds.has(s.userId))),
-    save(allSubs.filter(s =>
-      ![s.userId, s.playerId, s.legacyPlayerId].some(v => v && removedIds.has(String(v)))
-    )),
-    dmConvsRemoved.length
-      ? kvSet(key('chat:convs'), convs.filter(c => !removedConvIds.has(c.id)))
-      : Promise.resolve(),
-    ...dmConvsRemoved.map(c => kvDel(key(`chat:conv:${c.id}:msgs`))),
-  ]);
-
-  return res.status(200).json({ ok: true, cleaned: true, ...report });
-}
-
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ error: 'Method not allowed' });
-  if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
-
-  // Cleanup/audit actions use embedded token — no CRON_SECRET required.
-  const reqAction = req.query?.action || req.body?.action;
-  if (reqAction === 'cleanup-audit' || reqAction === 'cleanup') {
-    const token = String(
-      req.headers?.authorization?.replace(/^Bearer\s+/i, '').trim() ||
-      req.query?.token || req.body?.token || ''
-    );
-    if (token !== CLEANUP_TOKEN) return res.status(401).json({ error: 'Unauthorized' });
-    const dryRun = reqAction === 'cleanup-audit' || req.body?.confirm !== true;
-    return handleCleanup(req, res, dryRun);
-  }
-
   if (!process.env.CRON_SECRET) return res.status(500).json({ error: 'CRON_SECRET not configured' });
   if (readSecret(req) !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
 
   // Debug action: read raw Redis identity + chat state without triggering any cleanup.
   if ((req.query?.action || req.body?.action) === 'debug') {
