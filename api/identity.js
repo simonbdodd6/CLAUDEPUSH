@@ -150,7 +150,10 @@ export default async function handler(req, res) {
           const message = passwordResetEmail({ name: result.user.displayName || result.user.email, url: resetUrl });
           emailDelivery = await sendTransactionalEmail({ to: result.user.email, ...message });
         }
-        return res.status(200).json({ ok: true, emailDelivery, expiresAt: result.expiresAt });
+        const devExtra = (process.env.VERCEL_ENV !== 'production' && result.token)
+          ? { devResetUrl: `${appBaseUrl(req)}/?reset=${encodeURIComponent(result.token)}` }
+          : {};
+        return res.status(200).json({ ok: true, emailDelivery, expiresAt: result.expiresAt, ...devExtra });
       }
       if (action === 'reset_password') {
         await enforceRateLimit('password_reset_submit', rateIdentity(req, String(req.body?.token || '').slice(0, 12)), { limit: 5, windowMs: 60 * 60 * 1000 });

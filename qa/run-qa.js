@@ -15,11 +15,12 @@ const workflow6    = process.argv.includes('--workflow-6');
 const workflow7    = process.argv.includes('--workflow-7');
 const workflow8    = process.argv.includes('--workflow-8');
 const workflow9    = process.argv.includes('--workflow-9');
+const workflow10   = process.argv.includes('--workflow-10');
 const allWorkflows = process.argv.includes('--all-workflows');
 const args = ['playwright', 'test', '--config=playwright.config.js'];
 if (headed) args.push('--headed');
 if (allWorkflows) {
-  // Run all nine workflow specs in sequence — the nightly suite
+  // Run all ten workflow specs in sequence — the nightly suite
   args.push(
     'qa/e2e/workflow-1-coach-login-members.spec.js',
     'qa/e2e/workflow-2-invite-generation.spec.js',
@@ -29,7 +30,8 @@ if (allWorkflows) {
     'qa/e2e/workflow-6-squad-broadcast.spec.js',
     'qa/e2e/workflow-7-session-expiry.spec.js',
     'qa/e2e/workflow-8-player-session-expiry.spec.js',
-    'qa/e2e/workflow-9-approval-race.spec.js'
+    'qa/e2e/workflow-9-approval-race.spec.js',
+    'qa/e2e/workflow-10-password-reset.spec.js'
   );
 } else {
   args.push(
@@ -57,7 +59,9 @@ if (allWorkflows) {
                           ? 'qa/e2e/workflow-8-player-session-expiry.spec.js'
                           : workflow9
                             ? 'qa/e2e/workflow-9-approval-race.spec.js'
-                            : 'qa/e2e/nightly-qa-agent.spec.js'
+                            : workflow10
+                              ? 'qa/e2e/workflow-10-password-reset.spec.js'
+                              : 'qa/e2e/nightly-qa-agent.spec.js'
   );
 }
 
