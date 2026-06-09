@@ -1,0 +1,22 @@
+{
+  "id": "gen_programme_0uktoza",
+  "type": "ai-generation",
+  "version": 1,
+  "firstSeen": "2026-06-09T09:43:27.314Z",
+  "lastUpdated": "2026-06-09T09:43:27.314Z",
+  "updateCount": 0,
+  "summary": "programme generation via none (1ms)",
+  "history": [],
+  "tags": [],
+  "embedding": null,
+  "requestType": "programme",
+  "entityType": "player",
+  "entityId": null,
+  "provider": "none",
+  "model": null,
+  "inputHash": null,
+  "elapsed": 1,
+  "kbItemsUsed": 4,
+  "outputPreview": "4-week Early-season programme for a 17-year-old Prop (intermediate level). Focus: Power, Speed.",
+  "coachReviewed": false
+}

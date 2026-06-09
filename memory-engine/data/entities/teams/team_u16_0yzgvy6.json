@@ -1,0 +1,80 @@
+{
+  "id": "team_u16_0yzgvy6",
+  "type": "team",
+  "version": 1,
+  "firstSeen": "2026-06-09T09:43:27.243Z",
+  "lastUpdated": "2026-06-09T09:43:27.333Z",
+  "updateCount": 1,
+  "summary": "U16 (community). at Kildare Valley RFC. Phase: preseason. Record: 0W-0L-0D. Focus: breakdown, set-piece. 1 session recorded",
+  "history": [
+    {
+      "id": "team_u16_0yzgvy6",
+      "type": "team",
+      "version": 1,
+      "firstSeen": "2026-06-09T09:43:27.243Z",
+      "lastUpdated": "2026-06-09T09:43:27.244Z",
+      "updateCount": 0,
+      "tags": [],
+      "core": {
+        "name": null,
+        "ageGroup": "U16",
+        "level": "community",
+        "club": "Kildare Valley RFC",
+        "clubId": null,
+        "coachIds": [],
+        "appTeamId": null
+      },
+      "season": {
+        "current": null,
+        "phase": "preseason",
+        "record": {
+          "wins": 0,
+          "losses": 0,
+          "draws": 0
+        }
+      },
+      "roster": [],
+      "sessionCount": 0,
+      "programmes": [],
+      "systemOfPlay": null,
+      "keyFocusAreas": [
+        "breakdown",
+        "set-piece"
+      ],
+      "notes": null,
+      "_snapshotAt": "2026-06-09T09:43:27.330Z"
+    }
+  ],
+  "tags": [],
+  "embedding": null,
+  "core": {
+    "name": null,
+    "ageGroup": "U16",
+    "level": "community",
+    "club": "Kildare Valley RFC",
+    "clubId": null,
+    "coachIds": [],
+    "appTeamId": null
+  },
+  "season": {
+    "current": null,
+    "phase": "preseason",
+    "record": {
+      "wins": 0,
+      "losses": 0,
+      "draws": 0
+    }
+  },
+  "roster": [],
+  "sessionCount": 1,
+  "programmes": [],
+  "systemOfPlay": null,
+  "keyFocusAreas": [
+    "breakdown",
+    "set-piece"
+  ],
+  "notes": null,
+  "sessions": [
+    "session_20260609_07m9hld"
+  ]
+}

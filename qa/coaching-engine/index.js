@@ -12,13 +12,90 @@
  *   const session   = await generateSession(teamProfile, { focus: 'breakdown' }, coachProfile);
  */
 
-import { generateProgramme, generateRehabPlan } from './programme-generator.js';
-import { generateSession } from './session-generator.js';
+import { generateProgramme as _generateProgramme, generateRehabPlan as _generateRehabPlan } from './programme-generator.js';
+import { generateSession as _generateSession } from './session-generator.js';
 import { resolveProvider, listProviders } from './providers/index.js';
 import { buildProgrammeContext, buildSeasonContext } from './context-builder.js';
 import { buildPrompt } from './prompt-builder.js';
 
-export { generateProgramme, generateRehabPlan, generateSession };
+// Lazy import of memory engine to avoid circular deps and allow use without memory
+let _memoryEngine = null;
+async function getMemoryEngine() {
+  if (!_memoryEngine) {
+    try {
+      _memoryEngine = await import('../../memory-engine/index.js');
+    } catch {
+      _memoryEngine = { getRelevantContext: () => ({ hasHistory: false }), updateAfterGeneration: async () => {} };
+    }
+  }
+  return _memoryEngine;
+}
+
+/**
+ * Memory-aware wrapper for generateProgramme.
+ * Automatically checks memory before generating and saves to memory after.
+ */
+export async function generateProgramme(playerInput, coachInput = null, opts = {}) {
+  const mem = opts.memory !== false ? await getMemoryEngine() : null;
+
+  // Check memory before generation
+  const memoryContext = mem
+    ? mem.getRelevantContext({ player: playerInput, requestType: 'programme' })
+    : null;
+
+  const output = await _generateProgramme(playerInput, coachInput, {
+    ...opts,
+    memoryContext,
+  });
+
+  // Save to memory after generation
+  if (mem && opts.memory !== false) {
+    try { await mem.updateAfterGeneration('programme', { player: playerInput }, output); } catch { /* non-fatal */ }
+  }
+
+  return output;
+}
+
+/**
+ * Memory-aware wrapper for generateRehabPlan.
+ */
+export async function generateRehabPlan(playerInput, injuryDetail = '', coachInput = null, opts = {}) {
+  const mem = opts.memory !== false ? await getMemoryEngine() : null;
+
+  const memoryContext = mem
+    ? mem.getRelevantContext({ player: playerInput, requestType: 'rehab' })
+    : null;
+
+  const output = await _generateRehabPlan(playerInput, injuryDetail, coachInput, {
+    ...opts,
+    memoryContext,
+  });
+
+  if (mem && opts.memory !== false) {
+    try { await mem.updateAfterGeneration('rehab', { player: playerInput, injuryDetail }, output); } catch { /* non-fatal */ }
+  }
+
+  return output;
+}
+
+/**
+ * Memory-aware wrapper for generateSession.
+ */
+export async function generateSession(teamInput, sessionOpts = {}, coachInput = null) {
+  const mem = sessionOpts.memory !== false ? await getMemoryEngine() : null;
+
+  const memoryContext = mem
+    ? mem.getRelevantContext({ team: teamInput, requestType: 'session' })
+    : null;
+
+  const output = await _generateSession(teamInput, { ...sessionOpts, memoryContext }, coachInput);
+
+  if (mem && sessionOpts.memory !== false) {
+    try { await mem.updateAfterGeneration('session', { team: teamInput, focus: sessionOpts.focus }, output); } catch { /* non-fatal */ }
+  }
+
+  return output;
+}
 export { resolveProvider, listProviders } from './providers/index.js';
 export { buildPlayerProfile, normalizePosition, getPositionProfile } from './player-profile.js';
 export { buildTeamProfile }    from './team-profile.js';

@@ -268,7 +268,7 @@ function validateProgrammeOutput(output) {
  */
 export async function generateProgramme(playerInput, coachInput = null, opts = {}) {
   const start = Date.now();
-  const ctx   = buildProgrammeContext({ player: playerInput, coach: coachInput });
+  const ctx   = buildProgrammeContext({ player: playerInput, coach: coachInput, memoryContext: opts.memoryContext ?? null });
 
   let output, mode;
 
@@ -306,7 +306,7 @@ export async function generateProgramme(playerInput, coachInput = null, opts = {
  */
 export async function generateRehabPlan(playerInput, injuryDetail = '', coachInput = null, opts = {}) {
   const start = Date.now();
-  const ctx   = buildRehabContext({ player: playerInput, injuryDetail, coach: coachInput });
+  const ctx   = buildRehabContext({ player: playerInput, injuryDetail, coach: coachInput, memoryContext: opts.memoryContext ?? null });
 
   let output, mode;
 

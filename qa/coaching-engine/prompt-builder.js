@@ -200,8 +200,13 @@ function buildCoachSection(coach) {
   return `\nCoach philosophy: ${coach.philosophyLabel} — ${coach.philosophyEmphasis}`;
 }
 
+function buildMemorySection(memoryContext) {
+  if (!memoryContext?.hasHistory || !memoryContext.contextSummary) return '';
+  return `\n## Player History (from memory)\n${memoryContext.contextSummary}\n`;
+}
+
 export function buildProgrammePrompt(ctx) {
-  const { player, positionProfile, ageGuidelines, objectives, seasonPhaseData, injuryMods, equipmentProfile, knowledgeBase, coach } = ctx;
+  const { player, positionProfile, ageGuidelines, objectives, seasonPhaseData, injuryMods, equipmentProfile, knowledgeBase, coach, memoryContext } = ctx;
 
   const objectiveLines = objectives
     .filter(o => o.priority === 'primary')
@@ -209,7 +214,7 @@ export function buildProgrammePrompt(ctx) {
     .join('\n');
 
   const user = `Generate a ${seasonPhaseData.recommendedWeeks}-week ${player.seasonPhase} training programme for this player:
-
+${buildMemorySection(memoryContext)}
 PLAYER PROFILE:
 - Position: ${player.positionLabel} (${player.position})
 - Age: ${player.age} (${player.ageGroup})

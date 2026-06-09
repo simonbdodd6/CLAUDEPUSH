@@ -1,0 +1,49 @@
+{
+  "id": "programme_programme_0tln9ti",
+  "type": "programme",
+  "version": 1,
+  "firstSeen": "2026-06-09T09:43:27.315Z",
+  "lastUpdated": "2026-06-09T09:43:27.315Z",
+  "updateCount": 0,
+  "summary": "Early Season programme for Prop — 4 weeks. Goals: Power/Speed. Phase 1: Foundation Phase. Exercises: Barbell Back Squat, Romanian Deadlift, Bulgarian Split Squat. 2 training blocks. via template",
+  "history": [],
+  "tags": [
+    "Early Season",
+    "Prop",
+    "U18"
+  ],
+  "embedding": null,
+  "player": "player_ciar_n_murphy_0shhe5u",
+  "coach": null,
+  "team": null,
+  "requestType": "programme",
+  "input": {
+    "name": "Ciarán Murphy",
+    "age": 17,
+    "position": "Prop",
+    "experience": "Intermediate",
+    "goals": [
+      "Power",
+      "Speed"
+    ],
+    "injuries": [
+      "Previous shoulder injury"
+    ],
+    "trainingDays": 4,
+    "equipment": [
+      "Full gym"
+    ],
+    "seasonPhase": "Early Season",
+    "club": "Kildare Valley RFC",
+    "ageGroup": "U18"
+  },
+  "outputSummary": "4 weeks. Goals: Power/Speed. Phase 1: Foundation Phase. Exercises: Barbell Back Squat, Romanian Deadlift, Bulgarian Split Squat. 2 training blocks. via template",
+  "status": "active",
+  "startDate": "2026-06-09",
+  "endDate": null,
+  "provider": "none",
+  "coachFeedback": null,
+  "playerFeedback": null,
+  "completionRate": null,
+  "adherenceNotes": null
+}

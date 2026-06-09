@@ -180,6 +180,7 @@ export function buildProgrammeContext(options = {}) {
     seasonPhase:     player.seasonPhase,
     seasonPhaseData: phaseData,
     knowledgeBase:   kbResult,
+    memoryContext:   options.memoryContext ?? null,
   };
 }
 
@@ -203,6 +204,7 @@ export function buildSessionContext(options = {}) {
     ageGuidelines,
     equipmentProfile,
     knowledgeBase:  kbResult,
+    memoryContext:  options.memoryContext ?? null,
   };
 }
 

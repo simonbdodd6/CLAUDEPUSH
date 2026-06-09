@@ -1,0 +1,32 @@
+{
+  "id": "season_2024_25_season_0y13wi0",
+  "type": "season",
+  "version": 1,
+  "firstSeen": "2026-06-09T09:43:27.246Z",
+  "lastUpdated": "2026-06-09T09:43:27.246Z",
+  "updateCount": 0,
+  "summary": "2024/25 Season. (team: team_u16_0yzgvy6). 26 weeks. Phase: completed. Record: 0W-0L-0D. Objectives: Develop set-piece platform, Improve breakdown discipline. Status: active",
+  "history": [],
+  "tags": [],
+  "embedding": null,
+  "team": "team_u16_0yzgvy6",
+  "coach": null,
+  "label": "2024/25 Season",
+  "startDate": null,
+  "endDate": null,
+  "totalWeeks": 26,
+  "phase": "completed",
+  "record": {
+    "wins": 0,
+    "losses": 0,
+    "draws": 0
+  },
+  "sessions": [],
+  "programmes": [],
+  "keyObjectives": [
+    "Develop set-piece platform",
+    "Improve breakdown discipline"
+  ],
+  "outputSummary": "",
+  "status": "active"
+}
