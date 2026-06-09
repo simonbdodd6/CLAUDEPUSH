@@ -3526,7 +3526,19 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.ok === false) throw new Error(data.error || 'Login failed');
         const isStaffLogin = ['coach','admin','medical'].includes(data.user.role);
-        if (!isStaffLogin) applyApprovedIdentityLocally(data);
+        if (!isStaffLogin) {
+          applyApprovedIdentityLocally(data);
+        } else {
+          const staffName = data.user.displayName || data.user.email || data.user.id;
+          const existingUser = state.users.find(u => u.id === data.user.id);
+          if (!existingUser) {
+            state.users.push({ id: data.user.id, role: data.user.role, name: staffName, email: data.user.email || '', phone: '', pin: '' });
+          } else {
+            existingUser.role = data.user.role;
+            existingUser.name = existingUser.name || staffName;
+            existingUser.email = existingUser.email || (data.user.email || '');
+          }
+        }
         state.currentUserId = data.user.id;
         state.activeView = isStaffLogin ? 'coach' : 'player';
         if (isStaffLogin) {
@@ -3549,6 +3561,14 @@
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Log in'; }
       }
+    }
+
+    function devFillAndLogin(email, password) {
+      const emailEl = document.getElementById('identityLoginEmail');
+      const pwEl = document.getElementById('identityLoginPassword');
+      if (emailEl) emailEl.value = email;
+      if (pwEl) pwEl.value = password;
+      loginIdentityAccount();
     }
 
     async function ensureServerSessionForCurrentUser() {
@@ -3649,10 +3669,11 @@
           <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
         <div style="display:grid;gap:7px">
-          <input id="identityLoginEmail" type="email" placeholder="Email" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
-          <input id="identityLoginPassword" type="password" placeholder="Password" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
+          <input id="identityLoginEmail" type="email" name="email" autocomplete="email" placeholder="Email" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
+          <input id="identityLoginPassword" type="password" name="password" autocomplete="current-password" placeholder="Password" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
           <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:12px">Log in</button>
           <button class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:11px;padding:5px 8px">Forgot password?</button>
+          ${window._devLoginEnabled ? `<button class="auth-tab" type="button" onclick="devFillAndLogin('simonbdodd@gmail.com','1111')" style="font-size:11px;padding:5px 8px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">Quick login: Simon Coach</button>` : ''}
           <p class="muted" style="font-size:11px;margin:0">Approved players can log in after coach approval.</p>
         </div>
       ` : authTab === 'join' ? `
