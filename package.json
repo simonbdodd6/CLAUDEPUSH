@@ -48,7 +48,15 @@
     "assistant:timeline": "node autonomous-assistant/assistant-cli.js --timeline",
     "assistant:report": "node autonomous-assistant/assistant-cli.js --report",
     "assistant:all": "node autonomous-assistant/assistant-cli.js --all",
-    "assistant": "echo \"CLI:     npm run assistant:cli\nAPI:     npm run assistant:api (port 3004)\nBriefing: npm run assistant:briefing\nTimeline: npm run assistant:timeline\nReport:  npm run assistant:report\""
+    "assistant": "echo \"CLI:     npm run assistant:cli\nAPI:     npm run assistant:api (port 3004)\nBriefing: npm run assistant:briefing\nTimeline: npm run assistant:timeline\nReport:  npm run assistant:report\"",
+    "season:cli":      "node season-intelligence/season-cli.js",
+    "season:api":      "node season-intelligence/season-api.js",
+    "season:all":      "node season-intelligence/season-cli.js --all",
+    "season:phase":    "node season-intelligence/season-cli.js --phase",
+    "season:health":   "node season-intelligence/season-cli.js --health",
+    "season:predict":  "node season-intelligence/season-cli.js --predict",
+    "season:simulate": "node season-intelligence/season-cli.js --simulate",
+    "season": "echo \"CLI:     npm run season:cli\nAPI:     npm run season:api (port 3005)\nAll:     npm run season:all\""
   },
   "dependencies": {
     "web-push": "^3.6.7"
