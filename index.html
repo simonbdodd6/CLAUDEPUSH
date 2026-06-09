@@ -3743,7 +3743,7 @@
           <input id="identityLoginPassword" type="password" name="password" autocomplete="current-password" placeholder="Password" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
           <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:12px">Log in</button>
           <button class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:11px;padding:5px 8px">Forgot password?</button>
-          ${window._devLoginEnabled ? `<button class="auth-tab" type="button" onclick="devFillAndLogin('simonbdodd@gmail.com','1111')" style="font-size:11px;padding:5px 8px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">Quick login: Simon Coach</button>` : ''}
+          ${window._devLoginEnabled ? `<button class="auth-tab" type="button" onclick="devLogin('coach-demo')" style="font-size:11px;padding:5px 8px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">Quick login: Simon Coach</button>` : ''}
           <p class="muted" style="font-size:11px;margin:0">Approved players can log in after coach approval.</p>
         </div>
       ` : authTab === 'join' ? `
