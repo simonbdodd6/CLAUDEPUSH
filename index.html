@@ -3649,8 +3649,8 @@
           <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
         <div style="display:grid;gap:7px">
-          <input id="identityLoginEmail" type="email" placeholder="Email" style="font-size:12px;padding:7px 9px">
-          <input id="identityLoginPassword" type="password" placeholder="Password" style="font-size:12px;padding:7px 9px">
+          <input id="identityLoginEmail" type="email" placeholder="Email" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
+          <input id="identityLoginPassword" type="password" placeholder="Password" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
           <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:12px">Log in</button>
           <button class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:11px;padding:5px 8px">Forgot password?</button>
           <p class="muted" style="font-size:11px;margin:0">Approved players can log in after coach approval.</p>
@@ -3715,11 +3715,11 @@
             <strong>${user.name}</strong>
             <small>${rlbl}</small>
           </div>
-          <div style="display:flex;gap:5px">
-            <button class="auth-tab" type="button" onclick="setAuthTab('login')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Login</button>
-            <button class="auth-tab" type="button" onclick="setAuthTab('join')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Join</button>
-            <button class="auth-tab" type="button" onclick="setAuthTab('switch')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Switch ↓</button>
-            ${window._devLoginEnabled ? '<button class="auth-tab" type="button" onclick="setAuthTab(\'dev\')" style="padding:4px 8px;font-size:11px;white-space:nowrap;background:rgba(255,160,0,0.15);border-color:rgba(255,160,0,0.4)">Dev</button>' : ''}
+          <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
+            <button class="auth-tab" type="button" onclick="setAuthTab('login')" style="padding:3px 7px;font-size:11px;white-space:nowrap">Login</button>
+            <button class="auth-tab" type="button" onclick="setAuthTab('join')" style="padding:3px 7px;font-size:11px;white-space:nowrap">Join</button>
+            <button class="auth-tab" type="button" onclick="setAuthTab('switch')" style="padding:3px 7px;font-size:11px;white-space:nowrap">Switch</button>
+            ${window._devLoginEnabled ? '<button class="auth-tab" type="button" onclick="setAuthTab(\'dev\')" style="padding:3px 7px;font-size:11px;white-space:nowrap;background:rgba(255,160,0,0.2);border-color:rgba(255,160,0,0.5);color:#ffa040">DEV</button>' : ''}
           </div>
         </div>
       `;

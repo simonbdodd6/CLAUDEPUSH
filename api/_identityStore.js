@@ -557,7 +557,7 @@ async function upsertUserAccount({ email, firstName, lastName, displayName: name
   return user;
 }
 
-async function ensureTeamMember({ teamId = DEFAULT_TEAM.id, userId, role = 'player', status = 'active', approvedBy = 'invite' }) {
+async function ensureTeamMember({ teamId = DEFAULT_TEAM.id, userId, role = 'player', status = 'active', approvedBy = 'invite', forceRole = false }) {
   const members = await loadTeamMembers();
   let member = members.find(item => item.teamId === teamId && item.userId === userId);
   if (!member) {
@@ -575,7 +575,7 @@ async function ensureTeamMember({ teamId = DEFAULT_TEAM.id, userId, role = 'play
     };
     members.push(member);
   } else {
-    member.role = member.role || role;
+    member.role = forceRole ? role : (member.role || role);
     member.status = status;
     if (status === 'active') {
       member.approvedAt = member.approvedAt || nowIso();
@@ -651,6 +651,7 @@ async function ensureLegacyStaffAccountForLogin(email, password) {
     role: legacy.role,
     status: 'active',
     approvedBy: 'legacy-migration',
+    forceRole: true,
   });
   return { user, member };
 }
