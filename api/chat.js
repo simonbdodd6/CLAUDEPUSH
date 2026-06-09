@@ -25,21 +25,42 @@ function configurePush() {
   return true;
 }
 
-async function sendDmPush(recipientId, senderDisplayName, text) {
+// convId: 'dm:A:B', senderId: session user ID (may differ from convId participants)
+async function sendDmPush(convId, senderId, senderDisplayName, text) {
   if (!configurePush()) {
     console.warn('[DM push] VAPID keys not configured');
     return;
   }
-  console.log(`[DM push] start recipientId=${recipientId}`);
   const [allSubs, profiles] = await Promise.all([
     loadSubs(),
     kvGet(key('identity:player_profiles')).then(v => Array.isArray(v) ? v : []),
   ]);
-  console.log(`[DM push] allSubs=${allSubs.length} profiles=${profiles.length}`);
+  console.log(`[DM push] convId=${convId} senderId=${senderId} allSubs=${allSubs.length} profiles=${profiles.length}`);
 
-  // The convId participant ID (e.g. 'inv-YxnjxnQa') may differ from the login
-  // user ID stored in the subscription (e.g. 'player-simon-test'). Resolve all
-  // ID aliases for this recipient via their player profile.
+  // The session senderId ('player-simon-test') may not appear in the convId
+  // participants ('coach-demo', 'inv-YxnjxnQa'). Resolve all ID aliases for the
+  // sender via their player profile, then find the recipient by exclusion.
+  const senderIds = new Set([senderId]);
+  profiles.forEach(p => {
+    const pLegacy = String(p.legacyPlayerId || '');
+    const pUser   = String(p.userId || '');
+    if ((pLegacy && (pLegacy === senderId || senderIds.has(pLegacy))) ||
+        (pUser   && (pUser   === senderId || senderIds.has(pUser)))) {
+      if (pLegacy) senderIds.add(pLegacy);
+      if (pUser)   senderIds.add(pUser);
+    }
+  });
+  console.log(`[DM push] senderIds=[${[...senderIds].join(',')}]`);
+
+  const participants = convId.split(':').slice(1);
+  const recipientId = participants.find(p => !senderIds.has(p));
+  if (!recipientId) {
+    console.warn(`[DM push] cannot determine recipient from convId=${convId} senderIds=[${[...senderIds].join(',')}] participants=[${participants.join(',')}]`);
+    return;
+  }
+  console.log(`[DM push] recipientId=${recipientId}`);
+
+  // Resolve all ID aliases for the recipient.
   const recipientIds = new Set([recipientId]);
   profiles.forEach(p => {
     const pLegacy = String(p.legacyPlayerId || '');
@@ -334,6 +355,7 @@ async function handlePost(req, res) {
 
   if (action === 'send') {
     let { convId, senderId, senderName, senderRole, text, type = 'TEXT', replyTo = null, mediaUrl = null, mediaType = null, isAutomated = false } = body;
+    console.log(`[chat:send] convId=${convId} body.senderId=${senderId} sessionUserId=${sessionUser?.id}`);
     if (sessionUser?.id) {
       senderId = sessionUser.id;
       senderName = sessionUser.displayName || [sessionUser.firstName, sessionUser.lastName].filter(Boolean).join(' ') || sessionUser.name || sessionUser.email || senderId;
@@ -366,9 +388,7 @@ async function handlePost(req, res) {
     // Await push before responding — serverless functions terminate after res.end()
     // so fire-and-forget does not work; the async operation is abandoned.
     if (convId.startsWith('dm:') && !isAutomated) {
-      const recipientId = convId.split(':').slice(1).find(p => p !== senderId);
-      console.log(`[DM push] convId=${convId} senderId=${senderId} recipientId=${recipientId}`);
-      if (recipientId) await sendDmPush(recipientId, msg.senderName, msg.text).catch(e => {
+      await sendDmPush(convId, senderId, msg.senderName, msg.text).catch(e => {
         console.error('[DM push] top-level error:', e?.message);
       });
     }

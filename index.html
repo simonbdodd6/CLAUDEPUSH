@@ -3799,19 +3799,26 @@
       if (!user?.id) return;
       const name = canonicalIdentityDisplayName(profile?.displayName || user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email);
       const email = profile?.email || user.email || '';
+      // Use legacyPlayerId as the canonical messaging participant ID when available.
+      // 'player-*' user IDs are local compat IDs and must not appear in convIds.
+      const legacyId = String(profile?.legacyPlayerId || '').trim();
+      const canonicalPlayerId = legacyId || user.id;
+      console.log(`[identity] applyApprovedIdentityLocally userId=${user.id} legacyId=${legacyId} canonicalPlayerId=${canonicalPlayerId}`);
       if (!state.users.some(item => item.id === user.id)) {
-        state.users.push({ id: user.id, role: 'player', name, email, phone: '', pin: '', playerId: user.id });
+        state.users.push({ id: user.id, role: 'player', name, email, phone: '', pin: '', playerId: canonicalPlayerId });
       } else {
         const existingUser = state.users.find(item => item.id === user.id);
         existingUser.role = 'player';
         existingUser.name = existingUser.name || name;
         existingUser.email = existingUser.email || email;
-        existingUser.playerId = user.id;
+        existingUser.playerId = canonicalPlayerId;
       }
-      if (!state.players.some(player => player.id === user.id)) {
+      const existingPlayer = state.players.find(item => item.id === canonicalPlayerId || item.id === user.id);
+      if (!existingPlayer) {
         state.players.push({
-          id: user.id,
+          id: canonicalPlayerId,
           userId: user.id,
+          legacyPlayerId: legacyId,
           name,
           position: profile?.position || 'TBC',
           status: 'no-reply',
@@ -3828,15 +3835,16 @@
           contractStatus: 'active',
         });
       } else {
-        const player = state.players.find(item => item.id === user.id);
-        player.userId = user.id;
-        player.name = player.name || name;
-        player.email = player.email || email;
+        if (canonicalPlayerId && existingPlayer.id !== canonicalPlayerId) existingPlayer.id = canonicalPlayerId;
+        existingPlayer.userId = existingPlayer.userId || user.id;
+        existingPlayer.legacyPlayerId = existingPlayer.legacyPlayerId || legacyId;
+        existingPlayer.name = existingPlayer.name || name;
+        existingPlayer.email = existingPlayer.email || email;
       }
-      ensurePlayerUserForRosterPlayer(state.users, state.players.find(player => player.id === user.id));
+      ensurePlayerUserForRosterPlayer(state.users, state.players.find(player => player.id === canonicalPlayerId));
       // Allow this player's DMs to show immediately (before syncIdentityStateToLocalRoster runs).
       _allowedDmParticipantIds.add(String(user.id));
-      if (profile?.legacyPlayerId) _allowedDmParticipantIds.add(String(profile.legacyPlayerId));
+      if (legacyId) _allowedDmParticipantIds.add(legacyId);
     }
 
     function syncIdentityStateToLocalRoster(identity = {}) {
@@ -3884,8 +3892,18 @@
         } else {
           const before = JSON.stringify({ id: player.id, userId: player.userId, name: player.name, email: player.email, position: player.position });
           const profileLooksPermanent = isPermanentPlayerUserId(profile.userId);
-          if (profileLooksPermanent) player.id = profile.userId;
-          else player.id = player.id || playerId;
+          if (profileLooksPermanent) {
+            // Permanent user IDs (user_*) are the canonical messaging ID
+            player.id = profile.userId;
+          } else if (useLegacyId && playerId) {
+            // legacyPlayerId is the canonical messaging participant ID.
+            // Override even if player.id is already set as a 'player-*' compat ID —
+            // those IDs must not appear in convIds.
+            player.id = playerId;
+            player.legacyPlayerId = player.legacyPlayerId || playerId;
+          } else {
+            player.id = player.id || playerId;
+          }
           player.userId = player.userId || profile.userId;
           player.name = player.name || name;
           player.email = player.email || email;
@@ -6063,6 +6081,7 @@
       await chatLoadStateModule();
       const participantId = chatResolvePlayerParticipantId(player);
       const immediateConvId = dmConvId(me.id, participantId);
+      console.log(`[chatStartCoachDm] playerId=${playerId} player.id=${player.id} player.userId=${player.userId} player.legacyPlayerId=${player.legacyPlayerId} participantId=${participantId} convId=${immediateConvId}`);
       _chatNewDmOpen = false;
       _chatNewDmQuery = '';
       chatRenderNewDmPicker();
@@ -6101,7 +6120,9 @@
 
     function playerCoachDmId() {
       const me = chatMe();
-      return dmConvId('coach-demo', me.id);
+      const id = dmConvId('coach-demo', me.id);
+      console.log(`[playerCoachDmId] me.id=${me.id} → convId=${id}`);
+      return id;
     }
 
     function playerAllowedConversationIds() {
@@ -6237,7 +6258,9 @@
       const resolvedPlayerId = _chatStateModule?.resolvePlayerPortalMessagingId
         ? _chatStateModule.resolvePlayerPortalMessagingId(u, { players: state.players, users: state.users })
         : null;
-      return { id: canonicalPlayerId || resolvedPlayerId || player?.id || u?.id || 'anon', name: u?.name || player?.name || 'Me', role: u?.role || 'player', userId: u?.id || 'anon' };
+      const id = canonicalPlayerId || resolvedPlayerId || player?.id || u?.id || 'anon';
+      console.log(`[chatMe] userId=${u?.id} canonicalPlayerId=${canonicalPlayerId} resolvedPlayerId=${resolvedPlayerId} → id=${id}`);
+      return { id, name: u?.name || player?.name || 'Me', role: u?.role || 'player', userId: u?.id || 'anon' };
     }
 
     function isMsgMine(msg) {
@@ -6338,6 +6361,7 @@
     async function chatFetchMessages(convId, since = 0) {
       try {
         const me = chatMe();
+        console.log(`[chatFetchMessages] convId=${convId} since=${since} me.id=${me.id}`);
         const url = `/api/chat?action=messages&convId=${encodeURIComponent(convId)}&since=${since}&userId=${encodeURIComponent(me.id)}`;
         const data = await fetch(url).then(r => r.json());
         if (data.ok) {
@@ -6517,6 +6541,7 @@
       chatRenderMessages(convId, mode);
       chatScrollToBottom();
 
+      console.log(`[chatSendMessage] convId=${convId} me.id=${me.id} me.userId=${me.userId} text=${text.slice(0,30)}`);
       // Send to Redis
       try {
         const res = await fetch('/api/chat', {
