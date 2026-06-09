@@ -15,7 +15,7 @@ import { unreadCountForUser } from '../src/chat-notifications.js';
 import { DEFAULT_TEAM, resolveSessionFromRequest } from './_identityStore.js';
 import { tenantTeamId } from './_tenant.js';
 import { load as loadSubs, save as saveSubs } from './_lib.js';
-import { vapidContact } from './_http.js';
+import { setCors, vapidContact } from './_http.js';
 
 function configurePush() {
   const publicKey  = process.env.VAPID_PUBLIC_KEY;
@@ -106,18 +106,12 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
   }
 }
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
-
 function ok(res, data) {
-  res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
+  res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ ok: true, ...data }));
 }
 function err(res, status, msg) {
-  res.writeHead(status, { ...CORS, 'Content-Type': 'application/json' });
+  res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ ok: false, error: msg }));
 }
 
@@ -519,8 +513,9 @@ async function rebuildConvMsgs(convId, msgs) {
 }
 
 export default async function handler(req, res) {
+  setCors(res, req);
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, CORS); res.end(); return;
+    res.writeHead(204); res.end(); return;
   }
 
   try {

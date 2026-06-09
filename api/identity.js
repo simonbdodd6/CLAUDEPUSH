@@ -36,7 +36,7 @@ function rateIdentity(req, value = '') {
 }
 
 export default async function handler(req, res) {
-  setCors(res);
+  setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!kvConfigured()) return res.status(503).json({ ok: false, error: 'Identity storage not configured yet' });
 

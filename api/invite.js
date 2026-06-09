@@ -17,6 +17,7 @@
 //   → revokes / removes the invite
 
 import { kvGet, kvSet } from './_kv.js';
+import { setCors } from './_http.js';
 import { DEFAULT_TEAM } from './_identityStore.js';
 import { inviteEmail, sendTransactionalEmail } from './_email.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
@@ -27,11 +28,6 @@ const INVITES_KEY = 'ce:invites';
 const APP_URL     = process.env.APP_URL || 'https://boitsfort-coachseye-gpt.vercel.app';
 const INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
 
 function sendAuthError(res, error) {
   const status = error?.status || 403;
@@ -63,7 +59,7 @@ function inviteTeamId(invite = {}) {
 }
 
 export default async function handler(req, res) {
-  Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   // ── GET: validate token OR list all invites ────────────────────────────────
