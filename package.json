@@ -37,7 +37,11 @@
     "twin": "echo \"Start API: npm run twin:api\nRun tests: npm run twin:cli\"",
     "fixture:cli": "node fixture-engine/fixture-cli.js",
     "fixture:api": "node fixture-engine/fixture-api.js",
-    "fixture": "echo \"Start API: npm run fixture:api\nRun tests: npm run fixture:cli\""
+    "fixture": "echo \"Start API: npm run fixture:api\nRun tests: npm run fixture:cli\"",
+    "mobile:dev": "cd app/mobile && npm run dev",
+    "mobile:build": "cd app/mobile && npm run build",
+    "mobile:preview": "cd app/mobile && npm run preview",
+    "mobile": "echo \"Dev:     npm run mobile:dev   (port 5174)\nBuild:   npm run mobile:build\nPreview: npm run mobile:preview\""
   },
   "dependencies": {
     "web-push": "^3.6.7"
