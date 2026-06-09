@@ -7325,54 +7325,164 @@
     // Old versions removed — new WhatsApp functions defined above
 
     // ─── PUSH DIAGNOSTICS (dev only) ─────────────────────────────────────────
+    let _pushTestResult = null; // persists across panel re-renders
+
     function _fmtTs(ms) {
       if (!ms) return '—';
       return new Date(Number(ms)).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', second:'2-digit' });
     }
 
     function _diagRow(label, ok, value) {
-      const icon = ok === true ? '✅' : ok === false ? '❌' : '⚠️';
-      return `<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06)">
-        <span style="font-size:11px;color:var(--muted);white-space:nowrap">${icon} ${label}</span>
-        <span style="font-size:11px;font-family:monospace;word-break:break-all;color:${ok===false?'#f87171':ok===true?'#6ee7b7':'var(--muted)'}">${value}</span>
-      </div>`;
+      const dot = ok === true ? '#10b981' : ok === false ? '#f87171' : '#94a3b8';
+      const icon = ok === true ? '✅' : ok === false ? '❌' : '·';
+      return `<tr>
+        <td style="padding:3px 6px 3px 0;white-space:nowrap;color:var(--muted);font-size:10px;vertical-align:top">${icon}&nbsp;${label}</td>
+        <td style="padding:3px 0;font-family:monospace;font-size:10px;word-break:break-all;color:${dot}">${value}</td>
+      </tr>`;
+    }
+
+    function _diagSection(title) {
+      return `<tr><td colspan="2" style="padding:8px 0 3px;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.05em;text-transform:uppercase;border-top:1px solid rgba(255,255,255,0.07)">${title}</td></tr>`;
     }
 
     async function renderPushDiagPanel() {
       const el = document.getElementById('_pushDiagPanel');
       if (!el) return;
+      el.innerHTML = `<div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.1);padding-top:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <strong style="font-size:11px;color:#94a3b8;letter-spacing:.05em;text-transform:uppercase">Push Diagnostics</strong>
+          <button class="btn" type="button" onclick="renderPushDiagPanel()" style="font-size:10px;padding:2px 7px;min-height:0">↻</button>
+        </div>
+        <p style="font-size:10px;color:#64748b;margin:0 0 6px">Loading…</p></div>`;
 
       const supported = ('serviceWorker' in navigator) && ('PushManager' in window);
       if (!supported) {
-        el.innerHTML = `<p style="font-size:11px;color:#f59e0b;margin:8px 0 0">Push not supported in this browser.</p>`;
+        el.querySelector('p').textContent = '⚠️ Push not supported in this browser (needs HTTPS + modern browser)';
         return;
       }
 
+      // Collect all data in parallel
+      const [swReg, configData, debugSubs] = await Promise.all([
+        navigator.serviceWorker.getRegistration('/sw.js').catch(() => null),
+        fetch('/api/config').then(r => r.json()).catch(e => ({ error: e.message })),
+        fetch('/api/subscribe?debug=1').then(r => r.json()).catch(e => ({ error: e.message })),
+      ]);
+
       const permission   = Notification.permission;
-      const swReg        = await navigator.serviceWorker.getRegistration('/sw.js').catch(() => null);
       const sub          = swReg ? await swReg.pushManager.getSubscription().catch(() => null) : null;
       const endpoint     = sub?.endpoint || null;
-      const endpointShort = endpoint ? (endpoint.length > 52 ? endpoint.slice(0, 52) + '…' : endpoint) : '—';
+      const endpointTail = endpoint ? '…' + endpoint.slice(-44) : '—';
       const lastSubTs    = localStorage.getItem('_pushLastSubscribed');
       const lastPushTs   = localStorage.getItem('_pushLastReceived');
 
+      // Find this device's subscription in Redis
+      const redisSubs    = debugSubs?.subscriptions || [];
+      const thisInRedis  = endpoint ? redisSubs.find(s => s.endpointFull === endpoint) : null;
+
+      // Build test-push result rows
+      let testRows = '';
+      if (_pushTestResult) {
+        const r = _pushTestResult;
+        const ok = r.ok && [200,201,204].includes(r.statusCode);
+        testRows = `
+          ${_diagRow('Sent at', null, _fmtTs(r.ts))}
+          ${_diagRow('HTTP status', ok, r.statusCode != null ? String(r.statusCode) : '—')}
+          ${_diagRow('Response body', ok, r.body ? String(r.body).slice(0,120) : '(empty — normal for success)')}
+          ${r.error ? _diagRow('Error', false, String(r.error).slice(0,160)) : ''}
+          ${_diagRow('Payload sent', null, (r.payload || '').slice(0,100) + ((r.payload||'').length>100?'…':''))}`;
+      }
+
       el.innerHTML = `
         <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.1);padding-top:10px">
-          <strong style="font-size:11px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase">Push diagnostics</strong>
-          <div style="margin-top:6px">
-            ${_diagRow('Browser permission', permission === 'granted', permission)}
-            ${_diagRow('Service worker', Boolean(swReg), swReg ? 'registered' : 'not registered')}
-            ${_diagRow('Push subscription', Boolean(sub), sub ? 'active' : 'none')}
-            ${_diagRow('Endpoint', Boolean(endpoint), endpointShort)}
-            ${_diagRow('Subscribed at', lastSubTs ? true : null, _fmtTs(lastSubTs))}
-            ${_diagRow('Last push received', lastPushTs ? true : null, _fmtTs(lastPushTs))}
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <strong style="font-size:11px;color:#94a3b8;letter-spacing:.05em;text-transform:uppercase">Push Diagnostics</strong>
+            <button class="btn" type="button" onclick="renderPushDiagPanel()" style="font-size:10px;padding:2px 7px;min-height:0">↻</button>
           </div>
-          <button class="btn" type="button" id="_reRegisterBtn" onclick="reRegisterPush()"
-            style="width:100%;margin-top:10px;font-size:11px;padding:6px 10px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">
-            Re-register Push Notifications
-          </button>
-          <div id="_pushDiagLog" style="font-size:10px;font-family:monospace;color:var(--muted);margin-top:6px;min-height:16px"></div>
+          <table style="width:100%;border-collapse:collapse">
+            ${_diagSection('1 — Browser & Service Worker')}
+            ${_diagRow('Notification permission', permission === 'granted', permission)}
+            ${_diagRow('Service worker', Boolean(swReg), swReg ? 'registered (scope: ' + (swReg.scope||'?') + ')' : 'NOT registered')}
+            ${_diagRow('SW active state', Boolean(swReg?.active), swReg?.active ? swReg.active.state : 'no active worker')}
+            ${_diagRow('Push subscription', Boolean(sub), sub ? 'active' : 'NONE — call Re-register below')}
+            ${_diagRow('Endpoint', Boolean(endpoint), endpointTail)}
+            ${_diagRow('Has p256dh key', Boolean(sub?.getKey?.('p256dh')), sub ? (sub.getKey('p256dh') ? 'yes' : 'MISSING') : '—')}
+            ${_diagRow('Has auth key', Boolean(sub?.getKey?.('auth')), sub ? (sub.getKey('auth') ? 'yes' : 'MISSING') : '—')}
+            ${_diagRow('Subscribed at', Boolean(lastSubTs), _fmtTs(lastSubTs))}
+
+            ${_diagSection('2 — Subscription Saved in Redis')}
+            ${debugSubs?.error
+              ? _diagRow('Redis read', false, debugSubs.error)
+              : _diagRow('Total subscriptions', debugSubs.count > 0, String(debugSubs.count ?? '?') + ' stored')
+            }
+            ${!debugSubs?.error ? _diagRow('This device in Redis', Boolean(thisInRedis),
+                thisInRedis
+                  ? `YES — "${thisInRedis.label}" / userId:${thisInRedis.userId} / role:${thisInRedis.role} / saved ${thisInRedis.savedAt ? _fmtTs(new Date(thisInRedis.savedAt).getTime()) : '?'}`
+                  : endpoint ? 'NO — endpoint not found in stored subscriptions' : 'n/a (no local subscription)'
+              ) : ''}
+            ${redisSubs.length ? redisSubs.map(s =>
+                _diagRow('  stored', null, `"${s.label}" userId:${s.userId||'—'} role:${s.role||'—'} …${s.endpointTail||'—'}`)
+              ).join('') : ''}
+
+            ${_diagSection('3 — Server Configuration')}
+            ${configData?.error
+              ? _diagRow('Config fetch', false, configData.error)
+              : [
+                  _diagRow('VAPID configured', Boolean(configData?.pushConfigured), configData?.pushConfigured ? 'yes' : 'NO — check VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY env vars'),
+                  _diagRow('Storage configured', Boolean(configData?.storageConfigured), configData?.storageConfigured ? 'yes' : 'NO — check UPSTASH_REDIS_REST_URL'),
+                  _diagRow('Dev login enabled', Boolean(configData?.devLogin), configData?.devLogin ? 'yes' : 'no'),
+                ].join('')
+            }
+
+            ${_diagSection('4-6 — Send Test Push → HTTP Response')}
+            ${testRows || _diagRow('Test push', null, 'not sent yet — click button below')}
+
+            ${_diagSection('7-8 — Service Worker Receive → Display')}
+            ${_diagRow('Last push received by SW', Boolean(lastPushTs), _fmtTs(lastPushTs))}
+            ${lastPushTs && _pushTestResult?.ts
+              ? _diagRow('Delivery delay', null, Math.round((Number(lastPushTs) - _pushTestResult.ts) / 1000) + 's after send')
+              : ''
+            }
+          </table>
+
+          <div style="display:grid;gap:6px;margin-top:10px">
+            <button class="btn" type="button" onclick="pushDiagSendTest()"
+              style="font-size:11px;padding:6px 10px;background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.4);color:#6ee7b7">
+              Send Test Push to This Device
+            </button>
+            <button class="btn" type="button" id="_reRegisterBtn" onclick="reRegisterPush()"
+              style="font-size:11px;padding:6px 10px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">
+              Re-register Push Notifications
+            </button>
+          </div>
+          <div id="_pushDiagLog" style="font-size:10px;font-family:monospace;color:#64748b;margin-top:6px;min-height:14px;white-space:pre-wrap"></div>
         </div>`;
+    }
+
+    async function pushDiagSendTest() {
+      const sub = pushSubscription || (swRegistration && await swRegistration.pushManager.getSubscription().catch(() => null));
+      if (!sub) {
+        showToast('No push subscription — click Re-register first');
+        return;
+      }
+      const log = document.getElementById('_pushDiagLog');
+      if (log) log.textContent = 'Sending test push…';
+      const ts = Date.now();
+      try {
+        const res = await fetch('/api/push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'test_device', subscription: sub.toJSON() }),
+        });
+        const data = await res.json().catch(() => ({}));
+        _pushTestResult = { ...data, ts };
+        if (log) log.textContent = _pushTestResult.ok
+          ? `✅ Sent OK (HTTP ${_pushTestResult.statusCode}) — watch for notification`
+          : `❌ Failed: ${_pushTestResult.error || _pushTestResult.body || 'unknown error'}`;
+      } catch(e) {
+        _pushTestResult = { ok: false, error: e.message, ts };
+        if (log) log.textContent = '❌ Network error: ' + e.message;
+      }
+      renderPushDiagPanel();
     }
 
     async function reRegisterPush() {
@@ -7397,13 +7507,13 @@
         swRegistration = null;
 
         step('3/6 Re-registering service worker…');
-        swRegistration = await navigator.serviceWorker.register('/sw.js?v=' + Date.now());
+        swRegistration = await navigator.serviceWorker.register('/sw.js');
         await navigator.serviceWorker.ready;
 
         step('4/6 Requesting notification permission…');
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
-          step('❌ Permission denied — enable in browser settings then retry');
+          step('❌ Permission denied — allow notifications in browser settings then retry');
           return;
         }
 
@@ -7412,7 +7522,7 @@
           const cfg = await fetch('/api/config').then(r => r.json()).catch(() => ({}));
           vapidPublicKey = cfg.vapidPublicKey || '';
         }
-        if (!vapidPublicKey) { step('❌ No VAPID key — check server configuration'); return; }
+        if (!vapidPublicKey) { step('❌ No VAPID key — check server env vars'); return; }
         pushSubscription = await swRegistration.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
@@ -7424,7 +7534,7 @@
         if (!res.ok) throw new Error(data.error || 'Server save failed');
         localStorage.setItem('_pushLastSubscribed', String(Date.now()));
 
-        step('✅ Done — push re-registered successfully');
+        step('✅ Done — push re-registered. Now click Send Test Push.');
         showToast('Push re-registered');
         renderPushSidebar();
       } catch(e) {

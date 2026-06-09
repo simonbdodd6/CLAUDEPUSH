@@ -21,9 +21,26 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
 
-  // ── GET: subscription count ──────────────────────────────────────────────
+  // ── GET: subscription count (or full debug list in dev mode) ─────────────
   if (req.method === 'GET') {
     const subs = await load();
+    if (req.query?.debug === '1' && process.env.DEV_LOGIN === 'true') {
+      return res.status(200).json({
+        count: subs.length,
+        subscriptions: subs.map(s => ({
+          label:          s.label || '',
+          userId:         s.userId || '',
+          playerId:       s.playerId || '',
+          legacyPlayerId: s.legacyPlayerId || '',
+          role:           s.role || '',
+          savedAt:        s.savedAt || null,
+          endpointTail:   s.subscription?.endpoint ? s.subscription.endpoint.slice(-40) : null,
+          endpointFull:   s.subscription?.endpoint || null,
+          hasP256dh:      Boolean(s.subscription?.keys?.p256dh),
+          hasAuth:        Boolean(s.subscription?.keys?.auth),
+        })),
+      });
+    }
     return res.status(200).json({ count: subs.length });
   }
 

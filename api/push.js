@@ -34,6 +34,44 @@ export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Dev-only direct test: bypasses Redis lookup and auth, sends to a subscription
+  // object provided in the request body so every stage can be isolated.
+  if (req.body?.action === 'test_device') {
+    if (process.env.DEV_LOGIN !== 'true') return res.status(403).json({ ok: false, error: 'Dev only' });
+    if (!configurePush()) return res.status(500).json({ ok: false, error: 'VAPID keys not configured — check VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY env vars' });
+    const { subscription } = req.body;
+    if (!subscription?.endpoint) return res.status(400).json({ ok: false, error: 'subscription.endpoint required' });
+    const sentAt = new Date().toISOString();
+    const payload = JSON.stringify({
+      title: 'Push Diagnostics Test',
+      body: `Diagnostics test — ${sentAt}`,
+      tag: 'push-diag-test',
+      type: 'message',
+    });
+    try {
+      const result = await webpush.sendNotification(subscription, payload);
+      return res.status(200).json({
+        ok: true,
+        sentAt,
+        payload,
+        statusCode: result.statusCode,
+        body: result.body || '',
+        headers: result.headers ? Object.fromEntries(Object.entries(result.headers)) : {},
+      });
+    } catch (e) {
+      return res.status(200).json({
+        ok: false,
+        sentAt,
+        payload,
+        statusCode: e.statusCode || null,
+        body: e.body || '',
+        error: e.message || String(e),
+        headers: e.headers ? Object.fromEntries(Object.entries(e.headers)) : {},
+      });
+    }
+  }
+
   try {
     await requireTenantRole(req, ['coach', 'admin']);
   } catch (error) {
@@ -112,5 +150,15 @@ export default async function handler(req, res) {
     target: targetLabel || 'all',
   });
   await kvLtrim(key('message_log'), 500);
-  return res.status(200).json({ ok: true, sent, failed, total: subscriptions.length, target: targetUserId || targetPlayerId || targetLabel || 'all' });
+  return res.status(200).json({
+    ok: true, sent, failed, total: subscriptions.length,
+    target: targetUserId || targetPlayerId || targetLabel || 'all',
+    results: sendResults.map((r, i) => ({
+      label: subscriptions[i]?.label || '',
+      userId: subscriptions[i]?.userId || '',
+      status: r.status,
+      statusCode: r.status === 'fulfilled' ? (r.value?.statusCode ?? 201) : (r.reason?.statusCode ?? null),
+      error: r.status === 'rejected' ? (r.reason?.message || String(r.reason)) : null,
+    })),
+  });
 }
