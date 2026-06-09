@@ -5009,7 +5009,7 @@
                   <h2>Sessions</h2>
                   <p>Pick the training or match view.</p>
                 </div>
-                <span id="avail-refresh-ts" class="msg-chip no-reply">Live sync</span>
+                <span id="avail-refresh-ts" class="msg-chip ${_availLastSync ? 'available' : 'no-reply'}">${_availLastSync ? 'Synced ' + new Date(_availLastSync).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : 'Live sync'}</span>
               </div>
               ${state.players.length > 0 ? `
               <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(16,185,129,0.04);border-bottom:1px solid var(--line);font-size:12px;flex-wrap:wrap">
@@ -8487,7 +8487,8 @@
     }
 
     // ─── LIVE MESSAGING API LOADERS ───────────────────────────────────────────
-    let _availPollTimer = null;
+    let _availPollTimer  = null;
+    let _availLastSync   = null; // ISO string of last successful refresh
 
     async function loadLiveMessaging() {
       renderPushStatusCard();
@@ -8563,7 +8564,11 @@
           });
         });
         if (changed) saveState('Live availability synced');
-        if (ts) ts.textContent = `Live · ${new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}`;
+        _availLastSync = new Date().toISOString();
+        if (ts) {
+          ts.textContent = `Synced ${new Date(_availLastSync).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}`;
+          ts.className = 'msg-chip available';
+        }
         renderMessageCenter();
         setTimeout(() => {
           renderAudiencePicker();
@@ -8574,7 +8579,7 @@
         }, 50);
       } catch(e) {
         console.warn('[refreshLiveAvailability]', e);
-        if (ts) ts.textContent = 'Refresh failed';
+        if (ts) { ts.textContent = 'Sync failed'; ts.className = 'msg-chip unavailable'; }
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh'; }
       }
