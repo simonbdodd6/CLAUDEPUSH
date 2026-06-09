@@ -1726,7 +1726,11 @@
       .msg-hero, .msg-command-grid, .msg-two-col { grid-template-columns: 1fr !important; }
       .msg-hero-actions { justify-content: flex-start; }
       .msg-status-grid { grid-template-columns: 1fr; }
+      .msg-status-grid.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .msg-roadmap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .msg-session-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .msg-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .avail-manage-item-body strong { font-size: 12px; }
       .chat-shell { grid-template-columns: 1fr; }
       .chat-bubble-wrap { max-width: 86%; }
     }
@@ -1739,6 +1743,10 @@
       nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .video-grid { grid-template-columns: 1fr; }
       .msg-kpi-grid, .msg-form-row, .msg-template-actions, .msg-segment-toggle, .msg-roadmap { grid-template-columns: 1fr; }
+      .msg-session-grid { grid-template-columns: 1fr; }
+      .msg-status-grid.compact { grid-template-columns: 1fr; }
+      .avail-manage-list .avail-manage-actions { flex-wrap: wrap; }
+      .avail-manage-item { flex-wrap: wrap; }
       .chat-bubble-wrap { max-width: 90%; }
     }
   </style>
@@ -4861,6 +4869,12 @@
       const responseRate   = percent(answered.length, rows.length);
       const messagesSent   = state.messages.filter(m => m.from === "Coach").length;
 
+      // Cross-session summary: players who've replied to every session
+      const allSessionIds  = state.schedule.map(s => s.id);
+      const repliedAll     = state.players.filter(p => allSessionIds.every(id => (p[sessionKey(id)] || 'no-reply') !== 'no-reply')).length;
+      const chaseAny       = state.players.filter(p => allSessionIds.some(id => (p[sessionKey(id)] || 'no-reply') === 'no-reply')).length;
+      const injuryFlags    = state.players.filter(p => allSessionIds.some(id => p[sessionKey(id) + 'Reason'] === 'injury')).length;
+
       const playerRows = list => list.map(({player, status, reason, attendanceRate}) => {
         const isInjury = reason === 'injury';
         const reasonText = reason && reason !== 'injury' ? REASON_LABELS[reason] || reason : '';
@@ -4954,6 +4968,13 @@
                 </div>
                 <span id="avail-refresh-ts" class="msg-chip no-reply">Live sync</span>
               </div>
+              ${state.players.length > 0 ? `
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(16,185,129,0.04);border-bottom:1px solid var(--line);font-size:12px;flex-wrap:wrap">
+                <span style="color:var(--muted)">This week:</span>
+                <span style="font-weight:700;color:var(--ink)">${repliedAll} / ${state.players.length} players replied to all sessions</span>
+                ${chaseAny > 0 ? `<span class="msg-chip no-reply">${chaseAny} to chase</span>` : `<span class="msg-chip available">All replied</span>`}
+                ${injuryFlags > 0 ? `<span class="msg-chip unavailable">⚠ ${injuryFlags} injury flag${injuryFlags > 1 ? 's' : ''}</span>` : ''}
+              </div>` : ''}
               <div style="padding:16px">
                 <div class="msg-session-grid">
                   ${sessionCardsHTML || `<p class="muted">No availability sessions configured yet.</p>`}
