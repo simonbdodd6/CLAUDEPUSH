@@ -5014,9 +5014,12 @@
               ${state.players.length > 0 ? `
               <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(16,185,129,0.04);border-bottom:1px solid var(--line);font-size:12px;flex-wrap:wrap">
                 <span style="color:var(--muted)">This week:</span>
-                <span style="font-weight:700;color:var(--ink)">${repliedAll} / ${state.players.length} players replied to all sessions</span>
+                <span style="font-weight:700;color:var(--ink)">${repliedAll} / ${state.players.length} replied to all sessions</span>
                 ${chaseAny > 0 ? `<span class="msg-chip no-reply">${chaseAny} to chase</span>` : `<span class="msg-chip available">All replied</span>`}
                 ${injuryFlags > 0 ? `<span class="msg-chip unavailable">⚠ ${injuryFlags} injury flag${injuryFlags > 1 ? 's' : ''}</span>` : ''}
+                ${chaseAny > 0 ? `<button type="button" onclick="chaseAllNonResponders()"
+                  style="font-size:10px;padding:2px 9px;border-radius:999px;border:1px solid rgba(245,158,11,0.4);color:#fbbf24;background:rgba(245,158,11,0.08);cursor:pointer;font-weight:700;margin-left:auto"
+                  title="Send one reminder push to all players who haven't replied to any session">Chase all</button>` : ''}
               </div>` : ''}
               <div style="padding:16px">
                 <div class="msg-session-grid">
@@ -5375,6 +5378,9 @@
           });
         });
         _playerAvailFetched = false;
+        _availLastSync = null;
+        // Clear sent badges so they don't show stale "Sent X" timestamps after reset
+        state.availabilityRequests = state.availabilityRequests.filter(r => !sessions.includes(r.sessionId));
         saveState('Week cleared');
         render();
         showToast(`Responses cleared for ${(data.cleared || sessions).length} sessions`);
@@ -5419,6 +5425,40 @@
         showToast('Reminder failed: ' + e.message);
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Remind'; }
+      }
+    }
+
+    async function chaseAllNonResponders() {
+      if (!isCoach()) return notify("Only coaches can send reminders");
+      const sessions = state.schedule || [];
+      if (!sessions.length) return;
+      // Identify players who haven't replied to at least one session
+      const noReplyIds = new Set(
+        state.players
+          .filter(p => sessions.some(s => (p[sessionKey(s.id)] || 'no-reply') === 'no-reply'))
+          .map(p => p.id)
+      );
+      if (!noReplyIds.size) return showToast('Everyone has replied ✓');
+      const titles = sessions.map(s => s.title).join(', ');
+      const body = `Please confirm your availability for: ${titles} inside coacheseyeGPT.`;
+      try {
+        const res = await fetch('/api/push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title:    'Availability reminder',
+            body,
+            tag:      `chase-all-${Date.now()}`,
+            type:     'availability',
+            audience: 'no-reply',
+            url:      '/?to=availability',
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok && !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        showToast(`Reminder sent to ${noReplyIds.size} player${noReplyIds.size > 1 ? 's' : ''} ✓`);
+      } catch(e) {
+        showToast('Chase failed: ' + (e?.message || 'network'));
       }
     }
 
