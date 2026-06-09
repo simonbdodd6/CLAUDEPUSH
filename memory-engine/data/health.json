@@ -1,38 +1,38 @@
 {
   "status": "ok",
-  "checkedAt": "2026-06-09T09:43:27.343Z",
+  "checkedAt": "2026-06-09T13:02:39.369Z",
   "storage": {
     "byType": {
       "player": 1,
       "coach": 1,
-      "team": 1,
+      "team": 4,
       "club": 0,
-      "session": 1,
+      "session": 4,
       "season": 1,
       "programme": 2,
       "injury": 0,
       "goal": 0,
       "feedback": 0,
       "conversation": 0,
-      "ai-generation": 3
+      "ai-generation": 15
     },
-    "totalEntities": 10,
-    "totalLogLines": 3,
+    "totalEntities": 28,
+    "totalLogLines": 15,
     "dataDir": "/Users/simondodd/CLAUDEPUSH/memory-engine/data",
-    "generationsLog": 3
+    "generationsLog": 15
   },
-  "indexCount": 10,
+  "indexCount": 28,
   "discrepancies": [],
   "recentGenerations": {
-    "total": 3,
+    "total": 15,
     "byType": {
       "programme": 2,
-      "session": 1
+      "session": 13
     },
     "byProvider": {
-      "none": 3
+      "none": 15
     },
-    "avgElapsed": 10
+    "avgElapsed": 6
   },
   "recommendations": [
     "Memory engine is healthy — no action required"

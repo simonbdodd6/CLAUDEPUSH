@@ -3,8 +3,8 @@
   "type": "session",
   "version": 1,
   "firstSeen": "2026-06-09T10:15:44.343Z",
-  "lastUpdated": "2026-06-09T10:16:34.755Z",
-  "updateCount": 3,
+  "lastUpdated": "2026-06-09T13:02:39.388Z",
+  "updateCount": 5,
   "summary": "Session 2026-06-09. Theme: General fitness and skills — Senior. 90min",
   "history": [
     {
@@ -102,6 +102,70 @@
         "focus": "General fitness and skills"
       },
       "_snapshotAt": "2026-06-09T10:16:34.755Z"
+    },
+    {
+      "id": "session_20260609_02h7zfd",
+      "type": "session",
+      "version": 1,
+      "firstSeen": "2026-06-09T10:15:44.343Z",
+      "lastUpdated": "2026-06-09T10:16:34.755Z",
+      "updateCount": 3,
+      "tags": [],
+      "team": "team_senior_0d2u3uz",
+      "coach": null,
+      "ageGroup": "Senior",
+      "sessionDate": "2026-06-09",
+      "theme": "General fitness and skills — Senior",
+      "duration": 90,
+      "focus": "General fitness and skills",
+      "attendance": {
+        "expected": 0,
+        "actual": 0
+      },
+      "outputSummary": "General fitness and skills — Senior. 90min. Blocks: Skill Block 1, Skill Block 2",
+      "coachNotes": null,
+      "playerFeedback": [],
+      "provider": "none",
+      "input": {
+        "team": {
+          "ageGroup": "Senior",
+          "players": []
+        },
+        "focus": "General fitness and skills"
+      },
+      "_snapshotAt": "2026-06-09T13:02:16.281Z"
+    },
+    {
+      "id": "session_20260609_02h7zfd",
+      "type": "session",
+      "version": 1,
+      "firstSeen": "2026-06-09T10:15:44.343Z",
+      "lastUpdated": "2026-06-09T13:02:16.281Z",
+      "updateCount": 4,
+      "tags": [],
+      "team": "team_senior_0d2u3uz",
+      "coach": null,
+      "ageGroup": "Senior",
+      "sessionDate": "2026-06-09",
+      "theme": "General fitness and skills — Senior",
+      "duration": 90,
+      "focus": "General fitness and skills",
+      "attendance": {
+        "expected": 0,
+        "actual": 0
+      },
+      "outputSummary": "General fitness and skills — Senior. 90min. Blocks: Skill Block 1, Skill Block 2",
+      "coachNotes": null,
+      "playerFeedback": [],
+      "provider": "none",
+      "input": {
+        "team": {
+          "ageGroup": "Senior",
+          "players": []
+        },
+        "focus": "General fitness and skills"
+      },
+      "_snapshotAt": "2026-06-09T13:02:39.388Z"
     }
   ],
   "tags": [],

@@ -2442,14 +2442,18 @@
       if (!pushSubscription) return;
       const user = currentUser();
       const player = user?.role === 'player' ? getPlayer() : null;
+      // Send all available ID aliases. The server will overlay session-derived IDs where
+      // it can, but these client values are the fallback for iOS PWA where the session
+      // cookie is not forwarded — preventing subscriptions with all-empty routing IDs.
       return fetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          subscription: pushSubscription.toJSON(),
-          label: playerName || player?.name || user?.name || 'Player',
-          userId: user?.id || '',
-          playerId: player?.userId || player?.id || user?.playerId || user?.id || '',
+          subscription:   pushSubscription.toJSON(),
+          label:          playerName || player?.name || user?.name || 'Player',
+          userId:         user?.id || '',
+          playerId:       player?.userId || player?.id || user?.playerId || user?.id || '',
+          legacyPlayerId: player?.legacyPlayerId || player?.id || '',
         })
       });
     }
@@ -7486,14 +7490,24 @@
               ? _diagRow('Redis read', false, debugSubs.error)
               : _diagRow('Total subscriptions', debugSubs.count > 0, String(debugSubs.count ?? '?') + ' stored')
             }
-            ${!debugSubs?.error ? _diagRow('This device in Redis', Boolean(thisInRedis),
-                thisInRedis
-                  ? `YES — "${thisInRedis.label}" / userId:${thisInRedis.userId} / role:${thisInRedis.role} / saved ${thisInRedis.savedAt ? _fmtTs(new Date(thisInRedis.savedAt).getTime()) : '?'}`
-                  : endpoint ? 'NO — endpoint not found in stored subscriptions' : 'n/a (no local subscription)'
-              ) : ''}
-            ${redisSubs.length ? redisSubs.map(s =>
-                _diagRow('  stored', null, `"${s.label}" userId:${s.userId||'—'} role:${s.role||'—'} …${s.endpointTail||'—'}`)
-              ).join('') : ''}
+            ${!debugSubs?.error ? (() => {
+                if (!thisInRedis) {
+                  return _diagRow('This device in Redis', false,
+                    endpoint ? 'NO — endpoint not found; click Re-register Push Notifications' : 'n/a (no local subscription)');
+                }
+                const hasIds = thisInRedis.userId || thisInRedis.playerId || thisInRedis.legacyPlayerId;
+                const idStr = `userId:${thisInRedis.userId||'—'} · playerId:${thisInRedis.playerId||'—'} · legacyPlayerId:${thisInRedis.legacyPlayerId||'—'}`;
+                return _diagRow('This device in Redis', Boolean(hasIds),
+                  hasIds
+                    ? `YES — "${thisInRedis.label}" · ${idStr} · role:${thisInRedis.role||'—'} · saved ${thisInRedis.savedAt ? _fmtTs(new Date(thisInRedis.savedAt).getTime()) : '?'}`
+                    : `⚠️ FOUND but ALL IDs EMPTY — DM push will always SKIP this device · label:"${thisInRedis.label}" · Click "Purge empty + Re-register" below`);
+              })() : ''}
+            ${redisSubs.length ? redisSubs.map(s => {
+                const hasIds = s.userId || s.playerId || s.legacyPlayerId;
+                return _diagRow('  stored', hasIds ? null : false,
+                  `"${s.label}" userId:${s.userId||'—'} playerId:${s.playerId||'—'} legacyPlayerId:${s.legacyPlayerId||'—'} role:${s.role||'—'} …${s.endpointTail||'—'}`
+                + (!hasIds ? ' ⚠️ empty IDs' : ''));
+              }).join('') : ''}
 
             ${_diagSection('3 — Server Configuration')}
             ${configData?.error
@@ -7577,13 +7591,27 @@
               style="font-size:11px;padding:6px 10px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">
               Re-register Push Notifications  <span style="opacity:.6;font-size:10px">(full teardown + rebuild)</span>
             </button>
+            <button class="btn" type="button" onclick="purgeEmptyAndReregister()"
+              style="font-size:11px;padding:6px 10px;background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.4);color:#fca5a5">
+              Purge empty subscriptions + Re-register  <span style="opacity:.6;font-size:10px">(fixes "all IDs empty" bug)</span>
+            </button>
+            <button class="btn" type="button" onclick="runPushAudit()"
+              style="font-size:11px;padding:6px 10px;background:rgba(56,189,248,0.1);border-color:rgba(56,189,248,0.35);color:#7dd3fc">
+              Run Push Audit  <span style="opacity:.6;font-size:10px">(subscription IDs, endpoint type, DM routing trace)</span>
+            </button>
           </div>
           <p style="font-size:10px;color:#475569;margin:8px 0 0;line-height:1.5">
             If SW version shows STALE: click Force Update SW, wait 2s, click ↻ Refresh.<br>
             If buttons 1 &amp; 2 both show ✓ but no banner appears: check macOS System Settings → Notifications → Google Chrome → Alert style must be Banners or Alerts (not None), and turn off any Focus/DND mode.
           </p>
           <div id="_pushDiagLog" style="font-size:10px;font-family:monospace;color:#64748b;margin-top:4px;min-height:14px;white-space:pre-wrap"></div>
+          <pre id="_pushAuditOutput" style="display:none;font-size:9px;font-family:monospace;color:#94a3b8;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:8px;margin-top:8px;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto"></pre>
         `;
+      // Restore audit report if it was already run before this re-render
+      if (_pushAuditReport) {
+        const pre = document.getElementById('_pushAuditOutput');
+        if (pre) { pre.textContent = _pushAuditReport; pre.style.display = ''; }
+      }
       _pushDiagRendering = false;
     }
 
@@ -7729,6 +7757,113 @@
         if (btn) { btn.disabled = false; btn.textContent = 'Re-register Push Notifications'; }
         renderPushDiagOverlay();
       }
+    }
+
+    async function purgeEmptyAndReregister() {
+      const log = document.getElementById('_pushDiagLog');
+      const step = msg => { if (log) log.textContent = msg; };
+      step('Purging subscriptions with empty IDs…');
+      try {
+        const res = await fetch('/api/subscribe', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'purge_empty' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        step(`Purged ${data.purged ?? '?'} empty subscription(s). Now re-registering…`);
+      } catch (e) {
+        step('Purge failed: ' + e.message + ' — continuing with re-register anyway');
+      }
+      await reRegisterPush();
+    }
+
+    async function runPushAudit() {
+      const outEl = document.getElementById('_pushAuditOutput');
+      if (outEl) outEl.textContent = 'Running audit…';
+      _pushAuditReport = 'Running audit…';
+
+      const ua = navigator.userAgent;
+      const isIOS = /iPhone|iPad|iPod/.test(ua);
+      const isAndroid = /Android/.test(ua);
+      const isPWA = window.matchMedia('(display-mode: standalone)').matches || (window.navigator.standalone === true);
+      const iosVer = isIOS ? parseInt((ua.match(/OS (\d+)[_.]/) || [])[1] || '0') : null;
+
+      function endpointType(ep) {
+        if (!ep) return 'none';
+        if (ep.includes('web.push.apple.com') || ep.includes('push.apple.com')) return 'Apple APNs (iOS PWA)';
+        if (ep.includes('googleapis.com') || ep.includes('fcm')) return 'Google FCM (Android/Chrome)';
+        if (ep.includes('mozilla') || ep.includes('updates.push.services')) return 'Mozilla';
+        if (ep.includes('windows.com') || ep.includes('microsoft.com')) return 'WNS (Edge/Windows)';
+        return 'Other';
+      }
+
+      const [subData, localSub] = await Promise.all([
+        fetch('/api/subscribe?debug=1').then(r => r.json()).catch(e => ({ error: e.message })),
+        (swRegistration?.pushManager || navigator.serviceWorker?.ready.then(r => r.pushManager))
+          ?.getSubscription().catch(() => null),
+      ]);
+      const localEndpoint = (pushSubscription || localSub)?.endpoint || null;
+
+      const user = currentUser();
+      const player = user?.role === 'player' ? getPlayer() : null;
+      const participantId = player ? chatResolvePlayerParticipantId(player) : (user?.id || '');
+      const expectedConvId = participantId ? dmConvId('coach-demo', participantId) : null;
+
+      const allSubs = subData?.subscriptions || [];
+      const localInRedis = localEndpoint ? allSubs.find(s => s.endpointFull === localEndpoint) : null;
+      const appleSubs = allSubs.filter(s => endpointType(s.endpointFull) === 'Apple APNs (iOS PWA)');
+
+      function idMatch(sub, id) {
+        return id && [sub.userId, sub.playerId, sub.legacyPlayerId].some(v => String(v||'') === id);
+      }
+
+      const lines = [
+        `Push Audit Report — ${new Date().toISOString()}`,
+        ``,
+        `[This Device]`,
+        `  Platform:           ${isIOS ? 'iOS ' + (iosVer || '?') : isAndroid ? 'Android' : 'Desktop'}`,
+        `  Mode:               ${isPWA ? 'PWA Home Screen ✓' : 'Browser tab — push requires Home Screen on iOS'}`,
+        ...(isIOS ? [`  iOS push (v16.4+):   ${(iosVer||0) >= 16 ? 'OK (' + iosVer + ')' : 'NEEDS UPDATE (have ' + iosVer + ')'}`] : []),
+        `  Permission:         ${Notification.permission}`,
+        `  Local subscription: ${localEndpoint ? endpointType(localEndpoint) + '  …' + localEndpoint.slice(-35) : 'NONE — call Re-register'}`,
+        `  In Redis:           ${localInRedis
+          ? 'YES — "' + localInRedis.label + '" userId:' + (localInRedis.userId||'—') + ' playerId:' + (localInRedis.playerId||'—')
+          : localEndpoint ? 'NO — push will always fail (subscription not saved to Redis)' : 'N/A'}`,
+        ``,
+        `[Current User (DM Routing)]`,
+        `  userId:             ${user?.id || '—'}`,
+        `  role:               ${user?.role || '—'}`,
+        `  Participant ID:     ${participantId || '—'}   (this is what goes in the convId)`,
+        `  Expected DM convId: ${expectedConvId || '—'}`,
+        `  DM routing match:   ${localInRedis
+          ? (idMatch(localInRedis, participantId) ? 'DIRECT ID MATCH ✓' : 'IDs differ — server expands via player profiles (may still work)')
+          : localEndpoint ? 'FAIL — no subscription in Redis' : 'N/A'}`,
+        ``,
+        `[All Redis Subscriptions — ${allSubs.length} total, ${appleSubs.length} Apple/iOS]`,
+        ...(allSubs.length === 0 ? ['  (none)'] : allSubs.map((s, i) =>
+          `  [${i+1}] "${s.label}" role:${s.role||'—'}\n` +
+          `       userId:${s.userId||'—'}  playerId:${s.playerId||'—'}  legacyPlayerId:${s.legacyPlayerId||'—'}\n` +
+          `       type:${endpointType(s.endpointFull)}  saved:${s.savedAt ? s.savedAt.slice(0,19).replace('T',' ') : '?'}\n` +
+          `       endpoint:…${s.endpointTail||'—'}`
+        )),
+        ``,
+        `[DM Push Code Path]`,
+        `  Trigger:  api/chat.js → sendDmPush() on action=send for dm: convIds`,
+        `  Lookup:   filters subscriptions matching userId | playerId | legacyPlayerId`,
+        `  Payload:  webpush.sendNotification() — same VAPID + web-push lib as diagnostic`,
+        `  Logging:  check Vercel logs for "[DM push]" lines (convId, senderIds, recipientIds, targets)`,
+        ``,
+        `[iOS PWA Requirements]`,
+        `  1. App must be installed via "Add to Home Screen" (not run from Safari)`,
+        `  2. iOS 16.4 or later required for web push`,
+        `  3. Notification permission must be granted: iOS Settings → [App Name] → Notifications`,
+        `  4. "Allow Notifications" must be ON (not just "Badge App Icon")`,
+        `  5. Focus/DND must be off or app added to Focus allowlist`,
+      ];
+
+      _pushAuditReport = lines.join('\n');
+      const el = document.getElementById('_pushAuditOutput');
+      if (el) { el.textContent = _pushAuditReport; el.style.display = ''; }
     }
 
     // ─── RENDER ───────────────────────────────────────────────────────────────
@@ -8655,6 +8790,7 @@
     let _localNotifResult = null; // result of testLocalNotification()
     let _pushDiagOpen  = false; // whether the diagnostics overlay is open
     let _pushDiagRendering = false; // prevents concurrent re-renders from causing flicker
+    let _pushAuditReport = '';   // cached text from the last runPushAudit() call
 
     navigator.serviceWorker?.addEventListener('message', event => {
       const d = event.data || {};

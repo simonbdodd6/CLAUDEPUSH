@@ -1,0 +1,112 @@
+{
+  "id": "team_u14_0376rcv",
+  "type": "team",
+  "version": 1,
+  "firstSeen": "2026-06-09T13:02:16.188Z",
+  "lastUpdated": "2026-06-09T13:02:39.326Z",
+  "updateCount": 2,
+  "summary": "U14 (community). Record: 0W-0L-0D. 2 sessions recorded",
+  "history": [
+    {
+      "id": "team_u14_0376rcv",
+      "type": "team",
+      "version": 1,
+      "firstSeen": "2026-06-09T13:02:16.188Z",
+      "lastUpdated": "2026-06-09T13:02:16.188Z",
+      "updateCount": 0,
+      "tags": [],
+      "core": {
+        "name": null,
+        "ageGroup": "U14",
+        "level": "community",
+        "club": null,
+        "clubId": null,
+        "coachIds": [],
+        "appTeamId": null
+      },
+      "season": {
+        "current": null,
+        "phase": null,
+        "record": {
+          "wins": 0,
+          "losses": 0,
+          "draws": 0
+        }
+      },
+      "roster": [],
+      "sessionCount": 0,
+      "programmes": [],
+      "systemOfPlay": null,
+      "keyFocusAreas": [],
+      "notes": null,
+      "_snapshotAt": "2026-06-09T13:02:16.198Z"
+    },
+    {
+      "id": "team_u14_0376rcv",
+      "type": "team",
+      "version": 1,
+      "firstSeen": "2026-06-09T13:02:16.188Z",
+      "lastUpdated": "2026-06-09T13:02:16.198Z",
+      "updateCount": 1,
+      "tags": [],
+      "core": {
+        "name": null,
+        "ageGroup": "U14",
+        "level": "community",
+        "club": null,
+        "clubId": null,
+        "coachIds": [],
+        "appTeamId": null
+      },
+      "season": {
+        "current": null,
+        "phase": null,
+        "record": {
+          "wins": 0,
+          "losses": 0,
+          "draws": 0
+        }
+      },
+      "roster": [],
+      "sessionCount": 1,
+      "programmes": [],
+      "systemOfPlay": null,
+      "keyFocusAreas": [],
+      "notes": null,
+      "sessions": [
+        "session_20260609_0d1j6lr"
+      ],
+      "_snapshotAt": "2026-06-09T13:02:39.326Z"
+    }
+  ],
+  "tags": [],
+  "embedding": null,
+  "core": {
+    "name": null,
+    "ageGroup": "U14",
+    "level": "community",
+    "club": null,
+    "clubId": null,
+    "coachIds": [],
+    "appTeamId": null
+  },
+  "season": {
+    "current": null,
+    "phase": null,
+    "record": {
+      "wins": 0,
+      "losses": 0,
+      "draws": 0
+    }
+  },
+  "roster": [],
+  "sessionCount": 2,
+  "programmes": [],
+  "systemOfPlay": null,
+  "keyFocusAreas": [],
+  "notes": null,
+  "sessions": [
+    "session_20260609_0d1j6lr",
+    "session_20260609_0d1j6lr"
+  ]
+}

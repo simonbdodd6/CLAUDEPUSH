@@ -27,59 +27,85 @@ function configurePush() {
 
 // convId: 'dm:A:B', senderId: session user ID (may differ from convId participants)
 async function sendDmPush(convId, senderId, senderDisplayName, text) {
+  const T = '[DM push]';
   if (!configurePush()) {
-    console.warn('[DM push] VAPID keys not configured');
+    console.warn(`${T} VAPID keys not configured — push skipped`);
     return;
   }
+
   const [allSubs, profiles] = await Promise.all([
     loadSubs(),
     kvGet(key('identity:player_profiles')).then(v => Array.isArray(v) ? v : []),
   ]);
-  console.log(`[DM push] convId=${convId} senderId=${senderId} allSubs=${allSubs.length} profiles=${profiles.length}`);
 
-  // The session senderId ('player-simon-test') may not appear in the convId
-  // participants ('coach-demo', 'inv-YxnjxnQa'). Resolve all ID aliases for the
-  // sender via their player profile, then find the recipient by exclusion.
+  console.log(`${T} ── BEGIN ──────────────────────────────────────────────`);
+  console.log(`${T} convId=${convId}`);
+  console.log(`${T} senderId=${senderId}  allSubs=${allSubs.length}  profiles=${profiles.length}`);
+
+  // Expand sender's ID aliases via player profiles so we can exclude the right participant.
   const senderIds = new Set([senderId]);
   profiles.forEach(p => {
-    const pLegacy = String(p.legacyPlayerId || '');
-    const pUser   = String(p.userId || '');
-    if ((pLegacy && (pLegacy === senderId || senderIds.has(pLegacy))) ||
-        (pUser   && (pUser   === senderId || senderIds.has(pUser)))) {
-      if (pLegacy) senderIds.add(pLegacy);
-      if (pUser)   senderIds.add(pUser);
+    const pL = String(p.legacyPlayerId || '');
+    const pU = String(p.userId || '');
+    if ((pL && (pL === senderId || senderIds.has(pL))) || (pU && (pU === senderId || senderIds.has(pU)))) {
+      if (pL) senderIds.add(pL);
+      if (pU) senderIds.add(pU);
     }
   });
-  console.log(`[DM push] senderIds=[${[...senderIds].join(',')}]`);
+  console.log(`${T} senderIds=[${[...senderIds].join(', ')}]`);
 
   const participants = convId.split(':').slice(1);
+  console.log(`${T} convId participants=[${participants.join(', ')}]`);
+
   const recipientId = participants.find(p => !senderIds.has(p));
   if (!recipientId) {
-    console.warn(`[DM push] cannot determine recipient from convId=${convId} senderIds=[${[...senderIds].join(',')}] participants=[${participants.join(',')}]`);
+    console.warn(`${T} FAIL: cannot determine recipient — every participant is a sender alias`);
+    console.warn(`${T}   senderIds=[${[...senderIds].join(', ')}]  participants=[${participants.join(', ')}]`);
     return;
   }
-  console.log(`[DM push] recipientId=${recipientId}`);
+  console.log(`${T} recipientId=${recipientId}`);
 
-  // Resolve all ID aliases for the recipient.
+  // Expand recipient's ID aliases via player profiles.
   const recipientIds = new Set([recipientId]);
   profiles.forEach(p => {
-    const pLegacy = String(p.legacyPlayerId || '');
-    const pUser   = String(p.userId || '');
-    if ((pLegacy && pLegacy === recipientId) || (pUser && pUser === recipientId)) {
-      if (pLegacy) recipientIds.add(pLegacy);
-      if (pUser)   recipientIds.add(pUser);
+    const pL = String(p.legacyPlayerId || '');
+    const pU = String(p.userId || '');
+    if ((pL && pL === recipientId) || (pU && pU === recipientId)) {
+      if (pL) recipientIds.add(pL);
+      if (pU) recipientIds.add(pU);
     }
   });
-  console.log(`[DM push] recipientIds=[${[...recipientIds].join(',')}]`);
+  console.log(`${T} recipientIds=[${[...recipientIds].join(', ')}]  (${recipientIds.size} alias(es))`);
+  if (recipientIds.size === 1) {
+    console.log(`${T} NOTE: no player profile matched recipientId=${recipientId} — only an exact ID match will find a subscription`);
+  }
 
-  const targets = allSubs.filter(item =>
-    [item.userId, item.playerId, item.legacyPlayerId].some(v => v && recipientIds.has(String(v)))
-  );
-  console.log(`[DM push] targets=${targets.length}`, targets.map(t => ({ userId: t.userId, playerId: t.playerId, legacyPlayerId: t.legacyPlayerId })));
+  // Per-subscription routing decision — log every comparison so we know exactly why each is accepted or rejected.
+  console.log(`${T} ── Evaluating ${allSubs.length} subscription(s) ─────────────────────`);
+  const targets = [];
+  for (const sub of allSubs) {
+    const epTail = sub.subscription?.endpoint ? '…' + sub.subscription.endpoint.slice(-35) : '(no endpoint)';
+    const checked = {
+      userId:        String(sub.userId || ''),
+      playerId:      String(sub.playerId || ''),
+      legacyPlayerId: String(sub.legacyPlayerId || ''),
+    };
+    const matchEntry = Object.entries(checked).find(([, v]) => v && recipientIds.has(v));
+    if (matchEntry) {
+      console.log(`${T}   MATCH  "${sub.label}"  via ${matchEntry[0]}="${matchEntry[1]}"  endpoint=${epTail}`);
+      targets.push(sub);
+    } else {
+      const tried = Object.entries(checked).filter(([, v]) => v).map(([k, v]) => `${k}="${v}"`).join('  ');
+      const needs = [...recipientIds].join(', ');
+      console.log(`${T}   SKIP   "${sub.label}"  tried [${tried || '(all empty)'}]  need one of [${needs}]  endpoint=${epTail}`);
+    }
+  }
+  console.log(`${T} ── target count: ${targets.length} ────────────────────────────────────`);
 
   if (!targets.length) {
-    const allIds = allSubs.map(s => `${s.userId}|${s.playerId}|${s.legacyPlayerId}`);
-    console.warn(`[DM push] no subscriptions matched recipientIds=[${[...recipientIds].join(',')}], stored=[${allIds.join(' / ')}]`);
+    console.warn(`${T} RESULT: 0 targets matched — no push sent`);
+    console.warn(`${T}   recipientIds that were needed: [${[...recipientIds].join(', ')}]`);
+    console.warn(`${T}   IDs actually stored in Redis:  ${allSubs.map(s => `"${s.label}" u=${s.userId||'—'} p=${s.playerId||'—'} l=${s.legacyPlayerId||'—'}`).join(' | ')}`);
     return;
   }
 
@@ -90,6 +116,7 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
     url:   '/',
     type:  'dm',
   });
+  console.log(`${T} payload=${payload}`);
 
   const results = await Promise.allSettled(
     targets.map(({ subscription }) => webpush.sendNotification(subscription, payload))
@@ -97,10 +124,11 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
 
   results.forEach((r, i) => {
     const t = targets[i];
+    const epTail = t.subscription?.endpoint ? '…' + t.subscription.endpoint.slice(-35) : '?';
     if (r.status === 'fulfilled') {
-      console.log(`[DM push] sent OK to userId=${t.userId} playerId=${t.playerId}`);
+      console.log(`${T} SENT OK  status=${r.value?.statusCode}  userId=${t.userId}  playerId=${t.playerId}  endpoint=${epTail}`);
     } else {
-      console.warn(`[DM push] failed userId=${t.userId} playerId=${t.playerId} status=${r.reason?.statusCode} msg=${r.reason?.message}`);
+      console.warn(`${T} SEND FAIL  status=${r.reason?.statusCode}  body="${String(r.reason?.body || '').slice(0, 200)}"  msg="${r.reason?.message}"  userId=${t.userId}  playerId=${t.playerId}  endpoint=${epTail}`);
     }
   });
 
@@ -111,9 +139,10 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
     )
   );
   if (expired.size) {
-    console.log(`[DM push] pruning ${expired.size} expired endpoints`);
+    console.log(`${T} pruning ${expired.size} expired endpoint(s)`);
     await saveSubs(allSubs.filter(s => !expired.has(s.subscription.endpoint)));
   }
+  console.log(`${T} ── END ────────────────────────────────────────────────`);
 }
 
 const CORS = {

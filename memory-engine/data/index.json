@@ -150,10 +150,10 @@
   "team_senior_0d2u3uz": {
     "id": "team_senior_0d2u3uz",
     "type": "team",
-    "summary": "Senior (community). Record: 0W-0L-0D. 4 sessions recorded",
+    "summary": "Senior (community). Record: 0W-0L-0D. 6 sessions recorded",
     "tags": [],
-    "lastUpdated": "2026-06-09T10:16:34.758Z",
-    "updateCount": 4,
+    "lastUpdated": "2026-06-09T13:02:39.393Z",
+    "updateCount": 6,
     "ageGroup": "Senior",
     "club": null,
     "level": "community"
@@ -163,8 +163,8 @@
     "type": "session",
     "summary": "Session 2026-06-09. Theme: General fitness and skills — Senior. 90min",
     "tags": [],
-    "lastUpdated": "2026-06-09T10:16:34.755Z",
-    "updateCount": 3,
+    "lastUpdated": "2026-06-09T13:02:39.388Z",
+    "updateCount": 5,
     "team": "team_senior_0d2u3uz",
     "ageGroup": "Senior",
     "sessionDate": "2026-06-09",
@@ -224,6 +224,61 @@
     "summary": "session generation via none (12ms)",
     "tags": [],
     "lastUpdated": "2026-06-09T10:40:40.245Z",
+    "updateCount": 0
+  },
+  "gen_session_0js95k6": {
+    "id": "gen_session_0js95k6",
+    "type": "ai-generation",
+    "summary": "session generation via none (12ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T13:02:16.181Z",
+    "updateCount": 0
+  },
+  "team_u14_0376rcv": {
+    "id": "team_u14_0376rcv",
+    "type": "team",
+    "summary": "U14 (community). Record: 0W-0L-0D. 2 sessions recorded",
+    "tags": [],
+    "lastUpdated": "2026-06-09T13:02:39.326Z",
+    "updateCount": 2,
+    "ageGroup": "U14",
+    "club": null,
+    "level": "community"
+  },
+  "session_20260609_0d1j6lr": {
+    "id": "session_20260609_0d1j6lr",
+    "type": "session",
+    "summary": "Session 2026-06-09. Theme: General fitness and skills — U14. 90min",
+    "tags": [],
+    "lastUpdated": "2026-06-09T13:02:39.323Z",
+    "updateCount": 1,
+    "team": "team_u14_0376rcv",
+    "ageGroup": "U14",
+    "sessionDate": "2026-06-09",
+    "focus": "General fitness and skills"
+  },
+  "gen_session_0js94qm": {
+    "id": "gen_session_0js94qm",
+    "type": "ai-generation",
+    "summary": "session generation via none (0ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T13:02:16.278Z",
+    "updateCount": 0
+  },
+  "gen_session_0jqryqm": {
+    "id": "gen_session_0jqryqm",
+    "type": "ai-generation",
+    "summary": "session generation via none (6ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T13:02:39.318Z",
+    "updateCount": 0
+  },
+  "gen_session_0jqryk9": {
+    "id": "gen_session_0jqryk9",
+    "type": "ai-generation",
+    "summary": "session generation via none (0ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T13:02:39.386Z",
     "updateCount": 0
   }
 }

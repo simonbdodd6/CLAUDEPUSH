@@ -47,12 +47,16 @@ export default async function handler(req, res) {
   // ── POST: add / refresh subscription ────────────────────────────────────
   if (req.method === 'POST') {
     const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
-    const { subscription, label, userId, playerId } = req.body || {};
+    const { subscription, label, userId, playerId, legacyPlayerId: clientLegacyId } = req.body || {};
     if (!subscription?.endpoint) {
       return res.status(400).json({ error: 'Missing subscription endpoint' });
     }
     const subs  = await load();
     const idx   = subs.findIndex(s => s.subscription.endpoint === subscription.endpoint);
+    // Preserve any IDs already stored for this endpoint so that a session-less
+    // save (e.g. iOS PWA where the cookie is not forwarded) cannot overwrite
+    // previously-known routing IDs with empty strings.
+    const existing = idx >= 0 ? subs[idx] : null;
     const sessionUserId   = sessionContext?.user?.id || '';
     const sessionLegacyId = sessionContext?.playerProfile?.legacyPlayerId || '';
     const sessionProfileId = sessionContext?.playerProfile?.userId || '';
@@ -61,11 +65,11 @@ export default async function handler(req, res) {
     const resolvedPlayerId = sessionLegacyId || sessionProfileId || sessionUserId;
     const entry = {
       subscription,
-      label:         displayNameFromSession(sessionContext) || label || 'Player',
-      userId:        sessionUserId || userId || '',
-      playerId:      resolvedPlayerId || playerId || sessionUserId || '',
-      legacyPlayerId: sessionLegacyId || '',
-      role:          sessionContext?.teamMember?.role || sessionContext?.user?.role || '',
+      label:         displayNameFromSession(sessionContext) || label || existing?.label || 'Player',
+      userId:        sessionUserId || userId || existing?.userId || '',
+      playerId:      resolvedPlayerId || playerId || existing?.playerId || sessionUserId || '',
+      legacyPlayerId: sessionLegacyId || clientLegacyId || existing?.legacyPlayerId || '',
+      role:          sessionContext?.teamMember?.role || sessionContext?.user?.role || existing?.role || '',
       savedAt:       new Date().toISOString(),
     };
     if (idx >= 0) subs[idx] = entry; else subs.push(entry);
@@ -75,7 +79,16 @@ export default async function handler(req, res) {
 
   // ── DELETE: remove subscription ──────────────────────────────────────────
   if (req.method === 'DELETE') {
-    const { endpoint } = req.body || {};
+    const { endpoint, action } = req.body || {};
+    // Dev-only: purge all subscriptions that have empty userId, playerId, AND legacyPlayerId
+    // so they can be cleanly re-registered with correct IDs.
+    if (action === 'purge_empty' && process.env.DEV_LOGIN === 'true') {
+      const subs = await load();
+      const before = subs.length;
+      const cleaned = subs.filter(s => s.userId || s.playerId || s.legacyPlayerId);
+      await save(cleaned);
+      return res.status(200).json({ ok: true, purged: before - cleaned.length, remaining: cleaned.length });
+    }
     if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
     const subs = (await load()).filter(s => s.subscription.endpoint !== endpoint);
     await save(subs);

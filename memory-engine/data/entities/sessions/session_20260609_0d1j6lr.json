@@ -1,0 +1,67 @@
+{
+  "id": "session_20260609_0d1j6lr",
+  "type": "session",
+  "version": 1,
+  "firstSeen": "2026-06-09T13:02:16.190Z",
+  "lastUpdated": "2026-06-09T13:02:39.323Z",
+  "updateCount": 1,
+  "summary": "Session 2026-06-09. Theme: General fitness and skills — U14. 90min",
+  "history": [
+    {
+      "id": "session_20260609_0d1j6lr",
+      "type": "session",
+      "version": 1,
+      "firstSeen": "2026-06-09T13:02:16.190Z",
+      "lastUpdated": "2026-06-09T13:02:16.190Z",
+      "updateCount": 0,
+      "tags": [],
+      "team": "team_u14_0376rcv",
+      "coach": null,
+      "ageGroup": "U14",
+      "sessionDate": "2026-06-09",
+      "theme": "General fitness and skills — U14",
+      "duration": 90,
+      "focus": "General fitness and skills",
+      "attendance": {
+        "expected": 0,
+        "actual": 0
+      },
+      "outputSummary": "General fitness and skills — U14. 90min. Blocks: Skill Block 1, Skill Block 2",
+      "coachNotes": null,
+      "playerFeedback": [],
+      "provider": "none",
+      "input": {
+        "team": {
+          "ageGroup": "U14",
+          "players": []
+        },
+        "focus": "General fitness and skills"
+      },
+      "_snapshotAt": "2026-06-09T13:02:39.323Z"
+    }
+  ],
+  "tags": [],
+  "embedding": null,
+  "team": "team_u14_0376rcv",
+  "coach": null,
+  "ageGroup": "U14",
+  "sessionDate": "2026-06-09",
+  "theme": "General fitness and skills — U14",
+  "duration": 90,
+  "focus": "General fitness and skills",
+  "attendance": {
+    "expected": 0,
+    "actual": 0
+  },
+  "outputSummary": "General fitness and skills — U14. 90min. Blocks: Skill Block 1, Skill Block 2",
+  "coachNotes": null,
+  "playerFeedback": [],
+  "provider": "none",
+  "input": {
+    "team": {
+      "ageGroup": "U14",
+      "players": []
+    },
+    "focus": "General fitness and skills"
+  }
+}
