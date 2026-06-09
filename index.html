@@ -2598,8 +2598,10 @@
     function sessionKey(id) {
       if (id === "tue") return "trainingTuesday";
       if (id === "thu") return "trainingThursday";
-      return "game";
+      if (id === "game") return "game";
+      return "avail_" + id;
     }
+    function sessionReasonKey(id) { return sessionKey(id) + "Reason"; }
     function keyToSessionId(key) {
       if (key === "trainingTuesday")  return "tue";
       if (key === "trainingThursday") return "thu";
@@ -2609,8 +2611,32 @@
     function percent(p, t)    { return !t ? 0 : Math.round((p / t) * 100); }
     function sessionRows(id)  {
       const key = sessionKey(id);
-      return state.players.map(p => ({ player: p, status: p[key], attendanceRate: p.attendance }));
+      const rKey = sessionReasonKey(id);
+      return state.players.map(p => ({ player: p, status: p[key], reason: p[rKey] || '', attendanceRate: p.attendance }));
     }
+
+    // ─── AVAILABILITY REASON PICKER STATE ─────────────────────────────────────
+    // Controls which session's inline reason picker is currently visible.
+    // Set by selectAvailabilityStatusPending(); cleared by setPlayerAvailability().
+    let _reasonPickerOpen = null; // { key, status } — null means no picker shown
+
+    function selectAvailabilityStatusPending(key, status) {
+      if (status === 'available') {
+        // Available needs no reason — save immediately
+        setPlayerAvailability(key, 'available', '');
+        return;
+      }
+      _reasonPickerOpen = { key, status };
+      renderPlayerAvailability();
+    }
+
+    function cancelReasonPicker() {
+      _reasonPickerOpen = null;
+      renderPlayerAvailability();
+    }
+
+    const REASON_LABELS = { injury: 'Injury', work: 'Work', holiday: 'Holiday', family: 'Family', other: 'Other' };
+    function reasonLabel(r) { return REASON_LABELS[r] || ''; }
 
     function findUserForCanonicalPlayer(player = {}) {
       const participantId = resolveRosterMessagingId(player, state.users);
@@ -2667,8 +2693,10 @@
         null;
     }
 
-    async function saveAvailabilityResponseToServer(sessionId, response) {
-      if (response === 'injured') return;
+    async function saveAvailabilityResponseToServer(sessionId, response, reason) {
+      // 'injured' is a legacy local-only status — map to unavailable + reason:injury for server.
+      const sendResponse = response === 'injured' ? 'unavailable' : response;
+      const sendReason   = response === 'injured' ? 'injury'     : (reason || '');
       let endpoint = '';
       try {
         const sub = await navigator.serviceWorker?.ready
@@ -2678,7 +2706,7 @@
       return fetch('/api/availability', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endpoint, response, sessionId })
+        body: JSON.stringify({ endpoint, response: sendResponse, reason: sendReason, sessionId })
       }).catch(() => {});
     }
     function applyTemplate() {
@@ -4519,7 +4547,7 @@
       const player = row?.player || {};
       if (availabilityBoardFilter === "all") return true;
       if (availabilityBoardFilter === "injured") {
-        return player.game === "injured" || player.status === "injured" || Boolean(player.medical);
+        return row?.reason === 'injury' || player[sessionReasonKey(state.messageDetail || 'game')] === 'injury' || player.game === "injured" || player.status === "injured" || Boolean(player.medical);
       }
       return availabilityGroupForPlayer(player) === availabilityBoardFilter;
     }
@@ -4566,14 +4594,20 @@
       const responseRate   = percent(answered.length, rows.length);
       const messagesSent   = state.messages.filter(m => m.from === "Coach").length;
 
-      const playerRows = list => list.map(({player, status, attendanceRate}) => `
-        <button class="msg-player-row ${selectedPlayer.id===player.id ? "active" : ""}" type="button" onclick="setMessagePlayer('${player.id}')">
+      const playerRows = list => list.map(({player, status, reason, attendanceRate}) => {
+        const isInjury = reason === 'injury';
+        const reasonText = reason && reason !== 'injury' ? REASON_LABELS[reason] || reason : '';
+        return `<button class="msg-player-row ${selectedPlayer.id===player.id ? "active" : ""}" type="button" onclick="setMessagePlayer('${player.id}')">
           <span class="msg-player-main">
-            <span style="min-width:0"><strong>${esc(player.name)}</strong><small>${esc(player.position)}</small></span>
+            <span style="min-width:0">
+              <strong>${esc(player.name)}</strong>
+              <small>${esc(player.position)}${isInjury ? ' · <span style="color:#f87171;font-weight:700">⚠ Injury</span>' : reasonText ? ' · ' + esc(reasonText) : ''}</small>
+            </span>
             <span class="msg-attendance-chip">${attendanceRate || 0}%</span>
           </span>
-          <span class="msg-chip ${status || "no-reply"}">${statusLabel(status)}</span>
-        </button>`).join("") || `<p class="muted" style="font-size:12px;padding:10px">No players in this group.</p>`;
+          <span class="msg-chip ${isInjury ? 'unavailable' : (status || 'no-reply')}">${isInjury ? '⚠ Injury' : statusLabel(status)}</span>
+        </button>`;
+      }).join("") || `<p class="muted" style="font-size:12px;padding:10px">No players in this group.</p>`;
 
       const sessionDisplayTitle = session => {
         if (session.id === "tue") return "Tuesday Training";
@@ -4677,7 +4711,13 @@
                     <div class="msg-player-list">${playerRows(boardAvailable)}</div>
                   </section>
                   <section class="msg-status-column unavailable">
-                    <header><span>Unavailable</span><strong>${boardUnavailable.length}</strong></header>
+                    <header>
+                      <span>Unavailable</span>
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <strong>${boardUnavailable.length}</strong>
+                        ${(() => { const inj = boardUnavailable.filter(r => r.reason === 'injury').length; return inj > 0 ? `<span style="font-size:10px;color:#f87171;font-weight:700;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:999px;padding:1px 6px">⚠ ${inj} injured</span>` : ''; })()}
+                      </div>
+                    </header>
                     <div class="msg-player-list">${playerRows(boardUnavailable)}</div>
                   </section>
                   <section class="msg-status-column chase">
@@ -4685,7 +4725,19 @@
                     <div class="msg-player-list">${playerRows(boardMaybe)}</div>
                   </section>
                   <section class="msg-status-column chase">
-                    <header><span>No Reply</span><strong>${boardNoReply.length}</strong></header>
+                    <header>
+                      <span>No Reply</span>
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <strong>${boardNoReply.length}</strong>
+                        ${boardNoReply.length > 0 && selected ? `
+                          <button class="btn" type="button"
+                            onclick="remindNonResponders('${esc(selected.id)}')"
+                            style="font-size:10px;padding:2px 8px;min-height:0;border-color:rgba(245,158,11,0.4);color:#fbbf24;background:rgba(245,158,11,0.1)"
+                            title="Send a push reminder to all players who haven't replied for ${esc(sessionDisplayTitle(selected))}">
+                            Remind
+                          </button>` : ''}
+                      </div>
+                    </header>
                     <div class="msg-player-list">${playerRows(boardNoReply)}</div>
                   </section>
                 </div>
@@ -4931,6 +4983,45 @@
       } catch(e) { console.warn('Chat write failed:', e); }
       sendPushToPlayers(`Availability request — ${session.title}`, body, { type: 'availability', sessionId });
       showToast(`${session.title} request sent to ${created.length} players ✓`);
+    }
+
+    // Send a push reminder to all players who have not replied for a specific session.
+    // Reuses the existing /api/push endpoint with audience:'no-reply'. The server
+    // checks recentResponders(7) — players who answered any session in the last 7 days
+    // are excluded. For single-session targeting, the coach can use the session title
+    // in the push body so players know which session needs a response.
+    async function remindNonResponders(sessionId) {
+      if (!isCoach()) return notify("Only coaches can send reminders");
+      const session = state.schedule.find(s => s.id === sessionId) || { title: 'this session' };
+      const btn = document.querySelector(`button[onclick*="remindNonResponders('${sessionId}')"]`);
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+      try {
+        const res = await fetch('/api/push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title:     'Availability reminder',
+            body:      `Please confirm your availability for ${session.title || 'this session'} in the app.`,
+            tag:       `remind-${sessionId}-${Date.now()}`,
+            type:      'availability',
+            sessionId,
+            url:       '/?to=availability',
+            audience:  'no-reply',
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.sent > 0) {
+          showToast(`Reminder sent to ${data.sent} player${data.sent > 1 ? 's' : ''}`);
+        } else if (data.sent === 0) {
+          showToast('All players have already responded — no reminders sent');
+        } else {
+          showToast(data.error || 'Could not send reminder — check push config');
+        }
+      } catch(e) {
+        showToast('Reminder failed: ' + e.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Remind'; }
+      }
     }
 
     async function sendInAppMessage() {
@@ -5804,13 +5895,56 @@
     }
 
     // ─── PLAYER AVAILABILITY ─────────────────────────────────────────────────
+    // Fetch the logged-in player's own responses from the server and patch local state.
+    // Called once when the player opens the Availability section so they see the latest
+    // server state even on a fresh page load (before any manual response).
+    let _playerAvailFetched = false;
+    async function fetchMyAvailabilityFromServer() {
+      if (_playerAvailFetched) return; // only auto-fetch once per session
+      _playerAvailFetched = true;
+      try {
+        const data = await fetch('/api/availability?myResponse=1').then(r => r.ok ? r.json() : null).catch(() => null);
+        if (!data?.responses) return;
+        const player = getPlayer();
+        const live   = state.players.find(p =>
+          String(p.id || '') === String(player.id || '') ||
+          String(p.userId || '') === String(player.id || '')
+        );
+        let changed = false;
+        Object.entries(data.responses).forEach(([sid, entry]) => {
+          const k  = sessionKey(sid);
+          const rk = k + 'Reason';
+          if (entry.response && player[k] !== entry.response) {
+            player[k] = entry.response;
+            if (live) live[k] = entry.response;
+            changed = true;
+          }
+          if (entry.reason !== undefined && player[rk] !== entry.reason) {
+            player[rk] = entry.reason;
+            if (live) live[rk] = entry.reason;
+          }
+        });
+        if (changed) { saveState('Server availability loaded'); renderPlayerAvailability(); }
+      } catch { /* non-critical — player already sees local state */ }
+    }
+
     function renderPlayerAvailability() {
       const player = getPlayer();
       if (!player.id) { document.getElementById("player-availability").innerHTML = noSquadMsg(); return; }
 
-      const allAvailable = player.trainingTuesday === 'available'
-        && player.trainingThursday === 'available'
-        && player.game === 'available';
+      // Trigger server fetch on first open without blocking the render.
+      fetchMyAvailabilityFromServer();
+
+      const sessions     = state.schedule || [];
+      const allAvailable = sessions.length > 0 && sessions.every(s => (player[sessionKey(s.id)] || 'no-reply') === 'available');
+      const pendingCount = sessions.filter(s => (player[sessionKey(s.id)] || 'no-reply') === 'no-reply').length;
+
+      const sessionLabel = s => {
+        if (s.id === 'tue')  return (s.title || 'Tuesday Training') + (s.date ? ' · ' + s.date : '');
+        if (s.id === 'thu')  return (s.title || 'Thursday Training') + (s.date ? ' · ' + s.date : '');
+        if (s.id === 'game') return s.title || (state.fixtures?.[0]?.opponent ? state.fixtures[0].opponent + ' — ' + state.fixtures[0].date : 'Weekend match');
+        return s.title || s.id;
+      };
 
       document.getElementById("player-availability").innerHTML = `
         <div style="max-width:600px;margin:0 auto">
@@ -5819,115 +5953,138 @@
           <div style="border:1.5px solid ${allAvailable ? 'var(--green)' : 'var(--line)'};border-radius:14px;padding:18px 20px;margin-bottom:18px;background:${allAvailable ? 'rgba(16,185,129,0.07)' : 'var(--panel)'}">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
               <div>
-                <strong style="font-size:15px;display:block">Confirm everything this week</strong>
-                <span style="font-size:12px;color:var(--muted)">One tap to mark all sessions available</span>
+                <strong style="font-size:15px;display:block">${allAvailable ? 'All sessions confirmed' : 'Confirm everything this week'}</strong>
+                <span style="font-size:12px;color:var(--muted)">${allAvailable ? 'Tap a session below to change a response.' : pendingCount > 0 ? pendingCount + ' session' + (pendingCount > 1 ? 's' : '') + ' still need your answer.' : 'All responses submitted.'}</span>
               </div>
-              <button type="button" onclick="setAllAvailable()"
+              ${!allAvailable ? `<button type="button" onclick="setAllAvailable()"
                 style="min-height:42px;padding:0 22px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;
-                  border:2px solid var(--green);background:${allAvailable ? 'var(--green)' : 'transparent'};color:${allAvailable ? '#060b12' : 'var(--green)'};white-space:nowrap">
-                ${allAvailable ? 'All confirmed' : 'Yes — available for all'}
-              </button>
+                  border:2px solid var(--green);background:transparent;color:var(--green);white-space:nowrap">
+                Yes — available for all
+              </button>` : ''}
             </div>
           </div>
 
-          <!-- Per-session blocks -->
-          ${availabilityBlock(player, "trainingTuesday",  "Tuesday training · 19:45")}
-          ${availabilityBlock(player, "trainingThursday", "Thursday training · 19:45")}
-          ${availabilityBlock(player, "game", state.fixtures?.[0]?.opponent ? state.fixtures[0].opponent + ' — ' + state.fixtures[0].date : 'Saturday match')}
+          <!-- Per-session cards (dynamic from state.schedule) -->
+          ${sessions.map(s => availabilityBlock(player, sessionKey(s.id), sessionLabel(s))).join('')}
 
-          <!-- Blocked dates -->
-          <div style="border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-top:18px;background:var(--panel)">
-            <strong style="font-size:14px;display:block;margin-bottom:4px">Flag a date you can't make</strong>
-            <p class="muted" style="font-size:12px;margin:0 0 14px">Let the coach know early — it protects your attendance record.</p>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-              <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:4px">Date<input id="blockDate" type="date"></label>
-              <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:4px">Reason<input id="blockReason" placeholder="Holiday, work, other…"></label>
-            </div>
-            <button class="btn primary" type="button" style="width:100%" onclick="addBlockedDate()">Save unavailable date</button>
-            <div class="list" style="margin-top:12px">
-              ${(player.blockedDates||[]).map(b => row(b.date, b.reason, "<span class='status unavailable'>Blocked</span>")).join("") || "<p class='muted' style='font-size:12px;padding-top:4px'>No blocked dates saved.</p>"}
-            </div>
-          </div>
+          ${sessions.length === 0 ? `<p class="muted" style="text-align:center;padding:20px">No sessions scheduled yet.</p>` : ''}
         </div>`;
     }
 
     function availabilityBlock(player, key, label) {
-      const current = player[key] || 'no-reply';
-      const statusMap = {
+      const current       = player[key] || 'no-reply';
+      const currentReason = player[key + 'Reason'] || '';
+      const isPending     = _reasonPickerOpen?.key === key;
+      const pendingStatus = isPending ? _reasonPickerOpen.status : null;
+      const displayStatus = isPending ? pendingStatus : (current === 'injured' ? 'unavailable' : current);
+
+      const statusColors = {
         available:   { border:'#16a34a', accent:'#16a34a' },
         unavailable: { border:'#dc2626', accent:'#dc2626' },
         maybe:       { border:'#d97706', accent:'#d97706' },
-        injured:     { border:'#7c3aed', accent:'#7c3aed' },
         'no-reply':  { border:'var(--line)', accent:'var(--muted)' },
       };
-      const s = statusMap[current] || statusMap['no-reply'];
-      const selBtn = (val, label, color) => `
-        <button type="button" onclick="setPlayerAvailability('${key}','${val}')"
-          style="min-height:48px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.14s;
+      const s = statusColors[displayStatus] || statusColors['no-reply'];
+
+      const selBtn = (val, btnLabel, color) => {
+        const isActive = isPending
+          ? val === pendingStatus
+          : (val === current || (val === 'unavailable' && current === 'injured'));
+        return `<button type="button" onclick="selectAvailabilityStatusPending('${key}','${val}')"
+          style="min-height:44px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.14s;
             border:2px solid ${color};
-            background:${current===val ? color : 'transparent'};
-            color:${current===val ? '#fff' : color}">
-          ${label}
-        </button>`;
+            background:${isActive ? color : 'transparent'};
+            color:${isActive ? '#060b12' : color}">${btnLabel}</button>`;
+      };
+
+      const reasonBadge = !isPending && currentReason ? `
+        <div style="margin-top:7px;font-size:11px;color:${currentReason==='injury'?'#f87171':'var(--muted)'};display:flex;align-items:center;gap:6px">
+          ${currentReason === 'injury' ? '<span style="color:#f87171;font-weight:700">⚠ Injury</span>' : `Reason: <strong>${REASON_LABELS[currentReason] || currentReason}</strong>`}
+          <button type="button" onclick="selectAvailabilityStatusPending('${key}','${current === 'injured' ? 'unavailable' : current}')"
+            style="font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;padding:0">change</button>
+        </div>` : '';
+
+      const reasonPicker = isPending ? `
+        <div style="margin-top:10px;padding:12px 14px;background:rgba(255,255,255,0.04);border-radius:10px;border:1px solid rgba(255,255,255,0.1)">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:9px;text-transform:uppercase;letter-spacing:.05em">
+            ${pendingStatus === 'maybe' ? "What's making you unsure?" : "Why can't you make it?"}&nbsp;<span style="opacity:.5;font-weight:400;text-transform:none">(optional)</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:9px">
+            ${[['injury','Injury','#f87171'],['work','Work','#94a3b8'],['holiday','Holiday','#38bdf8'],['family','Family','#a78bfa'],['other','Other','#64748b']].map(([r,l,c]) => `
+              <button type="button" onclick="setPlayerAvailability('${key}','${pendingStatus}','${r}')"
+                style="padding:8px 4px;border-radius:8px;font-size:12px;font-weight:700;border:1.5px solid ${c};color:${c};background:transparent;cursor:pointer;transition:all .12s">${l}</button>`).join('')}
+          </div>
+          <div style="font-size:11px;color:var(--muted)">
+            <button type="button" onclick="setPlayerAvailability('${key}','${pendingStatus}','')"
+              style="color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;font-size:11px">
+              Skip — save without a reason
+            </button>
+            &nbsp;·&nbsp;
+            <button type="button" onclick="cancelReasonPicker()"
+              style="color:var(--muted);background:none;border:none;cursor:pointer;font-size:11px">Cancel</button>
+          </div>
+        </div>` : '';
+
       return `
         <div style="border:1.5px solid ${s.border};border-radius:12px;padding:16px 18px;margin-bottom:14px;background:var(--panel)">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-            <strong style="font-size:15px;color:var(--ink)">${label}</strong>
-            <span style="border:1px solid ${s.border};color:${s.accent};font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;background:${current==='no-reply'?'transparent':s.border+'18'}">${statusLabel(current)}</span>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+            <strong style="font-size:15px;color:var(--ink)">${esc(label)}</strong>
+            <span style="border:1px solid ${s.border};color:${s.accent};font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;background:${displayStatus==='no-reply'?'transparent':s.border+'20'}">${statusLabel(displayStatus)}</span>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-            ${selBtn('available',   'Available',    '#16a34a')}
-            ${selBtn('unavailable', 'Not available','#dc2626')}
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            ${selBtn('available',   'Available',     '#16a34a')}
+            ${selBtn('maybe',       'Maybe',         '#d97706')}
+            ${selBtn('unavailable', 'Not available', '#dc2626')}
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            ${selBtn('maybe',   'Unsure',   '#d97706')}
-            ${selBtn('injured', 'Injured',  '#7c3aed')}
-          </div>
+          ${reasonBadge}
+          ${reasonPicker}
         </div>`;
     }
 
     function setAllAvailable() {
       const player = getPlayer();
       if (!player.id) return;
-      // getPlayer() returns a shallow copy; update state.players directly so the
-      // change survives the next render() call.
+      _reasonPickerOpen = null;
       const live = state.players.find(p =>
         String(p.id || '') === String(player.id || '') ||
         String(p.userId || '') === String(player.id || '')
       );
-      ['trainingTuesday','trainingThursday','game'].forEach(key => {
-        player[key] = 'available';
-        if (live) live[key] = 'available';
+      state.schedule.forEach(session => {
+        const k = sessionKey(session.id);
+        player[k] = 'available';
+        player[k + 'Reason'] = '';
+        if (live) { live[k] = 'available'; live[k + 'Reason'] = ''; }
+        saveAvailabilityResponseToServer(session.id, 'available', '');
       });
       if (player.history[0] !== 'available') player.history.unshift('available');
       player.history = player.history.slice(0, 5);
-      // Also POST to server so coach sees it; authenticated users do not need push enabled.
-      ['tue','thu','game'].forEach(sessionId => saveAvailabilityResponseToServer(sessionId, 'available'));
       saveState('All available set');
       render();
-      showToast("✅ All set — see you this week!");
+      showToast("All set — see you this week!");
     }
 
-    function setPlayerAvailability(key, status) {
+    function setPlayerAvailability(key, status, reason) {
+      _reasonPickerOpen = null; // always close reason picker on save
       const player    = getPlayer();
       const sessionId = keyToSessionId(key);
-      player[key]     = status;
+      player[key]          = status;
+      player[key + 'Reason'] = reason || '';
       // getPlayer() returns a shallow copy; update state.players directly so the
       // change survives the next render() call.
       const live = state.players.find(p =>
         String(p.id || '') === String(player.id || '') ||
         String(p.userId || '') === String(player.id || '')
       );
-      if (live) live[key] = status;
+      if (live) { live[key] = status; live[key + 'Reason'] = reason || ''; }
       if (key === "game" && player.history[0] !== status) player.history.unshift(status);
       player.history  = player.history.slice(0, 5);
       addMasterFeed(`${player.name} updated ${sessionTitle(sessionId)}`, statusLabel(status));
       upsertAvailabilityResponseMessage(player, sessionId, status);
       // POST to server so coach sees it in real time; authenticated users do not need push enabled.
-      saveAvailabilityResponseToServer(sessionId, status);
+      saveAvailabilityResponseToServer(sessionId, status, reason);
       saveState("Player availability saved");
       render();
-      showToast("Availability saved ✓");
+      showToast(reason ? `Saved — ${REASON_LABELS[reason] || 'reason noted'}` : "Availability saved");
     }
 
     function upsertAvailabilityResponseMessage(player, sessionId, status) {
@@ -7476,8 +7633,8 @@
             ${_diagRow('Notification permission', permission === 'granted', permission)}
             ${_diagRow('Service worker', Boolean(swReg), swReg ? 'registered (scope: ' + (swReg.scope||'?') + ')' : 'NOT registered')}
             ${_diagRow('SW active state', Boolean(swReg?.active), swReg?.active ? swReg.active.state : 'no active worker')}
-            ${_diagRow('SW version', _swVersion === '20260609.3', _swVersion
-              ? (_swVersion === '20260609.3' ? _swVersion + ' ✓ current' : _swVersion + ' ← STALE — click Force Update SW below')
+            ${_diagRow('SW version', _swVersion === '20260609.4', _swVersion
+              ? (_swVersion === '20260609.4' ? _swVersion + ' ✓ current' : _swVersion + ' ← STALE — click Force Update SW below')
               : 'querying… (if stuck, click Force Update SW)')}
             ${_diagRow('Push subscription', Boolean(sub), sub ? 'active' : 'NONE — call Re-register below')}
             ${_diagRow('Endpoint', Boolean(endpoint), endpointTail)}
@@ -7960,50 +8117,54 @@
       const ts  = document.getElementById('avail-refresh-ts');
       if (btn) { btn.disabled = true; btn.textContent = '↺ Refreshing…'; }
       try {
-        const [tueData, thuData, gameData] = await Promise.all([
-          fetch('/api/availability?sessionId=tue').then(r => r.json()).catch(() => ({ responses: [] })),
-          fetch('/api/availability?sessionId=thu').then(r => r.json()).catch(() => ({ responses: [] })),
-          fetch('/api/availability?sessionId=game').then(r => r.json()).catch(() => ({ responses: [] })),
-        ]);
-        // Build permanent identity keys first, then legacy label keys.
+        // Fetch all known sessions dynamically from state.schedule
+        const sessionIds = (state.schedule || []).map(s => s.id).filter(Boolean);
+        if (!sessionIds.length) return;
+
+        const results = await Promise.all(
+          sessionIds.map(sid =>
+            fetch(`/api/availability?sessionId=${encodeURIComponent(sid)}`)
+              .then(r => r.json())
+              .catch(() => ({ responses: [] }))
+          )
+        );
+
+        // Build identity→{sid:{response,reason}} map.
         const byLabel = {};
-        const apply = (list, sid) => (list || []).forEach(({ key, label, userId, playerId, response }) => {
-          const keys = [key, userId, playerId, label]
-            .filter(Boolean)
-            .map(value => String(value).toLowerCase());
-          [...new Set(keys)].forEach(k => {
-            if (!byLabel[k]) byLabel[k] = {};
-            byLabel[k][sid] = response;
+        results.forEach((data, i) => {
+          const sid = sessionIds[i];
+          (data.responses || []).forEach(({ key, label, userId, playerId, response, reason }) => {
+            const keys = [key, userId, playerId, label].filter(Boolean).map(v => String(v).toLowerCase());
+            [...new Set(keys)].forEach(k => {
+              if (!byLabel[k]) byLabel[k] = {};
+              byLabel[k][sid] = { response, reason: reason || '' };
+            });
           });
         });
-        apply(tueData.responses,  'tue');
-        apply(thuData.responses,  'thu');
-        apply(gameData.responses, 'game');
-        // Patch state.players with live data
-        // Match by: 1) exact name, 2) first name only (handles "Nick Champion of the Universe" → "Nick Murphy")
+
+        // Patch state.players with live responses + reasons.
         let changed = false;
         state.players.forEach(p => {
           const nameLower   = p.name.toLowerCase();
           const idLower     = String(p.id || '').toLowerCase();
           const userIdLower = String(p.userId || '').toLowerCase();
           const firstName   = nameLower.split(' ')[0];
-          // Permanent user id first, then legacy id/name fallback.
           let live = byLabel[userIdLower] || byLabel[idLower] || byLabel[nameLower];
           if (!live) {
             const fallbackKey = Object.keys(byLabel).find(k => k.split(' ')[0] === firstName);
             if (fallbackKey) live = byLabel[fallbackKey];
           }
           if (!live) return;
-          if (live.tue  !== undefined && p.trainingTuesday  !== live.tue)  { p.trainingTuesday  = live.tue;  changed = true; }
-          if (live.thu  !== undefined && p.trainingThursday !== live.thu)  { p.trainingThursday = live.thu;  changed = true; }
-          if (live.game !== undefined && p.game             !== live.game) { p.game              = live.game; changed = true; }
+          sessionIds.forEach(sid => {
+            if (!live[sid]) return;
+            const k  = sessionKey(sid);
+            const rk = k + 'Reason';
+            if (live[sid].response !== undefined && p[k] !== live[sid].response) { p[k]  = live[sid].response; changed = true; }
+            if (live[sid].reason   !== undefined && p[rk] !== live[sid].reason)  { p[rk] = live[sid].reason; }
+          });
         });
         if (changed) saveState('Live availability synced');
-        // Update timestamp label
         if (ts) ts.textContent = `Live · ${new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}`;
-        // Re-render the session detail panels inline, then repopulate the async
-        // server-backed panels. This keeps Redis replies visible without losing
-        // the scheduled-message/log widgets after the refresh.
         renderMessageCenter();
         setTimeout(() => {
           renderAudiencePicker();
