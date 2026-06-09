@@ -27,9 +27,8 @@ function configurePush() {
 
 // convId: 'dm:A:B', senderId: session user ID (may differ from convId participants)
 async function sendDmPush(convId, senderId, senderDisplayName, text) {
-  const T = '[DM push]';
   if (!configurePush()) {
-    console.warn(`${T} VAPID keys not configured — push skipped`);
+    console.warn('[DM push] VAPID keys not configured — push skipped');
     return;
   }
 
@@ -37,10 +36,6 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
     loadSubs(),
     kvGet(key('identity:player_profiles')).then(v => Array.isArray(v) ? v : []),
   ]);
-
-  console.log(`${T} ── BEGIN ──────────────────────────────────────────────`);
-  console.log(`${T} convId=${convId}`);
-  console.log(`${T} senderId=${senderId}  allSubs=${allSubs.length}  profiles=${profiles.length}`);
 
   // Expand sender's ID aliases via player profiles so we can exclude the right participant.
   const senderIds = new Set([senderId]);
@@ -52,18 +47,13 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
       if (pU) senderIds.add(pU);
     }
   });
-  console.log(`${T} senderIds=[${[...senderIds].join(', ')}]`);
 
   const participants = convId.split(':').slice(1);
-  console.log(`${T} convId participants=[${participants.join(', ')}]`);
-
   const recipientId = participants.find(p => !senderIds.has(p));
   if (!recipientId) {
-    console.warn(`${T} FAIL: cannot determine recipient — every participant is a sender alias`);
-    console.warn(`${T}   senderIds=[${[...senderIds].join(', ')}]  participants=[${participants.join(', ')}]`);
+    console.error(`[DM push] cannot determine recipient — convId=${convId} senderIds=[${[...senderIds].join(', ')}]`);
     return;
   }
-  console.log(`${T} recipientId=${recipientId}`);
 
   // Expand recipient's ID aliases via player profiles.
   const recipientIds = new Set([recipientId]);
@@ -75,37 +65,14 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
       if (pU) recipientIds.add(pU);
     }
   });
-  console.log(`${T} recipientIds=[${[...recipientIds].join(', ')}]  (${recipientIds.size} alias(es))`);
-  if (recipientIds.size === 1) {
-    console.log(`${T} NOTE: no player profile matched recipientId=${recipientId} — only an exact ID match will find a subscription`);
-  }
 
-  // Per-subscription routing decision — log every comparison so we know exactly why each is accepted or rejected.
-  console.log(`${T} ── Evaluating ${allSubs.length} subscription(s) ─────────────────────`);
-  const targets = [];
-  for (const sub of allSubs) {
-    const epTail = sub.subscription?.endpoint ? '…' + sub.subscription.endpoint.slice(-35) : '(no endpoint)';
-    const checked = {
-      userId:        String(sub.userId || ''),
-      playerId:      String(sub.playerId || ''),
-      legacyPlayerId: String(sub.legacyPlayerId || ''),
-    };
-    const matchEntry = Object.entries(checked).find(([, v]) => v && recipientIds.has(v));
-    if (matchEntry) {
-      console.log(`${T}   MATCH  "${sub.label}"  via ${matchEntry[0]}="${matchEntry[1]}"  endpoint=${epTail}`);
-      targets.push(sub);
-    } else {
-      const tried = Object.entries(checked).filter(([, v]) => v).map(([k, v]) => `${k}="${v}"`).join('  ');
-      const needs = [...recipientIds].join(', ');
-      console.log(`${T}   SKIP   "${sub.label}"  tried [${tried || '(all empty)'}]  need one of [${needs}]  endpoint=${epTail}`);
-    }
-  }
-  console.log(`${T} ── target count: ${targets.length} ────────────────────────────────────`);
+  const targets = allSubs.filter(sub => {
+    const checked = [String(sub.userId || ''), String(sub.playerId || ''), String(sub.legacyPlayerId || '')];
+    return checked.some(v => v && recipientIds.has(v));
+  });
 
   if (!targets.length) {
-    console.warn(`${T} RESULT: 0 targets matched — no push sent`);
-    console.warn(`${T}   recipientIds that were needed: [${[...recipientIds].join(', ')}]`);
-    console.warn(`${T}   IDs actually stored in Redis:  ${allSubs.map(s => `"${s.label}" u=${s.userId||'—'} p=${s.playerId||'—'} l=${s.legacyPlayerId||'—'}`).join(' | ')}`);
+    console.error(`[DM push] 0 targets matched — recipientIds=[${[...recipientIds].join(', ')}] subs=[${allSubs.map(s => s.userId || s.playerId || '?').join(', ')}]`);
     return;
   }
 
@@ -116,19 +83,15 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
     url:   '/',
     type:  'dm',
   });
-  console.log(`${T} payload=${payload}`);
 
   const results = await Promise.allSettled(
     targets.map(({ subscription }) => webpush.sendNotification(subscription, payload))
   );
 
   results.forEach((r, i) => {
-    const t = targets[i];
-    const epTail = t.subscription?.endpoint ? '…' + t.subscription.endpoint.slice(-35) : '?';
-    if (r.status === 'fulfilled') {
-      console.log(`${T} SENT OK  status=${r.value?.statusCode}  userId=${t.userId}  playerId=${t.playerId}  endpoint=${epTail}`);
-    } else {
-      console.warn(`${T} SEND FAIL  status=${r.reason?.statusCode}  body="${String(r.reason?.body || '').slice(0, 200)}"  msg="${r.reason?.message}"  userId=${t.userId}  playerId=${t.playerId}  endpoint=${epTail}`);
+    if (r.status === 'rejected') {
+      const t = targets[i];
+      console.warn(`[DM push] send failed — status=${r.reason?.statusCode} msg="${r.reason?.message}" userId=${t.userId}`);
     }
   });
 
@@ -139,10 +102,8 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
     )
   );
   if (expired.size) {
-    console.log(`${T} pruning ${expired.size} expired endpoint(s)`);
     await saveSubs(allSubs.filter(s => !expired.has(s.subscription.endpoint)));
   }
-  console.log(`${T} ── END ────────────────────────────────────────────────`);
 }
 
 const CORS = {
@@ -384,7 +345,6 @@ async function handlePost(req, res) {
 
   if (action === 'send') {
     let { convId, senderId, senderName, senderRole, text, type = 'TEXT', replyTo = null, mediaUrl = null, mediaType = null, isAutomated = false } = body;
-    console.log(`[chat:send] convId=${convId} body.senderId=${senderId} sessionUserId=${sessionUser?.id}`);
     if (sessionUser?.id) {
       senderId = sessionUser.id;
       senderName = sessionUser.displayName || [sessionUser.firstName, sessionUser.lastName].filter(Boolean).join(' ') || sessionUser.name || sessionUser.email || senderId;

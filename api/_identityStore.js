@@ -25,17 +25,19 @@ export const DEFAULT_TEAM = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const LEGACY_STAFF_ACCOUNTS = [
-  {
-    id: 'coach-demo',
-    email: 'simonbdodd@gmail.com',
-    firstName: 'Simon',
-    lastName: 'Coach',
-    displayName: 'Simon Coach',
-    role: 'coach',
-    password: '1111',
-  },
-];
+const LEGACY_STAFF_ACCOUNTS = process.env.COACH_DEMO_EMAIL && process.env.COACH_DEMO_PASSWORD
+  ? [
+      {
+        id: 'coach-demo',
+        email: process.env.COACH_DEMO_EMAIL,
+        firstName: 'Simon',
+        lastName: 'Coach',
+        displayName: 'Simon Coach',
+        role: 'coach',
+        password: process.env.COACH_DEMO_PASSWORD,
+      },
+    ]
+  : [];
 
 // Only Simon Test Player remains. All other test personas were removed.
 const LEGACY_PLAYER_COMPATIBILITY_ACCOUNTS = [
