@@ -19,7 +19,7 @@
 
 // ── Lazy engine imports ───────────────────────────────────────────────────────
 
-let _coaching = null, _memory = null, _devEngine = null, _clubIntel = null;
+let _coaching = null, _memory = null, _devEngine = null, _clubIntel = null, _commsEngine = null;
 
 async function coachingEngine() {
   if (!_coaching) { try { _coaching = await import('../qa/coaching-engine/index.js'); } catch { _coaching = null; } }
@@ -36,6 +36,10 @@ async function devEngine() {
 async function clubIntel() {
   if (!_clubIntel) { try { _clubIntel = await import('../qa/club-intelligence/index.js'); } catch { _clubIntel = null; } }
   return _clubIntel;
+}
+async function commsEngine() {
+  if (!_commsEngine) { try { _commsEngine = await import('../communications-engine/index.js'); } catch { _commsEngine = null; } }
+  return _commsEngine;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -475,6 +479,100 @@ const ACTIONS = {
       } catch (err) {
         return fail(`Club report failed: ${err.message}`);
       }
+    },
+  },
+  // ── 16. Generate Communication Draft ─────────────────────────────────────────
+  generate_communication: {
+    id: 'generate_communication',
+    name: 'Generate Communication Draft',
+    description: 'Creates a draft communication of a given type for a target audience — stays in DRAFT, never sends',
+    category: 'communication',
+    isReversible: false,
+    estimatedMs: 1500,
+    requiredContext: [],
+
+    async execute(params, context, stepOutputs) {
+      const ce = await commsEngine();
+      if (!ce) return stub('Communication draft (Communications Engine unavailable)');
+
+      const type         = params.type ?? 'general_announcement';
+      const audienceType = params.audienceType ?? 'players';
+      const vars         = params.vars ?? { club_name: context.clubName ?? 'Your Club', subject_line: params.subject ?? type };
+
+      try {
+        const preview = await ce.previewCommunication({ type, audienceType, vars }, { role: context.role ?? 'coach' });
+        return ok({ type, audienceType, preview, status: 'draft', requiresHumanApproval: true }, `Communication draft created: ${type} → ${audienceType} (${preview.recipientCount} recipients, draft only)`);
+      } catch (err) {
+        return stub(`${type} communication draft`);
+      }
+    },
+  },
+
+  // ── 17. Build Communications Pack ────────────────────────────────────────────
+  build_communications_pack: {
+    id: 'build_communications_pack',
+    name: 'Build Weekly Communications Pack',
+    description: 'Generates a full weekly club communications pack — all items in DRAFT status',
+    category: 'communication',
+    isReversible: false,
+    estimatedMs: 8000,
+    requiredContext: [],
+
+    async execute(params, context, stepOutputs) {
+      let packBuilder;
+      try {
+        packBuilder = await import('../communications-engine/communications-pack-builder.js');
+      } catch {
+        return stub('Weekly communications pack');
+      }
+
+      try {
+        const pack = await packBuilder.buildWeeklyPack({
+          clubName:    params.clubName   ?? context.clubName   ?? 'Your Club',
+          coachName:   params.coachName  ?? context.coachName  ?? 'The Management',
+          contactName: params.contactName ?? context.contactName ?? 'Club Secretary',
+          season:      params.season     ?? context.season     ?? '2025-26',
+        });
+
+        return ok(
+          { packId: pack.packId, totalDrafts: pack.stats.totalDrafts, byRisk: pack.stats.byRisk, warnings: pack.warnings, status: 'draft', requiresHumanApproval: true },
+          `Weekly pack built: ${pack.stats.totalDrafts} drafts + ${pack.stats.totalSocialPosts} social posts (all DRAFT — human approval required)`,
+        );
+      } catch (err) {
+        return fail(`Communications pack failed: ${err.message}`);
+      }
+    },
+  },
+
+  // ── 18. Schedule Communication ────────────────────────────────────────────────
+  schedule_communication: {
+    id: 'schedule_communication',
+    name: 'Schedule Communication',
+    description: 'Registers a communication for future delivery after human approval',
+    category: 'communication',
+    isReversible: true,
+    estimatedMs: 200,
+    requiredContext: [],
+
+    async execute(params, context, stepOutputs) {
+      const ce = await commsEngine();
+      if (!ce) return stub('Schedule communication');
+
+      const sendAt = params.sendAt ? new Date(params.sendAt) : new Date(Date.now() + 24 * 3600000);
+      const spec   = params.commSpec ?? stepOutputs?.generate_communication?.data?.preview ?? { type: 'general_announcement', audienceType: 'players', vars: {} };
+
+      try {
+        const result = ce.scheduleCommunication(spec, sendAt);
+        return ok(result, `Communication scheduled for ${sendAt.toISOString()} (pending human approval — not yet sent)`);
+      } catch (err) {
+        return fail(`Schedule failed: ${err.message}`);
+      }
+    },
+
+    async undo(params, context, result) {
+      const ce = await commsEngine();
+      if (!ce || !result?.data?.scheduleId) return;
+      try { ce.cancelScheduled(result.data.scheduleId); } catch { /* non-fatal */ }
     },
   },
 };

@@ -27,6 +27,14 @@ export { logCommunication, logSent, logFailed, logScheduled, logCancelled, getRe
 
 export { getTopCommunicationTypes, getChannelBreakdown, getAudienceReachability, getChurnRisk, generateInsightsReport } from './communication-insights.js';
 
+export { createDraft, approveDraft, rejectDraft, formatDraftCard, DRAFT_STATUS, RISK_LEVEL } from './draft-manager.js';
+
+export { buildMatchResultPost, buildPlayerOfWeekPost, buildEventPost, buildWeeklyRoundup, formatSocialPost } from './social-media-builder.js';
+
+export { buildCommitteeSummary } from './committee-summary-builder.js';
+
+export { buildWeeklyPack, formatWeeklyPack } from './communications-pack-builder.js';
+
 // ─── High-level convenience API ───────────────────────────────────────────────
 
 import { selectAudience }   from './audience-selector.js';
