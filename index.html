@@ -2432,7 +2432,7 @@
         await reg.update();
         step('Update check complete. If a new version was found, it will activate shortly.');
         // Query version after a short delay to see if it changed
-        setTimeout(() => { querySWVersion(); renderPushDiagPanel(); }, 1500);
+        setTimeout(() => { querySWVersion(); renderPushDiagOverlay(); }, 1500);
       } catch(e) {
         step('Update failed: ' + e.message);
       }
@@ -3768,7 +3768,11 @@
         </button>
         <button class="btn ghost" type="button" onclick="setAuthTab('closed')"
           style="width:100%;margin-top:4px;font-size:12px">Cancel</button>
-        <div id="_pushDiagPanel"></div>
+        <button class="btn ghost" type="button"
+          onclick="_pushDiagOpen=true;querySWVersion();renderPushDiagOverlay()"
+          style="width:100%;margin-top:6px;font-size:11px;color:#94a3b8;border-color:rgba(148,163,184,0.2)">
+          Push Diagnostics ↗
+        </button>
       ` : `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div>
@@ -3784,7 +3788,6 @@
         </div>
       `;
       renderPushSidebar();
-      if (authTab === 'dev' && window._devLoginEnabled) renderPushDiagPanel();
       // Restore badge after nav re-render
       if (_chatNavUnread > 0) updateNavBadge();
     }
@@ -7382,29 +7385,55 @@
       return `<tr><td colspan="2" style="padding:8px 0 3px;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.05em;text-transform:uppercase;border-top:1px solid rgba(255,255,255,0.07)">${title}</td></tr>`;
     }
 
-    async function renderPushDiagPanel() {
-      const el = document.getElementById('_pushDiagPanel');
-      if (!el) return;
-      el.innerHTML = `<div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.1);padding-top:10px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <strong style="font-size:11px;color:#94a3b8;letter-spacing:.05em;text-transform:uppercase">Push Diagnostics</strong>
-          <button class="btn" type="button" onclick="renderPushDiagPanel()" style="font-size:10px;padding:2px 7px;min-height:0">↻</button>
-        </div>
-        <p style="font-size:10px;color:#64748b;margin:0 0 6px">Loading…</p></div>`;
+    function closePushDiagOverlay() {
+      _pushDiagOpen = false;
+      _pushDiagRendering = false;
+      const el = document.getElementById('_pushDiagOverlay');
+      if (el) el.remove();
+    }
+
+    async function renderPushDiagOverlay() {
+      if (!_pushDiagOpen) return;
+      if (_pushDiagRendering) return;
+      _pushDiagRendering = true;
+      let el = document.getElementById('_pushDiagOverlay');
+      const isNew = !el;
+      if (!el) {
+        el = document.createElement('div');
+        el.id = '_pushDiagOverlay';
+        el.style.cssText = 'position:fixed;top:0;right:0;bottom:0;width:min(460px,100vw);background:#0f172a;border-left:1px solid rgba(255,255,255,0.12);overflow-y:auto;overflow-x:hidden;z-index:9999;padding:12px 14px 24px;box-shadow:-6px 0 32px rgba(0,0,0,0.6)';
+        document.body.appendChild(el);
+      }
+      if (isNew) {
+        el.innerHTML = `
+          <div style="position:sticky;top:0;background:#0f172a;padding:0 0 8px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+            <strong style="font-size:11px;color:#94a3b8;letter-spacing:.05em;text-transform:uppercase">Push Diagnostics</strong>
+            <div style="display:flex;gap:5px">
+              <button class="btn" type="button" onclick="renderPushDiagOverlay()" style="font-size:10px;padding:2px 7px;min-height:0">↻</button>
+              <button class="btn" type="button" onclick="closePushDiagOverlay()" style="font-size:10px;padding:2px 7px;min-height:0">✕</button>
+            </div>
+          </div>
+          <p style="font-size:10px;color:#64748b;margin:0 0 6px">Loading…</p>`;
+      }
 
       const supported = ('serviceWorker' in navigator) && ('PushManager' in window);
       if (!supported) {
-        el.querySelector('p').textContent = '⚠️ Push not supported in this browser (needs HTTPS + modern browser)';
+        el.innerHTML = `
+          <p style="font-size:10px;color:#f87171;margin:4px 0">⚠️ Push not supported in this browser (needs HTTPS + modern browser)</p>`;
+        _pushDiagRendering = false;
         return;
       }
 
-      // Collect all data in parallel; also ping the active SW for its version
-      querySWVersion();
+      // querySWVersion() is called once when opening the panel — not here, to avoid a
+      // sw_version message triggering renderPushDiagOverlay() while a render is in progress.
       const [swReg, configData, debugSubs] = await Promise.all([
         navigator.serviceWorker.getRegistration('/sw.js').catch(() => null),
         fetch('/api/config').then(r => r.json()).catch(e => ({ error: e.message })),
         fetch('/api/subscribe?debug=1').then(r => r.json()).catch(e => ({ error: e.message })),
       ]);
+
+      // User may have closed the panel while fetches were in flight
+      if (!_pushDiagOpen) { _pushDiagRendering = false; return; }
 
       const permission   = Notification.permission;
       const sub          = swReg ? await swReg.pushManager.getSubscription().catch(() => null) : null;
@@ -7431,12 +7460,14 @@
       }
 
       el.innerHTML = `
-        <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.1);padding-top:10px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-            <strong style="font-size:11px;color:#94a3b8;letter-spacing:.05em;text-transform:uppercase">Push Diagnostics</strong>
-            <button class="btn" type="button" onclick="renderPushDiagPanel()" style="font-size:10px;padding:2px 7px;min-height:0">↻</button>
+        <div style="position:sticky;top:0;background:#0f172a;padding:0 0 8px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+          <strong style="font-size:11px;color:#94a3b8;letter-spacing:.05em;text-transform:uppercase">Push Diagnostics</strong>
+          <div style="display:flex;gap:5px">
+            <button class="btn" type="button" onclick="querySWVersion();renderPushDiagOverlay()" style="font-size:10px;padding:2px 7px;min-height:0">↻</button>
+            <button class="btn" type="button" onclick="closePushDiagOverlay()" style="font-size:10px;padding:2px 7px;min-height:0">✕</button>
           </div>
-          <table style="width:100%;border-collapse:collapse">
+        </div>
+        <table style="width:100%;border-collapse:collapse">
             ${_diagSection('1 — Browser & Service Worker')}
             ${_diagRow('Notification permission', permission === 'granted', permission)}
             ${_diagRow('Service worker', Boolean(swReg), swReg ? 'registered (scope: ' + (swReg.scope||'?') + ')' : 'NOT registered')}
@@ -7552,7 +7583,8 @@
             If buttons 1 &amp; 2 both show ✓ but no banner appears: check macOS System Settings → Notifications → Google Chrome → Alert style must be Banners or Alerts (not None), and turn off any Focus/DND mode.
           </p>
           <div id="_pushDiagLog" style="font-size:10px;font-family:monospace;color:#64748b;margin-top:4px;min-height:14px;white-space:pre-wrap"></div>
-        </div>`;
+        `;
+      _pushDiagRendering = false;
     }
 
     async function pushDiagSendTest() {
@@ -7579,50 +7611,50 @@
         _pushTestResult = { ok: false, error: e.message, ts };
         if (log) log.textContent = '❌ Network error: ' + e.message;
       }
-      renderPushDiagPanel();
+      renderPushDiagOverlay();
     }
 
     function testLocalNotification() {
       _localNotifResult = null;
       if (!('Notification' in window)) {
         _localNotifResult = { ok: false, method: 'local', error: 'Notification API not available in this browser', ts: Date.now() };
-        renderPushDiagPanel(); return;
+        renderPushDiagOverlay(); return;
       }
       if (Notification.permission !== 'granted') {
         _localNotifResult = { ok: false, method: 'local', error: 'Permission is "' + Notification.permission + '" — must be granted', ts: Date.now() };
-        renderPushDiagPanel(); return;
+        renderPushDiagOverlay(); return;
       }
       const ts = Date.now();
       _localNotifResult = { ok: null, method: 'local', pending: true, ts };
-      renderPushDiagPanel();
+      renderPushDiagOverlay();
       try {
         const n = new Notification('Local Notification Test', {
           body: 'Sent from page context (new Notification) — ' + new Date(ts).toLocaleTimeString(),
           icon: '/icon.svg',
           tag: 'local-diag-' + ts,
         });
-        n.addEventListener('show',  () => { _localNotifResult = { ok: true,  method: 'local', ts: Date.now() }; renderPushDiagPanel(); });
-        n.addEventListener('error', (e) => { _localNotifResult = { ok: false, method: 'local', error: 'Notification.error event fired: ' + (e?.message||'unknown'), ts: Date.now() }; renderPushDiagPanel(); });
+        n.addEventListener('show',  () => { _localNotifResult = { ok: true,  method: 'local', ts: Date.now() }; renderPushDiagOverlay(); });
+        n.addEventListener('error', (e) => { _localNotifResult = { ok: false, method: 'local', error: 'Notification.error event fired: ' + (e?.message||'unknown'), ts: Date.now() }; renderPushDiagOverlay(); });
         // Fallback: if neither event fires in 2s treat as unknown (OS may show without firing 'show')
         setTimeout(() => {
           if (_localNotifResult?.pending) {
             _localNotifResult = { ok: null, method: 'local', note: 'No show/error event after 2s — check if banner appeared on screen', ts: Date.now() };
-            renderPushDiagPanel();
+            renderPushDiagOverlay();
           }
         }, 2000);
       } catch(e) {
         _localNotifResult = { ok: false, method: 'local', error: 'new Notification() threw: ' + e.message, ts: Date.now() };
-        renderPushDiagPanel();
+        renderPushDiagOverlay();
       }
     }
 
     async function testSWNotification() {
       _swNotifResult = { ok: null, pending: true, ts: Date.now() };
-      renderPushDiagPanel();
+      renderPushDiagOverlay();
       const reg = swRegistration || await navigator.serviceWorker.getRegistration('/sw.js').catch(() => null);
       if (!reg?.active) {
         _swNotifResult = { ok: false, error: 'No active service worker — click Re-register first', ts: Date.now() };
-        renderPushDiagPanel(); return;
+        renderPushDiagOverlay(); return;
       }
       reg.active.postMessage({
         type: 'test_show_notification',
@@ -7633,7 +7665,7 @@
       setTimeout(() => {
         if (_swNotifResult?.pending) {
           _swNotifResult = { ok: null, error: 'No response from SW after 3s — SW may not have message listener (Re-register to update SW)', ts: Date.now() };
-          renderPushDiagPanel();
+          renderPushDiagOverlay();
         }
       }, 3000);
     }
@@ -7695,7 +7727,7 @@
         showToast('Re-register failed: ' + (e.message || 'unknown'));
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Re-register Push Notifications'; }
-        renderPushDiagPanel();
+        renderPushDiagOverlay();
       }
     }
 
@@ -8621,6 +8653,8 @@
     let _swDiagLog     = [];   // push_diag stage events from SW
     let _swNotifResult = null; // result of testSWNotification()
     let _localNotifResult = null; // result of testLocalNotification()
+    let _pushDiagOpen  = false; // whether the diagnostics overlay is open
+    let _pushDiagRendering = false; // prevents concurrent re-renders from causing flicker
 
     navigator.serviceWorker?.addEventListener('message', event => {
       const d = event.data || {};
@@ -8634,24 +8668,21 @@
         _swDiagLog.unshift({ stage: d.stage, title: d.title, body: d.body, error: d.error, tag: d.tag, ts: d.timestamp || Date.now() });
         if (_swDiagLog.length > 20) _swDiagLog.length = 20;
         if (d.stage === 'show_resolved') localStorage.setItem('_pushLastReceived', String(d.timestamp || Date.now()));
-        // Re-render diagnostics panel if it's open
-        const el = document.getElementById('_pushDiagPanel');
-        if (el && el.children.length) renderPushDiagPanel();
+        if (_pushDiagOpen) renderPushDiagOverlay();
       }
       if (d.type === 'sw_version') {
         _swVersion = d.version || null;
-        const el = document.getElementById('_pushDiagPanel');
-        if (el && el.children.length) renderPushDiagPanel();
+        // Don't re-render — renderPushDiagOverlay calls querySWVersion which would
+        // trigger another sw_version message, creating an infinite render loop.
+        // _swVersion is already set before the next render so it will show correctly.
       }
       if (d.type === 'sw_notification_shown') {
         _swNotifResult = { ok: true, ts: d.timestamp || Date.now() };
-        const el = document.getElementById('_pushDiagPanel');
-        if (el && el.children.length) renderPushDiagPanel();
+        if (_pushDiagOpen) renderPushDiagOverlay();
       }
       if (d.type === 'sw_notification_error') {
         _swNotifResult = { ok: false, error: d.error, ts: d.timestamp || Date.now() };
-        const el = document.getElementById('_pushDiagPanel');
-        if (el && el.children.length) renderPushDiagPanel();
+        if (_pushDiagOpen) renderPushDiagOverlay();
       }
     });
 
