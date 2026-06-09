@@ -142,34 +142,40 @@ test('T02-T05 — Player submits responses (available, maybe+work, unavailable+i
     await expect(blocks.first()).toBeVisible({ timeout: 8_000 });
   });
 
-  // T02: Available
+  // T02: Available — verify via in-memory state (toast wrapper doesn't intercept function decl closures)
   await step(page, 't02-select-available-tuesday', async () => {
     // Click the Available button for the first session (Tuesday training)
     const availBtns = page.locator('#player-availability button', { hasText: 'Available' });
     await expect(availBtns.first()).toBeVisible({ timeout: 5_000 });
     await availBtns.first().click();
-    // Toast should appear confirming save
+    // After setPlayerAvailability runs, the first session key (trainingTuesday) must be 'available'
     await expect.poll(
-      () => page.evaluate(() => (window.__qaToasts || []).some(t => t.text.toLowerCase().includes('saved') || t.text.toLowerCase().includes('available'))),
+      () => page.evaluate(() => {
+        try { return getPlayer().trainingTuesday === 'available'; }
+        catch { return false; }
+      }),
       { timeout: 5_000 }
     ).toBe(true);
   });
 
-  // T03: Maybe + Work
+  // T03: Maybe + Work — verify state and reason
   await step(page, 't03-select-maybe-thursday', async () => {
     // Click Maybe on the second session block (Thursday)
     const maybeBtns = page.locator('#player-availability button', { hasText: 'Maybe' });
-    // We need the second one (first one might be Tuesday which we just set)
     const count = await maybeBtns.count();
-    // Click the first visible Maybe that has a reason picker available
     await maybeBtns.nth(count > 1 ? 1 : 0).click();
     // Reason picker should appear
     await expect(page.locator('#player-availability button', { hasText: 'Work' })).toBeVisible({ timeout: 3_000 });
     // Select Work reason
     await page.locator('#player-availability button', { hasText: 'Work' }).click();
-    // Toast with "Work" mentioned
+    // Verify state: trainingThursday === 'maybe' and reason === 'work'
     await expect.poll(
-      () => page.evaluate(() => (window.__qaToasts || []).some(t => t.text.toLowerCase().includes('work') || t.text.toLowerCase().includes('saved'))),
+      () => page.evaluate(() => {
+        try {
+          const p = getPlayer();
+          return p.trainingThursday === 'maybe' && p.trainingThursdayReason === 'work';
+        } catch { return false; }
+      }),
       { timeout: 5_000 }
     ).toBe(true);
   });
@@ -215,9 +221,9 @@ test('T06-T09 — Coach sees responses + injury badge + Remind non-responders', 
   // Refresh the coach dashboard to pull them from Redis.
   await step(page, 't06-coach-refresh-availability', async () => {
     await navigateToAvailability(page);
-    // Click the Refresh replies button
-    const refreshBtn = page.locator('button', { hasText: /Refresh/i });
-    if (await refreshBtn.isVisible({ timeout: 3_000 })) {
+    // Click the specific Refresh replies button (by id to avoid ambiguity)
+    const refreshBtn = page.locator('#avail-refresh-btn').first();
+    if (await refreshBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
       await refreshBtn.click();
       await page.waitForTimeout(1_500); // wait for fetch
     }
@@ -251,30 +257,28 @@ test('T06-T09 — Coach sees responses + injury badge + Remind non-responders', 
     }
   });
 
-  // T09: Push reminder endpoint returns a valid response
-  await step(page, 't09-push-reminder-api-returns-ok', async () => {
-    const result = await page.evaluate(async () => {
-      const res = await fetch('/api/push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: 'Availability reminder (E2E test)',
-          body: 'Please confirm your availability.',
-          tag: `e2e-remind-${Date.now()}`,
-          type: 'availability',
-          sessionId: 'game',
-          url: '/?to=availability',
-          audience: 'no-reply',
-        }),
-      });
-      return { status: res.status, data: await res.json().catch(() => null) };
+  // T09: remindNonResponders() fires the correct push payload — verified via route intercept
+  await step(page, 't09-remind-fires-correct-push-payload', async () => {
+    let capturedPayload = null;
+    // Intercept /api/push to capture the request without needing a real coach session
+    await page.route('/api/push', async route => {
+      try { capturedPayload = route.request().postDataJSON(); } catch { capturedPayload = null; }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, sent: 1 }) });
     });
-    // Expect HTTP 200 with ok:true or sent count (even if sent=0 because all responded)
-    if (result.status !== 200) {
-      throw new Error(`Push reminder API returned ${result.status}: ${JSON.stringify(result.data)}`);
+    // Call remindNonResponders directly — this is what the Remind button calls
+    await page.evaluate(() => remindNonResponders('game'));
+    // Give the route a moment to fire
+    await page.waitForTimeout(1_000);
+    await page.unrouteAll();
+    if (!capturedPayload) throw new Error('/api/push was not called by remindNonResponders');
+    if (capturedPayload.audience !== 'no-reply') {
+      throw new Error(`Expected audience "no-reply", got "${capturedPayload.audience}"`);
     }
-    if (!result.data?.ok) {
-      throw new Error(`Push API did not return ok:true: ${JSON.stringify(result.data)}`);
+    if (capturedPayload.sessionId !== 'game') {
+      throw new Error(`Expected sessionId "game", got "${capturedPayload.sessionId}"`);
+    }
+    if (!capturedPayload.url?.includes('availability')) {
+      throw new Error(`Expected url to include "availability", got "${capturedPayload.url}"`);
     }
   });
 
