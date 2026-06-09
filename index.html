@@ -2661,7 +2661,27 @@
     function sessionRows(id)  {
       const key = sessionKey(id);
       const rKey = sessionReasonKey(id);
-      return state.players.map(p => ({ player: p, status: p[key], reason: p[rKey] || '', attendanceRate: p.attendance }));
+      return state.players.map(p => ({
+        player:         p,
+        status:         p[key],
+        reason:         p[rKey] || '',
+        attendanceRate: p.attendance,
+        respondedAt:    p[key + 'RespondedAt'] || null,
+      }));
+    }
+
+    function fmtRespondedAt(iso) {
+      if (!iso) return null;
+      const d   = new Date(iso);
+      const now = new Date();
+      const isoDate = d.toDateString();
+      const nowDate = now.toDateString();
+      const yesterdayDate = new Date(now - 86400000).toDateString();
+      const hhmm = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      if (isoDate === nowDate) return `Today ${hhmm}`;
+      if (isoDate === yesterdayDate) return `Yesterday ${hhmm}`;
+      const day = d.toLocaleDateString('en-GB', { weekday: 'short' });
+      return `${day} ${hhmm}`;
     }
 
     // ─── AVAILABILITY REASON PICKER STATE ─────────────────────────────────────
@@ -4887,14 +4907,16 @@
       const chaseAny       = state.players.filter(p => allSessionIds.some(id => (p[sessionKey(id)] || 'no-reply') === 'no-reply')).length;
       const injuryFlags    = state.players.filter(p => allSessionIds.some(id => p[sessionKey(id) + 'Reason'] === 'injury')).length;
 
-      const playerRows = list => list.map(({player, status, reason, attendanceRate}) => {
-        const isInjury = reason === 'injury';
+      const playerRows = list => list.map(({player, status, reason, attendanceRate, respondedAt}) => {
+        const isInjury   = reason === 'injury';
         const reasonText = reason && reason !== 'injury' ? REASON_LABELS[reason] || reason : '';
+        const repliedTs  = fmtRespondedAt(respondedAt);
         return `<button class="msg-player-row ${selectedPlayer.id===player.id ? "active" : ""}" type="button" onclick="setMessagePlayer('${player.id}')">
           <span class="msg-player-main">
             <span style="min-width:0">
               <strong>${esc(player.name)}</strong>
               <small>${esc(player.position)}${isInjury ? ' · <span style="color:#f87171;font-weight:700">⚠ Injury</span>' : reasonText ? ' · ' + esc(reasonText) : ''}</small>
+              ${repliedTs && status !== 'no-reply' ? `<small style="color:var(--muted);font-size:10px">${esc(repliedTs)}</small>` : ''}
             </span>
             <span class="msg-attendance-chip">${attendanceRate || 0}%</span>
           </span>
@@ -8435,15 +8457,15 @@
           )
         );
 
-        // Build identity→{sid:{response,reason}} map.
+        // Build identity→{sid:{response,reason,respondedAt}} map.
         const byLabel = {};
         results.forEach((data, i) => {
           const sid = sessionIds[i];
-          (data.responses || []).forEach(({ key, label, userId, playerId, response, reason }) => {
+          (data.responses || []).forEach(({ key, label, userId, playerId, response, reason, respondedAt }) => {
             const keys = [key, userId, playerId, label].filter(Boolean).map(v => String(v).toLowerCase());
             [...new Set(keys)].forEach(k => {
               if (!byLabel[k]) byLabel[k] = {};
-              byLabel[k][sid] = { response, reason: reason || '' };
+              byLabel[k][sid] = { response, reason: reason || '', respondedAt: respondedAt || null };
             });
           });
         });
@@ -8467,6 +8489,8 @@
             const rk = k + 'Reason';
             if (live[sid].response !== undefined && p[k] !== live[sid].response) { p[k]  = live[sid].response; changed = true; }
             if (live[sid].reason   !== undefined && p[rk] !== live[sid].reason)  { p[rk] = live[sid].reason; }
+            const tk = k + 'RespondedAt';
+            if (live[sid].respondedAt && p[tk] !== live[sid].respondedAt) { p[tk] = live[sid].respondedAt; }
           });
         });
         if (changed) saveState('Live availability synced');
