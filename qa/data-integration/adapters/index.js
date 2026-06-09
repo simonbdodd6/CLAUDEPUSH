@@ -1,0 +1,19 @@
+// Bootstrap — import all adapters so they self-register with the data registry
+import './players-adapter.js';
+import './teams-adapter.js';
+import './coaches-adapter.js';
+import './attendance-adapter.js';
+import './availability-adapter.js';
+import './fixtures-adapter.js';
+import './sessions-adapter.js';
+import './injuries-adapter.js';
+import './membership-adapter.js';
+import './sponsors-adapter.js';
+import './volunteers-adapter.js';
+import './bar-sales-adapter.js';
+import './merchandise-adapter.js';
+import './events-adapter.js';
+import './programmes-adapter.js';
+import './finance-adapter.js';
+import './messages-adapter.js';
+import './media-adapter.js';

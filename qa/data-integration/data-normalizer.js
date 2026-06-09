@@ -77,7 +77,7 @@ export function normalizePlayer(raw, sourceName = 'unknown') {
   return {
     ...base,
     id:               raw.id ?? raw.playerId ?? null,
-    name:             raw.name ?? raw.core?.name ?? [raw.firstName, raw.lastName].filter(Boolean).join(' ') || null,
+    name:             raw.name ?? raw.core?.name ?? ([raw.firstName, raw.lastName].filter(Boolean).join(' ') || null),
     position:         raw.position ?? raw.core?.position ?? null,
     ageGroup:         raw.ageGroup ?? raw.core?.ageGroup ?? raw.age_group ?? null,
     age:              raw.age ?? raw.core?.age ?? null,

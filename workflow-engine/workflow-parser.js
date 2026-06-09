@@ -228,6 +228,32 @@ const TEMPLATES = {
       /notify.*squad/i, /send.*notif/i, /message.*players/i, /alert.*team/i,
     ],
   },
+
+  // ── Weekly communications pack ──────────────────────────────────────────────
+  communications_pack: {
+    name:        'Generate Weekly Communications Pack',
+    description: 'Build the full weekly club communications pack — newsletter, results, reminders, sponsors, social media, committee summary',
+    baseSteps: [
+      { actionId: 'build_communications_pack', label: 'Build full weekly pack',         depends: [],                          critical: true  },
+      { actionId: 'generate_communication',    label: 'Preview newsletter draft',       depends: ['build_communications_pack'], critical: false },
+      { actionId: 'update_player_memory',      label: 'Log pack to memory',             depends: ['build_communications_pack'], critical: false },
+      { actionId: 'schedule_communication',    label: 'Schedule approved items',        depends: ['build_communications_pack'], critical: false, optional: true },
+      { actionId: 'send_coach_notification',   label: 'Notify coach — pack ready for review', depends: ['build_communications_pack'], critical: false },
+    ],
+    keywords: [
+      'communication', 'pack', 'newsletter', 'weekly', 'club pack',
+      'this week', 'weekly update', 'club update', 'results summary',
+      'send update', 'comms pack', 'sponsor', 'volunteer', 'old boys',
+      'member update', 'social media',
+    ],
+    phrases: [
+      /communication.*pack/i, /weekly.*pack/i, /club.*newsletter/i,
+      /this.*week.*communication/i, /prepare.*communication/i,
+      /generate.*newsletter/i, /build.*newsletter/i, /weekly.*update/i,
+      /club.*communication/i, /weekend.*communication/i,
+      /send.*old.*boy/i, /sponsor.*thank/i, /volunteer.*request/i,
+    ],
+  },
 };
 
 // ── Intent scoring ────────────────────────────────────────────────────────────

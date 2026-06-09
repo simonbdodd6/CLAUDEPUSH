@@ -14,7 +14,8 @@
  * - Personal contact info requires coach+
  */
 
-import { SENSITIVITY, ROLE_RANK } from './data-registry.js';
+import { SENSITIVITY } from './data-source.js';
+import { ROLE_RANK } from './data-registry.js';
 
 export { SENSITIVITY };
 

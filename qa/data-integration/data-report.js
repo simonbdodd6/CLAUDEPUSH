@@ -170,8 +170,8 @@ ${permTable.join('\n')}
 
 Fields matching these patterns are automatically stripped at the permissions layer:
 
-- **Confidential:** `dob`, `medicalNotes`, `diagnosis`, `bankAccount`, `iban`, `paymentMethod`, `ppsNumber`
-- **Restricted:** `phone`, `email`, `address`, `parentContact`
+- **Confidential:** \`dob\`, \`medicalNotes\`, \`diagnosis\`, \`bankAccount\`, \`iban\`, \`paymentMethod\`, \`ppsNumber\`
+- **Restricted:** \`phone\`, \`email\`, \`address\`, \`parentContact\`
 
 ---
 
