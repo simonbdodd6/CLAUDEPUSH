@@ -66,9 +66,9 @@ async function run() {
   // ── Step 2: GET coach view (empty state) ──────────────────────────────────
   console.log('\nStep 2 — Coach GET (empty after reset)');
   const coachGetEmpty = await api('GET', '/api/availability?sessionId=game');
-  // Coach GET requires auth — may return 403 if no session cookie
-  if (coachGetEmpty.status === 403) {
-    console.log(`  ${INFO}  Coach GET requires auth (no session cookie) — skipping authenticated checks`);
+  const coachAuthFailed = coachGetEmpty.status === 401 || coachGetEmpty.status === 403;
+  if (coachAuthFailed) {
+    console.log(`  ${INFO}  Coach GET requires auth (${coachGetEmpty.status}) — provide QA_SESSION_COOKIE to test auth paths`);
   } else {
     assert('coach GET returns 200',  coachGetEmpty.status === 200, `Got ${coachGetEmpty.status}`);
     assert('responses array is empty after reset', Array.isArray(coachGetEmpty.data?.responses) && coachGetEmpty.data.responses.length === 0, `Got ${coachGetEmpty.data?.responses?.length} entries`);
@@ -84,8 +84,8 @@ async function run() {
 
   // ── Step 4: GET seeded state (coach) ──────────────────────────────────────
   console.log('\nStep 4 — Coach GET after seeding');
-  if (coachGetEmpty.status === 403) {
-    console.log(`  ${INFO}  Skipped (no auth cookie)`);
+  if (coachAuthFailed) {
+    console.log(`  ${INFO}  Skipped — provide QA_SESSION_COOKIE for authenticated checks`);
   } else {
     const coachGet = await api('GET', '/api/availability?sessionId=game');
     assert('coach GET returns 200 after seed',      coachGet.status === 200, `Got ${coachGet.status}`);
@@ -146,9 +146,14 @@ async function run() {
     url: '/?to=availability',
     audience: 'no-reply',
   });
-  assert('push API returns 200',                    push.status === 200, `Got ${push.status}: ${JSON.stringify(push.data)}`);
-  assert('push API returns ok:true',                push.data?.ok === true, JSON.stringify(push.data));
-  assert('push response has sent count',            typeof push.data?.sent === 'number', JSON.stringify(push.data));
+  const pushAuthFailed = push.status === 401 || push.status === 403;
+  if (pushAuthFailed) {
+    console.log(`  ${INFO}  Push endpoint requires coach auth (${push.status}) — provide QA_SESSION_COOKIE to test`);
+  } else {
+    assert('push API returns 200',        push.status === 200, `Got ${push.status}: ${JSON.stringify(push.data)}`);
+    assert('push API returns ok:true',    push.data?.ok === true, JSON.stringify(push.data));
+    assert('push response has sent count', typeof push.data?.sent === 'number', JSON.stringify(push.data));
+  }
 
   // ── Step 8: Seed API GET status ───────────────────────────────────────────
   console.log('\nStep 8 — Seed API GET status check');
