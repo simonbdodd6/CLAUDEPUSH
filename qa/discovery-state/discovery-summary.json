@@ -1,0 +1,24 @@
+{
+  "lastRunAt": "2026-06-09T06:27:00.755Z",
+  "lastRunId": "disc_20260609_7c8d175f",
+  "lastRunDate": "2026-06-09",
+  "providers": [
+    "csv",
+    "manual",
+    "rugby-directory"
+  ],
+  "todayDiscovered": 6,
+  "todayNew": 5,
+  "todayUpdated": 0,
+  "duplicates": 1,
+  "duplicateRate": 0.17,
+  "readyForScoring": 5,
+  "newCountries": [
+    "Ireland",
+    "France",
+    "Scotland"
+  ],
+  "totalLeadsInDb": 0,
+  "health": "green",
+  "analysisMode": "discovery-agent"
+}

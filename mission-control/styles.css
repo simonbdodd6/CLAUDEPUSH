@@ -523,6 +523,76 @@ body {
 
 .mi-email-link:hover { text-decoration: underline; }
 
+/* ── Discovery Card ──────────────────────────────────────────────────────── */
+
+.discovery-card {
+  position: absolute;
+  bottom: 100px;
+  left: 24px;
+  width: 220px;
+  padding: 14px 16px;
+  font-size: 12px;
+  transition: opacity 0.3s ease;
+}
+
+.disc-stats {
+  display: flex;
+  gap: 10px;
+  margin: 8px 0 10px;
+}
+
+.disc-stat {
+  flex: 1;
+  text-align: center;
+}
+
+.disc-stat strong {
+  display: block;
+  font-size: 20px;
+  font-weight: 800;
+  color: #67e8f9;
+  line-height: 1.2;
+}
+
+.disc-stat span {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: rgba(224, 242, 254, 0.45);
+  margin-top: 2px;
+}
+
+.disc-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: rgba(224, 242, 254, 0.4);
+  border-top: 1px solid rgba(103, 232, 249, 0.12);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
+.disc-health { font-size: 12px; }
+
+.disc-countries {
+  font-size: 10px;
+  color: rgba(103, 232, 249, 0.6);
+  margin-top: 6px;
+  min-height: 14px;
+}
+
+@media (max-width: 720px) {
+  .discovery-card {
+    bottom: auto;
+    top: 140px;
+    left: 18px;
+    right: 18px;
+    width: auto;
+  }
+}
+
 @media (max-width: 720px) {
   .overlay-right {
     top: auto;

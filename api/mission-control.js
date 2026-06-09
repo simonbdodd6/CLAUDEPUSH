@@ -189,6 +189,18 @@ function collectMarketIntel() {
   }
 }
 
+// ─── Discovery Agent — reads the JSON summary written by qa/discovery/discovery.js ──
+
+function collectDiscovery() {
+  const summaryPath = join(ROOT, 'qa/discovery-state/discovery-summary.json');
+  try {
+    const raw = readFileSync(summaryPath, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 function node(id, label, type, meta = {}) {
   return { id, label, type, meta };
 }
@@ -276,6 +288,12 @@ export default async function handler(req, res) {
   if (req.query?.action === 'market-intel') {
     const marketIntel = collectMarketIntel();
     return json(res, 200, { ok: true, marketIntel });
+  }
+
+  // Discovery Agent summary — reads pre-generated JSON from the discovery agent
+  if (req.query?.action === 'discovery') {
+    const discovery = collectDiscovery();
+    return json(res, 200, { ok: true, discovery });
   }
 
   const git = collectGit();

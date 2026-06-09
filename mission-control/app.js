@@ -602,6 +602,45 @@ setInterval(() => {
 // Initial dot state check (non-blocking)
 loadMarketData();
 
+// ─── Discovery Card ───────────────────────────────────────────────────────────
+
+const discoveryCard = document.getElementById('discoveryCard');
+
+function renderDiscoveryCard(data) {
+  if (!data || !data.todayDiscovered) {
+    discoveryCard.classList.add('hidden');
+    return;
+  }
+
+  const dupPct = data.duplicateRate != null ? `${Math.round(data.duplicateRate * 100)}%` : '—';
+  const healthIcon = data.health === 'green' ? '🟢' : data.health === 'yellow' ? '🟡' : '⚫';
+  const newCountries = (data.newCountries || []).slice(0, 4);
+
+  document.getElementById('discToday').textContent = data.todayDiscovered ?? 0;
+  document.getElementById('discReady').textContent = data.readyForScoring ?? 0;
+  document.getElementById('discDupRate').textContent = dupPct;
+  document.getElementById('discProviders').textContent = (data.providers || []).join(', ');
+  document.getElementById('discHealth').textContent = healthIcon;
+  document.getElementById('discCountries').textContent = newCountries.length
+    ? `🌍 New: ${newCountries.join(', ')}`
+    : '';
+
+  discoveryCard.classList.remove('hidden');
+}
+
+async function loadDiscoveryData() {
+  try {
+    const res = await fetch('/api/mission-control?action=discovery', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    renderDiscoveryCard(json.discovery ?? null);
+  } catch {
+    discoveryCard.classList.add('hidden');
+  }
+}
+
+loadDiscoveryData();
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 resize();

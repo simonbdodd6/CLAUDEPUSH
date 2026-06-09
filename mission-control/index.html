@@ -45,6 +45,21 @@
       Market Intel
     </button>
 
+    <!-- Discovery card — auto-hidden when no discovery data exists -->
+    <section id="discoveryCard" class="glass discovery-card hidden" aria-label="Discovery stats" aria-live="polite">
+      <span class="kicker">Discovery</span>
+      <div class="disc-stats">
+        <div class="disc-stat"><strong id="discToday">0</strong><span>Today</span></div>
+        <div class="disc-stat"><strong id="discReady">0</strong><span>Ready</span></div>
+        <div class="disc-stat"><strong id="discDupRate">—</strong><span>Dup rate</span></div>
+      </div>
+      <div class="disc-meta">
+        <span id="discProviders"></span>
+        <span id="discHealth" class="disc-health"></span>
+      </div>
+      <div id="discCountries" class="disc-countries"></div>
+    </section>
+
     <div class="ticker-wrap">
       <div id="eventTicker" class="ticker">Booting project telemetry...</div>
     </div>
