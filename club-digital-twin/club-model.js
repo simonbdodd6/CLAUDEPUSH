@@ -17,6 +17,7 @@ async function _workflow() { try { return await import('../workflow-engine/index
 async function _memory()   { try { return await import('../memory-engine/index.js'); }            catch { return null; } }
 async function _comms()    { try { return await import('../communications-engine/index.js'); }    catch { return null; } }
 async function _history()  { try { return await import('../actions/action-history.js'); }         catch { return null; } }
+async function _fixtures() { try { return await import('../fixture-engine/index.js'); }            catch { return null; } }
 
 // ── Identity defaults (overridable per club) ──────────────────────────────────
 
@@ -43,15 +44,16 @@ export async function buildClubModel(options = {}) {
   const start = Date.now();
 
   // Run all engine calls in parallel — graceful if any fails
-  const [intelMod, dashMod, workflowMod, histMod] = await Promise.all([
-    _intel(), _dashboard(), _workflow(), _history(),
+  const [intelMod, dashMod, workflowMod, histMod, fixtureMod] = await Promise.all([
+    _intel(), _dashboard(), _workflow(), _history(), _fixtures(),
   ]);
 
-  const [intelReport, pendingApprovals, workflowHistory, actionStats] = await Promise.all([
-    intelMod   ? safeCall(() => intelMod.generateClubReport())       : null,
-    dashMod    ? safeCall(() => dashMod.getPending())                 : [],
-    workflowMod? safeCall(() => workflowMod.getRecentHistory(20))    : [],
-    histMod    ? safeCall(() => histMod.historyStats())              : null,
+  const [intelReport, pendingApprovals, workflowHistory, actionStats, upcomingFixtures] = await Promise.all([
+    intelMod   ? safeCall(() => intelMod.generateClubReport())          : null,
+    dashMod    ? safeCall(() => dashMod.getPending())                    : [],
+    workflowMod? safeCall(() => workflowMod.getRecentHistory(20))       : [],
+    histMod    ? safeCall(() => histMod.historyStats())                 : null,
+    fixtureMod ? safeCall(() => fixtureMod.getUpcomingFixtures(10))     : [],
   ]);
 
   // Extract sub-objects from the club intelligence report
@@ -78,10 +80,14 @@ export async function buildClubModel(options = {}) {
     insights:       (insights?.insights ?? []).slice(0, 10),
     recommendations:(recommendations?.thisWeekPriorities ?? []).slice(0, 8),
     actionActivity: buildActionActivity(actionStats, workflowHistory),
+    fixtures:       buildFixtures(upcomingFixtures),
     lastUpdated:    new Date().toISOString(),
     buildTimeMs:    Date.now() - start,
     dataCompleteness: 0, // filled in below
   };
+
+  // Merge fixture data into team objects
+  mergeFixturesIntoTeams(model);
 
   model.dataCompleteness = computeDataCompleteness(model);
 
@@ -284,6 +290,44 @@ function buildActionActivity(stats, workflowHistory) {
     recentWorkflows:    (workflowHistory ?? []).slice(0, 5),
     source:             'action-library + workflow-engine',
   };
+}
+
+function buildFixtures(upcomingFixtures) {
+  const upcoming = upcomingFixtures ?? [];
+  const next     = upcoming[0] ?? null;
+  return {
+    upcomingCount: upcoming.length,
+    upcoming:      upcoming.slice(0, 5).map(f => ({
+      id:           f.id,
+      teamName:     f.teamName,
+      ageGroup:     f.ageGroup,
+      opponent:     f.opponent,
+      kickoff:      f.kickoff,
+      kickoffLabel: f.kickoffLabel,
+      isHome:       f.isHome,
+      venue:        f.venue,
+      competition:  f.competition,
+      daysToKickoff: f.daysToKickoff,
+      status:       f.status,
+    })),
+    nextFixture:   next ? {
+      opponent:     next.opponent,
+      kickoffLabel: next.kickoffLabel,
+      daysToKickoff: next.daysToKickoff,
+      teamName:     next.teamName,
+    } : null,
+    source: 'fixture-engine',
+  };
+}
+
+function mergeFixturesIntoTeams(model) {
+  const upcoming = model.fixtures?.upcoming ?? [];
+  for (const team of model.teams) {
+    team.fixtures = upcoming
+      .filter(f => f.teamId === team.id || f.ageGroup === team.ageGroup)
+      .slice(0, 3);
+    team.nextFixture = team.fixtures[0] ?? null;
+  }
 }
 
 // ── Data completeness ─────────────────────────────────────────────────────────

@@ -34,7 +34,10 @@
     "command-centre": "echo \"Start API: npm run command-centre:server\nStart UI:  npm run command-centre:ui\"",
     "twin:cli": "node club-digital-twin/club-twin-cli.js",
     "twin:api": "node club-digital-twin/club-api.js",
-    "twin": "echo \"Start API: npm run twin:api\nRun tests: npm run twin:cli\""
+    "twin": "echo \"Start API: npm run twin:api\nRun tests: npm run twin:cli\"",
+    "fixture:cli": "node fixture-engine/fixture-cli.js",
+    "fixture:api": "node fixture-engine/fixture-api.js",
+    "fixture": "echo \"Start API: npm run fixture:api\nRun tests: npm run fixture:cli\""
   },
   "dependencies": {
     "web-push": "^3.6.7"

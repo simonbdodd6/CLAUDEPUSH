@@ -1,0 +1,197 @@
+{
+  "id": "fixture_20260604_team_senior_0d2u3uz",
+  "version": 1,
+  "teamId": "team_senior_0d2u3uz",
+  "teamName": "Senior XV",
+  "ageGroup": "Senior",
+  "opponent": "Old Town RFC",
+  "venue": "Away Grounds",
+  "isHome": false,
+  "competition": "league",
+  "kickoff": "2026-06-04T13:00:00.000Z",
+  "referee": null,
+  "status": "completed",
+  "prepStage": "early",
+  "squadStatus": {
+    "selected": [
+      {
+        "id": "p1",
+        "name": "C. Kelly",
+        "position": "Flyhalf"
+      },
+      {
+        "id": "p2",
+        "name": "J. Murphy",
+        "position": "Prop"
+      },
+      {
+        "id": "p3",
+        "name": "D. Walsh",
+        "position": "Centre"
+      }
+    ],
+    "unavailable": [],
+    "injured": [],
+    "uncertain": [],
+    "available": []
+  },
+  "squadLockedAt": null,
+  "medicalAlerts": [],
+  "playerMilestones": [],
+  "previousMeetings": [
+    {
+      "date": "2025-11-15",
+      "result": "win",
+      "score": "24–14",
+      "competition": "League"
+    },
+    {
+      "date": "2025-04-05",
+      "result": "loss",
+      "score": "12–18",
+      "competition": "League"
+    }
+  ],
+  "volunteers": {
+    "required": [
+      {
+        "role": "First Aider",
+        "filled": false,
+        "assignee": null
+      },
+      {
+        "role": "Team Manager",
+        "filled": false,
+        "assignee": null
+      },
+      {
+        "role": "Photographer",
+        "filled": false,
+        "assignee": null
+      },
+      {
+        "role": "Linesman",
+        "filled": false,
+        "assignee": null
+      },
+      {
+        "role": "Timekeeper",
+        "filled": false,
+        "assignee": null
+      }
+    ],
+    "confirmed": [],
+    "missing": []
+  },
+  "transport": {
+    "required": true,
+    "arranged": false,
+    "details": null,
+    "departureTime": null
+  },
+  "weather": {
+    "_placeholder": true,
+    "forecast": null,
+    "conditions": null,
+    "temperature": null,
+    "windSpeed": null
+  },
+  "preparationChecklist": [],
+  "matchPack": null,
+  "result": {
+    "status": "win",
+    "homeScore": null,
+    "awayScore": null,
+    "teamScore": 24,
+    "opponentScore": 18,
+    "scorers": [
+      "J. Murphy ×2",
+      "C. Kelly",
+      "D. Walsh"
+    ],
+    "yellowCards": [
+      "P. O'Brien"
+    ],
+    "redCards": [],
+    "manOfMatch": "C. Kelly",
+    "coachNotes": "Strong first half. Second half lapses in defence need work.",
+    "attendance": null
+  },
+  "postMatchReview": {
+    "fixtureId": "fixture_20260604_team_senior_0d2u3uz",
+    "teamName": "Senior XV",
+    "opponent": "Old Town RFC",
+    "competition": "league",
+    "kickoff": "2026-06-04T13:00:00.000Z",
+    "result": {
+      "score": "24–18",
+      "outcome": "win",
+      "scorers": [
+        "J. Murphy ×2",
+        "C. Kelly",
+        "D. Walsh"
+      ],
+      "manOfMatch": "C. Kelly",
+      "yellowCards": [
+        "P. O'Brien"
+      ],
+      "redCards": []
+    },
+    "narrative": "Club health: 52/100. Club health: 52/100 (F) — stable",
+    "insights": [
+      {
+        "type": "result",
+        "text": "Senior XV secured a 6-point win."
+      }
+    ],
+    "coachNotes": "Strong first half. Second half lapses in defence need work.",
+    "performanceAreas": {
+      "strengths": [
+        "Set piece dominance",
+        "Work rate in the breakdown",
+        "Secured the win under match conditions."
+      ],
+      "improvements": [
+        "Second half discipline",
+        "Lineout accuracy"
+      ],
+      "focus": [
+        "Maintain momentum into next fixture."
+      ]
+    },
+    "nextFixtureFocus": "Defensive structure — conceded 3 tries from kicks.",
+    "generatedAt": "2026-06-09T16:10:12.772Z",
+    "source": "knowledge-engine"
+  },
+  "playerReports": [
+    {
+      "playerId": "p1",
+      "name": "C. Kelly",
+      "position": "Flyhalf",
+      "rating": 9,
+      "notes": "Excellent game, controlled play brilliantly.",
+      "manOfMatch": true
+    },
+    {
+      "playerId": "p2",
+      "name": "J. Murphy",
+      "position": "Prop",
+      "rating": 7,
+      "notes": "Two tries — strong carrying.",
+      "manOfMatch": false
+    },
+    {
+      "playerId": "p3",
+      "name": "D. Walsh",
+      "position": "Centre",
+      "rating": null,
+      "notes": "Performance noted — full review pending from coaching staff.",
+      "manOfMatch": false
+    }
+  ],
+  "twinUpdateApplied": true,
+  "notes": null,
+  "tags": [],
+  "createdAt": "2026-06-09T16:10:10.885Z",
+  "updatedAt": "2026-06-09T16:10:12.804Z"
+}

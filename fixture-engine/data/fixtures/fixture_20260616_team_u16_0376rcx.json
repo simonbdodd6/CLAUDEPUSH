@@ -1,0 +1,92 @@
+{
+  "id": "fixture_20260616_team_u16_0376rcx",
+  "version": 1,
+  "teamId": "team_u16_0376rcx",
+  "teamName": "U16 Red",
+  "ageGroup": "U16",
+  "opponent": "City Youth RFC",
+  "venue": "Away Park, Dublin",
+  "isHome": false,
+  "competition": "cup",
+  "kickoff": "2026-06-16T13:00:00.000Z",
+  "referee": null,
+  "status": "scheduled",
+  "prepStage": "early",
+  "squadStatus": {
+    "selected": [],
+    "unavailable": [],
+    "injured": [],
+    "uncertain": [],
+    "available": []
+  },
+  "squadLockedAt": null,
+  "medicalAlerts": [],
+  "playerMilestones": [],
+  "previousMeetings": [],
+  "volunteers": {
+    "required": [
+      {
+        "role": "First Aider",
+        "filled": false,
+        "assignee": null
+      },
+      {
+        "role": "Team Manager",
+        "filled": false,
+        "assignee": null
+      },
+      {
+        "role": "Photographer",
+        "filled": false,
+        "assignee": null
+      },
+      {
+        "role": "Linesman",
+        "filled": false,
+        "assignee": null
+      },
+      {
+        "role": "Timekeeper",
+        "filled": false,
+        "assignee": null
+      }
+    ],
+    "confirmed": [],
+    "missing": []
+  },
+  "transport": {
+    "required": true,
+    "arranged": false,
+    "details": null,
+    "departureTime": null
+  },
+  "weather": {
+    "_placeholder": true,
+    "forecast": null,
+    "conditions": null,
+    "temperature": null,
+    "windSpeed": null
+  },
+  "preparationChecklist": [],
+  "matchPack": null,
+  "result": {
+    "status": null,
+    "homeScore": null,
+    "awayScore": null,
+    "teamScore": null,
+    "opponentScore": null,
+    "scorers": [],
+    "yellowCards": [],
+    "redCards": [],
+    "manOfMatch": null,
+    "coachNotes": null,
+    "attendance": null
+  },
+  "postMatchReview": null,
+  "playerReports": [],
+  "twinUpdateApplied": false,
+  "notes": null,
+  "tags": [],
+  "createdAt": "2026-06-09T16:10:10.883Z",
+  "updatedAt": "2026-06-09T16:10:10.889Z"
+}
