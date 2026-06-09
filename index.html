@@ -3943,9 +3943,19 @@
       document.getElementById("coachNav").innerHTML = coachSections.map(([id, label]) =>
         `<button type="button" class="${state.activeView==="coach" && state.activeCoachSection===id ? "active" : ""}" onclick="setSection('coach','${id}')">${label}</button>`
       ).join("");
-      document.getElementById("playerNav").innerHTML = playerSections.map(([id, label]) =>
-        `<button type="button" class="${state.activeView==="player" && state.activePlayerSection===id ? "active" : ""}" onclick="setSection('player','${id}')">${label}</button>`
-      ).join("");
+      const player = currentUser();
+      const _pendingCount = (() => {
+        if (!player?.id) return 0;
+        const p = state.players.find(pl => String(pl.id||'') === String(player.id||'') || String(pl.userId||'') === String(player.id||''));
+        if (!p) return 0;
+        return (state.schedule || []).filter(s => (p[sessionKey(s.id)] || 'no-reply') === 'no-reply').length;
+      })();
+      document.getElementById("playerNav").innerHTML = playerSections.map(([id, label]) => {
+        const badge = id === 'availability' && _pendingCount > 0
+          ? ` <span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;font-size:9px;font-weight:800;border-radius:999px;background:#dc2626;color:#fff;line-height:1;vertical-align:middle;margin-left:3px">${_pendingCount}</span>`
+          : '';
+        return `<button type="button" class="${state.activeView==="player" && state.activePlayerSection===id ? "active" : ""}" onclick="setSection('player','${id}')">${label}${badge}</button>`;
+      }).join("");
       document.getElementById("coachNav").classList.toggle("hidden",  state.activeView !== "coach");
       document.getElementById("playerNav").classList.toggle("hidden", state.activeView !== "player");
       // Hide the Coach|Player toggle entirely for players — they should never see it
