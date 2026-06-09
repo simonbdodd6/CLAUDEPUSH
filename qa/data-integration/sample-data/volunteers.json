@@ -1,0 +1,14 @@
+{
+  "_meta": { "club": "Kildare Valley RFC", "isMock": true },
+  "volunteers": [
+    { "id": "v001", "name": "Noreen Byrne", "role": "Club Secretary", "email": "noreen.byrne@example.ie", "phone": "087-3001001", "activeYears": 6, "monthlyHours": 12, "status": "active", "_isMock": true },
+    { "id": "v002", "name": "Fionnuala Walsh", "role": "Treasurer", "email": "fionnuala.walsh@example.ie", "phone": "087-3001002", "activeYears": 3, "monthlyHours": 10, "status": "active", "_isMock": true },
+    { "id": "v003", "name": "Ruairí O'Connor", "role": "Fixtures Secretary", "email": "ruairi.oconnor@example.ie", "phone": "087-3001003", "activeYears": 2, "monthlyHours": 6, "status": "active", "_isMock": true },
+    { "id": "v004", "name": "Siobhán Phelan", "role": "Child Welfare Officer", "email": "siobhan.phelan@example.ie", "phone": "087-3001004", "activeYears": 4, "monthlyHours": 5, "status": "active", "_isMock": true },
+    { "id": "v005", "name": "Tomás Brennan", "role": "Grounds Coordinator", "email": "tomas.brennan@example.ie", "phone": "087-3001005", "activeYears": 7, "monthlyHours": 15, "status": "active", "_isMock": true },
+    { "id": "v006", "name": "Caoimhe Doyle", "role": "Social Media Manager", "email": "caoimhe.doyle@example.ie", "phone": "087-3001006", "activeYears": 1, "monthlyHours": 4, "status": "active", "_isMock": true },
+    { "id": "v007", "name": "Pádraig Nolan", "role": "Kit Manager", "email": "padraig.nolan@example.ie", "phone": "087-3001007", "activeYears": 3, "monthlyHours": 6, "status": "active", "_isMock": true },
+    { "id": "v008", "name": "Áine Kavanagh", "role": "First Aid Officer", "email": "aine.kavanagh@example.ie", "phone": "087-3001008", "activeYears": 5, "monthlyHours": 8, "status": "active", "_isMock": true }
+  ],
+  "summary": { "totalVolunteers": 8, "activeVolunteers": 8, "totalMonthlyHours": 66 }
+}

@@ -1,0 +1,15 @@
+{
+  "_meta": { "club": "Kildare Valley RFC", "isMock": true },
+  "sessions": [
+    { "id": "s001", "date": "2025-10-02", "ageGroup": "Senior", "focus": "Lineout and set-piece", "durationMinutes": 90, "attendanceCount": 6, "attendanceRate": 75, "coachId": "c001", "notes": "Good set-piece work. p004 and p003 absent.", "_isMock": true },
+    { "id": "s002", "date": "2025-10-07", "ageGroup": "Senior", "focus": "Attack patterns", "durationMinutes": 75, "attendanceCount": 6, "attendanceRate": 75, "coachId": "c001", "notes": "Worked on 9-box attack structure.", "_isMock": true },
+    { "id": "s003", "date": "2025-10-09", "ageGroup": "U18", "focus": "Skills and fitness", "durationMinutes": 90, "attendanceCount": 3, "attendanceRate": 75, "coachId": "c002", "notes": "p011 missed. Focus on individual ball skills.", "_isMock": true },
+    { "id": "s004", "date": "2025-10-14", "ageGroup": "Senior", "focus": "Match preparation — Balbriggan RFC", "durationMinutes": 90, "attendanceCount": 8, "attendanceRate": 100, "coachId": "c001", "notes": "Full squad present. Great intensity.", "_isMock": true },
+    { "id": "s005", "date": "2025-10-16", "ageGroup": "U16", "focus": "Scrum technique", "durationMinutes": 75, "attendanceCount": 3, "attendanceRate": 75, "coachId": "c002", "notes": "Focus on front-row body position. p015 absent.", "_isMock": true },
+    { "id": "s006", "date": "2025-10-21", "ageGroup": "Senior", "focus": "Fitness and conditioning", "durationMinutes": 75, "attendanceCount": 5, "attendanceRate": 63, "coachId": "c001", "notes": "Low turnout. GPS conditioning circuits.", "_isMock": true },
+    { "id": "s007", "date": "2025-10-23", "ageGroup": "U14", "focus": "Tag and touch rugby", "durationMinutes": 60, "attendanceCount": 3, "attendanceRate": 75, "coachId": "c003", "notes": "Fun session. p020 not attending.", "_isMock": true },
+    { "id": "s008", "date": "2025-11-04", "ageGroup": "Senior", "focus": "Defence systems", "durationMinutes": 90, "attendanceCount": 7, "attendanceRate": 88, "coachId": "c001", "notes": "Worked on blitz defence and rush.", "_isMock": true },
+    { "id": "s009", "date": "2025-11-06", "ageGroup": "U18", "focus": "Contact skills", "durationMinutes": 90, "attendanceCount": 4, "attendanceRate": 100, "coachId": "c002", "notes": "Full attendance. Excellent commitment.", "_isMock": true },
+    { "id": "s010", "date": "2025-11-11", "ageGroup": "Senior", "focus": "Match preparation — Carlow RFC", "durationMinutes": 75, "attendanceCount": 7, "attendanceRate": 88, "coachId": "c001", "notes": "Good session. p006 absent (shoulder check).", "_isMock": true }
+  ]
+}

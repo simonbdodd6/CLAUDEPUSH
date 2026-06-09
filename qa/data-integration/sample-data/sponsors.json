@@ -1,0 +1,9 @@
+{
+  "_meta": { "club": "Kildare Valley RFC", "season": "2025-26", "isMock": true },
+  "sponsors": [
+    { "id": "sp001", "name": "Kildare Motor Group", "tier": "title", "contribution": 5000, "currency": "EUR", "category": "automotive", "contactName": "Máire Dempsey", "contactEmail": "maire@kildaremotors.ie", "logoUrl": null, "activeSince": "2023-08-01", "renewalDate": "2026-07-31", "status": "active", "benefits": ["Jersey front sponsorship", "Pitch-side banner", "Club newsletter feature"], "_isMock": true },
+    { "id": "sp002", "name": "McGrath Accountants", "tier": "gold", "contribution": 2000, "currency": "EUR", "category": "professional services", "contactName": "Seán McGrath", "contactEmail": "sean@mcgrathaccountants.ie", "logoUrl": null, "activeSince": "2024-08-01", "renewalDate": "2026-07-31", "status": "active", "benefits": ["Club website logo", "Social media mention"], "_isMock": true },
+    { "id": "sp003", "name": "Moone Hill Pharmacy", "tier": "silver", "contribution": 750, "currency": "EUR", "category": "healthcare", "contactName": "Brigid Dunne", "contactEmail": "brigid@moonehillpharmacy.ie", "logoUrl": null, "activeSince": "2025-08-01", "renewalDate": "2026-07-31", "status": "active", "benefits": ["Match programme ad", "Club newsletter mention"], "_isMock": true }
+  ],
+  "summary": { "totalSponsors": 3, "totalRevenue": 7750, "currency": "EUR" }
+}

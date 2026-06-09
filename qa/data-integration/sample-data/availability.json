@@ -1,0 +1,26 @@
+{
+  "_meta": { "club": "Kildare Valley RFC", "isMock": true },
+  "availability": [
+    { "fixtureId": "f001", "date": "2025-12-14", "ageGroup": "Senior",
+      "available": ["p001","p002","p005","p006","p007","p008"],
+      "unavailable": ["p004"],
+      "injured": ["p003"],
+      "unknown": [],
+      "_isMock": true
+    },
+    { "fixtureId": "f002", "date": "2025-12-21", "ageGroup": "Senior",
+      "available": ["p001","p002","p003","p005","p007","p008"],
+      "unavailable": [],
+      "injured": [],
+      "unknown": ["p004","p006"],
+      "_isMock": true
+    },
+    { "fixtureId": "f005", "date": "2025-12-14", "ageGroup": "U16",
+      "available": ["p013","p014","p016"],
+      "unavailable": [],
+      "injured": ["p015"],
+      "unknown": [],
+      "_isMock": true
+    }
+  ]
+}

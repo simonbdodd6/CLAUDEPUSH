@@ -1,0 +1,10 @@
+{
+  "_meta": { "club": "Kildare Valley RFC", "isMock": true },
+  "events": [
+    { "id": "ev001", "name": "Club Christmas Dinner", "date": "2025-12-19", "type": "social", "venue": "Kildare Valley RFC Clubhouse", "expectedAttendance": 80, "ticketPrice": 35, "status": "upcoming", "_isMock": true },
+    { "id": "ev002", "name": "Senior Awards Night", "date": "2026-04-18", "type": "awards", "venue": "Kildare Valley RFC Clubhouse", "expectedAttendance": 60, "ticketPrice": 25, "status": "planned", "_isMock": true },
+    { "id": "ev003", "name": "Club Fundraiser — Quiz Night", "date": "2025-12-05", "type": "fundraiser", "venue": "Kildare Valley RFC Clubhouse", "expectedAttendance": 50, "ticketPrice": 10, "status": "upcoming", "_isMock": true },
+    { "id": "ev004", "name": "U14 Development Camp", "date": "2026-01-17", "type": "coaching", "venue": "Kildare Valley RFC Ground", "expectedAttendance": 20, "ticketPrice": 0, "status": "planned", "_isMock": true },
+    { "id": "ev005", "name": "Leinster Schools Tag Rugby Blitz", "date": "2025-11-22", "type": "competition", "venue": "Kildare Valley RFC Ground", "expectedAttendance": 120, "ticketPrice": 0, "status": "completed", "_isMock": true }
+  ]
+}

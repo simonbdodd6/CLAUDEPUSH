@@ -1,0 +1,15 @@
+{
+  "_meta": { "club": "Kildare Valley RFC", "period": "2025-08 to 2025-11", "isMock": true, "note": "Mock data only — connect SumUp/Square POS to activate real data" },
+  "monthlySummary": [
+    { "month": "2025-08", "totalRevenue": 1240, "matchDaySales": 680, "regularSales": 560, "transactions": 94, "currency": "EUR", "_isMock": true },
+    { "month": "2025-09", "totalRevenue": 1580, "matchDaySales": 920, "regularSales": 660, "transactions": 118, "currency": "EUR", "_isMock": true },
+    { "month": "2025-10", "totalRevenue": 1820, "matchDaySales": 1100, "regularSales": 720, "transactions": 135, "currency": "EUR", "_isMock": true },
+    { "month": "2025-11", "totalRevenue": 1450, "matchDaySales": 780, "regularSales": 670, "transactions": 107, "currency": "EUR", "_isMock": true }
+  ],
+  "topProducts": [
+    { "product": "Guinness (pint)", "unitsSold": 820, "revenue": 5330, "currency": "EUR", "_isMock": true },
+    { "product": "Lager (pint)", "unitsSold": 540, "revenue": 2970, "currency": "EUR", "_isMock": true },
+    { "product": "Soft drink", "unitsSold": 310, "revenue": 775, "currency": "EUR", "_isMock": true }
+  ],
+  "summary": { "totalRevenue": 6090, "avgMonthly": 1523, "currency": "EUR", "isMock": true }
+}

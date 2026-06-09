@@ -1,0 +1,15 @@
+{
+  "_meta": { "club": "Kildare Valley RFC", "season": "2025-26", "isMock": true },
+  "inventory": [
+    { "id": "kit001", "name": "Senior Home Jersey", "sku": "JRS-H-S", "price": 65, "stock": 12, "sold": 28, "currency": "EUR", "_isMock": true },
+    { "id": "kit002", "name": "Training Hoodie", "sku": "HOD-TRN", "price": 45, "stock": 8, "sold": 15, "currency": "EUR", "_isMock": true },
+    { "id": "kit003", "name": "Club Polo Shirt", "sku": "PLO-CLB", "price": 35, "stock": 22, "sold": 11, "currency": "EUR", "_isMock": true },
+    { "id": "kit004", "name": "Club Cap", "sku": "CAP-CLB", "price": 15, "stock": 30, "sold": 8, "currency": "EUR", "_isMock": true },
+    { "id": "kit005", "name": "Water Bottle", "sku": "WB-CLB", "price": 12, "stock": 18, "sold": 22, "currency": "EUR", "_isMock": true }
+  ],
+  "summary": {
+    "totalRevenue": 2717, "currency": "EUR",
+    "itemsSold": 84, "lowStockItems": ["Training Hoodie"],
+    "isMock": true
+  }
+}

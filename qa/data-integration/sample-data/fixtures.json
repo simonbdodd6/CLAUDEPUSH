@@ -1,0 +1,12 @@
+{
+  "_meta": { "club": "Kildare Valley RFC", "season": "2025-26", "isMock": true },
+  "fixtures": [
+    { "id": "f001", "date": "2025-12-14", "homeTeam": "Kildare Valley RFC", "awayTeam": "Naas RFC", "venue": "Kildare Valley RFC Ground", "competition": "Leinster League Division 2", "ageGroup": "Senior", "result": null, "homeScore": null, "awayScore": null, "_isMock": true },
+    { "id": "f002", "date": "2025-12-21", "homeTeam": "Portlaoise RFC", "awayTeam": "Kildare Valley RFC", "venue": "Portlaoise", "competition": "Leinster League Division 2", "ageGroup": "Senior", "result": null, "homeScore": null, "awayScore": null, "_isMock": true },
+    { "id": "f003", "date": "2026-01-11", "homeTeam": "Kildare Valley RFC", "awayTeam": "Clane RFC", "venue": "Kildare Valley RFC Ground", "competition": "Leinster League Division 2", "ageGroup": "Senior", "result": null, "homeScore": null, "awayScore": null, "_isMock": true },
+    { "id": "f004", "date": "2025-12-07", "homeTeam": "Kildare Valley RFC U18", "awayTeam": "Newbridge RFC U18", "venue": "Kildare Valley RFC Ground", "competition": "Leinster Under 18 League", "ageGroup": "U18", "result": "won", "homeScore": 24, "awayScore": 10, "_isMock": true },
+    { "id": "f005", "date": "2025-12-14", "homeTeam": "Athy RFC U16", "awayTeam": "Kildare Valley RFC U16", "venue": "Athy", "competition": "Leinster Under 16 League", "ageGroup": "U16", "result": null, "homeScore": null, "awayScore": null, "_isMock": true },
+    { "id": "f006", "date": "2025-11-30", "homeTeam": "Kildare Valley RFC", "awayTeam": "Carlow RFC", "venue": "Kildare Valley RFC Ground", "competition": "Leinster League Division 2", "ageGroup": "Senior", "result": "won", "homeScore": 18, "awayScore": 15, "_isMock": true },
+    { "id": "f007", "date": "2025-11-23", "homeTeam": "Balbriggan RFC", "awayTeam": "Kildare Valley RFC", "venue": "Balbriggan", "competition": "Leinster League Division 2", "ageGroup": "Senior", "result": "lost", "homeScore": 22, "awayScore": 14, "_isMock": true }
+  ]
+}
