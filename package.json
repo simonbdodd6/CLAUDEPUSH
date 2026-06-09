@@ -73,7 +73,10 @@
     "dashboard:mission-control": "node dashboard/dashboard-cli.js",
     "knowledge:engine": "node knowledge-engine/knowledge-cli.js",
     "platform:integration": "node platform/platform-cli.js",
-    "actions:library": "node actions/action-cli.js"
+    "actions:library": "node actions/action-cli.js",
+    "command-centre:server": "node app/api-server.js",
+    "command-centre:ui": "cd app/command-centre && npm run dev",
+    "command-centre": "echo \"Start API: npm run command-centre:server\nStart UI:  npm run command-centre:ui\""
   },
   "dependencies": {
     "web-push": "^3.6.7"
