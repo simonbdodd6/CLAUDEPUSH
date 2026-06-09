@@ -4860,11 +4860,20 @@
     }
 
     function sortAvailabilityRows(list) {
-      const direction = availabilityBoardSort === "lowest" ? 1 : -1;
       return list.slice().sort((a, b) => {
+        if (availabilityBoardSort === 'alpha') {
+          return String(a.player?.name || '').localeCompare(String(b.player?.name || ''));
+        }
+        if (availabilityBoardSort === 'recent') {
+          const ta = a.respondedAt ? new Date(a.respondedAt).getTime() : 0;
+          const tb = b.respondedAt ? new Date(b.respondedAt).getTime() : 0;
+          if (ta !== tb) return tb - ta;
+          return String(a.player?.name || '').localeCompare(String(b.player?.name || ''));
+        }
+        const direction = availabilityBoardSort === 'lowest' ? 1 : -1;
         const diff = (Number(a.attendanceRate || 0) - Number(b.attendanceRate || 0)) * direction;
         if (diff) return diff;
-        return String(a.player?.name || "").localeCompare(String(b.player?.name || ""));
+        return String(a.player?.name || '').localeCompare(String(b.player?.name || ''));
       });
     }
 
@@ -4874,7 +4883,7 @@
     }
 
     function setAvailabilityBoardSort(sort) {
-      availabilityBoardSort = sort === "lowest" ? "lowest" : "highest";
+      availabilityBoardSort = ['lowest', 'highest', 'recent', 'alpha'].includes(sort) ? sort : 'highest';
       renderMessageCenter();
     }
 
@@ -4979,6 +4988,7 @@
             <div class="msg-hero-actions">
               <button class="btn" type="button" onclick="setSection('coach','messages')">Open messages</button>
               <button class="btn" id="avail-refresh-btn" type="button" onclick="refreshLiveAvailability()">Refresh replies</button>
+              <button class="btn" type="button" onclick="clearWeekAvailability()" title="Clear all responses for this week — session templates are kept">New week</button>
               <button class="btn primary" type="button" onclick="sendAvailabilityRequest('${selected?.id || "game"}')">Send ${esc(selected?.title || "session")} request</button>
             </div>
           </section>
@@ -5019,16 +5029,18 @@
                 <div class="msg-card-head">
                   <div>
                     <h2>Live Response Board</h2>
-                    <p>${esc(sessionDisplayTitle(selected || {}))} · click any player for details.</p>
+                    <p>${esc(sessionDisplayTitle(selected || {}))}${selected?.date ? ' · ' + esc(selected.date) : ''}${selected?.focus ? ' · <span style="color:var(--amber)">' + esc(selected.focus) + '</span>' : ''} · tap a player for details.</p>
                   </div>
                   <span class="msg-chip ${boardNoReply.length ? "no-reply" : "available"}">${boardAnswered.length}/${boardRows.length} shown</span>
                 </div>
                 <div class="availability-board-tools">
                   <div class="availability-filter-group">${filterButtons}</div>
                   <div style="display:flex;gap:8px;align-items:center">
-                    <select class="availability-sort-select" onchange="setAvailabilityBoardSort(this.value)" aria-label="Sort by attendance">
+                    <select class="availability-sort-select" onchange="setAvailabilityBoardSort(this.value)" aria-label="Sort order">
                       <option value="highest" ${availabilityBoardSort === "highest" ? "selected" : ""}>Highest attendance first</option>
-                      <option value="lowest" ${availabilityBoardSort === "lowest" ? "selected" : ""}>Lowest attendance first</option>
+                      <option value="lowest"  ${availabilityBoardSort === "lowest"  ? "selected" : ""}>Lowest attendance first</option>
+                      <option value="recent"  ${availabilityBoardSort === "recent"  ? "selected" : ""}>Responded most recently</option>
+                      <option value="alpha"   ${availabilityBoardSort === "alpha"   ? "selected" : ""}>A – Z</option>
                     </select>
                     <button class="btn" type="button" onclick="exportAvailabilityCSV('${selected?.id || ''}')"
                       style="font-size:11px;padding:0 10px;min-height:34px;white-space:nowrap" title="Export this session to CSV">
@@ -5312,6 +5324,36 @@
       } catch(e) { console.warn('Chat write failed:', e); }
       sendPushToPlayers(`Availability request — ${session.title}`, body, { type: 'availability', sessionId });
       showToast(`${session.title} request sent to ${created.length} players ✓`);
+    }
+
+    async function clearWeekAvailability() {
+      if (!isCoach()) return notify("Only coaches can clear responses");
+      if (!confirm('Clear all availability responses for this week? Session definitions are kept. Players will need to re-submit.')) return;
+      const sessions = (state.schedule || []).map(s => s.id).filter(Boolean);
+      try {
+        const res = await fetch('/api/availability', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'clear_week', sessions }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        // Clear locally
+        state.players.forEach(p => {
+          sessions.forEach(id => {
+            const k = sessionKey(id);
+            delete p[k];
+            delete p[k + 'Reason'];
+            delete p[k + 'RespondedAt'];
+          });
+        });
+        _playerAvailFetched = false;
+        saveState('Week cleared');
+        render();
+        showToast(`Responses cleared for ${(data.cleared || sessions).length} sessions`);
+      } catch(e) {
+        showToast('Clear failed: ' + (e?.message || 'network'));
+      }
     }
 
     // Send a push reminder to all players who have not replied for a specific session.

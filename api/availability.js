@@ -156,7 +156,18 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
-    const { endpoint, response, sessionId, reason } = req.body || {};
+    const { action: postAction, endpoint, response, sessionId, reason, sessions: clearSessions } = req.body || {};
+
+    // ── Coach-gated clear_week action ──────────────────────────────────────────
+    if (postAction === 'clear_week') {
+      try { await requireTenantRole(req, ['coach', 'admin']); }
+      catch (error) { return sendAuthError(res, error); }
+      const ids = Array.isArray(clearSessions) && clearSessions.length ? clearSessions : DEMO_SESSIONS;
+      const validIds = ids.filter(id => validSessionId(id));
+      await Promise.all(validIds.map(sid => saveAvailability(sid, {})));
+      return res.status(200).json({ ok: true, action: 'clear_week', cleared: validIds });
+    }
+
     if (!validSessionId(sessionId) || !RESPONSES.has(response)) {
       return res.status(400).json({ error: 'valid sessionId and response (available, unavailable or maybe) are required' });
     }
