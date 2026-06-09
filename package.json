@@ -53,7 +53,11 @@
     "discovery:dry": "node qa/discovery/discovery.js --dry-run",
     "rugby:intel": "node qa/rugby-intel/rugby-intel.js",
     "rugby:intel:reports": "node qa/rugby-intel/rugby-intel.js --reports-only",
-    "rugby:intel:summary": "node qa/rugby-intel/rugby-intel.js --summary"
+    "rugby:intel:summary": "node qa/rugby-intel/rugby-intel.js --summary",
+    "rugby:assistant": "node qa/rugby-assistant/rugby-assistant.js",
+    "rugby:session": "node qa/rugby-assistant/rugby-session.js",
+    "rugby:drills": "node qa/rugby-assistant/rugby-drills.js",
+    "rugby:law": "node qa/rugby-assistant/rugby-law.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"

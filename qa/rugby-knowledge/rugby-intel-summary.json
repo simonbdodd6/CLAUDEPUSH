@@ -1,0 +1,192 @@
+{
+  "generatedAt": "2026-06-09T08:19:54.251Z",
+  "totalItems": 4,
+  "itemsThisWeek": 4,
+  "itemsThisMonth": 4,
+  "lawUpdates": 2,
+  "safetyAlerts": 3,
+  "drills": 4,
+  "topCategories": [
+    {
+      "category": "contact-skills",
+      "count": 4
+    },
+    {
+      "category": "youth",
+      "count": 4
+    },
+    {
+      "category": "drill",
+      "count": 4
+    },
+    {
+      "category": "safety",
+      "count": 3
+    },
+    {
+      "category": "attack",
+      "count": 3
+    },
+    {
+      "category": "set-piece",
+      "count": 3
+    },
+    {
+      "category": "breakdown",
+      "count": 3
+    },
+    {
+      "category": "sc",
+      "count": 3
+    }
+  ],
+  "topCoachingIdeas": [
+    {
+      "title": "Drill: Jackalling Circuit",
+      "takeaway": "EXECUTION Phase 1 — Technique Walk-Through (5 min) Coach demonstrates three jackal entry positions:  1.",
+      "categories": [
+        "safety",
+        "attack",
+        "defence",
+        "set-piece",
+        "breakdown",
+        "contact-skills",
+        "youth",
+        "drill"
+      ]
+    },
+    {
+      "title": "World Rugby Law Amendment — Tackle Height Directive",
+      "takeaway": "World Rugby Law Amendment — Tackle Height Directive Effective: 1 January 2024 SUMMARY FOR COACHES AND REFEREES World Rugby has implemented a new directive on tackle height across all levels of the game.",
+      "categories": [
+        "law-update",
+        "safety",
+        "attack",
+        "breakdown",
+        "contact-skills",
+        "youth",
+        "sc",
+        "drill"
+      ]
+    },
+    {
+      "title": "Defensive Line Speed: How Elite Teams Are Winning the Gainline Battle",
+      "takeaway": "Defensive Line Speed: How Elite Teams Are Winning the Gainline Battle Published: 10 May 2024 Source: The Rugby Coach Weekly In the modern game, defensive line speed has become the defining battleground at club and international level.",
+      "categories": [
+        "attack",
+        "defence",
+        "set-piece",
+        "breakdown",
+        "contact-skills",
+        "youth",
+        "sc",
+        "team-culture",
+        "drill",
+        "philosophy"
+      ]
+    },
+    {
+      "title": "Coaching note — Session debrief 8 June 2024",
+      "takeaway": "Coaching note — Session debrief 8 June 2024 Had a great session with the U16s this evening.",
+      "categories": [
+        "law-update",
+        "safety",
+        "set-piece",
+        "contact-skills",
+        "youth",
+        "sc",
+        "drill"
+      ]
+    }
+  ],
+  "recentLawUpdates": [
+    {
+      "title": "World Rugby Law Amendment — Tackle Height Directive",
+      "summary": "World Rugby Law Amendment — Tackle Height Directive Effective: 1 January 2024 SUMMARY FOR COACHES AND REFEREES World Rugby has implemented a new directive on tackle height across all levels of the game. The directive lowers the legal tackle height and introduces clearer guidance on what constitutes dangerous play. TACKLE HEIGHT The legal tackle height is now defined as at or below the line of the hips.",
+      "ingestedAt": "2026-06-09T08:19:53.784Z"
+    },
+    {
+      "title": "Coaching note — Session debrief 8 June 2024",
+      "summary": "Coaching note — Session debrief 8 June 2024 Had a great session with the U16s this evening. Focused on the lineout after last week's issues at the maul. Key things I noticed: - The jumpers are not communicating the call clearly enough — the hooker is throwing before the jumper is set - Front lifter keeps coming up too early which is causing the jump to be off-balance - The call needs to come from the number 8, not the 4 or 5 What worked well: the walking lineout drills we tried at the start.",
+      "ingestedAt": "2026-06-09T08:19:53.742Z"
+    }
+  ],
+  "recentSafetyAlerts": [
+    {
+      "title": "Drill: Jackalling Circuit",
+      "takeaway": "EXECUTION Phase 1 — Technique Walk-Through (5 min) Coach demonstrates three jackal entry positions:  1.",
+      "ingestedAt": "2026-06-09T08:19:53.793Z"
+    },
+    {
+      "title": "World Rugby Law Amendment — Tackle Height Directive",
+      "takeaway": "World Rugby Law Amendment — Tackle Height Directive Effective: 1 January 2024 SUMMARY FOR COACHES AND REFEREES World Rugby has implemented a new directive on tackle height across all levels of the game.",
+      "ingestedAt": "2026-06-09T08:19:53.784Z"
+    },
+    {
+      "title": "Coaching note — Session debrief 8 June 2024",
+      "takeaway": "Coaching note — Session debrief 8 June 2024 Had a great session with the U16s this evening.",
+      "ingestedAt": "2026-06-09T08:19:53.742Z"
+    }
+  ],
+  "recommendedFocus": "contact-skills",
+  "recentItems": [
+    {
+      "title": "Drill: Jackalling Circuit",
+      "categories": [
+        "safety",
+        "attack",
+        "defence",
+        "set-piece",
+        "breakdown",
+        "contact-skills",
+        "youth",
+        "drill"
+      ],
+      "ingestedAt": "2026-06-09T08:19:53.793Z"
+    },
+    {
+      "title": "World Rugby Law Amendment — Tackle Height Directive",
+      "categories": [
+        "law-update",
+        "safety",
+        "attack",
+        "breakdown",
+        "contact-skills",
+        "youth",
+        "sc",
+        "drill"
+      ],
+      "ingestedAt": "2026-06-09T08:19:53.784Z"
+    },
+    {
+      "title": "Defensive Line Speed: How Elite Teams Are Winning the Gainline Battle",
+      "categories": [
+        "attack",
+        "defence",
+        "set-piece",
+        "breakdown",
+        "contact-skills",
+        "youth",
+        "sc",
+        "team-culture",
+        "drill",
+        "philosophy"
+      ],
+      "ingestedAt": "2026-06-09T08:19:53.780Z"
+    },
+    {
+      "title": "Coaching note — Session debrief 8 June 2024",
+      "categories": [
+        "law-update",
+        "safety",
+        "set-piece",
+        "contact-skills",
+        "youth",
+        "sc",
+        "drill"
+      ],
+      "ingestedAt": "2026-06-09T08:19:53.742Z"
+    }
+  ],
+  "analysisMode": "heuristic"
+}

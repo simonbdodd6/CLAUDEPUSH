@@ -648,21 +648,57 @@ const rugbyToggle = document.getElementById('riToggle');
 const riDot       = document.getElementById('riDot');
 
 let riData = null;
+let riAssistantData = null;
 let riOpen = false;
 
-function renderRugbyPanel(data) {
+function renderAssistantSection(a) {
+  if (!a || !a.totalEvents) return '';
+  const searches = (a.recentSearches ?? []).slice(0, 5).map(s =>
+    `<div class="ri-search-row"><span class="ri-search-query">${escapeHtml(s.query)}</span>${s.ageGroup ? `<span class="ri-cat">${escapeHtml(s.ageGroup)}</span>` : ''}</div>`
+  ).join('') || '<div style="color:rgba(100,220,140,.4);font-size:12px">No recent searches</div>';
+
+  const topics = (a.popularTopics ?? []).slice(0, 5).map(t =>
+    `<div class="ri-topic-row"><span class="ri-topic-name">${escapeHtml(t.query)}</span><span class="ri-topic-count">${t.count}×</span></div>`
+  ).join('') || '<div style="color:rgba(100,220,140,.4);font-size:12px">No data yet</div>';
+
+  return `
+    <div class="mi-divider"></div>
+
+    <span class="kicker" style="color:#4ade80">Coaching Assistant</span>
+
+    <div class="mi-stat-row" style="margin-top:8px">
+      <div class="mi-stat"><strong>${a.searchCount ?? 0}</strong><span>Queries</span></div>
+      <div class="mi-stat"><strong>${a.sessionCount ?? 0}</strong><span>Sessions</span></div>
+      <div class="mi-stat"><strong>${a.lawQueryCount ?? 0}</strong><span>Law Qs</span></div>
+    </div>
+
+    <div class="mi-section">
+      <div class="mi-section-title">Recent Searches</div>
+      ${searches}
+    </div>
+
+    <div class="mi-section">
+      <div class="mi-section-title">Popular Topics</div>
+      ${topics}
+    </div>`;
+}
+
+function renderRugbyPanel(intelData, assistantData) {
   const content = document.getElementById('rugbyPanelContent');
   if (!content) return;
 
-  if (!data || !data.totalItems) {
+  if (!intelData || !intelData.totalItems) {
     content.innerHTML = `
       <p class="mi-empty">
         No rugby knowledge yet.<br>
         Add content to <code>qa/rugby-input/</code><br>
         then run: <code>npm run rugby:intel</code>
-      </p>`;
+      </p>
+      ${renderAssistantSection(assistantData)}`;
     return;
   }
+
+  const data = intelData;
 
   const safetyBadge = data.safetyAlerts > 0
     ? `<span class="ri-badge ri-badge-alert">${data.safetyAlerts} safety alert${data.safetyAlerts > 1 ? 's' : ''}</span>`
@@ -734,21 +770,25 @@ function renderRugbyPanel(data) {
     </div>` : ''}
 
     <div class="mi-ts">Last run: ${escapeHtml(ts)} · ${escapeHtml(data.analysisMode ?? 'heuristic')}</div>
+
+    ${renderAssistantSection(assistantData)}
   `;
 }
 
 async function loadRugbyIntelData() {
   try {
-    const res = await fetch('/api/mission-control?action=rugby-intel', { cache: 'no-store' });
+    const res = await fetch('/api/mission-control?action=rugby-assistant', { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     riData = json.rugbyIntel ?? null;
+    riAssistantData = json.assistantData ?? null;
   } catch {
     riData = null;
+    riAssistantData = null;
   }
-  renderRugbyPanel(riData);
+  renderRugbyPanel(riData, riAssistantData);
 
-  const hasData = riData && riData.totalItems > 0;
+  const hasData = (riData && riData.totalItems > 0) || (riAssistantData && riAssistantData.totalEvents > 0);
   riDot.className = `dot${hasData ? ' ri-dot' : ' empty'}`;
 }
 

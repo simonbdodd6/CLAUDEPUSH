@@ -701,6 +701,59 @@ body {
 
 .mi-email-link:hover { text-decoration: underline; }
 
+/* ── Rugby Coaching Assistant section (inside #rugbyPanel) ──────────────── */
+
+.mi-divider {
+  height: 1px;
+  background: rgba(74, 222, 128, 0.12);
+  margin: 16px 0 12px;
+}
+
+.ri-search-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(74, 222, 128, 0.06);
+  font-size: 12px;
+}
+
+.ri-search-row:last-child { border-bottom: none; }
+
+.ri-search-query {
+  color: #d1fae5;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70%;
+}
+
+.ri-topic-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(74, 222, 128, 0.06);
+  font-size: 12px;
+}
+
+.ri-topic-row:last-child { border-bottom: none; }
+
+.ri-topic-name {
+  color: #d1fae5;
+  font-size: 12px;
+}
+
+.ri-topic-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(74, 222, 128, 0.6);
+  background: rgba(74, 222, 128, 0.08);
+  padding: 1px 6px;
+  border-radius: 99px;
+}
+
 /* ── Discovery Card ──────────────────────────────────────────────────────── */
 
 .discovery-card {

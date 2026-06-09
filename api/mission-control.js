@@ -213,6 +213,18 @@ function collectRugbyIntel() {
   }
 }
 
+// ─── Rugby Coaching Assistant — reads activity summary from assistant data dir ──
+
+function collectRugbyAssistant() {
+  const summaryPath = join(ROOT, 'qa/rugby-assistant/data/assistant-summary.json');
+  try {
+    const raw = readFileSync(summaryPath, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 function node(id, label, type, meta = {}) {
   return { id, label, type, meta };
 }
@@ -312,6 +324,13 @@ export default async function handler(req, res) {
   if (req.query?.action === 'rugby-intel') {
     const rugbyIntel = collectRugbyIntel();
     return json(res, 200, { ok: true, rugbyIntel });
+  }
+
+  // Rugby Coaching Assistant — reads activity summary from assistant data dir
+  if (req.query?.action === 'rugby-assistant') {
+    const rugbyIntel    = collectRugbyIntel();
+    const assistantData = collectRugbyAssistant();
+    return json(res, 200, { ok: true, rugbyIntel, assistantData });
   }
 
   const git = collectGit();
