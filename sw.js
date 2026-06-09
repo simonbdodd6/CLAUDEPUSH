@@ -4,33 +4,67 @@ const APP_URL = '/';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 
-self.addEventListener('push', event => {
-  if (!event.data) return;
-  let payload;
-  try { payload = event.data.json(); }
-  catch { payload = { title: "coacheseyeGPT", body: event.data.text() }; }
+// Broadcast a diagnostic event to all open windows.
+function broadcast(data) {
+  return clients.matchAll({ type: 'window', includeUncontrolled: true })
+    .then(wins => wins.forEach(w => w.postMessage({ timestamp: Date.now(), ...data })));
+}
 
-  const options = {
-    body: payload.body || '',
-    icon: '/icon.svg',
-    badge: '/icon.svg',
-    tag: payload.tag || 'coachseye-message',
-    renotify: true,
-    requireInteraction: payload.type === 'availability' || payload.type === 'availability-reminder',
-    data: {
-      url: payload.url || APP_URL,
-      type: payload.type || 'message',
-      sessionId: payload.sessionId || 'game',
-    },
-  };
-  if (Array.isArray(payload.actions) && payload.actions.length) options.actions = payload.actions;
-  event.waitUntil(
-    self.registration.showNotification(payload.title || "coacheseyeGPT", options).then(() =>
-      clients.matchAll({ type: 'window', includeUncontrolled: true }).then(wins =>
-        wins.forEach(w => w.postMessage({ type: 'push_received', timestamp: Date.now(), title: payload.title || '' }))
-      )
-    )
-  );
+self.addEventListener('push', event => {
+  event.waitUntil((async () => {
+    if (!event.data) {
+      await broadcast({ type: 'push_diag', stage: 'received_empty', error: 'push event had no data' });
+      return;
+    }
+
+    let payload;
+    try { payload = event.data.json(); }
+    catch { payload = { title: 'coacheseyeGPT', body: event.data.text() }; }
+
+    await broadcast({ type: 'push_diag', stage: 'received', title: payload.title || '', body: (payload.body || '').slice(0, 80) });
+
+    const options = {
+      body: payload.body || '',
+      icon: '/icon.svg',
+      badge: '/icon.svg',
+      tag: payload.tag || 'coachseye-message',
+      renotify: true,
+      requireInteraction: payload.type === 'availability' || payload.type === 'availability-reminder',
+      data: {
+        url: payload.url || APP_URL,
+        type: payload.type || 'message',
+        sessionId: payload.sessionId || 'game',
+      },
+    };
+    if (Array.isArray(payload.actions) && payload.actions.length) options.actions = payload.actions;
+
+    await broadcast({ type: 'push_diag', stage: 'show_calling', tag: options.tag });
+    try {
+      await self.registration.showNotification(payload.title || 'coacheseyeGPT', options);
+      await broadcast({ type: 'push_diag', stage: 'show_resolved' });
+      await broadcast({ type: 'push_received', title: payload.title || '' });
+    } catch (e) {
+      await broadcast({ type: 'push_diag', stage: 'show_error', error: e.message });
+    }
+  })());
+});
+
+// Page-triggered SW notification test — lets the diagnostics panel verify
+// showNotification() works without going through the server push path.
+self.addEventListener('message', event => {
+  if (event.data?.type === 'test_show_notification') {
+    const title = event.data.title || 'SW Test Notification';
+    const body  = event.data.body  || 'Service worker showNotification() test';
+    self.registration.showNotification(title, {
+      body,
+      icon: '/icon.svg',
+      tag: 'sw-direct-test-' + Date.now(),
+    }).then(() => {
+      if (event.source) event.source.postMessage({ type: 'sw_notification_shown', timestamp: Date.now() });
+    }).catch(e => {
+      if (event.source) event.source.postMessage({ type: 'sw_notification_error', error: e.message, timestamp: Date.now() });
+    });
+  }
 });
 
 async function recordAvailability(response, sessionId) {

@@ -7433,28 +7433,79 @@
                 ].join('')
             }
 
-            ${_diagSection('4-6 — Send Test Push → HTTP Response')}
-            ${testRows || _diagRow('Test push', null, 'not sent yet — click button below')}
+            ${_diagSection('4-6 — Server Push → HTTP Response')}
+            ${testRows || _diagRow('Server push test', null, 'not sent yet — use button below')}
 
-            ${_diagSection('7-8 — Service Worker Receive → Display')}
+            ${_diagSection('7 — Service Worker Push Event Log')}
+            ${_swDiagLog.length
+              ? _swDiagLog.slice(0, 6).map(e => _diagRow(
+                  e.stage,
+                  e.stage === 'show_resolved' ? true : e.stage === 'show_error' ? false : null,
+                  [e.title && 'title:' + e.title, e.body && 'body:' + e.body, e.tag && 'tag:' + e.tag, e.error && '⚠️' + e.error].filter(Boolean).join(' · ') || _fmtTs(e.ts)
+                )).join('')
+              : _diagRow('SW event log', null, 'empty — send a test push to populate')
+            }
+
+            ${_diagSection('8 — Notification Display')}
+            ${(() => {
+              const lr = _localNotifResult;
+              const sr = _swNotifResult;
+              let rows = '';
+              // Local notification result
+              if (!lr) {
+                rows += _diagRow('Local (new Notification)', null, 'not tested yet');
+              } else if (lr.pending) {
+                rows += _diagRow('Local (new Notification)', null, 'waiting for browser event…');
+              } else if (lr.ok === true) {
+                rows += _diagRow('Local (new Notification)', true, 'show event fired ✓ — did banner appear?');
+              } else if (lr.ok === false) {
+                rows += _diagRow('Local (new Notification)', false, lr.error || 'failed');
+              } else {
+                rows += _diagRow('Local (new Notification)', null, lr.note || 'unknown result');
+              }
+              // SW notification result
+              if (!sr) {
+                rows += _diagRow('SW (showNotification)', null, 'not tested yet');
+              } else if (sr.pending) {
+                rows += _diagRow('SW (showNotification)', null, 'waiting for SW response…');
+              } else if (sr.ok === true) {
+                rows += _diagRow('SW (showNotification)', true, 'showNotification() resolved ✓ — did banner appear?');
+              } else if (sr.ok === false) {
+                rows += _diagRow('SW (showNotification)', false, sr.error || 'failed');
+              } else {
+                rows += _diagRow('SW (showNotification)', null, sr.error || 'timeout or unknown');
+              }
+              return rows;
+            })()}
             ${_diagRow('Last push received by SW', Boolean(lastPushTs), _fmtTs(lastPushTs))}
             ${lastPushTs && _pushTestResult?.ts
-              ? _diagRow('Delivery delay', null, Math.round((Number(lastPushTs) - _pushTestResult.ts) / 1000) + 's after send')
+              ? _diagRow('Delivery delay', null, Math.round((Number(lastPushTs) - _pushTestResult.ts) / 1000) + 's after server send')
               : ''
             }
           </table>
 
-          <div style="display:grid;gap:6px;margin-top:10px">
+          <div style="display:grid;gap:5px;margin-top:10px">
             <button class="btn" type="button" onclick="pushDiagSendTest()"
               style="font-size:11px;padding:6px 10px;background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.4);color:#6ee7b7">
-              Send Test Push to This Device
+              1. Send Test Push  <span style="opacity:.6;font-size:10px">(server → SW → showNotification)</span>
+            </button>
+            <button class="btn" type="button" onclick="testSWNotification()"
+              style="font-size:11px;padding:6px 10px;background:rgba(99,102,241,0.12);border-color:rgba(99,102,241,0.4);color:#a5b4fc">
+              2. Test SW Notification  <span style="opacity:.6;font-size:10px">(postMessage → SW → showNotification, no server)</span>
+            </button>
+            <button class="btn" type="button" onclick="testLocalNotification()"
+              style="font-size:11px;padding:6px 10px;background:rgba(251,191,36,0.1);border-color:rgba(251,191,36,0.35);color:#fcd34d">
+              3. Test Local Notification  <span style="opacity:.6;font-size:10px">(new Notification() from page, no SW)</span>
             </button>
             <button class="btn" type="button" id="_reRegisterBtn" onclick="reRegisterPush()"
               style="font-size:11px;padding:6px 10px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">
               Re-register Push Notifications
             </button>
           </div>
-          <div id="_pushDiagLog" style="font-size:10px;font-family:monospace;color:#64748b;margin-top:6px;min-height:14px;white-space:pre-wrap"></div>
+          <p style="font-size:10px;color:#475569;margin:8px 0 0;line-height:1.5">
+            If buttons 1 &amp; 2 show ✓ but no banner: check macOS Focus/DND and System Settings → Notifications → Google Chrome → Allow Notifications.
+          </p>
+          <div id="_pushDiagLog" style="font-size:10px;font-family:monospace;color:#64748b;margin-top:4px;min-height:14px;white-space:pre-wrap"></div>
         </div>`;
     }
 
@@ -7483,6 +7534,62 @@
         if (log) log.textContent = '❌ Network error: ' + e.message;
       }
       renderPushDiagPanel();
+    }
+
+    function testLocalNotification() {
+      _localNotifResult = null;
+      if (!('Notification' in window)) {
+        _localNotifResult = { ok: false, method: 'local', error: 'Notification API not available in this browser', ts: Date.now() };
+        renderPushDiagPanel(); return;
+      }
+      if (Notification.permission !== 'granted') {
+        _localNotifResult = { ok: false, method: 'local', error: 'Permission is "' + Notification.permission + '" — must be granted', ts: Date.now() };
+        renderPushDiagPanel(); return;
+      }
+      const ts = Date.now();
+      _localNotifResult = { ok: null, method: 'local', pending: true, ts };
+      renderPushDiagPanel();
+      try {
+        const n = new Notification('Local Notification Test', {
+          body: 'Sent from page context (new Notification) — ' + new Date(ts).toLocaleTimeString(),
+          icon: '/icon.svg',
+          tag: 'local-diag-' + ts,
+        });
+        n.addEventListener('show',  () => { _localNotifResult = { ok: true,  method: 'local', ts: Date.now() }; renderPushDiagPanel(); });
+        n.addEventListener('error', (e) => { _localNotifResult = { ok: false, method: 'local', error: 'Notification.error event fired: ' + (e?.message||'unknown'), ts: Date.now() }; renderPushDiagPanel(); });
+        // Fallback: if neither event fires in 2s treat as unknown (OS may show without firing 'show')
+        setTimeout(() => {
+          if (_localNotifResult?.pending) {
+            _localNotifResult = { ok: null, method: 'local', note: 'No show/error event after 2s — check if banner appeared on screen', ts: Date.now() };
+            renderPushDiagPanel();
+          }
+        }, 2000);
+      } catch(e) {
+        _localNotifResult = { ok: false, method: 'local', error: 'new Notification() threw: ' + e.message, ts: Date.now() };
+        renderPushDiagPanel();
+      }
+    }
+
+    async function testSWNotification() {
+      _swNotifResult = { ok: null, pending: true, ts: Date.now() };
+      renderPushDiagPanel();
+      const reg = swRegistration || await navigator.serviceWorker.getRegistration('/sw.js').catch(() => null);
+      if (!reg?.active) {
+        _swNotifResult = { ok: false, error: 'No active service worker — click Re-register first', ts: Date.now() };
+        renderPushDiagPanel(); return;
+      }
+      reg.active.postMessage({
+        type: 'test_show_notification',
+        title: 'SW Direct Test',
+        body: 'Triggered via postMessage (no server) — ' + new Date().toLocaleTimeString(),
+      });
+      // SW will postMessage back with sw_notification_shown / sw_notification_error
+      setTimeout(() => {
+        if (_swNotifResult?.pending) {
+          _swNotifResult = { ok: null, error: 'No response from SW after 3s — SW may not have message listener (Re-register to update SW)', ts: Date.now() };
+          renderPushDiagPanel();
+        }
+      }, 3000);
     }
 
     async function reRegisterPush() {
@@ -8465,12 +8572,35 @@
     })();
 
     // Listen for messages from the service worker (e.g. "navigate to availability/messages")
+    let _swDiagLog     = [];   // push_diag stage events from SW
+    let _swNotifResult = null; // result of testSWNotification()
+    let _localNotifResult = null; // result of testLocalNotification()
+
     navigator.serviceWorker?.addEventListener('message', event => {
-      if (event.data?.type === 'navigate' && ['availability', 'messages'].includes(event.data.to)) {
-        setSection('player', event.data.to);
+      const d = event.data || {};
+      if (d.type === 'navigate' && ['availability', 'messages'].includes(d.to)) {
+        setSection('player', d.to);
       }
-      if (event.data?.type === 'push_received') {
-        localStorage.setItem('_pushLastReceived', String(event.data.timestamp || Date.now()));
+      if (d.type === 'push_received') {
+        localStorage.setItem('_pushLastReceived', String(d.timestamp || Date.now()));
+      }
+      if (d.type === 'push_diag') {
+        _swDiagLog.unshift({ stage: d.stage, title: d.title, body: d.body, error: d.error, tag: d.tag, ts: d.timestamp || Date.now() });
+        if (_swDiagLog.length > 20) _swDiagLog.length = 20;
+        if (d.stage === 'show_resolved') localStorage.setItem('_pushLastReceived', String(d.timestamp || Date.now()));
+        // Re-render diagnostics panel if it's open
+        const el = document.getElementById('_pushDiagPanel');
+        if (el && el.children.length) renderPushDiagPanel();
+      }
+      if (d.type === 'sw_notification_shown') {
+        _swNotifResult = { ok: true, ts: d.timestamp || Date.now() };
+        const el = document.getElementById('_pushDiagPanel');
+        if (el && el.children.length) renderPushDiagPanel();
+      }
+      if (d.type === 'sw_notification_error') {
+        _swNotifResult = { ok: false, error: d.error, ts: d.timestamp || Date.now() };
+        const el = document.getElementById('_pushDiagPanel');
+        if (el && el.children.length) renderPushDiagPanel();
       }
     });
 
