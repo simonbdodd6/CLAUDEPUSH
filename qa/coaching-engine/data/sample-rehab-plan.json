@@ -1,0 +1,167 @@
+{
+  "overview": {
+    "summary": "Rehabilitation programme for Prop (17yo) — AC joint shoulder injury — left shoulder",
+    "estimatedReturnWeeks": 6,
+    "rtpStages": [
+      "Stage 1: Pain-free ROM",
+      "Stage 2: Strength base",
+      "Stage 3: Power and contact",
+      "Stage 4: Full training",
+      "Stage 5: Match return"
+    ]
+  },
+  "phases": [
+    {
+      "name": "Acute Phase",
+      "weeks": "1-2",
+      "criteria": [
+        "Zero pain at rest",
+        "Medical clearance to begin loading"
+      ],
+      "exercises": [
+        {
+          "name": "Isometric loading (mid-range)",
+          "sets": "3",
+          "reps": "5×5s holds",
+          "notes": "Pain-free range only"
+        },
+        {
+          "name": "Light range-of-motion work",
+          "sets": "2",
+          "reps": "10",
+          "notes": "Stay within pain-free range"
+        },
+        {
+          "name": "external rotation strengthening",
+          "sets": "3",
+          "reps": "12–15",
+          "notes": "Low load, high control"
+        },
+        {
+          "name": "rotator cuff exercises",
+          "sets": "3",
+          "reps": "12–15",
+          "notes": "Low load, high control"
+        }
+      ],
+      "restrictions": [
+        "overhead pressing",
+        "behind-neck press",
+        "wide-grip upright row"
+      ],
+      "progressionCriteria": [
+        "Pain score 0/10 during exercise",
+        "Full pain-free ROM restored"
+      ]
+    },
+    {
+      "name": "Loading Phase",
+      "weeks": "3-4",
+      "criteria": [
+        "Passed acute phase criteria",
+        "Pain 0/10 during loaded movement"
+      ],
+      "exercises": [
+        {
+          "name": "Progressive loading of primary movement pattern",
+          "sets": "4",
+          "reps": "8-10",
+          "notes": "Begin at 50% perceived max, progress by 5% per session"
+        },
+        {
+          "name": "Unilateral stability work",
+          "sets": "3",
+          "reps": "10",
+          "notes": "Address any imbalance between injured and uninjured side"
+        }
+      ],
+      "restrictions": [
+        "bench press → close-grip or neutral-grip",
+        "pull-up → lat pulldown with neutral grip"
+      ],
+      "progressionCriteria": [
+        "Full strength symmetry (90%+)",
+        "Functional movement test passed"
+      ]
+    },
+    {
+      "name": "Return-to-Training Phase",
+      "weeks": "5-6",
+      "criteria": [
+        "Passed loading phase criteria",
+        "Physiotherapy sign-off"
+      ],
+      "exercises": [
+        {
+          "name": "Position-specific strength work",
+          "sets": "4",
+          "reps": "5-6",
+          "notes": "Return to full programme with injury modifications noted"
+        },
+        {
+          "name": "Field-based skill work",
+          "sets": "match-based",
+          "reps": "match-based",
+          "notes": "Non-contact then graduated contact"
+        }
+      ],
+      "restrictions": [],
+      "progressionCriteria": [
+        "Match fitness restored",
+        "Medical clearance for contact"
+      ]
+    }
+  ],
+  "returnToTraining": {
+    "criteria": [
+      "Pain-free full range of motion",
+      "Strength symmetry ≥90%",
+      "Passes functional movement screen"
+    ],
+    "gradualLoadProtocol": [
+      "Week 1: non-contact training only",
+      "Week 2: contact drills at reduced intensity",
+      "Week 3: full training if symptom-free"
+    ]
+  },
+  "returnToContact": {
+    "criteria": [
+      "Passed return-to-training criteria",
+      "Medical or physiotherapy clearance"
+    ],
+    "protocol": [
+      "Padded training contact first",
+      "Oppose with known players before full opposition",
+      "Monitor for 48h post-session"
+    ]
+  },
+  "ongoingPrehab": [
+    "external rotation strengthening",
+    "rotator cuff exercises",
+    "shoulder retraction"
+  ],
+  "redFlags": [
+    "Increasing pain during or after exercise — stop and review",
+    "Swelling or instability in the affected area",
+    "Sharp or shooting pain",
+    "Neurological symptoms (numbness, tingling)",
+    "If in doubt — stop and seek medical review"
+  ],
+  "coachNotes": [
+    "AC joint shoulder injury — left shoulder — follow all physio guidance and do not rush return to contact",
+    "Return-to-play is a medical decision — coach must not override physiotherapy advice",
+    "This template was generated without AI. For a personalised protocol, set ANTHROPIC_API_KEY."
+  ],
+  "_meta": {
+    "requestType": "rehab",
+    "player": {
+      "position": "prop",
+      "age": 17
+    },
+    "injuryDetail": "AC joint shoulder injury — left shoulder",
+    "mode": "template",
+    "provider": "none",
+    "elapsed": 7,
+    "generatedAt": "2026-06-09T09:07:05.489Z"
+  }
+}

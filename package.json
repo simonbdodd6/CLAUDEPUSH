@@ -59,7 +59,8 @@
     "rugby:drills": "node qa/rugby-assistant/rugby-drills.js",
     "rugby:law": "node qa/rugby-assistant/rugby-law.js",
     "lead:personalise": "node qa/lead-personalisation/lead-personalisation.js",
-    "lead:personalise:demo": "node qa/lead-personalisation/lead-personalisation.js --demo"
+    "lead:personalise:demo": "node qa/lead-personalisation/lead-personalisation.js --demo",
+    "coaching:engine": "node qa/coaching-engine/coaching-engine-cli.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"
