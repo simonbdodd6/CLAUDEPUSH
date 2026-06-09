@@ -2434,6 +2434,7 @@
         const res = await refreshPushSubscriptionMetadata(playerName || 'Player');
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Could not save device registration');
+        localStorage.setItem('_pushLastSubscribed', String(Date.now()));
         showToast(`Notifications on — ${data.count || 1} subscriber(s) total`);
         renderPushSidebar();
         setTimeout(() => renderPushStatusCard(), 300);
@@ -3730,6 +3731,7 @@
         </button>
         <button class="btn ghost" type="button" onclick="setAuthTab('closed')"
           style="width:100%;margin-top:4px;font-size:12px">Cancel</button>
+        <div id="_pushDiagPanel"></div>
       ` : `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div>
@@ -3745,6 +3747,7 @@
         </div>
       `;
       renderPushSidebar();
+      if (authTab === 'dev' && window._devLoginEnabled) renderPushDiagPanel();
       // Restore badge after nav re-render
       if (_chatNavUnread > 0) updateNavBadge();
     }
@@ -7321,6 +7324,118 @@
 
     // Old versions removed — new WhatsApp functions defined above
 
+    // ─── PUSH DIAGNOSTICS (dev only) ─────────────────────────────────────────
+    function _fmtTs(ms) {
+      if (!ms) return '—';
+      return new Date(Number(ms)).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    }
+
+    function _diagRow(label, ok, value) {
+      const icon = ok === true ? '✅' : ok === false ? '❌' : '⚠️';
+      return `<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06)">
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap">${icon} ${label}</span>
+        <span style="font-size:11px;font-family:monospace;word-break:break-all;color:${ok===false?'#f87171':ok===true?'#6ee7b7':'var(--muted)'}">${value}</span>
+      </div>`;
+    }
+
+    async function renderPushDiagPanel() {
+      const el = document.getElementById('_pushDiagPanel');
+      if (!el) return;
+
+      const supported = ('serviceWorker' in navigator) && ('PushManager' in window);
+      if (!supported) {
+        el.innerHTML = `<p style="font-size:11px;color:#f59e0b;margin:8px 0 0">Push not supported in this browser.</p>`;
+        return;
+      }
+
+      const permission   = Notification.permission;
+      const swReg        = await navigator.serviceWorker.getRegistration('/sw.js').catch(() => null);
+      const sub          = swReg ? await swReg.pushManager.getSubscription().catch(() => null) : null;
+      const endpoint     = sub?.endpoint || null;
+      const endpointShort = endpoint ? (endpoint.length > 52 ? endpoint.slice(0, 52) + '…' : endpoint) : '—';
+      const lastSubTs    = localStorage.getItem('_pushLastSubscribed');
+      const lastPushTs   = localStorage.getItem('_pushLastReceived');
+
+      el.innerHTML = `
+        <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.1);padding-top:10px">
+          <strong style="font-size:11px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase">Push diagnostics</strong>
+          <div style="margin-top:6px">
+            ${_diagRow('Browser permission', permission === 'granted', permission)}
+            ${_diagRow('Service worker', Boolean(swReg), swReg ? 'registered' : 'not registered')}
+            ${_diagRow('Push subscription', Boolean(sub), sub ? 'active' : 'none')}
+            ${_diagRow('Endpoint', Boolean(endpoint), endpointShort)}
+            ${_diagRow('Subscribed at', lastSubTs ? true : null, _fmtTs(lastSubTs))}
+            ${_diagRow('Last push received', lastPushTs ? true : null, _fmtTs(lastPushTs))}
+          </div>
+          <button class="btn" type="button" id="_reRegisterBtn" onclick="reRegisterPush()"
+            style="width:100%;margin-top:10px;font-size:11px;padding:6px 10px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">
+            Re-register Push Notifications
+          </button>
+          <div id="_pushDiagLog" style="font-size:10px;font-family:monospace;color:var(--muted);margin-top:6px;min-height:16px"></div>
+        </div>`;
+    }
+
+    async function reRegisterPush() {
+      const btn = document.getElementById('_reRegisterBtn');
+      const log = document.getElementById('_pushDiagLog');
+      const step = msg => { if (log) log.textContent = msg; };
+      if (btn) { btn.disabled = true; btn.textContent = 'Working…'; }
+      try {
+        step('1/6 Removing existing subscription…');
+        if (pushSubscription) {
+          try {
+            await fetch('/api/subscribe', { method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ endpoint: pushSubscription.endpoint }) });
+            await pushSubscription.unsubscribe();
+          } catch(e) { /* continue even if server delete fails */ }
+          pushSubscription = null;
+        }
+
+        step('2/6 Unregistering service worker…');
+        const existing = await navigator.serviceWorker.getRegistration('/sw.js').catch(() => null);
+        if (existing) await existing.unregister().catch(() => {});
+        swRegistration = null;
+
+        step('3/6 Re-registering service worker…');
+        swRegistration = await navigator.serviceWorker.register('/sw.js?v=' + Date.now());
+        await navigator.serviceWorker.ready;
+
+        step('4/6 Requesting notification permission…');
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          step('❌ Permission denied — enable in browser settings then retry');
+          return;
+        }
+
+        step('5/6 Creating push subscription…');
+        if (!vapidPublicKey) {
+          const cfg = await fetch('/api/config').then(r => r.json()).catch(() => ({}));
+          vapidPublicKey = cfg.vapidPublicKey || '';
+        }
+        if (!vapidPublicKey) { step('❌ No VAPID key — check server configuration'); return; }
+        pushSubscription = await swRegistration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        });
+
+        step('6/6 Saving subscription to server…');
+        const res = await refreshPushSubscriptionMetadata(currentUser()?.name || 'Dev');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Server save failed');
+        localStorage.setItem('_pushLastSubscribed', String(Date.now()));
+
+        step('✅ Done — push re-registered successfully');
+        showToast('Push re-registered');
+        renderPushSidebar();
+      } catch(e) {
+        step('❌ ' + (e.message || 'Unknown error'));
+        showToast('Re-register failed: ' + (e.message || 'unknown'));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Re-register Push Notifications'; }
+        renderPushDiagPanel();
+      }
+    }
+
     // ─── RENDER ───────────────────────────────────────────────────────────────
     function renderDebugOverlay() {
       if (!window._devLoginEnabled) {
@@ -8243,6 +8358,9 @@
     navigator.serviceWorker?.addEventListener('message', event => {
       if (event.data?.type === 'navigate' && ['availability', 'messages'].includes(event.data.to)) {
         setSection('player', event.data.to);
+      }
+      if (event.data?.type === 'push_received') {
+        localStorage.setItem('_pushLastReceived', String(event.data.timestamp || Date.now()));
       }
     });
 

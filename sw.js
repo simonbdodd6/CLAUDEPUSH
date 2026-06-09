@@ -24,7 +24,13 @@ self.addEventListener('push', event => {
     },
   };
   if (Array.isArray(payload.actions) && payload.actions.length) options.actions = payload.actions;
-  event.waitUntil(self.registration.showNotification(payload.title || "coacheseyeGPT", options));
+  event.waitUntil(
+    self.registration.showNotification(payload.title || "coacheseyeGPT", options).then(() =>
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then(wins =>
+        wins.forEach(w => w.postMessage({ type: 'push_received', timestamp: Date.now(), title: payload.title || '' }))
+      )
+    )
+  );
 });
 
 async function recordAvailability(response, sessionId) {
