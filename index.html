@@ -3805,6 +3805,14 @@
           style="width:100%;margin-top:6px;font-size:11px;color:#94a3b8;border-color:rgba(148,163,184,0.2)">
           Push Diagnostics ↗
         </button>
+        <button class="btn ghost" type="button" onclick="devResetAvailabilityDemo()"
+          style="width:100%;margin-top:6px;font-size:11px;color:#fb923c;border-color:rgba(251,146,60,0.3)">
+          Reset Availability Demo
+        </button>
+        <button class="btn ghost" type="button" onclick="devRunAvailabilitySelfTest()"
+          style="width:100%;margin-top:4px;font-size:11px;color:#34d399;border-color:rgba(52,211,153,0.3)">
+          Run Availability Self Test
+        </button>
       ` : `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div>
@@ -3901,6 +3909,77 @@
       } catch (e) {
         showToast('Dev login error: ' + (e?.message || 'network'));
       }
+    }
+
+    async function devResetAvailabilityDemo() {
+      try {
+        showToast('Resetting availability demo…');
+        const res = await fetch('/api/seed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reset_availability' }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          _playerAvailFetched = false;
+          await refreshLiveAvailability();
+          render();
+          showToast('Availability demo reset ✓');
+        } else {
+          showToast('Reset failed: ' + (data.error || 'unknown'));
+        }
+      } catch (e) {
+        showToast('Reset error: ' + (e?.message || 'network'));
+      }
+    }
+
+    async function devRunAvailabilitySelfTest() {
+      const results = [];
+      const check = (label, cond, detail) => {
+        results.push({ label, pass: !!cond, detail: detail || '' });
+      };
+      showToast('Running availability self-test…');
+      try {
+        // 1 — Reset
+        const reset = await fetch('/api/seed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset_availability' }) }).then(r => r.json()).catch(() => ({}));
+        check('seed reset returns ok', reset.ok === true, JSON.stringify(reset));
+
+        // 2 — Seed
+        const seed = await fetch('/api/seed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'seed_availability' }) }).then(r => r.json()).catch(() => ({}));
+        check('seed_availability returns ok', seed.ok === true, JSON.stringify(seed));
+        check('game session seeded', typeof seed.sessions?.game === 'number' && seed.sessions.game >= 1, `game=${seed.sessions?.game}`);
+
+        // 3 — Coach GET
+        const coachGet = await fetch('/api/availability?sessionId=game').then(r => r.json()).catch(() => ({}));
+        check('coach GET returns responses', Array.isArray(coachGet.responses) && coachGet.responses.length >= 1, `count=${coachGet.responses?.length}`);
+        check('injury reason in coach GET', coachGet.responses?.some(r => r.reason === 'injury'), JSON.stringify(coachGet.responses?.map(r => r.reason)));
+
+        // 4 — Player self-GET
+        const selfGet = await fetch('/api/availability?myResponse=1').then(r => r.json()).catch(() => ({}));
+        check('player self-GET returns 200 shape', typeof selfGet.responses === 'object', JSON.stringify(selfGet));
+
+        // 5 — Push endpoint
+        const push = await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Self-test reminder', body: 'Test', tag: `selftest-${Date.now()}`, type: 'availability', sessionId: 'game', url: '/?to=availability', audience: 'no-reply' }) }).then(r => r.json()).catch(() => ({}));
+        check('push endpoint returns ok', push.ok === true, JSON.stringify(push));
+        check('push response has sent count', typeof push.sent === 'number', `sent=${push.sent}`);
+
+        // 6 — Reject invalid POST
+        const badPost = await fetch('/api/availability', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'game', response: 'invalid' }) }).then(r => ({ status: r.status })).catch(() => ({ status: 0 }));
+        check('invalid response rejected (400)', badPost.status === 400, `got ${badPost.status}`);
+
+      } catch (e) {
+        check('no unhandled error', false, e.message);
+      }
+
+      const passed = results.filter(r => r.pass).length;
+      const failed = results.filter(r => !r.pass).length;
+      const failures = results.filter(r => !r.pass).map(r => r.label + (r.detail ? ` (${r.detail})` : '')).join('; ');
+      if (failed === 0) {
+        showToast(`Self-test PASS — all ${passed} checks passed ✓`);
+      } else {
+        showToast(`Self-test FAIL — ${failed}/${results.length} failed: ${failures}`);
+      }
+      console.log('[devSelfTest]', results);
     }
 
     function switchToUser(userId) {
