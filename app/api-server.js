@@ -108,12 +108,49 @@ const server = createServer(async (req, res) => {
 
     // ── Club health ───────────────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/club/health') {
-      const { getClubHealth, getInsights, getRecommendations } = await import('../qa/club-intelligence/index.js')
-      const [health, insights] = await Promise.all([
-        getClubHealth().catch(() => ({ overallScore: 52, trend: 'stable', isMock: true })),
-        getInsights().catch(() => []),
-      ])
-      json(res, { health, insights })
+      try {
+        const { buildClubHealthScore } = await import('../season-intelligence/index.js')
+        const clubScore = buildClubHealthScore([], {})
+        const domains = {}
+        for (const [key, dim] of Object.entries(clubScore.clubDimensions ?? {})) {
+          domains[key] = dim.score ?? 0
+        }
+        json(res, {
+          health: {
+            overallScore: clubScore.overall,
+            trend:        clubScore.trend,
+            grade:        clubScore.grade,
+            status:       clubScore.status,
+            phase:        clubScore.phase,
+            phaseLabel:   clubScore.phaseLabel,
+            domains,
+            notes:          clubScore.notes,
+            weakDimensions: clubScore.weakDimensions,
+          },
+          insights: (clubScore.weakDimensions ?? []).slice(0, 3).map(w => ({
+            title:       w.note ?? w.dimension,
+            description: `${w.dimension} score: ${w.score}/100`,
+            priority:    1,
+          })),
+        })
+      } catch {
+        const { getClubHealth, getInsights } = await import('../qa/club-intelligence/index.js')
+        const [health, insights] = await Promise.all([
+          getClubHealth().catch(() => ({ overallScore: 52, trend: 'stable', isMock: true })),
+          getInsights().catch(() => []),
+        ])
+        json(res, { health, insights })
+      }
+      return
+    }
+
+    // ── Season phase ──────────────────────────────────────────────────────────
+    if (method === 'GET' && path === '/api/season/phase') {
+      const { detectCurrentPhase, getPhaseMeta, getPrescription } = await import('../season-intelligence/index.js')
+      const phase = detectCurrentPhase()
+      const meta  = getPhaseMeta(phase)
+      const presc = getPrescription(phase)
+      json(res, { phase, meta, prescription: presc })
       return
     }
 
@@ -143,9 +180,49 @@ const server = createServer(async (req, res) => {
 
     // ── Recommendations ───────────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/recommendations') {
-      const { getRecommendations } = await import('../qa/club-intelligence/index.js')
-      const recs = await getRecommendations().catch(() => [])
-      json(res, { recommendations: recs.slice(0, 6) })
+      const { getActiveRecommendations, runCheck } = await import('../autonomous-assistant/index.js')
+      let recs = await getActiveRecommendations().catch(() => [])
+      if (recs.length === 0) {
+        const result = await runCheck({ saveToState: true }).catch(() => ({ recommendations: [] }))
+        recs = result.recommendations ?? []
+      }
+      const urgencyToEffort = u => (u === 'CRITICAL' || u === 'HIGH') ? 'high' : u === 'MEDIUM' ? 'medium' : 'low'
+      const normalized = recs.slice(0, 6).map((r, i) => ({
+        id:         r.id,
+        action:     r.title,
+        why:        r.reason,
+        effort:     urgencyToEffort(r.urgency),
+        priority:   i + 1,
+        confidence: r.confidence,
+        tier:       r.tier,
+        type:       r.type,
+        category:   r.category,
+        timeSaved:  r.timeSaved,
+      }))
+      json(res, { recommendations: normalized })
+      return
+    }
+
+    // ── Recommendation decisions ───────────────────────────────────────────────
+    const recMatch = path.match(/^\/api\/recommendations\/([^/]+)\/(accept|snooze|dismiss)$/)
+    if (method === 'POST' && recMatch) {
+      const [, id, action] = recMatch
+      const body = await readBody(req)
+      const { getActiveRecommendations, resolve, snooze, dismiss } = await import('../autonomous-assistant/index.js')
+      const { recordOutcome, COACH_DECISION } = await import('../learning-engine/index.js')
+      const recs = await getActiveRecommendations().catch(() => [])
+      const rec  = recs.find(r => r.id === id)
+      if (action === 'accept') {
+        resolve(id)
+        if (rec) recordOutcome({ recommendationId: id, recommendationType: rec.type, coachDecision: COACH_DECISION.ACCEPTED, confidenceAtTime: rec.confidence, predictionCorrect: body.predictionCorrect ?? null })
+      } else if (action === 'snooze') {
+        snooze(id, body.hours ?? 24)
+        if (rec) recordOutcome({ recommendationId: id, recommendationType: rec.type, coachDecision: COACH_DECISION.SNOOZED, confidenceAtTime: rec.confidence })
+      } else {
+        dismiss(id)
+        if (rec) recordOutcome({ recommendationId: id, recommendationType: rec.type, coachDecision: COACH_DECISION.REJECTED, confidenceAtTime: rec.confidence })
+      }
+      json(res, { ok: true, id, action })
       return
     }
 
@@ -168,10 +245,31 @@ const server = createServer(async (req, res) => {
 
     // ── Dashboard (full briefing) ─────────────────────────────────────────────
     if (method === 'GET' && path === '/api/dashboard/briefing') {
-      const role = url.searchParams.get('role') ?? 'coach'
-      const { buildMorningBriefing } = await import('../dashboard/index.js')
-      const briefing = await buildMorningBriefing(role).catch(() => ({ isMock: true, headline: 'Briefing unavailable' }))
-      json(res, briefing)
+      const { runMorningBriefing } = await import('../autonomous-assistant/index.js')
+      const result = await runMorningBriefing().catch(() => null)
+      if (!result) {
+        const role = url.searchParams.get('role') ?? 'coach'
+        const { buildMorningBriefing } = await import('../dashboard/index.js')
+        const fallback = await buildMorningBriefing(role).catch(() => ({ isMock: true, headline: 'Briefing unavailable' }))
+        json(res, fallback)
+        return
+      }
+      const urgencyLevel = u => (u === 'CRITICAL' || u === 'HIGH') ? 'high' : u === 'MEDIUM' ? 'medium' : 'low'
+      const priorities = (result.topRecs ?? []).map(r => ({
+        text:       r.title,
+        urgency:    urgencyLevel(r.urgency),
+        tag:        r.category ?? r.type,
+        id:         r.id,
+        confidence: r.confidence,
+      }))
+      json(res, {
+        headline:   result.briefing?.headline ?? '',
+        summary:    result.briefing?.summary  ?? '',
+        severity:   result.briefing?.severity ?? 'NORMAL',
+        priorities,
+        stats:      result.briefing?.stats ?? {},
+        lines:      result.briefing?.lines ?? [],
+      })
       return
     }
 
@@ -181,6 +279,15 @@ const server = createServer(async (req, res) => {
         .catch(() => import('../dashboard/index.js').then(m => ({ getPending: () => [], approvalStats: () => ({ pending: 0 }) })))
       const items = getPending?.() ?? []
       json(res, { items, count: items.length })
+      return
+    }
+
+    if (method === 'POST' && path === '/api/approvals/decide') {
+      const body = await readBody(req)
+      const { id, decision } = body
+      const { resolve } = await import('../autonomous-assistant/index.js')
+      resolve(id)
+      json(res, { ok: true, id, decision })
       return
     }
 

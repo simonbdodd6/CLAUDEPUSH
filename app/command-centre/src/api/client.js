@@ -50,6 +50,11 @@ export const api = {
   platformStatus: ()                         => get('/platform/status'),
   briefing:       (role)                     => get(`/dashboard/briefing?role=${role ?? 'coach'}`),
   approvals:      ()                         => get('/approvals'),
+  seasonPhase:    ()                         => get('/season/phase'),
+  acceptRec:      (id)                       => post(`/recommendations/${id}/accept`, {}),
+  snoozeRec:      (id, hours = 24)           => post(`/recommendations/${id}/snooze`, { hours }),
+  dismissRec:     (id)                       => post(`/recommendations/${id}/dismiss`, {}),
+  approvalDecide: (id, decision)             => post('/approvals/decide', { id, decision }),
 }
 
 // ── Mock data (fallback when server not running) ───────────────────────────────
@@ -99,6 +104,23 @@ export const MOCK = {
   },
   approvals: { items: [], count: 0 },
   platformStatus: { engines: 10, stats: { totalEngines: 10, healthy: 9, totalCapabilities: 54 } },
+  briefing: {
+    headline: 'Attention required on 3 fronts today',
+    summary: '3 recommendations need your attention. 1 can be automated.',
+    severity: 'HIGH',
+    priorities: [
+      { text: 'Training reminder not sent for Senior squad', urgency: 'high', tag: 'Communications' },
+      { text: '3 players awaiting return-to-play clearance', urgency: 'high', tag: 'Players' },
+      { text: 'Sponsor renewal due in 18 days', urgency: 'medium', tag: 'Finance' },
+    ],
+    stats: { recommendations: 3, auto: 1, approve: 1, human: 1, minutesSaved: 45 },
+    lines: [],
+  },
+  seasonPhase: {
+    phase: 'IN_SEASON',
+    meta: { label: 'In Season', description: 'Competitive season in progress' },
+    prescription: { attendanceExpectation: { target: 80 }, intensityLevel: 'HIGH' },
+  },
 }
 
 // Wrapper that falls back to mock on error

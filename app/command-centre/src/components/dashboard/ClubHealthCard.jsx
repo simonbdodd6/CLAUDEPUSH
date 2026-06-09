@@ -7,6 +7,8 @@ const DOMAIN_LABELS = {
   players: 'Players', coaches: 'Coaches', attendance: 'Attendance',
   injuries: 'Injuries', communications: 'Comms', finance: 'Finance',
   volunteers: 'Volunteers', sponsors: 'Sponsors',
+  teamAverage: 'Teams', membership: 'Membership', governance: 'Governance',
+  volunteerDepth: 'Volunteers',
 }
 
 function scoreColor(s) {
@@ -87,6 +89,7 @@ export default function ClubHealthCard({ data, loading }) {
     <Card className="p-4">
       <CardHeader title="Club Health" action={
         <div className="flex items-center gap-2">
+          {health.phaseLabel && <Badge variant="accent" className="text-[10px]">{health.phaseLabel}</Badge>}
           <span className="text-[10px] text-ink-3">{health.trend === 'improving' ? '↑' : health.trend === 'declining' ? '↓' : '→'} {health.trend}</span>
           <Badge variant={label.variant}>{label.text}</Badge>
         </div>

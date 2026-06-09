@@ -32,3 +32,5 @@ export function useRecommendations() { return useData(() => api.recommendations(
 export function useHistory()         { return useData(() => api.history(),        'history') }
 export function useApprovals()       { return useData(() => api.approvals(),      'approvals') }
 export function usePlatformStatus()  { return useData(() => api.platformStatus(), 'platformStatus') }
+export function useBriefing()        { return useData(() => api.briefing(),       'briefing') }
+export function useSeasonPhase()     { return useData(() => api.seasonPhase(),    'seasonPhase') }

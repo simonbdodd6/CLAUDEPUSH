@@ -1,4 +1,4 @@
-import { useClubHealth, useInjuries, useAttendance, useRecommendations, useHistory, useApprovals } from '../hooks/useClubData.js'
+import { useClubHealth, useInjuries, useAttendance, useRecommendations, useHistory, useApprovals, usePlatformStatus, useBriefing } from '../hooks/useClubData.js'
 import ClubHealthCard from '../components/dashboard/ClubHealthCard.jsx'
 import TodayPriorities from '../components/dashboard/TodayPriorities.jsx'
 import QuickActions from '../components/dashboard/QuickActions.jsx'
@@ -6,7 +6,6 @@ import { InjuryAlerts, AttendanceAlerts } from '../components/dashboard/PlayerAl
 import AIRecommendations from '../components/dashboard/AIRecommendations.jsx'
 import ApprovalsQueue from '../components/dashboard/ApprovalsQueue.jsx'
 import ActionHistoryFeed from '../components/dashboard/ActionHistoryFeed.jsx'
-import { usePlatformStatus } from '../hooks/useClubData.js'
 
 export default function DashboardPage() {
   const health    = useClubHealth()
@@ -16,6 +15,7 @@ export default function DashboardPage() {
   const hist      = useHistory()
   const approvals = useApprovals()
   const platform  = usePlatformStatus()
+  const briefing  = useBriefing()
 
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening'
@@ -46,7 +46,7 @@ export default function DashboardPage() {
       {/* Row 1: Health + Priorities + Approvals */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <ClubHealthCard data={health.data} loading={health.loading} />
-        <TodayPriorities data={health.data} />
+        <TodayPriorities briefing={briefing.data} loading={briefing.loading} />
         <ApprovalsQueue  data={approvals.data} loading={approvals.loading} />
       </div>
 
