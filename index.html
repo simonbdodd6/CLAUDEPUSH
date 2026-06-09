@@ -3884,11 +3884,19 @@
     function syncIdentityStateToLocalRoster(identity = {}) {
       const profiles = Array.isArray(identity.player_profiles) ? identity.player_profiles : [];
       const users = Array.isArray(identity.users) ? identity.users : [];
+      const teamMembers = Array.isArray(identity.team_members) ? identity.team_members : [];
       const usersById = new Map(users.map(user => [String(user.id || ''), user]));
+      // Build set of staff user IDs from server team_members and local state.users.
+      // Profiles for staff accounts must never be treated as player roster entries.
+      const staffUserIds = new Set([
+        ...teamMembers.filter(m => ['coach','admin','medical'].includes(m.role)).map(m => String(m.userId || '')),
+        ...state.users.filter(u => ['coach','admin','medical'].includes(u.role)).map(u => String(u.id || '')),
+      ]);
       let changed = false;
 
       profiles.forEach(profile => {
         if (!profile?.userId || !profile.displayName) return;
+        if (staffUserIds.has(String(profile.userId))) return;
         const profileUser = usersById.get(String(profile.userId)) || {};
         const useLegacyId = String(profile.userId || '').startsWith('player-') && profile.legacyPlayerId;
         const playerId = String(useLegacyId ? profile.legacyPlayerId : profile.userId);

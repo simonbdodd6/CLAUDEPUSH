@@ -482,6 +482,14 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
     }
   });
 
+  // Remove any player profiles for staff user IDs — data artifacts from before
+  // the staff/player separation was enforced (e.g. applyApprovedIdentityLocally
+  // being called for coach-demo, which created a Redis player profile for it).
+  const staffIds = new Set(LEGACY_STAFF_ACCOUNTS.map(a => a.id));
+  const beforeClean = profiles.length;
+  profiles = profiles.filter(p => !staffIds.has(String(p.userId || '')));
+  if (profiles.length !== beforeClean) profilesChanged = true;
+
   await Promise.all([
     usersChanged ? saveUsers(users) : Promise.resolve(),
     membersChanged ? saveTeamMembers(members) : Promise.resolve(),
