@@ -72,7 +72,8 @@
     "communications:pack": "node communications-engine/communications-pack-cli.js",
     "dashboard:mission-control": "node dashboard/dashboard-cli.js",
     "knowledge:engine": "node knowledge-engine/knowledge-cli.js",
-    "platform:integration": "node platform/platform-cli.js"
+    "platform:integration": "node platform/platform-cli.js",
+    "actions:library": "node actions/action-cli.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"
