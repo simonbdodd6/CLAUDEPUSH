@@ -4989,6 +4989,7 @@
               <button class="btn" type="button" onclick="setSection('coach','messages')">Open messages</button>
               <button class="btn" id="avail-refresh-btn" type="button" onclick="refreshLiveAvailability()">Refresh replies</button>
               <button class="btn" type="button" onclick="clearWeekAvailability()" title="Clear all responses for this week — session templates are kept">New week</button>
+              ${state.schedule.length > 1 ? `<button class="btn" type="button" onclick="sendAllAvailabilityRequests()" title="Send one combined push to all players covering every session this week">Send all sessions</button>` : ''}
               <button class="btn primary" type="button" onclick="sendAvailabilityRequest('${selected?.id || "game"}')">Send ${esc(selected?.title || "session")} request</button>
             </div>
           </section>
@@ -5324,6 +5325,32 @@
       } catch(e) { console.warn('Chat write failed:', e); }
       sendPushToPlayers(`Availability request — ${session.title}`, body, { type: 'availability', sessionId });
       showToast(`${session.title} request sent to ${created.length} players ✓`);
+    }
+
+    async function sendAllAvailabilityRequests() {
+      if (!isCoach()) return notify("Only coaches can send availability requests");
+      const sessions = state.schedule || [];
+      if (!sessions.length) return showToast('No sessions configured');
+      const titles = sessions.map(s => s.title).join(', ');
+      const body = `Please confirm your availability for: ${titles} inside coacheseyeGPT.`;
+      // Create messages for each session
+      let totalCreated = 0;
+      sessions.forEach(session => {
+        const created = createCoachMessage({ recipients: state.players, type: "Availability request", body, sessionId: session.id });
+        totalCreated += created.length;
+        state.availabilityRequests.unshift({
+          id:         `req-${session.id}-${Date.now()}`,
+          sessionId:  session.id,
+          title:      session.title,
+          sentAt:     new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }),
+          status:     'sent',
+          messageIds: created.map(m => m.id),
+        });
+      });
+      // One combined push for all sessions
+      sendPushToPlayers(`Availability check — ${sessions.length} sessions`, body, { type: 'availability' });
+      showToast(`All session requests sent to ${state.players.length} players ✓`);
+      render();
     }
 
     async function clearWeekAvailability() {
