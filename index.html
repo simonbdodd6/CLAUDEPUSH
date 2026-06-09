@@ -2378,6 +2378,7 @@
         pushConfigured = Boolean(config.pushConfigured);
         if (!pushConfigured) pushConfigurationError = "Push needs Vercel environment setup";
         window._devLoginEnabled = Boolean(config.devLogin);
+        if (config.devLogin) renderNav();
         swRegistration = await navigator.serviceWorker.register('/sw.js');
         // Check existing subscription
         pushSubscription = await swRegistration.pushManager.getSubscription();
