@@ -67,7 +67,8 @@
     "club:intelligence": "node qa/club-intelligence/club-intelligence-cli.js",
     "workflow:engine": "node workflow-engine/workflow-engine-cli.js",
     "orchestrator": "node orchestrator/orchestrator-cli.js",
-    "data:integration": "node qa/data-integration/data-integration-cli.js"
+    "data:integration": "node qa/data-integration/data-integration-cli.js",
+    "communications:engine": "node communications-engine/communications-engine-cli.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"
