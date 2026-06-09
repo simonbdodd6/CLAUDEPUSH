@@ -820,6 +820,141 @@ document.addEventListener('keydown', e => {
 setInterval(() => { if (riOpen) loadRugbyIntelData(); }, 5 * 60 * 1000);
 loadRugbyIntelData();
 
+// ─── Lead Personalisation Panel ──────────────────────────────────────────────
+
+const lpPanel  = document.getElementById('lpPanel');
+const lpToggle = document.getElementById('lpToggle');
+const lpDot    = document.getElementById('lpDot');
+
+let lpData = null;
+let lpOpen = false;
+
+function scoreClass(s) {
+  if (s >= 9)   return 'lp-score-hot';
+  if (s >= 8)   return 'lp-score-warm';
+  return 'lp-score-cool';
+}
+
+function renderLpPanel(data) {
+  const content = document.getElementById('lpPanelContent');
+  if (!content) return;
+
+  if (!data || !data.totalLeads) {
+    content.innerHTML = `
+      <p class="mi-empty">
+        No personalised leads yet.<br>
+        Run: <code>npm run lead:personalise</code>
+      </p>`;
+    return;
+  }
+
+  const demoNote = data.isDemo
+    ? `<div class="lp-demo-note">⚠️ Demo mode — import real clubs to replace synthetic leads</div>`
+    : '';
+
+  const arrFormatted = data.totalExpectedARR
+    ? `€${Number(data.totalExpectedARR).toLocaleString()}`
+    : '€0';
+
+  const statusRows = `
+    <div class="mi-stat-row">
+      <div class="mi-stat"><strong>${data.totalLeads}</strong><span>Leads</span></div>
+      <div class="mi-stat mi-stat-arr"><strong>${arrFormatted}</strong><span>Est. ARR</span></div>
+      <div class="mi-stat"><strong>${data.draftStatusBreakdown?.draft ?? 0}</strong><span>Drafts</span></div>
+    </div>`;
+
+  const topLeads = (data.topLeads ?? []).map(l => `
+    <div class="lp-lead-row">
+      <div class="lp-lead-left">
+        <div class="lp-lead-name">${escapeHtml(l.clubName)}</div>
+        <div class="lp-lead-meta">${escapeHtml(l.country)} · ${escapeHtml(l.sessionHook || '')}</div>
+        <div class="lp-lead-action">${escapeHtml(l.nextAction || '')}</div>
+      </div>
+      <div class="lp-lead-right">
+        <span class="lp-score ${scoreClass(l.fitScore)}">${l.fitScore.toFixed(1)}</span>
+        <span class="lp-arr">€${l.expectedARR}</span>
+      </div>
+    </div>`).join('');
+
+  const countryRows = Object.entries(data.byCountry || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([c, n]) => `<span class="lp-country-tag">${escapeHtml(c)} (${n})</span>`)
+    .join('');
+
+  const ts = data.generatedAt ? new Date(data.generatedAt).toLocaleString() : '';
+
+  content.innerHTML = `
+    ${demoNote}
+    ${statusRows}
+
+    <div class="mi-section">
+      <div class="mi-section-title">Top Leads by Value</div>
+      ${topLeads || '<p style="color:rgba(251,191,36,.4);font-size:12px">No leads processed</p>'}
+    </div>
+
+    <div class="mi-section">
+      <div class="mi-section-title">Countries</div>
+      <div class="lp-countries">${countryRows}</div>
+    </div>
+
+    <div class="mi-section">
+      <div class="mi-section-title">Draft Status</div>
+      <div class="lp-draft-note">
+        All ${data.draftStatusBreakdown?.draft ?? 0} drafts require human review before sending.
+        See PERSONALISED_OUTREACH_DRAFTS.md
+      </div>
+    </div>
+
+    <div class="mi-action">
+      <div class="mi-action-label">📋 Recommended Next Action</div>
+      ${data.topLeads?.[0]?.nextAction ? escapeHtml(data.topLeads[0].nextAction) : 'Review outreach drafts'}
+    </div>
+
+    <div class="mi-ts">Last run: ${escapeHtml(ts)} · Mode: ${escapeHtml(data.mode || 'template')}</div>`;
+}
+
+async function loadLpData() {
+  try {
+    const res  = await fetch('/api/mission-control?action=lead-personalise', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    lpData = json.leadData ?? null;
+  } catch {
+    lpData = null;
+  }
+  renderLpPanel(lpData);
+  const hasData = lpData && lpData.totalLeads > 0;
+  lpDot.className = `dot${hasData ? ' lp-dot' : ' empty'}`;
+}
+
+function openLpPanel() {
+  lpOpen = true;
+  lpPanel.classList.remove('hidden');
+  lpToggle.classList.add('active');
+  lpToggle.setAttribute('aria-expanded', 'true');
+  panel.classList.add('hidden');
+  if (!lpData) loadLpData();
+}
+
+function closeLpPanel() {
+  lpOpen = false;
+  lpPanel.classList.add('hidden');
+  lpToggle.classList.remove('active');
+  lpToggle.setAttribute('aria-expanded', 'false');
+}
+
+lpToggle.addEventListener('click', () => {
+  if (lpOpen) closeLpPanel(); else openLpPanel();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && lpOpen) closeLpPanel();
+});
+
+setInterval(() => { if (lpOpen) loadLpData(); }, 5 * 60 * 1000);
+loadLpData();
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 resize();

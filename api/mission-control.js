@@ -225,6 +225,18 @@ function collectRugbyAssistant() {
   }
 }
 
+// ─── Lead Personalisation — reads summary written by lead-personalisation.js ──
+
+function collectLeadPersonalisation() {
+  const summaryPath = join(ROOT, 'qa/lead-personalisation/data/personalisation-summary.json');
+  try {
+    const raw = readFileSync(summaryPath, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 function node(id, label, type, meta = {}) {
   return { id, label, type, meta };
 }
@@ -331,6 +343,12 @@ export default async function handler(req, res) {
     const rugbyIntel    = collectRugbyIntel();
     const assistantData = collectRugbyAssistant();
     return json(res, 200, { ok: true, rugbyIntel, assistantData });
+  }
+
+  // Lead Personalisation — reads summary written by lead-personalisation pipeline
+  if (req.query?.action === 'lead-personalise') {
+    const leadData = collectLeadPersonalisation();
+    return json(res, 200, { ok: true, leadData });
   }
 
   const git = collectGit();

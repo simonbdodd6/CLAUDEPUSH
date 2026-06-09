@@ -60,6 +60,21 @@
       Rugby Intel
     </button>
 
+    <!-- Lead Personalisation panel -->
+    <section id="lpPanel" class="glass hidden" aria-label="Personalised Leads" aria-live="polite">
+      <span class="kicker">Lead Personalisation</span>
+      <h2>Personalised Leads</h2>
+      <div id="lpPanelContent">
+        <p class="mi-empty">No personalised leads yet.<br>Run: <code>npm run lead:personalise</code></p>
+      </div>
+    </section>
+
+    <!-- Lead Personalisation toggle -->
+    <button class="lp-toggle" id="lpToggle" type="button" aria-controls="lpPanel" aria-expanded="false">
+      <span class="dot empty" id="lpDot"></span>
+      Leads
+    </button>
+
     <!-- Discovery card — auto-hidden when no discovery data exists -->
     <section id="discoveryCard" class="glass discovery-card hidden" aria-label="Discovery stats" aria-live="polite">
       <span class="kicker">Discovery</span>

@@ -1,0 +1,118 @@
+{
+  "generatedAt": "2026-06-09T08:42:07.021Z",
+  "isDemo": true,
+  "totalLeads": 10,
+  "totalExpectedARR": 1344,
+  "byCountry": {
+    "Ireland": 2,
+    "England": 2,
+    "France": 1,
+    "New Zealand": 1,
+    "Scotland": 1,
+    "Wales": 1,
+    "South Africa": 1,
+    "Spain": 1
+  },
+  "mode": "template",
+  "topLeads": [
+    {
+      "clubName": "Kildare Valley RFC",
+      "country": "Ireland",
+      "fitScore": 9.2,
+      "expectedARR": 252,
+      "hasEmail": true,
+      "ageGroups": [
+        "U8",
+        "U10",
+        "U12",
+        "U14",
+        "U16",
+        "Senior"
+      ],
+      "draftStatus": "draft",
+      "approvedToSend": false,
+      "nextAction": "Send short email to secretary@kildarevalleyrfc.ie (review draft first)",
+      "sessionHook": "U16 set-piece session idea"
+    },
+    {
+      "clubName": "Yorkshire Eagles RFC",
+      "country": "England",
+      "fitScore": 8.8,
+      "expectedARR": 168,
+      "hasEmail": true,
+      "ageGroups": [
+        "U12",
+        "U14",
+        "U16",
+        "Senior"
+      ],
+      "draftStatus": "draft",
+      "approvedToSend": false,
+      "nextAction": "Send short email to admin@yorkshireeaglesrfc.co.uk (review draft first)",
+      "sessionHook": "U16 set-piece session idea"
+    },
+    {
+      "clubName": "Stade Bordelais XV",
+      "country": "France",
+      "fitScore": 8.6,
+      "expectedARR": 168,
+      "hasEmail": false,
+      "ageGroups": [
+        "U8",
+        "U10",
+        "U12",
+        "U14",
+        "U16",
+        "Senior"
+      ],
+      "draftStatus": "draft",
+      "approvedToSend": false,
+      "nextAction": "Find contact at https://stadebordelaisxv.fr",
+      "sessionHook": "U16 set-piece session idea"
+    },
+    {
+      "clubName": "Waikato Country RFC",
+      "country": "New Zealand",
+      "fitScore": 8.3,
+      "expectedARR": 168,
+      "hasEmail": true,
+      "ageGroups": [
+        "U12",
+        "U14",
+        "U16",
+        "Senior"
+      ],
+      "draftStatus": "draft",
+      "approvedToSend": false,
+      "nextAction": "Send short email to club@waikatocountryrugby.nz (review draft first)",
+      "sessionHook": "U16 set-piece session idea"
+    },
+    {
+      "clubName": "Highland Storm RFC",
+      "country": "Scotland",
+      "fitScore": 8.1,
+      "expectedARR": 168,
+      "hasEmail": true,
+      "ageGroups": [
+        "U12",
+        "U14",
+        "U16",
+        "Senior"
+      ],
+      "draftStatus": "draft",
+      "approvedToSend": false,
+      "nextAction": "Send short email to info@highlandstormrfc.scot (review draft first)",
+      "sessionHook": "U16 set-piece session idea"
+    }
+  ],
+  "draftStatusBreakdown": {
+    "draft": 10,
+    "approved": 0,
+    "sent": 0
+  },
+  "reportFiles": [
+    "LEAD_PERSONALISATION_REPORT.md",
+    "TOP_10_CLUB_PREVIEWS.md",
+    "PERSONALISED_OUTREACH_DRAFTS.md"
+  ]
+}

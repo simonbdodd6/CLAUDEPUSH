@@ -1,0 +1,12 @@
+# Sample rugby clubs — import with: npm run market:import
+# Remove this file and add your own clubs after importing
+# Columns: club_name, country, website, email, level, estimated_players, notes
+club_name,country,website,email,level,estimated_players,notes
+Kildare Valley RFC,Ireland,https://kildarevalleyrfc.ie,secretary@kildarevalleyrfc.ie,adult_amateur,280,Large club with full age range U8–Senior
+Yorkshire Eagles RFC,England,https://yorkshireeaglesrfc.co.uk,admin@yorkshireeaglesrfc.co.uk,adult_amateur,185,Active youth section U12–Senior
+Stade Bordelais XV,France,https://stadebordelaisxv.fr,,adult_amateur,340,No email found — contact via website
+Waikato Country RFC,New Zealand,https://waikatocountryrugby.nz,club@waikatocountryrugby.nz,adult_amateur,125,Rural club serving wider Waikato region
+Highland Storm RFC,Scotland,https://highlandstormrfc.scot,info@highlandstormrfc.scot,adult_amateur,195,Full age range — strong youth section
+Rhondda Valley RFC,Wales,https://rhonddavalleyrfc.wales,,adult_amateur,160,Heritage club — no email found
+Cape Peninsula Rugby Club,South Africa,https://capepeninsularugby.co.za,admin@capepeninsularugby.co.za,adult_amateur,210,Multiple squads across age grades
+Osos Rugby Madrid,Spain,https://ososrugby.es,contacto@ososrugby.es,adult_amateur,90,Growing club in emerging market

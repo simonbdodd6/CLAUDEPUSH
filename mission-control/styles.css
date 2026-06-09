@@ -701,6 +701,179 @@ body {
 
 .mi-email-link:hover { text-decoration: underline; }
 
+/* ── Lead Personalisation toggle + panel ────────────────────────────────── */
+
+.lp-toggle {
+  position: fixed;
+  left: 262px;
+  bottom: 52px;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  border: 1px solid rgba(251, 191, 36, 0.32);
+  border-radius: 10px;
+  background: rgba(8, 20, 38, 0.72);
+  backdrop-filter: blur(18px);
+  color: #fef3c7;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.08);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.lp-toggle:hover,
+.lp-toggle.active {
+  border-color: rgba(251, 191, 36, 0.72);
+  box-shadow: 0 0 28px rgba(251, 191, 36, 0.22);
+}
+
+.lp-toggle .dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.lp-toggle .lp-dot { background: #fbbf24; box-shadow: 0 0 8px #fbbf24; }
+.lp-toggle .empty   { background: rgba(251,191,36,.3); box-shadow: none; }
+
+#lpPanel {
+  position: fixed;
+  left: 18px;
+  bottom: 100px;
+  width: min(440px, calc(100vw - 36px));
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  padding: 16px 18px;
+  transform-origin: bottom left;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  border-color: rgba(251, 191, 36, 0.22);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(251, 191, 36, 0.2) transparent;
+  z-index: 16;
+}
+
+#lpPanel.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px) scale(0.97);
+}
+
+#lpPanel .kicker {
+  color: #fbbf24;
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+}
+
+#lpPanel h2 {
+  margin: 5px 0 14px;
+  font-size: 16px;
+  letter-spacing: 0;
+  color: #fef3c7;
+}
+
+#lpPanel .mi-section-title { color: rgba(251, 191, 36, 0.6); }
+
+.lp-demo-note {
+  font-size: 11px;
+  color: rgba(251, 191, 36, 0.7);
+  background: rgba(251, 191, 36, 0.07);
+  border: 1px solid rgba(251, 191, 36, 0.18);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 12px;
+}
+
+.lp-lead-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(251, 191, 36, 0.07);
+  gap: 8px;
+}
+
+.lp-lead-row:last-child { border-bottom: none; }
+
+.lp-lead-left { flex: 1; min-width: 0; }
+
+.lp-lead-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fef3c7;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lp-lead-meta {
+  font-size: 10px;
+  color: rgba(254, 243, 199, 0.55);
+  margin-bottom: 2px;
+}
+
+.lp-lead-action {
+  font-size: 10px;
+  color: rgba(251, 191, 36, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lp-lead-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.lp-score {
+  font-size: 13px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 99px;
+}
+.lp-score-hot  { color: #4ade80; background: rgba(74,222,128,.1); }
+.lp-score-warm { color: #60a5fa; background: rgba(96,165,250,.1); }
+.lp-score-cool { color: #fbbf24; background: rgba(251,191,36,.1); }
+
+.lp-arr {
+  font-size: 10px;
+  color: rgba(251, 191, 36, 0.7);
+  font-weight: 600;
+}
+
+.lp-countries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.lp-country-tag {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  color: rgba(254, 243, 199, 0.7);
+}
+
+.lp-draft-note {
+  font-size: 11px;
+  color: rgba(254, 243, 199, 0.5);
+  background: rgba(251, 191, 36, 0.04);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
 /* ── Rugby Coaching Assistant section (inside #rugbyPanel) ──────────────── */
 
 .mi-divider {
