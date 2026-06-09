@@ -41,7 +41,14 @@
     "mobile:dev": "cd app/mobile && npm run dev",
     "mobile:build": "cd app/mobile && npm run build",
     "mobile:preview": "cd app/mobile && npm run preview",
-    "mobile": "echo \"Dev:     npm run mobile:dev   (port 5174)\nBuild:   npm run mobile:build\nPreview: npm run mobile:preview\""
+    "mobile": "echo \"Dev:     npm run mobile:dev   (port 5174)\nBuild:   npm run mobile:build\nPreview: npm run mobile:preview\"",
+    "assistant:cli": "node autonomous-assistant/assistant-cli.js",
+    "assistant:api": "node autonomous-assistant/assistant-api.js",
+    "assistant:briefing": "node autonomous-assistant/assistant-cli.js --briefing",
+    "assistant:timeline": "node autonomous-assistant/assistant-cli.js --timeline",
+    "assistant:report": "node autonomous-assistant/assistant-cli.js --report",
+    "assistant:all": "node autonomous-assistant/assistant-cli.js --all",
+    "assistant": "echo \"CLI:     npm run assistant:cli\nAPI:     npm run assistant:api (port 3004)\nBriefing: npm run assistant:briefing\nTimeline: npm run assistant:timeline\nReport:  npm run assistant:report\""
   },
   "dependencies": {
     "web-push": "^3.6.7"
