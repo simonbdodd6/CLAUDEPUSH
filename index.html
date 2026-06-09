@@ -8541,7 +8541,7 @@
       const panel = document.getElementById("live-log-panel");
       if (!panel) return;
       try {
-        const res  = await fetch('/api/log?limit=10');
+        const res  = await fetch('/api/config?log=1&limit=10');
         const data = await res.json();
         const serverLog = (data.log || []).slice(0, 10);
 

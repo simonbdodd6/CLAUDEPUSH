@@ -89,7 +89,7 @@ export function installToastCapture(page) {
 
 // Reset all availability data via the seed API. Requires DEV_LOGIN=true.
 export async function resetAvailabilityData(baseURL) {
-  const res = await fetch(`${baseURL}/api/seed`, {
+  const res = await fetch(`${baseURL}/api/availability`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'reset_availability' }),

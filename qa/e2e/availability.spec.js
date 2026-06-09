@@ -88,7 +88,7 @@ async function step(page, name, fn) {
 test.beforeAll(async () => {
   ensureDirs();
   // Reset availability via seed API so each run starts clean.
-  const res = await fetch(`${BASE}/api/seed`, {
+  const res = await fetch(`${BASE}/api/availability`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'reset_availability' }),

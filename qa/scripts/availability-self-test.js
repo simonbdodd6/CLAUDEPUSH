@@ -53,7 +53,7 @@ async function run() {
 
   // ── Step 1: Reset ─────────────────────────────────────────────────────────
   console.log('Step 1 — Reset availability data');
-  const reset = await api('POST', '/api/seed', { action: 'reset_availability' });
+  const reset = await api('POST', '/api/availability', { action: 'reset_availability' });
   assert('seed API accessible (DEV_LOGIN=true)',    reset.status !== 403, `Got ${reset.status} — is DEV_LOGIN=true set?`);
   assert('reset_availability returns ok:true',      reset.data?.ok === true, JSON.stringify(reset.data));
   assert('reset clears all sessions',               Array.isArray(reset.data?.cleared) && reset.data.cleared.length >= 3, JSON.stringify(reset.data?.cleared));
@@ -76,7 +76,7 @@ async function run() {
 
   // ── Step 3: Seed demo data ────────────────────────────────────────────────
   console.log('\nStep 3 — Seed demo availability data');
-  const seed = await api('POST', '/api/seed', { action: 'seed_availability' });
+  const seed = await api('POST', '/api/availability', { action: 'seed_availability' });
   assert('seed_availability returns ok:true',       seed.data?.ok === true, JSON.stringify(seed.data));
   assert('seed returns session counts',             typeof seed.data?.sessions === 'object', JSON.stringify(seed.data?.sessions));
   const gameSeed = seed.data?.sessions?.game;
@@ -152,7 +152,7 @@ async function run() {
 
   // ── Step 8: Seed API GET status ───────────────────────────────────────────
   console.log('\nStep 8 — Seed API GET status check');
-  const seedStatus = await api('GET', '/api/seed?sessions=tue,thu,game');
+  const seedStatus = await api('GET', '/api/availability?_dev=status&sessions=tue,thu,game');
   assert('seed GET status returns 200',             seedStatus.status === 200, `Got ${seedStatus.status}`);
   assert('seed GET returns sessions object',        typeof seedStatus.data?.sessions === 'object', JSON.stringify(seedStatus.data));
 
