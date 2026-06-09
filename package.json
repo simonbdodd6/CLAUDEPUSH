@@ -62,7 +62,8 @@
     "lead:personalise:demo": "node qa/lead-personalisation/lead-personalisation.js --demo",
     "coaching:engine": "node qa/coaching-engine/coaching-engine-cli.js",
     "memory:engine": "node memory-engine/memory-engine-cli.js",
-    "player:development": "node qa/player-development/player-development-cli.js"
+    "player:development": "node qa/player-development/player-development-cli.js",
+    "copilot": "node ai-copilot/copilot-cli.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"
