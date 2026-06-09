@@ -1,0 +1,275 @@
+{
+  "id": "fixture_20260623_team_senior_0d2u3uz",
+  "version": 1,
+  "teamId": "team_senior_0d2u3uz",
+  "teamName": "Senior XV",
+  "ageGroup": "Senior",
+  "opponent": "Rival RFC",
+  "venue": "Home Ground",
+  "isHome": true,
+  "competition": "league",
+  "kickoff": "2026-06-23T13:00:00.000Z",
+  "referee": null,
+  "status": "preparing",
+  "prepStage": "early",
+  "squadStatus": {
+    "selected": [],
+    "unavailable": [],
+    "injured": [],
+    "uncertain": [],
+    "available": [
+      {
+        "label": "0 players estimated available",
+        "playerCount": 0,
+        "injured": 0
+      }
+    ]
+  },
+  "squadLockedAt": null,
+  "medicalAlerts": [],
+  "playerMilestones": [],
+  "previousMeetings": [],
+  "volunteers": {
+    "required": [
+      {
+        "role": "First Aider",
+        "filled": false,
+        "assignee": null
+      },
+      {
+        "role": "Team Manager",
+        "filled": false,
+        "assignee": null
+      },
+      {
+        "role": "Photographer",
+        "filled": false,
+        "assignee": null
+      },
+      {
+        "role": "Linesman",
+        "filled": false,
+        "assignee": null
+      },
+      {
+        "role": "Timekeeper",
+        "filled": false,
+        "assignee": null
+      }
+    ],
+    "confirmed": [],
+    "missing": [
+      "First Aider",
+      "Team Manager",
+      "Photographer",
+      "Linesman",
+      "Timekeeper"
+    ]
+  },
+  "transport": {
+    "required": false,
+    "arranged": false,
+    "details": null,
+    "departureTime": null
+  },
+  "weather": {
+    "_placeholder": true,
+    "forecast": null,
+    "conditions": null,
+    "temperature": null,
+    "windSpeed": null
+  },
+  "preparationChecklist": [
+    {
+      "id": "task_41",
+      "type": "opposition_research",
+      "stage": "early",
+      "dueAt": "2026-06-09T13:00:00.000Z",
+      "description": "Research Rival RFC — look up recent form, key players, typical lineup.",
+      "assignee": "DoR or Head Coach",
+      "status": "pending",
+      "priority": "medium",
+      "autoAction": null,
+      "completedAt": null,
+      "notes": null
+    },
+    {
+      "id": "task_42",
+      "type": "squad_review",
+      "stage": "early",
+      "dueAt": "2026-06-16T13:00:00.000Z",
+      "description": "Review full squad availability for Rival RFC (Tue, 23 Jun).",
+      "assignee": "Head Coach",
+      "status": "pending",
+      "priority": "high",
+      "autoAction": "prepareFixture",
+      "completedAt": null,
+      "notes": null
+    },
+    {
+      "id": "task_43",
+      "type": "injury_analysis",
+      "stage": "mid",
+      "dueAt": "2026-06-18T13:00:00.000Z",
+      "description": "Analyse injuries and uncertain players. Update availability for Senior XV vs Rival RFC.",
+      "assignee": "Head Coach / Physio",
+      "status": "pending",
+      "priority": "high",
+      "autoAction": null,
+      "completedAt": null,
+      "notes": null
+    },
+    {
+      "id": "task_44",
+      "type": "venue_confirm",
+      "stage": "mid",
+      "dueAt": "2026-06-19T13:00:00.000Z",
+      "description": "Confirm home pitch and referee details.",
+      "assignee": "Club Secretary",
+      "status": "pending",
+      "priority": "medium",
+      "autoAction": null,
+      "completedAt": null,
+      "notes": null
+    },
+    {
+      "id": "task_45",
+      "type": "volunteer_check",
+      "stage": "mid",
+      "dueAt": "2026-06-20T13:00:00.000Z",
+      "description": "Confirm all volunteer roles for Senior XV vs Rival RFC. Missing: first aider, linesman, timekeeper.",
+      "assignee": "Team Manager",
+      "status": "pending",
+      "priority": "high",
+      "autoAction": "checkVolunteers",
+      "completedAt": null,
+      "notes": null
+    },
+    {
+      "id": "task_46",
+      "type": "attendance_confirm",
+      "stage": "final",
+      "dueAt": "2026-06-21T13:00:00.000Z",
+      "description": "Confirm player attendance. Send \"Are you available Saturday?\" to full squad.",
+      "assignee": "Head Coach",
+      "status": "pending",
+      "priority": "high",
+      "autoAction": null,
+      "completedAt": null,
+      "notes": null
+    },
+    {
+      "id": "task_47",
+      "type": "medical_brief",
+      "stage": "final",
+      "dueAt": "2026-06-21T13:00:00.000Z",
+      "description": "Medical brief: review all injury statuses and match-day medical requirements.",
+      "assignee": "Physio / First Aider",
+      "status": "pending",
+      "priority": "medium",
+      "autoAction": null,
+      "completedAt": null,
+      "notes": null
+    },
+    {
+      "id": "task_48",
+      "type": "match_pack",
+      "stage": "final",
+      "dueAt": "2026-06-22T13:00:00.000Z",
+      "description": "Generate full match pack for Rival RFC — squad, opposition, session plan, volunteer sheet.",
+      "assignee": "Head Coach",
+      "status": "pending",
+      "priority": "critical",
+      "autoAction": "generateMatchPack",
+      "completedAt": null,
+      "notes": null
+    },
+    {
+      "id": "task_49",
+      "type": "pre_match_brief",
+      "stage": "final",
+      "dueAt": "2026-06-22T13:00:00.000Z",
+      "description": "Send pre-match brief to players, parents and volunteers.",
+      "assignee": "Team Manager",
+      "status": "pending",
+      "priority": "high",
+      "autoAction": null,
+      "completedAt": null,
+      "notes": null
+    },
+    {
+      "id": "task_50",
+      "type": "squad_lock",
+      "stage": "matchday",
+      "dueAt": "2026-06-23T13:00:00.000Z",
+      "description": "Lock final squad selection for Senior XV vs Rival RFC. No further changes.",
+      "assignee": "Head Coach",
+      "status": "pending",
+      "priority": "critical",
+      "autoAction": "lockSquad",
+      "completedAt": null,
+      "notes": null
+    },
+    {
+      "id": "task_51",
+      "type": "coach_review",
+      "stage": "post",
+      "dueAt": "2026-06-23T13:00:00.000Z",
+      "description": "Submit post-match notes. Result, standout performances, areas to improve.",
+      "assignee": "Head Coach",
+      "status": "pending",
+      "priority": "high",
+      "autoAction": "requestCoachReview",
+      "completedAt": null,
+      "notes": null
+    },
+    {
+      "id": "task_52",
+      "type": "player_reports",
+      "stage": "post",
+      "dueAt": "2026-06-24T13:00:00.000Z",
+      "description": "Generate individual player performance notes from match observations.",
+      "assignee": "Head Coach",
+      "status": "pending",
+      "priority": "medium",
+      "autoAction": "generatePlayerReports",
+      "completedAt": null,
+      "notes": null
+    },
+    {
+      "id": "task_53",
+      "type": "twin_update",
+      "stage": "post",
+      "dueAt": "2026-06-26T13:00:00.000Z",
+      "description": "Update Club Digital Twin with match result, attendance, and injury changes.",
+      "assignee": "System (auto)",
+      "status": "pending",
+      "priority": "medium",
+      "autoAction": "updateDigitalTwin",
+      "completedAt": null,
+      "notes": null
+    }
+  ],
+  "matchPack": null,
+  "result": {
+    "status": null,
+    "homeScore": null,
+    "awayScore": null,
+    "teamScore": null,
+    "opponentScore": null,
+    "scorers": [],
+    "yellowCards": [],
+    "redCards": [],
+    "manOfMatch": null,
+    "coachNotes": null,
+    "attendance": null
+  },
+  "postMatchReview": null,
+  "playerReports": [],
+  "twinUpdateApplied": false,
+  "notes": null,
+  "tags": [],
+  "createdAt": "2026-06-09T16:10:10.882Z",
+  "updatedAt": "2026-06-09T16:10:12.463Z",
+  "_availabilityRate": null
+}

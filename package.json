@@ -28,7 +28,27 @@
     "orchestrator": "node orchestrator/orchestrator-cli.js",
     "data:integration": "node qa/data-integration/data-integration-cli.js",
     "communications:engine": "node communications-engine/communications-engine-cli.js",
-    "communications:pack": "node communications-engine/communications-pack-cli.js"
+    "communications:pack": "node communications-engine/communications-pack-cli.js",
+    "command-centre:server": "node app/api-server.js",
+    "command-centre:ui": "cd app/command-centre && npm run dev",
+    "command-centre": "echo \"Start API: npm run command-centre:server\nStart UI:  npm run command-centre:ui\"",
+    "twin:cli": "node club-digital-twin/club-twin-cli.js",
+    "twin:api": "node club-digital-twin/club-api.js",
+    "twin": "echo \"Start API: npm run twin:api\nRun tests: npm run twin:cli\"",
+    "fixture:cli": "node fixture-engine/fixture-cli.js",
+    "fixture:api": "node fixture-engine/fixture-api.js",
+    "fixture": "echo \"Start API: npm run fixture:api\nRun tests: npm run fixture:cli\"",
+    "mobile:dev": "cd app/mobile && npm run dev",
+    "mobile:build": "cd app/mobile && npm run build",
+    "mobile:preview": "cd app/mobile && npm run preview",
+    "mobile": "echo \"Dev:     npm run mobile:dev   (port 5174)\nBuild:   npm run mobile:build\nPreview: npm run mobile:preview\"",
+    "assistant:cli": "node autonomous-assistant/assistant-cli.js",
+    "assistant:api": "node autonomous-assistant/assistant-api.js",
+    "assistant:briefing": "node autonomous-assistant/assistant-cli.js --briefing",
+    "assistant:timeline": "node autonomous-assistant/assistant-cli.js --timeline",
+    "assistant:report": "node autonomous-assistant/assistant-cli.js --report",
+    "assistant:all": "node autonomous-assistant/assistant-cli.js --all",
+    "assistant": "echo \"CLI:     npm run assistant:cli\nAPI:     npm run assistant:api (port 3004)\nBriefing: npm run assistant:briefing\nTimeline: npm run assistant:timeline\nReport:  npm run assistant:report\""
   },
   "dependencies": {
     "web-push": "^3.6.7"
