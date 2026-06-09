@@ -910,6 +910,24 @@ export async function rejectJoinRequest(memberId, rejectedBy = 'coach-demo', exp
   return { teamMember: member };
 }
 
+export async function devLoginUser(userId, teamId = DEFAULT_TEAM.id) {
+  if (process.env.DEV_LOGIN !== 'true') return null;
+  if (!userId) return null;
+  await ensureLegacyCompatibilityTeamRecords(teamId);
+  const [users, members, profiles] = await Promise.all([
+    loadUsers(), loadTeamMembers(), loadPlayerProfiles(),
+  ]);
+  const user = users.find(u => u.id === userId);
+  if (!user) return null;
+  const member = members.find(m => m.teamId === teamId && m.userId === userId && m.status === 'active');
+  if (!member) return null;
+  const profile = profiles.find(p => p.teamId === teamId && p.userId === userId) || null;
+  user.lastLoginAt = nowIso();
+  await saveUsers(users);
+  const session = await createSession({ userId: user.id, teamId: member.teamId, role: member.role });
+  return { user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, session };
+}
+
 export async function listIdentityState(teamId = DEFAULT_TEAM.id) {
   await ensureLegacyCompatibilityTeamRecords(teamId);
   const [users, teams, members, profiles] = await Promise.all([

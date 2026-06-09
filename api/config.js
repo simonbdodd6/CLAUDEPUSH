@@ -13,5 +13,6 @@ export default async function handler(req, res) {
     vapidPublicKey,
     pushConfigured: Boolean(vapidPublicKey && process.env.VAPID_PRIVATE_KEY && storageConfigured),
     storageConfigured,
+    devLogin: process.env.DEV_LOGIN === 'true',
   });
 }

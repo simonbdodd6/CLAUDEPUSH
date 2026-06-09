@@ -5,6 +5,7 @@ import {
   createPasswordResetRequest,
   destroySession,
   createJoinRequest,
+  devLoginUser,
   listIdentityState,
   loginUser,
   rejectJoinRequest,
@@ -152,6 +153,15 @@ export default async function handler(req, res) {
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
         const result = await rejectJoinRequest(req.body?.memberId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });
+      }
+      if (action === 'dev_login') {
+        if (process.env.DEV_LOGIN !== 'true') return res.status(403).json({ ok: false, error: 'Dev login not enabled' });
+        const { userId } = req.body || {};
+        if (!userId) return res.status(400).json({ ok: false, error: 'userId required' });
+        const result = await devLoginUser(userId);
+        if (!result) return res.status(404).json({ ok: false, error: 'User not found or not active' });
+        if (result.session?.token) res.setHeader('Set-Cookie', sessionCookie(result.session.token));
+        return res.status(200).json({ ok: true, ...publicAuthResult(result) });
       }
       return res.status(400).json({ ok: false, error: 'Unknown identity action' });
     } catch (error) {

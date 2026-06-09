@@ -2377,6 +2377,7 @@
         vapidPublicKey = config.vapidPublicKey || "";
         pushConfigured = Boolean(config.pushConfigured);
         if (!pushConfigured) pushConfigurationError = "Push needs Vercel environment setup";
+        window._devLoginEnabled = Boolean(config.devLogin);
         swRegistration = await navigator.serviceWorker.register('/sw.js');
         // Check existing subscription
         pushSubscription = await swRegistration.pushManager.getSubscription();
@@ -3672,6 +3673,29 @@
         ).join('') || '<p class="muted" style="font-size:12px">No other accounts on this device.</p>'}
         <button class="btn ghost" type="button" onclick="setAuthTab('closed')"
           style="width:100%;margin-top:4px;font-size:12px">Cancel</button>
+      ` : authTab === 'dev' ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <strong style="font-size:13px">Dev login</strong>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
+        </div>
+        <p class="muted" style="font-size:11px;margin:0 0 8px">DEV only — full server session + push metadata refresh.</p>
+        <button class="btn" type="button" onclick="devLogin('coach-demo')"
+          style="width:100%;text-align:left;margin-bottom:6px;display:flex;align-items:center;gap:8px;padding:8px 10px">
+          <span style="font-size:16px">🎯</span>
+          <span><strong style="display:block;font-size:13px">Simon Coach</strong><span style="font-size:11px;color:var(--muted)">coach</span></span>
+        </button>
+        <button class="btn" type="button" onclick="devLogin('player-simon-test')"
+          style="width:100%;text-align:left;margin-bottom:6px;display:flex;align-items:center;gap:8px;padding:8px 10px">
+          <span style="font-size:16px">🏉</span>
+          <span><strong style="display:block;font-size:13px">Simon Test Player</strong><span style="font-size:11px;color:var(--muted)">player</span></span>
+        </button>
+        <button class="btn" type="button" onclick="devLogin('user_1780853333654_ku8yo4')"
+          style="width:100%;text-align:left;margin-bottom:6px;display:flex;align-items:center;gap:8px;padding:8px 10px">
+          <span style="font-size:16px">🏉</span>
+          <span><strong style="display:block;font-size:13px">Simon Test Player 2</strong><span style="font-size:11px;color:var(--muted)">player</span></span>
+        </button>
+        <button class="btn ghost" type="button" onclick="setAuthTab('closed')"
+          style="width:100%;margin-top:4px;font-size:12px">Cancel</button>
       ` : `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div>
@@ -3682,6 +3706,7 @@
             <button class="auth-tab" type="button" onclick="setAuthTab('login')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Login</button>
             <button class="auth-tab" type="button" onclick="setAuthTab('join')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Join</button>
             <button class="auth-tab" type="button" onclick="setAuthTab('switch')" style="padding:4px 8px;font-size:11px;white-space:nowrap">Switch ↓</button>
+            ${window._devLoginEnabled ? '<button class="auth-tab" type="button" onclick="setAuthTab(\'dev\')" style="padding:4px 8px;font-size:11px;white-space:nowrap;background:rgba(255,160,0,0.15);border-color:rgba(255,160,0,0.4)">Dev</button>' : ''}
           </div>
         </div>
       `;
@@ -3721,6 +3746,30 @@
       if (state.activeView === "coach")
         return (coachSections.find(([id]) => id === state.activeCoachSection) || coachSections[0])[1];
       return (playerSections.find(([id]) => id === state.activePlayerSection) || playerSections[0])[1];
+    }
+
+    async function devLogin(userId) {
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'dev_login', userId }),
+        });
+        const data = await res.json();
+        if (!data.ok) return showToast('Dev login failed: ' + (data.error || 'unknown'));
+        applyApprovedIdentityLocally(data);
+        _serverSessionReadyFor = userId;
+        state.currentUserId = userId;
+        const isStaff = ['coach','admin','medical'].includes(data.user?.role || data.teamMember?.role);
+        state.activeView = isStaff ? 'coach' : 'player';
+        authTab = 'closed';
+        saveState('Dev login');
+        render();
+        refreshPushSubscriptionMetadata(data.user?.displayName || '').catch(() => {});
+        showToast('Logged in as ' + (data.user?.displayName || userId));
+      } catch (e) {
+        showToast('Dev login error: ' + (e?.message || 'network'));
+      }
     }
 
     function switchToUser(userId) {

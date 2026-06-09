@@ -26,15 +26,20 @@ function configurePush() {
 }
 
 async function sendDmPush(recipientId, senderDisplayName, text) {
-  if (!configurePush()) return;
+  if (!configurePush()) {
+    console.warn('[DM push] VAPID keys not configured');
+    return;
+  }
+  console.log(`[DM push] start recipientId=${recipientId}`);
   const [allSubs, profiles] = await Promise.all([
     loadSubs(),
     kvGet(key('identity:player_profiles')).then(v => Array.isArray(v) ? v : []),
   ]);
+  console.log(`[DM push] allSubs=${allSubs.length} profiles=${profiles.length}`);
 
   // The convId participant ID (e.g. 'inv-YxnjxnQa') may differ from the login
-  // user ID stored in the subscription (e.g. 'player-simon-test'). Build a
-  // complete set of IDs for this recipient by looking up their player profile.
+  // user ID stored in the subscription (e.g. 'player-simon-test'). Resolve all
+  // ID aliases for this recipient via their player profile.
   const recipientIds = new Set([recipientId]);
   profiles.forEach(p => {
     const pLegacy = String(p.legacyPlayerId || '');
@@ -44,11 +49,19 @@ async function sendDmPush(recipientId, senderDisplayName, text) {
       if (pUser)   recipientIds.add(pUser);
     }
   });
+  console.log(`[DM push] recipientIds=[${[...recipientIds].join(',')}]`);
 
   const targets = allSubs.filter(item =>
     [item.userId, item.playerId, item.legacyPlayerId].some(v => v && recipientIds.has(String(v)))
   );
-  if (!targets.length) return;
+  console.log(`[DM push] targets=${targets.length}`, targets.map(t => ({ userId: t.userId, playerId: t.playerId, legacyPlayerId: t.legacyPlayerId })));
+
+  if (!targets.length) {
+    const allIds = allSubs.map(s => `${s.userId}|${s.playerId}|${s.legacyPlayerId}`);
+    console.warn(`[DM push] no subscriptions matched recipientIds=[${[...recipientIds].join(',')}], stored=[${allIds.join(' / ')}]`);
+    return;
+  }
+
   const payload = JSON.stringify({
     title: senderDisplayName,
     body:  String(text || '').slice(0, 200),
@@ -56,9 +69,20 @@ async function sendDmPush(recipientId, senderDisplayName, text) {
     url:   '/',
     type:  'dm',
   });
+
   const results = await Promise.allSettled(
     targets.map(({ subscription }) => webpush.sendNotification(subscription, payload))
   );
+
+  results.forEach((r, i) => {
+    const t = targets[i];
+    if (r.status === 'fulfilled') {
+      console.log(`[DM push] sent OK to userId=${t.userId} playerId=${t.playerId}`);
+    } else {
+      console.warn(`[DM push] failed userId=${t.userId} playerId=${t.playerId} status=${r.reason?.statusCode} msg=${r.reason?.message}`);
+    }
+  });
+
   const expired = new Set(
     results.flatMap((r, i) =>
       r.status === 'rejected' && [404, 410].includes(r.reason?.statusCode)
@@ -66,6 +90,7 @@ async function sendDmPush(recipientId, senderDisplayName, text) {
     )
   );
   if (expired.size) {
+    console.log(`[DM push] pruning ${expired.size} expired endpoints`);
     await saveSubs(allSubs.filter(s => !expired.has(s.subscription.endpoint)));
   }
 }
@@ -338,10 +363,14 @@ async function handlePost(req, res) {
     if (idx >= 0) { convs[idx].lastActivity = msg.ts; await saveConvs(convs); }
     // Mark sender as read
     await kvSet(key(`chat:read:${convId}:${senderId}`), msg.ts);
-    // Fire push to the DM recipient — fire-and-forget, never blocks message delivery
+    // Await push before responding — serverless functions terminate after res.end()
+    // so fire-and-forget does not work; the async operation is abandoned.
     if (convId.startsWith('dm:') && !isAutomated) {
       const recipientId = convId.split(':').slice(1).find(p => p !== senderId);
-      if (recipientId) sendDmPush(recipientId, msg.senderName, msg.text).catch(() => {});
+      console.log(`[DM push] convId=${convId} senderId=${senderId} recipientId=${recipientId}`);
+      if (recipientId) await sendDmPush(recipientId, msg.senderName, msg.text).catch(e => {
+        console.error('[DM push] top-level error:', e?.message);
+      });
     }
     return ok(res, { message: msg });
   }
