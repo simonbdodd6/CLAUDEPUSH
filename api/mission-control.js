@@ -201,6 +201,18 @@ function collectDiscovery() {
   }
 }
 
+// ─── Rugby Intelligence Agent — reads summary written by qa/rugby-intel/rugby-intel.js ──
+
+function collectRugbyIntel() {
+  const summaryPath = join(ROOT, 'qa/rugby-knowledge/rugby-intel-summary.json');
+  try {
+    const raw = readFileSync(summaryPath, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 function node(id, label, type, meta = {}) {
   return { id, label, type, meta };
 }
@@ -294,6 +306,12 @@ export default async function handler(req, res) {
   if (req.query?.action === 'discovery') {
     const discovery = collectDiscovery();
     return json(res, 200, { ok: true, discovery });
+  }
+
+  // Rugby Intelligence Agent summary — reads pre-generated JSON from rugby-intel pipeline
+  if (req.query?.action === 'rugby-intel') {
+    const rugbyIntel = collectRugbyIntel();
+    return json(res, 200, { ok: true, rugbyIntel });
   }
 
   const git = collectGit();

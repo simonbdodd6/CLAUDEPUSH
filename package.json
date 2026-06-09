@@ -44,7 +44,16 @@
     "qa:repair": "node qa/repair-agent.js",
     "qa:github": "node qa/github-agent.js",
     "qa:dashboard": "node qa/mission-control/generate-dashboard.js",
-    "qa:report": "node qa/report.js"
+    "qa:report": "node qa/report.js",
+    "market:pipeline": "node qa/market-intel/pipeline.js",
+    "market:import": "node qa/market-intel/pipeline.js --import",
+    "market:score": "node qa/market-intel/pipeline.js --score",
+    "market:reports": "node qa/market-intel/pipeline.js --reports",
+    "discovery": "node qa/discovery/discovery.js",
+    "discovery:dry": "node qa/discovery/discovery.js --dry-run",
+    "rugby:intel": "node qa/rugby-intel/rugby-intel.js",
+    "rugby:intel:reports": "node qa/rugby-intel/rugby-intel.js --reports-only",
+    "rugby:intel:summary": "node qa/rugby-intel/rugby-intel.js --summary"
   },
   "dependencies": {
     "web-push": "^3.6.7"

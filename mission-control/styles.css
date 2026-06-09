@@ -244,6 +244,184 @@ body {
   to { transform: translateX(-100%); }
 }
 
+/* ─── Rugby Intelligence toggle + panel ─────────────────────────────────────── */
+
+.ri-toggle {
+  position: fixed;
+  left: 140px;
+  bottom: 52px;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  border: 1px solid rgba(74, 222, 128, 0.32);
+  border-radius: 10px;
+  background: rgba(8, 20, 38, 0.72);
+  backdrop-filter: blur(18px);
+  color: #d1fae5;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 0 20px rgba(74, 222, 128, 0.08);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ri-toggle:hover,
+.ri-toggle.active {
+  border-color: rgba(74, 222, 128, 0.72);
+  box-shadow: 0 0 28px rgba(74, 222, 128, 0.22);
+}
+
+.ri-toggle .dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px #4ade80;
+  flex-shrink: 0;
+}
+.ri-toggle .dot.ri-dot { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
+.ri-toggle .dot.empty { background: rgba(74,222,128,.3); box-shadow: none; }
+
+#rugbyPanel {
+  left: 18px;
+  bottom: 100px;
+  width: min(440px, calc(100vw - 36px));
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  padding: 16px 18px;
+  transform-origin: bottom left;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  border-color: rgba(74, 222, 128, 0.22);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 222, 128, 0.2) transparent;
+}
+
+#rugbyPanel.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px) scale(0.97);
+}
+
+#rugbyPanel .kicker {
+  color: #4ade80;
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+}
+
+#rugbyPanel h2 {
+  margin: 5px 0 14px;
+  font-size: 16px;
+  letter-spacing: 0;
+  color: #d1fae5;
+}
+
+#rugbyPanel .mi-section-title { color: rgba(74, 222, 128, 0.6); }
+#rugbyPanel .mi-bar-fill.ri-bar-fill { background: linear-gradient(90deg, #4ade80, #22c55e); }
+
+.ri-badges {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.ri-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.ri-badge-alert {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+}
+
+.ri-badge-law {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  color: #fde68a;
+}
+
+.ri-idea-row {
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(74, 222, 128, 0.07);
+}
+
+.ri-idea-row:last-child { border-bottom: none; }
+
+.ri-idea-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #d1fae5;
+  margin-bottom: 3px;
+}
+
+.ri-idea-takeaway {
+  font-size: 11px;
+  color: rgba(209, 250, 229, 0.6);
+  line-height: 1.4;
+  margin-bottom: 5px;
+}
+
+.ri-idea-cats { display: flex; gap: 4px; flex-wrap: wrap; }
+
+.ri-cat {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid rgba(74, 222, 128, 0.2);
+  color: rgba(74, 222, 128, 0.8);
+}
+
+.ri-safety-section {
+  background: rgba(239, 68, 68, 0.07);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.ri-safety-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fca5a5;
+  margin-bottom: 4px;
+}
+
+.ri-safety-action {
+  font-size: 11px;
+  color: rgba(252, 165, 165, 0.7);
+  line-height: 1.4;
+}
+
+.ri-law-row {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(251, 191, 36, 0.08);
+}
+
+.ri-law-row:last-child { border-bottom: none; }
+
+.ri-law-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fde68a;
+  margin-bottom: 3px;
+}
+
+.ri-law-meta {
+  font-size: 11px;
+  color: rgba(253, 230, 138, 0.55);
+  line-height: 1.4;
+}
+
 /* ─── Market Intelligence toggle button ─────────────────────────────────────── */
 
 .mi-toggle {

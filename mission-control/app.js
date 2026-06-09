@@ -641,6 +641,145 @@ async function loadDiscoveryData() {
 
 loadDiscoveryData();
 
+// ─── Rugby Intelligence Panel ─────────────────────────────────────────────────
+
+const rugbyPanel  = document.getElementById('rugbyPanel');
+const rugbyToggle = document.getElementById('riToggle');
+const riDot       = document.getElementById('riDot');
+
+let riData = null;
+let riOpen = false;
+
+function renderRugbyPanel(data) {
+  const content = document.getElementById('rugbyPanelContent');
+  if (!content) return;
+
+  if (!data || !data.totalItems) {
+    content.innerHTML = `
+      <p class="mi-empty">
+        No rugby knowledge yet.<br>
+        Add content to <code>qa/rugby-input/</code><br>
+        then run: <code>npm run rugby:intel</code>
+      </p>`;
+    return;
+  }
+
+  const safetyBadge = data.safetyAlerts > 0
+    ? `<span class="ri-badge ri-badge-alert">${data.safetyAlerts} safety alert${data.safetyAlerts > 1 ? 's' : ''}</span>`
+    : '';
+  const lawBadge = data.recentLawUpdates?.length
+    ? `<span class="ri-badge ri-badge-law">${data.lawUpdates} law update${data.lawUpdates > 1 ? 's' : ''}</span>`
+    : '';
+
+  const topIdeas = (data.topCoachingIdeas ?? []).slice(0, 4).map(i => `
+    <div class="ri-idea-row">
+      <div class="ri-idea-title">${escapeHtml(i.title)}</div>
+      <div class="ri-idea-takeaway">${escapeHtml(i.takeaway || '')}</div>
+      <div class="ri-idea-cats">${(i.categories || []).slice(0, 3).map(c => `<span class="ri-cat">${escapeHtml(c)}</span>`).join('')}</div>
+    </div>`).join('') || '<p style="color:rgba(100,220,140,.4);font-size:12px">No coaching ideas yet</p>';
+
+  const lawUpdates = (data.recentLawUpdates ?? []).slice(0, 3).map(i => `
+    <div class="ri-law-row">
+      <div class="ri-law-title">📜 ${escapeHtml(i.title)}</div>
+      <div class="ri-law-meta">${escapeHtml(i.summary?.slice(0, 100) || '')}…</div>
+    </div>`).join('') || '<p style="color:rgba(100,220,140,.4);font-size:12px">No law updates</p>';
+
+  const safetyRows = (data.recentSafetyAlerts ?? []).slice(0, 2).map(i => `
+    <div class="ri-safety-row">
+      <div class="ri-safety-title">🛡️ ${escapeHtml(i.title)}</div>
+      <div class="ri-safety-action">${escapeHtml(i.takeaway || '')}</div>
+    </div>`).join('') || '';
+
+  const catBars = (data.topCategories ?? []).filter(c => c.count > 0).slice(0, 5).map(c => {
+    const maxCount = data.topCategories[0]?.count || 1;
+    return `<div class="mi-bar-row">
+      <span class="mi-bar-label">${escapeHtml(c.category)}</span>
+      <div class="mi-bar-track"><div class="mi-bar-fill ri-bar-fill" style="width:${Math.round(c.count/maxCount*100)}%"></div></div>
+      <span class="mi-bar-count">${c.count}</span>
+    </div>`;
+  }).join('');
+
+  const ts = data.generatedAt ? new Date(data.generatedAt).toLocaleString() : 'unknown';
+
+  content.innerHTML = `
+    <div class="ri-badges">${safetyBadge}${lawBadge}</div>
+
+    <div class="mi-stat-row">
+      <div class="mi-stat"><strong>${data.totalItems ?? 0}</strong><span>Items</span></div>
+      <div class="mi-stat"><strong>${data.itemsThisWeek ?? 0}</strong><span>This Week</span></div>
+      <div class="mi-stat"><strong>${data.drills ?? 0}</strong><span>Drills</span></div>
+    </div>
+
+    ${safetyRows ? `<div class="ri-safety-section">${safetyRows}</div>` : ''}
+
+    <div class="mi-section">
+      <div class="mi-section-title">Top Coaching Ideas</div>
+      ${topIdeas}
+    </div>
+
+    <div class="mi-section">
+      <div class="mi-section-title">Knowledge by Category</div>
+      ${catBars || '<p style="color:rgba(100,220,140,.4);font-size:12px">Add content to populate</p>'}
+    </div>
+
+    <div class="mi-section">
+      <div class="mi-section-title">Recent Law Updates</div>
+      ${lawUpdates}
+    </div>
+
+    ${data.recommendedFocus ? `
+    <div class="mi-action">
+      <div class="mi-action-label">🏉 Recommended Training Focus</div>
+      ${escapeHtml(data.recommendedFocus)}
+    </div>` : ''}
+
+    <div class="mi-ts">Last run: ${escapeHtml(ts)} · ${escapeHtml(data.analysisMode ?? 'heuristic')}</div>
+  `;
+}
+
+async function loadRugbyIntelData() {
+  try {
+    const res = await fetch('/api/mission-control?action=rugby-intel', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    riData = json.rugbyIntel ?? null;
+  } catch {
+    riData = null;
+  }
+  renderRugbyPanel(riData);
+
+  const hasData = riData && riData.totalItems > 0;
+  riDot.className = `dot${hasData ? ' ri-dot' : ' empty'}`;
+}
+
+function openRugbyPanel() {
+  riOpen = true;
+  rugbyPanel.classList.remove('hidden');
+  rugbyToggle.classList.add('active');
+  rugbyToggle.setAttribute('aria-expanded', 'true');
+  panel.classList.add('hidden');
+  if (!riData) loadRugbyIntelData();
+}
+
+function closeRugbyPanel() {
+  riOpen = false;
+  rugbyPanel.classList.add('hidden');
+  rugbyToggle.classList.remove('active');
+  rugbyToggle.setAttribute('aria-expanded', 'false');
+}
+
+rugbyToggle.addEventListener('click', () => {
+  if (riOpen) closeRugbyPanel();
+  else openRugbyPanel();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && riOpen) closeRugbyPanel();
+});
+
+setInterval(() => { if (riOpen) loadRugbyIntelData(); }, 5 * 60 * 1000);
+loadRugbyIntelData();
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 resize();
