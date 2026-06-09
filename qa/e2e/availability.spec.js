@@ -138,7 +138,7 @@ test('T02-T05 — Player submits responses (available, maybe+work, unavailable+i
   await step(page, 't02-navigate-player-availability', async () => {
     await navigateToPlayerAvailability(page);
     // All 3 session cards should be visible
-    const blocks = page.locator('#player-availability [style*="border-radius:12px"]');
+    const blocks = page.locator('#player-availability .avail-player-card');
     await expect(blocks.first()).toBeVisible({ timeout: 8_000 });
   });
 
@@ -182,7 +182,7 @@ test('T02-T05 — Player submits responses (available, maybe+work, unavailable+i
 
   // T04: Not Available + Injury
   await step(page, 't04-select-unavailable-game-injury', async () => {
-    const unavailBtns = page.locator('#player-availability button', { hasText: 'Not available' });
+    const unavailBtns = page.locator('#player-availability button', { hasText: "Can't make it" });
     // Click the last one (game session)
     const count = await unavailBtns.count();
     await unavailBtns.nth(count - 1).click();

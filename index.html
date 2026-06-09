@@ -609,6 +609,41 @@
     .availability-buttons button.active.injured { border-color: #ef4444; background: rgba(239,68,68,0.14); color: #f87171; }
     .availability-buttons button.active.maybe { border-color: #f59e0b; background: rgba(245,158,11,0.14); color: #fbbf24; }
 
+    /* ── Availability Centre: session cards, management, player view ── */
+    .avail-progress { height:4px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:10px; }
+    .avail-progress-fill { height:100%;background:var(--green);border-radius:99px;transition:width .4s ease; }
+    .avail-session-icon { font-size:15px;margin-right:5px; }
+    .avail-deadline-badge { display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:var(--amber);background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:999px;padding:2px 8px;margin-left:6px; }
+    .avail-manage-list { display:grid;gap:8px;padding:0 16px 14px; }
+    .avail-manage-item { display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2); }
+    .avail-manage-item-icon { font-size:20px;flex-shrink:0;line-height:1; }
+    .avail-manage-item-body { flex:1;min-width:0; }
+    .avail-manage-item-body strong { display:block;font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .avail-manage-item-body small { display:block;font-size:11px;color:var(--muted);margin-top:2px; }
+    .avail-manage-actions { display:flex;gap:6px;flex-shrink:0; }
+    .avail-manage-actions button { min-height:30px;padding:0 10px;font-size:11px;font-weight:700;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;transition:all .12s; }
+    .avail-manage-actions button:hover { border-color:var(--green);color:var(--green); }
+    .avail-manage-actions button.del:hover { border-color:#ef4444;color:#f87171; }
+    .avail-session-form { padding:14px 16px;border-top:1px solid var(--line);background:rgba(16,185,129,0.04);border-radius:0 0 10px 10px; }
+    .avail-session-form .sf-row { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px; }
+    .avail-session-form .sf-label { display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em; }
+    .avail-session-form input,.avail-session-form select { width:100%;min-height:36px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);padding:0 10px;font-size:13px;box-sizing:border-box; }
+    .avail-session-form .sf-actions { display:flex;gap:8px;margin-top:4px; }
+    .avail-player-card { border-radius:14px;padding:18px 20px;margin-bottom:14px;transition:border-color .15s; }
+    .avail-player-card-head { display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap; }
+    .avail-player-card-title { display:flex;align-items:center;gap:6px;font-size:16px;font-weight:800;color:var(--ink); }
+    .avail-player-card-title .session-icon { font-size:18px;line-height:1; }
+    .avail-player-card-meta { font-size:11px;color:var(--muted);margin-top:3px; }
+    .avail-status-chip { border-radius:999px;padding:3px 10px;font-size:11px;font-weight:800; }
+    .avail-btns { display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px; }
+    .avail-btns button { min-height:48px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:all .14s;border-width:2px;border-style:solid; }
+    @media (max-width:480px) {
+      .avail-session-form .sf-row { grid-template-columns:1fr; }
+      .avail-btns button { min-height:52px;font-size:14px; }
+      .avail-player-card { padding:16px; }
+      .avail-player-card-title { font-size:15px; }
+    }
+
     /* ── PITCH ── */
     .pitch {
       position: relative;
@@ -2294,6 +2329,12 @@
       next.autoSendSchedule = input.autoSendSchedule || { day:"monday", time:"09:00" };
       next.trainingAutoSend = input.trainingAutoSend ?? false;
       next.benchPlayers     = input.benchPlayers     || Array(8).fill("");
+      // Guard schedule: ensure it's a valid array, migrate sessions to have deadline field
+      if (!Array.isArray(next.schedule) || next.schedule.length === 0) {
+        next.schedule = structuredClone(defaultState.schedule);
+      }
+      next.schedule.forEach(s => { if (s.deadline === undefined) s.deadline = ''; });
+
       // Migrate existing blocks to have coach + keyFocus fields
       ["tue","thu","game"].forEach(sid => {
         (next.trainingBlocks[sid] || []).forEach(b => {
@@ -2619,6 +2660,153 @@
     // Controls which session's inline reason picker is currently visible.
     // Set by selectAvailabilityStatusPending(); cleared by setPlayerAvailability().
     let _reasonPickerOpen = null; // { key, status } — null means no picker shown
+    let _sessionFormMode  = null; // 'add' | 'edit' | null
+    let _sessionFormId    = null; // session id being edited, or null for new
+
+    // ── Session management ────────────────────────────────────────────────────
+    function openSessionForm(id) {
+      _sessionFormMode = id ? 'edit' : 'add';
+      _sessionFormId   = id || null;
+      render();
+      setTimeout(() => document.getElementById('sf-title')?.focus(), 50);
+    }
+
+    function closeSessionForm() {
+      _sessionFormMode = null;
+      _sessionFormId   = null;
+      render();
+    }
+
+    function saveSessionForm() {
+      const title    = document.getElementById('sf-title')?.value.trim()    || '';
+      const type     = document.getElementById('sf-type')?.value            || 'Training';
+      const date     = document.getElementById('sf-date')?.value.trim()     || '';
+      const deadline = document.getElementById('sf-deadline')?.value.trim() || '';
+      const focus    = document.getElementById('sf-focus')?.value.trim()    || '';
+      if (!title) { showToast('Enter a session title first'); return; }
+
+      if (_sessionFormMode === 'edit' && _sessionFormId) {
+        const idx = state.schedule.findIndex(s => s.id === _sessionFormId);
+        if (idx >= 0) state.schedule[idx] = { ...state.schedule[idx], title, type, date, deadline, focus };
+      } else {
+        const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20) || 'session';
+        state.schedule.push({ id: `${slug}-${Date.now().toString(36)}`, type, title, date, deadline, focus });
+      }
+      _sessionFormMode = null;
+      _sessionFormId   = null;
+      saveState('Session saved');
+      render();
+      showToast('Session saved');
+    }
+
+    function deleteSession(id) {
+      if (state.schedule.length <= 1) { showToast('Cannot delete the only session'); return; }
+      state.schedule = state.schedule.filter(s => s.id !== id);
+      if (state.messageDetail === id) state.messageDetail = state.schedule[0]?.id || null;
+      _sessionFormMode = null;
+      _sessionFormId   = null;
+      saveState('Session deleted');
+      render();
+      showToast('Session removed');
+    }
+
+    function sessionTypeIcon(type) {
+      return type === 'Match' ? '🏉' : '🏃';
+    }
+
+    function renderManageSessions() {
+      const editing = _sessionFormMode === 'edit' ? _sessionFormId : null;
+      const isAdding = _sessionFormMode === 'add';
+
+      const formHtml = (prefill = {}) => `
+        <div class="avail-session-form">
+          <div class="sf-row">
+            <label><span class="sf-label">Session title</span>
+              <input id="sf-title" placeholder="e.g. Tuesday Training" value="${esc(prefill.title || '')}" oninput="" maxlength="60">
+            </label>
+            <label><span class="sf-label">Type</span>
+              <select id="sf-type">
+                <option value="Training" ${(prefill.type||'Training')==='Training'?'selected':''}>Training</option>
+                <option value="Match"    ${prefill.type==='Match'?'selected':''}>Match</option>
+              </select>
+            </label>
+          </div>
+          <div class="sf-row">
+            <label><span class="sf-label">Date / time</span>
+              <input id="sf-date" placeholder="e.g. Tuesday 19:45" value="${esc(prefill.date || '')}">
+            </label>
+            <label><span class="sf-label">Player deadline</span>
+              <input id="sf-deadline" placeholder="e.g. Friday 12:00" value="${esc(prefill.deadline || '')}">
+            </label>
+          </div>
+          <label><span class="sf-label">Focus / notes (optional)</span>
+            <input id="sf-focus" placeholder="e.g. Defensive spacing" value="${esc(prefill.focus || '')}">
+          </label>
+          <div class="sf-actions" style="margin-top:12px">
+            <button class="btn primary" type="button" onclick="saveSessionForm()">Save session</button>
+            <button class="btn" type="button" onclick="closeSessionForm()">Cancel</button>
+          </div>
+        </div>`;
+
+      const itemsHtml = state.schedule.map(s => {
+        const isThisEditing = editing === s.id;
+        const rRows = sessionRows(s.id);
+        const answered = rRows.filter(r => r.status !== 'no-reply').length;
+        const pct = rRows.length ? Math.round(answered / rRows.length * 100) : 0;
+        return `
+          <div class="avail-manage-item" style="${isThisEditing ? 'border-color:var(--green)' : ''}">
+            <span class="avail-manage-item-icon">${sessionTypeIcon(s.type)}</span>
+            <div class="avail-manage-item-body">
+              <strong>${esc(s.title)}</strong>
+              <small>${esc(s.date || s.type || '')}${s.deadline ? ' · deadline ' + esc(s.deadline) : ''} · ${pct}% replied</small>
+            </div>
+            <div class="avail-manage-actions">
+              <button type="button" onclick="openSessionForm('${s.id}')" title="Edit">✎ Edit</button>
+              ${state.schedule.length > 1
+                ? `<button class="del" type="button" onclick="deleteSession('${s.id}')" title="Delete">✕</button>`
+                : ''}
+            </div>
+          </div>
+          ${isThisEditing ? formHtml(s) : ''}`;
+      }).join('');
+
+      return `
+        <div class="msg-card-head">
+          <div>
+            <h2>Manage Sessions</h2>
+            <p>Add, edit or remove training and match sessions.</p>
+          </div>
+          <button class="btn primary" type="button" onclick="openSessionForm()" style="font-size:11px;padding:0 12px;min-height:30px">+ Add session</button>
+        </div>
+        <div class="avail-manage-list">
+          ${itemsHtml}
+          ${isAdding ? formHtml({}) : ''}
+        </div>`;
+    }
+
+    function exportAvailabilityCSV(sessionId) {
+      const session = state.schedule.find(s => s.id === sessionId) || state.schedule[0];
+      if (!session) { showToast('No session selected'); return; }
+      const rows = sessionRows(session.id);
+      const header = ['Name', 'Position', 'Status', 'Reason', 'Attendance %'].join(',');
+      const lines  = rows.map(({ player, status, reason, attendanceRate }) =>
+        [player.name, player.position || '', status, reason || '', attendanceRate || 0]
+          .map(v => `"${String(v).replace(/"/g, '""')}"`)
+          .join(',')
+      );
+      const csv  = [header, ...lines].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url  = URL.createObjectURL(blob);
+      const a    = Object.assign(document.createElement('a'), {
+        href: url,
+        download: `availability-${session.id}-${new Date().toISOString().slice(0,10)}.csv`
+      });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${rows.length} players to CSV`);
+    }
 
     function selectAvailabilityStatusPending(key, status) {
       if (status === 'available') {
@@ -3941,11 +4129,11 @@
       showToast('Running availability self-test…');
       try {
         // 1 — Reset
-        const reset = await fetch('/api/seed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset_availability' }) }).then(r => r.json()).catch(() => ({}));
+        const reset = await fetch('/api/availability', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset_availability' }) }).then(r => r.json()).catch(() => ({}));
         check('seed reset returns ok', reset.ok === true, JSON.stringify(reset));
 
         // 2 — Seed
-        const seed = await fetch('/api/seed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'seed_availability' }) }).then(r => r.json()).catch(() => ({}));
+        const seed = await fetch('/api/availability', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'seed_availability' }) }).then(r => r.json()).catch(() => ({}));
         check('seed_availability returns ok', seed.ok === true, JSON.stringify(seed));
         check('game session seeded', typeof seed.sessions?.game === 'number' && seed.sessions.game >= 1, `game=${seed.sessions?.game}`);
 
@@ -4696,22 +4884,27 @@
       };
 
       const sessionCardsHTML = state.schedule.map(session => {
-        const rRows = sessionRows(session.id);
-        const yes   = rRows.filter(({status}) => status === "available").length;
-        const no    = rRows.filter(({status}) => ["unavailable", "injured"].includes(status)).length;
+        const rRows  = sessionRows(session.id);
+        const total  = rRows.length;
+        const yes    = rRows.filter(({status}) => status === "available").length;
+        const no     = rRows.filter(({status}) => ["unavailable", "injured"].includes(status)).length;
         const unsure = rRows.filter(({status}) => status === "maybe").length;
-        const chase = rRows.filter(({status}) => status === "no-reply").length;
+        const chase  = rRows.filter(({status}) => status === "no-reply").length;
+        const answered = total - chase;
+        const pct    = total ? Math.round(answered / total * 100) : 0;
+        const icon   = session.type === 'Match' ? '🏉' : '🏃';
         return `<button class="msg-session-card ${selected?.id === session.id ? "active" : ""}" type="button" onclick="openMessageDetail('${session.id}')">
           <div class="register-head">
-            <strong>${esc(sessionDisplayTitle(session))}</strong>
-            <span class="msg-chip available">${yes}/${state.players.length} coming</span>
+            <strong><span style="margin-right:5px">${icon}</span>${esc(sessionDisplayTitle(session))}</strong>
+            <span class="msg-chip ${yes >= 15 ? 'available' : chase > 0 ? 'no-reply' : 'available'}">${yes}/${total}</span>
           </div>
-          <small>${esc(session.date || session.focus || "Availability open")}</small>
-          <div class="msg-pill-row" style="margin-top:10px">
-            <span class="msg-chip available">${yes} available</span>
-            <span class="msg-chip unavailable">${no} unavailable</span>
-            <span class="msg-chip maybe">${unsure} maybe</span>
-            <span class="msg-chip no-reply">${chase} no reply</span>
+          <small style="color:var(--muted)">${esc(session.date || "Availability open")}${session.deadline ? ' <span style="color:var(--amber)">· deadline ' + esc(session.deadline) + '</span>' : ''}</small>
+          <div class="avail-progress"><div class="avail-progress-fill" style="width:${pct}%"></div></div>
+          <div class="msg-pill-row" style="margin-top:8px">
+            <span class="msg-chip available">${yes} ✓</span>
+            <span class="msg-chip unavailable">${no} ✗</span>
+            <span class="msg-chip maybe">${unsure} ?</span>
+            <span class="msg-chip no-reply">${chase} —</span>
           </div>
         </button>`;
       }).join("");
@@ -4779,10 +4972,16 @@
                 </div>
                 <div class="availability-board-tools">
                   <div class="availability-filter-group">${filterButtons}</div>
-                  <select class="availability-sort-select" onchange="setAvailabilityBoardSort(this.value)" aria-label="Sort by attendance">
-                    <option value="highest" ${availabilityBoardSort === "highest" ? "selected" : ""}>Highest attendance first</option>
-                    <option value="lowest" ${availabilityBoardSort === "lowest" ? "selected" : ""}>Lowest attendance first</option>
-                  </select>
+                  <div style="display:flex;gap:8px;align-items:center">
+                    <select class="availability-sort-select" onchange="setAvailabilityBoardSort(this.value)" aria-label="Sort by attendance">
+                      <option value="highest" ${availabilityBoardSort === "highest" ? "selected" : ""}>Highest attendance first</option>
+                      <option value="lowest" ${availabilityBoardSort === "lowest" ? "selected" : ""}>Lowest attendance first</option>
+                    </select>
+                    <button class="btn" type="button" onclick="exportAvailabilityCSV('${selected?.id || ''}')"
+                      style="font-size:11px;padding:0 10px;min-height:34px;white-space:nowrap" title="Export this session to CSV">
+                      ↓ CSV
+                    </button>
+                  </div>
                 </div>
                 <div class="msg-status-grid compact">
                   <section class="msg-status-column available">
@@ -4867,18 +5066,7 @@
             </article>
 
             <article class="msg-card">
-              <div class="msg-card-head">
-                <div>
-                  <h2>Scale path</h2>
-                  <p>The same system can later support multi-team clubs, parent accounts and native app pushes.</p>
-                </div>
-              </div>
-              <div class="msg-roadmap" style="padding:16px">
-                <article><strong>Segments</strong><small>Full squad, no-reply, injured, training group, age grade.</small></article>
-                <article><strong>Campaigns</strong><small>Training, matchday, medical, selection, staff-only.</small></article>
-                <article><strong>Audit log</strong><small>Every send has a timestamp, target count and failed count.</small></article>
-                <article><strong>Future app</strong><small>Same API can power iOS/Android notifications later.</small></article>
-              </div>
+              ${renderManageSessions()}
             </article>
           </section>
 
@@ -6011,109 +6199,108 @@
       const player = getPlayer();
       if (!player.id) { document.getElementById("player-availability").innerHTML = noSquadMsg(); return; }
 
-      // Trigger server fetch on first open without blocking the render.
       fetchMyAvailabilityFromServer();
 
       const sessions     = state.schedule || [];
       const allAvailable = sessions.length > 0 && sessions.every(s => (player[sessionKey(s.id)] || 'no-reply') === 'available');
-      const pendingCount = sessions.filter(s => (player[sessionKey(s.id)] || 'no-reply') === 'no-reply').length;
-
-      const sessionLabel = s => {
-        if (s.id === 'tue')  return (s.title || 'Tuesday Training') + (s.date ? ' · ' + s.date : '');
-        if (s.id === 'thu')  return (s.title || 'Thursday Training') + (s.date ? ' · ' + s.date : '');
-        if (s.id === 'game') return s.title || (state.fixtures?.[0]?.opponent ? state.fixtures[0].opponent + ' — ' + state.fixtures[0].date : 'Weekend match');
-        return s.title || s.id;
-      };
+      const confirmedCount = sessions.filter(s => (player[sessionKey(s.id)] || 'no-reply') !== 'no-reply').length;
+      const pendingCount = sessions.length - confirmedCount;
 
       document.getElementById("player-availability").innerHTML = `
-        <div style="max-width:600px;margin:0 auto">
+        <div style="max-width:600px;margin:0 auto;padding:0 2px">
 
-          <!-- One-tap confirm all -->
-          <div style="border:1.5px solid ${allAvailable ? 'var(--green)' : 'var(--line)'};border-radius:14px;padding:18px 20px;margin-bottom:18px;background:${allAvailable ? 'rgba(16,185,129,0.07)' : 'var(--panel)'}">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <!-- Summary banner -->
+          <div style="border:1.5px solid ${allAvailable ? '#16a34a' : pendingCount > 0 ? 'var(--line)' : 'var(--green)'};border-radius:14px;padding:18px 20px;margin-bottom:16px;background:${allAvailable ? 'rgba(16,185,129,0.08)' : 'var(--panel)'}">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
               <div>
-                <strong style="font-size:15px;display:block">${allAvailable ? 'All sessions confirmed' : 'Confirm everything this week'}</strong>
-                <span style="font-size:12px;color:var(--muted)">${allAvailable ? 'Tap a session below to change a response.' : pendingCount > 0 ? pendingCount + ' session' + (pendingCount > 1 ? 's' : '') + ' still need your answer.' : 'All responses submitted.'}</span>
+                <strong style="font-size:16px;display:block;margin-bottom:3px">${allAvailable ? '✅ All sessions confirmed' : pendingCount > 0 ? `${pendingCount} session${pendingCount > 1 ? 's' : ''} need${pendingCount === 1 ? 's' : ''} your answer` : 'All responses submitted'}</strong>
+                <span style="font-size:12px;color:var(--muted)">${allAvailable ? 'Tap any card below to update your answer.' : `${confirmedCount} of ${sessions.length} confirmed.`}</span>
               </div>
-              ${!allAvailable ? `<button type="button" onclick="setAllAvailable()"
-                style="min-height:42px;padding:0 22px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;
-                  border:2px solid var(--green);background:transparent;color:var(--green);white-space:nowrap">
-                Yes — available for all
+              ${pendingCount > 0 ? `<button type="button" onclick="setAllAvailable()"
+                style="min-height:44px;padding:0 20px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;
+                  border:2px solid #16a34a;background:transparent;color:#16a34a;white-space:nowrap;flex-shrink:0">
+                Yes to all
               </button>` : ''}
             </div>
           </div>
 
-          <!-- Per-session cards (dynamic from state.schedule) -->
-          ${sessions.map(s => availabilityBlock(player, sessionKey(s.id), sessionLabel(s))).join('')}
+          <!-- Per-session cards -->
+          ${sessions.map(s => availabilityBlock(player, s)).join('')}
 
-          ${sessions.length === 0 ? `<p class="muted" style="text-align:center;padding:20px">No sessions scheduled yet.</p>` : ''}
+          ${sessions.length === 0 ? `<p class="muted" style="text-align:center;padding:30px">No sessions scheduled yet — check back soon.</p>` : ''}
         </div>`;
     }
 
-    function availabilityBlock(player, key, label) {
+    function availabilityBlock(player, session) {
+      const key           = sessionKey(session.id);
       const current       = player[key] || 'no-reply';
       const currentReason = player[key + 'Reason'] || '';
       const isPending     = _reasonPickerOpen?.key === key;
       const pendingStatus = isPending ? _reasonPickerOpen.status : null;
       const displayStatus = isPending ? pendingStatus : (current === 'injured' ? 'unavailable' : current);
 
-      const statusColors = {
-        available:   { border:'#16a34a', accent:'#16a34a' },
-        unavailable: { border:'#dc2626', accent:'#dc2626' },
-        maybe:       { border:'#d97706', accent:'#d97706' },
-        'no-reply':  { border:'var(--line)', accent:'var(--muted)' },
-      };
-      const s = statusColors[displayStatus] || statusColors['no-reply'];
+      const borderColors = { available:'#16a34a', unavailable:'#dc2626', maybe:'#d97706', 'no-reply':'var(--line)' };
+      const border = borderColors[displayStatus] || 'var(--line)';
+
+      const icon  = sessionTypeIcon(session.type);
+      const title = session.title || session.id;
+      const meta  = [session.date, session.focus].filter(Boolean).join(' · ');
 
       const selBtn = (val, btnLabel, color) => {
         const isActive = isPending
           ? val === pendingStatus
           : (val === current || (val === 'unavailable' && current === 'injured'));
-        return `<button type="button" onclick="selectAvailabilityStatusPending('${key}','${val}')"
-          style="min-height:44px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.14s;
+        return `<button type="button" class="avail-btn" onclick="selectAvailabilityStatusPending('${key}','${val}')"
+          style="min-height:48px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.14s;
             border:2px solid ${color};
             background:${isActive ? color : 'transparent'};
             color:${isActive ? '#060b12' : color}">${btnLabel}</button>`;
       };
 
       const reasonBadge = !isPending && currentReason ? `
-        <div style="margin-top:7px;font-size:11px;color:${currentReason==='injury'?'#f87171':'var(--muted)'};display:flex;align-items:center;gap:6px">
-          ${currentReason === 'injury' ? '<span style="color:#f87171;font-weight:700">⚠ Injury</span>' : `Reason: <strong>${REASON_LABELS[currentReason] || currentReason}</strong>`}
+        <div style="margin-top:8px;font-size:11px;color:${currentReason==='injury'?'#f87171':'var(--muted)'};display:flex;align-items:center;gap:6px">
+          ${currentReason === 'injury' ? '<span style="color:#f87171;font-weight:700">⚠ Injury flagged</span>' : `Reason: <strong>${REASON_LABELS[currentReason] || currentReason}</strong>`}
           <button type="button" onclick="selectAvailabilityStatusPending('${key}','${current === 'injured' ? 'unavailable' : current}')"
             style="font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;padding:0">change</button>
         </div>` : '';
 
       const reasonPicker = isPending ? `
-        <div style="margin-top:10px;padding:12px 14px;background:rgba(255,255,255,0.04);border-radius:10px;border:1px solid rgba(255,255,255,0.1)">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:9px;text-transform:uppercase;letter-spacing:.05em">
+        <div style="margin-top:12px;padding:14px;background:rgba(255,255,255,0.04);border-radius:10px;border:1px solid rgba(255,255,255,0.1)">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">
             ${pendingStatus === 'maybe' ? "What's making you unsure?" : "Why can't you make it?"}&nbsp;<span style="opacity:.5;font-weight:400;text-transform:none">(optional)</span>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:9px">
-            ${[['injury','Injury','#f87171'],['work','Work','#94a3b8'],['holiday','Holiday','#38bdf8'],['family','Family','#a78bfa'],['other','Other','#64748b']].map(([r,l,c]) => `
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:10px">
+            ${[['injury','⚠ Injury','#f87171'],['work','Work','#94a3b8'],['holiday','Holiday','#38bdf8'],['family','Family','#a78bfa'],['other','Other','#64748b']].map(([r,l,c]) => `
               <button type="button" onclick="setPlayerAvailability('${key}','${pendingStatus}','${r}')"
-                style="padding:8px 4px;border-radius:8px;font-size:12px;font-weight:700;border:1.5px solid ${c};color:${c};background:transparent;cursor:pointer;transition:all .12s">${l}</button>`).join('')}
+                style="padding:10px 4px;border-radius:8px;font-size:12px;font-weight:700;border:1.5px solid ${c};color:${c};background:transparent;cursor:pointer;transition:all .12s">${l}</button>`).join('')}
           </div>
-          <div style="font-size:11px;color:var(--muted)">
+          <div style="display:flex;gap:12px;font-size:11px;color:var(--muted)">
             <button type="button" onclick="setPlayerAvailability('${key}','${pendingStatus}','')"
-              style="color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;font-size:11px">
-              Skip — save without a reason
+              style="color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;font-size:12px">
+              Skip — no reason
             </button>
-            &nbsp;·&nbsp;
             <button type="button" onclick="cancelReasonPicker()"
-              style="color:var(--muted);background:none;border:none;cursor:pointer;font-size:11px">Cancel</button>
+              style="color:var(--muted);background:none;border:none;cursor:pointer;font-size:12px">Cancel</button>
           </div>
         </div>` : '';
 
       return `
-        <div style="border:1.5px solid ${s.border};border-radius:12px;padding:16px 18px;margin-bottom:14px;background:var(--panel)">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-            <strong style="font-size:15px;color:var(--ink)">${esc(label)}</strong>
-            <span style="border:1px solid ${s.border};color:${s.accent};font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;background:${displayStatus==='no-reply'?'transparent':s.border+'20'}">${statusLabel(displayStatus)}</span>
+        <div class="avail-player-card" style="border:1.5px solid ${border};background:var(--panel);margin-bottom:14px">
+          <div class="avail-player-card-head">
+            <div>
+              <div class="avail-player-card-title">
+                <span class="session-icon">${icon}</span>
+                <span>${esc(title)}</span>
+              </div>
+              ${meta ? `<div class="avail-player-card-meta">${esc(meta)}</div>` : ''}
+              ${session.deadline ? `<div class="avail-player-card-meta" style="margin-top:3px;color:var(--amber)">⏰ Reply by ${esc(session.deadline)}</div>` : ''}
+            </div>
+            <span class="avail-status-chip" style="border:1px solid ${border};color:${border === 'var(--line)' ? 'var(--muted)' : border};background:${displayStatus === 'no-reply' ? 'transparent' : border + '20'}">${statusLabel(displayStatus)}</span>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div class="avail-btns">
             ${selBtn('available',   'Available',     '#16a34a')}
             ${selBtn('maybe',       'Maybe',         '#d97706')}
-            ${selBtn('unavailable', 'Not available', '#dc2626')}
+            ${selBtn('unavailable', 'Can\'t make it', '#dc2626')}
           </div>
           ${reasonBadge}
           ${reasonPicker}
