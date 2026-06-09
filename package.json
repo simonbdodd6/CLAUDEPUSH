@@ -64,7 +64,8 @@
     "memory:engine": "node memory-engine/memory-engine-cli.js",
     "player:development": "node qa/player-development/player-development-cli.js",
     "copilot": "node ai-copilot/copilot-cli.js",
-    "club:intelligence": "node qa/club-intelligence/club-intelligence-cli.js"
+    "club:intelligence": "node qa/club-intelligence/club-intelligence-cli.js",
+    "workflow:engine": "node workflow-engine/workflow-engine-cli.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"

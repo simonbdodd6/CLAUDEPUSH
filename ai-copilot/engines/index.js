@@ -11,6 +11,7 @@ import './memory-engine-adapter.js';
 import './club-intelligence-adapter.js';   // highest-level — runs before player-dev for squad queries
 import './coaching-engine-adapter.js';
 import './player-development-adapter.js';
+import './workflow-engine-adapter.js';     // execution layer — chains actions into workflows
 import './rugby-knowledge-adapter.js';
 import './discovery-adapter.js';
 import './market-intel-adapter.js';
