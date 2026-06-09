@@ -453,11 +453,15 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
         lastName: account.lastName,
         displayName: account.displayName,
         authProvider: 'legacy-password',
-        passwordSet: false,
+        passwordSet: true,
+        ...hashPassword(account.password),
         createdAt: nowIso(),
         lastLoginAt: null,
       };
       users.push(user);
+      usersChanged = true;
+    } else if (!user.passwordHash) {
+      Object.assign(user, hashPassword(account.password), { passwordSet: true });
       usersChanged = true;
     }
     let member = members.find(item => item.teamId === teamId && item.userId === account.id);
@@ -639,7 +643,7 @@ async function ensureLegacyStaffAccountForLogin(email, password) {
       lastLoginAt: null,
     };
     users.push(user);
-  } else if (!user.passwordHash) {
+  } else {
     Object.assign(user, hashPassword(legacy.password), {
       authProvider: user.authProvider || 'legacy-password',
       passwordSet: true,
@@ -749,7 +753,18 @@ export async function loginUser(input = {}) {
     legacyMember = legacy?.member || null;
     users = await loadUsers();
   }
-  const passwordCheck = user ? verifyPassword(input.password, user) : { ok: false, needsUpgrade: false };
+  let passwordCheck = user ? verifyPassword(input.password, user) : { ok: false, needsUpgrade: false };
+  if (!passwordCheck.ok && !legacyMember) {
+    // User exists but hash is wrong/missing — try legacy staff reset (handles corrupted or
+    // previously-changed passwords on hardcoded dev accounts).
+    const legacy = await ensureLegacyStaffAccountForLogin(email, input.password);
+    if (legacy) {
+      user = legacy.user;
+      legacyMember = legacy.member;
+      users = await loadUsers();
+      passwordCheck = verifyPassword(input.password, user);
+    }
+  }
   if (!user || !passwordCheck.ok) {
     const error = new Error('Invalid email or password');
     error.status = 401;
