@@ -2792,6 +2792,18 @@
         </div>`;
     }
 
+    function copyAvailablePlayers(sessionId) {
+      const session = state.schedule.find(s => s.id === sessionId) || state.schedule[0];
+      if (!session) return;
+      const rows = sessionRows(session.id).filter(r => r.status === 'available');
+      if (!rows.length) { showToast('No available players to copy'); return; }
+      const text = rows.map(({ player }) => player.name).join('\n');
+      navigator.clipboard.writeText(text).then(
+        () => showToast(`${rows.length} names copied to clipboard`),
+        () => { /* fallback: show in prompt */ prompt('Copy these names:', text); }
+      );
+    }
+
     function exportAvailabilityCSV(sessionId) {
       const session = state.schedule.find(s => s.id === sessionId) || state.schedule[0];
       if (!session) { showToast('No session selected'); return; }
@@ -5004,7 +5016,16 @@
                 </div>
                 <div class="msg-status-grid compact">
                   <section class="msg-status-column available">
-                    <header><span>Available</span><strong>${boardAvailable.length}</strong></header>
+                    <header>
+                      <span>Available</span>
+                      <div style="display:flex;align-items:center;gap:6px">
+                        <strong>${boardAvailable.length}</strong>
+                        ${boardAvailable.length > 0 ? `<button type="button"
+                          onclick="copyAvailablePlayers('${selected?.id || ''}')"
+                          style="font-size:10px;padding:1px 7px;min-height:0;border:1px solid rgba(16,185,129,0.35);color:#34d399;background:rgba(16,185,129,0.1);border-radius:999px;cursor:pointer"
+                          title="Copy available player names to clipboard">Copy</button>` : ''}
+                      </div>
+                    </header>
                     <div class="msg-player-list">${playerRows(boardAvailable)}</div>
                   </section>
                   <section class="msg-status-column unavailable">
