@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coach's Eye Mission Control</title>
+  <meta name="theme-color" content="#020617">
+  <link rel="manifest" href="/mission-control/manifest.json">
+  <link rel="icon" href="/icon.svg">
+  <link rel="stylesheet" href="/mission-control/styles.css">
+</head>
+<body>
+  <main class="mission-shell">
+    <canvas id="missionCanvas" aria-label="AI Mission Control project graph"></canvas>
+
+    <a class="home-link" href="/" title="Return to Coach's Eye">🏉 Coach's Eye</a>
+
+    <section class="glass overlay-left" aria-label="Deployment status">
+      <span class="kicker">Mission Control</span>
+      <strong id="deploymentStatus">SYNCING</strong>
+      <small id="branchStatus">branch: loading</small>
+      <small id="commitStatus">commit: loading</small>
+    </section>
+
+    <section class="glass overlay-right" aria-label="Live metrics">
+      <div><span>Users</span><strong id="activeUsers">0</strong></div>
+      <div><span>Messages</span><strong id="messagesToday">0</strong></div>
+      <div><span>Alerts</span><strong id="notificationsToday">0</strong></div>
+    </section>
+
+    <section id="nodePanel" class="glass node-panel hidden" aria-live="polite"></section>
+
+    <!-- Market Intelligence panel -->
+    <section id="marketPanel" class="glass hidden" aria-label="Market Intelligence" aria-live="polite">
+      <span class="kicker">Market Intelligence</span>
+      <h2>Club &amp; Competitor Research</h2>
+      <div id="marketPanelContent">
+        <p class="mi-empty">Loading market data…</p>
+      </div>
+    </section>
+
+    <!-- Market Intelligence toggle -->
+    <button class="mi-toggle" id="miToggle" type="button" aria-controls="marketPanel" aria-expanded="false">
+      <span class="dot empty" id="miDot"></span>
+      Market Intel
+    </button>
+
+    <!-- Rugby Intelligence panel -->
+    <section id="rugbyPanel" class="glass hidden" aria-label="Rugby Intelligence" aria-live="polite">
+      <span class="kicker">Rugby Intelligence</span>
+      <h2>Knowledge Base</h2>
+      <div id="rugbyPanelContent">
+        <p class="mi-empty">Loading rugby intelligence…</p>
+      </div>
+    </section>
+
+    <!-- Rugby Intelligence toggle -->
+    <button class="ri-toggle" id="riToggle" type="button" aria-controls="rugbyPanel" aria-expanded="false">
+      <span class="dot empty" id="riDot"></span>
+      Rugby Intel
+    </button>
+
+    <!-- Lead Personalisation panel -->
+    <section id="lpPanel" class="glass hidden" aria-label="Personalised Leads" aria-live="polite">
+      <span class="kicker">Lead Personalisation</span>
+      <h2>Personalised Leads</h2>
+      <div id="lpPanelContent">
+        <p class="mi-empty">No personalised leads yet.<br>Run: <code>npm run lead:personalise</code></p>
+      </div>
+    </section>
+
+    <!-- Lead Personalisation toggle -->
+    <button class="lp-toggle" id="lpToggle" type="button" aria-controls="lpPanel" aria-expanded="false">
+      <span class="dot empty" id="lpDot"></span>
+      Leads
+    </button>
+
+    <!-- Discovery card — auto-hidden when no discovery data exists -->
+    <section id="discoveryCard" class="glass discovery-card hidden" aria-label="Discovery stats" aria-live="polite">
+      <span class="kicker">Discovery</span>
+      <div class="disc-stats">
+        <div class="disc-stat"><strong id="discToday">0</strong><span>Today</span></div>
+        <div class="disc-stat"><strong id="discReady">0</strong><span>Ready</span></div>
+        <div class="disc-stat"><strong id="discDupRate">—</strong><span>Dup rate</span></div>
+      </div>
+      <div class="disc-meta">
+        <span id="discProviders"></span>
+        <span id="discHealth" class="disc-health"></span>
+      </div>
+      <div id="discCountries" class="disc-countries"></div>
+    </section>
+
+    <div class="ticker-wrap">
+      <div id="eventTicker" class="ticker">Booting project telemetry...</div>
+    </div>
+
+    <div class="mode-pill" id="modePill">LIVE MODE</div>
+  </main>
+  <script type="module" src="/mission-control/app.js"></script>
+</body>
+</html>

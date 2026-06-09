@@ -1,0 +1,37 @@
+{
+  "id": "coach_se_n_doyle_04vvwa1",
+  "type": "coach",
+  "version": 1,
+  "firstSeen": "2026-06-09T09:43:27.229Z",
+  "lastUpdated": "2026-06-09T09:43:27.230Z",
+  "updateCount": 0,
+  "summary": "Coach Seán Doyle. at Kildare Valley RFC. Age groups: U16, U18, Senior. Philosophy: player-centred. Qualified: IRFU Level 2",
+  "history": [],
+  "tags": [],
+  "embedding": null,
+  "core": {
+    "name": "Seán Doyle",
+    "club": "Kildare Valley RFC",
+    "clubId": null,
+    "qualifications": [
+      "IRFU Level 2"
+    ],
+    "ageGroupsFocus": [
+      "U16",
+      "U18",
+      "Senior"
+    ],
+    "yearsCoaching": null,
+    "philosophy": "player-centred",
+    "appUserId": null
+  },
+  "teams": [],
+  "seasons": [],
+  "aiGenerations": 0,
+  "preferences": {
+    "preferredDrills": [],
+    "preferredCondition": null,
+    "philosophyNotes": []
+  },
+  "notes": null
+}

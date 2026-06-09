@@ -1,0 +1,504 @@
+{
+  "status": "passed",
+  "runId": "2026-06-06T10-24-11-433Z",
+  "startedAt": "2026-06-06T10:24:11.435Z",
+  "finishedAt": "2026-06-06T10:24:20.641Z",
+  "baseURL": "http://127.0.0.1:3000",
+  "steps": [
+    {
+      "name": "Open app",
+      "status": "passed",
+      "startedAt": "2026-06-06T10:24:16.392Z",
+      "url": "http://127.0.0.1:3000/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/phase4-2026-06-06T10-24-11-433Z/01-open-app.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/phase4-2026-06-06T10-24-11-433Z/01-open-app.html",
+      "finishedAt": "2026-06-06T10:24:18.590Z"
+    },
+    {
+      "name": "Log in as Simon Coach",
+      "status": "passed",
+      "startedAt": "2026-06-06T10:24:18.593Z",
+      "url": "http://127.0.0.1:3000/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/phase4-2026-06-06T10-24-11-433Z/02-log-in-as-simon-coach.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/phase4-2026-06-06T10-24-11-433Z/02-log-in-as-simon-coach.html",
+      "finishedAt": "2026-06-06T10:24:19.811Z"
+    },
+    {
+      "name": "Navigate to Members",
+      "status": "passed",
+      "startedAt": "2026-06-06T10:24:19.813Z",
+      "url": "http://127.0.0.1:3000/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/phase4-2026-06-06T10-24-11-433Z/03-navigate-to-members.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/phase4-2026-06-06T10-24-11-433Z/03-navigate-to-members.html",
+      "finishedAt": "2026-06-06T10:24:20.640Z"
+    }
+  ],
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/chat?action=conversations&userId=coach-demo",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:17.420Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/chat?action=messages&convId=coach&since=0&userId=coach-demo",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:17.421Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/config",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:17.422Z"
+    },
+    {
+      "type": "warning",
+      "text": "SW registration failed: SyntaxError: Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON",
+      "location": {
+        "url": "http://127.0.0.1:3000/",
+        "line": 2385,
+        "column": 16,
+        "lineNumber": 2385,
+        "columnNumber": 16
+      },
+      "at": "2026-06-06T10:24:17.422Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/schedules",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:17.423Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/templates",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:17.524Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/templates",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:17.525Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/log?limit=10",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:17.525Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/identity?action=session",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:17.525Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/chat?action=conversations&userId=coach-demo",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:17.529Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/favicon.ico",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:17.537Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/identity",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:17.551Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/invite",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:17.551Z"
+    },
+    {
+      "type": "verbose",
+      "text": "[DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o",
+      "location": {
+        "url": "http://127.0.0.1:3000/",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:18.810Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 501 (Unsupported method ('POST'))",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/identity",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:19.220Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/chat?action=messages&convId=coach&since=1780741456752&userId=coach-demo",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:19.277Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/chat?action=typing&convId=coach&userId=coach-demo",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:19.282Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/chat?action=conversations&userId=coach-demo",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:19.952Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/identity?action=session",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:19.952Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/schedules",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:19.955Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/templates",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:19.988Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/log?limit=10",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:19.988Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/invite",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:20.023Z"
+    },
+    {
+      "type": "verbose",
+      "text": "[DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o",
+      "location": {
+        "url": "http://127.0.0.1:3000/",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:20.027Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/identity",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:20.028Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/templates",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:20.028Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (File not found)",
+      "location": {
+        "url": "http://127.0.0.1:3000/api/invite",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T10:24:20.066Z"
+    }
+  ],
+  "pageErrors": [],
+  "requestFailures": [],
+  "responses": [
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/chat?action=conversations&userId=coach-demo",
+      "at": "2026-06-06T10:24:17.419Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/chat?action=messages&convId=coach&since=0&userId=coach-demo",
+      "at": "2026-06-06T10:24:17.421Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/config",
+      "at": "2026-06-06T10:24:17.422Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/schedules",
+      "at": "2026-06-06T10:24:17.422Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/templates",
+      "at": "2026-06-06T10:24:17.524Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/templates",
+      "at": "2026-06-06T10:24:17.524Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/log?limit=10",
+      "at": "2026-06-06T10:24:17.525Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/identity?action=session",
+      "at": "2026-06-06T10:24:17.525Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/chat?action=conversations&userId=coach-demo",
+      "at": "2026-06-06T10:24:17.528Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/identity",
+      "at": "2026-06-06T10:24:17.551Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/invite",
+      "at": "2026-06-06T10:24:17.551Z"
+    },
+    {
+      "status": 501,
+      "statusText": "Unsupported method ('POST')",
+      "url": "http://127.0.0.1:3000/api/identity",
+      "at": "2026-06-06T10:24:19.220Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/chat?action=messages&convId=coach&since=1780741456752&userId=coach-demo",
+      "at": "2026-06-06T10:24:19.277Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/chat?action=typing&convId=coach&userId=coach-demo",
+      "at": "2026-06-06T10:24:19.282Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/chat?action=conversations&userId=coach-demo",
+      "at": "2026-06-06T10:24:19.952Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/identity?action=session",
+      "at": "2026-06-06T10:24:19.952Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/schedules",
+      "at": "2026-06-06T10:24:19.955Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/templates",
+      "at": "2026-06-06T10:24:19.988Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/log?limit=10",
+      "at": "2026-06-06T10:24:19.988Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/invite",
+      "at": "2026-06-06T10:24:20.023Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/identity",
+      "at": "2026-06-06T10:24:20.027Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/templates",
+      "at": "2026-06-06T10:24:20.028Z"
+    },
+    {
+      "status": 404,
+      "statusText": "File not found",
+      "url": "http://127.0.0.1:3000/api/invite",
+      "at": "2026-06-06T10:24:20.066Z"
+    }
+  ]
+}

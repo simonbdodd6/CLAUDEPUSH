@@ -1,0 +1,232 @@
+{
+  "id": "team_u16_0376rcx",
+  "type": "team",
+  "version": 1,
+  "firstSeen": "2026-06-09T10:15:44.180Z",
+  "lastUpdated": "2026-06-09T10:40:40.261Z",
+  "updateCount": 5,
+  "summary": "U16 (community). Record: 0W-0L-0D. 5 sessions recorded",
+  "history": [
+    {
+      "id": "team_u16_0376rcx",
+      "type": "team",
+      "version": 1,
+      "firstSeen": "2026-06-09T10:15:44.180Z",
+      "lastUpdated": "2026-06-09T10:15:44.181Z",
+      "updateCount": 0,
+      "tags": [],
+      "core": {
+        "name": null,
+        "ageGroup": "U16",
+        "level": "community",
+        "club": null,
+        "clubId": null,
+        "coachIds": [],
+        "appTeamId": null
+      },
+      "season": {
+        "current": null,
+        "phase": null,
+        "record": {
+          "wins": 0,
+          "losses": 0,
+          "draws": 0
+        }
+      },
+      "roster": [],
+      "sessionCount": 0,
+      "programmes": [],
+      "systemOfPlay": null,
+      "keyFocusAreas": [],
+      "notes": null,
+      "_snapshotAt": "2026-06-09T10:15:44.186Z"
+    },
+    {
+      "id": "team_u16_0376rcx",
+      "type": "team",
+      "version": 1,
+      "firstSeen": "2026-06-09T10:15:44.180Z",
+      "lastUpdated": "2026-06-09T10:15:44.186Z",
+      "updateCount": 1,
+      "tags": [],
+      "core": {
+        "name": null,
+        "ageGroup": "U16",
+        "level": "community",
+        "club": null,
+        "clubId": null,
+        "coachIds": [],
+        "appTeamId": null
+      },
+      "season": {
+        "current": null,
+        "phase": null,
+        "record": {
+          "wins": 0,
+          "losses": 0,
+          "draws": 0
+        }
+      },
+      "roster": [],
+      "sessionCount": 1,
+      "programmes": [],
+      "systemOfPlay": null,
+      "keyFocusAreas": [],
+      "notes": null,
+      "sessions": [
+        "session_20260609_05viril"
+      ],
+      "_snapshotAt": "2026-06-09T10:16:18.756Z"
+    },
+    {
+      "id": "team_u16_0376rcx",
+      "type": "team",
+      "version": 1,
+      "firstSeen": "2026-06-09T10:15:44.180Z",
+      "lastUpdated": "2026-06-09T10:16:18.756Z",
+      "updateCount": 2,
+      "tags": [],
+      "core": {
+        "name": null,
+        "ageGroup": "U16",
+        "level": "community",
+        "club": null,
+        "clubId": null,
+        "coachIds": [],
+        "appTeamId": null
+      },
+      "season": {
+        "current": null,
+        "phase": null,
+        "record": {
+          "wins": 0,
+          "losses": 0,
+          "draws": 0
+        }
+      },
+      "roster": [],
+      "sessionCount": 2,
+      "programmes": [],
+      "systemOfPlay": null,
+      "keyFocusAreas": [],
+      "notes": null,
+      "sessions": [
+        "session_20260609_05viril",
+        "session_20260609_05viril"
+      ],
+      "_snapshotAt": "2026-06-09T10:16:27.814Z"
+    },
+    {
+      "id": "team_u16_0376rcx",
+      "type": "team",
+      "version": 1,
+      "firstSeen": "2026-06-09T10:15:44.180Z",
+      "lastUpdated": "2026-06-09T10:16:27.814Z",
+      "updateCount": 3,
+      "tags": [],
+      "core": {
+        "name": null,
+        "ageGroup": "U16",
+        "level": "community",
+        "club": null,
+        "clubId": null,
+        "coachIds": [],
+        "appTeamId": null
+      },
+      "season": {
+        "current": null,
+        "phase": null,
+        "record": {
+          "wins": 0,
+          "losses": 0,
+          "draws": 0
+        }
+      },
+      "roster": [],
+      "sessionCount": 3,
+      "programmes": [],
+      "systemOfPlay": null,
+      "keyFocusAreas": [],
+      "notes": null,
+      "sessions": [
+        "session_20260609_05viril",
+        "session_20260609_05viril",
+        "session_20260609_05viril"
+      ],
+      "_snapshotAt": "2026-06-09T10:16:34.663Z"
+    },
+    {
+      "id": "team_u16_0376rcx",
+      "type": "team",
+      "version": 1,
+      "firstSeen": "2026-06-09T10:15:44.180Z",
+      "lastUpdated": "2026-06-09T10:16:34.663Z",
+      "updateCount": 4,
+      "tags": [],
+      "core": {
+        "name": null,
+        "ageGroup": "U16",
+        "level": "community",
+        "club": null,
+        "clubId": null,
+        "coachIds": [],
+        "appTeamId": null
+      },
+      "season": {
+        "current": null,
+        "phase": null,
+        "record": {
+          "wins": 0,
+          "losses": 0,
+          "draws": 0
+        }
+      },
+      "roster": [],
+      "sessionCount": 4,
+      "programmes": [],
+      "systemOfPlay": null,
+      "keyFocusAreas": [],
+      "notes": null,
+      "sessions": [
+        "session_20260609_05viril",
+        "session_20260609_05viril",
+        "session_20260609_05viril",
+        "session_20260609_05viril"
+      ],
+      "_snapshotAt": "2026-06-09T10:40:40.261Z"
+    }
+  ],
+  "tags": [],
+  "embedding": null,
+  "core": {
+    "name": null,
+    "ageGroup": "U16",
+    "level": "community",
+    "club": null,
+    "clubId": null,
+    "coachIds": [],
+    "appTeamId": null
+  },
+  "season": {
+    "current": null,
+    "phase": null,
+    "record": {
+      "wins": 0,
+      "losses": 0,
+      "draws": 0
+    }
+  },
+  "roster": [],
+  "sessionCount": 5,
+  "programmes": [],
+  "systemOfPlay": null,
+  "keyFocusAreas": [],
+  "notes": null,
+  "sessions": [
+    "session_20260609_05viril",
+    "session_20260609_05viril",
+    "session_20260609_05viril",
+    "session_20260609_05viril",
+    "session_20260609_05viril"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "_meta": { "club": "Kildare Valley RFC", "isMock": true },
+  "injuries": [
+    { "id": "inj001", "playerId": "p003", "playerName": "Darragh Byrne", "type": "Hamstring strain", "severity": "moderate", "status": "active", "dateReported": "2025-11-18", "expectedReturn": "2025-12-16", "clearedDate": null, "notes": "Grade 2 strain. Physio twice weekly.", "_isMock": true },
+    { "id": "inj002", "playerId": "p015", "playerName": "Éanna Quinn", "type": "Ankle sprain", "severity": "mild", "status": "active", "dateReported": "2025-11-28", "expectedReturn": "2025-12-12", "clearedDate": null, "notes": "RICE protocol. Low impact training only.", "_isMock": true },
+    { "id": "inj003", "playerId": "p011", "playerName": "Fionn Kavanagh", "type": "Concussion", "severity": "moderate", "status": "active", "dateReported": "2025-11-30", "expectedReturn": "2025-12-21", "clearedDate": null, "notes": "Following IRFU concussion management protocol. Cleared for return to non-contact week 2.", "_isMock": true },
+    { "id": "inj004", "playerId": "p006", "playerName": "Pádraig Brennan", "type": "Shoulder contusion", "severity": "mild", "status": "cleared", "dateReported": "2025-10-14", "expectedReturn": "2025-10-28", "clearedDate": "2025-10-27", "notes": "Fully cleared. No restrictions.", "_isMock": true }
+  ]
+}

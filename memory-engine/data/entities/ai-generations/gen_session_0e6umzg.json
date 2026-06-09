@@ -1,0 +1,22 @@
+{
+  "id": "gen_session_0e6umzg",
+  "type": "ai-generation",
+  "version": 1,
+  "firstSeen": "2026-06-09T10:16:34.754Z",
+  "lastUpdated": "2026-06-09T10:16:34.754Z",
+  "updateCount": 0,
+  "summary": "session generation via none (0ms)",
+  "history": [],
+  "tags": [],
+  "embedding": null,
+  "requestType": "session",
+  "entityType": "player",
+  "entityId": null,
+  "provider": "none",
+  "model": null,
+  "inputHash": null,
+  "elapsed": 0,
+  "kbItemsUsed": 4,
+  "outputPreview": "General fitness and skills — Senior",
+  "coachReviewed": false
+}

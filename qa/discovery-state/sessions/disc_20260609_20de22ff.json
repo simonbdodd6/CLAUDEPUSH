@@ -1,0 +1,32 @@
+{
+  "sessionId": "disc_20260609_20de22ff",
+  "startedAt": "2026-06-09T10:15:44.427Z",
+  "completedAt": "2026-06-09T10:15:44.481Z",
+  "providers": [
+    "csv",
+    "manual",
+    "rugby-directory"
+  ],
+  "newCountries": [
+    "Ireland",
+    "England",
+    "France",
+    "New Zealand",
+    "Scotland",
+    "Wales",
+    "South Africa",
+    "Spain"
+  ],
+  "stats": {
+    "discovered": 8,
+    "normalized": 8,
+    "unique": 8,
+    "duplicates": 0,
+    "duplicateRate": 0,
+    "readyForScoring": 8,
+    "newLeads": 8,
+    "updatedLeads": 0,
+    "errors": 0,
+    "totalLeadsInDb": 16
+  }
+}

@@ -1,0 +1,682 @@
+{
+  "workflow": "workflow-12",
+  "runId": "2026-06-08T14-20-59-249Z",
+  "startedAt": "2026-06-08T14:20:59.249Z",
+  "finishedAt": "2026-06-08T14:21:20.057Z",
+  "status": "passed",
+  "baseURL": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app",
+  "commit": "7b78d44",
+  "loginMethod": "dev-login-evaluate",
+  "steps": [
+    {
+      "name": "open-app",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:21:00.915Z",
+      "finishedAt": "2026-06-08T14:21:03.409Z",
+      "screenshot": "qa/artifacts/workflow12-2026-06-08T14-20-59-249Z/01-open-app.png"
+    },
+    {
+      "name": "coach-login",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:21:03.895Z",
+      "finishedAt": "2026-06-08T14:21:05.754Z",
+      "screenshot": "qa/artifacts/workflow12-2026-06-08T14-20-59-249Z/02-coach-login.png"
+    },
+    {
+      "name": "navigate-to-matchday",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:21:06.145Z",
+      "finishedAt": "2026-06-08T14:21:07.239Z",
+      "screenshot": "qa/artifacts/workflow12-2026-06-08T14-20-59-249Z/03-navigate-to-matchday.png"
+    },
+    {
+      "name": "fill-squad-slots",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:21:07.515Z",
+      "finishedAt": "2026-06-08T14:21:07.777Z",
+      "screenshot": "qa/artifacts/workflow12-2026-06-08T14-20-59-249Z/04-fill-squad-slots.png"
+    },
+    {
+      "name": "save-selection",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:21:08.095Z",
+      "finishedAt": "2026-06-08T14:21:09.775Z",
+      "screenshot": "qa/artifacts/workflow12-2026-06-08T14-20-59-249Z/05-save-selection.png"
+    },
+    {
+      "name": "api-verify-save",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:21:10.101Z",
+      "finishedAt": "2026-06-08T14:21:10.378Z",
+      "screenshot": "qa/artifacts/workflow12-2026-06-08T14-20-59-249Z/06-api-verify-save.png"
+    },
+    {
+      "name": "navigate-away-and-back",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:21:10.825Z",
+      "finishedAt": "2026-06-08T14:21:12.894Z",
+      "screenshot": "qa/artifacts/workflow12-2026-06-08T14-20-59-249Z/07-navigate-away-and-back.png"
+    },
+    {
+      "name": "verify-persistence-after-reload",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:21:13.456Z",
+      "finishedAt": "2026-06-08T14:21:13.553Z",
+      "screenshot": "qa/artifacts/workflow12-2026-06-08T14-20-59-249Z/08-verify-persistence-after-reload.png"
+    },
+    {
+      "name": "publish-to-squad",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:21:13.807Z",
+      "finishedAt": "2026-06-08T14:21:17.233Z",
+      "screenshot": "qa/artifacts/workflow12-2026-06-08T14-20-59-249Z/09-publish-to-squad.png"
+    },
+    {
+      "name": "verify-published-state",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:21:17.753Z",
+      "finishedAt": "2026-06-08T14:21:17.841Z",
+      "screenshot": "qa/artifacts/workflow12-2026-06-08T14-20-59-249Z/10-verify-published-state.png"
+    },
+    {
+      "name": "api-verify-publish",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:21:18.287Z",
+      "finishedAt": "2026-06-08T14:21:18.592Z",
+      "screenshot": "qa/artifacts/workflow12-2026-06-08T14-20-59-249Z/11-api-verify-publish.png"
+    },
+    {
+      "name": "player-selection-shows-published",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:21:19.080Z",
+      "finishedAt": "2026-06-08T14:21:19.668Z",
+      "screenshot": "qa/artifacts/workflow12-2026-06-08T14-20-59-249Z/12-player-selection-shows-published.png"
+    }
+  ],
+  "toasts": [
+    {
+      "text": "Welcome Simon Coach",
+      "ts": 1780928465568
+    },
+    {
+      "text": "Selection saved ✓",
+      "ts": 1780928468860
+    },
+    {
+      "text": "Push sent to 9 devices ✓",
+      "ts": 1780928476239
+    },
+    {
+      "text": "Selection published ✓",
+      "ts": 1780928476240
+    }
+  ],
+  "pageErrors": [
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 401 ()",
+    "Failed to load resource: the server responded with a status of 404 ()",
+    "Failed to load resource: the server responded with a status of 404 ()"
+  ],
+  "apiCalls": [
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 401,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 401,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/fixtures",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/matchday",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 401,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 401,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 401,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 401,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 401,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 401,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 401,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 401,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 401,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 401,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 401,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 401,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 401,
+      "redisOps": 8
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/invite",
+      "status": 200,
+      "redisOps": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 200,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/matchday",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/fixtures",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/invite",
+      "status": 200,
+      "redisOps": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 200,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/invite",
+      "status": 200,
+      "redisOps": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 200,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "POST",
+      "path": "/api/matchday",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/invite",
+      "status": 200,
+      "redisOps": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 200,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/matchday",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/invite",
+      "status": 200,
+      "redisOps": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/availability",
+      "status": 200,
+      "redisOps": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/availability",
+      "status": 200,
+      "redisOps": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/availability",
+      "status": 200,
+      "redisOps": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 200,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/invite",
+      "status": 200,
+      "redisOps": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/fixtures",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/matchday",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/invite",
+      "status": 200,
+      "redisOps": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 200,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "POST",
+      "path": "/api/matchday",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/invite",
+      "status": 200,
+      "redisOps": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 200,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "POST",
+      "path": "/api/push",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 404,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat",
+      "status": 404,
+      "redisOps": 8
+    },
+    {
+      "method": "GET",
+      "path": "/api/matchday",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity",
+      "status": 200,
+      "redisOps": 6
+    },
+    {
+      "method": "GET",
+      "path": "/api/invite",
+      "status": 200,
+      "redisOps": 4
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-config",
+      "status": 200,
+      "redisOps": 2
+    }
+  ],
+  "missingSelectorWarnings": []
+}

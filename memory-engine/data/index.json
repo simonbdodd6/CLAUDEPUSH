@@ -1,0 +1,229 @@
+{
+  "player_ciar_n_murphy_0shhe5u": {
+    "id": "player_ciar_n_murphy_0shhe5u",
+    "type": "player",
+    "summary": "Ciarán Murphy, 17yo U18 Prop. (Kildare Valley RFC). Intermediate level. 2 programmes on record. 67% attendance. 2 AI generations",
+    "tags": [],
+    "lastUpdated": "2026-06-09T09:43:27.320Z",
+    "updateCount": 5,
+    "name": "Ciarán Murphy",
+    "position": "Prop",
+    "ageGroup": "U18",
+    "club": "Kildare Valley RFC"
+  },
+  "coach_se_n_doyle_04vvwa1": {
+    "id": "coach_se_n_doyle_04vvwa1",
+    "type": "coach",
+    "summary": "Coach Seán Doyle. at Kildare Valley RFC. Age groups: U16, U18, Senior. Philosophy: player-centred. Qualified: IRFU Level 2",
+    "tags": [],
+    "lastUpdated": "2026-06-09T09:43:27.230Z",
+    "updateCount": 0,
+    "name": "Seán Doyle",
+    "club": "Kildare Valley RFC"
+  },
+  "team_u16_0yzgvy6": {
+    "id": "team_u16_0yzgvy6",
+    "type": "team",
+    "summary": "U16 (community). at Kildare Valley RFC. Phase: preseason. Record: 0W-0L-0D. Focus: breakdown, set-piece. 1 session recorded",
+    "tags": [],
+    "lastUpdated": "2026-06-09T09:43:27.333Z",
+    "updateCount": 1,
+    "ageGroup": "U16",
+    "club": "Kildare Valley RFC",
+    "level": "community"
+  },
+  "season_2024_25_season_0y13wi0": {
+    "id": "season_2024_25_season_0y13wi0",
+    "type": "season",
+    "summary": "2024/25 Season. (team: team_u16_0yzgvy6). 26 weeks. Phase: completed. Record: 0W-0L-0D. Objectives: Develop set-piece platform, Improve breakdown discipline. Status: active",
+    "tags": [],
+    "lastUpdated": "2026-06-09T09:43:27.246Z",
+    "updateCount": 0,
+    "team": "team_u16_0yzgvy6",
+    "label": "2024/25 Season"
+  },
+  "gen_programme_0uktocb": {
+    "id": "gen_programme_0uktocb",
+    "type": "ai-generation",
+    "summary": "programme generation via none (26ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T09:43:27.292Z",
+    "updateCount": 0
+  },
+  "programme_programme_0tyvpg9": {
+    "id": "programme_programme_0tyvpg9",
+    "type": "programme",
+    "summary": "Preseason programme. for Prop. Goals: Strength, Mass, Scrummaging Power. 8 weeks. Goals: Strength/Mass/Scrummaging Power. Phase 1: Foundation Phase. Exercises: Barbell Back Squat, Romanian Deadlift, Bulgarian Split Squat. 2 training blocks. via template. Status: completed. Started: 2026-06-09. Ended: 2026-06-09. Coach feedback: Player completed all 8 weeks. Good progress on squat and dea",
+    "tags": [
+      "Preseason",
+      "Prop",
+      "U18"
+    ],
+    "lastUpdated": "2026-06-09T09:43:27.308Z",
+    "updateCount": 1,
+    "player": "player_ciar_n_murphy_0shhe5u",
+    "requestType": "programme",
+    "status": "completed"
+  },
+  "gen_programme_0uktoza": {
+    "id": "gen_programme_0uktoza",
+    "type": "ai-generation",
+    "summary": "programme generation via none (1ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T09:43:27.314Z",
+    "updateCount": 0
+  },
+  "programme_programme_0tln9ti": {
+    "id": "programme_programme_0tln9ti",
+    "type": "programme",
+    "summary": "Early Season programme for Prop — 4 weeks. Goals: Power/Speed. Phase 1: Foundation Phase. Exercises: Barbell Back Squat, Romanian Deadlift, Bulgarian Split Squat. 2 training blocks. via template",
+    "tags": [
+      "Early Season",
+      "Prop",
+      "U18"
+    ],
+    "lastUpdated": "2026-06-09T09:43:27.315Z",
+    "updateCount": 0,
+    "player": "player_ciar_n_murphy_0shhe5u",
+    "requestType": "programme",
+    "status": "active"
+  },
+  "gen_session_0skk6y5": {
+    "id": "gen_session_0skk6y5",
+    "type": "ai-generation",
+    "summary": "session generation via none (2ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T09:43:27.327Z",
+    "updateCount": 0
+  },
+  "session_20260609_07m9hld": {
+    "id": "session_20260609_07m9hld",
+    "type": "session",
+    "summary": "Session 2026-06-09. Theme: breakdown and rucking technique — U16. 90min",
+    "tags": [],
+    "lastUpdated": "2026-06-09T09:43:27.329Z",
+    "updateCount": 0,
+    "team": "team_u16_0yzgvy6",
+    "ageGroup": "U16",
+    "sessionDate": "2026-06-09",
+    "focus": "breakdown and rucking technique"
+  },
+  "gen_session_0eadvah": {
+    "id": "gen_session_0eadvah",
+    "type": "ai-generation",
+    "summary": "session generation via none (16ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:15:44.170Z",
+    "updateCount": 0
+  },
+  "team_u16_0376rcx": {
+    "id": "team_u16_0376rcx",
+    "type": "team",
+    "summary": "U16 (community). Record: 0W-0L-0D. 5 sessions recorded",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:40:40.261Z",
+    "updateCount": 5,
+    "ageGroup": "U16",
+    "club": null,
+    "level": "community"
+  },
+  "session_20260609_05viril": {
+    "id": "session_20260609_05viril",
+    "type": "session",
+    "summary": "Session 2026-06-09. Theme: General fitness and skills — U16. 90min",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:40:40.256Z",
+    "updateCount": 4,
+    "team": "team_u16_0376rcx",
+    "ageGroup": "U16",
+    "sessionDate": "2026-06-09",
+    "focus": "General fitness and skills"
+  },
+  "gen_session_0eadtpe": {
+    "id": "gen_session_0eadtpe",
+    "type": "ai-generation",
+    "summary": "session generation via none (0ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:15:44.340Z",
+    "updateCount": 0
+  },
+  "team_senior_0d2u3uz": {
+    "id": "team_senior_0d2u3uz",
+    "type": "team",
+    "summary": "Senior (community). Record: 0W-0L-0D. 4 sessions recorded",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:16:34.758Z",
+    "updateCount": 4,
+    "ageGroup": "Senior",
+    "club": null,
+    "level": "community"
+  },
+  "session_20260609_02h7zfd": {
+    "id": "session_20260609_02h7zfd",
+    "type": "session",
+    "summary": "Session 2026-06-09. Theme: General fitness and skills — Senior. 90min",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:16:34.755Z",
+    "updateCount": 3,
+    "team": "team_senior_0d2u3uz",
+    "ageGroup": "Senior",
+    "sessionDate": "2026-06-09",
+    "focus": "General fitness and skills"
+  },
+  "gen_session_0e86e8w": {
+    "id": "gen_session_0e86e8w",
+    "type": "ai-generation",
+    "summary": "session generation via none (13ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:16:18.734Z",
+    "updateCount": 0
+  },
+  "gen_session_0e86chf": {
+    "id": "gen_session_0e86chf",
+    "type": "ai-generation",
+    "summary": "session generation via none (1ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:16:18.968Z",
+    "updateCount": 0
+  },
+  "gen_session_0e7hq5a": {
+    "id": "gen_session_0e7hq5a",
+    "type": "ai-generation",
+    "summary": "session generation via none (3ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:16:27.805Z",
+    "updateCount": 0
+  },
+  "gen_session_0e7hpay": {
+    "id": "gen_session_0e7hpay",
+    "type": "ai-generation",
+    "summary": "session generation via none (1ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:16:27.907Z",
+    "updateCount": 0
+  },
+  "gen_session_0e6untm": {
+    "id": "gen_session_0e6untm",
+    "type": "ai-generation",
+    "summary": "session generation via none (3ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:16:34.658Z",
+    "updateCount": 0
+  },
+  "gen_session_0e6umzg": {
+    "id": "gen_session_0e6umzg",
+    "type": "ai-generation",
+    "summary": "session generation via none (0ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:16:34.754Z",
+    "updateCount": 0
+  },
+  "gen_session_0aaxqxn": {
+    "id": "gen_session_0aaxqxn",
+    "type": "ai-generation",
+    "summary": "session generation via none (12ms)",
+    "tags": [],
+    "lastUpdated": "2026-06-09T10:40:40.245Z",
+    "updateCount": 0
+  }
+}

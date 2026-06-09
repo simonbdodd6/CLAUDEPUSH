@@ -1,0 +1,1796 @@
+{
+  "workflow": "workflow-8",
+  "runId": "2026-06-08T14-30-44-936Z",
+  "startedAt": "2026-06-08T14:30:44.938Z",
+  "finishedAt": "2026-06-08T14:31:14.506Z",
+  "status": "passed",
+  "baseURL": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app",
+  "commit": "7b78d44",
+  "playerEmail": "qa.w4+1780928996375@coachseye.test",
+  "playerName": "QA4 Player1780928996375",
+  "cookieFound": true,
+  "postLoginSection": "messages",
+  "duplicateStateCount": null,
+  "expiryEvents": [
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:30:50.643Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:30:50.657Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:30:50.685Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:30:50.685Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "status": 401,
+      "at": "2026-06-08T14:30:50.686Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.057Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.058Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.059Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.060Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.077Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.079Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.079Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.438Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:30:52.951Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:30:52.992Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.062Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.065Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.136Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.137Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.195Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.195Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.219Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.232Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.239Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.298Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.437Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.094Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "endpoint": "/api/invite",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.509Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.511Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.574Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.581Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.682Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.696Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "status": 401,
+      "at": "2026-06-08T14:31:02.086Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:31:03.980Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:31:04.214Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:31:06.379Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:31:06.639Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:31:09.031Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "status": 401,
+      "at": "2026-06-08T14:31:09.212Z"
+    }
+  ],
+  "reloginEvents": [
+    {
+      "method": "credentials",
+      "at": "2026-06-08T14:31:09.120Z"
+    }
+  ],
+  "steps": [
+    {
+      "name": "Open app",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:30:49.506Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/01-open-app.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/01-open-app.html",
+      "finishedAt": "2026-06-08T14:30:52.464Z"
+    },
+    {
+      "name": "Player login",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:30:52.473Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/02-player-login.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/02-player-login.html",
+      "finishedAt": "2026-06-08T14:30:57.042Z"
+    },
+    {
+      "name": "Navigate to Availability section",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:30:57.052Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/03-navigate-to-availability-section.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/03-navigate-to-availability-section.html",
+      "finishedAt": "2026-06-08T14:30:58.048Z"
+    },
+    {
+      "name": "Baseline: set game = Available — POST /api/availability 200",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:30:58.050Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/04-baseline-set-game-available-post-api-availability-200.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/04-baseline-set-game-available-post-api-availability-200.html",
+      "finishedAt": "2026-06-08T14:30:59.582Z"
+    },
+    {
+      "name": "Verify Availability section renders correctly",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:30:59.586Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/05-verify-availability-section-renders-correctly.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/05-verify-availability-section-renders-correctly.html",
+      "finishedAt": "2026-06-08T14:31:00.280Z"
+    },
+    {
+      "name": "Force session expiry (corrupt ce_session cookie)",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:31:00.282Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/06-force-session-expiry-corrupt-ce-session-cookie.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/06-force-session-expiry-corrupt-ce-session-cookie.html",
+      "finishedAt": "2026-06-08T14:31:00.811Z"
+    },
+    {
+      "name": "Trigger 401: set game = Unavailable → POST /api/availability 401",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:31:00.813Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/07-trigger-401-set-game-unavailable-post-api-availability-401.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/07-trigger-401-set-game-unavailable-post-api-availability-401.html",
+      "finishedAt": "2026-06-08T14:31:01.838Z"
+    },
+    {
+      "name": "Verify session-expiry login form appears",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:31:01.840Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/08-verify-session-expiry-login-form-appears.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/08-verify-session-expiry-login-form-appears.html",
+      "finishedAt": "2026-06-08T14:31:02.370Z"
+    },
+    {
+      "name": "Verify player screen preserved — #playerNav visible, section active",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:31:02.380Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/09-verify-player-screen-preserved-playernav-visible-section-active.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/09-verify-player-screen-preserved-playernav-visible-section-active.html",
+      "finishedAt": "2026-06-08T14:31:02.864Z"
+    },
+    {
+      "name": "Anti-loop: 5s wait — single login form, no JS errors",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:31:02.866Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/10-anti-loop-5s-wait-single-login-form-no-js-errors.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/10-anti-loop-5s-wait-single-login-form-no-js-errors.html",
+      "finishedAt": "2026-06-08T14:31:08.499Z"
+    },
+    {
+      "name": "Re-login as player (credential form)",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:31:08.502Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/11-re-login-as-player-credential-form.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/11-re-login-as-player-credential-form.html",
+      "finishedAt": "2026-06-08T14:31:11.283Z"
+    },
+    {
+      "name": "Verify recovery — welcome toast, error cleared, player view active",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:31:11.287Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/12-verify-recovery-welcome-toast-error-cleared-player-view-active.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/12-verify-recovery-welcome-toast-error-cleared-player-view-active.html",
+      "finishedAt": "2026-06-08T14:31:11.777Z"
+    },
+    {
+      "name": "Observe: post-login section is Messages (known UX gap)",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:31:11.779Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "note": "Player dropped to Messages after re-login (activePlayerSection forced to \"messages\" by loginIdentityAccount). UX gap: player loses Availability context.",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/13-observe-post-login-section-is-messages-known-ux-gap.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/13-observe-post-login-section-is-messages-known-ux-gap.html",
+      "finishedAt": "2026-06-08T14:31:12.322Z"
+    },
+    {
+      "name": "Navigate back to Availability after re-login",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:31:12.324Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/14-navigate-back-to-availability-after-re-login.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/14-navigate-back-to-availability-after-re-login.html",
+      "finishedAt": "2026-06-08T14:31:13.155Z"
+    },
+    {
+      "name": "Verify no duplicate state + save availability after recovery",
+      "status": "passed",
+      "startedAt": "2026-06-08T14:31:13.157Z",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/15-verify-no-duplicate-state-save-availability-after-recovery.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/workflow8-2026-06-08T14-30-44-936Z/15-verify-no-duplicate-state-save-availability-after-recovery.html",
+      "finishedAt": "2026-06-08T14:31:14.503Z"
+    }
+  ],
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:50.645Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:50.660Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:50.685Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:50.685Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:50.686Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:51.057Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:51.058Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:51.059Z"
+    },
+    {
+      "type": "verbose",
+      "text": "[DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o",
+      "at": "2026-06-08T14:30:51.059Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:51.060Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:51.077Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:51.079Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:51.079Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:51.438Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "at": "2026-06-08T14:30:51.439Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:52.951Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:52.992Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:53.064Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:53.065Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:53.136Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:53.137Z"
+    },
+    {
+      "type": "verbose",
+      "text": "[DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o",
+      "at": "2026-06-08T14:30:53.195Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:53.195Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:53.196Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:53.220Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:53.232Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:53.240Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:53.298Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:30:53.437Z"
+    },
+    {
+      "type": "log",
+      "text": "[QA_TOAST] Welcome QA4 Player1780928996375",
+      "at": "2026-06-08T14:30:55.390Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:55.834Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:55.972Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:55.975Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "at": "2026-06-08T14:30:55.975Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:55.979Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:56.337Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "at": "2026-06-08T14:30:57.118Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:57.809Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:57.813Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:57.816Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:57.816Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:58.104Z"
+    },
+    {
+      "type": "log",
+      "text": "[QA_TOAST] Availability saved ✓",
+      "at": "2026-06-08T14:30:58.304Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:58.643Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:58.644Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:58.647Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:58.649Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:30:59.093Z"
+    },
+    {
+      "type": "log",
+      "text": "[QA_TOAST] Availability saved ✓",
+      "at": "2026-06-08T14:31:00.940Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:01.105Z"
+    },
+    {
+      "type": "verbose",
+      "text": "[DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o",
+      "at": "2026-06-08T14:31:01.170Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 ()",
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "type": "warning",
+      "text": "[availability POST] 400 endpoint is required without an authenticated session",
+      "at": "2026-06-08T14:31:01.371Z"
+    },
+    {
+      "type": "log",
+      "text": "[QA_TOAST] Availability saved locally — could not sync to server",
+      "at": "2026-06-08T14:31:01.371Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:01.511Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:01.511Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:01.574Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:01.582Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:01.682Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:01.696Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:02.087Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:03.980Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:04.214Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:06.379Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:06.640Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:09.032Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "at": "2026-06-08T14:31:09.212Z"
+    },
+    {
+      "type": "log",
+      "text": "[QA_TOAST] Welcome QA4 Player1780928996375",
+      "at": "2026-06-08T14:31:10.296Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:10.742Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:10.742Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:10.745Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:10.745Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "at": "2026-06-08T14:31:10.754Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:11.258Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "at": "2026-06-08T14:31:11.757Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "at": "2026-06-08T14:31:12.296Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:12.854Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:12.858Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:12.864Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:12.866Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:13.197Z"
+    },
+    {
+      "type": "log",
+      "text": "[QA_TOAST] Availability saved ✓",
+      "at": "2026-06-08T14:31:13.285Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:13.657Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:13.657Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:13.660Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:13.660Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 ()",
+      "at": "2026-06-08T14:31:14.040Z"
+    }
+  ],
+  "toasts": [
+    {
+      "text": "Welcome QA4 Player1780928996375",
+      "at": "2026-06-08T14:30:55.390Z"
+    },
+    {
+      "text": "Availability saved ✓",
+      "at": "2026-06-08T14:30:58.304Z"
+    },
+    {
+      "text": "Availability saved ✓",
+      "at": "2026-06-08T14:31:00.940Z"
+    },
+    {
+      "text": "Availability saved locally — could not sync to server",
+      "at": "2026-06-08T14:31:01.371Z"
+    },
+    {
+      "text": "Welcome QA4 Player1780928996375",
+      "at": "2026-06-08T14:31:10.296Z"
+    },
+    {
+      "text": "Availability saved ✓",
+      "at": "2026-06-08T14:31:13.285Z"
+    }
+  ],
+  "pageErrors": [],
+  "requestFailures": [
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/.well-known/vercel/jwe",
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      },
+      "at": "2026-06-08T14:30:51.439Z"
+    },
+    {
+      "method": "HEAD",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      },
+      "at": "2026-06-08T14:30:51.703Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/.well-known/vercel/jwe",
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      },
+      "at": "2026-06-08T14:30:53.538Z"
+    },
+    {
+      "method": "HEAD",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/",
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      },
+      "at": "2026-06-08T14:30:53.886Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:55.831Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:55.971Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:55.975Z"
+    },
+    {
+      "method": "POST",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat",
+      "failure": {
+        "errorText": "HTTP 404 "
+      },
+      "at": "2026-06-08T14:30:55.975Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/invite",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:55.979Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:56.333Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=dm%3Acoach-demo%3Auser_1780929025881_kam43v&since=0&userId=user_1780929025881_kam43v",
+      "failure": {
+        "errorText": "HTTP 404 "
+      },
+      "at": "2026-06-08T14:30:57.118Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:57.809Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:57.813Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:57.816Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/invite",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:57.816Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:58.103Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:58.643Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/invite",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:58.644Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:58.647Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:58.649Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:30:59.090Z"
+    },
+    {
+      "method": "POST",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/availability",
+      "failure": {
+        "errorText": "HTTP 400 "
+      },
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/invite",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:10.741Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:10.742Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:10.745Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:10.745Z"
+    },
+    {
+      "method": "POST",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat",
+      "failure": {
+        "errorText": "HTTP 404 "
+      },
+      "at": "2026-06-08T14:31:10.754Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:11.258Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=dm%3Acoach-demo%3Auser_1780929025881_kam43v&since=1780929055367&userId=user_1780929025881_kam43v",
+      "failure": {
+        "errorText": "HTTP 404 "
+      },
+      "at": "2026-06-08T14:31:11.757Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=dm%3Acoach-demo%3Auser_1780929025881_kam43v&userId=user_1780929025881_kam43v",
+      "failure": {
+        "errorText": "HTTP 404 "
+      },
+      "at": "2026-06-08T14:31:12.295Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:12.853Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:12.858Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/invite",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:12.864Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:12.866Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:13.197Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:13.657Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=schedules",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:13.657Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/identity?action=log&limit=10",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:13.660Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/invite",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:13.660Z"
+    },
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/message-config?resource=templates",
+      "failure": {
+        "errorText": "HTTP 403 "
+      },
+      "at": "2026-06-08T14:31:14.040Z"
+    }
+  ],
+  "apiCalls": [
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:50.643Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:50.657Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:50.685Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:50.685Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:50.686Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.057Z"
+    },
+    {
+      "endpoint": "/api/fixtures",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:30:51.057Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.058Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:30:51.059Z"
+    },
+    {
+      "endpoint": "/api/matchday",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:30:51.059Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.059Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.060Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.077Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.079Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.079Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:51.438Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:30:52.949Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:52.951Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:52.992Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.062Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.065Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.136Z"
+    },
+    {
+      "endpoint": "/api/matchday",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:30:53.136Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.137Z"
+    },
+    {
+      "endpoint": "/api/fixtures",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:30:53.138Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.195Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.195Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.219Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.232Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.239Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.298Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:30:53.437Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "POST",
+      "status": 200,
+      "at": "2026-06-08T14:30:55.282Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:55.831Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:55.971Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:55.975Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "POST",
+      "status": 404,
+      "at": "2026-06-08T14:30:55.975Z"
+    },
+    {
+      "endpoint": "/api/invite",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:55.979Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:56.333Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:30:56.384Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 404,
+      "at": "2026-06-08T14:30:57.118Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:30:57.120Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:57.809Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:57.813Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:57.816Z"
+    },
+    {
+      "endpoint": "/api/invite",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:57.816Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:58.103Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:30:58.129Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:58.643Z"
+    },
+    {
+      "endpoint": "/api/invite",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:58.644Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:58.647Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:58.649Z"
+    },
+    {
+      "endpoint": "/api/availability",
+      "method": "POST",
+      "status": 200,
+      "at": "2026-06-08T14:30:58.888Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:30:59.090Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:30:59.094Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.094Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "endpoint": "/api/invite",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "endpoint": "/api/availability",
+      "method": "POST",
+      "status": 400,
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.354Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.509Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.511Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.574Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.581Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.682Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:01.696Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:02.086Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:03.980Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:04.214Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:06.379Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:06.639Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:09.031Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 401,
+      "at": "2026-06-08T14:31:09.212Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "POST",
+      "status": 200,
+      "at": "2026-06-08T14:31:10.282Z"
+    },
+    {
+      "endpoint": "/api/invite",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:10.741Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:10.742Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:10.745Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:10.745Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "POST",
+      "status": 404,
+      "at": "2026-06-08T14:31:10.754Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:11.258Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:31:11.259Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 404,
+      "at": "2026-06-08T14:31:11.757Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:31:12.071Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 404,
+      "at": "2026-06-08T14:31:12.295Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:12.853Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:12.858Z"
+    },
+    {
+      "endpoint": "/api/invite",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:12.864Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:12.866Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:13.197Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:31:13.303Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:13.657Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:13.657Z"
+    },
+    {
+      "endpoint": "/api/identity",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:13.660Z"
+    },
+    {
+      "endpoint": "/api/invite",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:13.660Z"
+    },
+    {
+      "endpoint": "/api/availability",
+      "method": "POST",
+      "status": 200,
+      "at": "2026-06-08T14:31:13.888Z"
+    },
+    {
+      "endpoint": "/api/message-config",
+      "method": "GET",
+      "status": 403,
+      "at": "2026-06-08T14:31:14.040Z"
+    },
+    {
+      "endpoint": "/api/chat",
+      "method": "GET",
+      "status": 200,
+      "at": "2026-06-08T14:31:14.100Z"
+    }
+  ],
+  "missingSelectorWarnings": [
+    "401 came from unexpected endpoint: https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=dm%3Acoach-demo%3Auser_1780929025881_kam43v&since=1780929055367&userId=user_1780929025881_kam43v — expected /api/availability",
+    "state.currentUserId not accessible via window.state — duplicate check skipped"
+  ]
+}

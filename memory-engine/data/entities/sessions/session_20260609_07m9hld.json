@@ -1,0 +1,41 @@
+{
+  "id": "session_20260609_07m9hld",
+  "type": "session",
+  "version": 1,
+  "firstSeen": "2026-06-09T09:43:27.329Z",
+  "lastUpdated": "2026-06-09T09:43:27.329Z",
+  "updateCount": 0,
+  "summary": "Session 2026-06-09. Theme: breakdown and rucking technique — U16. 90min",
+  "history": [],
+  "tags": [],
+  "embedding": null,
+  "team": "team_u16_0yzgvy6",
+  "coach": null,
+  "ageGroup": "U16",
+  "sessionDate": "2026-06-09",
+  "theme": "breakdown and rucking technique — U16",
+  "duration": 90,
+  "focus": "breakdown and rucking technique",
+  "attendance": {
+    "expected": 0,
+    "actual": 0
+  },
+  "outputSummary": "breakdown and rucking technique — U16. 90min. Blocks: Skill Block 1, Skill Block 2",
+  "coachNotes": null,
+  "playerFeedback": [],
+  "provider": "none",
+  "input": {
+    "team": {
+      "ageGroup": "U16",
+      "level": "community",
+      "club": "Kildare Valley RFC",
+      "squadSize": 22,
+      "seasonPhase": "preseason",
+      "keyFocusAreas": [
+        "breakdown",
+        "set-piece"
+      ]
+    },
+    "focus": "breakdown and rucking technique"
+  }
+}

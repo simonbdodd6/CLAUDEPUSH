@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mission Control — Coach's Eye QA</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3a;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --accent:    #6366f1;
+      --pass:      #22c55e;
+      --fail:      #ef4444;
+      --warn:      #f59e0b;
+      --radius:    10px;
+      --font:      -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; padding: 0; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code { font-family: 'SF Mono', 'Fira Mono', monospace; font-size: 0.85em; background: #ffffff10; padding: 1px 4px; border-radius: 3px; }
+
+    /* Header */
+    .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 20px 32px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .header-logo { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.5px; }
+    .header-logo span { color: var(--accent); }
+    .header-meta { margin-left: auto; text-align: right; font-size: 0.82rem; color: var(--muted); line-height: 1.6; }
+    .suite-status { font-size: 1rem; font-weight: 600; margin-bottom: 2px; }
+
+    /* Summary bar */
+    .summary-bar { display: flex; gap: 24px; padding: 16px 32px; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .stat { display: flex; flex-direction: column; gap: 2px; }
+    .stat-label { font-size: 0.73rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+    .stat-value { font-size: 1.1rem; font-weight: 600; }
+
+    /* Card grid */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 20px; padding: 24px 32px; }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; }
+    .card.passed  { border-left: 3px solid var(--pass); }
+    .card.failed  { border-left: 3px solid var(--fail); }
+    .card.running { border-left: 3px solid var(--warn); }
+    .card.not-run { border-left: 3px solid var(--border); opacity: 0.7; }
+
+    .card-header { display: flex; align-items: flex-start; gap: 12px; padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
+    .card-num { font-size: 0.7rem; font-weight: 700; color: var(--muted); background: var(--border); border-radius: 4px; padding: 2px 7px; margin-top: 2px; white-space: nowrap; }
+    .card-title-block { flex: 1; min-width: 0; }
+    .card-title { font-weight: 600; font-size: 0.95rem; }
+    .card-desc { font-size: 0.78rem; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+
+    .badge { font-size: 0.72rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+
+    .card-body { padding: 14px 16px; flex: 1; display: flex; flex-direction: column; gap: 14px; }
+
+    .steps-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .progress-wrap { width: 100px; height: 6px; background: var(--border); border-radius: 3px; flex-shrink: 0; }
+    .progress-bar  { height: 100%; background: var(--pass); border-radius: 3px; transition: width 0.3s; }
+    .step-label { font-size: 0.82rem; color: var(--text); }
+
+    .failure-block { background: #ef444410; border: 1px solid #ef444430; border-radius: 6px; padding: 10px 12px; font-size: 0.82rem; }
+    .failure-title { font-weight: 600; color: #ef4444; margin-bottom: 4px; }
+    .failure-msg   { color: var(--text); word-break: break-word; }
+    .failure-shot  { display: inline-block; margin-top: 6px; font-size: 0.78rem; }
+
+    .meta { display: flex; flex-direction: column; gap: 5px; }
+    .meta-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 0.8rem; }
+    .meta-key { color: var(--muted); flex-shrink: 0; }
+    .meta-val { text-align: right; color: var(--text); }
+
+    .screenshots { }
+    .thumb-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .thumb-link { display: block; width: 72px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+    .thumb-link:hover { border-color: var(--accent); }
+    .thumb-link img { width: 100%; height: 48px; object-fit: cover; display: block; background: var(--border); }
+    .thumb-label { font-size: 0.6rem; color: var(--muted); padding: 2px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .card-footer { padding: 10px 16px; border-top: 1px solid var(--border); font-size: 0.8rem; }
+    .report-link { color: var(--muted); }
+    .report-link:hover { color: var(--accent); }
+
+    .muted { color: var(--muted); }
+
+    /* Footer note */
+    .footer { padding: 20px 32px; font-size: 0.78rem; color: var(--muted); border-top: 1px solid var(--border); margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header-logo">Coach's Eye <span>QA</span> — Mission Control</div>
+    <div style="font-size:0.82rem;color:var(--muted);margin-top:4px">Automated QA suite · branch <code>feature/nightly-qa-agent</code></div>
+  </div>
+  <div class="header-meta">
+    <div class="suite-status"><span style="color:#ef4444">✗ SUITE FAILED</span></div>
+    <div>Generated 08 Jun 2026, 14:21:44</div>
+    <div>5/7 workflows run</div>
+  </div>
+</div>
+
+<div class="summary-bar">
+  <div class="stat">
+    <span class="stat-label">Workflows run</span>
+    <span class="stat-value">5 / 7</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Passing</span>
+    <span class="stat-value" style="color:var(--pass)">4</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Failing</span>
+    <span class="stat-value" style="color:var(--fail)">1</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Total duration</span>
+    <span class="stat-value">3m 16s</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Redis ops (est.)</span>
+    <span class="stat-value">~3300</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Manual time saved</span>
+    <span class="stat-value">~37 min/run</span>
+  </div>
+</div>
+
+<div class="grid">
+
+  <div class="card failed">
+    <div class="card-header">
+      <div class="card-num">W1</div>
+      <div class="card-title-block">
+        <div class="card-title">Coach Login → Members</div>
+        <div class="card-desc">Open app → coach login → navigate to Members → verify member list renders</div>
+      </div>
+      <span class="badge" style="background:#ef444422;color:#ef4444;border:1px solid #ef444444">✗ FAIL</span>
+    </div>
+    <div class="card-body">
+      <div class="steps-row"><div class="progress-wrap"><div class="progress-bar" style="width:50%"></div></div><span class="step-label">1/2 steps <span style="color:#ef4444">(1 failed)</span></span></div>
+      
+    <div class="failure-block">
+      <div class="failure-title">Failed at: Coach login</div>
+      <div class="failure-msg">Cannot log in: devLoginBtn not visible and QA_COACH_PASSWORD is not set</div>
+      <a href="../artifacts/workflow1-2026-06-07T19-14-04-068Z/02-coach-login.png" target="_blank" class="failure-shot">View failure screenshot</a>
+    </div>
+      <div class="meta"><div class="meta-row"><span class="meta-key">Last run</span><span class="meta-val">07 Jun 2026, 21:14:23</span></div><div class="meta-row"><span class="meta-key">Duration</span><span class="meta-val">19.6s</span></div><div class="meta-row"><span class="meta-key">Commit</span><span class="meta-val"><code>5f2e20c</code></span></div><div class="meta-row"><span class="meta-key">Login method</span><span class="meta-val">dev-login-btn</span></div><div class="meta-row"><span class="meta-key">Redis ops</span><span class="meta-val">—</span></div><div class="meta-row"><span class="meta-key">Manual time saved</span><span class="meta-val">~3 min/run</span></div></div>
+      <div class="screenshots"><div class="thumb-row"><a href="../artifacts/workflow1-2026-06-07T19-14-04-068Z/01-open-app.png" target="_blank" class="thumb-link" title="Open app" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow1-2026-06-07T19-14-04-068Z/01-open-app.png" alt="Open app" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Open app</div>
+    </a><a href="../artifacts/workflow1-2026-06-07T19-14-04-068Z/02-coach-login.png" target="_blank" class="thumb-link" title="Coach login" style="border-color:#ef444440">
+      <img src="../artifacts/workflow1-2026-06-07T19-14-04-068Z/02-coach-login.png" alt="Coach login" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Coach login</div>
+    </a></div></div>
+    </div>
+    <div class="card-footer">
+      <a href="../../QA_WORKFLOW_REPORT.md" target="_blank" class="report-link">📄 View report</a>
+    </div>
+  </div>
+
+  <div class="card not-run">
+    <div class="card-header">
+      <div class="card-num">W2</div>
+      <div class="card-title-block">
+        <div class="card-title">Invite Generation</div>
+        <div class="card-desc">Coach login → open invite panel → generate individual invite → verify /?inv= URL</div>
+      </div>
+      <span class="badge" style="background:#6b728022;color:#6b7280;border:1px solid #6b728044">— NOT RUN</span>
+    </div>
+    <div class="card-body">
+      <div class="steps-row"><span class="muted">—</span></div>
+      
+      <div class="meta"><div class="meta-row"><span class="meta-key">Last run</span><span class="meta-val">—</span></div><div class="meta-row"><span class="meta-key">Duration</span><span class="meta-val">—</span></div><div class="meta-row"><span class="meta-key">Commit</span><span class="meta-val">—</span></div><div class="meta-row"><span class="meta-key">Login method</span><span class="meta-val">—</span></div><div class="meta-row"><span class="meta-key">Redis ops</span><span class="meta-val">—</span></div><div class="meta-row"><span class="meta-key">Manual time saved</span><span class="meta-val">~4 min/run</span></div></div>
+      
+    </div>
+    <div class="card-footer">
+      
+    </div>
+  </div>
+
+  <div class="card not-run">
+    <div class="card-header">
+      <div class="card-num">W3</div>
+      <div class="card-title-block">
+        <div class="card-title">Player Registration</div>
+        <div class="card-desc">Generate invite → fresh browser context → player claims invite → coach verifies member</div>
+      </div>
+      <span class="badge" style="background:#6b728022;color:#6b7280;border:1px solid #6b728044">— NOT RUN</span>
+    </div>
+    <div class="card-body">
+      <div class="steps-row"><span class="muted">—</span></div>
+      
+      <div class="meta"><div class="meta-row"><span class="meta-key">Last run</span><span class="meta-val">—</span></div><div class="meta-row"><span class="meta-key">Duration</span><span class="meta-val">—</span></div><div class="meta-row"><span class="meta-key">Commit</span><span class="meta-val">—</span></div><div class="meta-row"><span class="meta-key">Login method</span><span class="meta-val">—</span></div><div class="meta-row"><span class="meta-key">Redis ops</span><span class="meta-val">—</span></div><div class="meta-row"><span class="meta-key">Manual time saved</span><span class="meta-val">~6 min/run</span></div></div>
+      
+    </div>
+    <div class="card-footer">
+      
+    </div>
+  </div>
+
+  <div class="card passed">
+    <div class="card-header">
+      <div class="card-num">W4</div>
+      <div class="card-title-block">
+        <div class="card-title">Pending Approval Flow</div>
+        <div class="card-desc">Group invite → player submits join request → coach approves → verify active member</div>
+      </div>
+      <span class="badge" style="background:#22c55e22;color:#22c55e;border:1px solid #22c55e44">✓ PASS</span>
+    </div>
+    <div class="card-body">
+      <div class="steps-row"><div class="progress-wrap"><div class="progress-bar" style="width:100%"></div></div><span class="step-label">15/15 steps</span></div>
+      
+      <div class="meta"><div class="meta-row"><span class="meta-key">Last run</span><span class="meta-val">08 Jun 2026, 14:19:01</span></div><div class="meta-row"><span class="meta-key">Duration</span><span class="meta-val">1m 1s</span></div><div class="meta-row"><span class="meta-key">Commit</span><span class="meta-val"><code>894a1ab</code></span></div><div class="meta-row"><span class="meta-key">Login method</span><span class="meta-val">dev-login-evaluate</span></div><div class="meta-row"><span class="meta-key">Redis ops</span><span class="meta-val">~720 ops</span></div><div class="meta-row"><span class="meta-key">Manual time saved</span><span class="meta-val">~7 min/run</span></div></div>
+      <div class="screenshots"><div class="thumb-row"><a href="../artifacts/workflow4-2026-06-08T12-17-59-720Z/01-open-app.png" target="_blank" class="thumb-link" title="Open app" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow4-2026-06-08T12-17-59-720Z/01-open-app.png" alt="Open app" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Open app</div>
+    </a><a href="../artifacts/workflow4-2026-06-08T12-17-59-720Z/02-coach-login.png" target="_blank" class="thumb-link" title="Coach login" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow4-2026-06-08T12-17-59-720Z/02-coach-login.png" alt="Coach login" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Coach login</div>
+    </a><a href="../artifacts/workflow4-2026-06-08T12-17-59-720Z/03-navigate-to-members.png" target="_blank" class="thumb-link" title="Navigate to Members" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow4-2026-06-08T12-17-59-720Z/03-navigate-to-members.png" alt="Navigate to Members" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Navigate to Members</div>
+    </a><a href="../artifacts/workflow4-2026-06-08T12-17-59-720Z/04-generate-group-invite.png" target="_blank" class="thumb-link" title="Generate group invite" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow4-2026-06-08T12-17-59-720Z/04-generate-group-invite.png" alt="Generate group invite" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Generate group invit</div>
+    </a><a href="../artifacts/workflow4-2026-06-08T12-17-59-720Z/05-verify-group-invite-url.png" target="_blank" class="thumb-link" title="Verify group invite URL" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow4-2026-06-08T12-17-59-720Z/05-verify-group-invite-url.png" alt="Verify group invite URL" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Verify group invite </div>
+    </a><a href="../artifacts/workflow4-2026-06-08T12-17-59-720Z/06-open-group-invite-url-as-player.png" target="_blank" class="thumb-link" title="Open group invite URL as player" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow4-2026-06-08T12-17-59-720Z/06-open-group-invite-url-as-player.png" alt="Open group invite URL as player" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Open group invite UR</div>
+    </a><span class="muted">+9 more</span></div></div>
+    </div>
+    <div class="card-footer">
+      <a href="../../QA_WORKFLOW_4_REPORT.md" target="_blank" class="report-link">📄 View report</a>
+    </div>
+  </div>
+
+  <div class="card passed">
+    <div class="card-header">
+      <div class="card-num">W5</div>
+      <div class="card-title-block">
+        <div class="card-title">Coach ↔ Player Messaging</div>
+        <div class="card-desc">Coach sends timestamped DM → player receives via poll → player replies → coach verifies</div>
+      </div>
+      <span class="badge" style="background:#22c55e22;color:#22c55e;border:1px solid #22c55e44">✓ PASS</span>
+    </div>
+    <div class="card-body">
+      <div class="steps-row"><div class="progress-wrap"><div class="progress-bar" style="width:100%"></div></div><span class="step-label">14/14 steps</span></div>
+      
+      <div class="meta"><div class="meta-row"><span class="meta-key">Last run</span><span class="meta-val">08 Jun 2026, 14:20:03</span></div><div class="meta-row"><span class="meta-key">Duration</span><span class="meta-val">50.1s</span></div><div class="meta-row"><span class="meta-key">Commit</span><span class="meta-val"><code>894a1ab</code></span></div><div class="meta-row"><span class="meta-key">Login method</span><span class="meta-val">dev-login-evaluate</span></div><div class="meta-row"><span class="meta-key">Redis ops</span><span class="meta-val">~988 ops</span></div><div class="meta-row"><span class="meta-key">Manual time saved</span><span class="meta-val">~6 min/run</span></div></div>
+      <div class="screenshots"><div class="thumb-row"><a href="../artifacts/workflow5-2026-06-08T12-19-13-400Z/01-open-app.png" target="_blank" class="thumb-link" title="Open app" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow5-2026-06-08T12-19-13-400Z/01-open-app.png" alt="Open app" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Open app</div>
+    </a><a href="../artifacts/workflow5-2026-06-08T12-19-13-400Z/02-coach-login.png" target="_blank" class="thumb-link" title="Coach login" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow5-2026-06-08T12-19-13-400Z/02-coach-login.png" alt="Coach login" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Coach login</div>
+    </a><a href="../artifacts/workflow5-2026-06-08T12-19-13-400Z/03-navigate-to-members.png" target="_blank" class="thumb-link" title="Navigate to Members" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow5-2026-06-08T12-19-13-400Z/03-navigate-to-members.png" alt="Navigate to Members" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Navigate to Members</div>
+    </a><a href="../artifacts/workflow5-2026-06-08T12-19-13-400Z/04-verify-player-in-roster.png" target="_blank" class="thumb-link" title="Verify player in roster" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow5-2026-06-08T12-19-13-400Z/04-verify-player-in-roster.png" alt="Verify player in roster" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Verify player in ros</div>
+    </a><a href="../artifacts/workflow5-2026-06-08T12-19-13-400Z/05-navigate-to-messages.png" target="_blank" class="thumb-link" title="Navigate to Messages" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow5-2026-06-08T12-19-13-400Z/05-navigate-to-messages.png" alt="Navigate to Messages" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Navigate to Messages</div>
+    </a><a href="../artifacts/workflow5-2026-06-08T12-19-13-400Z/06-open-player-dm.png" target="_blank" class="thumb-link" title="Open player DM" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow5-2026-06-08T12-19-13-400Z/06-open-player-dm.png" alt="Open player DM" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Open player DM</div>
+    </a><span class="muted">+8 more</span></div></div>
+    </div>
+    <div class="card-footer">
+      <a href="../../QA_WORKFLOW_5_MESSAGING_REPORT.md" target="_blank" class="report-link">📄 View report</a>
+    </div>
+  </div>
+
+  <div class="card passed">
+    <div class="card-header">
+      <div class="card-num">W6</div>
+      <div class="card-title-block">
+        <div class="card-title">Squad Broadcast → Receive → Permissions</div>
+        <div class="card-desc">Coach sends squad broadcast → player receives via poll → player replies → Announcements read-only verified</div>
+      </div>
+      <span class="badge" style="background:#22c55e22;color:#22c55e;border:1px solid #22c55e44">✓ PASS</span>
+    </div>
+    <div class="card-body">
+      <div class="steps-row"><div class="progress-wrap"><div class="progress-bar" style="width:100%"></div></div><span class="step-label">17/17 steps</span></div>
+      
+      <div class="meta"><div class="meta-row"><span class="meta-key">Last run</span><span class="meta-val">08 Jun 2026, 14:20:56</span></div><div class="meta-row"><span class="meta-key">Duration</span><span class="meta-val">40.2s</span></div><div class="meta-row"><span class="meta-key">Commit</span><span class="meta-val"><code>ad2c16f</code></span></div><div class="meta-row"><span class="meta-key">Login method</span><span class="meta-val">dev-login-evaluate</span></div><div class="meta-row"><span class="meta-key">Redis ops</span><span class="meta-val">~1086 ops</span></div><div class="meta-row"><span class="meta-key">Manual time saved</span><span class="meta-val">~7 min/run</span></div></div>
+      <div class="screenshots"><div class="thumb-row"><a href="../artifacts/workflow6-2026-06-08T12-20-16-378Z/01-open-app.png" target="_blank" class="thumb-link" title="Open app" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow6-2026-06-08T12-20-16-378Z/01-open-app.png" alt="Open app" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Open app</div>
+    </a><a href="../artifacts/workflow6-2026-06-08T12-20-16-378Z/02-coach-login.png" target="_blank" class="thumb-link" title="Coach login" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow6-2026-06-08T12-20-16-378Z/02-coach-login.png" alt="Coach login" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Coach login</div>
+    </a><a href="../artifacts/workflow6-2026-06-08T12-20-16-378Z/03-navigate-to-members.png" target="_blank" class="thumb-link" title="Navigate to Members" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow6-2026-06-08T12-20-16-378Z/03-navigate-to-members.png" alt="Navigate to Members" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Navigate to Members</div>
+    </a><a href="../artifacts/workflow6-2026-06-08T12-20-16-378Z/04-verify-player-in-roster.png" target="_blank" class="thumb-link" title="Verify player in roster" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow6-2026-06-08T12-20-16-378Z/04-verify-player-in-roster.png" alt="Verify player in roster" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Verify player in ros</div>
+    </a><a href="../artifacts/workflow6-2026-06-08T12-20-16-378Z/05-navigate-to-messages.png" target="_blank" class="thumb-link" title="Navigate to Messages" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow6-2026-06-08T12-20-16-378Z/05-navigate-to-messages.png" alt="Navigate to Messages" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Navigate to Messages</div>
+    </a><a href="../artifacts/workflow6-2026-06-08T12-20-16-378Z/06-open-squad-channel-verify-member-count.png" target="_blank" class="thumb-link" title="Open Squad channel — verify member count" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow6-2026-06-08T12-20-16-378Z/06-open-squad-channel-verify-member-count.png" alt="Open Squad channel — verify member count" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Open Squad channel —</div>
+    </a><span class="muted">+11 more</span></div></div>
+    </div>
+    <div class="card-footer">
+      <a href="../../QA_WORKFLOW_6_REPORT.md" target="_blank" class="report-link">📄 View report</a>
+    </div>
+  </div>
+
+  <div class="card passed">
+    <div class="card-header">
+      <div class="card-num">W7</div>
+      <div class="card-title-block">
+        <div class="card-title">Player Session Expiry Recovery</div>
+        <div class="card-desc">Player opens Messages → session cookie corrupted → 401 overlay appears → re-login → Messages restored</div>
+      </div>
+      <span class="badge" style="background:#22c55e22;color:#22c55e;border:1px solid #22c55e44">✓ PASS</span>
+    </div>
+    <div class="card-body">
+      <div class="steps-row"><div class="progress-wrap"><div class="progress-bar" style="width:100%"></div></div><span class="step-label">12/12 steps</span></div>
+      
+      <div class="meta"><div class="meta-row"><span class="meta-key">Last run</span><span class="meta-val">08 Jun 2026, 14:21:39</span></div><div class="meta-row"><span class="meta-key">Duration</span><span class="meta-val">25.2s</span></div><div class="meta-row"><span class="meta-key">Commit</span><span class="meta-val"><code>ad2c16f</code></span></div><div class="meta-row"><span class="meta-key">Login method</span><span class="meta-val">—</span></div><div class="meta-row"><span class="meta-key">Redis ops</span><span class="meta-val">~506 ops</span></div><div class="meta-row"><span class="meta-key">Manual time saved</span><span class="meta-val">~4 min/run</span></div></div>
+      <div class="screenshots"><div class="thumb-row"><a href="../artifacts/workflow7-2026-06-08T12-21-14-484Z/01-open-app.png" target="_blank" class="thumb-link" title="Open app" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow7-2026-06-08T12-21-14-484Z/01-open-app.png" alt="Open app" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Open app</div>
+    </a><a href="../artifacts/workflow7-2026-06-08T12-21-14-484Z/02-player-login.png" target="_blank" class="thumb-link" title="Player login" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow7-2026-06-08T12-21-14-484Z/02-player-login.png" alt="Player login" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Player login</div>
+    </a><a href="../artifacts/workflow7-2026-06-08T12-21-14-484Z/03-navigate-to-messages.png" target="_blank" class="thumb-link" title="Navigate to Messages" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow7-2026-06-08T12-21-14-484Z/03-navigate-to-messages.png" alt="Navigate to Messages" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Navigate to Messages</div>
+    </a><a href="../artifacts/workflow7-2026-06-08T12-21-14-484Z/04-open-squad-channel-verify-message-history.png" target="_blank" class="thumb-link" title="Open Squad channel — verify message history" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow7-2026-06-08T12-21-14-484Z/04-open-squad-channel-verify-message-history.png" alt="Open Squad channel — verify message history" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Open Squad channel —</div>
+    </a><a href="../artifacts/workflow7-2026-06-08T12-21-14-484Z/05-force-session-expiry-corrupt-ce-session-cookie.png" target="_blank" class="thumb-link" title="Force session expiry — corrupt ce_session cookie" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow7-2026-06-08T12-21-14-484Z/05-force-session-expiry-corrupt-ce-session-cookie.png" alt="Force session expiry — corrupt ce_session cookie" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Force session expiry</div>
+    </a><a href="../artifacts/workflow7-2026-06-08T12-21-14-484Z/06-verify-session-expiry-overlay-appears.png" target="_blank" class="thumb-link" title="Verify session-expiry overlay appears" style="border-color:#22c55e40">
+      <img src="../artifacts/workflow7-2026-06-08T12-21-14-484Z/06-verify-session-expiry-overlay-appears.png" alt="Verify session-expiry overlay appears" onerror="this.parentElement.style.display='none'" />
+      <div class="thumb-label">Verify session-expir</div>
+    </a><span class="muted">+6 more</span></div></div>
+    </div>
+    <div class="card-footer">
+      <a href="../../QA_WORKFLOW_7_SESSION_EXPIRY_REPORT.md" target="_blank" class="report-link">📄 View report</a>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  Generated by <code>qa/mission-control/generate-dashboard.js</code> ·
+  To add a workflow: append to the WORKFLOWS array in that file and write <code>qa/results/workflow-N.json</code> from your spec. ·
+  Artifacts and result JSONs are git-ignored — run locally to populate.
+</div>
+
+</body>
+</html>

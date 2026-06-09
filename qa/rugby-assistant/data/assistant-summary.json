@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-06-09T10:16:34.768Z",
+  "totalEvents": 8,
+  "searchCount": 5,
+  "sessionCount": 1,
+  "drillSearchCount": 1,
+  "lawQueryCount": 1,
+  "recentSearches": [
+    {
+      "query": "What should we work on this week?",
+      "ts": "2026-06-09T10:16:34.766Z",
+      "ageGroup": null
+    },
+    {
+      "query": "What should we work on this week?",
+      "ts": "2026-06-09T10:16:27.917Z",
+      "ageGroup": null
+    },
+    {
+      "query": "What should we work on this week?",
+      "ts": "2026-06-09T10:16:18.982Z",
+      "ageGroup": null
+    },
+    {
+      "query": "What should we work on this week?",
+      "ts": "2026-06-09T10:15:44.357Z",
+      "ageGroup": null
+    },
+    {
+      "query": "ruck speed",
+      "ts": "2026-06-09T08:19:59.431Z",
+      "ageGroup": null
+    }
+  ],
+  "popularTopics": [
+    {
+      "query": "what should we work on this week?",
+      "count": 4
+    },
+    {
+      "query": "ruck speed",
+      "count": 1
+    },
+    {
+      "query": "tackle height",
+      "count": 1
+    },
+    {
+      "query": "breakdown contact",
+      "count": 1
+    }
+  ]
+}

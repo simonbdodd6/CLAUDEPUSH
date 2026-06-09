@@ -1,0 +1,343 @@
+{
+  "status": "failed",
+  "runId": "2026-06-06T12-03-51-298Z",
+  "startedAt": "2026-06-06T12:03:51.299Z",
+  "finishedAt": "2026-06-06T12:04:04.625Z",
+  "baseURL": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app",
+  "steps": [
+    {
+      "name": "Open app",
+      "status": "passed",
+      "startedAt": "2026-06-06T12:03:58.474Z",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/phase5-2026-06-06T12-03-51-298Z/01-open-app.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/phase5-2026-06-06T12-03-51-298Z/01-open-app.html",
+      "finishedAt": "2026-06-06T12:04:02.462Z"
+    },
+    {
+      "name": "Login as Simon Coach",
+      "status": "failed",
+      "startedAt": "2026-06-06T12:04:02.467Z",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/",
+      "error": "Login failed — toast: \"Upstash HTTP 400: {\"error\":\"ERR max requests limit exceeded. Limit: 500000, Usage: 500000. See https://upstash.com/docs/redis/troubleshooting/max_requests_limit for details\"}\"",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/phase5-2026-06-06T12-03-51-298Z/02-login-as-simon-coach.png",
+      "domSnapshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/phase5-2026-06-06T12-03-51-298Z/02-login-as-simon-coach.html",
+      "finishedAt": "2026-06-06T12:04:04.623Z"
+    }
+  ],
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:01.139Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/log?limit=10",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:01.311Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/schedules",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:01.311Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/identity?action=session",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:01.312Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/templates",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:01.338Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:01.370Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/templates",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:01.374Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/identity",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:01.394Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=0&userId=coach-demo",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:01.421Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/favicon.ico",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:01.504Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/invite",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:01.534Z"
+    },
+    {
+      "type": "verbose",
+      "text": "[DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:02.922Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780747440400&userId=coach-demo",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:03.248Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:03.431Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 ()",
+      "location": {
+        "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/identity",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      },
+      "at": "2026-06-06T12:04:03.799Z"
+    },
+    {
+      "type": "log",
+      "text": "[QA_TOAST] Upstash HTTP 400: {\"error\":\"ERR max requests limit exceeded. Limit: 500000, Usage: 500000. See https://upstash.com/docs/redis/troubleshooting/max_requests_limit for details\"}",
+      "location": {
+        "url": "",
+        "line": 5,
+        "column": 16,
+        "lineNumber": 5,
+        "columnNumber": 16
+      },
+      "at": "2026-06-06T12:04:03.806Z"
+    }
+  ],
+  "toasts": [
+    {
+      "text": "Upstash HTTP 400: {\"error\":\"ERR max requests limit exceeded. Limit: 500000, Usage: 500000. See https://upstash.com/docs/redis/troubleshooting/max_requests_limit for details\"}",
+      "at": "2026-06-06T12:04:03.806Z"
+    }
+  ],
+  "pageErrors": [],
+  "requestFailures": [
+    {
+      "method": "GET",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/.well-known/vercel/jwe",
+      "resourceType": "fetch",
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      },
+      "at": "2026-06-06T12:04:01.420Z"
+    },
+    {
+      "method": "HEAD",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/",
+      "resourceType": "fetch",
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      },
+      "at": "2026-06-06T12:04:01.962Z"
+    }
+  ],
+  "responses": [
+    {
+      "status": 500,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo",
+      "method": "GET",
+      "at": "2026-06-06T12:04:01.139Z"
+    },
+    {
+      "status": 401,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/log?limit=10",
+      "method": "GET",
+      "at": "2026-06-06T12:04:01.311Z"
+    },
+    {
+      "status": 401,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/schedules",
+      "method": "GET",
+      "at": "2026-06-06T12:04:01.311Z"
+    },
+    {
+      "status": 401,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/identity?action=session",
+      "method": "GET",
+      "at": "2026-06-06T12:04:01.312Z"
+    },
+    {
+      "status": 401,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/templates",
+      "method": "GET",
+      "at": "2026-06-06T12:04:01.338Z"
+    },
+    {
+      "status": 500,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/chat?action=conversations&userId=coach-demo",
+      "method": "GET",
+      "at": "2026-06-06T12:04:01.370Z"
+    },
+    {
+      "status": 401,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/templates",
+      "method": "GET",
+      "at": "2026-06-06T12:04:01.374Z"
+    },
+    {
+      "status": 401,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/identity",
+      "method": "GET",
+      "at": "2026-06-06T12:04:01.394Z"
+    },
+    {
+      "status": 500,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=0&userId=coach-demo",
+      "method": "GET",
+      "at": "2026-06-06T12:04:01.421Z"
+    },
+    {
+      "status": 401,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/invite",
+      "method": "GET",
+      "at": "2026-06-06T12:04:01.534Z"
+    },
+    {
+      "status": 500,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/chat?action=messages&convId=coach&since=1780747440400&userId=coach-demo",
+      "method": "GET",
+      "at": "2026-06-06T12:04:03.248Z"
+    },
+    {
+      "status": 500,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/chat?action=typing&convId=coach&userId=coach-demo",
+      "method": "GET",
+      "at": "2026-06-06T12:04:03.431Z"
+    },
+    {
+      "status": 400,
+      "statusText": "",
+      "url": "https://boitsfort-coachseye-i8ae33djo-simonbdodd-9233s-projects.vercel.app/api/identity",
+      "method": "POST",
+      "at": "2026-06-06T12:04:03.799Z"
+    }
+  ],
+  "inviteUrl": null
+}

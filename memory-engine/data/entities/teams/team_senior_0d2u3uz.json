@@ -1,0 +1,191 @@
+{
+  "id": "team_senior_0d2u3uz",
+  "type": "team",
+  "version": 1,
+  "firstSeen": "2026-06-09T10:15:44.340Z",
+  "lastUpdated": "2026-06-09T10:16:34.758Z",
+  "updateCount": 4,
+  "summary": "Senior (community). Record: 0W-0L-0D. 4 sessions recorded",
+  "history": [
+    {
+      "id": "team_senior_0d2u3uz",
+      "type": "team",
+      "version": 1,
+      "firstSeen": "2026-06-09T10:15:44.340Z",
+      "lastUpdated": "2026-06-09T10:15:44.341Z",
+      "updateCount": 0,
+      "tags": [],
+      "core": {
+        "name": null,
+        "ageGroup": "Senior",
+        "level": "community",
+        "club": null,
+        "clubId": null,
+        "coachIds": [],
+        "appTeamId": null
+      },
+      "season": {
+        "current": null,
+        "phase": null,
+        "record": {
+          "wins": 0,
+          "losses": 0,
+          "draws": 0
+        }
+      },
+      "roster": [],
+      "sessionCount": 0,
+      "programmes": [],
+      "systemOfPlay": null,
+      "keyFocusAreas": [],
+      "notes": null,
+      "_snapshotAt": "2026-06-09T10:15:44.346Z"
+    },
+    {
+      "id": "team_senior_0d2u3uz",
+      "type": "team",
+      "version": 1,
+      "firstSeen": "2026-06-09T10:15:44.340Z",
+      "lastUpdated": "2026-06-09T10:15:44.346Z",
+      "updateCount": 1,
+      "tags": [],
+      "core": {
+        "name": null,
+        "ageGroup": "Senior",
+        "level": "community",
+        "club": null,
+        "clubId": null,
+        "coachIds": [],
+        "appTeamId": null
+      },
+      "season": {
+        "current": null,
+        "phase": null,
+        "record": {
+          "wins": 0,
+          "losses": 0,
+          "draws": 0
+        }
+      },
+      "roster": [],
+      "sessionCount": 1,
+      "programmes": [],
+      "systemOfPlay": null,
+      "keyFocusAreas": [],
+      "notes": null,
+      "sessions": [
+        "session_20260609_02h7zfd"
+      ],
+      "_snapshotAt": "2026-06-09T10:16:18.973Z"
+    },
+    {
+      "id": "team_senior_0d2u3uz",
+      "type": "team",
+      "version": 1,
+      "firstSeen": "2026-06-09T10:15:44.340Z",
+      "lastUpdated": "2026-06-09T10:16:18.973Z",
+      "updateCount": 2,
+      "tags": [],
+      "core": {
+        "name": null,
+        "ageGroup": "Senior",
+        "level": "community",
+        "club": null,
+        "clubId": null,
+        "coachIds": [],
+        "appTeamId": null
+      },
+      "season": {
+        "current": null,
+        "phase": null,
+        "record": {
+          "wins": 0,
+          "losses": 0,
+          "draws": 0
+        }
+      },
+      "roster": [],
+      "sessionCount": 2,
+      "programmes": [],
+      "systemOfPlay": null,
+      "keyFocusAreas": [],
+      "notes": null,
+      "sessions": [
+        "session_20260609_02h7zfd",
+        "session_20260609_02h7zfd"
+      ],
+      "_snapshotAt": "2026-06-09T10:16:27.910Z"
+    },
+    {
+      "id": "team_senior_0d2u3uz",
+      "type": "team",
+      "version": 1,
+      "firstSeen": "2026-06-09T10:15:44.340Z",
+      "lastUpdated": "2026-06-09T10:16:27.910Z",
+      "updateCount": 3,
+      "tags": [],
+      "core": {
+        "name": null,
+        "ageGroup": "Senior",
+        "level": "community",
+        "club": null,
+        "clubId": null,
+        "coachIds": [],
+        "appTeamId": null
+      },
+      "season": {
+        "current": null,
+        "phase": null,
+        "record": {
+          "wins": 0,
+          "losses": 0,
+          "draws": 0
+        }
+      },
+      "roster": [],
+      "sessionCount": 3,
+      "programmes": [],
+      "systemOfPlay": null,
+      "keyFocusAreas": [],
+      "notes": null,
+      "sessions": [
+        "session_20260609_02h7zfd",
+        "session_20260609_02h7zfd",
+        "session_20260609_02h7zfd"
+      ],
+      "_snapshotAt": "2026-06-09T10:16:34.758Z"
+    }
+  ],
+  "tags": [],
+  "embedding": null,
+  "core": {
+    "name": null,
+    "ageGroup": "Senior",
+    "level": "community",
+    "club": null,
+    "clubId": null,
+    "coachIds": [],
+    "appTeamId": null
+  },
+  "season": {
+    "current": null,
+    "phase": null,
+    "record": {
+      "wins": 0,
+      "losses": 0,
+      "draws": 0
+    }
+  },
+  "roster": [],
+  "sessionCount": 4,
+  "programmes": [],
+  "systemOfPlay": null,
+  "keyFocusAreas": [],
+  "notes": null,
+  "sessions": [
+    "session_20260609_02h7zfd",
+    "session_20260609_02h7zfd",
+    "session_20260609_02h7zfd",
+    "session_20260609_02h7zfd"
+  ]
+}

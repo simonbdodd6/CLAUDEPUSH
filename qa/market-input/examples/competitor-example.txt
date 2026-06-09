@@ -1,0 +1,32 @@
+# Example competitor file
+# Copy-paste from their pricing or features page.
+
+Pitchero — The All-in-One Sports Club Website Builder
+
+Pitchero helps over 10,000 clubs manage their club website, membership, payments and communications.
+
+Pricing:
+- Starter: Free (website only, up to 25 members)
+- Standard: £25/month (full features, unlimited members)
+- Premium: £45/month (advanced stats, custom domain)
+
+Features:
+- Club website builder
+- Member management
+- Match scheduling and results
+- Payment collection (membership fees, match fees)
+- Team messaging
+- Stats and player profiles
+- Mobile app (iOS + Android)
+
+Target: Grassroots UK sports clubs across all sports (football, rugby, cricket, hockey)
+
+Weaknesses noted from user reviews:
+- Not rugby-specific — generic across all sports
+- App feels dated and slow on older phones
+- Customer support response time poor
+- No availability-first workflow — coaches have to chase players
+- Push notifications unreliable on Android
+
+---
+# Agent will extract pricing, features, weaknesses, and Coach's Eye advantage from this.

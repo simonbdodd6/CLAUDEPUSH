@@ -1,0 +1,15 @@
+{
+  "_meta": { "club": "Kildare Valley RFC", "period": "2025-10 to 2025-12", "isMock": true },
+  "sessions": [
+    { "sessionId": "s001", "date": "2025-10-02", "ageGroup": "Senior", "attendees": ["p001","p002","p005","p006","p007","p008"], "absentees": ["p003","p004"], "attendanceCount": 6, "attendanceRate": 75 },
+    { "sessionId": "s002", "date": "2025-10-07", "ageGroup": "Senior", "attendees": ["p001","p002","p003","p005","p007","p008"], "absentees": ["p004","p006"], "attendanceCount": 6, "attendanceRate": 75 },
+    { "sessionId": "s003", "date": "2025-10-09", "ageGroup": "U18", "attendees": ["p009","p010","p012"], "absentees": ["p011"], "attendanceCount": 3, "attendanceRate": 75 },
+    { "sessionId": "s004", "date": "2025-10-14", "ageGroup": "Senior", "attendees": ["p001","p002","p003","p004","p005","p006","p007","p008"], "absentees": [], "attendanceCount": 8, "attendanceRate": 100 },
+    { "sessionId": "s005", "date": "2025-10-16", "ageGroup": "U16", "attendees": ["p013","p014","p016"], "absentees": ["p015"], "attendanceCount": 3, "attendanceRate": 75 },
+    { "sessionId": "s006", "date": "2025-10-21", "ageGroup": "Senior", "attendees": ["p001","p002","p005","p007","p008"], "absentees": ["p003","p004","p006"], "attendanceCount": 5, "attendanceRate": 63 },
+    { "sessionId": "s007", "date": "2025-10-23", "ageGroup": "U14", "attendees": ["p017","p018","p019"], "absentees": ["p020"], "attendanceCount": 3, "attendanceRate": 75 },
+    { "sessionId": "s008", "date": "2025-11-04", "ageGroup": "Senior", "attendees": ["p001","p002","p003","p005","p006","p007","p008"], "absentees": ["p004"], "attendanceCount": 7, "attendanceRate": 88 },
+    { "sessionId": "s009", "date": "2025-11-06", "ageGroup": "U18", "attendees": ["p009","p010","p011","p012"], "absentees": [], "attendanceCount": 4, "attendanceRate": 100 },
+    { "sessionId": "s010", "date": "2025-11-11", "ageGroup": "Senior", "attendees": ["p001","p002","p003","p004","p005","p007","p008"], "absentees": ["p006"], "attendanceCount": 7, "attendanceRate": 88 }
+  ]
+}

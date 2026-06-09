@@ -1,0 +1,49 @@
+{
+  "workflow": "workflow-13",
+  "runId": "2026-06-08T15-29-19-290Z",
+  "startedAt": "2026-06-08T15:29:19.311Z",
+  "finishedAt": "2026-06-08T15:29:51.604Z",
+  "status": "failed",
+  "baseURL": "http://127.0.0.1:3001",
+  "commit": "81d3f62",
+  "loginMethod": "dev-login-btn",
+  "steps": [
+    {
+      "name": "open-app",
+      "status": "passed",
+      "startedAt": "2026-06-08T15:29:38.158Z",
+      "finishedAt": "2026-06-08T15:29:48.259Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-08T15-29-19-290Z/01-open-app.png"
+    },
+    {
+      "name": "coach-login",
+      "status": "failed",
+      "startedAt": "2026-06-08T15:29:50.340Z",
+      "error": "Cannot read properties of undefined (reading 'push')",
+      "finishedAt": "2026-06-08T15:29:50.979Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-08T15-29-19-290Z/FAIL-02-coach-login.png"
+    }
+  ],
+  "toasts": [],
+  "pageErrors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)",
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+  ]
+}

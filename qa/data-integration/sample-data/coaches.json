@@ -1,0 +1,8 @@
+{
+  "_meta": { "club": "Kildare Valley RFC", "isMock": true },
+  "coaches": [
+    { "id": "c001", "name": "Brian O'Sullivan", "role": "Head Coach", "ageGroups": ["Senior"], "qualifications": ["IRFU Level 2", "Strength & Conditioning Certificate"], "yearsExperience": 8, "email": "brian.osullivan@example.ie", "phone": "086-2001001", "_isMock": true },
+    { "id": "c002", "name": "Aoife Hennessy", "role": "Age Grade Coach", "ageGroups": ["U18", "U16"], "qualifications": ["IRFU Level 1", "Child Safeguarding Certificate"], "yearsExperience": 4, "email": "aoife.hennessy@example.ie", "phone": "086-2001002", "_isMock": true },
+    { "id": "c003", "name": "Declan Phelan", "role": "Mini/Youth Coach", "ageGroups": ["U14", "Minis"], "qualifications": ["IRFU Level 1", "Start to Play Certificate"], "yearsExperience": 3, "email": "declan.phelan@example.ie", "phone": "086-2001003", "_isMock": true }
+  ]
+}

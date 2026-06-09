@@ -1,0 +1,22 @@
+{
+  "id": "gen_session_0e6untm",
+  "type": "ai-generation",
+  "version": 1,
+  "firstSeen": "2026-06-09T10:16:34.658Z",
+  "lastUpdated": "2026-06-09T10:16:34.658Z",
+  "updateCount": 0,
+  "summary": "session generation via none (3ms)",
+  "history": [],
+  "tags": [],
+  "embedding": null,
+  "requestType": "session",
+  "entityType": "player",
+  "entityId": null,
+  "provider": "none",
+  "model": null,
+  "inputHash": null,
+  "elapsed": 3,
+  "kbItemsUsed": 4,
+  "outputPreview": "General fitness and skills — U16",
+  "coachReviewed": false
+}

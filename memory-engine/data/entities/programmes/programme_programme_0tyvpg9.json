@@ -1,0 +1,99 @@
+{
+  "id": "programme_programme_0tyvpg9",
+  "type": "programme",
+  "version": 1,
+  "firstSeen": "2026-06-09T09:43:27.296Z",
+  "lastUpdated": "2026-06-09T09:43:27.308Z",
+  "updateCount": 1,
+  "summary": "Preseason programme. for Prop. Goals: Strength, Mass, Scrummaging Power. 8 weeks. Goals: Strength/Mass/Scrummaging Power. Phase 1: Foundation Phase. Exercises: Barbell Back Squat, Romanian Deadlift, Bulgarian Split Squat. 2 training blocks. via template. Status: completed. Started: 2026-06-09. Ended: 2026-06-09. Coach feedback: Player completed all 8 weeks. Good progress on squat and dea",
+  "history": [
+    {
+      "id": "programme_programme_0tyvpg9",
+      "type": "programme",
+      "version": 1,
+      "firstSeen": "2026-06-09T09:43:27.296Z",
+      "lastUpdated": "2026-06-09T09:43:27.296Z",
+      "updateCount": 0,
+      "tags": [
+        "Preseason",
+        "Prop",
+        "U18"
+      ],
+      "player": "player_ciar_n_murphy_0shhe5u",
+      "coach": null,
+      "team": null,
+      "requestType": "programme",
+      "input": {
+        "name": "Ciarán Murphy",
+        "age": 17,
+        "position": "Prop",
+        "experience": "Intermediate",
+        "goals": [
+          "Strength",
+          "Mass",
+          "Scrummaging Power"
+        ],
+        "injuries": [
+          "Previous shoulder injury"
+        ],
+        "trainingDays": 4,
+        "equipment": [
+          "Full gym"
+        ],
+        "seasonPhase": "Preseason",
+        "club": "Kildare Valley RFC",
+        "ageGroup": "U18"
+      },
+      "outputSummary": "8 weeks. Goals: Strength/Mass/Scrummaging Power. Phase 1: Foundation Phase. Exercises: Barbell Back Squat, Romanian Deadlift, Bulgarian Split Squat. 2 training blocks. via template",
+      "status": "active",
+      "startDate": "2026-06-09",
+      "endDate": null,
+      "provider": "none",
+      "coachFeedback": null,
+      "playerFeedback": null,
+      "completionRate": null,
+      "adherenceNotes": null,
+      "_snapshotAt": "2026-06-09T09:43:27.308Z"
+    }
+  ],
+  "tags": [
+    "Preseason",
+    "Prop",
+    "U18"
+  ],
+  "embedding": null,
+  "player": "player_ciar_n_murphy_0shhe5u",
+  "coach": null,
+  "team": null,
+  "requestType": "programme",
+  "input": {
+    "name": "Ciarán Murphy",
+    "age": 17,
+    "position": "Prop",
+    "experience": "Intermediate",
+    "goals": [
+      "Strength",
+      "Mass",
+      "Scrummaging Power"
+    ],
+    "injuries": [
+      "Previous shoulder injury"
+    ],
+    "trainingDays": 4,
+    "equipment": [
+      "Full gym"
+    ],
+    "seasonPhase": "Preseason",
+    "club": "Kildare Valley RFC",
+    "ageGroup": "U18"
+  },
+  "outputSummary": "8 weeks. Goals: Strength/Mass/Scrummaging Power. Phase 1: Foundation Phase. Exercises: Barbell Back Squat, Romanian Deadlift, Bulgarian Split Squat. 2 training blocks. via template",
+  "status": "completed",
+  "startDate": "2026-06-09",
+  "endDate": "2026-06-09",
+  "provider": "none",
+  "coachFeedback": "Player completed all 8 weeks. Good progress on squat and deadlift. Shoulder held up well.",
+  "playerFeedback": null,
+  "completionRate": null,
+  "adherenceNotes": null
+}

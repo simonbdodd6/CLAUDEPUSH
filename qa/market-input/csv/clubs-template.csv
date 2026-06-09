@@ -1,0 +1,16 @@
+# Coach's Eye — Club Leads CSV Template
+# Instructions:
+#   1. Copy this file: cp clubs-template.csv my-clubs-ireland.csv
+#   2. Remove the # comment lines
+#   3. Fill in club data (one club per row)
+#   4. Run: node qa/market-intel/pipeline.js --import
+#
+# Required: club_name, country
+# Optional: website, email, social_facebook, social_instagram, level, notes, estimated_players
+#
+# level values: adult_amateur | youth | semi_pro | professional
+# (leave blank if unknown — defaults to unknown)
+#
+club_name,country,website,email,social_facebook,social_instagram,level,notes,estimated_players
+Ballymena RFC,Ireland,https://ballymenarufc.co.uk,secretary@ballymenarufc.co.uk,https://facebook.com/ballymenarufc,,adult_amateur,Active Facebook page — no structured comms tool,120
+Leinster Wanderers RFC,Ireland,,secretary@leinsterw.ie,,,adult_amateur,,80

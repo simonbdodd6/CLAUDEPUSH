@@ -1,0 +1,19 @@
+{
+  "status": "failed",
+  "startedAt": null,
+  "finishedAt": "2026-06-08T14:32:32.376Z",
+  "baseURL": "https://boitsfort-coachseye-4adn3a8q0-simonbdodd-9233s-projects.vercel.app",
+  "testPlayerEmail": "not set",
+  "expectedBaselinePlayers": [],
+  "steps": [
+    {
+      "name": "Launch Playwright Chromium",
+      "status": "failed",
+      "screenshot": null,
+      "error": "Playwright exited before the QA journey started (exit code 1). See qa/test-results/workflow-7-session-expiry--0e13b-yer-Session-Expiry-Recovery-chromium/error-context.md."
+    }
+  ],
+  "notes": [
+    "The browser failed before the first journey step, so no app behavior was exercised."
+  ]
+}

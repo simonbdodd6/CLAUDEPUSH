@@ -1,0 +1,14 @@
+{
+  "baseURL": "http://localhost:3000",
+  "browserChannel": "system chrome fallback",
+  "finishedAt": "2026-06-06T10:03:02.952Z",
+  "status": "passed",
+  "startedAt": "2026-06-06T10:02:59.400Z",
+  "steps": [
+    {
+      "name": "Launch browser, open QA_BASE_URL, save screenshot, close browser",
+      "status": "passed",
+      "screenshot": "/Users/simondodd/CLAUDEPUSH/qa/artifacts/smoke-2026-06-06T10-02-55-928Z/browser-smoke.png"
+    }
+  ]
+}

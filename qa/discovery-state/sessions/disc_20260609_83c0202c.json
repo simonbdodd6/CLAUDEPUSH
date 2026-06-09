@@ -1,0 +1,23 @@
+{
+  "sessionId": "disc_20260609_83c0202c",
+  "startedAt": "2026-06-09T10:16:34.821Z",
+  "completedAt": "2026-06-09T10:16:34.839Z",
+  "providers": [
+    "csv",
+    "manual",
+    "rugby-directory"
+  ],
+  "newCountries": [],
+  "stats": {
+    "discovered": 8,
+    "normalized": 8,
+    "unique": 8,
+    "duplicates": 0,
+    "duplicateRate": 0,
+    "readyForScoring": 8,
+    "newLeads": 0,
+    "updatedLeads": 8,
+    "errors": 0,
+    "totalLeadsInDb": 8
+  }
+}

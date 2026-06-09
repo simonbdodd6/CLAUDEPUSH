@@ -1,0 +1,22 @@
+{
+  "id": "gen_programme_0uktocb",
+  "type": "ai-generation",
+  "version": 1,
+  "firstSeen": "2026-06-09T09:43:27.292Z",
+  "lastUpdated": "2026-06-09T09:43:27.292Z",
+  "updateCount": 0,
+  "summary": "programme generation via none (26ms)",
+  "history": [],
+  "tags": [],
+  "embedding": null,
+  "requestType": "programme",
+  "entityType": "player",
+  "entityId": null,
+  "provider": "none",
+  "model": null,
+  "inputHash": null,
+  "elapsed": 26,
+  "kbItemsUsed": 4,
+  "outputPreview": "8-week Preseason programme for a 17-year-old Prop (intermediate level). Focus: Strength, Mass, Scrummaging Power.",
+  "coachReviewed": false
+}

@@ -1,0 +1,24 @@
+{
+  "_meta": { "club": "Kildare Valley RFC", "season": "2025-26", "isMock": true },
+  "memberships": [
+    { "id": "m001", "playerId": "p001", "playerName": "Ciarán Murphy", "membershipType": "Senior Playing", "status": "active", "validFrom": "2025-08-01", "validUntil": "2026-07-31", "paidAmount": 280, "currency": "EUR", "_isMock": true },
+    { "id": "m002", "playerId": "p002", "playerName": "Shane Kelly", "membershipType": "Senior Playing", "status": "active", "validFrom": "2025-08-01", "validUntil": "2026-07-31", "paidAmount": 280, "currency": "EUR", "_isMock": true },
+    { "id": "m003", "playerId": "p003", "playerName": "Darragh Byrne", "membershipType": "Senior Playing", "status": "active", "validFrom": "2025-09-01", "validUntil": "2026-07-31", "paidAmount": 280, "currency": "EUR", "_isMock": true },
+    { "id": "m004", "playerId": "p004", "playerName": "Eoin Farrell", "membershipType": "Senior Playing", "status": "pending", "validFrom": null, "validUntil": null, "paidAmount": 0, "currency": "EUR", "_isMock": true },
+    { "id": "m005", "playerId": "p005", "playerName": "Conor Walsh", "membershipType": "Senior Playing", "status": "active", "validFrom": "2025-08-01", "validUntil": "2026-07-31", "paidAmount": 280, "currency": "EUR", "_isMock": true },
+    { "id": "m006", "playerId": "p006", "playerName": "Pádraig Brennan", "membershipType": "Senior Playing", "status": "active", "validFrom": "2025-08-15", "validUntil": "2026-07-31", "paidAmount": 280, "currency": "EUR", "_isMock": true },
+    { "id": "m007", "playerId": "p007", "playerName": "Tadhg O'Brien", "membershipType": "Senior Playing", "status": "active", "validFrom": "2025-08-01", "validUntil": "2026-07-31", "paidAmount": 280, "currency": "EUR", "_isMock": true },
+    { "id": "m008", "playerId": "p008", "playerName": "Seán Dunne", "membershipType": "Senior Playing", "status": "active", "validFrom": "2025-08-01", "validUntil": "2026-07-31", "paidAmount": 280, "currency": "EUR", "_isMock": true },
+    { "id": "m009", "playerId": "p009", "playerName": "Oisín Doyle", "membershipType": "Youth Playing", "status": "active", "validFrom": "2025-08-01", "validUntil": "2026-07-31", "paidAmount": 150, "currency": "EUR", "_isMock": true },
+    { "id": "m010", "playerId": "p010", "playerName": "Rían McCarthy", "membershipType": "Youth Playing", "status": "active", "validFrom": "2025-08-01", "validUntil": "2026-07-31", "paidAmount": 150, "currency": "EUR", "_isMock": true },
+    { "id": "m011", "playerId": "p011", "playerName": "Fionn Kavanagh", "membershipType": "Youth Playing", "status": "active", "validFrom": "2025-09-01", "validUntil": "2026-07-31", "paidAmount": 150, "currency": "EUR", "_isMock": true },
+    { "id": "m012", "playerId": "p012", "playerName": "Daithí Power", "membershipType": "Youth Playing", "status": "active", "validFrom": "2025-08-01", "validUntil": "2026-07-31", "paidAmount": 150, "currency": "EUR", "_isMock": true },
+    { "id": "m013", "playerId": "p017", "playerName": "Caoilfhinn Burke", "membershipType": "Youth Playing", "status": "active", "validFrom": "2025-08-01", "validUntil": "2026-07-31", "paidAmount": 120, "currency": "EUR", "_isMock": true },
+    { "id": "m014", "playerId": "p018", "playerName": "Séamus Tobin", "membershipType": "Youth Playing", "status": "active", "validFrom": "2025-08-01", "validUntil": "2026-07-31", "paidAmount": 120, "currency": "EUR", "_isMock": true },
+    { "id": "m015", "playerId": "p020", "playerName": "Tomás Flynn", "membershipType": "Youth Playing", "status": "lapsed", "validFrom": "2025-08-01", "validUntil": "2026-07-31", "paidAmount": 0, "currency": "EUR", "_isMock": true }
+  ],
+  "summary": {
+    "totalMembers": 15, "activeMembers": 13, "pendingMembers": 1, "lapsedMembers": 1,
+    "totalRevenue": 3040, "outstandingRevenue": 400, "currency": "EUR"
+  }
+}

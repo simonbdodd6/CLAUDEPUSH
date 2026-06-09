@@ -4,7 +4,28 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "market:pipeline": "node qa/market-intel/pipeline.js",
+    "market:import": "node qa/market-intel/pipeline.js --import",
+    "market:score": "node qa/market-intel/pipeline.js --score",
+    "market:reports": "node qa/market-intel/pipeline.js --reports",
+    "discovery": "node qa/discovery/discovery.js",
+    "discovery:dry": "node qa/discovery/discovery.js --dry-run",
+    "rugby:intel": "node qa/rugby-intel/rugby-intel.js",
+    "rugby:intel:reports": "node qa/rugby-intel/rugby-intel.js --reports-only",
+    "rugby:intel:summary": "node qa/rugby-intel/rugby-intel.js --summary",
+    "rugby:assistant": "node qa/rugby-assistant/rugby-assistant.js",
+    "rugby:session": "node qa/rugby-assistant/rugby-session.js",
+    "rugby:drills": "node qa/rugby-assistant/rugby-drills.js",
+    "rugby:law": "node qa/rugby-assistant/rugby-law.js",
+    "lead:personalise": "node qa/lead-personalisation/lead-personalisation.js",
+    "lead:personalise:demo": "node qa/lead-personalisation/lead-personalisation.js --demo",
+    "coaching:engine": "node qa/coaching-engine/coaching-engine-cli.js",
+    "memory:engine": "node memory-engine/memory-engine-cli.js",
+    "player:development": "node qa/player-development/player-development-cli.js",
+    "club:intelligence": "node qa/club-intelligence/club-intelligence-cli.js",
+    "workflow:engine": "node workflow-engine/workflow-engine-cli.js",
+    "orchestrator": "node orchestrator/orchestrator-cli.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"
