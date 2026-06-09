@@ -63,7 +63,8 @@
     "coaching:engine": "node qa/coaching-engine/coaching-engine-cli.js",
     "memory:engine": "node memory-engine/memory-engine-cli.js",
     "player:development": "node qa/player-development/player-development-cli.js",
-    "copilot": "node ai-copilot/copilot-cli.js"
+    "copilot": "node ai-copilot/copilot-cli.js",
+    "club:intelligence": "node qa/club-intelligence/club-intelligence-cli.js"
   },
   "dependencies": {
     "web-push": "^3.6.7"

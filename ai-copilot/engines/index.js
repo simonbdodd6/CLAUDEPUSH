@@ -8,6 +8,7 @@
 // Import order determines priority tie-breaking (earlier = higher priority in ties).
 
 import './memory-engine-adapter.js';
+import './club-intelligence-adapter.js';   // highest-level — runs before player-dev for squad queries
 import './coaching-engine-adapter.js';
 import './player-development-adapter.js';
 import './rugby-knowledge-adapter.js';
