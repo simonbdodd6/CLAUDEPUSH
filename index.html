@@ -4890,29 +4890,26 @@
         </button>`;
       }).join("") || `<p class="muted" style="font-size:12px;padding:10px">No players in this group.</p>`;
 
-      const sessionDisplayTitle = session => {
-        if (session.id === "tue") return "Tuesday Training";
-        if (session.id === "thu") return "Thursday Training";
-        if (session.id === "game") return "Weekend Match";
-        return session.title;
-      };
+      const sessionDisplayTitle = session => session.title || session.id;
 
       const sessionCardsHTML = state.schedule.map(session => {
-        const rRows  = sessionRows(session.id);
-        const total  = rRows.length;
-        const yes    = rRows.filter(({status}) => status === "available").length;
-        const no     = rRows.filter(({status}) => ["unavailable", "injured"].includes(status)).length;
-        const unsure = rRows.filter(({status}) => status === "maybe").length;
-        const chase  = rRows.filter(({status}) => status === "no-reply").length;
+        const rRows   = sessionRows(session.id);
+        const total   = rRows.length;
+        const yes     = rRows.filter(({status}) => status === "available").length;
+        const no      = rRows.filter(({status}) => ["unavailable", "injured"].includes(status)).length;
+        const unsure  = rRows.filter(({status}) => status === "maybe").length;
+        const chase   = rRows.filter(({status}) => status === "no-reply").length;
         const answered = total - chase;
-        const pct    = total ? Math.round(answered / total * 100) : 0;
-        const icon   = session.type === 'Match' ? '🏉' : '🏃';
+        const pct     = total ? Math.round(answered / total * 100) : 0;
+        const icon    = session.type === 'Match' ? '🏉' : '🏃';
+        const lastReq = state.availabilityRequests?.find(r => r.sessionId === session.id);
+        const sentBadge = lastReq ? `<span style="font-size:10px;color:var(--muted);margin-top:4px;display:block">Sent ${esc(lastReq.sentAt)}</span>` : '';
         return `<button class="msg-session-card ${selected?.id === session.id ? "active" : ""}" type="button" onclick="openMessageDetail('${session.id}')">
           <div class="register-head">
             <strong><span style="margin-right:5px">${icon}</span>${esc(sessionDisplayTitle(session))}</strong>
-            <span class="msg-chip ${yes >= 15 ? 'available' : chase > 0 ? 'no-reply' : 'available'}">${yes}/${total}</span>
+            <span class="msg-chip ${chase === 0 && total > 0 ? 'available' : chase > 0 ? 'no-reply' : ''}">${yes}/${total}</span>
           </div>
-          <small style="color:var(--muted)">${esc(session.date || "Availability open")}${session.deadline ? ' <span style="color:var(--amber)">· deadline ' + esc(session.deadline) + '</span>' : ''}</small>
+          <small style="color:var(--muted)">${esc(session.date || "Availability open")}${session.deadline ? ' · <span style="color:var(--amber)">by ' + esc(session.deadline) + '</span>' : ''}</small>
           <div class="avail-progress"><div class="avail-progress-fill" style="width:${pct}%"></div></div>
           <div class="msg-pill-row" style="margin-top:8px">
             <span class="msg-chip available">${yes} ✓</span>
@@ -4920,6 +4917,7 @@
             <span class="msg-chip maybe">${unsure} ?</span>
             <span class="msg-chip no-reply">${chase} —</span>
           </div>
+          ${sentBadge}
         </button>`;
       }).join("");
 
@@ -4942,7 +4940,7 @@
             <div>
               <div class="eyebrow">Coach communications</div>
               <h2>Availability Centre</h2>
-              <p>Track Tuesday training, Thursday training and weekend match replies in one place, with every player grouped by their latest answer.</p>
+              <p>${state.schedule.length > 0 ? `Track ${state.schedule.map(s => s.title).join(', ')} replies in one place. Each player is grouped by their latest answer.` : 'Add sessions below to start tracking availability.'}</p>
             </div>
             <div class="msg-hero-actions">
               <button class="btn" type="button" onclick="setSection('coach','messages')">Open messages</button>
