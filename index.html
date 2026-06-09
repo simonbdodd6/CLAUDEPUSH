@@ -2237,6 +2237,12 @@
       const next = { ...structuredClone(defaultState), ...input };
       next.notification = ""; // never restore stale notification across sessions
       next.users = input.users || structuredClone(testAccounts);
+      // Enforce canonical roles for built-in accounts — prevents stale localStorage
+      // from corrupting coach-demo's role if applyApprovedIdentityLocally was called incorrectly.
+      testAccounts.forEach(account => {
+        const u = next.users.find(u => u.id === account.id);
+        if (u) u.role = account.role;
+      });
       next.currentUserId = input.currentUserId || "coach-demo";
       next.selectedMessagePlayerId = input.selectedMessagePlayerId || next.selectedPlayerId || "test-simon";
       next.selectedChatId = input.selectedChatId || (next.activeView === "coach" ? "squad" : "coach");
@@ -2256,9 +2262,15 @@
       const _STALE_PLAYER_NAMES_LC = new Set([
         'nick player', 'simon player', 'nick marshall', 'dodsy player', 'doddsy player',
       ]);
+      // Also remove any player record that uses a staff user ID — these were incorrectly
+      // created when applyApprovedIdentityLocally was called for staff users.
+      const _STAFF_USER_IDS = new Set(testAccounts.map(a => a.id));
       next.players = next.players.filter(player => {
         const name = String(player.name || '').trim().toLowerCase();
-        return !_STALE_PLAYER_NAMES_LC.has(name);
+        if (_STALE_PLAYER_NAMES_LC.has(name)) return false;
+        if (_STAFF_USER_IDS.has(String(player.id || ''))) return false;
+        if (_STAFF_USER_IDS.has(String(player.userId || ''))) return false;
+        return true;
       });
       canonicalizeStatePlayers(next);
       next.messages = (input.messages || defaultState.messages).map(m => ({
@@ -3758,11 +3770,33 @@
         });
         const data = await res.json();
         if (!data.ok) return showToast('Dev login failed: ' + (data.error || 'unknown'));
-        applyApprovedIdentityLocally(data);
+        const isStaff = ['coach','admin','medical'].includes(data.user?.role || data.teamMember?.role);
+        if (!isStaff) {
+          applyApprovedIdentityLocally(data);
+        } else {
+          // Staff: upsert state.users with correct role — never add to state.players
+          const staffName = data.user?.displayName || data.user?.email || userId;
+          const existingUser = state.users.find(u => u.id === data.user.id);
+          if (!existingUser) {
+            state.users.push({ id: data.user.id, role: data.user.role || 'coach', name: staffName, email: data.user.email || '', phone: '', pin: '' });
+          } else {
+            existingUser.role = data.user.role || existingUser.role;
+            existingUser.name = existingUser.name || staffName;
+            existingUser.email = existingUser.email || (data.user.email || '');
+          }
+        }
         _serverSessionReadyFor = userId;
         state.currentUserId = userId;
-        const isStaff = ['coach','admin','medical'].includes(data.user?.role || data.teamMember?.role);
         state.activeView = isStaff ? 'coach' : 'player';
+        if (isStaff) {
+          state.activeCoachSection = state.activeCoachSection || 'overview';
+          state.selectedChatId = state.selectedChatId || 'squad';
+        } else {
+          state.activePlayerSection = 'messages';
+          state.selectedPlayerId = data.user.id;
+          state.selectedMessagePlayerId = data.user.id;
+          state.selectedChatId = 'coach';
+        }
         authTab = 'closed';
         saveState('Dev login');
         render();
@@ -3805,10 +3839,10 @@
       const canonicalPlayerId = legacyId || user.id;
       console.log(`[identity] applyApprovedIdentityLocally userId=${user.id} legacyId=${legacyId} canonicalPlayerId=${canonicalPlayerId}`);
       if (!state.users.some(item => item.id === user.id)) {
-        state.users.push({ id: user.id, role: 'player', name, email, phone: '', pin: '', playerId: canonicalPlayerId });
+        state.users.push({ id: user.id, role: user.role || 'player', name, email, phone: '', pin: '', playerId: canonicalPlayerId });
       } else {
         const existingUser = state.users.find(item => item.id === user.id);
-        existingUser.role = 'player';
+        existingUser.role = existingUser.role || user.role || 'player';
         existingUser.name = existingUser.name || name;
         existingUser.email = existingUser.email || email;
         existingUser.playerId = canonicalPlayerId;
@@ -7259,6 +7293,31 @@
     // Old versions removed — new WhatsApp functions defined above
 
     // ─── RENDER ───────────────────────────────────────────────────────────────
+    function renderDebugOverlay() {
+      if (!window._devLoginEnabled) {
+        const existing = document.getElementById('_devDebugOverlay');
+        if (existing) existing.remove();
+        return;
+      }
+      let el = document.getElementById('_devDebugOverlay');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = '_devDebugOverlay';
+        el.style.cssText = 'position:fixed;bottom:0;left:0;z-index:99999;background:rgba(0,0,0,0.8);color:#0f0;font:10px/1.5 monospace;padding:4px 8px;pointer-events:none;max-width:100vw;white-space:pre;';
+        document.body.appendChild(el);
+      }
+      const u = currentUser();
+      const canonicalId = u?.role === 'player' ? (canonicalPlayerIdForUser(u) || u?.id) : u?.id;
+      const convId = u?.role === 'player' ? dmConvId('coach-demo', canonicalId || '') : '—';
+      el.textContent = [
+        `uid: ${state.currentUserId || '—'}`,
+        `role: ${u?.role || '—'}`,
+        `selPlayer: ${state.selectedPlayerId || '—'}`,
+        `me.id: ${canonicalId || '—'}`,
+        `convId: ${convId}`,
+      ].join('   ');
+    }
+
     function render() {
       renderNav();
       showSection();
@@ -7291,6 +7350,7 @@
       renderPlayerWeek();
       renderPlayerAvailability();
       renderPlayerFixtures();
+      renderDebugOverlay();
       // Async live-data panels — non-blocking, fills in after render
       if (state.activeCoachSection === "message") {
         loadLiveMessaging();

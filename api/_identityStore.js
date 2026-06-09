@@ -441,6 +441,47 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
     }
   });
 
+  // Ensure staff accounts exist with their canonical roles — enforces correct role even
+  // if Redis was previously corrupted (e.g. applyApprovedIdentityLocally wrote role:'player').
+  LEGACY_STAFF_ACCOUNTS.forEach(account => {
+    let user = users.find(item => item.id === account.id);
+    if (!user) {
+      user = {
+        id: account.id,
+        email: normalizeEmail(account.email),
+        firstName: account.firstName,
+        lastName: account.lastName,
+        displayName: account.displayName,
+        authProvider: 'legacy-password',
+        passwordSet: false,
+        createdAt: nowIso(),
+        lastLoginAt: null,
+      };
+      users.push(user);
+      usersChanged = true;
+    }
+    let member = members.find(item => item.teamId === teamId && item.userId === account.id);
+    if (!member) {
+      member = {
+        id: `tm_${account.id}`,
+        teamId,
+        userId: account.id,
+        role: account.role,
+        status: 'active',
+        joinedAt: nowIso(),
+        approvedAt: nowIso(),
+        approvedBy: 'legacy-compatibility',
+        rejectedAt: null,
+        rejectedBy: null,
+      };
+      members.push(member);
+      membersChanged = true;
+    } else if (member.role !== account.role) {
+      member.role = account.role;
+      membersChanged = true;
+    }
+  });
+
   await Promise.all([
     usersChanged ? saveUsers(users) : Promise.resolve(),
     membersChanged ? saveTeamMembers(members) : Promise.resolve(),
