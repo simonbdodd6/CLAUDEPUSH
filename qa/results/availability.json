@@ -1,143 +1,143 @@
 {
   "suite": "availability",
-  "runId": "2026-06-09T17-32-49-561Z",
-  "startedAt": "2026-06-09T17:32:49.613Z",
-  "finishedAt": "2026-06-09T17:33:34.664Z",
+  "runId": "2026-06-09T17-53-35-657Z",
+  "startedAt": "2026-06-09T17:53:35.661Z",
+  "finishedAt": "2026-06-09T17:54:01.321Z",
   "status": "passed",
   "baseURL": "https://boitsfort-coachseye.vercel.app",
-  "commit": "728bce6",
+  "commit": "a5466fc",
   "steps": [
     {
       "name": "t01-open-app",
       "status": "passed",
-      "startedAt": "2026-06-09T17:32:58.692Z",
-      "finishedAt": "2026-06-09T17:33:05.151Z",
+      "startedAt": "2026-06-09T17:53:37.678Z",
+      "finishedAt": "2026-06-09T17:53:39.073Z",
       "screenshot": "qa/screenshots/availability/01-t01-open-app.png"
     },
     {
       "name": "t01-coach-login",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:05.563Z",
-      "finishedAt": "2026-06-09T17:33:05.577Z",
+      "startedAt": "2026-06-09T17:53:39.321Z",
+      "finishedAt": "2026-06-09T17:53:39.330Z",
       "screenshot": "qa/screenshots/availability/02-t01-coach-login.png"
     },
     {
       "name": "t01-navigate-availability",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:05.788Z",
-      "finishedAt": "2026-06-09T17:33:07.396Z",
+      "startedAt": "2026-06-09T17:53:39.571Z",
+      "finishedAt": "2026-06-09T17:53:40.496Z",
       "screenshot": "qa/screenshots/availability/03-t01-navigate-availability.png"
     },
     {
       "name": "t01-dashboard-visible",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:07.990Z",
-      "finishedAt": "2026-06-09T17:33:08.257Z",
+      "startedAt": "2026-06-09T17:53:40.721Z",
+      "finishedAt": "2026-06-09T17:53:40.765Z",
       "screenshot": "qa/screenshots/availability/04-t01-dashboard-visible.png"
     },
     {
       "name": "t01-session-picker-has-sessions",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:08.870Z",
-      "finishedAt": "2026-06-09T17:33:08.884Z",
+      "startedAt": "2026-06-09T17:53:40.933Z",
+      "finishedAt": "2026-06-09T17:53:40.940Z",
       "screenshot": "qa/screenshots/availability/05-t01-session-picker-has-sessions.png"
     },
     {
       "name": "t02-open-app",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:12.100Z",
-      "finishedAt": "2026-06-09T17:33:15.866Z",
+      "startedAt": "2026-06-09T17:53:41.703Z",
+      "finishedAt": "2026-06-09T17:53:42.894Z",
       "screenshot": "qa/screenshots/availability/06-t02-open-app.png"
     },
     {
       "name": "t02-coach-login",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:16.164Z",
-      "finishedAt": "2026-06-09T17:33:16.225Z",
+      "startedAt": "2026-06-09T17:53:43.174Z",
+      "finishedAt": "2026-06-09T17:53:43.179Z",
       "screenshot": "qa/screenshots/availability/07-t02-coach-login.png"
     },
     {
       "name": "t02-enter-player-view",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:16.473Z",
-      "finishedAt": "2026-06-09T17:33:17.719Z",
+      "startedAt": "2026-06-09T17:53:43.383Z",
+      "finishedAt": "2026-06-09T17:53:44.358Z",
       "screenshot": "qa/screenshots/availability/08-t02-enter-player-view.png"
     },
     {
       "name": "t02-navigate-player-availability",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:18.225Z",
-      "finishedAt": "2026-06-09T17:33:18.850Z",
+      "startedAt": "2026-06-09T17:53:44.777Z",
+      "finishedAt": "2026-06-09T17:53:45.401Z",
       "screenshot": "qa/screenshots/availability/09-t02-navigate-player-availability.png"
     },
     {
       "name": "t02-select-available-tuesday",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:19.138Z",
-      "finishedAt": "2026-06-09T17:33:20.084Z",
+      "startedAt": "2026-06-09T17:53:45.694Z",
+      "finishedAt": "2026-06-09T17:53:46.717Z",
       "screenshot": "qa/screenshots/availability/10-t02-select-available-tuesday.png"
     },
     {
       "name": "t03-select-maybe-thursday",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:20.606Z",
-      "finishedAt": "2026-06-09T17:33:21.944Z",
+      "startedAt": "2026-06-09T17:53:47.191Z",
+      "finishedAt": "2026-06-09T17:53:47.986Z",
       "screenshot": "qa/screenshots/availability/11-t03-select-maybe-thursday.png"
     },
     {
       "name": "t04-select-unavailable-game-injury",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:22.561Z",
-      "finishedAt": "2026-06-09T17:33:23.615Z",
+      "startedAt": "2026-06-09T17:53:48.499Z",
+      "finishedAt": "2026-06-09T17:53:49.295Z",
       "screenshot": "qa/screenshots/availability/12-t04-select-unavailable-game-injury.png"
     },
     {
       "name": "t05-responses-persist-after-rerender",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:23.821Z",
-      "finishedAt": "2026-06-09T17:33:24.875Z",
+      "startedAt": "2026-06-09T17:53:49.647Z",
+      "finishedAt": "2026-06-09T17:53:50.668Z",
       "screenshot": "qa/screenshots/availability/13-t05-responses-persist-after-rerender.png"
     },
     {
       "name": "t06-open-app-as-coach",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:26.060Z",
-      "finishedAt": "2026-06-09T17:33:28.423Z",
+      "startedAt": "2026-06-09T17:53:51.878Z",
+      "finishedAt": "2026-06-09T17:53:54.338Z",
       "screenshot": "qa/screenshots/availability/14-t06-open-app-as-coach.png"
     },
     {
       "name": "t06-coach-refresh-availability",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:28.915Z",
-      "finishedAt": "2026-06-09T17:33:31.858Z",
+      "startedAt": "2026-06-09T17:53:54.632Z",
+      "finishedAt": "2026-06-09T17:53:57.171Z",
       "screenshot": "qa/screenshots/availability/15-t06-coach-refresh-availability.png"
     },
     {
       "name": "t06-dashboard-columns-present",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:32.118Z",
-      "finishedAt": "2026-06-09T17:33:32.426Z",
+      "startedAt": "2026-06-09T17:53:57.448Z",
+      "finishedAt": "2026-06-09T17:53:57.467Z",
       "screenshot": "qa/screenshots/availability/16-t06-dashboard-columns-present.png"
     },
     {
       "name": "t07-injury-badge-css-present",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:32.620Z",
-      "finishedAt": "2026-06-09T17:33:32.652Z",
+      "startedAt": "2026-06-09T17:53:58.222Z",
+      "finishedAt": "2026-06-09T17:53:58.352Z",
       "screenshot": "qa/screenshots/availability/17-t07-injury-badge-css-present.png"
     },
     {
       "name": "t08-remind-button-visible",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:32.902Z",
-      "finishedAt": "2026-06-09T17:33:32.928Z",
+      "startedAt": "2026-06-09T17:53:58.956Z",
+      "finishedAt": "2026-06-09T17:53:58.978Z",
       "screenshot": "qa/screenshots/availability/18-t08-remind-button-visible.png"
     },
     {
       "name": "t09-remind-fires-correct-push-payload",
       "status": "passed",
-      "startedAt": "2026-06-09T17:33:33.146Z",
-      "finishedAt": "2026-06-09T17:33:34.401Z",
+      "startedAt": "2026-06-09T17:53:59.894Z",
+      "finishedAt": "2026-06-09T17:54:01.057Z",
       "screenshot": "qa/screenshots/availability/19-t09-remind-fires-correct-push-payload.png"
     }
   ],
@@ -181,16 +181,12 @@
     "Failed to load resource: the server responded with a status of 401 ()",
     "Failed to load resource: the server responded with a status of 401 ()",
     "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
     "Failed to load resource: the server responded with a status of 403 ()",
     "Failed to load resource: the server responded with a status of 403 ()",
     "Failed to load resource: the server responded with a status of 403 ()",
     "Failed to load resource: the server responded with a status of 403 ()",
     "Failed to load resource: the server responded with a status of 403 ()",
     "Failed to load resource: the server responded with a status of 403 ()",
-    "Failed to load resource: the server responded with a status of 404 ()",
     "Failed to load resource: the server responded with a status of 403 ()",
     "Failed to load resource: the server responded with a status of 403 ()",
     "Failed to load resource: the server responded with a status of 403 ()",
