@@ -1,4 +1,6 @@
 // coacheseyeGPT service worker: receive push messages and record player replies.
+// SW_VERSION is queried by the diagnostics panel to confirm the running build.
+const SW_VERSION = '20260609.3';
 const APP_URL = '/';
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -49,9 +51,12 @@ self.addEventListener('push', event => {
   })());
 });
 
-// Page-triggered SW notification test — lets the diagnostics panel verify
-// showNotification() works without going through the server push path.
+// Page-triggered SW notification test and version query.
 self.addEventListener('message', event => {
+  if (event.data?.type === 'get_version') {
+    (event.source || self).postMessage({ type: 'sw_version', version: SW_VERSION, timestamp: Date.now() });
+    return;
+  }
   if (event.data?.type === 'test_show_notification') {
     const title = event.data.title || 'SW Test Notification';
     const body  = event.data.body  || 'Service worker showNotification() test';

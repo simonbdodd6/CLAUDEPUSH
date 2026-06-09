@@ -2381,6 +2381,8 @@
       return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
     }
 
+    let _swVersion = null; // version string reported by the active SW
+
     async function initServiceWorker() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
       try {
@@ -2392,12 +2394,47 @@
         window._devLoginEnabled = Boolean(config.devLogin);
         if (config.devLogin) renderNav();
         swRegistration = await navigator.serviceWorker.register('/sw.js');
+        // Force the browser to check for a new SW version on every page load.
+        // The browser only checks automatically on navigation or once per 24h
+        // on push events, so without this a stale SW can run for a full day.
+        swRegistration.update().catch(() => {});
+        // When a new SW activates (skipWaiting + clients.claim), refresh the
+        // registration reference and re-query the version.
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          navigator.serviceWorker.getRegistration('/sw.js').then(reg => {
+            if (reg) swRegistration = reg;
+            _swVersion = null;
+            querySWVersion();
+          }).catch(() => {});
+        });
         // Check existing subscription
         pushSubscription = await swRegistration.pushManager.getSubscription();
         if (pushSubscription) refreshPushSubscriptionMetadata().catch(() => {});
         renderPushSidebar();
+        querySWVersion();
       } catch (e) {
         console.warn('SW registration failed:', e);
+      }
+    }
+
+    function querySWVersion() {
+      const active = swRegistration?.active || navigator.serviceWorker?.controller;
+      if (active) active.postMessage({ type: 'get_version' });
+    }
+
+    async function forceUpdateSW() {
+      const log = document.getElementById('_pushDiagLog');
+      const step = msg => { if (log) log.textContent = msg; };
+      step('Checking for SW update…');
+      try {
+        const reg = swRegistration || await navigator.serviceWorker.getRegistration('/sw.js');
+        if (!reg) { step('No registration found — click Re-register instead'); return; }
+        await reg.update();
+        step('Update check complete. If a new version was found, it will activate shortly.');
+        // Query version after a short delay to see if it changed
+        setTimeout(() => { querySWVersion(); renderPushDiagPanel(); }, 1500);
+      } catch(e) {
+        step('Update failed: ' + e.message);
       }
     }
 
@@ -7361,7 +7398,8 @@
         return;
       }
 
-      // Collect all data in parallel
+      // Collect all data in parallel; also ping the active SW for its version
+      querySWVersion();
       const [swReg, configData, debugSubs] = await Promise.all([
         navigator.serviceWorker.getRegistration('/sw.js').catch(() => null),
         fetch('/api/config').then(r => r.json()).catch(e => ({ error: e.message })),
@@ -7403,6 +7441,9 @@
             ${_diagRow('Notification permission', permission === 'granted', permission)}
             ${_diagRow('Service worker', Boolean(swReg), swReg ? 'registered (scope: ' + (swReg.scope||'?') + ')' : 'NOT registered')}
             ${_diagRow('SW active state', Boolean(swReg?.active), swReg?.active ? swReg.active.state : 'no active worker')}
+            ${_diagRow('SW version', _swVersion === '20260609.3', _swVersion
+              ? (_swVersion === '20260609.3' ? _swVersion + ' ✓ current' : _swVersion + ' ← STALE — click Force Update SW below')
+              : 'querying… (if stuck, click Force Update SW)')}
             ${_diagRow('Push subscription', Boolean(sub), sub ? 'active' : 'NONE — call Re-register below')}
             ${_diagRow('Endpoint', Boolean(endpoint), endpointTail)}
             ${_diagRow('Has p256dh key', Boolean(sub?.getKey?.('p256dh')), sub ? (sub.getKey('p256dh') ? 'yes' : 'MISSING') : '—')}
@@ -7497,13 +7538,18 @@
               style="font-size:11px;padding:6px 10px;background:rgba(251,191,36,0.1);border-color:rgba(251,191,36,0.35);color:#fcd34d">
               3. Test Local Notification  <span style="opacity:.6;font-size:10px">(new Notification() from page, no SW)</span>
             </button>
+            <button class="btn" type="button" onclick="forceUpdateSW()"
+              style="font-size:11px;padding:6px 10px;background:rgba(148,163,184,0.1);border-color:rgba(148,163,184,0.3);color:#94a3b8">
+              Force Update SW  <span style="opacity:.6;font-size:10px">(fetches latest sw.js, activates immediately)</span>
+            </button>
             <button class="btn" type="button" id="_reRegisterBtn" onclick="reRegisterPush()"
               style="font-size:11px;padding:6px 10px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">
-              Re-register Push Notifications
+              Re-register Push Notifications  <span style="opacity:.6;font-size:10px">(full teardown + rebuild)</span>
             </button>
           </div>
           <p style="font-size:10px;color:#475569;margin:8px 0 0;line-height:1.5">
-            If buttons 1 &amp; 2 show ✓ but no banner: check macOS Focus/DND and System Settings → Notifications → Google Chrome → Allow Notifications.
+            If SW version shows STALE: click Force Update SW, wait 2s, click ↻ Refresh.<br>
+            If buttons 1 &amp; 2 both show ✓ but no banner appears: check macOS System Settings → Notifications → Google Chrome → Alert style must be Banners or Alerts (not None), and turn off any Focus/DND mode.
           </p>
           <div id="_pushDiagLog" style="font-size:10px;font-family:monospace;color:#64748b;margin-top:4px;min-height:14px;white-space:pre-wrap"></div>
         </div>`;
@@ -8589,6 +8635,11 @@
         if (_swDiagLog.length > 20) _swDiagLog.length = 20;
         if (d.stage === 'show_resolved') localStorage.setItem('_pushLastReceived', String(d.timestamp || Date.now()));
         // Re-render diagnostics panel if it's open
+        const el = document.getElementById('_pushDiagPanel');
+        if (el && el.children.length) renderPushDiagPanel();
+      }
+      if (d.type === 'sw_version') {
+        _swVersion = d.version || null;
         const el = document.getElementById('_pushDiagPanel');
         if (el && el.children.length) renderPushDiagPanel();
       }
