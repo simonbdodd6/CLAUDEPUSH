@@ -1893,9 +1893,9 @@
         medical: status === "injured" ? "Review required before weekend" : ""
       })),
       schedule: [
-        { id: "tue",  type: "Training", title: "Tuesday training",           date: "Tuesday 19:45",   focus: "Defensive spacing and restart detail" },
-        { id: "thu",  type: "Training", title: "Thursday team run",           date: "Thursday 19:45",  focus: "Kituro plan, units, captain run" },
-        { id: "game", type: "Match",    title: "Boitsfort Premier vs Kituro", date: "Saturday fixture", focus: "Home ground" }
+        { id: "tue",  type: "Training", title: "Tuesday training",           date: "Tuesday 19:45",   focus: "Defensive spacing and restart detail", target: 15 },
+        { id: "thu",  type: "Training", title: "Thursday team run",           date: "Thursday 19:45",  focus: "Kituro plan, units, captain run",       target: 15 },
+        { id: "game", type: "Match",    title: "Boitsfort Premier vs Kituro", date: "Saturday fixture", focus: "Home ground",                          target: 22 }
       ],
       fixtures: [
         { date: "This Saturday",  opponent: "Kituro",      venue: "Home",  status: "Availability open" },
@@ -2341,7 +2341,10 @@
       if (!Array.isArray(next.schedule) || next.schedule.length === 0) {
         next.schedule = structuredClone(defaultState.schedule);
       }
-      next.schedule.forEach(s => { if (s.deadline === undefined) s.deadline = ''; });
+      next.schedule.forEach(s => {
+        if (s.deadline === undefined) s.deadline = '';
+        if (s.target  === undefined) s.target  = 0;
+      });
 
       // Migrate existing blocks to have coach + keyFocus fields
       ["tue","thu","game"].forEach(sid => {
@@ -2711,14 +2714,15 @@
       const date     = document.getElementById('sf-date')?.value.trim()     || '';
       const deadline = document.getElementById('sf-deadline')?.value.trim() || '';
       const focus    = document.getElementById('sf-focus')?.value.trim()    || '';
+      const target   = parseInt(document.getElementById('sf-target')?.value || '0', 10) || 0;
       if (!title) { showToast('Enter a session title first'); return; }
 
       if (_sessionFormMode === 'edit' && _sessionFormId) {
         const idx = state.schedule.findIndex(s => s.id === _sessionFormId);
-        if (idx >= 0) state.schedule[idx] = { ...state.schedule[idx], title, type, date, deadline, focus };
+        if (idx >= 0) state.schedule[idx] = { ...state.schedule[idx], title, type, date, deadline, focus, target };
       } else {
         const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20) || 'session';
-        state.schedule.push({ id: `${slug}-${Date.now().toString(36)}`, type, title, date, deadline, focus });
+        state.schedule.push({ id: `${slug}-${Date.now().toString(36)}`, type, title, date, deadline, focus, target });
       }
       _sessionFormMode = null;
       _sessionFormId   = null;
@@ -2767,9 +2771,14 @@
               <input id="sf-deadline" placeholder="e.g. Friday 12:00" value="${esc(prefill.deadline || '')}">
             </label>
           </div>
-          <label><span class="sf-label">Focus / notes (optional)</span>
-            <input id="sf-focus" placeholder="e.g. Defensive spacing" value="${esc(prefill.focus || '')}">
-          </label>
+          <div class="sf-row">
+            <label><span class="sf-label">Focus / notes (optional)</span>
+              <input id="sf-focus" placeholder="e.g. Defensive spacing" value="${esc(prefill.focus || '')}">
+            </label>
+            <label><span class="sf-label">Min players needed</span>
+              <input id="sf-target" type="number" min="0" max="60" placeholder="e.g. 15" value="${prefill.target || ''}">
+            </label>
+          </div>
           <div class="sf-actions" style="margin-top:12px">
             <button class="btn primary" type="button" onclick="saveSessionForm()">Save session</button>
             <button class="btn" type="button" onclick="closeSessionForm()">Cancel</button>
@@ -4970,6 +4979,12 @@
             <span class="msg-chip maybe">${unsure} ?</span>
             <span class="msg-chip no-reply">${chase} —</span>
           </div>
+          ${session.target > 0 ? (() => {
+            const needed = session.target - yes;
+            const ok     = yes >= session.target;
+            const col    = ok ? '#16a34a' : '#d97706';
+            return `<div style="margin-top:6px;font-size:10px;font-weight:700;color:${col}">${ok ? `✓ Target met (${yes}/${session.target})` : `Need ${needed} more to reach ${session.target}`}</div>`;
+          })() : ''}
           ${sentBadge}
         </button>`;
       }).join("");
@@ -5045,7 +5060,15 @@
                     <h2>Live Response Board</h2>
                     <p>${esc(sessionDisplayTitle(selected || {}))}${selected?.date ? ' · ' + esc(selected.date) : ''}${selected?.focus ? ' · <span style="color:var(--amber)">' + esc(selected.focus) + '</span>' : ''} · tap a player for details.</p>
                   </div>
-                  <span class="msg-chip ${boardNoReply.length ? "no-reply" : "available"}">${boardAnswered.length}/${boardRows.length} shown</span>
+                  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+                    <span class="msg-chip ${boardNoReply.length ? "no-reply" : "available"}">${boardAnswered.length}/${boardRows.length} shown</span>
+                    ${selected?.target > 0 ? (() => {
+                      const avail  = boardAvailable.length;
+                      const needed = selected.target - avail;
+                      const ok     = avail >= selected.target;
+                      return `<span style="font-size:10px;font-weight:700;color:${ok ? '#34d399' : '#fbbf24'}">${ok ? `✓ ${avail}/${selected.target} target met` : `${needed} more needed (target ${selected.target})`}</span>`;
+                    })() : ''}
+                  </div>
                 </div>
                 <div class="availability-board-tools">
                   <div class="availability-filter-group">${filterButtons}</div>
