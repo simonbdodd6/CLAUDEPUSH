@@ -399,6 +399,117 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    // ── Decision Centre ───────────────────────────────────────────────────────
+    // Feature flag: aiDecisionCentre
+    // Returns high-priority recs, pending decisions, completed decisions, history.
+    if (method === 'GET' && path === '/api/intelligence/decisions') {
+      try {
+        const [recResult, twinResult, fixtureResult, tlResult] = await Promise.allSettled([
+          import('../recommendation-engine/index.js').then(async m => {
+            const [fRes] = await Promise.allSettled([
+              import('../fixture-engine/fixture-store.js').then(async s => {
+                const { serializeFixture } = await import('../fixture-engine/fixture-schema.js')
+                const f = s.listUpcomingFixtures?.(1)?.[0] ?? null
+                return f ? serializeFixture(f) : null
+              }),
+            ])
+            const ctx = m.buildContext({ fixture: fRes.status === 'fulfilled' ? fRes.value : null })
+            return m.generate(ctx, { maxResults: 8 })
+          }),
+          import('../club-digital-twin/index.js').then(m => m.getClub().catch(() => null)),
+          import('../fixture-engine/fixture-store.js').then(async s => {
+            const { serializeFixture } = await import('../fixture-engine/fixture-schema.js')
+            const f = s.listUpcomingFixtures?.(1)?.[0] ?? null
+            return f ? serializeFixture(f) : null
+          }),
+          import('../intelligence-timeline/index.js').then(m => m.getTimeline({ status: 'completed', limit: 10 })),
+        ])
+
+        const recs    = recResult.status    === 'fulfilled' ? recResult.value    : null
+        const fixture = fixtureResult.status === 'fulfilled' ? fixtureResult.value : null
+        const tlData  = tlResult.status     === 'fulfilled' ? tlResult.value     : null
+
+        // High priority: top 5 recommendations
+        const highPriority = (recs?.recommendations ?? []).slice(0, 5)
+
+        // Pending decisions — mock cards representing decisions awaiting coach action
+        const pending = [
+          { id: 'pd1', type: 'publish_squad',    urgency: 'HIGH',   icon: 'squad',
+            title:       'Publish squad for Saturday',
+            description: fixture ? `${fixture.squadStatus?.available?.length ?? '?'} players confirmed for vs ${fixture.opponent ?? 'upcoming fixture'}.` : 'Squad confirmation ready to send.',
+            team: 'Senior A', fixture: fixture ? `vs ${fixture.opponent}` : null,
+            dueBy: fixture?.daysToKickoff != null ? `${fixture.daysToKickoff}d` : '5d',
+            action: 'Send squad notification to all confirmed players.' },
+          { id: 'pd2', type: 'contact_players',  urgency: 'HIGH',   icon: 'contact',
+            title:       'Contact unavailable players',
+            description: '2 prop players listed unavailable. Confirm reasons and explore cover options.',
+            team: 'Senior A', fixture: null, dueBy: '2d',
+            action: 'Send personalised message to Jack O\'Sullivan and Conor Lynch.' },
+          { id: 'pd3', type: 'medical_followup', urgency: 'HIGH',   icon: 'medical',
+            title:       'Medical follow-up: Ross Dunne',
+            description: 'Concussion protocol step 3 due today. Medical officer confirmation required before contact training.',
+            team: 'Senior A', fixture: null, dueBy: 'Today',
+            action: 'Contact medical officer and log update in player profile.' },
+          { id: 'pd4', type: 'adjust_training',  urgency: 'MEDIUM', icon: 'training',
+            title:       'Adjust Tuesday session intensity',
+            description: 'Match week taper recommended. Current plan shows full-contact session — should reduce to shape work only.',
+            team: 'Senior A', fixture: fixture ? `vs ${fixture.opponent}` : null, dueBy: '1d',
+            action: 'Modify Tuesday session plan: cap at 60 min, no contact above 50%.' },
+          { id: 'pd5', type: 'fixture_prep',     urgency: 'LOW',    icon: 'fixture',
+            title:       'Update fixture preparation notes',
+            description: 'Match pack not yet generated for Saturday\'s fixture. Opposition analysis incomplete.',
+            team: 'Senior A', fixture: fixture ? `vs ${fixture.opponent}` : null, dueBy: '3d',
+            action: 'Generate match pack and assign opposition analysis to assistant coach.' },
+        ]
+
+        // Recently completed — from timeline completed events or mock
+        const completedEvents = tlData?.events ?? []
+        const recentlyCompleted = completedEvents.length > 0 ? completedEvents.slice(0, 5).map(e => ({
+          id:        e.id,
+          coach:     'Head Coach',
+          decision:  e.title,
+          timestamp: e.completedAt ?? e.timestamp,
+          outcome:   'Action completed',
+          category:  e.category,
+          notes:     e.notes,
+        })) : [
+          { id: 'cc1', coach: 'Head Coach', decision: 'Approved load reduction — Tuesday session capped', timestamp: new Date(Date.now() - 2*86400000).toISOString(), outcome: 'Session modified. Squad freshness maintained.', category: 'Training' },
+          { id: 'cc2', coach: 'Head Coach', decision: 'Medical clearance issued: Conor Lynch', timestamp: new Date(Date.now() - 3*86400000).toISOString(), outcome: 'Conor started as sub vs Clontarf. No re-injury.', category: 'Medical' },
+          { id: 'cc3', coach: 'Head Coach', decision: 'Approved A/B rotation for back-to-back fixtures', timestamp: new Date(Date.now() - 7*86400000).toISOString(), outcome: '6 players rotated. No fatigue injuries reported.', category: 'Logistics' },
+          { id: 'cc4', coach: 'Head Coach', decision: 'Video review completed — defensive line speed', timestamp: new Date(Date.now() - 14*86400000).toISOString(), outcome: 'Defensive improvement visible in next match: won 23-10.', category: 'Performance' },
+        ]
+
+        // Decision history — full timeline for filter UI
+        const histQuery   = Object.fromEntries(new URL('http://x?' + (req.url.split('?')[1] ?? '')).searchParams)
+        const { getTimeline, parseFilters } = await import('../intelligence-timeline/index.js')
+        const histFilters = parseFilters(histQuery)
+        const history     = getTimeline({ ...histFilters, limit: histFilters.limit ?? 30 })
+
+        json(res, { highPriority, pending, recentlyCompleted, history, generatedAt: new Date().toISOString(), isMock: recs?.meta?.isMock ?? false })
+      } catch (e) {
+        const { generate } = await import('../recommendation-engine/index.js').catch(() => ({ generate: () => ({ recommendations: [] }) }))
+        const { recommendations } = generate({}, { useMockFallback: true, maxResults: 5 })
+        json(res, {
+          highPriority:      recommendations,
+          pending:           [],
+          recentlyCompleted: [],
+          history:           { events: [], total: 0 },
+          generatedAt:       new Date().toISOString(),
+          isMock:            true, error: e.message,
+        })
+      }
+      return
+    }
+
+    if (method === 'POST' && path.match(/^\/api\/intelligence\/decisions\/([^/]+)\/(approve|dismiss|snooze)$/)) {
+      const [, id, action] = path.match(/^\/api\/intelligence\/decisions\/([^/]+)\/(approve|dismiss|snooze)$/)
+      const body = await readBody(req)
+      // In production: delegate to recommendation engine + learning engine
+      // For now: acknowledge and return
+      json(res, { ok: true, id, action, notes: body.notes ?? null })
+      return
+    }
+
     // ── Intelligence Timeline ─────────────────────────────────────────────────
     // Feature flag: aiTimeline (checked client-side; server always serves data)
     if (method === 'GET' && path === '/api/intelligence/timeline') {

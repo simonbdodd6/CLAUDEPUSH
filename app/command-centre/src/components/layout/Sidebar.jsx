@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: '/match-centre',   label: 'Match Centre',     icon: <MatchIcon />        },
   { to: '/availability',  label: 'Availability',     icon: <AvailabilityIcon /> },
   { to: '/intelligence',  label: 'Intelligence',     icon: <IntelligenceIcon />, badge: 'AI' },
+  { to: '/decisions',     label: 'Decision Centre',  icon: <DecisionIcon />,     badge: 'AI' },
 ]
 
 export default function Sidebar({ onCommandBarOpen }) {
@@ -149,6 +150,15 @@ function SeasonIcon() {
       <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
       <path d="M8 4v4l2.5 2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M4 2.5L3 1M12 2.5L13 1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+function DecisionIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4">
+      <path d="M3 8h2.5l1.5-4 2 7 1.5-4H13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="13" cy="8" r="0.7" fill="currentColor"/>
+      <circle cx="3"  cy="8" r="0.7" fill="currentColor"/>
     </svg>
   )
 }

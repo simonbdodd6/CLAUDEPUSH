@@ -9,6 +9,7 @@ import SeasonPage from './pages/SeasonPage.jsx'
 import MatchCentrePage   from './pages/MatchCentrePage.jsx'
 import AvailabilityPage from './pages/AvailabilityPage.jsx'
 import IntelligenceDashboardPage from './pages/IntelligenceDashboardPage.jsx'
+import DecisionCentrePage from './pages/DecisionCentrePage.jsx'
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/match-centre"   element={<MatchCentrePage />} />
         <Route path="/availability"   element={<AvailabilityPage />} />
         <Route path="/intelligence"   element={<IntelligenceDashboardPage />} />
+        <Route path="/decisions"      element={<DecisionCentrePage />} />
         <Route path="*"               element={<Navigate to="/" replace />} />
       </Routes>
     </CommandLayout>
