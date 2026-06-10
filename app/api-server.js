@@ -291,6 +291,27 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    // ── AI Timeline ───────────────────────────────────────────────────────────
+    if (method === 'GET' && path === '/api/timeline') {
+      const { runCheck } = await import('../autonomous-assistant/index.js')
+      const result = await runCheck({ saveToState: false }).catch(() => null)
+      const timeline = result?.timeline ?? { byDay: [], totalEvents: 0, automatableCount: 0 }
+      json(res, timeline)
+      return
+    }
+
+    // ── Learning / CIS status ─────────────────────────────────────────────────
+    if (method === 'GET' && path === '/api/learning/status') {
+      const { computeClubIntelligenceScore } = await import('../learning-engine/index.js')
+      const { getPredictionAccuracy }         = await import('../learning-engine/index.js')
+      const [cis, accuracy] = await Promise.all([
+        Promise.resolve().then(() => computeClubIntelligenceScore()).catch(() => ({ score: 0, grade: 'N/A', stage: 'COLD_START', components: {} })),
+        Promise.resolve().then(() => getPredictionAccuracy()).catch(() => ({ overall: { f1: 0, grade: 'N/A', precision: 0, recall: 0 } })),
+      ])
+      json(res, { cis, accuracy })
+      return
+    }
+
     // ── 404 ───────────────────────────────────────────────────────────────────
     err(res, `Route not found: ${method} ${path}`, 404)
 

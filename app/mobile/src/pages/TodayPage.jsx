@@ -11,7 +11,7 @@ function Section({ title, children }) {
 }
 
 export default function TodayPage({ data, alerts }) {
-  const { health, upcomingFixtures, briefing, loading } = data;
+  const { health, upcomingFixtures, briefing, phase, loading } = data;
 
   const today   = new Date().toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long' });
   const todayFx = (upcomingFixtures ?? []).filter(f => f.daysToKickoff === 0 || f.daysToKickoff === 1);
@@ -21,7 +21,12 @@ export default function TodayPage({ data, alerts }) {
   return (
     <div className="pt-2 pb-4">
       <div className="mb-5">
-        <h1 className="text-xl font-black text-ink-1">Today</h1>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-xl font-black text-ink-1">Today</h1>
+          {phase?.meta?.label && (
+            <span className="m-badge-accent text-[10px]">{phase.meta.label}</span>
+          )}
+        </div>
         <p className="text-xs text-ink-3">{today}</p>
       </div>
 

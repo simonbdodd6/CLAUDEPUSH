@@ -55,6 +55,8 @@ export const api = {
   snoozeRec:      (id, hours = 24)           => post(`/recommendations/${id}/snooze`, { hours }),
   dismissRec:     (id)                       => post(`/recommendations/${id}/dismiss`, {}),
   approvalDecide: (id, decision)             => post('/approvals/decide', { id, decision }),
+  timeline:       ()                         => get('/timeline'),
+  learningStatus: ()                         => get('/learning/status'),
 }
 
 // ── Mock data (fallback when server not running) ───────────────────────────────
@@ -120,6 +122,21 @@ export const MOCK = {
     phase: 'IN_SEASON',
     meta: { label: 'In Season', description: 'Competitive season in progress' },
     prescription: { attendanceExpectation: { target: 80 }, intensityLevel: 'HIGH' },
+  },
+  timeline: {
+    totalEvents: 8, automatableCount: 3,
+    byDay: [
+      { date: new Date().toISOString().slice(0,10), label: 'Today', events: [
+        { id: 't1', type: 'REMINDER', title: 'Weekly newsletter due', description: 'AI can auto-generate from this week\'s training and fixtures.', probability: 100, impact: 'MEDIUM', icon: '📩', automatable: true },
+      ]},
+      { date: '', label: 'Tomorrow', events: [
+        { id: 't2', type: 'PREDICTION', title: 'Predicted attendance: 73%', description: 'Below-threshold session likely.', probability: 72, impact: 'MEDIUM', icon: '📉' },
+      ]},
+    ],
+  },
+  learningStatus: {
+    cis: { score: 69, grade: 'B', stage: 'GROWING', topStrengths: ['Attendance tracking', 'Injury alerts'], improvementAreas: ['Training recommendations'] },
+    accuracy: { overall: { f1: 0.95, precision: 0.96, recall: 0.94, grade: 'A' } },
   },
 }
 

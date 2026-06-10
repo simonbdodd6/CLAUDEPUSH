@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Card, CardHeader } from '../components/ui/Card.jsx'
+import { Badge } from '../components/ui/Badge.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { Spinner } from '../components/ui/Spinner.jsx'
 import { EmptyState } from '../components/ui/EmptyState.jsx'
 import { api } from '../api/client.js'
+import { useSeasonPhase, useLearningStatus, useBriefing } from '../hooks/useClubData.js'
 
 const REPORT_ACTIONS = [
   { id: 'committee.club_health',     label: 'Club Health Report',      icon: '🏥', desc: 'Full health score breakdown', cat: 'COMMITTEE' },
@@ -29,6 +31,9 @@ export default function ReportsPage() {
   const [running, setRunning] = useState(null)
   const [openResult, setOpenResult] = useState(null)
   const [results, setResults] = useState({})
+  const phase    = useSeasonPhase()
+  const status   = useLearningStatus()
+  const briefing = useBriefing()
 
   async function run(action) {
     setRunning(action.id)
@@ -91,8 +96,43 @@ export default function ReportsPage() {
           })}
         </div>
 
-        {/* Result viewer */}
-        <div className="lg:col-span-1">
+        {/* Right column: AI context + report output */}
+        <div className="lg:col-span-1 space-y-4">
+
+          {/* AI Context panel */}
+          <Card className="p-4">
+            <CardHeader title="AI Context" action={<span className="text-[10px] text-accent">✦ Live</span>} />
+            <div className="space-y-2">
+              {phase.data?.meta?.label && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-ink-3">Season phase</span>
+                  <Badge variant="accent" className="text-[10px]">{phase.data.meta.label}</Badge>
+                </div>
+              )}
+              {status.data?.cis?.score > 0 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-ink-3">Club intelligence</span>
+                  <span className="font-semibold text-ink-1">{status.data.cis.score}/100 · {status.data.cis.grade}</span>
+                </div>
+              )}
+              {status.data?.accuracy?.overall?.f1 > 0 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-ink-3">Prediction accuracy</span>
+                  <span className="font-semibold text-success">{Math.round(status.data.accuracy.overall.f1 * 100)}%</span>
+                </div>
+              )}
+              {briefing.data?.headline && (
+                <div className="pt-1 border-t border-border-subtle mt-1">
+                  <p className="text-[11px] text-ink-3 leading-relaxed">{briefing.data.headline}</p>
+                </div>
+              )}
+              {!phase.loading && !phase.data?.meta?.label && (
+                <p className="text-[10px] text-ink-3 italic">Start the AI server to see live context</p>
+              )}
+            </div>
+          </Card>
+
+          {/* Result viewer */}
           <Card className="p-4 sticky top-20">
             <CardHeader
               title="Report Output"
@@ -128,7 +168,7 @@ export default function ReportsPage() {
               )
             }
           </Card>
-        </div>
+        </div>  {/* end right column */}
       </div>
     </div>
   )

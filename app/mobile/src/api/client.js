@@ -66,6 +66,10 @@ export const MOCK = {
     playerCount: 45,
     lastUpdated: new Date().toISOString(),
   },
+  seasonPhase: {
+    phase: 'IN_SEASON',
+    meta: { label: 'In Season', description: 'Competitive season underway' },
+  },
   alerts: [
     { id: 'a1', type: 'VOLUNTEER_GAP',    severity: 'HIGH',     title: 'First Aider needed Saturday', description: 'Volunteer role unfilled for next fixture.', ts: new Date().toISOString() },
     { id: 'a2', type: 'ATTENDANCE_DECLINE',severity: 'MEDIUM',  title: 'U16 attendance below 70%',    description: 'Average attendance has dropped over 3 weeks.', ts: new Date().toISOString() },
@@ -97,6 +101,7 @@ export const api = {
   approvals:       ()       => safe(() => fetcher('/api/approvals'),                  'approvals'),
   history:         ()       => safe(() => fetcher('/api/history'),                    null),
   briefing:        (role)   => safe(() => fetcher(`/api/dashboard/briefing?role=${role ?? 'coach'}`), 'briefing'),
+  seasonPhase:     ()       => safe(() => fetcher('/api/season/phase'),                'seasonPhase'),
 };
 
 // ── Digital Twin APIs (/twin/*) ───────────────────────────────────────────────

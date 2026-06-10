@@ -16,6 +16,7 @@ export function useMobileData() {
     health:          null,
     briefing:        null,
     upcomingFixtures:[],
+    phase:           null,
     alerts:          MOCK.alerts,
     recommendations: MOCK.recommendations,
     twinStatus:      null,
@@ -28,12 +29,13 @@ export function useMobileData() {
     if (force) CACHE.clear();
     setState(s => ({ ...s, loading: true, error: null }));
     try {
-      const [health, brief, upcoming, status, recs] = await Promise.all([
+      const [health, brief, upcoming, status, recs, phase] = await Promise.all([
         cached('health',    () => twin.health()),
         cached('briefing',  () => api.briefing('coach')),
         cached('fixtures',  () => fixtures.upcoming(5)),
         cached('status',    () => twin.status()),
         cached('recs',      () => api.recommendations()),
+        cached('phase',     () => api.seasonPhase()),
       ]);
       setState(s => ({
         ...s,
@@ -42,6 +44,7 @@ export function useMobileData() {
         upcomingFixtures: Array.isArray(upcoming) ? upcoming : [],
         twinStatus:       status ?? MOCK.twinStatus,
         recommendations:  Array.isArray(recs) ? recs : MOCK.recommendations,
+        phase:            phase  ?? MOCK.seasonPhase,
         loading:          false,
         lastRefreshed:    Date.now(),
       }));

@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { to: '/players',        label: 'Players',         icon: <PlayersIcon /> },
   { to: '/communications', label: 'Communications',  icon: <CommsIcon /> },
   { to: '/reports',        label: 'Reports',         icon: <ReportsIcon /> },
+  { to: '/season',         label: 'Season',          icon: <SeasonIcon /> },
 ]
 
 export default function Sidebar({ onCommandBarOpen }) {
@@ -113,6 +114,15 @@ function ReportsIcon() {
     <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4">
       <rect x="2" y="2" width="12" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
       <path d="M5 10V8M8 10V6M11 10V4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    </svg>
+  )
+}
+function SeasonIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4">
+      <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
+      <path d="M8 4v4l2.5 2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M4 2.5L3 1M12 2.5L13 1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
     </svg>
   )
 }
