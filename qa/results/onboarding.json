@@ -1,73 +1,73 @@
 {
   "workflow": "onboarding",
-  "runId": "2026-06-10T21-14-15-562Z",
-  "startedAt": "2026-06-10T21:14:15.562Z",
-  "finishedAt": "2026-06-10T21:14:55.525Z",
+  "runId": "2026-06-10T21-29-27-888Z",
+  "startedAt": "2026-06-10T21:29:27.896Z",
+  "finishedAt": "2026-06-10T21:30:13.680Z",
   "status": "passed",
-  "commit": "51975cb",
+  "commit": "7744dd0",
   "steps": [
     {
       "name": "open-app",
       "status": "passed",
-      "startedAt": "2026-06-10T21:14:37.029Z",
-      "finishedAt": "2026-06-10T21:14:51.528Z",
-      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/01-open-app.png"
+      "startedAt": "2026-06-10T21:29:33.262Z",
+      "finishedAt": "2026-06-10T21:29:56.827Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-29-27-888Z/01-open-app.png"
     },
     {
       "name": "coach-login",
       "status": "passed",
-      "startedAt": "2026-06-10T21:14:51.841Z",
-      "finishedAt": "2026-06-10T21:14:51.849Z",
-      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/02-coach-login.png"
+      "startedAt": "2026-06-10T21:29:57.260Z",
+      "finishedAt": "2026-06-10T21:29:57.286Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-29-27-888Z/02-coach-login.png"
     },
     {
       "name": "home-shows-onboarding",
       "status": "passed",
-      "startedAt": "2026-06-10T21:14:52.396Z",
-      "finishedAt": "2026-06-10T21:14:52.879Z",
-      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/03-home-shows-onboarding.png"
+      "startedAt": "2026-06-10T21:29:57.652Z",
+      "finishedAt": "2026-06-10T21:29:57.996Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-29-27-888Z/03-home-shows-onboarding.png"
     },
     {
       "name": "pill-shows-setup",
       "status": "passed",
-      "startedAt": "2026-06-10T21:14:53.011Z",
-      "finishedAt": "2026-06-10T21:14:53.032Z",
-      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/04-pill-shows-setup.png"
+      "startedAt": "2026-06-10T21:29:58.387Z",
+      "finishedAt": "2026-06-10T21:29:58.430Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-29-27-888Z/04-pill-shows-setup.png"
     },
     {
       "name": "current-step-is-primary",
       "status": "passed",
-      "startedAt": "2026-06-10T21:14:53.182Z",
-      "finishedAt": "2026-06-10T21:14:53.206Z",
-      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/05-current-step-is-primary.png"
+      "startedAt": "2026-06-10T21:29:58.776Z",
+      "finishedAt": "2026-06-10T21:29:59.028Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-29-27-888Z/05-current-step-is-primary.png"
     },
     {
       "name": "players-db-empty-state",
       "status": "passed",
-      "startedAt": "2026-06-10T21:14:53.362Z",
-      "finishedAt": "2026-06-10T21:14:53.745Z",
-      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/06-players-db-empty-state.png"
+      "startedAt": "2026-06-10T21:29:59.337Z",
+      "finishedAt": "2026-06-10T21:30:04.408Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-29-27-888Z/06-players-db-empty-state.png"
     },
     {
       "name": "toolbar-has-template-csv-btn",
       "status": "passed",
-      "startedAt": "2026-06-10T21:14:53.983Z",
-      "finishedAt": "2026-06-10T21:14:54.011Z",
-      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/07-toolbar-has-template-csv-btn.png"
+      "startedAt": "2026-06-10T21:30:05.211Z",
+      "finishedAt": "2026-06-10T21:30:05.383Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-29-27-888Z/07-toolbar-has-template-csv-btn.png"
     },
     {
       "name": "player-added-exits-onboarding",
       "status": "passed",
-      "startedAt": "2026-06-10T21:14:54.197Z",
-      "finishedAt": "2026-06-10T21:14:54.278Z",
-      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/08-player-added-exits-onboarding.png"
+      "startedAt": "2026-06-10T21:30:05.851Z",
+      "finishedAt": "2026-06-10T21:30:07.826Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-29-27-888Z/08-player-added-exits-onboarding.png"
     },
     {
       "name": "skip-guide-dismisses-onboarding",
       "status": "passed",
-      "startedAt": "2026-06-10T21:14:54.445Z",
-      "finishedAt": "2026-06-10T21:14:55.349Z",
-      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/09-skip-guide-dismisses-onboarding.png"
+      "startedAt": "2026-06-10T21:30:08.324Z",
+      "finishedAt": "2026-06-10T21:30:12.113Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-29-27-888Z/09-skip-guide-dismisses-onboarding.png"
     }
   ]
 }

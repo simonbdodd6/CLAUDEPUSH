@@ -1,61 +1,65 @@
 {
   "suite": "availability",
-  "runId": "2026-06-10T21-22-23-423Z",
-  "startedAt": "2026-06-10T21:22:23.429Z",
-  "finishedAt": "2026-06-10T21:23:15.918Z",
+  "runId": "2026-06-10T21-25-15-236Z",
+  "startedAt": "2026-06-10T21:25:15.243Z",
+  "finishedAt": "2026-06-10T21:27:08.846Z",
   "status": "passed",
   "baseURL": "http://127.0.0.1:3000",
-  "commit": "4473f00",
+  "commit": "7744dd0",
   "steps": [
     {
-      "name": "t01-open-app",
+      "name": "t06-open-app-as-coach",
       "status": "passed",
-      "startedAt": "2026-06-10T21:22:49.213Z",
-      "finishedAt": "2026-06-10T21:22:53.329Z",
-      "screenshot": "qa/screenshots/availability/01-t01-open-app.png"
+      "startedAt": "2026-06-10T21:25:37.248Z",
+      "finishedAt": "2026-06-10T21:25:41.033Z",
+      "screenshot": "qa/screenshots/availability/01-t06-open-app-as-coach.png"
     },
     {
-      "name": "t01-coach-login",
+      "name": "t06-coach-refresh-availability",
       "status": "passed",
-      "startedAt": "2026-06-10T21:22:53.604Z",
-      "finishedAt": "2026-06-10T21:22:53.612Z",
-      "screenshot": "qa/screenshots/availability/02-t01-coach-login.png"
+      "startedAt": "2026-06-10T21:25:41.563Z",
+      "finishedAt": "2026-06-10T21:27:04.440Z",
+      "screenshot": "qa/screenshots/availability/02-t06-coach-refresh-availability.png"
     },
     {
-      "name": "t01-navigate-availability",
+      "name": "t06-dashboard-columns-present",
       "status": "passed",
-      "startedAt": "2026-06-10T21:22:53.831Z",
-      "finishedAt": "2026-06-10T21:22:54.829Z",
-      "screenshot": "qa/screenshots/availability/03-t01-navigate-availability.png"
+      "startedAt": "2026-06-10T21:27:05.370Z",
+      "finishedAt": "2026-06-10T21:27:05.420Z",
+      "screenshot": "qa/screenshots/availability/03-t06-dashboard-columns-present.png"
     },
     {
-      "name": "t01-dashboard-visible",
+      "name": "t07-injury-badge-css-present",
       "status": "passed",
-      "startedAt": "2026-06-10T21:22:55.360Z",
-      "finishedAt": "2026-06-10T21:22:55.657Z",
-      "screenshot": "qa/screenshots/availability/04-t01-dashboard-visible.png"
+      "startedAt": "2026-06-10T21:27:05.726Z",
+      "finishedAt": "2026-06-10T21:27:05.756Z",
+      "screenshot": "qa/screenshots/availability/04-t07-injury-badge-css-present.png"
     },
     {
-      "name": "t01-session-picker-has-sessions",
+      "name": "t08-remind-button-visible",
       "status": "passed",
-      "startedAt": "2026-06-10T21:22:56.053Z",
-      "finishedAt": "2026-06-10T21:22:56.065Z",
-      "screenshot": "qa/screenshots/availability/05-t01-session-picker-has-sessions.png"
+      "startedAt": "2026-06-10T21:27:06.453Z",
+      "finishedAt": "2026-06-10T21:27:06.492Z",
+      "screenshot": "qa/screenshots/availability/05-t08-remind-button-visible.png"
     },
     {
-      "name": "t02-open-app",
+      "name": "t09-remind-fires-correct-push-payload",
       "status": "passed",
-      "startedAt": "2026-06-10T21:23:03.595Z",
-      "finishedAt": "2026-06-10T21:23:14.366Z",
-      "screenshot": "qa/screenshots/availability/06-t02-open-app.png"
-    },
-    {
-      "name": "t02-coach-login",
-      "status": "passed",
-      "startedAt": "2026-06-10T21:23:15.006Z",
-      "finishedAt": "2026-06-10T21:23:15.444Z",
-      "screenshot": "qa/screenshots/availability/07-t02-coach-login.png"
+      "startedAt": "2026-06-10T21:27:06.843Z",
+      "finishedAt": "2026-06-10T21:27:08.045Z",
+      "screenshot": "qa/screenshots/availability/06-t09-remind-fires-correct-push-payload.png"
     }
   ],
-  "pageErrors": []
+  "pageErrors": [
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ]
 }
