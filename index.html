@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>coacheseyeGPT · Boitsfort RFC</title>
+  <title>Coach's Eye</title>
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#090d14">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="coacheseyeGPT">
+  <meta name="apple-mobile-web-app-title" content="Coach's Eye">
   <style>
     /* ── MIDNIGHT STADIUM ─ Dark-first premium design system ───────────────── */
     /* Palette: Page #090d14 · Card #0f1724 · Accent #10b981                   */
@@ -1840,8 +1840,8 @@
       <div class="brand">
         <span class="brand-mark">CE</span>
         <div>
-          <strong>coacheseyeGPT</strong>
-          <p>Boitsfort RFC</p>
+          <strong>Coach's Eye</strong>
+          <p id="sidebarClubName"></p>
         </div>
       </div>
 
@@ -1866,7 +1866,7 @@
       </div>
 
       <div class="sidebar-card">
-        <strong>Boitsfort RFC · Prototype</strong>
+        <strong id="sidebarClubCard"></strong>
         <p>Data saved locally in this browser.</p>
       </div>
     </aside>
@@ -1946,6 +1946,126 @@
     // Squad starts empty — add your real players via Player DB → Add Player
     const playerSeed = [];
 
+    // ─── COACH'S EYE AI CLIENT ────────────────────────────────────────────────
+    // Single integration point between Core and Coach's Eye Intelligence.
+    // Rules:
+    //   - No screen calls AI endpoints directly. All requests go through AIClient.
+    //   - Every method checks its feature flag before any network call.
+    //   - Every method returns a typed default if Intelligence is unavailable.
+    //   - Core UI is never blocked waiting for AI — all calls are fire-and-update.
+    //
+    // TODO(intelligence): set AI_BASE to the production Intelligence API URL once
+    //   Coach's Eye Intelligence is deployed as a separate service.
+    //   Local dev  → http://localhost:3001/api  (api-server.js)
+    //   Production → https://intelligence.coacheye.ie/intelligence/v1
+    const AI_BASE = (
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:3001/api'
+        : null  // TODO(intelligence): insert production URL here
+    );
+    const AI_TIMEOUT_MS = 5000;
+
+    const AIClient = (() => {
+
+      // Read feature flags from persisted state so AIClient works before
+      // the in-memory state object is initialised.
+      function flagEnabled(name) {
+        try {
+          const s = localStorage.getItem('coach-eye-real-workflow-mvp-state-v1');
+          return !!(s && JSON.parse(s)?.features?.[name]);
+        } catch { return false; }
+      }
+
+      async function _fetch(path) {
+        if (!AI_BASE) return null;
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);
+        try {
+          const res = await fetch(AI_BASE + path, { signal: ctrl.signal });
+          clearTimeout(t);
+          return res.ok ? await res.json() : null;
+        } catch { clearTimeout(t); return null; }
+      }
+
+      // Typed defaults — returned when Intelligence is offline or flag is off.
+      // Never show AI-looking content as real data.
+      const D = {
+        dailyBriefing:            { available: false, headline: '', summary: '', priorities: [], stats: {} },
+        matchReadiness:           { available: false, readinessScore: null, squadStatus: null, risks: [], recommendation: '' },
+        availabilityIntelligence: { available: false, averageRate: null, trend: 'unknown', atRisk: [], sessionPrediction: null, phaseTarget: null },
+        fixtureIntelligence:      { available: false, fixtures: [], nextFixture: null },
+        seasonIntelligence:       { available: false, phase: null, phaseLabel: '', prescription: null, compliance: null },
+        recommendations:          { available: false, recommendations: [] },
+      };
+
+      return {
+
+        // Flag: aiInsights
+        // TODO(intelligence): GET /intelligence/v1/{clubId}/assistant/briefing
+        async getDailyBriefing() {
+          if (!flagEnabled('aiInsights')) return D.dailyBriefing;
+          const d = await _fetch('/dashboard/briefing?role=coach');
+          if (!d) return D.dailyBriefing;
+          return { available: true, headline: d.headline ?? '', summary: d.summary ?? '', priorities: d.priorities ?? [], stats: d.stats ?? {} };
+        },
+
+        // Flag: aiMatchReadiness
+        // TODO(intelligence): GET /intelligence/v1/{clubId}/fixtures/{id}/readiness
+        async getMatchReadiness(fixtureId) {
+          if (!flagEnabled('aiMatchReadiness')) return D.matchReadiness;
+          const d = await _fetch(fixtureId ? `/fixtures/${fixtureId}` : '/fixtures/next');
+          if (!d) return D.matchReadiness;
+          return { available: true, readinessScore: d.squadStatus?.available?.length ?? null, squadStatus: d.squadStatus ?? null, risks: d.medicalAlerts ?? [], recommendation: d.prepStage ?? '' };
+        },
+
+        // Flag: aiAvailability
+        // TODO(intelligence): GET /intelligence/v1/{clubId}/availability/intelligence
+        async getAvailabilityIntelligence() {
+          if (!flagEnabled('aiAvailability')) return D.availabilityIntelligence;
+          const d = await _fetch('/availability/intelligence');
+          if (!d) return D.availabilityIntelligence;
+          return { available: true, averageRate: d.summary?.averageRate ?? null, trend: d.summary?.trend ?? 'unknown', atRisk: d.atRisk ?? [], sessionPrediction: d.sessionPrediction ?? null, phaseTarget: d.phaseTarget ?? null };
+        },
+
+        // Flag: aiFixtures
+        // TODO(intelligence): GET /intelligence/v1/{clubId}/fixtures
+        async getFixtureIntelligence() {
+          if (!flagEnabled('aiFixtures')) return D.fixtureIntelligence;
+          const d = await _fetch('/fixtures/upcoming?limit=5');
+          if (!d) return D.fixtureIntelligence;
+          return { available: true, fixtures: d.fixtures ?? [], nextFixture: d.fixtures?.[0] ?? null };
+        },
+
+        // Flag: aiSeason
+        // TODO(intelligence): GET /intelligence/v1/{clubId}/season/phase
+        // TODO(intelligence): GET /intelligence/v1/{clubId}/season/compliance
+        async getSeasonIntelligence() {
+          if (!flagEnabled('aiSeason')) return D.seasonIntelligence;
+          const d = await _fetch('/season/phase');
+          if (!d) return D.seasonIntelligence;
+          return { available: true, phase: d.phase ?? null, phaseLabel: d.meta?.label ?? '', prescription: d.prescription ?? null, compliance: null };
+        },
+
+        // Flag: aiInsights
+        // TODO(intelligence): GET /intelligence/v1/{clubId}/recommendations
+        async getRecommendations() {
+          if (!flagEnabled('aiInsights')) return D.recommendations;
+          const d = await _fetch('/recommendations');
+          if (!d) return D.recommendations;
+          return { available: true, recommendations: d.recommendations ?? [] };
+        },
+
+        // Returns true if the AI Brain is reachable at all.
+        // TODO(intelligence): GET /intelligence/v1/health
+        async isAvailable() {
+          if (!AI_BASE) return false;
+          const d = await _fetch('/health');
+          return d?.status === 'ok';
+        },
+
+      };
+    })();
+
     const defaultState = {
       activeView: "coach",
       activeCoachSection: "overview",
@@ -1955,129 +2075,68 @@
       selectedChatId: "coach",
       currentUserId: "coach-demo",
       notification: "",
-      teamCode: "BOITSFORT",
+      clubName: "",
+      teamCode: "TEAM",
       currentTemplateName: "",
       templateCardCollapsed: false,
       _editingScheduleId: null,
       _editingTemplateId: null,
       meta: { revision: 1, savedAt: "Initial seed", savedBy: "system" },
       users: structuredClone(testAccounts),
-      players: playerSeed.map(([id, name, position, status, attendance], index) => ({
-        id, name, position, status,
-        phone: "",
-        email: `${String(name).toLowerCase().replaceAll(" ", ".").replaceAll("'", "").replaceAll("é","e")}@player.test`,
-        trainingTuesday:  status,
-        trainingThursday: status,
-        game: status,
-        attendance,
-        history: ["available", index % 3 === 0 ? "available" : "no-reply", status],
-        blockedDates: [],
-        medical: status === "injured" ? "Review required before weekend" : ""
-      })),
+      players: [],
       schedule: [
-        { id: "tue",  type: "Training", title: "Tuesday training",           date: "Tuesday 19:45",   focus: "Defensive spacing and restart detail", target: 15 },
-        { id: "thu",  type: "Training", title: "Thursday team run",           date: "Thursday 19:45",  focus: "Kituro plan, units, captain run",       target: 15 },
-        { id: "game", type: "Match",    title: "Boitsfort Premier vs Kituro", date: "Saturday fixture", focus: "Home ground",                          target: 22 }
+        { id: "tue",  type: "Training", title: "Training session 1", date: "", focus: "", target: 0, deadline: "" },
+        { id: "thu",  type: "Training", title: "Training session 2", date: "", focus: "", target: 0, deadline: "" },
+        { id: "game", type: "Match",    title: "Match",              date: "", focus: "", target: 0, deadline: "" }
       ],
-      fixtures: [
-        { date: "This Saturday",  opponent: "Kituro",      venue: "Home",  status: "Availability open" },
-        { date: "Next Saturday",  opponent: "ASUB",        venue: "Away",  status: "Not opened" },
-        { date: "Two weeks",      opponent: "Dendermonde", venue: "Home",  status: "Not opened" },
-        { date: "Three weeks",    opponent: "La Hulpe",    venue: "Away",  status: "Not opened" }
-      ],
-      messages: [
-        { id: "m1", from: "Coach", to: "Squad",       playerId: "squad",       sessionId: "week",    type: "Availability request",  text: "Please confirm Tuesday, Thursday and Kituro availability inside coacheseyeGPT.", unread: true,  time: "Today 09:00",  delivery: "delivered", replies: [] },
-        { id: "m2", from: "Simon Dodd", to: "Coach",  playerId: "test-simon",  sessionId: "week",    type: "Player reply",           text: "Available Tuesday and Saturday. Carrying small shoulder stiffness.",              unread: true,  time: "Today 09:16",  delivery: "received",  replies: [] },
-        { id: "m3", from: "Medical",    to: "Coach",  playerId: "coach",       sessionId: "medical", type: "Medical check-in",       text: "Bubele and Maxence need status updates before selection.",                        unread: false, time: "Yesterday",    delivery: "read",      replies: [] }
-      ],
-      availabilityRequests: [
-        { id: "req-tue",  sessionId: "tue",  title: "Tuesday training availability",    sentAt: "Today 09:00", status: "sent", messageIds: [] },
-        { id: "req-thu",  sessionId: "thu",  title: "Thursday team run availability",   sentAt: "Today 09:00", status: "sent", messageIds: [] },
-        { id: "req-game", sessionId: "game", title: "Kituro game availability",         sentAt: "Today 09:00", status: "sent", messageIds: [] }
-      ],
+      fixtures: [],
+      messages: [],
+      availabilityRequests: [],
       automationRules: [
-        { id: "auto-tue",  sessionId: "tue",  title: "Tuesday training availability",  schedule: "Sunday 18:00",   enabled: true, template: "Are you available for Tuesday training? Please answer in coacheseyeGPT." },
-        { id: "auto-thu",  sessionId: "thu",  title: "Thursday team run availability", schedule: "Tuesday 21:30",  enabled: true, template: "Are you available for Thursday team run? Please answer in coacheseyeGPT." },
-        { id: "auto-game", sessionId: "game", title: "Weekend match availability",     schedule: "Tuesday 09:00",  enabled: true, template: "Are you available for Boitsfort Premier vs Kituro this weekend? Please answer in coacheseyeGPT." }
+        { id: "auto-tue",  sessionId: "tue",  title: "Session 1 availability", schedule: "Sunday 18:00",  enabled: false, template: "Hi! Please confirm your availability for training this week. Thanks, Coach." },
+        { id: "auto-thu",  sessionId: "thu",  title: "Session 2 availability", schedule: "Tuesday 21:00", enabled: false, template: "Hi! Please confirm your availability for training this week. Thanks, Coach." },
+        { id: "auto-game", sessionId: "game", title: "Match availability",     schedule: "Tuesday 09:00", enabled: false, template: "Hi! Please confirm your availability for the match this week. Thanks, Coach." }
       ],
-      masterFeed: [
-        { id: "feed-1", event: "Prototype messaging layer loaded", time: "Today", detail: "Coach and player messages are joined in one master feed." }
-      ],
-      announcements: [
-        "Training moved to pitch 2 if pitch 1 is closed.",
-        "Players should update availability before Friday 12:00."
-      ],
+      masterFeed: [],
+      announcements: [],
       templates: [
-        "Please confirm your availability for this week's training and game.",
+        "Please confirm your availability for this week's sessions.",
         "Medical check-in: update any knocks, treatment needs, or return-to-play notes.",
-        "Matchday selection is being finalised. Check your player portal."
+        "Squad selection is being finalised. Check your player portal."
       ],
       trainingActiveSession: "tue",
-      trainingBlocks: {
-        tue: [
-          { id:"tb1", time:"19:45", activity:"Warm-up and arrival checks", tag:"Warmup",    coach:"",  keyFocus:"Activation, chat, set the tone" },
-          { id:"tb2", time:"20:00", activity:"Unit skills — lineout and scrum detail",        tag:"Set piece", coach:"", keyFocus:"Lineout calls and body positions" },
-          { id:"tb3", time:"20:35", activity:"Team attack — wide channel patterns",           tag:"Attack",    coach:"", keyFocus:"Width, depth, offload timing" },
-          { id:"tb4", time:"21:00", activity:"Conditioned game — territory focus",            tag:"Game",      coach:"", keyFocus:"Decision quality under pressure" },
-          { id:"tb5", time:"21:15", activity:"Finish and coach review",                       tag:"Review",    coach:"", keyFocus:"3 things we did well, 1 to fix" }
-        ],
-        thu: [
-          { id:"tb6",  time:"19:45", activity:"Captain's run warm-up",                       tag:"Warmup",   coach:"", keyFocus:"Light activation, match mindset" },
-          { id:"tb7",  time:"20:00", activity:"Kituro defensive units and blitz calls",       tag:"Defence",  coach:"", keyFocus:"Blitz line speed and communication" },
-          { id:"tb8",  time:"20:30", activity:"Restart sequences — kick-off and 22",          tag:"Restarts", coach:"", keyFocus:"Pod positions, chase lanes" },
-          { id:"tb9",  time:"21:00", activity:"Walk-through lineout calls and moves",         tag:"Set piece",coach:"", keyFocus:"Calls at pace, no fumbles" },
-          { id:"tb10", time:"21:15", activity:"Team meeting and provisional selection",       tag:"Admin",    coach:"", keyFocus:"Selection and game plan clarity" }
-        ],
-        game: []
-      },
+      trainingBlocks: { tue: [], thu: [], game: [] },
       tacticsDrawings: { tue: null, thu: null, game: null },
-      clubVideos: [
-        { id:"v1", title:"Tuesday session — ruck speed drill", duration:"1:48", date:"2 days ago" },
-        { id:"v2", title:"Lineout calls walkthrough", duration:"2:05", date:"Last week" },
-        { id:"v3", title:"Defensive channel patterns vs La Hulpe", duration:"1:22", date:"Last week" }
-      ],
-      coachingLinks: [
-        { id:"cl1", title:"World Rugby — lineout law interpretation guide", url:"https://laws.worldrugby.org", category:"Set piece" },
-        { id:"cl2", title:"Blitzing defence breakdown — analysis clip", url:"https://youtube.com", category:"Defence" },
-        { id:"cl3", title:"South Africa 2023 restart sequences vs NZ", url:"https://youtube.com", category:"Restarts" }
-      ],
+      clubVideos: [],
+      coachingLinks: [],
       seasonPlan: [
-        { id:"sp1", period:"Pre-season", dates:"Aug – Sep", focus:"Fitness base, contact skills and cohesion", type:"preseason" },
-        { id:"sp2", period:"Competition", dates:"Oct – Nov", focus:"Match fitness, game patterns, set piece", type:"competition" },
-        { id:"sp3", period:"Competition", dates:"Dec – Feb", focus:"Performance peak — key selections and finals run", type:"competition" },
-        { id:"sp4", period:"Transition", dates:"Mar – Apr", focus:"Recovery, player reviews and recruitment", type:"transition" }
+        { id:"sp1", period:"Pre-season",  dates:"Aug – Sep", focus:"Fitness base, contact skills and cohesion", type:"preseason" },
+        { id:"sp2", period:"Competition", dates:"Oct – Nov", focus:"Match fitness, game patterns, set piece",    type:"competition" },
+        { id:"sp3", period:"Competition", dates:"Dec – Feb", focus:"Performance peak — key selections",          type:"competition" },
+        { id:"sp4", period:"Transition",  dates:"Mar – Apr", focus:"Recovery, player reviews and recruitment",   type:"transition" }
       ],
       formationNames: {},
       fphotoIds: {},
-      availabilityTemplate: "Hi team! Please confirm your availability for this week's training (Tuesday & Thursday 19:45) and Saturday's match. Reply AVAILABLE or UNAVAILABLE, and flag any injuries. Thanks, Coach.",
+      availabilityTemplate: "Hi! Please confirm your availability for this week's sessions. Thanks, Coach.",
       removedMemberNames: [],
       autoSendEnabled: false,
       autoSendSchedule: { day:"monday", time:"09:00" },
       trainingAutoSend: false,
       benchPlayers: ["","","","","","","",""],
-      subPlan: [
-        { id:"sub1", minute:"50", on:"Tanguy Danhiez", off:"Basile Rey", reason:"Planned rotation" },
-        { id:"sub2", minute:"65", on:"Benjamin Moortgat", off:"Loic Potier", reason:"Planned rotation" }
-      ],
-      treatmentLogs: [
-        { id:"tl1", playerId:"p10", date:"Today", treatment:"Physio — shoulder assessment + mobilisation", therapist:"Dr. Malone", next:"Thursday" },
-        { id:"tl2", playerId:"p23", date:"Yesterday", treatment:"Quad strain — ice, rest and ultrasound", therapist:"Dr. Malone", next:"Saturday check" }
-      ],
-      medicalNotes: {
-        "p10": { condition:"Shoulder impingement", rehabProgress:60, returnTarget:"2 weeks", notes:"No contact training until medical clearance" },
-        "p23": { condition:"Quad strain Grade 1", rehabProgress:75, returnTarget:"1 week", notes:"Light running only — avoid contact this week" }
-      },
+      subPlan: [],
+      treatmentLogs: [],
+      medicalNotes: {},
       coachNotes: "",
       playerFilter: "all",
       showAddPlayer: false,
       matchCentre: {
-        opposition:    "Kituro RFC",
-        competition:   "Belgian Rugby Division 1",
-        kickoffDate:   "2026-06-14",
+        opposition:    "",
+        competition:   "",
+        kickoffDate:   "",
         kickoffTime:   "15:00",
-        arrivalTime:   "13:30",
-        venue:         "Stade de la Plaine — Home",
-        kit:           "Green & Gold (home)",
+        arrivalTime:   "",
+        venue:         "",
+        kit:           "",
         referee:       "",
         weather:       "",
         coachNotes:    "",
@@ -2383,6 +2442,7 @@
     function normalizeState(input) {
       const next = { ...structuredClone(defaultState), ...input };
       next.notification = ""; // never restore stale notification across sessions
+      next.clubName = input.clubName ?? "";
       next.users = input.users || structuredClone(testAccounts);
       // Enforce canonical roles for built-in accounts — prevents stale localStorage
       // from corrupting coach-demo's role if applyApprovedIdentityLocally was called incorrectly.
@@ -2398,8 +2458,7 @@
         savedAt:  input.meta?.savedAt  || "Unknown",
         savedBy:  input.meta?.savedBy  || next.currentUserId || "unknown"
       };
-      next.players = (input.players || defaultState.players).map((player, i) => ({
-        ...defaultState.players[i % defaultState.players.length],
+      next.players = (input.players || defaultState.players).map((player) => ({
         ...player,
         history:      player.history      || ["no-reply"],
         blockedDates: player.blockedDates || []
@@ -3223,7 +3282,8 @@
       showToast("Generating graphic…");
       html2canvas(pitch, { scale:2, useCORS:true, allowTaint:true, backgroundColor:null }).then(canvas => {
         const link = document.createElement("a");
-        link.download = "boitsfort-matchday-" + new Date().toISOString().slice(0,10) + ".png";
+        const _clubSlug = (state.clubName || 'team').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        link.download = `${_clubSlug}-matchday-${new Date().toISOString().slice(0,10)}.png`;
         link.href = canvas.toDataURL("image/png");
         link.click();
         notify("Matchday graphic downloaded — ready to post on Instagram! ✓");
@@ -3233,7 +3293,9 @@
     // ─── MATCH CENTRE HELPERS ────────────────────────────────────────────────
     function matchCentrePhase() {
       const mc = state.matchCentre || {};
-      const kickoff = new Date(`${mc.kickoffDate || "2030-01-01"}T${mc.kickoffTime || "15:00"}:00`);
+      if (!mc.kickoffDate) return { label:"Prepare", color:"mc-phase-prepare", days:999, msLeft:999*86400000 };
+      const kickoff = new Date(`${mc.kickoffDate}T${mc.kickoffTime || "15:00"}:00`);
+      if (isNaN(kickoff.getTime())) return { label:"Prepare", color:"mc-phase-prepare", days:999, msLeft:999*86400000 };
       const msLeft  = kickoff - Date.now();
       const days    = msLeft / 86400000;
       if (days > 5)    return { label:"Prepare",    color:"mc-phase-prepare", days, msLeft };
@@ -3243,6 +3305,8 @@
       return           { label:"Post-match", color:"mc-phase-post",    days, msLeft };
     }
     function matchCountdownStr() {
+      const mc = state.matchCentre || {};
+      if (!mc.kickoffDate) return "Date TBC";
       const { msLeft } = matchCentrePhase();
       if (msLeft <= 0) return "Match completed";
       const totalMins = Math.floor(msLeft / 60000);
@@ -3346,7 +3410,7 @@
             id:       tplId,
             name:     sname,
             category: 'availability',
-            title:    `Boitsfort RFC — ${sname}`,
+            title:    `${state.clubName || 'Coach\'s Eye'} — ${sname}`,
             body:     msgBody,
           })
         });
@@ -3461,7 +3525,7 @@
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({
-            title:     "Boitsfort RFC — Availability check",
+            title:     `${state.clubName || 'Coach\'s Eye'} — Availability check`,
             body,
             from:      currentUser()?.name || 'Coach',
             type:      'availability',   // ← triggers YES/NO buttons on lock screen
@@ -3574,7 +3638,7 @@
       if (!blocks.length) return notify("Add blocks to your session plan first");
       const lines  = blocks.map(b => `${b.time} | ${b.activity}${b.keyFocus ? " | Focus: "+b.keyFocus : ""}${b.coach ? " | Coach: "+b.coach : ""}`);
       const body   = "Training rundown:\n" + lines.join("\n");
-      sendPushToPlayers("Training sheet — Boitsfort RFC", body);
+      sendPushToPlayers(`Training sheet — ${state.clubName || 'Your team'}`, body);
       createCoachMessage({ recipients: state.players, type:"Training sheet", body });
       notify("Training sheet sent to coaches ✓");
     }
@@ -3617,6 +3681,31 @@
       upsertCanonicalPlayerRecord(player);
       state.showAddPlayer=false; notify(`${name} added to squad`);
     }
+    function exportMembersCSV() {
+      if (!state.players.length) return showToast('No players to export');
+      const rows = [['Name','Position','Email','Phone','Game status','Attendance']];
+      state.players.forEach(p => rows.push([
+        p.name || '', p.position || '', p.email || '', p.phone || '',
+        statusLabel(p.game), (p.attendance || 0) + '%'
+      ]));
+      const csv  = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
+      const blob = new Blob([csv], { type:'text/csv' });
+      const a    = document.createElement('a');
+      a.href     = URL.createObjectURL(blob);
+      a.download = (state.clubName || 'squad').toLowerCase().replace(/[^a-z0-9]+/g,'-') + '-players.csv';
+      a.click();
+      showToast(`${state.players.length} players exported ✓`);
+    }
+
+    function copyTeamInviteMessage() {
+      const club = state.clubName || 'our team';
+      const code = state.teamCode || 'TEAM';
+      const url  = window.location.origin;
+      navigator.clipboard?.writeText(
+        `Join ${club} on Coach's Eye! Open ${url} — tap Join squad and enter code: ${code}`
+      ).then(() => showToast('Copied 📋'));
+    }
+
     function removePlayerFromSquad(id) {
       if (!isCoach()) return notify("Only coaches can remove players");
       const p = state.players.find(pl => pl.id === id);
@@ -4100,6 +4189,13 @@
     // ─── NAV ─────────────────────────────────────────────────────────────────
     function renderNav() {
       const user = currentUser();
+      // ── Dynamic club name in sidebar ───────────────────────────────────────
+      const _clubName = state.clubName || 'My Team';
+      const _nameEl   = document.getElementById('sidebarClubName');
+      const _cardEl   = document.getElementById('sidebarClubCard');
+      if (_nameEl) _nameEl.textContent = _clubName;
+      if (_cardEl) _cardEl.textContent = _clubName + ' · Coach\'s Eye';
+      document.title = 'Coach\'s Eye · ' + _clubName;
       document.getElementById("coachNav").innerHTML = coachSections.map(([id, label]) =>
         `<button type="button" class="${state.activeView==="coach" && state.activeCoachSection===id ? "active" : ""}" onclick="setSection('coach','${id}')">${label}</button>`
       ).join("");
@@ -4150,7 +4246,7 @@
           <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
         <div style="display:grid;gap:7px">
-          <input id="joinCode" placeholder="Team code" value="${state.teamCode || 'BOITSFORT'}" style="font-size:12px;padding:7px 9px">
+          <input id="joinCode" placeholder="Team code" value="${esc(state.teamCode || '')}" style="font-size:12px;padding:7px 9px">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
             <input id="joinFirstName" placeholder="First name" style="font-size:12px;padding:7px 9px">
             <input id="joinLastName" placeholder="Last name" style="font-size:12px;padding:7px 9px">
@@ -4589,7 +4685,7 @@
           return `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:10px;background:var(--panel-2)">
             <div>
               <strong style="font-size:13px">${esc(name)}</strong>
-              <div class="muted" style="font-size:11px">${esc(user.email || '')} · ${esc(request.team?.name || 'Boitsfort RFC')}</div>
+              <div class="muted" style="font-size:11px">${esc(user.email || '')} · ${esc(request.team?.name || state.clubName || 'Coach\'s Eye')}</div>
             </div>
             <div style="display:flex;gap:6px">
               <button class="btn primary" type="button" style="min-height:30px;font-size:12px;padding:0 10px" onclick="approveIdentityRequest('${request.id}')">Approve</button>
@@ -4721,17 +4817,20 @@
           cta:'Open Match', action:`setSection('coach','matchday')` });
       }
 
-      // Non-responders for any upcoming session
-      const nonResponders = state.players.filter(p =>
-        sessions.some(s => (p[sessionKey(s.id)] || 'no-reply') === 'no-reply')
-      );
-      if (nonResponders.length > 0) {
-        const preview = nonResponders.slice(0, 3).map(p => (p.name || '').split(' ')[0]).join(' · ')
-          + (nonResponders.length > 3 ? ` +${nonResponders.length - 3}` : '');
-        items.push({ level:'warning', icon:'⚡',
-          text:`${nonResponders.length} player${nonResponders.length > 1 ? 's haven\'t' : ' hasn\'t'} replied`,
-          detail: preview,
-          cta:'Chase all', action:`chaseAllNonResponders()` });
+      // Non-responders — only shown after an availability request has been sent
+      const requestEverSent = (state.availabilityRequests || []).some(r => r.status === 'sent');
+      if (requestEverSent) {
+        const nonResponders = state.players.filter(p =>
+          sessions.some(s => (p[sessionKey(s.id)] || 'no-reply') === 'no-reply')
+        );
+        if (nonResponders.length > 0) {
+          const preview = nonResponders.slice(0, 3).map(p => (p.name || '').split(' ')[0]).join(' · ')
+            + (nonResponders.length > 3 ? ` +${nonResponders.length - 3}` : '');
+          items.push({ level:'warning', icon:'⚡',
+            text:`${nonResponders.length} player${nonResponders.length > 1 ? 's haven\'t' : ' hasn\'t'} replied`,
+            detail: preview,
+            cta:'Chase all', action:`chaseAllNonResponders()` });
+        }
       }
 
       // Tonight's training plan is empty
@@ -5585,7 +5684,7 @@
       if (!isCoach()) return notify("Only coaches can send availability requests");
       const session = state.schedule.find(s => s.id === sessionId);
       if (!session) return;
-      const body = `Please confirm your availability for ${session.title} (${session.date}) inside coacheseyeGPT.`;
+      const body = `Please confirm your availability for ${session.title} (${session.date}) in Coach's Eye.`;
       const created = createCoachMessage({ recipients: state.players, type: "Availability request", body, sessionId });
       state.availabilityRequests.unshift({
         id: `req-${Date.now()}`,
@@ -5615,7 +5714,7 @@
       const sessions = state.schedule || [];
       if (!sessions.length) return showToast('No sessions configured');
       const titles = sessions.map(s => s.title).join(', ');
-      const body = `Please confirm your availability for: ${titles} inside coacheseyeGPT.`;
+      const body = `Please confirm your availability for: ${titles} in Coach's Eye.`;
       // Create messages for each session
       let totalCreated = 0;
       sessions.forEach(session => {
@@ -5720,7 +5819,7 @@
       );
       if (!noReplyIds.size) return showToast('Everyone has replied ✓');
       const titles = sessions.map(s => s.title).join(', ');
-      const body = `Please confirm your availability for: ${titles} inside coacheseyeGPT.`;
+      const body = `Please confirm your availability for: ${titles} in Coach's Eye.`;
       try {
         const res = await fetch('/api/push', {
           method: 'POST',
@@ -6534,19 +6633,23 @@
       document.getElementById("coach-players").innerHTML = `
         <div style="display:grid;gap:14px">
 
-          <!-- Toolbar + filter pills -->
+          <!-- Team name + toolbar -->
           <div class="card" style="padding:14px 18px">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-              <div>
-                <h2 style="margin:0">Members</h2>
-                <p class="muted" style="margin-top:3px">${members.length} members · Boitsfort Premier</p>
-              </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:10px">
+              <label style="font-size:12px;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:8px;flex:1;min-width:200px">
+                Team name
+                <input value="${esc(state.clubName || '')}" placeholder="e.g. Belgium U20"
+                  style="font-size:14px;font-weight:700;padding:6px 10px;flex:1;max-width:280px"
+                  oninput="state.clubName=this.value.trim();saveState('Club name saved');renderNav()">
+              </label>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                <button class="btn" type="button" onclick="showToast('Squad exported to CSV ✓')">📥 Export</button>
-                <button class="btn" type="button" onclick="triggerImportFile()">📤 Import spreadsheet</button>
-                <button class="btn" type="button" onclick="showToast('Bulk pay email sent to squad ✓')">💳 Bulk pay squad</button>
-                <button class="btn primary" type="button" onclick="showAddPlayerForm()">+ Add rugby player</button>
+                <button class="btn" type="button" onclick="exportMembersCSV()">📥 Export CSV</button>
+                <button class="btn" type="button" onclick="triggerImportFile()">📤 Import</button>
+                <button class="btn primary" type="button" onclick="showAddPlayerForm()">+ Add player</button>
               </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <span style="font-size:13px;color:var(--muted)">${members.length} member${members.length !== 1 ? 's' : ''}</span>
             </div>
             <div class="db-toolbar" style="margin-top:12px;margin-bottom:0">
               ${[["all","All members",members.length],["available","Available",counts.available],["injured","Injured",counts.injured],["no-reply","No reply",counts["no-reply"]],["consent","Consent pending",counts.consent]].map(([f,lbl,cnt])=>
@@ -6595,15 +6698,14 @@
                   </summary>
                   <div style="margin-top:10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:10px;padding:14px 16px">
                     <p style="font-size:13px;color:#94a3b8;margin-bottom:10px">For bulk invites — players enter this code and their own name.</p>
-                    <div class="join-code-value" style="font-size:22px;letter-spacing:3px;display:inline-block;margin-bottom:10px">${state.teamCode||'BOITSFORT'}</div>
+                    <div class="join-code-value" style="font-size:22px;letter-spacing:3px;display:inline-block;margin-bottom:10px">${esc(state.teamCode||'TEAM')}</div>
                     <div style="font-size:12px;color:#64748b;margin-bottom:10px">boitsfort-coachseye-gpt.vercel.app</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
-                      <button class="btn" type="button" style="font-size:12px"
-                        onclick="navigator.clipboard?.writeText('Join Boitsfort RFC on coacheseyeGPT! Open https://boitsfort-coachseye-gpt.vercel.app — tap Join squad and enter code: ${state.teamCode||'BOITSFORT'}').then(()=>showToast('Copied 📋'))">
+                      <button class="btn" type="button" style="font-size:12px" onclick="copyTeamInviteMessage()">
                         📋 Copy message
                       </button>
                       <button class="btn" type="button" style="font-size:12px"
-                        onclick="const c=prompt('Set team code:',state.teamCode||'BOITSFORT');if(c?.trim()){state.teamCode=c.trim().toUpperCase();saveState();render();}">
+                        onclick="const c=prompt('Set team code:',state.teamCode||'TEAM');if(c?.trim()){state.teamCode=c.trim().toUpperCase();saveState();render();}">
                         ✏️ Change code
                       </button>
                     </div>
@@ -6628,7 +6730,7 @@
           <!-- Add player panel (toggled) -->
           ${state.showAddPlayer ? `
           <div class="add-player-panel">
-            <h3 style="margin:0 0 14px">Add rugby player</h3>
+            <h3 style="margin:0 0 14px">Add player</h3>
             <div class="add-player-grid">
               <label>Full name *<input id="apName" placeholder="Simon Dodd"></label>
               <label>Position<select id="apPos">
@@ -6740,7 +6842,7 @@
       document.getElementById("player-week").innerHTML = `
         <div class="card" style="max-width:560px;margin:0 auto">
           <h2>This week</h2>
-          <p class="muted" style="margin-bottom:18px">Your upcoming sessions at Boitsfort RFC.</p>
+          <p class="muted" style="margin-bottom:18px">Your upcoming sessions at ${esc(state.clubName || 'your team')}.</p>
           ${state.schedule.map(item => {
             const key    = sessionKey(item.id);
             const status = player[key] || 'no-reply';
@@ -8338,7 +8440,7 @@
       const messages = selected ? chatMessages(selected.id, mode) : [];
       const title = mode === "coach" ? "Club messages" : "Messages";
       const subtitle = mode === "coach"
-        ? "Send direct, squad and automated messages inside coacheseyeGPT."
+        ? "Send direct, squad and automated messages in Coach's Eye."
         : "Your player chat inbox. Messages from coach and team mates stay here.";
 
       return `<div class="chat-shell">
@@ -9561,8 +9663,8 @@
       el.innerHTML = `
         <div style="background:#0f1724;border:1px solid rgba(16,185,129,0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
           <div style="font-size:52px;margin-bottom:12px">🏉</div>
-          <h2 style="margin:0 0 6px;color:#e2e8f0;font-size:22px">Welcome to Boitsfort RFC</h2>
-          <p style="color:#64748b;font-size:14px;margin-bottom:22px">You've been invited to join coacheseyeGPT</p>
+          <h2 style="margin:0 0 6px;color:#e2e8f0;font-size:22px">Welcome to ${esc(state.clubName || 'the team')}</h2>
+          <p style="color:#64748b;font-size:14px;margin-bottom:22px">You've been invited to join Coach's Eye</p>
 
           <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:14px 16px;margin-bottom:22px;text-align:left">
             <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Joining as</div>
