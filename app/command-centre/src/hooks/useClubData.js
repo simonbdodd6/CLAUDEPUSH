@@ -41,3 +41,4 @@ export function useAvailabilityIntelligence()   { return useData(() => api.avail
 export function useIntelligenceDashboard()       { return useData(() => api.intelligenceDashboard(),        'intelligenceDashboard'           ) }
 export function useIntelligenceTimeline(params)  { return useData(() => api.intelligenceTimeline(params),   'intelligenceTimeline',  [params]) }
 export function useIntelligenceDecisions(params) { return useData(() => api.intelligenceDecisions(params),  'intelligenceDecisions', [params]) }
+export function useKnowledgeLibrary(params)      { return useData(() => api.knowledgeLibrary(params),       'knowledgeLibrary',      [params]) }

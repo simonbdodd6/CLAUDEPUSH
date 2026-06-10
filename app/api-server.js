@@ -818,6 +818,85 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    // ── Knowledge Upload ──────────────────────────────────────────────────────
+
+    if (method === 'GET' && path === '/api/knowledge/library') {
+      const { getLibrary } = await import('../knowledge-engine/upload-engine.js')
+      const filters = {
+        category:  url.searchParams.get('category')  ?? undefined,
+        ageGroup:  url.searchParams.get('ageGroup')  ?? undefined,
+        team:      url.searchParams.get('team')      ?? undefined,
+        season:    url.searchParams.get('season')    ?? undefined,
+        fileType:  url.searchParams.get('fileType')  ?? undefined,
+        status:    url.searchParams.get('status')    ?? undefined,
+        q:         url.searchParams.get('q')         ?? undefined,
+      }
+      json(res, { ...getLibrary(filters), isMock: true })
+      return
+    }
+
+    if (method === 'POST' && path === '/api/knowledge/upload') {
+      const { createDocument, processDocument } = await import('../knowledge-engine/upload-engine.js')
+      const body = await readBody(req)
+      const doc  = createDocument(body)
+      // Simulate async extraction: mark extracting immediately, return id
+      // Client polls or calls /process after a delay
+      doc.processingStatus = 'extracting'
+      json(res, { success: true, document: doc })
+      // Process after brief delay (mock extraction)
+      setTimeout(() => {
+        try { processDocument(doc.id) } catch (_) {}
+      }, 1800)
+      return
+    }
+
+    if (method === 'GET' && path.startsWith('/api/knowledge/library/')) {
+      const id = path.replace('/api/knowledge/library/', '').split('/')[0]
+      const { getDocument } = await import('../knowledge-engine/upload-engine.js')
+      const doc = getDocument(id)
+      if (!doc) { err(res, 'Document not found', 404); return }
+      json(res, { document: doc })
+      return
+    }
+
+    if (method === 'POST' && path.match(/^\/api\/knowledge\/library\/[^/]+\/add-to-dna$/)) {
+      const id = path.split('/')[4]
+      const { updateDocumentStatus } = await import('../knowledge-engine/upload-engine.js')
+      const doc = updateDocumentStatus(id, 'added_to_knowledge_base')
+      if (!doc) { err(res, 'Document not found', 404); return }
+      json(res, { success: true, document: doc })
+      return
+    }
+
+    if (method === 'POST' && path.match(/^\/api\/knowledge\/library\/[^/]+\/add-to-club$/)) {
+      const id = path.split('/')[4]
+      const { updateDocumentStatus } = await import('../knowledge-engine/upload-engine.js')
+      const doc = updateDocumentStatus(id, 'added_to_knowledge_base')
+      if (!doc) { err(res, 'Document not found', 404); return }
+      json(res, { success: true, document: doc })
+      return
+    }
+
+    if (method === 'POST' && path.match(/^\/api\/knowledge\/library\/[^/]+\/flag-review$/)) {
+      const id   = path.split('/')[4]
+      const body = await readBody(req)
+      const { updateDocumentStatus } = await import('../knowledge-engine/upload-engine.js')
+      const doc  = updateDocumentStatus(id, 'reviewed', body.notes)
+      if (!doc) { err(res, 'Document not found', 404); return }
+      json(res, { success: true, document: doc })
+      return
+    }
+
+    if (method === 'POST' && path.match(/^\/api\/knowledge\/library\/[^/]+\/status$/)) {
+      const id   = path.split('/')[4]
+      const body = await readBody(req)
+      const { updateDocumentStatus } = await import('../knowledge-engine/upload-engine.js')
+      const doc  = updateDocumentStatus(id, body.status, body.notes)
+      if (!doc) { err(res, 'Document not found', 404); return }
+      json(res, { success: true, document: doc })
+      return
+    }
+
     // ── 404 ───────────────────────────────────────────────────────────────────
     err(res, `Route not found: ${method} ${path}`, 404)
 

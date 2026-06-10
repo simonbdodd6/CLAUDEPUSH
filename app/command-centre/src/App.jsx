@@ -10,6 +10,7 @@ import MatchCentrePage   from './pages/MatchCentrePage.jsx'
 import AvailabilityPage from './pages/AvailabilityPage.jsx'
 import IntelligenceDashboardPage from './pages/IntelligenceDashboardPage.jsx'
 import DecisionCentrePage from './pages/DecisionCentrePage.jsx'
+import KnowledgeUploadPage from './pages/KnowledgeUploadPage.jsx'
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="/availability"   element={<AvailabilityPage />} />
         <Route path="/intelligence"   element={<IntelligenceDashboardPage />} />
         <Route path="/decisions"      element={<DecisionCentrePage />} />
+        <Route path="/knowledge"      element={<KnowledgeUploadPage />} />
         <Route path="*"               element={<Navigate to="/" replace />} />
       </Routes>
     </CommandLayout>

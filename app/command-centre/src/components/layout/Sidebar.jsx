@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: '/availability',  label: 'Availability',     icon: <AvailabilityIcon /> },
   { to: '/intelligence',  label: 'Intelligence',     icon: <IntelligenceIcon />, badge: 'AI' },
   { to: '/decisions',     label: 'Decision Centre',  icon: <DecisionIcon />,     badge: 'AI' },
+  { to: '/knowledge',     label: 'Knowledge',        icon: <KnowledgeIcon />,    badge: 'AI' },
 ]
 
 export default function Sidebar({ onCommandBarOpen }) {
@@ -168,6 +169,17 @@ function IntelligenceIcon() {
       <circle cx="8" cy="7" r="3.5" stroke="currentColor" strokeWidth="1.2"/>
       <path d="M8 3.5V2M8 12v1.5M3.5 7H2M12 7h1.5M5.05 4.05 4 3M11.95 4.05 13 3M5.05 9.95 4 11M11.95 9.95 13 11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
       <circle cx="8" cy="7" r="1.2" fill="currentColor" opacity="0.6"/>
+    </svg>
+  )
+}
+function KnowledgeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4">
+      <path d="M3 2.5h10a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+      <path d="M6 2.5v10" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <path d="M8 5.5h3M8 7.5h3M8 9.5h2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <circle cx="4.5" cy="6.5" r="0.8" fill="currentColor" opacity="0.7"/>
+      <circle cx="4.5" cy="9" r="0.8" fill="currentColor" opacity="0.7"/>
     </svg>
   )
 }
