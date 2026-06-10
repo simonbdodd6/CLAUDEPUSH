@@ -55,8 +55,15 @@ export const api = {
   snoozeRec:      (id, hours = 24)           => post(`/recommendations/${id}/snooze`, { hours }),
   dismissRec:     (id)                       => post(`/recommendations/${id}/dismiss`, {}),
   approvalDecide: (id, decision)             => post('/approvals/decide', { id, decision }),
-  timeline:       ()                         => get('/timeline'),
-  learningStatus: ()                         => get('/learning/status'),
+  timeline:           ()      => get('/timeline'),
+  learningStatus:     ()      => get('/learning/status'),
+
+  fixturesUpcoming: (limit = 8) => get(`/fixtures/upcoming?limit=${limit}`),
+  fixtureNext:      ()           => get('/fixtures/next'),
+  fixtureGet:       (id)         => get(`/fixtures/${id}`),
+  fixturePrepare:   (id)         => post(`/fixtures/${id}/prepare`, {}),
+  fixtureGenPack:   (id)         => post(`/fixtures/${id}/pack/generate`, {}),
+  fixtureGetPack:   (id)         => get(`/fixtures/${id}/pack`),
 }
 
 // ── Mock data (fallback when server not running) ───────────────────────────────
@@ -134,6 +141,7 @@ export const MOCK = {
       ]},
     ],
   },
+  fixtures: { fixtures: [] },
   learningStatus: {
     cis: { score: 69, grade: 'B', stage: 'GROWING', topStrengths: ['Attendance tracking', 'Injury alerts'], improvementAreas: ['Training recommendations'] },
     accuracy: { overall: { f1: 0.95, precision: 0.96, recall: 0.94, grade: 'A' } },

@@ -291,6 +291,71 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    // ── Fixtures ─────────────────────────────────────────────────────────────
+    if (method === 'GET' && path === '/api/fixtures/upcoming') {
+      const limit = parseInt(url.searchParams.get('limit') ?? '8', 10)
+      const { getUpcomingFixtures } = await import('../fixture-engine/index.js')
+      const fixtures = await getUpcomingFixtures(limit).catch(() => [])
+      json(res, { fixtures })
+      return
+    }
+
+    if (method === 'GET' && path === '/api/fixtures/next') {
+      const { getNextFixture }    = await import('../fixture-engine/fixture-store.js')
+      const { serializeFixture }  = await import('../fixture-engine/fixture-schema.js')
+      const f = getNextFixture()
+      json(res, f ? serializeFixture(f) : null)
+      return
+    }
+
+    const fixtureIdMatch = path.match(/^\/api\/fixtures\/([^/]+)$/)
+    if (method === 'GET' && fixtureIdMatch) {
+      const [, id] = fixtureIdMatch
+      const { getFixture }        = await import('../fixture-engine/fixture-store.js')
+      const { serializeFixture }  = await import('../fixture-engine/fixture-schema.js')
+      const f = getFixture(id)
+      if (!f) { err(res, 'Fixture not found', 404); return }
+      json(res, serializeFixture(f))
+      return
+    }
+
+    const fixturePrepMatch = path.match(/^\/api\/fixtures\/([^/]+)\/prepare$/)
+    if (method === 'POST' && fixturePrepMatch) {
+      const [, id] = fixturePrepMatch
+      const { prepareFixture }    = await import('../fixture-engine/index.js')
+      const { serializeFixture }  = await import('../fixture-engine/fixture-schema.js')
+      const f = await prepareFixture(id).catch(e => null)
+      if (!f) { err(res, 'Prepare failed — fixture not found or engine unavailable', 404); return }
+      json(res, serializeFixture(f))
+      return
+    }
+
+    const fixturePackGenMatch = path.match(/^\/api\/fixtures\/([^/]+)\/pack\/generate$/)
+    if (method === 'POST' && fixturePackGenMatch) {
+      const [, id] = fixturePackGenMatch
+      const { getFixture }        = await import('../fixture-engine/fixture-store.js')
+      const { generateMatchPack } = await import('../fixture-engine/index.js')
+      const { serializeFixture }  = await import('../fixture-engine/fixture-schema.js')
+      const f = getFixture(id)
+      if (!f) { err(res, 'Fixture not found', 404); return }
+      const pack = await generateMatchPack(f).catch(e => ({ error: e.message, generated: false }))
+      json(res, pack)
+      return
+    }
+
+    const fixturePackMatch = path.match(/^\/api\/fixtures\/([^/]+)\/pack$/)
+    if (method === 'GET' && fixturePackMatch) {
+      const [, id] = fixturePackMatch
+      const { getFixture }       = await import('../fixture-engine/fixture-store.js')
+      const { serializeFixture } = await import('../fixture-engine/fixture-schema.js')
+      const f = getFixture(id)
+      if (!f) { err(res, 'Fixture not found', 404); return }
+      const s = serializeFixture(f)
+      if (!s.matchPack) { err(res, 'No match pack. POST /api/fixtures/:id/pack/generate first', 404); return }
+      json(res, s.matchPack)
+      return
+    }
+
     // ── AI Timeline ───────────────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/timeline') {
       const { runCheck } = await import('../autonomous-assistant/index.js')

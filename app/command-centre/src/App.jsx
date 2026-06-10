@@ -6,6 +6,7 @@ import PlayersPage from './pages/PlayersPage.jsx'
 import CommunicationsPage from './pages/CommunicationsPage.jsx'
 import ReportsPage from './pages/ReportsPage.jsx'
 import SeasonPage from './pages/SeasonPage.jsx'
+import MatchCentrePage from './pages/MatchCentrePage.jsx'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/communications" element={<CommunicationsPage />} />
         <Route path="/reports"       element={<ReportsPage />} />
         <Route path="/season"        element={<SeasonPage />} />
+        <Route path="/match-centre"  element={<MatchCentrePage />} />
         <Route path="*"              element={<Navigate to="/" replace />} />
       </Routes>
     </CommandLayout>
