@@ -7,7 +7,8 @@ const NAV_ITEMS = [
   { to: '/communications', label: 'Communications',  icon: <CommsIcon /> },
   { to: '/reports',        label: 'Reports',         icon: <ReportsIcon /> },
   { to: '/season',         label: 'Season',          icon: <SeasonIcon /> },
-  { to: '/match-centre',  label: 'Match Centre',     icon: <MatchIcon /> },
+  { to: '/match-centre',   label: 'Match Centre',     icon: <MatchIcon />        },
+  { to: '/availability',  label: 'Availability',     icon: <AvailabilityIcon /> },
 ]
 
 export default function Sidebar({ onCommandBarOpen }) {
@@ -124,6 +125,15 @@ function MatchIcon() {
       <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
       <path d="M5.5 8a2.5 2.5 0 0 0 5 0" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
       <path d="M8 4v1M8 11v1M4 8H5M11 8h1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+function AvailabilityIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4">
+      <circle cx="6.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.2"/>
+      <path d="M2 14c0-2.485 2.015-4.5 4.5-4.5S11 11.515 11 14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+      <path d="M11.5 7l1.2 1.2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
 }

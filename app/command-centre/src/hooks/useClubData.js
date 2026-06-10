@@ -36,4 +36,5 @@ export function useBriefing()        { return useData(() => api.briefing(),     
 export function useSeasonPhase()     { return useData(() => api.seasonPhase(),     'seasonPhase') }
 export function useTimeline()           { return useData(() => api.timeline(),               'timeline') }
 export function useLearningStatus()     { return useData(() => api.learningStatus(),           'learningStatus') }
-export function useUpcomingFixtures(n)  { return useData(() => api.fixturesUpcoming(n ?? 8),  'fixtures',  [n]) }
+export function useUpcomingFixtures(n)        { return useData(() => api.fixturesUpcoming(n ?? 8),       'fixtures',               [n]) }
+export function useAvailabilityIntelligence() { return useData(() => api.availabilityIntelligence(),    'availabilityIntelligence'    ) }

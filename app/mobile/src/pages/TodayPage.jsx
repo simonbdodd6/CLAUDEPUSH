@@ -10,8 +10,34 @@ function Section({ title, children }) {
   );
 }
 
+function AvailabilityStrip({ intel }) {
+  if (!intel?.summary?.averageRate) return null;
+  const { averageRate, trend, vsTarget, atRiskCount } = intel.summary;
+  const status = vsTarget?.status ?? 'unknown';
+  const statusCls = status === 'critical' ? 'm-badge-danger' : status === 'below-target' ? 'm-badge-warning' : 'm-badge-success';
+  const trendArrow = trend === 'declining' ? '↘' : trend === 'strong' ? '↗' : '→';
+  return (
+    <div className="m-card p-3 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <span className="text-base">📊</span>
+        <div>
+          <p className="text-xs font-semibold text-ink-2">Squad Availability</p>
+          <p className="text-[10px] text-ink-3">
+            {atRiskCount > 0 ? `${atRiskCount} player${atRiskCount > 1 ? 's' : ''} below threshold` : 'All players on track'}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${statusCls}`}>
+          {trendArrow} {averageRate}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function TodayPage({ data, alerts }) {
-  const { health, upcomingFixtures, briefing, phase, loading } = data;
+  const { health, upcomingFixtures, briefing, phase, availabilityIntel, loading } = data;
 
   const today   = new Date().toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long' });
   const todayFx = (upcomingFixtures ?? []).filter(f => f.daysToKickoff === 0 || f.daysToKickoff === 1);
@@ -38,6 +64,13 @@ export default function TodayPage({ data, alerts }) {
 
       {!loading && (
         <>
+          {/* Availability strip */}
+          {availabilityIntel && (
+            <Section title="Availability">
+              <AvailabilityStrip intel={availabilityIntel} />
+            </Section>
+          )}
+
           {/* AI Briefing */}
           {briefing?.summary && (
             <Section title="Club Briefing">

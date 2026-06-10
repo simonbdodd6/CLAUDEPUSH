@@ -13,40 +13,43 @@ function cached(key, fn) {
 
 export function useMobileData() {
   const [state, setState] = useState({
-    health:          null,
-    briefing:        null,
-    upcomingFixtures:[],
-    phase:           null,
-    alerts:          MOCK.alerts,
-    recommendations: MOCK.recommendations,
-    twinStatus:      null,
-    loading:         true,
-    error:           null,
-    lastRefreshed:   null,
+    health:             null,
+    briefing:           null,
+    upcomingFixtures:   [],
+    phase:              null,
+    availabilityIntel:  null,
+    alerts:             MOCK.alerts,
+    recommendations:    MOCK.recommendations,
+    twinStatus:         null,
+    loading:            true,
+    error:              null,
+    lastRefreshed:      null,
   });
 
   const load = useCallback(async (force = false) => {
     if (force) CACHE.clear();
     setState(s => ({ ...s, loading: true, error: null }));
     try {
-      const [health, brief, upcoming, status, recs, phase] = await Promise.all([
+      const [health, brief, upcoming, status, recs, phase, availIntel] = await Promise.all([
         cached('health',    () => twin.health()),
         cached('briefing',  () => api.briefing('coach')),
         cached('fixtures',  () => fixtures.upcoming(5)),
         cached('status',    () => twin.status()),
         cached('recs',      () => api.recommendations()),
         cached('phase',     () => api.seasonPhase()),
+        cached('availIntel',() => api.availabilityIntel()),
       ]);
       setState(s => ({
         ...s,
-        health:           health ?? MOCK.clubHealth,
-        briefing:         brief  ?? MOCK.briefing,
-        upcomingFixtures: Array.isArray(upcoming) ? upcoming : [],
-        twinStatus:       status ?? MOCK.twinStatus,
-        recommendations:  Array.isArray(recs) ? recs : MOCK.recommendations,
-        phase:            phase  ?? MOCK.seasonPhase,
-        loading:          false,
-        lastRefreshed:    Date.now(),
+        health:            health ?? MOCK.clubHealth,
+        briefing:          brief  ?? MOCK.briefing,
+        upcomingFixtures:  Array.isArray(upcoming) ? upcoming : [],
+        twinStatus:        status ?? MOCK.twinStatus,
+        recommendations:   Array.isArray(recs) ? recs : MOCK.recommendations,
+        phase:             phase  ?? MOCK.seasonPhase,
+        availabilityIntel: availIntel ?? MOCK.availabilityIntel,
+        loading:           false,
+        lastRefreshed:     Date.now(),
       }));
     } catch (err) {
       setState(s => ({ ...s, loading: false, error: err.message }));

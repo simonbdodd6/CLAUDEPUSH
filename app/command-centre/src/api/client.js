@@ -58,6 +58,8 @@ export const api = {
   timeline:           ()      => get('/timeline'),
   learningStatus:     ()      => get('/learning/status'),
 
+  availabilityIntelligence: () => get('/availability/intelligence'),
+
   fixturesUpcoming: (limit = 8) => get(`/fixtures/upcoming?limit=${limit}`),
   fixtureNext:      ()           => get('/fixtures/next'),
   fixtureGet:       (id)         => get(`/fixtures/${id}`),
@@ -142,6 +144,26 @@ export const MOCK = {
     ],
   },
   fixtures: { fixtures: [] },
+  availabilityIntelligence: {
+    summary: { averageRate: 68, trend: 'declining', vsTarget: { current: 68, target: 80, gap: -12, status: 'below-target' }, atRiskCount: 3, decliningTeamCount: 2, phase: 'IN_SEASON', phaseLabel: 'In Season', confidence: 45 },
+    phaseTarget: { target: 80, minimum: 70, note: 'League results matter. Build attendance culture now.', label: 'In Season' },
+    atRisk: [
+      { id: 'p1', name: 'James O\'Brien',  attendanceRate: 42, retentionRisk: 'high',   risk: 'high',   reason: 'Critical attendance — below 50%' },
+      { id: 'p2', name: 'Darragh Kelly',   attendanceRate: 55, retentionRisk: 'medium', risk: 'medium', reason: 'Attendance below session minimum' },
+      { id: 'p3', name: 'Cillian Walsh',   attendanceRate: 62, retentionRisk: 'low',    risk: 'medium', reason: 'Attendance below session minimum' },
+    ],
+    decliningTeams: [
+      { id: 't1', name: 'U16 Red',  rate: 62, trend: -8 },
+      { id: 't2', name: 'U14 Blue', rate: 71, trend: -5 },
+    ],
+    sessionPrediction: { label: 'Next Training Session', predicted: 63, basis: 'Current declining trend', confidence: 45, warning: 'Predicted below 70% minimum' },
+    recommendations: [
+      { id: 'r1', action: 'Send attendance reminder to squad', why: 'Average attendance dropped 8% over last 3 sessions', effort: 'low', priority: 1 },
+      { id: 'r2', action: 'Schedule 1:1 check-ins with at-risk players', why: '3 players below 65% attendance threshold', effort: 'medium', priority: 2 },
+    ],
+    narrative: 'Squad attendance has been declining over recent sessions and is currently below the in-season target. Consider a targeted reminder this week and follow up individually with players below 65%.',
+    generatedAt: new Date().toISOString(),
+  },
   learningStatus: {
     cis: { score: 69, grade: 'B', stage: 'GROWING', topStrengths: ['Attendance tracking', 'Injury alerts'], improvementAreas: ['Training recommendations'] },
     accuracy: { overall: { f1: 0.95, precision: 0.96, recall: 0.94, grade: 'A' } },

@@ -358,6 +358,140 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    // ── Availability Intelligence ─────────────────────────────────────────────
+    if (method === 'GET' && path === '/api/availability/intelligence') {
+      try {
+        const [{ observe }, { detectCurrentPhase, getPrescription }, { ask }] = await Promise.all([
+          import('../autonomous-assistant/observation-engine.js'),
+          import('../season-intelligence/index.js'),
+          import('../knowledge-engine/index.js'),
+        ])
+
+        const phase = detectCurrentPhase()
+        const presc = getPrescription(phase)
+        const target = presc.attendanceExpectation?.target ?? 80
+        const minimum = presc.attendanceExpectation?.minimum ?? 70
+        const phaseNote = presc.attendanceExpectation?.note ?? ''
+
+        // Observation engine gives us aggregate attendance + declining teams
+        const obs = await observe().catch(() => null)
+        const attObs = obs?.attendance ?? null
+        const averageRate = attObs?.averageRate ?? null
+        const trend = attObs?.weeklyTrend ?? 'unknown'
+        const decliningTeams = attObs?.decliningTeams ?? []
+
+        // Per-player at-risk data from digital twin
+        let atRisk = []
+        try {
+          const { runDigitalTwin } = await import('../club-digital-twin/index.js')
+          const twin = await runDigitalTwin({ lightweight: true }).catch(() => null)
+          const players = twin?.club?.players?.list ?? twin?.players ?? []
+          // Build per-player at-risk list from attendanceRate
+          atRisk = players
+            .filter(p => p.attendanceRate != null && p.attendanceRate < 70)
+            .map(p => ({
+              id:            p.id,
+              name:          p.name,
+              ageGroup:      p.ageGroup ?? null,
+              attendanceRate: p.attendanceRate,
+              retentionRisk: p.retentionRisk ?? 'unknown',
+              risk:          (p.attendanceRate < 50 || p.retentionRisk === 'high') ? 'high' : 'medium',
+              reason:        p.attendanceRate < 50
+                ? 'Critical attendance — below 50%'
+                : p.retentionRisk === 'high'
+                  ? 'Flagged at retention risk'
+                  : 'Attendance below session minimum',
+            }))
+            .sort((a, b) => a.attendanceRate - b.attendanceRate)
+            .slice(0, 10)
+        } catch { /* atRisk stays empty — graceful */ }
+
+        // Session prediction: extrapolate from current rate + trend
+        const predictedRate = trend === 'declining'
+          ? Math.max(0, (averageRate ?? minimum) - 5)
+          : trend === 'strong'
+            ? Math.min(100, (averageRate ?? target) + 3)
+            : averageRate ?? target
+        const sessionPrediction = {
+          label:      'Next Training Session',
+          predicted:  Math.round(predictedRate),
+          basis:      trend === 'declining' ? 'Current declining trend' : trend === 'strong' ? 'Positive attendance momentum' : 'Stable attendance pattern',
+          confidence: attObs?.confidence ?? 45,
+          warning:    predictedRate < minimum ? `Predicted below ${minimum}% minimum` : null,
+        }
+
+        // AI recommendations filtered for availability/welfare
+        let recommendations = []
+        try {
+          const { getActiveRecommendations } = await import('../autonomous-assistant/index.js')
+          const recs = await getActiveRecommendations().catch(() => [])
+          const AVAILABILITY_KEYWORDS = ['attendance', 'availability', 'welfare', 'player', 'engagement', 'training', 'turnout']
+          const urgencyToEffort = u => (u === 'CRITICAL' || u === 'HIGH') ? 'high' : u === 'MEDIUM' ? 'medium' : 'low'
+          recommendations = recs
+            .filter(r => {
+              const text = ((r.title ?? '') + ' ' + (r.reason ?? '') + ' ' + (r.category ?? '')).toLowerCase()
+              return AVAILABILITY_KEYWORDS.some(k => text.includes(k))
+            })
+            .slice(0, 4)
+            .map((r, i) => ({
+              id:       r.id,
+              action:   r.title,
+              why:      r.reason,
+              effort:   urgencyToEffort(r.urgency),
+              priority: i + 1,
+            }))
+        } catch { /* no recommendations */ }
+
+        // AI narrative via knowledge engine
+        let narrative = null
+        if (averageRate != null) {
+          const q = `Squad attendance is currently ${averageRate}% (target: ${target}%). Trend is ${trend}. ` +
+            `${atRisk.length} players are below threshold. ` +
+            `Write 1–2 sentences of actionable coaching advice for improving attendance.`
+          const nr = await ask(q, { maxTokens: 150 }).catch(() => null)
+          narrative = nr?.answer ?? null
+        }
+
+        json(res, {
+          summary: {
+            averageRate,
+            trend,
+            vsTarget: {
+              current: averageRate,
+              target,
+              gap:     averageRate != null ? averageRate - target : null,
+              status:  averageRate == null ? 'unknown' : averageRate >= target ? 'on-target' : averageRate >= minimum ? 'below-target' : 'critical',
+            },
+            atRiskCount: atRisk.length,
+            decliningTeamCount: decliningTeams.length,
+            phase,
+            phaseLabel: presc.label ?? phase,
+            confidence: attObs?.confidence ?? 45,
+          },
+          phaseTarget: { target, minimum, note: phaseNote, label: presc.label },
+          atRisk,
+          decliningTeams,
+          sessionPrediction,
+          recommendations,
+          narrative,
+          generatedAt: new Date().toISOString(),
+        })
+      } catch (e) {
+        // Graceful fallback — return mock intelligence so UI always renders
+        json(res, {
+          summary: { averageRate: null, trend: 'unknown', vsTarget: { status: 'unknown' }, atRiskCount: 0, confidence: 0, phase: 'UNKNOWN' },
+          phaseTarget: { target: 80, minimum: 70, note: 'Data unavailable', label: 'Unknown' },
+          atRisk: [],
+          decliningTeams: [],
+          sessionPrediction: { label: 'Next Training Session', predicted: null, confidence: 0, warning: null },
+          recommendations: [],
+          narrative: null,
+          error: e.message,
+        })
+      }
+      return
+    }
+
     // ── AI Timeline ───────────────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/timeline') {
       const { runCheck } = await import('../autonomous-assistant/index.js')

@@ -70,6 +70,11 @@ export const MOCK = {
     phase: 'IN_SEASON',
     meta: { label: 'In Season', description: 'Competitive season underway' },
   },
+  availabilityIntel: {
+    summary: { averageRate: 68, trend: 'declining', vsTarget: { status: 'below-target', gap: -12 }, atRiskCount: 3, phase: 'IN_SEASON', phaseLabel: 'In Season' },
+    phaseTarget: { target: 80, minimum: 70 },
+    sessionPrediction: { predicted: 63, warning: 'Predicted below 70% minimum' },
+  },
   alerts: [
     { id: 'a1', type: 'VOLUNTEER_GAP',    severity: 'HIGH',     title: 'First Aider needed Saturday', description: 'Volunteer role unfilled for next fixture.', ts: new Date().toISOString() },
     { id: 'a2', type: 'ATTENDANCE_DECLINE',severity: 'MEDIUM',  title: 'U16 attendance below 70%',    description: 'Average attendance has dropped over 3 weeks.', ts: new Date().toISOString() },
@@ -101,7 +106,8 @@ export const api = {
   approvals:       ()       => safe(() => fetcher('/api/approvals'),                  'approvals'),
   history:         ()       => safe(() => fetcher('/api/history'),                    null),
   briefing:        (role)   => safe(() => fetcher(`/api/dashboard/briefing?role=${role ?? 'coach'}`), 'briefing'),
-  seasonPhase:     ()       => safe(() => fetcher('/api/season/phase'),                'seasonPhase'),
+  seasonPhase:          ()  => safe(() => fetcher('/api/season/phase'),               'seasonPhase'),
+  availabilityIntel:    ()  => safe(() => fetcher('/api/availability/intelligence'),  'availabilityIntel'),
 };
 
 // ── Digital Twin APIs (/twin/*) ───────────────────────────────────────────────
