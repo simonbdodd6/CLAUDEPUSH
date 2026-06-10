@@ -93,11 +93,11 @@ test('Home — coach daily briefing smoke test', async ({ page }) => {
   await step(page, 'briefing-header-renders', async () => {
     await expect(page.locator('.home-briefing-hdr')).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('.home-briefing-date')).toBeVisible({ timeout: 5_000 });
-    // Pill is either "X things to do" or "All clear ✓"
+    // Pill shows "X things to do", "All clear ✓", or "Setup: X/5 done"
     const pill = page.locator('.home-briefing-pill');
     await expect(pill).toBeVisible({ timeout: 5_000 });
     const pillText = await pill.textContent();
-    if (!pillText.includes('to do') && !pillText.includes('All clear')) {
+    if (!pillText.includes('to do') && !pillText.includes('All clear') && !pillText.includes('Setup')) {
       throw new Error(`Unexpected briefing pill text: "${pillText}"`);
     }
   });

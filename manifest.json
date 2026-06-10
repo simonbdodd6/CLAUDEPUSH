@@ -1,7 +1,7 @@
 {
-  "name": "coacheseyeGPT · Boitsfort RFC",
-  "short_name": "coacheseyeGPT",
-  "description": "Rugby team management and player messaging for Boitsfort RFC",
+  "name": "Coach's Eye",
+  "short_name": "Coach's Eye",
+  "description": "Rugby team management, squad planning and player communication for coaches",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

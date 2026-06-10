@@ -1,0 +1,73 @@
+{
+  "workflow": "onboarding",
+  "runId": "2026-06-10T21-14-15-562Z",
+  "startedAt": "2026-06-10T21:14:15.562Z",
+  "finishedAt": "2026-06-10T21:14:55.525Z",
+  "status": "passed",
+  "commit": "51975cb",
+  "steps": [
+    {
+      "name": "open-app",
+      "status": "passed",
+      "startedAt": "2026-06-10T21:14:37.029Z",
+      "finishedAt": "2026-06-10T21:14:51.528Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/01-open-app.png"
+    },
+    {
+      "name": "coach-login",
+      "status": "passed",
+      "startedAt": "2026-06-10T21:14:51.841Z",
+      "finishedAt": "2026-06-10T21:14:51.849Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/02-coach-login.png"
+    },
+    {
+      "name": "home-shows-onboarding",
+      "status": "passed",
+      "startedAt": "2026-06-10T21:14:52.396Z",
+      "finishedAt": "2026-06-10T21:14:52.879Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/03-home-shows-onboarding.png"
+    },
+    {
+      "name": "pill-shows-setup",
+      "status": "passed",
+      "startedAt": "2026-06-10T21:14:53.011Z",
+      "finishedAt": "2026-06-10T21:14:53.032Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/04-pill-shows-setup.png"
+    },
+    {
+      "name": "current-step-is-primary",
+      "status": "passed",
+      "startedAt": "2026-06-10T21:14:53.182Z",
+      "finishedAt": "2026-06-10T21:14:53.206Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/05-current-step-is-primary.png"
+    },
+    {
+      "name": "players-db-empty-state",
+      "status": "passed",
+      "startedAt": "2026-06-10T21:14:53.362Z",
+      "finishedAt": "2026-06-10T21:14:53.745Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/06-players-db-empty-state.png"
+    },
+    {
+      "name": "toolbar-has-template-csv-btn",
+      "status": "passed",
+      "startedAt": "2026-06-10T21:14:53.983Z",
+      "finishedAt": "2026-06-10T21:14:54.011Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/07-toolbar-has-template-csv-btn.png"
+    },
+    {
+      "name": "player-added-exits-onboarding",
+      "status": "passed",
+      "startedAt": "2026-06-10T21:14:54.197Z",
+      "finishedAt": "2026-06-10T21:14:54.278Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/08-player-added-exits-onboarding.png"
+    },
+    {
+      "name": "skip-guide-dismisses-onboarding",
+      "status": "passed",
+      "startedAt": "2026-06-10T21:14:54.445Z",
+      "finishedAt": "2026-06-10T21:14:55.349Z",
+      "screenshot": "qa/artifacts/onboarding-2026-06-10T21-14-15-562Z/09-skip-guide-dismisses-onboarding.png"
+    }
+  ]
+}
