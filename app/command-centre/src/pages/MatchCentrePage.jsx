@@ -17,6 +17,8 @@ const STATUS_VARIANT = {
   CANCELLED:  'danger',
 }
 
+const PRIORITY_VARIANT = { critical: 'danger', high: 'danger', medium: 'warning', low: 'neutral' }
+
 function daysBadge(d) {
   if (d == null) return { label: 'TBC', variant: 'neutral' }
   if (d < 0)    return { label: 'Past', variant: 'neutral' }
@@ -29,12 +31,24 @@ function daysBadge(d) {
 
 function fmtKickoff(iso) {
   if (!iso) return 'TBC'
-  return new Date(iso).toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleDateString('en-IE', {
+    weekday: 'short', day: 'numeric', month: 'short',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function checklistProgress(fixture) {
+  const list = fixture.preparationChecklist ?? []
+  if (!list.length) return null
+  const done    = list.filter(t => t.status === 'done' || t.status === 'skipped').length
+  const overdue = list.filter(t => t.status !== 'done' && t.status !== 'skipped' && t.dueAt && t.dueAt < new Date().toISOString()).length
+  return { total: list.length, done, overdue, percent: Math.round((done / list.length) * 100) }
 }
 
 function FixtureRow({ fixture, selected, onSelect, onPrepare, preparing }) {
   const { label, variant } = daysBadge(fixture.daysToKickoff)
   const imminent = (fixture.daysToKickoff ?? 99) >= 0 && (fixture.daysToKickoff ?? 99) <= 3
+  const prog = checklistProgress(fixture)
 
   return (
     <div
@@ -54,9 +68,14 @@ function FixtureRow({ fixture, selected, onSelect, onPrepare, preparing }) {
             <Badge variant={STATUS_VARIANT[fixture.status] ?? 'neutral'} className="text-[10px]">
               {fixture.status ?? 'SCHEDULED'}
             </Badge>
-            {fixture.squadStatus?.injured?.length > 0 && (
+            {(fixture.squadStatus?.injured?.length ?? 0) > 0 && (
               <Badge variant="danger" className="text-[10px]">
                 {fixture.squadStatus.injured.length} inj
+              </Badge>
+            )}
+            {(prog?.overdue ?? 0) > 0 && (
+              <Badge variant="warning" className="text-[10px]">
+                {prog.overdue} overdue
               </Badge>
             )}
           </div>
@@ -65,8 +84,16 @@ function FixtureRow({ fixture, selected, onSelect, onPrepare, preparing }) {
             {' · '}{fmtKickoff(fixture.kickoff)}
             {' · '}{fixture.isHome === false ? 'Away' : 'Home'}
           </p>
-          {fixture.competition && (
-            <p className="text-[10px] text-ink-4 mt-0.5">{fixture.competition}</p>
+          {prog && (
+            <div className="flex items-center gap-2 mt-1.5">
+              <div className="flex-1 h-1 rounded-full bg-surface-3 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-success transition-all duration-500"
+                  style={{ width: `${prog.percent}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-ink-3 flex-shrink-0">{prog.done}/{prog.total}</span>
+            </div>
           )}
         </div>
 
@@ -84,32 +111,22 @@ function FixtureRow({ fixture, selected, onSelect, onPrepare, preparing }) {
           )}
         </div>
       </div>
-
-      {fixture.preparedAt && (
-        <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-border-subtle">
-          <span className="text-[10px] text-success">✓ AI prepared</span>
-          {(fixture.squadStatus?.available?.length ?? 0) > 0 && (
-            <span className="text-[10px] text-ink-3">
-              · {fixture.squadStatus.available.length} available
-            </span>
-          )}
-          {fixture.matchPack && (
-            <span className="text-[10px] text-accent">· Pack ready</span>
-          )}
-        </div>
-      )}
     </div>
   )
 }
 
 function SquadIntelPanel({ fixture, onGenPack, generating }) {
+  const [checklistOpen, setChecklistOpen] = useState(false)
+
   const available   = fixture.squadStatus?.available   ?? []
   const injured     = fixture.squadStatus?.injured     ?? []
   const uncertain   = fixture.squadStatus?.uncertain   ?? []
   const medical     = fixture.medicalAlerts            ?? []
   const milestones  = fixture.playerMilestones         ?? []
   const volRequired = fixture.volunteers?.required     ?? []
+  const checklist   = fixture.preparationChecklist     ?? []
   const pack        = fixture.matchPack
+  const prog        = checklistProgress(fixture)
 
   return (
     <Card className="p-4">
@@ -124,30 +141,28 @@ function SquadIntelPanel({ fixture, onGenPack, generating }) {
           >
             {generating
               ? <><Spinner size={12} className="mr-1.5" />Generating…</>
-              : pack ? '📋 Regenerate Pack' : '📋 Generate Pack'
+              : pack ? '📋 Regenerate Pack' : '📋 Generate Match Pack'
             }
           </Button>
         }
       />
 
       <div className="space-y-4">
-        {/* Squad status */}
+        {/* Squad availability summary */}
         {(available.length + injured.length + uncertain.length) > 0 && (
           <div>
-            <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wider mb-2">
-              Squad availability
-            </p>
-            <div className="grid grid-cols-3 gap-2 text-center text-xs mb-2">
+            <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wider mb-2">Squad availability</p>
+            <div className="grid grid-cols-3 gap-2 text-center mb-2">
               <div className="p-2 rounded-lg bg-success/10 border border-success/20">
-                <div className="text-lg font-bold text-success">{available.length}</div>
+                <div className="text-xl font-bold text-success">{available.length}</div>
                 <div className="text-[10px] text-success/80">Available</div>
               </div>
               <div className="p-2 rounded-lg bg-warning/10 border border-warning/20">
-                <div className="text-lg font-bold text-warning">{uncertain.length}</div>
+                <div className="text-xl font-bold text-warning">{uncertain.length}</div>
                 <div className="text-[10px] text-warning/80">Uncertain</div>
               </div>
               <div className="p-2 rounded-lg bg-danger/10 border border-danger/20">
-                <div className="text-lg font-bold text-danger">{injured.length}</div>
+                <div className="text-xl font-bold text-danger">{injured.length}</div>
                 <div className="text-[10px] text-danger/80">Injured</div>
               </div>
             </div>
@@ -155,7 +170,7 @@ function SquadIntelPanel({ fixture, onGenPack, generating }) {
               <div className="flex flex-wrap gap-1">
                 {injured.slice(0, 6).map((p, i) => (
                   <span key={i} className="px-2 py-0.5 rounded text-[10px] bg-danger/10 border border-danger/20 text-danger">
-                    {p.name} {p.injury ? `— ${p.injury}` : ''}
+                    {p.name}{p.injury ? ` — ${p.injury}` : ''}
                   </span>
                 ))}
               </div>
@@ -180,18 +195,16 @@ function SquadIntelPanel({ fixture, onGenPack, generating }) {
           </div>
         )}
 
-        {/* Milestones */}
+        {/* Player milestones */}
         {milestones.length > 0 && (
           <div>
-            <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wider mb-1.5">🏆 Player Milestones</p>
-            <div className="space-y-1">
-              {milestones.slice(0, 3).map((m, i) => (
-                <div key={i} className="text-xs text-ink-2">
-                  <span className="text-accent mr-1.5">★</span>
-                  {m.name ?? m.playerName} — {m.milestone ?? m.note}
-                </div>
-              ))}
-            </div>
+            <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wider mb-1.5">🏆 Milestones</p>
+            {milestones.slice(0, 3).map((m, i) => (
+              <div key={i} className="text-xs text-ink-2 mb-0.5">
+                <span className="text-accent mr-1.5">★</span>
+                {m.name ?? m.playerName} — {m.milestone ?? m.note}
+              </div>
+            ))}
           </div>
         )}
 
@@ -209,6 +222,72 @@ function SquadIntelPanel({ fixture, onGenPack, generating }) {
           </div>
         )}
 
+        {/* Preparation checklist */}
+        {checklist.length > 0 && (
+          <div className="pt-2 border-t border-border-subtle">
+            <button
+              className="flex items-center justify-between w-full text-left"
+              onClick={() => setChecklistOpen(o => !o)}
+            >
+              <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wider">
+                ✓ Preparation Checklist
+              </p>
+              <div className="flex items-center gap-2">
+                {prog && (
+                  <span className="text-[10px] text-ink-3">{prog.done}/{prog.total} done</span>
+                )}
+                {prog?.overdue > 0 && (
+                  <Badge variant="warning" className="text-[9px]">{prog.overdue} overdue</Badge>
+                )}
+                <span className="text-[10px] text-ink-3">{checklistOpen ? '▲' : '▼'}</span>
+              </div>
+            </button>
+
+            {prog && (
+              <div className="mt-1.5 h-1.5 rounded-full bg-surface-3 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-success transition-all duration-500"
+                  style={{ width: `${prog.percent}%` }}
+                />
+              </div>
+            )}
+
+            {checklistOpen && (
+              <div className="mt-2 space-y-1 max-h-56 overflow-y-auto">
+                {checklist.map((t, i) => {
+                  const overdue = t.dueAt && t.dueAt < new Date().toISOString() && t.status !== 'done' && t.status !== 'skipped'
+                  const done    = t.status === 'done' || t.status === 'skipped'
+                  return (
+                    <div
+                      key={t.id ?? i}
+                      className={`flex items-start gap-2 p-2 rounded text-xs ${
+                        done    ? 'opacity-50' :
+                        overdue ? 'bg-warning/5 border border-warning/20 rounded-lg' :
+                                  'bg-surface-1'
+                      }`}
+                    >
+                      <span className="text-sm flex-shrink-0 mt-0.5">
+                        {done ? '✅' : overdue ? '⚠️' : '⏰'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className={`leading-snug ${done ? 'line-through text-ink-3' : 'text-ink-2'}`}>
+                          {t.description}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          <span className="text-[9px] text-ink-3">{t.assignee}</span>
+                          <Badge variant={PRIORITY_VARIANT[t.priority] ?? 'neutral'} className="text-[9px]">
+                            {t.priority}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Match pack preview */}
         {pack && (
           <div className="pt-2 border-t border-border-subtle">
@@ -219,11 +298,11 @@ function SquadIntelPanel({ fixture, onGenPack, generating }) {
           </div>
         )}
 
-        {available.length === 0 && medical.length === 0 && !pack && (
+        {available.length === 0 && medical.length === 0 && !pack && checklist.length === 0 && (
           <EmptyState
             icon="⚡"
             title="Not yet prepared"
-            description="Tap 'Prep' on the fixture to load AI squad intelligence"
+            description="Tap '⚡ Prep' on the fixture to load AI squad intelligence"
           />
         )}
       </div>
@@ -241,10 +320,9 @@ export default function MatchCentrePage() {
   const [enriched, setEnriched]           = useState({})
 
   const fixtures = fixturesHook.data?.fixtures ?? []
-  const matchRecs = (recsHook.data?.recommendations ?? []).filter(r => {
-    const cat = (r.category ?? '').toLowerCase()
-    return MATCH_CATEGORIES.some(c => cat.includes(c))
-  })
+  const matchRecs = (recsHook.data?.recommendations ?? []).filter(r =>
+    MATCH_CATEGORIES.some(c => (r.category ?? '').toLowerCase().includes(c))
+  )
 
   const selectedFixture = selectedId
     ? (enriched[selectedId] ?? fixtures.find(f => f.id === selectedId) ?? null)
@@ -276,7 +354,7 @@ export default function MatchCentrePage() {
         [id]: { ...(prev[id] ?? fixtures.find(f => f.id === id) ?? {}), matchPack: pack },
       }))
     } catch {
-      // silent — pack errors don't break the page
+      // pack errors don't break the page
     } finally {
       setGeneratingPack(false)
     }
@@ -340,7 +418,6 @@ export default function MatchCentrePage() {
 
         {/* Right column: AI readiness + quick actions */}
         <div className="space-y-4">
-          {/* AI Match Readiness */}
           <Card className="p-4">
             <CardHeader
               title="AI Match Readiness"
@@ -377,7 +454,6 @@ export default function MatchCentrePage() {
             )}
           </Card>
 
-          {/* Quick actions for next fixture */}
           <Card className="p-4">
             <CardHeader title="Quick Actions" />
             {nextFixture ? (

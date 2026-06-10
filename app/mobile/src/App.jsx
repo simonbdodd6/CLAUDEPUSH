@@ -21,7 +21,7 @@ export default function App() {
         <Route element={<MobileLayout cmdBar={cmdBar} alertCount={criticalCount} />}>
           <Route index         element={<HomePage   {...sharedProps} />} />
           <Route path="today"  element={<TodayPage  {...sharedProps} />} />
-          <Route path="match"  element={<MatchPage  upcomingFixtures={data.upcomingFixtures} />} />
+          <Route path="match"  element={<MatchPage  upcomingFixtures={data.upcomingFixtures} recommendations={data.recommendations} />} />
           <Route path="actions"element={<ActionsPage />} />
           <Route path="alerts" element={<AlertsPage alerts={alerts} loading={alertsLoading} />} />
           <Route path="*"      element={<Navigate to="/" replace />} />

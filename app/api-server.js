@@ -188,16 +188,17 @@ const server = createServer(async (req, res) => {
       }
       const urgencyToEffort = u => (u === 'CRITICAL' || u === 'HIGH') ? 'high' : u === 'MEDIUM' ? 'medium' : 'low'
       const normalized = recs.slice(0, 6).map((r, i) => ({
-        id:         r.id,
-        action:     r.title,
-        why:        r.reason,
-        effort:     urgencyToEffort(r.urgency),
-        priority:   i + 1,
-        confidence: r.confidence,
-        tier:       r.tier,
-        type:       r.type,
-        category:   r.category,
-        timeSaved:  r.timeSaved,
+        id:           r.id,
+        action:       r.title,
+        why:          r.reason,
+        effort:       urgencyToEffort(r.urgency),
+        priority:     i + 1,
+        confidence:   r.confidence,
+        tier:         r.tier,
+        type:         r.type,
+        category:     r.category,
+        timeSaved:    r.timeSaved,
+        linkedActions: (r.actions ?? []).map(a => ({ id: a.id, label: a.label, actionId: a.actionId })),
       }))
       json(res, { recommendations: normalized })
       return
@@ -333,12 +334,13 @@ const server = createServer(async (req, res) => {
     const fixturePackGenMatch = path.match(/^\/api\/fixtures\/([^/]+)\/pack\/generate$/)
     if (method === 'POST' && fixturePackGenMatch) {
       const [, id] = fixturePackGenMatch
-      const { getFixture }        = await import('../fixture-engine/fixture-store.js')
-      const { generateMatchPack } = await import('../fixture-engine/index.js')
-      const { serializeFixture }  = await import('../fixture-engine/fixture-schema.js')
+      const { getFixture, saveFixture } = await import('../fixture-engine/fixture-store.js')
+      const { generateMatchPack }       = await import('../fixture-engine/index.js')
+      const { serializeFixture }        = await import('../fixture-engine/fixture-schema.js')
       const f = getFixture(id)
       if (!f) { err(res, 'Fixture not found', 404); return }
       const pack = await generateMatchPack(f).catch(e => ({ error: e.message, generated: false }))
+      if (!pack.error) { f.matchPack = pack; saveFixture(f) }
       json(res, pack)
       return
     }
