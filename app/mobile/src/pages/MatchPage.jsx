@@ -5,15 +5,6 @@ import { fixtures }   from '../api/client.js';
 
 const MATCH_CATEGORIES = ['player welfare', 'logistics', 'operations'];
 
-function Section({ title, children }) {
-  return (
-    <div className="mb-5">
-      <p className="m-section-title">{title}</p>
-      {children}
-    </div>
-  );
-}
-
 function InfoRow({ label, value, accent }) {
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-border-subtle last:border-0">
@@ -25,27 +16,30 @@ function InfoRow({ label, value, accent }) {
 
 function fmtKickoff(iso) {
   if (!iso) return 'TBC';
-  return new Date(iso).toLocaleDateString('en-IE', {
+  return new Date(iso).toLocaleString('en-IE', {
     weekday: 'long', day: 'numeric', month: 'long',
     hour: '2-digit', minute: '2-digit',
   });
 }
 
 export default function MatchPage({ upcomingFixtures = [], recommendations = [] }) {
-  const [selIdx, setSelIdx]     = useState(0);
-  const [detail, setDetail]     = useState(null);
-  const [timeline, setTimeline] = useState(null);
-  const [pack, setPack]         = useState(null);
+  const [selIdx, setSelIdx]           = useState(0);
+  const [detail, setDetail]           = useState(null);
+  const [timeline, setTimeline]       = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [pack, setPack]               = useState(null);
   const [packLoading, setPackLoading] = useState(false);
-  const [tab, setTab]           = useState('overview');
+  const [tab, setTab]                 = useState('overview');
 
   const fixture = upcomingFixtures[selIdx] ?? null;
 
   useEffect(() => {
     if (!fixture?.id) { setDetail(null); setTimeline(null); return; }
-    setDetail(null); setTimeline(null); setPack(null);
+    setDetail(null); setTimeline(null); setPack(null); setDetailLoading(true);
     Promise.all([fixtures.get(fixture.id), fixtures.timeline(fixture.id)])
-      .then(([f, t]) => { setDetail(f); setTimeline(t); });
+      .then(([f, t]) => { setDetail(f); setTimeline(t); })
+      .catch(() => { /* detail stays null — tabs show appropriate empty states */ })
+      .finally(() => setDetailLoading(false));
   }, [fixture?.id]);
 
   async function handleGenPack() {
@@ -176,7 +170,13 @@ export default function MatchPage({ upcomingFixtures = [], recommendations = [] 
       )}
 
       {/* ── Squad tab ──────────────────────────────────────────────────────── */}
-      {tab === 'squad' && (
+      {/* Loading overlay for detail fetch */}
+      {detailLoading && (tab === 'squad' || tab === 'checklist') && (
+        <div className="flex justify-center py-10"><Spinner size={24} /></div>
+      )}
+
+      {/* ── Squad tab ──────────────────────────────────────────────────────── */}
+      {tab === 'squad' && !detailLoading && (
         (available.length + injured.length + uncertain.length) > 0 ? (
           <div>
             {/* Summary row */}
@@ -226,14 +226,14 @@ export default function MatchPage({ upcomingFixtures = [], recommendations = [] 
         ) : (
           <div className="text-center py-10">
             <p className="text-3xl mb-3">⚡</p>
-            <p className="text-ink-2 font-semibold text-sm">Squad not yet loaded</p>
-            <p className="text-ink-3 text-xs mt-1">Use "Prepare with AI" in the Command Centre to load squad data</p>
+            <p className="text-ink-2 font-semibold text-sm">Squad not yet confirmed</p>
+            <p className="text-ink-3 text-xs mt-1">Availability data will appear here once the squad is prepared</p>
           </div>
         )
       )}
 
       {/* ── Checklist tab ─────────────────────────────────────────────────── */}
-      {tab === 'checklist' && (
+      {tab === 'checklist' && !detailLoading && (
         checklist.length > 0 ? (
           <div>
             {/* Progress bar */}

@@ -31,7 +31,7 @@ function daysBadge(d) {
 
 function fmtKickoff(iso) {
   if (!iso) return 'TBC'
-  return new Date(iso).toLocaleDateString('en-IE', {
+  return new Date(iso).toLocaleString('en-IE', {
     weekday: 'short', day: 'numeric', month: 'short',
     hour: '2-digit', minute: '2-digit',
   })
@@ -50,9 +50,17 @@ function FixtureRow({ fixture, selected, onSelect, onPrepare, preparing }) {
   const imminent = (fixture.daysToKickoff ?? 99) >= 0 && (fixture.daysToKickoff ?? 99) <= 3
   const prog = checklistProgress(fixture)
 
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(fixture.id) }
+  }
+
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`${fixture.teamName} vs ${fixture.opponent}, ${fixture.daysToKickoff === 0 ? 'today' : `${fixture.daysToKickoff} days`}`}
       onClick={() => onSelect(fixture.id)}
+      onKeyDown={handleKeyDown}
       className={`p-3 rounded-lg border cursor-pointer transition-all duration-150 ${
         selected
           ? 'bg-accent/5 border-accent/40'
@@ -226,6 +234,8 @@ function SquadIntelPanel({ fixture, onGenPack, generating }) {
         {checklist.length > 0 && (
           <div className="pt-2 border-t border-border-subtle">
             <button
+              type="button"
+              aria-expanded={checklistOpen}
               className="flex items-center justify-between w-full text-left"
               onClick={() => setChecklistOpen(o => !o)}
             >
