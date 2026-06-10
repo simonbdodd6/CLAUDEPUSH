@@ -180,27 +180,44 @@ const server = createServer(async (req, res) => {
 
     // ── Recommendations ───────────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/recommendations') {
-      const { getActiveRecommendations, runCheck } = await import('../autonomous-assistant/index.js')
-      let recs = await getActiveRecommendations().catch(() => [])
-      if (recs.length === 0) {
-        const result = await runCheck({ saveToState: true }).catch(() => ({ recommendations: [] }))
-        recs = result.recommendations ?? []
+      try {
+        const { generate, buildContext } = await import('../recommendation-engine/index.js')
+
+        // Assemble context from all available engines — each import is best-effort
+        const [fixtureResult, twinResult, seasonResult, attendanceResult] = await Promise.allSettled([
+          Promise.all([
+            import('../fixture-engine/fixture-store.js'),
+            import('../fixture-engine/fixture-schema.js'),
+          ]).then(([store, schema]) => {
+            const f = store.listUpcomingFixtures?.(1)?.[0] ?? null
+            return f ? schema.serializeFixture(f) : null
+          }),
+          import('../club-digital-twin/index.js').then(async m => {
+            const club = await m.getClub().catch(() => null)
+            return club ? { injured: club.players?.injured ?? [], atRisk: club.players?.atRisk ?? [] } : null
+          }),
+          import('../season-intelligence/index.js').then(m => m.detectCurrentPhase?.() ?? null),
+          import('../autonomous-assistant/observation-engine.js').then(async m => {
+            const obs = await m.observe().catch(() => null)
+            return obs?.attendance ?? null
+          }),
+        ])
+
+        const ctx = buildContext({
+          fixture:        fixtureResult.status  === 'fulfilled' ? fixtureResult.value  : null,
+          digitalTwin:    twinResult.status     === 'fulfilled' ? twinResult.value     : null,
+          seasonData:     seasonResult.status   === 'fulfilled' ? seasonResult.value   : null,
+          attendanceData: attendanceResult.status === 'fulfilled' ? attendanceResult.value : null,
+        })
+
+        const { recommendations, meta } = generate(ctx, { maxResults: 8 })
+        json(res, { recommendations, meta })
+      } catch (e) {
+        // Hard fallback: run the engine in mock mode so the UI always has data
+        const { generate } = await import('../recommendation-engine/index.js').catch(() => ({ generate: () => ({ recommendations: [], meta: {} }) }))
+        const { recommendations, meta } = generate({}, { useMockFallback: true })
+        json(res, { recommendations, meta, error: e.message })
       }
-      const urgencyToEffort = u => (u === 'CRITICAL' || u === 'HIGH') ? 'high' : u === 'MEDIUM' ? 'medium' : 'low'
-      const normalized = recs.slice(0, 6).map((r, i) => ({
-        id:           r.id,
-        action:       r.title,
-        why:          r.reason,
-        effort:       urgencyToEffort(r.urgency),
-        priority:     i + 1,
-        confidence:   r.confidence,
-        tier:         r.tier,
-        type:         r.type,
-        category:     r.category,
-        timeSaved:    r.timeSaved,
-        linkedActions: (r.actions ?? []).map(a => ({ id: a.id, label: a.label, actionId: a.actionId })),
-      }))
-      json(res, { recommendations: normalized })
       return
     }
 
