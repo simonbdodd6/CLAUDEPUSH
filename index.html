@@ -1371,6 +1371,34 @@
     .sub-tag { display:inline-flex; min-height:20px; padding:0 8px; border-radius:999px; background:var(--amber-soft); color:var(--amber); font-size:11px; font-weight:700; align-items:center; }
     .export-bar { display:flex; gap:8px; flex-wrap:wrap; padding:12px 0; border-top:1px solid var(--line); margin-top:14px; }
 
+    /* ── MATCH CENTRE ── */
+    .mc-hero { border-radius:12px; background:linear-gradient(135deg,#0a2240 0%,#12324f 60%,#0f4a28 100%); border:1px solid rgba(255,255,255,0.08); padding:24px 26px; position:relative; overflow:hidden; }
+    .mc-hero::after { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at 80% 50%,rgba(16,185,129,0.10) 0%,transparent 70%); pointer-events:none; }
+    .mc-phase-badge { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; padding:4px 12px; border-radius:999px; }
+    .mc-phase-prepare { background:rgba(59,130,246,0.18); color:#60a5fa; }
+    .mc-phase-refine  { background:rgba(245,158,11,0.18); color:#fbbf24; }
+    .mc-phase-confirm { background:rgba(16,185,129,0.18); color:#10b981; }
+    .mc-phase-live    { background:rgba(239,68,68,0.20); color:#f87171; animation:mc-pulse 1.5s infinite; }
+    .mc-phase-post    { background:rgba(107,114,128,0.18); color:#9ca3af; }
+    @keyframes mc-pulse { 0%,100%{opacity:1} 50%{opacity:0.65} }
+    .mc-kpi-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+    .mc-kpi { border:1px solid var(--line); border-radius:10px; padding:14px 12px; background:var(--panel); text-align:center; }
+    .mc-kpi strong { display:block; font-size:32px; font-weight:400; font-family:var(--font-display); line-height:1; }
+    .mc-kpi small { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-top:5px; }
+    .mc-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
+    .mc-detail-row { display:grid; grid-template-columns:110px 1fr; gap:8px; align-items:center; padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
+    .mc-detail-row:last-child { border-bottom:0; }
+    .mc-detail-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+    .mc-notes-area { min-height:90px; font-size:13px; line-height:1.6; resize:vertical; }
+    .mc-avail-row { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
+    .mc-avail-row:last-child { border-bottom:0; }
+    .mc-publish-btn { font-size:14px; font-weight:700; padding:10px 22px; border-radius:8px; cursor:pointer; border:0; transition:opacity 0.2s; }
+    .mc-publish-btn:hover { opacity:0.85; }
+    .mc-publish-btn.published { background:#10b981; color:#060b12; }
+    .mc-publish-btn.draft { background:rgba(255,255,255,0.12); color:#e2e8f0; border:1px solid rgba(255,255,255,0.2); }
+    @media(max-width:900px) { .mc-grid { grid-template-columns:1fr; } .mc-kpi-grid { grid-template-columns:repeat(2,1fr); } }
+    @media(max-width:600px) { .bench-strip { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+
     /* ── MEDICAL ── */
     .med-overview-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
     .med-stat { border:1px solid var(--line); border-radius:10px; padding:14px; text-align:center; background:var(--panel); }
@@ -1841,7 +1869,7 @@
       ["message",   "Availability"],
       ["messages",  "Messages"],
       ["training",  "Training"],
-      ["matchday",  "Matchday Centre"],
+      ["matchday",  "Match Centre"],
       ["medical",   "Medical"],
       ["players",   "Members"]
     ];
@@ -1987,7 +2015,22 @@
       },
       coachNotes: "",
       playerFilter: "all",
-      showAddPlayer: false
+      showAddPlayer: false,
+      matchCentre: {
+        opposition:    "Kituro RFC",
+        competition:   "Belgian Rugby Division 1",
+        kickoffDate:   "2026-06-14",
+        kickoffTime:   "15:00",
+        arrivalTime:   "13:30",
+        venue:         "Stade de la Plaine — Home",
+        kit:           "Green & Gold (home)",
+        referee:       "",
+        weather:       "",
+        coachNotes:    "",
+        announcement:  "",
+        gamePlan:      "",
+        published:     false,
+      },
     };
 
     // ─── STATE ────────────────────────────────────────────────────────────────
@@ -2337,6 +2380,7 @@
       next.autoSendSchedule = input.autoSendSchedule || { day:"monday", time:"09:00" };
       next.trainingAutoSend = input.trainingAutoSend ?? false;
       next.benchPlayers     = input.benchPlayers     || Array(8).fill("");
+      next.matchCentre = { ...structuredClone(defaultState.matchCentre), ...(input.matchCentre || {}) };
       // Guard schedule: ensure it's a valid array, migrate sessions to have deadline field
       if (!Array.isArray(next.schedule) || next.schedule.length === 0) {
         next.schedule = structuredClone(defaultState.schedule);
@@ -3122,6 +3166,51 @@
         link.click();
         notify("Matchday graphic downloaded — ready to post on Instagram! ✓");
       }).catch(err => { console.error("Export error:", err); showToast("Export failed — try again"); });
+    }
+
+    // ─── MATCH CENTRE HELPERS ────────────────────────────────────────────────
+    function matchCentrePhase() {
+      const mc = state.matchCentre || {};
+      const kickoff = new Date(`${mc.kickoffDate || "2030-01-01"}T${mc.kickoffTime || "15:00"}:00`);
+      const msLeft  = kickoff - Date.now();
+      const days    = msLeft / 86400000;
+      if (days > 5)    return { label:"Prepare",    color:"mc-phase-prepare", days, msLeft };
+      if (days > 3)    return { label:"Refine",     color:"mc-phase-refine",  days, msLeft };
+      if (days > 0.25) return { label:"Confirm",    color:"mc-phase-confirm", days, msLeft };
+      if (days > 0)    return { label:"Live",       color:"mc-phase-live",    days, msLeft };
+      return           { label:"Post-match", color:"mc-phase-post",    days, msLeft };
+    }
+    function matchCountdownStr() {
+      const { msLeft } = matchCentrePhase();
+      if (msLeft <= 0) return "Match completed";
+      const totalMins = Math.floor(msLeft / 60000);
+      const d = Math.floor(totalMins / 1440);
+      const h = Math.floor((totalMins % 1440) / 60);
+      const m = totalMins % 60;
+      const parts = [];
+      if (d > 0) parts.push(`${d}d`);
+      if (h > 0) parts.push(`${h}h`);
+      if (m > 0 || parts.length === 0) parts.push(`${m}m`);
+      return parts.join(" ") + " to kickoff";
+    }
+    function saveMatchCentre(field, value) {
+      state.matchCentre = state.matchCentre || {};
+      state.matchCentre[field] = value;
+      saveState();
+    }
+    function publishSquad() {
+      state.matchCentre = state.matchCentre || {};
+      const isPublishing = !state.matchCentre.published;
+      state.matchCentre.published = isPublishing;
+      saveState();
+      if (isPublishing) {
+        const opp = state.matchCentre.opposition || "the match";
+        sendPushToPlayers("Squad confirmed", `The squad for ${opp} has been confirmed. Open the app to view the team sheet.`);
+        showToast("Squad published — players notified ✓");
+      } else {
+        showToast("Squad moved back to draft");
+      }
+      render();
     }
 
     // ─── AVAILABILITY TEMPLATE HELPERS ───────────────────────────────────────
@@ -5775,63 +5864,240 @@
 
     }
 
-    // ─── MATCHDAY ────────────────────────────────────────────────────────────
+    // ─── MATCH CENTRE ────────────────────────────────────────────────────────
     function renderMatchday() {
-      const matchdayPlayers = state.players.filter(p => p.game === "available");
-      const selected  = matchdayPlayers.slice(0, 15);
-      const fnames    = state.formationNames || {};
-      const fphoto    = state.fphotoIds      || {};
-      const bench     = state.benchPlayers   || Array(8).fill("");
-      const subs      = state.subPlan        || [];
-      const fixture   = state.fixtures?.[0]  || { opponent:"Kituro", venue:"Home", date:"This Saturday" };
+      const mc      = state.matchCentre || {};
+      const phase   = matchCentrePhase();
+      const countdown = matchCountdownStr();
+
+      // Availability summary across sessions
+      const sessions    = state.schedule || [];
+      const availSummary = sessions.map(s => {
+        const rows   = sessionRows(s.id);
+        return {
+          session: s,
+          avail:   rows.filter(r => r.status === 'available').length,
+          unavail: rows.filter(r => r.status === 'unavailable').length,
+          pending: rows.filter(r => !r.status || r.status === 'no-reply').length,
+        };
+      });
+      // Use game session for hero KPIs; fall back to last session
+      const gameSess    = sessions.find(s => s.id === 'game') || sessions[sessions.length - 1];
+      const gameRows    = gameSess ? sessionRows(gameSess.id) : [];
+      const availCount  = gameRows.filter(r => r.status === 'available').length;
+      const unavailCount = gameRows.filter(r => r.status === 'unavailable').length;
+      const pendingCount = gameRows.filter(r => !r.status || r.status === 'no-reply').length;
+
+      // Medical
+      const medAlerts = state.players.filter(p => p.game === 'injured' || p.medical);
+
+      // Days to kickoff display
+      const daysDisplay = phase.days > 0
+        ? (phase.days >= 1 ? `${Math.floor(phase.days)}d` : `${Math.floor(phase.days * 24)}h`)
+        : "—";
+
+      // Kickoff date formatted
+      const kickoffDisplay = mc.kickoffDate
+        ? new Date(`${mc.kickoffDate}T${mc.kickoffTime || '15:00'}:00`).toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' })
+        : "Date TBC";
+
+      // Phase planning tips
+      const phaseTips = {
+        "Prepare":    "Check availability across all sessions, flag injury concerns, and begin thinking about squad selection.",
+        "Refine":     "Confirm squad fitness, review medical status, and draft your starting 15 and bench.",
+        "Confirm":    "Finalise the team sheet, publish squad to players, and confirm venue and travel details.",
+        "Live":       "Matchday — team sheet live. Manage warm-up, monitor players, and update the sub plan in-game.",
+        "Post-match": "Review performance, log any new injuries, and begin planning for next week.",
+      };
+
+      // Team selection data (pitch + bench + sub plan + player pool)
+      const matchdayPlayers  = state.players.filter(p => p.game === "available");
+      const selected         = matchdayPlayers.slice(0, 15);
+      const fnames           = state.formationNames || {};
+      const fphoto           = state.fphotoIds      || {};
+      const bench            = state.benchPlayers   || Array(8).fill("");
+      const subs             = state.subPlan        || [];
       const playerNameOptions = [...new Set(state.players.map(p => p.name).filter(Boolean))];
       const slotNames = rugbySlots.map(([label], i) =>
-        Object.prototype.hasOwnProperty.call(fnames, label)
-          ? fnames[label]
-          : (selected[i]?.name || "")
+        Object.prototype.hasOwnProperty.call(fnames, label) ? fnames[label] : (selected[i]?.name || "")
       );
       const assignedNames = new Set([...slotNames, ...bench.slice(0,8)]
-        .map(name => String(name || "").trim().toLowerCase())
-        .filter(Boolean));
+        .map(n => String(n || "").trim().toLowerCase()).filter(Boolean));
       const available = matchdayPlayers.filter(p => !assignedNames.has(String(p.name || "").trim().toLowerCase()));
 
       document.getElementById("coach-matchday").innerHTML = `
 
-        <!-- ── AVAILABILITY TEMPLATE (top) ──────────────────────────────── -->
-        <div class="avail-template-card">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
-            <div>
-              <h2 style="margin:0">📨 Weekly availability request</h2>
-              <p class="muted" style="margin-top:3px">Edit the template below, then send manually or enable auto-send.</p>
-            </div>
-            <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
-              <span style="font-size:11px;font-weight:700;padding:4px 11px;border-radius:999px;background:${state.autoSendEnabled?"var(--green)":"var(--line)"};color:${state.autoSendEnabled?"#fff":"var(--muted)"}">${state.autoSendEnabled?"Auto-send: "+(state.autoSendSchedule?.day||"Mon")+" "+(state.autoSendSchedule?.time||"09:00"):"Manual send"}</span>
-              <button class="btn" type="button" onclick="toggleAutoSend()">${state.autoSendEnabled?"⏸ Pause auto":"⏰ Set auto-send"}</button>
-              <button class="btn primary" type="button" onclick="sendAvailabilityNow()">📤 Send now</button>
-            </div>
-          </div>
-          <textarea id="availTpl" style="min-height:80px;font-size:13px;margin-bottom:10px" placeholder="Write your weekly availability message here...">${(state.availabilityTemplate||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
-          ${state.autoSendEnabled ? `
-          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-            <label style="font-size:12px;font-weight:700">Day
-              <select id="autoDay" style="font-size:12px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;margin-left:4px">
-                ${["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map(d=>`<option value="${d.toLowerCase()}"${(state.autoSendSchedule?.day||"monday")===d.toLowerCase()?" selected":""}>${d}</option>`).join("")}
-              </select>
-            </label>
-            <label style="font-size:12px;font-weight:700">Time
-              <input type="time" id="autoTime" value="${state.autoSendSchedule?.time||"09:00"}"
-                style="font-size:12px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;margin-left:4px">
-            </label>
-            <span class="muted" style="font-size:11px">Push notification to all subscribed players.</span>
-          </div>` : ""}
-          <button class="btn primary" type="button" onclick="saveAvailabilityTemplate()">💾 Save template</button>
-        </div>
-
-        <!-- datalist for autocomplete on pitch inputs -->
         <datalist id="squad-names">
           ${playerNameOptions.map(name=>`<option value="${esc(name)}">`).join("")}
         </datalist>
 
+        <!-- ── HERO ──────────────────────────────────────────────────────────── -->
+        <div class="mc-hero" style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px;position:relative;z-index:1">
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <span class="mc-phase-badge ${phase.color}">${phase.label}</span>
+                <span style="font-size:12px;color:rgba(255,255,255,0.5)">${countdown}</span>
+              </div>
+              <h1 style="margin:0;font-size:26px;font-weight:800;color:#fff;line-height:1.1">
+                vs ${esc(mc.opposition || "Opponent TBC")}
+              </h1>
+              <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.6)">${esc(mc.competition || "")}</p>
+              <p style="margin:4px 0 0;font-size:13px;color:rgba(255,255,255,0.45)">${kickoffDisplay} · ${esc(mc.kickoffTime || "15:00")} · ${esc(mc.venue || "Venue TBC")}</p>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+              <button class="mc-publish-btn ${mc.published ? 'published' : 'draft'}"
+                onclick="publishSquad()">${mc.published ? "✓ Squad Published" : "Publish Squad"}</button>
+              <span style="font-size:11px;color:rgba(255,255,255,0.4)">${mc.published ? "Players have been notified" : "Draft — not visible to players"}</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08);position:relative;z-index:1">
+            <span style="font-size:12px;color:rgba(255,255,255,0.5)">Arrival: <strong style="color:#e2e8f0">${esc(mc.arrivalTime || "TBC")}</strong></span>
+            <span style="font-size:12px;color:rgba(255,255,255,0.5)">Kit: <strong style="color:#e2e8f0">${esc(mc.kit || "TBC")}</strong></span>
+            <span style="font-size:12px;color:rgba(255,255,255,0.5)">Referee: <strong style="color:#e2e8f0">${esc(mc.referee || "TBC")}</strong></span>
+            <span style="font-size:12px;color:rgba(255,255,255,0.5)">Weather: <strong style="color:#e2e8f0">${esc(mc.weather || "—")}</strong></span>
+          </div>
+        </div>
+
+        <!-- ── KPI ROW ──────────────────────────────────────────────────────── -->
+        <div class="mc-kpi-grid" style="margin-bottom:14px">
+          <div class="mc-kpi">
+            <strong style="color:var(--green)">${availCount}</strong>
+            <small>Available</small>
+          </div>
+          <div class="mc-kpi">
+            <strong style="color:var(--red)">${unavailCount}</strong>
+            <small>Unavailable</small>
+          </div>
+          <div class="mc-kpi">
+            <strong style="color:${medAlerts.length > 0 ? 'var(--amber)' : 'var(--muted)'}">${medAlerts.length}</strong>
+            <small>Medical alerts</small>
+          </div>
+          <div class="mc-kpi">
+            <strong style="color:var(--blue)">${daysDisplay}</strong>
+            <small>To kickoff</small>
+          </div>
+        </div>
+
+        <!-- ── DETAILS + AVAILABILITY | MEDICAL + NOTES ─────────────────────── -->
+        <div class="mc-grid" style="margin-bottom:14px">
+
+          <!-- LEFT column -->
+          <div style="display:grid;gap:14px">
+
+            <!-- Match details (editable) -->
+            <div class="card">
+              <h2 style="margin-bottom:14px">Match details</h2>
+              ${[
+                ['Opposition',  'opposition',  mc.opposition  || '', 'text',  'e.g. Kituro RFC'],
+                ['Competition', 'competition', mc.competition || '', 'text',  'League / Cup'],
+                ['Date',        'kickoffDate', mc.kickoffDate || '', 'date',  ''],
+                ['Kickoff',     'kickoffTime', mc.kickoffTime || '', 'time',  ''],
+                ['Arrival',     'arrivalTime', mc.arrivalTime || '', 'time',  ''],
+                ['Venue',       'venue',       mc.venue       || '', 'text',  'Ground name'],
+                ['Kit',         'kit',         mc.kit         || '', 'text',  'Colours'],
+                ['Referee',     'referee',     mc.referee     || '', 'text',  'Name (optional)'],
+                ['Weather',     'weather',     mc.weather     || '', 'text',  'e.g. Sunny 18°C'],
+              ].map(([label, field, val, type, ph]) => `
+                <div class="mc-detail-row">
+                  <span class="mc-detail-label">${label}</span>
+                  <input type="${type}" value="${esc(val)}" placeholder="${ph}"
+                    style="font-size:13px;padding:6px 9px"
+                    onchange="saveMatchCentre('${field}',this.value);render()">
+                </div>`).join("")}
+            </div>
+
+            <!-- Availability by session -->
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <h2 style="margin:0">Availability</h2>
+                <button class="btn" style="font-size:12px" onclick="setSection('coach','message')">Open full view</button>
+              </div>
+              ${availSummary.length ? availSummary.map(({ session, avail, unavail, pending }) => `
+                <div class="mc-avail-row">
+                  <div>
+                    <strong style="font-size:13px">${esc(session.label || session.id)}</strong>
+                    ${session.focus ? `<span style="font-size:11px;color:var(--muted);margin-left:6px">${esc(session.focus)}</span>` : ''}
+                  </div>
+                  <div style="display:flex;gap:8px;align-items:center">
+                    <span style="font-size:12px;color:var(--green);font-weight:700">${avail} ✓</span>
+                    <span style="font-size:12px;color:var(--red);font-weight:700">${unavail} ✗</span>
+                    ${pending > 0 ? `<span style="font-size:12px;color:var(--amber);font-weight:700">${pending} ?</span>` : ''}
+                  </div>
+                </div>`).join('') : `<p class="muted">No sessions scheduled — add sessions in the Availability Centre.</p>`}
+              ${pendingCount > 0 ? `
+                <div style="margin-top:12px">
+                  <button class="btn primary" style="font-size:12px;width:100%" onclick="chaseAllNonResponders()">
+                    Remind ${pendingCount} non-responder${pendingCount !== 1 ? 's' : ''}
+                  </button>
+                </div>` : ''}
+            </div>
+
+          </div>
+
+          <!-- RIGHT column -->
+          <div style="display:grid;gap:14px">
+
+            <!-- Medical alerts -->
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <h2 style="margin:0">Medical alerts</h2>
+                <button class="btn" style="font-size:12px" onclick="setSection('coach','medical')">Open Medical</button>
+              </div>
+              ${medAlerts.length ? medAlerts.map(p => {
+                const mn = (state.medicalNotes || {})[p.id] || {};
+                return `<div style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)">
+                  <span style="font-size:18px;flex-shrink:0">${p.game === 'injured' ? '🔴' : '🟡'}</span>
+                  <div style="min-width:0">
+                    <strong style="font-size:13px">${esc(p.name)}</strong>
+                    <span class="status ${p.game}" style="margin-left:6px;font-size:11px">${statusLabel(p.game)}</span>
+                    <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(mn.condition || p.medical || 'Under review')}</div>
+                    ${mn.returnTarget ? `<div style="font-size:11px;color:var(--blue);margin-top:2px">Return: ${esc(mn.returnTarget)}</div>` : ''}
+                  </div>
+                </div>`;
+              }).join('') : `<div style="padding:14px 0;text-align:center"><span style="font-size:20px">✅</span><p class="muted" style="margin:4px 0 0">All players cleared — no medical alerts.</p></div>`}
+            </div>
+
+            <!-- Phase planning guide -->
+            <div class="card" style="border-left:3px solid var(--green)">
+              <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
+                <span class="mc-phase-badge ${phase.color}">${phase.label} phase</span>
+              </div>
+              <p style="font-size:13px;margin:0 0 12px">${phaseTips[phase.label] || ""}</p>
+              ${[
+                ["Mon–Tue", "Prepare", "Check availability, flag injuries, begin selection"],
+                ["Wed–Thu", "Refine",  "Refine squad, review medicals, draft starting 15"],
+                ["Fri",     "Confirm", "Confirm team sheet, publish squad, confirm logistics"],
+                ["Sat",     "Live",    "Matchday — manage in-game, update sub plan"],
+              ].map(([day, lbl, tip]) => `
+                <div style="display:grid;grid-template-columns:55px auto 1fr;gap:8px;align-items:center;font-size:12px;padding:5px 0;border-bottom:1px solid var(--line)">
+                  <span style="font-weight:700;color:var(--muted)">${day}</span>
+                  <span class="mc-phase-badge ${lbl === phase.label ? phase.color : 'mc-phase-post'}" style="font-size:10px;padding:2px 8px">${lbl}</span>
+                  <span style="color:var(--muted)">${tip}</span>
+                </div>`).join('')}
+            </div>
+
+            <!-- Coach notes -->
+            <div class="card">
+              <h2 style="margin-bottom:10px">Coach notes</h2>
+              <textarea class="mc-notes-area" style="width:100%;box-sizing:border-box"
+                placeholder="Game plan, tactical notes, key messages…"
+                onchange="saveMatchCentre('coachNotes',this.value)">${esc(mc.coachNotes || '')}</textarea>
+            </div>
+
+            <!-- Team announcement -->
+            <div class="card">
+              <h2 style="margin-bottom:6px">Team announcement</h2>
+              <p class="muted" style="font-size:12px;margin-bottom:10px">Sent to players when you publish the squad.</p>
+              <textarea class="mc-notes-area" style="width:100%;box-sizing:border-box"
+                placeholder="Write your team announcement message…"
+                onchange="saveMatchCentre('announcement',this.value)">${esc(mc.announcement || '')}</textarea>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ── TEAM SELECTION ────────────────────────────────────────────────── -->
         <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:14px;align-items:start">
 
           <!-- LEFT: Big pitch + bench + sub plan -->
@@ -5839,16 +6105,13 @@
             <div class="card">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <div>
-                  <h2 style="margin:0">Matchday Centre</h2>
-                  <p class="muted" style="margin-top:3px">${fixture.opponent} · ${fixture.venue} · ${fixture.date}</p>
+                  <h2 style="margin:0">Team selection</h2>
+                  <p class="muted" style="margin-top:3px">Drag players from the pool onto pitch or bench</p>
                 </div>
-                <div style="display:flex;gap:7px">
-                  <button class="btn" type="button" onclick="showToast('Formation reviewed ✓')">Review</button>
-                  <button class="btn primary" type="button" onclick="exportFormation()">📷 Export graphic</button>
-                </div>
+                <button class="btn primary" type="button" onclick="exportFormation()">📷 Export graphic</button>
               </div>
 
-              <!-- Big pitch — exportable via html2canvas -->
+              <!-- Big pitch -->
               <div id="matchday-pitch" class="pitch-big">
                 <div class="pitch-inner"></div>
                 <div class="pitch-line" style="top:18%"></div>
@@ -5857,13 +6120,11 @@
                 <div class="pitch-line" style="top:60%"></div>
                 <div class="pitch-line" style="top:82%"></div>
                 ${rugbySlots.map(([label, x, y], i) => {
-                  const player    = selected[i];
-                  const hasSaved  = Object.prototype.hasOwnProperty.call(fnames, label);
-                  const saved     = hasSaved ? fnames[label] : "";
-                  const defName   = player ? player.name : "";
-                  const slotName  = hasSaved ? saved : defName;
-                  const inputVal  = slotName.replace(/"/g,"&quot;");
-                  const slotPlayer = findPlayerByName(slotName);
+                  const player        = selected[i];
+                  const hasSaved      = Object.prototype.hasOwnProperty.call(fnames, label);
+                  const slotName      = hasSaved ? fnames[label] : (player ? player.name : "");
+                  const inputVal      = slotName.replace(/"/g,"&quot;");
+                  const slotPlayer    = findPlayerByName(slotName);
                   const photoPlayerId = slotName ? (fphoto[label] || slotPlayer?.id || player?.id || "") : "";
                   const photoPlayer   = photoPlayerId ? state.players.find(p=>p.id===photoPlayerId) : null;
                   const photoSrc      = slotName ? (photoPlayer?.photo || slotPlayer?.photo || player?.photo || "") : "";
@@ -5943,17 +6204,33 @@
             </div>
           </div>
 
-          <!-- RIGHT: Draggable player pool -->
+          <!-- RIGHT: Squad count + draggable player pool -->
           <div style="display:grid;gap:14px;align-content:start">
 
-            <!-- Drag players onto the pitch -->
+            <!-- Squad count summary -->
+            <div class="card" style="padding:14px 16px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <strong style="font-size:14px">Squad selection</strong>
+                  <p class="muted" style="font-size:12px;margin:3px 0 0">${slotNames.filter(n=>n).length}/15 starting · ${bench.filter(n=>n).length}/8 bench</p>
+                </div>
+                <div style="text-align:right">
+                  <strong style="font-size:22px;color:var(--green)">${slotNames.filter(n=>n).length + bench.filter(n=>n).length}</strong>
+                  <p class="muted" style="font-size:11px;margin:1px 0 0">selected</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Draggable player pool -->
             <div class="card">
               <h2 style="margin-bottom:3px">Available players</h2>
               <p class="muted" style="font-size:12px;margin-bottom:12px">Players disappear from this list once placed on the pitch or bench.</p>
               <div style="display:grid;gap:6px;max-height:70vh;overflow-y:auto">
                 ${available.map(p => {
                   const initials = p.name.split(" ").map(w=>w[0]).slice(0,2).join("");
-                  const photoEl = p.photo ? `<img src="${p.photo}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0">` : `<div style="width:30px;height:30px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;flex-shrink:0">${initials}</div>`;
+                  const photoEl  = p.photo
+                    ? `<img src="${p.photo}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0">`
+                    : `<div style="width:30px;height:30px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;flex-shrink:0">${initials}</div>`;
                   return `<div class="squad-player-drag"
                     draggable="true"
                     data-player-name="${esc(p.name)}"
