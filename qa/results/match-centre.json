@@ -1,80 +1,80 @@
 {
   "workflow": "match-centre",
-  "runId": "2026-06-10T06-43-57-274Z",
-  "startedAt": "2026-06-10T06:43:57.319Z",
-  "finishedAt": "2026-06-10T06:44:36.645Z",
+  "runId": "2026-06-10T12-03-05-203Z",
+  "startedAt": "2026-06-10T12:03:05.203Z",
+  "finishedAt": "2026-06-10T12:03:14.739Z",
   "status": "passed",
-  "commit": "e0fe6b9",
+  "commit": "7e9bd32",
   "steps": [
     {
       "name": "open-app",
       "status": "passed",
-      "startedAt": "2026-06-10T06:44:07.374Z",
-      "finishedAt": "2026-06-10T06:44:20.745Z",
-      "screenshot": "qa/artifacts/match-centre-2026-06-10T06-43-57-274Z/01-open-app.png"
+      "startedAt": "2026-06-10T12:03:05.397Z",
+      "finishedAt": "2026-06-10T12:03:09.675Z",
+      "screenshot": "qa/artifacts/match-centre-2026-06-10T12-03-05-203Z/01-open-app.png"
     },
     {
       "name": "coach-login",
       "status": "passed",
-      "startedAt": "2026-06-10T06:44:21.070Z",
-      "finishedAt": "2026-06-10T06:44:21.134Z",
-      "screenshot": "qa/artifacts/match-centre-2026-06-10T06-43-57-274Z/02-coach-login.png"
+      "startedAt": "2026-06-10T12:03:09.950Z",
+      "finishedAt": "2026-06-10T12:03:09.962Z",
+      "screenshot": "qa/artifacts/match-centre-2026-06-10T12-03-05-203Z/02-coach-login.png"
     },
     {
       "name": "navigate-to-match-centre",
       "status": "passed",
-      "startedAt": "2026-06-10T06:44:21.783Z",
-      "finishedAt": "2026-06-10T06:44:23.855Z",
-      "screenshot": "qa/artifacts/match-centre-2026-06-10T06-43-57-274Z/03-navigate-to-match-centre.png"
+      "startedAt": "2026-06-10T12:03:10.370Z",
+      "finishedAt": "2026-06-10T12:03:11.469Z",
+      "screenshot": "qa/artifacts/match-centre-2026-06-10T12-03-05-203Z/03-navigate-to-match-centre.png"
     },
     {
-      "name": "hero-renders",
+      "name": "fixture-header-renders",
       "status": "passed",
-      "startedAt": "2026-06-10T06:44:24.756Z",
-      "finishedAt": "2026-06-10T06:44:24.800Z",
-      "screenshot": "qa/artifacts/match-centre-2026-06-10T06-43-57-274Z/04-hero-renders.png"
+      "startedAt": "2026-06-10T12:03:11.921Z",
+      "finishedAt": "2026-06-10T12:03:11.948Z",
+      "screenshot": "qa/artifacts/match-centre-2026-06-10T12-03-05-203Z/04-fixture-header-renders.png"
     },
     {
-      "name": "kpi-grid-renders",
+      "name": "stat-pills-render",
       "status": "passed",
-      "startedAt": "2026-06-10T06:44:25.600Z",
-      "finishedAt": "2026-06-10T06:44:25.644Z",
-      "screenshot": "qa/artifacts/match-centre-2026-06-10T06-43-57-274Z/05-kpi-grid-renders.png"
+      "startedAt": "2026-06-10T12:03:12.124Z",
+      "finishedAt": "2026-06-10T12:03:12.141Z",
+      "screenshot": "qa/artifacts/match-centre-2026-06-10T12-03-05-203Z/05-stat-pills-render.png"
     },
     {
       "name": "match-details-form",
       "status": "passed",
-      "startedAt": "2026-06-10T06:44:26.494Z",
-      "finishedAt": "2026-06-10T06:44:26.514Z",
-      "screenshot": "qa/artifacts/match-centre-2026-06-10T06-43-57-274Z/06-match-details-form.png"
+      "startedAt": "2026-06-10T12:03:12.338Z",
+      "finishedAt": "2026-06-10T12:03:12.351Z",
+      "screenshot": "qa/artifacts/match-centre-2026-06-10T12-03-05-203Z/06-match-details-form.png"
     },
     {
       "name": "phase-badge-visible",
       "status": "passed",
-      "startedAt": "2026-06-10T06:44:27.560Z",
-      "finishedAt": "2026-06-10T06:44:28.627Z",
-      "screenshot": "qa/artifacts/match-centre-2026-06-10T06-43-57-274Z/07-phase-badge-visible.png"
+      "startedAt": "2026-06-10T12:03:12.659Z",
+      "finishedAt": "2026-06-10T12:03:12.680Z",
+      "screenshot": "qa/artifacts/match-centre-2026-06-10T12-03-05-203Z/07-phase-badge-visible.png"
     },
     {
       "name": "pitch-renders",
       "status": "passed",
-      "startedAt": "2026-06-10T06:44:30.257Z",
-      "finishedAt": "2026-06-10T06:44:30.707Z",
-      "screenshot": "qa/artifacts/match-centre-2026-06-10T06-43-57-274Z/08-pitch-renders.png"
+      "startedAt": "2026-06-10T12:03:12.887Z",
+      "finishedAt": "2026-06-10T12:03:12.909Z",
+      "screenshot": "qa/artifacts/match-centre-2026-06-10T12-03-05-203Z/08-pitch-renders.png"
     },
     {
       "name": "publish-button-present",
       "status": "passed",
-      "startedAt": "2026-06-10T06:44:31.766Z",
-      "finishedAt": "2026-06-10T06:44:32.043Z",
-      "screenshot": "qa/artifacts/match-centre-2026-06-10T06-43-57-274Z/09-publish-button-present.png"
+      "startedAt": "2026-06-10T12:03:13.229Z",
+      "finishedAt": "2026-06-10T12:03:13.240Z",
+      "screenshot": "qa/artifacts/match-centre-2026-06-10T12-03-05-203Z/09-publish-button-present.png"
     },
     {
       "name": "edit-opposition",
       "status": "passed",
-      "startedAt": "2026-06-10T06:44:33.296Z",
-      "finishedAt": "2026-06-10T06:44:35.877Z",
-      "screenshot": "qa/artifacts/match-centre-2026-06-10T06-43-57-274Z/10-edit-opposition.png"
+      "startedAt": "2026-06-10T12:03:13.664Z",
+      "finishedAt": "2026-06-10T12:03:14.540Z",
+      "screenshot": "qa/artifacts/match-centre-2026-06-10T12-03-05-203Z/10-edit-opposition.png"
     }
   ]
 }

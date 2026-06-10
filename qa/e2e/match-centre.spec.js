@@ -113,7 +113,7 @@ test('Match Centre — coach smoke test', async ({ page }) => {
 
   // ── 6. Phase badge visible ──────────────────────────────────────────────────
   await step(page, 'phase-badge-visible', async () => {
-    const badge = page.locator('.mc-phase-badge').first();
+    const badge = page.locator('#coach-matchday .mc-phase-badge').first();
     await expect(badge).toBeVisible({ timeout: 5_000 });
     const text = await badge.textContent();
     const valid = ['Prepare','Refine','Confirm','Live','Post-match'];
