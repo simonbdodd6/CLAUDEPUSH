@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: '/season',         label: 'Season',          icon: <SeasonIcon /> },
   { to: '/match-centre',   label: 'Match Centre',     icon: <MatchIcon />        },
   { to: '/availability',  label: 'Availability',     icon: <AvailabilityIcon /> },
+  { to: '/intelligence',  label: 'Intelligence',     icon: <IntelligenceIcon />, badge: 'AI' },
 ]
 
 export default function Sidebar({ onCommandBarOpen }) {
@@ -54,7 +55,12 @@ export default function Sidebar({ onCommandBarOpen }) {
             }
           >
             <span className="nav-icon w-4 h-4 text-ink-3 flex-shrink-0">{item.icon}</span>
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.badge && (
+              <span className="text-[9px] px-1 py-0.5 rounded bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300 font-bold tracking-wide">
+                {item.badge}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -143,6 +149,15 @@ function SeasonIcon() {
       <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
       <path d="M8 4v4l2.5 2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M4 2.5L3 1M12 2.5L13 1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+  )
+}
+function IntelligenceIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4">
+      <circle cx="8" cy="7" r="3.5" stroke="currentColor" strokeWidth="1.2"/>
+      <path d="M8 3.5V2M8 12v1.5M3.5 7H2M12 7h1.5M5.05 4.05 4 3M11.95 4.05 13 3M5.05 9.95 4 11M11.95 9.95 13 11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <circle cx="8" cy="7" r="1.2" fill="currentColor" opacity="0.6"/>
     </svg>
   )
 }

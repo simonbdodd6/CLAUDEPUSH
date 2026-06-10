@@ -244,6 +244,161 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    // ── Intelligence Dashboard ────────────────────────────────────────────────
+    // Feature flag: aiDashboard  All six sections aggregated in one response.
+    if (method === 'GET' && path === '/api/intelligence/dashboard') {
+      try {
+        const [recResult, healthResult, availResult, fixtureResult, twinResult, timelineResult] = await Promise.allSettled([
+          // Recommendations — top 5
+          import('../recommendation-engine/index.js').then(async m => {
+            const { value: fixtureVal } = await Promise.allSettled([
+              import('../fixture-engine/fixture-store.js').then(async s => {
+                const { serializeFixture } = await import('../fixture-engine/fixture-schema.js')
+                const f = s.listUpcomingFixtures?.(1)?.[0] ?? null
+                return f ? serializeFixture(f) : null
+              })
+            ]).then(([r]) => r.status === 'fulfilled' ? { value: r.value } : { value: null })
+            const ctx = m.buildContext({ fixture: fixtureVal })
+            return m.generate(ctx, { maxResults: 5 })
+          }),
+          // Club health score
+          import('../season-intelligence/index.js').then(async m => {
+            const score = await m.buildClubHealthScore?.().catch(() => null)
+            return score
+          }),
+          // Availability intelligence
+          import('../autonomous-assistant/observation-engine.js').then(async m => {
+            const obs = await m.observe().catch(() => null)
+            return obs
+          }),
+          // Next fixture (serialized)
+          import('../fixture-engine/fixture-store.js').then(async s => {
+            const { serializeFixture } = await import('../fixture-engine/fixture-schema.js')
+            const f = s.listUpcomingFixtures?.(1)?.[0] ?? null
+            return f ? serializeFixture(f) : null
+          }),
+          // Digital twin
+          import('../club-digital-twin/index.js').then(async m => {
+            const club = await m.getClub().catch(() => null)
+            return club
+          }),
+          // Timeline — last 10
+          import('../intelligence-timeline/index.js').then(m => m.getTimeline({ limit: 10 })),
+        ])
+
+        const recs     = recResult.status     === 'fulfilled' ? recResult.value     : null
+        const health   = healthResult.status  === 'fulfilled' ? healthResult.value  : null
+        const obs      = availResult.status   === 'fulfilled' ? availResult.value   : null
+        const fixture  = fixtureResult.status === 'fulfilled' ? fixtureResult.value : null
+        const twin     = twinResult.status    === 'fulfilled' ? twinResult.value    : null
+        const tl       = timelineResult.status === 'fulfilled' ? timelineResult.value : null
+
+        // Section 1: Club Intelligence Score
+        const clubScore = health ? {
+          overall:    health.overallScore ?? health.overall ?? null,
+          trend:      health.trend ?? 'stable',
+          confidence: health.confidence ?? 65,
+          components: health.domains ?? health.components ?? {},
+          delta:      health.delta ?? null,
+        } : null
+
+        // Section 2: Observations (top 5 from observation engine)
+        const obsItems = []
+        if (obs?.attendance?.decliningTeams?.length) {
+          const w = obs.attendance.decliningTeams[0]
+          obsItems.push({ id: 'obs-att', engine: 'attendance-engine', severity: 'high',
+            title: `${w.name} attendance ${w.rate}%`, description: `Declining ${Math.abs(w.trend ?? 0)}% per week.`, timestamp: new Date().toISOString() })
+        }
+        if (obs?.injuries?.total > 0) {
+          obsItems.push({ id: 'obs-inj', engine: 'digital-twin', severity: obs.injuries.total >= 4 ? 'high' : 'medium',
+            title: `${obs.injuries.total} active injuries`, description: obs.injuries.critical ? `${obs.injuries.critical} critical.` : 'Review injury register.', timestamp: new Date().toISOString() })
+        }
+        if (obs?.weather?.saturdayRisk && obs.weather.saturdayRisk !== 'CLEAR') {
+          obsItems.push({ id: 'obs-wth', engine: 'weather-service', severity: 'low',
+            title: `${obs.weather.saturdayRisk} forecast`, description: obs.weather.forecast ?? 'Adverse conditions this weekend.', timestamp: new Date().toISOString() })
+        }
+        if (obs?.approvals?.pending > 0) {
+          obsItems.push({ id: 'obs-app', engine: 'governance-engine', severity: obs.approvals.overdue > 0 ? 'high' : 'medium',
+            title: `${obs.approvals.pending} items awaiting approval`, description: `${obs.approvals.overdue ?? 0} overdue.`, timestamp: new Date().toISOString() })
+        }
+        if (obs?.memberships?.expiringThisWeek > 0) {
+          obsItems.push({ id: 'obs-mem', engine: 'membership-engine', severity: 'medium',
+            title: `${obs.memberships.expiringThisWeek} memberships expiring`, description: 'Renewal window active.', timestamp: new Date().toISOString() })
+        }
+
+        // Section 3: Top Recommendations
+        const topRecs = recs?.recommendations?.slice(0, 5) ?? []
+
+        // Section 4: Squad Health
+        const squadHealth = {
+          availabilityPct: null,
+          injuryCount:     obs?.injuries?.total ?? (twin?.players?.injuredCount ?? 0),
+          uncertainCount:  fixture?.squadStatus?.uncertain?.length ?? 0,
+          atRisk:          twin?.players?.atRisk?.slice(0, 3) ?? [],
+          availableCount:  fixture?.squadStatus?.available?.length ?? null,
+          unavailableCount: fixture?.squadStatus?.unavailable?.length ?? null,
+        }
+        const avail = fixture?.squadStatus?.available?.length ?? 0
+        const total = avail + (fixture?.squadStatus?.unavailable?.length ?? 0) + (fixture?.squadStatus?.uncertain?.length ?? 0)
+        if (total > 0) squadHealth.availabilityPct = Math.round((avail / total) * 100)
+
+        // Section 5: Fixture Readiness
+        const fixtureReadiness = fixture ? {
+          nextFixture: {
+            id:           fixture.id,
+            opponent:     fixture.opponent ?? 'Unknown',
+            competition:  fixture.competition ?? '',
+            daysToKickoff: fixture.daysToKickoff,
+            prepStage:    fixture.prepStage,
+            kickoff:      fixture.kickoff ?? fixture.date,
+          },
+          readinessPct:         squadHealth.availabilityPct,
+          selectionConfidence:  squadHealth.injuryCount === 0 ? 90 : squadHealth.injuryCount <= 2 ? 72 : 55,
+          trainingConfidence:   obs?.attendance?.averageRate ? Math.min(95, obs.attendance.averageRate) : null,
+          medicalAlertCount:    fixture.medicalAlerts?.filter(a => a.severity === 'HIGH')?.length ?? 0,
+        } : null
+
+        // Section 6: Timeline
+        const tlData = tl ?? { events: [], total: 0, stats: {} }
+
+        json(res, {
+          clubScore,
+          observations:      obsItems.length ? obsItems : null,
+          recommendations:   topRecs,
+          squadHealth,
+          fixtureReadiness,
+          timeline:          tlData,
+          generatedAt:       new Date().toISOString(),
+          isMock:            recs?.meta?.isMock ?? false,
+          recsMeta:          recs?.meta ?? null,
+        })
+      } catch (e) {
+        // If aggregation fails entirely, serve a fully mocked dashboard
+        const { generate } = await import('../recommendation-engine/index.js').catch(() => ({ generate: () => ({ recommendations: [], meta: {} }) }))
+        const { getTimeline } = await import('../intelligence-timeline/index.js').catch(() => ({ getTimeline: () => ({ events: [], total: 0 }) }))
+        const { recommendations, meta } = generate({}, { useMockFallback: true, maxResults: 5 })
+        const tl = getTimeline({ limit: 10 })
+        json(res, {
+          clubScore:         { overall: 58, trend: 'declining', confidence: 68, components: { engagement: 52, attendance: 68, governance: 71, finance: 61 }, delta: -5 },
+          observations:      [
+            { id: 'mo1', engine: 'attendance-engine', severity: 'high',   title: 'Senior A attendance 63%', description: 'Below target for 3 consecutive sessions.', timestamp: new Date().toISOString() },
+            { id: 'mo2', engine: 'digital-twin',      severity: 'high',   title: '3 active injuries',       description: 'Prop, Lock and Centre positions affected.', timestamp: new Date().toISOString() },
+            { id: 'mo3', engine: 'fixture-engine',    severity: 'medium', title: '2 props unavailable',     description: '5 days to kickoff — selection action needed.', timestamp: new Date().toISOString() },
+            { id: 'mo4', engine: 'weather-service',   severity: 'low',    title: 'Heavy rain forecast',     description: 'Thursday/Friday training windows affected.', timestamp: new Date().toISOString() },
+            { id: 'mo5', engine: 'governance-engine', severity: 'medium', title: '2 approvals pending',     description: '0 overdue. Review this week.', timestamp: new Date().toISOString() },
+          ],
+          recommendations,
+          squadHealth:       { availabilityPct: 73, injuryCount: 3, uncertainCount: 1, atRisk: [{ id: 'p1', name: 'Séan Hennessy', attendanceRate: 48 }], availableCount: 10, unavailableCount: 3 },
+          fixtureReadiness:  { nextFixture: { opponent: 'Naas RFC', competition: 'League', daysToKickoff: 5, prepStage: 'BUILD' }, readinessPct: 73, selectionConfidence: 72, trainingConfidence: 63, medicalAlertCount: 1 },
+          timeline:          tl,
+          generatedAt:       new Date().toISOString(),
+          isMock:            true,
+          error:             e.message,
+        })
+      }
+      return
+    }
+
     // ── Intelligence Timeline ─────────────────────────────────────────────────
     // Feature flag: aiTimeline (checked client-side; server always serves data)
     if (method === 'GET' && path === '/api/intelligence/timeline') {
