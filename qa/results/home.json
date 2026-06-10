@@ -1,66 +1,66 @@
 {
   "workflow": "home",
-  "runId": "2026-06-10T15-43-36-480Z",
-  "startedAt": "2026-06-10T15:43:36.484Z",
-  "finishedAt": "2026-06-10T15:43:42.775Z",
+  "runId": "2026-06-10T16-20-44-997Z",
+  "startedAt": "2026-06-10T16:20:44.999Z",
+  "finishedAt": "2026-06-10T16:20:52.669Z",
   "status": "passed",
-  "commit": "6b63dbf",
+  "commit": "b463761",
   "steps": [
     {
       "name": "open-app",
       "status": "passed",
-      "startedAt": "2026-06-10T15:43:38.032Z",
-      "finishedAt": "2026-06-10T15:43:39.906Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T15-43-36-480Z/01-open-app.png"
+      "startedAt": "2026-06-10T16:20:47.042Z",
+      "finishedAt": "2026-06-10T16:20:49.202Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/01-open-app.png"
     },
     {
       "name": "coach-login",
       "status": "passed",
-      "startedAt": "2026-06-10T15:43:40.200Z",
-      "finishedAt": "2026-06-10T15:43:40.226Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T15-43-36-480Z/02-coach-login.png"
+      "startedAt": "2026-06-10T16:20:50.093Z",
+      "finishedAt": "2026-06-10T16:20:50.110Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/02-coach-login.png"
     },
     {
       "name": "home-section-active",
       "status": "passed",
-      "startedAt": "2026-06-10T15:43:40.431Z",
-      "finishedAt": "2026-06-10T15:43:40.457Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T15-43-36-480Z/03-home-section-active.png"
+      "startedAt": "2026-06-10T16:20:50.319Z",
+      "finishedAt": "2026-06-10T16:20:50.341Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/03-home-section-active.png"
     },
     {
       "name": "match-card-renders",
       "status": "passed",
-      "startedAt": "2026-06-10T15:43:40.618Z",
-      "finishedAt": "2026-06-10T15:43:40.673Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T15-43-36-480Z/04-match-card-renders.png"
+      "startedAt": "2026-06-10T16:20:50.677Z",
+      "finishedAt": "2026-06-10T16:20:50.712Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/04-match-card-renders.png"
     },
     {
       "name": "progress-bar-present",
       "status": "passed",
-      "startedAt": "2026-06-10T15:43:40.847Z",
-      "finishedAt": "2026-06-10T15:43:40.873Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T15-43-36-480Z/05-progress-bar-present.png"
+      "startedAt": "2026-06-10T16:20:50.966Z",
+      "finishedAt": "2026-06-10T16:20:50.993Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/05-progress-bar-present.png"
     },
     {
       "name": "needs-attention-renders",
       "status": "passed",
-      "startedAt": "2026-06-10T15:43:41.060Z",
-      "finishedAt": "2026-06-10T15:43:41.109Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T15-43-36-480Z/06-needs-attention-renders.png"
+      "startedAt": "2026-06-10T16:20:51.265Z",
+      "finishedAt": "2026-06-10T16:20:51.290Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/06-needs-attention-renders.png"
     },
     {
       "name": "match-centre-nav-btn",
       "status": "passed",
-      "startedAt": "2026-06-10T15:43:41.270Z",
-      "finishedAt": "2026-06-10T15:43:41.673Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T15-43-36-480Z/07-match-centre-nav-btn.png"
+      "startedAt": "2026-06-10T16:20:51.466Z",
+      "finishedAt": "2026-06-10T16:20:51.907Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/07-match-centre-nav-btn.png"
     },
     {
       "name": "ai-slot-absent-by-default",
       "status": "passed",
-      "startedAt": "2026-06-10T15:43:42.172Z",
-      "finishedAt": "2026-06-10T15:43:42.496Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T15-43-36-480Z/08-ai-slot-absent-by-default.png"
+      "startedAt": "2026-06-10T16:20:52.186Z",
+      "finishedAt": "2026-06-10T16:20:52.361Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/08-ai-slot-absent-by-default.png"
     }
   ]
 }

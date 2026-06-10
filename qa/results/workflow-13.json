@@ -1,107 +1,63 @@
 {
   "workflow": "workflow-13",
-  "runId": "2026-06-09T18-36-03-336Z",
-  "startedAt": "2026-06-09T18:36:03.338Z",
-  "finishedAt": "2026-06-09T18:36:09.023Z",
+  "runId": "2026-06-10T12-08-44-866Z",
+  "startedAt": "2026-06-10T12:08:44.924Z",
+  "finishedAt": "2026-06-10T12:09:09.407Z",
   "status": "passed",
-  "baseURL": "https://boitsfort-coachseye.vercel.app",
-  "commit": "e0fe6b9",
+  "baseURL": "http://127.0.0.1:3000",
+  "commit": "7e9bd32",
   "loginMethod": "dev-login-btn",
   "steps": [
     {
       "name": "open-app",
       "status": "passed",
-      "startedAt": "2026-06-09T18:36:04.058Z",
-      "finishedAt": "2026-06-09T18:36:05.351Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-09T18-36-03-336Z/01-open-app.png"
+      "startedAt": "2026-06-10T12:08:54.421Z",
+      "finishedAt": "2026-06-10T12:09:01.695Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/01-open-app.png"
     },
     {
       "name": "coach-login",
       "status": "passed",
-      "startedAt": "2026-06-09T18:36:05.576Z",
-      "finishedAt": "2026-06-09T18:36:05.587Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-09T18-36-03-336Z/02-coach-login.png"
+      "startedAt": "2026-06-10T12:09:02.029Z",
+      "finishedAt": "2026-06-10T12:09:02.054Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/02-coach-login.png"
     },
     {
       "name": "visit-members-to-trigger-id-sync",
       "status": "passed",
-      "startedAt": "2026-06-09T18:36:05.773Z",
-      "finishedAt": "2026-06-09T18:36:07.439Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-09T18-36-03-336Z/03-visit-members-to-trigger-id-sync.png"
+      "startedAt": "2026-06-10T12:09:02.367Z",
+      "finishedAt": "2026-06-10T12:09:04.392Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/03-visit-members-to-trigger-id-sync.png"
     },
     {
       "name": "enter-player-view",
       "status": "passed",
-      "startedAt": "2026-06-09T18:36:07.595Z",
-      "finishedAt": "2026-06-09T18:36:07.780Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-09T18-36-03-336Z/04-enter-player-view.png"
+      "startedAt": "2026-06-10T12:09:04.718Z",
+      "finishedAt": "2026-06-10T12:09:06.741Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/04-enter-player-view.png"
     },
     {
       "name": "dropdown-selected-player-valid",
       "status": "passed",
-      "startedAt": "2026-06-09T18:36:07.994Z",
-      "finishedAt": "2026-06-09T18:36:08.011Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-09T18-36-03-336Z/05-dropdown-selected-player-valid.png"
+      "startedAt": "2026-06-10T12:09:07.052Z",
+      "finishedAt": "2026-06-10T12:09:07.106Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/05-dropdown-selected-player-valid.png"
     },
     {
       "name": "switch-back-to-coach",
       "status": "passed",
-      "startedAt": "2026-06-09T18:36:08.269Z",
-      "finishedAt": "2026-06-09T18:36:08.355Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-09T18-36-03-336Z/06-switch-back-to-coach.png"
+      "startedAt": "2026-06-10T12:09:07.441Z",
+      "finishedAt": "2026-06-10T12:09:07.918Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/06-switch-back-to-coach.png"
     },
     {
       "name": "re-enter-player-view-persists",
       "status": "passed",
-      "startedAt": "2026-06-09T18:36:08.629Z",
-      "finishedAt": "2026-06-09T18:36:08.709Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-09T18-36-03-336Z/07-re-enter-player-view-persists.png"
+      "startedAt": "2026-06-10T12:09:08.465Z",
+      "finishedAt": "2026-06-10T12:09:08.840Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/07-re-enter-player-view-persists.png"
     }
   ],
   "toasts": [],
-  "pageErrors": [
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()",
-    "Failed to load resource: the server responded with a status of 401 ()"
-  ]
+  "pageErrors": []
 }

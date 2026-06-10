@@ -1,0 +1,115 @@
+{
+  "workflow": "squad-publish",
+  "runId": "2026-06-10T16-21-04-888Z",
+  "startedAt": "2026-06-10T16:21:04.888Z",
+  "finishedAt": "2026-06-10T16:21:26.684Z",
+  "status": "passed",
+  "commit": "b463761",
+  "steps": [
+    {
+      "name": "open-app",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:05.447Z",
+      "finishedAt": "2026-06-10T16:21:15.328Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/01-open-app.png"
+    },
+    {
+      "name": "coach-login",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:16.863Z",
+      "finishedAt": "2026-06-10T16:21:16.893Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/02-coach-login.png"
+    },
+    {
+      "name": "seed-test-player",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:17.092Z",
+      "finishedAt": "2026-06-10T16:21:17.134Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/03-seed-test-player.png"
+    },
+    {
+      "name": "navigate-to-match-centre",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:17.345Z",
+      "finishedAt": "2026-06-10T16:21:17.622Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/04-navigate-to-match-centre.png"
+    },
+    {
+      "name": "enter-match-details",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:17.970Z",
+      "finishedAt": "2026-06-10T16:21:18.749Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/05-enter-match-details.png"
+    },
+    {
+      "name": "enter-team-announcement",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:18.932Z",
+      "finishedAt": "2026-06-10T16:21:19.392Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/06-enter-team-announcement.png"
+    },
+    {
+      "name": "assign-player-to-slot",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:19.617Z",
+      "finishedAt": "2026-06-10T16:21:20.061Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/07-assign-player-to-slot.png"
+    },
+    {
+      "name": "publish-squad",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:20.309Z",
+      "finishedAt": "2026-06-10T16:21:21.079Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/08-publish-squad.png"
+    },
+    {
+      "name": "new-week-btn-in-mc",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:21.275Z",
+      "finishedAt": "2026-06-10T16:21:21.296Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/09-new-week-btn-in-mc.png"
+    },
+    {
+      "name": "home-shows-squad-published",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:21.565Z",
+      "finishedAt": "2026-06-10T16:21:21.642Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/10-home-shows-squad-published.png"
+    },
+    {
+      "name": "player-sees-team-sheet",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:21.967Z",
+      "finishedAt": "2026-06-10T16:21:22.333Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/11-player-sees-team-sheet.png"
+    },
+    {
+      "name": "player-sees-announcement",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:22.566Z",
+      "finishedAt": "2026-06-10T16:21:22.581Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/12-player-sees-announcement.png"
+    },
+    {
+      "name": "player-week-shows-squad-banner",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:22.859Z",
+      "finishedAt": "2026-06-10T16:21:23.068Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/13-player-week-shows-squad-banner.png"
+    },
+    {
+      "name": "new-week-clears-squad",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:23.353Z",
+      "finishedAt": "2026-06-10T16:21:25.236Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/14-new-week-clears-squad.png"
+    },
+    {
+      "name": "player-no-team-sheet-after-new-week",
+      "status": "passed",
+      "startedAt": "2026-06-10T16:21:25.576Z",
+      "finishedAt": "2026-06-10T16:21:26.260Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T16-21-04-888Z/15-player-no-team-sheet-after-new-week.png"
+    }
+  ]
+}
