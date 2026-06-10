@@ -16,73 +16,14 @@
 
 import { useState } from 'react'
 import { useIntelligenceDashboard } from '../hooks/useClubData.js'
-
-// ── Colour helpers ────────────────────────────────────────────────────────────
-
-function priorityColor(p) {
-  if (p === 'HIGH')   return 'text-red-600 dark:text-red-400'
-  if (p === 'MEDIUM') return 'text-amber-600 dark:text-amber-400'
-  return 'text-green-600 dark:text-green-400'
-}
-
-function priorityBadge(p) {
-  if (p === 'HIGH')   return 'bg-red-100   text-red-700   dark:bg-red-900/30   dark:text-red-400'
-  if (p === 'MEDIUM') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-  return                     'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-}
-
-function severityDot(s) {
-  if (s === 'high')   return 'bg-red-500'
-  if (s === 'medium') return 'bg-amber-400'
-  return 'bg-blue-400'
-}
-
-function statusBadge(s) {
-  if (s === 'new')          return 'bg-blue-100   text-blue-700   dark:bg-blue-900/30   dark:text-blue-300'
-  if (s === 'acknowledged') return 'bg-amber-100  text-amber-700  dark:bg-amber-900/30  dark:text-amber-300'
-  if (s === 'completed')    return 'bg-green-100  text-green-700  dark:bg-green-900/30  dark:text-green-400'
-  return                           'bg-surface-3  text-ink-3'
-}
-
-function trendArrow(t) {
-  if (t === 'improving') return { icon: '↑', cls: 'text-green-500' }
-  if (t === 'declining') return { icon: '↓', cls: 'text-red-500' }
-  return { icon: '→', cls: 'text-amber-400' }
-}
-
-function categoryDot(c) {
-  const map = {
-    'Medical':       'bg-red-400',
-    'Selection':     'bg-orange-400',
-    'Training':      'bg-amber-400',
-    'Logistics':     'bg-blue-400',
-    'Player Welfare':'bg-purple-400',
-    'Club':          'bg-indigo-400',
-    'Performance':   'bg-green-400',
-  }
-  return map[c] ?? 'bg-surface-3'
-}
-
-function relativeTime(ts) {
-  if (!ts) return ''
-  const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 60000)
-  if (diff < 2)   return 'just now'
-  if (diff < 60)  return `${diff}m ago`
-  const h = Math.floor(diff / 60)
-  if (h < 24)    return `${h}h ago`
-  const d = Math.floor(h / 24)
-  return `${d}d ago`
-}
-
-function engineLabel(e) {
-  return e?.replace(/-engine$/, '').replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) ?? ''
-}
-
-// ── Skeleton ──────────────────────────────────────────────────────────────────
-
-function Skeleton({ h = 'h-28' }) {
-  return <div className={`${h} rounded-xl bg-surface-2 animate-pulse`} />
-}
+import {
+  priorityColor, priorityBadge, severityDot, statusBadge,
+  trendArrow, categoryDot, relTime, engineLabel,
+} from '../utils/intelligence.js'
+import IntelligencePageHeader from '../components/intelligence/IntelligencePageHeader.jsx'
+import IntelligenceSkeleton   from '../components/intelligence/IntelligenceSkeleton.jsx'
+import TimelineEventRow       from '../components/intelligence/TimelineEventRow.jsx'
+import RecommendationCard     from '../components/intelligence/RecommendationCard.jsx'
 
 // ── Section: Club Intelligence Score ─────────────────────────────────────────
 
@@ -111,7 +52,7 @@ function ScoreRing({ score }) {
 }
 
 function ClubScoreCard({ data, loading }) {
-  if (loading) return <Skeleton h="h-40" />
+  if (loading) return <IntelligenceSkeleton h="h-40" />
   const score = data?.clubScore
   if (!score) return null
 
@@ -167,7 +108,7 @@ function ClubScoreCard({ data, loading }) {
 // ── Section: Today's Observations ────────────────────────────────────────────
 
 function ObservationsCard({ data, loading }) {
-  if (loading) return <Skeleton h="h-48" />
+  if (loading) return <IntelligenceSkeleton h="h-48" />
   const obs = data?.observations ?? []
 
   return (
@@ -201,7 +142,7 @@ function ObservationsCard({ data, loading }) {
 
 function RecommendationsCard({ data, loading }) {
   const [expandedId, setExpandedId] = useState(null)
-  if (loading) return <Skeleton h="h-56" />
+  if (loading) return <IntelligenceSkeleton h="h-56" />
   const recs = data?.recommendations ?? []
 
   return (
@@ -215,48 +156,14 @@ function RecommendationsCard({ data, loading }) {
         <p className="text-xs text-ink-3 py-4 text-center">No recommendations at this time</p>
       ) : (
         <div className="space-y-2">
-          {recs.map(r => {
-            const expanded = expandedId === r.id
-            return (
-              <div key={r.id} className="rounded-lg border border-border-subtle overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setExpandedId(expanded ? null : r.id)}
-                  className="w-full flex items-start gap-2.5 p-2.5 text-left hover:bg-surface-2 transition-colors"
-                  aria-expanded={expanded}
-                >
-                  <span className={`mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${priorityBadge(r.priority)}`}>
-                    {r.priority}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-ink-1 leading-snug">{r.title}</div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-ink-3">{r.category}</span>
-                      <span className="text-[10px] text-ink-3">·</span>
-                      <span className="text-[10px] text-ink-3">{r.confidence}% confidence</span>
-                    </div>
-                  </div>
-                  <svg viewBox="0 0 12 12" fill="none" className={`w-3 h-3 text-ink-3 shrink-0 mt-0.5 transition-transform ${expanded ? 'rotate-180' : ''}`}>
-                    <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-
-                {expanded && (
-                  <div className="px-3 pb-3 space-y-2 bg-surface-2 border-t border-border-subtle">
-                    <p className="text-xs text-ink-2 pt-2">{r.description}</p>
-                    <div className="rounded bg-surface-1 px-2.5 py-2">
-                      <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide mb-1">Suggested action</p>
-                      <p className="text-xs text-ink-1">{r.action}</p>
-                    </div>
-                    <div className="rounded bg-purple-50 dark:bg-purple-900/20 px-2.5 py-2">
-                      <p className="text-[10px] font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wide mb-1">Why am I seeing this?</p>
-                      <p className="text-[11px] text-ink-2 leading-relaxed">{r.explainability}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
+          {recs.map(r => (
+            <RecommendationCard
+              key={r.id}
+              rec={r}
+              expanded={expandedId === r.id}
+              onToggle={() => setExpandedId(expandedId === r.id ? null : r.id)}
+            />
+          ))}
         </div>
       )}
     </section>
@@ -266,7 +173,7 @@ function RecommendationsCard({ data, loading }) {
 // ── Section: Squad Health ─────────────────────────────────────────────────────
 
 function SquadHealthCard({ data, loading }) {
-  if (loading) return <Skeleton h="h-36" />
+  if (loading) return <IntelligenceSkeleton h="h-36" />
   const sq = data?.squadHealth
   if (!sq) return null
 
@@ -335,7 +242,7 @@ function SquadHealthCard({ data, loading }) {
 // ── Section: Fixture Readiness ────────────────────────────────────────────────
 
 function FixtureReadinessCard({ data, loading }) {
-  if (loading) return <Skeleton h="h-44" />
+  if (loading) return <IntelligenceSkeleton h="h-44" />
   const fr = data?.fixtureReadiness
   if (!fr) return (
     <section className="card p-5">
@@ -403,16 +310,16 @@ function FixtureReadinessCard({ data, loading }) {
 
 const FIXTURE_FILTER_OPTIONS = [
   { label: 'All fixtures', value: '' },
-  { label: 'vs Naas RFC',       value: 'fix-naas' },
-  { label: 'vs Bective Rangers',value: 'fix-bective' },
-  { label: 'vs Terenure',       value: 'fix-terenure' },
-  { label: 'vs Clontarf RFC',   value: 'fix-clontarf' },
+  { label: 'vs Naas RFC',        value: 'fix-naas' },
+  { label: 'vs Bective Rangers', value: 'fix-bective' },
+  { label: 'vs Terenure',        value: 'fix-terenure' },
+  { label: 'vs Clontarf RFC',    value: 'fix-clontarf' },
 ]
 
 function TimelineCard({ data, loading }) {
   const [fixtureFilter, setFixtureFilter] = useState('')
 
-  if (loading) return <Skeleton h="h-72" />
+  if (loading) return <IntelligenceSkeleton h="h-72" />
 
   const raw    = data?.timeline?.events ?? []
   const stats  = data?.timeline?.stats ?? {}
@@ -450,30 +357,8 @@ function TimelineCard({ data, loading }) {
           {fixtureFilter ? 'No events for this fixture' : 'No timeline events yet'}
         </p>
       ) : (
-        <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
-          {events.map(e => (
-            <div key={e.id} className="flex items-start gap-2 py-1.5 border-b border-border-subtle last:border-0">
-              <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${categoryDot(e.category)}`} />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-ink-1 leading-snug truncate">{e.title}</p>
-                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                  <span className="text-[10px] text-ink-3">{e.category}</span>
-                  {e.teamName && (
-                    <>
-                      <span className="text-[10px] text-ink-3">·</span>
-                      <span className="text-[10px] text-ink-3">{e.teamName}</span>
-                    </>
-                  )}
-                  <span className="text-[10px] text-ink-3">·</span>
-                  <span className="text-[10px] text-ink-3">{relativeTime(e.timestamp)}</span>
-                </div>
-              </div>
-              <div className="flex flex-col items-end gap-1 shrink-0">
-                <span className={`text-[10px] font-bold ${priorityColor(e.priority)}`}>{e.priority}</span>
-                <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${statusBadge(e.status)}`}>{e.status}</span>
-              </div>
-            </div>
-          ))}
+        <div className="max-h-72 overflow-y-auto space-y-0 pr-1 scrollbar-thin">
+          {events.map(e => <TimelineEventRow key={e.id} event={e} compact />)}
         </div>
       )}
     </section>
@@ -488,38 +373,14 @@ export default function IntelligenceDashboardPage() {
   return (
     <div className="p-6 space-y-5 max-w-6xl mx-auto">
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl font-bold text-ink-1">Intelligence Dashboard</h1>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 font-semibold tracking-wide">
-              AI BRAIN
-            </span>
-            {data?.isMock && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-3 text-ink-3 font-medium">
-                Preview
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-ink-3">
-            Coach's Eye Intelligence · All data generated by the AI Brain ·
-            {data?.generatedAt ? ` Updated ${relativeTime(data.generatedAt)}` : ' Loading…'}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={reload}
-          disabled={loading}
-          className="flex items-center gap-1.5 text-xs text-ink-3 hover:text-ink-2 px-3 py-1.5 rounded-lg border border-border-subtle hover:border-border bg-surface-1 transition-colors disabled:opacity-50"
-          aria-label="Refresh dashboard"
-        >
-          <svg viewBox="0 0 14 14" fill="none" className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`}>
-            <path d="M12 7A5 5 0 1 1 7 2M7 2l2 2-2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Refresh
-        </button>
-      </div>
+      <IntelligencePageHeader
+        title="Intelligence Dashboard"
+        subtitle="Coach's Eye Intelligence · All data generated by the AI Brain"
+        generatedAt={data?.generatedAt}
+        isMock={data?.isMock}
+        loading={loading}
+        onRefresh={reload}
+      />
 
       {/* Error banner */}
       {error && !data && (
@@ -532,10 +393,10 @@ export default function IntelligenceDashboardPage() {
       {!loading && data && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'Club Score', value: data.clubScore?.overall != null ? `${data.clubScore.overall}/100` : '—', sub: data.clubScore?.trend ?? '', color: (data.clubScore?.overall ?? 0) >= 65 ? 'text-green-500' : 'text-red-500' },
+            { label: 'Club Score',  value: data.clubScore?.overall != null ? `${data.clubScore.overall}/100` : '—', sub: data.clubScore?.trend ?? '', color: (data.clubScore?.overall ?? 0) >= 65 ? 'text-green-500' : 'text-red-500' },
             { label: 'Availability', value: data.squadHealth?.availabilityPct != null ? `${data.squadHealth.availabilityPct}%` : '—', sub: `${data.squadHealth?.injuryCount ?? 0} injured`, color: (data.squadHealth?.availabilityPct ?? 0) >= 80 ? 'text-green-500' : 'text-amber-500' },
             { label: 'Open Alerts', value: data.recommendations?.filter(r => r.priority === 'HIGH').length ?? 0, sub: `${data.recommendations?.length ?? 0} total recs`, color: (data.recommendations?.filter(r => r.priority === 'HIGH').length ?? 0) > 0 ? 'text-red-500' : 'text-green-500' },
-            { label: 'Timeline', value: data.timeline?.stats?.actionRate != null ? `${data.timeline.stats.actionRate}%` : '—', sub: `${data.timeline?.total ?? 0} events`, color: 'text-ink-2' },
+            { label: 'Timeline',    value: data.timeline?.stats?.actionRate != null ? `${data.timeline.stats.actionRate}%` : '—', sub: `${data.timeline?.total ?? 0} events`, color: 'text-ink-2' },
           ].map(k => (
             <div key={k.label} className="card px-4 py-3">
               <div className={`text-xl font-bold ${k.color}`}>{k.value}</div>
@@ -551,8 +412,8 @@ export default function IntelligenceDashboardPage() {
 
         {/* Left column */}
         <div className="space-y-5">
-          <ClubScoreCard    data={data} loading={loading} />
-          <ObservationsCard data={data} loading={loading} />
+          <ClubScoreCard       data={data} loading={loading} />
+          <ObservationsCard    data={data} loading={loading} />
           <RecommendationsCard data={data} loading={loading} />
         </div>
 

@@ -16,49 +16,13 @@
 import { useState, useCallback } from 'react'
 import { useIntelligenceDecisions } from '../hooks/useClubData.js'
 import { api } from '../api/client.js'
-
-// ── Colour helpers ─────────────────────────────────────────────────────────────
-
-function priorityBadge(p) {
-  if (p === 'HIGH')   return 'bg-red-100   text-red-700   dark:bg-red-900/30   dark:text-red-400'
-  if (p === 'MEDIUM') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-  return                     'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-}
-function priorityRing(p) {
-  if (p === 'HIGH')   return 'border-red-200   dark:border-red-800/50'
-  if (p === 'MEDIUM') return 'border-amber-200 dark:border-amber-800/50'
-  return                     'border-green-200 dark:border-green-800/50'
-}
-function urgencyDot(u) {
-  if (u === 'HIGH')   return 'bg-red-500'
-  if (u === 'MEDIUM') return 'bg-amber-400'
-  return 'bg-green-400'
-}
-function categoryDot(c) {
-  const m = { Medical:'bg-red-400', Selection:'bg-orange-400', Training:'bg-amber-400',
-               Logistics:'bg-blue-400', 'Player Welfare':'bg-purple-400', Club:'bg-indigo-400', Performance:'bg-green-400' }
-  return m[c] ?? 'bg-surface-3'
-}
-function statusBadge(s) {
-  if (s === 'new')          return 'bg-blue-100  text-blue-700  dark:bg-blue-900/30  dark:text-blue-300'
-  if (s === 'acknowledged') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-  if (s === 'completed')    return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-  return 'bg-surface-3 text-ink-3'
-}
-function categoryColor(c) {
-  const m = { Medical:'text-red-500', Selection:'text-orange-500', Training:'text-amber-500',
-               Logistics:'text-blue-500', 'Player Welfare':'text-purple-500', Club:'text-indigo-500', Performance:'text-green-500' }
-  return m[c] ?? 'text-ink-3'
-}
-
-function relTime(ts) {
-  if (!ts) return ''
-  const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 60000)
-  if (diff < 2)  return 'just now'
-  if (diff < 60) return `${diff}m ago`
-  const h = Math.floor(diff / 60); if (h < 24) return `${h}h ago`
-  return `${Math.floor(h/24)}d ago`
-}
+import {
+  priorityBadge, categoryDot, categoryColor, statusBadge, relTime,
+} from '../utils/intelligence.js'
+import IntelligencePageHeader from '../components/intelligence/IntelligencePageHeader.jsx'
+import IntelligenceSkeleton   from '../components/intelligence/IntelligenceSkeleton.jsx'
+import TimelineEventRow       from '../components/intelligence/TimelineEventRow.jsx'
+import RecommendationCard     from '../components/intelligence/RecommendationCard.jsx'
 
 // ── Mock impact previews keyed by category ──────────────────────────────────
 
@@ -131,17 +95,11 @@ const IMPACT_MAP = {
 // ── Pending decision icons ─────────────────────────────────────────────────────
 
 function PendingIcon({ type }) {
-  if (type === 'publish_squad')   return <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4"><path d="M8 1L13.5 4v6L8 13 2.5 10V4L8 1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/><path d="M8 5v4M6 7h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
-  if (type === 'contact_players') return <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4"><circle cx="6.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.2"/><path d="M2 14c0-2.485 2.015-4.5 4.5-4.5S11 11.515 11 14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><path d="M12 7l1.2 1.2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-  if (type === 'medical_followup')return <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4"><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.2"/><path d="M8 5.5V8.5M6.5 7H9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
-  if (type === 'adjust_training') return <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4"><path d="M3 12V7l5-5 5 5v5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/><rect x="6" y="9" width="4" height="4" rx="0.5" stroke="currentColor" strokeWidth="1.2"/></svg>
+  if (type === 'publish_squad')    return <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4"><path d="M8 1L13.5 4v6L8 13 2.5 10V4L8 1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/><path d="M8 5v4M6 7h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+  if (type === 'contact_players')  return <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4"><circle cx="6.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.2"/><path d="M2 14c0-2.485 2.015-4.5 4.5-4.5S11 11.515 11 14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><path d="M12 7l1.2 1.2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  if (type === 'medical_followup') return <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4"><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.2"/><path d="M8 5.5V8.5M6.5 7H9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+  if (type === 'adjust_training')  return <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4"><path d="M3 12V7l5-5 5 5v5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/><rect x="6" y="9" width="4" height="4" rx="0.5" stroke="currentColor" strokeWidth="1.2"/></svg>
   return <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4"><rect x="2.5" y="3.5" width="11" height="9" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M5 3.5V2.5M11 3.5V2.5M2.5 7h11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
-}
-
-// ── Skeleton ──────────────────────────────────────────────────────────────────
-
-function Sk({ h = 'h-28' }) {
-  return <div className={`${h} rounded-xl bg-surface-2 animate-pulse`} />
 }
 
 // ── Section 1: High Priority Actions ─────────────────────────────────────────
@@ -156,7 +114,7 @@ function HighPriorityActions({ recs, dismissed, snoozed, onSelect, selectedId, o
           <h2 className="font-semibold text-ink-1 text-sm">High Priority Actions</h2>
           <p className="text-[11px] text-ink-3 mt-0.5">AI Brain recommendations requiring your decision</p>
         </div>
-        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${visible.filter(r=>r.priority==='HIGH').length > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-surface-3 text-ink-3'}`}>
+        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${visible.filter(r => r.priority === 'HIGH').length > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-surface-3 text-ink-3'}`}>
           {visible.filter(r => r.priority === 'HIGH').length} HIGH
         </span>
       </div>
@@ -169,86 +127,16 @@ function HighPriorityActions({ recs, dismissed, snoozed, onSelect, selectedId, o
         </div>
       ) : (
         <div className="space-y-2">
-          {visible.map(r => {
-            const selected = selectedId === r.id
-            return (
-              <div
-                key={r.id}
-                className={`card border transition-all duration-200 cursor-pointer ${selected ? 'border-accent/50 ring-1 ring-accent/20 shadow-accent/5' : priorityRing(r.priority)} hover:shadow-md`}
-                onClick={() => onSelect(selected ? null : r)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onSelect(selected ? null : r)}
-                aria-pressed={selected}
-                aria-label={`Recommendation: ${r.title}`}
-              >
-                <div className="p-4">
-                  {/* Header row */}
-                  <div className="flex items-start gap-3">
-                    <div className="flex flex-col items-center gap-1 pt-0.5 shrink-0">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${priorityBadge(r.priority)}`}>
-                        {r.priority}
-                      </span>
-                      <span className="text-[10px] text-ink-3">{r.confidence}%</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-ink-1 leading-snug">{r.title}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-[10px] font-medium ${categoryColor(r.category)}`}>{r.category}</span>
-                        <span className="text-[10px] text-ink-3">·</span>
-                        <span className="text-[10px] text-ink-3">{r.source === 'mock' ? 'Preview mode' : r.source}</span>
-                      </div>
-                    </div>
-                    <svg viewBox="0 0 12 12" fill="none" className={`w-3 h-3 text-ink-3 shrink-0 mt-1 transition-transform ${selected ? 'rotate-180' : ''}`}>
-                      <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-
-                  {/* Expanded detail */}
-                  {selected && (
-                    <div className="mt-3 space-y-2.5 border-t border-border-subtle pt-3">
-                      <p className="text-xs text-ink-2">{r.description}</p>
-
-                      <div className="rounded-lg bg-surface-2 px-3 py-2.5">
-                        <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide mb-1">Suggested action</p>
-                        <p className="text-xs text-ink-1">{r.action}</p>
-                      </div>
-
-                      <div className="rounded-lg bg-purple-50 dark:bg-purple-900/20 px-3 py-2.5">
-                        <p className="text-[10px] font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wide mb-1">Why am I seeing this?</p>
-                        <p className="text-[11px] text-ink-2 leading-relaxed">{r.explainability}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Action buttons */}
-                  <div className="flex gap-2 mt-3 pt-3 border-t border-border-subtle" onClick={e => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      onClick={() => onApprove(r)}
-                      className="flex-1 text-xs font-semibold py-1.5 px-3 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors active:scale-95"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onSnooze(r)}
-                      className="flex-1 text-xs font-medium py-1.5 px-3 rounded-lg bg-surface-2 hover:bg-surface-3 text-ink-2 border border-border-subtle transition-colors active:scale-95"
-                    >
-                      Remind Later
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDismiss(r)}
-                      className="flex-1 text-xs font-medium py-1.5 px-3 rounded-lg bg-surface-2 hover:bg-surface-3 text-ink-3 border border-border-subtle transition-colors active:scale-95"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+          {visible.map(r => (
+            <RecommendationCard
+              key={r.id}
+              rec={r}
+              expanded={selectedId === r.id}
+              selected={selectedId === r.id}
+              onToggle={() => onSelect(selectedId === r.id ? null : r)}
+              actions={{ onApprove, onDismiss, onSnooze }}
+            />
+          ))}
         </div>
       )}
 
@@ -294,9 +182,9 @@ function DecisionsWaiting({ pending, approvedPending, onApprovePending, onDeferP
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-ink-1 leading-snug">{p.title}</p>
                   <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                    {p.team && <span className="text-[10px] text-ink-3">{p.team}</span>}
+                    {p.team    && <span className="text-[10px] text-ink-3">{p.team}</span>}
                     {p.fixture && <><span className="text-[10px] text-ink-3">·</span><span className="text-[10px] text-ink-3">{p.fixture}</span></>}
-                    {p.dueBy && <><span className="text-[10px] text-ink-3">·</span><span className={`text-[10px] font-medium ${p.dueBy === 'Today' ? 'text-red-500' : 'text-ink-3'}`}>Due {p.dueBy}</span></>}
+                    {p.dueBy   && <><span className="text-[10px] text-ink-3">·</span><span className={`text-[10px] font-medium ${p.dueBy === 'Today' ? 'text-red-500' : 'text-ink-3'}`}>Due {p.dueBy}</span></>}
                   </div>
                 </div>
               </div>
@@ -459,9 +347,9 @@ function ImpactPreview({ rec }) {
 
 // ── Section 5: Decision History ────────────────────────────────────────────────
 
-const TEAMS    = ['All teams', 'Senior A', 'Senior B', 'Under 20s', 'Under 18s']
+const TEAMS    = ['All teams',    'Senior A', 'Senior B', 'Under 20s', 'Under 18s']
 const FIXTURES = ['All fixtures', 'vs Naas RFC', 'vs Bective Rangers', 'vs Terenure', 'vs Clontarf RFC']
-const PLAYERS  = ['All players', 'Jack O\'Sullivan', 'Ross Dunne', 'Conor Lynch', 'Séan Hennessy']
+const PLAYERS  = ['All players',  'Jack O\'Sullivan', 'Ross Dunne', 'Conor Lynch', 'Séan Hennessy']
 
 function DecisionHistory({ history }) {
   const [team,    setTeam]    = useState('All teams')
@@ -470,8 +358,8 @@ function DecisionHistory({ history }) {
   const [from,    setFrom]    = useState('')
 
   const events = (history?.events ?? []).filter(e => {
-    if (team    !== 'All teams'    && e.teamName    !== team)    return false
-    if (player  !== 'All players'  && e.playerName  !== player)  return false
+    if (team    !== 'All teams'    && e.teamName   !== team)   return false
+    if (player  !== 'All players'  && e.playerName !== player) return false
     if (fixture !== 'All fixtures' && e.fixtureSummary && !e.fixtureSummary.includes(fixture.replace('vs ', ''))) return false
     if (from && new Date(e.timestamp) < new Date(from)) return false
     return true
@@ -526,27 +414,7 @@ function DecisionHistory({ history }) {
           </div>
         ) : (
           <div className="max-h-[400px] overflow-y-auto divide-y divide-border-subtle">
-            {events.map(e => (
-              <div key={e.id} className="flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors">
-                <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${categoryDot(e.category)}`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-ink-1 leading-snug">{e.title}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                    <span className={`text-[10px] font-medium ${categoryColor(e.category)}`}>{e.category}</span>
-                    {e.teamName   && <><span className="text-[10px] text-ink-3">·</span><span className="text-[10px] text-ink-3">{e.teamName}</span></>}
-                    {e.playerName && <><span className="text-[10px] text-ink-3">·</span><span className="text-[10px] text-ink-3">{e.playerName}</span></>}
-                    <span className="text-[10px] text-ink-3">·</span>
-                    <span className="text-[10px] text-ink-3">{relTime(e.timestamp)}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className={`text-[10px] font-bold ${e.priority === 'HIGH' ? 'text-red-500' : e.priority === 'MEDIUM' ? 'text-amber-500' : 'text-green-500'}`}>
-                    {e.priority}
-                  </span>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${statusBadge(e.status)}`}>{e.status}</span>
-                </div>
-              </div>
-            ))}
+            {events.map(e => <TimelineEventRow key={e.id} event={e} />)}
           </div>
         )}
       </div>
@@ -623,8 +491,8 @@ export default function DecisionCentrePage() {
     showToast(`Deferred: ${p.title.slice(0, 35)}`, 'neutral')
   }, [])
 
-  const recs      = data?.highPriority    ?? []
-  const pending   = data?.pending         ?? []
+  const recs      = data?.highPriority      ?? []
+  const pending   = data?.pending           ?? []
   const completed = data?.recentlyCompleted ?? []
   const history   = data?.history
 
@@ -640,32 +508,14 @@ export default function DecisionCentrePage() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-5">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl font-bold text-ink-1">Decision Centre</h1>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 font-semibold tracking-wide">AI BRAIN</span>
-            {data?.isMock && <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-3 text-ink-3 font-medium">Preview</span>}
-          </div>
-          <p className="text-xs text-ink-3">
-            AI-proposed actions · Approve, dismiss, or snooze ·
-            {data?.generatedAt ? ` Updated ${relTime(data.generatedAt)}` : ' Loading…'}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={reload}
-          disabled={loading}
-          className="flex items-center gap-1.5 text-xs text-ink-3 hover:text-ink-2 px-3 py-1.5 rounded-lg border border-border-subtle hover:border-border bg-surface-1 transition-colors disabled:opacity-50"
-          aria-label="Refresh decisions"
-        >
-          <svg viewBox="0 0 14 14" fill="none" className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`}>
-            <path d="M12 7A5 5 0 1 1 7 2M7 2l2 2-2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Refresh
-        </button>
-      </div>
+      <IntelligencePageHeader
+        title="Decision Centre"
+        subtitle="AI-proposed actions · Approve, dismiss, or snooze"
+        generatedAt={data?.generatedAt}
+        isMock={data?.isMock}
+        loading={loading}
+        onRefresh={reload}
+      />
 
       {/* Error */}
       {error && !data && (
@@ -699,7 +549,11 @@ export default function DecisionCentrePage() {
         <div className="space-y-6">
           {loading ? (
             <div className="space-y-4">
-              <Sk h="h-8" /><Sk h="h-64" /><Sk h="h-48" /><Sk h="h-40" /><Sk h="h-64" />
+              <IntelligenceSkeleton h="h-8" />
+              <IntelligenceSkeleton h="h-64" />
+              <IntelligenceSkeleton h="h-48" />
+              <IntelligenceSkeleton h="h-40" />
+              <IntelligenceSkeleton h="h-64" />
             </div>
           ) : (
             <>
