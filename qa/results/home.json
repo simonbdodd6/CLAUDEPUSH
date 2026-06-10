@@ -1,66 +1,73 @@
 {
   "workflow": "home",
-  "runId": "2026-06-10T16-20-44-997Z",
-  "startedAt": "2026-06-10T16:20:44.999Z",
-  "finishedAt": "2026-06-10T16:20:52.669Z",
+  "runId": "2026-06-10T20-44-22-545Z",
+  "startedAt": "2026-06-10T20:44:22.547Z",
+  "finishedAt": "2026-06-10T20:44:36.155Z",
   "status": "passed",
-  "commit": "b463761",
+  "commit": "4dbf8f0",
   "steps": [
     {
       "name": "open-app",
       "status": "passed",
-      "startedAt": "2026-06-10T16:20:47.042Z",
-      "finishedAt": "2026-06-10T16:20:49.202Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/01-open-app.png"
+      "startedAt": "2026-06-10T20:44:26.856Z",
+      "finishedAt": "2026-06-10T20:44:30.480Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T20-44-22-545Z/01-open-app.png"
     },
     {
       "name": "coach-login",
       "status": "passed",
-      "startedAt": "2026-06-10T16:20:50.093Z",
-      "finishedAt": "2026-06-10T16:20:50.110Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/02-coach-login.png"
+      "startedAt": "2026-06-10T20:44:30.714Z",
+      "finishedAt": "2026-06-10T20:44:30.741Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T20-44-22-545Z/02-coach-login.png"
     },
     {
       "name": "home-section-active",
       "status": "passed",
-      "startedAt": "2026-06-10T16:20:50.319Z",
-      "finishedAt": "2026-06-10T16:20:50.341Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/03-home-section-active.png"
+      "startedAt": "2026-06-10T20:44:30.918Z",
+      "finishedAt": "2026-06-10T20:44:30.965Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T20-44-22-545Z/03-home-section-active.png"
+    },
+    {
+      "name": "briefing-header-renders",
+      "status": "passed",
+      "startedAt": "2026-06-10T20:44:31.277Z",
+      "finishedAt": "2026-06-10T20:44:31.392Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T20-44-22-545Z/04-briefing-header-renders.png"
     },
     {
       "name": "match-card-renders",
       "status": "passed",
-      "startedAt": "2026-06-10T16:20:50.677Z",
-      "finishedAt": "2026-06-10T16:20:50.712Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/04-match-card-renders.png"
+      "startedAt": "2026-06-10T20:44:31.780Z",
+      "finishedAt": "2026-06-10T20:44:31.852Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T20-44-22-545Z/05-match-card-renders.png"
     },
     {
       "name": "progress-bar-present",
       "status": "passed",
-      "startedAt": "2026-06-10T16:20:50.966Z",
-      "finishedAt": "2026-06-10T16:20:50.993Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/05-progress-bar-present.png"
+      "startedAt": "2026-06-10T20:44:32.152Z",
+      "finishedAt": "2026-06-10T20:44:32.231Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T20-44-22-545Z/06-progress-bar-present.png"
     },
     {
-      "name": "needs-attention-renders",
+      "name": "briefing-cards-render",
       "status": "passed",
-      "startedAt": "2026-06-10T16:20:51.265Z",
-      "finishedAt": "2026-06-10T16:20:51.290Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/06-needs-attention-renders.png"
+      "startedAt": "2026-06-10T20:44:32.529Z",
+      "finishedAt": "2026-06-10T20:44:32.563Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T20-44-22-545Z/07-briefing-cards-render.png"
     },
     {
       "name": "match-centre-nav-btn",
       "status": "passed",
-      "startedAt": "2026-06-10T16:20:51.466Z",
-      "finishedAt": "2026-06-10T16:20:51.907Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/07-match-centre-nav-btn.png"
+      "startedAt": "2026-06-10T20:44:32.788Z",
+      "finishedAt": "2026-06-10T20:44:35.086Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T20-44-22-545Z/08-match-centre-nav-btn.png"
     },
     {
       "name": "ai-slot-absent-by-default",
       "status": "passed",
-      "startedAt": "2026-06-10T16:20:52.186Z",
-      "finishedAt": "2026-06-10T16:20:52.361Z",
-      "screenshot": "qa/artifacts/home-2026-06-10T16-20-44-997Z/08-ai-slot-absent-by-default.png"
+      "startedAt": "2026-06-10T20:44:35.710Z",
+      "finishedAt": "2026-06-10T20:44:35.868Z",
+      "screenshot": "qa/artifacts/home-2026-06-10T20-44-22-545Z/09-ai-slot-absent-by-default.png"
     }
   ]
 }

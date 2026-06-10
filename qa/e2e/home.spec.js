@@ -89,7 +89,20 @@ test('Home — coach daily briefing smoke test', async ({ page }) => {
     await expect(page.locator('.home-wrap')).toBeVisible({ timeout: 6_000 });
   });
 
-  // ── 3. Match card renders ────────────────────────────────────────────────────
+  // ── 3. Briefing header shows today's date + status pill ──────────────────────
+  await step(page, 'briefing-header-renders', async () => {
+    await expect(page.locator('.home-briefing-hdr')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('.home-briefing-date')).toBeVisible({ timeout: 5_000 });
+    // Pill is either "X things to do" or "All clear ✓"
+    const pill = page.locator('.home-briefing-pill');
+    await expect(pill).toBeVisible({ timeout: 5_000 });
+    const pillText = await pill.textContent();
+    if (!pillText.includes('to do') && !pillText.includes('All clear')) {
+      throw new Error(`Unexpected briefing pill text: "${pillText}"`);
+    }
+  });
+
+  // ── 4. Match card renders ────────────────────────────────────────────────────
   await step(page, 'match-card-renders', async () => {
     const card = page.locator('.home-match-card');
     await expect(card).toBeVisible({ timeout: 5_000 });
@@ -101,24 +114,31 @@ test('Home — coach daily briefing smoke test', async ({ page }) => {
     await expect(card.locator('.home-match-countdown')).toBeVisible({ timeout: 5_000 });
   });
 
-  // ── 4. Progress bar present ──────────────────────────────────────────────────
+  // ── 5. Progress bar present ──────────────────────────────────────────────────
   await step(page, 'progress-bar-present', async () => {
     await expect(page.locator('.home-match-progress')).toBeVisible({ timeout: 5_000 });
   });
 
-  // ── 5. Needs Attention section renders ───────────────────────────────────────
-  await step(page, 'needs-attention-renders', async () => {
+  // ── 6. Daily Briefing cards render ───────────────────────────────────────────
+  await step(page, 'briefing-cards-render', async () => {
     const section = page.locator('.home-attn-list');
     await expect(section).toBeVisible({ timeout: 5_000 });
-    // Either shows items or the all-clear message — never empty
+    // Either shows cards or the all-clear message — never empty
     const hasItems = await page.locator('.home-attn-item').count();
     const hasClear = await page.locator('.home-attn-clear').count();
     if (hasItems === 0 && hasClear === 0) {
-      throw new Error('Needs Attention section is empty — expected items or all-clear message');
+      throw new Error('Daily Briefing is empty — expected cards or all-clear message');
+    }
+    // Max 6 cards
+    if (hasItems > 6) throw new Error(`Too many briefing cards: ${hasItems} (max 6)`);
+    // Each card has a CTA button
+    if (hasItems > 0) {
+      const ctaCount = await page.locator('.home-attn-cta').count();
+      if (ctaCount !== hasItems) throw new Error(`Card/CTA count mismatch: ${hasItems} cards, ${ctaCount} CTAs`);
     }
   });
 
-  // ── 6. Match Centre navigation button is present and navigates ───────────────
+  // ── 7. Match Centre navigation button is present and navigates ───────────────
   await step(page, 'match-centre-nav-btn', async () => {
     const btn = page.locator('.home-match-card button').filter({ hasText: 'Match Centre' });
     await expect(btn).toBeVisible({ timeout: 5_000 });
@@ -126,7 +146,7 @@ test('Home — coach daily briefing smoke test', async ({ page }) => {
     await expect(page.locator('#coach-matchday')).toBeVisible({ timeout: 6_000 });
   });
 
-  // ── 7. AI slot absent by default ────────────────────────────────────────────
+  // ── 8. AI slot absent by default ────────────────────────────────────────────
   await step(page, 'ai-slot-absent-by-default', async () => {
     // Navigate back to overview to check
     const navItem = page.locator('#coachNav li, #coachNav button').filter({ hasText: 'Overview' }).first();

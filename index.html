@@ -1435,20 +1435,23 @@
     .home-attn-critical .home-attn-text { color:#f87171; }
     .home-attn-urgent { border-color:rgba(245,158,11,0.3); border-left:3px solid var(--amber); background:rgba(245,158,11,0.04); }
     .home-attn-urgent .home-attn-text { color:var(--amber); }
-    .home-attn-warning { border-left:3px solid var(--line); }
+    .home-attn-warning { border-left:3px solid rgba(245,158,11,0.4); background:rgba(245,158,11,0.02); }
+    .home-attn-warning .home-attn-text { color:var(--ink); }
+    .home-attn-info { border-left:3px solid var(--line); }
     .home-attn-info .home-attn-text { color:var(--muted); }
+    .home-attn-info-done { border-left:3px solid var(--green); background:rgba(16,185,129,0.03); }
+    .home-attn-info-done .home-attn-text { color:var(--green); }
     .home-attn-clear { text-align:center; padding:24px 16px; font-size:13px; color:var(--muted); border:1px dashed var(--line); border-radius:10px; }
     .home-attn-clear strong { display:block; font-size:15px; color:var(--ink); margin-bottom:4px; }
     .home-squad-prompt { text-align:center; padding:24px 20px; border:1px dashed rgba(16,185,129,0.3); border-radius:10px; background:rgba(16,185,129,0.04); }
     .home-squad-prompt strong { display:block; font-size:15px; color:var(--ink); margin-bottom:6px; }
     .home-squad-prompt p { font-size:13px; color:var(--muted); margin:0 0 14px; }
     .home-match-squad-count { font-size:12px; color:var(--muted); }
-    .home-tonight-card { border:1px solid rgba(16,185,129,0.22); border-radius:12px; background:var(--panel); padding:16px 18px; }
-    .home-tonight-label { font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--green); }
-    .home-tonight-time { font-size:17px; font-weight:800; color:var(--ink); margin-top:3px; }
-    .home-tonight-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
-    .home-tonight-stats { display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding-top:2px; }
-    .home-tonight-actions { display:flex; gap:8px; margin-top:12px; border-top:1px solid var(--line); padding-top:12px; }
+    .home-briefing-hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; }
+    .home-briefing-date { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+    .home-briefing-pill { font-size:11px; font-weight:800; padding:2px 10px; border-radius:999px; }
+    .home-briefing-pill.has-items { background:rgba(239,68,68,0.12); color:#f87171; }
+    .home-briefing-pill.all-clear { background:rgba(16,185,129,0.12); color:var(--green); }
     .home-ai-slot { border:1px dashed rgba(96,165,250,0.18); border-radius:10px; padding:14px 16px; background:rgba(96,165,250,0.03); }
     .home-ai-slot-label { font-size:10px; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:var(--blue); opacity:0.55; }
     @media(max-width:600px) { .home-match-countdown { font-size:20px; } .home-match-opponent { font-size:18px; } }
@@ -4992,20 +4995,68 @@
       const mc       = state.matchCentre || {};
       const sessions = state.schedule || [];
 
-      // Critical: squad not published, match within 24 h
+      const tonightId   = getTonightSessionId();
+      const tonightSess = tonightId ? sessions.find(s => s.id === tonightId) : null;
+      const tonightBlks = tonightId ? ((state.trainingBlocks || {})[tonightId] || []) : [];
+      const tonightKey  = tonightId ? sessionKey(tonightId) : null;
+      const tonightCon  = tonightKey ? state.players.filter(p => p[tonightKey] === 'available').length : 0;
+
+      // ── CRITICAL ──────────────────────────────────────────────────────────────
       if (phase.msLeft > 0 && phase.msLeft < 86400000 && !mc.published) {
-        items.push({ level:'critical', icon:'🔴', isPrimary:true,
+        items.push({ score:100, level:'critical', icon:'🔴', isPrimary:true,
           text:'Squad not published — match today',
-          cta:'Publish now', action:`publishSquad()` });
-      }
-      // Urgent: squad not published, match within 48 h
-      else if (phase.msLeft > 0 && phase.msLeft < 172800000 && !mc.published) {
-        items.push({ level:'urgent', icon:'⚠️', isPrimary:true,
-          text:'Squad not published — match tomorrow',
-          cta:'Open Match', action:`setSection('coach','matchday')` });
+          detail:'Players haven\'t seen the team sheet yet.',
+          cta:'Publish squad', action:`publishSquad()` });
       }
 
-      // Non-responders — only shown after an availability request has been sent
+      // ── URGENT ────────────────────────────────────────────────────────────────
+      // Match day + squad published
+      if (tonightId === 'game' && mc.published) {
+        items.push({ score:90, level:'urgent', icon:'🏉', isPrimary:false,
+          text:`Match day — kick off ${mc.kickoffTime || '15:00'}`,
+          detail:`${tonightCon} confirmed${mc.venue ? ' · ' + mc.venue : ''}`,
+          cta:'Match Centre', action:`setSection('coach','matchday')` });
+      }
+      // Squad not published, match tomorrow
+      if (phase.msLeft > 0 && phase.msLeft >= 86400000 && phase.msLeft < 172800000 && !mc.published) {
+        items.push({ score:80, level:'urgent', icon:'⚠️', isPrimary:true,
+          text:'Squad not published — match tomorrow',
+          detail:'Select the team and publish before midnight.',
+          cta:'Open Match Centre', action:`setSection('coach','matchday')` });
+      }
+      // Tonight: plan ready but not published
+      if (tonightSess && tonightId !== 'game' && tonightBlks.length > 0 && !tonightSess.published) {
+        items.push({ score:75, level:'urgent', icon:'📢', isPrimary:true,
+          text:`Tonight: ${tonightSess.title || 'Training'} not published`,
+          detail:`${tonightBlks.length} block${tonightBlks.length > 1 ? 's' : ''} ready · ${tonightCon} confirmed`,
+          cta:'Publish now', action:`publishSession('${tonightId}')` });
+      }
+      // Squad published but no announcement
+      if (mc.published && !(mc.announcement || '').trim()) {
+        items.push({ score:72, level:'urgent', icon:'📣', isPrimary:true,
+          text:'Team announcement not written',
+          detail:'Squad is live but players have no message from you.',
+          cta:'Write now', action:`setSection('coach','matchday')` });
+      }
+      // Unread messages from players
+      const localUnread = (state.messages || []).filter(m => m.unread && m.to === 'Coach').length;
+      const totalUnread = Math.max(localUnread, _chatNavUnread || 0);
+      if (totalUnread > 0) {
+        items.push({ score:70, level:'urgent', icon:'💬', isPrimary:false,
+          text:`${totalUnread} new message${totalUnread > 1 ? 's' : ''} from player${totalUnread > 1 ? 's' : ''}`,
+          detail:'Tap to read and reply',
+          cta:'View messages', action:`setSection('coach','message')` });
+      }
+
+      // ── WARNING ───────────────────────────────────────────────────────────────
+      // Tonight: no plan at all
+      if (tonightSess && tonightId !== 'game' && tonightBlks.length === 0) {
+        items.push({ score:65, level:'warning', icon:'📋',
+          text:`Tonight: no training plan`,
+          detail:`${tonightSess.title || 'Training'} · ${tonightCon} confirmed`,
+          cta:'Plan session', action:`homeOpenTraining('${tonightId}')` });
+      }
+      // Non-responders — only after request sent
       const requestEverSent = (state.availabilityRequests || []).some(r => r.status === 'sent');
       if (requestEverSent) {
         const nonResponders = state.players.filter(p =>
@@ -5014,43 +5065,55 @@
         if (nonResponders.length > 0) {
           const preview = nonResponders.slice(0, 3).map(p => (p.name || '').split(' ')[0]).join(' · ')
             + (nonResponders.length > 3 ? ` +${nonResponders.length - 3}` : '');
-          items.push({ level:'warning', icon:'⚡',
+          items.push({ score:55, level:'warning', icon:'⚡',
             text:`${nonResponders.length} player${nonResponders.length > 1 ? 's haven\'t' : ' hasn\'t'} replied`,
-            detail: preview,
+            detail:preview,
             cta:'Chase all', action:`chaseAllNonResponders()` });
         }
       }
-
-      // Tonight's training plan is empty
-      const tonightId = getTonightSessionId();
-      if (tonightId && tonightId !== 'game') {
-        const blocks = ((state.trainingBlocks || {})[tonightId] || []);
-        if (blocks.length === 0) {
-          const sessObj = sessions.find(s => s.id === tonightId);
-          items.push({ level:'warning', icon:'⚡',
-            text:'Tonight: training plan not started',
-            detail: sessObj?.title || (tonightId === 'tue' ? 'Tuesday training' : 'Thursday training'),
-            cta:'Open plan', action:`homeOpenTraining('${tonightId}')` });
-        }
+      // Availability not sent this week
+      if (!requestEverSent && state.players.length > 0) {
+        items.push({ score:45, level:'warning', icon:'📅',
+          text:'Availability not requested this week',
+          detail:'Players haven\'t been asked to confirm yet.',
+          cta:'Send request', action:`setSection('coach','message')` });
+      }
+      // Training session with blocks but not published (not tonight)
+      const readyToPublish = sessions.filter(s => {
+        if (s.id === tonightId) return false;
+        const blks = ((state.trainingBlocks || {})[s.id] || []);
+        return blks.length > 0 && !s.published;
+      });
+      if (readyToPublish.length > 0) {
+        const s    = readyToPublish[0];
+        const blks = ((state.trainingBlocks || {})[s.id] || []);
+        items.push({ score:40, level:'warning', icon:'📋',
+          text:`${s.title || 'Session'} ready to publish`,
+          detail:`${blks.length} block${blks.length > 1 ? 's' : ''} planned — players haven't seen it yet`,
+          cta:'Publish', action:`publishSession('${s.id}')` });
       }
 
-      // Availability request not sent for this week
-      if (!(state.availabilityRequests || []).some(r => r.status === 'sent')) {
-        items.push({ level:'warning', icon:'⚡',
-          text:'Availability request not sent for this week',
-          cta:'Send now', action:`setSection('coach','message')` });
-      }
-
-      // Injured player with no return date (informational, max 1)
+      // ── INFO ──────────────────────────────────────────────────────────────────
+      // Medical: injured with no return date
       const injuredNoReturn = getInjuredNoReturnDate();
-      if (injuredNoReturn.length > 0 && items.length < 3) {
-        const p = injuredNoReturn[0];
-        items.push({ level:'info', icon:'○',
-          text:`${p.name}: no return date set`,
+      if (injuredNoReturn.length > 0) {
+        const names = injuredNoReturn.slice(0, 3).map(p => (p.name || '').split(' ')[0]).join(' · ')
+          + (injuredNoReturn.length > 3 ? ` +${injuredNoReturn.length - 3}` : '');
+        items.push({ score:30, level:'info', icon:'🏥',
+          text:`${injuredNoReturn.length} player${injuredNoReturn.length > 1 ? 's' : ''} with no return date`,
+          detail:names,
           cta:'Update', action:`setSection('coach','medical')` });
       }
+      // Tonight: published (low-priority confirmation card)
+      if (tonightSess && tonightId !== 'game' && tonightBlks.length > 0 && tonightSess.published) {
+        items.push({ score:15, level:'info-done', icon:'✅',
+          text:`Tonight: ${tonightSess.title || 'Training'} published`,
+          detail:`${tonightBlks.length} blocks · ${tonightCon} confirmed`,
+          cta:'View →', action:`homeOpenTraining('${tonightId}')` });
+      }
 
-      return items.slice(0, 3);
+      items.sort((a, b) => (b.score || 0) - (a.score || 0));
+      return items.slice(0, 6);
     }
 
     function homeOpenTraining(sessionId) {
@@ -5074,45 +5137,15 @@
             { weekday:'short', day:'numeric', month:'short' })
         : 'Date TBC';
 
-      // Tonight session
-      const tonightId     = getTonightSessionId();
-      const tonightSess   = tonightId ? (state.schedule || []).find(s => s.id === tonightId) : null;
-      const tonightBlocks = tonightId ? ((state.trainingBlocks || {})[tonightId] || []) : [];
-      const tonightKey    = tonightId ? sessionKey(tonightId) : null;
-      const tonightAvail  = tonightKey ? state.players.filter(p => p[tonightKey] === 'available').length : 0;
-      const tonightNoRep  = tonightKey ? state.players.filter(p => (p[tonightKey] || 'no-reply') === 'no-reply').length : 0;
+      // Briefing header
+      const todayStr    = new Date().toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+      const actionCount = items.filter(i => i.level !== 'info-done').length;
+      const pillClass   = actionCount > 0 ? 'has-items' : 'all-clear';
+      const pillText    = actionCount > 0
+        ? `${actionCount} thing${actionCount > 1 ? 's' : ''} to do`
+        : 'All clear ✓';
 
-      const iconMap = { critical:'🔴', urgent:'⚠️', warning:'⚡', info:'○' };
-
-      const tonightHTML = tonightSess ? `
-        <div class="home-tonight-card">
-          <div class="home-tonight-header">
-            <div>
-              <div class="home-tonight-label">TONIGHT · ${tonightId === 'game' ? 'MATCH' : 'TRAINING'}${tonightSess.published ? ' · <span style="color:var(--green)">Published</span>' : ''}</div>
-              <div class="home-tonight-time">${esc(tonightSess.title)}</div>
-              <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(tonightSess.date || '')}</div>
-            </div>
-            <div class="home-tonight-stats">
-              ${tonightAvail > 0 ? `<span class="mc-stat-pill green">${tonightAvail} confirmed</span>` : ''}
-              ${tonightNoRep  > 0 ? `<span class="mc-stat-pill amber">${tonightNoRep} not replied</span>` : ''}
-              ${tonightBlocks.length > 0
-                ? `<span class="mc-stat-pill blue">${tonightBlocks.length} block${tonightBlocks.length > 1 ? 's' : ''}</span>`
-                : `<span class="mc-stat-pill muted">No plan yet</span>`}
-              ${!tonightSess.published ? `<span class="mc-stat-pill muted">Not published</span>` : ''}
-            </div>
-          </div>
-          <div class="home-tonight-actions">
-            <button class="btn" type="button" onclick="homeOpenTraining('${tonightId}')">Open session →</button>
-            ${tonightBlocks.length > 0 ? `<button class="btn" type="button" onclick="homeOpenTraining('${tonightId}')">Print plan</button>` : ''}
-            ${!tonightSess.published
-              ? `<button class="btn primary" type="button" onclick="publishSession('${tonightId}')">Publish to squad</button>`
-              : `<button class="btn" type="button" onclick="unpublishSession('${tonightId}')">Unpublish</button>`}
-          </div>
-        </div>` : '';
-
-      // ── Intelligence integration slot ──────────────────────────────────────
-      // Placeholder for Coach's Eye Intelligence API. Feature-flagged off by default.
-      // When enabled, Intelligence injects recommendations into #home-ai-insights.
+      // Intelligence slot (feature-flagged off by default)
       const aiHTML = state.features?.aiInsights ? `
         <div class="home-ai-slot">
           <div class="home-ai-slot-label">Coach's Eye Intelligence</div>
@@ -5124,6 +5157,13 @@
       document.getElementById("coach-overview").innerHTML = `
         <div class="home-wrap">
 
+          <!-- ── Briefing header ──────────────────────────────── -->
+          <div class="home-briefing-hdr">
+            <span class="home-briefing-date">${esc(todayStr)}</span>
+            <span class="home-briefing-pill ${pillClass}">${pillText}</span>
+          </div>
+
+          <!-- ── Match card ────────────────────────────────────── -->
           <div class="home-match-card">
             <div class="home-match-top">
               <div>
@@ -5142,13 +5182,13 @@
                 ${mc.published ? `<span style="margin-left:8px;font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;background:var(--green);color:#fff;vertical-align:middle">Squad Published</span>` : ''}
               </span>
               <div style="display:flex;gap:7px;align-items:center">
-                <button class="btn" type="button" onclick="startNewWeek()">New Week</button>
+                ${mc.published ? `<button class="btn" type="button" onclick="startNewWeek()" style="font-size:11px">New Week</button>` : ''}
                 <button class="btn" type="button" onclick="setSection('coach','matchday')">Match Centre →</button>
               </div>
             </div>
           </div>
 
-          <div class="home-section-label">NEEDS ATTENTION</div>
+          <!-- ── Daily Briefing cards ──────────────────────────── -->
           <div class="home-attn-list">
             ${items.length === 0
               ? `<div class="home-attn-clear"><strong>${state.players.length === 0 ? 'Squad not set up yet' : 'All clear'}</strong>${state.players.length === 0 ? 'Add your players to get started.' : 'Nothing needs your attention right now.'}</div>`
@@ -5164,8 +5204,6 @@
                   <button class="btn${item.isPrimary ? ' primary' : ''} home-attn-cta" type="button" onclick="${item.action}">${esc(item.cta)}</button>
                 </div>`).join('')}
           </div>
-
-          ${tonightHTML}
 
           ${aiHTML}
 
