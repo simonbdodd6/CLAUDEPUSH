@@ -1,0 +1,108 @@
+{
+  "workflow": "training-publish",
+  "runId": "2026-06-10T15-43-55-045Z",
+  "startedAt": "2026-06-10T15:43:55.045Z",
+  "finishedAt": "2026-06-10T15:44:08.630Z",
+  "status": "passed",
+  "commit": "6b63dbf",
+  "steps": [
+    {
+      "name": "open-app",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:43:55.486Z",
+      "finishedAt": "2026-06-10T15:43:59.501Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/01-open-app.png"
+    },
+    {
+      "name": "coach-login",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:43:59.674Z",
+      "finishedAt": "2026-06-10T15:43:59.697Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/02-coach-login.png"
+    },
+    {
+      "name": "navigate-to-training",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:43:59.990Z",
+      "finishedAt": "2026-06-10T15:44:00.354Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/03-navigate-to-training.png"
+    },
+    {
+      "name": "session-tabs-from-schedule",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:44:00.598Z",
+      "finishedAt": "2026-06-10T15:44:00.826Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/04-session-tabs-from-schedule.png"
+    },
+    {
+      "name": "session-starts-as-draft",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:44:01.021Z",
+      "finishedAt": "2026-06-10T15:44:01.052Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/05-session-starts-as-draft.png"
+    },
+    {
+      "name": "add-training-block",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:44:01.352Z",
+      "finishedAt": "2026-06-10T15:44:02.194Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/06-add-training-block.png"
+    },
+    {
+      "name": "publish-session",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:44:02.402Z",
+      "finishedAt": "2026-06-10T15:44:03.364Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/07-publish-session.png"
+    },
+    {
+      "name": "tab-shows-published",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:44:03.645Z",
+      "finishedAt": "2026-06-10T15:44:03.665Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/08-tab-shows-published.png"
+    },
+    {
+      "name": "match-centre-availability-published",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:44:03.941Z",
+      "finishedAt": "2026-06-10T15:44:04.129Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/09-match-centre-availability-published.png"
+    },
+    {
+      "name": "seed-test-player",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:44:04.418Z",
+      "finishedAt": "2026-06-10T15:44:04.544Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/10-seed-test-player.png"
+    },
+    {
+      "name": "player-week-shows-plan",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:44:04.795Z",
+      "finishedAt": "2026-06-10T15:44:04.893Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/11-player-week-shows-plan.png"
+    },
+    {
+      "name": "player-calendar-shows-plan",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:44:05.119Z",
+      "finishedAt": "2026-06-10T15:44:05.176Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/12-player-calendar-shows-plan.png"
+    },
+    {
+      "name": "republish-is-idempotent",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:44:05.373Z",
+      "finishedAt": "2026-06-10T15:44:06.919Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/13-republish-is-idempotent.png"
+    },
+    {
+      "name": "unpublish-removes-plan",
+      "status": "passed",
+      "startedAt": "2026-06-10T15:44:07.203Z",
+      "finishedAt": "2026-06-10T15:44:08.205Z",
+      "screenshot": "qa/artifacts/training-publish-2026-06-10T15-43-55-045Z/14-unpublish-removes-plan.png"
+    }
+  ]
+}
