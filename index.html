@@ -1452,6 +1452,12 @@
     .home-briefing-pill { font-size:11px; font-weight:800; padding:2px 10px; border-radius:999px; }
     .home-briefing-pill.has-items { background:rgba(239,68,68,0.12); color:#f87171; }
     .home-briefing-pill.all-clear { background:rgba(16,185,129,0.12); color:var(--green); }
+    .home-briefing-pill.setup-mode { background:rgba(96,165,250,0.12); color:var(--blue); }
+    .home-onboarding-banner { border:1px solid rgba(16,185,129,0.22); border-radius:12px; padding:14px 18px; background:rgba(16,185,129,0.04); }
+    .home-onboarding-progress { height:3px; background:var(--line); border-radius:999px; margin-top:11px; overflow:hidden; }
+    .home-onboarding-progress-bar { height:100%; border-radius:999px; background:var(--green); transition:width 0.5s; }
+    .home-attn-step-num { width:22px; height:22px; border-radius:50%; border:2px solid var(--line); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:11px; font-weight:800; color:var(--muted); line-height:1; }
+    .home-attn-step-num.done { background:var(--green); border-color:var(--green); color:#060b12; }
     .home-ai-slot { border:1px dashed rgba(96,165,250,0.18); border-radius:10px; padding:14px 16px; background:rgba(96,165,250,0.03); }
     .home-ai-slot-label { font-size:10px; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:var(--blue); opacity:0.55; }
     @media(max-width:600px) { .home-match-countdown { font-size:20px; } .home-match-opponent { font-size:18px; } }
@@ -2132,6 +2138,7 @@
       coachNotes: "",
       playerFilter: "all",
       showAddPlayer: false,
+      onboardingDismissed: false,
       matchCentre: {
         opposition:    "",
         competition:   "",
@@ -2160,6 +2167,7 @@
         aiTimeline:      false,  // Intelligence: Intelligence Timeline (AI memory over time)
         aiDashboard:     false,  // Intelligence: Intelligence Dashboard (full AI Brain overview)
         aiDecisionCentre: false, // Intelligence: Decision Centre (AI-proposed coaching actions)
+        aiKnowledgeUpload: false, // Intelligence: Knowledge Upload (coach documents → AI Brain)
       },
     };
 
@@ -2543,6 +2551,7 @@
       next.coachNotes       = input.coachNotes       || "";
       next.playerFilter     = input.playerFilter     || "all";
       next.showAddPlayer    = false; // never restore open form across sessions
+      next.onboardingDismissed = input.onboardingDismissed ?? false;
       next.features         = { ...structuredClone(defaultState.features), ...(input.features || {}) };
       const user = next.users.find(u => u.id === next.currentUserId);
       if (user?.role === "player") {
@@ -2828,7 +2837,14 @@
     function currentUser()  { return canonicalAccountForUserId(state.currentUserId) || state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
     function isCoach()      { const r = currentUser()?.role; return r === "coach" || r === "admin" || r === "medical"; }
     function statusLabel(s) { return (s||"no-reply").replaceAll("-", " ").replace(/\b\w/g, l => l.toUpperCase()); }
-    function noSquadMsg()   { return `<div class="card" style="text-align:center;padding:40px 20px;color:var(--muted)"><p style="font-size:32px;margin:0">🏉</p><p style="font-weight:700;margin:8px 0 4px">No players yet</p><p style="font-size:13px">Go to <strong>Player DB</strong> and add your squad first.</p></div>`; }
+    function noSquadMsg() {
+      return `<div class="card" style="text-align:center;padding:40px 20px">
+        <p style="font-size:36px;margin:0">🏉</p>
+        <p style="font-weight:800;margin:10px 0 6px;font-size:16px;color:var(--ink)">No players added yet</p>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:18px">Import your squad to get started. Takes less than a minute.</p>
+        <button class="btn primary" type="button" onclick="setSection('coach','players')">Go to Player DB →</button>
+      </div>`;
+    }
     function sessionKey(id) {
       if (id === "tue") return "trainingTuesday";
       if (id === "thu") return "trainingThursday";
@@ -4028,6 +4044,28 @@
       return { name, position, phone, email };
     }
 
+    function downloadSampleCSV() {
+      const clubName = (state.clubName || 'Your Club').replace(/[^a-z0-9 ]/gi, ' ').trim();
+      const rows = [
+        ['Name', 'Position', 'Phone', 'Email'],
+        ['Thomas Dupont', '7 — Openside flanker', '+32470001001', 'thomas@example.com'],
+        ['Alexis Martin', '10 — Fly half', '+32470001002', 'alexis@example.com'],
+        ['Lucas Bernard', '15 — Fullback', '+32470001003', 'lucas@example.com'],
+        ['Romain Leroy', '1 — Loosehead prop', '+32470001004', ''],
+        ['Jules Petit', '9 — Scrum half', '+32470001005', ''],
+      ];
+      const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `squad-import-template.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      showToast('Template CSV downloaded ✓');
+    }
+
     async function importPlayersFromFile(file) {
       if (!file) return;
       showToast('⏳ Reading file…');
@@ -5122,10 +5160,60 @@
       setSection('coach', 'training');
     }
 
+    function getOnboardingSteps() {
+      const mc       = state.matchCentre || {};
+      const sessions = state.schedule || [];
+      const requestEverSent = (state.availabilityRequests || []).some(r => r.status === 'sent');
+      const hasBlocks = sessions.some(s => ((state.trainingBlocks || {})[s.id] || []).length > 0);
+      return [
+        {
+          done:   !!(state.clubName && state.clubName.trim()),
+          title:  'Set your club name',
+          detail: state.clubName ? `${state.clubName}` : 'Used in notifications, exports and team sheet',
+          cta:    'Set name →',
+          action: `setSection('coach','players')`
+        },
+        {
+          done:   state.players.length > 0,
+          title:  'Add your players',
+          detail: state.players.length > 0 ? `${state.players.length} player${state.players.length > 1 ? 's' : ''} in squad` : 'Import CSV or add manually — takes under a minute',
+          cta:    'Import players →',
+          action: `setSection('coach','players')`
+        },
+        {
+          done:   requestEverSent,
+          title:  'Send availability request',
+          detail: requestEverSent ? 'Request sent' : 'Ask who\'s available for training and the match',
+          cta:    'Send request →',
+          action: `setSection('coach','message')`
+        },
+        {
+          done:   hasBlocks,
+          title:  'Build a training session',
+          detail: hasBlocks ? 'Session plan created' : 'Plan Tuesday or Thursday training blocks',
+          cta:    'Plan session →',
+          action: `setSection('coach','training')`
+        },
+        {
+          done:   !!mc.published,
+          title:  'Publish your squad',
+          detail: mc.published ? 'Squad published' : 'Select players and publish the team sheet',
+          cta:    'Open Match Centre →',
+          action: `setSection('coach','matchday')`
+        }
+      ];
+    }
+
     function renderCoachOverview() {
       const phase  = matchCentrePhase();
       const mc     = state.matchCentre || {};
       const items  = getNeedsAttentionItems();
+
+      // Show onboarding checklist when no players yet (and not dismissed)
+      const showOnboarding  = state.players.length === 0 && !state.onboardingDismissed;
+      const obSteps         = showOnboarding ? getOnboardingSteps() : [];
+      const obDone          = obSteps.filter(s => s.done).length;
+      const firstPendingIdx = obSteps.findIndex(s => !s.done);
 
       // Progress bar: % of 7-day prep window elapsed
       const PREP = 7 * 86400000;
@@ -5138,13 +5226,15 @@
             { weekday:'short', day:'numeric', month:'short' })
         : 'Date TBC';
 
-      // Briefing header
-      const todayStr    = new Date().toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
-      const actionCount = items.filter(i => i.level !== 'info-done').length;
-      const pillClass   = actionCount > 0 ? 'has-items' : 'all-clear';
-      const pillText    = actionCount > 0
-        ? `${actionCount} thing${actionCount > 1 ? 's' : ''} to do`
-        : 'All clear ✓';
+      // Briefing header pill
+      const todayStr  = new Date().toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+      const pillClass = showOnboarding ? 'setup-mode'
+                      : items.filter(i => i.level !== 'info-done').length > 0 ? 'has-items' : 'all-clear';
+      const pillText  = showOnboarding
+        ? `Setup: ${obDone}/${obSteps.length} done`
+        : items.filter(i => i.level !== 'info-done').length > 0
+          ? `${items.filter(i => i.level !== 'info-done').length} thing${items.filter(i => i.level !== 'info-done').length > 1 ? 's' : ''} to do`
+          : 'All clear ✓';
 
       // Intelligence slot (feature-flagged off by default)
       const aiHTML = state.features?.aiInsights ? `
@@ -5189,21 +5279,56 @@
             </div>
           </div>
 
-          <!-- ── Daily Briefing cards ──────────────────────────── -->
+          ${showOnboarding ? `
+          <!-- ── Getting started banner ────────────────────────── -->
+          <div class="home-onboarding-banner">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+              <div>
+                <div style="font-weight:800;font-size:15px;color:var(--ink)">Getting started with Coach's Eye</div>
+                <div style="font-size:13px;color:var(--muted);margin-top:2px">Complete these steps to become fully operational.</div>
+              </div>
+              <button class="btn" style="font-size:11px;flex-shrink:0" type="button"
+                onclick="state.onboardingDismissed=true;saveState();render()">Skip guide</button>
+            </div>
+            <div class="home-onboarding-progress">
+              <div class="home-onboarding-progress-bar" style="width:${Math.round(obDone/obSteps.length*100)}%"></div>
+            </div>
+          </div>` : ''}
+
+          <!-- ── Daily Briefing / Onboarding cards ─────────────── -->
           <div class="home-attn-list">
-            ${items.length === 0
-              ? `<div class="home-attn-clear"><strong>${state.players.length === 0 ? 'Squad not set up yet' : 'All clear'}</strong>${state.players.length === 0 ? 'Add your players to get started.' : 'Nothing needs your attention right now.'}</div>`
-              : items.map(item => `
-                <div class="home-attn-item home-attn-${item.level}">
-                  <div class="home-attn-body">
-                    <div class="home-attn-icon">${item.icon}</div>
-                    <div>
-                      <div class="home-attn-text">${esc(item.text)}</div>
-                      ${item.detail ? `<div class="home-attn-detail">${esc(item.detail)}</div>` : ''}
-                    </div>
-                  </div>
-                  <button class="btn${item.isPrimary ? ' primary' : ''} home-attn-cta" type="button" onclick="${item.action}">${esc(item.cta)}</button>
-                </div>`).join('')}
+            ${showOnboarding
+              ? obSteps.map((s, i) => {
+                  const isCurrent = i === firstPendingIdx;
+                  const level     = s.done ? 'info-done' : isCurrent ? 'warning' : 'info';
+                  return `
+                    <div class="home-attn-item home-attn-${level}">
+                      <div class="home-attn-body">
+                        <div class="home-attn-icon">
+                          <span class="home-attn-step-num ${s.done ? 'done' : ''}">${s.done ? '✓' : String(i + 1)}</span>
+                        </div>
+                        <div>
+                          <div class="home-attn-text">${esc(s.title)}</div>
+                          ${s.detail ? `<div class="home-attn-detail">${esc(s.detail)}</div>` : ''}
+                        </div>
+                      </div>
+                      <button class="btn${isCurrent && !s.done ? ' primary' : ''} home-attn-cta" type="button"
+                        onclick="${s.action}">${s.done ? '✓ Done' : esc(s.cta)}</button>
+                    </div>`;
+                }).join('')
+              : items.length === 0
+                ? `<div class="home-attn-clear"><strong>All clear</strong>Nothing needs your attention right now.</div>`
+                : items.map(item => `
+                    <div class="home-attn-item home-attn-${item.level}">
+                      <div class="home-attn-body">
+                        <div class="home-attn-icon">${item.icon}</div>
+                        <div>
+                          <div class="home-attn-text">${esc(item.text)}</div>
+                          ${item.detail ? `<div class="home-attn-detail">${esc(item.detail)}</div>` : ''}
+                        </div>
+                      </div>
+                      <button class="btn${item.isPrimary ? ' primary' : ''} home-attn-cta" type="button" onclick="${item.action}">${esc(item.cta)}</button>
+                    </div>`).join('')}
           </div>
 
           ${aiHTML}
@@ -6892,6 +7017,7 @@
                   oninput="state.clubName=this.value.trim();saveState('Club name saved');renderNav()">
               </label>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <button class="btn" type="button" onclick="downloadSampleCSV()">📋 Template CSV</button>
                 <button class="btn" type="button" onclick="exportMembersCSV()">📥 Export CSV</button>
                 <button class="btn" type="button" onclick="triggerImportFile()">📤 Import</button>
                 <button class="btn primary" type="button" onclick="showAddPlayerForm()">+ Add player</button>
@@ -6948,7 +7074,7 @@
                   <div style="margin-top:10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:10px;padding:14px 16px">
                     <p style="font-size:13px;color:#94a3b8;margin-bottom:10px">For bulk invites — players enter this code and their own name.</p>
                     <div class="join-code-value" style="font-size:22px;letter-spacing:3px;display:inline-block;margin-bottom:10px">${esc(state.teamCode||'TEAM')}</div>
-                    <div style="font-size:12px;color:#64748b;margin-bottom:10px">boitsfort-coachseye-gpt.vercel.app</div>
+                    <div style="font-size:12px;color:#64748b;margin-bottom:10px">${window.location.hostname}</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
                       <button class="btn" type="button" style="font-size:12px" onclick="copyTeamInviteMessage()">
                         📋 Copy message
@@ -6996,7 +7122,21 @@
             </div>
           </div>` : ""}
 
-          <!-- Player database table -->
+          <!-- Player database table (or empty state) -->
+          ${members.length === 0 ? `
+          <div class="card" style="padding:36px 24px;text-align:center">
+            <div style="font-size:48px;margin-bottom:14px">🏉</div>
+            <h2 style="margin:0 0 8px;font-size:18px">Add your players</h2>
+            <p style="font-size:14px;color:var(--muted);margin:0 auto 22px;max-width:420px">
+              Import from a spreadsheet to add 25 players in under a minute.
+              Download the template, fill it in, then import.
+            </p>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+              <button class="btn" type="button" onclick="downloadSampleCSV()">📋 Download template CSV</button>
+              <button class="btn primary" type="button" onclick="triggerImportFile()">📤 Import CSV / Excel</button>
+              <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add manually</button>
+            </div>
+          </div>` : `
           <div class="card" style="padding:0;overflow:hidden">
             <table class="player-db-table">
               <thead>
@@ -7053,7 +7193,7 @@
               </tbody>
             </table>
             ${filtered.length === 0 ? `<div style="padding:28px;text-align:center;color:var(--muted)">No players match this filter.</div>` : ""}
-          </div>
+          </div>`}
 
           <!-- Sent invites — collapsed by default -->
           <details style="margin-top:4px" ontoggle="if(this.open) loadInviteList()">
@@ -10192,7 +10332,7 @@
                 <span style="background:${statusBg};color:${statusColor};font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap">${inv.status}</span>
                 ${isPending ? `
                   <button class="btn" type="button" style="font-size:11px;padding:3px 9px;white-space:nowrap"
-                    onclick="navigator.clipboard.writeText('https://boitsfort-coachseye-gpt.vercel.app/?inv=${esc(inv.token)}').then(()=>showToast('Copied 📋'))">
+                    onclick="navigator.clipboard.writeText(window.location.origin+'/?inv=${esc(inv.token)}').then(()=>showToast('Copied 📋'))">
                     📋
                   </button>
                   <button class="btn" type="button" style="font-size:11px;padding:3px 8px;color:#f87171;border-color:rgba(239,68,68,0.28)"
