@@ -1396,7 +1396,21 @@
     .mc-publish-btn:hover { opacity:0.85; }
     .mc-publish-btn.published { background:#10b981; color:#060b12; }
     .mc-publish-btn.draft { background:rgba(255,255,255,0.12); color:#e2e8f0; border:1px solid rgba(255,255,255,0.2); }
-    @media(max-width:900px) { .mc-grid { grid-template-columns:1fr; } .mc-kpi-grid { grid-template-columns:repeat(2,1fr); } }
+    .mc-header { border:1px solid var(--line); border-radius:12px; background:var(--panel); padding:16px 18px; margin-bottom:14px; }
+    .mc-header-top { display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; }
+    .mc-header-opponent { font-size:19px; font-weight:800; color:var(--ink); }
+    .mc-header-meta { font-size:13px; color:var(--muted); margin-top:2px; }
+    .mc-header-stats { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding-top:11px; margin-top:11px; border-top:1px solid var(--line); }
+    .mc-stat-pill { display:inline-flex; align-items:center; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+    .mc-stat-pill.green  { background:var(--green-soft); color:#10b981; }
+    .mc-stat-pill.red    { background:rgba(239,68,68,0.10); color:#f87171; }
+    .mc-stat-pill.amber  { background:var(--amber-soft); color:var(--amber); }
+    .mc-stat-pill.blue   { background:var(--blue-soft); color:var(--blue); }
+    .mc-stat-pill.muted  { background:var(--panel-2); color:var(--muted); }
+    .mc-team-grid { display:grid; grid-template-columns:2fr 1.1fr 1fr; gap:14px; align-items:start; }
+    .pitch-compact { min-height:490px !important; }
+    @media(max-width:1100px) { .mc-team-grid { grid-template-columns:1.6fr 1fr; } .mc-team-grid > :nth-child(3) { grid-column:2; } }
+    @media(max-width:900px) { .mc-grid { grid-template-columns:1fr; } .mc-kpi-grid { grid-template-columns:repeat(2,1fr); } .mc-team-grid { grid-template-columns:1fr; } }
     @media(max-width:600px) { .bench-strip { grid-template-columns:repeat(4,minmax(0,1fr)); } }
 
     /* ── MEDICAL ── */
@@ -5925,86 +5939,69 @@
         .map(n => String(n || "").trim().toLowerCase()).filter(Boolean));
       const available = matchdayPlayers.filter(p => !assignedNames.has(String(p.name || "").trim().toLowerCase()));
 
+      const squadSelected = slotNames.filter(n=>n).length + bench.filter(n=>n).length;
+
       document.getElementById("coach-matchday").innerHTML = `
 
         <datalist id="squad-names">
           ${playerNameOptions.map(name=>`<option value="${esc(name)}">`).join("")}
         </datalist>
 
-        <!-- ── HERO ──────────────────────────────────────────────────────────── -->
-        <div class="mc-hero" style="margin-bottom:14px">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px;position:relative;z-index:1">
-            <div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                <span class="mc-phase-badge ${phase.color}">${phase.label}</span>
-                <span style="font-size:12px;color:rgba(255,255,255,0.5)">${countdown}</span>
+        <!-- ── COMPACT FIXTURE HEADER ────────────────────────────────────────── -->
+        <div class="mc-header">
+          <div class="mc-header-top">
+            <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+              <span class="mc-phase-badge ${phase.color}">${phase.label}</span>
+              <div>
+                <div class="mc-header-opponent">vs ${esc(mc.opposition || "Opponent TBC")}</div>
+                <div class="mc-header-meta">${esc(mc.competition || "")}${mc.competition && mc.kickoffDate ? ' · ' : ''}${kickoffDisplay}${mc.kickoffTime ? ' · ' + esc(mc.kickoffTime) : ''}${mc.venue ? ' · ' + esc(mc.venue) : ''}</div>
               </div>
-              <h1 style="margin:0;font-size:26px;font-weight:800;color:#fff;line-height:1.1">
-                vs ${esc(mc.opposition || "Opponent TBC")}
-              </h1>
-              <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.6)">${esc(mc.competition || "")}</p>
-              <p style="margin:4px 0 0;font-size:13px;color:rgba(255,255,255,0.45)">${kickoffDisplay} · ${esc(mc.kickoffTime || "15:00")} · ${esc(mc.venue || "Venue TBC")}</p>
             </div>
-            <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:12px;color:var(--muted)">${countdown}</span>
               <button class="mc-publish-btn ${mc.published ? 'published' : 'draft'}"
                 onclick="publishSquad()">${mc.published ? "✓ Squad Published" : "Publish Squad"}</button>
-              <span style="font-size:11px;color:rgba(255,255,255,0.4)">${mc.published ? "Players have been notified" : "Draft — not visible to players"}</span>
             </div>
           </div>
-          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08);position:relative;z-index:1">
-            <span style="font-size:12px;color:rgba(255,255,255,0.5)">Arrival: <strong style="color:#e2e8f0">${esc(mc.arrivalTime || "TBC")}</strong></span>
-            <span style="font-size:12px;color:rgba(255,255,255,0.5)">Kit: <strong style="color:#e2e8f0">${esc(mc.kit || "TBC")}</strong></span>
-            <span style="font-size:12px;color:rgba(255,255,255,0.5)">Referee: <strong style="color:#e2e8f0">${esc(mc.referee || "TBC")}</strong></span>
-            <span style="font-size:12px;color:rgba(255,255,255,0.5)">Weather: <strong style="color:#e2e8f0">${esc(mc.weather || "—")}</strong></span>
+          <div class="mc-header-stats">
+            ${mc.arrivalTime ? `<span style="font-size:12px;color:var(--muted)">Arrival <strong style="color:var(--ink)">${esc(mc.arrivalTime)}</strong></span><span style="color:var(--line)">·</span>` : ''}
+            ${mc.kit ? `<span style="font-size:12px;color:var(--muted)">Kit <strong style="color:var(--ink)">${esc(mc.kit)}</strong></span><span style="color:var(--line)">·</span>` : ''}
+            <span class="mc-stat-pill green">${availCount} available</span>
+            <span class="mc-stat-pill red">${unavailCount} unavailable</span>
+            ${pendingCount > 0 ? `<span class="mc-stat-pill amber">${pendingCount} missing reply</span>` : ''}
+            ${medAlerts.length > 0 ? `<span class="mc-stat-pill amber">${medAlerts.length} medical alert${medAlerts.length !== 1 ? 's' : ''}</span>` : '<span class="mc-stat-pill muted">No medical alerts</span>'}
+            <span class="mc-stat-pill blue">${squadSelected}/23 selected</span>
+            ${pendingCount > 0 ? `
+              <button class="btn primary" style="font-size:12px;margin-left:auto" onclick="chaseAllNonResponders()">
+                Remind missing replies
+              </button>` : ''}
           </div>
         </div>
 
-        <!-- ── KPI ROW ──────────────────────────────────────────────────────── -->
-        <div class="mc-kpi-grid" style="margin-bottom:14px">
-          <div class="mc-kpi">
-            <strong style="color:var(--green)">${availCount}</strong>
-            <small>Available</small>
-          </div>
-          <div class="mc-kpi">
-            <strong style="color:var(--red)">${unavailCount}</strong>
-            <small>Unavailable</small>
-          </div>
-          <div class="mc-kpi">
-            <strong style="color:${medAlerts.length > 0 ? 'var(--amber)' : 'var(--muted)'}">${medAlerts.length}</strong>
-            <small>Medical alerts</small>
-          </div>
-          <div class="mc-kpi">
-            <strong style="color:var(--blue)">${daysDisplay}</strong>
-            <small>To kickoff</small>
-          </div>
-        </div>
-
-        <!-- ── DETAILS + AVAILABILITY | MEDICAL + NOTES ─────────────────────── -->
+        <!-- ── PLANNING GRID ──────────────────────────────────────────────────── -->
         <div class="mc-grid" style="margin-bottom:14px">
 
-          <!-- LEFT column -->
+          <!-- LEFT: Phase guide + Availability -->
           <div style="display:grid;gap:14px">
 
-            <!-- Match details (editable) -->
-            <div class="card">
-              <h2 style="margin-bottom:14px">Match details</h2>
+            <!-- Phase planning guide -->
+            <div class="card" style="border-left:3px solid var(--green)">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <span class="mc-phase-badge ${phase.color}">${phase.label} phase</span>
+                <span style="font-size:12px;color:var(--muted)">${daysDisplay} to kickoff</span>
+              </div>
+              <p style="font-size:13px;color:var(--ink);margin:0 0 12px">${phaseTips[phase.label] || ""}</p>
               ${[
-                ['Opposition',  'opposition',  mc.opposition  || '', 'text',  'e.g. Kituro RFC'],
-                ['Competition', 'competition', mc.competition || '', 'text',  'League / Cup'],
-                ['Date',        'kickoffDate', mc.kickoffDate || '', 'date',  ''],
-                ['Kickoff',     'kickoffTime', mc.kickoffTime || '', 'time',  ''],
-                ['Arrival',     'arrivalTime', mc.arrivalTime || '', 'time',  ''],
-                ['Venue',       'venue',       mc.venue       || '', 'text',  'Ground name'],
-                ['Kit',         'kit',         mc.kit         || '', 'text',  'Colours'],
-                ['Referee',     'referee',     mc.referee     || '', 'text',  'Name (optional)'],
-                ['Weather',     'weather',     mc.weather     || '', 'text',  'e.g. Sunny 18°C'],
-              ].map(([label, field, val, type, ph]) => `
-                <div class="mc-detail-row">
-                  <span class="mc-detail-label">${label}</span>
-                  <input type="${type}" value="${esc(val)}" placeholder="${ph}"
-                    style="font-size:13px;padding:6px 9px"
-                    onchange="saveMatchCentre('${field}',this.value);render()">
-                </div>`).join("")}
+                ["Mon–Tue", "Prepare", "Check availability, flag injuries, begin selection"],
+                ["Wed–Thu", "Refine",  "Refine squad, review medicals, draft starting 15"],
+                ["Fri",     "Confirm", "Confirm team sheet, publish squad, confirm logistics"],
+                ["Sat",     "Live",    "Matchday — manage in-game, update sub plan"],
+              ].map(([day, lbl, tip]) => `
+                <div style="display:grid;grid-template-columns:55px auto 1fr;gap:8px;align-items:center;font-size:12px;padding:5px 0;border-bottom:1px solid var(--line)">
+                  <span style="font-weight:700;color:var(--muted)">${day}</span>
+                  <span class="mc-phase-badge ${lbl === phase.label ? phase.color : 'mc-phase-post'}" style="font-size:10px;padding:2px 8px">${lbl}</span>
+                  <span style="color:var(--muted)">${tip}</span>
+                </div>`).join('')}
             </div>
 
             <!-- Availability by session -->
@@ -6025,17 +6022,11 @@
                     ${pending > 0 ? `<span style="font-size:12px;color:var(--amber);font-weight:700">${pending} ?</span>` : ''}
                   </div>
                 </div>`).join('') : `<p class="muted">No sessions scheduled — add sessions in the Availability Centre.</p>`}
-              ${pendingCount > 0 ? `
-                <div style="margin-top:12px">
-                  <button class="btn primary" style="font-size:12px;width:100%" onclick="chaseAllNonResponders()">
-                    Remind ${pendingCount} non-responder${pendingCount !== 1 ? 's' : ''}
-                  </button>
-                </div>` : ''}
             </div>
 
           </div>
 
-          <!-- RIGHT column -->
+          <!-- RIGHT: Medical + Match details + Notes -->
           <div style="display:grid;gap:14px">
 
             <!-- Medical alerts -->
@@ -6047,7 +6038,7 @@
               ${medAlerts.length ? medAlerts.map(p => {
                 const mn = (state.medicalNotes || {})[p.id] || {};
                 return `<div style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)">
-                  <span style="font-size:18px;flex-shrink:0">${p.game === 'injured' ? '🔴' : '🟡'}</span>
+                  <span style="font-size:16px;flex-shrink:0">${p.game === 'injured' ? '🔴' : '🟡'}</span>
                   <div style="min-width:0">
                     <strong style="font-size:13px">${esc(p.name)}</strong>
                     <span class="status ${p.game}" style="margin-left:6px;font-size:11px">${statusLabel(p.game)}</span>
@@ -6055,26 +6046,29 @@
                     ${mn.returnTarget ? `<div style="font-size:11px;color:var(--blue);margin-top:2px">Return: ${esc(mn.returnTarget)}</div>` : ''}
                   </div>
                 </div>`;
-              }).join('') : `<div style="padding:14px 0;text-align:center"><span style="font-size:20px">✅</span><p class="muted" style="margin:4px 0 0">All players cleared — no medical alerts.</p></div>`}
+              }).join('') : `<p class="muted" style="padding:6px 0">All players cleared — no medical alerts.</p>`}
             </div>
 
-            <!-- Phase planning guide -->
-            <div class="card" style="border-left:3px solid var(--green)">
-              <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
-                <span class="mc-phase-badge ${phase.color}">${phase.label} phase</span>
-              </div>
-              <p style="font-size:13px;margin:0 0 12px">${phaseTips[phase.label] || ""}</p>
+            <!-- Match details (editable) -->
+            <div class="card">
+              <h2 style="margin-bottom:12px">Match details</h2>
               ${[
-                ["Mon–Tue", "Prepare", "Check availability, flag injuries, begin selection"],
-                ["Wed–Thu", "Refine",  "Refine squad, review medicals, draft starting 15"],
-                ["Fri",     "Confirm", "Confirm team sheet, publish squad, confirm logistics"],
-                ["Sat",     "Live",    "Matchday — manage in-game, update sub plan"],
-              ].map(([day, lbl, tip]) => `
-                <div style="display:grid;grid-template-columns:55px auto 1fr;gap:8px;align-items:center;font-size:12px;padding:5px 0;border-bottom:1px solid var(--line)">
-                  <span style="font-weight:700;color:var(--muted)">${day}</span>
-                  <span class="mc-phase-badge ${lbl === phase.label ? phase.color : 'mc-phase-post'}" style="font-size:10px;padding:2px 8px">${lbl}</span>
-                  <span style="color:var(--muted)">${tip}</span>
-                </div>`).join('')}
+                ['Opposition',  'opposition',  mc.opposition  || '', 'text', 'e.g. Kituro RFC'],
+                ['Competition', 'competition', mc.competition || '', 'text', 'League / Cup'],
+                ['Date',        'kickoffDate', mc.kickoffDate || '', 'date', ''],
+                ['Kickoff',     'kickoffTime', mc.kickoffTime || '', 'time', ''],
+                ['Arrival',     'arrivalTime', mc.arrivalTime || '', 'time', ''],
+                ['Venue',       'venue',       mc.venue       || '', 'text', 'Ground name'],
+                ['Kit',         'kit',         mc.kit         || '', 'text', 'Colours'],
+                ['Referee',     'referee',     mc.referee     || '', 'text', 'Name (optional)'],
+                ['Weather',     'weather',     mc.weather     || '', 'text', 'e.g. Sunny 18°C'],
+              ].map(([label, field, val, type, ph]) => `
+                <div class="mc-detail-row">
+                  <span class="mc-detail-label">${label}</span>
+                  <input type="${type}" value="${esc(val)}" placeholder="${ph}"
+                    style="font-size:13px;padding:6px 9px"
+                    onchange="saveMatchCentre('${field}',this.value);render()">
+                </div>`).join("")}
             </div>
 
             <!-- Coach notes -->
@@ -6088,7 +6082,7 @@
             <!-- Team announcement -->
             <div class="card">
               <h2 style="margin-bottom:6px">Team announcement</h2>
-              <p class="muted" style="font-size:12px;margin-bottom:10px">Sent to players when you publish the squad.</p>
+              <p class="muted" style="font-size:12px;margin-bottom:10px">Sent to players when squad is published.</p>
               <textarea class="mc-notes-area" style="width:100%;box-sizing:border-box"
                 placeholder="Write your team announcement message…"
                 onchange="saveMatchCentre('announcement',this.value)">${esc(mc.announcement || '')}</textarea>
@@ -6098,92 +6092,93 @@
         </div>
 
         <!-- ── TEAM SELECTION ────────────────────────────────────────────────── -->
-        <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:14px;align-items:start">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div>
+            <h2 style="margin:0;font-size:16px">Team Selection</h2>
+            <p class="muted" style="font-size:12px;margin:2px 0 0">${slotNames.filter(n=>n).length}/15 starting · ${bench.filter(n=>n).length}/8 bench · ${squadSelected}/23 total</p>
+          </div>
+          <div style="display:flex;gap:7px">
+            <button class="btn primary" type="button" onclick="exportFormation()">📷 Export graphic</button>
+            <button class="btn" type="button" onclick="sendPushToPlayers('Matchday squad selected','Your matchday squad has been selected. Open the app to view the team sheet.')">🔔 Notify squad</button>
+          </div>
+        </div>
 
-          <!-- LEFT: Big pitch + bench + sub plan -->
-          <div style="display:grid;gap:14px">
+        <div class="mc-team-grid">
+
+          <!-- Col 1: Compact pitch -->
+          <div class="card" style="padding:12px">
+            <div id="matchday-pitch" class="pitch-big pitch-compact">
+              <div class="pitch-inner"></div>
+              <div class="pitch-line" style="top:18%"></div>
+              <div class="pitch-line" style="top:40%"></div>
+              <div class="pitch-line" style="top:50%"></div>
+              <div class="pitch-line" style="top:60%"></div>
+              <div class="pitch-line" style="top:82%"></div>
+              ${rugbySlots.map(([label, x, y], i) => {
+                const player        = selected[i];
+                const hasSaved      = Object.prototype.hasOwnProperty.call(fnames, label);
+                const slotName      = hasSaved ? fnames[label] : (player ? player.name : "");
+                const inputVal      = slotName.replace(/"/g,"&quot;");
+                const slotPlayer    = findPlayerByName(slotName);
+                const photoPlayerId = slotName ? (fphoto[label] || slotPlayer?.id || player?.id || "") : "";
+                const photoPlayer   = photoPlayerId ? state.players.find(p=>p.id===photoPlayerId) : null;
+                const photoSrc      = slotName ? (photoPlayer?.photo || slotPlayer?.photo || player?.photo || "") : "";
+                return `<div class="slot-big" data-slot="${label}" style="left:${x}%;top:${y}%"
+                  ondragover="handleSlotDragover(event);this.classList.add('drag-over')"
+                  ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()"
+                  ondrop="this.classList.remove('drag-over');handleSlotDrop('${label}',event)">
+                  <div class="slot-photo">
+                    ${photoSrc ? `<img src="${photoSrc}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : `<span style="font-size:16px">🏉</span>`}
+                    <span class="slot-num">${label}</span>
+                  </div>
+                  <input class="slot-name-input" value="${inputVal}" placeholder="Type player"
+                    list="squad-names"
+                    oninput="setFormationName('${label}',this.value)">
+                  <button class="btn ghost" type="button" onclick="clearFormationSlot('${label}')"
+                    style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
+                </div>`;
+              }).join("")}
+            </div>
+            <div class="export-bar" style="margin-top:10px;padding-top:10px">
+              <button class="btn primary" type="button" onclick="exportFormation()">📷 Download for Instagram</button>
+              <button class="btn" type="button" onclick="window.print()">🖨 Print</button>
+            </div>
+          </div>
+
+          <!-- Col 2: Bench + Sub plan -->
+          <div style="display:grid;gap:14px;align-content:start">
+
+            <!-- Bench 16–23 -->
             <div class="card">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <div>
-                  <h2 style="margin:0">Team selection</h2>
-                  <p class="muted" style="margin-top:3px">Drag players from the pool onto pitch or bench</p>
-                </div>
-                <button class="btn primary" type="button" onclick="exportFormation()">📷 Export graphic</button>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <strong style="font-size:14px">Bench (16–23)</strong>
+                <span class="muted" style="font-size:12px">Type or drag</span>
               </div>
-
-              <!-- Big pitch -->
-              <div id="matchday-pitch" class="pitch-big">
-                <div class="pitch-inner"></div>
-                <div class="pitch-line" style="top:18%"></div>
-                <div class="pitch-line" style="top:40%"></div>
-                <div class="pitch-line" style="top:50%"></div>
-                <div class="pitch-line" style="top:60%"></div>
-                <div class="pitch-line" style="top:82%"></div>
-                ${rugbySlots.map(([label, x, y], i) => {
-                  const player        = selected[i];
-                  const hasSaved      = Object.prototype.hasOwnProperty.call(fnames, label);
-                  const slotName      = hasSaved ? fnames[label] : (player ? player.name : "");
-                  const inputVal      = slotName.replace(/"/g,"&quot;");
-                  const slotPlayer    = findPlayerByName(slotName);
-                  const photoPlayerId = slotName ? (fphoto[label] || slotPlayer?.id || player?.id || "") : "";
-                  const photoPlayer   = photoPlayerId ? state.players.find(p=>p.id===photoPlayerId) : null;
-                  const photoSrc      = slotName ? (photoPlayer?.photo || slotPlayer?.photo || player?.photo || "") : "";
-                  return `<div class="slot-big" data-slot="${label}" style="left:${x}%;top:${y}%"
-                    ondragover="handleSlotDragover(event);this.classList.add('drag-over')"
-                    ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()"
-                    ondrop="this.classList.remove('drag-over');handleSlotDrop('${label}',event)">
-                    <div class="slot-photo">
-                      ${photoSrc ? `<img src="${photoSrc}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : `<span style="font-size:16px">🏉</span>`}
-                      <span class="slot-num">${label}</span>
-                    </div>
-                    <input class="slot-name-input" value="${inputVal}" placeholder="Type player"
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+                ${bench.slice(0,8).map((name,i)=>`
+                  <div class="bench-slot"
+                    ondragover="handleMatchdayDragOver(event)"
+                    ondragleave="stopMatchdayAutoScroll()"
+                    ondrop="handleBenchDrop(${i},event)">
+                    <small>${i+16}</small>
+                    <input value="${(name||"").replace(/"/g,"&quot;")}" placeholder="Player"
                       list="squad-names"
-                      oninput="setFormationName('${label}',this.value)">
-                    <button class="btn ghost" type="button" onclick="clearFormationSlot('${label}')"
-                      style="position:absolute;right:-6px;bottom:-6px;min-height:22px;padding:0 7px;font-size:10px;background:rgba(9,13,20,0.92)">Clear</button>
-                  </div>`;
-                }).join("")}
-              </div>
-
-              <!-- Bench 16–23 -->
-              <div style="margin-top:10px">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-                  <strong style="font-size:13px">Bench (16–23)</strong>
-                  <span class="muted" style="font-size:12px">Type or drag player names</span>
-                </div>
-                <div class="bench-strip" style="background:rgba(26,46,37,0.06);border-radius:10px;padding:10px">
-                  ${bench.slice(0,8).map((name,i)=>`
-                    <div class="bench-slot"
-                      ondragover="handleMatchdayDragOver(event)"
-                      ondragleave="stopMatchdayAutoScroll()"
-                      ondrop="handleBenchDrop(${i},event)">
-                      <small>${i+16}</small>
-                      <input value="${(name||"").replace(/"/g,"&quot;")}" placeholder="Type player"
-                        list="squad-names"
-                        oninput="setBenchPlayer(${i},this.value)"
-                        style="background:rgba(9,13,20,0.88);border:1px solid rgba(255,255,255,0.2);border-radius:5px;color:#e2e8f0;font-size:11px;font-weight:600;width:100%;text-align:center;padding:3px 2px;margin-top:3px">
-                      <button class="btn ghost" type="button" onclick="clearBenchSlot(${i})"
-                        style="min-height:20px;padding:0 6px;font-size:10px;margin-top:4px;color:#cbd5e1">Clear</button>
-                    </div>`).join("")}
-                </div>
-              </div>
-
-              <!-- Export bar -->
-              <div class="export-bar" style="margin-top:12px">
-                <button class="btn primary" type="button" onclick="exportFormation()">📷 Download for Instagram</button>
-                <button class="btn" type="button" onclick="sendPushToPlayers('Matchday squad selected','Your matchday squad is available in Coach\\'s Eye. Open the app to view selection.')">🔔 Notify squad</button>
-                <button class="btn" type="button" onclick="window.print()">🖨 Print sheet</button>
+                      oninput="setBenchPlayer(${i},this.value)"
+                      style="background:rgba(9,13,20,0.88);border:1px solid rgba(255,255,255,0.2);border-radius:5px;color:#e2e8f0;font-size:11px;font-weight:600;width:100%;text-align:center;padding:3px 2px;margin-top:3px">
+                    <button class="btn ghost" type="button" onclick="clearBenchSlot(${i})"
+                      style="min-height:20px;padding:0 6px;font-size:10px;margin-top:4px;color:#cbd5e1">✕</button>
+                  </div>`).join("")}
               </div>
             </div>
 
             <!-- Substitute plan -->
             <div class="card">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <h2 style="margin:0">Substitute plan</h2>
-                <button class="btn primary" type="button" onclick="document.getElementById('addSubForm').classList.toggle('hidden')">+ Add sub</button>
+                <button class="btn primary" type="button" onclick="document.getElementById('addSubForm').classList.toggle('hidden')">+ Add</button>
               </div>
               <table>
-                <thead><tr><th>Minute</th><th>On</th><th>Off</th><th>Reason</th><th></th></tr></thead>
+                <thead><tr><th>Min</th><th>On</th><th>Off</th><th>Reason</th><th></th></tr></thead>
                 <tbody>
                   ${subs.map(s=>`<tr>
                     <td><span class="sub-tag">${s.minute}'</span></td>
@@ -6191,46 +6186,30 @@
                     <td style="color:var(--muted)">${s.off}</td>
                     <td style="color:var(--muted);font-size:12px">${s.reason}</td>
                     <td><button class="btn ghost" type="button" style="padding:0 8px;color:var(--muted)" onclick="removeSubPlan('${s.id}')">✕</button></td>
-                  </tr>`).join("") || `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:14px">No substitute plan yet.</td></tr>`}
+                  </tr>`).join("") || `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:12px">No subs planned.</td></tr>`}
                 </tbody>
               </table>
-              <div id="addSubForm" class="hidden" style="display:grid;grid-template-columns:60px 1fr 1fr 1fr auto;gap:8px;margin-top:14px;align-items:end">
-                <label>Min<input id="subMin" type="number" min="1" max="80" value="50"></label>
-                <label>On<input id="subOn" placeholder="Player coming on"></label>
-                <label>Off<input id="subOff" placeholder="Player going off"></label>
-                <label>Reason<input id="subReason" placeholder="Rotation / tactical"></label>
-                <button class="btn primary" type="button" style="margin-top:auto" onclick="addSubPlan()">Add</button>
+              <div id="addSubForm" class="hidden" style="display:grid;grid-template-columns:55px 1fr 1fr 1fr auto;gap:6px;margin-top:12px;align-items:end">
+                <label style="font-size:12px">Min<input id="subMin" type="number" min="1" max="80" value="50" style="font-size:12px"></label>
+                <label style="font-size:12px">On<input id="subOn" placeholder="Coming on" style="font-size:12px"></label>
+                <label style="font-size:12px">Off<input id="subOff" placeholder="Going off" style="font-size:12px"></label>
+                <label style="font-size:12px">Reason<input id="subReason" placeholder="Rotation" style="font-size:12px"></label>
+                <button class="btn primary" type="button" style="margin-top:auto;font-size:12px" onclick="addSubPlan()">Add</button>
               </div>
             </div>
           </div>
 
-          <!-- RIGHT: Squad count + draggable player pool -->
+          <!-- Col 3: Available pool -->
           <div style="display:grid;gap:14px;align-content:start">
-
-            <!-- Squad count summary -->
-            <div class="card" style="padding:14px 16px">
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <div>
-                  <strong style="font-size:14px">Squad selection</strong>
-                  <p class="muted" style="font-size:12px;margin:3px 0 0">${slotNames.filter(n=>n).length}/15 starting · ${bench.filter(n=>n).length}/8 bench</p>
-                </div>
-                <div style="text-align:right">
-                  <strong style="font-size:22px;color:var(--green)">${slotNames.filter(n=>n).length + bench.filter(n=>n).length}</strong>
-                  <p class="muted" style="font-size:11px;margin:1px 0 0">selected</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Draggable player pool -->
             <div class="card">
               <h2 style="margin-bottom:3px">Available players</h2>
-              <p class="muted" style="font-size:12px;margin-bottom:12px">Players disappear from this list once placed on the pitch or bench.</p>
-              <div style="display:grid;gap:6px;max-height:70vh;overflow-y:auto">
+              <p class="muted" style="font-size:12px;margin-bottom:10px">Drag onto pitch or bench.</p>
+              <div style="display:grid;gap:5px;max-height:600px;overflow-y:auto">
                 ${available.map(p => {
                   const initials = p.name.split(" ").map(w=>w[0]).slice(0,2).join("");
                   const photoEl  = p.photo
-                    ? `<img src="${p.photo}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0">`
-                    : `<div style="width:30px;height:30px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;flex-shrink:0">${initials}</div>`;
+                    ? `<img src="${p.photo}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0">`
+                    : `<div style="width:28px;height:28px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;flex-shrink:0">${initials}</div>`;
                   return `<div class="squad-player-drag"
                     draggable="true"
                     data-player-name="${esc(p.name)}"
@@ -6239,12 +6218,12 @@
                     ondragend="stopMatchdayAutoScroll()">
                     ${photoEl}
                     <div style="min-width:0">
-                      <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
+                      <div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
                       <div style="font-size:11px;color:var(--muted)">${p.position}</div>
                     </div>
                     <span style="margin-left:auto;font-size:10px;font-weight:800;color:var(--green);flex-shrink:0">DRAG</span>
                   </div>`;
-                }).join("") || `<p class="muted" style="text-align:center;padding:14px">All available players are already on the pitch or bench.</p>`}
+                }).join("") || `<p class="muted" style="text-align:center;padding:12px;font-size:12px">All placed on pitch or bench.</p>`}
               </div>
             </div>
           </div>

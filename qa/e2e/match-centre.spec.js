@@ -92,20 +92,17 @@ test('Match Centre — coach smoke test', async ({ page }) => {
     await expect(page.locator('#coach-matchday')).toBeVisible({ timeout: 8_000 });
   });
 
-  // ── 3. Hero renders with opponent ───────────────────────────────────────────
-  await step(page, 'hero-renders', async () => {
-    // The hero contains "vs <opponent>" — default is "Kituro RFC"
-    const hero = page.locator('.mc-hero').first();
-    await expect(hero).toBeVisible({ timeout: 6_000 });
-    await expect(hero.locator('h1')).toContainText('vs ', { timeout: 5_000 });
+  // ── 3. Fixture header renders with opponent ─────────────────────────────────
+  await step(page, 'fixture-header-renders', async () => {
+    const header = page.locator('.mc-header').first();
+    await expect(header).toBeVisible({ timeout: 6_000 });
+    await expect(header.locator('.mc-header-opponent')).toContainText('vs ', { timeout: 5_000 });
   });
 
-  // ── 4. KPI grid visible ─────────────────────────────────────────────────────
-  await step(page, 'kpi-grid-renders', async () => {
-    const kpiGrid = page.locator('.mc-kpi-grid').first();
-    await expect(kpiGrid).toBeVisible({ timeout: 5_000 });
-    // Four KPI cells
-    await expect(kpiGrid.locator('.mc-kpi')).toHaveCount(4);
+  // ── 4. Stat pills visible in header ─────────────────────────────────────────
+  await step(page, 'stat-pills-render', async () => {
+    // Header stats strip contains at least one stat pill
+    await expect(page.locator('.mc-stat-pill').first()).toBeVisible({ timeout: 5_000 });
   });
 
   // ── 5. Match details form present ───────────────────────────────────────────
@@ -142,8 +139,8 @@ test('Match Centre — coach smoke test', async ({ page }) => {
     await input.fill('RFC Test Opponent');
     await input.dispatchEvent('change');
     await page.waitForTimeout(500);
-    // Hero should update with new name after render()
-    await expect(page.locator('.mc-hero h1')).toContainText('RFC Test Opponent', { timeout: 5_000 });
+    // Header opponent should update after render()
+    await expect(page.locator('.mc-header-opponent')).toContainText('RFC Test Opponent', { timeout: 5_000 });
   });
 
   writeResult('passed');
