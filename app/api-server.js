@@ -244,6 +244,28 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    // ── Intelligence Timeline ─────────────────────────────────────────────────
+    // Feature flag: aiTimeline (checked client-side; server always serves data)
+    if (method === 'GET' && path === '/api/intelligence/timeline') {
+      const { getTimeline, summarise, parseFilters } = await import('../intelligence-timeline/index.js')
+      const query   = Object.fromEntries(new URL('http://x?' + (req.url.split('?')[1] ?? '')).searchParams)
+      const filters = parseFilters(query)
+      const result  = getTimeline(filters)
+      const stats   = summarise(filters)
+      json(res, { ...result, stats })
+      return
+    }
+
+    if (method === 'POST' && path.startsWith('/api/intelligence/timeline/') && path.endsWith('/status')) {
+      const id   = path.split('/')[4]
+      const body = await readBody(req)
+      const { updateStatus } = await import('../intelligence-timeline/index.js')
+      const updated = updateStatus(id, body.status, body.notes ?? null)
+      if (!updated) { err(res, 'Timeline event not found', 404); return }
+      json(res, { ok: true, event: updated })
+      return
+    }
+
     // ── Action history ────────────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/history') {
       const { getHistory, historyStats } = await import('../actions/action-history.js')
