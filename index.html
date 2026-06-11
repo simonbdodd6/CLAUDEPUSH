@@ -401,6 +401,11 @@
       animation: fadeUp 0.24s ease both;
     }
 
+    /* Respect users who turn off animations at the OS level */
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    }
+
     /* ── KEYFRAMES ── */
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(9px); }
@@ -2183,10 +2188,14 @@
     function showToast(msg) {
       const el = document.getElementById("toast");
       if (!el) return;
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
       el.textContent = msg;
       el.classList.add("visible");
       clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => el.classList.remove("visible"), 2200);
+      // Long warnings need longer on screen — scale with message length.
+      const duration = Math.min(6000, Math.max(2200, String(msg).length * 45));
+      toastTimer = setTimeout(() => el.classList.remove("visible"), duration);
     }
 
     // ─── PERSISTENCE ─────────────────────────────────────────────────────────
@@ -4523,7 +4532,7 @@
       document.getElementById("authPanel").innerHTML = authTab === 'login' ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <strong style="font-size:13px">Log in</strong>
-          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" aria-label="Close" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
         <div style="display:grid;gap:7px">
           <input id="identityLoginEmail" type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Email" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
@@ -4538,7 +4547,7 @@
       ` : authTab === 'join' ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <strong style="font-size:13px">Join team</strong>
-          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" aria-label="Close" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
         <div style="display:grid;gap:7px">
           <input id="joinCode" placeholder="Team code" value="${esc(state.teamCode || '')}" style="font-size:12px;padding:7px 9px">
@@ -4554,7 +4563,7 @@
       ` : authTab === 'switch' ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <strong style="font-size:13px">Switch account</strong>
-          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" aria-label="Close" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
         <p class="muted" style="font-size:11px;margin:0 0 8px">Canonical accounts only. Duplicate local identities are hidden.</p>
         ${switchAccounts.map(u =>
@@ -4571,7 +4580,7 @@
       ` : authTab === 'dev' ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <strong style="font-size:13px">Dev login</strong>
-          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" aria-label="Close" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
         <p class="muted" style="font-size:11px;margin:0 0 8px">DEV only — full server session + push metadata refresh.</p>
         <button class="btn" type="button" onclick="devLogin('coach-demo')"
@@ -5077,14 +5086,23 @@
     // ─── HOME / DAILY BRIEFING ───────────────────────────────────────────────
 
     function getTonightSessionId() {
-      const day = new Date().getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
-      if (day === 2) return 'tue';
-      if (day === 4) return 'thu';
+      // The coach's configured training day wins: session.date is free text
+      // like "Tuesday 19:00" (set in the wizard or Club Admin), so a club
+      // training Mon/Wed gets the right "tonight" cards on THEIR nights —
+      // not on the historic hardcoded Tue/Thu.
+      const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()];
+      const byConfiguredDay = (state.schedule || []).find(s =>
+        s.type === 'Training' && new RegExp(`\\b${dayName}`, 'i').test(String(s.date || '')));
+      if (byConfiguredDay) return byConfiguredDay.id;
       const mc = state.matchCentre || {};
       if (mc.kickoffDate) {
         const today = new Date().toISOString().slice(0, 10);
         if (mc.kickoffDate === today) return 'game';
       }
+      // Legacy fallback for clubs that never set session days
+      const day = new Date().getDay();
+      if (day === 2 && (state.schedule || []).some(s => s.id === 'tue')) return 'tue';
+      if (day === 4 && (state.schedule || []).some(s => s.id === 'thu')) return 'thu';
       return null;
     }
 
