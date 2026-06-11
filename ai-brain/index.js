@@ -25,6 +25,7 @@ export { BRAIN_SCHEMA_VERSION } from './schema.js'
 // Lazy imports keep boot time O(1) and allow individual engines to fail
 // without taking down the Brain. Each loader is called at most once per process.
 
+let _ca  = null    // context-assembly (M3)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -32,6 +33,11 @@ let _tl  = null
 let _aa  = null    // autonomous-assistant
 let _oe  = null    // observation-engine
 let _ci  = null    // qa/club-intelligence
+
+async function loadCA() {
+  if (!_ca) _ca = await import('./context-assembly.js')
+  return _ca
+}
 
 async function loadRec() {
   if (!_rec) _rec = await import('../recommendation-engine/index.js')
@@ -99,21 +105,27 @@ export async function request(context = {}) {
   const modules = []
 
   try {
+    // M3: Assemble full context bundle before invoking any reasoning.
+    const { assembleContext } = await loadCA()
+    modules.push('context-assembly')
+    const bundle = await assembleContext(context ?? {})
+
     const { generate, buildContext } = await loadRec()
     modules.push('recommendation-engine')
 
+    // Pass platform fields from the bundle into the recommendation engine context.
     const ctx = buildContext({
-      fixture:        context.fixture        ?? null,
-      digitalTwin:    context.digitalTwin    ?? null,
-      attendanceData: context.attendanceData ?? null,
-      clubScoreData:  context.clubScoreData  ?? null,
-      seasonData:     context.seasonData     ?? null,
-      weatherData:    context.weatherData    ?? null,
-      fixtureList:    context.fixtureList    ?? null,
-      resultHistory:  context.resultHistory  ?? null,
+      fixture:        bundle.platform.fixture        ?? null,
+      digitalTwin:    bundle.platform.digitalTwin    ?? null,
+      attendanceData: bundle.platform.attendanceData ?? null,
+      clubScoreData:  bundle.platform.clubScoreData  ?? null,
+      seasonData:     bundle.platform.seasonData     ?? null,
+      weatherData:    bundle.platform.weatherData    ?? null,
+      fixtureList:    bundle.platform.fixtureList    ?? null,
+      resultHistory:  bundle.platform.resultHistory  ?? null,
     })
 
-    const maxResults = typeof context.maxResults === 'number' ? context.maxResults : 10
+    const maxResults = typeof context?.maxResults === 'number' ? context.maxResults : 10
     const { recommendations = [], meta = {} } = generate(ctx, { maxResults, useMockFallback: true })
 
     return toBrainResponse(recommendations, {
@@ -439,6 +451,21 @@ export async function clubHealth() {
   }
 }
 
+// ── Context assembly (M3) — exposed for integration testing ──────────────────
+
+/**
+ * Assemble a ContextBundle from all registered providers.
+ * Called internally by AI.request() before reasoning. Exposed on the AI
+ * namespace so tests can verify bundle shape without going through request().
+ *
+ * @param {object} trigger
+ * @returns {Promise<ContextBundle>}
+ */
+export async function assembleContext(trigger = {}) {
+  const { assembleContext: assemble } = await loadCA()
+  return assemble(trigger ?? {})
+}
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -451,4 +478,6 @@ export const AI = {
   timeline, updateTimeline, appendTimeline, parseTimelineFilters,
   // M2 — Status and fallback health
   status, clubHealth,
+  // M3 — Context assembly
+  assembleContext,
 }
