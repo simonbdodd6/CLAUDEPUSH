@@ -819,3 +819,47 @@ test('tenant isolation scopes invite management to the coach session team', asyn
   });
   assert.equal(ownApprove.statusCode, 200);
 });
+
+// ─── Production incident regression (2026-06-11) ─────────────────────────────
+// "Invalid email or password" reported for the coach account. Root cause was
+// credential confusion (near-miss email), NOT a broken store. These tests pin
+// the guarantees that made diagnosis possible:
+//  1. The env-credential fallback logs the coach in even when the stored
+//     Redis hash is stale or corrupted (credential drift protection)
+//  2. A near-miss email fails with exactly 'Invalid email or password'
+//  3. A successful fallback login REPAIRS the stored hash so the next login
+//     passes the normal verification path
+
+test('coach env-credential fallback survives a stale stored hash and repairs it', async () => {
+  store.clear();
+  // Seed coach-demo with a CORRUPTED password hash (credential drift)
+  store.set('app:identity:users', JSON.stringify([{
+    id: 'coach-demo', email: 'simonbdodd@gmail.com',
+    firstName: 'Simon', lastName: 'Coach', displayName: 'Simon Coach',
+    authProvider: 'legacy-password', passwordSet: true,
+    passwordAlgo: 'scrypt', passwordSalt: 'deadbeef', passwordHash: 'not-a-real-hash',
+  }]));
+  store.set('app:identity:team_members', JSON.stringify([{
+    id: 'tm_coach-demo', teamId: 'boitsfort-rfc', userId: 'coach-demo', role: 'coach', status: 'active',
+  }]));
+
+  // Env password still logs in despite the corrupted stored hash
+  const login = await loginUser({ email: 'simonbdodd@gmail.com', password: '1111' });
+  assert.equal(login.user.id, 'coach-demo');
+  assert.equal(login.user.role, 'coach');
+
+  // The fallback repaired the stored hash — normal verification now passes
+  const second = await loginUser({ email: 'simonbdodd@gmail.com', password: '1111' });
+  assert.equal(second.user.id, 'coach-demo');
+  const users = JSON.parse(store.get('app:identity:users'));
+  assert.notEqual(users.find(u => u.id === 'coach-demo').passwordHash, 'not-a-real-hash');
+});
+
+test('near-miss coach email fails with exactly the reported error', async () => {
+  store.clear();
+  await assert.rejects(
+    // simonbdodd1@ (git author email) vs simonbdodd@ (account email)
+    loginUser({ email: 'simonbdodd1@gmail.com', password: '1111' }),
+    /Invalid email or password/,
+  );
+});
