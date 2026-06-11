@@ -6,13 +6,18 @@ import {
   destroySession,
   createJoinRequest,
   devLoginUser,
+  isHeadCoach,
   listIdentityState,
+  loadTeamMembers,
   loginUser,
   rejectJoinRequest,
+  removeTeamMember,
   resetPasswordWithToken,
   resolveSessionFromRequest,
+  restoreTeamMember,
   sessionCookie,
   sessionTokenFromRequest,
+  setStaffLevel,
 } from './_identityStore.js';
 import { appBaseUrl, passwordResetEmail, sendTransactionalEmail } from './_email.js';
 import { setCors } from './_http.js';
@@ -152,6 +157,40 @@ export default async function handler(req, res) {
         const session = await requireTenantRole(req, ['coach', 'admin']);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
         const result = await rejectJoinRequest(req.body?.memberId, session.user.id, session.teamId);
+        return res.status(200).json({ ok: true, ...result });
+      }
+      if (action === 'remove_member' || action === 'archive_member') {
+        const session = await requireTenantRole(req, ['coach', 'admin']);
+        if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
+        // Removing STAFF is reserved for the head coach; any coach can manage players.
+        const members = await loadTeamMembers();
+        const target = members.find(m => m.id === req.body?.memberId);
+        if (target && ['coach', 'admin'].includes(target.role) && !isHeadCoach(session)) {
+          return res.status(403).json({ ok: false, error: 'Only the head coach can remove staff' });
+        }
+        const result = await removeTeamMember(req.body?.memberId, session.user.id, session.teamId, {
+          archive: action === 'archive_member',
+        });
+        await auditLog(action, { memberId: req.body?.memberId, by: session.user.id, ip: requestIp(req) });
+        return res.status(200).json({ ok: true, ...result });
+      }
+      if (action === 'restore_member') {
+        const session = await requireTenantRole(req, ['coach', 'admin']);
+        if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
+        const result = await restoreTeamMember(req.body?.memberId, session.user.id, session.teamId);
+        return res.status(200).json({ ok: true, ...result });
+      }
+      if (action === 'set_staff_level') {
+        const session = await requireTenantRole(req, ['coach', 'admin']);
+        if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
+        if (!isHeadCoach(session)) {
+          return res.status(403).json({ ok: false, error: 'Only the head coach can change staff permissions' });
+        }
+        const result = await setStaffLevel(req.body?.memberId, req.body?.staffLevel, session.user.id, session.teamId);
+        await auditLog('staff_level_changed', {
+          memberId: req.body?.memberId, staffLevel: req.body?.staffLevel,
+          by: session.user.id, ip: requestIp(req),
+        });
         return res.status(200).json({ ok: true, ...result });
       }
       if (action === 'dev_login') {

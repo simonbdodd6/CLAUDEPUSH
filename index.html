@@ -1899,6 +1899,7 @@
       <section id="coach-matchday"    class="section"></section>
       <section id="coach-medical"     class="section"></section>
       <section id="coach-players"     class="section"></section>
+      <section id="coach-admin"       class="section"></section>
 
       <section id="player-availability" class="section"></section>
       <section id="player-week"         class="section"></section>
@@ -1934,7 +1935,8 @@
       ["training",  "Training"],
       ["matchday",  "Match Centre"],
       ["medical",   "Medical"],
-      ["players",   "Members"]
+      ["players",   "Members"],
+      ["admin",     "Club Admin"]
     ];
 
     const playerSections = [
@@ -7565,6 +7567,336 @@
       showToast("Blocked date saved ✓");
     }
 
+    // ─── CLUB ADMINISTRATION ─────────────────────────────────────────────────
+    // Coach-only admin screen: club/team/season details, training schedule,
+    // fixture list, player management (active / pending invites / archived)
+    // and staff management with permission levels. Every action goes through
+    // the team-scoped APIs — nothing here can touch another club.
+
+    const STAFF_LEVEL_LABELS = { head: 'Head Coach', assistant: 'Assistant Coach', manager: 'Team Manager' };
+
+    let _adminData = { invites: [], members: [], users: [], profiles: [], loaded: false, loading: false };
+    let _adminSearch = '';
+
+    async function loadAdminData(force = false) {
+      if (_adminData.loading || (_adminData.loaded && !force)) return;
+      _adminData.loading = true;
+      try {
+        const [identityRes, inviteRes, clubRes] = await Promise.all([
+          fetch('/api/identity'),
+          fetch('/api/invite'),
+          fetch('/api/publish?resource=club'),
+        ]);
+        if (identityRes.ok) {
+          const d = await identityRes.json();
+          _adminData.users    = d.users || [];
+          _adminData.members  = d.team_members || [];
+          _adminData.profiles = d.player_profiles || [];
+        }
+        if (inviteRes.ok) _adminData.invites = (await inviteRes.json()).invites || [];
+        if (clubRes.ok) {
+          const club = (await clubRes.json()).club;
+          if (club) {
+            applyClubConfigLocally(club);
+            if (Array.isArray(club.fixtures)) state.fixtures = club.fixtures;
+          }
+        }
+        _adminData.loaded = true;
+      } catch(e) { console.warn('[loadAdminData]', e); }
+      finally { _adminData.loading = false; renderClubAdmin(); }
+    }
+
+    function adminUserFor(member) {
+      return _adminData.users.find(u => u.id === member.userId) || {};
+    }
+
+    function renderClubAdmin() {
+      const el = document.getElementById('coach-admin');
+      if (!el) return;
+      if (!isCoach()) { el.innerHTML = ''; return; }
+      const active = state.activeView === 'coach' && state.activeCoachSection === 'admin';
+      if (active && !_adminData.loaded && !_adminData.loading) loadAdminData();
+
+      const members  = _adminData.members || [];
+      const invites  = _adminData.invites || [];
+      const q        = _adminSearch.trim().toLowerCase();
+
+      const activePlayers = members
+        .filter(m => m.role === 'player' && m.status === 'active')
+        .map(m => ({ member: m, user: adminUserFor(m) }))
+        .filter(({ user }) => !q ||
+          String(user.displayName || '').toLowerCase().includes(q) ||
+          String(user.email || '').toLowerCase().includes(q));
+      const archivedPlayers = members
+        .filter(m => m.role === 'player' && ['archived', 'removed'].includes(m.status))
+        .map(m => ({ member: m, user: adminUserFor(m) }));
+      const pendingInvites = invites.filter(i => i.status === 'pending');
+      const staff = members
+        .filter(m => ['coach', 'admin'].includes(m.role) && m.status === 'active')
+        .map(m => ({ member: m, user: adminUserFor(m) }));
+
+      const inputStyle = 'width:100%;min-height:38px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);padding:0 10px;font-size:13px;box-sizing:border-box';
+      const rowStyle = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap';
+      const smallBtn = 'min-height:30px;padding:0 10px;font-size:11px;font-weight:700';
+
+      const fixtures = state.fixtures || [];
+
+      el.innerHTML = `
+        <div style="display:grid;gap:16px;max-width:760px">
+
+          <!-- Club & season -->
+          <div class="card">
+            <h2 style="margin-bottom:4px">Club &amp; season</h2>
+            <p class="muted" style="font-size:12px;margin-bottom:14px">Shown to players in their app and in invite emails.</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+              <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Club name
+                <input value="${esc(state.clubName || '')}" style="${inputStyle}"
+                  onchange="state.clubName=this.value.trim();adminSaveClub()"></label>
+              <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Team name
+                <input value="${esc(state.teamName || '')}" style="${inputStyle}"
+                  onchange="state.teamName=this.value.trim();adminSaveClub()"></label>
+              <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Season
+                <input value="${esc(state.seasonName || '')}" style="${inputStyle}"
+                  onchange="state.seasonName=this.value.trim();adminSaveClub()"></label>
+            </div>
+          </div>
+
+          <!-- Training schedule -->
+          <div class="card">
+            <h2 style="margin-bottom:4px">Training schedule</h2>
+            <p class="muted" style="font-size:12px;margin-bottom:12px">Session titles and times players see in Availability and Calendar.</p>
+            ${(state.schedule || []).filter(s => s.type === 'Training').map(s => `
+              <div style="${rowStyle}">
+                <input value="${esc(s.title || '')}" style="${inputStyle};max-width:240px"
+                  onchange="adminEditSession('${s.id}','title',this.value)">
+                <input value="${esc(s.date || '')}" placeholder="e.g. Tuesday 19:00" style="${inputStyle};max-width:180px"
+                  onchange="adminEditSession('${s.id}','date',this.value)">
+              </div>`).join('')}
+          </div>
+
+          <!-- Fixtures -->
+          <div class="card">
+            <h2 style="margin-bottom:4px">Fixtures</h2>
+            <p class="muted" style="font-size:12px;margin-bottom:12px">Season fixture list — the next match also drives Match Centre.</p>
+            ${fixtures.length ? fixtures.map(f => `
+              <div style="${rowStyle}">
+                <div style="min-width:0">
+                  <strong style="font-size:13px">vs ${esc(f.opposition)}</strong>
+                  <div class="muted" style="font-size:11px">${esc([f.date, f.time, f.venue, f.homeAway ? (f.homeAway === 'home' ? 'Home' : 'Away') : ''].filter(Boolean).join(' · '))}</div>
+                </div>
+                <button class="btn" style="${smallBtn};color:#f87171;border-color:rgba(248,113,113,0.3)" type="button"
+                  onclick="adminRemoveFixture('${esc(f.id)}')">Remove</button>
+              </div>`).join('') : `<p class="muted" style="font-size:12px;padding:6px 0">No fixtures yet.</p>`}
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:12px">
+              <input id="adm-fx-opp" placeholder="Opposition" style="${inputStyle}">
+              <input id="adm-fx-date" type="date" style="${inputStyle}">
+              <input id="adm-fx-time" type="time" style="${inputStyle}">
+              <input id="adm-fx-venue" placeholder="Venue" style="${inputStyle}">
+              <button class="btn primary" type="button" style="min-height:38px;font-size:12px" onclick="adminAddFixture()">+ Add fixture</button>
+            </div>
+          </div>
+
+          <!-- Players -->
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+              <h2 style="margin:0">Players</h2>
+              <input id="adm-search" placeholder="Search players…" value="${esc(_adminSearch)}" style="${inputStyle};max-width:220px"
+                oninput="_adminSearch=this.value;renderClubAdmin();const i=document.getElementById('adm-search');i.focus();i.setSelectionRange(i.value.length,i.value.length)">
+            </div>
+            ${!_adminData.loaded ? `<p class="muted" style="font-size:12px">Loading members…</p>` : `
+            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--green);margin:6px 0">Active (${activePlayers.length})</div>
+            ${activePlayers.length ? activePlayers.map(({ member, user }) => `
+              <div style="${rowStyle}">
+                <div style="min-width:0">
+                  <strong style="font-size:13px">${esc(user.displayName || member.userId)}</strong>
+                  <div class="muted" style="font-size:11px">${esc(user.email || '')}</div>
+                </div>
+                <div style="display:flex;gap:6px;flex-shrink:0">
+                  <button class="btn" style="${smallBtn}" type="button" onclick="adminArchiveMember('${esc(member.id)}','${esc(user.displayName || '')}')">Archive</button>
+                  <button class="btn" style="${smallBtn};color:#f87171;border-color:rgba(248,113,113,0.3)" type="button"
+                    onclick="adminRemoveMember('${esc(member.id)}','${esc(user.displayName || '')}')">Remove</button>
+                </div>
+              </div>`).join('') : `<p class="muted" style="font-size:12px;padding:4px 0">${q ? 'No players match your search.' : 'No active players yet — send an invite below.'}</p>`}
+
+            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#f59e0b;margin:14px 0 6px">Pending invitations (${pendingInvites.length})</div>
+            ${pendingInvites.length ? pendingInvites.map(inv => `
+              <div style="${rowStyle}">
+                <div style="min-width:0">
+                  <strong style="font-size:13px">${esc(inv.name || '(no name)')}</strong>
+                  <div class="muted" style="font-size:11px">${esc(inv.email || 'no email — copy link')} · ${esc(inv.role)}${inv.staffLevel ? ' · ' + esc(STAFF_LEVEL_LABELS[inv.staffLevel] || inv.staffLevel) : ''}${inv.emailSentAt ? ' · sent ' + new Date(inv.emailSentAt).toLocaleDateString('en-GB') : ''}</div>
+                </div>
+                <div style="display:flex;gap:6px;flex-shrink:0">
+                  <button class="btn" style="${smallBtn}" type="button"
+                    onclick="navigator.clipboard.writeText(window.location.origin+'/?inv=${esc(inv.token)}').then(()=>showToast('Link copied 📋'))">Copy link</button>
+                  ${inv.email ? `<button class="btn" style="${smallBtn}" type="button" onclick="adminResendInvite('${esc(inv.token)}')">Re-send</button>` : ''}
+                  <button class="btn" style="${smallBtn};color:#f87171;border-color:rgba(248,113,113,0.3)" type="button"
+                    onclick="adminRevokeInvite('${esc(inv.token)}')">Revoke</button>
+                </div>
+              </div>`).join('') : `<p class="muted" style="font-size:12px;padding:4px 0">No pending invitations.</p>`}
+
+            ${archivedPlayers.length ? `
+            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:14px 0 6px">Archived / removed (${archivedPlayers.length})</div>
+            ${archivedPlayers.map(({ member, user }) => `
+              <div style="${rowStyle}">
+                <div style="min-width:0">
+                  <strong style="font-size:13px;color:var(--muted)">${esc(user.displayName || member.userId)}</strong>
+                  <div class="muted" style="font-size:11px">${esc(member.status)}${member.removedAt ? ' · ' + new Date(member.removedAt).toLocaleDateString('en-GB') : ''}</div>
+                </div>
+                <button class="btn" style="${smallBtn}" type="button" onclick="adminRestoreMember('${esc(member.id)}')">Restore</button>
+              </div>`).join('')}` : ''}`}
+          </div>
+
+          <!-- Staff -->
+          <div class="card">
+            <h2 style="margin-bottom:4px">Coaching staff</h2>
+            <p class="muted" style="font-size:12px;margin-bottom:12px">Assistants log in like you do. Only the head coach can change staff or permissions.</p>
+            ${!_adminData.loaded ? `<p class="muted" style="font-size:12px">Loading…</p>` : staff.map(({ member, user }) => `
+              <div style="${rowStyle}">
+                <div style="min-width:0">
+                  <strong style="font-size:13px">${esc(user.displayName || member.userId)}</strong>
+                  <div class="muted" style="font-size:11px">${esc(user.email || '')}</div>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+                  <select style="${inputStyle};min-height:30px;font-size:11px;width:auto"
+                    onchange="adminSetStaffLevel('${esc(member.id)}',this.value)">
+                    ${Object.entries(STAFF_LEVEL_LABELS).map(([lvl, label]) =>
+                      `<option value="${lvl}" ${(member.staffLevel || 'head') === lvl ? 'selected' : ''}>${label}</option>`).join('')}
+                  </select>
+                  ${member.userId !== state.currentUserId ? `
+                  <button class="btn" style="${smallBtn};color:#f87171;border-color:rgba(248,113,113,0.3)" type="button"
+                    onclick="adminRemoveMember('${esc(member.id)}','${esc(user.displayName || '')}')">Remove</button>` : ''}
+                </div>
+              </div>`).join('')}
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:14px">
+              <input id="adm-staff-name" placeholder="Name" style="${inputStyle}">
+              <input id="adm-staff-email" placeholder="Email" type="email" style="${inputStyle}">
+              <select id="adm-staff-level" style="${inputStyle}">
+                <option value="assistant">Assistant Coach</option>
+                <option value="manager">Team Manager</option>
+                <option value="head">Head Coach</option>
+              </select>
+              <button class="btn primary" type="button" style="min-height:38px;font-size:12px" onclick="adminInviteStaff()">+ Invite staff</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function adminSaveClub() {
+      saveState('Club details saved');
+      clearTimeout(window._clubCfgT);
+      window._clubCfgT = setTimeout(() => saveClubConfigToServer(), 800);
+      renderNav();
+    }
+
+    function adminEditSession(id, field, value) {
+      const s = (state.schedule || []).find(x => x.id === id);
+      if (!s) return;
+      s[field] = String(value || '').trim();
+      saveState('Schedule updated');
+      syncSessionsToServer().catch(() => {});
+      adminSaveClub();
+    }
+
+    function adminAddFixture() {
+      const v = id => document.getElementById(id)?.value?.trim() || '';
+      const opposition = v('adm-fx-opp');
+      if (!opposition) { showToast('Enter the opposition first'); return; }
+      state.fixtures = state.fixtures || [];
+      state.fixtures.push({ id: 'fx' + Date.now().toString(36), opposition, date: v('adm-fx-date'), time: v('adm-fx-time'), venue: v('adm-fx-venue') });
+      saveState('Fixture added');
+      saveClubConfigToServer().catch(() => {});
+      renderClubAdmin();
+      showToast(`Fixture vs ${opposition} added ✓`);
+    }
+
+    function adminRemoveFixture(id) {
+      state.fixtures = (state.fixtures || []).filter(f => f.id !== id);
+      saveState('Fixture removed');
+      saveClubConfigToServer().catch(() => {});
+      renderClubAdmin();
+    }
+
+    async function adminAction(body, successMsg) {
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Action failed');
+        if (successMsg) showToast(successMsg);
+        await loadAdminData(true);
+        return data;
+      } catch(e) { showToast(e.message || 'Action failed'); return null; }
+    }
+
+    async function adminRemoveMember(memberId, name) {
+      if (!window.confirm(`Remove ${name || 'this member'} from the team?\n\nThey will lose access immediately. Their messages and history are kept.`)) return;
+      const result = await adminAction({ action: 'remove_member', memberId }, 'Member removed');
+      if (result?.teamMember?.userId) {
+        state.players = (state.players || []).filter(p => String(p.userId || '') !== String(result.teamMember.userId));
+        saveState('Roster updated');
+      }
+    }
+
+    async function adminArchiveMember(memberId, name) {
+      if (!window.confirm(`Archive ${name || 'this player'}?\n\nThey lose app access but stay in your records and can be restored.`)) return;
+      await adminAction({ action: 'archive_member', memberId }, 'Player archived');
+    }
+
+    async function adminRestoreMember(memberId) {
+      await adminAction({ action: 'restore_member', memberId }, 'Member restored');
+    }
+
+    async function adminSetStaffLevel(memberId, staffLevel) {
+      await adminAction({ action: 'set_staff_level', memberId, staffLevel },
+        `Permission set to ${STAFF_LEVEL_LABELS[staffLevel] || staffLevel}`);
+    }
+
+    async function adminResendInvite(token) {
+      try {
+        const res = await fetch('/api/invite', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, action: 'resend' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not re-send');
+        showToast(data.emailDelivery?.sent ? 'Invite email re-sent ✓' : 'Re-send attempted — check email settings');
+        await loadAdminData(true);
+      } catch(e) { showToast(e.message || 'Could not re-send'); }
+    }
+
+    async function adminRevokeInvite(token) {
+      if (!window.confirm('Revoke this invitation? The link will stop working.')) return;
+      try {
+        const res = await fetch('/api/invite', {
+          method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
+        if (!res.ok) throw new Error('Could not revoke');
+        showToast('Invitation revoked');
+        await loadAdminData(true);
+      } catch(e) { showToast(e.message || 'Could not revoke'); }
+    }
+
+    async function adminInviteStaff() {
+      const v = id => document.getElementById(id)?.value?.trim() || '';
+      const name = v('adm-staff-name');
+      const email = v('adm-staff-email');
+      const staffLevel = v('adm-staff-level') || 'assistant';
+      if (!name) { showToast('Enter the staff member\'s name first'); return; }
+      try {
+        const res = await fetch('/api/invite', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, role: 'coach', staffLevel }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not create invite');
+        showToast(`${STAFF_LEVEL_LABELS[staffLevel]} invite created — ${data.emailDelivery?.sent ? 'email sent ✓' : 'copy the link from Pending'}`);
+        await loadAdminData(true);
+      } catch(e) { showToast(e.message || 'Could not create invite'); }
+    }
+
     // ─── PLAYER FIXTURES ─────────────────────────────────────────────────────
     function renderPlayerFixtures() {
       const player = getPlayer();
@@ -9546,6 +9878,7 @@
       renderMatchday();
       renderMedical();
       renderPlayers();
+      renderClubAdmin();
       renderPlayerWeek();
       renderPlayerAvailability();
       renderPlayerFixtures();
@@ -10053,6 +10386,9 @@
       if (club.clubName && state.clubName !== club.clubName) { state.clubName = club.clubName; changed = true; }
       if (club.seasonName && state.seasonName !== club.seasonName) { state.seasonName = club.seasonName; changed = true; }
       if (club.teamName && state.teamName !== club.teamName) { state.teamName = club.teamName; changed = true; }
+      if (Array.isArray(club.fixtures) && JSON.stringify(state.fixtures || []) !== JSON.stringify(club.fixtures)) {
+        state.fixtures = club.fixtures; changed = true;
+      }
       return changed;
     }
 
@@ -10093,6 +10429,7 @@
             time:       state.matchCentre?.kickoffTime || '',
             venue:      state.matchCentre?.venue || '',
           },
+          fixtures: state.fixtures || [],
           ...extra,
         };
         const res = await fetch('/api/publish?resource=club', {

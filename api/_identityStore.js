@@ -571,7 +571,7 @@ async function upsertUserAccount({ email, firstName, lastName, displayName: name
   return user;
 }
 
-async function ensureTeamMember({ teamId = DEFAULT_TEAM.id, userId, role = 'player', status = 'active', approvedBy = 'invite', forceRole = false }) {
+async function ensureTeamMember({ teamId = DEFAULT_TEAM.id, userId, role = 'player', status = 'active', approvedBy = 'invite', forceRole = false, staffLevel = null }) {
   const members = await loadTeamMembers();
   let member = members.find(item => item.teamId === teamId && item.userId === userId);
   if (!member) {
@@ -587,10 +587,12 @@ async function ensureTeamMember({ teamId = DEFAULT_TEAM.id, userId, role = 'play
       rejectedAt: null,
       rejectedBy: null,
     };
+    if (staffLevel && ['coach', 'admin'].includes(role)) member.staffLevel = staffLevel;
     members.push(member);
   } else {
     member.role = forceRole ? role : (member.role || role);
     member.status = status;
+    if (staffLevel && ['coach', 'admin'].includes(member.role) && !member.staffLevel) member.staffLevel = staffLevel;
     if (status === 'active') {
       member.approvedAt = member.approvedAt || nowIso();
       member.approvedBy = member.approvedBy || approvedBy;
@@ -837,6 +839,7 @@ export async function claimInvite(input = {}) {
     role: invite.role || 'player',
     status: 'active',
     approvedBy: 'invite',
+    staffLevel: STAFF_LEVELS.includes(invite.staffLevel) ? invite.staffLevel : null,
   });
   const profile = await ensurePlayerProfile({ teamMember: member, user, invite });
   invite.status = 'accepted';
@@ -955,6 +958,113 @@ export async function destroySession(token = '') {
   const hashed = hashToken(token);
   const sessions = await loadSessions();
   await saveSessions(sessions.filter(item => item.tokenHash !== hashed));
+}
+
+// ─── Member administration (Club Admin screen) ──────────────────────────────
+// Staff permission levels live on team_members.staffLevel:
+//   'head' (Head Coach) | 'assistant' (Assistant Coach) | 'manager' (Team Manager)
+// All staff keep role 'coach' so every existing role gate keeps working;
+// staffLevel only gates STAFF MANAGEMENT actions. A coach member with no
+// staffLevel predates this field and is treated as head coach.
+
+export const STAFF_LEVELS = ['head', 'assistant', 'manager'];
+
+export function staffLevelOf(member = {}) {
+  if (!member || !['coach', 'admin'].includes(member.role)) return null;
+  return STAFF_LEVELS.includes(member.staffLevel) ? member.staffLevel : 'head';
+}
+
+export function isHeadCoach(sessionContext = {}) {
+  return staffLevelOf(sessionContext?.teamMember) === 'head';
+}
+
+function findTeamMemberOrThrow(members, memberId, expectedTeamId) {
+  const member = members.find(item => item.id === memberId);
+  if (!member) {
+    const error = new Error('Team member not found');
+    error.status = 404;
+    throw error;
+  }
+  if (expectedTeamId && member.teamId !== expectedTeamId) {
+    const error = new Error('Not authorized for this team');
+    error.status = 403;
+    throw error;
+  }
+  return member;
+}
+
+async function countActiveHeadCoaches(members, teamId) {
+  return members.filter(m =>
+    m.teamId === teamId && m.status === 'active' && staffLevelOf(m) === 'head'
+  ).length;
+}
+
+// Soft-remove: status flips away from 'active', which makes resolveSession
+// stop returning an active teamMember — the user can no longer act in this
+// team. The user record itself is untouched (audit trail + other teams).
+export async function removeTeamMember(memberId, removedBy, expectedTeamId, { archive = false } = {}) {
+  const members = await loadTeamMembers();
+  const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+  if (member.userId === removedBy) {
+    const error = new Error('You cannot remove yourself');
+    error.status = 400;
+    throw error;
+  }
+  if (staffLevelOf(member) === 'head' && await countActiveHeadCoaches(members, member.teamId) <= 1) {
+    const error = new Error('Cannot remove the last head coach');
+    error.status = 400;
+    throw error;
+  }
+  member.status = archive ? 'archived' : 'removed';
+  member.removedAt = nowIso();
+  member.removedBy = removedBy;
+  await saveTeamMembers(members);
+  // Revoke any live sessions this user holds for the team.
+  const sessions = await loadSessions();
+  const remaining = sessions.filter(s => !(s.userId === member.userId && s.teamId === member.teamId));
+  if (remaining.length !== sessions.length) await saveSessions(remaining);
+  return { teamMember: member };
+}
+
+export async function restoreTeamMember(memberId, restoredBy, expectedTeamId) {
+  const members = await loadTeamMembers();
+  const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+  if (!['archived', 'removed'].includes(member.status)) {
+    const error = new Error('Member is not archived');
+    error.status = 400;
+    throw error;
+  }
+  member.status = 'active';
+  member.restoredAt = nowIso();
+  member.restoredBy = restoredBy;
+  await saveTeamMembers(members);
+  return { teamMember: member };
+}
+
+export async function setStaffLevel(memberId, staffLevel, changedBy, expectedTeamId) {
+  if (!STAFF_LEVELS.includes(staffLevel)) {
+    const error = new Error(`staffLevel must be one of: ${STAFF_LEVELS.join(', ')}`);
+    error.status = 400;
+    throw error;
+  }
+  const members = await loadTeamMembers();
+  const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+  if (!['coach', 'admin'].includes(member.role)) {
+    const error = new Error('Only staff members have a permission level');
+    error.status = 400;
+    throw error;
+  }
+  if (staffLevelOf(member) === 'head' && staffLevel !== 'head' &&
+      await countActiveHeadCoaches(members, member.teamId) <= 1) {
+    const error = new Error('Cannot demote the last head coach');
+    error.status = 400;
+    throw error;
+  }
+  member.staffLevel = staffLevel;
+  member.staffLevelChangedAt = nowIso();
+  member.staffLevelChangedBy = changedBy;
+  await saveTeamMembers(members);
+  return { teamMember: member };
 }
 
 export async function rejectJoinRequest(memberId, rejectedBy = 'coach-demo', expectedTeamId = null) {

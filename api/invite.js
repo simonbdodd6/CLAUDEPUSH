@@ -114,7 +114,7 @@ export default async function handler(req, res) {
     } catch (error) {
       return sendAuthError(res, error);
     }
-    const { name, role, email, sendEmail = true } = req.body || {};
+    const { name, role, email, sendEmail = true, staffLevel } = req.body || {};
     if (!name?.trim()) {
       return res.status(400).json({ error: 'name is required' });
     }
@@ -122,12 +122,18 @@ export default async function handler(req, res) {
     if (!VALID_ROLES.includes(normRole)) {
       return res.status(400).json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` });
     }
+    const normStaffLevel = ['head', 'assistant', 'manager'].includes(String(staffLevel || '').toLowerCase())
+      ? String(staffLevel).toLowerCase() : null;
+    if (normStaffLevel && !['coach', 'admin'].includes(normRole)) {
+      return res.status(400).json({ error: 'staffLevel only applies to coach/admin invites' });
+    }
 
     const token  = makeToken();
     const invite = {
       token,
       name:      name.trim(),
       role:      normRole,
+      ...(normStaffLevel ? { staffLevel: normStaffLevel } : {}),
       email:     email?.trim() || '',
       status:    'pending',
       teamId:    session.teamId,
@@ -170,7 +176,7 @@ export default async function handler(req, res) {
     return res.status(201).json({ ok: true, token, url, invite, emailDelivery });
   }
 
-  // ── PATCH: mark invite as accepted ────────────────────────────────────────
+  // ── PATCH: mark invite as accepted, or re-send the invite email ──────────
   if (req.method === 'PATCH') {
     let session;
     try {
@@ -178,7 +184,7 @@ export default async function handler(req, res) {
     } catch (error) {
       return sendAuthError(res, error);
     }
-    const { token } = req.body || {};
+    const { token, action } = req.body || {};
     if (!token) return res.status(400).json({ error: 'token required' });
 
     const invites = (await kvGet(INVITES_KEY)) || [];
@@ -188,6 +194,28 @@ export default async function handler(req, res) {
       assertSameTenant(session, inviteTeamId(invites[idx]));
     } catch (error) {
       return sendAuthError(res, error);
+    }
+
+    if (action === 'resend') {
+      const invite = invites[idx];
+      if (invite.status !== 'pending') return res.status(400).json({ error: 'Only pending invites can be re-sent' });
+      if (inviteExpired(invite)) return res.status(410).json({ error: 'Invite has expired — create a new one' });
+      if (!invite.email) return res.status(400).json({ error: 'Invite has no email address — copy the link instead' });
+      try {
+        await enforceRateLimit('invite_resend', `${session.user.id}:${requestIp(req)}`, { limit: 20, windowMs: 60 * 60 * 1000 });
+      } catch (error) {
+        return sendAuthError(res, error);
+      }
+      const clubConfig = (await kvGet(key(`club:${session.teamId}`))) || null;
+      const teamName = clubConfig?.clubName || DEFAULT_TEAM.name;
+      const url = inviteUrl(req, invite.token);
+      const message = inviteEmail({ name: invite.name, teamName, url });
+      const emailDelivery = await sendTransactionalEmail({ to: invite.email, ...message });
+      invite.emailDelivery = emailDelivery;
+      if (emailDelivery.sent) invite.emailSentAt = new Date().toISOString();
+      await kvSet(INVITES_KEY, invites);
+      await auditLog('invite_resent', { token: invite.token.slice(-8), email: invite.email, by: session.user.id, ip: requestIp(req) });
+      return res.status(200).json({ ok: true, invite, emailDelivery });
     }
 
     invites[idx].status     = 'accepted';

@@ -155,18 +155,26 @@ function sanitiseClubConfig(raw) {
     }))
     .filter(d => VALID_DAYS.has(d.day))
     .slice(0, 7);
+  const sanitiseFixture = fx => ({
+    id:          String(fx?.id || `fx_${Math.random().toString(36).slice(2, 9)}`).slice(0, 40),
+    opposition: String(fx?.opposition || '').trim().slice(0, 80),
+    date:       String(fx?.date       || '').trim().slice(0, 20),
+    time:       /^\d{2}:\d{2}$/.test(String(fx?.time || '')) ? String(fx.time) : '',
+    venue:      String(fx?.venue      || '').trim().slice(0, 120),
+    competition: String(fx?.competition || '').trim().slice(0, 80),
+    homeAway:   ['home', 'away'].includes(String(fx?.homeAway || '').toLowerCase()) ? String(fx.homeAway).toLowerCase() : '',
+  });
   const fx = raw.firstFixture && typeof raw.firstFixture === 'object' ? raw.firstFixture : {};
   return {
     clubName,
     teamName:   String(raw.teamName   || '').trim().slice(0, 80),
     seasonName: String(raw.seasonName || '').trim().slice(0, 80),
     trainingDays,
-    firstFixture: {
-      opposition: String(fx.opposition || '').trim().slice(0, 80),
-      date:       String(fx.date       || '').trim().slice(0, 20),
-      time:       /^\d{2}:\d{2}$/.test(String(fx.time || '')) ? String(fx.time) : '',
-      venue:      String(fx.venue      || '').trim().slice(0, 120),
-    },
+    firstFixture: sanitiseFixture(fx),
+    fixtures: (Array.isArray(raw.fixtures) ? raw.fixtures : [])
+      .map(sanitiseFixture)
+      .filter(f => f.opposition)
+      .slice(0, 50),
   };
 }
 
