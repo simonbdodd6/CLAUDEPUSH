@@ -5,19 +5,24 @@ import { recentResponders } from './_availabilityStore.js';
 import { kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key } from './_keys.js';
 import { resolveVariables } from './_variables.js';
-import { setCors, vapidContact } from './_http.js';
+import { setCors, vapidContact, vapidKeyStatus } from './_http.js';
 import { requireTenantRole } from './_tenant.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
 }
 
-function configurePush() {
-  const publicKey = process.env.VAPID_PUBLIC_KEY;
-  const privateKey = process.env.VAPID_PRIVATE_KEY;
-  if (!publicKey || !privateKey) return false;
-  webpush.setVapidDetails(vapidContact(), publicKey, privateKey);
-  return true;
+// Returns { ok: true } or { ok: false, error } — never throws, so a malformed
+// key in the environment produces a clear diagnostic instead of an opaque 500.
+export function configurePush() {
+  const status = vapidKeyStatus();
+  if (!status.ok) return status;
+  try {
+    webpush.setVapidDetails(vapidContact(), process.env.VAPID_PUBLIC_KEY.trim(), process.env.VAPID_PRIVATE_KEY.trim());
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `VAPID key validation failed: ${e?.message || e}` };
+  }
 }
 
 function actionsFor(type) {
@@ -39,7 +44,8 @@ export default async function handler(req, res) {
   // object provided in the request body so every stage can be isolated.
   if (req.body?.action === 'test_device') {
     if (process.env.DEV_LOGIN !== 'true') return res.status(403).json({ ok: false, error: 'Dev only' });
-    if (!configurePush()) return res.status(500).json({ ok: false, error: 'VAPID keys not configured — check VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY env vars' });
+    const devPushConfig = configurePush();
+    if (!devPushConfig.ok) return res.status(500).json({ ok: false, error: devPushConfig.error });
     const { subscription } = req.body;
     if (!subscription?.endpoint) return res.status(400).json({ ok: false, error: 'subscription.endpoint required' });
     const sentAt = new Date().toISOString();
@@ -78,7 +84,11 @@ export default async function handler(req, res) {
     return sendAuthError(res, error);
   }
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
-  if (!configurePush()) return res.status(500).json({ error: 'VAPID keys not configured' });
+  const pushConfig = configurePush();
+  if (!pushConfig.ok) {
+    console.error('[push] not configured:', pushConfig.error);
+    return res.status(500).json({ error: pushConfig.error, pushConfigured: false });
+  }
 
   const { title, body, from, tag, type = 'message', sessionId = 'game', targetLabel, targetUserId, targetPlayerId, audience = 'all' } = req.body || {};
   if (!String(body || '').trim()) return res.status(400).json({ error: 'Message body required' });

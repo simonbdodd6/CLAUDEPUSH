@@ -24,3 +24,16 @@ export function vapidContact() {
   const configured = String(process.env.VAPID_CONTACT || 'mailto:coach@example.com');
   return configured.startsWith('mailto:') ? configured : `mailto:${configured}`;
 }
+
+// Format-level VAPID key validation shared by /api/config (reporting) and
+// /api/push (enforcement). P-256 public key = 87 base64url chars, private = 43.
+export function vapidKeyStatus() {
+  const publicKey = (process.env.VAPID_PUBLIC_KEY || '').trim();
+  const privateKey = (process.env.VAPID_PRIVATE_KEY || '').trim();
+  if (!publicKey && !privateKey) return { ok: false, error: 'VAPID keys not configured — set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY' };
+  if (!publicKey) return { ok: false, error: 'VAPID_PUBLIC_KEY is missing' };
+  if (!privateKey) return { ok: false, error: 'VAPID_PRIVATE_KEY is missing' };
+  if (!/^[A-Za-z0-9_-]{87}$/.test(publicKey)) return { ok: false, error: `VAPID_PUBLIC_KEY malformed (expected 87 base64url chars, got ${publicKey.length})` };
+  if (!/^[A-Za-z0-9_-]{43}$/.test(privateKey)) return { ok: false, error: `VAPID_PRIVATE_KEY malformed (expected 43 base64url chars, got ${privateKey.length})` };
+  return { ok: true };
+}

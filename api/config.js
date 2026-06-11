@@ -1,6 +1,6 @@
 // Browser-safe public configuration. Never send private VAPID or Redis values.
 // Also handles ?log=1 for authenticated coach activity log reads.
-import { setCors } from './_http.js';
+import { setCors, vapidKeyStatus } from './_http.js';
 import { kvConfigured, kvLrange } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { requireTenantRole } from './_tenant.js';
@@ -29,11 +29,15 @@ export default async function handler(req, res) {
     return res.status(200).json({ log });
   }
 
-  const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || '';
+  const vapidPublicKey = (process.env.VAPID_PUBLIC_KEY || '').trim();
   const storageConfigured = kvConfigured();
+  const vapidStatus = vapidKeyStatus();
   return res.status(200).json({
     vapidPublicKey,
-    pushConfigured: Boolean(vapidPublicKey && process.env.VAPID_PRIVATE_KEY && storageConfigured),
+    pushConfigured: Boolean(vapidStatus.ok && storageConfigured),
+    // Why push is unavailable, so the coach UI can show an actionable message
+    // instead of a silent failure. Key *values* are never exposed.
+    pushConfigError: vapidStatus.ok ? (storageConfigured ? null : 'Message storage not configured') : vapidStatus.error,
     storageConfigured,
     devLogin: process.env.DEV_LOGIN === 'true',
   });

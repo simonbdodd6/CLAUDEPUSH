@@ -2762,7 +2762,16 @@
           body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Push delivery failed");
+        if (!res.ok) {
+          // Server reached but push is broken (e.g. VAPID misconfigured) —
+          // tell the coach the real reason, never pretend it was sent.
+          if (data.pushConfigured === false || res.status === 500) {
+            console.error('[push] server config error:', data.error);
+            showToast(`⚠️ Push not delivered — ${data.error || 'server push not configured'}`);
+            return;
+          }
+          throw new Error(data.error || "Push delivery failed");
+        }
         if (data.sent > 0) showToast(`Push sent to ${data.sent} device${data.sent > 1 ? 's' : ''} ✓`);
         else if (data.total === 0) showToast(data.note || 'No subscribers — player must enable notifications in their Messages page');
         else showToast(`Message sent — push: ${data.sent}/${data.total} delivered`);
@@ -9698,6 +9707,26 @@
         const d   = await res.json();
         subscriberCount = d.count ?? 0;
       } catch { subscriberCount = '?'; }
+
+      // Server-side push health — VAPID misconfiguration is invisible to the
+      // browser otherwise, and every send would silently fail.
+      try {
+        const cfgRes = await fetch('/api/config');
+        const cfg    = await cfgRes.json();
+        if (cfg.pushConfigured === false) {
+          card.style.borderColor = 'rgba(239,68,68,0.35)';
+          card.style.background  = 'rgba(239,68,68,0.06)';
+          card.innerHTML = `
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:22px">🚫</span>
+              <div>
+                <strong style="font-size:14px">Push not configured on the server</strong>
+                <p class="muted" style="font-size:12px;margin:2px 0 0">${esc(cfg.pushConfigError || 'Check VAPID env vars in the deployment settings.')} Notifications will not be delivered until this is fixed.</p>
+              </div>
+            </div>`;
+          return;
+        }
+      } catch { /* offline — fall through to the local-permission cards */ }
 
       if (!supported) {
         card.style.borderColor = 'rgba(245,158,11,0.25)';
