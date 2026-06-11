@@ -4,13 +4,28 @@
  * Domain: match preparation, training load, selection decisions.
  * Reads: bundle.platform.fixture, bundle.platform.attendanceData, bundle.workingMemory.
  * Rules: no external calls, no provider access, pure reasoning over the ContextBundle.
+ *
+ * M9: Also accepts an optional observations array from the Memory/Observation layer.
+ * When observations = [] (default), behaviour is identical to M4.
+ * Observation types consumed: COACH_BEHAVIOUR, SESSION_LOAD.
  */
 
 import { makeRec, CATEGORY, PRIORITY } from './shared.js'
 
 export const name = 'coach'
 
-export function reason(bundle) {
+// Evidence item helper for observation citations
+function obsEvidence(obs) {
+  return {
+    type:          'observation',
+    value:         obs.observationType,
+    source:        'observation-engine',
+    observationId: obs.id,
+    label:         obs.explanation,
+  }
+}
+
+export function reason(bundle, observations = []) {
   const t0 = Date.now()
   const recommendations = []
   const insights        = []
@@ -114,13 +129,61 @@ export function reason(bundle) {
   }
 
   // ── Working memory: active high-priority intelligence items ───────────────
-  const recentEvents  = wm.recentEvents ?? []
-  const activeHigh    = recentEvents.filter(e => e.priority === 'HIGH' || e.status === 'active')
+  const recentEvents = wm.recentEvents ?? []
+  const activeHigh   = recentEvents.filter(e => e.priority === 'HIGH' || e.status === 'active')
   if (activeHigh.length > 0) {
     insights.push({ key: 'active-high-priority-events', value: activeHigh.length, confidence: 90 })
   }
   if (typeof wm.total === 'number' && wm.total > 20) {
     warnings.push({ message: `Intelligence timeline has ${wm.total} events — consider reviewing resolved items`, severity: 'low' })
+  }
+
+  // ── M9: Observation-based enrichment (additive only) ─────────────────────
+  if (observations.length > 0) {
+    const coachBehaviourObs = observations.filter(o => o.observationType === 'COACH_BEHAVIOUR')
+    const sessionLoadObs    = observations.filter(o => o.observationType === 'SESSION_LOAD')
+
+    // COACH_BEHAVIOUR: insight or warning depending on signal
+    for (const obs of coachBehaviourObs) {
+      const ev = obsEvidence(obs)
+      evidence.push(ev)
+      const signal = obs.metadata?.signal
+      if (signal === 'receptive') {
+        const pct = obs.metadata?.positiveRate != null
+          ? Math.round(obs.metadata.positiveRate * 100) + '%'
+          : 'positive'
+        insights.push({
+          key:           'coach-ai-engagement',
+          value:         `receptive — ${pct} acceptance rate`,
+          confidence:    obs.confidence,
+          observationId: obs.id,
+        })
+      } else if (signal === 'dismissive') {
+        warnings.push({
+          message:       `Coach shows low AI acceptance: ${obs.explanation}`,
+          severity:      'low',
+          observationId: obs.id,
+        })
+      } else if (signal === 'mixed') {
+        insights.push({
+          key:           'coach-ai-engagement',
+          value:         'mixed engagement',
+          confidence:    obs.confidence,
+          observationId: obs.id,
+        })
+      }
+    }
+
+    // SESSION_LOAD: insight about recent session intensity
+    for (const obs of sessionLoadObs) {
+      evidence.push(obsEvidence(obs))
+      insights.push({
+        key:           'session-load',
+        value:         obs.metadata?.loadLevel ?? 'unknown',
+        confidence:    obs.confidence,
+        observationId: obs.id,
+      })
+    }
   }
 
   return { reasoner: name, recommendations, insights, warnings, evidence, durationMs: Date.now() - t0 }

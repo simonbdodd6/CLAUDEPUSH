@@ -4,13 +4,27 @@
  * Domain: club health, long-term trends, administrative governance.
  * Reads: bundle.clubIntelligence, bundle.proceduralLearning, bundle.platform.seasonData.
  * Rules: no external calls, no provider access, pure reasoning over the ContextBundle.
+ *
+ * M9: Also accepts an optional observations array from the Memory/Observation layer.
+ * When observations = [] (default), behaviour is identical to M4.
+ * Observation types consumed: CLUB_ACTIVITY, PLAYER_IMPROVEMENT, SESSION_FREQUENCY.
  */
 
 import { makeRec, CATEGORY, PRIORITY } from './shared.js'
 
 export const name = 'club'
 
-export function reason(bundle) {
+function obsEvidence(obs) {
+  return {
+    type:          'observation',
+    value:         obs.observationType,
+    source:        'observation-engine',
+    observationId: obs.id,
+    label:         obs.explanation,
+  }
+}
+
+export function reason(bundle, observations = []) {
   const t0 = Date.now()
   const recommendations = []
   const insights        = []
@@ -114,6 +128,50 @@ export function reason(bundle) {
   if (season) {
     const phase = season.phase ?? season.label ?? null
     if (phase) insights.push({ key: 'season-phase', value: phase, confidence: 95 })
+  }
+
+  // ── M9: Observation-based enrichment (additive only) ─────────────────────
+  if (observations.length > 0) {
+    const clubActivityObs = observations.filter(o => o.observationType === 'CLUB_ACTIVITY')
+    const improvementObs  = observations.filter(o => o.observationType === 'PLAYER_IMPROVEMENT')
+    const sessionFreqObs  = observations.filter(o => o.observationType === 'SESSION_FREQUENCY')
+
+    // CLUB_ACTIVITY: insight about observed AI engagement level
+    for (const obs of clubActivityObs) {
+      evidence.push(obsEvidence(obs))
+      insights.push({
+        key:           'club-ai-activity-level',
+        value:         obs.metadata?.activityLevel ?? 'observed',
+        confidence:    obs.confidence,
+        observationId: obs.id,
+      })
+    }
+
+    // PLAYER_IMPROVEMENT: aggregate insight from all improvement signals
+    if (improvementObs.length > 0) {
+      const avgConf = Math.round(
+        improvementObs.reduce((sum, o) => sum + o.confidence, 0) / improvementObs.length
+      )
+      for (const obs of improvementObs) {
+        evidence.push(obsEvidence(obs))
+      }
+      insights.push({
+        key:        'player-improvement-signals',
+        value:      improvementObs.length,
+        confidence: avgConf,
+      })
+    }
+
+    // SESSION_FREQUENCY: insight about how often AI is used across sessions
+    for (const obs of sessionFreqObs) {
+      evidence.push(obsEvidence(obs))
+      insights.push({
+        key:           'session-frequency',
+        value:         obs.metadata?.sessions ?? obs.metadata?.categoryCount ?? null,
+        confidence:    obs.confidence,
+        observationId: obs.id,
+      })
+    }
   }
 
   return { reasoner: name, recommendations, insights, warnings, evidence, durationMs: Date.now() - t0 }

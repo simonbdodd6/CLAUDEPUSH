@@ -4,13 +4,27 @@
  * Domain: player welfare, injuries, medical alerts, squad depth.
  * Reads: bundle.platform.fixture, bundle.platform.digitalTwin, bundle.episodicMemory.
  * Rules: no external calls, no provider access, pure reasoning over the ContextBundle.
+ *
+ * M9: Also accepts an optional observations array from the Memory/Observation layer.
+ * When observations = [] (default), behaviour is identical to M4.
+ * Observation types consumed: ATTENDANCE_TREND, PLAYER_AVAILABILITY_TREND, REPEATED_ABSENCE.
  */
 
 import { makeRec, CATEGORY, PRIORITY } from './shared.js'
 
 export const name = 'squad'
 
-export function reason(bundle) {
+function obsEvidence(obs) {
+  return {
+    type:          'observation',
+    value:         obs.observationType,
+    source:        'observation-engine',
+    observationId: obs.id,
+    label:         obs.explanation,
+  }
+}
+
+export function reason(bundle, observations = []) {
   const t0 = Date.now()
   const recommendations = []
   const insights        = []
@@ -125,6 +139,71 @@ export function reason(bundle) {
   }
   if ((em.teamCount ?? 0) > 0) {
     insights.push({ key: 'tracked-teams', value: em.teamCount, confidence: 95 })
+  }
+
+  // ── M9: Observation-based enrichment (additive only) ─────────────────────
+  if (observations.length > 0) {
+    const absenceObs      = observations.filter(o => o.observationType === 'REPEATED_ABSENCE')
+    const attendanceObs   = observations.filter(o => o.observationType === 'ATTENDANCE_TREND')
+    const availabilityObs = observations.filter(o => o.observationType === 'PLAYER_AVAILABILITY_TREND')
+
+    // REPEATED_ABSENCE: warning + recommendation per affected entity
+    for (const obs of absenceObs) {
+      const ev = obsEvidence(obs)
+      evidence.push(ev)
+      warnings.push({
+        message:       `Repeated absence signal for ${obs.entity.id}: ${obs.explanation}`,
+        severity:      'low',
+        observationId: obs.id,
+      })
+      recommendations.push(makeRec({
+        category:       CATEGORY.PLAYER_WELFARE,
+        priority:       PRIORITY.LOW,
+        confidence:     obs.confidence,
+        title:          `Check multi-session attendance for ${obs.entity.id}`,
+        description:    obs.explanation,
+        action:         'Review attendance records and make direct contact with the player.',
+        source:         'squad-reasoner/observation',
+        explainability: `Memory observation (${obs.id}) flagged limited multi-session presence for this entity.`,
+        evidence:       [ev],
+      }))
+    }
+
+    // ATTENDANCE_TREND: insight (regular/occasional) or warning (infrequent)
+    for (const obs of attendanceObs) {
+      const ev     = obsEvidence(obs)
+      const signal = obs.metadata?.attendanceSignal
+      evidence.push(ev)
+      if (signal === 'infrequent') {
+        warnings.push({
+          message:       `Infrequent attendance pattern for ${obs.entity.id}`,
+          severity:      'low',
+          observationId: obs.id,
+        })
+      } else {
+        insights.push({
+          key:           `attendance-${obs.entity.id}`,
+          value:         signal ?? 'observed',
+          confidence:    obs.confidence,
+          observationId: obs.id,
+        })
+      }
+    }
+
+    // PLAYER_AVAILABILITY_TREND: aggregate insight across all players with data
+    if (availabilityObs.length > 0) {
+      const avgConf = Math.round(
+        availabilityObs.reduce((sum, o) => sum + o.confidence, 0) / availabilityObs.length
+      )
+      for (const obs of availabilityObs) {
+        evidence.push(obsEvidence(obs))
+      }
+      insights.push({
+        key:        'player-availability-observations',
+        value:      availabilityObs.length,
+        confidence: avgConf,
+      })
+    }
   }
 
   return { reasoner: name, recommendations, insights, warnings, evidence, durationMs: Date.now() - t0 }
