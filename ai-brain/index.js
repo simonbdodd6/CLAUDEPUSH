@@ -26,6 +26,7 @@ export { BRAIN_SCHEMA_VERSION } from './schema.js'
 // without taking down the Brain. Each loader is called at most once per process.
 
 let _ca  = null    // context-assembly (M3)
+let _rs  = null    // reasoning (M4)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -37,6 +38,11 @@ let _ci  = null    // qa/club-intelligence
 async function loadCA() {
   if (!_ca) _ca = await import('./context-assembly.js')
   return _ca
+}
+
+async function loadRS() {
+  if (!_rs) _rs = await import('./reasoning.js')
+  return _rs
 }
 
 async function loadRec() {
@@ -110,26 +116,27 @@ export async function request(context = {}) {
     modules.push('context-assembly')
     const bundle = await assembleContext(context ?? {})
 
-    const { generate, buildContext } = await loadRec()
-    modules.push('recommendation-engine')
+    // M4: Run three parallel reasoners over the bundle, then synthesise.
+    const { reason: reasonFn } = await loadRS()
+    modules.push('reasoning')
+    const rb = await reasonFn(bundle)
+    modules.push('synthesis')
 
-    // Pass platform fields from the bundle into the recommendation engine context.
-    const ctx = buildContext({
-      fixture:        bundle.platform.fixture        ?? null,
-      digitalTwin:    bundle.platform.digitalTwin    ?? null,
-      attendanceData: bundle.platform.attendanceData ?? null,
-      clubScoreData:  bundle.platform.clubScoreData  ?? null,
-      seasonData:     bundle.platform.seasonData     ?? null,
-      weatherData:    bundle.platform.weatherData    ?? null,
-      fixtureList:    bundle.platform.fixtureList    ?? null,
-      resultHistory:  bundle.platform.resultHistory  ?? null,
-    })
+    const isMock = rb.recommendations.length === 0 ||
+      rb.recommendations.every(r => (r.source ?? '').includes('/mock'))
 
-    const maxResults = typeof context?.maxResults === 'number' ? context.maxResults : 10
-    const { recommendations = [], meta = {} } = generate(ctx, { maxResults, useMockFallback: true })
-
-    return toBrainResponse(recommendations, {
-      meta,
+    return toBrainResponse(rb.recommendations, {
+      meta: {
+        isMock,
+        generatedAt: bundle.assembledAt,
+        total:       rb.recommendations.length,
+        highCount:   rb.recommendations.filter(r => r.priority === 'HIGH').length,
+        mediumCount: rb.recommendations.filter(r => r.priority === 'MEDIUM').length,
+        lowCount:    rb.recommendations.filter(r => r.priority === 'LOW').length,
+        categories:  [...new Set(rb.recommendations.map(r => r.category))],
+        providers:   bundle.providers,
+        reasoning:   rb.trace,
+      },
       trace: { modules, duration: Date.now() - t0 },
     })
   } catch (err) {
@@ -451,6 +458,31 @@ export async function clubHealth() {
   }
 }
 
+// ── Parallel reasoning (M4) — exposed for integration testing ─────────────────
+
+/**
+ * Run the three parallel reasoners over a ContextBundle and return a
+ * ReasoningBundle. Exposed for integration tests and advanced callers.
+ * Normal callers use AI.request() which calls this internally.
+ *
+ * @param {ContextBundle} bundle
+ * @returns {Promise<ReasoningBundle>}
+ */
+export async function reason(bundle) {
+  try {
+    const { reason: reasonFn } = await loadRS()
+    return reasonFn(bundle ?? {})
+  } catch (err) {
+    return {
+      recommendations: [],
+      insights:        [],
+      warnings:        [{ message: `reasoning failed: ${err.message}`, severity: 'high' }],
+      evidence:        [],
+      trace:           { reasoners: [], reasonerDurations: {}, synthesisDurationMs: 0, totalDurationMs: 0, recommendationCount: { preMerge: 0, postMerge: 0 } },
+    }
+  }
+}
+
 // ── Context assembly (M3) — exposed for integration testing ──────────────────
 
 /**
@@ -480,4 +512,6 @@ export const AI = {
   status, clubHealth,
   // M3 — Context assembly
   assembleContext,
+  // M4 — Parallel reasoning
+  reason,
 }
