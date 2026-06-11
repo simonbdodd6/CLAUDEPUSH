@@ -7,7 +7,7 @@ import { kvGet, kvSet, kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { resolveVariables } from './_variables.js';
 import { setCors, readSecret, vapidContact } from './_http.js';
-import { OBSOLETE_LEGACY_ACCOUNT_IDS } from './_identityStore.js';
+import { OBSOLETE_LEGACY_ACCOUNT_IDS, loadNotificationPreferenceMap, notificationAllowed } from './_identityStore.js';
 import { OBSOLETE_DM_PARTICIPANT_IDS } from './chat.js';
 
 const DAY_MAP = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
@@ -115,7 +115,9 @@ export default async function handler(req, res) {
   if ((req.query?.job || req.body?.job) === 'reminder') {
     const subscribers = await load();
     const responded = await recentResponders(7);
-    const targets = subscribers.filter(item => !responded.has(item.label));
+    const reminderPrefs = await loadNotificationPreferenceMap();
+    const targets = subscribers.filter(item => !responded.has(item.label))
+      .filter(item => notificationAllowed(reminderPrefs, item.userId, { type: 'availability', sessionId: 'game' }));
     const title = 'Availability reminder';
     const body = "Hi {{first_name}}! Please set your availability for this week's sessions and match in coacheseyeGPT. - {{coach_name}}";
     const outcomes = await Promise.allSettled(targets.map(({ subscription, label }) =>
@@ -169,6 +171,11 @@ export default async function handler(req, res) {
       targetSubscribers = subscribers.filter(item => !responded.has(item.label));
     }
     const notificationType = template.category === 'availability' ? 'availability' : 'message';
+    const schedulePrefs = await loadNotificationPreferenceMap();
+    if (Object.keys(schedulePrefs).length) {
+      targetSubscribers = targetSubscribers.filter(item =>
+        notificationAllowed(schedulePrefs, item.userId, { type: notificationType, sessionId: schedule.sessionId || 'game' }));
+    }
     const delivery = await Promise.allSettled(targetSubscribers.map(({ subscription, label }) => {
       const context = { label, coachName: schedule.coachName || 'Coach' };
       return webpush.sendNotification(subscription, JSON.stringify({

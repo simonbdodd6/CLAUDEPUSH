@@ -960,6 +960,107 @@ export async function destroySession(token = '') {
   await saveSessions(sessions.filter(item => item.tokenHash !== hashed));
 }
 
+// ─── Self-service account management (Settings screen) ──────────────────────
+// All of these require the caller's CURRENT password — a stolen session
+// cookie alone cannot take over the account.
+
+function requireCurrentPassword(user, currentPassword) {
+  const check = verifyPassword(currentPassword, user);
+  if (!check.ok) {
+    const error = new Error('Current password is incorrect');
+    error.status = 403;
+    throw error;
+  }
+}
+
+export async function changePassword(userId, { currentPassword, newPassword } = {}) {
+  assertPassword(newPassword);
+  const users = await loadUsers();
+  const user = users.find(item => item.id === userId);
+  if (!user) { const e = new Error('Account not found'); e.status = 404; throw e; }
+  requireCurrentPassword(user, currentPassword);
+  Object.assign(user, hashPassword(newPassword), { passwordSet: true, passwordChangedAt: nowIso() });
+  await saveUsers(users);
+  return { user: publicUser(user) };
+}
+
+export async function changeEmail(userId, { currentPassword, newEmail } = {}) {
+  const normalized = normalizeEmail(newEmail);
+  if (!EMAIL_RE.test(normalized)) throw new Error('Valid email is required');
+  const users = await loadUsers();
+  const user = users.find(item => item.id === userId);
+  if (!user) { const e = new Error('Account not found'); e.status = 404; throw e; }
+  requireCurrentPassword(user, currentPassword);
+  if (users.some(item => item.id !== userId && normalizeEmail(item.email) === normalized)) {
+    const error = new Error('That email is already in use by another account');
+    error.status = 409;
+    throw error;
+  }
+  user.previousEmail = user.email;
+  user.email = normalized;
+  user.emailChangedAt = nowIso();
+  await saveUsers(users);
+  return { user: publicUser(user) };
+}
+
+export async function updateProfile(userId, { displayName, firstName, lastName } = {}) {
+  const users = await loadUsers();
+  const user = users.find(item => item.id === userId);
+  if (!user) { const e = new Error('Account not found'); e.status = 404; throw e; }
+  const name = String(displayName || '').trim().slice(0, 80);
+  if (name) user.displayName = name;
+  if (String(firstName || '').trim()) user.firstName = String(firstName).trim().slice(0, 40);
+  if (String(lastName || '').trim()) user.lastName = String(lastName).trim().slice(0, 40);
+  await saveUsers(users);
+  return { user: publicUser(user) };
+}
+
+// Notification preferences live on the user record; undefined means enabled,
+// so existing users keep today's behaviour until they explicitly opt out.
+const PREFERENCE_KEYS = ['pushEnabled', 'emailEnabled', 'matchReminders', 'trainingReminders'];
+
+export async function updateNotificationPreferences(userId, prefs = {}) {
+  const users = await loadUsers();
+  const user = users.find(item => item.id === userId);
+  if (!user) { const e = new Error('Account not found'); e.status = 404; throw e; }
+  user.preferences = { ...(user.preferences || {}) };
+  PREFERENCE_KEYS.forEach(k => {
+    if (typeof prefs[k] === 'boolean') user.preferences[k] = prefs[k];
+  });
+  await saveUsers(users);
+  return { preferences: user.preferences };
+}
+
+// Map of userId → preferences for the push/cron senders. Missing user or
+// missing key = enabled (backwards compatible).
+export async function loadNotificationPreferenceMap() {
+  const users = await loadUsers();
+  return Object.fromEntries(users.filter(u => u.preferences).map(u => [u.id, u.preferences]));
+}
+
+export function notificationAllowed(prefMap, userId, { type = 'message', sessionId = '' } = {}) {
+  const prefs = prefMap?.[userId];
+  if (!prefs) return true;
+  if (prefs.pushEnabled === false) return false;
+  const isAvailability = ['availability', 'availability-reminder'].includes(String(type));
+  if (isAvailability && String(sessionId) === 'game' && prefs.matchReminders === false) return false;
+  if (isAvailability && String(sessionId) !== 'game' && prefs.trainingReminders === false) return false;
+  return true;
+}
+
+export async function destroyAllSessionsForUser(userId, { exceptTokenHash = null } = {}) {
+  const sessions = await loadSessions();
+  const remaining = sessions.filter(s =>
+    s.userId !== userId || (exceptTokenHash && s.tokenHash === exceptTokenHash));
+  const revoked = sessions.length - remaining.length;
+  if (revoked) await saveSessions(remaining);
+  return { revoked };
+}
+
+export function tokenHashFor(token = '') {
+  return hashToken(token);
+}
+
 // ─── Production account recovery (CRON_SECRET-gated, server-side only) ──────
 // Used when a coach is locked out (lost password, rate-limited, credential
 // drift). Restricted to accounts holding a coach/admin membership so the

@@ -1905,6 +1905,7 @@
       <section id="coach-medical"     class="section"></section>
       <section id="coach-players"     class="section"></section>
       <section id="coach-admin"       class="section"></section>
+      <section id="coach-settings"    class="section"></section>
 
       <section id="player-availability" class="section"></section>
       <section id="player-week"         class="section"></section>
@@ -1941,7 +1942,8 @@
       ["matchday",  "Match Centre"],
       ["medical",   "Medical"],
       ["players",   "Members"],
-      ["admin",     "Club Admin"]
+      ["admin",     "Club Admin"],
+      ["settings",  "Settings"]
     ];
 
     const playerSections = [
@@ -2094,6 +2096,11 @@
       clubName: "",
       teamName: "",
       seasonName: "",
+      seasonStart: "",
+      seasonEnd: "",
+      matchDayDefault: "",
+      clubLogo: "",
+      clubColours: null,
       teamCode: "TEAM",
       currentTemplateName: "",
       templateCardCollapsed: false,
@@ -2476,6 +2483,11 @@
       next.clubName = input.clubName ?? "";
       next.teamName = input.teamName ?? "";
       next.seasonName = input.seasonName ?? "";
+      next.seasonStart = input.seasonStart ?? "";
+      next.seasonEnd = input.seasonEnd ?? "";
+      next.matchDayDefault = input.matchDayDefault ?? "";
+      next.clubLogo = input.clubLogo ?? "";
+      next.clubColours = input.clubColours ?? null;
       next.users = input.users || structuredClone(testAccounts);
       // Enforce canonical roles for built-in accounts — prevents stale localStorage
       // from corrupting coach-demo's role if applyApprovedIdentityLocally was called incorrectly.
@@ -7613,6 +7625,366 @@
       showToast("Blocked date saved ✓");
     }
 
+    // ─── SETTINGS & ACCOUNT ──────────────────────────────────────────────────
+    // Coach-only operational settings: account security, club identity,
+    // notification preferences, device tools and the danger zone. Everything
+    // saves through the team-scoped APIs.
+
+    let _settingsVersion = null;
+    let _settingsPrefs = null;
+
+    async function loadSettingsData() {
+      try {
+        const [cfgRes, sessRes] = await Promise.all([
+          fetch('/api/config'),
+          fetch('/api/identity?action=session'),
+        ]);
+        if (cfgRes.ok) _settingsVersion = (await cfgRes.json()).version || 'unknown';
+        if (sessRes.ok) {
+          const d = await sessRes.json();
+          _settingsPrefs = d.user?.preferences || {};
+        } else {
+          _settingsPrefs = _settingsPrefs || {};
+        }
+        renderSettings();
+      } catch(e) { console.warn('[loadSettingsData]', e); }
+    }
+
+    function lastSyncLabel() {
+      const ts = Number(localStorage.getItem('_lastSyncAt') || 0);
+      if (!ts) return 'Not synced yet';
+      const mins = Math.round((Date.now() - ts) / 60000);
+      return mins < 1 ? 'Just now' : mins < 60 ? `${mins} min ago` : new Date(ts).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+    }
+
+    function markSynced() {
+      try { localStorage.setItem('_lastSyncAt', String(Date.now())); } catch {}
+    }
+
+    function renderSettings() {
+      const el = document.getElementById('coach-settings');
+      if (!el) return;
+      if (!isCoach()) { el.innerHTML = ''; return; }
+      const active = state.activeView === 'coach' && state.activeCoachSection === 'settings';
+      if (active && _settingsVersion === null) { _settingsVersion = '…'; loadSettingsData(); }
+
+      const user = currentUser() || {};
+      const prefs = _settingsPrefs || {};
+      const prefOn = k => prefs[k] !== false;
+      const inputStyle = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
+      const labelStyle = 'display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)';
+      const rowStyle = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)';
+      const toggle = (key, label, hint) => `
+        <div style="${rowStyle}">
+          <div style="min-width:0">
+            <strong style="font-size:13px">${label}</strong>
+            ${hint ? `<div class="muted" style="font-size:11px">${hint}</div>` : ''}
+          </div>
+          <button type="button" role="switch" aria-checked="${prefOn(key)}" aria-label="${label}"
+            onclick="settingsTogglePref('${key}')"
+            style="flex-shrink:0;width:46px;height:26px;border-radius:13px;border:1px solid ${prefOn(key) ? 'var(--green)' : 'var(--line)'};background:${prefOn(key) ? 'var(--green)' : 'var(--panel-2)'};position:relative;cursor:pointer;transition:all .15s">
+            <span style="position:absolute;top:2px;${prefOn(key) ? 'right:2px' : 'left:2px'};width:20px;height:20px;border-radius:50%;background:${prefOn(key) ? '#060b12' : 'var(--muted)'};transition:all .15s"></span>
+          </button>
+        </div>`;
+
+      el.innerHTML = `
+        <div style="display:grid;gap:16px;max-width:620px">
+
+          <!-- Coach account -->
+          <div class="card">
+            <h2 style="margin-bottom:4px">Coach account</h2>
+            <p class="muted" style="font-size:12px;margin-bottom:14px">Signed in as <strong>${esc(user.name || '')}</strong>${user.email ? ` · ${esc(user.email)}` : ''}</p>
+            <div style="display:grid;gap:10px">
+              <label style="${labelStyle}">Display name
+                <input id="set-displayname" value="${esc(user.name || '')}" style="${inputStyle}"></label>
+              <button class="btn" type="button" onclick="settingsUpdateProfile()" style="min-height:40px;font-size:13px">Save name</button>
+              <details style="border-top:1px solid var(--line);padding-top:10px">
+                <summary style="font-size:13px;font-weight:700;cursor:pointer;padding:4px 0">Change password</summary>
+                <div style="display:grid;gap:8px;margin-top:8px">
+                  <input id="set-curpw1" type="password" autocomplete="current-password" placeholder="Current password" style="${inputStyle}">
+                  <input id="set-newpw" type="password" autocomplete="new-password" placeholder="New password (8+ characters)" style="${inputStyle}">
+                  <button class="btn primary" type="button" onclick="settingsChangePassword()" style="min-height:42px;font-size:13px">Update password</button>
+                </div>
+              </details>
+              <details style="border-top:1px solid var(--line);padding-top:10px">
+                <summary style="font-size:13px;font-weight:700;cursor:pointer;padding:4px 0">Change email</summary>
+                <div style="display:grid;gap:8px;margin-top:8px">
+                  <input id="set-newemail" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="New email" style="${inputStyle}">
+                  <input id="set-curpw2" type="password" autocomplete="current-password" placeholder="Current password" style="${inputStyle}">
+                  <button class="btn primary" type="button" onclick="settingsChangeEmail()" style="min-height:42px;font-size:13px">Update email</button>
+                </div>
+              </details>
+              <button class="btn" type="button" onclick="settingsLogoutAll()" style="min-height:40px;font-size:13px;border-color:rgba(245,158,11,0.4);color:#fbbf24">Log out of all other devices</button>
+            </div>
+          </div>
+
+          <!-- Club settings -->
+          <div class="card">
+            <h2 style="margin-bottom:4px">Club settings</h2>
+            <p class="muted" style="font-size:12px;margin-bottom:14px">Names, season name and the training schedule are edited in <a href="#" onclick="setSection('coach','admin');return false" style="color:var(--green)">Club Admin</a>.</p>
+            <div style="display:grid;gap:12px">
+              <div style="display:flex;align-items:center;gap:14px">
+                <div id="set-logo-preview" style="width:54px;height:54px;border-radius:12px;border:1px solid var(--line);background:var(--panel-2) center/cover no-repeat;flex-shrink:0;${state.clubLogo ? `background-image:url(${state.clubLogo})` : ''}"></div>
+                <div style="display:grid;gap:6px;flex:1">
+                  <label class="btn" style="min-height:36px;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer">
+                    Upload club logo
+                    <input type="file" accept="image/*" style="display:none" onchange="settingsUploadLogo(this)">
+                  </label>
+                  ${state.clubLogo ? `<button class="btn" type="button" onclick="settingsRemoveLogo()" style="min-height:32px;font-size:11px;color:#f87171;border-color:rgba(248,113,113,0.3)">Remove logo</button>` : ''}
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <label style="${labelStyle}">Primary colour
+                  <input id="set-colour1" type="color" value="${esc(state.clubColours?.primary || '#10b981')}" style="${inputStyle};padding:4px;height:42px" onchange="settingsSaveColours()"></label>
+                <label style="${labelStyle}">Secondary colour
+                  <input id="set-colour2" type="color" value="${esc(state.clubColours?.secondary || '#0ea5e9')}" style="${inputStyle};padding:4px;height:42px" onchange="settingsSaveColours()"></label>
+              </div>
+              <label style="${labelStyle}">Default match day
+                <select id="set-matchday" style="${inputStyle}" onchange="settingsSaveMatchDay(this.value)">
+                  <option value="">Not set</option>
+                  ${Object.entries(DAY_LABELS).map(([d, l]) => `<option value="${d}" ${state.matchDayDefault === d ? 'selected' : ''}>${l}</option>`).join('')}
+                </select></label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <label style="${labelStyle}">Season start
+                  <input id="set-season-start" type="date" value="${esc(state.seasonStart || '')}" style="${inputStyle}" onchange="settingsSaveSeason()"></label>
+                <label style="${labelStyle}">Season end
+                  <input id="set-season-end" type="date" value="${esc(state.seasonEnd || '')}" style="${inputStyle}" onchange="settingsSaveSeason()"></label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Notifications -->
+          <div class="card">
+            <h2 style="margin-bottom:4px">Notifications</h2>
+            <p class="muted" style="font-size:12px;margin-bottom:8px">Your personal preferences — players manage their own on their devices.</p>
+            ${toggle('pushEnabled', 'Push notifications', 'Master switch for everything sent to your devices')}
+            ${toggle('emailEnabled', 'Email notifications', 'Applies to reminder emails (account emails always send)')}
+            ${toggle('matchReminders', 'Match reminders', 'Availability chasers for match day')}
+            ${toggle('trainingReminders', 'Training reminders', 'Availability chasers for training sessions')}
+          </div>
+
+          <!-- Device -->
+          <div class="card">
+            <h2 style="margin-bottom:4px">Device</h2>
+            <div style="${rowStyle}"><span style="font-size:13px">App version</span><strong style="font-size:13px;font-family:monospace">${esc(_settingsVersion || '…')}</strong></div>
+            <div style="${rowStyle}"><span style="font-size:13px">Last sync</span><strong style="font-size:13px">${esc(lastSyncLabel())}</strong></div>
+            <div style="display:grid;gap:8px;margin-top:12px">
+              <button class="btn" type="button" onclick="settingsForceSync(this)" style="min-height:40px;font-size:13px">↺ Force sync now</button>
+              <button class="btn" type="button" onclick="clearDeviceState()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.3)">Clear cached data on this device</button>
+            </div>
+          </div>
+
+          <!-- Danger zone -->
+          <div class="card" style="border-color:rgba(248,113,113,0.35)">
+            <h2 style="margin-bottom:4px;color:#f87171">Danger zone</h2>
+            <div style="display:grid;gap:8px;margin-top:10px">
+              <button class="btn" type="button" onclick="settingsExportClub(this)" style="min-height:40px;font-size:13px">📦 Export club data (JSON)</button>
+              <button class="btn" type="button" onclick="settingsDeleteClub()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Delete club setup data…</button>
+              <button class="btn" type="button" onclick="settingsSignOut()" style="min-height:40px;font-size:13px">Sign out</button>
+            </div>
+            <p class="muted" style="font-size:11px;margin:10px 0 0">Deleting club data clears the club profile, published sessions, squad and roster for this club only. Player accounts and message history are kept.</p>
+          </div>
+        </div>`;
+    }
+
+    async function settingsUpdateProfile() {
+      const name = document.getElementById('set-displayname')?.value?.trim();
+      if (!name) { showToast('Enter a display name'); return; }
+      try {
+        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update_profile', displayName: name }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not save');
+        const u = state.users.find(x => x.id === state.currentUserId);
+        if (u) u.name = name;
+        saveState('Name updated'); render();
+        showToast('Display name updated ✓');
+      } catch(e) { showToast(e.message || 'Could not save'); }
+    }
+
+    async function settingsChangePassword() {
+      const currentPassword = document.getElementById('set-curpw1')?.value || '';
+      const newPassword = document.getElementById('set-newpw')?.value || '';
+      if (newPassword.length < 8) { showToast('New password must be at least 8 characters'); return; }
+      try {
+        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'change_password', currentPassword, newPassword }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not change password');
+        showToast('Password updated ✓ Use it on your next login.');
+        renderSettings();
+      } catch(e) { showToast(e.message || 'Could not change password'); }
+    }
+
+    async function settingsChangeEmail() {
+      const newEmail = document.getElementById('set-newemail')?.value?.trim() || '';
+      const currentPassword = document.getElementById('set-curpw2')?.value || '';
+      if (!newEmail) { showToast('Enter the new email'); return; }
+      try {
+        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'change_email', currentPassword, newEmail }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not change email');
+        const u = state.users.find(x => x.id === state.currentUserId);
+        if (u) u.email = data.user?.email || newEmail;
+        saveState('Email updated'); render();
+        showToast(`Email updated to ${data.user?.email} ✓ Use it on your next login.`);
+      } catch(e) { showToast(e.message || 'Could not change email'); }
+    }
+
+    async function settingsLogoutAll() {
+      if (!window.confirm('Log out of all OTHER devices?\n\nThis device stays signed in. Every other phone/laptop will need your password again.')) return;
+      try {
+        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'logout_all' }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Failed');
+        showToast(`Signed out of ${data.revoked} other device${data.revoked === 1 ? '' : 's'} ✓`);
+      } catch(e) { showToast(e.message || 'Failed'); }
+    }
+
+    async function settingsTogglePref(key) {
+      _settingsPrefs = { ...(_settingsPrefs || {}), [key]: (_settingsPrefs || {})[key] === false };
+      renderSettings();
+      try {
+        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update_preferences', preferences: _settingsPrefs }) });
+        if (!res.ok) throw new Error();
+        showToast('Notification preferences saved ✓');
+      } catch { showToast('⚠️ Could not save preferences — check your connection'); }
+    }
+
+    function settingsUploadLogo(input) {
+      const file = input.files?.[0];
+      if (!file) return;
+      const img = new Image();
+      img.onload = () => {
+        // Resize client-side so the stored data-URL stays small
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const scale = Math.max(size / img.width, size / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        canvas.getContext('2d').drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        const dataUrl = canvas.toDataURL('image/png');
+        if (dataUrl.length > 200000) { showToast('Logo too complex — try a simpler image'); return; }
+        state.clubLogo = dataUrl;
+        saveState('Logo saved');
+        saveClubConfigToServer({ logoDataUrl: dataUrl }).then(saved =>
+          showToast(saved ? 'Club logo saved ✓' : '⚠️ Logo saved on this device — server sync failed'));
+        renderSettings();
+      };
+      img.onerror = () => showToast('Could not read that image');
+      img.src = URL.createObjectURL(file);
+    }
+
+    function settingsRemoveLogo() {
+      state.clubLogo = '';
+      saveState('Logo removed');
+      saveClubConfigToServer({ logoDataUrl: '' }).catch(() => {});
+      renderSettings();
+    }
+
+    function settingsSaveColours() {
+      state.clubColours = {
+        primary: document.getElementById('set-colour1')?.value || '#10b981',
+        secondary: document.getElementById('set-colour2')?.value || '#0ea5e9',
+      };
+      saveState('Colours saved');
+      saveClubConfigToServer({ colours: state.clubColours }).then(saved =>
+        showToast(saved ? 'Club colours saved ✓' : '⚠️ Saved on this device — server sync failed'));
+    }
+
+    function settingsSaveMatchDay(day) {
+      state.matchDayDefault = day || '';
+      saveState('Match day saved');
+      saveClubConfigToServer({ matchDay: state.matchDayDefault }).then(saved =>
+        showToast(saved ? 'Default match day saved ✓' : '⚠️ Saved on this device — server sync failed'));
+    }
+
+    function settingsSaveSeason() {
+      state.seasonStart = document.getElementById('set-season-start')?.value || '';
+      state.seasonEnd = document.getElementById('set-season-end')?.value || '';
+      saveState('Season saved');
+      saveClubConfigToServer({ seasonStart: state.seasonStart, seasonEnd: state.seasonEnd }).then(saved =>
+        showToast(saved ? 'Season dates saved ✓' : '⚠️ Saved on this device — server sync failed'));
+    }
+
+    async function settingsForceSync(btn) {
+      if (btn) { btn.disabled = true; btn.textContent = '↺ Syncing…'; }
+      try {
+        _clubConfigChecked = false;
+        _publishedStateLoadedAt = 0;
+        await Promise.all([
+          loadRosterFromServer(),
+          loadClubConfigFromServer(),
+          loadPublishedStateForPlayer(),
+          chatFetchConversations().catch(() => {}),
+        ]);
+        markSynced();
+        showToast('Synced with server ✓');
+      } catch { showToast('⚠️ Sync failed — check your connection'); }
+      finally { if (btn) { btn.disabled = false; btn.textContent = '↺ Force sync now'; } renderSettings(); }
+    }
+
+    async function settingsExportClub(btn) {
+      if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
+      try {
+        const [identity, invites, club, published, roster] = await Promise.all([
+          fetch('/api/identity').then(r => r.ok ? r.json() : null),
+          fetch('/api/invite').then(r => r.ok ? r.json() : null),
+          fetch('/api/publish?resource=club').then(r => r.ok ? r.json() : null),
+          fetch('/api/publish?type=all').then(r => r.ok ? r.json() : null),
+          fetch('/api/roster').then(r => r.ok ? r.json() : null),
+        ]);
+        const payload = {
+          exportedAt: new Date().toISOString(),
+          club: club?.club || null,
+          members: identity ? { users: identity.users, team_members: identity.team_members, player_profiles: identity.player_profiles } : null,
+          invites: invites?.invites || [],
+          published: published ? { sessions: published.sessions, squad: published.squad } : null,
+          roster: roster?.players || [],
+          localState: { schedule: state.schedule, matchCentre: state.matchCentre, fixtures: state.fixtures },
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${(state.clubName || 'club').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-export-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        showToast('Club data exported ✓');
+      } catch(e) { showToast('Export failed: ' + (e?.message || 'network')); }
+      finally { if (btn) { btn.disabled = false; btn.textContent = '📦 Export club data (JSON)'; } }
+    }
+
+    async function settingsDeleteClub() {
+      const expected = (state.clubName || '').trim();
+      const typed = window.prompt(`This deletes the club profile, published sessions, squad and roster from the server for THIS club only.\n\nPlayer accounts and messages are kept.\n\nType the club name to confirm:${expected ? ` (${expected})` : ''}`);
+      if (typed === null) return;
+      try {
+        const res = await fetch('/api/publish?resource=club', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete_club_data', confirmName: typed }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Delete failed');
+        showToast('Club setup data deleted. Run setup again from Club Admin when ready.');
+        state.clubName = ''; state.teamName = ''; state.seasonName = '';
+        state.fixtures = []; state.clubLogo = '';
+        saveState('Club data deleted');
+        render();
+      } catch(e) { showToast(e.message || 'Delete failed'); }
+    }
+
+    async function settingsSignOut() {
+      if (!window.confirm('Sign out on this device? Your club data stays saved locally.')) return;
+      try { await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) }); } catch {}
+      _serverAuthState = 'anon';
+      authTab = 'login';
+      render();
+      renderAuthBanner();
+      showToast('Signed out');
+    }
+
     // ─── CLUB ADMINISTRATION ─────────────────────────────────────────────────
     // Coach-only admin screen: club/team/season details, training schedule,
     // fixture list, player management (active / pending invites / archived)
@@ -9931,6 +10303,7 @@
       renderMedical();
       renderPlayers();
       renderClubAdmin();
+      renderSettings();
       renderPlayerWeek();
       renderPlayerAvailability();
       renderPlayerFixtures();
@@ -10487,6 +10860,11 @@
       if (Array.isArray(club.fixtures) && JSON.stringify(state.fixtures || []) !== JSON.stringify(club.fixtures)) {
         state.fixtures = club.fixtures; changed = true;
       }
+      if (club.seasonStart !== undefined && state.seasonStart !== club.seasonStart) { state.seasonStart = club.seasonStart; changed = true; }
+      if (club.seasonEnd !== undefined && state.seasonEnd !== club.seasonEnd) { state.seasonEnd = club.seasonEnd; changed = true; }
+      if (club.matchDay !== undefined && state.matchDayDefault !== club.matchDay) { state.matchDayDefault = club.matchDay; changed = true; }
+      if (club.logoDataUrl !== undefined && state.clubLogo !== club.logoDataUrl) { state.clubLogo = club.logoDataUrl; changed = true; }
+      if (club.colours && JSON.stringify(state.clubColours || {}) !== JSON.stringify(club.colours)) { state.clubColours = club.colours; changed = true; }
       return changed;
     }
 
@@ -10496,6 +10874,7 @@
         const res = await fetch('/api/publish?resource=club');
         if (!res.ok) return; // not authenticated yet — try again after login
         _clubConfigChecked = true;
+        try { markSynced(); } catch {}
         const data = await res.json();
         if (data.club) {
           if (applyClubConfigLocally(data.club)) { saveState('Club settings loaded'); renderNav(); }
@@ -10528,6 +10907,11 @@
             venue:      state.matchCentre?.venue || '',
           },
           fixtures: state.fixtures || [],
+          seasonStart: state.seasonStart || '',
+          seasonEnd: state.seasonEnd || '',
+          matchDay: state.matchDayDefault || '',
+          logoDataUrl: state.clubLogo || '',
+          colours: state.clubColours || {},
           ...extra,
         };
         const res = await fetch('/api/publish?resource=club', {

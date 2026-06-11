@@ -2,7 +2,14 @@ import {
   adminAccountStatus,
   adminResetStaffPassword,
   approveJoinRequest,
+  changeEmail,
+  changePassword,
   claimInvite,
+  destroyAllSessionsForUser,
+  requireSession,
+  tokenHashFor,
+  updateNotificationPreferences,
+  updateProfile,
   clearSessionCookie,
   createPasswordResetRequest,
   destroySession,
@@ -195,6 +202,43 @@ export default async function handler(req, res) {
           by: session.user.id, ip: requestIp(req),
         });
         return res.status(200).json({ ok: true, ...result });
+      }
+      // ── Self-service account management (Settings) — any authenticated user.
+      // Password/email changes re-verify the CURRENT password server-side.
+      if (action === 'change_password') {
+        const session = await requireSession(req);
+        const result = await changePassword(session.user.id, {
+          currentPassword: req.body?.currentPassword, newPassword: req.body?.newPassword,
+        });
+        await auditLog('password_changed', { userId: session.user.id, ip: requestIp(req) });
+        return res.status(200).json({ ok: true, ...result });
+      }
+      if (action === 'change_email') {
+        const session = await requireSession(req);
+        const result = await changeEmail(session.user.id, {
+          currentPassword: req.body?.currentPassword, newEmail: req.body?.newEmail,
+        });
+        await auditLog('email_changed', { userId: session.user.id, newEmail: result.user?.email, ip: requestIp(req) });
+        return res.status(200).json({ ok: true, ...result });
+      }
+      if (action === 'update_profile') {
+        const session = await requireSession(req);
+        const result = await updateProfile(session.user.id, req.body || {});
+        return res.status(200).json({ ok: true, ...result });
+      }
+      if (action === 'update_preferences') {
+        const session = await requireSession(req);
+        const result = await updateNotificationPreferences(session.user.id, req.body?.preferences || {});
+        return res.status(200).json({ ok: true, ...result });
+      }
+      if (action === 'logout_all') {
+        const session = await requireSession(req);
+        // Keep THIS session alive so the user is not dumped to the login
+        // screen mid-action; every other device must sign in again.
+        const currentHash = tokenHashFor(sessionTokenFromRequest(req));
+        const result = await destroyAllSessionsForUser(session.user.id, { exceptTokenHash: currentHash });
+        await auditLog('logout_all_devices', { userId: session.user.id, revoked: result.revoked, ip: requestIp(req) });
+        return res.status(200).json({ ok: true, revoked: result.revoked });
       }
       // ── Production account recovery — CRON_SECRET gated, never browser-reachable
       // without the server secret. Does NOT weaken normal auth: DEV_LOGIN stays

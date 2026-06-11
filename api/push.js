@@ -7,6 +7,7 @@ import { key } from './_keys.js';
 import { resolveVariables } from './_variables.js';
 import { setCors, vapidContact, vapidKeyStatus } from './_http.js';
 import { requireTenantRole } from './_tenant.js';
+import { loadNotificationPreferenceMap, notificationAllowed } from './_identityStore.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -109,6 +110,14 @@ export default async function handler(req, res) {
     subscriptions = subscriptions.filter(item =>
       ![item.label, item.userId, item.playerId, item.legacyPlayerId].some(value => value && responded.has(value))
     );
+  }
+
+  // Respect per-user notification preferences (Settings). Users with no
+  // stored preferences are unaffected — opt-out only.
+  const prefMap = await loadNotificationPreferenceMap();
+  if (Object.keys(prefMap).length) {
+    subscriptions = subscriptions.filter(item =>
+      notificationAllowed(prefMap, item.userId, { type, sessionId }));
   }
 
   if (!subscriptions.length) {

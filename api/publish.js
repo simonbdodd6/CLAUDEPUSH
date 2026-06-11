@@ -165,10 +165,23 @@ function sanitiseClubConfig(raw) {
     homeAway:   ['home', 'away'].includes(String(fx?.homeAway || '').toLowerCase()) ? String(fx.homeAway).toLowerCase() : '',
   });
   const fx = raw.firstFixture && typeof raw.firstFixture === 'object' ? raw.firstFixture : {};
+  const hexColour = v => /^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? String(v).toLowerCase() : '';
+  // Logos are client-resized data-URLs; cap well under Upstash value limits.
+  const logo = String(raw.logoDataUrl || '');
+  const logoDataUrl = logo.startsWith('data:image/') && logo.length <= 200000 ? logo : '';
+  const isoDate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '';
   return {
     clubName,
     teamName:   String(raw.teamName   || '').trim().slice(0, 80),
     seasonName: String(raw.seasonName || '').trim().slice(0, 80),
+    seasonStart: isoDate(raw.seasonStart),
+    seasonEnd:   isoDate(raw.seasonEnd),
+    matchDay:   VALID_DAYS.has(String(raw.matchDay || '')) ? String(raw.matchDay) : '',
+    colours: {
+      primary:   hexColour(raw.colours?.primary),
+      secondary: hexColour(raw.colours?.secondary),
+    },
+    logoDataUrl,
     trainingDays,
     firstFixture: sanitiseFixture(fx),
     fixtures: (Array.isArray(raw.fixtures) ? raw.fixtures : [])
@@ -197,6 +210,25 @@ async function clubHandler(req, res) {
     } catch (error) {
       return sendAuthError(res, error);
     }
+
+    // Danger Zone: wipe THIS team's operational data. Requires the club name
+    // typed back as confirmation. Identity accounts and chat history are NOT
+    // deleted — players keep their logins; this resets the club setup.
+    if (req.body?.action === 'delete_club_data') {
+      const existing = (await kvGet(clubKey(session.teamId))) || null;
+      const expected = String(existing?.clubName || '').trim();
+      if (expected && String(req.body?.confirmName || '').trim() !== expected) {
+        return res.status(400).json({ error: 'Type the exact club name to confirm deletion' });
+      }
+      await Promise.all([
+        kvSet(clubKey(session.teamId), null),
+        kvSet(sessionsKey(session.teamId), null),
+        kvSet(squadKey(session.teamId), null),
+        kvSet(rosterKey(session.teamId), null),
+      ]);
+      return res.status(200).json({ ok: true, deleted: ['club', 'sessions', 'squad', 'roster'] });
+    }
+
     const club = sanitiseClubConfig(req.body?.club);
     if (!club) return res.status(400).json({ error: 'club.clubName is required' });
     const existing = (await kvGet(clubKey(session.teamId))) || null;

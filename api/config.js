@@ -33,6 +33,9 @@ export default async function handler(req, res) {
   const storageConfigured = kvConfigured();
   const vapidStatus = vapidKeyStatus();
   return res.status(200).json({
+    // Deployment identity for the Settings → Device card. Provided by Vercel
+    // at build time; never hardcoded.
+    version: (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || 'local',
     vapidPublicKey,
     pushConfigured: Boolean(vapidStatus.ok && storageConfigured),
     // Why push is unavailable, so the coach UI can show an actionable message
