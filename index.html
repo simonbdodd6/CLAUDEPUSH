@@ -2950,6 +2950,8 @@
 
     function deleteSession(id) {
       if (state.schedule.length <= 1) { showToast('Cannot delete the only session'); return; }
+      const sess = state.schedule.find(s => s.id === id);
+      if (!window.confirm(`Delete "${sess?.title || 'this session'}"?\n\nIts availability tracking is removed too. This cannot be undone.`)) return;
       state.schedule = state.schedule.filter(s => s.id !== id);
       if (state.messageDetail === id) state.messageDetail = state.schedule[0]?.id || null;
       _sessionFormMode = null;
@@ -3571,6 +3573,10 @@
     function publishSquad() {
       state.matchCentre = state.matchCentre || {};
       const isPublishing = !state.matchCentre.published;
+      if (isPublishing) {
+        const opp = state.matchCentre.opposition || 'the match';
+        if (!window.confirm(`Publish the squad for ${opp}?\n\nEvery player with notifications enabled will be notified immediately.`)) return;
+      }
       state.matchCentre.published = isPublishing;
       saveState();
       syncSquadToServer().catch(() => {});
@@ -6097,6 +6103,7 @@
       if (!isCoach()) return notify("Only coaches can send availability requests");
       const session = state.schedule.find(s => s.id === sessionId);
       if (!session) return;
+      if (!(state.players || []).length) return showToast('No players yet — invite players from the Members page first');
       const body = `Please confirm your availability for ${session.title} (${session.date}) in Coach's Eye.`;
       const created = createCoachMessage({ recipients: state.players, type: "Availability request", body, sessionId });
       state.availabilityRequests.unshift({
@@ -6126,6 +6133,8 @@
       if (!isCoach()) return notify("Only coaches can send availability requests");
       const sessions = state.schedule || [];
       if (!sessions.length) return showToast('No sessions configured');
+      if (!(state.players || []).length) return showToast('No players yet — invite players from the Members page first');
+      if (!window.confirm(`Send availability requests for all ${sessions.length} sessions?\n\nOne combined notification goes to every player.`)) return;
       const titles = sessions.map(s => s.title).join(', ');
       const body = `Please confirm your availability for: ${titles} in Coach's Eye.`;
       // Create messages for each session
@@ -7062,8 +7071,8 @@
           <div class="card" style="padding:14px 18px">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:10px">
               <label style="font-size:12px;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:8px;flex:1;min-width:200px">
-                Team name
-                <input value="${esc(state.clubName || '')}" placeholder="e.g. Belgium U20"
+                Club name
+                <input value="${esc(state.clubName || '')}" placeholder="e.g. Belgium Rugby"
                   style="font-size:14px;font-weight:700;padding:6px 10px;flex:1;max-width:280px"
                   oninput="state.clubName=this.value.trim();saveState('Club name saved');renderNav();clearTimeout(window._clubCfgT);window._clubCfgT=setTimeout(()=>saveClubConfigToServer(),1500)">
               </label>
@@ -7243,7 +7252,13 @@
                 </tr>`).join("")}
               </tbody>
             </table>
-            ${filtered.length === 0 ? `<div style="padding:28px;text-align:center;color:var(--muted)">No players match this filter.</div>` : ""}
+            ${filtered.length === 0 ? (members.length === 0
+              ? `<div style="padding:32px 20px;text-align:center">
+                  <div style="font-size:30px;margin-bottom:8px">🏉</div>
+                  <strong style="display:block;font-size:15px;margin-bottom:4px">No players yet</strong>
+                  <p class="muted" style="font-size:13px;margin:0">Use <strong>Invite &amp; team access</strong> above to generate your first invite link — players join with one tap.</p>
+                </div>`
+              : `<div style="padding:28px;text-align:center;color:var(--muted)">No players match this filter.</div>`) : ""}
           </div>`}
 
           <!-- Sent invites — collapsed by default -->
@@ -7810,6 +7825,8 @@
     }
 
     function adminRemoveFixture(id) {
+      const fx = (state.fixtures || []).find(f => f.id === id);
+      if (!window.confirm(`Remove the fixture vs ${fx?.opposition || 'this opponent'}?`)) return;
       state.fixtures = (state.fixtures || []).filter(f => f.id !== id);
       saveState('Fixture removed');
       saveClubConfigToServer().catch(() => {});
