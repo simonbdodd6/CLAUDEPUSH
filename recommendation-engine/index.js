@@ -13,6 +13,12 @@
  */
 
 import { randomUUID } from 'crypto';
+// Feedback loop: coach decisions → learning engine → calibrated confidence
+// applyCalibration() adjusts each recommendation's confidence based on the
+// learning engine's record of how accurate past recommendations of the same
+// type have been. Cold-start safe: returns the recommendation unchanged when
+// fewer than 3 outcomes exist for that type.
+import { applyCalibration } from '../learning-engine/confidence-calibrator.js';
 
 // ── Schema constants ──────────────────────────────────────────────────────────
 
@@ -585,8 +591,25 @@ export function generate(ctx = {}, { useMockFallback = true, maxResults = 10 } =
 
   const ranked = rank(recs).slice(0, maxResults);
 
+  // Apply learning-engine calibration to each recommendation.
+  // Coach decision → Learning Engine records outcome → calibration adjusts
+  // future confidence → recommendation quality improves over time.
+  // Safe at cold-start: applyCalibration() is a no-op when sample size < 3.
+  // This engine uses `category` ('Medical', 'Training', etc.) as its type key.
+  // The learning store indexes outcomes by recommendationType = category, so
+  // we pass { type: r.category } for the calibrator to find the right history.
+  const calibrated = ranked.map(r => {
+    try {
+      const cal = applyCalibration({ ...r, type: r.category })
+      // Enforce absolute bounds regardless of calibration arithmetic
+      return { ...cal, confidence: Math.max(0, Math.min(100, cal.confidence)) }
+    } catch (_) {
+      return r // calibration failure must never suppress a recommendation
+    }
+  })
+
   // Strip internal _score from output
-  const clean = ranked.map(({ _score, ...r }) => r);
+  const clean = calibrated.map(({ _score, ...r }) => r);
 
   return {
     recommendations: clean,
