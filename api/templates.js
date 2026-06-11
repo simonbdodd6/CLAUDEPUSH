@@ -13,7 +13,7 @@ const LEGACY_TEMPLATES_KEY = legacyKey('templates');
 const DEFAULT_TEMPLATES = [
   {
     id: 'tpl-availability', name: 'Weekly Availability', category: 'availability',
-    title: "coacheseyeGPT - Availability Check",
+    title: "Coach's Eye - Availability Check",
     body: 'Hi {{first_name}}! Please confirm your availability for {{session_day}} and {{match_day}}. Tap a response below. Thanks - {{coach_name}}',
   },
   {
