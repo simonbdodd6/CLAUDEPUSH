@@ -10,10 +10,11 @@ import { get as cacheGet, set as cacheSet } from './knowledge-cache.js';
 import { logQuery } from './knowledge-history.js';
 
 // Lazy engine imports for direct engine access in some handlers
-let _ci = null, _mem = null, _di = null;
+let _ci = null, _mem = null, _di = null, _gt = null;
 async function ci()  { if (!_ci)  { try { _ci  = await import('../qa/club-intelligence/index.js'); } catch { _ci  = null; } } return _ci;  }
 async function mem() { if (!_mem) { try { _mem = await import('../memory-engine/index.js');         } catch { _mem = null; } } return _mem; }
 async function di()  { if (!_di)  { try { _di  = await import('../qa/data-integration/index.js');  } catch { _di  = null; } } return _di;  }
+async function gt()  { if (!_gt)  { try { _gt  = await import('./graph-traversal.js');              } catch { _gt  = null; } } return _gt;  }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
@@ -86,6 +87,9 @@ async function _dispatch(q, role) {
     case INTENTS.MATCH_HISTORY:      return _handleMatchHistory(q);
     case INTENTS.TRAINING_REPORT:    return _handleTrainingReport(q);
     case INTENTS.COMMS_PENDING:      return _handleCommsPending(q);
+    case INTENTS.GRAPH_COACHING:     return _handleGraphCoaching(q);
+    case INTENTS.GRAPH_DOCS:         return _handleGraphDocs(q);
+    case INTENTS.GRAPH_PLAYER:       return _handleGraphPlayer(q);
     default:                         return _handleGeneral(q, role);
   }
 }
@@ -650,8 +654,64 @@ async function _handleCommsPending(q) {
   };
 }
 
+// ── Graph-traversal handlers ───────────────────────────────────────────────────
+// Each handler falls back to _handleGeneral if the graph returns nothing.
+
+async function _handleGraphCoaching(q) {
+  const g = await gt();
+  if (g) {
+    try {
+      const result = await g.drillsForQuery(q.raw);
+      if (result) return result;
+    } catch { /* fall through */ }
+  }
+  return _handleGeneral(q, 'coach');
+}
+
+async function _handleGraphDocs(q) {
+  const g = await gt();
+  if (g) {
+    try {
+      const result = await g.docsForQuery(q.raw);
+      if (result) return result;
+    } catch { /* fall through */ }
+  }
+  return _handleGeneral(q, 'coach');
+}
+
+async function _handleGraphPlayer(q) {
+  const g = await gt();
+  if (g) {
+    try {
+      const result = await g.playerGraphQuery(q.raw, q.filters?.name);
+      if (result) return result;
+    } catch { /* fall through */ }
+  }
+  return _handleGeneral(q, 'coach');
+}
+
+// Node types considered coaching knowledge — graph takes priority for these
+// Only pre-empt Club Intelligence when graph finds an actual coaching-knowledge node.
+// KnowledgeBase is structural (an indexing bucket), not content — excluded.
+const COACHING_KNOWLEDGE_TYPES = new Set([
+  'CoachingPrinciple', 'Theme', 'Drill', 'Exercise', 'Document', 'TrainingSession',
+]);
+
 async function _handleGeneral(q, role) {
-  // Try Club Intelligence answerQuestion first
+  // Try graph traversal first for coaching-knowledge nodes (drills, principles, documents).
+  // Graph takes priority when it finds a relevant coaching node; otherwise falls through to CI.
+  const g = await gt();
+  if (g) {
+    try {
+      const graphResult = await g.exploreGraph(q.raw);
+      const topType = graphResult?.data?.[0]?.node?.type;
+      if (graphResult?.count > 0 && topType && COACHING_KNOWLEDGE_TYPES.has(topType)) {
+        return graphResult;
+      }
+    } catch { /* fall through */ }
+  }
+
+  // Try Club Intelligence answerQuestion for club-operations queries
   const c = await ci();
   if (c) {
     try {

@@ -22,6 +22,11 @@ export const INTENTS = {
   TRAINING_REPORT:    'training_report',
   COMMS_PENDING:      'comms_pending',
   GENERAL:            'general',
+
+  // Graph-backed coaching-knowledge intents
+  GRAPH_COACHING: 'graph_coaching',   // drills/exercises for a principle or topic
+  GRAPH_DOCS:     'graph_docs',       // documents covering a topic
+  GRAPH_PLAYER:   'graph_player',     // graph profile of a named player
 };
 
 // Intent patterns — ordered by specificity (most specific first)
@@ -43,6 +48,11 @@ const INTENT_PATTERNS = [
   { intent: INTENTS.TRAINING_REPORT,     pattern: /training.*session|session.*report|training.*this.*week|recent.*training|last.*session/i },
   { intent: INTENTS.COMMS_PENDING,       pattern: /pending.*comm|comm.*pending|unsent|awaiting.*approval|draft.*comm|scheduled.*comm/i },
   { intent: INTENTS.PLAYER_FIND,         pattern: /show.*player|find.*player|list.*player|which.*player|who.*play|all.*player/i },
+
+  // Graph-backed coaching-knowledge patterns (run after club-ops intents)
+  { intent: INTENTS.GRAPH_COACHING, pattern: /\bdrill[s]?\b|exercises?\s+for\b|what.*drill|find.*drill|coaching.*principles?\b|how.*to.*improve.*\w|session.*plan.*for\b/i },
+  { intent: INTENTS.GRAPH_DOCS,     pattern: /documents?\s+(about|for|covering|on)\b|uploaded.*about|knowledge.*base.*about|what.*documents?\s*(have|are|does)/i },
+  { intent: INTENTS.GRAPH_PLAYER,   pattern: /graph.*\bplayer\b|everything.*know.*about\b|player.*profile.*graph/i },
 ];
 
 // Domain mapping for each intent
@@ -65,6 +75,9 @@ const INTENT_DOMAIN = {
   [INTENTS.TRAINING_REPORT]:    DOMAINS.TRAINING,
   [INTENTS.COMMS_PENDING]:      DOMAINS.COMMUNICATIONS,
   [INTENTS.GENERAL]:            null,
+  [INTENTS.GRAPH_COACHING]:    null,
+  [INTENTS.GRAPH_DOCS]:        null,
+  [INTENTS.GRAPH_PLAYER]:      null,
 };
 
 // Position normalisation
