@@ -7,6 +7,11 @@
 import { createServer } from 'http'
 import { URL } from 'url'
 
+// AI Brain — single entry point for all intelligence.
+// The Core never imports recommendation-engine, knowledge-engine,
+// learning-engine, intelligence-timeline, or autonomous-assistant directly.
+import { AI } from '../ai-brain/index.js'
+
 const PORT = process.env.PORT ?? 3001
 
 // Debounce guard: prevent flooding timeline/graph on every page load.
@@ -140,11 +145,7 @@ const server = createServer(async (req, res) => {
           })),
         })
       } catch {
-        const { getClubHealth, getInsights } = await import('../qa/club-intelligence/index.js')
-        const [health, insights] = await Promise.all([
-          getClubHealth().catch(() => ({ overallScore: 52, trend: 'stable', isMock: true })),
-          getInsights().catch(() => []),
-        ])
+        const { health, insights } = await AI.clubHealth()
         json(res, { health, insights })
       }
       return
@@ -163,8 +164,7 @@ const server = createServer(async (req, res) => {
     // ── Knowledge ─────────────────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/knowledge/ask') {
       const q = url.searchParams.get('q') ?? ''
-      const { ask } = await import('../knowledge-engine/index.js')
-      const result = await ask(q, { role: 'coach' })
+      const result = await AI.ask({ question: q, role: 'coach' })
       json(res, result)
       return
     }
@@ -173,23 +173,20 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req)
       const { question = '', role = 'coach', useCache = true } = body
       if (!question.trim()) { res.writeHead(400); res.end(JSON.stringify({ error: 'question required' })); return }
-      const { ask } = await import('../knowledge-engine/index.js')
-      const result = await ask(question, { role, useCache })
+      const result = await AI.ask({ question, role, useCache })
       json(res, result)
       return
     }
 
     // ── Alerts ────────────────────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/alerts/injuries') {
-      const { ask } = await import('../knowledge-engine/index.js')
-      const result = await ask('Show all injured players.', { role: 'coach' })
+      const result = await AI.ask({ question: 'Show all injured players.', role: 'coach' })
       json(res, { injuries: result.data ?? [], summary: result.answer, count: result.count ?? 0 })
       return
     }
 
     if (method === 'GET' && path === '/api/alerts/attendance') {
-      const { ask } = await import('../knowledge-engine/index.js')
-      const result = await ask('Who has missed the most training this season?', { role: 'coach' })
+      const result = await AI.ask({ question: 'Who has missed the most training this season?', role: 'coach' })
       json(res, { absentees: result.data ?? [], summary: result.answer, count: result.count ?? 0 })
       return
     }
@@ -197,9 +194,7 @@ const server = createServer(async (req, res) => {
     // ── Recommendations ───────────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/recommendations') {
       try {
-        const { generate, buildContext } = await import('../recommendation-engine/index.js')
-
-        // Assemble context from all available engines — each import is best-effort
+        // Assemble platform context — each import is best-effort
         const [fixtureResult, twinResult, seasonResult, attendanceResult] = await Promise.allSettled([
           Promise.all([
             import('../fixture-engine/fixture-store.js'),
@@ -213,26 +208,22 @@ const server = createServer(async (req, res) => {
             return club ? { injured: club.players?.injured ?? [], atRisk: club.players?.atRisk ?? [] } : null
           }),
           import('../season-intelligence/index.js').then(m => m.detectCurrentPhase?.() ?? null),
-          import('../autonomous-assistant/observation-engine.js').then(async m => {
-            const obs = await m.observe().catch(() => null)
-            return obs?.attendance ?? null
-          }),
+          AI.observe().then(obs => obs?.attendance ?? null),
         ])
 
-        const ctx = buildContext({
-          fixture:        fixtureResult.status  === 'fulfilled' ? fixtureResult.value  : null,
-          digitalTwin:    twinResult.status     === 'fulfilled' ? twinResult.value     : null,
-          seasonData:     seasonResult.status   === 'fulfilled' ? seasonResult.value   : null,
+        const brainResult = await AI.request({
+          fixture:        fixtureResult.status    === 'fulfilled' ? fixtureResult.value    : null,
+          digitalTwin:    twinResult.status       === 'fulfilled' ? twinResult.value       : null,
+          seasonData:     seasonResult.status     === 'fulfilled' ? seasonResult.value     : null,
           attendanceData: attendanceResult.status === 'fulfilled' ? attendanceResult.value : null,
+          maxResults: 8,
         })
 
-        const { recommendations, meta } = generate(ctx, { maxResults: 8 })
-        json(res, { recommendations, meta })
+        json(res, { recommendations: brainResult.recommendations, meta: brainResult.meta })
       } catch (e) {
         // Hard fallback: run the engine in mock mode so the UI always has data
-        const { generate } = await import('../recommendation-engine/index.js').catch(() => ({ generate: () => ({ recommendations: [], meta: {} }) }))
-        const { recommendations, meta } = generate({}, { useMockFallback: true })
-        json(res, { recommendations, meta, error: e.message })
+        const brainResult = await AI.request({})
+        json(res, { recommendations: brainResult.recommendations, meta: brainResult.meta, error: e.message })
       }
       return
     }
@@ -242,21 +233,11 @@ const server = createServer(async (req, res) => {
     if (method === 'POST' && recMatch) {
       const [, id, action] = recMatch
       const body = await readBody(req)
-      const { getActiveRecommendations, resolve, snooze, dismiss } = await import('../autonomous-assistant/index.js')
-      const { recordOutcome, COACH_DECISION } = await import('../learning-engine/index.js')
-      const recs = await getActiveRecommendations().catch(() => [])
-      const rec  = recs.find(r => r.id === id)
-      if (action === 'accept') {
-        resolve(id)
-        if (rec) recordOutcome({ recommendationId: id, recommendationType: rec.type, coachDecision: COACH_DECISION.ACCEPTED, confidenceAtTime: rec.confidence, predictionCorrect: body.predictionCorrect ?? null })
-      } else if (action === 'snooze') {
-        snooze(id, body.hours ?? 24)
-        if (rec) recordOutcome({ recommendationId: id, recommendationType: rec.type, coachDecision: COACH_DECISION.SNOOZED, confidenceAtTime: rec.confidence })
-      } else {
-        dismiss(id)
-        if (rec) recordOutcome({ recommendationId: id, recommendationType: rec.type, coachDecision: COACH_DECISION.REJECTED, confidenceAtTime: rec.confidence })
-      }
-      json(res, { ok: true, id, action })
+      const result = await AI.decide(id, action, {
+        hours:             body.hours             ?? 24,
+        predictionCorrect: body.predictionCorrect ?? null,
+      })
+      json(res, result)
       return
     }
 
@@ -265,41 +246,40 @@ const server = createServer(async (req, res) => {
     if (method === 'GET' && path === '/api/intelligence/dashboard') {
       try {
         const [recResult, healthResult, availResult, fixtureResult, twinResult, timelineResult] = await Promise.allSettled([
-          // Recommendations — top 5
-          import('../recommendation-engine/index.js').then(async m => {
-            const { value: fixtureVal } = await Promise.allSettled([
+          // Recommendations — top 5 via Brain
+          (async () => {
+            const [fRes] = await Promise.allSettled([
               import('../fixture-engine/fixture-store.js').then(async s => {
                 const { serializeFixture } = await import('../fixture-engine/fixture-schema.js')
                 const f = s.listUpcomingFixtures?.(1)?.[0] ?? null
                 return f ? serializeFixture(f) : null
               })
-            ]).then(([r]) => r.status === 'fulfilled' ? { value: r.value } : { value: null })
-            const ctx = m.buildContext({ fixture: fixtureVal })
-            return m.generate(ctx, { maxResults: 5 })
-          }),
-          // Club health score
+            ])
+            return AI.request({
+              fixture:     fRes.status === 'fulfilled' ? fRes.value : null,
+              maxResults:  5,
+            })
+          })(),
+          // Club health score — platform data, stays direct
           import('../season-intelligence/index.js').then(async m => {
             const score = await m.buildClubHealthScore?.().catch(() => null)
             return score
           }),
-          // Availability intelligence
-          import('../autonomous-assistant/observation-engine.js').then(async m => {
-            const obs = await m.observe().catch(() => null)
-            return obs
-          }),
-          // Next fixture (serialized)
+          // Availability intelligence via Brain
+          AI.observe(),
+          // Next fixture (serialized) — platform data, stays direct
           import('../fixture-engine/fixture-store.js').then(async s => {
             const { serializeFixture } = await import('../fixture-engine/fixture-schema.js')
             const f = s.listUpcomingFixtures?.(1)?.[0] ?? null
             return f ? serializeFixture(f) : null
           }),
-          // Digital twin
+          // Digital twin — platform data, stays direct
           import('../club-digital-twin/index.js').then(async m => {
             const club = await m.getClub().catch(() => null)
             return club
           }),
-          // Timeline — last 10
-          import('../intelligence-timeline/index.js').then(m => m.getTimeline({ limit: 10 })),
+          // Timeline — last 10 via Brain
+          AI.timeline({ limit: 10 }),
         ])
 
         const recs     = recResult.status     === 'fulfilled' ? recResult.value     : null
@@ -381,14 +361,12 @@ const server = createServer(async (req, res) => {
         if (topRecs.length > 0 && (now - _lastTimelineAppend) > TIMELINE_APPEND_INTERVAL_MS) {
           _lastTimelineAppend = now
           Promise.allSettled([
-            import('../intelligence-timeline/index.js').then(m =>
-              m.appendFromRecommendations(topRecs, {
-                teamId:      fixture?.teamId      ?? null,
-                teamName:    fixture?.teamName    ?? null,
-                seasonPhase: recs?.meta?.seasonPhase ?? null,
-                fixture,
-              })
-            ),
+            AI.appendTimeline(topRecs, {
+              teamId:      fixture?.teamId      ?? null,
+              teamName:    fixture?.teamName    ?? null,
+              seasonPhase: recs?.meta?.seasonPhase ?? null,
+              fixture,
+            }),
             import('../knowledge-graph/index.js').then(m => {
               m.bootGraph()
               m.syncRecommendations(topRecs, { engineId: 'eng-rec', coachId: 'coach-simon' })
@@ -411,10 +389,9 @@ const server = createServer(async (req, res) => {
         })
       } catch (e) {
         // If aggregation fails entirely, serve a fully mocked dashboard
-        const { generate } = await import('../recommendation-engine/index.js').catch(() => ({ generate: () => ({ recommendations: [], meta: {} }) }))
-        const { getTimeline } = await import('../intelligence-timeline/index.js').catch(() => ({ getTimeline: () => ({ events: [], total: 0 }) }))
-        const { recommendations, meta } = generate({}, { useMockFallback: true, maxResults: 5 })
-        const tl = getTimeline({ limit: 10 })
+        const brainResult = await AI.request({})
+        const tl          = await AI.timeline({ limit: 10 })
+        const { recommendations, meta } = brainResult
         json(res, {
           clubScore:         { overall: 58, trend: 'declining', confidence: 68, components: { engagement: 52, attendance: 68, governance: 71, finance: 61 }, delta: -5 },
           observations:      [
@@ -442,7 +419,8 @@ const server = createServer(async (req, res) => {
     if (method === 'GET' && path === '/api/intelligence/decisions') {
       try {
         const [recResult, twinResult, fixtureResult, tlResult] = await Promise.allSettled([
-          import('../recommendation-engine/index.js').then(async m => {
+          // Recommendations via Brain
+          (async () => {
             const [fRes] = await Promise.allSettled([
               import('../fixture-engine/fixture-store.js').then(async s => {
                 const { serializeFixture } = await import('../fixture-engine/fixture-schema.js')
@@ -450,16 +428,16 @@ const server = createServer(async (req, res) => {
                 return f ? serializeFixture(f) : null
               }),
             ])
-            const ctx = m.buildContext({ fixture: fRes.status === 'fulfilled' ? fRes.value : null })
-            return m.generate(ctx, { maxResults: 8 })
-          }),
+            return AI.request({ fixture: fRes.status === 'fulfilled' ? fRes.value : null, maxResults: 8 })
+          })(),
           import('../club-digital-twin/index.js').then(m => m.getClub().catch(() => null)),
           import('../fixture-engine/fixture-store.js').then(async s => {
             const { serializeFixture } = await import('../fixture-engine/fixture-schema.js')
             const f = s.listUpcomingFixtures?.(1)?.[0] ?? null
             return f ? serializeFixture(f) : null
           }),
-          import('../intelligence-timeline/index.js').then(m => m.getTimeline({ status: 'completed', limit: 10 })),
+          // Timeline via Brain
+          AI.timeline({ status: 'completed', limit: 10 }),
         ])
 
         const recs    = recResult.status    === 'fulfilled' ? recResult.value    : null
@@ -518,14 +496,12 @@ const server = createServer(async (req, res) => {
 
         // Decision history — full timeline for filter UI
         const histQuery   = Object.fromEntries(new URL('http://x?' + (req.url.split('?')[1] ?? '')).searchParams)
-        const { getTimeline, parseFilters } = await import('../intelligence-timeline/index.js')
-        const histFilters = parseFilters(histQuery)
-        const history     = getTimeline({ ...histFilters, limit: histFilters.limit ?? 30 })
+        const histFilters = await AI.parseTimelineFilters(histQuery)
+        const history     = await AI.timeline({ ...histFilters, limit: histFilters.limit ?? 30 })
 
         json(res, { highPriority, pending, recentlyCompleted, history, generatedAt: new Date().toISOString(), isMock: recs?.meta?.isMock ?? false })
       } catch (e) {
-        const { generate } = await import('../recommendation-engine/index.js').catch(() => ({ generate: () => ({ recommendations: [] }) }))
-        const { recommendations } = generate({}, { useMockFallback: true, maxResults: 5 })
+        const { recommendations } = await AI.request({})
         json(res, {
           highPriority:      recommendations,
           pending:           [],
@@ -543,26 +519,24 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req)
 
       const timelineStatus = action === 'approve' ? 'completed' : action === 'dismiss' ? 'ignored' : 'acknowledged'
-      const learnDecision  = action === 'approve' ? 'ACCEPTED'  : action === 'dismiss' ? 'REJECTED' : 'SNOOZED'
+      const learnDecision  = action === 'approve' ? 'accepted'  : action === 'dismiss' ? 'dismissed' : 'snoozed'
 
       // 1. Update timeline event status (find by recommendationId OR id)
-      const { getTimeline, updateStatus } = await import('../intelligence-timeline/index.js')
-      const { events } = getTimeline({ limit: 500 })
+      const { events } = await AI.timeline({ limit: 500 })
       const tlEvent = events.find(e => e.recommendationId === id || e.id === id)
-      if (tlEvent) updateStatus(tlEvent.id, timelineStatus, body.notes ?? null)
+      if (tlEvent) await AI.updateTimeline(tlEvent.id, timelineStatus, body.notes ?? null)
 
       // 2. Record outcome in learning engine for confidence calibration
-      const { recordOutcome, COACH_DECISION } = await import('../learning-engine/index.js')
-      recordOutcome({
+      await AI.learn({
         recommendationId:   id,
+        outcome:            learnDecision,
         recommendationType: tlEvent?.category ?? 'Unknown',
-        coachDecision:      COACH_DECISION[learnDecision],
         confidenceAtTime:   tlEvent?.confidence ?? null,
         predictionCorrect:  body.predictionCorrect ?? null,
         notes:              body.notes ?? null,
       })
 
-      // 3. Sync decision to knowledge graph
+      // 3. Sync decision to knowledge graph (stays direct — M7 will absorb)
       import('../knowledge-graph/index.js').then(m => {
         m.bootGraph()
         m.syncDecision(action, id, body.notes ?? `Coach ${action}d`, 'coach-simon')
@@ -575,20 +549,17 @@ const server = createServer(async (req, res) => {
     // ── Intelligence Timeline ─────────────────────────────────────────────────
     // Feature flag: aiTimeline (checked client-side; server always serves data)
     if (method === 'GET' && path === '/api/intelligence/timeline') {
-      const { getTimeline, summarise, parseFilters } = await import('../intelligence-timeline/index.js')
       const query   = Object.fromEntries(new URL('http://x?' + (req.url.split('?')[1] ?? '')).searchParams)
-      const filters = parseFilters(query)
-      const result  = getTimeline(filters)
-      const stats   = summarise(filters)
-      json(res, { ...result, stats })
+      const filters = await AI.parseTimelineFilters(query)
+      const result  = await AI.timeline(filters)
+      json(res, result)
       return
     }
 
     if (method === 'POST' && path.startsWith('/api/intelligence/timeline/') && path.endsWith('/status')) {
       const id   = path.split('/')[4]
       const body = await readBody(req)
-      const { updateStatus } = await import('../intelligence-timeline/index.js')
-      const updated = updateStatus(id, body.status, body.notes ?? null)
+      const updated = await AI.updateTimeline(id, body.status, body.notes ?? null)
       if (!updated) { err(res, 'Timeline event not found', 404); return }
       json(res, { ok: true, event: updated })
       return
@@ -613,8 +584,7 @@ const server = createServer(async (req, res) => {
 
     // ── Dashboard (full briefing) ─────────────────────────────────────────────
     if (method === 'GET' && path === '/api/dashboard/briefing') {
-      const { runMorningBriefing } = await import('../autonomous-assistant/index.js')
-      const result = await runMorningBriefing().catch(() => null)
+      const result = await AI.briefing()
       if (!result) {
         const role = url.searchParams.get('role') ?? 'coach'
         const { buildMorningBriefing } = await import('../dashboard/index.js')
@@ -653,8 +623,7 @@ const server = createServer(async (req, res) => {
     if (method === 'POST' && path === '/api/approvals/decide') {
       const body = await readBody(req)
       const { id, decision } = body
-      const { resolve } = await import('../autonomous-assistant/index.js')
-      resolve(id)
+      await AI.resolveItem(id)
       json(res, { ok: true, id, decision })
       return
     }
@@ -728,11 +697,7 @@ const server = createServer(async (req, res) => {
     // ── Availability Intelligence ─────────────────────────────────────────────
     if (method === 'GET' && path === '/api/availability/intelligence') {
       try {
-        const [{ observe }, { detectCurrentPhase, getPrescription }, { ask }] = await Promise.all([
-          import('../autonomous-assistant/observation-engine.js'),
-          import('../season-intelligence/index.js'),
-          import('../knowledge-engine/index.js'),
-        ])
+        const { detectCurrentPhase, getPrescription } = await import('../season-intelligence/index.js')
 
         const phase = detectCurrentPhase()
         const presc = getPrescription(phase)
@@ -741,7 +706,7 @@ const server = createServer(async (req, res) => {
         const phaseNote = presc.attendanceExpectation?.note ?? ''
 
         // Observation engine gives us aggregate attendance + declining teams
-        const obs = await observe().catch(() => null)
+        const obs = await AI.observe()
         const attObs = obs?.attendance ?? null
         const averageRate = attObs?.averageRate ?? null
         const trend = attObs?.weeklyTrend ?? 'unknown'
@@ -790,8 +755,7 @@ const server = createServer(async (req, res) => {
         // AI recommendations filtered for availability/welfare
         let recommendations = []
         try {
-          const { getActiveRecommendations } = await import('../autonomous-assistant/index.js')
-          const recs = await getActiveRecommendations().catch(() => [])
+          const recs = await AI.activeRecommendations()
           const AVAILABILITY_KEYWORDS = ['attendance', 'availability', 'welfare', 'player', 'engagement', 'training', 'turnout']
           const urgencyToEffort = u => (u === 'CRITICAL' || u === 'HIGH') ? 'high' : u === 'MEDIUM' ? 'medium' : 'low'
           recommendations = recs
@@ -815,7 +779,7 @@ const server = createServer(async (req, res) => {
           const q = `Squad attendance is currently ${averageRate}% (target: ${target}%). Trend is ${trend}. ` +
             `${atRisk.length} players are below threshold. ` +
             `Write 1–2 sentences of actionable coaching advice for improving attendance.`
-          const nr = await ask(q, { maxTokens: 150 }).catch(() => null)
+          const nr = await AI.ask({ question: q, role: 'coach', maxTokens: 150 }).catch(() => null)
           narrative = nr?.answer ?? null
         }
 
@@ -861,8 +825,7 @@ const server = createServer(async (req, res) => {
 
     // ── AI Timeline ───────────────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/timeline') {
-      const { runCheck } = await import('../autonomous-assistant/index.js')
-      const result = await runCheck({ saveToState: false }).catch(() => null)
+      const result   = await AI.timelineCheck({ saveToState: false })
       const timeline = result?.timeline ?? { byDay: [], totalEvents: 0, automatableCount: 0 }
       json(res, timeline)
       return
@@ -870,13 +833,8 @@ const server = createServer(async (req, res) => {
 
     // ── Learning / CIS status ─────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/learning/status') {
-      const { computeClubIntelligenceScore } = await import('../learning-engine/index.js')
-      const { getPredictionAccuracy }         = await import('../learning-engine/index.js')
-      const [cis, accuracy] = await Promise.all([
-        Promise.resolve().then(() => computeClubIntelligenceScore()).catch(() => ({ score: 0, grade: 'N/A', stage: 'COLD_START', components: {} })),
-        Promise.resolve().then(() => getPredictionAccuracy()).catch(() => ({ overall: { f1: 0, grade: 'N/A', precision: 0, recall: 0 } })),
-      ])
-      json(res, { cis, accuracy })
+      const result = await AI.status()
+      json(res, result)
       return
     }
 
