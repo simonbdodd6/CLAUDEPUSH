@@ -31,6 +31,7 @@ let _ls  = null    // learning-store (M5)
 let _cal = null    // calibrator (M5)
 let _bt  = null    // brain-timeline (M6)
 let _mem = null    // memory-engine (M7)
+let _obs = null    // observation-engine (M8)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -67,6 +68,11 @@ async function loadBT() {
 async function loadMem() {
   if (!_mem) _mem = await import('./memory/memory-engine.js')
   return _mem
+}
+
+async function loadObs() {
+  if (!_obs) _obs = await import('./observation/observation-engine.js')
+  return _obs
 }
 
 async function loadRec() {
@@ -686,6 +692,40 @@ export const memory = {
   },
 }
 
+// ── Observation Engine (M8) — deterministic facts derived from Memory ─────────
+
+/**
+ * AI.observations — derive typed Observations from Memory objects.
+ * Pure and deterministic: same memory state → same observations.
+ * No recommendations, no predictions, no LLM calls.
+ *
+ * AI.observations.forEntity(entityId)              — all observations for an entity
+ * AI.observations.all()                            — all observations across all entities
+ * AI.observations.byType(entityId, observationType) — observations of a specific type
+ */
+export const observations = {
+  async forEntity(entityId) {
+    try {
+      const { observe: observeFn } = await loadObs()
+      return observeFn(entityId ?? null)
+    } catch { return [] }
+  },
+
+  async all() {
+    try {
+      const { observeAll } = await loadObs()
+      return observeAll()
+    } catch { return [] }
+  },
+
+  async byType(entityId, observationType) {
+    try {
+      const { byType: byTypeFn } = await loadObs()
+      return byTypeFn(entityId ?? null, observationType)
+    } catch { return [] }
+  },
+}
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -708,4 +748,6 @@ export const AI = {
   recordObservation,
   // M7 — Memory Engine
   memory,
+  // M8 — Observation Engine
+  observations,
 }
