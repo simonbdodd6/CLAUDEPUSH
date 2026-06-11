@@ -3462,9 +3462,11 @@
       if (player) state.fphotoIds[slot] = player.id;
       else if (!String(val || "").trim()) delete state.fphotoIds[slot];
       saveState("Formation updated");
+      syncSquadIfPublished();
     }
     function setBenchPlayer(idx, val) {
       state.benchPlayers=state.benchPlayers||Array(8).fill(""); state.benchPlayers[idx]=val; saveState("Bench updated");
+      syncSquadIfPublished();
     }
     function clearFormationSlot(slot) {
       state.formationNames=state.formationNames||{};
@@ -3472,12 +3474,14 @@
       state.formationNames[slot]="";
       delete state.fphotoIds[slot];
       saveState("Formation updated");
+      syncSquadIfPublished();
       render();
     }
     function clearBenchSlot(idx) {
       state.benchPlayers=state.benchPlayers||Array(8).fill("");
       state.benchPlayers[idx]="";
       saveState("Bench updated");
+      syncSquadIfPublished();
       render();
     }
     function addSubPlan() {
@@ -3535,6 +3539,16 @@
       state.matchCentre = state.matchCentre || {};
       state.matchCentre[field] = value;
       saveState();
+      syncSquadIfPublished();
+    }
+
+    // Re-sync the published squad after coach edits, debounced because
+    // formation/bench inputs fire on every keystroke. Drafts never sync.
+    let _squadSyncTimer = null;
+    function syncSquadIfPublished() {
+      if (!state.matchCentre?.published) return;
+      clearTimeout(_squadSyncTimer);
+      _squadSyncTimer = setTimeout(() => syncSquadToServer().catch(() => {}), 1500);
     }
     function publishSquad() {
       state.matchCentre = state.matchCentre || {};
