@@ -2589,6 +2589,9 @@
           clearTimeout(dot._t);
           dot._t = setTimeout(() => { dot.style.background = ''; }, 1200);
         }
+        // Roster changes ride along with every save — debounced, coach-only,
+        // and skipped when the fingerprint is unchanged.
+        try { queueRosterSync(); } catch {}
         return true;
       } catch (e) {
         console.error("coacheseyeGPT save failed", e);
@@ -4369,6 +4372,7 @@
         saveState('Logged in');
         render();
         if (!isStaffLogin) loadPublishedStateForPlayer().catch(() => {});
+        if (isStaffLogin) loadRosterFromServer().catch(() => {});
         refreshPushSubscriptionMetadata(data.user.displayName || data.user.email).catch(() => {});
         showToast(`Welcome ${data.user.displayName || data.user.email}`);
       } catch(e) {
@@ -4666,6 +4670,7 @@
         authTab = 'closed';
         saveState('Dev login');
         render();
+        if (isStaff) loadRosterFromServer().catch(() => {});
         refreshPushSubscriptionMetadata(data.user?.displayName || '').catch(() => {});
         showToast('Logged in as ' + (data.user?.displayName || userId));
       } catch (e) {
@@ -9971,6 +9976,63 @@
       } catch(e) { console.warn('[syncSquadToServer]', e); }
     }
 
+    // ─── ROSTER SYNC ─────────────────────────────────────────────────────────
+    // The roster (state.players) is server-backed so every coach device sees
+    // identical state. Photos stay device-local (stripped server-side).
+
+    let _rosterLastSyncedFp = null;
+    let _rosterSyncTimer = null;
+
+    function rosterFingerprint() {
+      return JSON.stringify((state.players || []).map(({ photo, ...p }) => p));
+    }
+
+    function queueRosterSync() {
+      if (!isCoach()) return;
+      const fp = rosterFingerprint();
+      if (fp === _rosterLastSyncedFp) return;
+      clearTimeout(_rosterSyncTimer);
+      _rosterSyncTimer = setTimeout(async () => {
+        const sending = rosterFingerprint();
+        try {
+          const res = await fetch('/api/roster', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ players: state.players || [] }),
+          });
+          if (res.ok) _rosterLastSyncedFp = sending;
+        } catch(e) { console.warn('[queueRosterSync]', e); }
+      }, 2000);
+    }
+
+    async function loadRosterFromServer() {
+      if (!isCoach()) return;
+      try {
+        const res = await fetch('/api/roster');
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverPlayers = Array.isArray(data.players) ? data.players : [];
+        if (!serverPlayers.length) {
+          // Server roster empty — seed it from this device if we have players.
+          if ((state.players || []).length) queueRosterSync();
+          return;
+        }
+        // Adopt the server roster; photos are device-local, so carry over any
+        // photo this device already has for the same player id.
+        const localPhotos = Object.fromEntries(
+          (state.players || []).filter(p => p.photo).map(p => [String(p.id), p.photo])
+        );
+        state.players = serverPlayers.map(p => {
+          const photo = localPhotos[String(p.id)];
+          return photo ? { ...p, photo } : p;
+        });
+        state.users = ensurePlayerUsersForRoster(state.players, state.users);
+        _rosterLastSyncedFp = rosterFingerprint();
+        saveState('Roster loaded from server');
+        render();
+      } catch(e) { console.warn('[loadRosterFromServer]', e); }
+    }
+
     let _publishedStateLoadedAt = 0;
 
     // Pull published sessions + squad from Redis into the player's local state.
@@ -10536,6 +10598,9 @@
     // Check for invite link AFTER render (so modal overlays on top)
     checkInviteParam();
     checkResetParam();
+    // Coach devices adopt the server roster on startup (no-op without a
+    // coach session — the API rejects with 401/403 and we keep local state).
+    loadRosterFromServer().catch(() => {});
 
     // ── Background unread poll ──────────────────────────────────────────────
     // Fetch conversation counts frequently when the app is visible.
