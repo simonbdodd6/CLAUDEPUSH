@@ -109,6 +109,44 @@ export default async function handler(req, res) {
   }
   webpush.setVapidDetails(vapidContact(), process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
 
+  // Weekly no-reply reminder — formerly /api/reminder, folded in to stay
+  // under the Vercel Hobby 12-function limit. /api/reminder rewrites here
+  // (vercel.json) so external schedulers keep working unchanged.
+  if ((req.query?.job || req.body?.job) === 'reminder') {
+    const subscribers = await load();
+    const responded = await recentResponders(7);
+    const targets = subscribers.filter(item => !responded.has(item.label));
+    const title = 'Availability reminder';
+    const body = "Hi {{first_name}}! Please set your availability for this week's sessions and match in coacheseyeGPT. - {{coach_name}}";
+    const outcomes = await Promise.allSettled(targets.map(({ subscription, label }) =>
+      webpush.sendNotification(subscription, JSON.stringify({
+        title, body: resolveVariables(body, { label }), from: 'Coach',
+        tag: `weekly-reminder-${new Date().toISOString().slice(0, 10)}`,
+        type: 'availability', sessionId: 'game', url: '/?to=availability',
+        actions: [
+          { action: 'available', title: 'Available' },
+          { action: 'unavailable', title: 'Not available' },
+          { action: 'maybe', title: 'Maybe' },
+        ],
+      }))
+    ));
+    const sent = outcomes.filter(result => result.status === 'fulfilled').length;
+    const failed = outcomes.length - sent;
+    const expired = new Set();
+    outcomes.forEach((result, index) => {
+      if (result.status === 'rejected' && [404, 410].includes(result.reason?.statusCode)) {
+        expired.add(targets[index].subscription.endpoint);
+      }
+    });
+    if (expired.size) await save(subscribers.filter(item => !expired.has(item.subscription.endpoint)));
+    await kvLpush(key('message_log'), {
+      type: 'reminder', title, body: body.slice(0, 200), sentAt: new Date().toISOString(),
+      audience: 'no-reply', sent, failed, total: targets.length, skipped: responded.size,
+    });
+    await kvLtrim(key('message_log'), 500);
+    return res.status(200).json({ ok: true, sent, failed, skipped: responded.size, total: targets.length });
+  }
+
   const now = new Date();
   const fireWindow = req.headers?.['x-vercel-cron'] === '1'
     ? VERCEL_FALLBACK_WINDOW_MINUTES : EXACT_WINDOW_MINUTES;

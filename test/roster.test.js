@@ -30,7 +30,10 @@ globalThis.fetch = async (_url, options = {}) => {
   return { ok: true, json: async () => ({ result }) };
 };
 
-const { default: rosterHandler } = await import('../api/roster.js');
+// The roster lives inside api/publish.js (Vercel Hobby 12-function limit);
+// production requests reach it via the /api/roster → /api/publish?resource=roster
+// rewrite, which is exactly what callRoster simulates below.
+const { default: publishHandler } = await import('../api/publish.js');
 const { createSession, destroySession, SESSION_COOKIE } = await import('../api/_identityStore.js');
 
 function buildRes() {
@@ -60,7 +63,7 @@ async function seedUser(id, role) {
 
 async function callRoster(method, body, headers) {
   const res = buildRes();
-  await rosterHandler({ method, query: {}, headers: headers || {}, body: body || {} }, res);
+  await publishHandler({ method, query: { resource: 'roster' }, headers: headers || {}, body: body || {} }, res);
   return res;
 }
 

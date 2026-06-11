@@ -28,6 +28,8 @@ function sendAuthError(res, error) {
 
 const SESSIONS_KEY = key('publish:sessions');
 const SQUAD_KEY    = key('publish:squad');
+const ROSTER_KEY   = key('roster');
+const MAX_PLAYERS  = 200;
 
 function sanitiseSessions(raw) {
   if (!Array.isArray(raw)) return [];
@@ -72,10 +74,60 @@ function sanitiseSquad(raw) {
   };
 }
 
+// ── Roster sub-resource (formerly /api/roster, folded in to stay under the
+// Vercel Hobby 12-function limit; /api/roster rewrites here with
+// ?resource=roster). Coach/admin only in BOTH directions — the roster
+// carries phone + medical data, so players never read it. Photos (base64
+// data-URLs) are stripped and stay device-local.
+
+function sanitiseRosterPlayers(raw) {
+  if (!Array.isArray(raw)) return null;
+  return raw.slice(0, MAX_PLAYERS).map(p => {
+    if (!p || typeof p !== 'object') return null;
+    const { photo, ...rest } = p;
+    return { ...rest, id: String(p.id || ''), name: String(p.name || '') };
+  }).filter(p => p && p.id && p.name);
+}
+
+async function rosterHandler(req, res) {
+  let session;
+  try {
+    session = await requireTenantRole(req, ['coach', 'admin']);
+  } catch (error) {
+    return sendAuthError(res, error);
+  }
+
+  if (req.method === 'GET') {
+    const stored = (await kvGet(ROSTER_KEY)) || null;
+    return res.status(200).json({
+      ok: true,
+      players:   stored?.players || [],
+      updatedAt: stored?.updatedAt || null,
+      updatedBy: stored?.updatedBy || null,
+    });
+  }
+
+  if (req.method === 'POST') {
+    const players = sanitiseRosterPlayers(req.body?.players);
+    if (!players) return res.status(400).json({ error: 'players array required' });
+    const record = {
+      players,
+      updatedAt: new Date().toISOString(),
+      updatedBy: session.user.id,
+    };
+    await kvSet(ROSTER_KEY, record);
+    return res.status(200).json({ ok: true, count: players.length, updatedAt: record.updatedAt });
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
 export default async function handler(req, res) {
   setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!kvConfigured()) return res.status(503).json({ error: 'Storage not configured' });
+
+  if (String(req.query?.resource || '') === 'roster') return rosterHandler(req, res);
 
   // ── GET: any authenticated user reads published player-facing state ────────
   if (req.method === 'GET') {
