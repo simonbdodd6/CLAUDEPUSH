@@ -203,10 +203,10 @@ test('full beta publish flow: coach publishes, player on separate device sees it
     assert.equal(res.body.squad.formationNames['9'], 'Noah Vandamme');
     assert.equal(res.body.sessions.length, 3);
 
-    // And the raw Redis keys are the only storage involved
-    assert.ok(kv.has('app:publish:squad'), 'squad must live at app:publish:squad');
-    assert.ok(kv.has('app:publish:sessions'), 'sessions must live at app:publish:sessions');
-    const rawSquad = JSON.parse(kv.get('app:publish:squad'));
+    // And the team-scoped Redis keys are the only storage involved
+    assert.ok(kv.has('app:publish:boitsfort-rfc:squad'), 'squad must live at app:publish:<teamId>:squad');
+    assert.ok(kv.has('app:publish:boitsfort-rfc:sessions'), 'sessions must live at app:publish:<teamId>:sessions');
+    const rawSquad = JSON.parse(kv.get('app:publish:boitsfort-rfc:squad'));
     assert.equal(rawSquad.opposition, 'France U20');
   });
 });

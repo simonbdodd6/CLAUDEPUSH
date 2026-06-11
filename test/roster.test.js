@@ -123,7 +123,7 @@ test('player photos are stripped server-side — base64 never reaches Redis', as
 
   const get = await callRoster('GET', null, { cookie: coach.cookie });
   assert.equal(get.body.players[0].photo, undefined);
-  assert.equal(kv.get('app:roster').includes('base64'), false, 'photo data must not be stored in Redis');
+  assert.equal(kv.get('app:roster:boitsfort-rfc').includes('base64'), false, 'photo data must not be stored in Redis');
 });
 
 test('player cannot read the roster — 403', async () => {

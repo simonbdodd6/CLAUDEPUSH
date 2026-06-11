@@ -20,16 +20,30 @@ import { kvGet, kvSet } from './_kv.js';
 import { key } from './_keys.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
+import { DEFAULT_TEAM } from './_identityStore.js';
 import { requireTenantRole, requireTenantSession } from './_tenant.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
 }
 
-const SESSIONS_KEY = key('publish:sessions');
-const SQUAD_KEY    = key('publish:squad');
-const ROSTER_KEY   = key('roster');
-const MAX_PLAYERS  = 200;
+// All published state and the roster are namespaced by the session's teamId
+// so one club's coach can never read or overwrite another club's data.
+// The un-scoped legacy keys (publish:sessions / publish:squad / roster) held
+// the default team's data before scoping — reads fall back to them for the
+// default team only; writes always go to the scoped key. No migration needed.
+const MAX_PLAYERS = 200;
+
+function sessionsKey(teamId) { return key(`publish:${teamId}:sessions`); }
+function squadKey(teamId)    { return key(`publish:${teamId}:squad`); }
+function rosterKey(teamId)   { return key(`roster:${teamId}`); }
+
+async function readScoped(scopedKey, legacyName, teamId) {
+  const scoped = await kvGet(scopedKey);
+  if (scoped !== null && scoped !== undefined) return scoped;
+  if (teamId === DEFAULT_TEAM.id) return kvGet(key(legacyName));
+  return null;
+}
 
 function sanitiseSessions(raw) {
   if (!Array.isArray(raw)) return [];
@@ -98,7 +112,7 @@ async function rosterHandler(req, res) {
   }
 
   if (req.method === 'GET') {
-    const stored = (await kvGet(ROSTER_KEY)) || null;
+    const stored = (await readScoped(rosterKey(session.teamId), 'roster', session.teamId)) || null;
     return res.status(200).json({
       ok: true,
       players:   stored?.players || [],
@@ -115,7 +129,7 @@ async function rosterHandler(req, res) {
       updatedAt: new Date().toISOString(),
       updatedBy: session.user.id,
     };
-    await kvSet(ROSTER_KEY, record);
+    await kvSet(rosterKey(session.teamId), record);
     return res.status(200).json({ ok: true, count: players.length, updatedAt: record.updatedAt });
   }
 
@@ -142,10 +156,10 @@ export default async function handler(req, res) {
     const result = { ok: true };
 
     if (type === 'all' || type === 'sessions') {
-      result.sessions = (await kvGet(SESSIONS_KEY)) || [];
+      result.sessions = (await readScoped(sessionsKey(session.teamId), 'publish:sessions', session.teamId)) || [];
     }
     if (type === 'all' || type === 'squad') {
-      result.squad = (await kvGet(SQUAD_KEY)) || null;
+      result.squad = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
     }
     return res.status(200).json(result);
   }
@@ -163,7 +177,7 @@ export default async function handler(req, res) {
 
     if (type === 'sessions') {
       const sessions = sanitiseSessions(data);
-      await kvSet(SESSIONS_KEY, sessions);
+      await kvSet(sessionsKey(session.teamId), sessions);
       return res.status(200).json({ ok: true, sessions });
     }
 
@@ -171,11 +185,11 @@ export default async function handler(req, res) {
       const squad = sanitiseSquad(data);
       if (!squad) return res.status(400).json({ error: 'data must be an object' });
       if (!squad.published) {
-        await kvSet(SQUAD_KEY, null);
+        await kvSet(squadKey(session.teamId), null);
         return res.status(200).json({ ok: true, squad: null });
       }
       squad.publishedAt = squad.publishedAt || new Date().toISOString();
-      await kvSet(SQUAD_KEY, squad);
+      await kvSet(squadKey(session.teamId), squad);
       return res.status(200).json({ ok: true, squad });
     }
 
@@ -184,19 +198,20 @@ export default async function handler(req, res) {
 
   // ── DELETE: coach clears published state ──────────────────────────────────
   if (req.method === 'DELETE') {
+    let session;
     try {
-      await requireTenantRole(req, ['coach', 'admin']);
+      session = await requireTenantRole(req, ['coach', 'admin']);
     } catch (error) {
       return sendAuthError(res, error);
     }
 
     const type = req.body?.type || req.query?.type;
     if (type === 'squad') {
-      await kvSet(SQUAD_KEY, null);
+      await kvSet(squadKey(session.teamId), null);
       return res.status(200).json({ ok: true });
     }
     if (type === 'sessions') {
-      await kvSet(SESSIONS_KEY, []);
+      await kvSet(sessionsKey(session.teamId), []);
       return res.status(200).json({ ok: true });
     }
     return res.status(400).json({ error: 'type must be sessions or squad' });
