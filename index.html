@@ -2925,6 +2925,7 @@
       _sessionFormMode = null;
       _sessionFormId   = null;
       saveState('Session saved');
+      syncSessionsToServer().catch(() => {});
       render();
       showToast('Session saved');
     }
@@ -2936,6 +2937,7 @@
       _sessionFormMode = null;
       _sessionFormId   = null;
       saveState('Session deleted');
+      syncSessionsToServer().catch(() => {});
       render();
       showToast('Session removed');
     }
@@ -3242,6 +3244,7 @@
       sess.published   = true;
       sess.publishedAt = new Date().toISOString();
       saveState();
+      syncSessionsToServer().catch(() => {});
       render();
       const blocks = (state.trainingBlocks || {})[id] || [];
       const title  = sess.title || 'Training session';
@@ -3259,6 +3262,7 @@
       sess.published   = false;
       sess.publishedAt = null;
       saveState();
+      syncSessionsToServer().catch(() => {});
       render();
       showToast(`${sess.title || 'Session'} unpublished`);
     }
@@ -3537,9 +3541,19 @@
       const isPublishing = !state.matchCentre.published;
       state.matchCentre.published = isPublishing;
       saveState();
+      syncSquadToServer().catch(() => {});
       if (isPublishing) {
-        const opp = state.matchCentre.opposition || "the match";
-        sendPushToPlayers("Squad confirmed", `The squad for ${opp} has been confirmed. Open the app to view the team sheet.`);
+        const mc = state.matchCentre;
+        const opp = mc.opposition || "the match";
+        const starters = Object.values(state.formationNames || {}).filter(Boolean);
+        const details = [
+          mc.kickoffDate ? (mc.kickoffDate + (mc.kickoffTime ? ' ' + mc.kickoffTime : '')) : null,
+          mc.venue || null,
+        ].filter(Boolean).join(' · ');
+        const body = starters.length
+          ? `${details ? details + ' · ' : ''}${starters.slice(0, 6).join(', ')}${starters.length > 6 ? '…' : ''}`
+          : `The squad for ${opp} is confirmed. Open the app to view the team sheet.`;
+        sendPushToPlayers(`Squad confirmed — ${opp}`, body);
         showToast("Squad published — players notified ✓");
       } else {
         showToast("Squad moved back to draft");
@@ -4331,6 +4345,7 @@
         authTab = 'closed';
         saveState('Logged in');
         render();
+        if (!isStaffLogin) loadPublishedStateForPlayer().catch(() => {});
         refreshPushSubscriptionMetadata(data.user.displayName || data.user.email).catch(() => {});
         showToast(`Welcome ${data.user.displayName || data.user.email}`);
       } catch(e) {
@@ -7319,6 +7334,7 @@
       if (!player.id) { document.getElementById("player-availability").innerHTML = noSquadMsg(); return; }
 
       fetchMyAvailabilityFromServer();
+      loadPublishedStateForPlayer().catch(() => {});
 
       const mc           = state.matchCentre || {};
       const sessions     = state.schedule || [];
@@ -9883,6 +9899,69 @@
       }
     }
 
+    // ─── PUBLISHED STATE SYNC ────────────────────────────────────────────────
+    // Push coach-edited sessions/squad to Redis so player devices can read them.
+
+    async function syncSessionsToServer() {
+      if (!isCoach()) return;
+      try {
+        await fetch('/api/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'sessions', data: state.schedule || [] }),
+        });
+      } catch(e) { console.warn('[syncSessionsToServer]', e); }
+    }
+
+    async function syncSquadToServer() {
+      if (!isCoach()) return;
+      const mc = state.matchCentre || {};
+      try {
+        await fetch('/api/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'squad',
+            data: { ...mc, formationNames: state.formationNames || {}, benchPlayers: state.benchPlayers || [] },
+          }),
+        });
+      } catch(e) { console.warn('[syncSquadToServer]', e); }
+    }
+
+    let _publishedStateLoadedAt = 0;
+
+    // Pull published sessions + squad from Redis into the player's local state.
+    // Debounced to avoid hammering the API on every render cycle.
+    async function loadPublishedStateForPlayer() {
+      const now = Date.now();
+      if (now - _publishedStateLoadedAt < 30000) return;
+      _publishedStateLoadedAt = now;
+      try {
+        const res = await fetch('/api/publish?type=all');
+        if (!res.ok) return;
+        const data = await res.json();
+        let changed = false;
+        if (Array.isArray(data.sessions) && data.sessions.length) {
+          // Merge: replace matching IDs, keep local-only sessions appended.
+          const serverIds = new Set(data.sessions.map(s => s.id));
+          const localOnly = (state.schedule || []).filter(s => !serverIds.has(s.id));
+          state.schedule = [...data.sessions, ...localOnly];
+          changed = true;
+        }
+        if (data.squad && data.squad.published) {
+          const { formationNames, benchPlayers, ...mc } = data.squad;
+          state.matchCentre = { ...(state.matchCentre || {}), ...mc };
+          if (formationNames && typeof formationNames === 'object') state.formationNames = formationNames;
+          if (Array.isArray(benchPlayers)) state.benchPlayers = benchPlayers;
+          changed = true;
+        } else if (data.squad === null && state.matchCentre?.published) {
+          state.matchCentre = { ...(state.matchCentre || {}), published: false };
+          changed = true;
+        }
+        if (changed) { saveState('Published state loaded'); render(); }
+      } catch(e) { console.warn('[loadPublishedStateForPlayer]', e); }
+    }
+
     async function loadLiveLog() {
       const panel = document.getElementById("live-log-panel");
       if (!panel) return;
@@ -10184,6 +10263,7 @@
           window.history.replaceState({}, '', '/');
           _inviteToken = null; _inviteData = null;
           render();
+          loadPublishedStateForPlayer().catch(() => {});
           refreshPushSubscriptionMetadata(name).catch(() => {});
           showToast(`Welcome ${name.split(' ')[0]}! Your account is ready.`);
           return;
