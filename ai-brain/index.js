@@ -27,6 +27,8 @@ export { BRAIN_SCHEMA_VERSION } from './schema.js'
 
 let _ca  = null    // context-assembly (M3)
 let _rs  = null    // reasoning (M4)
+let _ls  = null    // learning-store (M5)
+let _cal = null    // calibrator (M5)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -43,6 +45,16 @@ async function loadCA() {
 async function loadRS() {
   if (!_rs) _rs = await import('./reasoning.js')
   return _rs
+}
+
+async function loadLS() {
+  if (!_ls) _ls = await import('./learning-store.js')
+  return _ls
+}
+
+async function loadCal() {
+  if (!_cal) _cal = await import('./calibrator.js')
+  return _cal
 }
 
 async function loadRec() {
@@ -122,20 +134,36 @@ export async function request(context = {}) {
     const rb = await reasonFn(bundle)
     modules.push('synthesis')
 
-    const isMock = rb.recommendations.length === 0 ||
-      rb.recommendations.every(r => (r.source ?? '').includes('/mock'))
+    // M5: Calibrate confidence using coach/club learning history.
+    const { calibrate: calibrateFn } = await loadCal()
+    const { getHistory }             = await loadLS()
+    modules.push('calibration')
 
-    return toBrainResponse(rb.recommendations, {
+    const coachId = context?.coachId ?? null
+    const clubId  = context?.clubId  ?? null
+    const cal     = calibrateFn(rb.recommendations, { coachId, clubId, getHistory })
+
+    const recs   = cal.recommendations
+    const isMock = recs.length === 0 ||
+      recs.every(r => (r.source ?? '').includes('/mock'))
+
+    return toBrainResponse(recs, {
       meta: {
         isMock,
         generatedAt: bundle.assembledAt,
-        total:       rb.recommendations.length,
-        highCount:   rb.recommendations.filter(r => r.priority === 'HIGH').length,
-        mediumCount: rb.recommendations.filter(r => r.priority === 'MEDIUM').length,
-        lowCount:    rb.recommendations.filter(r => r.priority === 'LOW').length,
-        categories:  [...new Set(rb.recommendations.map(r => r.category))],
+        total:       recs.length,
+        highCount:   recs.filter(r => r.priority === 'HIGH').length,
+        mediumCount: recs.filter(r => r.priority === 'MEDIUM').length,
+        lowCount:    recs.filter(r => r.priority === 'LOW').length,
+        categories:  [...new Set(recs.map(r => r.category))],
         providers:   bundle.providers,
         reasoning:   rb.trace,
+        calibration: {
+          coachId:     cal.coachId,
+          clubId:      cal.clubId,
+          applied:     cal.applied,
+          adjustments: cal.adjustments,
+        },
       },
       trace: { modules, duration: Date.now() - t0 },
     })
@@ -209,19 +237,29 @@ export async function ask(query = {}) {
  */
 export async function learn(outcome = {}) {
   if (outcome == null) return
-  const { recommendationId, result, coachId } = outcome
+  const { recommendationId, coachId, clubId } = outcome
   const coachDecision = normaliseOutcome(outcome.outcome)
+  const category = outcome.recommendationType ?? outcome.category ?? null
+
+  // M5: Record outcome in the Brain learning store for per-coach calibration.
+  // Key = coachId + clubId + category — isolated; never leaks across clubs.
+  if (category) {
+    try {
+      const { record } = await loadLS()
+      record(coachId ?? null, clubId ?? null, category, outcome.outcome)
+    } catch { /* non-blocking */ }
+  }
 
   // Micro-correction: update calibration for this recommendation type
   try {
     const { recordOutcome } = await loadLe()
     recordOutcome({
       recommendationId,
-      recommendationType: outcome.recommendationType ?? 'GENERAL',
+      recommendationType: category ?? 'GENERAL',
       coachDecision,
-      confidenceAtTime:   outcome.confidenceAtTime   ?? null,
-      predictionCorrect:  outcome.predictionCorrect  ?? null,
-      notes:              outcome.notes              ?? null,
+      confidenceAtTime:   outcome.confidenceAtTime  ?? null,
+      predictionCorrect:  outcome.predictionCorrect ?? null,
+      notes:              outcome.notes             ?? null,
     })
   } catch { /* non-blocking — calibration failure must never surface to Core */ }
 
@@ -458,6 +496,25 @@ export async function clubHealth() {
   }
 }
 
+// ── Calibration history (M5) — exposed for diagnostics and testing ────────────
+
+/**
+ * Return the Brain's accumulated learning history for a specific
+ * coach + club + category combination.
+ * Returns null when no history exists (cold start).
+ *
+ * @param {string|null} coachId
+ * @param {string|null} clubId
+ * @param {string}      category
+ * @returns {Promise<{ acceptWeight: number, totalSeen: number } | null>}
+ */
+export async function getCalibrationHistory(coachId, clubId, category) {
+  try {
+    const { getHistory } = await loadLS()
+    return getHistory(coachId ?? null, clubId ?? null, category)
+  } catch { return null }
+}
+
 // ── Parallel reasoning (M4) — exposed for integration testing ─────────────────
 
 /**
@@ -514,4 +571,6 @@ export const AI = {
   assembleContext,
   // M4 — Parallel reasoning
   reason,
+  // M5 — Calibration diagnostics
+  getCalibrationHistory,
 }
