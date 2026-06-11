@@ -492,9 +492,7 @@ async function rebuildConvMsgs(convId, msgs) {
   // Actually: just re-write the entire list using a temp key approach
   // Simplest: iterate and lpush in reverse order (oldest → newest via lpush = newest on top)
   // First delete the key
-  const { default: redis } = await import('./_kv.js');
   try {
-    // Delete old list
     const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
     const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
     if (REDIS_URL && REDIS_TOKEN) {
