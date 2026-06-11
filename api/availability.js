@@ -3,7 +3,8 @@
 import { load } from './_lib.js';
 import { loadAvailability, saveAvailability } from './_availabilityStore.js';
 import { setCors } from './_http.js';
-import { kvConfigured } from './_kv.js';
+import { kvConfigured, kvGet } from './_kv.js';
+import { key } from './_keys.js';
 import { resolveSessionFromRequest } from './_identityStore.js';
 import { requireTenantRole } from './_tenant.js';
 
@@ -24,6 +25,18 @@ const DEMO_PLAYERS = [
 
 function validSessionId(sessionId) {
   return /^[a-z0-9_-]{1,80}$/i.test(String(sessionId || ''));
+}
+
+// Session IDs the coach has saved via /api/publish. Falls back to the
+// historic tue/thu/game trio when nothing is published yet, so behaviour
+// is unchanged for existing deployments.
+async function activeSessionIds() {
+  const published = (await kvGet(key('publish:sessions'))) || [];
+  const ids = (Array.isArray(published) ? published : [])
+    .map(s => String(s?.id || ''))
+    .filter(id => validSessionId(id))
+    .slice(0, 30);
+  return ids.length ? ids : DEMO_SESSIONS;
 }
 
 function availabilityIdentityFromSession(sessionContext = {}) {
@@ -122,7 +135,8 @@ export default async function handler(req, res) {
       const identity = availabilityIdentityFromSession(sessionContext);
       if (!identity) return res.status(200).json({ responses: {} });
       const result = {};
-      await Promise.all(DEMO_SESSIONS.map(async sid => {
+      const sessionIds = await activeSessionIds();
+      await Promise.all(sessionIds.map(async sid => {
         const data = await loadAvailability(sid);
         const entry = Object.values(data).find(v =>
           (v.userId && v.userId === identity.userId) ||
@@ -162,7 +176,7 @@ export default async function handler(req, res) {
     if (postAction === 'clear_week') {
       try { await requireTenantRole(req, ['coach', 'admin']); }
       catch (error) { return sendAuthError(res, error); }
-      const ids = Array.isArray(clearSessions) && clearSessions.length ? clearSessions : DEMO_SESSIONS;
+      const ids = Array.isArray(clearSessions) && clearSessions.length ? clearSessions : await activeSessionIds();
       const validIds = ids.filter(id => validSessionId(id));
       await Promise.all(validIds.map(sid => saveAvailability(sid, {})));
       return res.status(200).json({ ok: true, action: 'clear_week', cleared: validIds });
