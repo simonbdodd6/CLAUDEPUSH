@@ -169,6 +169,16 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    if (method === 'POST' && path === '/api/knowledge/ask') {
+      const body = await readBody(req)
+      const { question = '', role = 'coach', useCache = true } = body
+      if (!question.trim()) { res.writeHead(400); res.end(JSON.stringify({ error: 'question required' })); return }
+      const { ask } = await import('../knowledge-engine/index.js')
+      const result = await ask(question, { role, useCache })
+      json(res, result)
+      return
+    }
+
     // ── Alerts ────────────────────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/alerts/injuries') {
       const { ask } = await import('../knowledge-engine/index.js')

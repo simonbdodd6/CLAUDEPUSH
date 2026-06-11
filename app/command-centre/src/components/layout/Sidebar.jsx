@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { to: '/intelligence',  label: 'Intelligence',     icon: <IntelligenceIcon />, badge: 'AI' },
   { to: '/decisions',     label: 'Decision Centre',  icon: <DecisionIcon />,     badge: 'AI' },
   { to: '/knowledge',       label: 'Knowledge',        icon: <KnowledgeIcon />,    badge: 'AI'  },
+  { to: '/knowledge-query', label: 'Knowledge Query',  icon: <QueryIcon />,        badge: 'AI'  },
   { to: '/knowledge-graph', label: 'Graph',            icon: <GraphIcon />,        badge: 'DEV' },
 ]
 
@@ -185,6 +186,15 @@ function KnowledgeIcon() {
       <path d="M8 5.5h3M8 7.5h3M8 9.5h2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
       <circle cx="4.5" cy="6.5" r="0.8" fill="currentColor" opacity="0.7"/>
       <circle cx="4.5" cy="9" r="0.8" fill="currentColor" opacity="0.7"/>
+    </svg>
+  )
+}
+function QueryIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4">
+      <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" strokeWidth="1.2"/>
+      <path d="M9.5 9.5l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+      <path d="M5 6.5h3M6.5 5v3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
     </svg>
   )
 }

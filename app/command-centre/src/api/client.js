@@ -43,6 +43,7 @@ export const api = {
 
   clubHealth:     ()                         => get('/club/health'),
   knowledge:      (q)                        => get(`/knowledge/ask?q=${encodeURIComponent(q)}`),
+  knowledgeAsk:   (question, opts = {})      => post('/knowledge/ask', { question, ...opts }),
   injuries:       ()                         => get('/alerts/injuries'),
   attendance:     ()                         => get('/alerts/attendance'),
   recommendations: ()                        => get('/recommendations'),

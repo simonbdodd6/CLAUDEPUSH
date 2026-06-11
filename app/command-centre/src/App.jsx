@@ -12,6 +12,7 @@ import IntelligenceDashboardPage from './pages/IntelligenceDashboardPage.jsx'
 import DecisionCentrePage from './pages/DecisionCentrePage.jsx'
 import KnowledgeUploadPage from './pages/KnowledgeUploadPage.jsx'
 import KnowledgeGraphPage from './pages/KnowledgeGraphPage.jsx'
+import KnowledgeQueryPage from './pages/KnowledgeQueryPage.jsx'
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/decisions"      element={<DecisionCentrePage />} />
         <Route path="/knowledge"      element={<KnowledgeUploadPage />} />
         <Route path="/knowledge-graph" element={<KnowledgeGraphPage />} />
+        <Route path="/knowledge-query" element={<KnowledgeQueryPage />} />
         <Route path="*"               element={<Navigate to="/" replace />} />
       </Routes>
     </CommandLayout>
