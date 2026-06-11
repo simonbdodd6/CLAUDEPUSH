@@ -29,6 +29,7 @@ let _ca  = null    // context-assembly (M3)
 let _rs  = null    // reasoning (M4)
 let _ls  = null    // learning-store (M5)
 let _cal = null    // calibrator (M5)
+let _bt  = null    // brain-timeline (M6)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -55,6 +56,11 @@ async function loadLS() {
 async function loadCal() {
   if (!_cal) _cal = await import('./calibrator.js')
   return _cal
+}
+
+async function loadBT() {
+  if (!_bt) _bt = await import('./timeline.js')
+  return _bt
 }
 
 async function loadRec() {
@@ -146,6 +152,39 @@ export async function request(context = {}) {
     const recs   = cal.recommendations
     const isMock = recs.length === 0 ||
       recs.every(r => (r.source ?? '').includes('/mock'))
+
+    // M6: Record REQUEST + RECOMMENDATION_SHOWN events on Brain timeline.
+    try {
+      const { append: appendEvent, EVENT_TYPE } = await loadBT()
+      const sessionId = context?.sessionId ?? null
+      appendEvent(EVENT_TYPE.REQUEST, {
+        clubId:  clubId,
+        coachId: coachId,
+        sessionId,
+        metadata: {
+          recommendationCount: recs.length,
+          isMock,
+          calibrationApplied:  cal.applied,
+          categories:          [...new Set(recs.map(r => r.category))],
+        },
+      })
+      for (const rec of recs) {
+        appendEvent(EVENT_TYPE.RECOMMENDATION_SHOWN, {
+          clubId,
+          coachId,
+          sessionId,
+          recommendationId: rec.id,
+          entities:         context?.entities ?? [],
+          metadata: {
+            category:   rec.category,
+            priority:   rec.priority,
+            confidence: rec.confidence,
+            source:     rec.source,
+            isMock:     (rec.source ?? '').includes('/mock'),
+          },
+        })
+      }
+    } catch { /* timeline failures must never surface */ }
 
     return toBrainResponse(recs, {
       meta: {
@@ -249,6 +288,31 @@ export async function learn(outcome = {}) {
       record(coachId ?? null, clubId ?? null, category, outcome.outcome)
     } catch { /* non-blocking */ }
   }
+
+  // M6: Record outcome event on Brain timeline.
+  try {
+    const { append: appendEvent, EVENT_TYPE } = await loadBT()
+    const outcomeKey = String(outcome.outcome ?? '').toLowerCase()
+    const evtType = {
+      accepted:  EVENT_TYPE.RECOMMENDATION_ACCEPTED,
+      actioned:  EVENT_TYPE.RECOMMENDATION_ACTIONED,
+      dismissed: EVENT_TYPE.RECOMMENDATION_DISMISSED,
+      rejected:  EVENT_TYPE.RECOMMENDATION_DISMISSED,
+      snoozed:   EVENT_TYPE.RECOMMENDATION_SNOOZED,
+    }[outcomeKey] ?? EVENT_TYPE.LEARN
+    appendEvent(evtType, {
+      clubId:           clubId ?? null,
+      coachId:          coachId ?? null,
+      sessionId:        outcome.sessionId ?? null,
+      recommendationId: recommendationId ?? null,
+      entities:         outcome.entities ?? [],
+      metadata: {
+        outcome:            coachDecision,
+        recommendationType: category,
+        confidenceAtTime:   outcome.confidenceAtTime ?? null,
+      },
+    })
+  } catch { /* non-blocking */ }
 
   // Micro-correction: update calibration for this recommendation type
   try {
@@ -394,10 +458,8 @@ export async function timelineCheck(opts = {}) {
  */
 export async function timeline(filters = {}) {
   try {
-    const { getTimeline, summarise } = await loadTl()
-    const result = getTimeline(filters)
-    const stats  = summarise(filters)
-    return { ...result, stats }
+    const { query } = await loadBT()
+    return query(filters ?? {})
   } catch { return { events: [], total: 0, stats: {} } }
 }
 
@@ -496,6 +558,28 @@ export async function clubHealth() {
   }
 }
 
+// ── Brain timeline (M6) — episodic event history ──────────────────────────────
+
+/**
+ * Record a manual coach observation on the Brain timeline.
+ * This is the public entry point for COACH_OBSERVATION events.
+ *
+ * @param {object} opts
+ * @param {string|null} opts.coachId
+ * @param {string|null} opts.clubId
+ * @param {string|null} opts.sessionId
+ * @param {string[]}    opts.entities
+ * @param {object}      opts.metadata   - any coach-supplied context
+ * @returns {Promise<TimelineEvent|null>}
+ */
+export async function recordObservation(opts) {
+  const { coachId = null, clubId = null, sessionId = null, entities = [], metadata = {} } = (opts != null ? opts : {})
+  try {
+    const { append: appendEvent, EVENT_TYPE } = await loadBT()
+    return appendEvent(EVENT_TYPE.COACH_OBSERVATION, { coachId, clubId, sessionId, entities, metadata })
+  } catch { return null }
+}
+
 // ── Calibration history (M5) — exposed for diagnostics and testing ────────────
 
 /**
@@ -573,4 +657,6 @@ export const AI = {
   reason,
   // M5 — Calibration diagnostics
   getCalibrationHistory,
+  // M6 — Intelligence timeline
+  recordObservation,
 }
