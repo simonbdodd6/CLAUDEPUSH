@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.onboarding.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
 process.env.APP_KEY_PREFIX = 'app';
+process.env.COACH_DEMO_EMAIL = 'simonbdodd@gmail.com';
+process.env.COACH_DEMO_PASSWORD = '1111';
 
 const kv = new Map();
 const lists = new Map();
@@ -90,9 +92,12 @@ function chatRes() {
     statusCode: 0,
     headers: {},
     body: '',
+    setHeader(name, value) {
+      this.headers[name] = value;
+    },
     writeHead(status, headers = {}) {
       this.statusCode = status;
-      this.headers = headers;
+      this.headers = { ...this.headers, ...headers };
     },
     end(chunk = '') {
       this.body = String(chunk || '');

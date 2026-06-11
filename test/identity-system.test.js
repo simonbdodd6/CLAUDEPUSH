@@ -5,6 +5,8 @@ import { createHash } from 'node:crypto';
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.identity.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
 process.env.APP_KEY_PREFIX = 'app';
+process.env.COACH_DEMO_EMAIL = 'simonbdodd@gmail.com';
+process.env.COACH_DEMO_PASSWORD = '1111';
 
 const store = new Map();
 globalThis.fetch = async (url, options = {}) => {

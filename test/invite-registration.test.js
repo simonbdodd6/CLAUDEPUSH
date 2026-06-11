@@ -104,7 +104,8 @@ function chatReq(method, url, body = null, headers = {}) {
 function chatRes() {
   return {
     statusCode: 0, headers: {}, body: '',
-    writeHead(status, hdrs = {}) { this.statusCode = status; this.headers = hdrs; },
+    setHeader(name, value) { this.headers[name] = value; },
+    writeHead(status, hdrs = {}) { this.statusCode = status; this.headers = { ...this.headers, ...hdrs }; },
     end(chunk = '') { this.body = String(chunk || ''); },
     json() { return this; },
   };

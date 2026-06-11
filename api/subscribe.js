@@ -16,6 +16,17 @@ function displayNameFromSession(sessionContext = {}) {
     user.name || user.email || '';
 }
 
+function messagingPlayerIdFromSession(sessionContext = {}) {
+  const userId = String(sessionContext?.user?.id || '').trim();
+  const legacyPlayerId = String(sessionContext?.playerProfile?.legacyPlayerId || '').trim();
+  if (!userId) return '';
+  // Permanent accounts use userId for new DM conversation IDs. The remaining
+  // legacy compatibility player keeps the historic participant ID so old
+  // Simon Test Player subscriptions still map to dm:coach-demo:inv-YxnjxnQa.
+  if (legacyPlayerId && userId.startsWith('player-')) return legacyPlayerId;
+  return userId;
+}
+
 export default async function handler(req, res) {
   setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -59,10 +70,7 @@ export default async function handler(req, res) {
     const existing = idx >= 0 ? subs[idx] : null;
     const sessionUserId   = sessionContext?.user?.id || '';
     const sessionLegacyId = sessionContext?.playerProfile?.legacyPlayerId || '';
-    const sessionProfileId = sessionContext?.playerProfile?.userId || '';
-    // playerId should be the messaging participant ID (legacyPlayerId when available)
-    // so that DM push subscriptions can be found by convId participant.
-    const resolvedPlayerId = sessionLegacyId || sessionProfileId || sessionUserId;
+    const resolvedPlayerId = messagingPlayerIdFromSession(sessionContext);
     const entry = {
       subscription,
       label:         displayNameFromSession(sessionContext) || label || existing?.label || 'Player',

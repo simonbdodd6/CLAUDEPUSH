@@ -65,9 +65,12 @@ function res() {
     statusCode: 0,
     headers: {},
     body: '',
+    setHeader(name, value) {
+      this.headers[name] = value;
+    },
     writeHead(status, headers = {}) {
       this.statusCode = status;
-      this.headers = headers;
+      this.headers = { ...this.headers, ...headers };
     },
     end(chunk = '') {
       this.body = String(chunk || '');
