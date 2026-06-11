@@ -262,10 +262,9 @@ async function handleGet(req, res) {
   await kvSet(PRESENCE_KEY(userId), { userId, ts: Date.now() }, 60);
 
   if (action === 'conversations') {
+    if (!sessionContext?.user?.id) return err(res, 401, 'Authentication required');
     const convs = await ensureDefaults();
-    const visibleConvs = sessionContext?.user?.id
-      ? convs.filter(c => sessionCanReadConversation(sessionContext, c))
-      : convs;
+    const visibleConvs = convs.filter(c => sessionCanReadConversation(sessionContext, c));
     // Enrich with last message + unread count per user
     const enriched = await Promise.all(visibleConvs.map(async c => {
       const msgs = await kvLrange(MSGS_KEY(c.id), 0, 0); // last message only
@@ -467,13 +466,23 @@ async function handlePost(req, res) {
 
   if (action === 'create_conv') {
     if (!sessionContext?.user?.id) return err(res, 401, 'Authentication required');
-    if (!isStaffSession(sessionContext)) return err(res, 403, 'Only coaches can create conversations');
     const { id, name, type = 'DIRECT', icon = '💬', description = '', participants = [] } = body;
-    const teamId = sessionContext?.user?.id ? tenantTeamId(sessionContext) : DEFAULT_TEAM.id;
+    const convType = String(type || 'DIRECT').toUpperCase();
+
+    if (!isStaffSession(sessionContext)) {
+      // Players may only create DIRECT conversations that include themselves.
+      if (convType !== 'DIRECT') return err(res, 403, 'Players can only create direct conversations');
+      const actorIds = participantIdsForSession(sessionContext);
+      const isSelfParticipant = (Array.isArray(participants) ? participants : [])
+        .some(p => actorIds.includes(String(p || '')));
+      if (!isSelfParticipant) return err(res, 403, 'Players can only create conversations they participate in');
+    }
+
+    const teamId = tenantTeamId(sessionContext);
     const convId = id || `conv_${Date.now()}`;
     const convs = await getConvs();
     if (!convs.some(c => c.id === convId)) {
-      convs.push({ id: convId, teamId, name, type, icon, description, participants, pinned: false, createdAt: Date.now(), lastActivity: Date.now() });
+      convs.push({ id: convId, teamId, name, type: convType, icon, description, participants, pinned: false, createdAt: Date.now(), lastActivity: Date.now() });
       await saveConvs(convs);
     }
     return ok(res, { convId });
@@ -507,7 +516,10 @@ async function rebuildConvMsgs(convId, msgs) {
         await kvLpush(k, m);
       }
     }
-  } catch(e) { /* best effort */ }
+  } catch(e) {
+    console.error('[rebuildConvMsgs] failed for', convId, ':', e?.message);
+    throw e;
+  }
 }
 
 export default async function handler(req, res) {

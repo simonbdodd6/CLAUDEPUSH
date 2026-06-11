@@ -387,3 +387,48 @@ test('unauthenticated send to squad channel returns 401', async () => {
 
   assert.equal(r.statusCode, 401);
 });
+
+// ─── 13. GET conversations requires authentication ────────────────────────
+
+test('GET conversations without session returns 401', async () => {
+  kv.clear(); lists.clear();
+  const r = await callRaw('GET', '/api/chat?action=conversations', null, {});
+  assert.equal(r.statusCode, 401);
+});
+
+// ─── 14. Player DM creation permissions ──────────────────────────────────
+
+test('player can create their own DM but not GROUP channels or third-party DMs', async () => {
+  kv.clear(); lists.clear();
+  const player = await seedPlayer('player_dm_create', { displayName: 'DM Create Player' });
+
+  // Allowed: player creates their own DM
+  const ownDm = await call('POST', '/api/chat', {
+    action: 'create_conv',
+    id: dmConvId(player.id, 'coach-demo'),
+    name: 'DM Create Player',
+    type: 'DIRECT',
+    participants: [player.id, 'coach-demo'],
+  }, player.headers);
+  assert.ok(ownDm.convId, 'player should receive a convId for their own DM');
+
+  // Blocked: player tries to create a GROUP channel
+  const groupBlocked = await callRaw('POST', '/api/chat', {
+    action: 'create_conv',
+    id: 'fake-group-xyz',
+    name: 'Fake Squad',
+    type: 'GROUP',
+    participants: [player.id],
+  }, player.headers);
+  assert.equal(groupBlocked.statusCode, 403);
+
+  // Blocked: player creates a DM they are not part of
+  const thirdPartyBlocked = await callRaw('POST', '/api/chat', {
+    action: 'create_conv',
+    id: dmConvId('coach-demo', 'other-player-xyz'),
+    name: 'Other Player',
+    type: 'DIRECT',
+    participants: ['coach-demo', 'other-player-xyz'],
+  }, player.headers);
+  assert.equal(thirdPartyBlocked.statusCode, 403);
+});

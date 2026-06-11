@@ -91,36 +91,26 @@ async function callRaw(method, url, body = null, headers = {}) {
   return response;
 }
 
+// Additive — appends to existing KV arrays rather than replacing them, so
+// multiple seedSessionAccount calls in one test don't clobber each other.
 async function seedSessionAccount({ id, role = 'player', displayName = 'Session User', email = 'session@example.com', legacyPlayerId = null, teamId = 'boitsfort-rfc' }) {
-  kv.set('app:identity:users', JSON.stringify([
-    {
-      id,
-      email,
-      firstName: displayName.split(' ')[0],
-      lastName: displayName.split(' ').slice(1).join(' '),
-      displayName,
-    },
-  ]));
-  kv.set('app:identity:team_members', JSON.stringify([
-    {
-      id: `tm_${id}`,
-      teamId,
-      userId: id,
-      role,
-      status: 'active',
-    },
-  ]));
-  kv.set('app:identity:player_profiles', JSON.stringify(role === 'player' ? [
-    {
-      id: `profile_${id}`,
-      teamId,
-      teamMemberId: `tm_${id}`,
-      userId: id,
-      displayName,
-      email,
-      legacyPlayerId: legacyPlayerId || id,
-    },
-  ] : []));
+  const users = JSON.parse(kv.get('app:identity:users') || '[]');
+  if (!users.find(u => u.id === id)) {
+    users.push({ id, email, firstName: displayName.split(' ')[0], lastName: displayName.split(' ').slice(1).join(' '), displayName });
+    kv.set('app:identity:users', JSON.stringify(users));
+  }
+  const members = JSON.parse(kv.get('app:identity:team_members') || '[]');
+  if (!members.find(m => m.userId === id)) {
+    members.push({ id: `tm_${id}`, teamId, userId: id, role, status: 'active' });
+    kv.set('app:identity:team_members', JSON.stringify(members));
+  }
+  if (role === 'player') {
+    const profiles = JSON.parse(kv.get('app:identity:player_profiles') || '[]');
+    if (!profiles.find(p => p.userId === id)) {
+      profiles.push({ id: `profile_${id}`, teamId, teamMemberId: `tm_${id}`, userId: id, displayName, email, legacyPlayerId: legacyPlayerId || id });
+      kv.set('app:identity:player_profiles', JSON.stringify(profiles));
+    }
+  }
   const session = await createSession({ userId: id, teamId, role });
   return { session, headers: { cookie: `${SESSION_COOKIE}=${encodeURIComponent(session.token)}` } };
 }
@@ -140,8 +130,10 @@ async function coachSetup() {
   return { cookie: `${SESSION_COOKIE}=${encodeURIComponent(session.token)}` };
 }
 
-async function unreadFor(userId, convId) {
-  const data = await call('GET', `/api/chat?action=conversations&userId=${encodeURIComponent(userId)}`);
+// Fetch unread count for a conversation from the given user's authenticated perspective.
+// `_userId` is informational only — the server derives identity from `headers`.
+async function unreadFor(_userId, convId, headers = {}) {
+  const data = await call('GET', '/api/chat?action=conversations', null, headers);
   const conversation = data.conversations.find(item => item.id === convId);
   return Number(conversation?.unread || 0);
 }
@@ -170,9 +162,9 @@ test('chat API unread count increments on coach DM and survives refresh and logi
     text: 'Unread ping',
   }, coachHeaders);
 
-  assert.equal(await unreadFor(playerId, convId), 1);
-  assert.equal(await unreadFor('coach-demo', convId), 0);
-  assert.equal(await unreadFor(playerId, convId), 1, 'refresh keeps unread until opened');
+  assert.equal(await unreadFor(playerId, convId, playerHeaders), 1);
+  assert.equal(await unreadFor('coach-demo', convId, coachHeaders), 0);
+  assert.equal(await unreadFor(playerId, convId, playerHeaders), 1, 'refresh keeps unread until opened');
 
   await call('POST', '/api/chat', {
     action: 'read',
@@ -180,8 +172,8 @@ test('chat API unread count increments on coach DM and survives refresh and logi
     userId: playerId,
   }, playerHeaders);
 
-  assert.equal(await unreadFor(playerId, convId), 0);
-  assert.equal(await unreadFor(playerId, convId), 0, 'logout/login refetch keeps cleared read state');
+  assert.equal(await unreadFor(playerId, convId, playerHeaders), 0);
+  assert.equal(await unreadFor(playerId, convId, playerHeaders), 0, 'logout/login refetch keeps cleared read state');
 
   await call('POST', '/api/chat', {
     action: 'send',
@@ -192,19 +184,28 @@ test('chat API unread count increments on coach DM and survives refresh and logi
     text: 'Unread ping after login',
   }, coachHeaders);
 
-  assert.equal(await unreadFor(playerId, convId), 1);
+  assert.equal(await unreadFor(playerId, convId, playerHeaders), 1);
 });
 
 test('chat API unread logic preserves Simon Test Player legacy conversation id', async () => {
   kv.clear();
   lists.clear();
-  // Only Simon Test Player's legacy ID is kept — Nick Player has been removed.
-  const playerId = 'inv-YxnjxnQa';
-  const expectedConvId = 'dm:coach-demo:inv-YxnjxnQa';
+  // Seed Simon Test Player with their legacy participant ID so their session
+  // can access dm:coach-demo:inv-YxnjxnQa.
+  const simonSession = await seedSessionAccount({
+    id: 'player-simon-test',
+    role: 'player',
+    displayName: 'Simon Test Player',
+    email: 'simon.test.player@player.test',
+    legacyPlayerId: 'inv-YxnjxnQa',
+  });
   const coachHeaders = await coachSetup();
 
+  const playerId = 'inv-YxnjxnQa';
+  const expectedConvId = 'dm:coach-demo:inv-YxnjxnQa';
   const convId = dmConvId('coach-demo', playerId);
   assert.equal(convId, expectedConvId);
+
   await call('POST', '/api/chat', {
     action: 'create_conv',
     id: convId,
@@ -220,7 +221,8 @@ test('chat API unread logic preserves Simon Test Player legacy conversation id',
     senderRole: 'coach',
     text: 'Hello Simon Test Player',
   }, coachHeaders);
-  assert.equal(await unreadFor(playerId, convId), 1);
+
+  assert.equal(await unreadFor(playerId, convId, simonSession.headers), 1);
 });
 
 test('chat API trusts authenticated session identity over browser-supplied sender ids', async () => {
@@ -278,7 +280,7 @@ test('chat API trusts authenticated session identity over browser-supplied sende
   assert.equal(sent.message.senderId, 'user_auth_player');
   assert.equal(sent.message.senderName, 'Auth Player');
   assert.equal(sent.message.senderRole, 'player');
-  assert.equal(await unreadFor('coach-demo', convId), 1);
+  assert.equal(await unreadFor('coach-demo', convId, coachHeaders), 1);
 });
 
 test('authenticated player can read only their own legacy direct-message conversation', async () => {
@@ -319,19 +321,19 @@ test('authenticated player can read only their own legacy direct-message convers
     text: 'Simon only',
   }, coachHeaders);
 
-  const ownMessages = await call('GET', `/api/chat?action=messages&convId=${encodeURIComponent(simonConvId)}&userId=spoofed`, null, simon.headers);
+  const ownMessages = await call('GET', `/api/chat?action=messages&convId=${encodeURIComponent(simonConvId)}`, null, simon.headers);
   assert.equal(ownMessages.messages.length, 1);
   assert.equal(ownMessages.messages[0].text, 'Simon only');
 
   const otherMessages = await callRaw('GET', `/api/chat?action=messages&convId=${encodeURIComponent(otherConvId)}`, null, simon.headers);
   assert.equal(otherMessages.statusCode, 403);
 
-  const convList = await call('GET', '/api/chat?action=conversations&userId=spoofed', null, simon.headers);
+  const convList = await call('GET', '/api/chat?action=conversations', null, simon.headers);
   assert.equal(convList.conversations.some(c => c.id === simonConvId), true);
   assert.equal(convList.conversations.some(c => c.id === otherConvId), false);
 });
 
-test('authenticated role authorization allows coach conversation creation and blocks players', async () => {
+test('conversation creation permissions: players can start their own DMs, coaches can create anything', async () => {
   kv.clear();
   lists.clear();
   const player = await seedSessionAccount({
@@ -340,14 +342,36 @@ test('authenticated role authorization allows coach conversation creation and bl
     displayName: 'Create Player',
     email: 'create.player@example.com',
   });
-  const blocked = await callRaw('POST', '/api/chat', {
+
+  // Player cannot create GROUP channels
+  const groupBlocked = await callRaw('POST', '/api/chat', {
+    action: 'create_conv',
+    id: 'fake-group-chan',
+    name: 'Fake Squad',
+    type: 'GROUP',
+    participants: ['user_create_player'],
+  }, player.headers);
+  assert.equal(groupBlocked.statusCode, 403);
+
+  // Player cannot create a DM they are not part of
+  const otherDmBlocked = await callRaw('POST', '/api/chat', {
+    action: 'create_conv',
+    id: dmConvId('coach-demo', 'other-player-abc'),
+    name: 'Other Player',
+    type: 'DIRECT',
+    participants: ['coach-demo', 'other-player-abc'],
+  }, player.headers);
+  assert.equal(otherDmBlocked.statusCode, 403);
+
+  // Player CAN create their own DM with the coach
+  const playerCreated = await call('POST', '/api/chat', {
     action: 'create_conv',
     id: dmConvId('coach-demo', 'user_create_player'),
     name: 'Create Player',
     type: 'DIRECT',
     participants: ['coach-demo', 'user_create_player'],
   }, player.headers);
-  assert.equal(blocked.statusCode, 403);
+  assert.equal(playerCreated.convId, dmConvId('coach-demo', 'user_create_player'));
 
   const coach = await seedSessionAccount({
     id: 'user_create_coach',
@@ -355,14 +379,16 @@ test('authenticated role authorization allows coach conversation creation and bl
     displayName: 'Create Coach',
     email: 'create.coach@example.com',
   });
-  const created = await call('POST', '/api/chat', {
+
+  // Coach can create any conversation including other-party DMs
+  const coachCreated = await call('POST', '/api/chat', {
     action: 'create_conv',
     id: dmConvId('user_create_coach', 'user_create_player'),
     name: 'Create Player',
     type: 'DIRECT',
     participants: ['user_create_coach', 'user_create_player'],
   }, coach.headers);
-  assert.equal(created.convId, 'dm:user_create_coach:user_create_player');
+  assert.equal(coachCreated.convId, 'dm:user_create_coach:user_create_player');
 });
 
 test('tenant isolation blocks players and coaches from reading another team messages', async () => {
