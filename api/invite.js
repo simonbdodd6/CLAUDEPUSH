@@ -17,6 +17,7 @@
 //   → revokes / removes the invite
 
 import { kvGet, kvSet } from './_kv.js';
+import { key } from './_keys.js';
 import { setCors } from './_http.js';
 import { DEFAULT_TEAM } from './_identityStore.js';
 import { inviteEmail, sendTransactionalEmail } from './_email.js';
@@ -145,7 +146,11 @@ export default async function handler(req, res) {
     const url = inviteUrl(req, token);
     let emailDelivery = { ok: true, sent: false, skipped: true, reason: email ? 'email_not_requested' : 'missing_recipient' };
     if (sendEmail !== false && email?.trim()) {
-      const message = inviteEmail({ name: invite.name, teamName: 'Boitsfort RFC', url });
+      // Club name comes from the coach's first-run setup; fall back to the
+      // structural team record so old deployments keep working.
+      const clubConfig = (await kvGet(key(`club:${session.teamId}`))) || null;
+      const teamName = clubConfig?.clubName || DEFAULT_TEAM.name;
+      const message = inviteEmail({ name: invite.name, teamName, url });
       emailDelivery = await sendTransactionalEmail({ to: invite.email, ...message });
       invite.emailDelivery = emailDelivery;
       if (emailDelivery.sent) invite.emailSentAt = new Date().toISOString();

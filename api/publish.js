@@ -37,6 +37,7 @@ const MAX_PLAYERS = 200;
 function sessionsKey(teamId) { return key(`publish:${teamId}:sessions`); }
 function squadKey(teamId)    { return key(`publish:${teamId}:squad`); }
 function rosterKey(teamId)   { return key(`roster:${teamId}`); }
+function clubKey(teamId)     { return key(`club:${teamId}`); }
 
 async function readScoped(scopedKey, legacyName, teamId) {
   const scoped = await kvGet(scopedKey);
@@ -136,12 +137,81 @@ async function rosterHandler(req, res) {
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
+// ── Club config sub-resource (first-run setup) ────────────────────────────
+// One record per team: club name, team name, season and first-fixture info
+// captured by the coach's first-run wizard. Any team member can read it
+// (players need the club name for their own UI); only coach/admin can write.
+
+const VALID_DAYS = new Set(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+
+function sanitiseClubConfig(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const clubName = String(raw.clubName || '').trim().slice(0, 80);
+  if (!clubName) return null;
+  const trainingDays = (Array.isArray(raw.trainingDays) ? raw.trainingDays : [])
+    .map(d => ({
+      day:  String(d?.day || '').slice(0, 3),
+      time: /^\d{2}:\d{2}$/.test(String(d?.time || '')) ? String(d.time) : '19:00',
+    }))
+    .filter(d => VALID_DAYS.has(d.day))
+    .slice(0, 7);
+  const fx = raw.firstFixture && typeof raw.firstFixture === 'object' ? raw.firstFixture : {};
+  return {
+    clubName,
+    teamName:   String(raw.teamName   || '').trim().slice(0, 80),
+    seasonName: String(raw.seasonName || '').trim().slice(0, 80),
+    trainingDays,
+    firstFixture: {
+      opposition: String(fx.opposition || '').trim().slice(0, 80),
+      date:       String(fx.date       || '').trim().slice(0, 20),
+      time:       /^\d{2}:\d{2}$/.test(String(fx.time || '')) ? String(fx.time) : '',
+      venue:      String(fx.venue      || '').trim().slice(0, 120),
+    },
+  };
+}
+
+async function clubHandler(req, res) {
+  if (req.method === 'GET') {
+    let session;
+    try {
+      session = await requireTenantSession(req);
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
+    const club = (await kvGet(clubKey(session.teamId))) || null;
+    return res.status(200).json({ ok: true, club });
+  }
+
+  if (req.method === 'POST') {
+    let session;
+    try {
+      session = await requireTenantRole(req, ['coach', 'admin']);
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
+    const club = sanitiseClubConfig(req.body?.club);
+    if (!club) return res.status(400).json({ error: 'club.clubName is required' });
+    const existing = (await kvGet(clubKey(session.teamId))) || null;
+    const record = {
+      ...club,
+      setupCompletedAt: existing?.setupCompletedAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      updatedBy: session.user.id,
+    };
+    await kvSet(clubKey(session.teamId), record);
+    return res.status(200).json({ ok: true, club: record });
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
 export default async function handler(req, res) {
   setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!kvConfigured()) return res.status(503).json({ error: 'Storage not configured' });
 
   if (String(req.query?.resource || '') === 'roster') return rosterHandler(req, res);
+  if (String(req.query?.resource || '') === 'club')   return clubHandler(req, res);
 
   // ── GET: any authenticated user reads published player-facing state ────────
   if (req.method === 'GET') {

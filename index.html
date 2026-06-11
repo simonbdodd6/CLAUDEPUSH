@@ -2085,6 +2085,8 @@
       currentUserId: "coach-demo",
       notification: "",
       clubName: "",
+      teamName: "",
+      seasonName: "",
       teamCode: "TEAM",
       currentTemplateName: "",
       templateCardCollapsed: false,
@@ -2461,6 +2463,8 @@
       const next = { ...structuredClone(defaultState), ...input };
       next.notification = ""; // never restore stale notification across sessions
       next.clubName = input.clubName ?? "";
+      next.teamName = input.teamName ?? "";
+      next.seasonName = input.seasonName ?? "";
       next.users = input.users || structuredClone(testAccounts);
       // Enforce canonical roles for built-in accounts — prevents stale localStorage
       // from corrupting coach-demo's role if applyApprovedIdentityLocally was called incorrectly.
@@ -4373,6 +4377,7 @@
         render();
         if (!isStaffLogin) loadPublishedStateForPlayer().catch(() => {});
         if (isStaffLogin) loadRosterFromServer().catch(() => {});
+        loadClubConfigFromServer().catch(() => {});
         refreshPushSubscriptionMetadata(data.user.displayName || data.user.email).catch(() => {});
         showToast(`Welcome ${data.user.displayName || data.user.email}`);
       } catch(e) {
@@ -4671,6 +4676,7 @@
         saveState('Dev login');
         render();
         if (isStaff) loadRosterFromServer().catch(() => {});
+        loadClubConfigFromServer().catch(() => {});
         refreshPushSubscriptionMetadata(data.user?.displayName || '').catch(() => {});
         showToast('Logged in as ' + (data.user?.displayName || userId));
       } catch (e) {
@@ -7057,7 +7063,7 @@
                 Team name
                 <input value="${esc(state.clubName || '')}" placeholder="e.g. Belgium U20"
                   style="font-size:14px;font-weight:700;padding:6px 10px;flex:1;max-width:280px"
-                  oninput="state.clubName=this.value.trim();saveState('Club name saved');renderNav()">
+                  oninput="state.clubName=this.value.trim();saveState('Club name saved');renderNav();clearTimeout(window._clubCfgT);window._clubCfgT=setTimeout(()=>saveClubConfigToServer(),1500)">
               </label>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <button class="btn" type="button" onclick="downloadSampleCSV()">📋 Template CSV</button>
@@ -10033,6 +10039,181 @@
       } catch(e) { console.warn('[loadRosterFromServer]', e); }
     }
 
+    // ─── CLUB CONFIG / FIRST-RUN SETUP ──────────────────────────────────────
+    // One server-side record per team (club name, team, season, training days,
+    // first fixture). A coach with no club config and no local club name gets
+    // the first-run wizard; existing beta coaches seed the server from their
+    // local state instead, so nothing breaks.
+
+    let _clubConfigChecked = false;
+
+    function applyClubConfigLocally(club) {
+      if (!club) return false;
+      let changed = false;
+      if (club.clubName && state.clubName !== club.clubName) { state.clubName = club.clubName; changed = true; }
+      if (club.seasonName && state.seasonName !== club.seasonName) { state.seasonName = club.seasonName; changed = true; }
+      if (club.teamName && state.teamName !== club.teamName) { state.teamName = club.teamName; changed = true; }
+      return changed;
+    }
+
+    async function loadClubConfigFromServer() {
+      if (_clubConfigChecked) return;
+      try {
+        const res = await fetch('/api/publish?resource=club');
+        if (!res.ok) return; // not authenticated yet — try again after login
+        _clubConfigChecked = true;
+        const data = await res.json();
+        if (data.club) {
+          if (applyClubConfigLocally(data.club)) { saveState('Club settings loaded'); renderNav(); }
+          return;
+        }
+        if (!isCoach()) return;
+        if ((state.clubName || '').trim()) {
+          // Existing beta coach: seed the server record from local state once.
+          await saveClubConfigToServer();
+          return;
+        }
+        showFirstRunSetup();
+      } catch(e) { console.warn('[loadClubConfigFromServer]', e); }
+    }
+
+    async function saveClubConfigToServer(extra = {}) {
+      if (!isCoach()) return null;
+      try {
+        const club = {
+          clubName:   state.clubName || '',
+          teamName:   state.teamName || '',
+          seasonName: state.seasonName || '',
+          trainingDays: (state.schedule || [])
+            .filter(s => s.type === 'Training')
+            .map(s => ({ day: (s.title.match(/Mon|Tue|Wed|Thu|Fri|Sat|Sun/) || ['Tue'])[0], time: (s.date.match(/\d{2}:\d{2}/) || ['19:00'])[0] })),
+          firstFixture: {
+            opposition: state.matchCentre?.opposition || '',
+            date:       state.matchCentre?.kickoffDate || '',
+            time:       state.matchCentre?.kickoffTime || '',
+            venue:      state.matchCentre?.venue || '',
+          },
+          ...extra,
+        };
+        const res = await fetch('/api/publish?resource=club', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ club }),
+        });
+        return res.ok ? (await res.json()).club : null;
+      } catch(e) { console.warn('[saveClubConfigToServer]', e); return null; }
+    }
+
+    const DAY_LABELS = { Mon:'Monday', Tue:'Tuesday', Wed:'Wednesday', Thu:'Thursday', Fri:'Friday', Sat:'Saturday', Sun:'Sunday' };
+
+    function showFirstRunSetup() {
+      if (document.getElementById('first-run-modal')) return;
+      const dayOptions = sel => Object.entries(DAY_LABELS).map(([d, label]) =>
+        `<option value="${d}" ${d === sel ? 'selected' : ''}>${label}</option>`).join('');
+      const inputStyle = 'background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:11px 12px;color:#e2e8f0;font-size:15px;width:100%;box-sizing:border-box';
+      const labelStyle = 'font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px;text-align:left';
+      const el = document.createElement('div');
+      el.id = 'first-run-modal';
+      el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:flex-start;justify-content:center;z-index:9998;padding:16px;backdrop-filter:blur(4px);overflow-y:auto';
+      el.innerHTML = `
+        <div style="background:#0f1724;border:1px solid rgba(16,185,129,0.3);border-radius:16px;padding:26px 22px;max-width:440px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,0.7);margin:auto 0">
+          <div style="text-align:center;margin-bottom:18px">
+            <div style="font-size:44px;margin-bottom:8px">🏉</div>
+            <h2 style="margin:0 0 4px;color:#e2e8f0;font-size:21px">Set up your team</h2>
+            <p style="color:#64748b;font-size:13px;margin:0">Two minutes — then you're ready to invite players.</p>
+          </div>
+          <div style="display:grid;gap:12px">
+            <label style="${labelStyle}">Club name *
+              <input id="fr-club" placeholder="e.g. Belgium Rugby" style="${inputStyle}">
+            </label>
+            <label style="${labelStyle}">Team name
+              <input id="fr-team" placeholder="e.g. U20 Men" style="${inputStyle}">
+            </label>
+            <label style="${labelStyle}">Season
+              <input id="fr-season" placeholder="e.g. 2026–27" style="${inputStyle}">
+            </label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <label style="${labelStyle}">Training day 1
+                <select id="fr-day1" style="${inputStyle}">${dayOptions('Tue')}</select>
+              </label>
+              <label style="${labelStyle}">Time
+                <input id="fr-time1" type="time" value="19:00" style="${inputStyle}">
+              </label>
+              <label style="${labelStyle}">Training day 2
+                <select id="fr-day2" style="${inputStyle}">${dayOptions('Thu')}</select>
+              </label>
+              <label style="${labelStyle}">Time
+                <input id="fr-time2" type="time" value="19:00" style="${inputStyle}">
+              </label>
+            </div>
+            <div style="border-top:1px solid #1e2d3d;padding-top:12px;display:grid;gap:10px">
+              <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#64748b">Next match (optional)</span>
+              <label style="${labelStyle}">Opposition
+                <input id="fr-opp" placeholder="e.g. France U20" style="${inputStyle}">
+              </label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <label style="${labelStyle}">Date
+                  <input id="fr-fxdate" type="date" style="${inputStyle}">
+                </label>
+                <label style="${labelStyle}">Kick-off
+                  <input id="fr-fxtime" type="time" value="15:00" style="${inputStyle}">
+                </label>
+              </div>
+              <label style="${labelStyle}">Venue
+                <input id="fr-venue" placeholder="e.g. Stade Fallon" style="${inputStyle}">
+              </label>
+            </div>
+            <button class="btn primary" type="button" onclick="completeFirstRunSetup()"
+              style="width:100%;min-height:48px;font-size:15px;font-weight:700;margin-top:4px">
+              Create my team →
+            </button>
+            <button class="btn ghost" type="button" style="width:100%;font-size:12px"
+              onclick="document.getElementById('first-run-modal')?.remove()">
+              Skip for now
+            </button>
+          </div>
+        </div>`;
+      document.body.appendChild(el);
+      setTimeout(() => document.getElementById('fr-club')?.focus(), 60);
+    }
+
+    async function completeFirstRunSetup() {
+      const v = id => document.getElementById(id)?.value?.trim() || '';
+      const clubName = v('fr-club');
+      if (!clubName) { showToast('Enter your club name first'); return; }
+      const day1 = v('fr-day1') || 'Tue', time1 = v('fr-time1') || '19:00';
+      const day2 = v('fr-day2') || 'Thu', time2 = v('fr-time2') || '19:00';
+
+      state.clubName   = clubName;
+      state.teamName   = v('fr-team');
+      state.seasonName = v('fr-season');
+
+      // Keep the stable tue/thu/game session IDs (availability + tests rely
+      // on them) but label and time them from the coach's choices.
+      const bySession = { tue: [day1, time1], thu: [day2, time2] };
+      (state.schedule || []).forEach(s => {
+        const cfg = bySession[s.id];
+        if (cfg) { s.title = `Training — ${DAY_LABELS[cfg[0]] || cfg[0]}`; s.date = `${DAY_LABELS[cfg[0]] || cfg[0]} ${cfg[1]}`; }
+      });
+      const opp = v('fr-opp');
+      if (opp) {
+        state.matchCentre = { ...(state.matchCentre || {}), opposition: opp,
+          kickoffDate: v('fr-fxdate'), kickoffTime: v('fr-fxtime') || '15:00', venue: v('fr-venue') };
+        const game = (state.schedule || []).find(s => s.id === 'game');
+        if (game) { game.title = `Match vs ${opp}`; game.date = [v('fr-fxdate'), v('fr-fxtime')].filter(Boolean).join(' '); }
+      }
+
+      saveState('Team created');
+      const saved = await saveClubConfigToServer({
+        trainingDays: [{ day: day1, time: time1 }, { day: day2, time: time2 }],
+        firstFixture: { opposition: opp, date: v('fr-fxdate'), time: v('fr-fxtime'), venue: v('fr-venue') },
+      });
+      syncSessionsToServer().catch(() => {});
+      document.getElementById('first-run-modal')?.remove();
+      render();
+      showToast(saved ? `${clubName} is set up ✓` : `${clubName} saved on this device — server sync will retry`);
+    }
+
     let _publishedStateLoadedAt = 0;
 
     // Pull published sessions + squad from Redis into the player's local state.
@@ -10369,6 +10550,7 @@
           _inviteToken = null; _inviteData = null;
           render();
           loadPublishedStateForPlayer().catch(() => {});
+          loadClubConfigFromServer().catch(() => {});
           refreshPushSubscriptionMetadata(name).catch(() => {});
           showToast(`Welcome ${name.split(' ')[0]}! Your account is ready.`);
           return;
@@ -10601,6 +10783,9 @@
     // Coach devices adopt the server roster on startup (no-op without a
     // coach session — the API rejects with 401/403 and we keep local state).
     loadRosterFromServer().catch(() => {});
+    // Club config check: applies club/team/season from the server, or shows
+    // the first-run setup wizard for a coach with no club configured.
+    loadClubConfigFromServer().catch(() => {});
 
     // ── Background unread poll ──────────────────────────────────────────────
     // Fetch conversation counts frequently when the app is visible.
