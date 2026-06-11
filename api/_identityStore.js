@@ -776,7 +776,12 @@ export async function loginUser(input = {}) {
   }
 
   const members = await loadTeamMembers();
-  const member = legacyMember || members.find(item => item.userId === user.id && item.teamId === (input.teamId || DEFAULT_TEAM.id));
+  // Default-team behaviour unchanged; users whose only membership is a
+  // self-created club (Start a New Club) fall back to their active
+  // membership in any team.
+  const member = legacyMember ||
+    members.find(item => item.userId === user.id && item.teamId === (input.teamId || DEFAULT_TEAM.id)) ||
+    members.find(item => item.userId === user.id && item.status === 'active');
   if (!member || member.status !== 'active') {
     const error = new Error(member?.status === 'pending' ? 'Waiting for coach approval' : 'Account is not active for this team');
     error.status = 403;
@@ -958,6 +963,87 @@ export async function destroySession(token = '') {
   const hashed = hashToken(token);
   const sessions = await loadSessions();
   await saveSessions(sessions.filter(item => item.tokenHash !== hashed));
+}
+
+// ─── Self-service club creation (Start a New Club wizard) ───────────────────
+// Creates a brand-new tenant end-to-end: team record, coach account, head
+// coach membership and a live session — no developer steps. Purely additive:
+// existing teams, users and memberships are never modified.
+
+function teamSlug(name = '') {
+  return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'club';
+}
+
+export async function createClub({ clubName, teamName, sport, name, email, password } = {}) {
+  const club = String(clubName || '').trim().slice(0, 80);
+  if (!club) throw new Error('Club name is required');
+  const coachName = String(name || '').trim().slice(0, 80);
+  if (!coachName) throw new Error('Your name is required');
+  const normalized = normalizeEmail(email);
+  if (!EMAIL_RE.test(normalized)) throw new Error('Valid email is required');
+  assertPassword(password);
+
+  const users = await loadUsers();
+  if (users.some(item => normalizeEmail(item.email) === normalized)) {
+    const error = new Error('An account with that email already exists — log in instead');
+    error.status = 409;
+    throw error;
+  }
+
+  // Unique team id derived from the club name; collision-proofed with a suffix.
+  const teams = await loadTeams();
+  let teamId = teamSlug(club);
+  while (teams.some(t => t.id === teamId)) {
+    teamId = `${teamSlug(club)}-${randomBytes(2).toString('hex')}`;
+  }
+  const teamCode = (club.replace(/[^a-zA-Z]/g, '').slice(0, 6).toUpperCase() || 'CLUB') +
+    String(Math.floor(Math.random() * 90) + 10);
+  const team = {
+    id: teamId,
+    name: club,
+    teamName: String(teamName || '').trim().slice(0, 80),
+    sport: String(sport || 'Rugby').trim().slice(0, 40) || 'Rugby',
+    teamCode,
+    createdAt: nowIso(),
+  };
+  teams.push(team);
+  await saveTeams(teams);
+
+  const parts = splitDisplayName(coachName);
+  const user = {
+    id: makeId('user'),
+    email: normalized,
+    firstName: parts.firstName,
+    lastName: parts.lastName,
+    displayName: coachName,
+    authProvider: 'password',
+    passwordSet: true,
+    ...hashPassword(password),
+    createdAt: nowIso(),
+    lastLoginAt: nowIso(),
+  };
+  users.push(user);
+  await saveUsers(users);
+
+  const members = await loadTeamMembers();
+  const member = {
+    id: makeId('tm'),
+    teamId,
+    userId: user.id,
+    role: 'coach',
+    staffLevel: 'head',
+    status: 'active',
+    joinedAt: nowIso(),
+    approvedAt: nowIso(),
+    approvedBy: 'club-creation',
+    rejectedAt: null,
+    rejectedBy: null,
+  };
+  members.push(member);
+  await saveTeamMembers(members);
+
+  const session = await createSession({ userId: user.id, teamId, role: 'coach' });
+  return { user: publicUserWithRole(user, member), team, teamMember: member, session };
 }
 
 // ─── Self-service account management (Settings screen) ──────────────────────

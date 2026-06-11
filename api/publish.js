@@ -173,6 +173,7 @@ function sanitiseClubConfig(raw) {
   return {
     clubName,
     teamName:   String(raw.teamName   || '').trim().slice(0, 80),
+    sport:      String(raw.sport      || '').trim().slice(0, 40),
     seasonName: String(raw.seasonName || '').trim().slice(0, 80),
     seasonStart: isoDate(raw.seasonStart),
     seasonEnd:   isoDate(raw.seasonEnd),

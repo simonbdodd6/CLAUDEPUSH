@@ -5,6 +5,7 @@ import {
   changeEmail,
   changePassword,
   claimInvite,
+  createClub,
   destroyAllSessionsForUser,
   requireSession,
   tokenHashFor,
@@ -99,6 +100,16 @@ export default async function handler(req, res) {
           });
           throw error;
         }
+      }
+      if (action === 'create_club') {
+        await enforceRateLimit('create_club', requestIp(req), { limit: 5, windowMs: 60 * 60 * 1000 });
+        const result = await createClub(req.body || {});
+        await auditLog('club_created', {
+          teamId: result.team?.id, clubName: result.team?.name,
+          userId: result.user?.id, email: result.user?.email, ip: requestIp(req),
+        });
+        if (result.session?.token) res.setHeader('Set-Cookie', sessionCookie(result.session.token));
+        return res.status(201).json({ ok: true, ...publicAuthResult(result) });
       }
       if (action === 'claim_invite') {
         const result = await claimInvite(req.body || {});

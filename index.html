@@ -2364,6 +2364,7 @@
           <p class="ce-tagline">Selection, availability and team communication —<br>everything your club needs for match week.</p>
           <button class="btn primary" type="button" onclick="welcomeLogin()">Log in</button>
           <button class="btn" type="button" onclick="welcomeJoin()">Join a team</button>
+          <button class="btn" type="button" onclick="_welcomeDismissed=true;document.getElementById('ce-welcome')?.remove();startClubWizard()" style="border-color:rgba(16,185,129,0.35);color:var(--green)">Start a new club</button>
           <p class="muted" style="font-size:11.5px;margin-top:14px">Got an invite link? Just open it — no setup needed.</p>
         </div>`;
       document.body.appendChild(el);
@@ -4741,6 +4742,7 @@
           <p class="muted" style="font-size:10px;margin:0">Use the exact email your account was created with — one wrong letter shows "invalid password".</p>
           <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:12px">Log in</button>
           <button class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:11px;padding:5px 8px">Forgot password?</button>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed');startClubWizard()" style="font-size:11px;padding:5px 8px;color:var(--green);border-color:rgba(16,185,129,0.35)">New here? Create a coach account</button>
           <button class="auth-tab" type="button" onclick="clearDeviceState()" style="font-size:11px;padding:5px 8px;color:#f87171;border-color:rgba(248,113,113,0.3)">Trouble signing in? Log out &amp; clear this device</button>
           ${window._devLoginEnabled ? `<button class="auth-tab" type="button" onclick="devLogin('coach-demo')" style="font-size:11px;padding:5px 8px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">Quick login: Simon Coach</button>` : ''}
           <p class="muted" style="font-size:11px;margin:0">Approved players can log in after coach approval.</p>
@@ -5489,6 +5491,13 @@
           detail: mc.published ? 'Squad published' : 'Select players and publish the team sheet',
           cta:    'Open Match Centre →',
           action: `setSection('coach','matchday')`
+        },
+        {
+          done:   (state.messages || []).length > 0,
+          title:  'Send your first message',
+          detail: (state.messages || []).length > 0 ? 'First message sent' : 'Say hello to the squad in Messages',
+          cta:    'Open Messages →',
+          action: `setSection('coach','messages')`
         }
       ];
     }
@@ -7812,6 +7821,201 @@
       saveState("Blocked date saved");
       render();
       showToast("Blocked date saved ✓");
+    }
+
+    // ─── START A NEW CLUB WIZARD ─────────────────────────────────────────────
+    // Fully self-serve club creation: account → club → team → done. One atomic
+    // create_club call at the finish (no orphan accounts if the coach bails
+    // halfway). Lands on the Overview dashboard with the getting-started
+    // checklist. Existing clubs are untouched — the API is purely additive.
+
+    let _clubWiz = null;
+
+    function startClubWizard() {
+      _clubWiz = { step: 0, data: { sport: 'Rugby', logoDataUrl: '' } };
+      renderClubWizard();
+    }
+
+    function clubWizClose() {
+      _clubWiz = null;
+      document.getElementById('club-wizard')?.remove();
+      renderAuthBanner();
+    }
+
+    function clubWizNext(delta = 1) {
+      if (!_clubWiz) return;
+      const d = _clubWiz.data;
+      const v = id => document.getElementById(id)?.value?.trim() || '';
+      // Capture current step's inputs before moving
+      if (_clubWiz.step === 1) {
+        d.name = v('cw-name'); d.email = v('cw-email');
+        d.password = document.getElementById('cw-password')?.value || '';
+        if (delta > 0) {
+          if (!d.name) return showToast('Enter your name');
+          if (!d.email || !d.email.includes('@')) return showToast('Enter a valid email');
+          if (d.password.length < 8) return showToast('Password must be at least 8 characters');
+        }
+      }
+      if (_clubWiz.step === 2 && delta > 0) {
+        d.clubName = v('cw-club');
+        if (!d.clubName) return showToast('Enter your club name');
+      }
+      if (_clubWiz.step === 3) {
+        d.teamName = v('cw-team');
+        d.sport = v('cw-sport') || 'Rugby';
+      }
+      _clubWiz.step = Math.max(0, Math.min(4, _clubWiz.step + delta));
+      renderClubWizard();
+    }
+
+    function clubWizLogo(input) {
+      const file = input.files?.[0];
+      if (!file) return;
+      const img = new Image();
+      img.onload = () => {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const scale = Math.max(size / img.width, size / img.height);
+        canvas.getContext('2d').drawImage(img, (size - img.width * scale) / 2, (size - img.height * scale) / 2, img.width * scale, img.height * scale);
+        const dataUrl = canvas.toDataURL('image/png');
+        if (dataUrl.length > 200000) { showToast('Logo too complex — try a simpler image'); return; }
+        _clubWiz.data.logoDataUrl = dataUrl;
+        renderClubWizard();
+      };
+      img.onerror = () => showToast('Could not read that image');
+      img.src = URL.createObjectURL(file);
+    }
+
+    async function clubWizFinish() {
+      const d = _clubWiz?.data || {};
+      const btn = document.getElementById('cw-finish-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Creating your club…'; }
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create_club',
+            clubName: d.clubName, teamName: d.teamName, sport: d.sport,
+            name: d.name, email: d.email, password: d.password,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not create the club');
+
+        // Local identity: the new coach IS this device's user now.
+        state.users = (state.users || []).filter(u => u.id !== data.user.id);
+        state.users.push({ id: data.user.id, role: 'coach', name: data.user.displayName || d.name, email: data.user.email || d.email, phone: '', pin: '' });
+        state.currentUserId = data.user.id;
+        state.activeView = 'coach';
+        state.activeCoachSection = 'overview';
+        state.clubName = data.team?.name || d.clubName;
+        state.teamName = data.team?.teamName || d.teamName || '';
+        state.teamCode = data.team?.teamCode || state.teamCode;
+        if (d.logoDataUrl) state.clubLogo = d.logoDataUrl;
+        _serverSessionReadyFor = data.user.id;
+        _serverAuthState = 'authed';
+        _welcomeDismissed = true;
+        try { sessionStorage.setItem('ce-setup-skipped', '1'); } catch {}
+        saveState('Club created');
+
+        // Persist the club profile server-side (session is now scoped to the new team).
+        saveClubConfigToServer({ logoDataUrl: d.logoDataUrl || '', sport: d.sport }).catch(() => {});
+        syncSessionsToServer().catch(() => {});
+        markSynced();
+
+        clubWizClose();
+        render();
+        showToast(`${state.clubName} is ready 🏉 Welcome, coach!`);
+      } catch(e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Create my club →'; }
+        showToast(e.message || 'Could not create the club');
+      }
+    }
+
+    function renderClubWizard() {
+      if (!_clubWiz) return;
+      document.getElementById('club-wizard')?.remove();
+      const d = _clubWiz.data;
+      const step = _clubWiz.step;
+      const inputStyle = 'background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:12px;color:var(--ink);font-size:16px;width:100%;box-sizing:border-box';
+      const labelStyle = 'display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted);text-align:left';
+
+      const steps = [
+        // 0 — Welcome
+        `<div style="text-align:center">
+          <div class="ce-logo" style="width:60px;height:60px;border-radius:14px;margin:0 auto 16px;background:var(--green-soft);border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center">${icon('trophy', 28)}</div>
+          <h3 style="font-size:20px;margin:0 0 8px">Welcome to Coach's Eye</h3>
+          <p style="color:var(--muted);font-size:13.5px;line-height:1.55;margin:0 0 20px">Set up your club in about two minutes.<br>You'll be inviting players right after.</p>
+          <button class="btn primary" type="button" onclick="clubWizNext()" style="width:100%;min-height:48px;font-size:15px">Get started →</button>
+        </div>`,
+        // 1 — About you
+        `<h3 style="margin:0 0 4px">Your coach account</h3>
+          <p style="color:var(--muted);font-size:12.5px;margin:0 0 16px">You'll log in with this on any device.</p>
+          <div style="display:grid;gap:10px">
+            <label style="${labelStyle}">Your name<input id="cw-name" value="${esc(d.name || '')}" placeholder="e.g. Nick Marshall" style="${inputStyle}"></label>
+            <label style="${labelStyle}">Email<input id="cw-email" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(d.email || '')}" placeholder="you@club.com" style="${inputStyle}"></label>
+            <label style="${labelStyle}">Password<input id="cw-password" type="password" autocomplete="new-password" placeholder="At least 8 characters" style="${inputStyle}"></label>
+          </div>`,
+        // 2 — Club name
+        `<h3 style="margin:0 0 4px">Name your club</h3>
+          <p style="color:var(--muted);font-size:12.5px;margin:0 0 16px">Players see this everywhere — notifications, invites, team sheets.</p>
+          <label style="${labelStyle}">Club name<input id="cw-club" value="${esc(d.clubName || '')}" placeholder="e.g. Harlequins RFC" style="${inputStyle}"></label>
+          <div style="margin-top:14px;display:flex;align-items:center;gap:12px">
+            <div style="width:48px;height:48px;border-radius:11px;border:1px dashed var(--line);background:var(--panel-2) center/cover no-repeat;flex-shrink:0;${d.logoDataUrl ? `background-image:url(${d.logoDataUrl});border-style:solid` : ''}"></div>
+            <label class="btn" style="font-size:12px;min-height:36px;display:flex;align-items:center;cursor:pointer;padding:0 14px">
+              ${d.logoDataUrl ? 'Change logo' : 'Upload club logo (optional)'}
+              <input type="file" accept="image/*" style="display:none" onchange="clubWizLogo(this)">
+            </label>
+          </div>`,
+        // 3 — Team + sport
+        `<h3 style="margin:0 0 4px">Your first team</h3>
+          <p style="color:var(--muted);font-size:12.5px;margin:0 0 16px">You can rename this or add more detail later in Club Admin.</p>
+          <div style="display:grid;gap:10px">
+            <label style="${labelStyle}">Team name<input id="cw-team" value="${esc(d.teamName || '')}" placeholder="e.g. U20, Seniors, 1st XV" style="${inputStyle}"></label>
+            <label style="${labelStyle}">Sport
+              <select id="cw-sport" style="${inputStyle}">
+                ${['Rugby', 'Rugby League', 'Touch Rugby', 'Football', 'Hockey', 'Other'].map(s =>
+                  `<option ${d.sport === s ? 'selected' : ''}>${s}</option>`).join('')}
+              </select></label>
+          </div>`,
+        // 4 — Finish
+        `<div style="text-align:center">
+          <div style="font-size:40px;margin-bottom:10px">🏉</div>
+          <h3 style="font-size:19px;margin:0 0 10px">Ready to create ${esc(d.clubName || 'your club')}</h3>
+          <div style="text-align:left;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:18px;font-size:13px;display:grid;gap:7px">
+            <div><span style="color:var(--muted)">Club</span> · <strong>${esc(d.clubName || '')}</strong></div>
+            ${d.teamName ? `<div><span style="color:var(--muted)">Team</span> · <strong>${esc(d.teamName)}</strong></div>` : ''}
+            <div><span style="color:var(--muted)">Sport</span> · <strong>${esc(d.sport)}</strong></div>
+            <div><span style="color:var(--muted)">Head coach</span> · <strong>${esc(d.name || '')}</strong></div>
+          </div>
+          <button id="cw-finish-btn" class="btn primary" type="button" onclick="clubWizFinish()" style="width:100%;min-height:48px;font-size:15px">Create my club →</button>
+        </div>`,
+      ];
+
+      const el = document.createElement('div');
+      el.id = 'club-wizard';
+      el.className = 'ce-modal-overlay';
+      el.innerHTML = `
+        <div class="ce-modal" role="dialog" aria-modal="true" style="max-width:420px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <div style="display:flex;gap:5px">
+              ${steps.map((_, i) => `<span style="width:22px;height:4px;border-radius:2px;background:${i <= step ? 'var(--green)' : 'var(--line)'}"></span>`).join('')}
+            </div>
+            <button type="button" aria-label="Close" onclick="clubWizClose()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 8px">✕</button>
+          </div>
+          ${steps[step]}
+          ${step > 0 && step < 4 ? `
+          <div class="ce-modal-actions" style="margin-top:18px">
+            <button type="button" onclick="clubWizNext(-1)">Back</button>
+            <button type="button" class="ce-confirm" onclick="clubWizNext(1)">Continue →</button>
+          </div>` : step === 4 ? `
+          <div style="margin-top:10px;text-align:center">
+            <button type="button" onclick="clubWizNext(-1)" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer">← Back</button>
+          </div>` : ''}
+        </div>`;
+      document.body.appendChild(el);
+      setTimeout(() => document.getElementById(['', 'cw-name', 'cw-club', 'cw-team', ''][step])?.focus(), 60);
     }
 
     // ─── SETTINGS & ACCOUNT ──────────────────────────────────────────────────
