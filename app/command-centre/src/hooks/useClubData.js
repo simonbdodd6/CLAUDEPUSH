@@ -42,3 +42,7 @@ export function useIntelligenceDashboard()       { return useData(() => api.inte
 export function useIntelligenceTimeline(params)  { return useData(() => api.intelligenceTimeline(params),   'intelligenceTimeline',  [params]) }
 export function useIntelligenceDecisions(params) { return useData(() => api.intelligenceDecisions(params),  'intelligenceDecisions', [params]) }
 export function useKnowledgeLibrary(params)      { return useData(() => api.knowledgeLibrary(params),       'knowledgeLibrary',      [params]) }
+export function useGraphNodes(params)            { return useData(() => api.graphNodes(params),             'graphNodes',            [JSON.stringify(params)]) }
+export function useGraphEdges(params)            { return useData(() => api.graphEdges(params),             'graphEdges',            [JSON.stringify(params)]) }
+export function useGraphStats()                  { return useData(() => api.graphStats(),                   'graphStats') }
+export function useGraphExpand(id, depth, opts)  { return useData(() => id ? api.graphExpand(id, depth, opts) : Promise.resolve(null), 'graphExpand', [id, depth]) }

@@ -81,6 +81,13 @@ export const api = {
   knowledgeAddClub: (id)          => post(`/knowledge/library/${id}/add-to-club`, {}),
   knowledgeReview:  (id, notes)   => post(`/knowledge/library/${id}/flag-review`, { notes }),
   knowledgeStatus:  (id, status, notes) => post(`/knowledge/library/${id}/status`, { status, notes }),
+
+  graphNodes:  (params = {})   => get('/graph/nodes'  + (Object.keys(params).length ? '?' + new URLSearchParams(params).toString() : '')),
+  graphEdges:  (params = {})   => get('/graph/edges'  + (Object.keys(params).length ? '?' + new URLSearchParams(params).toString() : '')),
+  graphStats:  ()               => get('/graph/stats'),
+  graphNode:   (id)             => get(`/graph/nodes/${id}`),
+  graphExpand: (id, depth = 2, params = {}) => get(`/graph/expand/${id}?depth=${depth}` + (Object.keys(params).length ? '&' + new URLSearchParams(params).toString() : '')),
+  graphQuery:  (q, params = {}) => get(`/graph/query?q=${q}` + (Object.keys(params).length ? '&' + new URLSearchParams(params).toString() : '')),
 }
 
 // ── Mock data (fallback when server not running) ───────────────────────────────

@@ -44,6 +44,7 @@ const server = createServer(async (req, res) => {
   const url    = new URL(req.url, `http://localhost:${PORT}`)
   const path   = url.pathname
   const method = req.method
+  const params = Object.fromEntries(url.searchParams)
 
   try {
     // ── Health ────────────────────────────────────────────────────────────────
@@ -894,6 +895,82 @@ const server = createServer(async (req, res) => {
       const doc  = updateDocumentStatus(id, body.status, body.notes)
       if (!doc) { err(res, 'Document not found', 404); return }
       json(res, { success: true, document: doc })
+      return
+    }
+
+    // ── Knowledge Graph ───────────────────────────────────────────────────────
+
+    if (method === 'GET' && path === '/api/graph/nodes') {
+      const { getAllNodes, bootGraph } = await import('../knowledge-graph/index.js')
+      bootGraph()
+      const { type, clubId, q } = params
+      const { findNodes, graphStats } = await import('../knowledge-graph/index.js')
+      if (q) {
+        const { search } = await import('../knowledge-graph/index.js')
+        json(res, search(q, { type, clubId, limit: 50 }))
+      } else {
+        json(res, findNodes({ type, clubId }))
+      }
+      return
+    }
+
+    if (method === 'GET' && path.match(/^\/api\/graph\/nodes\/[^/]+$/)) {
+      const id = path.split('/')[4]
+      const { getNode, bootGraph } = await import('../knowledge-graph/index.js')
+      bootGraph()
+      const node = getNode(id)
+      if (!node) { err(res, 'Node not found', 404); return }
+      json(res, node)
+      return
+    }
+
+    if (method === 'GET' && path === '/api/graph/edges') {
+      const { findEdges, bootGraph } = await import('../knowledge-graph/index.js')
+      bootGraph()
+      json(res, findEdges({ type: params.type, from: params.from, to: params.to }))
+      return
+    }
+
+    if (method === 'GET' && path === '/api/graph/stats') {
+      const { graphStats, bootGraph } = await import('../knowledge-graph/index.js')
+      bootGraph()
+      json(res, graphStats())
+      return
+    }
+
+    if (method === 'GET' && path.match(/^\/api\/graph\/expand\/[^/]+$/)) {
+      const id    = path.split('/')[4]
+      const depth = parseInt(params.depth ?? '2', 10)
+      const { expand, bootGraph } = await import('../knowledge-graph/index.js')
+      bootGraph()
+      json(res, expand(id, depth, { type: params.type }))
+      return
+    }
+
+    if (method === 'GET' && path === '/api/graph/query') {
+      const { bootGraph } = await import('../knowledge-graph/index.js')
+      bootGraph()
+      const { q: queryName, ...qParams } = params
+      const queries = await import('../knowledge-graph/index.js')
+      const fn = queries[queryName]
+      if (typeof fn !== 'function') { err(res, `Unknown query: ${queryName}`, 400); return }
+      json(res, fn(qParams.id ?? qParams.nodeId, qParams))
+      return
+    }
+
+    if (method === 'POST' && path === '/api/graph/nodes') {
+      const body = await readBody(req)
+      const { addNode, bootGraph } = await import('../knowledge-graph/index.js')
+      bootGraph()
+      json(res, addNode(body), 201)
+      return
+    }
+
+    if (method === 'POST' && path === '/api/graph/edges') {
+      const body = await readBody(req)
+      const { addEdge, bootGraph } = await import('../knowledge-graph/index.js')
+      bootGraph()
+      json(res, addEdge(body), 201)
       return
     }
 

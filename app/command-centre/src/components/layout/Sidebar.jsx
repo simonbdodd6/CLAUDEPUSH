@@ -11,7 +11,8 @@ const NAV_ITEMS = [
   { to: '/availability',  label: 'Availability',     icon: <AvailabilityIcon /> },
   { to: '/intelligence',  label: 'Intelligence',     icon: <IntelligenceIcon />, badge: 'AI' },
   { to: '/decisions',     label: 'Decision Centre',  icon: <DecisionIcon />,     badge: 'AI' },
-  { to: '/knowledge',     label: 'Knowledge',        icon: <KnowledgeIcon />,    badge: 'AI' },
+  { to: '/knowledge',       label: 'Knowledge',        icon: <KnowledgeIcon />,    badge: 'AI'  },
+  { to: '/knowledge-graph', label: 'Graph',            icon: <GraphIcon />,        badge: 'DEV' },
 ]
 
 export default function Sidebar({ onCommandBarOpen }) {
@@ -59,7 +60,11 @@ export default function Sidebar({ onCommandBarOpen }) {
             <span className="nav-icon w-4 h-4 text-ink-3 flex-shrink-0">{item.icon}</span>
             <span className="flex-1">{item.label}</span>
             {item.badge && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300 font-bold tracking-wide">
+              <span className={`text-[9px] px-1 py-0.5 rounded font-bold tracking-wide ${
+                item.badge === 'DEV'
+                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                  : 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
+              }`}>
                 {item.badge}
               </span>
             )}
@@ -180,6 +185,18 @@ function KnowledgeIcon() {
       <path d="M8 5.5h3M8 7.5h3M8 9.5h2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
       <circle cx="4.5" cy="6.5" r="0.8" fill="currentColor" opacity="0.7"/>
       <circle cx="4.5" cy="9" r="0.8" fill="currentColor" opacity="0.7"/>
+    </svg>
+  )
+}
+function GraphIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4">
+      <circle cx="8" cy="3" r="1.8" stroke="currentColor" strokeWidth="1.2"/>
+      <circle cx="3" cy="12" r="1.8" stroke="currentColor" strokeWidth="1.2"/>
+      <circle cx="13" cy="12" r="1.8" stroke="currentColor" strokeWidth="1.2"/>
+      <line x1="8" y1="4.8" x2="3.8" y2="10.2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <line x1="8" y1="4.8" x2="12.2" y2="10.2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <line x1="4.8" y1="12" x2="11.2" y2="12" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
     </svg>
   )
 }
