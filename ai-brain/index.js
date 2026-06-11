@@ -33,6 +33,7 @@ let _bt  = null    // brain-timeline (M6)
 let _mem = null    // memory-engine (M7)
 let _obs = null    // observation-engine (M8)
 let _exp = null    // explanation-engine (M10)
+let _diag = null   // diagnostics (M11)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -79,6 +80,11 @@ async function loadObs() {
 async function loadExp() {
   if (!_exp) _exp = await import('./explain/explanation-engine.js')
   return _exp
+}
+
+async function loadDiag() {
+  if (!_diag) _diag = await import('./diagnostics/brain-status.js')
+  return _diag
 }
 
 async function loadRec() {
@@ -538,28 +544,35 @@ export async function parseTimelineFilters(query = {}) {
   } catch { return {} }
 }
 
-// ── Learning status ───────────────────────────────────────────────────────────
+// ── Brain status / diagnostics (M11) ─────────────────────────────────────────
 
 /**
- * Return the current Coaching Intelligence Score and prediction accuracy.
- * Used by /api/learning/status.
+ * Return the full Brain diagnostic status report.
  *
- * @returns {Promise<{ cis: object, accuracy: object }>}
+ * Runs deterministic health checks for every AI subsystem and cross-system
+ * integrity validation. No reasoning, no LLM, no randomness.
+ *
+ * The returned object is a superset of the M2 { cis, accuracy } shape:
+ * cis and accuracy are hoisted to the top level for backward compatibility.
+ *
+ * @returns {Promise<BrainStatusReport>}
  */
 export async function status() {
   try {
-    const { computeClubIntelligenceScore, getPredictionAccuracy } = await loadLe()
-    const [cis, accuracy] = await Promise.all([
-      Promise.resolve().then(() => computeClubIntelligenceScore())
-        .catch(() => ({ score: 0, grade: 'N/A', stage: 'COLD_START', components: {} })),
-      Promise.resolve().then(() => getPredictionAccuracy())
-        .catch(() => ({ overall: { f1: 0, grade: 'N/A', precision: 0, recall: 0 } })),
-    ])
-    return { cis, accuracy }
-  } catch {
+    const { getBrainStatus } = await loadDiag()
+    return getBrainStatus()
+  } catch (err) {
     return {
+      overallHealth:  'error',
+      modules:        {},
+      totalMemories:  0, totalObservations: 0, totalRecommendations: 0, totalTimelineEvents: 0,
+      calibrationState: { maturity: 'COLD_START', totalKeys: 0, activeKeys: 0, coldStartKeys: 0 },
+      schemaVersions: {},
+      integrity:      { consistent: false, totalIssues: 0, orphanObservations: [], orphanMemories: [], brokenTraces: [], missingExplanations: [], duplicateIds: { timeline: [], memory: [] }, schemaMismatches: [] },
+      // M2 backward compat
       cis:      { score: 0, grade: 'N/A', stage: 'COLD_START', components: {} },
       accuracy: { overall: { f1: 0, grade: 'N/A', precision: 0, recall: 0 } },
+      error:    err.message,
     }
   }
 }
