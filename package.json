@@ -49,6 +49,7 @@
     "assistant:report": "node autonomous-assistant/assistant-cli.js --report",
     "assistant:all": "node autonomous-assistant/assistant-cli.js --all",
     "assistant": "echo \"CLI:     npm run assistant:cli\nAPI:     npm run assistant:api (port 3004)\nBriefing: npm run assistant:briefing\nTimeline: npm run assistant:timeline\nReport:  npm run assistant:report\"",
+    "proactive:check": "node -e \"import('./lib/ai/proactive-intelligence/index.js').then(async m => { const r = await m.runProactiveIntelligence({ useMock: true, persist: false }); console.log(JSON.stringify({ briefings: r.briefings.length, awaitingOwner: r.dashboard.awaitingOwner.length, confidence: r.morningBriefing.confidence }, null, 2)); })\"",
     "season:cli":      "node season-intelligence/season-cli.js",
     "season:api":      "node season-intelligence/season-api.js",
     "season:all":      "node season-intelligence/season-cli.js --all",

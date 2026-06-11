@@ -175,6 +175,40 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    // ── Proactive Intelligence ───────────────────────────────────────────────
+    if (method === 'GET' && path === '/api/proactive/briefings') {
+      const { runProactiveIntelligence } = await import('../lib/ai/proactive-intelligence/index.js')
+      const result = await runProactiveIntelligence({ persist: true, useMock: url.searchParams.get('mock') === '1' })
+      json(res, { briefings: result.briefings, inbox: result.inbox })
+      return
+    }
+
+    if (method === 'GET' && path === '/api/proactive/dashboard') {
+      const { runProactiveIntelligence } = await import('../lib/ai/proactive-intelligence/index.js')
+      const result = await runProactiveIntelligence({ persist: true, useMock: url.searchParams.get('mock') === '1' })
+      json(res, result.dashboard)
+      return
+    }
+
+    if (method === 'GET' && path === '/api/proactive/morning-briefing') {
+      const { runProactiveIntelligence } = await import('../lib/ai/proactive-intelligence/index.js')
+      const result = await runProactiveIntelligence({ persist: true, useMock: url.searchParams.get('mock') === '1' })
+      json(res, result.morningBriefing)
+      return
+    }
+
+    if (method === 'POST' && path.startsWith('/api/proactive/briefings/') && path.endsWith('/status')) {
+      const briefingId = path.split('/')[4]
+      const body = await readBody(req)
+      const { updateBriefingStatus } = await import('../lib/ai/proactive-intelligence/index.js')
+      const updated = updateBriefingStatus(briefingId, body.status, {
+        snoozedUntil: body.snoozedUntil,
+        note: body.note,
+      })
+      json(res, { briefing: updated })
+      return
+    }
+
     // ── Approvals ─────────────────────────────────────────────────────────────
     if (method === 'GET' && path === '/api/approvals') {
       const { getPending, approvalStats } = await import('../dashboard/approval-centre/approval-manager.js')

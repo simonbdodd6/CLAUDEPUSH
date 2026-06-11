@@ -189,6 +189,22 @@ const ENGINE_DEFINITIONS = [
       } catch (err) { return { ok: false, details: { error: err.message } }; }
     },
   },
+  {
+    id:          'proactive-intelligence',
+    name:        'Proactive Intelligence Engine',
+    version:     '1.0.0',
+    description: 'Monitors all engines, detects significant events, and generates executive briefings without autonomous external execution',
+    module:      '../lib/ai/proactive-intelligence/index.js',
+    capabilities: ['intelligence.monitor', 'briefing.generate', 'executive_inbox.manage', 'morning_briefing.generate', 'urgency.rank'],
+    dependencies: ['executive-dashboard', 'ai-copilot'],
+    optional:    true,
+    async healthCheck() {
+      try {
+        const e = await import('../lib/ai/proactive-intelligence/index.js');
+        return { ok: !!e?.runProactiveIntelligence, details: { available: true, humanApprovalRequired: true } };
+      } catch (err) { return { ok: false, details: { error: err.message } }; }
+    },
+  },
 ];
 
 // ── Registration ───────────────────────────────────────────────────────────────
