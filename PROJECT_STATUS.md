@@ -18,3 +18,13 @@
 - Added clean domain APIs for create, read, update profile, change role, set verification status, suspend, soft delete, and audit reads.
 - Added an adapter-based repository boundary so future production storage, federation, SSO, and enterprise accounts can attach without changing the domain API.
 - Added tests for privacy-safe public reads, internal read audit, role changes, verification, suspension, GDPR-style anonymising soft delete, and validation.
+
+## 2026-06-11 — Travel Intelligence Trip Platform Foundation
+
+- Added the Trip Platform foundation at `lib/trip-platform/`.
+- Supports traveller-owned trips with country, destination, approximate area, dates, status, visibility, and timestamps.
+- Added clean domain APIs for create, update, date changes, destination changes, visibility changes, start, complete, cancel, read by ID, and list by owner identity.
+- Added owner isolation so travellers cannot read or mutate another identity's trips while allowing privileged system/admin access paths for future operations.
+- Added terminal-state protections for completed and cancelled trips.
+- Added validation that rejects exact live location-style fields; trips store approximate area only.
+- Added tests for creation, required fields, status transitions, visibility, owner isolation, cancelled/completed rules, and exact-location rejection.
