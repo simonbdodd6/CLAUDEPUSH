@@ -1,4 +1,6 @@
 import {
+  adminAccountStatus,
+  adminResetStaffPassword,
   approveJoinRequest,
   claimInvite,
   clearSessionCookie,
@@ -20,7 +22,8 @@ import {
   setStaffLevel,
 } from './_identityStore.js';
 import { appBaseUrl, passwordResetEmail, sendTransactionalEmail } from './_email.js';
-import { setCors } from './_http.js';
+import { setCors, readSecret } from './_http.js';
+import { randomBytes } from 'node:crypto';
 import { kvConfigured } from './_kv.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
 import { assertSameTenant, requireTenantRole } from './_tenant.js';
@@ -192,6 +195,38 @@ export default async function handler(req, res) {
           by: session.user.id, ip: requestIp(req),
         });
         return res.status(200).json({ ok: true, ...result });
+      }
+      // ── Production account recovery — CRON_SECRET gated, never browser-reachable
+      // without the server secret. Does NOT weaken normal auth: DEV_LOGIN stays
+      // off, password rules unchanged, and only active staff accounts qualify.
+      if (action === 'admin_account_status' || action === 'admin_reset_coach') {
+        if (!process.env.CRON_SECRET) return res.status(500).json({ ok: false, error: 'CRON_SECRET not configured' });
+        if (readSecret(req) !== process.env.CRON_SECRET) {
+          await auditLog('admin_recovery_denied', { action, ip: requestIp(req) });
+          return res.status(401).json({ ok: false, error: 'Unauthorized' });
+        }
+        if (action === 'admin_account_status') {
+          const status = await adminAccountStatus(req.body?.email);
+          return res.status(200).json({ ok: true, ...status });
+        }
+        // admin_reset_coach: resets to the supplied password, or generates a
+        // temporary one. All live sessions for the account are revoked.
+        const temporaryPassword = String(req.body?.newPassword || '').trim() ||
+          `coach-${randomBytes(6).toString('base64url')}`;
+        const result = await adminResetStaffPassword({ email: req.body?.email, newPassword: temporaryPassword });
+        await auditLog('admin_reset_coach', {
+          email: result.user?.email, userId: result.user?.id,
+          sessionsRevoked: result.sessionsRevoked, ip: requestIp(req),
+        });
+        return res.status(200).json({
+          ok: true,
+          email: result.user?.email,
+          userId: result.user?.id,
+          sessionsRevoked: result.sessionsRevoked,
+          // Returned ONCE over this authenticated admin call so the operator
+          // can hand it to the coach; it is stored only as a hash.
+          temporaryPassword: req.body?.newPassword ? undefined : temporaryPassword,
+        });
       }
       if (action === 'dev_login') {
         if (process.env.DEV_LOGIN !== 'true') return res.status(403).json({ ok: false, error: 'Dev login not enabled' });

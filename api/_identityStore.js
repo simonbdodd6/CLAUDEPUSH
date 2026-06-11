@@ -960,6 +960,64 @@ export async function destroySession(token = '') {
   await saveSessions(sessions.filter(item => item.tokenHash !== hashed));
 }
 
+// ─── Production account recovery (CRON_SECRET-gated, server-side only) ──────
+// Used when a coach is locked out (lost password, rate-limited, credential
+// drift). Restricted to accounts holding a coach/admin membership so the
+// secret cannot be used to silently take over player accounts.
+
+export async function adminAccountStatus(email) {
+  const normalized = normalizeEmail(email);
+  const [users, members] = await Promise.all([loadUsers(), loadTeamMembers()]);
+  const user = users.find(item => normalizeEmail(item.email) === normalized);
+  if (!user) {
+    // Help diagnose near-miss emails without leaking other accounts: report
+    // how many staff accounts exist and their masked emails.
+    const staffIds = new Set(members.filter(m => ['coach', 'admin'].includes(m.role)).map(m => m.userId));
+    const maskedStaff = users.filter(u => staffIds.has(u.id)).map(u => {
+      const [local, domain] = String(u.email || '').split('@');
+      return `${(local || '').slice(0, 3)}…@${domain || ''}`;
+    });
+    return { exists: false, email: normalized, staffAccountHints: maskedStaff };
+  }
+  const memberships = members.filter(m => m.userId === user.id);
+  return {
+    exists: true,
+    email: user.email,
+    userId: user.id,
+    displayName: user.displayName || '',
+    passwordSet: Boolean(user.passwordHash),
+    lastLoginAt: user.lastLoginAt || null,
+    memberships: memberships.map(m => ({ teamId: m.teamId, role: m.role, status: m.status, staffLevel: m.staffLevel || null })),
+  };
+}
+
+export async function adminResetStaffPassword({ email, newPassword } = {}) {
+  const normalized = normalizeEmail(email);
+  if (!EMAIL_RE.test(normalized)) throw new Error('Valid email is required');
+  assertPassword(newPassword);
+  const [users, members] = await Promise.all([loadUsers(), loadTeamMembers()]);
+  const user = users.find(item => normalizeEmail(item.email) === normalized);
+  if (!user) {
+    const error = new Error('Account not found for that email');
+    error.status = 404;
+    throw error;
+  }
+  const isStaff = members.some(m => m.userId === user.id && ['coach', 'admin'].includes(m.role) && m.status === 'active');
+  if (!isStaff) {
+    const error = new Error('Account is not an active staff account');
+    error.status = 403;
+    throw error;
+  }
+  Object.assign(user, hashPassword(newPassword), { passwordSet: true, passwordResetByAdminAt: nowIso() });
+  await saveUsers(users);
+  // Revoke every live session for this user — stale devices must log in fresh.
+  const sessions = await loadSessions();
+  const remaining = sessions.filter(s => s.userId !== user.id);
+  const revoked = sessions.length - remaining.length;
+  if (revoked) await saveSessions(remaining);
+  return { user: publicUser(user), sessionsRevoked: revoked };
+}
+
 // ─── Member administration (Club Admin screen) ──────────────────────────────
 // Staff permission levels live on team_members.staffLevel:
 //   'head' (Head Coach) | 'assistant' (Assistant Coach) | 'manager' (Team Manager)

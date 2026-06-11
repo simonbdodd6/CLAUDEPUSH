@@ -28,7 +28,8 @@ export async function enforceRateLimit(scope, identifier, { limit = 5, windowMs 
   const ttlSeconds = Math.max(1, Math.ceil((current.resetAt - now) / 1000));
   await kvSet(redisKey, current, ttlSeconds);
   if (current.count > limit) {
-    const error = new Error('Too many attempts. Please wait and try again.');
+    const waitMinutes = Math.max(1, Math.ceil(ttlSeconds / 60));
+    const error = new Error(`Too many attempts. Wait ${waitMinutes} minute${waitMinutes === 1 ? '' : 's'}, then double-check the exact email spelling and try again.`);
     error.status = 429;
     error.retryAfter = ttlSeconds;
     throw error;

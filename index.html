@@ -4380,9 +4380,11 @@
           state.selectedChatId = 'coach';
         }
         _serverSessionReadyFor = data.user.id;
+        _serverAuthState = 'authed';
         authTab = 'closed';
         saveState('Logged in');
         render();
+        renderAuthBanner();
         if (!isStaffLogin) loadPublishedStateForPlayer().catch(() => {});
         if (isStaffLogin) loadRosterFromServer().catch(() => {});
         loadClubConfigFromServer().catch(() => {});
@@ -4522,6 +4524,7 @@
           <input id="identityLoginPassword" type="password" name="password" autocomplete="current-password" placeholder="Password" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
           <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:12px">Log in</button>
           <button class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:11px;padding:5px 8px">Forgot password?</button>
+          <button class="auth-tab" type="button" onclick="clearDeviceState()" style="font-size:11px;padding:5px 8px;color:#f87171;border-color:rgba(248,113,113,0.3)">Trouble signing in? Log out &amp; clear this device</button>
           ${window._devLoginEnabled ? `<button class="auth-tab" type="button" onclick="devLogin('coach-demo')" style="font-size:11px;padding:5px 8px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">Quick login: Simon Coach</button>` : ''}
           <p class="muted" style="font-size:11px;margin:0">Approved players can log in after coach approval.</p>
         </div>
@@ -4554,6 +4557,8 @@
             <span><strong style="display:block;font-size:13px">${u.name}</strong><span style="font-size:11px;color:var(--muted)">${u.role}</span></span>
           </button>`
         ).join('') || '<p class="muted" style="font-size:12px">No other accounts on this device.</p>'}
+        <button class="btn" type="button" onclick="clearDeviceState()"
+          style="width:100%;margin-top:4px;font-size:11px;color:#f87171;border-color:rgba(248,113,113,0.3)">Log out &amp; clear this device</button>
         <button class="btn ghost" type="button" onclick="setAuthTab('closed')"
           style="width:100%;margin-top:4px;font-size:12px">Cancel</button>
       ` : authTab === 'dev' ? `
@@ -4669,6 +4674,7 @@
           }
         }
         _serverSessionReadyFor = userId;
+        _serverAuthState = 'authed';
         state.currentUserId = userId;
         state.activeView = isStaff ? 'coach' : 'player';
         if (isStaff) {
@@ -9899,6 +9905,7 @@
       renderPlayerWeek();
       renderPlayerAvailability();
       renderPlayerFixtures();
+      renderAuthBanner();
       renderDebugOverlay();
       // Async live-data panels — non-blocking, fills in after render
       if (state.activeCoachSection === "message") {
@@ -10387,6 +10394,51 @@
         saveState('Roster loaded from server');
         render();
       } catch(e) { console.warn('[loadRosterFromServer]', e); }
+    }
+
+    // ─── DEVICE RESET + SERVER AUTH STATE ───────────────────────────────────
+    // clearDeviceState: the one-button fix for stale PWA/localStorage state —
+    // ends the server session, wipes every locally stored byte of app state,
+    // and reloads to a clean first-run.
+    async function clearDeviceState() {
+      if (!window.confirm('Log out and clear ALL Coach\'s Eye data stored on this device?\n\nServer data (players, messages, availability) is untouched — you can log straight back in.')) return;
+      try { await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) }); } catch {}
+      try {
+        Object.keys(window.localStorage)
+          .filter(k => k.startsWith('coach-eye') || k.startsWith('_push'))
+          .forEach(k => window.localStorage.removeItem(k));
+      } catch {}
+      window.location.replace('/');
+    }
+
+    // Tracks whether the SERVER recognises this device. Local state alone must
+    // never look like a production login — when the server says no session, a
+    // banner makes the offline/stale status unmissable.
+    let _serverAuthState = 'unknown'; // 'unknown' | 'authed' | 'anon'
+
+    async function checkServerSession() {
+      try {
+        const res = await fetch('/api/identity?action=session');
+        _serverAuthState = res.ok ? 'authed' : 'anon';
+      } catch { _serverAuthState = 'unknown'; } // offline — stay quiet
+      renderAuthBanner();
+    }
+
+    function renderAuthBanner() {
+      let el = document.getElementById('srv-auth-banner');
+      const show = _serverAuthState === 'anon' && isCoach();
+      if (!show) { el?.remove(); return; }
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'srv-auth-banner';
+        el.style.cssText = 'position:sticky;top:0;z-index:900;background:#7c2d12;color:#fed7aa;font-size:12px;font-weight:600;padding:8px 14px;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;text-align:center';
+        document.body.prepend(el);
+      }
+      el.innerHTML = `⚠️ Not signed in to the server — you are viewing data saved on this device only. Nothing will sync or send.
+        <button type="button" onclick="setAuthTab('login');window.scrollTo(0,0)"
+          style="min-height:28px;padding:0 12px;border-radius:7px;border:1px solid #fed7aa;background:transparent;color:#fed7aa;font-size:11px;font-weight:700;cursor:pointer">Log in</button>
+        <button type="button" onclick="clearDeviceState()"
+          style="min-height:28px;padding:0 12px;border-radius:7px;border:1px solid rgba(254,215,170,0.4);background:transparent;color:rgba(254,215,170,0.8);font-size:11px;font-weight:700;cursor:pointer">Clear this device</button>`;
     }
 
     // ─── CLUB CONFIG / FIRST-RUN SETUP ──────────────────────────────────────
@@ -11140,6 +11192,9 @@
     // Club config check: applies club/team/season from the server, or shows
     // the first-run setup wizard for a coach with no club configured.
     loadClubConfigFromServer().catch(() => {});
+    // Server session check — drives the "not signed in" banner so stale local
+    // coach state can never masquerade as an authenticated production login.
+    checkServerSession();
 
     // ── Background unread poll ──────────────────────────────────────────────
     // Fetch conversation counts frequently when the app is visible.
