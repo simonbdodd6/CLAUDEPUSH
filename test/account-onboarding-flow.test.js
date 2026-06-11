@@ -263,3 +263,55 @@ test('coach invite to claimed player creates one permanent userId across auth ch
   const coachView = await callChat('GET', `/api/chat?action=messages&convId=${encodeURIComponent(convId)}`, null, { cookie: coachCookie });
   assert.deepEqual(coachView.messages.map(message => message.text), ['Welcome to Coach Eye', 'Thanks coach']);
 });
+
+test('claimed invite subscription uses the same permanent userId as coach DM routing', async () => {
+  kv.clear();
+  lists.clear();
+  sentEmails.length = 0;
+
+  const coachLogin = await callApi(identityHandler, 'POST', {
+    body: { action: 'login', email: 'simonbdodd@gmail.com', password: '1111' },
+  });
+  assert.equal(coachLogin.statusCode, 200);
+  const coachCookie = sessionCookieFrom(coachLogin);
+
+  const invite = await callApi(inviteHandler, 'POST', {
+    headers: { cookie: coachCookie, host: 'preview.example.test', 'x-forwarded-proto': 'https' },
+    body: { name: 'Push Identity Player', role: 'player', email: 'push.identity@example.com', sendEmail: false },
+  });
+  assert.equal(invite.statusCode, 201);
+
+  const claimed = await callApi(identityHandler, 'POST', {
+    body: {
+      action: 'claim_invite',
+      token: invite.payload.token,
+      name: 'Push Identity Player',
+      email: 'push.identity@example.com',
+      password: 'password123',
+    },
+  });
+  assert.equal(claimed.statusCode, 201);
+  const playerUserId = claimed.payload.user.id;
+  const legacyPlayerId = claimed.payload.playerProfile.legacyPlayerId;
+  const playerCookie = sessionCookieFrom(claimed);
+  assert.match(legacyPlayerId, /^inv-/);
+
+  const convId = dmConvId('coach-demo', playerUserId);
+  assert.equal(convId, `dm:coach-demo:${playerUserId}`);
+
+  const subscribe = await callApi(subscribeHandler, 'POST', {
+    headers: { cookie: playerCookie },
+    body: {
+      subscription: { endpoint: 'endpoint-push-identity-player', keys: { p256dh: 'p2', auth: 'a2' } },
+      label: 'Browser Label',
+    },
+  });
+  assert.equal(subscribe.statusCode, 201);
+
+  const subscriptions = JSON.parse(kv.get('app:subscriptions'));
+  assert.equal(subscriptions.length, 1);
+  assert.equal(subscriptions[0].userId, playerUserId);
+  assert.equal(subscriptions[0].playerId, playerUserId);
+  assert.equal(subscriptions[0].legacyPlayerId, legacyPlayerId);
+  assert.notEqual(subscriptions[0].playerId, legacyPlayerId);
+});
