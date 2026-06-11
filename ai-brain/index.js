@@ -30,6 +30,7 @@ let _rs  = null    // reasoning (M4)
 let _ls  = null    // learning-store (M5)
 let _cal = null    // calibrator (M5)
 let _bt  = null    // brain-timeline (M6)
+let _mem = null    // memory-engine (M7)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -61,6 +62,11 @@ async function loadCal() {
 async function loadBT() {
   if (!_bt) _bt = await import('./timeline.js')
   return _bt
+}
+
+async function loadMem() {
+  if (!_mem) _mem = await import('./memory/memory-engine.js')
+  return _mem
 }
 
 async function loadRec() {
@@ -639,6 +645,47 @@ export async function assembleContext(trigger = {}) {
   return assemble(trigger ?? {})
 }
 
+// ── Memory Engine (M7) — long-term memory derived from Timeline events ────────
+
+/**
+ * AI.memory — transform repeated Timeline events into long-term Memory objects.
+ * No reasoning occurs here. Only statistical pattern counting.
+ *
+ * AI.memory.get(entityId)     — all memories for an entity (with decay)
+ * AI.memory.search(query)     — full-text search over all memories
+ * AI.memory.related(entityId) — memories of co-appearing entities
+ * AI.memory.refresh(entityId) — rebuild memories from Timeline events
+ */
+export const memory = {
+  async get(entityId) {
+    try {
+      const { get: getFn } = await loadMem()
+      return getFn(entityId ?? null)
+    } catch { return [] }
+  },
+
+  async search(queryText) {
+    try {
+      const { search: searchFn } = await loadMem()
+      return searchFn(queryText ?? '')
+    } catch { return [] }
+  },
+
+  async related(entityId) {
+    try {
+      const { related: relatedFn } = await loadMem()
+      return relatedFn(entityId ?? null)
+    } catch { return [] }
+  },
+
+  async refresh(entityId) {
+    try {
+      const { refresh: refreshFn } = await loadMem()
+      return refreshFn(entityId ?? null)
+    } catch { return [] }
+  },
+}
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -659,4 +706,6 @@ export const AI = {
   getCalibrationHistory,
   // M6 — Intelligence timeline
   recordObservation,
+  // M7 — Memory Engine
+  memory,
 }
