@@ -9,6 +9,11 @@ import { URL } from 'url'
 
 const PORT = process.env.PORT ?? 3001
 
+// Debounce guard: prevent flooding timeline/graph on every page load.
+// Recommendations are appended to the timeline at most once per 5 minutes.
+let _lastTimelineAppend = 0
+const TIMELINE_APPEND_INTERVAL_MS = 5 * 60 * 1000
+
 function json(res, data, status = 200) {
   res.writeHead(status, {
     'Content-Type': 'application/json',
@@ -360,6 +365,27 @@ const server = createServer(async (req, res) => {
         } : null
 
         // Section 6: Timeline
+        // Persist live recommendations to the timeline + knowledge graph (debounced).
+        // This is what gives the AI Brain its memory over time.
+        const now = Date.now()
+        if (topRecs.length > 0 && (now - _lastTimelineAppend) > TIMELINE_APPEND_INTERVAL_MS) {
+          _lastTimelineAppend = now
+          Promise.allSettled([
+            import('../intelligence-timeline/index.js').then(m =>
+              m.appendFromRecommendations(topRecs, {
+                teamId:      fixture?.teamId      ?? null,
+                teamName:    fixture?.teamName    ?? null,
+                seasonPhase: recs?.meta?.seasonPhase ?? null,
+                fixture,
+              })
+            ),
+            import('../knowledge-graph/index.js').then(m => {
+              m.bootGraph()
+              m.syncRecommendations(topRecs, { engineId: 'eng-rec', coachId: 'coach-simon' })
+            }),
+          ]).catch(() => {}) // non-blocking — never fail the response
+        }
+
         const tlData = tl ?? { events: [], total: 0, stats: {} }
 
         json(res, {
@@ -505,9 +531,34 @@ const server = createServer(async (req, res) => {
     if (method === 'POST' && path.match(/^\/api\/intelligence\/decisions\/([^/]+)\/(approve|dismiss|snooze)$/)) {
       const [, id, action] = path.match(/^\/api\/intelligence\/decisions\/([^/]+)\/(approve|dismiss|snooze)$/)
       const body = await readBody(req)
-      // In production: delegate to recommendation engine + learning engine
-      // For now: acknowledge and return
-      json(res, { ok: true, id, action, notes: body.notes ?? null })
+
+      const timelineStatus = action === 'approve' ? 'completed' : action === 'dismiss' ? 'ignored' : 'acknowledged'
+      const learnDecision  = action === 'approve' ? 'ACCEPTED'  : action === 'dismiss' ? 'REJECTED' : 'SNOOZED'
+
+      // 1. Update timeline event status (find by recommendationId OR id)
+      const { getTimeline, updateStatus } = await import('../intelligence-timeline/index.js')
+      const { events } = getTimeline({ limit: 500 })
+      const tlEvent = events.find(e => e.recommendationId === id || e.id === id)
+      if (tlEvent) updateStatus(tlEvent.id, timelineStatus, body.notes ?? null)
+
+      // 2. Record outcome in learning engine for confidence calibration
+      const { recordOutcome, COACH_DECISION } = await import('../learning-engine/index.js')
+      recordOutcome({
+        recommendationId:   id,
+        recommendationType: tlEvent?.category ?? 'Unknown',
+        coachDecision:      COACH_DECISION[learnDecision],
+        confidenceAtTime:   tlEvent?.confidence ?? null,
+        predictionCorrect:  body.predictionCorrect ?? null,
+        notes:              body.notes ?? null,
+      })
+
+      // 3. Sync decision to knowledge graph
+      import('../knowledge-graph/index.js').then(m => {
+        m.bootGraph()
+        m.syncDecision(action, id, body.notes ?? `Coach ${action}d`, 'coach-simon')
+      }).catch(() => {})
+
+      json(res, { ok: true, id, action, notes: body.notes ?? null, timelineUpdated: !!tlEvent })
       return
     }
 
@@ -865,6 +916,11 @@ const server = createServer(async (req, res) => {
       const { updateDocumentStatus } = await import('../knowledge-engine/upload-engine.js')
       const doc = updateDocumentStatus(id, 'added_to_knowledge_base')
       if (!doc) { err(res, 'Document not found', 404); return }
+      // Sync to knowledge graph — Coach DNA knowledge base
+      import('../knowledge-graph/index.js').then(m => {
+        m.bootGraph()
+        m.syncDocument(doc, { coachId: 'coach-simon', kbId: 'kb-coach-dna' })
+      }).catch(() => {})
       json(res, { success: true, document: doc })
       return
     }
@@ -874,6 +930,11 @@ const server = createServer(async (req, res) => {
       const { updateDocumentStatus } = await import('../knowledge-engine/upload-engine.js')
       const doc = updateDocumentStatus(id, 'added_to_knowledge_base')
       if (!doc) { err(res, 'Document not found', 404); return }
+      // Sync to knowledge graph — Club Knowledge knowledge base
+      import('../knowledge-graph/index.js').then(m => {
+        m.bootGraph()
+        m.syncDocument(doc, { coachId: 'coach-simon', kbId: 'kb-club' })
+      }).catch(() => {})
       json(res, { success: true, document: doc })
       return
     }
