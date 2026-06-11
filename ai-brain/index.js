@@ -32,6 +32,7 @@ let _cal = null    // calibrator (M5)
 let _bt  = null    // brain-timeline (M6)
 let _mem = null    // memory-engine (M7)
 let _obs = null    // observation-engine (M8)
+let _exp = null    // explanation-engine (M10)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -73,6 +74,11 @@ async function loadMem() {
 async function loadObs() {
   if (!_obs) _obs = await import('./observation/observation-engine.js')
   return _obs
+}
+
+async function loadExp() {
+  if (!_exp) _exp = await import('./explain/explanation-engine.js')
+  return _exp
 }
 
 async function loadRec() {
@@ -164,6 +170,17 @@ export async function request(context = {}) {
     const recs   = cal.recommendations
     const isMock = recs.length === 0 ||
       recs.every(r => (r.source ?? '').includes('/mock'))
+
+    // M10: Record explanation snapshots for each recommendation.
+    // Failures must never surface — explanations are always best-effort.
+    try {
+      const { record: recordExp }  = await loadExp()
+      const observations           = rb.trace?.observations ?? []
+      for (const rec of recs) {
+        const calAdj = cal.adjustments.find(a => a.recommendationId === rec.id) ?? null
+        recordExp(rec, { observations, calibrationAdjustment: calAdj, coachId, clubId })
+      }
+    } catch { /* explanation recording must never block a request */ }
 
     // M6: Record REQUEST + RECOMMENDATION_SHOWN events on Brain timeline.
     try {
@@ -726,6 +743,28 @@ export const observations = {
   },
 }
 
+// ── Explainability (M10) ──────────────────────────────────────────────────────
+
+/**
+ * Reconstruct exactly why a recommendation was generated.
+ *
+ * Returns a complete ExplanationRecord: the generating reasoner, every
+ * observation / memory / timeline event that influenced the result,
+ * the confidence breakdown, calibration adjustments, and a plain-language
+ * narrative — all captured at generation time, requiring no live data.
+ *
+ * Returns null when the id is not found (e.g. never recorded, or store cleared).
+ *
+ * @param {string} recommendationId
+ * @returns {Promise<object|null>}
+ */
+export async function explain(recommendationId) {
+  try {
+    const { explain: explainFn } = await loadExp()
+    return explainFn(recommendationId ?? null)
+  } catch { return null }
+}
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -750,4 +789,6 @@ export const AI = {
   memory,
   // M8 — Observation Engine
   observations,
+  // M10 — Explainability Layer
+  explain,
 }

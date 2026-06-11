@@ -104,6 +104,7 @@ export async function reason(bundle) {
     trace: {
       ...rb.trace,
       totalDurationMs: Date.now() - t0,
+      observations,   // M10: passed through so index.js can record explanation snapshots
     },
   }
 }

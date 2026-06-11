@@ -24,19 +24,21 @@ export const PRIORITY = { HIGH: 'HIGH', MEDIUM: 'MEDIUM', LOW: 'LOW' }
  * Clamps confidence to [0, 100]. Assigns _score for internal ranking.
  */
 export function makeRec({ category, priority, confidence, title, description, action, source, explainability, evidence = [] }) {
-  const c = typeof confidence === 'number' ? Math.min(100, Math.max(0, confidence)) : 50
+  const c  = typeof confidence === 'number' ? Math.min(100, Math.max(0, confidence)) : 50
+  const id = randomUUID()
   return {
-    id:             randomUUID(),
-    category:       category       ?? CATEGORY.PERFORMANCE,
-    priority:       priority       ?? PRIORITY.MEDIUM,
-    confidence:     c,
-    title:          title          ?? '',
-    description:    description    ?? '',
-    action:         action         ?? '',
-    source:         source         ?? 'brain',
-    explainability: explainability ?? '',
-    evidence:       Array.isArray(evidence) ? evidence : [],
-    _score:         priorityScore(priority) + c * 0.3,
+    id,
+    recommendationId: id,             // M10: alias for explainability lookup
+    category:         category       ?? CATEGORY.PERFORMANCE,
+    priority:         priority       ?? PRIORITY.MEDIUM,
+    confidence:       c,
+    title:            title          ?? '',
+    description:      description    ?? '',
+    action:           action         ?? '',
+    source:           source         ?? 'brain',
+    explainability:   explainability ?? '',
+    evidence:         Array.isArray(evidence) ? evidence : [],
+    _score:           priorityScore(priority) + c * 0.3,
   }
 }
 
