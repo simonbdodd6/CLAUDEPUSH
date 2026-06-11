@@ -2603,6 +2603,12 @@
         console.error("coacheseyeGPT save failed", e);
         const dot = document.getElementById("saveDot");
         if (dot) dot.style.background = '#ef4444';
+        // A failed device save is silent data loss — say it out loud, but at
+        // most once a minute so a stuck quota doesn't bury the UI in toasts.
+        if (!window._saveFailToastAt || Date.now() - window._saveFailToastAt > 60000) {
+          window._saveFailToastAt = Date.now();
+          showToast('⚠️ Could not save on this device — storage may be full. Recent changes may be lost on refresh.');
+        }
         return false;
       }
     }
@@ -4520,8 +4526,9 @@
           <button class="auth-tab" type="button" onclick="setAuthTab('closed')" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
         <div style="display:grid;gap:7px">
-          <input id="identityLoginEmail" type="email" name="email" autocomplete="email" placeholder="Email" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
+          <input id="identityLoginEmail" type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Email" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
           <input id="identityLoginPassword" type="password" name="password" autocomplete="current-password" placeholder="Password" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
+          <p class="muted" style="font-size:10px;margin:0">Use the exact email your account was created with — one wrong letter shows "invalid password".</p>
           <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:12px">Log in</button>
           <button class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:11px;padding:5px 8px">Forgot password?</button>
           <button class="auth-tab" type="button" onclick="clearDeviceState()" style="font-size:11px;padding:5px 8px;color:#f87171;border-color:rgba(248,113,113,0.3)">Trouble signing in? Log out &amp; clear this device</button>
@@ -4539,7 +4546,7 @@
             <input id="joinFirstName" placeholder="First name" style="font-size:12px;padding:7px 9px">
             <input id="joinLastName" placeholder="Last name" style="font-size:12px;padding:7px 9px">
           </div>
-          <input id="joinEmail" type="email" placeholder="Email" style="font-size:12px;padding:7px 9px">
+          <input id="joinEmail" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Email" style="font-size:12px;padding:7px 9px">
           <input id="joinPassword" type="password" placeholder="Password (8+ characters)" style="font-size:12px;padding:7px 9px">
           <button id="joinSubmitBtn" class="btn primary" type="button" onclick="joinSquad()" style="width:100%;font-size:12px">Send join request</button>
           <p class="muted" style="font-size:11px;margin:0">A coach must approve before player access is enabled.</p>
@@ -7123,7 +7130,7 @@
                   </label>
                   <label style="flex:1;min-width:210px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
                     Email
-                    <input id="inv-email" type="email" placeholder="player@example.com" style="padding:9px 11px">
+                    <input id="inv-email" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="player@example.com" style="padding:9px 11px">
                   </label>
                   <button id="inv-create-btn" class="btn primary" type="button" onclick="createInvite()"
                     style="white-space:nowrap;min-height:40px;padding:0 16px">
@@ -7790,7 +7797,7 @@
               </div>`).join('')}
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:14px">
               <input id="adm-staff-name" placeholder="Name" style="${inputStyle}">
-              <input id="adm-staff-email" placeholder="Email" type="email" style="${inputStyle}">
+              <input id="adm-staff-email" placeholder="Email" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" style="${inputStyle}">
               <select id="adm-staff-level" style="${inputStyle}">
                 <option value="assistant">Assistant Coach</option>
                 <option value="manager">Team Manager</option>
@@ -7805,7 +7812,10 @@
     function adminSaveClub() {
       saveState('Club details saved');
       clearTimeout(window._clubCfgT);
-      window._clubCfgT = setTimeout(() => saveClubConfigToServer(), 800);
+      window._clubCfgT = setTimeout(async () => {
+        const saved = await saveClubConfigToServer();
+        showToast(saved ? 'Club details saved ✓' : '⚠️ Saved on this device — server sync failed, will retry on next change');
+      }, 800);
       renderNav();
     }
 
@@ -7825,9 +7835,10 @@
       state.fixtures = state.fixtures || [];
       state.fixtures.push({ id: 'fx' + Date.now().toString(36), opposition, date: v('adm-fx-date'), time: v('adm-fx-time'), venue: v('adm-fx-venue') });
       saveState('Fixture added');
-      saveClubConfigToServer().catch(() => {});
       renderClubAdmin();
-      showToast(`Fixture vs ${opposition} added ✓`);
+      saveClubConfigToServer().then(saved =>
+        showToast(saved ? `Fixture vs ${opposition} added ✓` : `⚠️ Fixture saved on this device — server sync failed`)
+      ).catch(() => {});
     }
 
     function adminRemoveFixture(id) {
@@ -10514,6 +10525,9 @@
 
     function showFirstRunSetup() {
       if (document.getElementById('first-run-modal')) return;
+      // "Skip for now" suppresses the wizard for this browser session only —
+      // it returns on the next visit until the club is actually configured.
+      try { if (window.sessionStorage.getItem('ce-setup-skipped')) return; } catch {}
       const dayOptions = sel => Object.entries(DAY_LABELS).map(([d, label]) =>
         `<option value="${d}" ${d === sel ? 'selected' : ''}>${label}</option>`).join('');
       const inputStyle = 'background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:11px 12px;color:#e2e8f0;font-size:15px;width:100%;box-sizing:border-box';
@@ -10574,7 +10588,7 @@
               Create my team →
             </button>
             <button class="btn ghost" type="button" style="width:100%;font-size:12px"
-              onclick="document.getElementById('first-run-modal')?.remove()">
+              onclick="try{sessionStorage.setItem('ce-setup-skipped','1')}catch{};document.getElementById('first-run-modal')?.remove();showToast('You can finish setup any time in Club Admin')">
               Skip for now
             </button>
           </div>
@@ -10896,7 +10910,7 @@
             </label>
             <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px;margin-top:10px">
               Email
-              <input id="invite-email-input" type="email" value="${esc(invite.email || '')}" placeholder="player@example.com"
+              <input id="invite-email-input" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(invite.email || '')}" placeholder="player@example.com"
                 style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
             </label>
             <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px;margin-top:10px">
