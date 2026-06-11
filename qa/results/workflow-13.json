@@ -1,61 +1,61 @@
 {
   "workflow": "workflow-13",
-  "runId": "2026-06-10T12-08-44-866Z",
-  "startedAt": "2026-06-10T12:08:44.924Z",
-  "finishedAt": "2026-06-10T12:09:09.407Z",
+  "runId": "2026-06-10T21-40-40-401Z",
+  "startedAt": "2026-06-10T21:40:40.401Z",
+  "finishedAt": "2026-06-10T21:41:08.453Z",
   "status": "passed",
   "baseURL": "http://127.0.0.1:3000",
-  "commit": "7e9bd32",
+  "commit": "77c8957",
   "loginMethod": "dev-login-btn",
   "steps": [
     {
       "name": "open-app",
       "status": "passed",
-      "startedAt": "2026-06-10T12:08:54.421Z",
-      "finishedAt": "2026-06-10T12:09:01.695Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/01-open-app.png"
+      "startedAt": "2026-06-10T21:40:50.585Z",
+      "finishedAt": "2026-06-10T21:41:03.066Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T21-40-40-401Z/01-open-app.png"
     },
     {
       "name": "coach-login",
       "status": "passed",
-      "startedAt": "2026-06-10T12:09:02.029Z",
-      "finishedAt": "2026-06-10T12:09:02.054Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/02-coach-login.png"
+      "startedAt": "2026-06-10T21:41:03.432Z",
+      "finishedAt": "2026-06-10T21:41:03.443Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T21-40-40-401Z/02-coach-login.png"
     },
     {
       "name": "visit-members-to-trigger-id-sync",
       "status": "passed",
-      "startedAt": "2026-06-10T12:09:02.367Z",
-      "finishedAt": "2026-06-10T12:09:04.392Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/03-visit-members-to-trigger-id-sync.png"
+      "startedAt": "2026-06-10T21:41:03.642Z",
+      "finishedAt": "2026-06-10T21:41:05.476Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T21-40-40-401Z/03-visit-members-to-trigger-id-sync.png"
     },
     {
       "name": "enter-player-view",
       "status": "passed",
-      "startedAt": "2026-06-10T12:09:04.718Z",
-      "finishedAt": "2026-06-10T12:09:06.741Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/04-enter-player-view.png"
+      "startedAt": "2026-06-10T21:41:05.700Z",
+      "finishedAt": "2026-06-10T21:41:06.258Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T21-40-40-401Z/04-enter-player-view.png"
     },
     {
       "name": "dropdown-selected-player-valid",
       "status": "passed",
-      "startedAt": "2026-06-10T12:09:07.052Z",
-      "finishedAt": "2026-06-10T12:09:07.106Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/05-dropdown-selected-player-valid.png"
+      "startedAt": "2026-06-10T21:41:06.578Z",
+      "finishedAt": "2026-06-10T21:41:06.601Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T21-40-40-401Z/05-dropdown-selected-player-valid.png"
     },
     {
       "name": "switch-back-to-coach",
       "status": "passed",
-      "startedAt": "2026-06-10T12:09:07.441Z",
-      "finishedAt": "2026-06-10T12:09:07.918Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/06-switch-back-to-coach.png"
+      "startedAt": "2026-06-10T21:41:06.834Z",
+      "finishedAt": "2026-06-10T21:41:06.966Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T21-40-40-401Z/06-switch-back-to-coach.png"
     },
     {
       "name": "re-enter-player-view-persists",
       "status": "passed",
-      "startedAt": "2026-06-10T12:09:08.465Z",
-      "finishedAt": "2026-06-10T12:09:08.840Z",
-      "screenshot": "qa/artifacts/workflow13-2026-06-10T12-08-44-866Z/07-re-enter-player-view-persists.png"
+      "startedAt": "2026-06-10T21:41:07.292Z",
+      "finishedAt": "2026-06-10T21:41:07.885Z",
+      "screenshot": "qa/artifacts/workflow13-2026-06-10T21-40-40-401Z/07-re-enter-player-view-persists.png"
     }
   ],
   "toasts": [],

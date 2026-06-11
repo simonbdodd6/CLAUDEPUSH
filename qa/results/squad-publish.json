@@ -1,115 +1,115 @@
 {
   "workflow": "squad-publish",
-  "runId": "2026-06-10T21-14-56-287Z",
-  "startedAt": "2026-06-10T21:14:56.287Z",
-  "finishedAt": "2026-06-10T21:15:29.323Z",
+  "runId": "2026-06-10T21-39-19-179Z",
+  "startedAt": "2026-06-10T21:39:19.292Z",
+  "finishedAt": "2026-06-10T21:40:18.738Z",
   "status": "passed",
-  "commit": "51975cb",
+  "commit": "7744dd0",
   "steps": [
     {
       "name": "open-app",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:11.491Z",
-      "finishedAt": "2026-06-10T21:15:17.768Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/01-open-app.png"
+      "startedAt": "2026-06-10T21:39:34.084Z",
+      "finishedAt": "2026-06-10T21:40:01.036Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/01-open-app.png"
     },
     {
       "name": "coach-login",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:18.025Z",
-      "finishedAt": "2026-06-10T21:15:18.041Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/02-coach-login.png"
+      "startedAt": "2026-06-10T21:40:01.336Z",
+      "finishedAt": "2026-06-10T21:40:01.346Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/02-coach-login.png"
     },
     {
       "name": "seed-test-player",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:18.201Z",
-      "finishedAt": "2026-06-10T21:15:18.267Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/03-seed-test-player.png"
+      "startedAt": "2026-06-10T21:40:01.498Z",
+      "finishedAt": "2026-06-10T21:40:01.588Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/03-seed-test-player.png"
     },
     {
       "name": "navigate-to-match-centre",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:18.447Z",
-      "finishedAt": "2026-06-10T21:15:19.014Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/04-navigate-to-match-centre.png"
+      "startedAt": "2026-06-10T21:40:01.773Z",
+      "finishedAt": "2026-06-10T21:40:02.622Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/04-navigate-to-match-centre.png"
     },
     {
       "name": "enter-match-details",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:19.277Z",
-      "finishedAt": "2026-06-10T21:15:19.896Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/05-enter-match-details.png"
+      "startedAt": "2026-06-10T21:40:02.880Z",
+      "finishedAt": "2026-06-10T21:40:06.106Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/05-enter-match-details.png"
     },
     {
       "name": "enter-team-announcement",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:20.421Z",
-      "finishedAt": "2026-06-10T21:15:21.041Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/06-enter-team-announcement.png"
+      "startedAt": "2026-06-10T21:40:06.589Z",
+      "finishedAt": "2026-06-10T21:40:07.402Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/06-enter-team-announcement.png"
     },
     {
       "name": "assign-player-to-slot",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:21.324Z",
-      "finishedAt": "2026-06-10T21:15:21.835Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/07-assign-player-to-slot.png"
+      "startedAt": "2026-06-10T21:40:07.853Z",
+      "finishedAt": "2026-06-10T21:40:08.703Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/07-assign-player-to-slot.png"
     },
     {
       "name": "publish-squad",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:22.131Z",
-      "finishedAt": "2026-06-10T21:15:23.348Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/08-publish-squad.png"
+      "startedAt": "2026-06-10T21:40:09.395Z",
+      "finishedAt": "2026-06-10T21:40:12.117Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/08-publish-squad.png"
     },
     {
       "name": "new-week-btn-in-mc",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:23.658Z",
-      "finishedAt": "2026-06-10T21:15:23.675Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/09-new-week-btn-in-mc.png"
+      "startedAt": "2026-06-10T21:40:12.489Z",
+      "finishedAt": "2026-06-10T21:40:12.519Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/09-new-week-btn-in-mc.png"
     },
     {
       "name": "home-shows-squad-published",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:23.911Z",
-      "finishedAt": "2026-06-10T21:15:24.035Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/10-home-shows-squad-published.png"
+      "startedAt": "2026-06-10T21:40:12.994Z",
+      "finishedAt": "2026-06-10T21:40:13.190Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/10-home-shows-squad-published.png"
     },
     {
       "name": "player-sees-team-sheet",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:24.291Z",
-      "finishedAt": "2026-06-10T21:15:24.717Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/11-player-sees-team-sheet.png"
+      "startedAt": "2026-06-10T21:40:13.982Z",
+      "finishedAt": "2026-06-10T21:40:15.128Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/11-player-sees-team-sheet.png"
     },
     {
       "name": "player-sees-announcement",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:25.064Z",
-      "finishedAt": "2026-06-10T21:15:25.126Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/12-player-sees-announcement.png"
+      "startedAt": "2026-06-10T21:40:15.340Z",
+      "finishedAt": "2026-06-10T21:40:15.366Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/12-player-sees-announcement.png"
     },
     {
       "name": "player-week-shows-squad-banner",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:25.377Z",
-      "finishedAt": "2026-06-10T21:15:25.642Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/13-player-week-shows-squad-banner.png"
+      "startedAt": "2026-06-10T21:40:15.611Z",
+      "finishedAt": "2026-06-10T21:40:15.909Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/13-player-week-shows-squad-banner.png"
     },
     {
       "name": "new-week-clears-squad",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:25.909Z",
-      "finishedAt": "2026-06-10T21:15:28.250Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/14-new-week-clears-squad.png"
+      "startedAt": "2026-06-10T21:40:16.126Z",
+      "finishedAt": "2026-06-10T21:40:17.702Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/14-new-week-clears-squad.png"
     },
     {
       "name": "player-no-team-sheet-after-new-week",
       "status": "passed",
-      "startedAt": "2026-06-10T21:15:28.610Z",
-      "finishedAt": "2026-06-10T21:15:29.143Z",
-      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-14-56-287Z/15-player-no-team-sheet-after-new-week.png"
+      "startedAt": "2026-06-10T21:40:17.923Z",
+      "finishedAt": "2026-06-10T21:40:18.556Z",
+      "screenshot": "qa/artifacts/squad-publish-2026-06-10T21-39-19-179Z/15-player-no-team-sheet-after-new-week.png"
     }
   ]
 }
