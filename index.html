@@ -1248,6 +1248,34 @@
       .ce-modal-actions button { width: 100%; min-height: 48px; }
     }
 
+    /* First-session checklist — minimal, calm, one tap per step */
+    .ob-card { padding: 18px 20px 14px; }
+    .ob-progress { height: 3px; background: var(--line-soft); border-radius: 2px; overflow: hidden; margin-top: 12px; }
+    .ob-progress > div { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.35s ease; }
+    .ob-row {
+      display: flex; align-items: center; gap: 12px; width: 100%;
+      background: none; border: none; border-bottom: 1px solid var(--line-soft);
+      padding: 12px 2px; cursor: pointer; color: var(--ink);
+      font-size: 14px; font-weight: 600; text-align: left; border-radius: 0;
+    }
+    .ob-row:last-child { border-bottom: 0; }
+    .ob-row:not(.done):hover { color: var(--green); }
+    .ob-row.done { cursor: default; }
+    .ob-row.done .ob-label { color: var(--muted); font-weight: 500; }
+    .ob-ring {
+      width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+      border: 1.5px solid var(--line); color: #06140d;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+    .ob-ring.done { background: var(--green); border-color: var(--green); }
+    .ob-ring.pop { animation: tickPop 0.3s cubic-bezier(0.3, 1.4, 0.5, 1) both; }
+    @keyframes tickPop { 0% { transform: scale(0.4); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+    .ob-label { flex: 1; min-width: 0; }
+    .ob-chevron { color: var(--muted); opacity: 0; transition: opacity 0.15s; font-size: 13px; }
+    .ob-row:not(.done):hover .ob-chevron, .ob-row:not(.done):focus-visible .ob-chevron { opacity: 1; }
+    @media (hover: none) { .ob-chevron { opacity: 0.5; } }
+
     /* Welcome screen (logged out + empty device) */
     .ce-welcome {
       position: fixed; inset: 0; z-index: 9500;
@@ -2866,6 +2894,7 @@
         pushConfigured = Boolean(config.pushConfigured);
         if (!pushConfigured) pushConfigurationError = "Push needs Vercel environment setup";
         window._devLoginEnabled = Boolean(config.devLogin);
+        window._devCredentials = config.devCredentials || null;
         if (config.devLogin) renderNav();
         swRegistration = await navigator.serviceWorker.register('/sw.js');
         // Force the browser to check for a new SW version on every page load.
@@ -4786,6 +4815,18 @@
           <button class="auth-tab" type="button" onclick="setAuthTab('closed')" aria-label="Close" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
         <p class="muted" style="font-size:11px;margin:0 0 8px">DEV only — full server session + push metadata refresh.</p>
+        ${window._devCredentials ? `
+        <div style="display:grid;gap:7px;margin-bottom:10px;padding:10px;border:1px dashed rgba(255,160,0,0.35);border-radius:9px;background:rgba(255,160,0,0.05)">
+          ${[['Email', window._devCredentials.email], ['Password', window._devCredentials.password]].map(([label, value]) => `
+          <div>
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#ffa040;margin-bottom:3px">${label}</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <code style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:7px 9px;color:var(--ink)">${esc(value || '')}</code>
+              <button class="btn" type="button" style="min-height:32px;padding:0 10px;font-size:11px;white-space:nowrap;flex-shrink:0"
+                onclick="devCopyCredential('${esc(label)}', this)">📋 Copy</button>
+            </div>
+          </div>`).join('')}
+        </div>` : ''}
         <button class="btn" type="button" onclick="devLogin('coach-demo')"
           style="width:100%;text-align:left;margin-bottom:6px;display:flex;align-items:center;gap:8px;padding:8px 10px">
           <span style="font-size:16px">🎯</span>
@@ -4866,6 +4907,14 @@
       if (state.activeView === "coach")
         return (coachSections.find(([id]) => id === state.activeCoachSection) || coachSections[0])[1];
       return (playerSections.find(([id]) => id === state.activePlayerSection) || playerSections[0])[1];
+    }
+
+    function devCopyCredential(label, btn) {
+      const value = label === 'Email' ? window._devCredentials?.email : window._devCredentials?.password;
+      navigator.clipboard.writeText(value || '').then(() => {
+        showToast('Copied ✓');
+        if (btn) { const t = btn.textContent; btn.textContent = '✓ Copied'; setTimeout(() => { btn.textContent = t; }, 2000); }
+      }).catch(() => showToast('⚠️ Could not copy — select it manually'));
     }
 
     async function devLogin(userId) {
@@ -5451,54 +5500,16 @@
       setSection('coach', 'training');
     }
 
+    // First-session checklist — five concrete firsts, one tap each.
+    let _obDoneState = {};
+
     function getOnboardingSteps() {
-      const mc       = state.matchCentre || {};
-      const sessions = state.schedule || [];
-      const requestEverSent = (state.availabilityRequests || []).some(r => r.status === 'sent');
-      const hasBlocks = sessions.some(s => ((state.trainingBlocks || {})[s.id] || []).length > 0);
       return [
-        {
-          done:   !!(state.clubName && state.clubName.trim()),
-          title:  'Set your club name',
-          detail: state.clubName ? `${state.clubName}` : 'Used in notifications, exports and team sheet',
-          cta:    'Set name →',
-          action: `setSection('coach','players')`
-        },
-        {
-          done:   state.players.length > 0,
-          title:  'Add your players',
-          detail: state.players.length > 0 ? `${state.players.length} player${state.players.length > 1 ? 's' : ''} in squad` : 'Import CSV or add manually — takes under a minute',
-          cta:    'Import players →',
-          action: `setSection('coach','players')`
-        },
-        {
-          done:   requestEverSent,
-          title:  'Send availability request',
-          detail: requestEverSent ? 'Request sent' : 'Ask who\'s available for training and the match',
-          cta:    'Send request →',
-          action: `setSection('coach','message')`
-        },
-        {
-          done:   hasBlocks,
-          title:  'Build a training session',
-          detail: hasBlocks ? 'Session plan created' : 'Plan Tuesday or Thursday training blocks',
-          cta:    'Plan session →',
-          action: `setSection('coach','training')`
-        },
-        {
-          done:   !!mc.published,
-          title:  'Publish your squad',
-          detail: mc.published ? 'Squad published' : 'Select players and publish the team sheet',
-          cta:    'Open Match Centre →',
-          action: `setSection('coach','matchday')`
-        },
-        {
-          done:   (state.messages || []).length > 0,
-          title:  'Send your first message',
-          detail: (state.messages || []).length > 0 ? 'First message sent' : 'Say hello to the squad in Messages',
-          cta:    'Open Messages →',
-          action: `setSection('coach','messages')`
-        }
+        { key: 'club',     done: !!(state.clubName && state.clubName.trim()),                    title: 'Create club',             action: `setSection('coach','admin')` },
+        { key: 'invite',   done: state.players.length > 0,                                      title: 'Invite first player',     action: `setSection('coach','players')` },
+        { key: 'training', done: (state.schedule || []).some(s => s.published),                  title: 'Publish first training',  action: `setSection('coach','training')` },
+        { key: 'message',  done: (state.messages || []).length > 0,                             title: 'Send first message',      action: `setSection('coach','messages')` },
+        { key: 'avail',    done: (state.availabilityRequests || []).some(r => r.status === 'sent'), title: 'Mark first availability', action: `setSection('coach','message')` },
       ];
     }
 
@@ -5508,10 +5519,11 @@
       const items  = getNeedsAttentionItems();
 
       // Show onboarding checklist when no players yet (and not dismissed)
-      const showOnboarding  = state.players.length === 0 && !state.onboardingDismissed;
-      const obSteps         = showOnboarding ? getOnboardingSteps() : [];
-      const obDone          = obSteps.filter(s => s.done).length;
-      const firstPendingIdx = obSteps.findIndex(s => !s.done);
+      const obSteps  = getOnboardingSteps();
+      const obDone   = obSteps.filter(s => s.done).length;
+      const showOnboarding = !state.onboardingDismissed && obDone < obSteps.length;
+      // Newly-completed steps get the tick-pop animation exactly once.
+      obSteps.forEach(s => { s.justDone = s.done && _obDoneState[s.key] === false; _obDoneState[s.key] = s.done; });
 
       // Progress bar: % of 7-day prep window elapsed
       const PREP = 7 * 86400000;
@@ -5578,43 +5590,32 @@
           </div>
 
           ${showOnboarding ? `
-          <!-- ── Getting started banner ────────────────────────── -->
-          <div class="home-onboarding-banner">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-              <div>
-                <div style="font-weight:800;font-size:15px;color:var(--ink)">Getting started with Coach's Eye</div>
-                <div style="font-size:13px;color:var(--muted);margin-top:2px">Complete these steps to become fully operational.</div>
-              </div>
-              <button class="btn" style="font-size:11px;flex-shrink:0" type="button"
-                onclick="state.onboardingDismissed=true;saveState();render()">Skip guide</button>
+          <!-- ── First-session checklist ───────────────────────── -->
+          <div class="card ob-card">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+              <strong style="font-size:14px;letter-spacing:-0.01em">Set up your club</strong>
+              <span style="display:flex;align-items:center;gap:10px">
+                <span class="muted" style="font-size:12px">${obDone} of ${obSteps.length} complete</span>
+                <button type="button" onclick="state.onboardingDismissed=true;saveState();render()"
+                  style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:2px">Hide</button>
+              </span>
             </div>
-            <div class="home-onboarding-progress">
-              <div class="home-onboarding-progress-bar" style="width:${Math.round(obDone/obSteps.length*100)}%"></div>
+            <div class="ob-progress"><div style="width:${Math.round(obDone / obSteps.length * 100)}%"></div></div>
+            <div style="margin-top:6px">
+              ${obSteps.map(s => `
+              <button type="button" class="ob-row ${s.done ? 'done' : ''}" ${s.done ? 'disabled' : `onclick="${s.action}"`}>
+                <span class="ob-ring ${s.done ? 'done' : ''} ${s.justDone ? 'pop' : ''}">
+                  ${s.done ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4.5 4.5L19 7"/></svg>' : ''}
+                </span>
+                <span class="ob-label">${esc(s.title)}</span>
+                ${s.done ? '' : '<span class="ob-chevron">→</span>'}
+              </button>`).join('')}
             </div>
           </div>` : ''}
 
-          <!-- ── Daily Briefing / Onboarding cards ─────────────── -->
+          <!-- ── Daily Briefing cards ──────────────────────────── -->
           <div class="home-attn-list">
-            ${showOnboarding
-              ? obSteps.map((s, i) => {
-                  const isCurrent = i === firstPendingIdx;
-                  const level     = s.done ? 'info-done' : isCurrent ? 'warning' : 'info';
-                  return `
-                    <div class="home-attn-item home-attn-${level}">
-                      <div class="home-attn-body">
-                        <div class="home-attn-icon">
-                          <span class="home-attn-step-num ${s.done ? 'done' : ''}">${s.done ? '✓' : String(i + 1)}</span>
-                        </div>
-                        <div>
-                          <div class="home-attn-text">${esc(s.title)}</div>
-                          ${s.detail ? `<div class="home-attn-detail">${esc(s.detail)}</div>` : ''}
-                        </div>
-                      </div>
-                      <button class="btn${isCurrent && !s.done ? ' primary' : ''} home-attn-cta" type="button"
-                        onclick="${s.action}">${s.done ? '✓ Done' : esc(s.cta)}</button>
-                    </div>`;
-                }).join('')
-              : items.length === 0
+            ${items.length === 0
                 ? `<div class="home-attn-clear"><strong>All clear</strong>Nothing needs your attention right now.</div>`
                 : items.map(item => `
                     <div class="home-attn-item home-attn-${item.level}">

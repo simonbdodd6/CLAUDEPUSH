@@ -43,5 +43,14 @@ export default async function handler(req, res) {
     pushConfigError: vapidStatus.ok ? (storageConfigured ? null : 'Message storage not configured') : vapidStatus.error,
     storageConfigured,
     devLogin: process.env.DEV_LOGIN === 'true',
+    // Dev-only convenience for the local credentials panel. Values come from
+    // env and are NEVER included unless DEV_LOGIN is explicitly enabled, so
+    // production responses and the static HTML never contain credentials.
+    ...(process.env.DEV_LOGIN === 'true' && process.env.COACH_DEMO_EMAIL ? {
+      devCredentials: {
+        email: process.env.COACH_DEMO_EMAIL,
+        password: process.env.COACH_DEMO_PASSWORD || '',
+      },
+    } : {}),
   });
 }
