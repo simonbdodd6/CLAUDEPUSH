@@ -8,9 +8,21 @@
   <link rel="manifest" href="/mission-control/manifest.json">
   <link rel="icon" href="/icon.svg">
   <link rel="stylesheet" href="/mission-control/styles.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@19.2.3",
+        "react-dom": "https://esm.sh/react-dom@19.2.3",
+        "react-dom/client": "https://esm.sh/react-dom@19.2.3/client",
+        "three": "https://esm.sh/three@0.184.0",
+        "@react-three/fiber": "https://esm.sh/@react-three/fiber@9.6.1?external=react,react-dom,three"
+      }
+    }
+  </script>
 </head>
 <body>
   <main class="mission-shell">
+    <div id="neuralBrainRoot" aria-label="Real-time AI neural brain"></div>
     <canvas id="missionCanvas" aria-label="AI Mission Control project graph"></canvas>
     <div class="ambient-grid" aria-hidden="true"></div>
     <div class="scan-beam" aria-hidden="true"></div>
@@ -175,6 +187,7 @@
       <div id="eventTicker" class="ticker">Booting project telemetry...</div>
     </div>
   </main>
+  <script type="module" src="/mission-control/neural-brain.js"></script>
   <script type="module" src="/mission-control/app.js"></script>
 </body>
 </html>

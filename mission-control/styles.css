@@ -65,6 +65,29 @@ a {
   cursor: grab;
 }
 
+#neuralBrainRoot {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  pointer-events: none;
+}
+
+.neural-brain,
+.neural-brain canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.neural-brain {
+  opacity: 0;
+  filter: saturate(1.25) contrast(1.08);
+  transition: opacity 1.2s ease;
+}
+
+.neural-brain.mounted {
+  opacity: 1;
+}
+
 #missionCanvas:active { cursor: grabbing; }
 
 .ambient-grid,
@@ -1991,6 +2014,8 @@ body {
 
 #missionCanvas {
   filter: saturate(1.12) contrast(1.05);
+  opacity: 0.08;
+  pointer-events: none;
 }
 
 .ambient-grid {

@@ -8,6 +8,7 @@ const dockToggle = document.getElementById('dockToggle');
 const thoughtStream = document.getElementById('thoughtStream');
 const nodeWorkspace = document.getElementById('nodeWorkspace');
 const soundToggle = document.getElementById('soundToggle');
+const gpuBrainRoot = document.getElementById('neuralBrainRoot');
 const sparklineCanvases = [...document.querySelectorAll('.sparkline')];
 const intelligenceCards = {
   activeAgentCount: document.getElementById('activeAgentCount'),
@@ -369,6 +370,7 @@ function updateOverlays(payload) {
   document.getElementById('messagesToday').textContent = metrics.messagesToday ?? 0;
   document.getElementById('notificationsToday').textContent = metrics.notificationsToday ?? 0;
   document.getElementById('modePill').textContent = state.mode === 'live' ? 'LIVE MODE' : 'DEMO FALLBACK';
+  window.dispatchEvent(new CustomEvent('mission-control:metrics', { detail: metrics }));
 
   const graph = payload.graph || { nodes: [], links: [] };
   const tests = graph.nodes.filter(node => node.type === 'Test' || node.type === 'Test File');
@@ -762,7 +764,7 @@ function drawNode(node) {
 }
 
 function render() {
-  if (!state.visible) {
+  if (!state.visible || gpuBrainRoot) {
     requestAnimationFrame(render);
     return;
   }

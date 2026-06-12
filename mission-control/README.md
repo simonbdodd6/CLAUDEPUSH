@@ -6,6 +6,7 @@ Mission Control V4 keeps the existing static `/mission-control` workflow and API
 
 - `missionDock`: constellation-style access points for existing Mission Control actions. It stays out of the way and reveals actions on hover or click without becoming a sidebar.
 - `intelligence-stage`: full-screen consciousness field with deep-space gradients, fog, scan lines, constellation traces, drifting particles, and almost no interface furniture.
+- `neural-brain.js`: React Three Fiber + Three.js centrepiece with a GPU-rendered human-brain particle silhouette, shader-driven pulsing knowledge nodes, animated reasoning links, travelling neural signals, pointer rotation, scroll depth travel, and telemetry-reactive firing rate.
 - `missionCanvas`: GPU-friendly knowledge galaxy with 2,600 living particles, organic clusters, animated associations, emergent thought links, light packets, level-of-detail rendering, momentum pan, smooth wheel/pinch zoom, mouse-space bending, and double-click focus.
 - `knowledgeClusters`: modular cluster model for memory, reasoning, rugby intelligence, prediction, deployment, and market intelligence. New companies or domains can add clusters without changing the rest of the workflow.
 - `intelligence-cards`: retained as ambient telemetry IDs, visually reduced to tiny field readouts.
