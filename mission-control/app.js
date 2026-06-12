@@ -28,32 +28,32 @@ const colors = {
   Agent: '#67e8f9',
   Memory: '#8b5cf6',
   Reasoning: '#67e8f9',
-  Player: '#f472b6',
-  Coach: '#fbbf24',
+  Player: '#7dd3fc',
+  Coach: '#fcd34d',
   Fixture: '#60a5fa',
-  Training: '#86efac',
-  Prediction: '#fb7185',
+  Training: '#22d3ee',
+  Prediction: '#c4b5fd',
   Knowledge: '#c4b5fd',
   Learning: '#5eead4',
   Video: '#38bdf8',
-  DNA: '#f0abfc',
+  DNA: '#ddd6fe',
   Market: '#fcd34d',
-  Club: '#34d399',
+  Club: '#7dd3fc',
   Task: '#93c5fd',
   System: '#38bdf8',
-  Commit: '#34d399',
+  Commit: '#67e8f9',
   Branch: '#2dd4bf',
   'Pull Request': '#fbbf24',
   Deployment: '#a78bfa',
-  Test: '#4ade80',
+  Test: '#67e8f9',
   API: '#60a5fa',
   'API File': '#7dd3fc',
   'Test File': '#86efac',
   File: '#93c5fd',
-  User: '#f472b6',
-  Message: '#fb7185',
+  User: '#c4b5fd',
+  Message: '#7dd3fc',
   Notification: '#f59e0b',
-  Conversation: '#fda4af',
+  Conversation: '#ddd6fe',
 };
 
 const graphTypes = [
@@ -118,6 +118,10 @@ const state = {
   events: [],
   liveSignals: [],
   sparkTick: 0,
+  pointerX: 0.5,
+  pointerY: 0.5,
+  pointerEnergy: 0,
+  driftPhase: Math.random() * Math.PI * 2,
 };
 
 const sound = {
@@ -172,12 +176,12 @@ const missionAgents = [
 ];
 
 const knowledgeClusters = [
-  { id: 'memory', label: 'Memory', x: -520, y: -180, color: '#8b5cf6', types: ['Memory', 'Knowledge', 'DNA'] },
-  { id: 'reasoning', label: 'Reasoning', x: 0, y: -250, color: '#67e8f9', types: ['Reasoning', 'Task', 'Agent'] },
-  { id: 'rugby', label: 'Rugby Intelligence', x: 470, y: -120, color: '#86efac', types: ['Player', 'Coach', 'Fixture', 'Training'] },
-  { id: 'prediction', label: 'Prediction', x: 380, y: 260, color: '#fb7185', types: ['Prediction', 'Learning', 'Video'] },
-  { id: 'deployment', label: 'Deployment', x: -80, y: 340, color: '#c4b5fd', types: ['Deployment', 'System', 'API'] },
-  { id: 'market', label: 'Market Intelligence', x: -520, y: 220, color: '#fcd34d', types: ['Market', 'Club', 'Knowledge'] },
+  { id: 'memory', label: 'Memory', x: -560, y: -210, color: '#8b5cf6', types: ['Memory', 'Knowledge', 'DNA'] },
+  { id: 'reasoning', label: 'Reasoning', x: -30, y: -280, color: '#67e8f9', types: ['Reasoning', 'Task', 'Agent'] },
+  { id: 'rugby', label: 'Rugby Intelligence', x: 520, y: -130, color: '#7dd3fc', types: ['Player', 'Coach', 'Fixture', 'Training'] },
+  { id: 'prediction', label: 'Prediction', x: 420, y: 275, color: '#c4b5fd', types: ['Prediction', 'Learning', 'Video'] },
+  { id: 'deployment', label: 'Deployment', x: -70, y: 365, color: '#60a5fa', types: ['Deployment', 'System', 'API'] },
+  { id: 'market', label: 'Market Intelligence', x: -570, y: 240, color: '#fcd34d', types: ['Market', 'Club', 'Knowledge'] },
 ];
 
 function demoPayload() {
@@ -237,6 +241,8 @@ function createMindGraph(graph = { nodes: [], links: [] }) {
       seed: hashValue(node.id),
       activity: Math.random() * 0.5,
       age: Math.random() * 1000,
+      depth: 0.45 + (hashValue(`${node.id}:depth`) % 100) / 100,
+      memoryAge: hashValue(`${node.id}:age`) % 1400,
     });
   };
 
@@ -259,7 +265,7 @@ function createMindGraph(graph = { nodes: [], links: [] }) {
     meta: { status: agent.health, task: agent.task, source: 'AI agent' },
   }));
 
-  const targetCount = 1450;
+  const targetCount = 2600;
   for (let i = nodes.length; i < targetCount; i++) {
     const cluster = knowledgeClusters[i % knowledgeClusters.length];
     const type = cluster.types[hashValue(`${cluster.id}:${i}`) % cluster.types.length];
@@ -332,6 +338,8 @@ function assignLayout(graph) {
       pulse: (h % 100) / 100 * Math.PI * 2,
       color: colors[node.type] || cluster.color,
       activity: node.activity ?? Math.random() * 0.4,
+      depth: node.depth || 1,
+      memoryAge: node.memoryAge || h % 1400,
     };
   });
   const nodeById = new Map(nodes.map(node => [node.id, node]));
@@ -372,21 +380,21 @@ function updateOverlays(payload) {
   intelligenceCards.activeAgentCount.textContent = String(missionAgents.length);
   intelligenceCards.agentHealthSummary.textContent = warningSignals ? `${warningSignals} signals need review` : 'All critical systems online';
   intelligenceCards.currentBranch.textContent = metrics.branch || 'unknown';
-  intelligenceCards.githubStatus.textContent = `${payload.mode === 'live' ? 'Live' : 'Demo'} graph · ${graph.links.length} links`;
+  intelligenceCards.githubStatus.textContent = `${payload.mode === 'live' ? 'Live' : 'Dream'} field · ${graph.links.length} synapses`;
   intelligenceCards.bugsOpen.textContent = String(warningSignals);
   intelligenceCards.latestDeployment.textContent = metrics.deploymentStatus || (deploymentNodes.length ? 'READY' : 'DEMO');
   intelligenceCards.currentBuild.textContent = metrics.latestCommit || 'local-demo';
   intelligenceCards.qaProgress.textContent = `${qaScore}%`;
-  intelligenceCards.sprintStatus.textContent = `${tests.length || 1} QA surfaces · ${apiNodes.length || 1} API systems`;
-  intelligenceCards.missionText.textContent = state.mode === 'live' ? 'Operate the autonomous AI company' : 'Demo the autonomous AI operating system safely';
+  intelligenceCards.sprintStatus.textContent = `${tests.length || 1} QA signals · ${apiNodes.length || 1} system paths`;
+  intelligenceCards.missionText.textContent = state.mode === 'live' ? 'Memory field expanding' : 'Simulated intelligence field';
   intelligenceCards.nextAction.textContent = warningSignals
-    ? 'Review notifications and QA signals before the next deploy.'
-    : 'Let the AI core monitor agents, deployments, learning, and tactical intelligence.';
+    ? 'A cluster is asking for attention.'
+    : 'The field is reorganising around live context.';
 
   const latest = [
     `${new Date(payload.generatedAt || Date.now()).toLocaleTimeString()} telemetry sync`,
-    `${graph.nodes.length} nodes`,
-    `${graph.links.length} links`,
+    `${graph.nodes.length} memories`,
+    `${graph.links.length} synapses`,
     `${metrics.branch || 'unknown branch'}`,
     `${metrics.latestCommit || 'unknown commit'}`,
     `${metrics.activeUsers || 0} users`,
@@ -456,9 +464,15 @@ function updateCamera() {
     if (Math.abs(state.velocityX) < 0.03) state.velocityX = 0;
     if (Math.abs(state.velocityY) < 0.03) state.velocityY = 0;
   }
-  state.panX += (state.targetPanX - state.panX) * 0.11;
-  state.panY += (state.targetPanY - state.panY) * 0.11;
-  state.zoom += (state.targetZoom - state.zoom) * 0.1;
+  const drift = state.selected ? 0.4 : 1;
+  const breatheX = Math.sin(state.tick * 0.004 + state.driftPhase) * 0.32 * drift;
+  const breatheY = Math.cos(state.tick * 0.0032 + state.driftPhase) * 0.26 * drift;
+  const bendX = (state.pointerX - 0.5) * state.pointerEnergy * 7;
+  const bendY = (state.pointerY - 0.5) * state.pointerEnergy * 7;
+  state.panX += (state.targetPanX + breatheX + bendX - state.panX) * 0.095;
+  state.panY += (state.targetPanY + breatheY + bendY - state.panY) * 0.095;
+  state.zoom += (state.targetZoom - state.zoom) * 0.085;
+  state.pointerEnergy *= 0.985;
 }
 
 function worldToScreen(x, y) {
@@ -493,12 +507,27 @@ function simulate() {
   }
   state.nodes.forEach((node, index) => {
     const cluster = knowledgeClusters.find(item => item.id === node.cluster) || knowledgeClusters[0];
-    const breathe = Math.sin(state.tick * 0.004 + node.seed * 0.01) * 12;
+    const depthDrift = 0.45 + node.depth * 0.55;
+    const breathe = Math.sin(state.tick * 0.004 + node.seed * 0.01) * 12 * depthDrift;
     const homePull = state.focusCluster === node.cluster ? 0.012 : 0.0025;
     node.vx += (node.homeX + Math.cos(node.seed) * breathe - node.x) * homePull + Math.cos(state.tick * 0.003 + index) * 0.01;
     node.vy += (node.homeY + Math.sin(node.seed) * breathe * 0.7 - node.y) * homePull + Math.sin(state.tick * 0.0037 + index) * 0.01;
     node.vx += Math.cos(state.tick * 0.0008 + cluster.x * 0.01) * 0.004;
     node.vy += Math.sin(state.tick * 0.0007 + cluster.y * 0.01) * 0.004;
+    if (focus && focus.id !== node.id) {
+      const dx = node.x - focus.x;
+      const dy = node.y - focus.y;
+      const d = Math.max(1, Math.hypot(dx, dy));
+      if (d < 170) {
+        const push = (170 - d) * 0.00046;
+        node.vx += dx / d * push;
+        node.vy += dy / d * push;
+      }
+    }
+    if (state.tick % 620 === index % 620 && node.memoryAge > 980) {
+      node.homeX += Math.sin(node.seed + state.tick * 0.01) * 4;
+      node.homeY += Math.cos(node.seed + state.tick * 0.01) * 3;
+    }
     if (focus && state.adjacency.get(focus.id)?.has(node.id)) node.activity = Math.max(node.activity, 0.55);
     if (state.tick % 420 === index % 420) node.activity = Math.max(node.activity, 0.9);
     node.activity = Math.max(0.01, node.activity * 0.992);
@@ -525,7 +554,7 @@ function simulate() {
 function drawBackground() {
   const grid = 56 * state.zoom;
   ctx.save();
-  ctx.globalAlpha = 0.04;
+  ctx.globalAlpha = 0.025;
   ctx.strokeStyle = '#38bdf8';
   ctx.lineWidth = 1;
   const ox = state.panX % grid;
@@ -546,12 +575,20 @@ function drawBackground() {
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < 64; i++) {
+  const starGlow = ctx.createRadialGradient(state.width * 0.52, state.height * 0.5, 0, state.width * 0.52, state.height * 0.5, Math.max(state.width, state.height) * 0.72);
+  starGlow.addColorStop(0, 'rgba(103, 232, 249, 0.13)');
+  starGlow.addColorStop(0.28, 'rgba(139, 92, 246, 0.055)');
+  starGlow.addColorStop(0.58, 'rgba(96, 165, 250, 0.025)');
+  starGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = starGlow;
+  ctx.fillRect(0, 0, state.width, state.height);
+
+  for (let i = 0; i < 120; i++) {
     const depth = 0.25 + (i % 9) / 9;
     const x = ((Math.sin(i * 12.989 + state.tick * 0.0009 * depth) * 43758.5453) % 1 + 1) % 1 * state.width;
     const y = ((Math.cos(i * 78.233 + state.tick * 0.0007 * depth) * 19341.271) % 1 + 1) % 1 * state.height;
-    ctx.globalAlpha = 0.025 + depth * 0.055;
-    ctx.fillStyle = i % 4 ? '#dff7ff' : '#67e8f9';
+    ctx.globalAlpha = 0.012 + depth * 0.04;
+    ctx.fillStyle = i % 11 === 0 ? '#fcd34d' : i % 4 ? '#dff7ff' : '#67e8f9';
     ctx.beginPath();
     ctx.arc(x, y, 0.45 + depth * 1.1, 0, Math.PI * 2);
     ctx.fill();
@@ -574,13 +611,19 @@ function drawBackground() {
 
 function drawParticles() {
   ctx.save();
-  for (let i = 0; i < 96; i++) {
-    const x = (Math.sin(state.tick * 0.0022 + i * 8.71) * 0.5 + 0.5) * state.width;
-    const y = (Math.cos(state.tick * 0.0018 + i * 13.37) * 0.5 + 0.5) * state.height;
-    ctx.globalAlpha = 0.045 + (i % 4) * 0.014;
-    ctx.fillStyle = i % 3 ? '#67e8f9' : '#c4b5fd';
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 180; i++) {
+    const depth = 0.28 + (i % 13) / 13;
+    const driftX = Math.sin(state.tick * 0.0012 * depth + i * 8.71);
+    const driftY = Math.cos(state.tick * 0.0011 * depth + i * 13.37);
+    const x = (driftX * 0.5 + 0.5) * state.width + (state.pointerX - 0.5) * depth * 16;
+    const y = (driftY * 0.5 + 0.5) * state.height + (state.pointerY - 0.5) * depth * 16;
+    ctx.globalAlpha = 0.014 + depth * 0.04;
+    ctx.fillStyle = i % 17 === 0 ? '#fcd34d' : i % 3 ? '#67e8f9' : '#c4b5fd';
+    ctx.shadowBlur = depth > 0.9 ? 10 : 0;
+    ctx.shadowColor = ctx.fillStyle;
     ctx.beginPath();
-    ctx.arc(x, y, 0.65 + (i % 3) * 0.32, 0, Math.PI * 2);
+    ctx.arc(x, y, 0.35 + depth * 1.15, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
@@ -601,12 +644,12 @@ function drawClusterFields() {
     ctx.beginPath();
     ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
     ctx.fill();
-    if (state.zoom > 0.48) {
-      ctx.globalAlpha = 0.25;
-      ctx.fillStyle = cluster.color;
-      ctx.font = `${Math.max(10, 13 * state.zoom)}px Inter, sans-serif`;
-      ctx.fillText(cluster.label, p.x - 42 * state.zoom, p.y - radius * 0.28);
-    }
+    ctx.globalAlpha = state.focusCluster === cluster.id ? 0.3 : 0.08;
+    ctx.strokeStyle = cluster.color;
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, radius * 0.52, radius * 0.24, Math.sin(index + state.tick * 0.002) * 0.35, 0, Math.PI * 2);
+    ctx.stroke();
   });
   ctx.restore();
 }
@@ -626,11 +669,14 @@ function drawMindLink(link) {
   const connected = !focus || a.id === focus.id || b.id === focus.id || state.adjacency.get(focus.id)?.has(a.id) || state.adjacency.get(focus.id)?.has(b.id);
   const pulse = (Math.sin(state.tick * 0.035 + link.phase) + 1) / 2;
   const color = a.color || colors[a.type] || '#67e8f9';
+  const depth = Math.min(1.25, Math.max(0.38, (a.depth + b.depth) / 2));
   ctx.save();
-  ctx.globalAlpha = connected ? 0.08 + pulse * 0.08 : 0.012;
+  ctx.globalAlpha = connected ? (0.055 + pulse * 0.11) * depth : 0.008 * depth;
   if (state.focusCluster && a.cluster !== state.focusCluster && b.cluster !== state.focusCluster) ctx.globalAlpha *= 0.24;
   ctx.strokeStyle = color;
-  ctx.lineWidth = link.type === 'cross-cluster inference' ? 0.8 : 0.45;
+  ctx.shadowBlur = connected ? 8 * depth : 0;
+  ctx.shadowColor = color;
+  ctx.lineWidth = (link.type === 'cross-cluster inference' ? 0.72 : 0.38) * depth;
   ctx.beginPath();
   ctx.moveTo(pa.x, pa.y);
   const cx = (pa.x + pb.x) / 2 + Math.sin(link.phase) * 18 * state.zoom;
@@ -644,7 +690,7 @@ function drawMindLink(link) {
     const y = (1 - t) * (1 - t) * pa.y + 2 * (1 - t) * t * cy + t * t * pb.y;
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = color;
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 16;
     ctx.shadowColor = color;
     ctx.beginPath();
     ctx.arc(x, y, 1.4 + pulse * 1.5, 0, Math.PI * 2);
@@ -661,14 +707,15 @@ function drawNode(node) {
   const selected = state.selected?.id === node.id;
   const hovered = state.hovered?.id === node.id;
   const pulse = (Math.sin(state.tick * 0.05 + node.pulse) + 1) / 2;
+  const depth = Math.min(1.35, Math.max(0.45, node.depth || 1));
   const lod = state.zoom < 0.42 && !selected && !hovered && node.size < 4 ? 0.55 : 1;
-  const radius = Math.max(0.8, (node.size + node.activity * 4 + pulse * 0.9) * (selected || hovered ? 2.1 : 1) * state.zoom * lod);
+  const radius = Math.max(0.55, (node.size + node.activity * 4 + pulse * 0.9) * (selected ? 4.6 : hovered ? 2.4 : 1) * state.zoom * lod * depth);
 
   ctx.save();
-  ctx.globalAlpha = connected ? 0.9 : 0.08;
+  ctx.globalAlpha = connected ? 0.88 * depth : 0.055 * depth;
   if (state.focusCluster && node.cluster !== state.focusCluster && !connected) ctx.globalAlpha *= 0.22;
   ctx.shadowColor = color;
-  ctx.shadowBlur = connected ? 8 + node.activity * 24 : 0;
+  ctx.shadowBlur = connected ? 9 + node.activity * 26 * depth : 0;
   if (radius > 2.2) {
     const glow = ctx.createRadialGradient(p.x, p.y, 1, p.x, p.y, radius * 5);
     glow.addColorStop(0, `${color}88`);
@@ -686,12 +733,26 @@ function drawNode(node) {
   ctx.fill();
 
   if (selected || hovered) {
-    ctx.lineWidth = 1.6;
-    ctx.strokeStyle = '#f8fafc';
-    ctx.stroke();
+    const ringCount = selected ? 5 : 2;
+    for (let i = 0; i < ringCount; i++) {
+      ctx.globalAlpha = selected ? 0.35 - i * 0.045 : 0.28;
+      ctx.lineWidth = 0.9;
+      ctx.strokeStyle = i % 2 ? '#fcd34d' : '#f8fafc';
+      ctx.beginPath();
+      ctx.ellipse(
+        p.x,
+        p.y,
+        radius * (2.2 + i * 0.72),
+        radius * (0.85 + i * 0.38),
+        state.tick * 0.01 + i * 0.8,
+        0,
+        Math.PI * 2,
+      );
+      ctx.stroke();
+    }
   }
 
-  if ((selected || hovered || state.zoom > 1.2 && node.size > 4.5) && connected) {
+  if ((selected || hovered || state.zoom > 1.45 && node.size > 4.5) && connected) {
     ctx.shadowBlur = 12;
     ctx.fillStyle = '#e0f2fe';
     ctx.font = `${Math.max(10, 11 * state.zoom)}px Inter, sans-serif`;
@@ -714,6 +775,11 @@ function render() {
   drawClusterFields();
   state.links.slice(Math.max(0, state.links.length - 2800)).forEach(drawMindLink);
   state.nodes.forEach(drawNode);
+  if (state.workspaceNode) {
+    const p = worldToScreen(state.workspaceNode.x, state.workspaceNode.y);
+    document.documentElement.style.setProperty('--workspace-x', `${Math.round(p.x)}px`);
+    document.documentElement.style.setProperty('--workspace-y', `${Math.round(p.y)}px`);
+  }
   drawSparklines();
   requestAnimationFrame(render);
 }
@@ -757,7 +823,11 @@ function focusHoverNode(node, rect) {
     ? { x: rect.right, y: rect.top + rect.height / 2 }
     : worldToScreen(node.x, node.y);
   setPanelPosition(screen.x, screen.y);
-  showPanel(node);
+  const neighbours = [...(state.adjacency.get(node.id) || [])].slice(0, 18);
+  neighbours.forEach(id => {
+    const neighbour = state.nodeById.get(id);
+    if (neighbour) neighbour.activity = Math.max(neighbour.activity, 0.74);
+  });
   sound.play('hover');
 }
 
@@ -773,6 +843,9 @@ function showPanel(node) {
     panel.classList.add('hidden');
     return;
   }
+  panel.classList.add('hidden');
+  return;
+  /* Preserved for source-inspection workflows, but the visual experience now uses node blooms.
   const meta = node.meta || {};
   const rows = Object.entries(meta)
     .filter(([, value]) => value !== undefined && value !== null && value !== '')
@@ -792,6 +865,7 @@ function showPanel(node) {
     window.open(`/${source}`, '_blank', 'noopener,noreferrer');
   });
   panel.classList.remove('hidden');
+  */
 }
 
 function openWorkspace(node) {
@@ -807,37 +881,33 @@ function openWorkspace(node) {
   const meta = node.meta || {};
   const confidence = 82 + (hashValue(node.id) % 16);
   const links = state.adjacency.get(node.id)?.size || 0;
-  const tasks = [
-    meta.task || meta.status || 'Coordinate active company context',
-    node.type === 'Deployment' ? 'Verify release readiness' : 'Synchronise memory and telemetry',
-    node.type === 'Agent' ? 'Report reasoning trace' : 'Watch connected system signals',
+  const petals = [
+    { label: 'status', value: meta.status || 'awake' },
+    { label: 'memory', value: meta.path || meta.source || meta.task || 'retained' },
+    { label: 'links', value: `${links} synapses` },
+    { label: 'reasoning', value: node.type === 'Agent' ? 'coordinating signals' : 'mapping dependencies' },
+    { label: 'confidence', value: `${confidence}%` },
+    { label: 'learning', value: `${Math.max(64, confidence - 12)}% signal` },
   ];
-  const logs = [
-    `${new Date().toLocaleTimeString()} signal received`,
-    `${links} connections illuminated`,
-    `confidence adjusted to ${confidence}%`,
-  ];
+  const path = meta.path || '';
 
   nodeWorkspace.innerHTML = `
-    <div class="workspace-hero">
-      <div>
-        <span class="kicker">${escapeHtml(node.type)}</span>
-        <h2>${escapeHtml(node.label)}</h2>
-        <p>${escapeHtml(meta.status || meta.subject || meta.route || meta.path || 'Autonomous company system online')}</p>
-      </div>
-      <div class="workspace-confidence">
-        <strong>${confidence}%</strong>
-        <span>Confidence</span>
-      </div>
+    <div class="bloom-core">
+      <span>${escapeHtml(node.type)}</span>
+      <strong>${escapeHtml(node.label)}</strong>
+      <small>${escapeHtml(meta.subject || meta.route || meta.path || meta.status || 'conscious signal')}</small>
     </div>
-    <div class="workspace-grid">
-      <section class="workspace-panel"><h3>Status</h3><p>${escapeHtml(meta.status || 'Running nominally')} · ${links} active links</p></section>
-      <section class="workspace-panel"><h3>Memory</h3><p>${escapeHtml(meta.path || meta.source || meta.task || 'Context retained in the Mission Control graph')}</p></section>
-      <section class="workspace-panel"><h3>Reasoning</h3><p>${escapeHtml(node.type === 'Agent' ? 'Prioritising company signals, confidence deltas, and operational context.' : 'Mapping upstream and downstream dependencies before recommending action.')}</p></section>
-      <section class="workspace-panel"><h3>Tasks</h3><ul>${tasks.map(task => `<li>${escapeHtml(task)}</li>`).join('')}</ul></section>
-      <section class="workspace-panel"><h3>Logs</h3><ul>${logs.map(log => `<li>${escapeHtml(log)}</li>`).join('')}</ul></section>
-      <section class="workspace-panel"><h3>Learning</h3><p>Signal quality ${Math.max(64, confidence - 12)}%. Telemetry updates fold back into the living graph every cycle.</p></section>
-    </div>`;
+    <div class="bloom-petals">
+      ${petals.map((petal, index) => `
+        <section class="bloom-petal" style="--petal-index:${index}; --petal-total:${petals.length}">
+          <span>${escapeHtml(petal.label)}</span>
+          <strong>${escapeHtml(petal.value)}</strong>
+        </section>`).join('')}
+    </div>
+    ${path ? `<button class="bloom-source" type="button" data-source="${escapeHtml(path)}">source</button>` : ''}`;
+  nodeWorkspace.querySelector('[data-source]')?.addEventListener('click', event => {
+    window.open(`/${event.currentTarget.dataset.source}`, '_blank', 'noopener,noreferrer');
+  });
   nodeWorkspace.classList.remove('hidden');
 }
 
@@ -953,6 +1023,10 @@ canvas.addEventListener('pointerdown', event => {
 });
 
 canvas.addEventListener('pointermove', event => {
+  const rect = canvas.getBoundingClientRect();
+  state.pointerX = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
+  state.pointerY = Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(1, rect.height)));
+  state.pointerEnergy = Math.min(1, state.pointerEnergy + 0.035);
   if (activePointers.has(event.pointerId)) activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
   if (activePointers.size === 2) {
     const points = [...activePointers.values()];
