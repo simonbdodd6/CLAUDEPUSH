@@ -39,6 +39,7 @@ let _wf   = null   // workflow-engine (M13)
 let _plan = null   // planning-engine (M14)
 let _api      = null   // coach-experience-api (M15)
 let _products = null   // coach-intelligence-products (M16)
+let _clp      = null   // coach-learning-profile (M19)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -115,6 +116,11 @@ async function loadApi() {
 async function loadProducts() {
   if (!_products) _products = await import('./products/index.js')
   return _products
+}
+
+async function loadClp() {
+  if (!_clp) _clp = await import('./learning/index.js')
+  return _clp
 }
 
 async function loadRec() {
@@ -311,6 +317,28 @@ export async function learn(outcome = {}) {
     const { updateStatus } = await loadTl()
     updateStatus(recommendationId, coachDecision)
   } catch { /* non-blocking — timeline failure must never surface to Core */ }
+
+  // M19 — Coach Learning Profile: record this decision to evolve the coach profile
+  if (coachId) {
+    try {
+      const { recordAndSave } = await loadClp()
+      const outcomeToEventType = {
+        ACCEPTED:  'recommendation_accepted',
+        REJECTED:  'recommendation_rejected',
+        SNOOZED:   'recommendation_ignored',
+      }
+      const evtType = outcomeToEventType[coachDecision] ?? 'recommendation_ignored'
+      recordAndSave(coachId, {
+        eventType: evtType,
+        eventData: {
+          recommendationId,
+          category: category ?? null,
+          urgency:  outcome.urgency ?? null,
+          action:   outcome.action  ?? null,
+        },
+      }, { recordedAt: outcome.recordedAt ?? null })
+    } catch { /* non-blocking */ }
+  }
 }
 
 // ── Observation ───────────────────────────────────────────────────────────────
@@ -938,6 +966,74 @@ export async function getClubSnapshot(clubId, opts = {}) {
   } catch (err) { return _productFallback('club-snapshot', err.message) }
 }
 
+// ── Coach Learning Profile (M19) ──────────────────────────────────────────────
+//
+// AI.coachProfile — evolving per-coach preference profile.
+// Products READ via AI.coachProfile.get() / preferences().
+// Updates flow through AI.learn() → Learning Engine only.
+//
+// AI.coachProfile.get(coachId)                 → full CoachProfile
+// AI.coachProfile.record(coachId, event, opts) → record event, return updated profile
+// AI.coachProfile.replay(coachId, observations)→ rebuild profile from observations
+// AI.coachProfile.preferences(coachId)         → derived Preferences map only
+// AI.coachProfile.snapshot(coachId)            → lightweight summary
+// AI.coachProfile.explain(coachId)             → confidence report per preference
+
+export const coachProfile = {
+  async get(coachId) {
+    try {
+      const { getProfile } = await loadClp()
+      return getProfile(coachId ?? null)
+    } catch { return null }
+  },
+
+  async record(coachId, event, opts = {}) {
+    try {
+      const { recordAndSave } = await loadClp()
+      return recordAndSave(coachId ?? null, event, opts)
+    } catch { return null }
+  },
+
+  async replay(coachId, observations) {
+    try {
+      const { replayAndSave } = await loadClp()
+      return replayAndSave(coachId ?? null, observations ?? [])
+    } catch { return null }
+  },
+
+  async preferences(coachId) {
+    try {
+      const { getProfile } = await loadClp()
+      return getProfile(coachId ?? null)?.preferences ?? null
+    } catch { return null }
+  },
+
+  async snapshot(coachId) {
+    try {
+      const { getProfile } = await loadClp()
+      const profile = getProfile(coachId ?? null)
+      if (!profile) return null
+      return {
+        coachId:           profile.coachId,
+        profileVersion:    profile.profileVersion,
+        overallConfidence: profile.overallConfidence,
+        observationCount:  profile.observationCount,
+        preferences:       profile.preferences,
+        updatedAt:         profile.updatedAt,
+      }
+    } catch { return null }
+  },
+
+  async explain(coachId) {
+    try {
+      const { getProfile, buildConfidenceReport } = await loadClp()
+      const profile = getProfile(coachId ?? null)
+      if (!profile) return null
+      return buildConfidenceReport(profile.preferences, profile.observationCount)
+    } catch { return null }
+  },
+}
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -978,4 +1074,6 @@ export const AI = {
   getMatchReadiness,
   getPlayerCard,
   getClubSnapshot,
+  // M19 — Coach Learning Profile
+  coachProfile,
 }
