@@ -37,6 +37,7 @@ let _diag = null   // diagnostics (M11)
 let _pol  = null   // policy-engine (M12)
 let _wf   = null   // workflow-engine (M13)
 let _plan = null   // planning-engine (M14)
+let _api  = null   // coach-experience-api (M15)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -103,6 +104,11 @@ async function loadWf() {
 async function loadPlan() {
   if (!_plan) _plan = await import('./planning/planning-engine.js')
   return _plan
+}
+
+async function loadApi() {
+  if (!_api) _api = await import('./api/index.js')
+  return _api
 }
 
 async function loadRec() {
@@ -769,6 +775,86 @@ export async function explain(recommendationId) {
   } catch { return null }
 }
 
+// ── Coach Experience API (M15) ────────────────────────────────────────────────
+//
+// The stable, versioned facade between Core and Intelligence.
+// Core MUST only use these four methods — never call Brain internals directly.
+//
+// Every method returns an ApiResponse:
+//   { apiVersion, status, ok, generatedAt, durationMs, data, error }
+//
+// Pass opts.flags to enable/disable individual endpoints:
+//   AI.getDashboard(coachId, clubId, { flags: { 'ai.dashboard': false } })
+
+/**
+ * Return a full coach dashboard: top recommendations, planning checklist,
+ * observations, policy warnings, explanation summaries, and confidence.
+ *
+ * @param {string|null} coachId
+ * @param {string|null} clubId
+ * @param {object}      opts   - { flags? }
+ * @returns {Promise<ApiResponse>}
+ */
+export async function getDashboard(coachId, clubId, opts = {}) {
+  try {
+    const { getDashboard: fn } = await loadApi()
+    return fn(coachId, clubId, opts)
+  } catch (err) {
+    return { apiVersion: 'v1', status: 'error', ok: false, generatedAt: new Date().toISOString(), durationMs: 0, data: null, error: { message: err.message, code: 'INTERNAL_ERROR' } }
+  }
+}
+
+/**
+ * Return attendance trend, availability trend, improvement and welfare
+ * observations, supporting evidence, and explanations for a single player.
+ *
+ * @param {string} playerId
+ * @param {object} opts    - { flags? }
+ * @returns {Promise<ApiResponse>}
+ */
+export async function getPlayerInsight(playerId, opts = {}) {
+  try {
+    const { getPlayerInsight: fn } = await loadApi()
+    return fn(playerId, opts)
+  } catch (err) {
+    return { apiVersion: 'v1', status: 'error', ok: false, generatedAt: new Date().toISOString(), durationMs: 0, data: null, error: { message: err.message, code: 'INTERNAL_ERROR' } }
+  }
+}
+
+/**
+ * Return squad health, availability, training load, preparation status,
+ * and pending planning actions for a team.
+ *
+ * @param {string} teamId
+ * @param {object} opts   - { flags? }
+ * @returns {Promise<ApiResponse>}
+ */
+export async function getTeamInsight(teamId, opts = {}) {
+  try {
+    const { getTeamInsight: fn } = await loadApi()
+    return fn(teamId, opts)
+  } catch (err) {
+    return { apiVersion: 'v1', status: 'error', ok: false, generatedAt: new Date().toISOString(), durationMs: 0, data: null, error: { message: err.message, code: 'INTERNAL_ERROR' } }
+  }
+}
+
+/**
+ * Return club activity, engagement, operational health, trends,
+ * and top recommendations for a club.
+ *
+ * @param {string} clubId
+ * @param {object} opts   - { flags? }
+ * @returns {Promise<ApiResponse>}
+ */
+export async function getClubInsight(clubId, opts = {}) {
+  try {
+    const { getClubInsight: fn } = await loadApi()
+    return fn(clubId, opts)
+  } catch (err) {
+    return { apiVersion: 'v1', status: 'error', ok: false, generatedAt: new Date().toISOString(), durationMs: 0, data: null, error: { message: err.message, code: 'INTERNAL_ERROR' } }
+  }
+}
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -799,4 +885,9 @@ export const AI = {
   policyCheck,
   // M14 — Planning Engine
   plan,
+  // M15 — Coach Experience API (the ONLY interface Core should use for AI data)
+  getDashboard,
+  getPlayerInsight,
+  getTeamInsight,
+  getClubInsight,
 }
