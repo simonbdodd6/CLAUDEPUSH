@@ -35,6 +35,7 @@ let _obs = null    // observation-engine (M8)
 let _exp = null    // explanation-engine (M10)
 let _diag = null   // diagnostics (M11)
 let _pol  = null   // policy-engine (M12)
+let _wf   = null   // workflow-engine (M13)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -91,6 +92,11 @@ async function loadDiag() {
 async function loadPol() {
   if (!_pol) _pol = await import('./policy/policy-engine.js')
   return _pol
+}
+
+async function loadWf() {
+  if (!_wf) _wf = await import('./workflow/workflow-engine.js')
+  return _wf
 }
 
 async function loadRec() {
@@ -155,119 +161,16 @@ function normaliseOutcome(raw = '') {
  * @returns {Promise<BrainResponse>}
  */
 export async function request(context = {}) {
-  const t0      = Date.now()
-  const modules = []
-
+  // M13: All execution now routes through the Workflow Engine.
+  // The BrainResponse contract is unchanged — callers receive the same shape as before.
   try {
-    // M3: Assemble full context bundle before invoking any reasoning.
-    const { assembleContext } = await loadCA()
-    modules.push('context-assembly')
-    const bundle = await assembleContext(context ?? {})
-
-    // M4: Run three parallel reasoners over the bundle, then synthesise.
-    const { reason: reasonFn } = await loadRS()
-    modules.push('reasoning')
-    const rb = await reasonFn(bundle)
-    modules.push('synthesis')
-
-    // M5: Calibrate confidence using coach/club learning history.
-    const { calibrate: calibrateFn } = await loadCal()
-    const { getHistory }             = await loadLS()
-    modules.push('calibration')
-
-    const coachId = context?.coachId ?? null
-    const clubId  = context?.clubId  ?? null
-    const cal     = calibrateFn(rb.recommendations, { coachId, clubId, getHistory })
-
-    const recs   = cal.recommendations
-    const isMock = recs.length === 0 ||
-      recs.every(r => (r.source ?? '').includes('/mock'))
-
-    // M10: Record explanation snapshots for each recommendation.
-    // Failures must never surface — explanations are always best-effort.
-    try {
-      const { record: recordExp }  = await loadExp()
-      const observations           = rb.trace?.observations ?? []
-      for (const rec of recs) {
-        const calAdj = cal.adjustments.find(a => a.recommendationId === rec.id) ?? null
-        recordExp(rec, { observations, calibrationAdjustment: calAdj, coachId, clubId })
-      }
-    } catch { /* explanation recording must never block a request */ }
-
-    // M6: Record REQUEST + RECOMMENDATION_SHOWN events on Brain timeline.
-    try {
-      const { append: appendEvent, EVENT_TYPE } = await loadBT()
-      const sessionId = context?.sessionId ?? null
-      appendEvent(EVENT_TYPE.REQUEST, {
-        clubId:  clubId,
-        coachId: coachId,
-        sessionId,
-        metadata: {
-          recommendationCount: recs.length,
-          isMock,
-          calibrationApplied:  cal.applied,
-          categories:          [...new Set(recs.map(r => r.category))],
-        },
-      })
-      for (const rec of recs) {
-        appendEvent(EVENT_TYPE.RECOMMENDATION_SHOWN, {
-          clubId,
-          coachId,
-          sessionId,
-          recommendationId: rec.id,
-          entities:         context?.entities ?? [],
-          metadata: {
-            category:   rec.category,
-            priority:   rec.priority,
-            confidence: rec.confidence,
-            source:     rec.source,
-            isMock:     (rec.source ?? '').includes('/mock'),
-          },
-        })
-      }
-    } catch { /* timeline failures must never surface */ }
-
-    // M12: Apply policy guard — attach policy status to every recommendation.
-    // Failures must never surface; recs returned as-is on error.
-    let policyRecs  = recs
-    let policyMeta  = null
-    try {
-      const { checkPolicy } = await loadPol()
-      modules.push('policy')
-      const policyResult = checkPolicy(recs, { coachId, clubId })
-      policyRecs = policyResult.recommendations
-      policyMeta = {
-        overallStatus: policyResult.overallStatus,
-        summary:       policyResult.summary,
-        checkedAt:     policyResult.checkedAt,
-      }
-    } catch { /* policy failures must never block a request */ }
-
-    return toBrainResponse(policyRecs, {
-      meta: {
-        isMock,
-        generatedAt: bundle.assembledAt,
-        total:       recs.length,
-        highCount:   recs.filter(r => r.priority === 'HIGH').length,
-        mediumCount: recs.filter(r => r.priority === 'MEDIUM').length,
-        lowCount:    recs.filter(r => r.priority === 'LOW').length,
-        categories:  [...new Set(recs.map(r => r.category))],
-        providers:   bundle.providers,
-        reasoning:   rb.trace,
-        calibration: {
-          coachId:     cal.coachId,
-          clubId:      cal.clubId,
-          applied:     cal.applied,
-          adjustments: cal.adjustments,
-        },
-        policy: policyMeta,
-      },
-      trace: { modules, duration: Date.now() - t0 },
-    })
+    const { runWorkflow } = await loadWf()
+    const workflow = await runWorkflow(context)
+    return workflow.response
   } catch (err) {
     return toBrainResponse([], {
       meta:  { isMock: true, error: err.message },
-      trace: { modules, duration: Date.now() - t0 },
+      trace: { modules: [], duration: 0 },
     })
   }
 }
