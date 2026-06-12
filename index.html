@@ -1619,6 +1619,15 @@
     .home-attn-step-num.done { background:var(--green); border-color:var(--green); color:#060b12; }
     .home-ai-slot { border:1px dashed rgba(96,165,250,0.18); border-radius:10px; padding:14px 16px; background:rgba(96,165,250,0.03); }
     .home-ai-slot-label { font-size:10px; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:var(--blue); opacity:0.55; }
+    .wb-priority-btn { display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left;background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.12);border-radius:7px;padding:8px 10px;cursor:pointer;color:var(--fg);font-size:12px;transition:background .15s; }
+    .wb-priority-btn:hover { background:rgba(96,165,250,0.12); }
+    .wb-priority-title { font-weight:600;flex:1;line-height:1.35; }
+    .wb-priority-arrow { color:var(--blue);flex-shrink:0; }
+    .wb-risk { display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0; }
+    .wb-risk-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0; }
+    .wb-risk-high .wb-risk-dot { background:#f87171; }
+    .wb-risk-medium .wb-risk-dot { background:#fbbf24; }
+    .wb-risk-low .wb-risk-dot { background:var(--muted); }
     @media(max-width:600px) { .home-match-countdown { font-size:20px; } .home-match-opponent { font-size:18px; } }
 
     /* ── MEDICAL ── */
@@ -2239,6 +2248,111 @@
       };
     })();
 
+    // ─── WEEKLY BRIEF INTEGRATION ─────────────────────────────────────────────
+    // Read-only Intelligence surface gated by features.aiWeeklyBrief + canI('ai_intelligence').
+    // Core never depends on this loading — flag off or load failure → slot is empty.
+
+    let _briefEngine = null; // generateWeeklyBrief once loaded
+
+    async function _loadBriefEngine() {
+      if (_briefEngine) return;
+      try {
+        const m = await import('./season-intelligence/weekly-brief.js');
+        _briefEngine = m.generateWeeklyBrief;
+        renderCoachOverview(); // re-render with real data once module arrives
+      } catch (e) {
+        console.warn('[Intelligence] weekly-brief load failed:', e);
+      }
+    }
+
+    // Build a Coach Experience snapshot from Core's in-memory state. Pure — no
+    // mutations, no fetches. Maps the state shape to normalizeExperience's input contract.
+    function _buildExperienceFromState() {
+      const mc = state.matchCentre || {};
+      const sessions = (state.schedule || []).map(s => ({
+        id: s.id, title: s.title || s.id, type: s.type || 'Training',
+        date: s.date || '', published: Boolean(s.published), publishedAt: s.publishedAt || null,
+      }));
+      const roster = (state.players || []).map(p => ({ id: p.id, name: p.name, position: p.position || 'TBC' }));
+      const availability = {};
+      for (const s of (state.schedule || [])) {
+        const key = sessionKey(s.id);
+        const reasonKey = key + 'Reason';
+        availability[s.id] = (state.players || []).map(p => ({
+          key: p.id, label: p.name,
+          response: p[key] === 'injured' ? 'unavailable' : (p[key] || 'no-reply'),
+          reason: p[key] === 'injured' ? 'injury' : (p[reasonKey] || null),
+        }));
+      }
+      const pickedCount = Object.values(state.formationNames || {}).filter(n => String(n || '').trim()).length;
+      const squad = pickedCount > 0 ? {
+        published: Boolean(mc.published), opposition: mc.opposition || null,
+        kickoffDate: mc.kickoffDate || null, venue: mc.venue || null,
+        formationNames: state.formationNames || {}, benchPlayers: state.benchPlayers || [],
+      } : null;
+      return {
+        asOf: new Date().toISOString(),
+        team: { id: 'boitsfort-rfc', name: state.clubName || '', teamName: state.teamName || '', sport: 'Rugby' },
+        club: { clubName: state.clubName || '', teamName: state.teamName || '', fixtures: state.fixtures || [] },
+        sessions, squad, roster, fixtures: state.fixtures || [], availability,
+        meta: { sources: { state: 'ok' }, partial: false },
+      };
+    }
+
+    // Render the Weekly Intelligence Brief card for the Overview AI slot.
+    // Returns '' if the flag is off, the permission is absent, or the engine has not loaded.
+    function renderWeeklyBriefSlot() {
+      if (!state.features?.aiWeeklyBrief || !canI('ai_intelligence')) return '';
+
+      if (!_briefEngine) {
+        _loadBriefEngine();
+        return `<div class="home-ai-slot">
+          <div class="home-ai-slot-label">Weekly Intelligence Brief</div>
+          <div style="margin-top:8px;font-size:13px;color:var(--muted)">Loading…</div>
+        </div>`;
+      }
+
+      let brief;
+      try {
+        brief = _briefEngine(_buildExperienceFromState(), { tier: 'pro', now: new Date().toISOString() });
+      } catch {
+        return `<div class="home-ai-slot">
+          <div class="home-ai-slot-label">Weekly Intelligence Brief</div>
+          <div style="margin-top:8px;font-size:13px;color:var(--muted)">Intelligence unavailable</div>
+        </div>`;
+      }
+
+      if (!brief?.available) return `<div class="home-ai-slot">
+        <div class="home-ai-slot-label">Weekly Intelligence Brief</div>
+        <div style="margin-top:8px;font-size:13px;color:var(--muted)">Intelligence offline</div>
+      </div>`;
+
+      const confPct = Math.round((brief.confidence || 0) * 100);
+      const confCol = brief.confidence >= 0.7 ? 'var(--green,#4ade80)' : brief.confidence >= 0.4 ? '#fbbf24' : 'var(--muted)';
+      const priHTML = (brief.priorities || []).slice(0, 3).map(p =>
+        `<button type="button" class="wb-priority-btn" onclick="setSection('coach','${esc(p.action?.section || 'overview')}')">
+          <span class="wb-priority-title">${esc(p.title)}</span>
+          <span class="wb-priority-arrow">→</span>
+        </button>`
+      ).join('');
+      const riskHTML = (brief.risks || []).slice(0, 2).map(r =>
+        `<div class="wb-risk wb-risk-${esc(r.severity || 'low')}">
+          <span class="wb-risk-dot"></span><span>${esc(r.title)}</span>
+        </div>`
+      ).join('');
+
+      return `<div class="home-ai-slot">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div class="home-ai-slot-label">Weekly Intelligence Brief</div>
+          <span style="font-size:10px;font-weight:700;color:${confCol}">${confPct}% confident</span>
+        </div>
+        <div style="margin-top:8px;font-size:13px;font-weight:600;line-height:1.4;color:var(--fg)">${esc(brief.headline)}</div>
+        ${priHTML ? `<div style="margin-top:10px;display:flex;flex-direction:column;gap:4px">${priHTML}</div>` : ''}
+        ${riskHTML ? `<div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">${riskHTML}</div>` : ''}
+        ${brief.degraded ? `<div style="margin-top:6px;font-size:11px;color:var(--muted)">Limited data available</div>` : ''}
+      </div>`;
+    }
+
     const defaultState = {
       activeView: "coach",
       activeCoachSection: "overview",
@@ -2342,6 +2456,7 @@
         aiDashboard:     false,  // Intelligence: Intelligence Dashboard (full AI Brain overview)
         aiDecisionCentre: false, // Intelligence: Decision Centre (AI-proposed coaching actions)
         aiKnowledgeUpload: false, // Intelligence: Knowledge Upload (coach documents → AI Brain)
+        aiWeeklyBrief:     false, // Intelligence: Weekly Brief card in Overview AI slot
       },
     };
 
@@ -5680,14 +5795,14 @@
           ? `You're set — squad published${mc.opposition ? ' for ' + esc(mc.opposition) : ''}.`
           : 'Nothing needs your attention right now.';
 
-      // Intelligence slot (feature-flagged off by default)
-      const aiHTML = state.features?.aiInsights ? `
+      // Intelligence slot — Weekly Brief takes priority; legacy aiInsights slot is fallback.
+      const aiHTML = renderWeeklyBriefSlot() || (state.features?.aiInsights ? `
         <div class="home-ai-slot">
           <div class="home-ai-slot-label">Coach's Eye Intelligence</div>
           <div id="home-ai-insights" style="margin-top:8px;font-size:13px;color:var(--muted)">
             Connecting…
           </div>
-        </div>` : '';
+        </div>` : '');
 
       document.getElementById("coach-overview").innerHTML = `
         <div class="home-wrap">
