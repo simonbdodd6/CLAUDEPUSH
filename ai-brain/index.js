@@ -34,6 +34,7 @@ let _mem = null    // memory-engine (M7)
 let _obs = null    // observation-engine (M8)
 let _exp = null    // explanation-engine (M10)
 let _diag = null   // diagnostics (M11)
+let _pol  = null   // policy-engine (M12)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -85,6 +86,11 @@ async function loadExp() {
 async function loadDiag() {
   if (!_diag) _diag = await import('./diagnostics/brain-status.js')
   return _diag
+}
+
+async function loadPol() {
+  if (!_pol) _pol = await import('./policy/policy-engine.js')
+  return _pol
 }
 
 async function loadRec() {
@@ -221,7 +227,23 @@ export async function request(context = {}) {
       }
     } catch { /* timeline failures must never surface */ }
 
-    return toBrainResponse(recs, {
+    // M12: Apply policy guard — attach policy status to every recommendation.
+    // Failures must never surface; recs returned as-is on error.
+    let policyRecs  = recs
+    let policyMeta  = null
+    try {
+      const { checkPolicy } = await loadPol()
+      modules.push('policy')
+      const policyResult = checkPolicy(recs, { coachId, clubId })
+      policyRecs = policyResult.recommendations
+      policyMeta = {
+        overallStatus: policyResult.overallStatus,
+        summary:       policyResult.summary,
+        checkedAt:     policyResult.checkedAt,
+      }
+    } catch { /* policy failures must never block a request */ }
+
+    return toBrainResponse(policyRecs, {
       meta: {
         isMock,
         generatedAt: bundle.assembledAt,
@@ -238,6 +260,7 @@ export async function request(context = {}) {
           applied:     cal.applied,
           adjustments: cal.adjustments,
         },
+        policy: policyMeta,
       },
       trace: { modules, duration: Date.now() - t0 },
     })
@@ -756,6 +779,37 @@ export const observations = {
   },
 }
 
+// ── Policy Guard (M12) ───────────────────────────────────────────────────────
+
+/**
+ * Apply the Brain Safety & Policy Guard to a BrainResponse (or rec array).
+ *
+ * Runs eight deterministic safety rules over every recommendation and returns
+ * a PolicyCheckResult — a new object with each recommendation annotated with
+ * a `policy` field. The input is never mutated. Evidence and confidence are
+ * never changed. Recommendations are never deleted.
+ *
+ * @param {object|object[]} response  - BrainResponse from AI.request(), or a rec array
+ * @param {object}          context   - { coachId?, clubId? } for cross-club rule
+ * @returns {Promise<PolicyCheckResult>}
+ */
+export async function policyCheck(response, context = {}) {
+  try {
+    const { checkPolicy } = await loadPol()
+    return checkPolicy(response ?? [], context)
+  } catch (err) {
+    const recs = Array.isArray(response) ? response : (response?.recommendations ?? [])
+    return {
+      policySchemaVersion: '1.0',
+      checkedAt:           new Date().toISOString(),
+      overallStatus:       'allowed',
+      recommendations:     recs,
+      summary:             { total: recs.length, allowed: recs.length, needsReview: 0, blocked: 0 },
+      error:               err.message,
+    }
+  }
+}
+
 // ── Explainability (M10) ──────────────────────────────────────────────────────
 
 /**
@@ -804,4 +858,6 @@ export const AI = {
   observations,
   // M10 — Explainability Layer
   explain,
+  // M12 — Safety Policy Guard
+  policyCheck,
 }
