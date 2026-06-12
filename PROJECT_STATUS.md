@@ -74,3 +74,12 @@
 - Added explainable recommendations with score, confidence, explanation, and source factors for every result.
 - Added privacy validation that rejects exact traveller location-style inputs.
 - Added adapter-based in-memory recommendation run storage, audit events, README documentation, and comprehensive automated tests.
+
+## 2026-06-12 — Travel Intelligence Trip Intelligence Planner Foundation
+
+- Added the deterministic Trip Intelligence Platform foundation at `lib/trip-intelligence-platform/`.
+- Turns trip, destination, activity, traveller preference, and recommendation snapshots into explainable daily trip plans without mutating source domains.
+- Supports morning, afternoon, evening, and rainy-day backup suggestions plus safety, transport, budget, and traveller-fit notes.
+- Added APIs for generating trip plans, generating daily plans, suggesting day activities, suggesting destination focus, detecting trip gaps, and explaining plans.
+- Added privacy validation that rejects exact traveller location-style inputs.
+- Added adapter-based in-memory plan storage, audit events, README documentation, and comprehensive automated tests.
