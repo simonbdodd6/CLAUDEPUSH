@@ -52,6 +52,7 @@ async function loadBT()  { return import('../timeline.js') }
 async function loadObs() { return import('../observation/observation-engine.js') }
 async function loadExp() { return import('../explain/explanation-engine.js') }
 async function loadPol() { return import('../policy/policy-engine.js') }
+async function loadPlan() { return import('../planning/planning-engine.js') }
 
 // ── Main workflow ─────────────────────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ export async function runWorkflow(context = {}) {
     recs:       [],
     policyRecs: [],
     policyMeta: null,
+    plans:      [],
     isMock:     true,
   }
 
@@ -150,7 +152,16 @@ export async function runWorkflow(context = {}) {
     return { overallStatus: result.overallStatus, ...result.summary }
   })
 
-  // ── Stage 6: Explanation (best-effort) ──────────────────────────────────────
+  // ── Stage 6: Planning ────────────────────────────────────────────────────────
+  await runStage(workflow, STAGE.PLANNING, async () => {
+    const { createPlans } = await loadPlan()
+    const recsForPlans    = pipe.policyRecs.length > 0 ? pipe.policyRecs : pipe.recs
+    pipe.plans = createPlans(recsForPlans, { coachId: pipe.coachId, clubId: pipe.clubId })
+    pipe.modules.push('planning')
+    return { plansCreated: pipe.plans.length }
+  })
+
+  // ── Stage 7: Explanation (best-effort) ──────────────────────────────────────
   await runStage(workflow, STAGE.EXPLANATION, async () => {
     const { record: recordExp } = await loadExp()
     const observations = pipe.rb?.trace?.observations ?? []
@@ -169,7 +180,7 @@ export async function runWorkflow(context = {}) {
     return { recorded }
   })
 
-  // ── Stage 7: Timeline (best-effort) ─────────────────────────────────────────
+  // ── Stage 8: Timeline (best-effort) ─────────────────────────────────────────
   await runStage(workflow, STAGE.TIMELINE, async () => {
     const { append: appendEvent, EVENT_TYPE } = await loadBT()
     const finalRecs = pipe.policyRecs.length > 0 ? pipe.policyRecs : pipe.recs
@@ -204,7 +215,7 @@ export async function runWorkflow(context = {}) {
     return { eventsRecorded: 1 + finalRecs.length }
   })
 
-  // ── Stage 8: Response assembly ───────────────────────────────────────────────
+  // ── Stage 9: Response assembly ───────────────────────────────────────────────
   await runStage(workflow, STAGE.RESPONSE, async () => {
     const finalRecs = pipe.policyRecs.length > 0 ? pipe.policyRecs : pipe.recs
     const response  = toBrainResponse(finalRecs, {
@@ -225,6 +236,7 @@ export async function runWorkflow(context = {}) {
           adjustments: pipe.cal.adjustments,
         } : null,
         policy: pipe.policyMeta,
+        plans:  pipe.plans,
       },
       trace: {
         modules:  pipe.modules,
@@ -266,6 +278,7 @@ export async function runWorkflow(context = {}) {
           adjustments: pipe.cal.adjustments,
         } : null,
         policy: pipe.policyMeta,
+        plans:  pipe.plans,
       },
       trace: {
         modules:  pipe.modules,

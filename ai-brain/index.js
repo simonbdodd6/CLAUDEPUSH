@@ -36,6 +36,7 @@ let _exp = null    // explanation-engine (M10)
 let _diag = null   // diagnostics (M11)
 let _pol  = null   // policy-engine (M12)
 let _wf   = null   // workflow-engine (M13)
+let _plan = null   // planning-engine (M14)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -97,6 +98,11 @@ async function loadPol() {
 async function loadWf() {
   if (!_wf) _wf = await import('./workflow/workflow-engine.js')
   return _wf
+}
+
+async function loadPlan() {
+  if (!_plan) _plan = await import('./planning/planning-engine.js')
+  return _plan
 }
 
 async function loadRec() {
@@ -713,6 +719,34 @@ export async function policyCheck(response, context = {}) {
   }
 }
 
+// ── Planning Engine (M14) ─────────────────────────────────────────────────────
+
+/**
+ * Convert a single recommendation into a structured coach action plan.
+ *
+ * Applies the policy gate first if `rec.policy` is absent, then delegates to
+ * createPlan(). Returns null when the rec is blocked by policy.
+ *
+ * No LLM calls. No randomness. All plan content comes from deterministic templates.
+ *
+ * @param {object} rec      - BrainRecommendation (must have at minimum: id, title)
+ * @param {object} context  - { coachId?, clubId? }
+ * @returns {Promise<object|null>}  Plan | null
+ */
+export async function plan(rec, context = {}) {
+  try {
+    if (!rec) return null
+    // Run policy check if the rec hasn't been through the policy stage yet
+    const recWithPolicy = rec.policy ? rec : await (async () => {
+      const { checkPolicy } = await loadPol()
+      const result = checkPolicy([rec], context)
+      return result.recommendations[0] ?? rec
+    })()
+    const { createPlan: createPlanFn } = await loadPlan()
+    return createPlanFn(recWithPolicy, context)
+  } catch { return null }
+}
+
 // ── Explainability (M10) ──────────────────────────────────────────────────────
 
 /**
@@ -763,4 +797,6 @@ export const AI = {
   explain,
   // M12 — Safety Policy Guard
   policyCheck,
+  // M14 — Planning Engine
+  plan,
 }

@@ -30,22 +30,23 @@ import { AI } from '../ai-brain/index.js'
 // PART 1 — workflow-types.js
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('STAGE has all 8 required stage names', () => {
+test('STAGE has all 9 required stage names', () => {
   assert.equal(STAGE.CONTEXT,     'context')
   assert.equal(STAGE.OBSERVATION, 'observation')
   assert.equal(STAGE.REASONING,   'reasoning')
   assert.equal(STAGE.CALIBRATION, 'calibration')
   assert.equal(STAGE.POLICY,      'policy')
+  assert.equal(STAGE.PLANNING,    'planning')
   assert.equal(STAGE.EXPLANATION, 'explanation')
   assert.equal(STAGE.TIMELINE,    'timeline')
   assert.equal(STAGE.RESPONSE,    'response')
 })
 
-test('STAGE_ORDER contains all 8 stages in the correct execution order', () => {
-  assert.equal(STAGE_ORDER.length, 8)
+test('STAGE_ORDER contains all 9 stages in the correct execution order', () => {
+  assert.equal(STAGE_ORDER.length, 9)
   assert.deepEqual(STAGE_ORDER, [
     'context', 'observation', 'reasoning', 'calibration',
-    'policy', 'explanation', 'timeline', 'response',
+    'policy', 'planning', 'explanation', 'timeline', 'response',
   ])
 })
 
@@ -261,7 +262,7 @@ test('runWorkflow returns required WorkflowResult shape', async () => {
   assert.ok(wf.response !== null)
 })
 
-test('runWorkflow stages contains all 8 stage names', async () => {
+test('runWorkflow stages contains all 9 stage names', async () => {
   const wf = await runWorkflow({})
   for (const stageName of STAGE_ORDER) {
     assert.ok(stageName in wf.stages, `stage "${stageName}" must be present`)
