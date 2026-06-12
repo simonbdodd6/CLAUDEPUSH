@@ -37,7 +37,8 @@ let _diag = null   // diagnostics (M11)
 let _pol  = null   // policy-engine (M12)
 let _wf   = null   // workflow-engine (M13)
 let _plan = null   // planning-engine (M14)
-let _api  = null   // coach-experience-api (M15)
+let _api      = null   // coach-experience-api (M15)
+let _products = null   // coach-intelligence-products (M16)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -109,6 +110,11 @@ async function loadPlan() {
 async function loadApi() {
   if (!_api) _api = await import('./api/index.js')
   return _api
+}
+
+async function loadProducts() {
+  if (!_products) _products = await import('./products/index.js')
+  return _products
 }
 
 async function loadRec() {
@@ -855,6 +861,83 @@ export async function getClubInsight(clubId, opts = {}) {
   }
 }
 
+// ── Coach Intelligence Products (M16) ────────────────────────────────────────
+//
+// Four coaching products that compose the Experience API (M15) outputs into
+// complete, coach-facing deliverables. These are the top of the stack.
+//
+// Every method returns a ProductResponse:
+//   { productId, productVersion, ok, generatedAt, durationMs, data, error }
+//
+// Product flags: pass opts.flags with 'ai.product.*' keys to disable.
+
+const _productFallback = (productId, message) => ({
+  productId, productVersion: '1.0', ok: false,
+  generatedAt: new Date().toISOString(), durationMs: 0, data: null,
+  error: { message, code: 'INTERNAL_ERROR' },
+})
+
+/**
+ * Weekly Coach Brief — top priorities, risks, training checklist, attendance,
+ * medical summary, selection reminders, and recommended actions for the week.
+ *
+ * @param {string|null} coachId
+ * @param {string|null} clubId
+ * @param {object}      opts   - { flags? }
+ * @returns {Promise<ProductResponse>}
+ */
+export async function getWeeklyBrief(coachId, clubId, opts = {}) {
+  try {
+    const { getWeeklyBrief: fn } = await loadProducts()
+    return fn(coachId, clubId, opts)
+  } catch (err) { return _productFallback('weekly-brief', err.message) }
+}
+
+/**
+ * Match Readiness Report — squad readiness %, availability %, injury concerns,
+ * training completion, preparation checklist, and missing actions.
+ *
+ * @param {string} teamId
+ * @param {object} opts   - { flags? }
+ * @returns {Promise<ProductResponse>}
+ */
+export async function getMatchReadiness(teamId, opts = {}) {
+  try {
+    const { getMatchReadiness: fn } = await loadProducts()
+    return fn(teamId, opts)
+  } catch (err) { return _productFallback('match-readiness', err.message) }
+}
+
+/**
+ * Player Development Card — attendance, availability, improvement trend,
+ * coach observations, welfare indicators, and development priorities.
+ *
+ * @param {string} playerId
+ * @param {object} opts    - { flags? }
+ * @returns {Promise<ProductResponse>}
+ */
+export async function getPlayerCard(playerId, opts = {}) {
+  try {
+    const { getPlayerCard: fn } = await loadProducts()
+    return fn(playerId, opts)
+  } catch (err) { return _productFallback('player-card', err.message) }
+}
+
+/**
+ * Club Health Snapshot — engagement, attendance, operational health, activity
+ * trends, key warnings, and suggested focus areas.
+ *
+ * @param {string} clubId
+ * @param {object} opts   - { flags? }
+ * @returns {Promise<ProductResponse>}
+ */
+export async function getClubSnapshot(clubId, opts = {}) {
+  try {
+    const { getClubSnapshot: fn } = await loadProducts()
+    return fn(clubId, opts)
+  } catch (err) { return _productFallback('club-snapshot', err.message) }
+}
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -890,4 +973,9 @@ export const AI = {
   getPlayerInsight,
   getTeamInsight,
   getClubInsight,
+  // M16 — Coach Intelligence Products
+  getWeeklyBrief,
+  getMatchReadiness,
+  getPlayerCard,
+  getClubSnapshot,
 }
