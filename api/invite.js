@@ -22,7 +22,7 @@ import { setCors } from './_http.js';
 import { DEFAULT_TEAM } from './_identityStore.js';
 import { inviteEmail, sendTransactionalEmail } from './_email.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
-import { assertSameTenant, requireTenantRole } from './_tenant.js';
+import { assertSameTenant, requireTenantPermission, can, PERM } from './_tenant.js';
 import { randomBytes } from 'node:crypto';
 
 const INVITES_KEY = 'ce:invites';
@@ -95,7 +95,7 @@ export default async function handler(req, res) {
     // List all invites
     let session;
     try {
-      session = await requireTenantRole(req, ['coach', 'admin']);
+      session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
       if (req.query?.teamId) assertSameTenant(session, req.query.teamId);
     } catch (error) {
       return sendAuthError(res, error);
@@ -108,7 +108,7 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     let session;
     try {
-      session = await requireTenantRole(req, ['coach', 'admin']);
+      session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
       if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
       await enforceRateLimit('invite_create', `${session.user.id}:${requestIp(req)}`, { limit: 20, windowMs: 60 * 60 * 1000 });
     } catch (error) {
@@ -126,6 +126,10 @@ export default async function handler(req, res) {
       ? String(staffLevel).toLowerCase() : null;
     if (normStaffLevel && !['coach', 'admin'].includes(normRole)) {
       return res.status(400).json({ error: 'staffLevel only applies to coach/admin invites' });
+    }
+    // Inviting STAFF requires the manage-coaches permission, not just players.
+    if (['coach', 'admin', 'medical'].includes(normRole) && !can(session, PERM.MANAGE_COACHES)) {
+      return res.status(403).json({ error: 'You are not allowed to invite staff' });
     }
 
     const token  = makeToken();
@@ -180,7 +184,7 @@ export default async function handler(req, res) {
   if (req.method === 'PATCH') {
     let session;
     try {
-      session = await requireTenantRole(req, ['coach', 'admin']);
+      session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
     } catch (error) {
       return sendAuthError(res, error);
     }
@@ -230,7 +234,7 @@ export default async function handler(req, res) {
   if (req.method === 'DELETE') {
     let session;
     try {
-      session = await requireTenantRole(req, ['coach', 'admin']);
+      session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
     } catch (error) {
       return sendAuthError(res, error);
     }

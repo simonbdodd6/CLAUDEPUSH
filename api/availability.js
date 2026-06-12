@@ -6,7 +6,7 @@ import { setCors } from './_http.js';
 import { kvConfigured, kvGet } from './_kv.js';
 import { key } from './_keys.js';
 import { DEFAULT_TEAM, resolveSessionFromRequest } from './_identityStore.js';
-import { requireTenantRole } from './_tenant.js';
+import { requireTenantPermission, PERM } from './_tenant.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -153,7 +153,7 @@ export default async function handler(req, res) {
     }
 
     try {
-      await requireTenantRole(req, ['coach', 'admin']);
+      await requireTenantPermission(req, PERM.REPORTS);
     } catch (error) {
       return sendAuthError(res, error);
     }
@@ -179,7 +179,7 @@ export default async function handler(req, res) {
     // ── Coach-gated clear_week action ──────────────────────────────────────────
     if (postAction === 'clear_week') {
       let coachSession;
-      try { coachSession = await requireTenantRole(req, ['coach', 'admin']); }
+      try { coachSession = await requireTenantPermission(req, PERM.MANAGE_PLAYERS); }
       catch (error) { return sendAuthError(res, error); }
       const ids = Array.isArray(clearSessions) && clearSessions.length ? clearSessions : await activeSessionIds(coachSession.teamId);
       const validIds = ids.filter(id => validSessionId(id));

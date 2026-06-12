@@ -21,7 +21,7 @@ import { key } from './_keys.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
 import { DEFAULT_TEAM } from './_identityStore.js';
-import { requireTenantRole, requireTenantSession } from './_tenant.js';
+import { requireTenantPermission, requireTenantSession, can, PERM } from './_tenant.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -107,7 +107,7 @@ function sanitiseRosterPlayers(raw) {
 async function rosterHandler(req, res) {
   let session;
   try {
-    session = await requireTenantRole(req, ['coach', 'admin']);
+    session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
   } catch (error) {
     return sendAuthError(res, error);
   }
@@ -207,7 +207,7 @@ async function clubHandler(req, res) {
   if (req.method === 'POST') {
     let session;
     try {
-      session = await requireTenantRole(req, ['coach', 'admin']);
+      session = await requireTenantPermission(req, PERM.MANAGE_TEAMS);
     } catch (error) {
       return sendAuthError(res, error);
     }
@@ -216,6 +216,7 @@ async function clubHandler(req, res) {
     // typed back as confirmation. Identity accounts and chat history are NOT
     // deleted — players keep their logins; this resets the club setup.
     if (req.body?.action === 'delete_club_data') {
+      if (!can(session, PERM.DANGER_ZONE)) return res.status(403).json({ error: 'Not authorized' });
       const existing = (await kvGet(clubKey(session.teamId))) || null;
       const expected = String(existing?.clubName || '').trim();
       if (expected && String(req.body?.confirmName || '').trim() !== expected) {
@@ -277,14 +278,13 @@ export default async function handler(req, res) {
 
   // ── POST: coach writes published state ────────────────────────────────────
   if (req.method === 'POST') {
+    const { type, data } = req.body || {};
     let session;
     try {
-      session = await requireTenantRole(req, ['coach', 'admin']);
+      session = await requireTenantPermission(req, type === 'squad' ? PERM.PUBLISH_SQUADS : PERM.PUBLISH_TRAINING);
     } catch (error) {
       return sendAuthError(res, error);
     }
-
-    const { type, data } = req.body || {};
 
     if (type === 'sessions') {
       const sessions = sanitiseSessions(data);
@@ -309,14 +309,13 @@ export default async function handler(req, res) {
 
   // ── DELETE: coach clears published state ──────────────────────────────────
   if (req.method === 'DELETE') {
+    const type = req.body?.type || req.query?.type;
     let session;
     try {
-      session = await requireTenantRole(req, ['coach', 'admin']);
+      session = await requireTenantPermission(req, type === 'squad' ? PERM.PUBLISH_SQUADS : PERM.PUBLISH_TRAINING);
     } catch (error) {
       return sendAuthError(res, error);
     }
-
-    const type = req.body?.type || req.query?.type;
     if (type === 'squad') {
       await kvSet(squadKey(session.teamId), null);
       return res.status(200).json({ ok: true });

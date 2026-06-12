@@ -29,13 +29,14 @@ import {
   sessionCookie,
   sessionTokenFromRequest,
   setStaffLevel,
+  switchTeam,
 } from './_identityStore.js';
 import { appBaseUrl, passwordResetEmail, sendTransactionalEmail } from './_email.js';
 import { setCors, readSecret } from './_http.js';
 import { randomBytes } from 'node:crypto';
 import { kvConfigured } from './_kv.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
-import { assertSameTenant, requireTenantRole } from './_tenant.js';
+import { assertSameTenant, requireTenantRole, requireTenantPermission, can, PERM } from './_tenant.js';
 
 function sendError(res, error, fallbackStatus = 400) {
   const status = error?.status || fallbackStatus;
@@ -64,7 +65,7 @@ export default async function handler(req, res) {
         if (!result) return res.status(401).json({ ok: false, error: 'No active session' });
         return res.status(200).json({ ok: true, ...result });
       }
-      const tenant = await requireTenantRole(req, ['coach', 'admin']);
+      const tenant = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
       if (req.query?.teamId) assertSameTenant(tenant, req.query.teamId);
       const state = await listIdentityState(tenant.teamId);
       return res.status(200).json({ ok: true, ...state });
@@ -164,31 +165,37 @@ export default async function handler(req, res) {
         if (!result) return res.status(401).json({ ok: false, error: 'No active session' });
         return res.status(200).json({ ok: true, ...result });
       }
+      if (action === 'switch_team') {
+        const result = await switchTeam(sessionTokenFromRequest(req), req.body?.teamId);
+        res.setHeader('Set-Cookie', sessionCookie(result.session.token));
+        return res.status(200).json({ ok: true, teamId: result.teamId });
+      }
       if (action === 'logout') {
         await destroySession(sessionTokenFromRequest(req));
         res.setHeader('Set-Cookie', clearSessionCookie());
         return res.status(200).json({ ok: true });
       }
       if (action === 'approve') {
-        const session = await requireTenantRole(req, ['coach', 'admin']);
+        const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
         const result = await approveJoinRequest(req.body?.memberId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });
       }
       if (action === 'reject') {
-        const session = await requireTenantRole(req, ['coach', 'admin']);
+        const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
         const result = await rejectJoinRequest(req.body?.memberId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });
       }
       if (action === 'remove_member' || action === 'archive_member') {
-        const session = await requireTenantRole(req, ['coach', 'admin']);
+        const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
-        // Removing STAFF is reserved for the head coach; any coach can manage players.
+        // Removing STAFF requires the manage-coaches permission (head coach,
+        // club admin, DoR, owner); managing players needs only manage-players.
         const members = await loadTeamMembers();
         const target = members.find(m => m.id === req.body?.memberId);
-        if (target && ['coach', 'admin'].includes(target.role) && !isHeadCoach(session)) {
-          return res.status(403).json({ ok: false, error: 'Only the head coach can remove staff' });
+        if (target && ['coach', 'admin'].includes(target.role) && !can(session, PERM.MANAGE_COACHES)) {
+          return res.status(403).json({ ok: false, error: 'You are not allowed to remove staff' });
         }
         const result = await removeTeamMember(req.body?.memberId, session.user.id, session.teamId, {
           archive: action === 'archive_member',
@@ -197,16 +204,16 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, ...result });
       }
       if (action === 'restore_member') {
-        const session = await requireTenantRole(req, ['coach', 'admin']);
+        const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
         const result = await restoreTeamMember(req.body?.memberId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });
       }
       if (action === 'set_staff_level') {
-        const session = await requireTenantRole(req, ['coach', 'admin']);
+        const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
-        if (!isHeadCoach(session)) {
-          return res.status(403).json({ ok: false, error: 'Only the head coach can change staff permissions' });
+        if (!can(session, PERM.MANAGE_COACHES)) {
+          return res.status(403).json({ ok: false, error: 'You are not allowed to change staff permissions' });
         }
         const result = await setStaffLevel(req.body?.memberId, req.body?.staffLevel, session.user.id, session.teamId);
         await auditLog('staff_level_changed', {
@@ -239,7 +246,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, ...result });
       }
       if (action === 'approve_details') {
-        const session = await requireTenantRole(req, ['coach', 'admin']);
+        const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
         const result = await approvePlayerDetails(req.body?.profileId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });

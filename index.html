@@ -2020,6 +2020,7 @@
 
       <div id="authPanel" class="auth-panel"></div>
 
+      <div id="teamSwitcher"></div>
       <nav id="coachNav" aria-label="Coach sections"></nav>
       <nav id="playerNav" class="hidden" aria-label="Player sections"></nav>
 
@@ -4677,6 +4678,7 @@
         }
         _serverSessionReadyFor = data.user.id;
         _serverAuthState = 'authed';
+        adoptIdentityPayload(data);
         authTab = 'closed';
         saveState('Logged in');
         render();
@@ -4779,9 +4781,21 @@
       if (_nameEl) _nameEl.textContent = _clubName;
       if (_cardEl) _cardEl.textContent = _clubName + ' · Coach\'s Eye';
       document.title = 'Coach\'s Eye · ' + _clubName;
-      document.getElementById("coachNav").innerHTML = coachSections.map(([id, label]) =>
+      const SECTION_PERMS = { medical: 'medical_access', admin: 'manage_teams', message: 'reports', messages: 'messaging', training: 'publish_training', matchday: 'publish_squads', players: 'manage_players' };
+      document.getElementById("coachNav").innerHTML = coachSections
+        .filter(([id]) => !SECTION_PERMS[id] || canI(SECTION_PERMS[id]))
+        .map(([id, label]) =>
         `<button type="button" class="${state.activeView==="coach" && state.activeCoachSection===id ? "active" : ""}" onclick="setSection('coach','${id}')">${icon(SECTION_ICONS[id] || 'home')}${label}</button>`
       ).join("");
+      // Multi-team switcher — only when this identity belongs to >1 team.
+      const switcherHost = document.getElementById('teamSwitcher');
+      if (switcherHost) {
+        switcherHost.innerHTML = (_myMemberships || []).length > 1 ? `
+          <select onchange="switchTeamTo(this.value)" aria-label="Switch team"
+            style="width:100%;min-height:34px;border:1px solid var(--line);border-radius:8px;background:var(--nav-soft);color:var(--ink);font-size:12px;font-weight:700;padding:0 8px;margin-top:6px">
+            ${_myMemberships.map(m => `<option value="${esc(m.teamId)}" ${m.current ? 'selected' : ''}>${esc(m.teamName)}${m.current ? '' : ' →'}</option>`).join('')}
+          </select>` : '';
+      }
       const player = currentUser();
       const _pendingCount = (() => {
         if (!player?.id) return 0;
@@ -4993,6 +5007,7 @@
         }
         _serverSessionReadyFor = userId;
         _serverAuthState = 'authed';
+        adoptIdentityPayload(data);
         state.currentUserId = userId;
         state.activeView = isStaff ? 'coach' : 'player';
         if (isStaff) {
@@ -11508,13 +11523,68 @@
     // never look like a production login — when the server says no session, a
     // banner makes the offline/stale status unmissable.
     let _serverAuthState = 'unknown'; // 'unknown' | 'authed' | 'anon'
+    // Identity & Permissions: computed server-side (single source of truth in
+    // api/_permissions.js) and delivered on every session/login response.
+    let _myPermissions = null;   // array of permission ids, or null = not loaded
+    let _myMemberships = [];     // [{teamId, teamName, role, current}]
+
+    function adoptIdentityPayload(d) {
+      if (Array.isArray(d?.permissions)) _myPermissions = d.permissions;
+      if (Array.isArray(d?.memberships)) _myMemberships = d.memberships;
+    }
+
+    // The one question every client surface asks. Offline / pre-load falls
+    // back to the legacy role check so nothing breaks without a server.
+    function canI(perm) {
+      if (state.features?.permissionsV2 === false || _myPermissions === null) return isCoach();
+      return _myPermissions.includes(perm);
+    }
+
+    async function switchTeamTo(teamId) {
+      try {
+        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'switch_team', teamId }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not switch team');
+        // Team-scoped local state must not bleed between clubs.
+        resetTeamScopedState();
+        _clubConfigChecked = false; _publishedStateLoadedAt = 0;
+        if (typeof _adminData === 'object') _adminData.loaded = false;
+        _autopilotEnsured = false; _autopilotLogAt = 0; _autopilotLog = [];
+        await checkServerSession();
+        await Promise.all([
+          loadClubConfigFromServer().catch(() => {}),
+          loadRosterFromServer().catch(() => {}),
+          loadPublishedStateForPlayer().catch(() => {}),
+        ]);
+        markSynced();
+        render();
+        showToast(`Switched to ${_myMemberships.find(m => m.teamId === teamId)?.teamName || 'team'} ✓`);
+      } catch(e) { showToast(e.message || 'Could not switch team'); }
+    }
+
+    function resetTeamScopedState() {
+      state.players = [];
+      state.fixtures = [];
+      state.clubName = ''; state.teamName = ''; state.seasonName = '';
+      state.clubLogo = ''; state.clubColours = null;
+      state.matchCentre = structuredClone(defaultState.matchCentre);
+      state.schedule = structuredClone(defaultState.schedule);
+      state.trainingBlocks = structuredClone(defaultState.trainingBlocks);
+      state.availabilityRequests = [];
+      state.autopilotReceipts = [];
+      state.lastWeekTrainingBlocks = null;
+      saveState('Team switched');
+    }
 
     async function checkServerSession() {
       try {
         const res = await fetch('/api/identity?action=session');
         _serverAuthState = res.ok ? 'authed' : 'anon';
+        if (res.ok) adoptIdentityPayload(await res.json());
       } catch { _serverAuthState = 'unknown'; } // offline — stay quiet
       renderAuthBanner();
+      renderNav();
     }
 
     function renderAuthBanner() {

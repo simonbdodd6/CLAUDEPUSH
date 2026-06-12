@@ -1,4 +1,19 @@
 import { DEFAULT_TEAM, hasRole, requireRole, requireSession } from './_identityStore.js';
+import { can, PERM } from './_permissions.js';
+
+export { can, PERM };
+
+// Permission-based gate — the standard for all route authorization.
+// Asks "can this identity perform this action?", never "what is their role?".
+export async function requireTenantPermission(req, permission) {
+  const sessionContext = await requireSession(req);
+  if (!can(sessionContext, permission)) {
+    const error = new Error('Not authorized');
+    error.status = 403;
+    throw error;
+  }
+  return { ...sessionContext, teamId: tenantTeamId(sessionContext), role: tenantRole(sessionContext) };
+}
 
 export function tenantTeamId(sessionContext = {}) {
   return String(

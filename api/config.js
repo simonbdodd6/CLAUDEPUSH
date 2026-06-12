@@ -3,7 +3,7 @@
 import { setCors, vapidKeyStatus } from './_http.js';
 import { kvConfigured, kvLrange } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
-import { requireTenantRole } from './_tenant.js';
+import { requireTenantPermission, PERM } from './_tenant.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   if (req.query?.log === '1') {
     if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet', log: [] });
     try {
-      await requireTenantRole(req, ['coach', 'admin']);
+      await requireTenantPermission(req, PERM.REPORTS);
     } catch (error) {
       return sendAuthError(res, error);
     }

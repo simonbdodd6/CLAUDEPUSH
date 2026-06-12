@@ -1,4 +1,5 @@
 import { kvGet, kvSet } from './_kv.js';
+import { permissionsFor, canonicalRole } from './_permissions.js';
 import { key } from './_keys.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
@@ -945,11 +946,27 @@ export async function resolveSession(token = '') {
   if (!user) return null;
   const member = members.find(item => item.teamId === session.teamId && item.userId === session.userId && item.status === 'active') || null;
   const profile = profiles.find(item => item.teamId === session.teamId && item.userId === session.userId) || null;
+  // Identity & Permissions: every session carries its computed permission set
+  // (single source: _permissions.js) and the user's full membership list so
+  // clients can offer team switching without a second fetch.
+  const teams = await loadTeams();
+  const memberships = members
+    .filter(item => item.userId === session.userId && item.status === 'active')
+    .map(item => ({
+      teamId: item.teamId,
+      teamName: teams.find(t => t.id === item.teamId)?.name || item.teamId,
+      role: item.role,
+      staffLevel: item.staffLevel || null,
+      canonicalRole: canonicalRole(item),
+      current: item.teamId === session.teamId,
+    }));
   return {
     session,
     user: publicUserWithRole(user, member || session),
     teamMember: member,
     playerProfile: profile,
+    permissions: [...permissionsFor(member)],
+    memberships,
   };
 }
 
@@ -957,6 +974,18 @@ export async function resolveSessionFromRequest(req) {
   const token = sessionTokenFromRequest(req);
   if (!token) return null;
   return resolveSession(token);
+}
+
+// Multi-team: switch the current session to another team where the user
+// holds an active membership. Old session is replaced; no logout required.
+export async function switchTeam(token = '', targetTeamId = '') {
+  const current = await resolveSession(token);
+  if (!current?.user?.id) { const e = new Error('Authentication required'); e.status = 401; throw e; }
+  const membership = (current.memberships || []).find(m => m.teamId === String(targetTeamId));
+  if (!membership) { const e = new Error('No active membership in that team'); e.status = 403; throw e; }
+  await destroySession(token);
+  const session = await createSession({ userId: current.user.id, teamId: membership.teamId, role: membership.role });
+  return { session, teamId: membership.teamId };
 }
 
 export async function destroySession(token = '') {

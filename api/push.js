@@ -6,7 +6,7 @@ import { kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key } from './_keys.js';
 import { resolveVariables } from './_variables.js';
 import { setCors, vapidContact, vapidKeyStatus } from './_http.js';
-import { requireTenantRole } from './_tenant.js';
+import { requireTenantPermission, PERM } from './_tenant.js';
 import { loadNotificationPreferenceMap, notificationAllowed } from './_identityStore.js';
 
 function sendAuthError(res, error) {
@@ -80,7 +80,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    await requireTenantRole(req, ['coach', 'admin']);
+    await requireTenantPermission(req, PERM.MESSAGING);
   } catch (error) {
     return sendAuthError(res, error);
   }
