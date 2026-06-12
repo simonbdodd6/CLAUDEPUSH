@@ -296,13 +296,13 @@
     .btn {
       min-height: 38px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 9px;
       padding: 0 14px;
       background: var(--panel);
       color: var(--ink);
       font-weight: 700;
       font-size: 13px;
-      transition: background 0.12s ease, border-color 0.12s ease;
+      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
     }
     .btn:hover { background: var(--panel-2); border-color: #263d52; }
     .btn.primary {
@@ -1247,6 +1247,12 @@
       .ce-modal-actions { flex-direction: column-reverse; }
       .ce-modal-actions button { width: 100%; min-height: 48px; }
     }
+
+    /* Unified empty state */
+    .empty-state { text-align: center; padding: 32px 20px; color: var(--muted); }
+    .empty-state .empty-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.8; }
+    .empty-state strong { display: block; font-size: 15px; color: var(--ink); margin-bottom: 4px; }
+    .empty-state p { font-size: 13px; margin: 0; line-height: 1.5; }
 
     /* First-session checklist — minimal, calm, one tap per step */
     .ob-card { padding: 18px 20px 14px; }
@@ -7312,12 +7318,10 @@
           <!-- Team name + toolbar -->
           <div class="card" style="padding:14px 18px">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:10px">
-              <label style="font-size:12px;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:8px;flex:1;min-width:200px">
-                Club name
-                <input value="${esc(state.clubName || '')}" placeholder="e.g. Belgium Rugby"
-                  style="font-size:14px;font-weight:700;padding:6px 10px;flex:1;max-width:280px"
-                  oninput="state.clubName=this.value.trim();saveState('Club name saved');renderNav();clearTimeout(window._clubCfgT);window._clubCfgT=setTimeout(()=>saveClubConfigToServer(),1500)">
-              </label>
+              <div style="font-size:13px;font-weight:700;color:var(--ink);flex:1;min-width:200px">
+                ${esc(state.clubName || 'Your club')}
+                <span class="muted" style="font-weight:500;font-size:11.5px;margin-left:6px">edit in <a href="#" onclick="setSection('coach','admin');return false" style="color:var(--green)">Club Admin</a></span>
+              </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <button class="btn" type="button" onclick="downloadSampleCSV()">📋 Template CSV</button>
                 <button class="btn" type="button" onclick="exportMembersCSV()">📥 Export CSV</button>
@@ -7495,10 +7499,10 @@
               </tbody>
             </table>
             ${filtered.length === 0 ? (members.length === 0
-              ? `<div style="padding:32px 20px;text-align:center">
-                  <div style="font-size:30px;margin-bottom:8px">🏉</div>
-                  <strong style="display:block;font-size:15px;margin-bottom:4px">No players yet</strong>
-                  <p class="muted" style="font-size:13px;margin:0">Use <strong>Invite &amp; team access</strong> above to generate your first invite link — players join with one tap.</p>
+              ? `<div class="empty-state">
+                  <div class="empty-icon">🏉</div>
+                  <strong>No players yet</strong>
+                  <p>Use <strong>Invite &amp; team access</strong> above to generate your first invite link — players join with one tap.</p>
                 </div>`
               : `<div style="padding:28px;text-align:center;color:var(--muted)">No players match this filter.</div>`) : ""}
           </div>`}
@@ -7939,7 +7943,7 @@
       document.getElementById('club-wizard')?.remove();
       const d = _clubWiz.data;
       const step = _clubWiz.step;
-      const inputStyle = 'background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:12px;color:var(--ink);font-size:16px;width:100%;box-sizing:border-box';
+      const inputStyle = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
       const labelStyle = 'display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted);text-align:left';
 
       const steps = [
@@ -8065,9 +8069,9 @@
       const user = currentUser() || {};
       const prefs = _settingsPrefs || {};
       const prefOn = k => prefs[k] !== false;
-      const inputStyle = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
-      const labelStyle = 'display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)';
-      const rowStyle = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)';
+      const inputStyle = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
+      const labelStyle = 'display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted);text-align:left';
+      const rowStyle = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);flex-wrap:wrap';
       const toggle = (key, label, hint) => `
         <div style="${rowStyle}">
           <div style="min-width:0">
@@ -8447,9 +8451,9 @@
         .filter(m => ['coach', 'admin'].includes(m.role) && m.status === 'active')
         .map(m => ({ member: m, user: adminUserFor(m) }));
 
-      const inputStyle = 'width:100%;min-height:38px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);padding:0 10px;font-size:13px;box-sizing:border-box';
-      const rowStyle = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap';
-      const smallBtn = 'min-height:30px;padding:0 10px;font-size:11px;font-weight:700';
+      const inputStyle = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
+      const rowStyle = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);flex-wrap:wrap';
+      const smallBtn = 'min-height:34px;padding:0 12px;font-size:12px;font-weight:700;border-radius:8px';
 
       const fixtures = state.fixtures || [];
 
@@ -11329,8 +11333,8 @@
       try { if (window.sessionStorage.getItem('ce-setup-skipped')) return; } catch {}
       const dayOptions = sel => Object.entries(DAY_LABELS).map(([d, label]) =>
         `<option value="${d}" ${d === sel ? 'selected' : ''}>${label}</option>`).join('');
-      const inputStyle = 'background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:11px 12px;color:#e2e8f0;font-size:15px;width:100%;box-sizing:border-box';
-      const labelStyle = 'font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px;text-align:left';
+      const inputStyle = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
+      const labelStyle = 'display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted);text-align:left';
       const el = document.createElement('div');
       el.id = 'first-run-modal';
       el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:flex-start;justify-content:center;z-index:9998;padding:16px;backdrop-filter:blur(4px);overflow-y:auto';
