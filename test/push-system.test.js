@@ -29,7 +29,7 @@ globalThis.fetch = async (_url, options = {}) => {
 
 const { resolveVariables } = await import('../api/_variables.js');
 const { scheduleIsDue, scheduledInstant } = await import('../api/cron.js');
-const { default: schedulesHandler } = await import('../api/schedules.js');
+const { default: schedulesHandler } = await import('../api/message-config.js');
 const { default: availabilityHandler } = await import('../api/availability.js');
 const { createSession, SESSION_COOKIE } = await import('../api/_identityStore.js');
 
@@ -69,6 +69,7 @@ test('schedule API preserves no-reply audience and multi-day selections', async 
   await schedulesHandler({
     method: 'POST',
     headers: { cookie: coachCookie },
+    query: { resource: 'schedules' },
     body: { id: 'sch-test', name: 'Chase up', templateId: 'tpl-test', days: ['Tue', 'Thu'], time: '19:45', audience: 'no-reply' },
   }, res);
   assert.equal(res.statusCode, 200);
