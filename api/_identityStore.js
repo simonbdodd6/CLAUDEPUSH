@@ -746,6 +746,24 @@ export async function approveJoinRequest(memberId, approvedBy = 'coach-demo', ex
   return { user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile };
 }
 
+
+// Attach computed permissions + memberships to an auth result so login,
+// club-creation and dev-login responses match resolveSession's shape.
+async function withIdentityComputed(result, member) {
+  const [members, teams] = await Promise.all([loadTeamMembers(), loadTeams()]);
+  const memberships = members
+    .filter(item => item.userId === result.user?.id && item.status === 'active')
+    .map(item => ({
+      teamId: item.teamId,
+      teamName: teams.find(t => t.id === item.teamId)?.name || item.teamId,
+      role: item.role,
+      staffLevel: item.staffLevel || null,
+      canonicalRole: canonicalRole(item),
+      current: item.teamId === member?.teamId,
+    }));
+  return { ...result, permissions: [...permissionsFor(member)], memberships };
+}
+
 export async function loginUser(input = {}) {
   assertLoginInput(input);
   let users = await loadUsers();
@@ -797,7 +815,7 @@ export async function loginUser(input = {}) {
   user.lastLoginAt = nowIso();
   await saveUsers(users);
   const session = await createSession({ userId: user.id, teamId: member.teamId, role: member.role });
-  return { user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, session };
+  return withIdentityComputed({ user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, session }, member);
 }
 
 export async function claimInvite(input = {}) {
@@ -1072,7 +1090,7 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
   await saveTeamMembers(members);
 
   const session = await createSession({ userId: user.id, teamId, role: 'coach' });
-  return { user: publicUserWithRole(user, member), team, teamMember: member, session };
+  return withIdentityComputed({ user: publicUserWithRole(user, member), team, teamMember: member, session }, member);
 }
 
 // ─── Self-service account management (Settings screen) ──────────────────────
@@ -1418,7 +1436,7 @@ export async function devLoginUser(userId, teamId = DEFAULT_TEAM.id) {
   user.lastLoginAt = nowIso();
   await saveUsers(users);
   const session = await createSession({ userId: user.id, teamId: member.teamId, role: member.role });
-  return { user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, session };
+  return withIdentityComputed({ user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, session }, member);
 }
 
 export async function listIdentityState(teamId = DEFAULT_TEAM.id) {
