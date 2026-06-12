@@ -21,8 +21,8 @@
         Coach's Eye
       </a>
       <div class="mission-title">
-        <span class="kicker">AI Mission Control V2</span>
-        <h1>Company Operating System</h1>
+        <span class="kicker">Mission Control V4</span>
+        <h1>Autonomous AI Company OS</h1>
       </div>
       <div class="mission-mode">
         <span class="status-orb"></span>
@@ -30,86 +30,84 @@
       </div>
     </header>
 
-    <section class="command-grid" aria-label="AI company operating dashboard">
-      <!-- Mission dashboard: API-backed summary cards for the critical five-second read. -->
-      <aside class="dashboard-column dashboard-left" aria-label="Mission dashboard">
-        <article class="mission-card hero-card">
-          <span class="card-icon" data-icon="brain-circuit"></span>
-          <span class="kicker">Today</span>
-          <h2 id="missionText">Synchronize company intelligence</h2>
-          <p id="nextAction">Loading recommended action...</p>
-        </article>
-
-        <article class="mission-card">
-          <span class="card-icon" data-icon="bot"></span>
-          <span>Active AI agents</span>
-          <strong id="activeAgentCount">12</strong>
-          <small id="agentHealthSummary">All critical systems online</small>
-        </article>
-
-        <article class="mission-card">
-          <span class="card-icon" data-icon="git-branch"></span>
-          <span>Current branch</span>
-          <strong id="currentBranch">loading</strong>
-          <small id="githubStatus">GitHub status syncing</small>
-        </article>
-
-        <article class="mission-card">
-          <span class="card-icon" data-icon="bug"></span>
-          <span>Open bugs</span>
-          <strong id="bugsOpen">0</strong>
-          <small>Regression watch active</small>
-        </article>
-      </aside>
-
-      <!-- Centrepiece: the canvas renders the holographic AI brain and live graph. -->
-      <section class="intelligence-stage" aria-label="Animated AI brain and agent network">
-        <div class="stage-shell">
-          <div class="brain-halo" aria-hidden="true"></div>
-          <div id="agentOrbit" class="agent-orbit" aria-label="AI agent network"></div>
-          <div class="stage-caption glass">
-            <span class="kicker">Neural core</span>
-            <strong>AI Brain</strong>
-            <small>Routing code, product, rugby, and deployment intelligence</small>
-          </div>
-        </div>
-      </section>
-
-      <aside class="dashboard-column dashboard-right" aria-label="Delivery dashboard">
-        <article class="mission-card">
-          <span class="card-icon" data-icon="rocket"></span>
-          <span>Latest deployment</span>
-          <strong id="latestDeployment">SYNCING</strong>
-          <small id="deploymentStatus">SYNCING</small>
-        </article>
-
-        <article class="mission-card">
-          <span class="card-icon" data-icon="terminal-square"></span>
-          <span>Current build</span>
-          <strong id="currentBuild">Telemetry sync</strong>
-          <small id="commitStatus">commit: loading</small>
-        </article>
-
-        <article class="mission-card">
-          <span class="card-icon" data-icon="shield-check"></span>
-          <span>QA progress</span>
-          <strong id="qaProgress">92%</strong>
-          <small id="sprintStatus">Current sprint: command surface</small>
-        </article>
-
-        <section class="glass overlay-right" aria-label="Live metrics">
-          <div><span>Users</span><strong id="activeUsers">0</strong></div>
-          <div><span>Messages</span><strong id="messagesToday">0</strong></div>
-          <div><span>Alerts</span><strong id="notificationsToday">0</strong></div>
+    <aside id="missionDock" class="mission-dock glass collapsed" aria-label="Mission systems dock">
+      <button id="dockToggle" class="dock-toggle" type="button" aria-expanded="false" aria-controls="dockPanel">
+        <span data-icon="panel-left"></span>
+        <strong>Mind Map</strong>
+      </button>
+      <div id="dockPanel" class="dock-panel">
+        <!-- Icon-first dock: existing actions remain accessible without blocking the graph. -->
+        <a class="dock-action" href="/" title="Return to Coach's Eye"><span data-icon="chevrons-left"></span><strong>Home</strong></a>
+        <button class="dock-action" type="button" data-panel-trigger="marketPanel"><span data-icon="search"></span><strong>Market</strong></button>
+        <button class="dock-action" type="button" data-panel-trigger="rugbyPanel"><span data-icon="network"></span><strong>Rugby</strong></button>
+        <button class="dock-action" type="button" data-panel-trigger="lpPanel"><span data-icon="sparkles"></span><strong>Leads</strong></button>
+        <button class="dock-action" type="button" data-focus-graph><span data-icon="network"></span><strong>Recenter</strong></button>
+        <section class="dock-status" aria-label="Graph status">
+          <span class="kicker">Mind state</span>
+          <strong id="branchStatus">branch: loading</strong>
+          <small id="nextAction">Loading intelligence...</small>
         </section>
-      </aside>
+      </div>
+    </aside>
+
+    <aside class="intelligence-cards" aria-label="Live intelligence signals">
+      <article class="intel-card">
+        <span>System Health</span>
+        <strong id="deploymentStatus">SYNCING</strong>
+        <small id="githubStatus">Graph warming</small>
+        <canvas class="sparkline" data-spark="health"></canvas>
+      </article>
+      <article class="intel-card">
+        <span>Reasoning Confidence</span>
+        <strong id="qaProgress">92%</strong>
+        <small id="agentHealthSummary">Inference stable</small>
+        <canvas class="sparkline" data-spark="confidence"></canvas>
+      </article>
+      <article class="intel-card">
+        <span>Memory Growth</span>
+        <strong id="activeAgentCount">1.2k</strong>
+        <small id="missionText">Knowledge graph expanding</small>
+        <canvas class="sparkline" data-spark="memory"></canvas>
+      </article>
+      <article class="intel-card">
+        <span>Prediction Accuracy</span>
+        <strong id="bugsOpen">0</strong>
+        <small id="sprintStatus">Patterns converging</small>
+        <canvas class="sparkline" data-spark="prediction"></canvas>
+      </article>
+      <article class="intel-card">
+        <span>Deployments</span>
+        <strong id="latestDeployment">SYNCING</strong>
+        <small id="currentBuild">Telemetry sync</small>
+        <canvas class="sparkline" data-spark="deployments"></canvas>
+      </article>
+      <section class="glass overlay-right" aria-label="Live metrics">
+        <div><span>Users</span><strong id="activeUsers">0</strong></div>
+        <div><span>Messages</span><strong id="messagesToday">0</strong></div>
+        <div><span>Alerts</span><strong id="notificationsToday">0</strong></div>
+      </section>
+      <span id="currentBranch" class="hidden-telemetry">loading</span>
+      <span id="commitStatus" class="hidden-telemetry">commit: loading</span>
+    </aside>
+
+    <!-- Centrepiece: full-screen living intelligence graph. -->
+    <section class="intelligence-stage immersive-stage" aria-label="Living AI knowledge graph">
+      <div class="stage-shell">
+        <div class="volumetric-fog" aria-hidden="true"></div>
+        <div class="graph-vignette" aria-hidden="true"></div>
+        <div id="thoughtStream" class="thought-stream" aria-live="polite"></div>
+        <section id="nodeWorkspace" class="node-workspace glass hidden" aria-live="polite"></section>
+        <div class="stage-caption glass">
+          <span class="kicker">Living intelligence graph</span>
+          <strong>AI Mind</strong>
+          <small>Wheel or pinch to zoom · Drag to drift · Double click a cluster · ESC returns</small>
+        </div>
+      </div>
     </section>
 
-    <section class="glass overlay-left" aria-label="Deployment status">
-      <span class="kicker">Mission status</span>
-      <strong id="branchStatus">branch: loading</strong>
-      <small>Live telemetry from the existing Mission Control API</small>
-    </section>
+    <button id="soundToggle" class="sound-toggle" type="button" aria-pressed="false" title="Optional sound effects are disabled by default">
+      <span data-icon="volume-x"></span>
+    </button>
 
     <section id="nodePanel" class="glass node-panel hidden" aria-live="polite"></section>
 
