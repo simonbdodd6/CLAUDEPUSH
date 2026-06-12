@@ -65,3 +65,12 @@
 - Added validation that rejects exact traveller location-style fields; preferences do not store live or precise traveller location.
 - Added privacy-safe deletion that clears preference details while retaining a tombstone for lifecycle/audit handling.
 - Added adapter-based in-memory repository, service layer validation, audit events, README documentation, and comprehensive automated tests.
+
+## 2026-06-12 — Travel Intelligence Recommendation Platform Foundation
+
+- Added the deterministic Recommendation Platform foundation at `lib/recommendation-platform/`.
+- Supports non-AI ranked recommendations for activities, destinations, food, accommodation, transport, safety, and weather suitability.
+- Added weighted scoring factors for traveller interests, budget, trip duration, activity preferences, accessibility, travel pace, crowd tolerance, climate, language, transport, and risk tolerance.
+- Added explainable recommendations with score, confidence, explanation, and source factors for every result.
+- Added privacy validation that rejects exact traveller location-style inputs.
+- Added adapter-based in-memory recommendation run storage, audit events, README documentation, and comprehensive automated tests.
