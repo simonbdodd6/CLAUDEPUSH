@@ -1,0 +1,223 @@
+{
+  "version": "1.0.0",
+  "available": true,
+  "tier": "pro",
+  "degraded": false,
+  "generatedAt": "2026-06-16T18:00:00.000Z",
+  "team": {
+    "name": "Marshall RFC",
+    "teamName": "Seniors"
+  },
+  "headline": "Finish selecting your squad — France U20 on 2026-06-20.",
+  "nextFixture": {
+    "opposition": "France U20",
+    "date": "2026-06-20",
+    "venue": "Stade Fallon",
+    "time": "15:00",
+    "source": "fixtures"
+  },
+  "priorities": [
+    {
+      "rank": 1,
+      "title": "Finish selecting your squad",
+      "why": "5 of 15 picked for France U20",
+      "action": {
+        "section": "matchday",
+        "label": "Select squad"
+      },
+      "evidence": {
+        "ref": "squad.formationNames",
+        "label": "Players selected",
+        "value": "5/15"
+      }
+    },
+    {
+      "rank": 2,
+      "title": "Chase 4 non-responders",
+      "why": "Availability is incomplete for the week",
+      "action": {
+        "section": "message",
+        "label": "Send availability request"
+      },
+      "evidence": {
+        "ref": "availability.game",
+        "label": "Match availability",
+        "value": "3 available, 4 no reply, 2 injured"
+      }
+    },
+    {
+      "rank": 3,
+      "title": "Publish this week’s training",
+      "why": "1 session still in draft",
+      "action": {
+        "section": "training",
+        "label": "Open Training"
+      },
+      "evidence": {
+        "ref": "sessions",
+        "label": "Published session schedule",
+        "value": "2 training, match scheduled"
+      }
+    }
+  ],
+  "risks": [
+    {
+      "severity": "high",
+      "title": "Only 3 available for the match",
+      "detail": "12 short of a starting XV",
+      "evidence": {
+        "ref": "availability.game",
+        "label": "Match availability",
+        "value": "3 available, 4 no reply, 2 injured"
+      }
+    },
+    {
+      "severity": "high",
+      "title": "2 players carrying injuries",
+      "detail": "Confirm fitness before selection",
+      "evidence": {
+        "ref": "availability.game",
+        "label": "Match availability",
+        "value": "3 available, 4 no reply, 2 injured"
+      }
+    },
+    {
+      "severity": "medium",
+      "title": "Squad not published",
+      "detail": "Players have not been told the team",
+      "evidence": {
+        "ref": "squad.published",
+        "label": "Squad publish state",
+        "value": "draft"
+      }
+    }
+  ],
+  "attendanceSummary": {
+    "sessionsTracked": 2,
+    "responded": 2,
+    "responseRate": 67,
+    "perSession": [
+      {
+        "sessionId": "tue",
+        "title": "Tuesday Training",
+        "available": 2,
+        "maybe": 0,
+        "unavailable": 0,
+        "no-reply": 1,
+        "injury": 0,
+        "total": 3,
+        "responseRate": 67
+      },
+      {
+        "sessionId": "thu",
+        "title": "Thursday Training",
+        "available": 0,
+        "maybe": 0,
+        "unavailable": 0,
+        "no-reply": 0,
+        "injury": 0,
+        "total": 0,
+        "responseRate": 0
+      }
+    ]
+  },
+  "trainingLoadSummary": {
+    "trainingSessions": 2,
+    "published": 1,
+    "unpublished": 1,
+    "matchScheduled": true,
+    "loadBand": "high"
+  },
+  "availabilitySummary": {
+    "forSession": "game",
+    "rosterSize": 22,
+    "available": 3,
+    "maybe": 1,
+    "unavailable": 2,
+    "noReply": 4,
+    "injured": 2,
+    "shortfallToXV": 12,
+    "canFieldXV": false
+  },
+  "matchPrepChecklist": [
+    {
+      "id": "fixture",
+      "label": "Match details set",
+      "done": true
+    },
+    {
+      "id": "availability",
+      "label": "Availability requested",
+      "done": true
+    },
+    {
+      "id": "selected",
+      "label": "Squad selected (XV)",
+      "done": false
+    },
+    {
+      "id": "published",
+      "label": "Squad published",
+      "done": false
+    },
+    {
+      "id": "training",
+      "label": "Training published this week",
+      "done": true
+    }
+  ],
+  "recommendedActions": [
+    {
+      "title": "Finish selecting your squad",
+      "rationale": "5 of 15 picked for France U20",
+      "action": {
+        "section": "matchday",
+        "label": "Select squad"
+      }
+    },
+    {
+      "title": "Chase 4 non-responders",
+      "rationale": "Availability is incomplete for the week",
+      "action": {
+        "section": "message",
+        "label": "Send availability request"
+      }
+    },
+    {
+      "title": "Publish this week’s training",
+      "rationale": "1 session still in draft",
+      "action": {
+        "section": "training",
+        "label": "Open Training"
+      }
+    }
+  ],
+  "confidence": 1,
+  "evidence": [
+    {
+      "ref": "availability.training",
+      "label": "Training availability responses",
+      "value": "2/3 replied"
+    },
+    {
+      "ref": "sessions",
+      "label": "Published session schedule",
+      "value": "2 training, match scheduled"
+    },
+    {
+      "ref": "availability.game",
+      "label": "Match availability",
+      "value": "3 available, 4 no reply, 2 injured"
+    },
+    {
+      "ref": "squad.formationNames",
+      "label": "Players selected",
+      "value": "5/15"
+    },
+    {
+      "ref": "squad.published",
+      "label": "Squad publish state",
+      "value": "draft"
+    }
+  ]
+}
