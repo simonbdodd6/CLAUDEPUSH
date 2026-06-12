@@ -28,3 +28,13 @@
 - Added terminal-state protections for completed and cancelled trips.
 - Added validation that rejects exact live location-style fields; trips store approximate area only.
 - Added tests for creation, required fields, status transitions, visibility, owner isolation, cancelled/completed rules, and exact-location rejection.
+
+## 2026-06-12 — Travel Intelligence Destination Platform Foundation
+
+- Added the Destination Platform foundation at `lib/destination-platform/`.
+- Supports canonical travel destinations for countries, regions, cities, islands, beaches, mountains, national parks, neighbourhoods, and transport hubs.
+- Added destination fields for name, type, country, region, timezone, currency, languages, safety notes, seasonality, status, and timestamps.
+- Added clean domain APIs for create, update, activate, pause, close, read by ID, list by country, list active, and search by name.
+- Added privileged management controls so only administrators, moderators, or system actors can create or mutate canonical destinations.
+- Added validation that rejects exact traveller location-style fields; destinations do not store live or precise traveller location.
+- Added tests for creation, updates, activation, pausing, closing, country filtering, active lists, search, invalid types, invalid status transitions, and exact-location rejection.
