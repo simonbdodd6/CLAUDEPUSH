@@ -25,8 +25,5 @@ export {
 
 export {
   WEEKLY_BRIEF_VERSION,
-  buildBrief,
-  buildBriefSync,
-  validateBrief,
-  emptyBrief,
-} from './weekly-brief/index.js';
+  generateWeeklyBrief,
+} from '../season-intelligence/weekly-brief.js';
