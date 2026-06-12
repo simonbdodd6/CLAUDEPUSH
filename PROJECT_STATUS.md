@@ -56,3 +56,12 @@
 - Added owner isolation for private reads, updates, lifecycle changes, visibility changes, and owner activity lists.
 - Added validation that rejects exact traveller location-style fields; activities do not store live or precise traveller location.
 - Added adapter-based in-memory repository, service layer validation, audit events, README documentation, and comprehensive automated tests.
+
+## 2026-06-12 — Travel Intelligence Traveller Preferences Platform Foundation
+
+- Added the Traveller Preferences Platform foundation at `lib/traveller-preferences-platform/`.
+- Supports one private preference profile per traveller identity for budget, accommodation, travel styles, activities, fitness, accessibility, food, languages, transport, risk, crowds, climate, pace, budget caps, trip duration, favourite/avoided destinations, and favourite/avoided activities.
+- Added owner isolation so only the traveller identity owner or privileged actors can create, read, update, or delete preference records.
+- Added validation that rejects exact traveller location-style fields; preferences do not store live or precise traveller location.
+- Added privacy-safe deletion that clears preference details while retaining a tombstone for lifecycle/audit handling.
+- Added adapter-based in-memory repository, service layer validation, audit events, README documentation, and comprehensive automated tests.
