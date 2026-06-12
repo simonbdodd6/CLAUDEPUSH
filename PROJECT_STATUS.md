@@ -47,3 +47,12 @@
 - Added APIs for listing child destinations, listing active children under a parent, and reading full breadcrumb paths.
 - Added `town` as a supported destination type while preserving all existing destination APIs.
 - Added tests for parent creation, child creation, breadcrumbs, child listing, active child listing, self-parent rejection, circular hierarchy rejection, and existing destination behavior.
+
+## 2026-06-12 — Travel Intelligence Activity Platform Foundation
+
+- Added the Activity Platform foundation at `lib/activity-platform/`.
+- Supports canonical activities linked to destinations by `destinationId` without coupling to the Destination module.
+- Added activity categories, difficulty, duration, estimated cost range, seasonality, age restrictions, weather sensitivity, indoor/outdoor environment, active/inactive lifecycle, and public/private visibility.
+- Added owner isolation for private reads, updates, lifecycle changes, visibility changes, and owner activity lists.
+- Added validation that rejects exact traveller location-style fields; activities do not store live or precise traveller location.
+- Added adapter-based in-memory repository, service layer validation, audit events, README documentation, and comprehensive automated tests.
