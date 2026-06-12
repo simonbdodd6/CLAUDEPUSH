@@ -1248,6 +1248,43 @@
       .ce-modal-actions button { width: 100%; min-height: 48px; }
     }
 
+    /* Mission Control (Overview) */
+    .mctl-strip {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      flex-wrap: wrap; padding: 2px 2px 0;
+    }
+    .mctl-date { font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+    .mctl-context { font-size: 12.5px; font-weight: 600; color: var(--green); }
+    .mctl-section-label {
+      font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--muted); margin: 4px 2px -6px;
+    }
+    .mctl-allclear {
+      border: 1px solid rgba(16,185,129,0.25); border-radius: 12px;
+      background: rgba(16,185,129,0.05); padding: 18px 20px;
+      font-size: 14px; font-weight: 600; color: var(--ink);
+    }
+    .mctl-row {
+      display: flex; align-items: center; gap: 11px; width: 100%;
+      background: none; border: none; border-bottom: 1px solid var(--line-soft);
+      padding: 12px 2px; cursor: pointer; color: var(--ink);
+      font-size: 13px; font-weight: 600; text-align: left;
+    }
+    .mctl-row:last-child { border-bottom: 0; }
+    .mctl-row:hover { color: var(--green); }
+    .mctl-row-icon { flex-shrink: 0; font-size: 14px; width: 20px; text-align: center; }
+    .mctl-row-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mctl-row-detail { color: var(--muted); font-weight: 500; }
+    .mctl-done { margin-top: 2px; }
+    .mctl-done summary {
+      cursor: pointer; list-style: none; font-size: 12px; font-weight: 700;
+      color: var(--muted); padding: 6px 2px; user-select: none;
+    }
+    .mctl-done summary::before { content: '▸ '; }
+    .mctl-done[open] summary::before { content: '▾ '; }
+    .mctl-receipt { font-size: 12.5px; color: var(--muted); padding: 5px 2px 5px 6px; }
+    .mctl-tick { color: var(--green); font-weight: 800; margin-right: 8px; }
+
     /* Unified empty state */
     .empty-state { text-align: center; padding: 32px 20px; color: var(--muted); }
     .empty-state .empty-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.8; }
@@ -5497,8 +5534,60 @@
           cta:'View →', action:`homeOpenTraining('${tonightId}')` });
       }
 
+      // ── People waiting on the coach (existing caches — no new fetches) ──────
+      const unread = chatUnreadTotal();
+      if (unread > 0) {
+        items.push({ score:72, level:'warning', icon:'💬',
+          text:`${unread} unread message${unread > 1 ? 's' : ''}`,
+          detail:'Players are waiting on a reply',
+          cta:'Open Messages →', action:`setSection('coach','messages')` });
+      }
+      if ((_identityPendingRequests || []).length > 0) {
+        const n = _identityPendingRequests.length;
+        items.push({ score:74, level:'warning', icon:'🙋',
+          text:`${n} player${n > 1 ? 's' : ''} waiting for approval`,
+          detail:(_identityPendingRequests[0]?.user?.displayName || 'Join request') + (n > 1 ? ` +${n - 1}` : ''),
+          cta:'Review →', action:`setSection('coach','players')` });
+      }
+      // ── Saturday readiness (derived from existing matchCentre/formation state) ─
+      if (mc.kickoffDate && !mc.published && state.players.length > 0) {
+        const picked = Object.values(state.formationNames || {}).filter(n => String(n || '').trim()).length;
+        if (picked > 0 && picked < 15) {
+          items.push({ score:58, level:'warning', icon:'🏉',
+            text:`Squad incomplete — ${picked} of 15 picked`,
+            detail:`vs ${mc.opposition || 'TBC'} · ${mc.kickoffDate}`,
+            cta:'Finish squad →', action:`setSection('coach','matchday')` });
+        }
+      }
+      if (mc.kickoffDate && (!String(mc.opposition || '').trim() || !String(mc.venue || '').trim())) {
+        items.push({ score:38, level:'info', icon:'📍',
+          text:'Match details missing',
+          detail:[!String(mc.opposition || '').trim() ? 'opposition' : '', !String(mc.venue || '').trim() ? 'venue' : ''].filter(Boolean).join(' · '),
+          cta:'Complete →', action:`setSection('coach','matchday')` });
+      }
+
       items.sort((a, b) => (b.score || 0) - (a.score || 0));
-      return items.slice(0, 6);
+      return items;
+    }
+
+    // Receipts: things completed today, derived from existing stores.
+    // (availabilityRequests ids embed their creation timestamp; session
+    // publishedAt is ISO.)
+    function getTodayReceipts() {
+      const receipts = [];
+      const today = new Date().toISOString().slice(0, 10);
+      (state.schedule || []).forEach(s => {
+        if (s.published && String(s.publishedAt || '').slice(0, 10) === today) {
+          receipts.push(`${s.title || 'Session'} published`);
+        }
+      });
+      const sentToday = (state.availabilityRequests || []).filter(r => {
+        const ts = Number(String(r.id || '').split('-').pop());
+        return Number.isFinite(ts) && new Date(ts).toISOString().slice(0, 10) === today;
+      });
+      if (sentToday.length) receipts.push(`Availability request${sentToday.length > 1 ? 's' : ''} sent (${sentToday.length})`);
+      if (state.matchCentre?.published) receipts.push('Squad published');
+      return receipts;
     }
 
     function homeOpenTraining(sessionId) {
@@ -5522,35 +5611,39 @@
     function renderCoachOverview() {
       const phase  = matchCentrePhase();
       const mc     = state.matchCentre || {};
-      const items  = getNeedsAttentionItems();
+      const items  = getNeedsAttentionItems().filter(i => i.level !== 'info-done');
+      const nowItems  = items.slice(0, 3);
+      const weekItems = items.slice(3);
+      const receipts  = getTodayReceipts();
 
-      // Show onboarding checklist when no players yet (and not dismissed)
+      // Onboarding checklist (unchanged) — renders above NOW until complete.
       const obSteps  = getOnboardingSteps();
       const obDone   = obSteps.filter(s => s.done).length;
       const showOnboarding = !state.onboardingDismissed && obDone < obSteps.length;
-      // Newly-completed steps get the tick-pop animation exactly once.
       obSteps.forEach(s => { s.justDone = s.done && _obDoneState[s.key] === false; _obDoneState[s.key] = s.done; });
 
-      // Progress bar: % of 7-day prep window elapsed
-      const PREP = 7 * 86400000;
-      const pct  = phase.msLeft <= 0 ? 100
-        : Math.round(((PREP - Math.min(phase.msLeft, PREP)) / PREP) * 100);
+      // Context strip: today + what today IS (training night / match day / next match)
+      const todayStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+      const tonightId = getTonightSessionId();
+      const tonightSess = tonightId ? (state.schedule || []).find(s => s.id === tonightId) : null;
+      const tonightTime = tonightSess ? (String(tonightSess.date || '').match(/\d{2}:\d{2}/) || [])[0] : '';
+      let contextRight = '';
+      if (tonightId === 'game' || (mc.kickoffDate && mc.kickoffDate === new Date().toISOString().slice(0, 10))) {
+        contextRight = `Match day · vs ${esc(mc.opposition || 'TBC')} · ${esc(mc.kickoffTime || '15:00')}`;
+      } else if (tonightSess) {
+        contextRight = `Training tonight${tonightTime ? ' · ' + esc(tonightTime) : ''}`;
+      } else if (mc.kickoffDate && phase.msLeft > 0) {
+        contextRight = `${esc(matchCountdownStr())} · vs ${esc(mc.opposition || 'TBC')}`;
+      }
 
-      // Human-readable kickoff date
-      const kickoffDisplay = mc.kickoffDate
-        ? new Date(mc.kickoffDate + 'T12:00:00').toLocaleDateString('en-GB',
-            { weekday:'short', day:'numeric', month:'short' })
-        : 'Date TBC';
-
-      // Briefing header pill
-      const todayStr  = new Date().toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
-      const pillClass = showOnboarding ? 'setup-mode'
-                      : items.filter(i => i.level !== 'info-done').length > 0 ? 'has-items' : 'all-clear';
-      const pillText  = showOnboarding
-        ? `Setup: ${obDone}/${obSteps.length} done`
-        : items.filter(i => i.level !== 'info-done').length > 0
-          ? `${items.filter(i => i.level !== 'info-done').length} thing${items.filter(i => i.level !== 'info-done').length > 1 ? 's' : ''} to do`
-          : 'All clear ✓';
+      // All-clear sentence built from real numbers
+      const tonightConfirmed = tonightId
+        ? state.players.filter(p => (p[sessionKey(tonightId)] || 'no-reply') === 'available').length : 0;
+      const allClearText = tonightSess
+        ? `You're set for tonight — ${tonightConfirmed} confirmed${tonightSess.published ? ', plan published' : ''}.`
+        : mc.published
+          ? `You're set — squad published${mc.opposition ? ' for ' + esc(mc.opposition) : ''}.`
+          : 'Nothing needs your attention right now.';
 
       // Intelligence slot (feature-flagged off by default)
       const aiHTML = state.features?.aiInsights ? `
@@ -5564,39 +5657,16 @@
       document.getElementById("coach-overview").innerHTML = `
         <div class="home-wrap">
 
-          <!-- ── Briefing header ──────────────────────────────── -->
-          <div class="home-briefing-hdr">
-            <span class="home-briefing-date">${esc(todayStr)}</span>
-            <span class="home-briefing-pill ${pillClass}">${pillText}</span>
-          </div>
-
-          <!-- ── Match card ────────────────────────────────────── -->
-          <div class="home-match-card">
-            <div class="home-match-top">
-              <div>
-                <span class="mc-phase-badge ${phase.color}">${esc(phase.label)}</span>
-                <div class="home-match-opponent">vs ${esc(mc.opposition || 'Opposition TBC')}</div>
-                <div class="home-match-meta">${esc(mc.competition || '')}${mc.competition ? ' · ' : ''}${esc(kickoffDisplay)} · ${esc(mc.kickoffTime || '15:00')}</div>
-              </div>
-              <div class="home-match-countdown">${esc(matchCountdownStr())}</div>
-            </div>
-            <div class="home-match-progress">
-              <div class="home-match-progress-bar" style="width:${pct}%"></div>
-            </div>
-            <div class="home-match-footer">
-              <span class="home-match-squad-count">
-                ${esc(mc.venue || '')}${mc.venue && state.players.length ? ' · ' : ''}${state.players.length ? `${state.players.length} players` : ''}
-                ${mc.published ? `<span style="margin-left:8px;font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;background:var(--green);color:#fff;vertical-align:middle">Squad Published</span>` : ''}
-              </span>
-              <div style="display:flex;gap:7px;align-items:center">
-                ${mc.published ? `<button class="btn" type="button" onclick="startNewWeek()" style="font-size:11px">New Week</button>` : ''}
-                <button class="btn" type="button" onclick="setSection('coach','matchday')">Match Centre →</button>
-              </div>
-            </div>
+          <!-- ── Context strip ─────────────────────────────────── -->
+          <div class="mctl-strip">
+            <span class="mctl-date">${esc(todayStr)}</span>
+            <span style="display:flex;align-items:center;gap:10px">
+              ${contextRight ? `<span class="mctl-context">${contextRight}</span>` : ''}
+              ${mc.published ? `<button class="btn" type="button" onclick="startNewWeek()" style="font-size:11px;min-height:30px;padding:0 10px">New Week</button>` : ''}
+            </span>
           </div>
 
           ${showOnboarding ? `
-          <!-- ── First-session checklist ───────────────────────── -->
           <div class="card ob-card">
             <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
               <strong style="font-size:14px;letter-spacing:-0.01em">Set up your club</strong>
@@ -5619,22 +5689,42 @@
             </div>
           </div>` : ''}
 
-          <!-- ── Daily Briefing cards ──────────────────────────── -->
+          <!-- ── NOW ───────────────────────────────────────────── -->
+          ${nowItems.length ? `
+          <div class="mctl-section-label">Now</div>
           <div class="home-attn-list">
-            ${items.length === 0
-                ? `<div class="home-attn-clear"><strong>All clear</strong>Nothing needs your attention right now.</div>`
-                : items.map(item => `
-                    <div class="home-attn-item home-attn-${item.level}">
-                      <div class="home-attn-body">
-                        <div class="home-attn-icon">${item.icon}</div>
-                        <div>
-                          <div class="home-attn-text">${esc(item.text)}</div>
-                          ${item.detail ? `<div class="home-attn-detail">${esc(item.detail)}</div>` : ''}
-                        </div>
-                      </div>
-                      <button class="btn${item.isPrimary ? ' primary' : ''} home-attn-cta" type="button" onclick="${item.action}">${esc(item.cta)}</button>
-                    </div>`).join('')}
-          </div>
+            ${nowItems.map(item => `
+              <div class="home-attn-item home-attn-${item.level}">
+                <div class="home-attn-body">
+                  <div class="home-attn-icon">${item.icon}</div>
+                  <div>
+                    <div class="home-attn-text">${esc(item.text)}</div>
+                    ${item.detail ? `<div class="home-attn-detail">${esc(item.detail)}</div>` : ''}
+                  </div>
+                </div>
+                <button class="btn${item === nowItems[0] ? ' primary' : ''} home-attn-cta" type="button" onclick="${item.action}">${esc(item.cta)}</button>
+              </div>`).join('')}
+          </div>` : `
+          <div class="mctl-allclear">${allClearText}</div>`}
+
+          <!-- ── THIS WEEK ─────────────────────────────────────── -->
+          ${weekItems.length ? `
+          <div class="mctl-section-label">This week</div>
+          <div class="card" style="padding:4px 16px">
+            ${weekItems.map(item => `
+              <button type="button" class="mctl-row" onclick="${item.action}">
+                <span class="mctl-row-icon">${item.icon}</span>
+                <span class="mctl-row-text">${esc(item.text)}${item.detail ? `<span class="mctl-row-detail"> · ${esc(item.detail)}</span>` : ''}</span>
+                <span class="ob-chevron" style="opacity:0.5">›</span>
+              </button>`).join('')}
+          </div>` : ''}
+
+          <!-- ── DONE TODAY ────────────────────────────────────── -->
+          ${receipts.length ? `
+          <details class="mctl-done">
+            <summary>Done today <span class="muted">(${receipts.length})</span></summary>
+            ${receipts.map(r => `<div class="mctl-receipt"><span class="mctl-tick">✓</span>${esc(r)}</div>`).join('')}
+          </details>` : ''}
 
           ${aiHTML}
 
