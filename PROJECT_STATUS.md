@@ -38,3 +38,12 @@
 - Added privileged management controls so only administrators, moderators, or system actors can create or mutate canonical destinations.
 - Added validation that rejects exact traveller location-style fields; destinations do not store live or precise traveller location.
 - Added tests for creation, updates, activation, pausing, closing, country filtering, active lists, search, invalid types, invalid status transitions, and exact-location rejection.
+
+## 2026-06-12 — Travel Intelligence Destination Hierarchy and Area Platform
+
+- Extended the Destination Platform with `parentDestinationId` support for canonical place hierarchies such as Indonesia > Bali > Canggu.
+- Added broad destination `areas` so destinations can carry named local areas without storing exact traveller location.
+- Added hierarchy protections that reject self-parenting, missing parents, parented country records, and circular parent relationships.
+- Added APIs for listing child destinations, listing active children under a parent, and reading full breadcrumb paths.
+- Added `town` as a supported destination type while preserving all existing destination APIs.
+- Added tests for parent creation, child creation, breadcrumbs, child listing, active child listing, self-parent rejection, circular hierarchy rejection, and existing destination behavior.

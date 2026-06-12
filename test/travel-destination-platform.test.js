@@ -13,8 +13,10 @@ function validDestination(overrides = {}) {
   return {
     name: 'Canggu',
     type: DESTINATION_TYPE.NEIGHBOURHOOD,
+    parentDestinationId: null,
     country: 'Indonesia',
     region: 'Bali',
+    areas: ['Berawa', 'Batu Bolong'],
     timezone: 'Asia/Makassar',
     currency: 'idr',
     languages: ['id', 'EN', 'en'],
@@ -34,8 +36,10 @@ test('creates a canonical destination with safe normalized defaults', async () =
   assert.ok(destination.destinationId.startsWith('dest_'));
   assert.equal(destination.name, 'Canggu');
   assert.equal(destination.type, DESTINATION_TYPE.NEIGHBOURHOOD);
+  assert.equal(destination.parentDestinationId, null);
   assert.equal(destination.country, 'Indonesia');
   assert.equal(destination.region, 'Bali');
+  assert.deepEqual(destination.areas, ['Berawa', 'Batu Bolong']);
   assert.equal(destination.timezone, 'Asia/Makassar');
   assert.equal(destination.currency, 'IDR');
   assert.deepEqual(destination.languages, ['id', 'en']);
@@ -61,6 +65,7 @@ test('updates mutable destination fields', async () => {
     name: 'Canggu Beach',
     type: DESTINATION_TYPE.BEACH,
     region: 'Badung',
+    areas: ['Echo Beach'],
     currency: 'IDR',
     languages: ['id', 'en', 'nl'],
     safetyNotes: ['Avoid swimming in red-flag conditions'],
@@ -70,6 +75,7 @@ test('updates mutable destination fields', async () => {
   assert.equal(updated.name, 'Canggu Beach');
   assert.equal(updated.type, DESTINATION_TYPE.BEACH);
   assert.equal(updated.region, 'Badung');
+  assert.deepEqual(updated.areas, ['Echo Beach']);
   assert.deepEqual(updated.languages, ['id', 'en', 'nl']);
   assert.deepEqual(updated.safetyNotes, ['Avoid swimming in red-flag conditions']);
   assert.deepEqual(updated.seasonality, { surf: ['June', 'July'] });
@@ -160,3 +166,132 @@ test('reads destination by ID for non-privileged actors without exposing travell
   assert.equal(read.longitude, undefined);
 });
 
+test('creates parent and child destinations', async () => {
+  const platform = createDestinationPlatform();
+  const indonesia = await platform.createDestination(validDestination({
+    name: 'Indonesia',
+    type: DESTINATION_TYPE.COUNTRY,
+    country: 'Indonesia',
+    region: null,
+    areas: [],
+    timezone: 'Asia/Jakarta',
+  }), admin);
+
+  const bali = await platform.createDestination(validDestination({
+    name: 'Bali',
+    type: DESTINATION_TYPE.ISLAND,
+    parentDestinationId: indonesia.destinationId,
+  }), admin);
+
+  assert.equal(bali.parentDestinationId, indonesia.destinationId);
+});
+
+test('reads full breadcrumb path', async () => {
+  const platform = createDestinationPlatform();
+  const indonesia = await platform.createDestination(validDestination({
+    name: 'Indonesia',
+    type: DESTINATION_TYPE.COUNTRY,
+    region: null,
+    areas: [],
+    timezone: 'Asia/Jakarta',
+  }), admin);
+  const bali = await platform.createDestination(validDestination({
+    name: 'Bali',
+    type: DESTINATION_TYPE.ISLAND,
+    parentDestinationId: indonesia.destinationId,
+  }), admin);
+  const canggu = await platform.createDestination(validDestination({
+    name: 'Canggu',
+    type: DESTINATION_TYPE.NEIGHBOURHOOD,
+    parentDestinationId: bali.destinationId,
+  }), admin);
+
+  const path = await platform.getDestinationBreadcrumbPath(canggu.destinationId, traveller);
+  assert.deepEqual(path.map(destination => destination.name), ['Indonesia', 'Bali', 'Canggu']);
+});
+
+test('lists child destinations', async () => {
+  const platform = createDestinationPlatform();
+  const indonesia = await platform.createDestination(validDestination({
+    name: 'Indonesia',
+    type: DESTINATION_TYPE.COUNTRY,
+    region: null,
+    areas: [],
+    timezone: 'Asia/Jakarta',
+  }), admin);
+  await platform.createDestination(validDestination({
+    name: 'Bali',
+    type: DESTINATION_TYPE.ISLAND,
+    parentDestinationId: indonesia.destinationId,
+  }), admin);
+  await platform.createDestination(validDestination({
+    name: 'Lombok',
+    type: DESTINATION_TYPE.ISLAND,
+    parentDestinationId: indonesia.destinationId,
+    region: 'West Nusa Tenggara',
+  }), admin);
+
+  const children = await platform.listChildDestinations(indonesia.destinationId, traveller);
+  assert.deepEqual(children.map(destination => destination.name), ['Bali', 'Lombok']);
+});
+
+test('lists active children only', async () => {
+  const platform = createDestinationPlatform();
+  const indonesia = await platform.createDestination(validDestination({
+    name: 'Indonesia',
+    type: DESTINATION_TYPE.COUNTRY,
+    region: null,
+    areas: [],
+    timezone: 'Asia/Jakarta',
+  }), admin);
+  const bali = await platform.createDestination(validDestination({
+    name: 'Bali',
+    type: DESTINATION_TYPE.ISLAND,
+    parentDestinationId: indonesia.destinationId,
+  }), admin);
+  const lombok = await platform.createDestination(validDestination({
+    name: 'Lombok',
+    type: DESTINATION_TYPE.ISLAND,
+    parentDestinationId: indonesia.destinationId,
+    region: 'West Nusa Tenggara',
+  }), admin);
+  await platform.activateDestination(bali.destinationId, admin);
+  await platform.activateDestination(lombok.destinationId, admin);
+  await platform.pauseDestination(lombok.destinationId, admin);
+
+  const activeChildren = await platform.listActiveDestinationsUnderParent(indonesia.destinationId, traveller);
+  assert.deepEqual(activeChildren.map(destination => destination.name), ['Bali']);
+});
+
+test('rejects self-parenting', async () => {
+  const platform = createDestinationPlatform();
+  await assert.rejects(() => platform.createDestination(validDestination({
+    destinationId: 'dest_self_parent',
+    parentDestinationId: 'dest_self_parent',
+  }), admin), /cannot be its own parent/);
+});
+
+test('rejects circular hierarchy updates', async () => {
+  const platform = createDestinationPlatform();
+  const indonesia = await platform.createDestination(validDestination({
+    name: 'Indonesia',
+    type: DESTINATION_TYPE.COUNTRY,
+    region: null,
+    areas: [],
+    timezone: 'Asia/Jakarta',
+  }), admin);
+  const bali = await platform.createDestination(validDestination({
+    name: 'Bali',
+    type: DESTINATION_TYPE.ISLAND,
+    parentDestinationId: indonesia.destinationId,
+  }), admin);
+  const canggu = await platform.createDestination(validDestination({
+    name: 'Canggu',
+    type: DESTINATION_TYPE.NEIGHBOURHOOD,
+    parentDestinationId: bali.destinationId,
+  }), admin);
+
+  await assert.rejects(() => platform.updateDestination(bali.destinationId, {
+    parentDestinationId: canggu.destinationId,
+  }, admin), /circular parent relationships/);
+});
