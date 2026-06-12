@@ -1089,7 +1089,7 @@ export async function changeEmail(userId, { currentPassword, newEmail } = {}) {
   return { user: publicUser(user) };
 }
 
-export async function updateProfile(userId, { displayName, firstName, lastName } = {}) {
+export async function updateProfile(userId, { displayName, firstName, lastName, playerDetails } = {}) {
   const users = await loadUsers();
   const user = users.find(item => item.id === userId);
   if (!user) { const e = new Error('Account not found'); e.status = 404; throw e; }
@@ -1098,7 +1098,49 @@ export async function updateProfile(userId, { displayName, firstName, lastName }
   if (String(firstName || '').trim()) user.firstName = String(firstName).trim().slice(0, 40);
   if (String(lastName || '').trim()) user.lastName = String(lastName).trim().slice(0, 40);
   await saveUsers(users);
-  return { user: publicUser(user) };
+
+  // Player self-service details (Autopilot): players keep their own profile
+  // record current; the coach approves rather than types. Whitelisted fields
+  // only, written to the caller's OWN player profile.
+  let profile = null;
+  if (playerDetails && typeof playerDetails === 'object') {
+    const clean = {};
+    const str = (v, n) => String(v || '').trim().slice(0, n);
+    if (playerDetails.phone !== undefined)            clean.phone = str(playerDetails.phone, 30);
+    if (playerDetails.emergencyContact !== undefined) clean.emergencyContact = str(playerDetails.emergencyContact, 120);
+    if (playerDetails.position !== undefined)         clean.position = str(playerDetails.position, 40);
+    if (playerDetails.dominantHand !== undefined)     clean.dominantHand = ['left', 'right'].includes(String(playerDetails.dominantHand).toLowerCase()) ? String(playerDetails.dominantHand).toLowerCase() : '';
+    if (playerDetails.heightCm !== undefined)         clean.heightCm = Math.max(0, Math.min(250, Number(playerDetails.heightCm) || 0)) || '';
+    if (playerDetails.weightKg !== undefined)         clean.weightKg = Math.max(0, Math.min(250, Number(playerDetails.weightKg) || 0)) || '';
+    if (Object.keys(clean).length) {
+      const profiles = await loadPlayerProfiles();
+      profile = profiles.find(item => item.userId === userId) || null;
+      if (profile) {
+        profile.details = { ...(profile.details || {}), ...clean };
+        profile.detailsUpdatedAt = nowIso();
+        profile.detailsApprovedAt = null; // re-approval needed after changes
+        if (clean.phone) profile.phone = clean.phone;
+        if (clean.position) profile.position = clean.position;
+        await savePlayerProfiles(profiles);
+      }
+    }
+  }
+  return { user: publicUser(user), playerProfile: profile };
+}
+
+// Coach approval of player-submitted details (Autopilot step: "coach simply
+// approves"). Tenant-checked; stamps detailsApprovedAt.
+export async function approvePlayerDetails(profileId, approvedBy, expectedTeamId) {
+  const profiles = await loadPlayerProfiles();
+  const profile = profiles.find(item => item.id === profileId);
+  if (!profile) { const e = new Error('Player profile not found'); e.status = 404; throw e; }
+  if (expectedTeamId && profile.teamId !== expectedTeamId) {
+    const e = new Error('Not authorized for this team'); e.status = 403; throw e;
+  }
+  profile.detailsApprovedAt = nowIso();
+  profile.detailsApprovedBy = approvedBy;
+  await savePlayerProfiles(profiles);
+  return { playerProfile: profile };
 }
 
 // Notification preferences live on the user record; undefined means enabled,

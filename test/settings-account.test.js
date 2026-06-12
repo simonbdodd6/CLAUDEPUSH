@@ -263,3 +263,55 @@ test('delete_club_data requires the exact club name and only wipes the caller te
   const safe = await publishCall('GET', { resource: 'club' }, null, coachB.cookie);
   assert.equal(safe.body.club.clubName, 'Safe Club');
 });
+
+// ─── Autopilot: player self-service details ──────────────────────────────────
+
+test('player saves their own details via update_profile; coach approves; junk rejected', async () => {
+  kv.clear();
+  // Seed a player WITH a player profile
+  const coach = await seedCoachWithPassword('set-coach-ap', 'ap-coach@club.test', 'MyPass123');
+  const users = JSON.parse(kv.get('app:identity:users'));
+  users.push({ id: 'ap-player', email: 'ap-player@club.test', displayName: 'Auto Pilot', passwordSet: true, passwordAlgo: 'scrypt', passwordSalt: 'aa', passwordHash: 'bb' });
+  kv.set('app:identity:users', JSON.stringify(users));
+  const members = JSON.parse(kv.get('app:identity:team_members'));
+  members.push({ id: 'tm_ap-player', teamId: 'boitsfort-rfc', userId: 'ap-player', role: 'player', status: 'active' });
+  kv.set('app:identity:team_members', JSON.stringify(members));
+  kv.set('app:identity:player_profiles', JSON.stringify([
+    { id: 'profile_ap', teamId: 'boitsfort-rfc', teamMemberId: 'tm_ap-player', userId: 'ap-player', displayName: 'Auto Pilot' },
+  ]));
+  const { createSession: cs } = await import('../api/_identityStore.js');
+  const playerSession = await cs({ userId: 'ap-player', teamId: 'boitsfort-rfc', role: 'player' });
+  const playerCookie = { cookie: `${SESSION_COOKIE}=${encodeURIComponent(playerSession.token)}` };
+
+  // Player submits details (with junk fields and out-of-range numbers)
+  const save = await identityCall({
+    action: 'update_profile',
+    playerDetails: {
+      phone: '+32 470 11 22 33', emergencyContact: 'Mum · +32 470 99 88 77',
+      position: 'Flanker', dominantHand: 'RIGHT', heightCm: 184, weightKg: 999,
+      evil: 'payload',
+    },
+  }, playerCookie);
+  assert.equal(save.statusCode, 200);
+  const d = save.body.playerProfile.details;
+  assert.equal(d.phone, '+32 470 11 22 33');
+  assert.equal(d.position, 'Flanker');
+  assert.equal(d.dominantHand, 'right');
+  assert.equal(d.heightCm, 184);
+  assert.equal(d.weightKg, 250, 'weight clamped to sane range');
+  assert.equal(d.evil, undefined, 'unknown fields stripped');
+  assert.ok(save.body.playerProfile.detailsUpdatedAt);
+  assert.equal(save.body.playerProfile.detailsApprovedAt, null, 'changes need re-approval');
+
+  // Coach approves
+  const approve = await identityCall({ action: 'approve_details', profileId: 'profile_ap' }, coach.cookie);
+  assert.equal(approve.statusCode, 200);
+  assert.ok(approve.body.playerProfile.detailsApprovedAt);
+
+  // Players cannot approve; cross-team coaches cannot approve
+  const playerApprove = await identityCall({ action: 'approve_details', profileId: 'profile_ap' }, playerCookie);
+  assert.equal(playerApprove.statusCode, 403);
+  const coachB = await seedCoachWithPassword('set-coach-apB', 'ap-coachB@club.test', 'MyPass123', 'rival-club');
+  const crossApprove = await identityCall({ action: 'approve_details', profileId: 'profile_ap' }, coachB.cookie);
+  assert.equal(crossApprove.statusCode, 403);
+});

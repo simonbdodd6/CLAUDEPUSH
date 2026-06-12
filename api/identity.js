@@ -2,6 +2,7 @@ import {
   adminAccountStatus,
   adminResetStaffPassword,
   approveJoinRequest,
+  approvePlayerDetails,
   changeEmail,
   changePassword,
   claimInvite,
@@ -235,6 +236,12 @@ export default async function handler(req, res) {
       if (action === 'update_profile') {
         const session = await requireSession(req);
         const result = await updateProfile(session.user.id, req.body || {});
+        return res.status(200).json({ ok: true, ...result });
+      }
+      if (action === 'approve_details') {
+        const session = await requireTenantRole(req, ['coach', 'admin']);
+        if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
+        const result = await approvePlayerDetails(req.body?.profileId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });
       }
       if (action === 'update_preferences') {
