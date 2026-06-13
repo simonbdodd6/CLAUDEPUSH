@@ -45,6 +45,7 @@ let _opp      = null   // opponent-intelligence (M24)
 let _td       = null   // training-designer (M25)
 let _ms       = null   // match-strategy (M26)
 let _lm       = null   // live-match (M27)
+let _se       = null   // season-intelligence (M28)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -151,6 +152,11 @@ async function loadMs() {
 async function loadLm() {
   if (!_lm) _lm = await import('./live-match/index.js')
   return _lm
+}
+
+async function loadSe() {
+  if (!_se) _se = await import('./season/index.js')
+  return _se
 }
 
 async function loadRec() {
@@ -1392,6 +1398,40 @@ export const liveMatch = {
 /** AI.getLiveMatchIntelligence — real-time match intelligence. */
 export async function getLiveMatchIntelligence(matchIdOrEvents, opts = {}) { return liveMatch.analyse(matchIdOrEvents, opts) }
 
+// ── M28 — Season Intelligence Engine ──────────────────────────────────────────
+// Understands an entire season: synthesises the fixture list, results, training,
+// development, selection history and the upstream Brain products into a complete,
+// deterministic, evidence-backed season profile. No LLM, no Core dependency,
+// feature-flagged (ai.seasonIntelligence), subscription-aware (Performance+),
+// versioned, gracefully degrading.
+//
+// AI.getSeasonIntelligence(context, opts) → complete season profile (20 outputs)
+
+async function seGate(opts = {}) {
+  const { SEASON_FLAG, SEASON_TIERS } = await loadSe()
+  const flags = opts.flags ?? {}
+  if (SEASON_FLAG in flags && !flags[SEASON_FLAG]) {
+    return { available: false, ok: false, reason: 'feature_disabled', seasonVersion: null }
+  }
+  if (opts.tier != null && !SEASON_TIERS.has(String(opts.tier).toLowerCase())) {
+    return { available: false, ok: false, reason: 'insufficient_tier', seasonVersion: null }
+  }
+  return null
+}
+
+export const seasonIntelligence = {
+  async build(context = {}, opts = {}) {
+    try {
+      const gate = await seGate(opts); if (gate) return gate
+      const { buildSeasonProfile } = await loadSe()
+      return { available: true, ok: true, reason: null, ...buildSeasonProfile(context) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', seasonVersion: null } }
+  },
+}
+
+/** AI.getSeasonIntelligence — build the complete season profile. */
+export async function getSeasonIntelligence(context = {}, opts = {}) { return seasonIntelligence.build(context, opts) }
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -1457,4 +1497,7 @@ export const AI = {
   // M27 — Live Match Intelligence Engine
   liveMatch,
   getLiveMatchIntelligence,
+  // M28 — Season Intelligence Engine
+  seasonIntelligence,
+  getSeasonIntelligence,
 }
