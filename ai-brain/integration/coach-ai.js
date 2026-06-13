@@ -23,13 +23,19 @@ import {
   capabilitiesFallback,
 } from './fallbacks.js'
 
-// ── Lazy product loader ───────────────────────────────────────────────────────
+// ── Lazy loaders ─────────────────────────────────────────────────────────────
 
 let _products = null
+let _learning = null
 
 async function loadProducts() {
   if (!_products) _products = await import('../products/index.js')
   return _products
+}
+
+async function loadLearning() {
+  if (!_learning) _learning = await import('../learning/index.js')
+  return _learning
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -228,6 +234,33 @@ async function getClubSnapshot(club) {
   }
 }
 
+/**
+ * Coach Learning Profile — read-only access to the CoachProfile.
+ * Available to any caller regardless of subscription tier (it is a reading
+ * convenience; the Learning Engine controls all writes).
+ *
+ * Returns IntegrationResponse where data = CoachProfile | null.
+ * When coachId is absent: ok=false, reason=INVALID_INPUT.
+ * When Brain is unavailable: ok=false, reason=BRAIN_UNAVAILABLE, data=null.
+ *
+ * @param {object} user - { coachId?, userId?, tier?, flags? }
+ * @returns {IntegrationResponse}
+ */
+async function getProfile(user) {
+  const coachId = user?.coachId ?? user?.userId ?? null
+  const tier    = tierOf(user)
+  if (!coachId) {
+    return makeResponse({ ok: false, available: false, tier, reason: REASON.INVALID_INPUT, data: null })
+  }
+  try {
+    const { getProfile: _getProfile } = await loadLearning()
+    const profile = _getProfile(coachId)
+    return makeResponse({ ok: true, available: true, tier, reason: null, data: profile ?? null })
+  } catch {
+    return makeResponse({ ok: false, available: true, tier, reason: REASON.BRAIN_UNAVAILABLE, data: null })
+  }
+}
+
 // ── Namespace export ──────────────────────────────────────────────────────────
 
 const CoachAI = Object.freeze({
@@ -236,7 +269,8 @@ const CoachAI = Object.freeze({
   getPlayerCard,
   getMatchReadiness,
   getClubSnapshot,
+  getProfile,
 })
 
 export default CoachAI
-export { getCapabilities, getDashboard, getPlayerCard, getMatchReadiness, getClubSnapshot }
+export { getCapabilities, getDashboard, getPlayerCard, getMatchReadiness, getClubSnapshot, getProfile }

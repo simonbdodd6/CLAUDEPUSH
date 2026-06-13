@@ -12,7 +12,7 @@
  */
 
 export { default as CoachAI } from './coach-ai.js'
-export { getCapabilities, getDashboard, getPlayerCard, getMatchReadiness, getClubSnapshot } from './coach-ai.js'
+export { getCapabilities, getDashboard, getPlayerCard, getMatchReadiness, getClubSnapshot, getProfile } from './coach-ai.js'
 
 export { TIER, CAPABILITY, REASON, GLOBAL_AI_FLAG, INTEGRATION_VERSION } from './integration-types.js'
 export { TIER_CAPABILITIES, TIER_ORDER, resolveTier, hasCapability, getAvailableProducts, getLimitations, isAnyCapabilityEnabled } from './subscription.js'
