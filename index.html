@@ -8127,12 +8127,12 @@
                   </tr>`).join("") || `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:12px">No subs planned.</td></tr>`}
                 </tbody>
               </table></div>
-              <div id="addSubForm" class="hidden" style="display:grid;grid-template-columns:55px 1fr 1fr 1fr auto;gap:6px;margin-top:12px;align-items:end">
-                <label style="font-size:12px">Min<input id="subMin" type="number" min="1" max="80" value="50" style="font-size:12px"></label>
-                <label style="font-size:12px">On<input id="subOn" placeholder="Coming on" style="font-size:12px"></label>
-                <label style="font-size:12px">Off<input id="subOff" placeholder="Going off" style="font-size:12px"></label>
-                <label style="font-size:12px">Reason<input id="subReason" placeholder="Rotation" style="font-size:12px"></label>
-                <button class="btn primary" type="button" style="margin-top:auto;font-size:12px" onclick="addSubPlan()">Add</button>
+              <div id="addSubForm" class="hidden" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:flex-end">
+                <label style="font-size:12px;flex:0 0 55px">Min<input id="subMin" type="number" min="1" max="80" value="50" style="font-size:12px;width:100%"></label>
+                <label style="font-size:12px;flex:1;min-width:100px">On<input id="subOn" placeholder="Coming on" style="font-size:12px;width:100%"></label>
+                <label style="font-size:12px;flex:1;min-width:100px">Off<input id="subOff" placeholder="Going off" style="font-size:12px;width:100%"></label>
+                <label style="font-size:12px;flex:1;min-width:100px">Reason<input id="subReason" placeholder="Rotation" style="font-size:12px;width:100%"></label>
+                <button class="btn primary" type="button" style="font-size:12px;align-self:flex-end" onclick="addSubPlan()">Add</button>
               </div>
             </div>
           </div>
