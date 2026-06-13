@@ -3960,7 +3960,7 @@
     function addClubVideo() {
       const t=document.getElementById("newVidTitle")?.value.trim(), d=document.getElementById("newVidDur")?.value.trim();
       if (!t) return showToast("Enter a video title");
-      (state.clubVideos=state.clubVideos||[]).push({id:"v"+Date.now(),title:t,duration:d||"0:00",date:"Just now"});
+      (state.clubVideos=state.clubVideos||[]).push({id:"v"+Date.now(),title:t,duration:d||"0:00",date:new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short'})});
       notify("Club video added");
     }
     async function removeClubVideo(id) { if (!(await ceConfirm('Remove this video?', '', { confirmLabel: 'Remove', danger: true }))) return; state.clubVideos=(state.clubVideos||[]).filter(v=>v.id!==id); saveState('Video removed'); showToast('Video removed'); render(); }
@@ -4428,7 +4428,7 @@
     function addTreatmentLog() {
       const pid=document.getElementById("treatPid")?.value, t=document.getElementById("treatText")?.value.trim(), th=document.getElementById("treatBy")?.value.trim(), n=document.getElementById("treatNext")?.value.trim();
       if (!pid||!t) return showToast("Select player and enter treatment");
-      (state.treatmentLogs=state.treatmentLogs||[]).unshift({id:"tl"+Date.now(),playerId:pid,date:"Today",treatment:t,therapist:th||"Self",next:n||"TBC"});
+      (state.treatmentLogs=state.treatmentLogs||[]).unshift({id:"tl"+Date.now(),playerId:pid,date:new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short'}),treatment:t,therapist:th||"Self",next:n||"TBC"});
       notify("Treatment log added");
     }
     function saveCoachNotes() { state.coachNotes=document.getElementById("coachNotesArea")?.value||""; saveState('Coach notes saved'); showToast('Coach notes saved ✓'); }
@@ -7709,20 +7709,26 @@
           </div>
         </div>
 
-        <!-- Past sessions archive -->
-        <div class="card" style="margin-bottom:14px">
-          <h2 style="margin-bottom:0">Past sessions</h2>
-          <div class="archive-item">
-            <div class="archive-meta">Last Tuesday</div>
-            <strong>Attack patterns — wide channel</strong>
-            <p>5 blocks · Set piece, Attack, Game</p>
-          </div>
-          <div class="archive-item">
-            <div class="archive-meta">Last Thursday</div>
-            <strong>Lineout &amp; defensive line speed</strong>
-            <p>5 blocks · Set piece, Defence, Review</p>
-          </div>
-        </div>
+        <!-- Past sessions archive — real data from lastWeekTrainingBlocks -->
+        ${(() => {
+          const last = state.lastWeekTrainingBlocks || {};
+          const pastSessions = schedSessions.filter(s => (last[s.id] || []).length);
+          if (!pastSessions.length) return '';
+          return `
+          <div class="card" style="margin-bottom:14px">
+            <h2 style="margin-bottom:0">Last week</h2>
+            ${pastSessions.map(s => {
+              const blks = last[s.id] || [];
+              const tags = [...new Set(blks.map(b => b.tag || b.keyFocus).filter(Boolean))].slice(0, 3);
+              const currEmpty = !((state.trainingBlocks || {})[s.id] || []).length;
+              return `<div class="archive-item" onclick="autopilotDuplicateSession('${s.id}')">
+                <div class="archive-meta">${esc(s.date || s.title)}</div>
+                <strong>${esc(s.title)}</strong>
+                <p>${blks.length} block${blks.length !== 1 ? 's' : ''}${tags.length ? ' · ' + tags.join(', ') : ''}${currEmpty ? ' · <span style="color:var(--green)">Restore →</span>' : ''}</p>
+              </div>`;
+            }).join('')}
+          </div>`;
+        })()}
 
         <!-- Video library row -->
         <div class="grid two-col">
