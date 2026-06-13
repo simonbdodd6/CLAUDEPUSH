@@ -41,6 +41,7 @@ let _api      = null   // coach-experience-api (M15)
 let _products = null   // coach-intelligence-products (M16)
 let _clp      = null   // coach-learning-profile (M19)
 let _dna      = null   // coach-dna-engine (M23)
+let _opp      = null   // opponent-intelligence (M24)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -127,6 +128,11 @@ async function loadClp() {
 async function loadDna() {
   if (!_dna) _dna = await import('./coach-dna/index.js')
   return _dna
+}
+
+async function loadOpp() {
+  if (!_opp) _opp = await import('./opponent/index.js')
+  return _opp
 }
 
 async function loadRec() {
@@ -1133,6 +1139,117 @@ export async function compareCoachEvolution(coachId, opts = {}) { return coachDN
 /** AI.getSeasonLearning — what was learned in a season. */
 export async function getSeasonLearning(coachId, opts = {})     { return coachDNA.seasonLearning(coachId, opts) }
 
+// ── M24 — Opponent Intelligence Engine ────────────────────────────────────────
+// Builds a complete, evidence-backed Opponent Profile from historical match
+// observations. No LLM, no Core dependency, subscription-aware (Performance+),
+// feature-flagged (ai.opponentIntelligence), versioned, gracefully degrading.
+//
+// AI.getOpponentProfile(opponentId, opts)        → full Opponent Profile
+// AI.getOpponentSummary(opponentId, opts)        → headline strengths/weaknesses
+// AI.getOpponentThreats(opponentId, opts)        → threats (+ how to nullify)
+// AI.getOpponentOpportunities(opponentId, opts)  → opportunities (+ how to exploit)
+// AI.compareOpponents([idA, idB], opts)          → dimension-by-dimension compare
+// AI.getOpponentEvolution(opponentId, opts)      → earlier vs recent windows
+// AI.opponent.record(opponentId, observations)   → append match observations
+
+async function oppGate(opts = {}) {
+  const { OPPONENT_FLAG, OPPONENT_TIERS } = await loadOpp()
+  const flags = opts.flags ?? {}
+  if (OPPONENT_FLAG in flags && !flags[OPPONENT_FLAG]) {
+    return { available: false, ok: false, reason: 'feature_disabled', profileVersion: null }
+  }
+  if (opts.tier != null && !OPPONENT_TIERS.has(String(opts.tier).toLowerCase())) {
+    return { available: false, ok: false, reason: 'insufficient_tier', profileVersion: null }
+  }
+  return null
+}
+
+export const opponent = {
+  async record(opponentId, observations) {
+    try {
+      const { recordOpponentObservations } = await loadOpp()
+      return recordOpponentObservations(opponentId ?? null, observations ?? [])
+    } catch { return 0 }
+  },
+
+  async profile(opponentId, opts = {}) {
+    try {
+      const gate = await oppGate(opts); if (gate) return gate
+      const { buildOpponentProfile, getOpponentObservations } = await loadOpp()
+      return { available: true, ok: true, reason: null, ...buildOpponentProfile(opponentId ?? null, getOpponentObservations(opponentId), { asOf: opts.asOf ?? null, opponentName: opts.opponentName ?? null }) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', profileVersion: null } }
+  },
+
+  async summary(opponentId, opts = {}) {
+    try {
+      const gate = await oppGate(opts); if (gate) return gate
+      const { buildOpponentSummary, getOpponentObservations } = await loadOpp()
+      return { available: true, ok: true, reason: null, ...buildOpponentSummary(opponentId ?? null, getOpponentObservations(opponentId), { asOf: opts.asOf ?? null }) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', profileVersion: null } }
+  },
+
+  async threats(opponentId, opts = {}) {
+    try {
+      const gate = await oppGate(opts); if (gate) return gate
+      const { buildOpponentThreats, getOpponentObservations } = await loadOpp()
+      return { available: true, ok: true, reason: null, ...buildOpponentThreats(opponentId ?? null, getOpponentObservations(opponentId), { asOf: opts.asOf ?? null }) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', profileVersion: null } }
+  },
+
+  async opportunities(opponentId, opts = {}) {
+    try {
+      const gate = await oppGate(opts); if (gate) return gate
+      const { buildOpponentOpportunities, getOpponentObservations } = await loadOpp()
+      return { available: true, ok: true, reason: null, ...buildOpponentOpportunities(opponentId ?? null, getOpponentObservations(opponentId), { asOf: opts.asOf ?? null }) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', profileVersion: null } }
+  },
+
+  async compare(opponentIds = [], opts = {}) {
+    try {
+      const gate = await oppGate(opts); if (gate) return gate
+      const { compareOpponentProfiles, getOpponentObservations } = await loadOpp()
+      const [idA, idB] = Array.isArray(opponentIds) ? opponentIds : []
+      return { available: true, ok: true, reason: null, ...compareOpponentProfiles(
+        { opponentId: idA ?? null, observations: getOpponentObservations(idA) },
+        { opponentId: idB ?? null, observations: getOpponentObservations(idB) },
+        { asOf: opts.asOf ?? null }) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', profileVersion: null } }
+  },
+
+  async evolution(opponentId, opts = {}) {
+    try {
+      const gate = await oppGate(opts); if (gate) return gate
+      const { buildOpponentEvolution, getOpponentObservations } = await loadOpp()
+      return { available: true, ok: true, reason: null, ...buildOpponentEvolution(opponentId ?? null, getOpponentObservations(opponentId), { asOf: opts.asOf ?? null }) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', profileVersion: null } }
+  },
+
+  async export(opponentId, opts = {}) {
+    try {
+      const gate = await oppGate(opts); if (gate) return gate
+      const { exportOpponentProfile, getOpponentObservations } = await loadOpp()
+      return exportOpponentProfile(opponentId ?? null, getOpponentObservations(opponentId), { asOf: opts.asOf ?? null })
+    } catch { return null }
+  },
+
+  async reset(opponentId) {
+    try { const { resetOpponent } = await loadOpp(); return resetOpponent(opponentId ?? null) } catch { return null }
+  },
+}
+
+/** AI.getOpponentProfile — full evidence-backed Opponent Profile. */
+export async function getOpponentProfile(opponentId, opts = {})       { return opponent.profile(opponentId, opts) }
+/** AI.getOpponentSummary — headline strengths / weaknesses. */
+export async function getOpponentSummary(opponentId, opts = {})       { return opponent.summary(opponentId, opts) }
+/** AI.getOpponentThreats — their strengths, and how to nullify them. */
+export async function getOpponentThreats(opponentId, opts = {})       { return opponent.threats(opponentId, opts) }
+/** AI.getOpponentOpportunities — their weaknesses, and how to exploit them. */
+export async function getOpponentOpportunities(opponentId, opts = {}) { return opponent.opportunities(opponentId, opts) }
+/** AI.compareOpponents — dimension-by-dimension comparison of two opponents. */
+export async function compareOpponents(opponentIds, opts = {})        { return opponent.compare(opponentIds, opts) }
+/** AI.getOpponentEvolution — how the opponent has changed over time. */
+export async function getOpponentEvolution(opponentId, opts = {})     { return opponent.evolution(opponentId, opts) }
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -1181,4 +1298,12 @@ export const AI = {
   getCoachStyle,
   compareCoachEvolution,
   getSeasonLearning,
+  // M24 — Opponent Intelligence Engine
+  opponent,
+  getOpponentProfile,
+  getOpponentSummary,
+  getOpponentThreats,
+  getOpponentOpportunities,
+  compareOpponents,
+  getOpponentEvolution,
 }
