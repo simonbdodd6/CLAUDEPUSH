@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>CONSCIOUSNESS</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#000; }
+  body {
+    background:
+      radial-gradient(1200px 900px at 50% 42%, #060b1c 0%, #02030a 55%, #000 100%);
+    font-family: "SF Pro Display","Helvetica Neue",Inter,system-ui,-apple-system,sans-serif;
+    color:#cfe6ff; cursor:crosshair;
+  }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; }
+
+  /* ---------- HUD ---------- */
+  .hud { position:fixed; pointer-events:none; user-select:none; z-index:10;
+         text-transform:uppercase; letter-spacing:.28em; }
+  .hud .lbl { font-size:9px; opacity:.45; font-weight:600; }
+  .hud .val { font-size:15px; font-weight:300; letter-spacing:.18em; color:#eaf4ff;
+              font-variant-numeric:tabular-nums; }
+
+  #brand { top:28px; left:34px; }
+  #brand .title { font-size:13px; font-weight:600; letter-spacing:.62em; color:#f4f9ff; }
+  #brand .sub   { font-size:9px; letter-spacing:.4em; opacity:.4; margin-top:7px; }
+
+  #stats { top:28px; right:34px; text-align:right; display:flex; gap:34px; }
+  #stats .col { display:flex; flex-direction:column; gap:5px; }
+
+  #firewrap { bottom:120px; left:34px; width:190px; }
+  #firebar { margin-top:10px; height:2px; width:100%; background:rgba(120,170,255,.14); position:relative; overflow:hidden; }
+  #firefill { position:absolute; inset:0 100% 0 0; background:linear-gradient(90deg,#1f6bff,#7df0ff,#ff4fd0);
+              box-shadow:0 0 14px #4aa8ff; transition:right .12s linear; }
+
+  #ticker { bottom:78px; left:34px; right:34px; font-size:9px; letter-spacing:.34em;
+            opacity:.5; white-space:nowrap; overflow:hidden; }
+
+  /* ---------- controls ---------- */
+  #dock { position:fixed; z-index:11; bottom:30px; left:50%; transform:translateX(-50%);
+          display:flex; gap:12px; }
+  .btn { pointer-events:auto; cursor:pointer; -webkit-tap-highlight-color:transparent;
+         font-family:inherit; text-transform:uppercase; letter-spacing:.26em; font-size:10px; font-weight:600;
+         color:#bcd8ff; background:rgba(14,24,48,.42); border:1px solid rgba(120,170,255,.22);
+         padding:13px 22px; border-radius:40px; backdrop-filter:blur(14px);
+         transition:.25s ease; }
+  .btn:hover { color:#fff; border-color:rgba(150,200,255,.6); background:rgba(30,52,98,.5);
+               box-shadow:0 0 26px rgba(70,140,255,.35); transform:translateY(-1px); }
+  .btn.on { color:#06121f; background:#7df0ff; border-color:#7df0ff; box-shadow:0 0 30px rgba(125,240,255,.55); }
+
+  #hint { position:fixed; z-index:11; bottom:30px; right:34px; font-size:9px; letter-spacing:.3em;
+          opacity:.32; text-transform:uppercase; text-align:right; line-height:2.1; pointer-events:none; }
+
+  #boot { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center;
+          background:#000; transition:opacity 1.2s ease; }
+  #boot.gone { opacity:0; pointer-events:none; }
+  #boot .b { font-size:11px; letter-spacing:.7em; text-transform:uppercase; opacity:.7;
+             animation:bp 1.6s ease-in-out infinite; }
+  @keyframes bp { 0%,100%{opacity:.25} 50%{opacity:.85} }
+
+  .fade { opacity:0; animation:fin 2s ease forwards; }
+  #brand{ animation-delay:.2s } #stats{ animation-delay:.5s }
+  #firewrap{ animation-delay:.8s } #ticker{ animation-delay:1s } #dock{ animation-delay:1.1s } #hint{ animation-delay:1.2s }
+  @keyframes fin { to { opacity:1 } }
+</style>
+
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "three": "https://esm.sh/three@0.160.0",
+    "htm": "https://esm.sh/htm@3.1.1",
+    "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.15.19?external=react,react-dom,three",
+    "postprocessing": "https://esm.sh/postprocessing@6.34.3?external=three",
+    "@react-three/postprocessing": "https://esm.sh/@react-three/postprocessing@2.16.2?external=react,three,@react-three/fiber,postprocessing"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="boot"><div class="b">Initialising consciousness</div></div>
+
+  <div id="brand" class="hud fade">
+    <div class="title">CONSCIOUSNESS</div>
+    <div class="sub">Synthetic Cognition Engine</div>
+  </div>
+
+  <div id="stats" class="hud fade">
+    <div class="col"><span class="lbl">Neurons</span><span class="val" id="s-neurons">0</span></div>
+    <div class="col"><span class="lbl">Synapses</span><span class="val" id="s-syn">0</span></div>
+    <div class="col"><span class="lbl">Layer</span><span class="val" id="s-layer">01</span></div>
+  </div>
+
+  <div id="firewrap" class="hud fade">
+    <span class="lbl">Firing rate</span>
+    <div id="firebar"><div id="firefill"></div></div>
+  </div>
+
+  <div id="ticker" class="hud fade">— cognition online —</div>
+
+  <div id="dock">
+    <div class="btn" id="b-task">Run AI Task</div>
+    <div class="btn" id="b-dream">Dream</div>
+    <div class="btn" id="b-pulse">Surge</div>
+  </div>
+
+  <div id="hint">
+    move · rotate<br/>scroll · descend<br/>hover · ignite<br/>click · deeper
+  </div>
+
+  <div id="app"></div>
+
+<script type="module">
+import React, { useRef, useMemo, useEffect } from 'react'
+import { createRoot } from 'react-dom/client'
+import * as THREE from 'three'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { EffectComposer, Bloom, DepthOfField, Vignette, Noise } from '@react-three/postprocessing'
+import htm from 'htm'
+const html = htm.bind(React.createElement)
+
+/* =========================================================================
+   ENGINE STATE — shared mutable cognition state (read by the render loop)
+   ========================================================================= */
+const engine = {
+  pointer: { x: 0, y: 0 },     // NDC
+  lastMove: performance.now(),
+  tasks: 0,                    // active background AI tasks
+  surge: 0,                    // transient firing burst (decays)
+  layer: 0,                    // intelligence depth (click to descend)
+  diveUntil: 0,                // camera dive timestamp
+  rotTargetX: 0, rotTargetY: 0,
+  zoomTarget: 4.3,
+  dream: false,
+}
+
+/* =========================================================================
+   NOISE — value-noise fbm for organic cortical folds
+   ========================================================================= */
+function hash(i, j, k) {
+  const n = Math.sin(i * 127.1 + j * 311.7 + k * 74.7) * 43758.5453123
+  return n - Math.floor(n)
+}
+function vnoise(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z)
+  const xf = x - xi, yf = y - yi, zf = z - zi
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf)
+  const L = (a, b, t) => a + (b - a) * t
+  const c000 = hash(xi, yi, zi),       c100 = hash(xi + 1, yi, zi)
+  const c010 = hash(xi, yi + 1, zi),   c110 = hash(xi + 1, yi + 1, zi)
+  const c001 = hash(xi, yi, zi + 1),   c101 = hash(xi + 1, yi, zi + 1)
+  const c011 = hash(xi, yi + 1, zi + 1), c111 = hash(xi + 1, yi + 1, zi + 1)
+  const x00 = L(c000, c100, u), x10 = L(c010, c110, u)
+  const x01 = L(c001, c101, u), x11 = L(c011, c111, u)
+  return L(L(x00, x10, v), L(x01, x11, v), w) * 2 - 1
+}
+function fbm(x, y, z) {
+  let s = 0, a = 0.5, f = 1
+  for (let o = 0; o < 3; o++) { s += a * vnoise(x * f, y * f, z * f); f *= 2; a *= 0.5 }
+  return s
+}
+function gauss() {
+  let u = 0, v = 0
+  while (u === 0) u = Math.random()
+  while (v === 0) v = Math.random()
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
+}
+function randDir() {
+  const x = gauss(), y = gauss(), z = gauss()
+  const l = Math.hypot(x, y, z) || 1
+  return [x / l, y / l, z / l]
+}
+
+/* =========================================================================
+   BRAIN GENERATION — particle cloud in the silhouette of a human brain
+   ========================================================================= */
+function classify(p) {
+  if (p[2] > 0.55)  return 0   // frontal
+  if (p[2] < -0.55) return 3   // occipital
+  if (p[1] > 0.45)  return 2   // parietal
+  if (Math.abs(p[0]) > 0.6 && p[1] < 0.12) return 1 // temporal
+  return 4                     // limbic / central
+}
+
+function buildBrain(N) {
+  const pos = new Float32Array(N * 3)
+  const phase = new Float32Array(N)
+  const size = new Float32Array(N)
+  const cluster = new Float32Array(N)
+  const seed = new Float32Array(N)
+  const pts = []
+
+  const cereb = Math.floor(N * 0.10)
+
+  for (let i = 0; i < N; i++) {
+    let p, cl, s
+    if (i < cereb) {
+      // cerebellum — dense ridged blob, back & low
+      const d = randDir()
+      p = [d[0] * 0.40, d[1] * 0.30, d[2] * 0.40]
+      const rr = 1 + 0.20 * fbm(p[0] * 9, p[1] * 9, p[2] * 9)
+      p = [p[0] * rr, p[1] * rr, p[2] * rr]
+      p[2] += -0.92
+      p[1] += -0.52
+      cl = 5
+      s = 4.5 + Math.random() * 6
+    } else {
+      const d = randDir()
+      let q = [d[0] * 1.06, d[1] * 0.92, d[2] * 1.44]   // ellipsoid (long front-back)
+      const n1 = fbm(q[0] * 2.0 + 11, q[1] * 2.0, q[2] * 2.0)
+      const n2 = fbm(q[0] * 4.3, q[1] * 4.3 + 5, q[2] * 4.3)
+      const fold = 1 + 0.105 * n1 + 0.052 * n2        // gyri / sulci
+      q = [q[0] * fold, q[1] * fold, q[2] * fold]
+      const th = 0.85 + 0.15 * Math.random()           // slight volumetric thickness
+      q = [q[0] * th, q[1] * th, q[2] * th]
+      const side = q[0] >= 0 ? 1 : -1                  // longitudinal fissure
+      q[0] += side * 0.055
+      if (q[1] < 0) q[1] *= 0.80                        // flattened base
+      if (q[2] > 0.7) q[1] += 0.04                      // frontal lift
+      p = q
+      cl = classify(p)
+      s = 6 + Math.random() * 10
+    }
+    pos[i * 3] = p[0]; pos[i * 3 + 1] = p[1]; pos[i * 3 + 2] = p[2]
+    phase[i] = Math.random()
+    size[i] = s
+    cluster[i] = cl
+    seed[i] = Math.random()
+    pts.push(p)
+  }
+
+  /* ---- synapses: nearest-neighbour edges via spatial hash ---- */
+  const CELL = 0.20, R = 0.26, K = 3, MAX = 9000
+  const grid = new Map()
+  const key = (x, y, z) => x + ',' + y + ',' + z
+  for (let i = 0; i < N; i++) {
+    const p = pts[i]
+    const k = key(Math.floor(p[0] / CELL), Math.floor(p[1] / CELL), Math.floor(p[2] / CELL))
+    let b = grid.get(k); if (!b) { b = []; grid.set(k, b) }
+    b.push(i)
+  }
+  const seen = new Set()
+  const eP = [], eT = [], eS = []
+  outer:
+  for (let i = 0; i < N; i++) {
+    const p = pts[i]
+    const cx = Math.floor(p[0] / CELL), cy = Math.floor(p[1] / CELL), cz = Math.floor(p[2] / CELL)
+    const cand = []
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      const b = grid.get(key(cx + dx, cy + dy, cz + dz)); if (!b) continue
+      for (const j of b) {
+        if (j === i) continue
+        const q = pts[j]
+        const dd = (p[0]-q[0])**2 + (p[1]-q[1])**2 + (p[2]-q[2])**2
+        if (dd < R * R) cand.push([dd, j])
+      }
+    }
+    cand.sort((a, b) => a[0] - b[0])
+    for (let n = 0; n < Math.min(K, cand.length); n++) {
+      const j = cand[n][1]
+      const a = Math.min(i, j), b = Math.max(i, j)
+      const ek = a * N + b
+      if (seen.has(ek)) continue
+      seen.add(ek)
+      const pa = pts[a], pb = pts[b], sd = Math.random()
+      eP.push(pa[0], pa[1], pa[2], pb[0], pb[1], pb[2])
+      eT.push(0, 1)
+      eS.push(sd, sd)
+      if (eT.length >= MAX * 2) break outer
+    }
+  }
+
+  return {
+    pos, phase, size, cluster, seed, count: N,
+    edgePos: new Float32Array(eP), edgeT: new Float32Array(eT), edgeSeed: new Float32Array(eS),
+    edgeCount: eT.length / 2,
+  }
+}
+
+/* =========================================================================
+   SHADERS
+   ========================================================================= */
+const HUE = `
+  vec3 hueShift(vec3 col, float a){
+    const vec3 k = vec3(0.57735);
+    float c = cos(a), s = sin(a);
+    return col * c + cross(k, col) * s + k * dot(k, col) * (1.0 - c);
+  }`
+
+const PARTICLE_VERT = `
+  uniform float uTime, uFiring, uBreath, uHover, uPixelRatio, uShockT, uForm, uThoughtT;
+  uniform vec3  uPointer, uShockPos, uThoughtPos;
+  attribute float aPhase, aSize, aCluster, aSeed;
+  varying float vBright, vCluster, vHot;
+  void main(){
+    vec3 p = position * uBreath;
+
+    // ---- genesis: particles converge out of the void into the brain ----
+    float ef = smoothstep(0.0, 1.0, clamp(uForm, 0.0, 1.0));
+    vec3 rnd = vec3(sin(aSeed*91.3), cos(aSeed*53.7 + aPhase*12.0), sin(aPhase*40.1 + aSeed*7.0));
+    vec3 origin = normalize(rnd + 1e-4) * (3.2 + aSeed*2.4);
+    p = mix(origin, p, ef);
+
+    float w = sin(uTime*0.8 + aSeed*6.2831)*0.012 + cos(uTime*0.5 + p.y*3.0 + aSeed*3.0)*0.010;
+    p += normalize(p + 1e-4) * w * ef;
+
+    float freq  = 1.2 + uFiring*4.5 + aSeed*0.6;
+    float pulse = 0.5 + 0.5*sin(uTime*freq + aPhase*6.2831);
+
+    float dHov = distance(p, uPointer);
+    float hov  = uHover * smoothstep(0.5, 0.0, dHov);
+    float fire = pulse*(0.5 + uFiring*1.25) + hov*1.7;
+
+    // ---- click cascade: expanding shockwave of firing neurons ----
+    float age = uTime - uShockT;
+    float shock = 0.0;
+    if (age > 0.0 && age < 1.7) {
+      float ring = age * 2.3;
+      float dd = distance(p, uShockPos);
+      shock = exp(-pow((dd - ring) * 4.2, 2.0)) * (1.0 - age / 1.7);
+      fire += shock * 2.4;
+    }
+
+    // ---- ambient thought-waves: reasoning propagates through the network ----
+    float tage = uTime - uThoughtT;
+    float thought = 0.0;
+    if (tage > 0.0 && tage < 2.4) {
+      float ring = tage * 1.7;
+      float dd2 = distance(p, uThoughtPos);
+      thought = exp(-pow((dd2 - ring) * 5.0, 2.0)) * (1.0 - tage / 2.4);
+      fire += thought * 1.9;
+    }
+
+    float genesis = (1.0 - ef) * (0.6 + pulse*0.8);   // bright ignition while forming
+    fire += genesis;
+
+    vBright  = fire;
+    vCluster = aCluster;
+    vHot     = clamp(uFiring*0.55 + hov*1.3 + pulse*0.25 + shock*1.5 + thought*1.1 + genesis*0.9, 0.0, 1.0);
+
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    float sz = aSize * (1.0 + fire*0.9);
+    gl_PointSize = sz * uPixelRatio * (300.0 / -mv.z);
+    gl_Position = projectionMatrix * mv;
+  }`
+
+const PARTICLE_FRAG = `
+  precision highp float;
+  uniform float uLayer, uTime;
+  varying float vBright, vCluster, vHot;
+  ${HUE}
+  vec3 palette(float c){
+    if(c<0.5)      return vec3(0.15,0.78,1.00);
+    else if(c<1.5) return vec3(1.00,0.24,0.70);
+    else if(c<2.5) return vec3(0.58,0.36,1.00);
+    else if(c<3.5) return vec3(0.18,1.00,0.74);
+    else if(c<4.5) return vec3(0.34,0.55,1.00);
+    else           return vec3(1.00,0.70,0.24);
+  }
+  void main(){
+    vec2 uv = gl_PointCoord - 0.5;
+    float d = length(uv);
+    if(d > 0.5) discard;
+    float core = smoothstep(0.5, 0.0, d);
+    float glow = pow(core, 1.55);
+    vec3 col = hueShift(palette(vCluster), uLayer*0.6);
+    col = mix(col, vec3(1.0), vHot*0.7);
+
+    // ---- clusters evolve: a wave of dominance migrates between regions ----
+    float dom = mod(uTime * 0.14, 6.0);
+    float ev  = smoothstep(0.85, 0.0, abs(vCluster - dom));
+    col += col * ev * 0.7;
+
+    float a = glow * (0.22 + vBright*0.95) * (1.0 + ev*0.45);
+    gl_FragColor = vec4(col * (0.55 + vBright*1.5), a);
+  }`
+
+const EDGE_VERT = `
+  uniform float uBreath;
+  attribute float aLineT, aSeed;
+  varying float vT, vSeed;
+  void main(){
+    vT = aLineT; vSeed = aSeed;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position * uBreath, 1.0);
+  }`
+
+const EDGE_FRAG = `
+  precision highp float;
+  uniform float uTime, uFiring, uEdgeOpacity, uLayer, uForm;
+  varying float vT, vSeed;
+  ${HUE}
+  void main(){
+    float speed = 0.16 + uFiring*0.65;
+    float head  = fract(uTime*speed + vSeed);
+    float d = abs(vT - head); d = min(d, 1.0 - d);
+    float spark = exp(-d*26.0) * (0.6 + uFiring*1.3);
+    float base  = 0.045 + uFiring*0.05;
+    float reveal = smoothstep(0.0, 1.0, clamp(uTime*0.18 - vSeed*0.9, 0.0, 1.0));
+    float born   = smoothstep(0.55, 1.0, uForm);   // synapses grow only once neurons settle
+    vec3 col = hueShift(mix(vec3(0.20,0.50,0.92), vec3(0.75,0.92,1.0), clamp(spark,0.0,1.0)), uLayer*0.6);
+    gl_FragColor = vec4(col, (base + spark) * uEdgeOpacity * reveal * born);
+  }`
+
+const GLOW_FRAG = `
+  precision highp float;
+  uniform float uTime, uFiring, uLayer;
+  varying vec2 vUv;
+  ${HUE}
+  void main(){
+    float d = distance(vUv, vec2(0.5));
+    float g = smoothstep(0.5, 0.0, d);
+    vec3 col = hueShift(mix(vec3(0.05,0.12,0.35), vec3(0.25,0.10,0.45), 0.5 + 0.5*sin(uTime*0.2)), uLayer*0.6);
+    gl_FragColor = vec4(col * (0.6 + uFiring*0.8), g*g*0.5);
+  }`
+
+/* =========================================================================
+   SPRING — critically-ish damped spring integrator
+   ========================================================================= */
+function makeSpring(v) { return { value: v, vel: 0, target: v } }
+function stepSpring(s, dt, k = 90, d = 16) {
+  const f = -k * (s.value - s.target) - d * s.vel
+  s.vel += f * dt
+  s.value += s.vel * dt
+}
+
+/* =========================================================================
+   BRAIN COMPONENT
+   ========================================================================= */
+function Brain() {
+  const groupRef = useRef()
+  const data = useMemo(() => buildBrain(4200), [])
+
+  const uniforms = useMemo(() => ({
+    uTime:        { value: 0 },
+    uFiring:      { value: 0.08 },
+    uBreath:      { value: 1 },
+    uHover:       { value: 0 },
+    uPointer:     { value: new THREE.Vector3(99, 99, 99) },
+    uPixelRatio:  { value: Math.min(window.devicePixelRatio, 1.8) },
+    uLayer:       { value: 0 },
+    uEdgeOpacity: { value: 0 },
+    uShockT:      { value: -99 },
+    uShockPos:    { value: new THREE.Vector3() },
+    uForm:        { value: 0 },
+    uThoughtT:    { value: -99 },
+    uThoughtPos:  { value: new THREE.Vector3() },
+  }), [])
+
+  const pointMat = useMemo(() => new THREE.ShaderMaterial({
+    uniforms, vertexShader: PARTICLE_VERT, fragmentShader: PARTICLE_FRAG,
+    transparent: true, depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending,
+  }), [uniforms])
+
+  const edgeMat = useMemo(() => new THREE.ShaderMaterial({
+    uniforms, vertexShader: EDGE_VERT, fragmentShader: EDGE_FRAG,
+    transparent: true, depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending,
+  }), [uniforms])
+
+  const pointGeo = useMemo(() => {
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(data.pos, 3))
+    g.setAttribute('aPhase', new THREE.BufferAttribute(data.phase, 1))
+    g.setAttribute('aSize', new THREE.BufferAttribute(data.size, 1))
+    g.setAttribute('aCluster', new THREE.BufferAttribute(data.cluster, 1))
+    g.setAttribute('aSeed', new THREE.BufferAttribute(data.seed, 1))
+    return g
+  }, [data])
+
+  const edgeGeo = useMemo(() => {
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(data.edgePos, 3))
+    g.setAttribute('aLineT', new THREE.BufferAttribute(data.edgeT, 1))
+    g.setAttribute('aSeed', new THREE.BufferAttribute(data.edgeSeed, 1))
+    return g
+  }, [data])
+
+  // publish counts to HUD
+  useEffect(() => {
+    document.getElementById('s-neurons').textContent = data.count.toLocaleString()
+    document.getElementById('s-syn').textContent = data.edgeCount.toLocaleString()
+    const boot = document.getElementById('boot')
+    setTimeout(() => boot.classList.add('gone'), 600)
+  }, [data])
+
+  // springs (module-persistent across frames)
+  const sp = useRef({
+    rotX: makeSpring(0), rotY: makeSpring(0),
+    zoom: makeSpring(4.3), firing: makeSpring(0.08), layer: makeSpring(0),
+    form: makeSpring(0),
+  }).current
+
+  const plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), [])
+  const hit = useMemo(() => new THREE.Vector3(), [])
+  const autoSpin = useRef(0)
+  const hudTick = useRef(0)
+  const thoughtTimer = useRef(0)
+  const nextThought = useRef(1.2)
+
+  useFrame((state, dtRaw) => {
+    const dt = Math.min(dtRaw, 0.033)
+    const t = state.clock.elapsedTime
+    const now = performance.now()
+
+    // ---- firing target from background tasks + surge + idle ----
+    engine.surge *= Math.pow(0.5, dt / 0.6)
+    const idle = (now - engine.lastMove) > 2600
+    const base = idle ? 0.05 : 0.10
+    sp.firing.target = Math.min(1, base + engine.tasks * 0.13 + engine.surge)
+    stepSpring(sp.firing, dt, 40, 11)
+
+    // ---- genesis formation spring (runs once on boot) ----
+    sp.form.target = 1
+    stepSpring(sp.form, dt, 16, 8)
+    uniforms.uForm.value = sp.form.value
+
+    // ---- breathing ----
+    uniforms.uBreath.value = 1 + 0.022 * Math.sin(t * 0.55) + 0.01 * Math.sin(t * 0.27 + 1.3)
+
+    // ---- rotation: mouse + slow auto spin, spring-damped ----
+    autoSpin.current += dt * 0.045
+    sp.rotY.target = engine.pointer.x * 0.6
+    sp.rotX.target = -engine.pointer.y * 0.34
+    stepSpring(sp.rotX, dt, 70, 15)
+    stepSpring(sp.rotY, dt, 70, 15)
+    if (groupRef.current) {
+      groupRef.current.rotation.y = autoSpin.current + sp.rotY.value
+      groupRef.current.rotation.x = sp.rotX.value
+    }
+
+    // ---- camera zoom (scroll) + click dive, spring-damped ----
+    let zt = engine.zoomTarget
+    if (now < engine.diveUntil) zt -= 0.9
+    sp.zoom.target = zt
+    stepSpring(sp.zoom, dt, 55, 13)
+    state.camera.position.z = sp.zoom.value
+    // ---- cinematic idle drift: camera sways gently when the mind rests ----
+    const idleAmt = Math.min(1, Math.max(0, (now - engine.lastMove - 2600) / 3500))
+    state.camera.position.x = Math.sin(t * 0.15) * 0.28 * idleAmt
+    state.camera.position.y = Math.cos(t * 0.11) * 0.20 * idleAmt
+    state.camera.lookAt(0, 0, 0)
+
+    // ---- layer (click descends) ----
+    sp.layer.target = engine.layer
+    stepSpring(sp.layer, dt, 30, 10)
+    uniforms.uLayer.value = sp.layer.value
+
+    // ---- hover firing: raycast pointer onto plane → local space ----
+    state.raycaster.setFromCamera(state.pointer, state.camera)
+    if (state.raycaster.ray.intersectPlane(plane, hit) && groupRef.current) {
+      groupRef.current.worldToLocal(hit)
+      uniforms.uPointer.value.copy(hit)
+    }
+    uniforms.uHover.value = Math.exp(-(now - engine.lastMove) / 1200)
+
+    // ---- fire a click cascade from the current pointer locus ----
+    if (engine.shockPending) {
+      engine.shockPending = false
+      uniforms.uShockPos.value.copy(uniforms.uPointer.value)
+      uniforms.uShockT.value = t
+    }
+
+    // ---- spontaneous thoughts: a wave ignites from a random neuron and
+    //      ripples outward through the network — faster as firing rises ----
+    thoughtTimer.current += dt
+    if (sp.form.value > 0.6 && thoughtTimer.current > nextThought.current) {
+      thoughtTimer.current = 0
+      nextThought.current = Math.max(0.45, 2.4 - sp.firing.value * 2.0 - engine.tasks * 0.2)
+      const i = (Math.random() * data.count) | 0
+      uniforms.uThoughtPos.value.set(data.pos[i * 3], data.pos[i * 3 + 1], data.pos[i * 3 + 2])
+      uniforms.uThoughtT.value = t
+    }
+
+    // ---- core uniforms ----
+    uniforms.uTime.value = t
+    uniforms.uFiring.value = sp.firing.value
+    uniforms.uEdgeOpacity.value = Math.min(0.95, uniforms.uEdgeOpacity.value + dt * 0.4)
+
+    // ---- HUD (throttled) ----
+    hudTick.current += dt
+    if (hudTick.current > 0.1) {
+      hudTick.current = 0
+      const pct = Math.round(sp.firing.value * 100)
+      document.getElementById('firefill').style.right = (100 - pct) + '%'
+      document.getElementById('s-layer').textContent = String(engine.layer + 1).padStart(2, '0')
+    }
+  })
+
+  return html`
+    <group ref=${groupRef}>
+      <points geometry=${pointGeo} material=${pointMat} frustumCulled=${false} />
+      <lineSegments geometry=${edgeGeo} material=${edgeMat} frustumCulled=${false} />
+    </group>`
+}
+
+/* =========================================================================
+   KNOWLEDGE DUST — ambient drifting particles for volumetric depth
+   ========================================================================= */
+function Dust() {
+  const N = 1600
+  const data = useMemo(() => {
+    const pos = new Float32Array(N * 3), seed = new Float32Array(N)
+    for (let i = 0; i < N; i++) {
+      const d = randDir(), r = 2.6 + Math.random() * 2.8
+      pos[i * 3] = d[0] * r; pos[i * 3 + 1] = d[1] * r * 0.8; pos[i * 3 + 2] = d[2] * r
+      seed[i] = Math.random()
+    }
+    return { pos, seed }
+  }, [])
+  const uniforms = useMemo(() => ({
+    uTime: { value: 0 }, uPixelRatio: { value: Math.min(window.devicePixelRatio, 1.8) },
+  }), [])
+  const geo = useMemo(() => {
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(data.pos, 3))
+    g.setAttribute('aSeed', new THREE.BufferAttribute(data.seed, 1))
+    return g
+  }, [data])
+  const mat = useMemo(() => new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: `
+      uniform float uTime, uPixelRatio; attribute float aSeed; varying float vA;
+      void main(){
+        vec3 p = position;
+        float a = uTime*0.025 + aSeed*6.2831;
+        float s = sin(a), c = cos(a);
+        p.xz = mat2(c, -s, s, c) * p.xz;
+        p.y += sin(uTime*0.2 + aSeed*10.0) * 0.18;
+        vA = 0.3 + 0.7*aSeed;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = (1.0 + aSeed*2.2) * uPixelRatio * (130.0 / -mv.z);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      precision highp float; varying float vA;
+      void main(){
+        vec2 uv = gl_PointCoord - 0.5; float d = length(uv);
+        if(d > 0.5) discard;
+        float g = smoothstep(0.5, 0.0, d);
+        gl_FragColor = vec4(vec3(0.32, 0.46, 0.82) * g, g * 0.10 * vA);
+      }`,
+    transparent: true, depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending,
+  }), [uniforms])
+  useFrame((s) => { uniforms.uTime.value = s.clock.elapsedTime })
+  return html`<points geometry=${geo} material=${mat} frustumCulled=${false} />`
+}
+
+/* =========================================================================
+   VOLUMETRIC BACKLIGHT
+   ========================================================================= */
+function Glow() {
+  const matRef = useRef()
+  const uniforms = useMemo(() => ({
+    uTime: { value: 0 }, uFiring: { value: 0 }, uLayer: { value: 0 },
+  }), [])
+  const mat = useMemo(() => new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: GLOW_FRAG,
+    transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+  }), [uniforms])
+  useFrame((s) => { uniforms.uTime.value = s.clock.elapsedTime })
+  return html`<mesh position=${[0, 0, -1.4]} material=${mat}>
+    <planeGeometry args=${[7, 6]} />
+  </mesh>`
+}
+
+/* =========================================================================
+   POST PROCESSING
+   ========================================================================= */
+function Fx() {
+  return html`
+    <${EffectComposer} multisampling=${0}>
+      <${Bloom} intensity=${1.15} luminanceThreshold=${0.12} luminanceSmoothing=${0.5} mipmapBlur=${true} radius=${0.75} />
+      <${DepthOfField} focusDistance=${0.012} focalLength=${0.045} bokehScale=${2.4} height=${480} />
+      <${Vignette} eskil=${false} offset=${0.22} darkness=${0.92} />
+      <${Noise} opacity=${0.035} />
+    <//>`
+}
+
+/* =========================================================================
+   APP
+   ========================================================================= */
+function Scene() {
+  return html`<${React.Fragment}>
+    <${Glow} />
+    <${Dust} />
+    <${Brain} />
+    <${Fx} />
+  <//>`
+}
+
+function App() {
+  return html`
+    <${Canvas}
+      dpr=${[1, 1.8]}
+      gl=${{ antialias: false, powerPreference: 'high-performance', alpha: false, stencil: false, depth: true }}
+      camera=${{ position: [0, 0, 4.3], fov: 42, near: 0.1, far: 100 }}
+      onCreated=${({ gl }) => { gl.setClearColor(0x000206, 1) }}
+    >
+      <${Scene} />
+    <//>`
+}
+
+createRoot(document.getElementById('app')).render(html`<${App} />`)
+
+/* =========================================================================
+   INTERACTION WIRING (window-level)
+   ========================================================================= */
+addEventListener('pointermove', (e) => {
+  engine.pointer.x = (e.clientX / innerWidth) * 2 - 1
+  engine.pointer.y = (e.clientY / innerHeight) * 2 - 1
+  engine.lastMove = performance.now()
+}, { passive: true })
+
+addEventListener('wheel', (e) => {
+  engine.zoomTarget = Math.max(2.1, Math.min(7.0, engine.zoomTarget + e.deltaY * 0.0014))
+}, { passive: true })
+
+addEventListener('click', (e) => {
+  if (e.target.closest('#dock')) return
+  engine.layer = (engine.layer + 1) % 6
+  engine.surge += 0.7
+  engine.diveUntil = performance.now() + 650
+  engine.shockPending = true
+}, { passive: true })
+
+/* ---- background AI tasks raise the firing rate ---- */
+function spawnTask(life = 1400 + Math.random() * 1800) {
+  engine.tasks++
+  pushTicker('▸ cognition task dispatched · firing ↑')
+  setTimeout(() => { engine.tasks = Math.max(0, engine.tasks - 1) }, life)
+}
+const TICK = [
+  'analysing player welfare signals', 'ranking weekly priorities', 'replaying coach decisions',
+  'consolidating squad memory', 'evaluating match readiness', 'learning coaching style',
+  'tracing reasoning paths', 'reinforcing synaptic weights', 'forecasting attendance risk',
+]
+function pushTicker(msg) {
+  const el = document.getElementById('ticker')
+  el.textContent = '— ' + msg + ' —'
+}
+setInterval(() => {
+  if (engine.dream && Math.random() < 0.7) spawnTask()
+  if (Math.random() < 0.5) pushTicker(TICK[Math.floor(Math.random() * TICK.length)])
+}, 1600)
+
+document.getElementById('b-task').addEventListener('click', () => { spawnTask(); engine.surge += 0.25 })
+document.getElementById('b-pulse').addEventListener('click', () => { engine.surge += 1.0 })
+document.getElementById('b-dream').addEventListener('click', (e) => {
+  engine.dream = !engine.dream
+  e.currentTarget.classList.toggle('on', engine.dream)
+  pushTicker(engine.dream ? 'entering dream state · autonomous cognition' : 'dream state ended')
+})
+</script>
+</body>
+</html>

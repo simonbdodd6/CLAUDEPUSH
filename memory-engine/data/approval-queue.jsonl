@@ -1,0 +1,2 @@
+{"action":"enqueue","approvalId":"7b824794-d134-41bf-b9af-78ab0bfffa5a","type":"training_session","title":"U16 Session — Lineout","generatedBy":"decision-engine","confidence":83,"evidence":[],"preview":{},"riskLevel":"low","requiresRole":"coach","status":"pending","editedContent":null,"approvedBy":null,"rejectedBy":null,"rejectionReason":null,"createdAt":"2026-06-13T11:46:30.074Z","reviewedAt":null,"metadata":{}}
+{"action":"approve","approvalId":"7b824794-d134-41bf-b9af-78ab0bfffa5a","reviewer":"coach_simon","at":"2026-06-13T11:46:39.961Z"}

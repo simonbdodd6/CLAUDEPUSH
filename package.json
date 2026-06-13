@@ -69,7 +69,14 @@
     "learning": "echo \"CLI:     npm run learning:cli\nAPI:     npm run learning:api (port 3006)\nAll:     npm run learning:all\""
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@tsparticles/react": "^4.1.3",
+    "@tsparticles/slim": "^4.1.3",
+    "lucide-react": "^1.17.0",
     "motion": "^12.40.0",
+    "reactflow": "^11.11.4",
+    "three": "^0.184.0",
     "web-push": "^3.6.7"
   }
 }
