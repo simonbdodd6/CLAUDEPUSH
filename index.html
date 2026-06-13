@@ -9964,7 +9964,11 @@
           <div class="card">
             <h2>Availability history</h2>
             <div class="list" style="margin-top:14px">
-              ${player.history.map((h, i) => row(`Response ${i+1}`, "Recent player update", `<span class="status ${h}">${statusLabel(h)}</span>`)).join("")}
+              ${player.history.length ? player.history.map((h, i) => `
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)">
+                  <span style="font-size:13px;color:var(--muted)">Recent response ${i + 1}</span>
+                  <span class="status ${h}">${statusLabel(h)}</span>
+                </div>`).join('') : `<p class="muted" style="font-size:12px;padding:8px 0">No history yet — your replies to availability requests will appear here.</p>`}
             </div>
           </div>
         </div>`;
