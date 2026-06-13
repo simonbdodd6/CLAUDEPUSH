@@ -9766,6 +9766,7 @@
       state.fixtures = state.fixtures || [];
       state.fixtures.push({ id: 'fx' + Date.now().toString(36), opposition, date: v('adm-fx-date'), time: v('adm-fx-time'), venue: v('adm-fx-venue'), homeAway: v('adm-fx-homeaway') || '' });
       saveState('Fixture added');
+      ['adm-fx-opp','adm-fx-date','adm-fx-time','adm-fx-venue','adm-fx-homeaway'].forEach(id => { const el = document.getElementById(id); if (el) el.value = el.tagName === 'SELECT' ? '' : ''; });
       renderClubAdmin();
       saveClubConfigToServer().then(saved =>
         showToast(saved ? `Fixture vs ${opposition} added ✓` : `⚠️ Fixture saved on this device — server sync failed`)
@@ -9778,6 +9779,7 @@
       state.fixtures = (state.fixtures || []).filter(f => f.id !== id);
       saveState('Fixture removed');
       saveClubConfigToServer().catch(() => {});
+      showToast(`Fixture vs ${fx?.opposition || 'opponent'} removed`);
       renderClubAdmin();
     }
 
