@@ -18,7 +18,7 @@
     :root {
       /* ── Core tokens ──────────────────────────────────────────────────────── */
       --ink:         #e2e8f0;
-      --muted:       #64748b;
+      --muted:       #7a8899;
       --page:        #090d14;
       --panel:       #0f1724;
       --panel-2:     #141e2e;
@@ -1296,11 +1296,13 @@
     .ob-progress { height: 3px; background: var(--line-soft); border-radius: 2px; overflow: hidden; margin-top: 12px; }
     .ob-progress > div { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.35s ease; }
     .ob-row {
-      display: flex; align-items: center; gap: 12px; width: 100%;
+      display: flex; align-items: flex-start; gap: 12px; width: 100%;
       background: none; border: none; border-bottom: 1px solid var(--line-soft);
       padding: 12px 2px; cursor: pointer; color: var(--ink);
       font-size: 14px; font-weight: 600; text-align: left; border-radius: 0;
     }
+    .ob-row .ob-ring { margin-top: 2px; flex-shrink: 0; }
+    .ob-row .ob-chevron { margin-top: 3px; flex-shrink: 0; }
     .ob-row:last-child { border-bottom: 0; }
     .ob-row:not(.done):hover { color: var(--green); }
     .ob-row.done { cursor: default; }
@@ -1314,7 +1316,9 @@
     .ob-ring.done { background: var(--green); border-color: var(--green); }
     .ob-ring.pop { animation: tickPop 0.3s cubic-bezier(0.3, 1.4, 0.5, 1) both; }
     @keyframes tickPop { 0% { transform: scale(0.4); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
-    .ob-label { flex: 1; min-width: 0; }
+    .ob-label { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; }
+    .ob-sub { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; line-height: 1.4; }
+    .ob-row.done .ob-sub { opacity: 0.6; }
     .ob-chevron { color: var(--muted); opacity: 0; transition: opacity 0.15s; font-size: 13px; }
     .ob-row:not(.done):hover .ob-chevron, .ob-row:not(.done):focus-visible .ob-chevron { opacity: 1; }
     @media (hover: none) { .ob-chevron { opacity: 0.5; } }
@@ -3957,14 +3961,14 @@
       (state.clubVideos=state.clubVideos||[]).push({id:"v"+Date.now(),title:t,duration:d||"0:00",date:"Just now"});
       notify("Club video added");
     }
-    function removeClubVideo(id) { state.clubVideos=(state.clubVideos||[]).filter(v=>v.id!==id); notify("Video removed"); }
+    async function removeClubVideo(id) { if (!(await ceConfirm('Remove this video?', '', { confirmLabel: 'Remove', danger: true }))) return; state.clubVideos=(state.clubVideos||[]).filter(v=>v.id!==id); notify("Video removed"); }
     function addCoachingLink() {
       const t=document.getElementById("newLinkTitle")?.value.trim(), u=document.getElementById("newLinkUrl")?.value.trim(), c=document.getElementById("newLinkCat")?.value.trim();
       if (!t||!u) return showToast("Enter title and URL");
       (state.coachingLinks=state.coachingLinks||[]).push({id:"cl"+Date.now(),title:t,url:u,category:c||"General"});
       notify("Link saved");
     }
-    function removeCoachingLink(id) { state.coachingLinks=(state.coachingLinks||[]).filter(l=>l.id!==id); notify("Link removed"); }
+    async function removeCoachingLink(id) { if (!(await ceConfirm('Remove this link?', '', { confirmLabel: 'Remove', danger: true }))) return; state.coachingLinks=(state.coachingLinks||[]).filter(l=>l.id!==id); notify("Link removed"); }
 
     // ─── MATCHDAY HELPERS ────────────────────────────────────────────────────
     function findPlayerByName(name) {
@@ -4054,11 +4058,14 @@
       if (m > 0 || parts.length === 0) parts.push(`${m}m`);
       return parts.join(" ") + " to kickoff";
     }
+    let _mcSaveTimer = null;
     function saveMatchCentre(field, value) {
       state.matchCentre = state.matchCentre || {};
       state.matchCentre[field] = value;
       saveState();
       syncSquadIfPublished();
+      clearTimeout(_mcSaveTimer);
+      _mcSaveTimer = setTimeout(() => showToast('Auto-saved ✓'), 600);
     }
 
     // Re-sync the published squad after coach edits, debounced because
@@ -4465,10 +4472,11 @@
       ).then(() => showToast('Copied 📋'));
     }
 
-    function removePlayerFromSquad(id) {
+    async function removePlayerFromSquad(id) {
       if (!isCoach()) return notify("Only coaches can remove players");
       const p = state.players.find(pl => pl.id === id);
       if (!p) return;
+      if (!(await ceConfirm(`Remove ${p.name} from squad?`, 'They lose app access immediately. Their messages and availability history are kept.', { confirmLabel: 'Remove', danger: true }))) return;
       state.players = state.players.filter(pl => pl.id !== id);
       // Remember this name so loadInviteList doesn't re-add them from Redis
       if (!state.removedMemberNames) state.removedMemberNames = [];
@@ -5833,11 +5841,11 @@
 
     function getOnboardingSteps() {
       return [
-        { key: 'club',     done: !!(state.clubName && state.clubName.trim()),                    title: 'Create club',             action: `setSection('coach','admin')` },
-        { key: 'invite',   done: state.players.length > 0,                                      title: 'Invite first player',     action: `setSection('coach','players')` },
-        { key: 'training', done: (state.schedule || []).some(s => s.published),                  title: 'Publish first training',  action: `setSection('coach','training')` },
-        { key: 'message',  done: (state.messages || []).length > 0,                             title: 'Send first message',      action: `setSection('coach','messages')` },
-        { key: 'avail',    done: (state.availabilityRequests || []).some(r => r.status === 'sent'), title: 'Mark first availability', action: `setSection('coach','message')` },
+        { key: 'club',     done: !!(state.clubName && state.clubName.trim()),                       title: 'Create club',            subtitle: 'Set your club name and badge — players will see this in their app.',        action: `setSection('coach','admin')` },
+        { key: 'invite',   done: state.players.length > 0,                                         title: 'Invite first player',    subtitle: 'Generate a link — players join your squad with one tap on their phone.',    action: `setSection('coach','players')` },
+        { key: 'training', done: (state.schedule || []).some(s => s.published),                    title: 'Publish first training', subtitle: 'Players see the session time, plan and focus before they arrive.',           action: `setSection('coach','training')` },
+        { key: 'message',  done: (state.messages || []).length > 0,                               title: 'Send first message',     subtitle: 'Say hello to the squad — it lands in every player\'s inbox instantly.',      action: `setSection('coach','messages')` },
+        { key: 'avail',    done: (state.availabilityRequests || []).some(r => r.status === 'sent'), title: 'Check availability',     subtitle: 'Ask who can make training and the match — players reply in one tap.',         action: `setSection('coach','message')` },
       ];
     }
 
@@ -6537,7 +6545,7 @@
                 <span class="ob-ring ${s.done ? 'done' : ''} ${s.justDone ? 'pop' : ''}">
                   ${s.done ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4.5 4.5L19 7"/></svg>' : ''}
                 </span>
-                <span class="ob-label">${esc(s.title)}</span>
+                <span class="ob-label">${esc(s.title)}${s.subtitle ? `<span class="ob-sub">${esc(s.subtitle)}</span>` : ''}</span>
                 ${s.done ? '' : '<span class="ob-chevron">→</span>'}
               </button>`).join('')}
             </div>
@@ -7296,6 +7304,8 @@
       const session = state.schedule.find(s => s.id === sessionId);
       if (!session) return;
       if (!(state.players || []).length) return showToast('No players yet — invite players from the Members page first');
+      const _sendBtn = document.querySelector(`button[onclick*="sendAvailabilityRequest('${sessionId}')"]`);
+      if (_sendBtn) { _sendBtn.disabled = true; _sendBtn.textContent = 'Sending…'; }
       const body = `Please confirm your availability for ${session.title} (${session.date}) in Coach's Eye.`;
       const created = createCoachMessage({ recipients: state.players, type: "Availability request", body, sessionId });
       state.availabilityRequests.unshift({
@@ -7319,6 +7329,7 @@
       } catch(e) { console.warn('Chat write failed:', e); }
       sendPushToPlayers(`Availability request — ${session.title}`, body, { type: 'availability', sessionId });
       showToast(`${session.title} request sent to ${created.length} players ✓`);
+      render(); // re-enable the button
     }
 
     async function sendAllAvailabilityRequests() {
@@ -7645,8 +7656,10 @@
                   </td>
                 </tr>`).join("")}
             </tbody>
-          </table>` : `<div style="padding:28px 0;text-align:center">
-            <p class="muted" style="font-size:14px;margin:0 0 12px">No blocks yet — click + Add block to start planning.</p>
+          </table>` : `<div style="padding:24px 0;text-align:center">
+            <div style="font-size:26px;margin-bottom:8px;opacity:.5">📋</div>
+            <p style="font-size:14px;font-weight:600;color:var(--ink);margin:0 0 4px">No session plan yet</p>
+            <p class="muted" style="font-size:12px;margin:0 0 14px">Add time blocks to build your coaching plan — warm-up, drills, set piece, match review and more.</p>
             ${autopilotOn() && ((state.lastWeekTrainingBlocks || {})[state.trainingActiveSession] || []).length ? `
             <button class="btn primary" type="button" onclick="autopilotDuplicateSession('${esc(state.trainingActiveSession)}')" style="font-size:13px">
               ⧉ Duplicate last week's plan (${((state.lastWeekTrainingBlocks || {})[state.trainingActiveSession] || []).length} blocks)
@@ -8148,7 +8161,7 @@
                     <input type="range" min="0" max="100" value="${prog}" style="width:100%;accent-color:var(--green)" oninput="setRehabProgress('${p.id}',this.value)">
                     <div class="rehab-bar"><span id="rehabBar-${p.id}" style="width:${prog}%"></span></div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
-                      <label style="font-weight:600;font-size:12px">Return target<input id="medRet-${p.id}" value="${mn.returnTarget||""}" placeholder="e.g. 2 weeks" style="font-size:12px;padding:6px 9px"></label>
+                      <label style="font-weight:600;font-size:12px;display:block">Return target<input type="date" id="medRet-${p.id}" value="${mn.returnTarget||""}" style="display:block;width:100%;font-size:12px;padding:6px 9px;margin-top:3px"></label>
                       <label style="font-weight:600;font-size:12px">Condition<input id="medCond-${p.id}" value="${mn.condition||p.medical||""}" placeholder="Describe injury" style="font-size:12px;padding:6px 9px"></label>
                     </div>
                     <label style="font-weight:600;font-size:12px;margin-top:8px">Coach notes<textarea id="medNote-${p.id}" style="min-height:56px;font-size:12px;padding:7px 9px">${mn.notes||""}</textarea></label>
@@ -8157,7 +8170,11 @@
                       <button class="btn" type="button" style="font-size:12px" onclick="requestMedical('${p.id}')">Request check-in</button>
                     </div>
                   </div>`;
-                }).join("") || `<p class="muted">No players currently flagged — all clear.</p>`}
+                }).join("") || `<div class="empty-state" style="padding:24px 16px">
+                  <div class="empty-icon">✓</div>
+                  <strong>All clear</strong>
+                  <p>No players flagged this week. When a player marks themselves injured in the availability check, they appear here for tracking and return-to-play management.</p>
+                </div>`}
               </div>
             </div>
 
@@ -8188,7 +8205,7 @@
                     <span style="color:var(--muted);font-size:11px">${t.therapist}</span>
                   </div>`;
                 }).join("")}
-              </div>` : `<p class="muted">No treatment logs yet.</p>`}
+              </div>` : `<p class="muted" style="font-size:12px;padding:12px 0">No treatment logs yet. Use <strong>+ Log treatment</strong> above to record physio sessions, strapping and return-to-play milestones.</p>`}
             </div>
           </div>
 
@@ -9609,7 +9626,7 @@
                 </div>
                 <button class="btn" style="${smallBtn};color:#f87171;border-color:rgba(248,113,113,0.3)" type="button"
                   onclick="adminRemoveFixture('${esc(f.id)}')">Remove</button>
-              </div>`).join('') : `<p class="muted" style="font-size:12px;padding:6px 0">No fixtures yet.</p>`}
+              </div>`).join('') : `<p class="muted" style="font-size:12px;padding:8px 0">No fixtures yet — add your first match below and it will appear in the Match Centre automatically.</p>`}
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:12px">
               <input id="adm-fx-opp" placeholder="Opposition" style="${inputStyle}">
               <input id="adm-fx-date" type="date" style="${inputStyle}">
