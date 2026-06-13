@@ -6774,17 +6774,20 @@
                   </div>
                   <div class="mini-list">
                     ${availableRows.slice(0,10).map(({player}) => `<button type="button" onclick="setMessagePlayer('${player.id}')"><span>${player.name}</span><small class="mini-status available">Available</small></button>`).join("") || "<p class='muted'>No one available yet.</p>"}
+                    ${availableRows.length > 10 ? `<p class="muted" style="font-size:11px;padding:4px 0 0">+${availableRows.length - 10} more</p>` : ''}
                   </div>
                   ${notComingRows.length > 0 ? `<div class="not-coming-panel">
                     <div class="register-head"><strong>Not available</strong><span>${notComingRows.length}</span></div>
                     <div class="mini-list">
                       ${notComingRows.slice(0,10).map(({player,status}) => `<button type="button" onclick="setMessagePlayer('${player.id}')"><span>${player.name}</span><small class="mini-status ${status}">${statusLabel(status)}</small></button>`).join("")}
+                      ${notComingRows.length > 10 ? `<p class="muted" style="font-size:11px;padding:4px 0 0">+${notComingRows.length - 10} more</p>` : ''}
                     </div>
                   </div>` : ""}
                   ${noReplyRows.length > 0 ? `<div class="needs-chasing-panel">
                     <div class="register-head"><strong>Needs chasing</strong><span>${noReplyRows.length}</span></div>
                     <div class="mini-list">
                       ${noReplyRows.slice(0,10).map(({player}) => `<button type="button" onclick="setMessagePlayer('${player.id}')"><span>${player.name}</span><small class="mini-status no-reply">No reply</small></button>`).join("")}
+                      ${noReplyRows.length > 10 ? `<p class="muted" style="font-size:11px;padding:4px 0 0">+${noReplyRows.length - 10} more</p>` : ''}
                     </div>
                   </div>` : ""}
                 </section>`).join("")}
@@ -7569,6 +7572,7 @@
       const sessObj   = schedSessions.find(s=>s.id===sessId);
       const key       = sessionKey(sessId);
       const available = state.players.filter(p=>p[key]==="available");
+      const weekBlocks = schedSessions.reduce((n,s) => n + ((state.trainingBlocks||{})[s.id]?.length||0), 0);
 
       document.getElementById("coach-training").innerHTML = `
         <!-- Hero header -->
@@ -7579,7 +7583,7 @@
             <p>Write your own session times, build the tactics board and print the coach sheet.</p>
           </div>
           <div class="training-hero-stats">
-            <div class="training-stat"><span class="lbl">Week Load</span><strong>${blocks.length}</strong><small>blocks</small></div>
+            <div class="training-stat"><span class="lbl">Week Load</span><strong>${weekBlocks}</strong><small>blocks</small></div>
             <div class="training-stat"><span class="lbl">Videos</span><strong>${(state.clubVideos||[]).length}</strong><small>saved</small></div>
             <div class="training-stat"><span class="lbl">Available</span><strong>${available.length}</strong><small>players</small></div>
           </div>
