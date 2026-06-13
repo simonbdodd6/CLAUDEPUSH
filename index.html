@@ -8110,7 +8110,8 @@
                 <h2 style="margin:0">Substitute plan</h2>
                 <button class="btn primary" type="button" onclick="document.getElementById('addSubForm').classList.toggle('hidden')">+ Add</button>
               </div>
-              <table>
+              <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+              <table class="cs-table" style="min-width:360px">
                 <thead><tr><th>Min</th><th>On</th><th>Off</th><th>Reason</th><th></th></tr></thead>
                 <tbody>
                   ${subs.map(s=>`<tr>
@@ -8121,7 +8122,7 @@
                     <td><button class="btn ghost" type="button" style="padding:0 8px;color:var(--muted)" onclick="removeSubPlan('${s.id}')">✕</button></td>
                   </tr>`).join("") || `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:12px">No subs planned.</td></tr>`}
                 </tbody>
-              </table>
+              </table></div>
               <div id="addSubForm" class="hidden" style="display:grid;grid-template-columns:55px 1fr 1fr 1fr auto;gap:6px;margin-top:12px;align-items:end">
                 <label style="font-size:12px">Min<input id="subMin" type="number" min="1" max="80" value="50" style="font-size:12px"></label>
                 <label style="font-size:12px">On<input id="subOn" placeholder="Coming on" style="font-size:12px"></label>
@@ -8278,7 +8279,7 @@
 
             <div class="card">
               <h2>Medical overview</h2>
-              <table style="margin-top:11px">
+              <table class="cs-table" style="margin-top:11px">
                 <thead><tr><th>Player</th><th>Status</th><th>Return</th></tr></thead>
                 <tbody>
                   ${hasIssues.map(p=>{const mn=medNotes[p.id]||{};return`<tr>
