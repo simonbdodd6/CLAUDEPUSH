@@ -40,6 +40,7 @@ let _plan = null   // planning-engine (M14)
 let _api      = null   // coach-experience-api (M15)
 let _products = null   // coach-intelligence-products (M16)
 let _clp      = null   // coach-learning-profile (M19)
+let _dna      = null   // coach-dna-engine (M23)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -121,6 +122,11 @@ async function loadProducts() {
 async function loadClp() {
   if (!_clp) _clp = await import('./learning/index.js')
   return _clp
+}
+
+async function loadDna() {
+  if (!_dna) _dna = await import('./coach-dna/index.js')
+  return _dna
 }
 
 async function loadRec() {
@@ -1034,6 +1040,99 @@ export const coachProfile = {
   },
 }
 
+// ── M23 — Coach DNA Engine ────────────────────────────────────────────────────
+// Discovers WHO the coach is from historical observations. Advisory only —
+// explicit coach settings always win, and the engine never writes Core or the
+// CoachProfile. Subscription-aware (Professional/Club/Enterprise), feature-flagged
+// (ai.coachDNA), and gracefully degrading.
+//
+// AI.getCoachDNA(coachId, opts)            → full evolving CoachDNA profile
+// AI.getCoachStyle(coachId, opts)          → high-level coaching style summary
+// AI.compareCoachEvolution(coachId, opts)  → season-over-season evolution
+// AI.getSeasonLearning(coachId, opts)      → what was learned in a season
+
+/** Resolve the observation stream for a coach from the Learning store. */
+async function dnaObservations(coachId) {
+  const { getProfile } = await loadClp()
+  return getProfile(coachId ?? null)?.observations ?? []
+}
+
+/** Gate: feature flag + subscription tier. Returns a fallback object or null. */
+async function dnaGate(opts = {}) {
+  const { DNA_FLAG, DNA_TIERS } = await loadDna()
+  const flags = opts.flags ?? {}
+  if (DNA_FLAG in flags && !flags[DNA_FLAG]) {
+    return { available: false, ok: false, reason: 'feature_disabled', dnaVersion: null }
+  }
+  if (opts.tier != null && !DNA_TIERS.has(String(opts.tier).toLowerCase())) {
+    return { available: false, ok: false, reason: 'insufficient_tier', dnaVersion: null }
+  }
+  return null
+}
+
+export const coachDNA = {
+  async get(coachId, opts = {}) {
+    try {
+      const gate = await dnaGate(opts); if (gate) return gate
+      const { getCoachDNA } = await loadDna()
+      const observations = await dnaObservations(coachId)
+      return { available: true, ok: true, reason: null, ...getCoachDNA(coachId ?? null, observations, { asOf: opts.asOf ?? null }) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', dnaVersion: null } }
+  },
+
+  async style(coachId, opts = {}) {
+    try {
+      const gate = await dnaGate(opts); if (gate) return gate
+      const { getCoachStyle } = await loadDna()
+      const observations = await dnaObservations(coachId)
+      return { available: true, ok: true, reason: null, ...getCoachStyle(coachId ?? null, observations, { asOf: opts.asOf ?? null }) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', dnaVersion: null } }
+  },
+
+  async evolution(coachId, opts = {}) {
+    try {
+      const gate = await dnaGate(opts); if (gate) return gate
+      const { compareCoachEvolution } = await loadDna()
+      const observations = await dnaObservations(coachId)
+      return { available: true, ok: true, reason: null, ...compareCoachEvolution(coachId ?? null, observations, { asOf: opts.asOf ?? null }) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', dnaVersion: null } }
+  },
+
+  async seasonLearning(coachId, opts = {}) {
+    try {
+      const gate = await dnaGate(opts); if (gate) return gate
+      const { getSeasonLearning } = await loadDna()
+      const observations = await dnaObservations(coachId)
+      return { available: true, ok: true, reason: null, ...getSeasonLearning(coachId ?? null, observations, { season: opts.season ?? null, asOf: opts.asOf ?? null }) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', dnaVersion: null } }
+  },
+
+  async reset(coachId, opts = {}) {
+    try {
+      const { resetCoachDNA } = await loadDna()
+      return resetCoachDNA(coachId ?? null, { asOf: opts.asOf ?? null })
+    } catch { return null }
+  },
+
+  async export(coachId, opts = {}) {
+    try {
+      const gate = await dnaGate(opts); if (gate) return gate
+      const { exportCoachDNA } = await loadDna()
+      const observations = await dnaObservations(coachId)
+      return exportCoachDNA(coachId ?? null, observations, { asOf: opts.asOf ?? null })
+    } catch { return null }
+  },
+}
+
+/** AI.getCoachDNA — full evolving CoachDNA profile. */
+export async function getCoachDNA(coachId, opts = {})           { return coachDNA.get(coachId, opts) }
+/** AI.getCoachStyle — high-level coaching style summary. */
+export async function getCoachStyle(coachId, opts = {})         { return coachDNA.style(coachId, opts) }
+/** AI.compareCoachEvolution — season-over-season evolution. */
+export async function compareCoachEvolution(coachId, opts = {}) { return coachDNA.evolution(coachId, opts) }
+/** AI.getSeasonLearning — what was learned in a season. */
+export async function getSeasonLearning(coachId, opts = {})     { return coachDNA.seasonLearning(coachId, opts) }
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -1076,4 +1175,10 @@ export const AI = {
   getClubSnapshot,
   // M19 — Coach Learning Profile
   coachProfile,
+  // M23 — Coach DNA Engine
+  coachDNA,
+  getCoachDNA,
+  getCoachStyle,
+  compareCoachEvolution,
+  getSeasonLearning,
 }
