@@ -43,6 +43,7 @@ let _clp      = null   // coach-learning-profile (M19)
 let _dna      = null   // coach-dna-engine (M23)
 let _opp      = null   // opponent-intelligence (M24)
 let _td       = null   // training-designer (M25)
+let _ms       = null   // match-strategy (M26)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -139,6 +140,11 @@ async function loadOpp() {
 async function loadTd() {
   if (!_td) _td = await import('./training-designer/index.js')
   return _td
+}
+
+async function loadMs() {
+  if (!_ms) _ms = await import('./match-strategy/index.js')
+  return _ms
 }
 
 async function loadRec() {
@@ -1293,6 +1299,40 @@ export const trainingDesigner = {
 /** AI.designTrainingSession — design a complete training session. */
 export async function designTrainingSession(context = {}, opts = {}) { return trainingDesigner.design(context, opts) }
 
+// ── M26 — Autonomous Match Strategy Engine ────────────────────────────────────
+// Synthesises Coach DNA, Opponent Intelligence, Selection Assistant, Match
+// Readiness, Training Designer, Weekly Brief and Availability into a complete,
+// deterministic, evidence-backed match plan. No LLM, no Core dependency,
+// feature-flagged (ai.matchStrategy), subscription-aware (Performance+),
+// versioned, gracefully degrading with a safe fallback template.
+//
+// AI.buildMatchStrategy(context, opts) → complete Match Plan
+
+async function msGate(opts = {}) {
+  const { STRATEGY_FLAG, STRATEGY_TIERS } = await loadMs()
+  const flags = opts.flags ?? {}
+  if (STRATEGY_FLAG in flags && !flags[STRATEGY_FLAG]) {
+    return { available: false, ok: false, reason: 'feature_disabled', strategyVersion: null }
+  }
+  if (opts.tier != null && !STRATEGY_TIERS.has(String(opts.tier).toLowerCase())) {
+    return { available: false, ok: false, reason: 'insufficient_tier', strategyVersion: null }
+  }
+  return null
+}
+
+export const matchStrategy = {
+  async build(context = {}, opts = {}) {
+    try {
+      const gate = await msGate(opts); if (gate) return gate
+      const { buildMatchPlan } = await loadMs()
+      return { available: true, ok: true, reason: null, ...buildMatchPlan(context) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', strategyVersion: null } }
+  },
+}
+
+/** AI.buildMatchStrategy — build a complete match plan. */
+export async function buildMatchStrategy(context = {}, opts = {}) { return matchStrategy.build(context, opts) }
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -1352,4 +1392,7 @@ export const AI = {
   // M25 — Autonomous Training Designer
   trainingDesigner,
   designTrainingSession,
+  // M26 — Autonomous Match Strategy Engine
+  matchStrategy,
+  buildMatchStrategy,
 }
