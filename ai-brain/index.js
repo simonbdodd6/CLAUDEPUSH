@@ -42,6 +42,7 @@ let _products = null   // coach-intelligence-products (M16)
 let _clp      = null   // coach-learning-profile (M19)
 let _dna      = null   // coach-dna-engine (M23)
 let _opp      = null   // opponent-intelligence (M24)
+let _td       = null   // training-designer (M25)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -133,6 +134,11 @@ async function loadDna() {
 async function loadOpp() {
   if (!_opp) _opp = await import('./opponent/index.js')
   return _opp
+}
+
+async function loadTd() {
+  if (!_td) _td = await import('./training-designer/index.js')
+  return _td
 }
 
 async function loadRec() {
@@ -1250,6 +1256,43 @@ export async function compareOpponents(opponentIds, opts = {})        { return o
 /** AI.getOpponentEvolution — how the opponent has changed over time. */
 export async function getOpponentEvolution(opponentId, opts = {})     { return opponent.evolution(opponentId, opts) }
 
+// ── M25 — Autonomous Training Designer ────────────────────────────────────────
+// Designs complete, deterministic, evidence-backed rugby training sessions from
+// upstream products (Coach DNA, Weekly Brief, Match Readiness, Opponent
+// Intelligence, squad/welfare/load). No LLM, no Core dependency, feature-flagged
+// (ai.trainingDesigner), subscription-aware (Performance+), versioned,
+// gracefully degrading with safe fallback templates.
+//
+// AI.designTrainingSession(context, opts) → full session plan
+// context: { coachDNA, weeklyBrief, matchReadiness, opponent, squad, welfare,
+//   trainingLoad, format, grade, durationMin, players, space, weather,
+//   matchImportance, seasonPhase, overrides, generatedAt }
+
+async function tdGate(opts = {}) {
+  const { DESIGNER_FLAG, DESIGNER_TIERS } = await loadTd()
+  const flags = opts.flags ?? {}
+  if (DESIGNER_FLAG in flags && !flags[DESIGNER_FLAG]) {
+    return { available: false, ok: false, reason: 'feature_disabled', designerVersion: null }
+  }
+  if (opts.tier != null && !DESIGNER_TIERS.has(String(opts.tier).toLowerCase())) {
+    return { available: false, ok: false, reason: 'insufficient_tier', designerVersion: null }
+  }
+  return null
+}
+
+export const trainingDesigner = {
+  async design(context = {}, opts = {}) {
+    try {
+      const gate = await tdGate(opts); if (gate) return gate
+      const { designSession } = await loadTd()
+      return { available: true, ok: true, reason: null, ...designSession(context) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', designerVersion: null } }
+  },
+}
+
+/** AI.designTrainingSession — design a complete training session. */
+export async function designTrainingSession(context = {}, opts = {}) { return trainingDesigner.design(context, opts) }
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -1306,4 +1349,7 @@ export const AI = {
   getOpponentOpportunities,
   compareOpponents,
   getOpponentEvolution,
+  // M25 — Autonomous Training Designer
+  trainingDesigner,
+  designTrainingSession,
 }
