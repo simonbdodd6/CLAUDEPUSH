@@ -3963,14 +3963,14 @@
       (state.clubVideos=state.clubVideos||[]).push({id:"v"+Date.now(),title:t,duration:d||"0:00",date:"Just now"});
       notify("Club video added");
     }
-    async function removeClubVideo(id) { if (!(await ceConfirm('Remove this video?', '', { confirmLabel: 'Remove', danger: true }))) return; state.clubVideos=(state.clubVideos||[]).filter(v=>v.id!==id); notify("Video removed"); }
+    async function removeClubVideo(id) { if (!(await ceConfirm('Remove this video?', '', { confirmLabel: 'Remove', danger: true }))) return; state.clubVideos=(state.clubVideos||[]).filter(v=>v.id!==id); saveState('Video removed'); showToast('Video removed'); render(); }
     function addCoachingLink() {
       const t=document.getElementById("newLinkTitle")?.value.trim(), u=document.getElementById("newLinkUrl")?.value.trim(), c=document.getElementById("newLinkCat")?.value.trim();
       if (!t||!u) return showToast("Enter title and URL");
       (state.coachingLinks=state.coachingLinks||[]).push({id:"cl"+Date.now(),title:t,url:u,category:c||"General"});
       notify("Link saved");
     }
-    async function removeCoachingLink(id) { if (!(await ceConfirm('Remove this link?', '', { confirmLabel: 'Remove', danger: true }))) return; state.coachingLinks=(state.coachingLinks||[]).filter(l=>l.id!==id); notify("Link removed"); }
+    async function removeCoachingLink(id) { if (!(await ceConfirm('Remove this link?', '', { confirmLabel: 'Remove', danger: true }))) return; state.coachingLinks=(state.coachingLinks||[]).filter(l=>l.id!==id); saveState('Link removed'); showToast('Link removed'); render(); }
 
     // ─── MATCHDAY HELPERS ────────────────────────────────────────────────────
     function findPlayerByName(name) {
@@ -7727,6 +7727,7 @@
               <div><h2 style="margin:0">Club video library</h2><p class="muted" style="margin-top:2px">Upload up to 100 × 120-second training clips.</p></div>
               <span class="pill">${(state.clubVideos||[]).length}/100</span>
             </div>
+            ${!(state.clubVideos||[]).length ? `<p class="muted" style="font-size:12px;margin-bottom:14px">Save training clips here — reference them during sessions or share with coaches.</p>` : ''}
             <div class="video-grid">
               ${(state.clubVideos||[]).map(v=>`
                 <div class="video-card">
@@ -7750,12 +7751,12 @@
               <div><h2 style="margin:0">Internet coaching library</h2><p class="muted" style="margin-top:2px">Save clips and references from the web.</p></div>
             </div>
             <div style="display:grid;gap:8px">
-              ${(state.coachingLinks||[]).map(l=>`
+              ${(state.coachingLinks||[]).length ? (state.coachingLinks||[]).map(l=>`
                 <div class="link-row">
                   <div><a href="${l.url}" target="_blank" rel="noopener">${l.title}</a><small>${l.url}</small></div>
                   <span class="link-cat">${l.category}</span>
                   <button class="btn ghost" type="button" style="padding:0 8px;color:var(--muted)" onclick="removeCoachingLink('${l.id}')">✕</button>
-                </div>`).join("")}
+                </div>`).join("") : `<p class="muted" style="font-size:12px;padding:4px 0">Save YouTube clips, World Rugby guides, tactical videos and references for your coaching staff.</p>`}
             </div>
             <div style="display:grid;grid-template-columns:1fr 90px 80px auto;gap:8px;margin-top:14px;align-items:end">
               <label>Title<input id="newLinkTitle" placeholder="Kick chase drill"></label>
