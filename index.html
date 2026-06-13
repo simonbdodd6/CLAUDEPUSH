@@ -8565,10 +8565,10 @@
                 </div>
                 <button class="btn" type="button" onclick="setSection('player','availability')"
                   style="min-width:110px;font-size:13px;
-                    background:${status==='available'?'#dcfce7':status==='unavailable'?'#fee2e2':'var(--line)'};
-                    border-color:${status==='available'?'#86efac':status==='unavailable'?'#fca5a5':'var(--line)'};
-                    color:${status==='available'?'#16a34a':status==='unavailable'?'#dc2626':'var(--muted)'}">
-                  ${status==='available'?'Available':status==='unavailable'?'Not available':'Set availability →'}
+                    background:${status==='available'?'rgba(16,185,129,0.14)':status==='unavailable'||status==='injured'?'rgba(239,68,68,0.14)':status==='maybe'?'rgba(245,158,11,0.12)':'var(--panel)'};
+                    border-color:${status==='available'?'#10b981':status==='unavailable'||status==='injured'?'#ef4444':status==='maybe'?'#f59e0b':'var(--line)'};
+                    color:${status==='available'?'#34d399':status==='unavailable'||status==='injured'?'#f87171':status==='maybe'?'#fbbf24':'var(--muted)'}">
+                  ${status==='available'?'✓ Available':status==='unavailable'||status==='injured'?'✗ Not available':status==='maybe'?'? Maybe':'Set availability →'}
                 </button>
               </div>
               ${planBlocks.length ? `
@@ -9913,8 +9913,8 @@
           ${sched.length ? sched.map(item => {
             const key    = sessionKey(item.id);
             const status = player.id ? (player[key] || 'no-reply') : 'no-reply';
-            const sBg    = status === 'available' ? '#dcfce7' : status === 'unavailable' ? '#fee2e2' : 'var(--line)';
-            const sClr   = status === 'available' ? '#16a34a' : status === 'unavailable' ? '#dc2626' : 'var(--muted)';
+            const sBg    = status === 'available' ? 'rgba(16,185,129,0.14)' : status === 'unavailable' ? 'rgba(239,68,68,0.14)' : 'var(--panel-2)';
+            const sClr   = status === 'available' ? '#34d399' : status === 'unavailable' ? '#f87171' : 'var(--muted)';
             const planBlocks = item.published ? ((state.trainingBlocks || {})[item.id] || []) : [];
             return `<div style="padding:14px 0;border-bottom:1px solid var(--line)">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
@@ -9925,8 +9925,8 @@
                   </div>
                   <div class="muted" style="font-size:12px;margin-top:3px">${esc(item.date || item.type || '')}</div>
                 </div>
-                <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;background:${sBg};color:${sClr}">
-                  ${status === 'available' ? 'Available' : status === 'unavailable' ? 'Not available' : 'No reply yet'}
+                <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;background:${sBg};color:${sClr};border:1px solid ${sClr === 'var(--muted)' ? 'var(--line)' : sClr + '44'}">
+                  ${status === 'available' ? '✓ Available' : status === 'unavailable' ? '✗ Not available' : 'No reply yet'}
                 </span>
               </div>
               ${planBlocks.length ? `
