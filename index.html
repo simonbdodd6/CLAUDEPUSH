@@ -1199,9 +1199,13 @@
     /* Keyboard users can always see where they are. */
     :focus-visible { outline: 2px solid var(--green); outline-offset: 2px; border-radius: 6px; }
 
-    /* iOS: inputs under 16px zoom-jump the viewport on focus. */
+    /* iOS: inputs under 16px zoom-jump the viewport on focus.
+       Also enforce 44px touch targets for interactive elements per Apple HIG. */
     @media (max-width: 768px) {
       input, select, textarea { font-size: 16px !important; }
+      .btn { min-height: 44px; }
+      .ob-row, .mctl-row { min-height: 44px; }
+      .mctl-done summary { min-height: 40px; display: flex; align-items: center; }
     }
 
     /* Toast variants — errors look like errors, and never collide with the
@@ -2068,6 +2072,12 @@
       .avail-manage-item-body strong { font-size: 12px; }
       .chat-shell { grid-template-columns: 1fr; }
       .chat-bubble-wrap { max-width: 86%; }
+      /* Sidebar: hide decorative elements and tighten spacing on mobile */
+      .sidebar { gap: 12px; padding: 14px 12px; }
+      .sidebar-card { display: none; }
+      #pushSidebar { display: none !important; }
+      /* Nav buttons need 44px touch target when rendered as a 2-col grid */
+      nav button { min-height: 44px; }
     }
 
     @media (max-width: 480px) {
@@ -2083,6 +2093,8 @@
       .avail-manage-list .avail-manage-actions { flex-wrap: wrap; }
       .avail-manage-item { flex-wrap: wrap; }
       .chat-bubble-wrap { max-width: 90%; }
+      /* Tighter card padding on small phones */
+      .card { padding: 14px; }
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
