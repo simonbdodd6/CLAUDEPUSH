@@ -22,6 +22,10 @@ export { createCard, cardsFromCommsDrafts, cardFromWorkflow, formatCard } from '
 export {
   routeCommsPack, routeCommsDraft, routeWorkflowResult, routeCopilotSuggestion, routeGeneric, seedDemoApprovals,
 } from './approval-centre/approval-router.js';
+// Durable ledger + audit trail (PIF-2)
+export {
+  appendAudit, readAudit, appendEvent, readEvents, replayState, getLedger, setLedger,
+} from './approval-centre/approval-ledger.js';
 
 // Adapters (for engine integrators)
 export { fetchPlayerSnapshot, fetchAttendanceSummary, fetchUpcomingFixtures, fetchUpcomingSessions } from './adapters/memory-adapter.js';

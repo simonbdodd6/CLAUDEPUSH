@@ -232,6 +232,22 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    // Read-only audit trail of coach decisions (PIF-2). Flag-gated like other
+    // intelligence read surfaces. Reads the durable ledger; no mock fabricated.
+    if (method === 'GET' && path === '/api/approvals/audit') {
+      const config = resolveConfig()
+      if (!isIntelligenceEnabled(config)) {
+        json(res, degradedEnvelope('approvalsAudit', 'disabled', getTier(config)))
+        return
+      }
+      const limitRaw = parseInt(url.searchParams.get('limit') ?? '100', 10)
+      const limit    = Number.isFinite(limitRaw) ? limitRaw : 100
+      const { readAudit } = await import('../dashboard/index.js')
+      const records = readAudit({ limit })
+      json(res, { records, count: records.length })
+      return
+    }
+
     // Approve / reject a queued item, then close the learning feedback loop.
     // The queue mutation is always coach-triggered; the learning record is flag-gated.
     if (method === 'POST' && /^\/api\/approvals\/[^/]+\/(approve|reject)$/.test(path)) {
@@ -273,7 +289,29 @@ const server = createServer(async (req, res) => {
         }
       }
 
-      json(res, { ok: true, item: result.item, learning })
+      // Durable audit trail (PIF-2) — always written: a coach decision is an
+      // accountability event, not an optional intelligence feature. Evidence and
+      // learning-outcome fields are included when available.
+      let audit = null
+      try {
+        const { appendAudit } = await import('../dashboard/index.js')
+        const item = result.item
+        audit = appendAudit({
+          decisionId:      item.approvalId,
+          action,
+          timestamp:       item.reviewedAt,
+          sourceEngine:    item.generatedBy ?? null,
+          evidenceIds:     Array.isArray(item.evidence) ? item.evidence : [],
+          citationIds:     Array.isArray(item.citationIds) ? item.citationIds : [],
+          humanDecision:   reviewer,
+          reason:          action === 'reject' ? (body.reason ?? '') : null,
+          learningOutcome: learning,
+        })
+      } catch (e) {
+        audit = { recorded: false, reason: e.message }
+      }
+
+      json(res, { ok: true, item: result.item, learning, audit: { auditId: audit?.auditId ?? null } })
       return
     }
 

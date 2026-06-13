@@ -1,14 +1,10 @@
 // Approval queue — every AI-generated item enters here before release.
-// In-memory store + JSONL persistence.
+// In-memory store, made durable through the approval ledger (PIF-2): the in-memory
+// Map is rebuilt by replaying the append-only event log on first use, so the queue
+// survives process restarts and serverless cold starts.
 
-import { appendFileSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const LOG_DIR   = join(__dirname, '../../memory-engine/data');
-const LOG_FILE  = join(LOG_DIR, 'approval-queue.jsonl');
+import { appendEvent, replayState } from './approval-ledger.js';
 
 export const APPROVAL_STATUS = {
   PENDING:  'pending',
@@ -19,14 +15,22 @@ export const APPROVAL_STATUS = {
 
 const _queue = new Map();
 
-function persist(entry) {
+// Rebuild live state from the durable event log exactly once per process.
+let _hydrated = false;
+function ensureHydrated() {
+  if (_hydrated) return;
+  _hydrated = true;                 // set first to avoid re-entrancy during replay
   try {
-    if (!existsSync(LOG_DIR)) mkdirSync(LOG_DIR, { recursive: true });
-    appendFileSync(LOG_FILE, JSON.stringify(entry) + '\n', 'utf8');
-  } catch { /* non-fatal */ }
+    for (const [id, item] of replayState()) _queue.set(id, item);
+  } catch { /* non-fatal: fall back to an empty in-memory queue */ }
+}
+
+function persist(entry) {
+  appendEvent(entry);
 }
 
 export function enqueue(item) {
+  ensureHydrated();
   const id = item.approvalId ?? randomUUID();
   const entry = {
     approvalId:   id,
@@ -55,6 +59,7 @@ export function enqueue(item) {
 }
 
 export function approve(approvalId, reviewer = 'system') {
+  ensureHydrated();
   const item = _queue.get(approvalId);
   if (!item) return { ok: false, reason: 'not found' };
   if (item.status !== APPROVAL_STATUS.PENDING) return { ok: false, reason: `already ${item.status}` };
@@ -66,6 +71,7 @@ export function approve(approvalId, reviewer = 'system') {
 }
 
 export function reject(approvalId, reviewer = 'system', reason = '') {
+  ensureHydrated();
   const item = _queue.get(approvalId);
   if (!item) return { ok: false, reason: 'not found' };
   if (item.status !== APPROVAL_STATUS.PENDING) return { ok: false, reason: `already ${item.status}` };
@@ -78,6 +84,7 @@ export function reject(approvalId, reviewer = 'system', reason = '') {
 }
 
 export function archive(approvalId) {
+  ensureHydrated();
   const item = _queue.get(approvalId);
   if (!item) return { ok: false };
   item.status = APPROVAL_STATUS.ARCHIVED;
@@ -86,6 +93,7 @@ export function archive(approvalId) {
 }
 
 export function edit(approvalId, editedContent) {
+  ensureHydrated();
   const item = _queue.get(approvalId);
   if (!item) return { ok: false, reason: 'not found' };
   item.editedContent = editedContent;
@@ -94,15 +102,16 @@ export function edit(approvalId, editedContent) {
   return { ok: true, item };
 }
 
-export function getPending()          { return [..._queue.values()].filter(i => i.status === APPROVAL_STATUS.PENDING); }
-export function getApproved()         { return [..._queue.values()].filter(i => i.status === APPROVAL_STATUS.APPROVED); }
-export function getAll()              { return [..._queue.values()]; }
-export function getById(id)           { return _queue.get(id) ?? null; }
-export function getByType(type)       { return [..._queue.values()].filter(i => i.type === type); }
-export function getByEngine(engine)   { return [..._queue.values()].filter(i => i.generatedBy === engine); }
-export function getByRisk(level)      { return [..._queue.values()].filter(i => i.riskLevel === level); }
+export function getPending()          { ensureHydrated(); return [..._queue.values()].filter(i => i.status === APPROVAL_STATUS.PENDING); }
+export function getApproved()         { ensureHydrated(); return [..._queue.values()].filter(i => i.status === APPROVAL_STATUS.APPROVED); }
+export function getAll()              { ensureHydrated(); return [..._queue.values()]; }
+export function getById(id)           { ensureHydrated(); return _queue.get(id) ?? null; }
+export function getByType(type)       { ensureHydrated(); return [..._queue.values()].filter(i => i.type === type); }
+export function getByEngine(engine)   { ensureHydrated(); return [..._queue.values()].filter(i => i.generatedBy === engine); }
+export function getByRisk(level)      { ensureHydrated(); return [..._queue.values()].filter(i => i.riskLevel === level); }
 
 export function stats() {
+  ensureHydrated();
   const all = [..._queue.values()];
   const byStatus = {}, byType = {}, byRisk = {};
   all.forEach(i => {
