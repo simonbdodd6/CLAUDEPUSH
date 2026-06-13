@@ -9,4 +9,5 @@
  */
 
 export { getWeeklyBrief, getMonday } from './weekly-brief.js'
-export { BRIEF_ID, BRIEF_VERSION, URGENCY, LOAD_STATUS, BRIEF_FIELD } from './weekly-brief-types.js'
+export { BRIEF_ID, BRIEF_VERSION, URGENCY, LOAD_STATUS, BRIEF_FIELD, PERSONALISATION_FLAG } from './weekly-brief-types.js'
+export { personalise, emptyPersonalisation, reRankPriorities, buildSignalsUsed, buildExplanation, MIN_PROFILE_OBSERVATIONS } from './personaliser.js'

@@ -28,7 +28,16 @@ import { REASON } from '../../ai-brain/integration/integration-types.js'
 import {
   BRIEF_ID, BRIEF_VERSION, URGENCY, LOAD_STATUS,
   LOAD_TARGET_MINUTES_PER_ACTION, LOAD_ON_TRACK_THRESHOLD, LOAD_BEHIND_THRESHOLD,
+  PERSONALISATION_FLAG,
 } from './weekly-brief-types.js'
+import { personalise, emptyPersonalisation, MIN_PROFILE_OBSERVATIONS } from './personaliser.js'
+
+// ── Feature flag helper ───────────────────────────────────────────────────────
+
+function isFlagEnabled(flagName, flags = {}) {
+  if (!flags || !(flagName in flags)) return true
+  return Boolean(flags[flagName])
+}
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -226,8 +235,9 @@ function buildBrief(caps, dashboardRes, readinessRes, opts = {}) {
     confidence:  dashData?.confidence ?? null,
     evidenceIds: collectEvidenceIds(dashData, readData),
 
-    reason:      null,
-    limitations: caps.limitations ?? [],
+    reason:         null,
+    limitations:    caps.limitations ?? [],
+    personalisation: emptyPersonalisation(),
   }
 }
 
@@ -254,8 +264,9 @@ function buildUnavailable(caps) {
     confidence:  null,
     evidenceIds: [],
 
-    reason:      caps.reason ?? REASON.INSUFFICIENT_TIER,
-    limitations: caps.limitations ?? [],
+    reason:          caps.reason ?? REASON.INSUFFICIENT_TIER,
+    limitations:     caps.limitations ?? [],
+    personalisation: emptyPersonalisation(),
   }
 }
 
@@ -292,7 +303,30 @@ export async function getWeeklyBrief(context = {}, _coachAI = CoachAI) {
       })
     }
 
-    return buildBrief(caps, dashboardRes, readinessRes, { date, generatedAt })
+    let brief = buildBrief(caps, dashboardRes, readinessRes, { date, generatedAt })
+
+    // M20 — personalisation (read-only, non-blocking)
+    if (isFlagEnabled(PERSONALISATION_FLAG, user?.flags)) {
+      try {
+        const coachId = user?.coachId ?? user?.userId ?? null
+        if (coachId && typeof _coachAI.getProfile === 'function') {
+          const profileRes = await _coachAI.getProfile(user)
+          const profile    = profileRes?.ok && profileRes?.data
+            && (profileRes.data.observationCount ?? 0) >= MIN_PROFILE_OBSERVATIONS
+            ? profileRes.data
+            : null
+
+          if (profile) {
+            const { briefData, personalisation } = personalise(brief, profile, { flags: user?.flags })
+            brief = { ...briefData, personalisation }
+          }
+        }
+      } catch {
+        // personalisation is always non-blocking — brief returned as-is
+      }
+    }
+
+    return brief
   } catch {
     return buildUnavailable({ tier: 'free', reason: REASON.BRAIN_UNAVAILABLE, limitations: [] })
   }

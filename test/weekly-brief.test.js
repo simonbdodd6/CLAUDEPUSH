@@ -28,10 +28,15 @@ import { test }  from 'node:test'
 import {
   BRIEF_ID, BRIEF_VERSION, URGENCY, LOAD_STATUS, BRIEF_FIELD,
   LOAD_TARGET_MINUTES_PER_ACTION, LOAD_ON_TRACK_THRESHOLD, LOAD_BEHIND_THRESHOLD,
+  PERSONALISATION_FLAG,
 } from '../coach-products/weekly-brief/weekly-brief-types.js'
 import {
   getWeeklyBrief, getMonday,
 } from '../coach-products/weekly-brief/weekly-brief.js'
+import {
+  personalise, emptyPersonalisation, reRankPriorities, buildSignalsUsed, buildExplanation,
+  MIN_PROFILE_OBSERVATIONS,
+} from '../coach-products/weekly-brief/personaliser.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test fixtures — mock CoachAI with full control
@@ -121,6 +126,9 @@ function mockCoachAI({
   readOk         = true,
   throwOnDash    = false,
   throwOnCaps    = false,
+  profileData    = null,   // M20: CoachProfile to return from getProfile (null = no profile)
+  profileOk      = true,   // M20: if false, getProfile returns ok=false
+  throwOnProfile = false,  // M20: if true, getProfile throws
 } = {}) {
   return {
     getCapabilities: async () => {
@@ -148,6 +156,11 @@ function mockCoachAI({
     }),
     getPlayerCard:   async () => ({ ok: false, available: false, tier, reason: 'insufficient_tier', data: null }),
     getClubSnapshot: async () => ({ ok: false, available: false, tier, reason: 'insufficient_tier', data: null }),
+    getProfile: async () => {
+      if (throwOnProfile) throw new Error('profile failure')
+      if (!profileOk)     return { integrationVersion: '1.0', ok: false, available: true, tier, reason: 'brain_unavailable', data: null }
+      return { integrationVersion: '1.0', ok: profileData != null, available: true, tier, reason: null, data: profileData }
+    },
   }
 }
 
@@ -899,4 +912,243 @@ test('Weekly brief module only imports from integration layer, not Brain interna
 
   // MUST import from integration layer
   assert.ok(src.includes('ai-brain/integration'), 'Must import from ai-brain/integration')
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PART 18 — M20 Personalisation — pure unit tests (personaliser.js)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RICH_PROFILE = {
+  coachId:           'coach-99',
+  profileVersion:    '1.0',
+  observationCount:  15,
+  overallConfidence: 0.71,
+  preferences: {
+    coachingStyle:      { value: 'directive',  confidence: 0.8, updatedAt: '2026-06-01' },
+    trainingEmphasis:   { value: 'intensive',  confidence: 0.7, updatedAt: '2026-06-01' },
+    squadRotation:      { value: 'low',        confidence: 0.6, updatedAt: '2026-06-01' },
+    communicationStyle: { value: 'direct',     confidence: 0.9, updatedAt: '2026-06-01' },
+    riskTolerance:      { value: 'high',       confidence: 0.5, updatedAt: '2026-06-01' },
+    workloadPreference: { value: 'intensive',  confidence: 0.6, updatedAt: '2026-06-01' },
+  },
+  recommendationHistory: {
+    accepted: 8, rejected: 2, ignored: 2, edited: 1,
+    byCategory: {
+      attendance:  { accepted: 5, rejected: 0, ignored: 1 },
+      preparation: { accepted: 2, rejected: 1, ignored: 0 },
+      selection:   { accepted: 1, rejected: 1, ignored: 1 },
+    },
+  },
+}
+
+test('PERSONALISATION_FLAG constant is "ai.personalisation"', () => {
+  assert.equal(PERSONALISATION_FLAG, 'ai.personalisation')
+})
+
+test('emptyPersonalisation() — shape: applied=false, coachProfileId=null, signalsUsed=[]', () => {
+  const p = emptyPersonalisation()
+  assert.equal(p.applied,        false)
+  assert.equal(p.coachProfileId, null)
+  assert.ok(Array.isArray(p.signalsUsed))
+  assert.equal(p.signalsUsed.length, 0)
+  assert.equal(typeof p.explanation, 'string')
+})
+
+test('emptyPersonalisation() — returns a new object each call', () => {
+  const a = emptyPersonalisation()
+  const b = emptyPersonalisation()
+  assert.notEqual(a, b)
+})
+
+test('reRankPriorities — categories with higher accept rate rise first', () => {
+  const priorities = [
+    { rank: 1, title: 'Selection', category: 'selection',   urgency: 'medium' },
+    { rank: 2, title: 'Prep',      category: 'preparation', urgency: 'medium' },
+    { rank: 3, title: 'Attend',    category: 'attendance',  urgency: 'high'   },
+  ]
+  // attendance has accept rate 5/6 ≈ 0.83; preparation 2/3 ≈ 0.67; selection 1/3 ≈ 0.33
+  const ranked = reRankPriorities(priorities, RICH_PROFILE)
+  assert.equal(ranked[0].category, 'attendance')
+  assert.equal(ranked[1].category, 'preparation')
+  assert.equal(ranked[2].category, 'selection')
+})
+
+test('reRankPriorities — does not mutate original array', () => {
+  const priorities = [
+    { rank: 1, title: 'A', category: 'attendance',  urgency: 'high'   },
+    { rank: 2, title: 'B', category: 'preparation', urgency: 'medium' },
+  ]
+  const original = [...priorities]
+  reRankPriorities(priorities, RICH_PROFILE)
+  assert.deepEqual(priorities, original)
+})
+
+test('reRankPriorities — no _coachWeight field on output', () => {
+  const priorities = [
+    { rank: 1, title: 'A', category: 'attendance', urgency: 'high' },
+  ]
+  const ranked = reRankPriorities(priorities, RICH_PROFILE)
+  assert.ok(!('_coachWeight' in ranked[0]))
+})
+
+test('reRankPriorities — no history for category → 0.5 neutral rate, preserves order', () => {
+  const priorities = [
+    { rank: 1, title: 'A', category: 'unknown-cat-1', urgency: 'high'   },
+    { rank: 2, title: 'B', category: 'unknown-cat-2', urgency: 'medium' },
+  ]
+  const ranked = reRankPriorities(priorities, RICH_PROFILE)
+  // Both get 0.5 → tiebreaker is original rank
+  assert.equal(ranked[0].rank, 1)
+  assert.equal(ranked[1].rank, 2)
+})
+
+test('buildSignalsUsed — rich profile returns recommendationHistory + preference keys', () => {
+  const signals = buildSignalsUsed(RICH_PROFILE)
+  assert.ok(signals.includes('recommendationHistory'))
+  assert.ok(signals.includes('coachingStyle'))
+  assert.ok(signals.includes('trainingEmphasis'))
+})
+
+test('buildSignalsUsed — null preference value excluded', () => {
+  const profile = {
+    ...RICH_PROFILE,
+    preferences: { ...RICH_PROFILE.preferences, coachingStyle: { value: null } },
+  }
+  const signals = buildSignalsUsed(profile)
+  assert.ok(!signals.includes('coachingStyle'))
+})
+
+test('buildSignalsUsed — no preferences → empty array', () => {
+  assert.deepEqual(buildSignalsUsed(null), [])
+  assert.deepEqual(buildSignalsUsed({}),   [])
+})
+
+test('buildExplanation — empty signalsUsed → empty string', () => {
+  assert.equal(buildExplanation(RICH_PROFILE, []), '')
+})
+
+test('buildExplanation — coaching style mentioned in output', () => {
+  const signals = buildSignalsUsed(RICH_PROFILE)
+  const explanation = buildExplanation(RICH_PROFILE, signals)
+  assert.ok(explanation.includes('directive') || explanation.includes('coaching style'))
+})
+
+test('personalise — no profile → emptyPersonalisation, brief unchanged', () => {
+  const brief = { topPriorities: [{ rank: 1, title: 'X', category: 'attendance', urgency: 'high' }] }
+  const { briefData, personalisation } = personalise(brief, null)
+  assert.equal(personalisation.applied, false)
+  assert.deepEqual(briefData, brief)
+})
+
+test('personalise — thin profile (below threshold) → emptyPersonalisation', () => {
+  const thinProfile = { ...RICH_PROFILE, observationCount: MIN_PROFILE_OBSERVATIONS - 1 }
+  const brief = { topPriorities: [] }
+  const { personalisation } = personalise(brief, thinProfile)
+  assert.equal(personalisation.applied, false)
+})
+
+test('personalise — rich profile → personalisation.applied=true', () => {
+  const brief = {
+    topPriorities: [
+      { rank: 1, title: 'A', category: 'attendance',  urgency: 'high'   },
+      { rank: 2, title: 'B', category: 'preparation', urgency: 'medium' },
+    ],
+    trainingLoadSummary: { headline: 'Training on track (92%)', status: 'on_track', completionPct: 92, actionRequired: false },
+  }
+  const { personalisation } = personalise(brief, RICH_PROFILE)
+  assert.equal(personalisation.applied, true)
+  assert.equal(personalisation.coachProfileId, 'coach-99')
+  assert.ok(personalisation.signalsUsed.length > 0)
+  assert.equal(typeof personalisation.explanation, 'string')
+})
+
+test('personalise — flag disabled → emptyPersonalisation', () => {
+  const brief = { topPriorities: [] }
+  const { personalisation } = personalise(brief, RICH_PROFILE, { flags: { 'ai.personalisation': false } })
+  assert.equal(personalisation.applied, false)
+})
+
+test('personalise — does not mutate incoming briefData', () => {
+  const brief = {
+    topPriorities: [{ rank: 1, title: 'A', category: 'attendance', urgency: 'high' }],
+    trainingLoadSummary: { headline: 'on track', status: 'on_track', completionPct: 90, actionRequired: false },
+  }
+  const frozenBrief = Object.freeze({ ...brief, topPriorities: Object.freeze([...brief.topPriorities]) })
+  assert.doesNotThrow(() => personalise(frozenBrief, RICH_PROFILE))
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PART 19 — M20 Personalisation integrated into getWeeklyBrief
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('getWeeklyBrief — no profile: personalisation.applied=false', async () => {
+  const r = await getWeeklyBrief(
+    { user: { tier: 'professional', coachId: 'c1' } },
+    mockCoachAI({ profileData: null }),
+  )
+  assert.ok('personalisation' in r)
+  assert.equal(r.personalisation.applied, false)
+})
+
+test('getWeeklyBrief — with rich profile: personalisation.applied=true', async () => {
+  const r = await getWeeklyBrief(
+    { user: { tier: 'professional', coachId: 'coach-99' } },
+    mockCoachAI({ profileData: RICH_PROFILE }),
+  )
+  assert.equal(r.personalisation.applied, true)
+  assert.equal(r.personalisation.coachProfileId, 'coach-99')
+})
+
+test('getWeeklyBrief — profile in response does not add new keys to profile object', async () => {
+  const profile = JSON.parse(JSON.stringify(RICH_PROFILE))
+  await getWeeklyBrief(
+    { user: { tier: 'professional', coachId: 'coach-99' } },
+    mockCoachAI({ profileData: profile }),
+  )
+  // Profile should not have been mutated
+  assert.deepEqual(Object.keys(profile), Object.keys(RICH_PROFILE))
+})
+
+test('getWeeklyBrief — getProfile throws: brief still returned, personalisation.applied=false', async () => {
+  const r = await getWeeklyBrief(
+    { user: { tier: 'professional', coachId: 'c1' } },
+    mockCoachAI({ throwOnProfile: true }),
+  )
+  assert.ok('personalisation' in r)
+  assert.equal(r.personalisation.applied, false)
+})
+
+test('getWeeklyBrief — personalisation flag explicitly off: applied=false even with rich profile', async () => {
+  const r = await getWeeklyBrief(
+    { user: { tier: 'professional', coachId: 'c1', flags: { 'ai.personalisation': false } } },
+    mockCoachAI({ profileData: RICH_PROFILE }),
+  )
+  assert.equal(r.personalisation.applied, false)
+})
+
+test('getWeeklyBrief — personalisation.signalsUsed is array', async () => {
+  const r = await getWeeklyBrief(
+    { user: { tier: 'professional', coachId: 'c1' } },
+    mockCoachAI({ profileData: RICH_PROFILE }),
+  )
+  assert.ok(Array.isArray(r.personalisation.signalsUsed))
+})
+
+test('getWeeklyBrief — unavailable brief has personalisation.applied=false', async () => {
+  const r = await getWeeklyBrief({ user: { tier: 'free' } }, mockCoachAI({ tier: 'free' }))
+  assert.ok('personalisation' in r)
+  assert.equal(r.personalisation.applied, false)
+})
+
+test('getWeeklyBrief — all existing topPriorities structure preserved after personalisation', async () => {
+  const r = await getWeeklyBrief(
+    { user: { tier: 'professional', coachId: 'coach-99' } },
+    mockCoachAI({ profileData: RICH_PROFILE }),
+  )
+  for (const p of r.topPriorities) {
+    assert.ok('rank'     in p, 'rank missing')
+    assert.ok('title'    in p, 'title missing')
+    assert.ok('category' in p, 'category missing')
+    assert.ok('urgency'  in p, 'urgency missing')
+  }
 })

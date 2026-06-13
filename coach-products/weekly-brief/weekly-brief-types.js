@@ -47,3 +47,6 @@ export const BRIEF_FIELD = Object.freeze({
 export const LOAD_TARGET_MINUTES_PER_ACTION = 30
 export const LOAD_ON_TRACK_THRESHOLD        = 80   // ≥80% → on_track
 export const LOAD_BEHIND_THRESHOLD          = 60   // 60–79% → behind; <60 → at_risk
+
+/** Feature flag for M20 personalisation layer. Absent = enabled (opt-out pattern). */
+export const PERSONALISATION_FLAG = 'ai.personalisation'
