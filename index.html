@@ -1628,6 +1628,42 @@
     .wb-risk-high .wb-risk-dot { background:#f87171; }
     .wb-risk-medium .wb-risk-dot { background:#fbbf24; }
     .wb-risk-low .wb-risk-dot { background:var(--muted); }
+    /* ── Executive Dashboard ────────────────────────────────────────────── */
+    .ed-wrap { display:flex;flex-direction:column;gap:12px;padding-bottom:40px; }
+    .ed-situation { background:var(--surface,var(--card));border:1px solid var(--line);border-radius:12px;padding:16px 18px; }
+    .ed-sit-headline { font-size:17px;font-weight:700;letter-spacing:-0.01em;line-height:1.3;color:var(--fg); }
+    .ed-sit-sub { font-size:12px;color:var(--muted);margin-top:3px; }
+    .ed-phase-pill { display:inline-flex;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid currentColor;margin-top:10px; }
+    .ed-grid2 { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+    @media(max-width:560px){ .ed-grid2 { grid-template-columns:1fr; } }
+    .ed-card { background:var(--surface,var(--card));border:1px solid var(--line);border-radius:12px;padding:14px 16px; }
+    .ed-card-label { font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px; }
+    .ed-priority-row { display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid var(--line); }
+    .ed-priority-row:last-child { border-bottom:none;padding-bottom:0; }
+    .ed-priority-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px; }
+    .ed-priority-body { flex:1;min-width:0; }
+    .ed-priority-title { font-size:12px;font-weight:600;line-height:1.35;color:var(--fg); }
+    .ed-priority-why { font-size:11px;color:var(--muted);margin-top:1px; }
+    .ed-priority-link { font-size:10px;font-weight:700;color:var(--blue);background:none;border:none;padding:3px 0 0;cursor:pointer;text-align:left; }
+    .ed-health-grid { display:grid;grid-template-columns:1fr 1fr;gap:6px; }
+    .ed-hcell { padding:8px 10px;background:rgba(0,0,0,.025);border:1px solid var(--line);border-radius:8px;cursor:pointer;transition:background .12s; }
+    .ed-hcell:hover { background:rgba(0,0,0,.055); }
+    .ed-hval { font-size:19px;font-weight:800;line-height:1;color:var(--fg); }
+    .ed-hlabel { font-size:10px;color:var(--muted);margin-top:2px; }
+    .ed-tl-row { display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.06); }
+    .ed-tl-row:last-child { border-bottom:none; }
+    .ed-tl-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
+    .ed-tl-text { flex:1;font-size:12px;font-weight:500;color:var(--fg); }
+    .ed-tl-meta { font-size:11px;color:var(--muted);flex-shrink:0; }
+    .ed-rec-card { background:rgba(96,165,250,.04);border:1px solid rgba(96,165,250,.2);border-radius:12px;padding:14px 16px; }
+    .ed-rec-label { font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--blue);opacity:.8;margin-bottom:8px; }
+    .ed-rec-text { font-size:13px;font-weight:600;color:var(--fg);line-height:1.4; }
+    .ed-rec-why { font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4; }
+    .ed-score-card { text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100px; }
+    .ed-score-ring { width:68px;height:68px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;border:3px solid; }
+    .ed-score-lbl { font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin-top:6px; }
+    .ed-action-btn { display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;background:var(--blue);color:#fff;border:none;cursor:pointer;margin-top:10px;transition:opacity .15s; }
+    .ed-action-btn:hover { opacity:.85; }
     @media(max-width:600px) { .home-match-countdown { font-size:20px; } .home-match-opponent { font-size:18px; } }
 
     /* ── MEDICAL ── */
@@ -2456,7 +2492,8 @@
         aiDashboard:     false,  // Intelligence: Intelligence Dashboard (full AI Brain overview)
         aiDecisionCentre: false, // Intelligence: Decision Centre (AI-proposed coaching actions)
         aiKnowledgeUpload: false, // Intelligence: Knowledge Upload (coach documents → AI Brain)
-        aiWeeklyBrief:     false, // Intelligence: Weekly Brief card in Overview AI slot
+        aiWeeklyBrief:        false, // Intelligence: Weekly Brief card in Overview AI slot
+        executiveDashboard:   false, // Intelligence: Executive Dashboard (Mission Control V3)
       },
     };
 
@@ -5753,7 +5790,198 @@
       ];
     }
 
+    // ─── EXECUTIVE DASHBOARD (Mission Control V3) ────────────────────────────
+    // Read-only decision surface. Reads Core state + Weekly Brief.
+    // Gated by features.executiveDashboard. Zero mutations, zero new persistence.
+    function renderExecutiveDashboard() {
+      if (!_briefEngine) _loadBriefEngine();
+
+      const mc       = state.matchCentre || {};
+      const players  = state.players || [];
+      const schedule = state.schedule || [];
+      const phase    = matchCentrePhase();
+      const tonight  = getTonightSessionId();
+
+      // Brief — optional, degrades gracefully.
+      let brief = null;
+      if (_briefEngine) {
+        try { brief = _briefEngine(_buildExperienceFromState(), { tier: 'pro', now: new Date().toISOString() }); }
+        catch { /* degraded */ }
+      }
+      if (!brief?.available) brief = null;
+
+      // ── Today's Situation ──────────────────────────────────────────────────
+      const tonightSess = tonight ? schedule.find(s => s.id === tonight) : null;
+      const tonightTimeMatch = tonightSess ? (String(tonightSess.date || '').match(/\d{2}:\d{2}/) || [])[0] : null;
+      const injuredPlayers = players.filter(p =>
+        p.game === 'injured' || p.status === 'injured' ||
+        (p.medical && String(p.medical).trim()) ||
+        (state.medicalNotes?.[p.id]?.condition && !state.medicalNotes?.[p.id]?.returnTarget));
+      const picked = Object.values(state.formationNames || {}).filter(n => String(n || '').trim()).length;
+
+      let situation, situationSub, situationColor;
+      if (phase.label === 'Live') {
+        situation = `Match day — kick off ${esc(mc.kickoffTime || '15:00')}.`;
+        situationSub = mc.venue ? esc(mc.venue) : 'Good luck.';
+        situationColor = '#4ade80';
+      } else if (phase.msLeft > 0 && phase.msLeft < 86400000 && !mc.published) {
+        situation = 'Squad not published — match tomorrow.';
+        situationSub = 'Publish the team sheet before midnight.';
+        situationColor = '#f87171';
+      } else if (tonight && tonight !== 'game') {
+        const atTime = tonightTimeMatch ? ` at ${esc(tonightTimeMatch)}` : '';
+        situation = `You coach tonight${atTime}.`;
+        const tonightKey = sessionKey(tonight);
+        const confirmed  = players.filter(p => p[tonightKey] === 'available').length;
+        situationSub = confirmed ? `${confirmed} confirmed` : 'Check availability.';
+        situationColor = 'var(--blue,#60a5fa)';
+      } else if (injuredPlayers.length >= 3) {
+        situation = `${injuredPlayers.length} players need medical attention.`;
+        situationSub = 'Review medical panel.';
+        situationColor = '#fbbf24';
+      } else if (mc.published) {
+        situation = 'Squad ready.';
+        situationSub = mc.opposition ? `vs ${esc(mc.opposition)}` : 'Match prep complete.';
+        situationColor = '#4ade80';
+      } else if (phase.days < 5 && picked < 15 && mc.opposition) {
+        situation = 'Selection incomplete.';
+        situationSub = `${picked} of 15 picked for ${esc(mc.opposition)}.`;
+        situationColor = '#fbbf24';
+      } else {
+        const nxt = (state.fixtures || [])[0];
+        situation = nxt ? `Planning week — next match vs ${esc(nxt.opposition || 'TBC')}.` : 'All clear.';
+        situationSub = 'Nothing urgent needs your attention.';
+        situationColor = 'var(--muted)';
+      }
+
+      const phaseColor = { Prepare:'var(--blue,#60a5fa)', Refine:'var(--blue,#60a5fa)', Confirm:'#fbbf24', Live:'#4ade80', 'Post-match':'var(--muted)' }[phase.label] || 'var(--muted)';
+
+      // ── Team Health metrics ────────────────────────────────────────────────
+      const gameKey       = sessionKey('game');
+      const matchAvail    = players.filter(p => p[gameKey] === 'available').length;
+      const matchNoReply  = players.filter(p => (p[gameKey] || 'no-reply') === 'no-reply').length;
+      const unreadCount   = chatUnreadTotal() + (state.messages || []).filter(m => m.unread && m.to === 'Coach').length;
+      const pendingCount  = (_identityPendingRequests || []).length;
+      const medCount      = Object.values(state.medicalNotes || {}).filter(n => n?.condition && String(n.condition).trim()).length
+                          + (state.treatmentLogs || []).filter(l => !l._archived).length;
+
+      const healthCells = [
+        { val: matchAvail,      label: 'Available',      action: `setSection('coach','message')`,   warn: matchAvail < 10 },
+        { val: injuredPlayers.length, label: 'Injuries', action: `setSection('coach','medical')`,   warn: injuredPlayers.length > 0 },
+        { val: unreadCount,     label: 'Unread msgs',    action: `setSection('coach','messages')`,  warn: unreadCount > 0 },
+        { val: pendingCount,    label: 'Pending joins',  action: `setSection('coach','players')`,   warn: pendingCount > 0 },
+        { val: `${picked}/15`,  label: 'Selected',       action: `setSection('coach','matchday')`,  warn: picked < 15 && mc.opposition },
+        { val: medCount || '—', label: 'Medical',        action: `setSection('coach','medical')`,   warn: medCount > 0 },
+      ].map(c => `
+        <div class="ed-hcell" onclick="${c.action}" role="button">
+          <div class="ed-hval" style="${c.warn ? 'color:#fbbf24' : ''}">${c.val}</div>
+          <div class="ed-hlabel">${c.label}</div>
+        </div>`).join('');
+
+      // ── Top Priorities ─────────────────────────────────────────────────────
+      const SEV_COLOR = { high: '#f87171', medium: '#fbbf24', low: 'var(--blue,#60a5fa)' };
+      const priorityItems = (brief?.priorities || []).slice(0, 3);
+      const prioritiesHTML = priorityItems.length ? priorityItems.map(p => {
+        const col = SEV_COLOR[p.evidence?.ref?.includes('availability') ? 'high' : 'medium'] || 'var(--blue,#60a5fa)';
+        const riskMatch = (brief?.risks || []).find(r => r.severity === 'high' && p.evidence?.ref === r.evidence?.ref);
+        const dotCol = riskMatch ? '#f87171' : (col);
+        return `<div class="ed-priority-row">
+          <div class="ed-priority-dot" style="background:${dotCol}"></div>
+          <div class="ed-priority-body">
+            <div class="ed-priority-title">${esc(p.title)}</div>
+            <div class="ed-priority-why">${esc(p.why)}</div>
+            <button class="ed-priority-link" type="button" onclick="setSection('coach','${esc(p.action?.section || 'overview')}')">${esc(p.action?.label || 'Open →')}</button>
+          </div>
+        </div>`;
+      }).join('') : `<p style="font-size:12px;color:var(--muted);margin:0">${_briefEngine ? 'No priorities computed.' : 'Loading…'}</p>`;
+
+      // ── This Week Timeline ─────────────────────────────────────────────────
+      const timelineHTML = schedule.map(s => {
+        const isMatch = s.type === 'Match';
+        const dot  = isMatch ? '#f87171' : (s.published ? '#4ade80' : '#fbbf24');
+        const meta = s.published ? 'Published' : 'Draft';
+        const key  = sessionKey(s.id);
+        const avail = players.filter(p => p[key] === 'available').length;
+        const target = isMatch ? `setSection('coach','matchday')` : `setSection('coach','training')`;
+        const dateStr = s.date ? esc(s.date) : 'Date TBC';
+        return `<div class="ed-tl-row" onclick="${target}" style="cursor:pointer">
+          <div class="ed-tl-dot" style="background:${dot}"></div>
+          <div class="ed-tl-text">${esc(s.title || s.type)}${avail ? ` · <span style="color:#4ade80">${avail}</span>` : ''}</div>
+          <div class="ed-tl-meta">${isMatch && mc.opposition ? esc(mc.opposition) + ' · ' : ''}${dateStr ? dateStr + ' · ' : ''}${meta}</div>
+        </div>`;
+      }).join('') || `<p style="font-size:12px;color:var(--muted);margin:0">No sessions this week.</p>`;
+
+      // ── AI Recommendation ──────────────────────────────────────────────────
+      const rec = brief?.priorities?.[0] || null;
+      const recHTML = rec
+        ? `<div class="ed-rec-text">${esc(rec.title)}</div>
+           <div class="ed-rec-why">${esc(rec.why)}</div>
+           <button class="ed-action-btn" type="button" onclick="setSection('coach','${esc(rec.action?.section || 'overview')}')">${esc(rec.action?.label || 'View →')}</button>`
+        : `<div class="ed-rec-text" style="color:var(--muted)">${_briefEngine ? 'No recommendation available.' : 'Loading intelligence…'}</div>`;
+
+      // ── Coach Score ────────────────────────────────────────────────────────
+      const checklist   = brief?.matchPrepChecklist || [];
+      const checkDone   = checklist.filter(c => c.done).length;
+      const checkTotal  = checklist.length || 5;
+      const confScore   = brief?.confidence ?? 0;
+      const score = checklist.length
+        ? Math.round(((checkDone / checkTotal) * 0.6 + confScore * 0.4) * 100)
+        : Math.round(confScore * 100);
+      const scoreCol    = score >= 75 ? '#4ade80' : score >= 45 ? '#fbbf24' : '#f87171';
+      const scoreLabel  = score >= 75 ? 'Ready' : score >= 45 ? 'In progress' : 'Needs work';
+
+      const todayStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+
+      document.getElementById('coach-overview').innerHTML = `<div class="ed-wrap">
+
+        <!-- ── Situation ─────────────────────────────────────────────────── -->
+        <div class="ed-situation">
+          <div class="ed-sit-headline" style="color:${situationColor}">${situation}</div>
+          <div class="ed-sit-sub">${situationSub}</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">
+            <span class="ed-phase-pill" style="color:${phaseColor}">${esc(phase.label)}</span>
+            ${mc.kickoffDate && phase.msLeft > 0 ? `<span style="font-size:11px;color:var(--muted)">${esc(matchCountdownStr())}${mc.opposition ? ' · vs ' + esc(mc.opposition) : ''}</span>` : ''}
+            <span style="font-size:11px;color:var(--muted);margin-left:auto">${esc(todayStr)}</span>
+          </div>
+        </div>
+
+        <!-- ── Priorities + Health ──────────────────────────────────────── -->
+        <div class="ed-grid2">
+          <div class="ed-card">
+            <div class="ed-card-label">Top Priorities</div>
+            ${prioritiesHTML}
+          </div>
+          <div class="ed-card">
+            <div class="ed-card-label">Team Health</div>
+            <div class="ed-health-grid">${healthCells}</div>
+          </div>
+        </div>
+
+        <!-- ── Timeline ────────────────────────────────────────────────── -->
+        <div class="ed-card">
+          <div class="ed-card-label">This Week</div>
+          ${timelineHTML}
+        </div>
+
+        <!-- ── AI Recommendation + Score ───────────────────────────────── -->
+        <div class="ed-grid2">
+          <div class="ed-rec-card">
+            <div class="ed-rec-label">AI Recommendation</div>
+            ${recHTML}
+          </div>
+          <div class="ed-card ed-score-card">
+            <div class="ed-card-label">Coach Score</div>
+            <div class="ed-score-ring" style="color:${scoreCol};border-color:${scoreCol}">${score}%</div>
+            <div class="ed-score-lbl">${scoreLabel}</div>
+            ${checklist.length ? `<div style="margin-top:6px;font-size:10px;color:var(--muted)">${checkDone}/${checkTotal} match prep complete</div>` : ''}
+          </div>
+        </div>
+
+      </div>`;
+    }
+
     function renderCoachOverview() {
+      if (state.features?.executiveDashboard && isCoach()) { renderExecutiveDashboard(); return; }
       if (autopilotOn() && isCoach()) {
         autopilotFillMatchFromFixture();
         loadAutopilotLog();
