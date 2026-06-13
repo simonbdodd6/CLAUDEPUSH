@@ -248,6 +248,79 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    // ── Recommendation Inspector (Executive Reasoning Layer, PIF-3) ─────────────
+    // Generic: explain ANY domain's recommendation posted in the body. Flag-gated.
+    // The explanation is composed from the supplied signals — no engine call, no
+    // model invocation, nothing recomputed.
+    if (method === 'POST' && path === '/api/recommendations/explain') {
+      const config = resolveConfig()
+      if (!isIntelligenceEnabled(config)) {
+        json(res, degradedEnvelope('recommendationInspector', 'disabled', getTier(config)))
+        return
+      }
+      const body = await readBody(req).catch(() => ({}))
+      const recommendation = body.recommendation ?? body.input ?? body
+      const wantPanel = url.searchParams.get('panel') === '1' || body.panel === true
+      const { createExecutiveReasoningPlatform } = await import('../lib/executive-reasoning/index.js')
+      const reasoning = createExecutiveReasoningPlatform()
+      const explanation = reasoning.explain(recommendation)
+      json(res, wantPanel ? { explanation, panel: reasoning.panel(explanation) } : { explanation })
+      return
+    }
+
+    // Inspect a DURABLE approval item by id — composes the PIF-2 ledger (approval +
+    // audit + learning outcome) into an ExecutiveExplanation. Real persisted data
+    // only; never fabricated. Flag-gated.
+    if (method === 'GET' && path === '/api/recommendations/explain') {
+      const config = resolveConfig()
+      if (!isIntelligenceEnabled(config)) {
+        json(res, degradedEnvelope('recommendationInspector', 'disabled', getTier(config)))
+        return
+      }
+      const approvalId = url.searchParams.get('approvalId')
+      if (!approvalId) { err(res, 'approvalId query parameter is required', 400); return }
+
+      const dash = await import('../dashboard/index.js')
+      const item = dash.getById(approvalId)
+      if (!item) { err(res, `approval ${approvalId} not found`, 404); return }
+
+      // Gather this decision's audit trail from the durable ledger.
+      const audits = dash.readAudit({ limit: 1000 }).filter(a => a.decisionId === approvalId)
+      const latest = audits[audits.length - 1] ?? null
+
+      // Map the Coach's Eye approval record onto the neutral ReasoningInput. This
+      // binding is the ONLY place domain knowledge lives; the layer itself is pure.
+      const input = {
+        id:        item.approvalId,
+        type:      'recommendation',
+        source:    item.generatedBy ?? null,
+        subject:   { title: item.title ?? item.type, summary: item.type ?? null },
+        createdAt: item.createdAt ?? null,
+        confidence: { value: item.confidence ?? 0 },
+        evidence:  (Array.isArray(item.evidence) ? item.evidence : []).map(f => ({ fact: f, source: item.generatedBy ?? null })),
+        decision:  { owner: item.requiresRole ?? null, rationale: latest?.reason ?? null },
+        approval:  {
+          state:      item.status ?? null,
+          approvalId: item.approvalId,
+          reviewer:   item.approvedBy ?? item.rejectedBy ?? null,
+          reviewedAt: item.reviewedAt ?? null,
+          reason:     item.rejectionReason ?? null,
+          auditId:    latest?.auditId ?? null,
+        },
+        learningOutcome: latest?.learningOutcome ?? null,
+        timelineEvents: audits.map(a => ({ at: a.recordedAt, event: `decision_${a.action}`, by: a.humanDecision ?? null })),
+        featureFlags: [{ key: 'intelligence', enabled: true }],
+        dataQuality: { mock: Boolean(item.isMock) },
+      }
+
+      const { createExecutiveReasoningPlatform } = await import('../lib/executive-reasoning/index.js')
+      const reasoning = createExecutiveReasoningPlatform()
+      const explanation = reasoning.explain(input)
+      const wantPanel = url.searchParams.get('panel') === '1'
+      json(res, wantPanel ? { explanation, panel: reasoning.panel(explanation) } : { explanation })
+      return
+    }
+
     // Approve / reject a queued item, then close the learning feedback loop.
     // The queue mutation is always coach-triggered; the learning record is flag-gated.
     if (method === 'POST' && /^\/api\/approvals\/[^/]+\/(approve|reject)$/.test(path)) {
