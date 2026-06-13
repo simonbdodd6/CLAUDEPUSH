@@ -50,6 +50,10 @@ export const api = {
   platformStatus: ()                         => get('/platform/status'),
   briefing:       (role)                     => get(`/dashboard/briefing?role=${role ?? 'coach'}`),
   approvals:      ()                         => get('/approvals'),
+  approveApproval:(id, reviewer = 'coach')   => post(`/approvals/${encodeURIComponent(id)}/approve`, { reviewer }),
+  rejectApproval: (id, reason = '', reviewer = 'coach') => post(`/approvals/${encodeURIComponent(id)}/reject`, { reviewer, reason }),
+  evidence:       (q, entityId)              => get(`/evidence?${entityId ? `entityId=${encodeURIComponent(entityId)}` : `q=${encodeURIComponent(q ?? '')}`}`),
+  simulation:     ()                         => get('/simulation'),
 }
 
 // ── Mock data (fallback when server not running) ───────────────────────────────

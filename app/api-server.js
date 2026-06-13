@@ -7,7 +7,21 @@
 import { createServer } from 'http'
 import { URL } from 'url'
 
+// Feature-flag gate — the ONLY place intelligence features are checked.
+// Pure, side-effect-free lookup module (imports nothing from Core or engines).
+import {
+  defaultConfig, isFeatureEnabled, isIntelligenceEnabled, degradedEnvelope, getTier, TIER,
+} from '../brain/config.js'
+
 const PORT = process.env.PORT ?? 3001
+
+// Resolve the per-club IntelligenceConfig for this server process.
+// Production: Core supplies the config object. Here it is derived from env so the
+// existing intelligence.features schema governs every gate below.
+function resolveConfig() {
+  const tier = process.env.INTELLIGENCE_TIER ?? TIER.PROFESSIONAL
+  return defaultConfig(process.env.CLUB_ID ?? 'demo', tier)
+}
 
 function json(res, data, status = 200) {
   res.writeHead(status, {
@@ -210,11 +224,122 @@ const server = createServer(async (req, res) => {
     }
 
     // ── Approvals ─────────────────────────────────────────────────────────────
+    // Read the live pending queue (reuses dashboard/approval-centre via dashboard/index.js).
     if (method === 'GET' && path === '/api/approvals') {
-      const { getPending, approvalStats } = await import('../dashboard/approval-centre/approval-manager.js')
-        .catch(() => import('../dashboard/index.js').then(m => ({ getPending: () => [], approvalStats: () => ({ pending: 0 }) })))
-      const items = getPending?.() ?? []
-      json(res, { items, count: items.length })
+      const { getPending, approvalStats } = await import('../dashboard/index.js')
+      const items = getPending()
+      json(res, { items, count: items.length, stats: approvalStats() })
+      return
+    }
+
+    // Approve / reject a queued item, then close the learning feedback loop.
+    // The queue mutation is always coach-triggered; the learning record is flag-gated.
+    if (method === 'POST' && /^\/api\/approvals\/[^/]+\/(approve|reject)$/.test(path)) {
+      const parts      = path.split('/')                 // ['', 'api', 'approvals', :id, :action]
+      const approvalId = decodeURIComponent(parts[3])
+      const action     = parts[4]
+      const body       = await readBody(req).catch(() => ({}))
+      const reviewer   = body.reviewer ?? 'coach'
+
+      const dash   = await import('../dashboard/index.js')
+      const result = action === 'approve'
+        ? dash.approve(approvalId, reviewer)
+        : dash.reject(approvalId, reviewer, body.reason ?? '')
+
+      if (!result.ok) { err(res, result.reason ?? 'approval not found', 404); return }
+
+      // Feedback loop — record the real coach decision in the existing Learning Engine.
+      // The coach's approve/reject IS the human-validated signal (not a simulated outcome).
+      const config = resolveConfig()
+      let learning = { recorded: false, reason: 'intelligence disabled' }
+      if (isIntelligenceEnabled(config)) {
+        try {
+          const { recordOutcome, COACH_DECISION } = await import('../learning-engine/index.js')
+          const item = result.item
+          const outcome = recordOutcome({
+            recommendationId:   item.approvalId,
+            recommendationType: item.type ?? 'approval_item',
+            recommendation:     item.title ?? item.type,
+            coachDecision:      action === 'approve' ? COACH_DECISION.ACCEPTED : COACH_DECISION.REJECTED,
+            // The coach's decision is the ground-truth judgement at this point in the lifecycle.
+            predictionCorrect:  action === 'approve',
+            interventionWorked: null,
+            confidenceAtTime:   item.confidence ?? null,
+            outcomeNotes:       'Coach approval decision captured at review time; real-world outcome observed separately.',
+          })
+          learning = { recorded: true, outcomeId: outcome.id, outcomeType: outcome.outcomeType }
+        } catch (e) {
+          learning = { recorded: false, reason: e.message }
+        }
+      }
+
+      json(res, { ok: true, item: result.item, learning })
+      return
+    }
+
+    // Route Decision-Engine output into the approval queue via the existing router.
+    // Flag-gated behind autonomousAssistant so no unattended/low-provenance items
+    // reach the queue unless a club has explicitly enabled autonomous behaviour.
+    if (method === 'POST' && path === '/api/approvals/route') {
+      const config = resolveConfig()
+      if (!isFeatureEnabled(config, 'autonomousAssistant')) {
+        json(res, degradedEnvelope('autonomousAssistant', 'disabled', getTier(config)))
+        return
+      }
+      const body  = await readBody(req).catch(() => ({}))
+      const items = Array.isArray(body.items) ? body.items : []
+      const { routeGeneric } = await import('../dashboard/index.js')
+      const routed = items.map(it => routeGeneric({
+        type:        it.type ?? 'recommendation',
+        title:       it.title ?? it.recommendation ?? it.type,
+        generatedBy: it.generatedBy ?? 'decision-engine',
+        confidence:  it.confidence ?? 70,
+        evidence:    it.evidence ?? [],
+        preview:     it.preview ?? {},
+        riskLevel:   it.riskLevel ?? 'medium',
+        requiresRole: it.requiresRole ?? 'coach',
+      }))
+      json(res, { routed: routed.length, items: routed })
+      return
+    }
+
+    // ── Evidence view ─────────────────────────────────────────────────────────
+    // Read-only explainability: composes Knowledge Engine citations with Memory
+    // entity links. No new store, no new reasoning — pure composition.
+    if (method === 'GET' && path === '/api/evidence') {
+      const config = resolveConfig()
+      if (!isIntelligenceEnabled(config)) {
+        json(res, degradedEnvelope('evidence', 'disabled', getTier(config)))
+        return
+      }
+      const q        = url.searchParams.get('q') ?? ''
+      const entityId = url.searchParams.get('entityId') ?? null
+      const { buildEvidence } = await import('../knowledge-engine/evidence-view.js')
+      const evidence = await buildEvidence({ question: q, entityId, role: 'coach' })
+      json(res, evidence)
+      return
+    }
+
+    // ── Simulation (read-only) ─────────────────────────────────────────────────
+    // runSimulation() exists in season-intelligence, but every code path currently
+    // feeds it MOCK observations. Per platform rules we do NOT surface mock data as
+    // truth, so this endpoint reports the capability as available-but-deferred until
+    // a live observation feed is wired. No mock is fabricated or duplicated here.
+    if (method === 'GET' && path === '/api/simulation') {
+      const config = resolveConfig()
+      if (!isIntelligenceEnabled(config)) {
+        json(res, degradedEnvelope('simulation', 'disabled', getTier(config)))
+        return
+      }
+      json(res, {
+        available:   false,
+        feature:     'simulation',
+        reason:      'awaiting-live-observations',
+        note:        'season-intelligence runSimulation() is implemented but only has mock observation inputs today. It will be surfaced once a live observation feed is connected.',
+        tier:        getTier(config),
+        generatedAt: new Date().toISOString(),
+        data:        null,
+      })
       return
     }
 

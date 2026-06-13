@@ -83,3 +83,21 @@
 - Added APIs for generating trip plans, generating daily plans, suggesting day activities, suggesting destination focus, detecting trip gaps, and explaining plans.
 - Added privacy validation that rejects exact traveller location-style inputs.
 - Added adapter-based in-memory plan storage, audit events, README documentation, and comprehensive automated tests.
+
+## 2026-06-13 — Interactive AI Consciousness Visualization v1 (shipped)
+
+- Replaced the Command Centre dashboard centrepiece with a GPU-rendered neural brain at `app/command-centre/src/components/dashboard/NeuralConsciousness.jsx` (React Three Fiber + Three.js).
+- 3,500-particle human-brain silhouette across six cognitive subsystems, ~7k synaptic connections, traveling signal pulses, custom GLSL shaders, bloom + depth-of-field, spring-physics rotation, hover-to-fire neurons, and click-to-dive intelligence layers.
+- This is purely a presentation-layer change; it consumes no new backend and mutates no Core data. Feature-complete; no further visual work planned.
+
+## 2026-06-13 — Platform Intelligence Foundation PIF-1 (shipped — integration only)
+
+- Implemented the smallest safe integration layer that makes existing intelligence reachable, explainable, and approval-gated. No new AI brain, no new engine, no duplicated reasoning, no new store, no new product domain — only the existing engines re-exposed through `app/api-server.js`, gated by the existing `brain/config.js` feature-flag schema.
+- Fixed the broken `GET /api/approvals` route (it imported a non-existent `approval-manager.js` and silently returned empty); it now reads the live queue via `dashboard/index.js`.
+- Added `POST /api/approvals/:id/approve` and `:id/reject` reusing `dashboard/index.js` `approve()/reject()`. The already-built `ApprovalsQueue.jsx` buttons are wired to these via the `useApprovals()` hook (busy-state, coach-triggered, no visual change).
+- Added `POST /api/approvals/route` that routes Decision-Engine output into the queue through the existing `approval-router.routeGeneric()`. Flag-gated behind `autonomousAssistant` (off below elite tier) so no low-provenance items reach the queue by default.
+- Closed the documented feedback gap: on approve/reject the API records the real coach decision through the existing `learning-engine.recordOutcome()` (ACCEPTED→prediction validated, REJECTED→prediction rejected). Flag-gated behind intelligence-enabled; the coach decision is real human input, not a simulated outcome.
+- Added `knowledge-engine/evidence-view.js` — a thin read-only composer reusing Knowledge Engine citations + Memory entity links (no new store, no reasoning), exposed at `GET /api/evidence`.
+- Added `GET /api/simulation`: `runSimulation()` exists but every current code path feeds it mock observations, so per platform rules it is NOT surfaced as truth — the endpoint returns an honest flag-gated "available-but-deferred until a live observation feed is wired" envelope. No mock fabricated or duplicated.
+- Verified: command-centre `vite build` passes; full `node --test` suite passes (368/368); live smoke test confirmed route→list→approve→reject→evidence→simulation, idempotency guards, 404s, and feature-flag gating (starter tier degrades every intelligence endpoint while Core `GET /api/approvals` still works).
+- Boundaries held: Core works with AI disabled, Intelligence only reads/returns, all Intelligence writes are coach-triggered, no engine-to-engine imports added, persistence unchanged (existing JSONL/file stores).
