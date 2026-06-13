@@ -3362,6 +3362,8 @@
     function currentUser()  { return canonicalAccountForUserId(state.currentUserId) || state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
     function isCoach()      { const r = currentUser()?.role; return r === "coach" || r === "admin" || r === "medical"; }
     function statusLabel(s) { return (s||"no-reply").replaceAll("-", " ").replace(/\b\w/g, l => l.toUpperCase()); }
+    const _AVATAR_COLORS = ['#4f46e5','#7c3aed','#db2777','#dc2626','#d97706','#16a34a','#0891b2','#4338ca','#b45309','#7e22ce'];
+    function playerAvatarColor(key) { let h=0; for(let i=0;i<key.length;i++) h=(h*31+key.charCodeAt(i))&0x7fffffff; return _AVATAR_COLORS[h%_AVATAR_COLORS.length]; }
     function noSquadMsg() {
       return `<div class="card" style="text-align:center;padding:40px 20px">
         <p style="font-size:36px;margin:0">🏉</p>
@@ -6762,7 +6764,7 @@
           ${sessionDetailHTML}
           <div class="card">
             <h2>Training registers</h2>
-            <p class="muted">Tuesday and Thursday with not-coming and no-reply split below.</p>
+            <p class="muted">${trainingRegisters.map(r => r.session.title || r.session.id).join(' and ')} — availability split below.</p>
             <div class="register-stack">
               ${trainingRegisters.map(({session, availableRows, notComingRows, noReplyRows}) => `
                 <section class="register-card">
@@ -7587,11 +7589,15 @@
         <div class="session-card-row">
           ${schedSessions.map(s => {
             const sBlocks = (state.trainingBlocks||{})[s.id]?.length || 0;
+            const sKey    = sessionKey(s.id);
+            const sAvail  = state.players.filter(p => (p[sKey]||'no-reply') === 'available').length;
+            const sentForSession = (state.availabilityRequests||[]).some(r => r.sessionId === s.id && r.status === 'sent');
+            const availBadge = sentForSession ? ` · <span style="color:${sAvail>=10?'var(--green)':'var(--muted)'};">${sAvail} confirmed</span>` : '';
             return `
               <button class="session-card-tab ${sessId===s.id?"active":""}" type="button" onclick="setTrainingSession('${s.id}')">
                 <span class="sc-time">${esc(s.date || s.type || s.id)}</span>
                 <strong>${esc(s.title || s.id)}</strong>
-                <small style="color:var(--muted);font-size:11px;margin-top:3px;display:block">${sBlocks} block${sBlocks!==1?'s':''} · ${s.published ? '<span style="color:var(--green);font-weight:700">Published</span>' : 'Draft'}</small>
+                <small style="color:var(--muted);font-size:11px;margin-top:3px;display:block">${sBlocks} block${sBlocks!==1?'s':''}${availBadge} · ${s.published ? '<span style="color:var(--green);font-weight:700">Published</span>' : 'Draft'}</small>
               </button>`;
           }).join("")}
         </div>
@@ -8098,7 +8104,7 @@
                   const initials = p.name.split(" ").map(w=>w[0]).slice(0,2).join("");
                   const photoEl  = p.photo
                     ? `<img src="${p.photo}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0">`
-                    : `<div style="width:28px;height:28px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;flex-shrink:0">${initials}</div>`;
+                    : `<div style="width:28px;height:28px;border-radius:50%;background:${playerAvatarColor(p.id||p.name)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;flex-shrink:0">${initials}</div>`;
                   return `<div class="squad-player-drag"
                     draggable="true"
                     data-player-name="${esc(p.name)}"
@@ -8269,6 +8275,7 @@
       if (isCoach()) loadInviteList().catch(()=>{});
       if (isCoach()) setTimeout(() => loadIdentityRequests().catch(()=>{}), 0);
 
+      const schedSessions = state.schedule || [];
       const members    = canonicalVisiblePlayers();
       const filter     = state.playerFilter || "all";
       const filterMap  = { all: ()=>true, available: p=>p.game==="available", injured: p=>p.game==="injured", "no-reply": p=>p.game==="no-reply", consent: p=>!p.mediaConsent };
@@ -8365,15 +8372,14 @@
           </div>
 
           <!-- Pending account join requests -->
-          <div class="card" style="padding:14px 18px">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px">
-              <div>
-                <h2 style="margin:0">Pending Requests</h2>
-                <p class="muted" style="margin-top:3px">Approve players who joined with team code and email account.</p>
+          <div class="card" style="padding:0;overflow:hidden">
+            <details class="srv-panel" ${_identityPendingRequests.length > 0 ? 'open' : ''} ontoggle="if(this.open) loadIdentityRequests()">
+              <summary>🔔 Join requests${_identityPendingRequests.length > 0 ? ` <strong style="color:var(--green)">(${_identityPendingRequests.length})</strong>` : ''}</summary>
+              <div class="srv-panel-body" style="padding-top:0">
+                <p class="muted" style="font-size:13px;margin-bottom:12px">Approve players who joined with the team code.</p>
+                <div id="identity-requests-panel">${identityRequestsHtml()}</div>
               </div>
-              <button class="btn" type="button" onclick="loadIdentityRequests()" style="font-size:12px">Refresh</button>
-            </div>
-            <div id="identity-requests-panel">${identityRequestsHtml()}</div>
+            </details>
           </div>
 
           <!-- Add player panel (toggled) -->
@@ -8417,9 +8423,9 @@
                 <tr>
                   <th style="padding-left:18px">Player</th>
                   <th>Position</th>
-                  <th>Game status</th>
-                  <th>Tuesday</th>
-                  <th>Thursday</th>
+                  <th>${esc(schedSessions.find(s=>s.id==='game')?.title || 'Match')}</th>
+                  <th>${esc(schedSessions.find(s=>s.id==='tue')?.title || 'Training 1')}</th>
+                  <th>${esc(schedSessions.find(s=>s.id==='thu')?.title || 'Training 2')}</th>
                   <th>Attendance</th>
                   <th>Media consent</th>
                   <th>Contract</th>
@@ -8431,7 +8437,7 @@
                   <td style="padding-left:18px">
                     <div style="display:flex;align-items:center;gap:9px">
                       <div class="player-photo-wrap">
-                        ${p.photo ? `<img src="${p.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover">` : `<div style="width:36px;height:36px;border-radius:50%;background:var(--nav);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800">${p.name.split(" ").map(w=>w[0]).slice(0,2).join("")}</div>`}
+                        ${p.photo ? `<img src="${p.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover">` : `<div style="width:36px;height:36px;border-radius:50%;background:${playerAvatarColor(p.id||p.name)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800">${p.name.split(" ").map(w=>w[0]).slice(0,2).join("")}</div>`}
                         <label class="photo-badge" title="Upload photo">
                           📷
                           <input type="file" accept="image/*" style="display:none" onchange="savePlayerPhoto('${p.id}',this)">
@@ -8446,8 +8452,8 @@
                   <td><span class="status ${p.trainingThursday}">${statusLabel(p.trainingThursday)}</span></td>
                   <td>
                     <div style="display:flex;align-items:center;gap:8px">
-                      <div class="history-bar" style="width:60px"><span style="width:${p.attendance}%"></span></div>
-                      <span style="font-size:12px;font-weight:700">${p.attendance}%</span>
+                      <div class="history-bar" style="width:60px"><span style="width:${p.attendance}%;background:${p.attendance>=80?'var(--green)':p.attendance>=60?'#d97706':'#dc2626'}"></span></div>
+                      <span style="font-size:12px;font-weight:700;color:${p.attendance>=80?'var(--ink)':p.attendance>=60?'#d97706':'#f87171'}">${p.attendance}%</span>
                     </div>
                   </td>
                   <td>
