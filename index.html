@@ -2091,6 +2091,8 @@
       #pushSidebar { display: none !important; }
       /* Nav buttons need 44px touch target when rendered as a 2-col grid */
       nav button { min-height: 44px; }
+      /* Add-player form: 2-col on tablet */
+      .add-player-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
     @media (max-width: 480px) {
@@ -2108,6 +2110,8 @@
       .chat-bubble-wrap { max-width: 90%; }
       /* Tighter card padding on small phones */
       .card { padding: 14px; }
+      /* Add-player form: single column on small phones */
+      .add-player-grid { grid-template-columns: 1fr; }
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
