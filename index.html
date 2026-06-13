@@ -4438,7 +4438,7 @@
     function toggleMediaConsent(id) {
       if (!isCoach()) return notify("Only coaches can update consent");
       const p=state.players.find(p=>p.id===id); if (!p) return;
-      p.mediaConsent=!p.mediaConsent; notify(`Media consent ${p.mediaConsent?"granted":"revoked"} for ${p.name}`);
+      p.mediaConsent=!p.mediaConsent; saveState('Consent updated'); showToast(`Media consent ${p.mediaConsent?'granted':'revoked'} for ${p.name}`); render();
     }
     function showAddPlayerForm() { state.showAddPlayer=!state.showAddPlayer; saveState(); render(); }
     function addPlayer() {
