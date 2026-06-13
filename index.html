@@ -1205,6 +1205,7 @@
       input, select, textarea { font-size: 16px !important; }
       .btn { min-height: 44px; }
       .ob-row, .mctl-row { min-height: 44px; }
+      .filter-pill { min-height: 40px; }
       .mctl-done summary { min-height: 40px; display: flex; align-items: center; }
     }
 
@@ -1264,9 +1265,16 @@
       color: var(--muted); margin: 4px 2px -6px;
     }
     .mctl-allclear {
+      display: flex; align-items: center; gap: 12px;
       border: 1px solid rgba(16,185,129,0.25); border-radius: 12px;
       background: rgba(16,185,129,0.05); padding: 18px 20px;
       font-size: 14px; font-weight: 600; color: var(--ink);
+    }
+    .mctl-allclear-icon {
+      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+      background: rgba(16,185,129,0.18); color: var(--green);
+      font-size: 13px; font-weight: 900;
+      display: flex; align-items: center; justify-content: center;
     }
     .mctl-row {
       display: flex; align-items: center; gap: 11px; width: 100%;
@@ -1581,7 +1589,7 @@
     @media(max-width:600px) { .bench-strip { grid-template-columns:repeat(4,minmax(0,1fr)); } }
 
     /* ── HOME / DAILY BRIEFING ── */
-    .home-wrap { display:grid; gap:12px; max-width:720px; }
+    .home-wrap { display:grid; gap:16px; max-width:720px; }
     .home-match-card { border:1px solid var(--line); border-radius:12px; background:var(--panel); padding:18px 20px; }
     .home-match-top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
     .home-match-opponent { font-size:21px; font-weight:800; color:var(--ink); margin-top:7px; }
@@ -6581,7 +6589,7 @@
                 <button class="btn${item === nowItems[0] ? ' primary' : ''} home-attn-cta" type="button" onclick="${item.action}">${esc(item.cta)}</button>
               </div>`).join('')}
           </div>` : `
-          <div class="mctl-allclear">${allClearText}</div>`}
+          <div class="mctl-allclear"><span class="mctl-allclear-icon">✓</span><span>${allClearText}</span></div>`}
 
           <!-- ── THIS WEEK ─────────────────────────────────────── -->
           ${weekItems.length ? `
