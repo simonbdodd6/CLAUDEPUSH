@@ -44,6 +44,7 @@ let _dna      = null   // coach-dna-engine (M23)
 let _opp      = null   // opponent-intelligence (M24)
 let _td       = null   // training-designer (M25)
 let _ms       = null   // match-strategy (M26)
+let _lm       = null   // live-match (M27)
 let _rec = null
 let _ke  = null
 let _le  = null
@@ -145,6 +146,11 @@ async function loadTd() {
 async function loadMs() {
   if (!_ms) _ms = await import('./match-strategy/index.js')
   return _ms
+}
+
+async function loadLm() {
+  if (!_lm) _lm = await import('./live-match/index.js')
+  return _lm
 }
 
 async function loadRec() {
@@ -1333,6 +1339,59 @@ export const matchStrategy = {
 /** AI.buildMatchStrategy — build a complete match plan. */
 export async function buildMatchStrategy(context = {}, opts = {}) { return matchStrategy.build(context, opts) }
 
+// ── M27 — Live Match Intelligence Engine ──────────────────────────────────────
+// Thinks DURING the game: ingests live events and synthesises real-time match
+// state + recommendations. No LLM, no Core dependency, feature-flagged
+// (ai.liveMatch), subscription-aware (Performance+), versioned, gracefully
+// degrading. Deterministic.
+//
+// AI.getLiveMatchIntelligence(matchIdOrEvents, opts) → complete live intelligence
+// AI.liveMatch.record(matchId, events) → append live events to the match log
+
+async function lmGate(opts = {}) {
+  const { LIVE_FLAG, LIVE_TIERS } = await loadLm()
+  const flags = opts.flags ?? {}
+  if (LIVE_FLAG in flags && !flags[LIVE_FLAG]) {
+    return { available: false, ok: false, reason: 'feature_disabled', liveVersion: null }
+  }
+  if (opts.tier != null && !LIVE_TIERS.has(String(opts.tier).toLowerCase())) {
+    return { available: false, ok: false, reason: 'insufficient_tier', liveVersion: null }
+  }
+  return null
+}
+
+export const liveMatch = {
+  async record(matchId, events) {
+    try { const { recordEvents } = await loadLm(); return recordEvents(matchId ?? null, events ?? []) } catch { return 0 }
+  },
+  async reset(matchId) {
+    try { const { resetMatch } = await loadLm(); return resetMatch(matchId ?? null) } catch { return null }
+  },
+  /**
+   * Analyse a match. Pass a matchId string (reads the stored event log) or an
+   * array of events directly. `opts` carries grade/format/flags/tier + the
+   * pre-match context (coachDNA, opponent, matchStrategy, selection, …).
+   */
+  async analyse(matchIdOrEvents, opts = {}) {
+    try {
+      const gate = await lmGate(opts); if (gate) return gate
+      const { buildLiveIntelligence, getEvents, normaliseEvents } = await loadLm()
+      let events, matchId = null
+      if (Array.isArray(matchIdOrEvents)) {
+        events = normaliseEvents(matchIdOrEvents)
+      } else {
+        matchId = matchIdOrEvents ?? null
+        events = getEvents(matchId)
+      }
+      const context = { ...(opts.context ?? {}), grade: opts.grade ?? opts.context?.grade, format: opts.format ?? opts.context?.format, matchId }
+      return { available: true, ok: true, reason: null, ...buildLiveIntelligence(events, context) }
+    } catch { return { available: false, ok: false, reason: 'brain_unavailable', liveVersion: null } }
+  },
+}
+
+/** AI.getLiveMatchIntelligence — real-time match intelligence. */
+export async function getLiveMatchIntelligence(matchIdOrEvents, opts = {}) { return liveMatch.analyse(matchIdOrEvents, opts) }
+
 // ── AI namespace export (primary idiom for Core consumers) ────────────────────
 export const AI = {
   // M1 — Core intelligence methods
@@ -1395,4 +1454,7 @@ export const AI = {
   // M26 — Autonomous Match Strategy Engine
   matchStrategy,
   buildMatchStrategy,
+  // M27 — Live Match Intelligence Engine
+  liveMatch,
+  getLiveMatchIntelligence,
 }
