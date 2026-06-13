@@ -2026,6 +2026,11 @@
 
     .consent-dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex-shrink:0; vertical-align:middle; margin-right:4px; }
     .c-yes { background:#10b981; } .c-no { background:#ef4444; } .c-pending { background:#f59e0b; }
+    .player-db-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .player-db-table th { padding:9px 12px; background:var(--panel-2); border-bottom:1px solid var(--line); color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; text-align:left; white-space:nowrap; }
+    .player-db-table td { padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:middle; }
+    .player-db-table tr:last-child td { border-bottom:0; }
+    .player-db-table tbody tr:hover td { background:rgba(255,255,255,0.02); }
     .add-player-panel { border:1px solid rgba(16,185,129,0.22); border-radius:10px; padding:16px; background:rgba(16,185,129,0.05); margin-bottom:14px; }
     .add-player-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
 
@@ -7644,7 +7649,8 @@
             </div>
           </div>
           ${blocks.length ? `
-          <table class="training-gs-table">
+          <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:-4px -2px 0">
+          <table class="training-gs-table" style="min-width:560px">
             <thead><tr>
               <th style="width:88px;font-size:12px">Time</th>
               <th style="font-size:12px">Activity</th>
@@ -7686,7 +7692,7 @@
                   </td>
                 </tr>`).join("")}
             </tbody>
-          </table>` : `<div style="padding:24px 0;text-align:center">
+          </table></div>` : `<div style="padding:24px 0;text-align:center">
             <div style="font-size:26px;margin-bottom:8px;opacity:.5">📋</div>
             <p style="font-size:14px;font-weight:600;color:var(--ink);margin:0 0 4px">No session plan yet</p>
             <p class="muted" style="font-size:12px;margin:0 0 14px">Add time blocks to build your coaching plan — warm-up, drills, set piece, match review and more.</p>
@@ -7712,7 +7718,8 @@
             </div>
           </div>
           ${blocks.length ? `
-          <table class="cs-table">
+          <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+          <table class="cs-table" style="min-width:480px">
             <thead><tr><th>Time</th><th>Exercise</th><th>Coach</th><th>Key Focus</th></tr></thead>
             <tbody>
               ${blocks.map(b=>`<tr>
@@ -7722,7 +7729,7 @@
                 <td><span style="display:inline-block;padding:2px 9px;border-radius:999px;background:var(--green-soft);color:var(--green);font-size:11px;font-weight:700">${b.keyFocus||b.tag}</span></td>
               </tr>`).join("")}
             </tbody>
-          </table>` : `<p class="muted" style="padding:14px 16px">Add time blocks above to build your coach sheet.</p>`}
+          </table></div>` : `<p class="muted" style="padding:14px 16px">Add time blocks above to build your coach sheet.</p>`}
           <div style="padding:10px 16px;border-top:1px solid var(--line)">
             <strong style="font-size:12px">Available (${available.length}/${state.players.length}):</strong>
             <span style="font-size:11px;color:var(--muted);margin-left:6px">${available.slice(0,10).map(p=>p.name.split(" ")[0]).join(", ")}${available.length>10?" …":""}</span>
@@ -8449,7 +8456,8 @@
             </div>
           </div>` : `
           <div class="card" style="padding:0;overflow:hidden">
-            <table class="player-db-table">
+            <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+            <table class="player-db-table" style="width:100%;min-width:720px;border-collapse:collapse">
               <thead>
                 <tr>
                   <th style="padding-left:18px">Player</th>
@@ -8502,7 +8510,7 @@
                   </td>
                 </tr>`).join("")}
               </tbody>
-            </table>
+            </table></div>
             ${filtered.length === 0 ? (members.length === 0
               ? `<div class="empty-state">
                   <div class="empty-icon">🏉</div>
