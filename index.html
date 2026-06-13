@@ -1664,6 +1664,27 @@
     .ed-score-lbl { font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin-top:6px; }
     .ed-action-btn { display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;background:var(--blue);color:#fff;border:none;cursor:pointer;margin-top:10px;transition:opacity .15s; }
     .ed-action-btn:hover { opacity:.85; }
+    /* ── Coach Timeline ──────────────────────────────────────────────── */
+    .tl-wrap { display:flex;flex-direction:column;padding-bottom:40px; }
+    .tl-header { display:flex;align-items:flex-start;justify-content:space-between;padding:4px 0 16px; }
+    .tl-group-label { font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:10px 0 5px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between; }
+    .tl-group { display:flex;flex-direction:column; }
+    .tl-group-details>summary { list-style:none;cursor:pointer; }
+    .tl-group-details>summary::-webkit-details-marker { display:none; }
+    .tl-count { color:var(--blue,#60a5fa);font-weight:700; }
+    .tl-row { display:flex;align-items:flex-start;gap:0;padding:9px 4px;cursor:pointer;border-radius:7px;transition:background .1s; }
+    .tl-row:hover { background:rgba(0,0,0,.03); }
+    .tl-time { font-size:11px;font-weight:600;color:var(--muted);width:42px;flex-shrink:0;padding-top:3px;font-variant-numeric:tabular-nums;letter-spacing:-.01em; }
+    .tl-dot-col { display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0; }
+    .tl-dot { width:9px;height:9px;border-radius:50%;flex-shrink:0; }
+    .tl-line { width:1px;flex:1;min-height:8px;margin-top:3px;background:var(--line); }
+    .tl-body { flex:1;padding:0 6px 0 7px;min-width:0; }
+    .tl-title { font-size:12px;font-weight:600;color:var(--fg);line-height:1.4; }
+    .tl-detail { font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4; }
+    .tl-confidence { display:inline-block;font-size:10px;color:var(--blue,#60a5fa);font-weight:700;margin-top:3px; }
+    .tl-auto-badge { display:inline-flex;align-items:center;font-size:9px;font-weight:800;letter-spacing:.05em;padding:1px 5px;border-radius:3px;background:rgba(139,92,246,.12);color:#8b5cf6;margin-left:6px;vertical-align:middle; }
+    .tl-arrow { font-size:12px;color:var(--muted);flex-shrink:0;padding-top:3px; }
+    .tl-empty { font-size:13px;color:var(--muted);padding:32px 0;text-align:center;line-height:1.6; }
     @media(max-width:600px) { .home-match-countdown { font-size:20px; } .home-match-opponent { font-size:18px; } }
 
     /* ── MEDICAL ── */
@@ -2494,6 +2515,7 @@
         aiKnowledgeUpload: false, // Intelligence: Knowledge Upload (coach documents → AI Brain)
         aiWeeklyBrief:        false, // Intelligence: Weekly Brief card in Overview AI slot
         executiveDashboard:   false, // Intelligence: Executive Dashboard (Mission Control V3)
+        coachTimeline:        false, // Intelligence: Coach Timeline (chronological operational feed)
       },
     };
 
@@ -5790,6 +5812,232 @@
       ];
     }
 
+    // ─── COACH TIMELINE ──────────────────────────────────────────────────────
+    // Chronological operational feed — reads existing stores only.
+    // Every timestamped event is extracted from IDs that embed Date.now(),
+    // ISO publishedAt/respondedAt fields, or .at fields on receipts.
+    // Feature-flagged, zero persistence, zero mutations, fully removable.
+
+    // Extract a millisecond timestamp embedded in a store ID.
+    // Patterns: 'feed-{ms}-hex', 'req-{ms}', 'tl{ms}', 'm{ms}-pid-hex'
+    function _tlIdTs(id) {
+      const m = String(id || '').match(/(\d{13,})/);
+      if (!m) return null;
+      const n = parseInt(m[1]);
+      return (!isNaN(n) && n > 1600000000000 && n <= Date.now() + 60000) ? n : null;
+    }
+
+    function buildTimelineEvents() {
+      const nowMs = Date.now();
+      const events = [];
+
+      // 1. Training / session published
+      for (const s of (state.schedule || [])) {
+        if (!s.publishedAt) continue;
+        const at = new Date(s.publishedAt).getTime();
+        if (!at || at > nowMs) continue;
+        events.push({ id: `tp-${s.id}`, type: 'training', at,
+          dot: '#4ade80', badge: 'training',
+          title: `${esc(s.title || s.type)} published`,
+          detail: 'Training plan shared with the squad.',
+          section: 'training' });
+      }
+
+      // 2. Availability requests sent (id: 'req-{ms}')
+      for (const req of (state.availabilityRequests || [])) {
+        const at = _tlIdTs(req.id);
+        if (!at) continue;
+        events.push({ id: req.id, type: 'avail_request', at,
+          dot: '#60a5fa', badge: 'availability',
+          title: `Availability request — ${esc(req.title || req.sessionId || 'session')}`,
+          detail: 'Sent to all players.',
+          section: 'message' });
+      }
+
+      // 3. Player availability responses (per player per session)
+      for (const p of (state.players || [])) {
+        for (const s of (state.schedule || [])) {
+          const key = sessionKey(s.id);
+          const respondedAt = p[key + 'RespondedAt'];
+          const resp = p[key];
+          if (!respondedAt || !resp || resp === 'no-reply') continue;
+          const at = new Date(respondedAt).getTime();
+          if (!at || at > nowMs) continue;
+          const label = resp === 'available'   ? 'marked available'
+                      : resp === 'unavailable' ? 'marked unavailable'
+                      : resp === 'injured'     ? 'marked injured'
+                      : resp === 'maybe'       ? 'responded maybe'
+                      :                          `responded ${resp}`;
+          const dot  = resp === 'available' ? '#4ade80' : resp === 'maybe' ? '#fbbf24' : '#f87171';
+          events.push({ id: `ar-${p.id}-${s.id}`, type: 'avail_response', at,
+            dot, badge: 'availability',
+            title: `${esc(p.name)} ${label}`,
+            detail: `For ${esc(s.title || s.id)}.`,
+            section: 'message' });
+        }
+      }
+
+      // 4. Outbound coach messages — grouped by type within 1-second windows
+      const sentBatches = {};
+      for (const m of (state.messages || [])) {
+        if (m.from !== 'Coach') continue;
+        const at = _tlIdTs(m.id);
+        if (!at) continue;
+        const k = `${Math.floor(at / 1000)}|${m.type || 'msg'}`;
+        if (!sentBatches[k]) sentBatches[k] = { at, type: m.type, count: 0 };
+        sentBatches[k].count++;
+      }
+      for (const [k, b] of Object.entries(sentBatches)) {
+        events.push({ id: `ms-${k}`, type: 'message_sent', at: b.at,
+          dot: '#60a5fa', badge: 'messages',
+          title: esc(b.type || 'Message sent'),
+          detail: `Sent to ${b.count} player${b.count !== 1 ? 's' : ''}.`,
+          section: 'messages' });
+      }
+
+      // 5. Inbound player messages (player → coach)
+      for (const m of (state.messages || [])) {
+        if (m.from === 'Coach' || m.to !== 'Coach') continue;
+        const at = _tlIdTs(m.id);
+        if (!at) continue;
+        events.push({ id: `mr-${m.id}`, type: 'message_recv', at,
+          dot: '#a78bfa', badge: 'messages',
+          title: `Message from ${esc(m.from)}`,
+          detail: String(m.text || '').slice(0, 80) || 'Player replied.',
+          section: 'messages' });
+      }
+
+      // 6. Treatment logs (id: 'tl{ms}')
+      for (const log of (state.treatmentLogs || [])) {
+        const at = _tlIdTs(log.id);
+        if (!at) continue;
+        const player = (state.players || []).find(p => p.id === log.playerId);
+        events.push({ id: log.id, type: 'medical', at,
+          dot: '#f87171', badge: 'medical',
+          title: `Treatment log — ${esc(player?.name || 'Player')}`,
+          detail: esc(String(log.treatment || 'Treatment recorded.').slice(0, 80)),
+          section: 'medical' });
+      }
+
+      // 7. Autopilot receipts (.at is ISO string)
+      for (const r of (state.autopilotReceipts || [])) {
+        if (!r.at) continue;
+        const at = new Date(r.at).getTime();
+        if (!at || at > nowMs) continue;
+        events.push({ id: `ap-${at}`, type: 'autopilot', at,
+          dot: '#8b5cf6', badge: 'autopilot',
+          title: 'Autopilot action',
+          detail: esc(String(r.text || '').slice(0, 100)),
+          section: 'overview', isAutomated: true });
+      }
+
+      // 8. Master feed (id: 'feed-{ms}-hex')
+      for (const f of (state.masterFeed || [])) {
+        const at = _tlIdTs(f.id);
+        if (!at) continue;
+        events.push({ id: `mf-${f.id}`, type: 'system', at,
+          dot: 'var(--muted)', badge: 'system',
+          title: esc(String(f.event || 'System event').slice(0, 80)),
+          detail: esc(String(f.detail || '').slice(0, 80)),
+          section: 'overview' });
+      }
+
+      // Deduplicate by id, sort newest first
+      const seen = new Set();
+      return events
+        .filter(e => { if (seen.has(e.id)) return false; seen.add(e.id); return e.at > 0; })
+        .sort((a, b) => b.at - a.at);
+    }
+
+    function renderCoachTimeline() {
+      if (!_briefEngine) _loadBriefEngine();
+
+      const nowMs       = Date.now();
+      const todayStart  = new Date().setHours(0, 0, 0, 0);
+      const yestStart   = todayStart - 86400000;
+
+      const events = buildTimelineEvents();
+
+      // Prepend Weekly Brief as a synthetic "now" event when Intelligence is ready
+      let brief = null;
+      if (_briefEngine) {
+        try { brief = _briefEngine(_buildExperienceFromState(), { tier: 'pro', now: new Date().toISOString() }); }
+        catch { /* degraded */ }
+      }
+      const all = brief?.available
+        ? [{ id: 'wb-now', type: 'weekly_brief', at: nowMs,
+             dot: '#60a5fa', badge: 'ai',
+             title: 'Weekly Brief regenerated',
+             detail: esc(brief.headline || ''),
+             section: 'overview', isAI: true,
+             confidence: Math.round((brief.confidence || 0) * 100) }, ...events]
+        : events;
+
+      const today  = all.filter(e => e.at >= todayStart);
+      const yest   = all.filter(e => e.at >= yestStart && e.at < todayStart);
+      const older  = all.filter(e => e.at < yestStart);
+
+      const BADGE_COLORS = { training:'#4ade80', availability:'#60a5fa', messages:'#a78bfa',
+        medical:'#f87171', autopilot:'#8b5cf6', system:'var(--muted)', ai:'#60a5fa' };
+
+      function fmtTime(ms) {
+        return new Date(ms).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+      }
+
+      function renderEvent(e) {
+        const colDot  = BADGE_COLORS[e.badge] || 'var(--muted)';
+        const autoTag = e.isAutomated ? `<span class="tl-auto-badge">AUTO</span>` : '';
+        const confTag = e.isAI && e.confidence !== undefined
+          ? `<div class="tl-confidence">Confidence: ${e.confidence}%</div>` : '';
+        return `
+          <div class="tl-row" onclick="setSection('coach','${esc(e.section || 'overview')}')" role="button" tabindex="0">
+            <div class="tl-time">${fmtTime(e.at)}</div>
+            <div class="tl-dot-col">
+              <div class="tl-dot" style="background:${colDot}"></div>
+              <div class="tl-line"></div>
+            </div>
+            <div class="tl-body">
+              <div class="tl-title">${e.title}${autoTag}</div>
+              ${e.detail ? `<div class="tl-detail">${e.detail}</div>` : ''}
+              ${confTag}
+            </div>
+            <div class="tl-arrow">→</div>
+          </div>`;
+      }
+
+      function renderGroup(evts, label, open) {
+        if (!evts.length) return '';
+        const rows = evts.map(renderEvent).join('');
+        if (open) {
+          return `<div class="tl-group-label">${esc(label)}</div><div class="tl-group">${rows}</div>`;
+        }
+        return `<details class="tl-group-details">
+          <summary class="tl-group-label">
+            <span>${esc(label)}</span>
+            <span class="tl-count">${evts.length} event${evts.length !== 1 ? 's' : ''}</span>
+          </summary>
+          <div class="tl-group">${rows}</div>
+        </details>`;
+      }
+
+      const todayStr = new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
+      const total    = all.length;
+
+      document.getElementById('coach-overview').innerHTML = `<div class="tl-wrap">
+        <div class="tl-header">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:var(--fg);letter-spacing:-.01em">Coach Timeline</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(todayStr)}</div>
+          </div>
+          <span style="font-size:11px;color:var(--muted);font-weight:600;padding-top:3px">${total} event${total !== 1 ? 's' : ''}</span>
+        </div>
+        ${!total ? `<div class="tl-empty">No events yet.<br>Actions — publishing training, sending messages, receiving responses — appear here as they happen.</div>` : ''}
+        ${renderGroup(today, 'Today', true)}
+        ${renderGroup(yest,  'Yesterday', false)}
+        ${renderGroup(older, 'Earlier', false)}
+      </div>`;
+    }
+
     // ─── EXECUTIVE DASHBOARD (Mission Control V3) ────────────────────────────
     // Read-only decision surface. Reads Core state + Weekly Brief.
     // Gated by features.executiveDashboard. Zero mutations, zero new persistence.
@@ -5981,6 +6229,7 @@
     }
 
     function renderCoachOverview() {
+      if (state.features?.coachTimeline      && isCoach()) { renderCoachTimeline();     return; }
       if (state.features?.executiveDashboard && isCoach()) { renderExecutiveDashboard(); return; }
       if (autopilotOn() && isCoach()) {
         autopilotFillMatchFromFixture();
