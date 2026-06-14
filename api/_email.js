@@ -54,6 +54,22 @@ export function inviteEmail({ name, teamName = 'Boitsfort RFC', url } = {}) {
   };
 }
 
+export function emailVerificationEmail({ name, url } = {}) {
+  const safeName = String(name || 'there');
+  return {
+    subject: "Verify your Coach's Eye email address",
+    text: `Hi ${safeName},\n\nVerify your email to complete your Coach's Eye account setup:\n${url}\n\nThis link expires in 24 hours. If you did not create an account, you can ignore this email.`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a">
+        <h2>Verify your email address</h2>
+        <p>Hi ${safeName},</p>
+        <p>Click below to verify your email and complete your Coach's Eye account setup.</p>
+        <p><a href="${url}" style="display:inline-block;background:#10b981;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700">Verify email</a></p>
+        <p style="color:#64748b;font-size:13px">This link expires in 24 hours. If you did not create an account, you can ignore this email.</p>
+      </div>`,
+  };
+}
+
 export function passwordResetEmail({ name, url } = {}) {
   const safeName = String(name || 'there');
   return {

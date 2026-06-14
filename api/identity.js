@@ -7,6 +7,7 @@ import {
   changePassword,
   claimInvite,
   createClub,
+  createEmailVerificationToken,
   destroyAllSessionsForUser,
   requireSession,
   tokenHashFor,
@@ -30,8 +31,9 @@ import {
   sessionTokenFromRequest,
   setStaffLevel,
   switchTeam,
+  verifyEmailToken,
 } from './_identityStore.js';
-import { appBaseUrl, passwordResetEmail, sendTransactionalEmail } from './_email.js';
+import { appBaseUrl, emailVerificationEmail, passwordResetEmail, sendTransactionalEmail } from './_email.js';
 import { setCors, readSecret } from './_http.js';
 import { randomBytes } from 'node:crypto';
 import { kvConfigured } from './_kv.js';
@@ -305,6 +307,25 @@ export default async function handler(req, res) {
         if (!result) return res.status(404).json({ ok: false, error: 'User not found or not active' });
         if (result.session?.token) res.setHeader('Set-Cookie', sessionCookie(result.session.token));
         return res.status(200).json({ ok: true, ...publicAuthResult(result) });
+      }
+      if (action === 'send_verification_email') {
+        await enforceRateLimit('send_verification_email', requestIp(req), { limit: 5, windowMs: 60 * 60 * 1000 });
+        const sessionCtx = await requireSession(req);
+        const result = await createEmailVerificationToken(sessionCtx.user.id);
+        await auditLog('email_verification_sent', { userId: sessionCtx.user.id, ip: requestIp(req) });
+        let emailDelivery = { ok: true, sent: false, skipped: true, reason: 'already_verified' };
+        if (result.token && result.user?.email) {
+          const verifyUrl = `${appBaseUrl(req)}/?verify=${encodeURIComponent(result.token)}`;
+          const message = emailVerificationEmail({ name: result.user.displayName || result.user.email, url: verifyUrl });
+          emailDelivery = await sendTransactionalEmail({ to: result.user.email, ...message });
+        }
+        return res.status(200).json({ ok: true, emailDelivery, expiresAt: result.expiresAt, alreadyVerified: result.alreadyVerified });
+      }
+      if (action === 'verify_email') {
+        await enforceRateLimit('verify_email', rateIdentity(req, String(req.body?.token || '').slice(0, 12)), { limit: 10, windowMs: 60 * 60 * 1000 });
+        const result = await verifyEmailToken(req.body?.token);
+        await auditLog('email_verified', { userId: result.user?.id, ip: requestIp(req) });
+        return res.status(200).json({ ok: true, ...result });
       }
       return res.status(400).json({ ok: false, error: 'Unknown identity action' });
     } catch (error) {

@@ -9,11 +9,13 @@ const TEAM_MEMBERS_KEY = key('identity:team_members');
 const PLAYER_PROFILES_KEY = key('identity:player_profiles');
 const SESSIONS_KEY = key('identity:sessions');
 const PASSWORD_RESETS_KEY = key('identity:password_resets');
+const EMAIL_VERIFICATIONS_KEY = key('identity:email_verifications');
 const INVITES_KEY = 'ce:invites';
 
 export const SESSION_COOKIE = 'ce_session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const PASSWORD_RESET_TTL_MS = 1000 * 60 * 60;
+const EMAIL_VERIFICATION_TTL_MS = 1000 * 60 * 60 * 24;
 const PASSWORD_ALGO = 'scrypt';
 const SCRYPT_KEY_LENGTH = 64;
 
@@ -260,6 +262,18 @@ export async function loadPasswordResets() {
 
 export async function savePasswordResets(resets) {
   await kvSet(PASSWORD_RESETS_KEY, Array.isArray(resets) ? resets : []);
+}
+
+export async function loadEmailVerifications() {
+  const now = Date.now();
+  const verifications = (await kvGet(EMAIL_VERIFICATIONS_KEY)) || [];
+  const active = verifications.filter(v => !v.usedAt && Number(new Date(v.expiresAt).getTime()) > now);
+  if (active.length !== verifications.length) await kvSet(EMAIL_VERIFICATIONS_KEY, active);
+  return active;
+}
+
+export async function saveEmailVerifications(verifications) {
+  await kvSet(EMAIL_VERIFICATIONS_KEY, Array.isArray(verifications) ? verifications : []);
 }
 
 export async function findTeamByCode(teamCode) {
@@ -929,6 +943,63 @@ export async function resetPasswordWithToken({ token, password } = {}) {
   reset.usedAt = nowIso();
   await Promise.all([saveUsers(users), savePasswordResets(resets)]);
   return { user: publicUser(user), reset: { id: reset.id, usedAt: reset.usedAt } };
+}
+
+export async function createEmailVerificationToken(userId) {
+  if (!userId) throw new Error('userId is required');
+  const users = await loadUsers();
+  const user = users.find(item => item.id === userId);
+  if (!user) {
+    const error = new Error('Account not found');
+    error.status = 404;
+    throw error;
+  }
+  if (user.emailVerified) {
+    return { user: publicUser(user), token: null, expiresAt: null, alreadyVerified: true };
+  }
+  const token = randomBytes(32).toString('base64url');
+  const verification = {
+    id: makeId('evtoken'),
+    tokenHash: hashToken(token),
+    userId: user.id,
+    email: user.email,
+    createdAt: nowIso(),
+    expiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS).toISOString(),
+    usedAt: null,
+  };
+  const verifications = await loadEmailVerifications();
+  verifications.push(verification);
+  await saveEmailVerifications(verifications);
+  return { user: publicUser(user), token, expiresAt: verification.expiresAt, alreadyVerified: false };
+}
+
+export async function verifyEmailToken(token) {
+  const rawToken = String(token || '').trim();
+  if (!rawToken) {
+    const error = new Error('Verification token is required');
+    error.status = 400;
+    throw error;
+  }
+  const verifications = await loadEmailVerifications();
+  const tokenHash = hashToken(rawToken);
+  const verification = verifications.find(item => item.tokenHash === tokenHash && !item.usedAt);
+  if (!verification || new Date(verification.expiresAt).getTime() <= Date.now()) {
+    const error = new Error('Verification link is invalid or expired');
+    error.status = 410;
+    throw error;
+  }
+  const users = await loadUsers();
+  const user = users.find(item => item.id === verification.userId);
+  if (!user) {
+    const error = new Error('Account not found');
+    error.status = 404;
+    throw error;
+  }
+  user.emailVerified = true;
+  user.emailVerifiedAt = nowIso();
+  verification.usedAt = nowIso();
+  await Promise.all([saveUsers(users), saveEmailVerifications(verifications)]);
+  return { user: publicUser(user), verification: { id: verification.id, usedAt: verification.usedAt } };
 }
 
 export async function createSession({ userId, teamId = DEFAULT_TEAM.id, role = 'player' } = {}) {
