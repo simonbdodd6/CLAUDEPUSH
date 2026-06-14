@@ -2199,9 +2199,9 @@
     let pushConfigurationError = "";
 
     // ─── ACCOUNTS ─────────────────────────────────────────────────────────────
-    const testAccounts = [
-      { id: "coach-demo", role: "coach", name: "Simon Coach" }
-    ];
+    // Empty in production — coach-demo removed to prevent ghost coach UI on fresh load.
+    // Intentional legacy fallbacks (DM routing, allowlist) remain in the messaging layer.
+    const testAccounts = [];
 
     const coachSections = [
       ["overview",  "Overview"],
@@ -2996,9 +2996,9 @@
       next.clubColours = input.clubColours ?? null;
       next.autopilotReceipts = Array.isArray(input.autopilotReceipts) ? input.autopilotReceipts.slice(0, 20) : [];
       next.lastWeekTrainingBlocks = input.lastWeekTrainingBlocks ?? null;
-      next.users = input.users || structuredClone(testAccounts);
-      // Enforce canonical roles for built-in accounts — prevents stale localStorage
-      // from corrupting coach-demo's role if applyApprovedIdentityLocally was called incorrectly.
+      next.users = input.users || [];
+      // Enforce canonical roles for any built-in accounts still in localStorage
+      // (no-op now that testAccounts is empty; kept for safety during migration).
       testAccounts.forEach(account => {
         const u = next.users.find(u => u.id === account.id);
         if (u) u.role = account.role;
