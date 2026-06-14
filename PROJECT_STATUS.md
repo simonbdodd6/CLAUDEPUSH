@@ -84,6 +84,41 @@
 - Added privacy validation that rejects exact traveller location-style inputs.
 - Added adapter-based in-memory plan storage, audit events, README documentation, and comprehensive automated tests.
 
+## 2026-06-14 — Travel Intelligence Itinerary Platform Foundation (M7)
+
+- Added the deterministic Itinerary Platform foundation at `lib/itinerary-platform/`.
+- Consumes a Trip Intelligence trip-plan snapshot and turns it into an editable, versioned, multi-day itinerary without mutating the Trip Intelligence Platform or any upstream domain. No AI/LLMs, no external APIs, maps, or providers.
+- Each day carries ordered Morning / Afternoon / Evening sections plus a rain-day alternatives list; each section holds ordered, editable blocks and every block has an editable notes field.
+- Supports block types: activity, transport placeholder, meal placeholder (breakfast/lunch/dinner/snack), rest period, free-time block, and rain-day alternative. Generated days are complete editable skeletons and fall back to free-time blocks for empty activity slots.
+- Added editing APIs: add/update/remove/move blocks, set block notes, add rain-day alternatives, create from trip plan, create blank skeleton, and list by trip / by owner.
+- Added draft/published lifecycle: publishing snapshots the published state; editing a published itinerary reopens it as a draft so published snapshots are preserved.
+- Added append-only version history — every create/edit/publish/revert appends an immutable snapshot; `revertToVersion` restores a snapshot's days/title/status by creating a new version rather than deleting later ones.
+- Added privacy validation that rejects exact traveller location-style inputs on every entry point.
+- Added adapter-based in-memory repository (`InMemoryItineraryRepository`), audit events, README documentation, and comprehensive automated tests (`test/travel-itinerary-platform.test.js`).
+- Verified: full `node --test` suite passes (444/444); travel platform suite 85/85; no existing platform modified.
+
+## 2026-06-14 — Travel Intelligence Travel Memory Platform Foundation (M8)
+
+- Added the deterministic Travel Memory Platform at `lib/travel-memory-platform/` for durable long-term traveller preference memory. No AI, LLMs, embeddings, or external APIs — confidence, decay, and polarity changes are pure functions of explicit input and deterministic observation counts.
+- Memory identity is `(travellerIdentityId, key, value)`. Each record supports: explicit (traveller-entered) and learned (behaviour-derived) origin; positive and negative preferences; confidence score; observation count; first observed; last confirmed; decay (freshness) score; manual correction with retained prior state; manual lock that blocks automatic updates; explainable snapshots; append-only audit history; and append-only version history.
+- Deterministic rules: explicit input is authoritative (base 0.9) and applies even when locked; same-polarity learned observations reinforce (+0.1, cap 0.95); opposite observations weaken (−0.1) and flip polarity (reset to learned base 0.4) when confidence collapses to ≤ the flip threshold (0.2); locked memories ignore learned observations and are exempt from decay; decay is a linear 180-day freshness recomputed from `lastConfirmed` and a supplied `asOf` timestamp.
+- Consumes immutable snapshots from other platforms via `recordFromSnapshot` (reads a plain snapshot object + derived `{key,value,polarity}` signals, records `snapshotType`/`snapshotId` provenance) — no upstream module is imported or mutated, preserving the clean-interface boundary.
+- Added APIs: record explicit memory, observe learned memory, record from snapshot, manual correct, lock/unlock, apply decay, get/list (with polarity/origin/key/minConfidence filters), explain memory, version history, and audit events.
+- Added privacy validation that rejects exact traveller location-style inputs and snapshots on every entry point.
+- Added adapter-based in-memory repository (`InMemoryTravelMemoryRepository`), audit events, README documentation, and comprehensive automated tests (`test/travel-memory-platform.test.js`).
+- Verified: full `node --test` suite passes (456/456); travel platform suite 97/97; no existing platform modified.
+
+## 2026-06-14 — Travel Intelligence Companion Discovery Platform Foundation (M9)
+
+- Added the deterministic, privacy-first Companion Discovery Platform at `lib/companion-discovery-platform/`. It lets travellers discover compatible nearby travellers without exposing exact locations. No AI, LLMs, embeddings, or external APIs.
+- Privacy & safety are first-class: no exact GPS is ever stored or returned (profiles hold a broad `approximateArea` label + canonical `destinationId` only); coordinate-style fields and coordinate-like area strings are rejected on every entry point; opt-in is required and opt-out is absolute; a seeker must be opted in to discover (no lurking); blocked travellers never appear in either direction; and visibility controls (`everyone`, `same_destination`, `same_area`, `hidden`) gate discoverability.
+- Supports traveller discovery by approximate area, shared destination matching, shared activity interests, and overlapping travel dates; deterministic compatibility scoring over Traveller Preferences + Travel Memory snapshots (shared activities/styles/positive-memory tags, with a penalty for conflicting memory tags), plus shared statuses and an `available_today` boost. Every result is explainable with `explanation` + `sourceFactors`.
+- Traveller statuses: looking for dinner, diving, surfing, exploring, photography, coffee, and available today.
+- Consumes immutable snapshots via `deriveProfileFieldsFromSnapshots({ preferences, memories })` — reads plain Traveller Preferences and Travel Memory snapshot objects and returns privacy-safe discovery fields; no upstream module is imported or mutated and no location is carried over.
+- Added APIs: derive-from-snapshots, create/update profile, opt in/out, set statuses, set visibility, block/unblock traveller, get by id / by traveller, discover companions (with `requireStatus` and `onlySharedDestination` filters), and audit events.
+- Added adapter-based in-memory repository (`InMemoryCompanionDiscoveryRepository`, which never decides discoverability — all opt-in/visibility/block filtering lives in the service), audit events, README documentation, and comprehensive automated tests (`test/travel-companion-discovery-platform.test.js`).
+- Verified: full `node --test` suite passes (468/468); travel platform suite 109/109; no existing platform modified.
+
 ## 2026-06-13 — Interactive AI Consciousness Visualization v1 (shipped)
 
 - Replaced the Command Centre dashboard centrepiece with a GPU-rendered neural brain at `app/command-centre/src/components/dashboard/NeuralConsciousness.jsx` (React Three Fiber + Three.js).
