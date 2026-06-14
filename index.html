@@ -2579,6 +2579,9 @@
         coachTimeline:        false, // Intelligence: Coach Timeline (chronological operational feed)
         matchReadiness:       false, // Intelligence: Match Readiness Pack (match prep intelligence)
       },
+      teamPlan: '',
+      teamPlanStatus: '',
+      trialEndsAt: null,
     };
 
     // ─── STATE ────────────────────────────────────────────────────────────────
@@ -9240,8 +9243,42 @@
           </button>
         </div>`;
 
+      const plan        = state.teamPlan       || 'trial';
+      const planStatus  = state.teamPlanStatus  || 'active';
+      const daysLeft    = trialDaysRemaining();
+      const planBadge   = (() => {
+        if (plan === 'pro' && planStatus === 'active')   return { label: 'Pro plan',            color: 'var(--green)',  text: 'You are on the Pro plan.' };
+        if (plan === 'pro' && planStatus === 'past_due') return { label: 'Pro · payment issue', color: '#fbbf24',       text: 'Your Pro subscription has a payment issue — update your billing details to avoid disruption.' };
+        if (plan === 'pro' && planStatus === 'canceled') return { label: 'Pro canceled',         color: '#f87171',       text: 'Your Pro subscription has been canceled. You are now on the Core plan.' };
+        if (plan === 'pro' && planStatus === 'paused')   return { label: 'Pro paused',           color: '#fbbf24',       text: 'Your Pro subscription is paused.' };
+        if (plan === 'trial') {
+          if (daysLeft === null)  return { label: 'Trial',              color: 'var(--muted)', text: 'You are on a free trial of Coach\'s Eye.' };
+          if (daysLeft === 0)     return { label: 'Trial ended',        color: '#fbbf24',      text: 'Your free trial has ended. You are now on the Core plan.' };
+          if (daysLeft <= 7)      return { label: `${daysLeft}d trial`, color: '#fbbf24',      text: `You have ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left in your Coach\'s Eye free trial.` };
+          return { label: `${daysLeft}d trial`, color: 'var(--muted)', text: `You have ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left in your Coach\'s Eye free trial.` };
+        }
+        return { label: 'Core plan', color: 'var(--muted)', text: 'You are on the Core plan.' };
+      })();
+
       el.innerHTML = `
         <div style="display:grid;gap:16px;max-width:620px">
+
+          <!-- Plan status -->
+          <div class="card" style="border-color:rgba(255,255,255,0.07)">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                  <h2 style="margin:0">Subscription</h2>
+                  <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(255,255,255,0.06);color:${planBadge.color}">${esc(planBadge.label)}</span>
+                </div>
+                <p class="muted" style="font-size:12px;margin:0">${esc(planBadge.text)}</p>
+              </div>
+              ${canI('manage_subscriptions') ? (plan === 'pro'
+                ? `<button id="btn-manage-billing" class="btn" type="button" onclick="settingsManageBilling()" style="min-height:36px;font-size:12px;white-space:nowrap;flex-shrink:0">Manage Billing</button>`
+                : `<button id="btn-upgrade-pro" class="btn primary" type="button" onclick="settingsUpgradeToPro()" style="min-height:36px;font-size:12px;white-space:nowrap;flex-shrink:0">Upgrade to Pro</button>`
+              ) : ''}
+            </div>
+          </div>
 
           <!-- Coach account -->
           <div class="card">
@@ -9394,6 +9431,38 @@
         if (!res.ok) throw new Error(data.error || 'Failed');
         showToast(`Signed out of ${data.revoked} other device${data.revoked === 1 ? '' : 's'} ✓`);
       } catch(e) { showToast(e.message || 'Failed'); }
+    }
+
+    async function settingsUpgradeToPro() {
+      const btn = document.getElementById('btn-upgrade-pro');
+      if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
+      try {
+        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'create_checkout' }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Could not start checkout');
+        if (data.checkoutUrl) { window.location.href = data.checkoutUrl; return; }
+        throw new Error('No checkout URL returned — please try again');
+      } catch(e) {
+        showToast(e.message || 'Could not start checkout — try again');
+        if (btn) { btn.disabled = false; btn.textContent = 'Upgrade to Pro'; }
+      }
+    }
+
+    async function settingsManageBilling() {
+      const btn = document.getElementById('btn-manage-billing');
+      if (btn) { btn.disabled = true; btn.textContent = 'Opening portal…'; }
+      try {
+        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'create_billing_portal' }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Could not open billing portal');
+        if (data.portalUrl) { window.location.href = data.portalUrl; return; }
+        throw new Error('No portal URL returned — please try again');
+      } catch(e) {
+        showToast(e.message || 'Could not open billing portal — try again');
+        if (btn) { btn.disabled = false; btn.textContent = 'Manage Billing'; }
+      }
     }
 
     async function settingsTogglePref(key) {
@@ -12471,6 +12540,23 @@
     function adoptIdentityPayload(d) {
       if (Array.isArray(d?.permissions)) _myPermissions = d.permissions;
       if (Array.isArray(d?.memberships)) _myMemberships = d.memberships;
+      if (d?.teamPlan       !== undefined) state.teamPlan       = d.teamPlan;
+      if (d?.teamPlanStatus !== undefined) state.teamPlanStatus = d.teamPlanStatus;
+      if (d?.trialEndsAt    !== undefined) state.trialEndsAt    = d.trialEndsAt;
+    }
+
+    function trialDaysRemaining() {
+      if (!state.trialEndsAt) return null;
+      const ms = new Date(state.trialEndsAt).getTime() - Date.now();
+      return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+    }
+
+    function isTrialActive() {
+      return state.teamPlan === 'trial' || !state.teamPlan;
+    }
+
+    function isProPlan() {
+      return state.teamPlan === 'pro' && state.teamPlanStatus === 'active';
     }
 
     // The one question every client surface asks. Offline / pre-load falls
@@ -12998,6 +13084,36 @@
       return true;
     }
 
+    function checkBillingParam() {
+      const params = new URLSearchParams(window.location.search);
+      const billing = params.get('billing');
+      if (!billing) return;
+      window.history.replaceState({}, '', '/');
+      if (billing === 'success') {
+        showBillingSuccessModal();
+      } else if (billing === 'cancel') {
+        showToast('Checkout cancelled — you have not been charged.');
+      }
+    }
+
+    function showBillingSuccessModal() {
+      const el = document.createElement('div');
+      el.id = 'billing-success-modal';
+      el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(4px)';
+      el.innerHTML = `
+        <div style="background:#0f1724;border:1px solid rgba(16,185,129,0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
+          <div style="font-size:46px;margin-bottom:12px">🎉</div>
+          <h2 style="margin:0 0 6px;color:#e2e8f0;font-size:22px">You're on Pro!</h2>
+          <p style="color:#64748b;font-size:14px;margin-bottom:22px">Your Coach's Eye Pro subscription is now active. Your plan status will update shortly.</p>
+          <button class="btn primary" type="button"
+            onclick="document.getElementById('billing-success-modal')?.remove();window.location.reload()"
+            style="width:100%;min-height:46px;font-size:15px;font-weight:700">
+            Continue
+          </button>
+        </div>`;
+      document.body.appendChild(el);
+    }
+
     function showEmailVerifiedModal(name) {
       const el = document.createElement('div');
       el.id = 'verify-modal';
@@ -13401,6 +13517,7 @@
     checkInviteParam();
     checkResetParam();
     checkVerifyParam();
+    checkBillingParam();
     // Coach devices adopt the server roster on startup (no-op without a
     // coach session — the API rejects with 401/403 and we keep local state).
     loadRosterFromServer().catch(() => {});
