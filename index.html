@@ -11862,7 +11862,7 @@
       const user = currentUser();
       const player = user?.role === 'player' ? getPlayer() : null;
       const participantId = player ? chatResolvePlayerParticipantId(player) : (user?.id || '');
-      const expectedConvId = participantId ? dmConvId('coach-demo', participantId) : null;
+      const expectedConvId = participantId ? playerCoachDmId() : null;
 
       const allSubs = subData?.subscriptions || [];
       const localInRedis = localEndpoint ? allSubs.find(s => s.endpointFull === localEndpoint) : null;
@@ -11937,7 +11937,7 @@
       }
       const u = currentUser();
       const canonicalId = u?.role === 'player' ? (canonicalPlayerIdForUser(u) || u?.id) : u?.id;
-      const convId = u?.role === 'player' ? dmConvId('coach-demo', canonicalId || '') : '—';
+      const convId = u?.role === 'player' ? playerCoachDmId() : '—';
       el.textContent = [
         `uid: ${state.currentUserId || '—'}`,
         `role: ${u?.role || '—'}`,
