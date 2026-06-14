@@ -1045,6 +1045,22 @@ export async function resolveSession(token = '') {
   // (single source: _permissions.js) and the user's full membership list so
   // clients can offer team switching without a second fetch.
   const teams = await loadTeams();
+
+  // Resolve plan fields for the session's team; auto-downgrade expired trials.
+  const currentTeam = teams.find(t => t.id === session.teamId) || null;
+  let teamPlan = currentTeam?.plan || 'trial';
+  let teamPlanStatus = currentTeam?.planStatus || 'active';
+  const teamTrialEndsAt = currentTeam?.trialEndsAt || null;
+  if (teamPlan === 'trial' && teamTrialEndsAt && new Date(teamTrialEndsAt).getTime() < Date.now()) {
+    teamPlan = 'core';
+    teamPlanStatus = 'active';
+    if (currentTeam) {
+      currentTeam.plan = 'core';
+      currentTeam.planStatus = 'active';
+      await saveTeams(teams);
+    }
+  }
+
   const memberships = members
     .filter(item => item.userId === session.userId && item.status === 'active')
     .map(item => ({
@@ -1062,6 +1078,9 @@ export async function resolveSession(token = '') {
     playerProfile: profile,
     permissions: [...permissionsFor(member)],
     memberships,
+    teamPlan,
+    teamPlanStatus,
+    trialEndsAt: teamTrialEndsAt,
   };
 }
 
@@ -1122,13 +1141,19 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
   }
   const teamCode = (club.replace(/[^a-zA-Z]/g, '').slice(0, 6).toUpperCase() || 'CLUB') +
     String(Math.floor(Math.random() * 90) + 10);
+  const createdAt = nowIso();
   const team = {
     id: teamId,
     name: club,
     teamName: String(teamName || '').trim().slice(0, 80),
     sport: String(sport || 'Rugby').trim().slice(0, 40) || 'Rugby',
     teamCode,
-    createdAt: nowIso(),
+    createdAt,
+    plan: 'trial',
+    planStatus: 'active',
+    trialEndsAt: new Date(new Date(createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
   };
   teams.push(team);
   await saveTeams(teams);
