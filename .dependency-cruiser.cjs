@@ -60,7 +60,8 @@ module.exports = {
     exclude: { path: '(node_modules|app/.*/dist|\\.git)' },
     tsPreCompilationDeps: false,
     combinedDependencies: false,
-    // Report-only: do not let any violation set a non-zero exit code.
-    exitCode: false,
   },
+  // Report-only is guaranteed by the rule severities above: every rule is
+  // 'warn'/'info', and dependency-cruiser only sets a non-zero exit code on
+  // 'error'-severity violations — so a run never fails CI in this phase.
 }

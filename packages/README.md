@@ -26,22 +26,23 @@ To keep M31.0 install-free and provably behaviour-neutral, inter-package and tes
 imports use **relative paths**, so everything runs under plain `node --test` with
 no `npm install` and no `node_modules` changes.
 
-## Activation (deferred to M31.1, requires explicit approval)
+## Workspace activation — DONE in M31.1
 
-The following turn the structure into a live npm workspace; each is a separate,
-reviewable step — **not** part of M31.0:
+The `packages/*` tree is now a live npm workspace, with zero runtime behaviour
+change (full suite still 1815 pass / 0 fail):
 
-1. Add to the root `package.json`:
-   ```json
-   "workspaces": ["packages/*"]
-   ```
-2. `npm install` to link `@brain/*` into `node_modules` (enables bare specifiers).
-3. Switch inter-package/test imports from relative paths to `@brain/contracts` etc.
-4. Install dependency-cruiser and run it in report-only mode:
+1. ✅ Root `package.json` declares `"workspaces": ["packages/*"]` and a
+   `dependency-cruiser` dev dependency. `@brain/contracts|products|versioning`
+   are symlinked into `node_modules/@brain/*`.
+2. ✅ dependency-cruiser installed; run report-only:
    ```
    npx dependency-cruiser --config .dependency-cruiser.cjs packages
    ```
-   (Config already present at repo root; severities are all `warn`/`info` so it
-   never fails CI in this phase.)
+   All rule severities are `warn`/`info`, so it **never fails CI** in this phase.
 
-Until then, the platform is a documented, tested, dormant foundation.
+### Still deferred (NOT part of M31.1)
+
+- Inter-package and test imports remain **relative paths**, not bare
+  `@brain/*` specifiers. The packages stay **dormant** — no engine or Core file
+  imports them. Switching to bare specifiers and wiring the first product façade
+  are later, separately-reviewed steps.
