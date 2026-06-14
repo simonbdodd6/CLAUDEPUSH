@@ -2478,7 +2478,7 @@
       selectedPlayerId: "",
       selectedMessagePlayerId: "",
       selectedChatId: "coach",
-      currentUserId: "coach-demo",
+      currentUserId: "",
       notification: "",
       clubName: "",
       teamName: "",
@@ -3003,7 +3003,7 @@
         const u = next.users.find(u => u.id === account.id);
         if (u) u.role = account.role;
       });
-      next.currentUserId = input.currentUserId || "coach-demo";
+      next.currentUserId = input.currentUserId || "";
       next.selectedMessagePlayerId = input.selectedMessagePlayerId || next.selectedPlayerId || "test-simon";
       next.selectedChatId = input.selectedChatId || (next.activeView === "coach" ? "squad" : "coach");
       next.meta = {
@@ -9550,6 +9550,21 @@
     async function settingsSignOut() {
       if (!(await ceConfirm('Sign out on this device?', 'Your club data stays saved locally — log back in any time.', { confirmLabel: 'Sign out' }))) return;
       try { await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) }); } catch {}
+      // Clear identity state so the next page load does not flash coach UI.
+      // Club data (players, schedule, clubName) is intentionally kept per the
+      // sign-out confirmation text: "Your club data stays saved locally."
+      const prevId = state.currentUserId;
+      state.currentUserId = '';
+      _myPermissions = null;
+      _myMemberships = [];
+      _serverSessionReadyFor = '';
+      // Remove testAccount placeholders — they are only meaningful when logged in.
+      const demoIds = new Set(testAccounts.map(a => a.id));
+      if (prevId && demoIds.has(prevId)) {
+        // Was on a demo account — also remove it from users so isCoach() returns false.
+        state.users = state.users.filter(u => !demoIds.has(u.id));
+      }
+      saveState('Signed out');
       _serverAuthState = 'anon';
       authTab = 'login';
       render();
@@ -12497,8 +12512,38 @@
     async function checkServerSession() {
       try {
         const res = await fetch('/api/identity?action=session');
-        _serverAuthState = res.ok ? 'authed' : 'anon';
-        if (res.ok) adoptIdentityPayload(await res.json());
+        if (res.ok) {
+          const d = await res.json();
+          _serverAuthState = 'authed';
+          adoptIdentityPayload(d);
+          // Hydrate local identity from server session so a page reload
+          // restores the real authenticated user instead of the localStorage default.
+          if (d.user?.id) {
+            const sid  = d.user.id;
+            const role = d.teamMember?.role || d.user?.role || 'player';
+            const name = d.user.displayName || d.user.email || sid;
+            const email = d.user.email || '';
+            // Upsert the server user into state.users — authoritative role/name from server.
+            const idx = state.users.findIndex(u => u.id === sid);
+            if (idx >= 0) {
+              state.users[idx] = { ...state.users[idx], role, name: name || state.users[idx].name, email: email || state.users[idx].email };
+            } else {
+              state.users.push({ id: sid, role, name, email, phone: '', pin: '' });
+            }
+            // Adopt the server user as current — server cookie is the authority.
+            // Always update when current is empty or the legacy demo placeholder;
+            // also reconcile when the stored ID already matches (role may have changed).
+            const cur = state.currentUserId;
+            if (!cur || cur === 'coach-demo' || cur === sid) {
+              if (state.currentUserId !== sid) {
+                state.currentUserId = sid;
+                saveState('Server session restored');
+              }
+            }
+          }
+        } else {
+          _serverAuthState = 'anon';
+        }
       } catch { _serverAuthState = 'unknown'; } // offline — stay quiet
       renderAuthBanner();
       renderNav();

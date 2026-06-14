@@ -134,6 +134,7 @@ function verifyPassword(password, user = {}) {
 export function publicUser(user = {}) {
   if (!user) return null;
   const { passwordHash, passwordSalt, passwordAlgo, passwordMigratedAt, ...safe } = user;
+  safe.emailVerified = Boolean(safe.emailVerified);
   return safe;
 }
 
@@ -305,6 +306,7 @@ export async function createJoinRequest(input = {}) {
       displayName: name,
       authProvider: 'password',
       passwordSet: true,
+      emailVerified: false,
       ...passwordRecord,
       createdAt,
       lastLoginAt: null,
@@ -414,6 +416,7 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
         displayName: account.displayName,
         authProvider: 'legacy-compatibility',
         passwordSet: false,
+        emailVerified: false,
         createdAt: nowIso(),
         lastLoginAt: null,
       };
@@ -471,6 +474,7 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
         displayName: account.displayName,
         authProvider: 'legacy-password',
         passwordSet: true,
+        emailVerified: false,
         ...hashPassword(account.password),
         createdAt: nowIso(),
         lastLoginAt: null,
@@ -571,6 +575,7 @@ async function upsertUserAccount({ email, firstName, lastName, displayName: name
       displayName: name || displayName(firstName, lastName) || normalized,
       authProvider: 'password',
       passwordSet: Boolean(password),
+      emailVerified: false,
       createdAt,
       lastLoginAt: null,
     };
@@ -657,6 +662,7 @@ async function ensureLegacyStaffAccountForLogin(email, password) {
       displayName: legacy.displayName,
       authProvider: 'legacy-password',
       passwordSet: true,
+      emailVerified: false,
       ...hashPassword(legacy.password),
       createdAt: nowIso(),
       lastLoginAt: null,
