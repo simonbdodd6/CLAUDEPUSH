@@ -38,7 +38,7 @@ globalThis.fetch = async (_url, options = {}) => {
 
 const { default: identityHandler } = await import('../api/identity.js');
 const { default: publishHandler } = await import('../api/publish.js');
-const { createClub, loginUser, resolveSession, destroySession, staffLevelOf, SESSION_COOKIE } = await import('../api/_identityStore.js');
+const { createClub, loginUser, resolveSession, destroySession, staffLevelOf, createEmailVerificationToken, verifyEmailToken, SESSION_COOKIE } = await import('../api/_identityStore.js');
 
 function buildRes() {
   return {
@@ -185,4 +185,39 @@ test('new coach is head coach with full staff powers in their own club', async (
   }, res);
   assert.equal(res.statusCode, 201);
   assert.equal(res.body.invite.teamId, created.team.id, 'invite bound to the new club');
+});
+
+test('newly created coach is unverified by default', async () => {
+  kv.clear();
+  const created = await createClub(NICK);
+  // emailVerified must be explicitly false, not undefined — callers can rely on
+  // the boolean rather than a truthiness check on a missing field.
+  assert.equal(created.user.emailVerified, false, 'emailVerified must be false at club creation');
+  assert.equal(created.user.emailVerifiedAt, undefined, 'emailVerifiedAt must not be set');
+});
+
+test('email verification token flow works for a freshly created club coach', async () => {
+  kv.clear();
+  const created = await createClub(NICK);
+
+  // 1. Token can be created for the new user
+  const tokenResult = await createEmailVerificationToken(created.user.id);
+  assert.ok(tokenResult.token, 'verification token must be issued');
+  assert.equal(tokenResult.alreadyVerified, false);
+  assert.equal(tokenResult.user.id, created.user.id);
+
+  // 2. Consuming the token marks the user verified
+  const verifyResult = await verifyEmailToken(tokenResult.token);
+  assert.equal(verifyResult.user.emailVerified, true);
+  assert.ok(verifyResult.user.emailVerifiedAt);
+
+  // 3. Subsequent token creation returns alreadyVerified=true
+  const repeat = await createEmailVerificationToken(created.user.id);
+  assert.equal(repeat.alreadyVerified, true);
+  assert.equal(repeat.token, null);
+
+  // 4. Login still works after verification (no gate added yet)
+  const login = await loginUser({ email: NICK.email, password: NICK.password });
+  assert.equal(login.user.emailVerified, true, 'verified flag persists through login');
+  assert.equal(login.session.teamId, created.team.id, 'session still scoped to new club, not boitsfort-rfc');
 });

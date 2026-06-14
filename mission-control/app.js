@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 const canvas = document.getElementById('missionCanvas');
 const ctx = canvas.getContext('2d', { alpha: true });
 const panel = document.getElementById('nodePanel');

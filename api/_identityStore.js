@@ -1136,6 +1136,7 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
     displayName: coachName,
     authProvider: 'password',
     passwordSet: true,
+    emailVerified: false,
     ...hashPassword(password),
     createdAt: nowIso(),
     lastLoginAt: nowIso(),
