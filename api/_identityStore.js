@@ -225,6 +225,19 @@ export async function saveTeams(teams) {
   await kvSet(TEAMS_KEY, Array.isArray(teams) ? teams : []);
 }
 
+// Update only billing-relevant fields on a team record.
+// Allowlisted so callers cannot accidentally overwrite structural fields
+// (id, name, teamCode, createdAt). Used by the Stripe webhook handler.
+export async function updateTeamBilling(teamId, fields = {}) {
+  const BILLING_FIELDS = new Set(['plan', 'planStatus', 'trialEndsAt', 'stripeCustomerId', 'stripeSubscriptionId']);
+  const teams = await loadTeams();
+  const team = teams.find(t => t.id === String(teamId || ''));
+  if (!team) { const e = new Error('Team not found'); e.status = 404; throw e; }
+  Object.keys(fields).filter(k => BILLING_FIELDS.has(k)).forEach(k => { team[k] = fields[k]; });
+  await saveTeams(teams);
+  return team;
+}
+
 export async function loadTeamMembers() {
   return (await kvGet(TEAM_MEMBERS_KEY)) || [];
 }

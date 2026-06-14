@@ -21,6 +21,7 @@ import {
   isHeadCoach,
   listIdentityState,
   loadTeamMembers,
+  loadTeams,
   loginUser,
   rejectJoinRequest,
   removeTeamMember,
@@ -31,6 +32,7 @@ import {
   sessionTokenFromRequest,
   setStaffLevel,
   switchTeam,
+  updateTeamBilling,
   verifyEmailToken,
 } from './_identityStore.js';
 import { appBaseUrl, emailVerificationEmail, passwordResetEmail, sendTransactionalEmail } from './_email.js';
@@ -39,6 +41,39 @@ import { randomBytes } from 'node:crypto';
 import { kvConfigured } from './_kv.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
 import { assertSameTenant, requireTenantRole, requireTenantPermission, can, PERM } from './_tenant.js';
+
+// ── Stripe integration point ─────────────────────────────────────────────────
+// Replace these stub implementations when STRIPE_SECRET_KEY is configured.
+// The callers (create_checkout, create_billing_portal) and their response
+// shapes are frozen — only these functions change in Phase 4.
+//
+// Phase 4 implementation sketch for createCheckoutSession:
+//   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+//   const session = await stripe.checkout.sessions.create({
+//     mode: 'subscription',
+//     customer_email: email,
+//     line_items: [{ price: priceId, quantity: 1 }],
+//     metadata: { teamId, userId },
+//     success_url: `${returnUrl}?billing=success`,
+//     cancel_url: returnUrl,
+//   });
+//   return { checkoutUrl: session.url };
+//
+// Phase 4 implementation sketch for createBillingPortal:
+//   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+//   const portal = await stripe.billingPortal.sessions.create({
+//     customer: stripeCustomerId,
+//     return_url: returnUrl,
+//   });
+//   return { portalUrl: portal.url };
+
+async function createCheckoutSession({ teamId, userId, email, priceId, returnUrl }) { // eslint-disable-line no-unused-vars
+  return { checkoutUrl: null };
+}
+
+async function createBillingPortal({ stripeCustomerId, returnUrl }) { // eslint-disable-line no-unused-vars
+  return { portalUrl: null };
+}
 
 function sendError(res, error, fallbackStatus = 400) {
   const status = error?.status || fallbackStatus;
@@ -326,6 +361,35 @@ export default async function handler(req, res) {
         const result = await verifyEmailToken(req.body?.token);
         await auditLog('email_verified', { userId: result.user?.id, ip: requestIp(req) });
         return res.status(200).json({ ok: true, ...result });
+      }
+      if (action === 'create_checkout') {
+        const tenant = await requireTenantPermission(req, PERM.MANAGE_SUBSCRIPTIONS);
+        const teams = await loadTeams();
+        const team = teams.find(t => t.id === tenant.teamId);
+        if (!team) return res.status(404).json({ ok: false, error: 'Team not found' });
+        if (team.plan === 'pro' && team.planStatus === 'active') {
+          return res.status(409).json({ ok: false, error: 'Team already has an active Pro subscription' });
+        }
+        const result = await createCheckoutSession({
+          teamId: tenant.teamId,
+          userId: tenant.user.id,
+          email: tenant.user.email || '',
+          priceId: process.env.STRIPE_PRO_PRICE_ID || null,
+          returnUrl: appBaseUrl(req),
+        });
+        await auditLog('checkout_initiated', { teamId: tenant.teamId, userId: tenant.user.id, ip: requestIp(req) });
+        return res.status(200).json({ ok: true, checkoutUrl: result.checkoutUrl });
+      }
+      if (action === 'create_billing_portal') {
+        const tenant = await requireTenantPermission(req, PERM.MANAGE_SUBSCRIPTIONS);
+        const teams = await loadTeams();
+        const team = teams.find(t => t.id === tenant.teamId);
+        const result = await createBillingPortal({
+          stripeCustomerId: team?.stripeCustomerId || null,
+          returnUrl: `${appBaseUrl(req)}/?section=settings`,
+        });
+        await auditLog('billing_portal_accessed', { teamId: tenant.teamId, userId: tenant.user.id, ip: requestIp(req) });
+        return res.status(200).json({ ok: true, portalUrl: result.portalUrl });
       }
       return res.status(400).json({ ok: false, error: 'Unknown identity action' });
     } catch (error) {
