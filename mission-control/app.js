@@ -1704,6 +1704,38 @@ requestAnimationFrame(render);
   }
   const N = made;
 
+  // ── Cluster assignment (8 outer intelligence modules map to clusters) ─────────
+  // Each module highlights one spatial cluster of neurons. Anchors are ordered to
+  // match the MODULES array consumed by the outer UI (index = module index).
+  const CLUSTER_ANCHORS = [
+    [-0.70,  0.32, -0.70],   // 0 Match Intelligence
+    [ 0.70,  0.32, -0.70],   // 1 Player DNA
+    [-0.92,  0.02,  0.10],   // 2 Season Memory
+    [ 0.92,  0.02,  0.10],   // 3 Training Load
+    [-0.52, -0.18,  0.72],   // 4 Opposition Analysis
+    [ 0.52, -0.18,  0.72],   // 5 Selection Engine
+    [ 0.00,  0.55,  0.00],   // 6 Coach DNA
+    [ 0.00, -0.52,  0.42],   // 7 Medical Risk
+  ];
+  const CLUSTERS = CLUSTER_ANCHORS.length;
+  const aCluster = new Float32Array(N);
+  const cAcc = CLUSTER_ANCHORS.map(() => ({ x: 0, y: 0, z: 0, n: 0 }));
+  for (let i = 0; i < N; i++) {
+    let best = 0, bd = Infinity;
+    for (let c = 0; c < CLUSTERS; c++) {
+      const a = CLUSTER_ANCHORS[c];
+      const dx = pos[i*3]-a[0], dy = pos[i*3+1]-a[1], dz = pos[i*3+2]-a[2];
+      const d = dx*dx + dy*dy + dz*dz;
+      if (d < bd) { bd = d; best = c; }
+    }
+    aCluster[i] = best;
+    const acc = cAcc[best]; acc.x += pos[i*3]; acc.y += pos[i*3+1]; acc.z += pos[i*3+2]; acc.n++;
+  }
+  const clusterCentroids = cAcc.map((a, c) => a.n ? [a.x/a.n, a.y/a.n, a.z/a.n] : CLUSTER_ANCHORS[c]);
+  const clusterCounts = cAcc.map(a => a.n);
+  const neuronsByCluster = CLUSTER_ANCHORS.map(() => []);
+  for (let i = 0; i < N; i++) neuronsByCluster[aCluster[i]].push(i);
+
   // ── Connections (neural wiring) via spatial grid ──────────────────
   const linePos = [], pairs = [], cell = 0.42, grid = new Map();
   for (let i = 0; i < N; i++) {
@@ -1753,22 +1785,30 @@ requestAnimationFrame(render);
   pGeo.setAttribute('aSize', new THREE.BufferAttribute(aSize.slice(0, N), 1));
   pGeo.setAttribute('aPhase', new THREE.BufferAttribute(aPhase.slice(0, N), 1));
   pGeo.setAttribute('aRate', new THREE.BufferAttribute(aRate.slice(0, N), 1));
+  pGeo.setAttribute('aCluster', new THREE.BufferAttribute(aCluster, 1));
   const firingAttr = new THREE.BufferAttribute(aFiring.slice(0, N), 1);
   firingAttr.usage = THREE.DynamicDrawUsage;
   pGeo.setAttribute('aFiring', firingAttr);
 
   const pMat = new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uActivity: { value: 1 }, uBurst: { value: 0 }, uScale: { value: 9 * dpr } },
+    uniforms: {
+      uTime: { value: 0 }, uActivity: { value: 1 }, uBurst: { value: 0 }, uScale: { value: 9 * dpr },
+      uFocusCluster: { value: -1 }, uFocusMix: { value: 0 },
+    },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     vertexShader: `
-      uniform float uTime, uActivity, uBurst, uScale;
-      attribute float aSize, aPhase, aRate, aFiring; attribute vec3 aColor;
+      uniform float uTime, uActivity, uBurst, uScale, uFocusCluster, uFocusMix;
+      attribute float aSize, aPhase, aRate, aFiring, aCluster; attribute vec3 aColor;
       varying vec3 vColor; varying float vGlow;
       void main() {
         float pulse = sin(uTime * aRate + aPhase) * 0.5 + 0.5;
-        vec3 p = position * (1.0 + uBurst * 0.55);
-        float sz = aSize * (0.55 + pulse * 0.7 * uActivity) + aFiring * 3.2 + uBurst * 1.4;
-        vColor = aColor; vGlow = pulse * uActivity * 0.5 + aFiring;
+        // Cluster focus: the selected cluster opens (expands) + brightens; others dim.
+        float isFocus = step(abs(aCluster - uFocusCluster), 0.5);
+        float dim = mix(1.0, mix(0.30, 1.0, isFocus), uFocusMix);
+        float open = isFocus * uFocusMix * 0.16;
+        vec3 p = position * (1.0 + uBurst * 0.55 + open);
+        float sz = (aSize * (0.55 + pulse * 0.7 * uActivity) + aFiring * 3.2 + uBurst * 1.4) * dim + isFocus * uFocusMix * 1.6;
+        vColor = aColor; vGlow = pulse * uActivity * 0.5 + aFiring + isFocus * uFocusMix * 0.6;
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         gl_PointSize = sz * uScale / -mv.z;
         gl_Position = projectionMatrix * mv;
@@ -1805,6 +1845,21 @@ requestAnimationFrame(render);
   group.add(new THREE.Points(sGeo, sMat));
   const signals = [];
 
+  // ── Inbound module pulses (signals flowing from an outer module into a cluster) ─
+  const MP = 90;
+  const mpBuf = new Float32Array(MP * 3).fill(9999);
+  const mpGeo = new THREE.BufferGeometry();
+  const mpAttr = new THREE.BufferAttribute(mpBuf, 3); mpAttr.usage = THREE.DynamicDrawUsage;
+  mpGeo.setAttribute('position', mpAttr);
+  const mpMat = new THREE.ShaderMaterial({
+    uniforms: { uScale: { value: 26 * dpr } },
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: `uniform float uScale; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=uScale/-mv.z; gl_Position=projectionMatrix*mv; }`,
+    fragmentShader: `void main(){ vec2 uv=gl_PointCoord-0.5; float d=length(uv)*2.0; float c=smoothstep(1.0,0.0,d); if(c<0.02) discard; gl_FragColor=vec4(vec3(0.7,0.92,1.0)*(1.0+c*2.5), c); }`,
+  });
+  group.add(new THREE.Points(mpGeo, mpMat));
+  const modulePulses = [];
+
   // adjacency for firing spread
   const adj = Array.from({ length: N }, () => []);
   for (let p = 0; p < CONN; p++) { const a = pairs[p*2], b = pairs[p*2+1]; adj[a].push(b); adj[b].push(a); }
@@ -1814,6 +1869,9 @@ requestAnimationFrame(render);
   let zoom = 5.2, zoomTarget = 5.2;
   let activity = 1, burst = 0;
   const fa = pGeo.attributes.aFiring.array;
+
+  // Cluster-focus state (driven by the outer intelligence modules)
+  let focusCluster = -1, focusMix = 0, focusYaw = 0, focusPitch = 0, pulseTimer = 0;
 
   function ignite(center, spread, n) {
     for (let k = 0; k < n; k++) {
@@ -1850,6 +1908,51 @@ requestAnimationFrame(render);
   resize();
   requestAnimationFrame(() => holder.classList.add('mounted'));
 
+  // Ignite an entire cluster of neurons (used on module focus).
+  function igniteCluster(c, n) {
+    const list = neuronsByCluster[c]; if (!list || !list.length) return;
+    for (let k = 0; k < n; k++) {
+      const idx = list[(Math.random() * list.length) | 0];
+      fa[idx] = 0.7 + Math.random() * 0.3;
+      for (const nb of adj[idx]) fa[nb] = Math.max(fa[nb], 0.45);
+    }
+  }
+  // Spawn a wave of pulses travelling from outside the brain into a cluster.
+  function emitClusterPulses(c, n) {
+    const ctr = clusterCentroids[c];
+    const len = Math.hypot(ctr[0], ctr[1], ctr[2]) || 1;
+    const ox = (ctr[0] / len) * 2.4, oy = (ctr[1] / len) * 2.4, oz = (ctr[2] / len) * 2.4;
+    for (let k = 0; k < n && modulePulses.length < MP; k++) {
+      const jitter = () => (Math.random() - 0.5) * 0.5;
+      modulePulses.push({
+        sx: ox + jitter(), sy: oy + jitter(), sz: oz + jitter(),
+        ex: ctr[0] + jitter() * 0.4, ey: ctr[1] + jitter() * 0.4, ez: ctr[2] + jitter() * 0.4,
+        t: -k * 0.06, s: 0.7 + Math.random() * 0.6,
+      });
+    }
+  }
+
+  // ── Reusable, API-ready controller ────────────────────────────────
+  // Outer UI (and, later, a real API layer) drives the brain through this.
+  const controller = {
+    clusterCount: CLUSTERS,
+    focusModule(c) {
+      if (c == null || c < 0 || c >= CLUSTERS) return this.clearFocus();
+      focusCluster = c;
+      const ctr = clusterCentroids[c];
+      focusYaw = -Math.atan2(ctr[0], ctr[2]);
+      focusPitch = Math.max(-0.4, Math.min(0.4, Math.atan2(ctr[1], Math.hypot(ctr[0], ctr[2])) * 0.5));
+      activity = Math.min(3.5, activity + 1.6);
+      igniteCluster(c, 40);
+      emitClusterPulses(c, 26);
+      pulseTimer = 0;
+      return c;
+    },
+    clearFocus() { focusCluster = -1; return -1; },
+    activeCluster() { return focusCluster; },
+  };
+  window.MissionBrain = controller;
+
   // ── Animation loop ────────────────────────────────────────────────
   const clock = new THREE.Clock();
   let alive = true;
@@ -1863,11 +1966,19 @@ requestAnimationFrame(render);
     pMat.uniforms.uActivity.value = activity;
     pMat.uniforms.uBurst.value = burst;
 
-    // eased rotation (mouse) + gentle auto-spin
+    // ease cluster focus highlight
+    focusMix += ((focusCluster >= 0 ? 1 : 0) - focusMix) * Math.min(1, dt * 4);
+    pMat.uniforms.uFocusCluster.value = focusCluster;
+    pMat.uniforms.uFocusMix.value = focusMix;
+
+    // eased rotation (mouse) + gentle auto-spin, biased subtly toward focused module
     rot.x += (rot.tx - rot.x) * 0.05;
     rot.y += (rot.ty - rot.y) * 0.05;
-    group.rotation.x = rot.x * 0.6;
-    group.rotation.y = rot.y + t * 0.05;
+    const rotMix = focusMix * 0.6;   // subtle bias, never a hard snap
+    let yaw = rot.y + t * 0.05 * (1 - focusMix);
+    let pitch = rot.x * 0.6;
+    group.rotation.y = yaw * (1 - rotMix) + focusYaw * rotMix;
+    group.rotation.x = pitch * (1 - rotMix) + focusPitch * rotMix;
 
     zoom += (zoomTarget - zoom) * 0.07;
     camera.position.z = zoom;
@@ -1901,8 +2012,181 @@ requestAnimationFrame(render);
     for (let i = wi; i < SIG; i++) sigBuf[i * 3] = 9999;
     sGeo.attributes.position.needsUpdate = true;
 
+    // while a module is focused, keep streaming inbound pulses + cluster firing
+    if (focusCluster >= 0) {
+      pulseTimer -= dt;
+      if (pulseTimer <= 0) { emitClusterPulses(focusCluster, 10); igniteCluster(focusCluster, 8); pulseTimer = 0.9; }
+      activity = Math.max(activity, 1.5);
+    }
+    let mw = 0;
+    for (let i = modulePulses.length - 1; i >= 0; i--) {
+      const mp = modulePulses[i]; mp.t += dt * mp.s;
+      if (mp.t >= 1) modulePulses.splice(i, 1);
+    }
+    for (let i = 0; i < modulePulses.length && mw < MP; i++) {
+      const mp = modulePulses[i]; if (mp.t < 0) continue;
+      const e = mp.t * mp.t * (3 - 2 * mp.t), o = mw * 3;   // smoothstep ease-in
+      mpBuf[o]     = mp.sx + (mp.ex - mp.sx) * e;
+      mpBuf[o + 1] = mp.sy + (mp.ey - mp.sy) * e;
+      mpBuf[o + 2] = mp.sz + (mp.ez - mp.sz) * e;
+      mw++;
+    }
+    for (let i = mw; i < MP; i++) mpBuf[i * 3] = 9999;
+    mpGeo.attributes.position.needsUpdate = true;
+
     renderer.render(scene, camera);
     requestAnimationFrame(loop);
   }
   loop();
+})();
+
+// ═══════════════════════════════════════════════════════════════════
+// OUTER INTELLIGENCE MODULES (interactive ring around the brain)
+// Data-driven + API-ready: replace MODULES (or call MissionModules.setData)
+// with a real intelligence feed later. Visual/demo only — no real AI logic,
+// no Coach's Eye Core touched. Drives the brain via window.MissionBrain.
+// ═══════════════════════════════════════════════════════════════════
+(function mountIntelligenceModules() {
+  const shell = document.querySelector('.mission-shell');
+  if (!shell) return;
+
+  // Module index === brain cluster index (see CLUSTER_ANCHORS).
+  const MODULES = [
+    { id: 'match-intel',   name: 'Match Intelligence',   color: '#22d3ee', state: 'Analysing last 5 matches',   confidence: 88, signals: 142, rec: 'Shift to higher defensive line-speed against their wide attack.' },
+    { id: 'player-dna',    name: 'Player DNA',           color: '#8b5cf6', state: 'Profiling 36 athletes',      confidence: 81, signals: 96,  rec: 'Promote Murphy (#8) to a playmaking ball-carrier role.' },
+    { id: 'season-memory', name: 'Season Memory',        color: '#60a5fa', state: 'Recalling 3 seasons',        confidence: 90, signals: 74,  rec: 'Repeat the November micro-cycle that preceded last win streak.' },
+    { id: 'training-load', name: 'Training Load',        color: '#fcd34d', state: 'Monitoring weekly load',     confidence: 76, signals: 118, rec: 'Cut Thursday volume 15% — squad ACWR trending into the risk band.' },
+    { id: 'opposition',    name: 'Opposition Analysis',  color: '#f472b6', state: 'Scouting next opponent',     confidence: 84, signals: 131, rec: 'Target the #9 channel — 62% of turnovers conceded near the ruck.' },
+    { id: 'selection',     name: 'Selection Engine',     color: '#5eead4', state: 'Optimising matchday 23',     confidence: 79, signals: 88,  rec: 'Start Walsh at 12 — centre-pairing chemistry +14%.' },
+    { id: 'coach-dna',     name: 'Coach DNA',            color: '#c4b5fd', state: 'Modelling coaching style',   confidence: 73, signals: 61,  rec: 'Your best results follow sessions under 75 minutes — keep it tight.' },
+    { id: 'medical-risk',  name: 'Medical Risk',         color: '#34d399', state: 'Screening 36 athletes',      confidence: 69, signals: 103, rec: 'Flag 2 athletes for hamstring screening before selection locks.' },
+  ];
+
+  // ── Rail of glassmorphism module chips ────────────────────────────
+  const rail = document.createElement('nav');
+  rail.className = 'brain-module-rail';
+  rail.setAttribute('aria-label', 'Intelligence modules');
+
+  // ── Left-side glassmorphism detail panel ──────────────────────────
+  const panel = document.createElement('section');
+  panel.className = 'module-detail glass';
+  panel.setAttribute('aria-live', 'polite');
+  panel.innerHTML = `
+    <button class="md-close" type="button" aria-label="Close module">×</button>
+    <span class="md-kicker">Intelligence Module</span>
+    <h2 class="md-name"></h2>
+    <p class="md-state"></p>
+    <div class="md-row">
+      <span class="md-label">Confidence</span>
+      <div class="md-bar"><i></i></div>
+      <strong class="md-conf"></strong>
+    </div>
+    <div class="md-row">
+      <span class="md-label">Active signals</span>
+      <strong class="md-signals"></strong>
+    </div>
+    <div class="md-rec">
+      <span class="md-label">Draft recommendation <em class="md-demo">demo</em></span>
+      <blockquote class="md-rec-text"></blockquote>
+    </div>`;
+
+  shell.appendChild(rail);
+  shell.appendChild(panel);
+
+  const el = {
+    name: panel.querySelector('.md-name'),
+    state: panel.querySelector('.md-state'),
+    conf: panel.querySelector('.md-conf'),
+    bar: panel.querySelector('.md-bar > i'),
+    signals: panel.querySelector('.md-signals'),
+    rec: panel.querySelector('.md-rec-text'),
+    close: panel.querySelector('.md-close'),
+  };
+
+  let activeIndex = -1;
+  let signalTimer = null;
+
+  function renderChips() {
+    rail.innerHTML = '';
+    MODULES.forEach((m, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'brain-module';
+      btn.style.setProperty('--accent', m.color);
+      btn.setAttribute('aria-pressed', 'false');
+      btn.innerHTML = `<span class="bm-dot"></span><span class="bm-name">${m.name}</span><span class="bm-conf">${m.confidence}%</span>`;
+      btn.addEventListener('click', () => select(i));
+      rail.appendChild(btn);
+    });
+  }
+
+  function paintActive() {
+    [...rail.children].forEach((c, i) => {
+      const on = i === activeIndex;
+      c.classList.toggle('active', on);
+      c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
+  function startSignalTicker(base) {
+    stopSignalTicker();
+    signalTimer = setInterval(() => {
+      const jitter = Math.round((Math.random() - 0.5) * 8);
+      el.signals.textContent = Math.max(0, base + jitter).toLocaleString();
+    }, 700);
+  }
+  function stopSignalTicker() { if (signalTimer) { clearInterval(signalTimer); signalTimer = null; } }
+
+  function openPanel(m) {
+    el.name.textContent = m.name;
+    el.state.textContent = m.state;
+    el.conf.textContent = `${m.confidence}%`;
+    el.bar.style.width = `${m.confidence}%`;
+    el.signals.textContent = m.signals.toLocaleString();
+    el.rec.textContent = m.rec;
+    panel.style.setProperty('--accent', m.color);
+    panel.classList.add('open');
+    startSignalTicker(m.signals);
+  }
+  function closePanel() {
+    panel.classList.remove('open');
+    stopSignalTicker();
+  }
+
+  function select(i) {
+    if (i === activeIndex) { deselect(); return; }   // toggle off
+    activeIndex = i;
+    paintActive();
+    openPanel(MODULES[i]);
+    if (window.MissionBrain && typeof window.MissionBrain.focusModule === 'function') {
+      window.MissionBrain.focusModule(i);
+    }
+  }
+  function deselect() {
+    activeIndex = -1;
+    paintActive();
+    closePanel();
+    if (window.MissionBrain && typeof window.MissionBrain.clearFocus === 'function') {
+      window.MissionBrain.clearFocus();
+    }
+  }
+
+  el.close.addEventListener('click', deselect);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && activeIndex >= 0) deselect(); });
+
+  renderChips();
+
+  // API-ready surface: a future intelligence feed can update modules live.
+  window.MissionModules = {
+    list: () => MODULES.map(m => ({ ...m })),
+    setData(id, partial) {
+      const m = MODULES.find(x => x.id === id);
+      if (!m) return false;
+      Object.assign(m, partial);
+      renderChips(); paintActive();
+      if (activeIndex >= 0 && MODULES[activeIndex].id === id) openPanel(m);
+      return true;
+    },
+    select, deselect,
+  };
 })();
