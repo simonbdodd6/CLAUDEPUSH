@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import {
   TRIP_STATUS,
   TRIP_VISIBILITY,
   createTripPlatform,
 } from '../lib/trip-platform/index.js';
+import { createIdentityPlatform } from '../lib/identity-platform/index.js';
+import {
+  IdentityPlatformSourceAdapter,
+  createTravellerIdentityPlatform,
+} from '../lib/traveller-identity-platform/index.js';
 
 const traveller = { id: 'idn_traveller_1', type: 'TRAVELLER' };
 const otherTraveller = { id: 'idn_traveller_2', type: 'TRAVELLER' };
@@ -148,5 +156,96 @@ test('cancelled trips cannot be mutated or completed', async () => {
 
   await assert.rejects(() => platform.changeTripVisibility(trip.tripId, TRIP_VISIBILITY.PUBLIC_TO_JOINED_CONTEXTS, traveller), /Cannot change visibility for a cancelled trip/);
   await assert.rejects(() => platform.completeTrip(trip.tripId, traveller), /Cannot change trip status from cancelled to completed/);
+});
+
+// ===========================================================================
+// M11 Phase 1 — Traveller Identity adoption (injected M10 port)
+// ===========================================================================
+
+// Build a trip-platform wired to a real traveller-identity port over a real
+// identity-platform, plus a freshly-created ACTIVE traveller to own trips.
+async function tripPlatformWithIdentity() {
+  const identityPlatform = createIdentityPlatform();
+  const travellerIdentityPlatform = createTravellerIdentityPlatform({
+    identitySource: new IdentityPlatformSourceAdapter({ identityPlatform }),
+  });
+  const platform = createTripPlatform({ travellerIdentityPlatform });
+  return { identityPlatform, platform };
+}
+
+test('M11: accepts a trip for a valid active traveller (port injected)', async () => {
+  const { identityPlatform, platform } = await tripPlatformWithIdentity();
+  const identity = await identityPlatform.createIdentity({
+    type: 'PERSON', roles: ['TRAVELLER'], publicProfile: { displayName: 'Mei' },
+  });
+  const actor = { id: identity.id, type: 'TRAVELLER' };
+
+  const trip = await platform.createTrip(validTrip({ ownerIdentityId: identity.id }), actor);
+  assert.equal(trip.ownerIdentityId, identity.id);
+  assert.equal(trip.status, TRIP_STATUS.DRAFT);
+
+  // Existing behaviour preserved end-to-end for a validated owner.
+  const renamed = await platform.updateTrip(trip.tripId, { tripName: 'Renamed' }, actor);
+  assert.equal(renamed.tripName, 'Renamed');
+});
+
+test('M11: rejects a trip for a missing identity', async () => {
+  const { platform } = await tripPlatformWithIdentity();
+  const actor = { id: 'idn_ghost', type: 'TRAVELLER' };
+  await assert.rejects(
+    () => platform.createTrip(validTrip({ ownerIdentityId: 'idn_ghost' }), actor),
+    err => err.code === 'TRAVELLER_NOT_FOUND',
+  );
+});
+
+test('M11: rejects a trip for an inactive (suspended) traveller', async () => {
+  const { identityPlatform, platform } = await tripPlatformWithIdentity();
+  const identity = await identityPlatform.createIdentity({
+    type: 'PERSON', roles: ['TRAVELLER'], publicProfile: { displayName: 'S' },
+  });
+  await identityPlatform.suspendIdentity(identity.id, 'policy', { id: 'idn_admin', type: 'ADMINISTRATOR' });
+  const actor = { id: identity.id, type: 'TRAVELLER' };
+
+  await assert.rejects(
+    () => platform.createTrip(validTrip({ ownerIdentityId: identity.id }), actor),
+    err => err.code === 'IDENTITY_INACTIVE',
+  );
+});
+
+test('M11: rejects a trip for a non-traveller identity (admin actor)', async () => {
+  const { identityPlatform, platform } = await tripPlatformWithIdentity();
+  const host = await identityPlatform.createIdentity({
+    type: 'PERSON', roles: ['HOST'], publicProfile: { displayName: 'H' },
+  });
+  // Privileged actor may create for another identity, but the owner must still
+  // be a valid traveller — so this is rejected by the M10 port.
+  await assert.rejects(
+    () => platform.createTrip(validTrip({ ownerIdentityId: host.id }), { id: 'idn_admin', type: 'ADMINISTRATOR' }),
+    err => err.code === 'NOT_A_TRAVELLER',
+  );
+});
+
+test('M11: existing behaviour preserved when no port is injected', async () => {
+  // Same as the baseline tests: no identity port, raw ids trusted.
+  const platform = createTripPlatform();
+  const trip = await platform.createTrip(validTrip({ ownerIdentityId: 'idn_unchecked' }), { id: 'idn_unchecked', type: 'TRAVELLER' });
+  assert.equal(trip.ownerIdentityId, 'idn_unchecked');
+});
+
+test('M11: rejects a misconfigured traveller identity port', () => {
+  assert.throws(
+    () => createTripPlatform({ travellerIdentityPlatform: {} }),
+    /travellerIdentityPlatform must expose assertActiveTraveller/,
+  );
+});
+
+test('M11: trip-platform source imports no identity module directly', () => {
+  const dir = dirname(fileURLToPath(import.meta.url));
+  const srcDir = join(dir, '..', 'lib', 'trip-platform');
+  for (const file of readdirSync(srcDir).filter(f => f.endsWith('.js'))) {
+    const source = readFileSync(join(srcDir, file), 'utf8');
+    assert.ok(!/from\s+['"][^'"]*identity-platform/.test(source),
+      `${file} must not import an identity module directly`);
+  }
 });
 
