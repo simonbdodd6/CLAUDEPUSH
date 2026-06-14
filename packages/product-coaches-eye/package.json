@@ -1,0 +1,14 @@
+{
+  "name": "@brain/product-coaches-eye",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": "./index.js",
+  "description": "Coach's Eye product façade (M31.3, DORMANT). Stable façade surface over @brain/contracts|products|versioning; not wired to engines, not imported by Core.",
+  "dependencies": {
+    "@brain/contracts": "0.0.0",
+    "@brain/products": "0.0.0",
+    "@brain/versioning": "0.0.0"
+  }
+}
