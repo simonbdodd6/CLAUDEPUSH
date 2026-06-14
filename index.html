@@ -4937,14 +4937,6 @@
       }
     }
 
-    function devFillAndLogin(email, password) {
-      const emailEl = document.getElementById('identityLoginEmail');
-      const pwEl = document.getElementById('identityLoginPassword');
-      if (emailEl) emailEl.value = email;
-      if (pwEl) pwEl.value = password;
-      loginIdentityAccount();
-    }
-
     async function ensureServerSessionForCurrentUser() {
       const user = currentUser();
       if (!user?.id) return false;
@@ -5115,7 +5107,7 @@
           style="width:100%;margin-top:4px;font-size:11px;color:#f87171;border-color:rgba(248,113,113,0.3)">Log out &amp; clear this device</button>
         <button class="btn ghost" type="button" onclick="setAuthTab('closed')"
           style="width:100%;margin-top:4px;font-size:12px">Cancel</button>
-      ` : authTab === 'dev' ? `
+      ` : authTab === 'dev' && window._devLoginEnabled ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <strong style="font-size:13px">Dev login</strong>
           <button class="auth-tab" type="button" onclick="setAuthTab('closed')" aria-label="Close" style="padding:4px 8px;font-size:11px">✕</button>
@@ -5224,6 +5216,7 @@
     }
 
     async function devLogin(userId) {
+      if (!window._devLoginEnabled) return;
       try {
         const res = await fetch('/api/identity', {
           method: 'POST',
@@ -5270,28 +5263,6 @@
         showToast('Logged in as ' + (data.user?.displayName || userId));
       } catch (e) {
         showToast('Dev login error: ' + (e?.message || 'network'));
-      }
-    }
-
-    async function devResetAvailabilityDemo() {
-      try {
-        showToast('Resetting availability demo…');
-        const res = await fetch('/api/seed', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'reset_availability' }),
-        });
-        const data = await res.json();
-        if (data.ok) {
-          _playerAvailFetched = false;
-          await refreshLiveAvailability();
-          render();
-          showToast('Availability demo reset ✓');
-        } else {
-          showToast('Reset failed: ' + (data.error || 'unknown'));
-        }
-      } catch (e) {
-        showToast('Reset error: ' + (e?.message || 'network'));
       }
     }
 
@@ -10676,6 +10647,7 @@
       const ta = document.getElementById('chatComposer');
       const text = ta?.value.trim();
       if (!text) return;
+      if (_serverAuthState === 'unknown') { showToast('Connecting…'); return; }
       const mode = state.activeView === 'coach' ? 'coach' : 'player';
       let convId = chatGetConvId(mode);
       const me = chatMe();
@@ -12981,9 +12953,12 @@
           showInviteModal(data);
           return true;
         } else {
-          showToast('⚠️ This invite link is no longer valid');
+          window.history.replaceState({}, '', '/');
+          showToast('⚠️ This invite link has expired or is no longer valid.');
         }
       } catch(e) {
+        window.history.replaceState({}, '', '/');
+        showToast('Could not check your invite link — check your connection and try again.');
         console.warn('[invite] Could not validate token:', e);
       }
       return false;
