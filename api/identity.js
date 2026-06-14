@@ -41,38 +41,128 @@ import { randomBytes } from 'node:crypto';
 import { kvConfigured } from './_kv.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
 import { assertSameTenant, requireTenantRole, requireTenantPermission, can, PERM } from './_tenant.js';
+import { makeStripe } from './_stripe.js';
 
-// ── Stripe integration point ─────────────────────────────────────────────────
-// Replace these stub implementations when STRIPE_SECRET_KEY is configured.
-// The callers (create_checkout, create_billing_portal) and their response
-// shapes are frozen — only these functions change in Phase 4.
-//
-// Phase 4 implementation sketch for createCheckoutSession:
-//   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-//   const session = await stripe.checkout.sessions.create({
-//     mode: 'subscription',
-//     customer_email: email,
-//     line_items: [{ price: priceId, quantity: 1 }],
-//     metadata: { teamId, userId },
-//     success_url: `${returnUrl}?billing=success`,
-//     cancel_url: returnUrl,
-//   });
-//   return { checkoutUrl: session.url };
-//
-// Phase 4 implementation sketch for createBillingPortal:
-//   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-//   const portal = await stripe.billingPortal.sessions.create({
-//     customer: stripeCustomerId,
-//     return_url: returnUrl,
-//   });
-//   return { portalUrl: portal.url };
+// Stripe client initialised once at module load.
+// makeStripe() returns null when STRIPE_SECRET_KEY is not set, so every billing
+// function must guard on `stripe` before attempting API calls.
+const stripe = makeStripe(process.env.STRIPE_SECRET_KEY);
 
-async function createCheckoutSession({ teamId, userId, email, priceId, returnUrl }) { // eslint-disable-line no-unused-vars
-  return { checkoutUrl: null };
+function stripeNotConfiguredError() {
+  const e = new Error('Billing is not configured on this server — contact support');
+  e.status = 503;
+  return e;
 }
 
-async function createBillingPortal({ stripeCustomerId, returnUrl }) { // eslint-disable-line no-unused-vars
-  return { portalUrl: null };
+// ── Phase 4 — Checkout and billing portal ───────────────────────────────────
+
+async function createCheckoutSession({ team, userId, email, priceId, returnUrl }) {
+  if (!stripe) throw stripeNotConfiguredError();
+  if (!priceId) throw stripeNotConfiguredError();
+  let customerId = team.stripeCustomerId;
+  if (!customerId) {
+    const customer = await stripe.customers.create({
+      email,
+      metadata: { teamId: team.id, userId },
+    });
+    customerId = customer.id;
+    await updateTeamBilling(team.id, { stripeCustomerId: customerId });
+  }
+  const session = await stripe.checkout.sessions.create({
+    mode: 'subscription',
+    customer: customerId,
+    line_items: [{ price: priceId, quantity: 1 }],
+    metadata: { teamId: team.id, userId },
+    automatic_tax: { enabled: true },
+    success_url: `${returnUrl}/?billing=success`,
+    cancel_url: `${returnUrl}/?billing=cancel`,
+  });
+  return { checkoutUrl: session.url };
+}
+
+async function createBillingPortal({ stripeCustomerId, returnUrl }) {
+  if (!stripe) throw stripeNotConfiguredError();
+  const portal = await stripe.billingPortal.sessions.create({
+    customer: stripeCustomerId,
+    return_url: returnUrl,
+  });
+  return { portalUrl: portal.url };
+}
+
+// ── Phase 5 — Stripe webhook ─────────────────────────────────────────────────
+// Vercel parses the body as JSON before our handler runs, so the raw bytes
+// needed for HMAC signature verification are unavailable. We re-fetch each
+// event from Stripe by ID instead — if the caller supplied a fake ID that does
+// not exist in our account, Stripe returns 404 and we discard the request.
+
+function stripeStatusToPlanStatus(stripeStatus) {
+  const MAP = {
+    active: 'active', trialing: 'active',
+    past_due: 'past_due', unpaid: 'past_due', incomplete: 'past_due',
+    incomplete_expired: 'canceled', canceled: 'canceled',
+    paused: 'paused',
+  };
+  return MAP[stripeStatus] || 'active';
+}
+
+async function findTeamIdByStripeIds({ subscriptionId, customerId }) {
+  const teams = await loadTeams();
+  const team = teams.find(t =>
+    (subscriptionId && t.stripeSubscriptionId === subscriptionId) ||
+    (customerId && t.stripeCustomerId === customerId),
+  );
+  return team?.id || null;
+}
+
+async function processStripeEvent(event) {
+  const obj = event.data?.object;
+  if (!obj) return;
+  switch (event.type) {
+    case 'checkout.session.completed': {
+      const teamId = obj.metadata?.teamId;
+      if (!teamId) return;
+      await updateTeamBilling(teamId, {
+        plan: 'pro',
+        planStatus: 'active',
+        stripeCustomerId: obj.customer || null,
+        stripeSubscriptionId: obj.subscription || null,
+      });
+      await auditLog('subscription_activated', { teamId, stripeEvent: event.type, eventId: event.id });
+      break;
+    }
+    case 'customer.subscription.updated': {
+      const teamId = await findTeamIdByStripeIds({ subscriptionId: obj.id, customerId: obj.customer });
+      if (!teamId) return;
+      await updateTeamBilling(teamId, {
+        planStatus: stripeStatusToPlanStatus(obj.status),
+        stripeSubscriptionId: obj.id,
+      });
+      await auditLog('subscription_updated', { teamId, stripeStatus: obj.status, stripeEvent: event.type, eventId: event.id });
+      break;
+    }
+    case 'customer.subscription.deleted': {
+      const teamId = await findTeamIdByStripeIds({ subscriptionId: obj.id, customerId: obj.customer });
+      if (!teamId) return;
+      await updateTeamBilling(teamId, {
+        plan: 'core',
+        planStatus: 'canceled',
+        stripeSubscriptionId: null,
+      });
+      await auditLog('subscription_canceled', { teamId, stripeEvent: event.type, eventId: event.id });
+      break;
+    }
+    default: break;
+  }
+}
+
+async function handleStripeWebhook(req, res) {
+  if (!stripe) return res.status(503).json({ ok: false, error: 'Billing not configured' });
+  const rawId = req.body?.id;
+  const rawType = req.body?.type;
+  if (!rawId || !rawType) return res.status(400).json({ ok: false, error: 'Invalid webhook payload' });
+  const event = await stripe.events.retrieve(rawId);
+  await processStripeEvent(event);
+  return res.status(200).json({ ok: true, received: true });
 }
 
 function sendError(res, error, fallbackStatus = 400) {
@@ -112,6 +202,13 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
+    // Stripe sends a stripe-signature header; handle before reading body.action
+    // so a webhook payload cannot be confused with a normal identity action.
+    if (req.headers['stripe-signature']) {
+      try { return await handleStripeWebhook(req, res); }
+      catch (error) { return sendError(res, error, 500); }
+    }
+
     const action = req.body?.action || 'join';
     try {
       if (action === 'join') {
@@ -371,7 +468,7 @@ export default async function handler(req, res) {
           return res.status(409).json({ ok: false, error: 'Team already has an active Pro subscription' });
         }
         const result = await createCheckoutSession({
-          teamId: tenant.teamId,
+          team,
           userId: tenant.user.id,
           email: tenant.user.email || '',
           priceId: process.env.STRIPE_PRO_PRICE_ID || null,
@@ -384,8 +481,11 @@ export default async function handler(req, res) {
         const tenant = await requireTenantPermission(req, PERM.MANAGE_SUBSCRIPTIONS);
         const teams = await loadTeams();
         const team = teams.find(t => t.id === tenant.teamId);
+        if (!team?.stripeCustomerId) {
+          return res.status(409).json({ ok: false, error: 'No billing account found — start a subscription first' });
+        }
         const result = await createBillingPortal({
-          stripeCustomerId: team?.stripeCustomerId || null,
+          stripeCustomerId: team.stripeCustomerId,
           returnUrl: `${appBaseUrl(req)}/?section=settings`,
         });
         await auditLog('billing_portal_accessed', { teamId: tenant.teamId, userId: tenant.user.id, ip: requestIp(req) });

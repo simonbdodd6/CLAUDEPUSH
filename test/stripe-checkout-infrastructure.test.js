@@ -169,21 +169,22 @@ test('create_billing_portal: player role → 403', async () => {
   assert.equal(res.body.ok, false);
 });
 
-// ── 3. Trial team → 200 with stub checkoutUrl ─────────────────────────────────
+// ── 3. Trial team → 503 (Stripe not configured in test env) ──────────────────
 
-test('create_checkout: trial team → 200, ok:true, checkoutUrl field present', async () => {
+test('create_checkout: trial team → 503 when STRIPE_SECRET_KEY not set', async () => {
   kv.clear();
   const { session, team } = await makeAdminSession('trial');
   assert.equal(team.plan, 'trial', 'precondition: new club starts on trial');
   const res = await callIdentity('create_checkout', session.token);
-  assert.equal(res.statusCode, 200, `Expected 200, got ${res.statusCode}: ${JSON.stringify(res.body)}`);
-  assert.equal(res.body.ok, true);
-  assert.ok('checkoutUrl' in res.body, 'checkoutUrl must be in response');
+  // Auth and permission check passed (else would be 401/403); Stripe is unconfigured in tests.
+  assert.equal(res.statusCode, 503, `Expected 503, got ${res.statusCode}: ${JSON.stringify(res.body)}`);
+  assert.equal(res.body.ok, false);
+  assert.ok('checkoutUrl' in res.body || 'error' in res.body);
 });
 
-// ── 4. Core (post-trial) team → 200 ──────────────────────────────────────────
+// ── 4. Core (post-trial) team → 503 ──────────────────────────────────────────
 
-test('create_checkout: core team → 200 (eligible for upgrade)', async () => {
+test('create_checkout: core team → 503 when STRIPE_SECRET_KEY not set', async () => {
   kv.clear();
   const { session, team } = await makeAdminSession('core');
   const teams = await loadTeams();
@@ -191,9 +192,8 @@ test('create_checkout: core team → 200 (eligible for upgrade)', async () => {
   stored.plan = 'core'; stored.planStatus = 'active';
   await saveTeams(teams);
   const res = await callIdentity('create_checkout', session.token);
-  assert.equal(res.statusCode, 200);
-  assert.equal(res.body.ok, true);
-  assert.ok('checkoutUrl' in res.body);
+  assert.equal(res.statusCode, 503);
+  assert.equal(res.body.ok, false);
 });
 
 // ── 5. Already-Pro team → 409 ────────────────────────────────────────────────
@@ -212,9 +212,9 @@ test('create_checkout: active Pro team → 409 (already subscribed)', async () =
   assert.match(res.body.error, /already has an active Pro/i);
 });
 
-// ── 6. Legacy team (no plan fields) → 200 (not treated as Pro) ───────────────
+// ── 6. Legacy team (no plan fields) → 503 (not blocked by Pro check) ─────────
 
-test('create_checkout: legacy team without plan fields → 200 (not blocked)', async () => {
+test('create_checkout: legacy team without plan fields → 503 (not blocked, Stripe unconfigured)', async () => {
   kv.clear();
   const { session, team } = await makeAdminSession('legacy');
   const teams = await loadTeams();
@@ -224,19 +224,21 @@ test('create_checkout: legacy team without plan fields → 200 (not blocked)', a
   delete stored.stripeSubscriptionId;
   await saveTeams(teams);
   const res = await callIdentity('create_checkout', session.token);
-  assert.equal(res.statusCode, 200, `Expected 200, got ${res.statusCode}: ${JSON.stringify(res.body)}`);
-  assert.equal(res.body.ok, true);
+  // 503 means the Pro-team guard did not block it; Stripe is just unconfigured.
+  assert.equal(res.statusCode, 503, `Expected 503, got ${res.statusCode}: ${JSON.stringify(res.body)}`);
+  assert.equal(res.body.ok, false);
 });
 
-// ── 7. create_billing_portal → 200 with portalUrl field ──────────────────────
+// ── 7. create_billing_portal with no billing account → 409 ───────────────────
 
-test('create_billing_portal: admin → 200, ok:true, portalUrl field present', async () => {
+test('create_billing_portal: no stripeCustomerId → 409 (no billing account)', async () => {
   kv.clear();
   const { session } = await makeAdminSession('portal');
+  // New club has no stripeCustomerId; portal requires one.
   const res = await callIdentity('create_billing_portal', session.token);
-  assert.equal(res.statusCode, 200, `Expected 200, got ${res.statusCode}: ${JSON.stringify(res.body)}`);
-  assert.equal(res.body.ok, true);
-  assert.ok('portalUrl' in res.body, 'portalUrl must be in response');
+  assert.equal(res.statusCode, 409, `Expected 409, got ${res.statusCode}: ${JSON.stringify(res.body)}`);
+  assert.equal(res.body.ok, false);
+  assert.ok('portalUrl' in res.body || 'error' in res.body);
 });
 
 // ── 8. updateTeamBilling writes only allowlisted fields ──────────────────────
