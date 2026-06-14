@@ -1648,3 +1648,261 @@ setInterval(() => loadTelemetry().then(installGraph), 30000);
 setInterval(() => addLiveThought(), 3600);
 setTimeout(() => addLiveThought('Neural operating system online'), 700);
 requestAnimationFrame(render);
+
+// ═══════════════════════════════════════════════════════════════════
+// CENTREPIECE: GPU-rendered animated neural brain (Three.js)
+// Self-contained — mounts into #neuralBrainRoot, ignores panel events,
+// and replaces the previous central graphic. Panels are unaffected.
+// ═══════════════════════════════════════════════════════════════════
+(function mountNeuralBrain() {
+  const root = document.getElementById('neuralBrainRoot');
+  if (!root || typeof THREE === 'undefined') return;
+
+  // ── Brain-shaped point cloud ──────────────────────────────────────
+  const COUNT = 1700;        // > 1,000 glowing particles
+  const PALETTE = [
+    [0.13, 0.83, 0.93],      // cyan
+    [0.38, 0.65, 0.98],      // blue
+    [0.55, 0.36, 0.96],      // violet
+    [0.77, 0.71, 0.99],      // lilac
+    [0.37, 0.92, 0.83],      // teal
+  ];
+
+  function inBrain(x, y, z) {
+    const ax = x / 1.2, ay = (y + 0.05) / 0.9, az = z / 1.05;
+    if (ax * ax + ay * ay + az * az < 1) {
+      // carve a soft central fissure for a brain-like split
+      if (Math.abs(x) < 0.05 && y > 0.05) return false;
+      return true;
+    }
+    const cx = x / 0.5, cy = (y + 0.5) / 0.32, cz = (z - 0.7) / 0.4;  // cerebellum
+    return cx * cx + cy * cy + cz * cz < 1;
+  }
+
+  const pos = new Float32Array(COUNT * 3);
+  const col = new Float32Array(COUNT * 3);
+  const aSize = new Float32Array(COUNT);
+  const aPhase = new Float32Array(COUNT);
+  const aRate = new Float32Array(COUNT);
+  const aFiring = new Float32Array(COUNT);
+  let made = 0, tries = 0;
+  while (made < COUNT && tries++ < COUNT * 40) {
+    const x = (Math.random() - 0.5) * 2.7;
+    const y = (Math.random() - 0.5) * 2.1;
+    const z = (Math.random() - 0.5) * 2.3;
+    if (!inBrain(x, y, z)) continue;
+    const i = made++;
+    pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
+    const c = PALETTE[(Math.random() * PALETTE.length) | 0];
+    const v = 0.12;
+    col[i * 3]     = Math.min(1, Math.max(0, c[0] + (Math.random() - 0.5) * v));
+    col[i * 3 + 1] = Math.min(1, Math.max(0, c[1] + (Math.random() - 0.5) * v));
+    col[i * 3 + 2] = Math.min(1, Math.max(0, c[2] + (Math.random() - 0.5) * v));
+    aSize[i] = 1.0 + Math.random() * 2.2;
+    aPhase[i] = Math.random() * 6.2832;
+    aRate[i] = 0.7 + Math.random() * 1.6;
+  }
+  const N = made;
+
+  // ── Connections (neural wiring) via spatial grid ──────────────────
+  const linePos = [], pairs = [], cell = 0.42, grid = new Map();
+  for (let i = 0; i < N; i++) {
+    const k = `${Math.floor(pos[i*3]/cell)},${Math.floor(pos[i*3+1]/cell)},${Math.floor(pos[i*3+2]/cell)}`;
+    if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i);
+  }
+  const degree = new Int16Array(N), MAXC = 4800;
+  for (let i = 0; i < N && linePos.length / 6 < MAXC; i++) {
+    if (degree[i] >= 5) continue;
+    const x1 = pos[i*3], y1 = pos[i*3+1], z1 = pos[i*3+2];
+    const cx = Math.floor(x1/cell), cy = Math.floor(y1/cell), cz = Math.floor(z1/cell);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      const c = grid.get(`${cx+dx},${cy+dy},${cz+dz}`); if (!c) continue;
+      for (const j of c) {
+        if (j <= i || degree[i] >= 5 || degree[j] >= 5) continue;
+        const ddx = pos[j*3]-x1, ddy = pos[j*3+1]-y1, ddz = pos[j*3+2]-z1;
+        if (ddx*ddx + ddy*ddy + ddz*ddz < 0.36 * 0.36) {
+          linePos.push(x1, y1, z1, pos[j*3], pos[j*3+1], pos[j*3+2]);
+          pairs.push(i, j); degree[i]++; degree[j]++;
+          if (linePos.length / 6 >= MAXC) break;
+        }
+      }
+    }
+  }
+  const CONN = pairs.length / 2;
+
+  // ── Scene ─────────────────────────────────────────────────────────
+  const holder = document.createElement('div');
+  holder.className = 'neural-brain';
+  root.appendChild(holder);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
+  camera.position.set(0, 0, 5.2);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(dpr);
+  holder.appendChild(renderer.domElement);
+
+  const group = new THREE.Group();
+  scene.add(group);
+
+  // particles
+  const pGeo = new THREE.BufferGeometry();
+  pGeo.setAttribute('position', new THREE.BufferAttribute(pos.slice(0, N * 3), 3));
+  pGeo.setAttribute('aColor', new THREE.BufferAttribute(col.slice(0, N * 3), 3));
+  pGeo.setAttribute('aSize', new THREE.BufferAttribute(aSize.slice(0, N), 1));
+  pGeo.setAttribute('aPhase', new THREE.BufferAttribute(aPhase.slice(0, N), 1));
+  pGeo.setAttribute('aRate', new THREE.BufferAttribute(aRate.slice(0, N), 1));
+  const firingAttr = new THREE.BufferAttribute(aFiring.slice(0, N), 1);
+  firingAttr.usage = THREE.DynamicDrawUsage;
+  pGeo.setAttribute('aFiring', firingAttr);
+
+  const pMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uActivity: { value: 1 }, uBurst: { value: 0 }, uScale: { value: 9 * dpr } },
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: `
+      uniform float uTime, uActivity, uBurst, uScale;
+      attribute float aSize, aPhase, aRate, aFiring; attribute vec3 aColor;
+      varying vec3 vColor; varying float vGlow;
+      void main() {
+        float pulse = sin(uTime * aRate + aPhase) * 0.5 + 0.5;
+        vec3 p = position * (1.0 + uBurst * 0.55);
+        float sz = aSize * (0.55 + pulse * 0.7 * uActivity) + aFiring * 3.2 + uBurst * 1.4;
+        vColor = aColor; vGlow = pulse * uActivity * 0.5 + aFiring;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = sz * uScale / -mv.z;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      varying vec3 vColor; varying float vGlow;
+      void main() {
+        vec2 uv = gl_PointCoord - 0.5; float d = length(uv) * 2.0;
+        float core = smoothstep(1.0, 0.0, d); if (core < 0.01) discard;
+        vec3 c = vColor * (0.7 + vGlow * 1.5) + vec3(1.0, 0.98, 0.9) * vGlow * core * 0.9;
+        gl_FragColor = vec4(c, core * (0.45 + vGlow * 0.55));
+      }`,
+  });
+  group.add(new THREE.Points(pGeo, pMat));
+
+  // connections
+  const lGeo = new THREE.BufferGeometry();
+  lGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(linePos), 3));
+  const lMat = new THREE.LineBasicMaterial({ color: 0x3a7bff, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false });
+  group.add(new THREE.LineSegments(lGeo, lMat));
+
+  // travelling signals (firing in motion)
+  const SIG = 150;
+  const sigBuf = new Float32Array(SIG * 3).fill(9999);
+  const sGeo = new THREE.BufferGeometry();
+  const sAttr = new THREE.BufferAttribute(sigBuf, 3); sAttr.usage = THREE.DynamicDrawUsage;
+  sGeo.setAttribute('position', sAttr);
+  const sMat = new THREE.ShaderMaterial({
+    uniforms: { uScale: { value: 16 * dpr } },
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: `uniform float uScale; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=uScale/-mv.z; gl_Position=projectionMatrix*mv; }`,
+    fragmentShader: `void main(){ vec2 uv=gl_PointCoord-0.5; float d=length(uv)*2.0; float c=smoothstep(1.0,0.0,d); if(c<0.02) discard; gl_FragColor=vec4(vec3(0.8,0.95,1.0)*(1.0+c*2.0), c); }`,
+  });
+  group.add(new THREE.Points(sGeo, sMat));
+  const signals = [];
+
+  // adjacency for firing spread
+  const adj = Array.from({ length: N }, () => []);
+  for (let p = 0; p < CONN; p++) { const a = pairs[p*2], b = pairs[p*2+1]; adj[a].push(b); adj[b].push(a); }
+
+  // ── State / interaction ───────────────────────────────────────────
+  const rot = { x: 0, y: 0, tx: 0, ty: 0 };
+  let zoom = 5.2, zoomTarget = 5.2;
+  let activity = 1, burst = 0;
+  const fa = pGeo.attributes.aFiring.array;
+
+  function ignite(center, spread, n) {
+    for (let k = 0; k < n; k++) {
+      const idx = Math.max(0, Math.min(N - 1, center + ((Math.random() - 0.5) * spread | 0)));
+      fa[idx] = 0.6 + Math.random() * 0.4;
+      for (const nb of adj[idx]) fa[nb] = Math.max(fa[nb], 0.4);
+    }
+  }
+  const isPanelTarget = (t) => !!(t && t.closest && t.closest('.glass, .mission-dock, .mission-header, .intelligence-cards, .ticker-wrap, .sound-toggle, [data-panel-trigger], button, a, input, textarea'));
+
+  function onMove(e) {
+    rot.ty = (e.clientX / window.innerWidth - 0.5) * 1.1;
+    rot.tx = (e.clientY / window.innerHeight - 0.5) * 0.7;
+  }
+  function onWheel(e) {
+    if (isPanelTarget(e.target)) return;            // let panels scroll normally
+    zoomTarget = Math.max(3.0, Math.min(9.0, zoomTarget + e.deltaY * 0.0022));
+  }
+  function onClick(e) {
+    if (isPanelTarget(e.target)) return;            // keep panels/buttons working
+    burst = 1; activity = Math.min(3.5, activity + 1.8);
+    ignite((Math.random() * N) | 0, 320, 160);
+  }
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('wheel', onWheel, { passive: true });
+  window.addEventListener('click', onClick);
+
+  function resize() {
+    const w = root.clientWidth || window.innerWidth, h = root.clientHeight || window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+  requestAnimationFrame(() => holder.classList.add('mounted'));
+
+  // ── Animation loop ────────────────────────────────────────────────
+  const clock = new THREE.Clock();
+  let alive = true;
+  document.addEventListener('visibilitychange', () => { alive = !document.hidden; if (alive) loop(); });
+
+  function loop() {
+    if (!alive) return;
+    const dt = Math.min(0.05, clock.getDelta());
+    const t = clock.elapsedTime;
+    pMat.uniforms.uTime.value = t;
+    pMat.uniforms.uActivity.value = activity;
+    pMat.uniforms.uBurst.value = burst;
+
+    // eased rotation (mouse) + gentle auto-spin
+    rot.x += (rot.tx - rot.x) * 0.05;
+    rot.y += (rot.ty - rot.y) * 0.05;
+    group.rotation.x = rot.x * 0.6;
+    group.rotation.y = rot.y + t * 0.05;
+
+    zoom += (zoomTarget - zoom) * 0.07;
+    camera.position.z = zoom;
+
+    burst *= 0.92; if (burst < 0.001) burst = 0;
+    activity = Math.max(1, activity - dt * 0.7);
+
+    // autonomous firing
+    if (Math.random() < dt * 2.2) { ignite((Math.random() * N) | 0, 120, 6 + (Math.random() * 22 | 0)); activity = Math.min(2.6, activity + 0.4); }
+    let dirty = false;
+    for (let i = 0; i < N; i++) { if (fa[i] > 0.001) { fa[i] *= 0.92; dirty = true; } else fa[i] = 0; }
+    if (dirty) pGeo.attributes.aFiring.needsUpdate = true;
+
+    // spawn + advance signals along connections
+    if (CONN > 0 && signals.length < SIG && Math.random() < dt * 8 * activity) {
+      signals.push({ c: (Math.random() * CONN) | 0, t: 0, s: 0.3 + Math.random() * 0.7, rev: Math.random() > 0.5 });
+    }
+    let wi = 0;
+    for (let i = signals.length - 1; i >= 0; i--) {
+      const sg = signals[i]; sg.t += dt * sg.s;
+      if (sg.t >= 1) { signals.splice(i, 1); continue; }
+    }
+    for (let i = 0; i < signals.length && wi < SIG; i++) {
+      const sg = signals[i], a = pairs[sg.c * 2], b = pairs[sg.c * 2 + 1];
+      const tt = sg.rev ? 1 - sg.t : sg.t, o = wi * 3;
+      sigBuf[o]     = pos[a*3]     + (pos[b*3]     - pos[a*3])     * tt;
+      sigBuf[o + 1] = pos[a*3+1]   + (pos[b*3+1]   - pos[a*3+1])   * tt;
+      sigBuf[o + 2] = pos[a*3+2]   + (pos[b*3+2]   - pos[a*3+2])   * tt;
+      wi++;
+    }
+    for (let i = wi; i < SIG; i++) sigBuf[i * 3] = 9999;
+    sGeo.attributes.position.needsUpdate = true;
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();

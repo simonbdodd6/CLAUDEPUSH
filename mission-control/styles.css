@@ -72,6 +72,16 @@ a {
   pointer-events: none;
 }
 
+/* Soft volumetric glow centred behind the neural brain */
+#neuralBrainRoot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 46% 52% at 50% 50%, rgba(56, 130, 246, 0.16), rgba(139, 92, 246, 0.08) 45%, transparent 70%);
+  z-index: -1;
+}
+
 .neural-brain,
 .neural-brain canvas {
   width: 100%;
