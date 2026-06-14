@@ -15,7 +15,7 @@
  * @typedef {import('@brain/contracts').ProductManifest} ProductManifest
  */
 
-import { TIER, CAPABILITY, FLAG } from '../brain-contracts/index.js'
+import { TIER, CAPABILITY, FLAG } from '@brain/contracts'
 
 const T = TIER
 

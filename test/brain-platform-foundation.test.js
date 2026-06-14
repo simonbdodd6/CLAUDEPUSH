@@ -15,10 +15,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { readFileSync, readdirSync } from 'node:fs'
 
-// ── platform packages under test ───────────────────────────────────────────────
-import { TIER, REASON, CAPABILITY, FLAG, VISIBILITY, SEVERITY, GLOBAL_KILL_FLAG, CONTRACT_VERSION } from '../packages/brain-contracts/index.js'
-import { COACHES_EYE_MANIFEST, getManifest, resolveCapability, tierIncludes, listFlags, listNamespaces } from '../packages/brain-products/index.js'
-import { VERSION_CONTRACTS, negotiate, isSupported } from '../packages/brain-versioning/index.js'
+// ── platform packages under test (bare @brain/* workspace specifiers) ───────────
+import { TIER, REASON, CAPABILITY, FLAG, VISIBILITY, SEVERITY, GLOBAL_KILL_FLAG, CONTRACT_VERSION } from '@brain/contracts'
+import { COACHES_EYE_MANIFEST, getManifest, resolveCapability, tierIncludes, listFlags, listNamespaces } from '@brain/products'
+import { VERSION_CONTRACTS, negotiate, isSupported } from '@brain/versioning'
 
 // ── live engine constants (the source of truth we must match) ──────────────────
 import { TIER as ITIER, CAPABILITY as ICAP, REASON as IREASON, GLOBAL_AI_FLAG, INTEGRATION_VERSION } from '../ai-brain/integration/integration-types.js'
@@ -153,9 +153,10 @@ test('structural — platform packages import nothing from engines or Core', () 
     for (const f of readdirSync(pkgDir).filter(n => n.endsWith('.js'))) {
       const src = readFileSync(new URL(f, pkgDir), 'utf8')
       for (const bad of forbidden) assert.ok(!src.includes(bad), `${pkg}/${f} must not reference ${bad}`)
-      // imports must stay within packages/ (relative, no bare engine specifiers)
+      // imports must be either intra-package relative ('./…') or a bare @brain/*
+      // workspace specifier — never an engine/Core path.
       for (const imp of [...src.matchAll(/from\s+'([^']+)'/g)].map(m => m[1])) {
-        assert.ok(imp.startsWith('./') || imp.startsWith('../brain-'), `${pkg}/${f} illegal import: ${imp}`)
+        assert.ok(imp.startsWith('./') || imp.startsWith('@brain/'), `${pkg}/${f} illegal import: ${imp}`)
       }
     }
   }

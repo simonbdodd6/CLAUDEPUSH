@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "main": "index.js",
+  "exports": "./index.js",
   "description": "Shared AI Brain version contracts + pure negotiation (M31.0, dormant). Depends only on @brain/contracts.",
   "dependencies": {
     "@brain/contracts": "0.0.0"
