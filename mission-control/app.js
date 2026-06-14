@@ -1650,399 +1650,346 @@ setTimeout(() => addLiveThought('Neural operating system online'), 700);
 requestAnimationFrame(render);
 
 // ═══════════════════════════════════════════════════════════════════
-// THE LIVING INTELLIGENCE UNIVERSE (M40)
-// The brain is a living digital organism suspended in an infinite
-// intelligence universe: awakening sequence, layered space, six colour
-// intelligence streams, living neurons, constellations, gravity wells,
-// time-slow breakthroughs and a cinematic curious camera.
-// Visual-only. Public API (window.MissionBrain) is preserved exactly.
+// BIRTH OF CONSCIOUSNESS (M41)
+// Mission Control is the visual manifestation of a living artificial
+// consciousness. The brain is merely the brightest region inside an
+// enormous intelligence universe — with a central intelligence
+// singularity, digital weather, autonomous curiosity, and a rare
+// grand "Moment" where consciousness evolves.
+// Visual-only. Public API (window.MissionBrain / MissionModules) preserved.
 // ═══════════════════════════════════════════════════════════════════
 (function mountNeuralBrain() {
   const root = document.getElementById('neuralBrainRoot');
   if (!root || typeof THREE === 'undefined') return;
 
   const COUNT = 1900;
-  const PALETTE = [
-    [0.13, 0.83, 0.93], [0.38, 0.65, 0.98], [0.55, 0.36, 0.96], [0.77, 0.71, 0.99], [0.37, 0.92, 0.83],
-  ];
-  // Intelligence stream types (colour-coded flows of cognition).
-  const INTEL = [
-    [0.66, 0.33, 0.97],  // memory
-    [0.96, 0.62, 0.13],  // prediction
-    [0.13, 0.83, 0.97],  // reasoning
-    [0.20, 0.90, 0.55],  // learning
-    [0.23, 0.51, 0.96],  // simulation
-    [0.93, 0.28, 0.60],  // optimisation
-  ];
+  const GS = 0.8;                                  // brain scale — small inside a vast cosmos
+  const PALETTE = [[0.13,0.83,0.93],[0.38,0.65,0.98],[0.55,0.36,0.96],[0.77,0.71,0.99],[0.37,0.92,0.83]];
+  // Intelligence types (colour-coded cognition / digital weather).
+  const INTEL = [[0.66,0.33,0.97],[0.96,0.62,0.13],[0.13,0.83,0.97],[0.20,0.90,0.55],[0.23,0.51,0.96],[0.93,0.28,0.60]];
 
   function inBrain(x, y, z) {
-    const ax = x / 1.2, ay = (y + 0.05) / 0.9, az = z / 1.05;
-    if (ax * ax + ay * ay + az * az < 1) { if (Math.abs(x) < 0.05 && y > 0.05) return false; return true; }
-    const cx = x / 0.5, cy = (y + 0.5) / 0.32, cz = (z - 0.7) / 0.4;
-    return cx * cx + cy * cy + cz * cz < 1;
+    const ax = x/1.2, ay = (y+0.05)/0.9, az = z/1.05;
+    if (ax*ax+ay*ay+az*az < 1) { if (Math.abs(x)<0.05 && y>0.05) return false; return true; }
+    const cx = x/0.5, cy = (y+0.5)/0.32, cz = (z-0.7)/0.4;
+    return cx*cx+cy*cy+cz*cz < 1;
   }
 
-  const pos = new Float32Array(COUNT * 3), col = new Float32Array(COUNT * 3);
+  const pos = new Float32Array(COUNT*3), col = new Float32Array(COUNT*3);
   const aSize = new Float32Array(COUNT), aPhase = new Float32Array(COUNT), aRate = new Float32Array(COUNT);
   const aFiring = new Float32Array(COUNT), aSeed = new Float32Array(COUNT);
   let made = 0, tries = 0;
-  while (made < COUNT && tries++ < COUNT * 40) {
-    const x = (Math.random() - 0.5) * 2.7, y = (Math.random() - 0.5) * 2.1, z = (Math.random() - 0.5) * 2.3;
-    if (!inBrain(x, y, z)) continue;
+  while (made < COUNT && tries++ < COUNT*40) {
+    const x=(Math.random()-0.5)*2.7, y=(Math.random()-0.5)*2.1, z=(Math.random()-0.5)*2.3;
+    if (!inBrain(x,y,z)) continue;
     const i = made++;
-    pos[i*3] = x; pos[i*3+1] = y; pos[i*3+2] = z;
-    const c = PALETTE[(Math.random() * PALETTE.length) | 0], v = 0.12;
-    col[i*3] = Math.min(1, Math.max(0, c[0] + (Math.random()-0.5)*v));
-    col[i*3+1] = Math.min(1, Math.max(0, c[1] + (Math.random()-0.5)*v));
-    col[i*3+2] = Math.min(1, Math.max(0, c[2] + (Math.random()-0.5)*v));
-    aSize[i] = 1.0 + Math.random() * 2.2; aPhase[i] = Math.random() * 6.2832; aRate[i] = 0.7 + Math.random() * 1.6;
-    aSeed[i] = Math.random();
+    pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+    const c = PALETTE[(Math.random()*PALETTE.length)|0], v=0.12;
+    col[i*3]=Math.min(1,Math.max(0,c[0]+(Math.random()-0.5)*v)); col[i*3+1]=Math.min(1,Math.max(0,c[1]+(Math.random()-0.5)*v)); col[i*3+2]=Math.min(1,Math.max(0,c[2]+(Math.random()-0.5)*v));
+    aSize[i]=1.0+Math.random()*2.2; aPhase[i]=Math.random()*6.2832; aRate[i]=0.7+Math.random()*1.6; aSeed[i]=Math.random();
   }
   const N = made;
 
-  // Cluster assignment (module index === cluster index — DO NOT reorder).
-  const CLUSTER_ANCHORS = [
-    [-0.70, 0.32, -0.70], [0.70, 0.32, -0.70], [-0.92, 0.02, 0.10], [0.92, 0.02, 0.10],
-    [-0.52, -0.18, 0.72], [0.52, -0.18, 0.72], [0.00, 0.55, 0.00], [0.00, -0.52, 0.42],
-  ];
+  const CLUSTER_ANCHORS = [[-0.70,0.32,-0.70],[0.70,0.32,-0.70],[-0.92,0.02,0.10],[0.92,0.02,0.10],[-0.52,-0.18,0.72],[0.52,-0.18,0.72],[0.00,0.55,0.00],[0.00,-0.52,0.42]];
   const CLUSTERS = CLUSTER_ANCHORS.length;
   const aCluster = new Float32Array(N);
-  const cAcc = CLUSTER_ANCHORS.map(() => ({ x: 0, y: 0, z: 0, n: 0 }));
-  for (let i = 0; i < N; i++) {
-    let best = 0, bd = Infinity;
-    for (let c = 0; c < CLUSTERS; c++) { const a = CLUSTER_ANCHORS[c]; const dx = pos[i*3]-a[0], dy = pos[i*3+1]-a[1], dz = pos[i*3+2]-a[2]; const d = dx*dx+dy*dy+dz*dz; if (d < bd) { bd = d; best = c; } }
-    aCluster[i] = best; const acc = cAcc[best]; acc.x += pos[i*3]; acc.y += pos[i*3+1]; acc.z += pos[i*3+2]; acc.n++;
-  }
-  const clusterCentroids = cAcc.map((a, c) => a.n ? [a.x/a.n, a.y/a.n, a.z/a.n] : CLUSTER_ANCHORS[c]);
-  const clusterCounts = cAcc.map(a => a.n);
-  const neuronsByCluster = CLUSTER_ANCHORS.map(() => []);
-  for (let i = 0; i < N; i++) neuronsByCluster[aCluster[i]].push(i);
+  const cAcc = CLUSTER_ANCHORS.map(() => ({x:0,y:0,z:0,n:0}));
+  for (let i=0;i<N;i++){ let best=0,bd=Infinity; for (let c=0;c<CLUSTERS;c++){ const a=CLUSTER_ANCHORS[c]; const dx=pos[i*3]-a[0],dy=pos[i*3+1]-a[1],dz=pos[i*3+2]-a[2]; const d=dx*dx+dy*dy+dz*dz; if (d<bd){bd=d;best=c;} } aCluster[i]=best; const acc=cAcc[best]; acc.x+=pos[i*3]; acc.y+=pos[i*3+1]; acc.z+=pos[i*3+2]; acc.n++; }
+  const clusterCentroids = cAcc.map((a,c)=> a.n?[a.x/a.n,a.y/a.n,a.z/a.n]:CLUSTER_ANCHORS[c]);
+  const clusterCounts = cAcc.map(a=>a.n);
+  const neuronsByCluster = CLUSTER_ANCHORS.map(()=>[]);
+  for (let i=0;i<N;i++) neuronsByCluster[aCluster[i]].push(i);
 
-  // Connectome (organised wiring).
-  const linePos = [], pairs = [], cell = 0.42, grid = new Map();
-  for (let i = 0; i < N; i++) { const k = `${Math.floor(pos[i*3]/cell)},${Math.floor(pos[i*3+1]/cell)},${Math.floor(pos[i*3+2]/cell)}`; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i); }
-  const degree = new Int16Array(N), MAXC = 5200;
-  for (let i = 0; i < N && linePos.length/6 < MAXC; i++) {
-    if (degree[i] >= 5) continue;
-    const x1 = pos[i*3], y1 = pos[i*3+1], z1 = pos[i*3+2];
-    const cx = Math.floor(x1/cell), cy = Math.floor(y1/cell), cz = Math.floor(z1/cell);
-    for (let dx=-1;dx<=1;dx++) for (let dy=-1;dy<=1;dy++) for (let dz=-1;dz<=1;dz++) { const cc = grid.get(`${cx+dx},${cy+dy},${cz+dz}`); if (!cc) continue;
-      for (const j of cc) { if (j<=i||degree[i]>=5||degree[j]>=5) continue; const ddx=pos[j*3]-x1,ddy=pos[j*3+1]-y1,ddz=pos[j*3+2]-z1; if (ddx*ddx+ddy*ddy+ddz*ddz < 0.36*0.36) { linePos.push(x1,y1,z1,pos[j*3],pos[j*3+1],pos[j*3+2]); pairs.push(i,j); degree[i]++; degree[j]++; if (linePos.length/6>=MAXC) break; } } }
-  }
-  const CONN = pairs.length / 2;
-  const adj = Array.from({ length: N }, () => []);
-  for (let p = 0; p < CONN; p++) { const a = pairs[p*2], b = pairs[p*2+1]; adj[a].push(b); adj[b].push(a); }
+  const linePos=[], pairs=[], cell=0.42, grid=new Map();
+  for (let i=0;i<N;i++){ const k=`${Math.floor(pos[i*3]/cell)},${Math.floor(pos[i*3+1]/cell)},${Math.floor(pos[i*3+2]/cell)}`; if (!grid.has(k)) grid.set(k,[]); grid.get(k).push(i); }
+  const degree=new Int16Array(N), MAXC=5200;
+  for (let i=0;i<N&&linePos.length/6<MAXC;i++){ if (degree[i]>=5) continue; const x1=pos[i*3],y1=pos[i*3+1],z1=pos[i*3+2]; const cx=Math.floor(x1/cell),cy=Math.floor(y1/cell),cz=Math.floor(z1/cell);
+    for (let dx=-1;dx<=1;dx++) for (let dy=-1;dy<=1;dy++) for (let dz=-1;dz<=1;dz++){ const cc=grid.get(`${cx+dx},${cy+dy},${cz+dz}`); if (!cc) continue; for (const j of cc){ if (j<=i||degree[i]>=5||degree[j]>=5) continue; const ddx=pos[j*3]-x1,ddy=pos[j*3+1]-y1,ddz=pos[j*3+2]-z1; if (ddx*ddx+ddy*ddy+ddz*ddz<0.36*0.36){ linePos.push(x1,y1,z1,pos[j*3],pos[j*3+1],pos[j*3+2]); pairs.push(i,j); degree[i]++; degree[j]++; if (linePos.length/6>=MAXC) break; } } } }
+  const CONN = pairs.length/2;
+  const adj = Array.from({length:N},()=>[]);
+  for (let p=0;p<CONN;p++){ const a=pairs[p*2],b=pairs[p*2+1]; adj[a].push(b); adj[b].push(a); }
 
   // ── Scene ─────────────────────────────────────────────────────────
-  const holder = document.createElement('div'); holder.className = 'neural-brain'; root.appendChild(holder);
-  const veil = document.createElement('div'); veil.className = 'awaken-veil'; root.appendChild(veil);  // darkness for the awakening
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100); camera.position.set(0, 0, 5.4);
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(dpr); holder.appendChild(renderer.domElement);
-  const group = new THREE.Group(); scene.add(group);        // the brain (rotates)
-  const space = new THREE.Group(); scene.add(space);        // the universe (parallax)
+  const holder=document.createElement('div'); holder.className='neural-brain'; root.appendChild(holder);
+  const veil=document.createElement('div'); veil.className='awaken-veil'; root.appendChild(veil);
+  const scene=new THREE.Scene();
+  const camera=new THREE.PerspectiveCamera(55,1,0.1,400); camera.position.set(0,0,7.8);
+  const dpr=Math.min(window.devicePixelRatio||1,1.75);
+  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'}); renderer.setPixelRatio(dpr); holder.appendChild(renderer.domElement);
+  const group=new THREE.Group(); group.scale.setScalar(GS); scene.add(group);    // the intelligence (small)
+  const space=new THREE.Group(); scene.add(space);                                // the cosmos (vast, parallax)
 
-  function softTexture() {
-    const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d');
-    const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32); grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.4, 'rgba(255,255,255,0.5)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grd; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(cv); return t;
-  }
-  const SOFT = softTexture();
+  function softTexture(){ const cv=document.createElement('canvas'); cv.width=cv.height=64; const g=cv.getContext('2d'); const grd=g.createRadialGradient(32,32,0,32,32,32); grd.addColorStop(0,'rgba(255,255,255,1)'); grd.addColorStop(0.4,'rgba(255,255,255,0.5)'); grd.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle=grd; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(cv); }
+  const SOFT=softTexture();
 
-  // ── Universe: nebula clouds ───────────────────────────────────────
-  const NEB = [[0.35,0.18,0.6],[0.1,0.3,0.55],[0.5,0.12,0.4],[0.12,0.4,0.5]];
-  NEB.forEach((c, i) => {
-    const m = new THREE.SpriteMaterial({ map: SOFT, color: new THREE.Color(...c), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
-    const s = new THREE.Sprite(m); const ang = i / NEB.length * 6.28; s.position.set(Math.cos(ang)*5.5, Math.sin(ang*1.3)*3, -7 - i*1.4); s.scale.setScalar(9 + i*2.5);
-    s.userData.baseOpacity = 0.05 + (i%2)*0.02; space.add(s);
-  });
+  // ── Cosmos: nebulae (enormous, far) ───────────────────────────────
+  const NEB=[[0.35,0.18,0.6],[0.1,0.3,0.55],[0.5,0.12,0.4],[0.12,0.4,0.5],[0.4,0.2,0.55],[0.16,0.36,0.6]];
+  NEB.forEach((c,i)=>{ const m=new THREE.SpriteMaterial({map:SOFT,color:new THREE.Color(...c),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}); const s=new THREE.Sprite(m); const ang=i/NEB.length*6.28; s.position.set(Math.cos(ang)*14,Math.sin(ang*1.3)*9,-16-i*4); s.scale.setScalar(22+i*7); s.userData.baseOpacity=0.045+(i%2)*0.02; space.add(s); });
 
-  // ── Universe: distant stars + drifting dust (gravity-influenced) ───
-  function makePoints(n, spread, size, color, op) {
-    const a = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { a[i*3]=(Math.random()-0.5)*spread; a[i*3+1]=(Math.random()-0.5)*spread*0.7; a[i*3+2]=(Math.random()-0.5)*spread*0.8 - 3; }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(a, 3));
-    const m = new THREE.PointsMaterial({ size, color, map: SOFT, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false });
-    return { pts: new THREE.Points(g, m), arr: a, mat: m };
-  }
-  const stars = makePoints(900, 40, 0.05, 0x9db8ff, 0.0); stars.pts.frustumCulled = false; space.add(stars.pts);
-  const DUSTN = 620;
-  const dust = makePoints(DUSTN, 14, 0.06, 0x6f8fdd, 0.0); dust.pts.frustumCulled = false; space.add(dust.pts);
-  const dustVel = new Float32Array(DUSTN * 3);
+  // ── Cosmos: faint galaxies (far, slowly spinning) ─────────────────
+  const galaxies=[];
+  [[0.5,0.45,0.85],[0.7,0.5,0.6],[0.45,0.6,0.85]].forEach((c,i)=>{ const m=new THREE.SpriteMaterial({map:SOFT,color:new THREE.Color(...c),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}); const s=new THREE.Sprite(m); const ang=i*2.1; s.position.set(Math.cos(ang)*24,Math.sin(ang)*16,-34-i*9); s.scale.set(18+i*5,7+i*2,1); s.userData.baseOpacity=0.05; galaxies.push(s); space.add(s); });
 
-  // Invisible gravity wells bend dust & streams (organic, non-linear motion).
-  const WELLS = [ {x:1.6,y:0.6,z:0.5,g:0.9}, {x:-1.8,y:-0.4,z:-0.6,g:0.8}, {x:0.2,y:1.6,z:-1.2,g:0.6} ];
+  // ── Cosmos: layered star shells (billions feel) + drifting dust ───
+  function makePoints(n,spread,size,color){ const a=new Float32Array(n*3); for (let i=0;i<n;i++){ a[i*3]=(Math.random()-0.5)*spread; a[i*3+1]=(Math.random()-0.5)*spread*0.7; a[i*3+2]=(Math.random()-0.5)*spread*0.8-4; } const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(a,3)); const m=new THREE.PointsMaterial({size,color,map:SOFT,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}); const pts=new THREE.Points(g,m); pts.frustumCulled=false; return {pts,arr:a,mat:m}; }
+  const starsNear=makePoints(1000,46,0.055,0x9db8ff);  space.add(starsNear.pts);
+  const starsMid =makePoints(1600,110,0.04,0x8aa6ff);  space.add(starsMid.pts);
+  const starsFar =makePoints(2400,230,0.03,0xb9c8ff);  space.add(starsFar.pts);
+  const DUSTN=640; const dust=makePoints(DUSTN,15,0.06,0x6f8fdd); space.add(dust.pts); const dustVel=new Float32Array(DUSTN*3);
+  const WELLS=[{x:1.6,y:0.6,z:0.5,g:0.9},{x:-1.8,y:-0.4,z:-0.6,g:0.8},{x:0.2,y:1.6,z:-1.2,g:0.6}];
+
+  // ── Intelligence singularity (event horizon at the centre) ────────
+  const coreMat=new THREE.SpriteMaterial({map:SOFT,color:new THREE.Color(0.8,0.92,1.0),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
+  const core=new THREE.Sprite(coreMat); core.scale.setScalar(0.55); group.add(core);
+  const ringMat=new THREE.SpriteMaterial({map:SOFT,color:new THREE.Color(0.4,0.6,1.0),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
+  const ring=new THREE.Sprite(ringMat); ring.scale.set(2.4,0.7,1); group.add(ring);
+  // infalling signals spiralling toward the core
+  const INF=150; const infBuf=new Float32Array(INF*3).fill(9999); const infCol=new Float32Array(INF*3); const infState=[];
+  for (let i=0;i<INF;i++){ const ty=(Math.random()*INTEL.length)|0,ic=INTEL[ty]; infCol[i*3]=ic[0]; infCol[i*3+1]=ic[1]; infCol[i*3+2]=ic[2]; infState.push({r:0.6+Math.random()*1.4,a:Math.random()*6.28,y:(Math.random()-0.5)*0.8,sp:0.6+Math.random()*0.8,vin:0.12+Math.random()*0.16,ty}); }
+  const infGeo=new THREE.BufferGeometry(); const infPA=new THREE.BufferAttribute(infBuf,3); infPA.usage=THREE.DynamicDrawUsage; infGeo.setAttribute('position',infPA); const infCA=new THREE.BufferAttribute(infCol,3); infCA.usage=THREE.DynamicDrawUsage; infGeo.setAttribute('aColor',infCA);
+  const infMat=new THREE.ShaderMaterial({uniforms:{uScale:{value:9*dpr},uOpacity:{value:0}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+    vertexShader:`uniform float uScale; attribute vec3 aColor; varying vec3 vC; void main(){ vC=aColor; vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=uScale/-mv.z; gl_Position=projectionMatrix*mv; }`,
+    fragmentShader:`uniform float uOpacity; varying vec3 vC; void main(){ vec2 uv=gl_PointCoord-0.5; float d=length(uv)*2.0; float c=smoothstep(1.0,0.0,d); if(c<0.02) discard; gl_FragColor=vec4(vC*(1.0+c*1.5), c*uOpacity); }`});
+  group.add(new THREE.Points(infGeo,infMat));
 
   // ── Brain particles ───────────────────────────────────────────────
-  const pGeo = new THREE.BufferGeometry();
-  pGeo.setAttribute('position', new THREE.BufferAttribute(pos.slice(0, N*3), 3));
-  pGeo.setAttribute('aColor', new THREE.BufferAttribute(col.slice(0, N*3), 3));
-  pGeo.setAttribute('aSize', new THREE.BufferAttribute(aSize.slice(0, N), 1));
-  pGeo.setAttribute('aPhase', new THREE.BufferAttribute(aPhase.slice(0, N), 1));
-  pGeo.setAttribute('aRate', new THREE.BufferAttribute(aRate.slice(0, N), 1));
-  pGeo.setAttribute('aCluster', new THREE.BufferAttribute(aCluster, 1));
-  pGeo.setAttribute('aSeed', new THREE.BufferAttribute(aSeed.slice(0, N), 1));
-  const firingAttr = new THREE.BufferAttribute(aFiring.slice(0, N), 1); firingAttr.usage = THREE.DynamicDrawUsage;
-  pGeo.setAttribute('aFiring', firingAttr);
-  const pMat = new THREE.ShaderMaterial({
-    uniforms: { uTime:{value:0}, uActivity:{value:1}, uScale:{value:9*dpr}, uAwaken:{value:0}, uFocusCluster:{value:-1}, uFocusMix:{value:0}, uDive:{value:0} },
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    vertexShader: `
-      uniform float uTime,uActivity,uScale,uAwaken,uFocusCluster,uFocusMix,uDive;
+  const pGeo=new THREE.BufferGeometry();
+  pGeo.setAttribute('position',new THREE.BufferAttribute(pos.slice(0,N*3),3));
+  pGeo.setAttribute('aColor',new THREE.BufferAttribute(col.slice(0,N*3),3));
+  pGeo.setAttribute('aSize',new THREE.BufferAttribute(aSize.slice(0,N),1));
+  pGeo.setAttribute('aPhase',new THREE.BufferAttribute(aPhase.slice(0,N),1));
+  pGeo.setAttribute('aRate',new THREE.BufferAttribute(aRate.slice(0,N),1));
+  pGeo.setAttribute('aCluster',new THREE.BufferAttribute(aCluster,1));
+  pGeo.setAttribute('aSeed',new THREE.BufferAttribute(aSeed.slice(0,N),1));
+  const firingAttr=new THREE.BufferAttribute(aFiring.slice(0,N),1); firingAttr.usage=THREE.DynamicDrawUsage; pGeo.setAttribute('aFiring',firingAttr);
+  const pMat=new THREE.ShaderMaterial({
+    uniforms:{uTime:{value:0},uActivity:{value:1},uScale:{value:9*dpr},uAwaken:{value:0},uFocusCluster:{value:-1},uFocusMix:{value:0},uDive:{value:0},uFold:{value:0}},
+    transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+    vertexShader:`
+      uniform float uTime,uActivity,uScale,uAwaken,uFocusCluster,uFocusMix,uDive,uFold;
       attribute float aSize,aPhase,aRate,aFiring,aCluster,aSeed; attribute vec3 aColor;
       varying vec3 vColor; varying float vGlow; varying float vDepth;
       void main(){
-        float appear = smoothstep(0.0, 0.5, uAwaken - aSeed*0.55);
-        float pulse = sin(uTime*aRate+aPhase)*0.5+0.5;
-        float isFocus = step(abs(aCluster-uFocusCluster),0.5);
-        float dim = mix(1.0, mix(0.28 - uDive*0.22, 1.0, isFocus), uFocusMix) * appear;
-        float open = isFocus*uFocusMix*0.16 + isFocus*uDive*0.55;
-        vec3 p = position*(1.0+open);
-        float sz = (aSize*(0.5+pulse*0.7*uActivity)+aFiring*3.2)*dim + isFocus*uFocusMix*1.6 + isFocus*uDive*3.2;
+        float appear=smoothstep(0.0,0.5,uAwaken-aSeed*0.55);
+        float pulse=sin(uTime*aRate+aPhase)*0.5+0.5;
+        float isFocus=step(abs(aCluster-uFocusCluster),0.5);
+        float dim=mix(1.0,mix(0.28-uDive*0.22,1.0,isFocus),uFocusMix)*appear;
+        float open=isFocus*uFocusMix*0.16+isFocus*uDive*0.55;
+        vec3 p=position*(1.0+open)*(1.0-uFold*0.45);            // fold inward during The Moment
+        float sz=(aSize*(0.5+pulse*0.7*uActivity)+aFiring*3.2)*dim+isFocus*uFocusMix*1.6+isFocus*uDive*3.2;
         vColor=aColor; vGlow=(pulse*uActivity*0.5+aFiring+isFocus*uFocusMix*0.6+isFocus*uDive*0.5)*appear;
-        vec4 mv = modelViewMatrix*vec4(p,1.0); vDepth=-mv.z;
-        gl_PointSize = sz*uScale/-mv.z; gl_Position = projectionMatrix*mv;
+        vec4 mv=modelViewMatrix*vec4(p,1.0); vDepth=-mv.z;
+        gl_PointSize=sz*uScale/-mv.z; gl_Position=projectionMatrix*mv;
       }`,
-    fragmentShader: `
+    fragmentShader:`
       uniform float uDive; varying vec3 vColor; varying float vGlow; varying float vDepth;
       void main(){ vec2 uv=gl_PointCoord-0.5; float d=length(uv)*2.0; float core=smoothstep(1.0,0.0,d); if(core<0.01) discard;
-        vec3 c=vColor*(0.7+vGlow*1.5)+vec3(1.0,0.98,0.9)*vGlow*core*0.9;
-        float fog=uDive*smoothstep(1.2,5.5,vDepth);
-        gl_FragColor=vec4(c, core*(0.45+vGlow*0.55)*(1.0-fog*0.9)); }`,
+        vec3 c=vColor*(0.7+vGlow*1.5)+vec3(1.0,0.98,0.9)*vGlow*core*0.9; float fog=uDive*smoothstep(1.2,5.5,vDepth);
+        gl_FragColor=vec4(c,core*(0.42+vGlow*0.55)*(1.0-fog*0.9)); }`,
   });
-  const points = new THREE.Points(pGeo, pMat); group.add(points);
+  const points=new THREE.Points(pGeo,pMat); group.add(points);
 
-  // ── Connectome lines ──────────────────────────────────────────────
-  const lGeo = new THREE.BufferGeometry(); lGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(linePos), 3));
-  const lMat = new THREE.LineBasicMaterial({ color: 0x3a7bff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
-  group.add(new THREE.LineSegments(lGeo, lMat));
+  const lGeo=new THREE.BufferGeometry(); lGeo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(linePos),3));
+  const lMat=new THREE.LineBasicMaterial({color:0x3a7bff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
+  group.add(new THREE.LineSegments(lGeo,lMat));
 
-  // ── Intelligence streams (thousands of flowing cognition particles) ─
-  const STREAMS = Math.min(950, CONN * 3);
-  const stBuf = new Float32Array(STREAMS * 3).fill(9999);
-  const stCol = new Float32Array(STREAMS * 3);
-  const stState = [];
-  for (let i = 0; i < STREAMS; i++) {
-    const type = (Math.random() * INTEL.length) | 0, ic = INTEL[type];
-    stCol[i*3]=ic[0]; stCol[i*3+1]=ic[1]; stCol[i*3+2]=ic[2];
-    stState.push({ c: (Math.random()*Math.max(1,CONN))|0, t: Math.random(), s: 0.18+Math.random()*0.6, rev: Math.random()>0.5, type });
-  }
-  const stGeo = new THREE.BufferGeometry();
-  const stPosA = new THREE.BufferAttribute(stBuf, 3); stPosA.usage = THREE.DynamicDrawUsage; stGeo.setAttribute('position', stPosA);
-  const stColA = new THREE.BufferAttribute(stCol, 3); stColA.usage = THREE.DynamicDrawUsage; stGeo.setAttribute('aColor', stColA);
-  const stMat = new THREE.ShaderMaterial({
-    uniforms: { uScale:{value:8*dpr}, uOpacity:{value:0} },
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    vertexShader: `uniform float uScale; attribute vec3 aColor; varying vec3 vC; void main(){ vC=aColor; vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=uScale/-mv.z; gl_Position=projectionMatrix*mv; }`,
-    fragmentShader: `uniform float uOpacity; varying vec3 vC; void main(){ vec2 uv=gl_PointCoord-0.5; float d=length(uv)*2.0; float c=smoothstep(1.0,0.0,d); if(c<0.02) discard; gl_FragColor=vec4(vC*(1.0+c), c*uOpacity); }`,
-  });
-  group.add(new THREE.Points(stGeo, stMat));
+  // ── Intelligence streams (digital weather of cognition) ───────────
+  const STREAMS=Math.min(950,CONN*3); const stBuf=new Float32Array(STREAMS*3).fill(9999); const stCol=new Float32Array(STREAMS*3); const stState=[];
+  for (let i=0;i<STREAMS;i++){ const ty=(Math.random()*INTEL.length)|0,ic=INTEL[ty]; stCol[i*3]=ic[0]; stCol[i*3+1]=ic[1]; stCol[i*3+2]=ic[2]; stState.push({c:(Math.random()*Math.max(1,CONN))|0,t:Math.random(),s:0.18+Math.random()*0.6,rev:Math.random()>0.5,ty}); }
+  const stGeo=new THREE.BufferGeometry(); const stPA=new THREE.BufferAttribute(stBuf,3); stPA.usage=THREE.DynamicDrawUsage; stGeo.setAttribute('position',stPA); const stCA=new THREE.BufferAttribute(stCol,3); stCA.usage=THREE.DynamicDrawUsage; stGeo.setAttribute('aColor',stCA);
+  const stMat=new THREE.ShaderMaterial({uniforms:{uScale:{value:8*dpr},uOpacity:{value:0}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+    vertexShader:`uniform float uScale; attribute vec3 aColor; varying vec3 vC; void main(){ vC=aColor; vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=uScale/-mv.z; gl_Position=projectionMatrix*mv; }`,
+    fragmentShader:`uniform float uOpacity; varying vec3 vC; void main(){ vec2 uv=gl_PointCoord-0.5; float d=length(uv)*2.0; float c=smoothstep(1.0,0.0,d); if(c<0.02) discard; gl_FragColor=vec4(vC*(1.0+c),c*uOpacity); }`});
+  group.add(new THREE.Points(stGeo,stMat));
 
-  // ── Inbound module pulses (module → cluster) ──────────────────────
-  const MP = 90; const mpBuf = new Float32Array(MP*3).fill(9999);
-  const mpGeo = new THREE.BufferGeometry(); const mpAttr = new THREE.BufferAttribute(mpBuf, 3); mpAttr.usage = THREE.DynamicDrawUsage; mpGeo.setAttribute('position', mpAttr);
-  const mpMat = new THREE.ShaderMaterial({ uniforms:{uScale:{value:26*dpr}}, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  const MP=90; const mpBuf=new Float32Array(MP*3).fill(9999); const mpGeo=new THREE.BufferGeometry(); const mpAttr=new THREE.BufferAttribute(mpBuf,3); mpAttr.usage=THREE.DynamicDrawUsage; mpGeo.setAttribute('position',mpAttr);
+  const mpMat=new THREE.ShaderMaterial({uniforms:{uScale:{value:26*dpr}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
     vertexShader:`uniform float uScale; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=uScale/-mv.z; gl_Position=projectionMatrix*mv; }`,
-    fragmentShader:`void main(){ vec2 uv=gl_PointCoord-0.5; float d=length(uv)*2.0; float c=smoothstep(1.0,0.0,d); if(c<0.02) discard; gl_FragColor=vec4(vec3(0.7,0.92,1.0)*(1.0+c*2.5), c); }` });
-  group.add(new THREE.Points(mpGeo, mpMat)); const modulePulses = [];
+    fragmentShader:`void main(){ vec2 uv=gl_PointCoord-0.5; float d=length(uv)*2.0; float c=smoothstep(1.0,0.0,d); if(c<0.02) discard; gl_FragColor=vec4(vec3(0.7,0.92,1.0)*(1.0+c*2.5),c); }`});
+  group.add(new THREE.Points(mpGeo,mpMat)); const modulePulses=[];
 
-  // ── Constellations (temporary inter-system bridges) ───────────────
-  const CONST_SEG = 16; const conBuf = new Float32Array(CONST_SEG*2*3).fill(9999);
-  const conGeo = new THREE.BufferGeometry(); const conAttr = new THREE.BufferAttribute(conBuf,3); conAttr.usage = THREE.DynamicDrawUsage; conGeo.setAttribute('position', conAttr);
-  const conMat = new THREE.LineBasicMaterial({ color: 0xa6c8ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
-  group.add(new THREE.LineSegments(conGeo, conMat));
-  let constellation = null, constTimer = 6;
+  const CONST_SEG=16; const conBuf=new Float32Array(CONST_SEG*2*3).fill(9999); const conGeo=new THREE.BufferGeometry(); const conAttr=new THREE.BufferAttribute(conBuf,3); conAttr.usage=THREE.DynamicDrawUsage; conGeo.setAttribute('position',conAttr);
+  const conMat=new THREE.LineBasicMaterial({color:0xa6c8ff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}); group.add(new THREE.LineSegments(conGeo,conMat));
+  let constellation=null, constTimer=6;
 
-  // ── Dive signal streams (motes past the camera) ───────────────────
-  const DS = 80; const dsBuf = new Float32Array(DS*3).fill(9999); const dsState = [];
-  for (let i=0;i<DS;i++) dsState.push({ x:(Math.random()-0.5)*5.5, y:(Math.random()-0.5)*3.6, z:Math.random(), s:0.25+Math.random()*0.5 });
-  const dsGeo = new THREE.BufferGeometry(); const dsAttr = new THREE.BufferAttribute(dsBuf,3); dsAttr.usage=THREE.DynamicDrawUsage; dsGeo.setAttribute('position', dsAttr);
-  const dsMat = new THREE.ShaderMaterial({ uniforms:{uScale:{value:13*dpr},uOpacity:{value:0}}, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  const DS=80; const dsBuf=new Float32Array(DS*3).fill(9999); const dsState=[]; for (let i=0;i<DS;i++) dsState.push({x:(Math.random()-0.5)*5.5,y:(Math.random()-0.5)*3.6,z:Math.random(),s:0.25+Math.random()*0.5});
+  const dsGeo=new THREE.BufferGeometry(); const dsAttr=new THREE.BufferAttribute(dsBuf,3); dsAttr.usage=THREE.DynamicDrawUsage; dsGeo.setAttribute('position',dsAttr);
+  const dsMat=new THREE.ShaderMaterial({uniforms:{uScale:{value:13*dpr},uOpacity:{value:0}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
     vertexShader:`uniform float uScale; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=uScale/-mv.z; gl_Position=projectionMatrix*mv; }`,
-    fragmentShader:`uniform float uOpacity; void main(){ vec2 uv=gl_PointCoord-0.5; float d=length(uv)*2.0; float c=smoothstep(1.0,0.0,d); if(c<0.02) discard; gl_FragColor=vec4(vec3(0.62,0.86,1.0)*(1.0+c), c*uOpacity); }` });
-  const dsPoints = new THREE.Points(dsGeo, dsMat); dsPoints.frustumCulled = false; scene.add(dsPoints);
+    fragmentShader:`uniform float uOpacity; void main(){ vec2 uv=gl_PointCoord-0.5; float d=length(uv)*2.0; float c=smoothstep(1.0,0.0,d); if(c<0.02) discard; gl_FragColor=vec4(vec3(0.62,0.86,1.0)*(1.0+c),c*uOpacity); }`});
+  const dsPoints=new THREE.Points(dsGeo,dsMat); dsPoints.frustumCulled=false; scene.add(dsPoints);
 
   // ── State ─────────────────────────────────────────────────────────
-  const rot = { x:0,y:0,tx:0,ty:0 }; let zoom = 5.4, zoomTarget = 5.4; let activity = 1, burst = 0;
-  const fa = pGeo.attributes.aFiring.array;
-  let focusCluster = -1, focusMix = 0, focusYaw = 0, focusPitch = 0, pulseTimer = 0;
-  let diveCluster = -1, diveMix = 0, diveTarget = 0;
-  let awaken = 0;                                  // 0 → 1 awakening universe
-  let timeScale = 1, animTime = 0;                 // time manipulation
-  const breakthrough = { phase: 'idle', t: 0, timer: 14 + Math.random()*12, seed: 0 };
-  const curiosity = { active: false, t: 0, timer: 12, cx: 0, cy: 0 };
-  const regionPhase = CLUSTER_ANCHORS.map(() => Math.random() * 10);  // per-region rhythm
-  const raycaster = new THREE.Raycaster(); raycaster.params.Points = { threshold: 0.08 };
-  const _ndc = new THREE.Vector2();
-  const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3(), _v5 = new THREE.Vector3();
+  const rot={x:0,y:0,tx:0,ty:0}; let zoom=7.8, zoomTarget=7.8; let activity=1, burst=0, activityFloor=1;
+  const fa=pGeo.attributes.aFiring.array;
+  let focusCluster=-1,focusMix=0,focusYaw=0,focusPitch=0,pulseTimer=0;
+  let diveCluster=-1,diveMix=0,diveTarget=0;
+  let awaken=0, timeScale=1, animTime=0, coreFlash=0, fold=0;
+  const breakthrough={phase:'idle',t:0,timer:14+Math.random()*12,seed:0};
+  const moment={phase:'idle',t:0,timer:150+Math.random()*70};      // the unforgettable event (every few minutes)
+  const weather={type:(Math.random()*INTEL.length)|0,timer:10,dirx:0,diry:0};
+  const curiosity={active:false,t:0,timer:12,cx:0,cy:0};
+  const regionPhase=CLUSTER_ANCHORS.map(()=>Math.random()*10);
+  const raycaster=new THREE.Raycaster(); raycaster.params.Points={threshold:0.08};
+  const _ndc=new THREE.Vector2(); const _v1=new THREE.Vector3(),_v2=new THREE.Vector3(),_v3=new THREE.Vector3(),_v4=new THREE.Vector3(),_v5=new THREE.Vector3();
 
-  function ignite(center, spread, n) { for (let k=0;k<n;k++){ const idx=Math.max(0,Math.min(N-1,center+((Math.random()-0.5)*spread|0))); fa[idx]=0.6+Math.random()*0.4; for (const nb of adj[idx]) fa[nb]=Math.max(fa[nb],0.4); } }
-  function igniteCluster(c, n) { const list = neuronsByCluster[c]; if (!list||!list.length) return; for (let k=0;k<n;k++){ const idx=list[(Math.random()*list.length)|0]; fa[idx]=0.7+Math.random()*0.3; for (const nb of adj[idx]) fa[nb]=Math.max(fa[nb],0.45); } }
-  function emitClusterPulses(c, n) { const ctr=clusterCentroids[c]; const len=Math.hypot(ctr[0],ctr[1],ctr[2])||1; const ox=(ctr[0]/len)*2.4,oy=(ctr[1]/len)*2.4,oz=(ctr[2]/len)*2.4;
-    for (let k=0;k<n&&modulePulses.length<MP;k++){ const j=()=>(Math.random()-0.5)*0.5; modulePulses.push({ sx:ox+j(),sy:oy+j(),sz:oz+j(), ex:ctr[0]+j()*0.4,ey:ctr[1]+j()*0.4,ez:ctr[2]+j()*0.4, t:-k*0.06, s:0.7+Math.random()*0.6 }); } }
+  function ignite(center,spread,n){ for (let k=0;k<n;k++){ const idx=Math.max(0,Math.min(N-1,center+((Math.random()-0.5)*spread|0))); fa[idx]=0.6+Math.random()*0.4; for (const nb of adj[idx]) fa[nb]=Math.max(fa[nb],0.4); } }
+  function igniteCluster(c,n){ const list=neuronsByCluster[c]; if (!list||!list.length) return; for (let k=0;k<n;k++){ const idx=list[(Math.random()*list.length)|0]; fa[idx]=0.7+Math.random()*0.3; for (const nb of adj[idx]) fa[nb]=Math.max(fa[nb],0.45); } }
+  function igniteAll(frac){ const n=(N*frac)|0; for (let k=0;k<n;k++){ fa[(Math.random()*N)|0]=0.7+Math.random()*0.3; } }
+  function emitClusterPulses(c,n){ const ctr=clusterCentroids[c]; const len=Math.hypot(ctr[0],ctr[1],ctr[2])||1; const ox=(ctr[0]/len)*2.4,oy=(ctr[1]/len)*2.4,oz=(ctr[2]/len)*2.4; for (let k=0;k<n&&modulePulses.length<MP;k++){ const j=()=>(Math.random()-0.5)*0.5; modulePulses.push({sx:ox+j(),sy:oy+j(),sz:oz+j(),ex:ctr[0]+j()*0.4,ey:ctr[1]+j()*0.4,ez:ctr[2]+j()*0.4,t:-k*0.06,s:0.7+Math.random()*0.6}); } }
+  function emitIdea(){ coreFlash=1; for (let k=0;k<8&&modulePulses.length<MP;k++){ const a=Math.random()*6.28,r=1.4+Math.random()*0.6; modulePulses.push({sx:0,sy:0,sz:0,ex:Math.cos(a)*r,ey:(Math.random()-0.5)*1.2,ez:Math.sin(a)*r,t:-k*0.04,s:0.6+Math.random()*0.5}); } igniteCluster((Math.random()*CLUSTERS)|0,8); }
+  function startConstellation(a,b){ const A=neuronsByCluster[a],B=neuronsByCluster[b]; if (!A.length||!B.length) return; const segs=[]; for (let k=0;k<CONST_SEG;k++){ segs.push([A[(Math.random()*A.length)|0],B[(Math.random()*B.length)|0]]); } constellation={a,b,segs,t:0,life:5.5}; igniteCluster(a,10); igniteCluster(b,10); }
 
-  function startConstellation(a, b) {
-    const A = neuronsByCluster[a], B = neuronsByCluster[b]; if (!A.length||!B.length) return;
-    const segs = [];
-    for (let k = 0; k < CONST_SEG; k++) { const i = A[(Math.random()*A.length)|0], j = B[(Math.random()*B.length)|0]; segs.push([i, j]); }
-    constellation = { a, b, segs, t: 0, life: 5.5 };
-    igniteCluster(a, 10); igniteCluster(b, 10);
-  }
-
-  // ── Reusable, API-ready controller (PRESERVED) ────────────────────
-  const controller = {
-    clusterCount: CLUSTERS,
-    focusModule(c) { if (c==null||c<0||c>=CLUSTERS) return this.clearFocus(); focusCluster=c; const ctr=clusterCentroids[c]; focusYaw=-Math.atan2(ctr[0],ctr[2]); focusPitch=Math.max(-0.4,Math.min(0.4,Math.atan2(ctr[1],Math.hypot(ctr[0],ctr[2]))*0.5)); activity=Math.min(3.5,activity+1.6); igniteCluster(c,40); emitClusterPulses(c,26); pulseTimer=0; return c; },
-    clearFocus() { focusCluster=-1; return -1; },
-    activeCluster() { return focusCluster; },
-    enterDive(c) { if (c==null||c<0||c>=CLUSTERS) return -1; this.focusModule(c); diveCluster=c; diveTarget=1; return c; },
-    exitDive() { diveTarget=0; focusCluster=-1; return -1; },
-    isDiving() { return diveCluster>=0; },
-    clusterAtPointer(clientX, clientY) { const r=root.getBoundingClientRect(); _ndc.x=((clientX-r.left)/r.width)*2-1; _ndc.y=-((clientY-r.top)/r.height)*2+1; raycaster.setFromCamera(_ndc,camera); const hit=raycaster.intersectObject(points); return hit.length?aCluster[hit[0].index]:-1; },
-    triggerBreakthrough() { if (breakthrough.phase==='idle') { breakthrough.phase='slow'; breakthrough.t=0; breakthrough.seed=(Math.random()*CLUSTERS)|0; } },
+  const controller={
+    clusterCount:CLUSTERS,
+    focusModule(c){ if (c==null||c<0||c>=CLUSTERS) return this.clearFocus(); focusCluster=c; const ctr=clusterCentroids[c]; focusYaw=-Math.atan2(ctr[0],ctr[2]); focusPitch=Math.max(-0.4,Math.min(0.4,Math.atan2(ctr[1],Math.hypot(ctr[0],ctr[2]))*0.5)); activity=Math.min(3.5,activity+1.6); igniteCluster(c,40); emitClusterPulses(c,26); pulseTimer=0; return c; },
+    clearFocus(){ focusCluster=-1; return -1; },
+    activeCluster(){ return focusCluster; },
+    enterDive(c){ if (c==null||c<0||c>=CLUSTERS) return -1; this.focusModule(c); diveCluster=c; diveTarget=1; return c; },
+    exitDive(){ diveTarget=0; focusCluster=-1; return -1; },
+    isDiving(){ return diveCluster>=0; },
+    clusterAtPointer(clientX,clientY){ const r=root.getBoundingClientRect(); _ndc.x=((clientX-r.left)/r.width)*2-1; _ndc.y=-((clientY-r.top)/r.height)*2+1; raycaster.setFromCamera(_ndc,camera); const hit=raycaster.intersectObject(points); return hit.length?aCluster[hit[0].index]:-1; },
+    triggerBreakthrough(){ if (breakthrough.phase==='idle') { breakthrough.phase='slow'; breakthrough.t=0; breakthrough.seed=(Math.random()*CLUSTERS)|0; } },
+    triggerMoment(){ if (moment.phase==='idle') { moment.phase='fold'; moment.t=0; } },
   };
-  window.MissionBrain = controller;
+  window.MissionBrain=controller;
 
-  // ── Interaction ───────────────────────────────────────────────────
-  const isPanelTarget = (t) => !!(t && t.closest && t.closest('.glass, .mission-dock, .mission-header, .intelligence-cards, .ticker-wrap, .sound-toggle, .brain-module, .neural-dive-overlay, [data-panel-trigger], button, a, input, textarea'));
-  function onMove(e) { rot.ty=(e.clientX/window.innerWidth-0.5)*1.1; rot.tx=(e.clientY/window.innerHeight-0.5)*0.7; curiosity.active=false; curiosity.timer=Math.max(curiosity.timer,8); }
-  function onWheel(e) { if (isPanelTarget(e.target)) return; zoomTarget=Math.max(3.0,Math.min(9.0,zoomTarget+e.deltaY*0.0022)); }
-  function onClick(e) { if (isPanelTarget(e.target)) return; if (diveCluster>=0) return; burst=1; activity=Math.min(3.5,activity+1.8); ignite((Math.random()*N)|0,320,160); }
-  window.addEventListener('mousemove', onMove); window.addEventListener('wheel', onWheel, { passive:true }); window.addEventListener('click', onClick);
+  const isPanelTarget=(t)=>!!(t&&t.closest&&t.closest('.glass,.mission-dock,.mission-header,.intelligence-cards,.ticker-wrap,.sound-toggle,.brain-module,.neural-dive-overlay,[data-panel-trigger],button,a,input,textarea'));
+  function onMove(e){ rot.ty=(e.clientX/window.innerWidth-0.5)*1.1; rot.tx=(e.clientY/window.innerHeight-0.5)*0.7; curiosity.active=false; curiosity.timer=Math.max(curiosity.timer,8); }
+  function onWheel(e){ if (isPanelTarget(e.target)) return; zoomTarget=Math.max(3.0,Math.min(14.0,zoomTarget+e.deltaY*0.0028)); }
+  function onClick(e){ if (isPanelTarget(e.target)) return; if (diveCluster>=0) return; burst=1; activity=Math.min(3.5,activity+1.8); ignite((Math.random()*N)|0,320,160); }
+  window.addEventListener('mousemove',onMove); window.addEventListener('wheel',onWheel,{passive:true}); window.addEventListener('click',onClick);
+  function resize(){ const w=root.clientWidth||window.innerWidth,h=root.clientHeight||window.innerHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+  window.addEventListener('resize',resize); resize();
+  requestAnimationFrame(()=>holder.classList.add('mounted'));
 
-  function resize() { const w=root.clientWidth||window.innerWidth, h=root.clientHeight||window.innerHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
-  window.addEventListener('resize', resize); resize();
-  requestAnimationFrame(() => holder.classList.add('mounted'));
+  const clock=new THREE.Clock(); let alive=true;
+  document.addEventListener('visibilitychange',()=>{ alive=!document.hidden; if (alive) loop(); });
 
-  // ── Loop ──────────────────────────────────────────────────────────
-  const clock = new THREE.Clock(); let alive = true;
-  document.addEventListener('visibilitychange', () => { alive = !document.hidden; if (alive) loop(); });
-
-  function loop() {
+  function loop(){
     if (!alive) return;
-    const dtReal = Math.min(0.05, clock.getDelta());
+    const dtReal=Math.min(0.05,clock.getDelta());
 
-    // Awakening ramp (universe lights up on first load).
-    awaken = Math.min(1, awaken + dtReal * 0.16);
-    veil.style.opacity = String(Math.max(0, 1 - awaken * 2.2));
+    awaken=Math.min(1,awaken+dtReal*0.05);                  // ~20s birth
+    veil.style.opacity=String(Math.max(0,1-awaken*1.5));
 
-    // Time manipulation (breakthrough): slow → freeze → propagate → settle.
-    const bt = breakthrough;
-    if (bt.phase === 'idle') { bt.timer -= dtReal; if (bt.timer <= 0 && diveCluster < 0 && awaken > 0.95) { bt.phase = 'slow'; bt.t = 0; bt.seed = (Math.random()*CLUSTERS)|0; } timeScale += (1 - timeScale)*Math.min(1,dtReal*3); }
-    else if (bt.phase === 'slow') { bt.t += dtReal; timeScale += (0.12 - timeScale)*Math.min(1,dtReal*4); if (bt.t > 1.1) { bt.phase='burst'; bt.t=0; activity=3.5; igniteCluster(bt.seed, 60); } }
-    else if (bt.phase === 'burst') { bt.t += dtReal; timeScale += (1.5 - timeScale)*Math.min(1,dtReal*6);
-      // propagation wave outward from the seed cluster
-      const ctr = clusterCentroids[bt.seed]; const radius = bt.t * 3.2;
-      for (let s=0;s<3;s++){ const idx=(Math.random()*N)|0; const dx=pos[idx*3]-ctr[0],dy=pos[idx*3+1]-ctr[1],dz=pos[idx*3+2]-ctr[2]; const dd=Math.sqrt(dx*dx+dy*dy+dz*dz); if (Math.abs(dd-radius)<0.4) fa[idx]=1.0; }
-      if (bt.t > 1.4) { bt.phase='settle'; bt.t=0; } }
-    else { bt.t += dtReal; timeScale += (1 - timeScale)*Math.min(1,dtReal*2); activity = Math.max(1, activity - dtReal); if (bt.t > 1.2) { bt.phase='idle'; bt.timer = 16 + Math.random()*16; } }
+    // ── The Moment (rare, grand consciousness evolution) ──
+    const mo=moment;
+    let momentDim=0, momentZoom=0;
+    if (mo.phase==='idle'){ mo.timer-=dtReal; if (mo.timer<=0 && diveCluster<0 && awaken>0.98){ mo.phase='fold'; mo.t=0; } }
+    else if (mo.phase==='fold'){ mo.t+=dtReal; fold+=(0.55-fold)*Math.min(1,dtReal*1.2); timeScale+=(0.18-timeScale)*Math.min(1,dtReal*2); momentDim=Math.min(1,mo.t/3); momentZoom=Math.min(1,mo.t/3)*1.6; if (mo.t>3.2){ mo.phase='silence'; mo.t=0; } }
+    else if (mo.phase==='silence'){ mo.t+=dtReal; momentDim=1; momentZoom=1.6; timeScale+=(0.05-timeScale)*Math.min(1,dtReal*3); if (mo.t>1.6){ mo.phase='wave'; mo.t=0; igniteAll(0.5); coreFlash=1; activity=3.5; for (let c=0;c<CLUSTERS;c++) startConstellation(c,(c+3)%CLUSTERS); } }
+    else if (mo.phase==='wave'){ mo.t+=dtReal; fold+=(0-fold)*Math.min(1,dtReal*2); timeScale+=(1.6-timeScale)*Math.min(1,dtReal*5); momentDim=Math.max(0,1-mo.t/2.5); igniteAll(0.04); if (mo.t>2.5){ mo.phase='expand'; mo.t=0; activityFloor=Math.min(1.4,activityFloor+0.15); } }
+    else if (mo.phase==='expand'){ mo.t+=dtReal; timeScale+=(1-timeScale)*Math.min(1,dtReal*1.5); momentZoom=Math.max(0,1.8*(1-mo.t/4)); if (mo.t>4){ mo.phase='idle'; mo.timer=160+Math.random()*80; } }
 
-    const dt = dtReal * timeScale;     // scaled time for neuron/stream motion
-    animTime += dt; const t = animTime;
-    pMat.uniforms.uTime.value = t; pMat.uniforms.uActivity.value = activity; pMat.uniforms.uAwaken.value = awaken;
-    pMat.uniforms.uScale.value = 9*dpr;
+    // ── Frequent small breakthroughs (suppressed during The Moment) ──
+    const bt=breakthrough;
+    if (mo.phase==='idle'){
+      if (bt.phase==='idle'){ bt.timer-=dtReal; if (bt.timer<=0 && diveCluster<0 && awaken>0.95){ bt.phase='slow'; bt.t=0; bt.seed=(Math.random()*CLUSTERS)|0; } timeScale+=(1-timeScale)*Math.min(1,dtReal*3); }
+      else if (bt.phase==='slow'){ bt.t+=dtReal; timeScale+=(0.12-timeScale)*Math.min(1,dtReal*4); if (bt.t>1.0){ bt.phase='burst'; bt.t=0; activity=3.2; igniteCluster(bt.seed,50); coreFlash=Math.max(coreFlash,0.6); } }
+      else if (bt.phase==='burst'){ bt.t+=dtReal; timeScale+=(1.4-timeScale)*Math.min(1,dtReal*6); const ctr=clusterCentroids[bt.seed]; const radius=bt.t*3.2; for (let s=0;s<3;s++){ const idx=(Math.random()*N)|0; const dx=pos[idx*3]-ctr[0],dy=pos[idx*3+1]-ctr[1],dz=pos[idx*3+2]-ctr[2]; if (Math.abs(Math.sqrt(dx*dx+dy*dy+dz*dz)-radius)<0.4) fa[idx]=1.0; } if (bt.t>1.3){ bt.phase='settle'; bt.t=0; } }
+      else { bt.t+=dtReal; timeScale+=(1-timeScale)*Math.min(1,dtReal*2); if (bt.t>1.2){ bt.phase='idle'; bt.timer=16+Math.random()*16; } }
+    }
 
-    // focus + dive blend
-    focusMix += ((focusCluster>=0?1:0)-focusMix)*Math.min(1,dtReal*4);
-    diveMix += (diveTarget-diveMix)*Math.min(1,dtReal*2.4); if (diveTarget===0 && diveMix<0.01) diveCluster=-1;
+    const dt=dtReal*timeScale; animTime+=dt; const t=animTime;
+    pMat.uniforms.uTime.value=t; pMat.uniforms.uActivity.value=activity; pMat.uniforms.uAwaken.value=awaken; pMat.uniforms.uFold.value=fold;
+
+    focusMix+=((focusCluster>=0?1:0)-focusMix)*Math.min(1,dtReal*4);
+    diveMix+=(diveTarget-diveMix)*Math.min(1,dtReal*2.4); if (diveTarget===0&&diveMix<0.01) diveCluster=-1;
     pMat.uniforms.uFocusCluster.value=focusCluster; pMat.uniforms.uFocusMix.value=focusMix; pMat.uniforms.uDive.value=diveMix;
 
-    // universe fade-in + opacities
-    lMat.opacity = (0.06 + diveMix*0.24) * awaken;
-    stMat.uniforms.uOpacity.value = 0.9 * awaken * (1 - diveMix*0.6);
-    stars.mat.opacity = 0.5 * awaken; dust.mat.opacity = 0.32 * awaken;
-    space.children.forEach(o => { if (o.isSprite) o.material.opacity = (o.userData.baseOpacity||0.05) * awaken; });
+    // opacities (universe wakes; stars dim during The Moment)
+    const starDim=1-momentDim*0.85;
+    lMat.opacity=(0.06+diveMix*0.24)*awaken;
+    stMat.uniforms.uOpacity.value=0.9*awaken*(1-diveMix*0.6)*(0.4+0.6*(1-momentDim));
+    starsNear.mat.opacity=0.55*awaken*starDim; starsMid.mat.opacity=0.45*awaken*starDim; starsFar.mat.opacity=0.4*awaken*starDim;
+    dust.mat.opacity=0.3*awaken;
+    space.children.forEach(o=>{ if (o.isSprite) o.material.opacity=(o.userData.baseOpacity||0.05)*awaken*starDim; });
+    galaxies.forEach((g,i)=>{ g.material.opacity=g.userData.baseOpacity*awaken*starDim; g.material.rotation+=dtReal*0.02*(i%2?1:-1); });
+    // singularity core
+    coreFlash=Math.max(0,coreFlash-dtReal*1.6);
+    const corePulse=0.5+0.5*Math.sin(t*1.2);
+    coreMat.opacity=(0.25+corePulse*0.25+coreFlash*0.6)*awaken; core.scale.setScalar((0.5+corePulse*0.12+coreFlash*0.6));
+    ringMat.opacity=(0.10+corePulse*0.08+coreFlash*0.3)*awaken; ring.material.rotation=t*0.3; ring.scale.set(2.2+coreFlash*1.2,0.6+coreFlash*0.3,1);
+    infMat.uniforms.uOpacity.value=0.85*awaken*(1-diveMix*0.7);
 
-    // rotation: spin + focus orient (+ dive full orient) + subtle curiosity
-    rot.x += (rot.tx-rot.x)*0.05; rot.y += (rot.ty-rot.y)*0.05;
-    const orient = Math.max(focusMix*0.6, diveMix);
-    const spinDamp = 1 - Math.max(focusMix, diveMix);
-    const yaw = rot.y + t*0.05*spinDamp, pitch = rot.x*0.6;
-    group.rotation.y = yaw*(1-orient) + focusYaw*orient;
-    group.rotation.x = pitch*(1-orient) + focusPitch*orient;
-    space.rotation.y = t * 0.006;     // slow parallax universe drift
+    // rotation
+    rot.x+=(rot.tx-rot.x)*0.05; rot.y+=(rot.ty-rot.y)*0.05;
+    const orient=Math.max(focusMix*0.6,diveMix); const spinDamp=1-Math.max(focusMix,diveMix);
+    const yaw=rot.y+t*0.05*spinDamp, pitch=rot.x*0.6;
+    group.rotation.y=yaw*(1-orient)+focusYaw*orient; group.rotation.x=pitch*(1-orient)+focusPitch*orient;
+    space.rotation.y=t*0.005; space.rotation.x=Math.sin(t*0.02)*0.04;
 
-    // camera: cinematic breathing/drift + curiosity + dive fly-in
-    zoom += (zoomTarget-zoom)*0.07;
-    if (curiosity.active) { curiosity.t += dtReal; if (curiosity.t > 4) curiosity.active = false; }
-    else { curiosity.timer -= dtReal; if (curiosity.timer <= 0 && focusCluster<0 && diveCluster<0 && bt.phase==='idle' && awaken>0.97) { curiosity.active=true; curiosity.t=0; curiosity.timer=14+Math.random()*12; const c=(Math.random()*CLUSTERS)|0; const ctr=clusterCentroids[c]; curiosity.cx=ctr[0]*0.4; curiosity.cy=ctr[1]*0.4; igniteCluster(c, 14); } }
-    if (diveMix > 0.001 && diveCluster >= 0) {
-      const ctr = clusterCentroids[diveCluster];
-      const wc = _v1.set(ctr[0],ctr[1],ctr[2]).applyQuaternion(group.quaternion);
-      const dir = _v2.set(0,0,zoom).sub(wc).normalize();
-      const diveCam = _v3.copy(wc).addScaledVector(dir, 1.7);
-      const goal = _v4.set(0,0,zoom).lerp(diveCam, diveMix);
-      camera.position.lerp(goal, Math.min(1,dtReal*3)); camera.lookAt(_v5.set(0,0,0).lerp(wc, diveMix));
+    // camera (cinematic, autonomous curiosity, dive fly-in, moment pull-back)
+    zoom+=(zoomTarget-zoom)*0.07;
+    if (curiosity.active){ curiosity.t+=dtReal; if (curiosity.t>4) curiosity.active=false; }
+    else { curiosity.timer-=dtReal; if (curiosity.timer<=0 && focusCluster<0 && diveCluster<0 && bt.phase==='idle' && mo.phase==='idle' && awaken>0.97){ curiosity.active=true; curiosity.t=0; curiosity.timer=13+Math.random()*12; const c=(Math.random()*CLUSTERS)|0; const ctr=clusterCentroids[c]; curiosity.cx=ctr[0]*0.5; curiosity.cy=ctr[1]*0.5; igniteCluster(c,14); } }
+    if (diveMix>0.001 && diveCluster>=0){
+      const ctr=clusterCentroids[diveCluster];
+      const wc=_v1.set(ctr[0]*GS,ctr[1]*GS,ctr[2]*GS).applyQuaternion(group.quaternion);
+      const dir=_v2.set(0,0,zoom).sub(wc).normalize(); const diveCam=_v3.copy(wc).addScaledVector(dir,1.7);
+      const goal=_v4.set(0,0,zoom).lerp(diveCam,diveMix); camera.position.lerp(goal,Math.min(1,dtReal*3)); camera.lookAt(_v5.set(0,0,0).lerp(wc,diveMix));
     } else {
-      const breath = Math.sin(t*0.5)*0.12, driftX = Math.sin(t*0.13)*0.18 + (curiosity.active?curiosity.cx:0), driftY = Math.cos(t*0.11)*0.12 + (curiosity.active?curiosity.cy:0);
-      _v4.set(driftX, driftY, zoom + breath);
-      camera.position.lerp(_v4, Math.min(1, dtReal*1.6)); camera.lookAt(0,0,0);
+      const breath=Math.sin(t*0.5)*0.14, driftX=Math.sin(t*0.13)*0.22+(curiosity.active?curiosity.cx:0), driftY=Math.cos(t*0.11)*0.14+(curiosity.active?curiosity.cy:0);
+      _v4.set(driftX,driftY,zoom+breath+momentZoom); camera.position.lerp(_v4,Math.min(1,dtReal*1.5)); camera.lookAt(0,0,0);
     }
 
-    burst *= 0.92; if (burst<0.001) burst=0;
-    if (bt.phase==='idle') activity = Math.max(1, activity - dtReal*0.7);
+    burst*=0.92; if (burst<0.001) burst=0;
+    if (bt.phase==='idle'&&mo.phase==='idle') activity=Math.max(activityFloor,activity-dtReal*0.7);
 
-    // living neurons: ambient firing + per-region synchronised awakenings
-    if (Math.random() < dt*2.2) { ignite((Math.random()*N)|0, 120, 6+(Math.random()*22|0)); activity=Math.min(2.6,activity+0.4); }
-    for (let c = 0; c < CLUSTERS; c++) { regionPhase[c] -= dt; if (regionPhase[c] <= 0) { regionPhase[c] = 4 + Math.random()*7; igniteCluster(c, 6 + (Math.random()*10|0)); } }
-    let dirty = false; const decay = 1 - 0.1*Math.max(0.05,timeScale);
+    // digital weather: cognition tides cycle which intelligence dominates
+    weather.timer-=dtReal; if (weather.timer<=0){ weather.type=(Math.random()*INTEL.length)|0; weather.timer=10+Math.random()*8; const a=Math.random()*6.28; weather.dirx=Math.cos(a)*0.0006; weather.diry=Math.sin(a)*0.0006; }
+
+    // living neurons
+    if (Math.random()<dt*2.2){ ignite((Math.random()*N)|0,120,6+(Math.random()*22|0)); activity=Math.min(2.6,activity+0.4); }
+    for (let c=0;c<CLUSTERS;c++){ regionPhase[c]-=dt; if (regionPhase[c]<=0){ regionPhase[c]=4+Math.random()*7; igniteCluster(c,6+(Math.random()*10|0)); } }
+    let dirty=false; const decay=1-0.1*Math.max(0.05,timeScale);
     for (let i=0;i<N;i++){ if (fa[i]>0.001){ fa[i]*=decay; dirty=true; } else fa[i]=0; }
-    if (dirty) pGeo.attributes.aFiring.needsUpdate = true;
+    if (dirty) pGeo.attributes.aFiring.needsUpdate=true;
 
-    // intelligence streams (colour-coded cognition flowing along the connectome)
-    let sw = 0;
-    for (let i = 0; i < STREAMS; i++) {
-      const s = stState[i]; s.t += dt * s.s * Math.max(0.5, timeScale);   // signals continue during slow-mo
-      if (s.t >= 1) { s.t = 0; s.c = (Math.random()*Math.max(1,CONN))|0; s.rev = Math.random()>0.5; s.s = 0.18+Math.random()*0.6;
-        if (Math.random()<0.25) { s.type=(Math.random()*INTEL.length)|0; const ic=INTEL[s.type]; stCol[i*3]=ic[0]; stCol[i*3+1]=ic[1]; stCol[i*3+2]=ic[2]; } }
-      const c = s.c*6; if (c+5 >= linePos.length) { stBuf[sw*3]=9999; continue; }
-      const tt = s.rev ? 1-s.t : s.t, o = sw*3;
+    // intelligence streams (weather-biased)
+    let sw=0;
+    for (let i=0;i<STREAMS;i++){ const s=stState[i]; const wBoost=(s.ty===weather.type)?1.6:1.0; s.t+=dt*s.s*wBoost*Math.max(0.5,timeScale);
+      if (s.t>=1){ s.t=0; s.c=(Math.random()*Math.max(1,CONN))|0; s.rev=Math.random()>0.5; s.s=0.18+Math.random()*0.6; if (Math.random()<0.25){ s.ty=(Math.random()*INTEL.length)|0; const ic=INTEL[s.ty]; stCol[i*3]=ic[0]; stCol[i*3+1]=ic[1]; stCol[i*3+2]=ic[2]; } }
+      const c=s.c*6; if (c+5>=linePos.length){ stBuf[sw*3]=9999; continue; } const tt=s.rev?1-s.t:s.t,o=sw*3;
       stBuf[o]=linePos[c]+(linePos[c+3]-linePos[c])*tt; stBuf[o+1]=linePos[c+1]+(linePos[c+4]-linePos[c+1])*tt; stBuf[o+2]=linePos[c+2]+(linePos[c+5]-linePos[c+2])*tt;
-      stCol[sw*3]=stCol[i*3]; stCol[sw*3+1]=stCol[i*3+1]; stCol[sw*3+2]=stCol[i*3+2];
-      sw++;
-    }
+      stCol[sw*3]=stCol[i*3]; stCol[sw*3+1]=stCol[i*3+1]; stCol[sw*3+2]=stCol[i*3+2]; sw++; }
     for (let i=sw;i<STREAMS;i++) stBuf[i*3]=9999;
-    stGeo.attributes.position.needsUpdate = true; stGeo.attributes.aColor.needsUpdate = true;
+    stGeo.attributes.position.needsUpdate=true; stGeo.attributes.aColor.needsUpdate=true;
+
+    // infalling signals spiralling into the singularity (+ occasional idea)
+    for (let i=0;i<INF;i++){ const s=infState[i]; s.a+=dt*s.sp; s.r-=dt*s.vin*(0.6+timeScale*0.6);
+      if (s.r<=0.08){ if (Math.random()<0.12) emitIdea(); s.r=0.7+Math.random()*1.4; s.a=Math.random()*6.28; s.y=(Math.random()-0.5)*0.8; }
+      const o=i*3; infBuf[o]=Math.cos(s.a)*s.r; infBuf[o+1]=s.y*s.r; infBuf[o+2]=Math.sin(s.a)*s.r; }
+    infGeo.attributes.position.needsUpdate=true;
 
     // module focus streaming
-    if (focusCluster >= 0) { pulseTimer -= dtReal; if (pulseTimer<=0){ emitClusterPulses(focusCluster,10); igniteCluster(focusCluster,8); pulseTimer=0.9; } activity=Math.max(activity,1.5); }
-    let mw = 0;
-    for (let i=modulePulses.length-1;i>=0;i--){ const mp=modulePulses[i]; mp.t+=dt*mp.s; if (mp.t>=1) modulePulses.splice(i,1); }
+    if (focusCluster>=0){ pulseTimer-=dtReal; if (pulseTimer<=0){ emitClusterPulses(focusCluster,10); igniteCluster(focusCluster,8); pulseTimer=0.9; } activity=Math.max(activity,1.5); }
+    let mw=0; for (let i=modulePulses.length-1;i>=0;i--){ const mp=modulePulses[i]; mp.t+=dt*mp.s; if (mp.t>=1) modulePulses.splice(i,1); }
     for (let i=0;i<modulePulses.length&&mw<MP;i++){ const mp=modulePulses[i]; if (mp.t<0) continue; const e=mp.t*mp.t*(3-2*mp.t),o=mw*3; mpBuf[o]=mp.sx+(mp.ex-mp.sx)*e; mpBuf[o+1]=mp.sy+(mp.ey-mp.sy)*e; mpBuf[o+2]=mp.sz+(mp.ez-mp.sz)*e; mw++; }
-    for (let i=mw;i<MP;i++) mpBuf[i*3]=9999; mpGeo.attributes.position.needsUpdate = true;
+    for (let i=mw;i<MP;i++) mpBuf[i*3]=9999; mpGeo.attributes.position.needsUpdate=true;
 
-    // constellations (temporary inter-system bridges)
-    if (!constellation) { constTimer -= dtReal; if (constTimer<=0 && awaken>0.96 && diveCluster<0) { constTimer = 9 + Math.random()*9; let a=(Math.random()*CLUSTERS)|0, b=(Math.random()*CLUSTERS)|0; if (a===b) b=(b+1)%CLUSTERS; startConstellation(a,b); } }
-    if (constellation) {
-      const k = constellation; k.t += dtReal; const life = k.life;
-      const fade = Math.min(1, k.t*1.6) * Math.max(0, 1-(k.t-(life-1.2))/1.2);
-      conMat.opacity = Math.max(0, fade) * 0.55 * awaken;
+    // constellations
+    if (!constellation){ constTimer-=dtReal; if (constTimer<=0&&awaken>0.96&&diveCluster<0){ constTimer=9+Math.random()*9; let a=(Math.random()*CLUSTERS)|0,b=(Math.random()*CLUSTERS)|0; if (a===b) b=(b+1)%CLUSTERS; startConstellation(a,b); } }
+    if (constellation){ const k=constellation; k.t+=dtReal; const fade=Math.min(1,k.t*1.6)*Math.max(0,1-(k.t-(k.life-1.2))/1.2); conMat.opacity=Math.max(0,fade)*0.55*awaken;
       for (let si=0;si<k.segs.length;si++){ const [i,j]=k.segs[si]; const o=si*6; conBuf[o]=pos[i*3]; conBuf[o+1]=pos[i*3+1]; conBuf[o+2]=pos[i*3+2]; conBuf[o+3]=pos[j*3]; conBuf[o+4]=pos[j*3+1]; conBuf[o+5]=pos[j*3+2]; }
-      conGeo.attributes.position.needsUpdate = true;
-      if (Math.random()<dt*4) { igniteCluster(k.a,2); igniteCluster(k.b,2); }
-      if (k.t >= life) { constellation = null; conMat.opacity = 0; }
-    }
+      conGeo.attributes.position.needsUpdate=true; if (Math.random()<dt*4){ igniteCluster(k.a,2); igniteCluster(k.b,2); } if (k.t>=k.life){ constellation=null; conMat.opacity=0; } }
 
-    // gravity-influenced drifting dust
-    const da = dust.arr;
-    for (let i = 0; i < DUSTN; i++) {
-      let ax=0,ay=0,az=0;
-      for (const w of WELLS) { const dx=w.x-da[i*3], dy=w.y-da[i*3+1], dz=w.z-da[i*3+2]; const d2=dx*dx+dy*dy+dz*dz+1.2; const f=w.g*0.0009/d2; ax+=dx*f-dy*0.0004; ay+=dy*f+dx*0.0004; az+=dz*f; }
+    // gravity-influenced drifting dust (+ weather winds)
+    const da=dust.arr;
+    for (let i=0;i<DUSTN;i++){ let ax=weather.dirx,ay=weather.diry,az=0; for (const w of WELLS){ const dx=w.x-da[i*3],dy=w.y-da[i*3+1],dz=w.z-da[i*3+2]; const d2=dx*dx+dy*dy+dz*dz+1.2; const f=w.g*0.0009/d2; ax+=dx*f-dy*0.0004; ay+=dy*f+dx*0.0004; az+=dz*f; }
       dustVel[i*3]=(dustVel[i*3]+ax)*0.99; dustVel[i*3+1]=(dustVel[i*3+1]+ay)*0.99; dustVel[i*3+2]=(dustVel[i*3+2]+az)*0.99;
       da[i*3]+=dustVel[i*3]; da[i*3+1]+=dustVel[i*3+1]; da[i*3+2]+=dustVel[i*3+2];
-      if (Math.abs(da[i*3])>8) da[i*3]*=-0.6; if (Math.abs(da[i*3+1])>6) da[i*3+1]*=-0.6; if (Math.abs(da[i*3+2]+3)>7) da[i*3+2]*=-0.6;
-    }
-    dust.pts.geometry.attributes.position.needsUpdate = true;
+      if (Math.abs(da[i*3])>9) da[i*3]*=-0.6; if (Math.abs(da[i*3+1])>7) da[i*3+1]*=-0.6; if (Math.abs(da[i*3+2]+4)>8) da[i*3+2]*=-0.6; }
+    dust.pts.geometry.attributes.position.needsUpdate=true;
 
     // dive motes
-    dsMat.uniforms.uOpacity.value = diveMix * 0.85;
-    if (diveMix > 0.01) { const near = camera.position.z; for (let i=0;i<DS;i++){ const s=dsState[i]; s.z+=dtReal*s.s; if (s.z>1){ s.z=0; s.x=(Math.random()-0.5)*5.5; s.y=(Math.random()-0.5)*3.6; } dsBuf[i*3]=s.x; dsBuf[i*3+1]=s.y; dsBuf[i*3+2]=(near-6.5)+s.z*6.2; } }
+    dsMat.uniforms.uOpacity.value=diveMix*0.85;
+    if (diveMix>0.01){ const near=camera.position.z; for (let i=0;i<DS;i++){ const s=dsState[i]; s.z+=dtReal*s.s; if (s.z>1){ s.z=0; s.x=(Math.random()-0.5)*5.5; s.y=(Math.random()-0.5)*3.6; } dsBuf[i*3]=s.x; dsBuf[i*3+1]=s.y; dsBuf[i*3+2]=(near-6.5)+s.z*6.2; } }
     else for (let i=0;i<DS;i++) dsBuf[i*3]=9999;
-    dsGeo.attributes.position.needsUpdate = true;
+    dsGeo.attributes.position.needsUpdate=true;
 
-    renderer.render(scene, camera);
+    renderer.render(scene,camera);
     requestAnimationFrame(loop);
   }
   loop();
