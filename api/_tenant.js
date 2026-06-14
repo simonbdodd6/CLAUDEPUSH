@@ -1,4 +1,4 @@
-import { DEFAULT_TEAM, hasRole, requireRole, requireSession } from './_identityStore.js';
+import { hasRole, requireRole, requireSession } from './_identityStore.js';
 import { can, PERM } from './_permissions.js';
 
 export { can, PERM };
@@ -19,7 +19,7 @@ export function tenantTeamId(sessionContext = {}) {
   return String(
     sessionContext?.teamMember?.teamId ||
     sessionContext?.session?.teamId ||
-    DEFAULT_TEAM.id
+    ''
   );
 }
 

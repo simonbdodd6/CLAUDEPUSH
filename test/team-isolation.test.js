@@ -33,6 +33,7 @@ globalThis.fetch = async (_url, options = {}) => {
 
 const { default: publishHandler } = await import('../api/publish.js');
 const { createSession, SESSION_COOKIE } = await import('../api/_identityStore.js');
+const { tenantTeamId } = await import('../api/_tenant.js');
 
 function buildRes() {
   return {
@@ -191,4 +192,37 @@ test('DELETE clears only the caller team', async () => {
   assert.equal(viewA.body.squad.opposition, 'Keep Me', 'coach B DELETE must not clear Team A');
   const viewB = await call('GET', { type: 'squad' }, null, { cookie: coachB.cookie });
   assert.equal(viewB.body.squad, null);
+});
+
+// ── tenantTeamId session-resolution tests ────────────────────────────────────
+// Verify teamId always comes from the authenticated session, never from a
+// hardcoded DEFAULT_TEAM fallback. Required for multi-club safety.
+
+test('tenantTeamId resolves teamId from teamMember when present', () => {
+  const ctx = {
+    teamMember: { teamId: 'new-club-xyz', role: 'head_coach', status: 'active' },
+    session:    { teamId: 'new-club-xyz', userId: 'u1' },
+  };
+  assert.equal(tenantTeamId(ctx), 'new-club-xyz');
+});
+
+test('tenantTeamId resolves teamId from session when teamMember has no teamId', () => {
+  const ctx = { session: { teamId: 'another-club-abc', userId: 'u2' } };
+  assert.equal(tenantTeamId(ctx), 'another-club-abc');
+});
+
+test('tenantTeamId returns empty string (not boitsfort-rfc) when session has no teamId', () => {
+  const result = tenantTeamId({});
+  assert.equal(result, '', 'should return empty string, not the hardcoded default');
+  assert.notEqual(result, TEAM_A, 'must not fall back to boitsfort-rfc for multi-club safety');
+});
+
+test('tenantTeamId correctly resolves boitsfort-rfc from explicit session.teamId', async () => {
+  const session = await createSession({ userId: 'coach-demo', teamId: TEAM_A, role: 'coach' });
+  const ctx = {
+    user:       { id: 'coach-demo' },
+    session:    { teamId: session.teamId, userId: 'coach-demo' },
+    teamMember: { teamId: TEAM_A, role: 'coach', status: 'active' },
+  };
+  assert.equal(tenantTeamId(ctx), TEAM_A, 'existing Boitsfort sessions resolve from explicit teamId');
 });
