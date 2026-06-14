@@ -5529,9 +5529,16 @@
 
       // Update the DM allowlist to match server-returned profiles so new invited
       // players' DMs become visible without requiring a hard-coded ID.
+      // Seed with 'coach-demo' for Boitsfort legacy compat, plus any real
+      // coach/admin/medical users already in state.users.
       _allowedDmParticipantIds = new Set(['coach-demo']);
+      (state.users || []).forEach(u => {
+        if (['coach', 'admin', 'medical'].includes(String(u.role || ''))) {
+          _allowedDmParticipantIds.add(String(u.id || ''));
+        }
+      });
       profiles.forEach(p => {
-        if (p.userId)       _allowedDmParticipantIds.add(String(p.userId));
+        if (p.userId)         _allowedDmParticipantIds.add(String(p.userId));
         if (p.legacyPlayerId) _allowedDmParticipantIds.add(String(p.legacyPlayerId));
       });
 
@@ -10250,10 +10257,28 @@
       return `dm:${s[0]}:${s[1]}`;
     }
 
+    // Returns the participant ID of this player's coach — resolved from the
+    // authenticated state.users roster, falling back to 'coach-demo' so that
+    // existing Boitsfort conversations (where the coach IS coach-demo) are
+    // unaffected when the local user list still carries that legacy entry.
+    function playerCoachParticipantId() {
+      const me = chatMe();
+      const meUserId = String(me.userId || me.id || '');
+      // Prefer a coach/admin whose ID is the current membership's team coach.
+      // We don't have a direct "coachUserId" in _myMemberships, so we search
+      // state.users for the first staff user that is not the current player.
+      const coach = state.users.find(u =>
+        ['coach', 'admin', 'medical'].includes(String(u.role || '')) &&
+        String(u.id || '') !== meUserId
+      );
+      return coach?.id || 'coach-demo';
+    }
+
     function playerCoachDmId() {
       const me = chatMe();
-      const id = dmConvId('coach-demo', me.id);
-      console.log(`[playerCoachDmId] me.id=${me.id} → convId=${id}`);
+      const coachId = playerCoachParticipantId();
+      const id = dmConvId(coachId, me.id);
+      console.log(`[playerCoachDmId] me.id=${me.id} coachId=${coachId} → convId=${id}`);
       return id;
     }
 
@@ -10541,12 +10566,20 @@
       chatSetUnreadTotal(chatUnreadTotal());
     }
 
-    // DM participant allowlist — starts with the Simon Test Player baseline and is
-    // updated by syncIdentityStateToLocalRoster (coach view) and
-    // applyApprovedIdentityLocally (player view) as new profiles arrive.
-    let _allowedDmParticipantIds = new Set([
-      'coach-demo', 'player-simon-test', 'inv-YxnjxnQa',
-    ]);
+    // DM participant allowlist — starts with legacy Boitsfort IDs and all coach/admin
+    // users already in state.users, then is extended by syncIdentityStateToLocalRoster
+    // (coach view) and applyApprovedIdentityLocally (player view) as new profiles arrive.
+    function _buildInitialAllowedDmIds() {
+      const ids = new Set(['coach-demo', 'player-simon-test', 'inv-YxnjxnQa']);
+      // Include any authenticated staff users so their DMs are visible immediately.
+      (state.users || []).forEach(u => {
+        if (['coach', 'admin', 'medical'].includes(String(u.role || ''))) {
+          ids.add(String(u.id || ''));
+        }
+      });
+      return ids;
+    }
+    let _allowedDmParticipantIds = _buildInitialAllowedDmIds();
     function _filterCanonicalConversations(convs) {
       return (Array.isArray(convs) ? convs : []).filter(c => {
         const id = String(c?.id || '');
