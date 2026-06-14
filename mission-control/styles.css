@@ -2578,3 +2578,91 @@ body {
   .module-detail { top: auto; bottom: 132px; transform: translateX(-18px); left: 14px; }
   .module-detail.open { transform: translateX(0); }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Neural Dive Mode — cinematic zoom into a neuron cluster
+   ═══════════════════════════════════════════════════════════════ */
+
+/* "Dive In" control on the active module panel */
+.module-detail .md-dive {
+  margin-top: 16px;
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 26%, transparent), rgba(255,255,255,0.02));
+  color: #f3f9ff;
+  font: 700 12px/1 Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.module-detail .md-dive span { font-size: 14px; opacity: 0.9; }
+.module-detail .md-dive:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 26px rgba(0,0,0,0.4), 0 0 26px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* While diving, fade the outer chips + detail panel back so the brain leads */
+.mission-shell.neural-dive .brain-module-rail {
+  opacity: 0.12; pointer-events: none; filter: blur(1px);
+  transition: opacity 0.6s ease, filter 0.6s ease;
+}
+.mission-shell.neural-dive .module-detail.open {
+  opacity: 0; pointer-events: none;
+  transform: translateY(-50%) translateX(-30px);
+}
+
+/* Full-screen cinematic overlay */
+.neural-dive-overlay {
+  --accent: #22d3ee;
+  position: fixed; inset: 0; z-index: 40;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.7s ease;
+}
+.neural-dive-overlay.open { opacity: 1; }
+/* depth haze: dark vignette + faint accent glow → "inside the brain" */
+.neural-dive-overlay::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 60% 60% at 50% 50%, transparent 30%, rgba(2, 6, 18, 0.72) 100%),
+    radial-gradient(ellipse 80% 80% at 50% 55%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 60%);
+}
+.neural-dive-overlay .nd-title {
+  position: absolute; top: 11%; left: 50%; transform: translateX(-50%);
+  text-align: center; pointer-events: none;
+  font-family: Inter, system-ui, sans-serif;
+}
+.neural-dive-overlay .nd-kicker {
+  font: 700 10px/1 Inter, sans-serif; letter-spacing: 0.42em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--accent) 80%, #d6ecff);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.neural-dive-overlay .nd-name {
+  margin: 12px 0 0; font: 300 38px/1.05 Inter, sans-serif; letter-spacing: 0.01em;
+  color: #f5fbff; text-shadow: 0 2px 30px rgba(0,0,0,0.6);
+}
+.neural-dive-overlay .nd-stats {
+  margin-top: 14px; display: inline-flex; align-items: center; gap: 16px;
+  font: 500 12px/1 Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase;
+  color: rgba(190, 214, 245, 0.7);
+}
+.neural-dive-overlay .nd-stats strong { color: #eaf4ff; font-weight: 700; margin-left: 6px; font-variant-numeric: tabular-nums; }
+.neural-dive-overlay .nd-sep { width: 4px; height: 4px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 70%, transparent); }
+.neural-dive-overlay .nd-exit {
+  position: absolute; bottom: 8%; left: 50%; transform: translateX(-50%);
+  pointer-events: auto;
+  padding: 12px 26px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, rgba(255,255,255,0.14));
+  background: linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.015)), rgba(8, 14, 30, 0.6);
+  backdrop-filter: blur(20px) saturate(1.1);
+  color: #eaf4ff; font: 700 12px/1 Inter, sans-serif; letter-spacing: 0.18em; text-transform: uppercase;
+  cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.neural-dive-overlay .nd-exit:hover {
+  transform: translateX(-50%) translateY(-2px);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45), 0 0 28px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+@media (max-width: 720px) {
+  .neural-dive-overlay .nd-name { font-size: 26px; }
+}

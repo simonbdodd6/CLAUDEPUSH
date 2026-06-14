@@ -1793,36 +1793,43 @@ requestAnimationFrame(render);
   const pMat = new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 }, uActivity: { value: 1 }, uBurst: { value: 0 }, uScale: { value: 9 * dpr },
-      uFocusCluster: { value: -1 }, uFocusMix: { value: 0 },
+      uFocusCluster: { value: -1 }, uFocusMix: { value: 0 }, uDive: { value: 0 },
     },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     vertexShader: `
-      uniform float uTime, uActivity, uBurst, uScale, uFocusCluster, uFocusMix;
+      uniform float uTime, uActivity, uBurst, uScale, uFocusCluster, uFocusMix, uDive;
       attribute float aSize, aPhase, aRate, aFiring, aCluster; attribute vec3 aColor;
-      varying vec3 vColor; varying float vGlow;
+      varying vec3 vColor; varying float vGlow; varying float vDepth;
       void main() {
         float pulse = sin(uTime * aRate + aPhase) * 0.5 + 0.5;
-        // Cluster focus: the selected cluster opens (expands) + brightens; others dim.
+        // Cluster focus: selected cluster opens + brightens; others dim. Diving
+        // amplifies separation + scale so neurons part like doors.
         float isFocus = step(abs(aCluster - uFocusCluster), 0.5);
-        float dim = mix(1.0, mix(0.30, 1.0, isFocus), uFocusMix);
-        float open = isFocus * uFocusMix * 0.16;
+        float dim = mix(1.0, mix(0.30 - uDive * 0.24, 1.0, isFocus), uFocusMix);
+        float open = isFocus * uFocusMix * 0.16 + isFocus * uDive * 0.55;
         vec3 p = position * (1.0 + uBurst * 0.55 + open);
-        float sz = (aSize * (0.55 + pulse * 0.7 * uActivity) + aFiring * 3.2 + uBurst * 1.4) * dim + isFocus * uFocusMix * 1.6;
-        vColor = aColor; vGlow = pulse * uActivity * 0.5 + aFiring + isFocus * uFocusMix * 0.6;
+        float sz = (aSize * (0.55 + pulse * 0.7 * uActivity) + aFiring * 3.2 + uBurst * 1.4) * dim
+                 + isFocus * uFocusMix * 1.6 + isFocus * uDive * 3.2;
+        vColor = aColor; vGlow = pulse * uActivity * 0.5 + aFiring + isFocus * uFocusMix * 0.6 + isFocus * uDive * 0.5;
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        vDepth = -mv.z;
         gl_PointSize = sz * uScale / -mv.z;
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: `
-      varying vec3 vColor; varying float vGlow;
+      uniform float uDive;
+      varying vec3 vColor; varying float vGlow; varying float vDepth;
       void main() {
         vec2 uv = gl_PointCoord - 0.5; float d = length(uv) * 2.0;
         float core = smoothstep(1.0, 0.0, d); if (core < 0.01) discard;
         vec3 c = vColor * (0.7 + vGlow * 1.5) + vec3(1.0, 0.98, 0.9) * vGlow * core * 0.9;
-        gl_FragColor = vec4(c, core * (0.45 + vGlow * 0.55));
+        // depth fog while diving — distant neurons melt into haze (inside-the-brain feel)
+        float fog = uDive * smoothstep(1.2, 5.5, vDepth);
+        gl_FragColor = vec4(c, core * (0.45 + vGlow * 0.55) * (1.0 - fog * 0.9));
       }`,
   });
-  group.add(new THREE.Points(pGeo, pMat));
+  const points = new THREE.Points(pGeo, pMat);
+  group.add(points);
 
   // connections
   const lGeo = new THREE.BufferGeometry();
@@ -1860,6 +1867,22 @@ requestAnimationFrame(render);
   group.add(new THREE.Points(mpGeo, mpMat));
   const modulePulses = [];
 
+  // ── Dive signal streams: slow motes that drift past the camera in dive mode ────
+  const DS = 80;
+  const dsBuf = new Float32Array(DS * 3).fill(9999);
+  const dsState = [];
+  for (let i = 0; i < DS; i++) dsState.push({ x: (Math.random() - 0.5) * 5.5, y: (Math.random() - 0.5) * 3.6, z: Math.random(), s: 0.25 + Math.random() * 0.5 });
+  const dsGeo = new THREE.BufferGeometry();
+  const dsAttr = new THREE.BufferAttribute(dsBuf, 3); dsAttr.usage = THREE.DynamicDrawUsage;
+  dsGeo.setAttribute('position', dsAttr);
+  const dsMat = new THREE.ShaderMaterial({
+    uniforms: { uScale: { value: 13 * dpr }, uOpacity: { value: 0 } },
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: `uniform float uScale; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=uScale/-mv.z; gl_Position=projectionMatrix*mv; }`,
+    fragmentShader: `uniform float uOpacity; void main(){ vec2 uv=gl_PointCoord-0.5; float d=length(uv)*2.0; float c=smoothstep(1.0,0.0,d); if(c<0.02) discard; gl_FragColor=vec4(vec3(0.62,0.86,1.0)*(1.0+c), c*uOpacity); }`,
+  });
+  const dsPoints = new THREE.Points(dsGeo, dsMat); dsPoints.frustumCulled = false; scene.add(dsPoints);
+
   // adjacency for firing spread
   const adj = Array.from({ length: N }, () => []);
   for (let p = 0; p < CONN; p++) { const a = pairs[p*2], b = pairs[p*2+1]; adj[a].push(b); adj[b].push(a); }
@@ -1872,6 +1895,11 @@ requestAnimationFrame(render);
 
   // Cluster-focus state (driven by the outer intelligence modules)
   let focusCluster = -1, focusMix = 0, focusYaw = 0, focusPitch = 0, pulseTimer = 0;
+  // Neural Dive state (cinematic fly-in)
+  let diveCluster = -1, diveMix = 0, diveTarget = 0;
+  const raycaster = new THREE.Raycaster(); raycaster.params.Points = { threshold: 0.08 };
+  const _ndc = new THREE.Vector2();
+  const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3(), _v5 = new THREE.Vector3();
 
   function ignite(center, spread, n) {
     for (let k = 0; k < n; k++) {
@@ -1950,6 +1978,24 @@ requestAnimationFrame(render);
     },
     clearFocus() { focusCluster = -1; return -1; },
     activeCluster() { return focusCluster; },
+    // ── Neural Dive API ──────────────────────────────────────────
+    enterDive(c) {
+      if (c == null || c < 0 || c >= CLUSTERS) return -1;
+      this.focusModule(c);
+      diveCluster = c; diveTarget = 1;
+      return c;
+    },
+    exitDive() { diveTarget = 0; focusCluster = -1; return -1; },
+    isDiving() { return diveCluster >= 0; },
+    // Hit-test the brain at a screen point → cluster index (-1 if none).
+    clusterAtPointer(clientX, clientY) {
+      const r = root.getBoundingClientRect();
+      _ndc.x = ((clientX - r.left) / r.width) * 2 - 1;
+      _ndc.y = -((clientY - r.top) / r.height) * 2 + 1;
+      raycaster.setFromCamera(_ndc, camera);
+      const hit = raycaster.intersectObject(points);
+      return hit.length ? aCluster[hit[0].index] : -1;
+    },
   };
   window.MissionBrain = controller;
 
@@ -1966,22 +2012,40 @@ requestAnimationFrame(render);
     pMat.uniforms.uActivity.value = activity;
     pMat.uniforms.uBurst.value = burst;
 
-    // ease cluster focus highlight
+    // ease cluster focus highlight + neural-dive blend
     focusMix += ((focusCluster >= 0 ? 1 : 0) - focusMix) * Math.min(1, dt * 4);
+    diveMix += (diveTarget - diveMix) * Math.min(1, dt * 2.4);
+    if (diveTarget === 0 && diveMix < 0.01) diveCluster = -1;
     pMat.uniforms.uFocusCluster.value = focusCluster;
     pMat.uniforms.uFocusMix.value = focusMix;
+    pMat.uniforms.uDive.value = diveMix;
+    lMat.opacity = 0.08 + diveMix * 0.24;          // synapses become more visible/layered
 
-    // eased rotation (mouse) + gentle auto-spin, biased subtly toward focused module
+    // eased rotation (mouse) + gentle auto-spin; biased toward the focused module,
+    // and fully orient toward it while diving so the fly-in is straight & cinematic.
     rot.x += (rot.tx - rot.x) * 0.05;
     rot.y += (rot.ty - rot.y) * 0.05;
-    const rotMix = focusMix * 0.6;   // subtle bias, never a hard snap
-    let yaw = rot.y + t * 0.05 * (1 - focusMix);
-    let pitch = rot.x * 0.6;
-    group.rotation.y = yaw * (1 - rotMix) + focusYaw * rotMix;
-    group.rotation.x = pitch * (1 - rotMix) + focusPitch * rotMix;
+    const orient = Math.max(focusMix * 0.6, diveMix);
+    const spinDamp = 1 - Math.max(focusMix, diveMix);
+    const yaw = rot.y + t * 0.05 * spinDamp;
+    const pitch = rot.x * 0.6;
+    group.rotation.y = yaw * (1 - orient) + focusYaw * orient;
+    group.rotation.x = pitch * (1 - orient) + focusPitch * orient;
 
+    // camera: normal dolly, or cinematic fly-in toward the cluster while diving
     zoom += (zoomTarget - zoom) * 0.07;
-    camera.position.z = zoom;
+    if (diveMix > 0.001 && diveCluster >= 0) {
+      const ctr = clusterCentroids[diveCluster];
+      const wc = _v1.set(ctr[0], ctr[1], ctr[2]).applyQuaternion(group.quaternion);   // cluster in world space
+      const dir = _v2.set(0, 0, zoom).sub(wc).normalize();
+      const diveCam = _v3.copy(wc).addScaledVector(dir, 1.7);                          // hover just outside it
+      const goal = _v4.set(0, 0, zoom).lerp(diveCam, diveMix);
+      camera.position.lerp(goal, Math.min(1, dt * 3));
+      camera.lookAt(_v5.set(0, 0, 0).lerp(wc, diveMix));
+    } else {
+      camera.position.set(0, 0, zoom);
+      camera.lookAt(0, 0, 0);
+    }
 
     burst *= 0.92; if (burst < 0.001) burst = 0;
     activity = Math.max(1, activity - dt * 0.7);
@@ -2033,6 +2097,23 @@ requestAnimationFrame(render);
     }
     for (let i = mw; i < MP; i++) mpBuf[i * 3] = 9999;
     mpGeo.attributes.position.needsUpdate = true;
+
+    // dive signal streams — slow motes drifting past the camera while inside the brain
+    dsMat.uniforms.uOpacity.value = diveMix * 0.85;
+    if (diveMix > 0.01) {
+      const near = camera.position.z;            // motes live just in front of the camera
+      for (let i = 0; i < DS; i++) {
+        const s = dsState[i];
+        s.z += dt * s.s;                          // 0 (far) → 1 (reaches camera)
+        if (s.z > 1) { s.z = 0; s.x = (Math.random() - 0.5) * 5.5; s.y = (Math.random() - 0.5) * 3.6; }
+        dsBuf[i * 3]     = s.x;
+        dsBuf[i * 3 + 1] = s.y;
+        dsBuf[i * 3 + 2] = (near - 6.5) + s.z * 6.2;
+      }
+    } else {
+      for (let i = 0; i < DS; i++) dsBuf[i * 3] = 9999;
+    }
+    dsGeo.attributes.position.needsUpdate = true;
 
     renderer.render(scene, camera);
     requestAnimationFrame(loop);
@@ -2088,10 +2169,27 @@ requestAnimationFrame(render);
     <div class="md-rec">
       <span class="md-label">Draft recommendation <em class="md-demo">demo</em></span>
       <blockquote class="md-rec-text"></blockquote>
-    </div>`;
+    </div>
+    <button class="md-dive" type="button"><span>⊹</span> Dive In</button>`;
+
+  // ── Neural Dive overlay (premium minimal) ─────────────────────────
+  const overlay = document.createElement('div');
+  overlay.className = 'neural-dive-overlay';
+  overlay.innerHTML = `
+    <div class="nd-title">
+      <span class="nd-kicker">Neural Dive</span>
+      <h2 class="nd-name"></h2>
+      <div class="nd-stats">
+        <span>Confidence <strong class="nd-conf"></strong></span>
+        <i class="nd-sep"></i>
+        <span>Active signals <strong class="nd-signals"></strong></span>
+      </div>
+    </div>
+    <button class="nd-exit" type="button">Exit Dive</button>`;
 
   shell.appendChild(rail);
   shell.appendChild(panel);
+  shell.appendChild(overlay);
 
   const el = {
     name: panel.querySelector('.md-name'),
@@ -2101,9 +2199,15 @@ requestAnimationFrame(render);
     signals: panel.querySelector('.md-signals'),
     rec: panel.querySelector('.md-rec-text'),
     close: panel.querySelector('.md-close'),
+    dive: panel.querySelector('.md-dive'),
+    ovName: overlay.querySelector('.nd-name'),
+    ovConf: overlay.querySelector('.nd-conf'),
+    ovSignals: overlay.querySelector('.nd-signals'),
+    ovExit: overlay.querySelector('.nd-exit'),
   };
 
   let activeIndex = -1;
+  let diving = false;
   let signalTimer = null;
 
   function renderChips() {
@@ -2132,7 +2236,9 @@ requestAnimationFrame(render);
     stopSignalTicker();
     signalTimer = setInterval(() => {
       const jitter = Math.round((Math.random() - 0.5) * 8);
-      el.signals.textContent = Math.max(0, base + jitter).toLocaleString();
+      const v = Math.max(0, base + jitter).toLocaleString();
+      el.signals.textContent = v;
+      if (diving) el.ovSignals.textContent = v;
     }, 700);
   }
   function stopSignalTicker() { if (signalTimer) { clearInterval(signalTimer); signalTimer = null; } }
@@ -2171,8 +2277,47 @@ requestAnimationFrame(render);
     }
   }
 
+  // ── Neural Dive flow ──────────────────────────────────────────────
+  function enterDive(i) {
+    if (i == null || i < 0 || i >= MODULES.length) return;
+    if (i !== activeIndex) select(i);
+    const m = MODULES[i];
+    el.ovName.textContent = m.name;
+    el.ovConf.textContent = `${m.confidence}%`;
+    el.ovSignals.textContent = m.signals.toLocaleString();
+    overlay.style.setProperty('--accent', m.color);
+    diving = true;
+    shell.classList.add('neural-dive');     // fades chips + detail panel back
+    overlay.classList.add('open');
+    if (window.MissionBrain && window.MissionBrain.enterDive) window.MissionBrain.enterDive(i);
+  }
+  function exitDive() {
+    if (!diving) return;
+    diving = false;
+    shell.classList.remove('neural-dive');
+    overlay.classList.remove('open');
+    if (window.MissionBrain && window.MissionBrain.exitDive) window.MissionBrain.exitDive();
+    deselect();   // smooth return to the full-brain view
+  }
+
   el.close.addEventListener('click', deselect);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && activeIndex >= 0) deselect(); });
+  el.dive.addEventListener('click', () => { if (activeIndex >= 0) enterDive(activeIndex); });
+  el.ovExit.addEventListener('click', exitDive);
+
+  // Double-click the brain to dive into a cluster (active module, else hit-test).
+  window.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.glass, .brain-module, .neural-dive-overlay, button, a, input, textarea, .mission-dock, .mission-header, .intelligence-cards, .ticker-wrap')) return;
+    let c = activeIndex;
+    if (c < 0 && window.MissionBrain && window.MissionBrain.clusterAtPointer) c = window.MissionBrain.clusterAtPointer(e.clientX, e.clientY);
+    if (c >= 0) enterDive(c);
+  });
+
+  // Esc: exit dive first, otherwise close the panel.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (diving) exitDive();
+    else if (activeIndex >= 0) deselect();
+  });
 
   renderChips();
 
@@ -2185,8 +2330,11 @@ requestAnimationFrame(render);
       Object.assign(m, partial);
       renderChips(); paintActive();
       if (activeIndex >= 0 && MODULES[activeIndex].id === id) openPanel(m);
+      if (diving && activeIndex >= 0 && MODULES[activeIndex].id === id) {
+        el.ovConf.textContent = `${m.confidence}%`; el.ovName.textContent = m.name;
+      }
       return true;
     },
-    select, deselect,
+    select, deselect, enterDive, exitDive,
   };
 })();
