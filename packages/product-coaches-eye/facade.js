@@ -16,11 +16,30 @@
  * is absent is treated as enabled / opt-out).
  */
 
-import { REASON } from '@brain/contracts'
+import { REASON, TIER } from '@brain/contracts'
 import { COACHES_EYE_MANIFEST, getManifest as _getManifest, tierIncludes } from '@brain/products'
 import { negotiate } from '@brain/versioning'
 
 export const PRODUCT_ID = 'coaches-eye'
+
+/** Known tiers + capability keys — used to validate and normalise input. */
+const KNOWN_TIERS = new Set(Object.values(TIER))
+const CAPABILITY_KEYS = new Set(COACHES_EYE_MANIFEST.capabilities.map(c => c.key))
+
+/** The default tier when none/unknown is supplied — the AI-off baseline. */
+const DEFAULT_TIER = TIER.FREE
+
+/**
+ * Normalise an arbitrary caller context into a safe { tier, flags } shape.
+ * Unknown or missing tier → `free` (the AI-off baseline, mirroring the engines'
+ * resolveTier). A non-object context or non-object flags → empty.
+ */
+function normaliseContext(context) {
+  const raw = context && typeof context === 'object' && !Array.isArray(context) ? context : {}
+  const tier = KNOWN_TIERS.has(raw.tier) ? raw.tier : DEFAULT_TIER
+  const flags = raw.flags && typeof raw.flags === 'object' && !Array.isArray(raw.flags) ? raw.flags : {}
+  return { tier, flags }
+}
 
 /** Flag is enabled unless explicitly set to false (opt-out — mirrors engines). */
 function flagEnabled(flags, key) {
@@ -34,11 +53,12 @@ function pluginFlagFor(manifest, capabilityKey) {
 }
 
 /**
- * Resolve the gate reason in the same order the engines use:
- * global kill-switch → per-capability flag → subscription tier.
+ * Resolve the gate reason. Precedence (most fundamental first):
+ *   invalid capability → global kill-switch → per-capability flag → tier.
  * @returns {string|null} a REASON, or null when permitted.
  */
 function gateReason(manifest, capabilityKey, tier, flags) {
+  if (!CAPABILITY_KEYS.has(capabilityKey)) return REASON.INVALID_INPUT
   if (!flagEnabled(flags, manifest.globalKillFlag)) return REASON.AI_NOT_ENABLED
   const f = pluginFlagFor(manifest, capabilityKey)
   if (f && !flagEnabled(flags, f)) return REASON.FEATURE_DISABLED
@@ -47,20 +67,22 @@ function gateReason(manifest, capabilityKey, tier, flags) {
 }
 
 /**
- * Pure capability gate — the engine-independent part of the façade.
+ * Pure capability gate — the engine-independent part of the façade. Never throws
+ * for any input; returns a FROZEN result.
  * @param {string} capabilityKey
  * @param {{tier?: string, flags?: Record<string, boolean>}} [context]
- * @returns {{capability: string, available: boolean, reason: string|null, version: string|null}}
+ * @returns {Readonly<{capability: string, available: boolean, reason: string|null, version: string|null}>}
  */
 export function gateCapability(capabilityKey, context = {}) {
   const m = COACHES_EYE_MANIFEST
-  const reason = gateReason(m, capabilityKey, context.tier, context.flags ?? {})
-  return {
+  const { tier, flags } = normaliseContext(context)
+  const reason = gateReason(m, capabilityKey, tier, flags)
+  return Object.freeze({
     capability: capabilityKey,
     available: reason === null,
     reason,
     version: negotiate(capabilityKey),
-  }
+  })
 }
 
 /** Gate every declared capability for the given context. */
@@ -84,17 +106,20 @@ export function getManifest() {
  * `ok:true` and `data:<engine output>`; the denied branch is already exactly
  * what Core will receive in production.
  *
+ * Never throws for any input; returns a FROZEN envelope whose keys are always
+ * exactly { available, ok, reason, data, version }.
+ *
  * @param {string} capabilityKey
  * @param {object} [context]
- * @returns {{available: boolean, ok: boolean, reason: string|null, data: null, version: string|null}}
+ * @returns {Readonly<{available: boolean, ok: boolean, reason: string|null, data: null, version: string|null}>}
  */
 export function request(capabilityKey, context = {}) {
   const gate = gateCapability(capabilityKey, context)
-  return {
+  return Object.freeze({
     available: gate.available,
     ok: false,                                   // dormant: no engine wired → no successful data
     reason: gate.available ? null : gate.reason,
     data: null,
     version: gate.version,
-  }
+  })
 }
