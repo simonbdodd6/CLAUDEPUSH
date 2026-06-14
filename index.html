@@ -5600,7 +5600,7 @@
         const data = await fetch('/api/identity', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'approve', memberId, approvedBy: currentUser()?.id || 'coach-demo' }),
+          body: JSON.stringify({ action: 'approve', memberId, approvedBy: currentUser()?.id || state.currentUserId || 'system' }),
         }).then(r => r.json());
         if (!data.ok) throw new Error(data.error || 'Could not approve request');
         applyApprovedIdentityLocally(data);
@@ -5618,7 +5618,7 @@
         const data = await fetch('/api/identity', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'reject', memberId, rejectedBy: currentUser()?.id || 'coach-demo' }),
+          body: JSON.stringify({ action: 'reject', memberId, rejectedBy: currentUser()?.id || state.currentUserId || 'system' }),
         }).then(r => r.json());
         if (!data.ok) throw new Error(data.error || 'Could not reject request');
         _identityPendingRequests = _identityPendingRequests.filter(request => request.id !== memberId);
@@ -9010,9 +9010,12 @@
         ensureAutopilotSchedule().catch(() => {});
         markSynced();
 
+        // Fire-and-forget verification email — never blocks club creation.
+        fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'send_verification_email' }) }).catch(() => {});
         clubWizClose();
         render();
-        showToast(`${state.clubName} is ready 🏉 Welcome, coach!`);
+        showToast('Club created — check your email to verify your account.');
       } catch(e) {
         if (btn) { btn.disabled = false; btn.textContent = 'Create my club →'; }
         showToast(e.message || 'Could not create the club');
