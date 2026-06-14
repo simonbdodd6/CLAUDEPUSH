@@ -119,6 +119,19 @@
 - Added adapter-based in-memory repository (`InMemoryCompanionDiscoveryRepository`, which never decides discoverability — all opt-in/visibility/block filtering lives in the service), audit events, README documentation, and comprehensive automated tests (`test/travel-companion-discovery-platform.test.js`).
 - Verified: full `node --test` suite passes (468/468); travel platform suite 109/109; no existing platform modified.
 
+## 2026-06-14 — Travel Intelligence Traveller Identity Platform (M10)
+
+- Added the Traveller Identity Platform at `lib/traveller-identity-platform/` as a zero-storage, travel-facing identity **port and projection** (Option 3). It lets travel modules resolve and validate a `travellerIdentityId` safely without importing `lib/identity-platform/` directly.
+- Architecture decision: M10 creates **no second traveller entity, store, or id space**. The canonical traveller remains the existing universal identity record (`idn_*` id, `PERSON` type, `TRAVELLER` role, `ACTIVE` status, with the identity module's own privacy settings, trust, reputation, and verification). M10 owns no canonical data and has no repository.
+- Implemented the `IdentitySourceAdapter` port (the sole seam to identity data) and the default `IdentityPlatformSourceAdapter`, which wraps an **injected** identity-platform instance and reads only `readIdentity(id, { view: 'public' })` — so internal/PII fields never reach M10 and there is no module-level coupling to the identity module.
+- Implemented `createTravellerIdentityPlatform({ identitySource })` exposing `resolveTraveller(id)`, `assertActiveTraveller(id)`, `getTravellerView(id)`, and `isTraveller(id)`.
+- Validation: a valid traveller must exist, be `ACTIVE` (suspended → `IDENTITY_INACTIVE`; soft-deleted/missing → `TRAVELLER_NOT_FOUND`), have the `TRAVELLER` role (else `NOT_A_TRAVELLER`), and be `PERSON` type where the snapshot provides it (else `NOT_A_TRAVELLER`). The projection is deterministic and exposes only privacy-safe fields, honoring the identity's privacy-applied public view.
+- Strict rules held: `lib/identity-platform/` is unchanged; the 9 existing travel modules are NOT retrofitted (they still use raw `travellerIdentityId` strings); no travel module imports identity-platform; M10 consumes identity snapshots through the injected adapter only.
+- Files changed: new `lib/traveller-identity-platform/` (`identity-source.js`, `service.js`, `constants.js`, `errors.js`, `index.js`, `README.md`); new `test/travel-traveller-identity-platform.test.js` (12 tests using both a fake identity source and a real identity-platform instance); this `PROJECT_STATUS.md` entry.
+- Verified: full `node --test` suite passes (480/480); travel platform suite 121/121; decoupling confirmed (no `identity-platform` import in module source — only in the test composition root); no existing platform modified.
+- Risks: (1) adoption gap — exposing the port does not enforce it; ids are still trusted until modules adopt `assertActiveTraveller`; (2) coupling creep — the adapter must remain the sole seam; (3) coarse lifecycle detection — soft-deleted maps to `TRAVELLER_NOT_FOUND` because the public view returns null (richer status needs an actor-gated internal read); (4) privacy-view tension — fields hidden by identity privacy settings (e.g. timezone) cannot be projected by design.
+- Recommended M11: phase in `assertActiveTraveller` adoption at the boundary of existing travel modules, one module at a time (starting with `trip-platform`), keeping the suite green — closing the adoption gap without a big-bang refactor.
+
 ## 2026-06-13 — Interactive AI Consciousness Visualization v1 (shipped)
 
 - Replaced the Command Centre dashboard centrepiece with a GPU-rendered neural brain at `app/command-centre/src/components/dashboard/NeuralConsciousness.jsx` (React Three Fiber + Three.js).
