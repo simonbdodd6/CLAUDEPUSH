@@ -47,6 +47,13 @@ module.exports = {
       to: { path: '^(ai-brain|coach-products|app|api|src)/' },
     },
     {
+      name: 'host-not-importing-core',
+      comment: 'The Coach\'s Eye host adapter may import the façade + engines, but never Core.',
+      severity: 'warn',
+      from: { path: '^host-coaches-eye/' },
+      to: { path: '^(app|api|src)/' },
+    },
+    {
       name: 'no-orphans',
       comment: 'Flag unreferenced platform modules (informational).',
       severity: 'info',
