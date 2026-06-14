@@ -1,0 +1,9 @@
+{
+  "name": "@brain/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "description": "Shared AI Brain platform contracts: canonical enums + type surface (M31.0, dormant). Depends on nothing.",
+  "dependencies": {}
+}

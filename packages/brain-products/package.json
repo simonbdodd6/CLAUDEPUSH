@@ -1,0 +1,11 @@
+{
+  "name": "@brain/products",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "description": "Shared AI Brain product registry: coaches-eye manifest + pure resolution helpers (M31.0, dormant). Depends only on @brain/contracts.",
+  "dependencies": {
+    "@brain/contracts": "0.0.0"
+  }
+}
