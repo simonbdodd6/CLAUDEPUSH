@@ -2666,3 +2666,29 @@ body {
 @media (max-width: 720px) {
   .neural-dive-overlay .nd-name { font-size: 26px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Living Intelligence Universe (M40)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Awakening veil — near-darkness on first load, fades as the universe wakes */
+.awaken-veil {
+  position: absolute; inset: 0; z-index: 3;
+  background: radial-gradient(ellipse at center, #02040c 0%, #01020700 70%), #01030a;
+  pointer-events: none; opacity: 1;
+  transition: opacity 0.5s ease;
+}
+
+/* Atmospheric volumetric light shafts behind the brain — very subtle, slow drift */
+#neuralBrainRoot::before {
+  content: ""; position: absolute; inset: -20%; pointer-events: none; z-index: -2;
+  background:
+    linear-gradient(72deg, transparent 44%, rgba(80, 140, 255, 0.05) 50%, transparent 56%),
+    linear-gradient(-58deg, transparent 46%, rgba(150, 90, 255, 0.04) 51%, transparent 57%);
+  filter: blur(14px);
+  animation: shaft-drift 26s ease-in-out infinite alternate;
+}
+@keyframes shaft-drift {
+  0%   { transform: translate3d(-2%, -1%, 0) rotate(-1deg); opacity: 0.7; }
+  100% { transform: translate3d(2%, 1%, 0) rotate(1.5deg); opacity: 1; }
+}
