@@ -1662,8 +1662,8 @@ requestAnimationFrame(render);
   const root = document.getElementById('neuralBrainRoot');
   if (!root || typeof THREE === 'undefined') return;
 
-  const COUNT = 1900;
-  const GS = 0.8;                                  // brain scale — small inside a vast cosmos
+  const COUNT = 2300;                              // denser intelligence field
+  const GS = 0.95;                                 // brain present at launch, still small vs the cosmos
   const PALETTE = [[0.13,0.83,0.93],[0.38,0.65,0.98],[0.55,0.36,0.96],[0.77,0.71,0.99],[0.37,0.92,0.83]];
   // Intelligence types (colour-coded cognition / digital weather).
   const INTEL = [[0.66,0.33,0.97],[0.96,0.62,0.13],[0.13,0.83,0.97],[0.20,0.90,0.55],[0.23,0.51,0.96],[0.93,0.28,0.60]];
@@ -1713,7 +1713,7 @@ requestAnimationFrame(render);
   const holder=document.createElement('div'); holder.className='neural-brain'; root.appendChild(holder);
   const veil=document.createElement('div'); veil.className='awaken-veil'; root.appendChild(veil);
   const scene=new THREE.Scene();
-  const camera=new THREE.PerspectiveCamera(55,1,0.1,400); camera.position.set(0,0,7.8);
+  const camera=new THREE.PerspectiveCamera(58,1,0.1,400); camera.position.set(0,0,3.4);   // start CLOSE
   const dpr=Math.min(window.devicePixelRatio||1,1.75);
   const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'}); renderer.setPixelRatio(dpr); holder.appendChild(renderer.domElement);
   const group=new THREE.Group(); group.scale.setScalar(GS); scene.add(group);    // the intelligence (small)
@@ -1724,7 +1724,11 @@ requestAnimationFrame(render);
 
   // ── Cosmos: nebulae (enormous, far) ───────────────────────────────
   const NEB=[[0.35,0.18,0.6],[0.1,0.3,0.55],[0.5,0.12,0.4],[0.12,0.4,0.5],[0.4,0.2,0.55],[0.16,0.36,0.6]];
-  NEB.forEach((c,i)=>{ const m=new THREE.SpriteMaterial({map:SOFT,color:new THREE.Color(...c),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}); const s=new THREE.Sprite(m); const ang=i/NEB.length*6.28; s.position.set(Math.cos(ang)*14,Math.sin(ang*1.3)*9,-16-i*4); s.scale.setScalar(22+i*7); s.userData.baseOpacity=0.045+(i%2)*0.02; space.add(s); });
+  NEB.forEach((c,i)=>{ const m=new THREE.SpriteMaterial({map:SOFT,color:new THREE.Color(...c),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}); const s=new THREE.Sprite(m); const ang=i/NEB.length*6.28; s.position.set(Math.cos(ang)*14,Math.sin(ang*1.3)*9,-16-i*4); s.scale.setScalar(22+i*7); s.userData.baseOpacity=0.085+(i%2)*0.03; space.add(s); });
+  // Dramatic central nebula glow sitting just behind the brain (depth + intensity).
+  const coreNebMat=new THREE.SpriteMaterial({map:SOFT,color:new THREE.Color(0.30,0.42,0.85),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
+  const coreNeb=new THREE.Sprite(coreNebMat); coreNeb.position.set(0,0,-2.4); coreNeb.scale.setScalar(7); coreNeb.userData.baseOpacity=0.20; space.add(coreNeb);
+  const coreNeb2=new THREE.Sprite(new THREE.SpriteMaterial({map:SOFT,color:new THREE.Color(0.5,0.25,0.7),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false})); coreNeb2.position.set(0,0,-3.2); coreNeb2.scale.setScalar(11); coreNeb2.userData.baseOpacity=0.14; space.add(coreNeb2);
 
   // ── Cosmos: faint galaxies (far, slowly spinning) ─────────────────
   const galaxies=[];
@@ -1812,6 +1816,15 @@ requestAnimationFrame(render);
   const conMat=new THREE.LineBasicMaterial({color:0xa6c8ff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}); group.add(new THREE.LineSegments(conGeo,conMat));
   let constellation=null, constTimer=6;
 
+  // Ambient foreground motes — always drifting near the camera for instant depth/parallax.
+  const AM=90; const amBuf=new Float32Array(AM*3); const amState=[];
+  for (let i=0;i<AM;i++) amState.push({ x:(Math.random()-0.5)*9, y:(Math.random()-0.5)*6, z:Math.random(), s:0.10+Math.random()*0.22, w:0.4+Math.random()*0.9 });
+  const amGeo=new THREE.BufferGeometry(); const amAttr=new THREE.BufferAttribute(amBuf,3); amAttr.usage=THREE.DynamicDrawUsage; amGeo.setAttribute('position',amAttr);
+  const amMat=new THREE.ShaderMaterial({uniforms:{uScale:{value:16*dpr},uOpacity:{value:0}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+    vertexShader:`uniform float uScale; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=uScale/-mv.z; gl_Position=projectionMatrix*mv; }`,
+    fragmentShader:`uniform float uOpacity; void main(){ vec2 uv=gl_PointCoord-0.5; float d=length(uv)*2.0; float c=smoothstep(1.0,0.0,d); if(c<0.02) discard; gl_FragColor=vec4(vec3(0.65,0.85,1.0)*(0.6+c), c*c*uOpacity); }`});
+  const amPoints=new THREE.Points(amGeo,amMat); amPoints.frustumCulled=false; scene.add(amPoints);
+
   const DS=80; const dsBuf=new Float32Array(DS*3).fill(9999); const dsState=[]; for (let i=0;i<DS;i++) dsState.push({x:(Math.random()-0.5)*5.5,y:(Math.random()-0.5)*3.6,z:Math.random(),s:0.25+Math.random()*0.5});
   const dsGeo=new THREE.BufferGeometry(); const dsAttr=new THREE.BufferAttribute(dsBuf,3); dsAttr.usage=THREE.DynamicDrawUsage; dsGeo.setAttribute('position',dsAttr);
   const dsMat=new THREE.ShaderMaterial({uniforms:{uScale:{value:13*dpr},uOpacity:{value:0}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
@@ -1820,7 +1833,9 @@ requestAnimationFrame(render);
   const dsPoints=new THREE.Points(dsGeo,dsMat); dsPoints.frustumCulled=false; scene.add(dsPoints);
 
   // ── State ─────────────────────────────────────────────────────────
-  const rot={x:0,y:0,tx:0,ty:0}; let zoom=7.8, zoomTarget=7.8; let activity=1, burst=0, activityFloor=1;
+  const rot={x:0,y:0,tx:0,ty:0}; let zoom=3.4, zoomTarget=3.4; let activity=1, burst=0, activityFloor=1;
+  let introT=0; const INTRO_DUR=8.5;               // cinematic opening: start close, settle to medium
+  const MEDIUM_Z=6.0;                              // powerful medium-distance settle (closer than M41)
   const fa=pGeo.attributes.aFiring.array;
   let focusCluster=-1,focusMix=0,focusYaw=0,focusPitch=0,pulseTimer=0;
   let diveCluster=-1,diveMix=0,diveTarget=0;
@@ -1870,8 +1885,14 @@ requestAnimationFrame(render);
     if (!alive) return;
     const dtReal=Math.min(0.05,clock.getDelta());
 
-    awaken=Math.min(1,awaken+dtReal*0.05);                  // ~20s birth
-    veil.style.opacity=String(Math.max(0,1-awaken*1.5));
+    // Awakening: intense first ~10s (fast early ramp), then eases to a long settle.
+    awaken=Math.min(1, awaken + dtReal*(awaken<0.5 ? 0.13 : 0.05));
+    veil.style.opacity=String(Math.max(0,1-awaken*1.9));
+    // Early intensity: visible cascades of neurons firing as it wakes.
+    if (awaken<0.85 && Math.random()<dtReal*7){ ignite((Math.random()*N)|0, 200, 30+(Math.random()*60|0)); activity=Math.min(3.2,activity+0.5); }
+
+    // Cinematic opening camera: start CLOSE+dark → reveal → pull back slightly → settle medium.
+    if (introT<INTRO_DUR){ introT+=dtReal; const e=1-Math.pow(1-Math.min(1,introT/INTRO_DUR),3); zoomTarget=3.4+(MEDIUM_Z-3.4)*e; }
 
     // ── The Moment (rare, grand consciousness evolution) ──
     const mo=moment;
@@ -1982,6 +2003,12 @@ requestAnimationFrame(render);
       da[i*3]+=dustVel[i*3]; da[i*3+1]+=dustVel[i*3+1]; da[i*3+2]+=dustVel[i*3+2];
       if (Math.abs(da[i*3])>9) da[i*3]*=-0.6; if (Math.abs(da[i*3+1])>7) da[i*3+1]*=-0.6; if (Math.abs(da[i*3+2]+4)>8) da[i*3+2]*=-0.6; }
     dust.pts.geometry.attributes.position.needsUpdate=true;
+
+    // ambient foreground motes (always on — instant depth, stronger when close)
+    const closeBoost=Math.max(0, Math.min(1, (6.5 - camera.position.z) / 3));
+    amMat.uniforms.uOpacity.value=(0.22 + closeBoost*0.4) * awaken * (1 - diveMix*0.5);
+    { const near=camera.position.z; for (let i=0;i<AM;i++){ const s=amState[i]; s.z+=dtReal*s.s*0.18; if (s.z>1){ s.z=0; s.x=(Math.random()-0.5)*9; s.y=(Math.random()-0.5)*6; } const o=i*3; amBuf[o]=s.x+Math.sin(t*s.w+i)*0.15; amBuf[o+1]=s.y+Math.cos(t*s.w*0.8+i)*0.12; amBuf[o+2]=(near-8.0)+s.z*7.5; } }
+    amGeo.attributes.position.needsUpdate=true;
 
     // dive motes
     dsMat.uniforms.uOpacity.value=diveMix*0.85;
