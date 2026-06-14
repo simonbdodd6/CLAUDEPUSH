@@ -123,3 +123,78 @@ export function request(capabilityKey, context = {}) {
     version: gate.version,
   })
 }
+
+// ─── live wiring via an injected runtime port (M31.4) ────────────────────────
+//
+// The façade NEVER imports an engine. A live capability is reached only through
+// an injected `runtime` port — an object exposing the wired method(s):
+//
+//   const runtime = { getMatchReadiness: async (payload) => <engine output> }
+//
+// The host (e.g. the integration layer) builds that port around the real engine;
+// the façade only calls runtime[method](payload). In M31.4 exactly one capability
+// is wired — coach.matchReadiness — everything else stays dormant. Without a port
+// (Core's default), even a wired capability resolves dormant, so Core needs no
+// change and no flag activation.
+//
+// @typedef {Object} CoachesEyeRuntimePort
+// @property {(payload: any) => (Promise<any>|any)} [getMatchReadiness]  the match-readiness engine adapter
+
+/** Capability → runtime port method name. M31.4: match readiness only. */
+export const WIRED_CAPABILITIES = Object.freeze({
+  'coach.matchReadiness': 'getMatchReadiness',
+})
+
+/** Is this capability wired to a runtime port? */
+export function isWired(capabilityKey) {
+  return Object.prototype.hasOwnProperty.call(WIRED_CAPABILITIES, capabilityKey)
+}
+
+function envelope(available, ok, reason, data, version) {
+  return Object.freeze({ available, ok, reason, data, version })
+}
+
+/** The payload handed to the port: context.payload when present, else the context. */
+function payloadOf(context) {
+  if (context && typeof context === 'object' && !Array.isArray(context) && 'payload' in context) return context.payload
+  return context
+}
+
+/**
+ * Live invocation through an injected runtime port (ASYNC). Preserves the
+ * request() envelope shape exactly: { available, ok, reason, data, version }.
+ *
+ *   - gate denied/disabled  → denied envelope; the port is NEVER called
+ *   - allowed but not wired  → dormant envelope (ok:false, data:null); no port call
+ *   - allowed + wired + no port → dormant envelope; no port call
+ *   - allowed + wired + port → await port(payload) → { ok:true, data, … }
+ *   - the port throws        → { ok:false, reason:'brain_unavailable', data:null, … }
+ *
+ * The gate is always evaluated FIRST, so a disabled/denied/invalid request can
+ * never reach the runtime port.
+ *
+ * @param {string} capabilityKey
+ * @param {{tier?: string, flags?: Record<string, boolean>, payload?: any}} [context]
+ * @param {CoachesEyeRuntimePort|null} [runtime]
+ * @returns {Promise<Readonly<{available: boolean, ok: boolean, reason: string|null, data: any, version: string|null}>>}
+ */
+export async function invoke(capabilityKey, context = {}, runtime = null) {
+  const gate = gateCapability(capabilityKey, context)
+  if (!gate.available) {
+    return envelope(false, false, gate.reason, null, gate.version)   // denied → never calls the port
+  }
+  const method = WIRED_CAPABILITIES[capabilityKey]
+  if (!method) {
+    return envelope(true, false, null, null, gate.version)            // permitted but not wired → dormant
+  }
+  const port = runtime && typeof runtime[method] === 'function' ? runtime[method] : null
+  if (!port) {
+    return envelope(true, false, null, null, gate.version)            // no port supplied → dormant (Core default)
+  }
+  try {
+    const data = await port(payloadOf(context))
+    return envelope(true, true, null, data ?? null, gate.version)
+  } catch {
+    return envelope(true, false, REASON.BRAIN_UNAVAILABLE, null, gate.version)
+  }
+}

@@ -12,9 +12,13 @@ the platform packages, performs no engine call, and is imported by nobody.
 | `gateCapability(key, context)` | frozen `{ capability, available, reason, version }` |
 | `getCapabilities(context)` | array of gate results (one per declared capability) |
 | `getManifest()` | the `coaches-eye` `ProductManifest` |
-| `request(key, context)` | frozen `Envelope` `{ available, ok, reason, data, version }` |
+| `request(key, context)` | frozen dormant `Envelope` `{ available, ok, reason, data, version }` (always `data:null`, `ok:false`) |
+| `invoke(key, context, runtime)` | **async** — frozen `Envelope`; live result when wired + a port is supplied (M31.4) |
+| `WIRED_CAPABILITIES` | capability → port-method map (M31.4: `coach.matchReadiness` only) |
+| `isWired(key)` | whether a capability is wired to a runtime port |
 
-`context` = `{ tier?: Tier, flags?: Record<string, boolean> }`.
+`context` = `{ tier?: Tier, flags?: Record<string, boolean>, payload?: any }`
+(`payload` is handed to the runtime port; gating uses `tier`/`flags`).
 
 ## Envelope contract (`request`)
 
@@ -60,20 +64,41 @@ The façade **never throws** for any input:
 - **Immutable** — every returned object is `Object.freeze`d; callers cannot mutate results, and the underlying manifest is never mutated.
 - **Boundary-safe** — imports only `@brain/contracts | products | versioning`; it has **no import path to any engine or to Core**, so it cannot change AI runtime behaviour.
 
-## Future wiring rules (M31.4+, NOT done here)
+## Live wiring via an injected runtime port (M31.4)
 
-Wiring live capabilities must preserve every guarantee above:
+`invoke(key, context, runtime)` is the **async** live counterpart of `request`.
+The façade still **never imports an engine** — a live capability is reached only
+through an injected `runtime` **port**, an object exposing the wired method(s):
 
-1. **One capability at a time, behind its flag.** Never a big-bang.
-2. **The façade still never imports an engine directly.** Engines are reached
-   only through an **injected runtime / port** (dependency injection) — e.g.
-   `createCoachesEyeFacade(runtime)` or `request(key, context, runtime)`. The
-   dependency-cruiser ring rules must keep passing (façade → platform packages +
-   injected port type only).
-3. **Only the allowed branch changes.** It calls the engine via the port, maps
-   the output into `data`, and sets `ok: true`. The denied branches and the
-   envelope shape stay byte-identical to today.
-4. **Golden parity.** A test must prove the wired façade output `deepEqual`s the
-   engine's direct output for the same inputs (no behaviour drift).
-5. **Core stays separate.** Core consumes the façade only behind flags and must
-   keep working with `ai.enabled: false` (every capability `available: false`).
+```js
+// the HOST builds this around the real engine; the façade only calls the port.
+const runtime = { getMatchReadiness: async (payload) => /* engine output */ }
+const r = await invoke('coach.matchReadiness', { tier: 'professional', payload }, runtime)
+// → { available: true, ok: true, reason: null, data: <engine output>, version: '2.0' }
+```
+
+Behaviour (the gate is always evaluated first):
+
+| Situation | Result | Port called? |
+|---|---|---|
+| gate denied / disabled / invalid | denied envelope (`ok:false`, `data:null`, `reason`) | **no** |
+| allowed, capability not in `WIRED_CAPABILITIES` | dormant (`ok:false`, `data:null`) | no |
+| allowed, wired, **no** port supplied (Core default) | dormant (`ok:false`, `data:null`) | no |
+| allowed, wired, port supplied | `{ ok:true, data:<engine output> }` | **yes** |
+| allowed, wired, port throws | `{ ok:false, reason:'brain_unavailable', data:null }` | yes |
+
+Wired in M31.4: **`coach.matchReadiness` only** (`WIRED_CAPABILITIES`). All other
+capabilities remain dormant through `invoke`.
+
+### Rules preserved
+
+1. **One capability at a time.** Only `coach.matchReadiness` is wired.
+2. **No direct engine import.** Engines are reached solely through the injected
+   port; the dependency-cruiser ring rules keep passing.
+3. **Envelope shape unchanged.** `invoke` returns the same 5-key frozen envelope
+   as `request`; denied branches are byte-identical.
+4. **Golden parity.** Tests prove `invoke(...).data` `deepEqual`s the engine's
+   direct output for the same inputs.
+5. **Disabled/denied never call the port.** Proven with a spy port.
+6. **Core stays separate.** Core supplies no port, so every capability resolves
+   dormant — Core needs no change and keeps working with `ai.enabled:false`.

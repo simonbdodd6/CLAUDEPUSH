@@ -12,4 +12,8 @@ export {
   getCapabilities,
   getManifest,
   request,
+  // M31.4 — live wiring via an injected runtime port (matchReadiness only)
+  WIRED_CAPABILITIES,
+  isWired,
+  invoke,
 } from './facade.js'
