@@ -25,6 +25,7 @@ import { buildFeed, buildStats } from './feed.js';
 import { buildIntelligence } from './intelligence.js';
 import { buildRelationships, normalizeCompanions } from './relationships.js';
 import { buildMemories } from './memories.js';
+import { buildLifeStory } from './life-story.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -269,6 +270,15 @@ export function createTravelApi(options = {}) {
     return buildMemories(events, ownedTrips);
   }
 
+  // Life Story Engine — the traveller's whole history curated into meaningful
+  // life stories ("The Bali Chapter", "Travelling With Manon"). Deterministic.
+  async function getLifeStory(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildLifeStory(events, ownedTrips);
+  }
+
   // Deterministic shared-journey intelligence — the people you travel with.
   async function getRelationships(token) {
     const id = travellerFor(token);
@@ -356,6 +366,7 @@ export function createTravelApi(options = {}) {
     getIntelligence,
     getRelationships,
     getMemories,
+    getLifeStory,
     getTripReadiness,
     getApprovals,
     resolveApproval,

@@ -28,6 +28,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/intelligence` | — | `{ travelStyle, insights, locked, basedOn }` | intelligence (derived from memories + trips) |
 | GET | `/relationships` | — | `{ mostTravelledWith, companions, recurringCompanions, circles, locked, basedOn }` | relationships (derived from shared memories + trips) |
 | GET | `/memories` | — | `{ recap, storyCards, chapters, collections, reels, basedOn }` | memory engine (derived from memories + trips) |
+| GET | `/life-story` | — | `{ stories, basedOn }` | life story engine (derived from whole history) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -180,6 +181,33 @@ Memories = {
 - **Reels**: ordered photo/moment sequences (the day in photos, the most moving day).
 - **Recap**: the trip/year packaged as a shareable summary.
 - All `cover`/`entries` are premium `Entry` objects (same shape as `/timeline`).
+
+### Life Story DTO (M24.5)
+
+The highest narrative layer — reads across the traveller's whole history and
+curates titled **life stories** ("The Bali Chapter", "The Summer You Learned To
+Dive", "Travelling With Manon", "Where You Always Return"). **No AI, no generated
+prose** — every title/subtitle/framing is a fixed template filled with the
+traveller's own evidence. Evidence-gated; emitted strongest-first.
+
+```
+LifeStory = {
+  id, title, subtitle, framing,            // emotional framing (templated, not LLM)
+  category,                                 // place|theme|person|pattern|milestone|era|mood
+  cover,                                    // cover memory (premium Entry)
+  hero,                                     // hero image reference (cover's photoRef | null)
+  memories: [Entry],                        // supporting memories (chronological)
+  statistics: { memories, photos, days, … },// story-relevant counts
+  span: { from, to, days, label:"Jul 2026" | "2024–2026" },
+  evidence: { count, confidence:"emerging"|"strong"|"defining" },
+}
+LifeStoryResponse = { stories: [LifeStory], basedOn: { memories, trips, span } }
+```
+
+Stories include place chapters, "learned to dive" milestone, theme journeys
+(diving / sunsets / ocean / food / wild), companion stories, "where you always
+return", "your island years", "the year of adventure", "your quiet places" and
+"places that changed you". All deterministic, offline-first, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

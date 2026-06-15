@@ -400,6 +400,54 @@ implemented**. Several depend on integrations in sections A–C.
 - **Tier:** V2 (Flighty share-in / TripIt) → V3 (Booking/Airbnb).
 - **Possible API:** Flighty share-in, TripIt API, Booking/Airbnb partner APIs.
 
+## J. Life Story deepeners (added M24.5)
+
+The Life Story Engine (`/life-story`) curates the whole history into titled
+stories deterministically. These would make those stories deeper and more
+cinematic — still **not implemented**; several depend on integrations above.
+
+### Richer milestones from real data (PADI / SSI / Garmin Dive / Shearwater)
+- **Why:** "The Summer You Learned To Dive" backed by the actual certification
+  date and first logged dive; certification milestones ("You became an Advanced
+  Diver") as their own life chapters.
+- **Complexity:** High (dive-credential + dive-log integrations, section C).
+- **Tier:** V3.
+- **Possible API:** PADI/SSI digital cards, Garmin Dive, Shearwater Cloud.
+
+### Place-meaning enrichment (Apple Maps / approximate regions)
+- **Why:** "Places That Changed You" / "Your Island Years" gain map-backed region
+  art and proper place names (island vs city vs region) — approximate only.
+- **Complexity:** Medium (region granularity; never exact pins).
+- **Tier:** V2–V3.
+- **Possible API:** MapKit reverse-geocode at region level; curated place dataset.
+
+### Auto-narrated story films (Apple Photos Memories / Google Photos)
+- **Why:** Turn a life story into a shareable, photo-backed film with covers and
+  hero images chosen from the real library.
+- **Complexity:** Medium–High (on-device photo access + composition).
+- **Tier:** V2 (covers) → V3 (films).
+- **Possible API:** PhotoKit / Google Photos Library API; AVFoundation.
+
+### Life-story soundtrack (Spotify)
+- **Why:** A signature track per chapter/era — "the sound of your Bali years".
+- **Complexity:** Medium (OAuth; per-period recently-played).
+- **Tier:** V2.
+- **Possible API:** Spotify Web API.
+
+### Resurfacing & chapters-in-progress (Facebook Memories / Apple Journal)
+- **Why:** Gently resurface a maturing chapter ("Your Bali Chapter is growing")
+  and "on this day" life-story moments — emotional re-engagement.
+- **Complexity:** Low–Medium (date math + local notifications).
+- **Tier:** V2.
+- **Possible API:** Internal + local notifications.
+
+### Shared & merged life stories (Spotify Blend / Apple Family Sharing)
+- **Why:** "Your Story With Manon" as a co-authored life chapter once companions
+  have their own data — the relational counterpart to personal life stories.
+- **Complexity:** High (multi-user, permissions, sync).
+- **Tier:** V3.
+- **Possible API:** Internal multi-user platform; CloudKit sharing.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the
