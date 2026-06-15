@@ -103,6 +103,8 @@ function buildScope({ teamPlan = null, teamPlanStatus = null, permissions = [], 
     'function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }\n' +
     'function canI(perm) { return (_myPermissions || []).includes(perm); }\n' +
     'function settingsUpgradeToPro() {}\n' +
+    'function recordFeatureUsage() {}\n' +
+    'function upgradeFromFeature(id) { settingsUpgradeToPro(); }\n' +
     extractConst(html, 'PLAN_LEVEL') + '\n' +
     extractFn(html, 'planLevel') + '\n' +
     extractConst(html, 'FEATURE_REGISTRY') + '\n' +

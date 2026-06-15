@@ -103,6 +103,8 @@ function buildScope({ teamPlan = null, teamPlanStatus = null, permissions = [], 
     'function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }\n' +
     'function canI(perm) { if (_myPermissions === null) return isCoach(); return _myPermissions.includes(perm); }\n' +
     'function settingsUpgradeToPro() {}\n' +
+    'function recordFeatureUsage() {}\n' +
+    'function upgradeFromFeature(id) { settingsUpgradeToPro(); }\n' +
     extractConst(html, 'PLAN_LEVEL') + '\n' +
     extractFn(html, 'planLevel') + '\n' +
     extractConst(html, 'FEATURE_REGISTRY') + '\n' +
@@ -219,7 +221,7 @@ test('renderUpgradePrompt shows Upgrade to Pro button when manage_subscriptions 
   });
   const html = renderUpgradePrompt('unlimited_videos');
   assert.ok(html.includes('Upgrade to Pro'), 'Should show upgrade button');
-  assert.ok(html.includes('settingsUpgradeToPro()'), 'Should call settingsUpgradeToPro');
+  assert.ok(html.includes('upgradeFromFeature('), 'Should route through upgradeFromFeature wrapper');
 });
 
 // ── 13. renderUpgradePrompt shows admin message when no manage_subscriptions ──

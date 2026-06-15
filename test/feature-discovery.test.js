@@ -99,6 +99,8 @@ function buildScope({
     'function settingsUpgradeToPro() { if (typeof upgradeLog !== "undefined") upgradeLog.push(true); }\n' +
     'function showToast(msg) { if (typeof toastLog !== "undefined") toastLog.push(msg); }\n' +
     'function setSection(view, sec) { if (typeof navLog !== "undefined") navLog.push({ view, sec }); }\n' +
+    'function recordFeatureUsage() {}\n' +
+    'function upgradeFromFeature(id) { if (typeof upgradeLog !== "undefined") upgradeLog.push(true); }\n' +
     extractConst(html, 'PLAN_LEVEL') + '\n' +
     extractFn(html, 'planLevel') + '\n' +
     extractConst(html, 'FEATURE_REGISTRY') + '\n' +
