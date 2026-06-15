@@ -85,12 +85,25 @@ test('real wiring — default runtime reaches the live integration layer without
 // PART 3 — matchReadiness + coachDna are wired; everything else stays dormant
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('runtime port exposes MR + coachDna + season + opponent + execRecs (M38)', () => {
+test('runtime port exposes the six wired capability methods (M39)', () => {
   const runtime = createCoachesEyeRuntime({ coachAI: mockCoachAI })
   assert.deepEqual(Object.keys(runtime).sort(),
-    ['getCoachDna', 'getExecutiveRecommendations', 'getMatchReadiness', 'getOpponentIntelligence', 'getSeasonIntelligence'])
+    ['getCoachDna', 'getExecutiveRecommendations', 'getMatchReadiness', 'getMemoryIntelligence', 'getOpponentIntelligence', 'getSeasonIntelligence'])
   assert.deepEqual(Object.keys(ADAPTER_WIRED_CAPABILITIES).sort(),
-    ['coach.coachDna', 'coach.executiveRecommendations', 'coach.matchReadiness', 'coach.opponentIntelligence', 'coach.seasonIntelligence'])
+    ['coach.coachDna', 'coach.executiveRecommendations', 'coach.matchReadiness', 'coach.memoryIntelligence', 'coach.opponentIntelligence', 'coach.seasonIntelligence'])
+})
+
+test('coach.memoryIntelligence resolves live through the adapter (M39)', async () => {
+  const r = await invokeCoachesEye('coach.memoryIntelligence', { tier: 'professional', payload: {} })
+  assert.equal(r.available, true)
+  assert.equal(r.ok, true)
+  assert.equal(r.reason, null)
+  assert.ok(r.data && Array.isArray(r.data.nodes) && Array.isArray(r.data.edges), 'a knowledge graph { nodes, edges } is returned')
+  // gated off below the tier (free) → engine never reached
+  const denied = await invokeCoachesEye('coach.memoryIntelligence', { tier: 'free', payload: {} })
+  assert.equal(denied.available, false)
+  assert.equal(denied.reason, 'insufficient_tier')
+  assert.equal(denied.data, null)
 })
 
 test('coach.executiveRecommendations resolves live through the adapter (M38)', async () => {

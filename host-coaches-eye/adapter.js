@@ -13,10 +13,10 @@
  * DORMANT: nothing imports this yet (Core included). It activates no feature
  * flag and changes no Core API/UI. It wires coach.matchReadiness (M31.5),
  * coach.coachDna (M35), coach.seasonIntelligence (M36),
- * coach.opponentIntelligence (M37) and coach.executiveRecommendations (M38) —
- * each via the AI Brain's own integration layer (read-only engine imports;
- * never edits Core). Executive recommendations are PRODUCED by the Brain; the
- * host only reads the already-produced list.
+ * coach.opponentIntelligence (M37), coach.executiveRecommendations (M38) and
+ * coach.memoryIntelligence (M39) — each via the AI Brain's own integration layer
+ * (read-only engine imports; never edits Core). Executive recommendations and the
+ * memory knowledge graph are PRODUCED by the Brain; the host only reads them.
  */
 
 import { invoke, WIRED_CAPABILITIES } from '@brain/product-coaches-eye'
@@ -28,6 +28,8 @@ import {
   getOpponentProfile as aiGetOpponentProfile,
   activeRecommendations as aiActiveRecommendations,
 } from '../ai-brain/index.js'
+// M39: memory intelligence — the Brain's knowledge graph (read-only getters)
+import { getAllNodes as kgNodes, getAllEdges as kgEdges } from '../knowledge-graph/index.js'
 
 /** Extract the coachId the coach-DNA engine keys on from a runtime payload. */
 function coachIdOf(payload) {
@@ -52,7 +54,7 @@ function opponentOf(payload) {
  * store's observations into the DNA builders.
  *
  * @param {{ coachAI?: object }} [opts]
- * @returns {Readonly<{ getMatchReadiness: Function, getCoachDna: Function, getSeasonIntelligence: Function, getOpponentIntelligence: Function, getExecutiveRecommendations: Function }>}
+ * @returns {Readonly<{ getMatchReadiness: Function, getCoachDna: Function, getSeasonIntelligence: Function, getOpponentIntelligence: Function, getExecutiveRecommendations: Function, getMemoryIntelligence: Function }>}
  */
 export function createCoachesEyeRuntime(opts = {}) {
   const coachAI = opts && typeof opts === 'object' ? opts.coachAI : undefined
@@ -73,6 +75,10 @@ export function createCoachesEyeRuntime(opts = {}) {
     },
     // Presents the Brain's already-produced active recommendations (read-only list).
     getExecutiveRecommendations: () => aiActiveRecommendations(),
+    // Presents the Brain's knowledge graph (read-only nodes + edges). Never mutates.
+    getMemoryIntelligence: () => {
+      try { return { nodes: kgNodes(), edges: kgEdges() } } catch { return { nodes: [], edges: [] } }
+    },
   })
 }
 

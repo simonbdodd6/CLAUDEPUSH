@@ -3,9 +3,10 @@
 // runtime port (or null) and the placeholder fallback model, and receives a
 // VisualModel / VisualBrainState to hand the render layer as props.
 export { createExperienceAdapter } from './experience-adapter.js'
-export { CAP_MATCH_READINESS, CAP_COACH_DNA, CAP_SEASON_INTELLIGENCE, CAP_OPPONENT_INTELLIGENCE, CAP_EXECUTIVE_RECOMMENDATIONS } from './facade-contract.js'
+export { CAP_MATCH_READINESS, CAP_COACH_DNA, CAP_SEASON_INTELLIGENCE, CAP_OPPONENT_INTELLIGENCE, CAP_EXECUTIVE_RECOMMENDATIONS, CAP_MEMORY_INTELLIGENCE } from './facade-contract.js'
 export { mapMatchReadiness } from './mappers/match-readiness.js'
 export { mapCoachDna } from './mappers/coach-dna.js'
 export { mapSeason } from './mappers/season.js'
 export { mapOpponent } from './mappers/opponent.js'
 export { mapExecutiveRecommendations } from './mappers/executive-recommendations.js'
+export { mapMemory } from './mappers/memory.js'

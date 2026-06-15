@@ -198,21 +198,34 @@ test('a throwing port → brain_unavailable (never throws)', async () => {
 // PART 5 — WIRED registry + isWired
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('WIRED_CAPABILITIES contains MR + coachDna + season + opponent + execRecs (M38)', () => {
+test('WIRED_CAPABILITIES contains the six wired capabilities (M39)', () => {
   assert.deepEqual(Object.keys(WIRED_CAPABILITIES).sort(),
-    ['coach.coachDna', 'coach.executiveRecommendations', 'coach.matchReadiness', 'coach.opponentIntelligence', 'coach.seasonIntelligence'])
+    ['coach.coachDna', 'coach.executiveRecommendations', 'coach.matchReadiness', 'coach.memoryIntelligence', 'coach.opponentIntelligence', 'coach.seasonIntelligence'])
   assert.equal(WIRED_CAPABILITIES['coach.matchReadiness'], 'getMatchReadiness')
   assert.equal(WIRED_CAPABILITIES['coach.coachDna'], 'getCoachDna')
   assert.equal(WIRED_CAPABILITIES['coach.seasonIntelligence'], 'getSeasonIntelligence')
   assert.equal(WIRED_CAPABILITIES['coach.opponentIntelligence'], 'getOpponentIntelligence')
   assert.equal(WIRED_CAPABILITIES['coach.executiveRecommendations'], 'getExecutiveRecommendations')
+  assert.equal(WIRED_CAPABILITIES['coach.memoryIntelligence'], 'getMemoryIntelligence')
   assert.ok(Object.isFrozen(WIRED_CAPABILITIES))
-  for (const k of ['coach.matchReadiness', 'coach.coachDna', 'coach.seasonIntelligence', 'coach.opponentIntelligence', 'coach.executiveRecommendations']) {
-    assert.equal(isWired(k), true, `${k} must be wired after M38`)
+  for (const k of ['coach.matchReadiness', 'coach.coachDna', 'coach.seasonIntelligence', 'coach.opponentIntelligence', 'coach.executiveRecommendations', 'coach.memoryIntelligence']) {
+    assert.equal(isWired(k), true, `${k} must be wired after M39`)
   }
   for (const k of ['coach.liveMatch', 'coach.dashboard', 'coach.trainingDesigner', 'coach.matchStrategy']) {
-    assert.equal(isWired(k), false, `${k} must remain unwired after M38`)
+    assert.equal(isWired(k), false, `${k} must remain unwired after M39`)
   }
+})
+
+test('coach.memoryIntelligence wires live through an injected port (M39)', async () => {
+  const graph = { nodes: [{ id: 'n1', type: 'player', label: 'Player A' }], edges: [{ from: 'n1', to: 'n1', weight: 1 }] }
+  let calls = 0
+  const port = { getMemoryIntelligence: async () => { calls++; return graph } }
+  const r = await invoke('coach.memoryIntelligence', { tier: 'professional', payload: {} }, port)
+  assertEnvelopeShape(r, 'memory live')
+  assert.equal(r.available, true)
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.data, graph)
+  assert.equal(calls, 1)
 })
 
 test('coach.executiveRecommendations wires live through an injected port (M38)', async () => {
