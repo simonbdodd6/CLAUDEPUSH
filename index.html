@@ -2531,6 +2531,9 @@
         "Squad selection is being finalised. Check your player portal."
       ],
       trainingActiveSession: "tue",
+      trainingAttendance: {},
+      sessionNotes: {},
+      activeTrainingTab: 'planner',
       trainingBlocks: { tue: [], thu: [], game: [] },
       tacticsDrawings: { tue: null, thu: null, game: null },
       clubVideos: [],
@@ -3107,7 +3110,17 @@
         if (s.target      === undefined) s.target      = 0;
         if (s.published   === undefined) s.published   = false;
         if (s.publishedAt === undefined) s.publishedAt = null;
+        // Phase 19 — extended session metadata
+        if (s.startTime  === undefined) s.startTime  = '';
+        if (s.endTime    === undefined) s.endTime    = '';
+        if (s.location   === undefined) s.location   = '';
+        if (s.ageGrade   === undefined) s.ageGrade   = '';
+        if (s.squad      === undefined) s.squad      = '';
+        if (s.coachName  === undefined) s.coachName  = '';
       });
+      next.trainingAttendance = (typeof input.trainingAttendance === 'object' && input.trainingAttendance !== null) ? input.trainingAttendance : {};
+      next.sessionNotes       = (typeof input.sessionNotes === 'object' && input.sessionNotes !== null) ? input.sessionNotes : {};
+      next.activeTrainingTab  = input.activeTrainingTab || 'planner';
 
       // Ensure trainingBlocks has an entry for every schedule session
       next.schedule.forEach(s => {
@@ -7966,6 +7979,13 @@
 
     // ─── TRAINING ────────────────────────────────────────────────────────────
     function renderTraining() {
+      // Phase 19 — tab delegation; planner falls through to existing render
+      const _tab = state.activeTrainingTab || 'planner';
+      if (_tab === 'dashboard')  { _renderTrainingDashboard();  return; }
+      if (_tab === 'attendance') { _renderTrainingAttendance(); return; }
+      if (_tab === 'notes')      { _renderTrainingNotes();      return; }
+      if (_tab === 'history')    { _renderTrainingHistory();    return; }
+
       const schedSessions = state.schedule || [];
       const rawId  = state.trainingActiveSession || (schedSessions[0]?.id ?? "tue");
       const sessId = schedSessions.find(s => s.id === rawId) ? rawId : (schedSessions[0]?.id ?? "tue");
@@ -7989,6 +8009,8 @@
             <div class="training-stat"><span class="lbl">Available</span><strong>${available.length}</strong><small>players</small></div>
           </div>
         </div>
+
+        ${_trainingTabBar()}
 
         <!-- Session card tabs — driven by state.schedule -->
         <div class="session-card-row">
@@ -11856,6 +11878,522 @@
         </div>`;
     }
 
+    // ─── PHASE 19 — TRAINING & SESSION MANAGEMENT ────────────────────────────
+
+    const TRAINING_ATTENDANCE_LABELS = {
+      present:'Present', late:'Late', excused:'Excused', injured:'Injured', absent:'Absent',
+    };
+
+    const TRAINING_ATTENDANCE_COLORS = {
+      present:  { color:'#34d399', bg:'rgba(52,211,153,0.12)'  },
+      late:     { color:'#fbbf24', bg:'rgba(251,191,36,0.12)'  },
+      excused:  { color:'#60a5fa', bg:'rgba(96,165,250,0.12)'  },
+      injured:  { color:'#f87171', bg:'rgba(248,113,113,0.12)' },
+      absent:   { color:'#dc2626', bg:'rgba(220,38,38,0.1)'    },
+    };
+
+    function trainingAttendanceForSession(sessionId, players) {
+      const attMap   = ((state.trainingAttendance || {})[sessionId]) || {};
+      const active   = activeRosterPlayers(players);
+      const total    = active.length;
+      const present  = active.filter(p => attMap[p.id] === 'present').length;
+      const late     = active.filter(p => attMap[p.id] === 'late').length;
+      const excused  = active.filter(p => attMap[p.id] === 'excused').length;
+      const injured  = active.filter(p => attMap[p.id] === 'injured').length;
+      const absent   = active.filter(p => attMap[p.id] === 'absent').length;
+      const noRecord = active.filter(p => !attMap[p.id]).length;
+      const attended = present + late;
+      const pct      = total > 0 ? Math.round(100 * attended / total) : 0;
+      return { total, present, late, excused, injured, absent, noRecord, attended, pct, attMap };
+    }
+
+    function playerAttendanceHistory(playerId, allAttendance, schedSessions) {
+      const sessions = (schedSessions || []).filter(s => s.type === 'Training');
+      let attended = 0, missed = 0, excused = 0;
+      let maxConsPresent = 0, maxConsAbsent = 0;
+      let curPresStreak = 0, curAbsStreak = 0;
+      sessions.forEach(s => {
+        const attMap = (allAttendance || {})[s.id] || {};
+        const status = attMap[playerId];
+        if (status === 'present' || status === 'late') {
+          attended++;
+          curPresStreak++;
+          curAbsStreak = 0;
+          if (curPresStreak > maxConsPresent) maxConsPresent = curPresStreak;
+        } else if (status === 'absent' || status === 'injured') {
+          missed++;
+          curAbsStreak++;
+          curPresStreak = 0;
+          if (curAbsStreak > maxConsAbsent) maxConsAbsent = curAbsStreak;
+        } else if (status === 'excused') {
+          excused++;
+          curPresStreak = 0;
+          curAbsStreak = 0;
+        }
+      });
+      const total = attended + missed + excused;
+      const pct   = total > 0 ? Math.round(100 * attended / total) : null;
+      return { attended, missed, excused, total, pct,
+               consecutivePresent: maxConsPresent, consecutiveAbsent: maxConsAbsent };
+    }
+
+    function normalizeSessionNotes(notes) {
+      if (!notes || typeof notes !== 'object') notes = {};
+      return {
+        objectives:      notes.objectives      || '',
+        equipment:       notes.equipment       || '',
+        coachingPoints:  notes.coachingPoints  || '',
+        review:          notes.review          || '',
+        followUpActions: notes.followUpActions || '',
+      };
+    }
+
+    function setTrainingTab(tab) {
+      state.activeTrainingTab = tab;
+      saveState('training tab changed');
+      render();
+    }
+
+    function trainingSetAttendance(sessionId, playerId, status) {
+      if (!state.trainingAttendance)             state.trainingAttendance = {};
+      if (!state.trainingAttendance[sessionId])  state.trainingAttendance[sessionId] = {};
+      state.trainingAttendance[sessionId][playerId] = status;
+      saveState('training attendance updated');
+      render();
+    }
+
+    function trainingSaveNotes(sessionId, field, value) {
+      if (!state.sessionNotes)            state.sessionNotes = {};
+      if (!state.sessionNotes[sessionId]) state.sessionNotes[sessionId] = {};
+      state.sessionNotes[sessionId][field] = value;
+      saveState('session notes updated');
+    }
+
+    function trainingToggleNewSession() {
+      _trainingNewSessionOpen = !_trainingNewSessionOpen;
+      render();
+    }
+
+    function trainingCreateSession() {
+      const g = id => document.getElementById(id)?.value?.trim() || '';
+      const title = g('ts-title');
+      if (!title) { notify('Session title is required'); return; }
+      const id = 'sess_' + Date.now();
+      const session = {
+        id, type: 'Training', title,
+        date: g('ts-date'), startTime: g('ts-start'), endTime: g('ts-end'),
+        location: g('ts-location'), ageGrade: g('ts-agegrade'),
+        squad: g('ts-squad'), coachName: g('ts-coach'),
+        focus: g('ts-notes'),
+        target: 0, deadline: '', published: false, publishedAt: null,
+      };
+      state.schedule = [...(state.schedule || []), session];
+      _trainingNewSessionOpen = false;
+      state.trainingActiveSession = id;
+      saveState('training session created');
+      notify(title + ' created');
+      render();
+    }
+
+    function trainingDeleteSession(sessionId) {
+      if (['tue','thu','game'].includes(sessionId)) { notify('Cannot delete default sessions'); return; }
+      ceConfirm('Delete session?', 'This removes the session and all its attendance records.', { confirmLabel: 'Delete', danger: true })
+        .then(ok => {
+          if (!ok) return;
+          state.schedule = (state.schedule || []).filter(s => s.id !== sessionId);
+          if (state.trainingAttendance) delete state.trainingAttendance[sessionId];
+          if (state.sessionNotes)       delete state.sessionNotes[sessionId];
+          if (state.trainingBlocks)     delete state.trainingBlocks[sessionId];
+          saveState('training session deleted');
+          render();
+        });
+    }
+
+    function _trainingTabBar() {
+      const act = state.activeTrainingTab || 'planner';
+      const TABS = [['dashboard','Dashboard'],['planner','Planner'],['attendance','Attendance'],['notes','Notes'],['history','History']];
+      return '<div style="display:flex;gap:0;flex-wrap:wrap;margin-bottom:16px;border-bottom:2px solid var(--line)">' +
+        TABS.map(([id, label]) => {
+          const isAct = act === id;
+          return '<button type="button" onclick="setTrainingTab(\'' + id + '\')"' +
+            ' style="padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;border:none;' +
+            'background:none;color:' + (isAct ? 'var(--green)' : 'var(--muted)') + ';' +
+            'border-bottom:2.5px solid ' + (isAct ? 'var(--green)' : 'transparent') + ';' +
+            'margin-bottom:-2px;border-radius:0;white-space:nowrap">' + label + '</button>';
+        }).join('') + '</div>';
+    }
+
+    function _trainingSessionSelector(sessId, mode) {
+      const schedSessions = state.schedule || [];
+      return '<div class="session-card-row" style="margin-bottom:14px">' +
+        schedSessions.map(s => {
+          const isActive = sessId === s.id;
+          let subLine = '';
+          if (mode === 'attendance') {
+            const hasAtt = Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0;
+            subLine = hasAtt ? trainingAttendanceForSession(s.id, state.players).pct + '% attendance' : 'No records yet';
+          } else if (mode === 'notes') {
+            const n = (state.sessionNotes||{})[s.id] || {};
+            subLine = Object.values(n).some(v=>v) ? 'Notes saved' : 'No notes yet';
+          } else {
+            subLine = ((state.trainingBlocks||{})[s.id]?.length||0) + ' blocks';
+          }
+          return '<button class="session-card-tab ' + (isActive?'active':'') + '" type="button" onclick="setTrainingSession(\'' + s.id + '\')">' +
+            '<span class="sc-time">' + esc(s.date || s.type || s.id) + '</span>' +
+            '<strong>' + esc(s.title || s.id) + '</strong>' +
+            '<small style="color:var(--muted);font-size:11px;margin-top:3px;display:block">' + subLine + ' · ' +
+              (s.published ? '<span style="color:var(--green);font-weight:700">Published</span>' : 'Draft') +
+            '</small>' +
+          '</button>';
+        }).join('') +
+      '</div>';
+    }
+
+    function _renderTrainingDashboard() {
+      const el = document.getElementById('coach-training');
+      if (!el) return;
+      const schedSessions = state.schedule || [];
+      const rawId  = state.trainingActiveSession || (schedSessions[0]?.id ?? 'tue');
+      const sessId = schedSessions.find(s => s.id === rawId) ? rawId : (schedSessions[0]?.id ?? 'tue');
+      const key    = sessionKey(sessId);
+      const available = state.players.filter(p => p[key] === 'available');
+      const today     = new Date().toISOString().slice(0,10);
+      const INP = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);width:100%;box-sizing:border-box';
+
+      const upcomingSess = schedSessions
+        .filter(s => s.type === 'Training' && (s.date >= today || !s.date))
+        .sort((a,b) => (a.date||'zzz').localeCompare(b.date||'zzz'))[0];
+      const withData = schedSessions
+        .filter(s => s.type === 'Training' && Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0)
+        .slice(-5);
+      const avgPct = withData.length > 0
+        ? Math.round(withData.reduce((sum,s) => sum + trainingAttendanceForSession(s.id, state.players).pct, 0) / withData.length)
+        : null;
+      const noReplyCount = activeRosterPlayers(state.players).filter(p =>
+        schedSessions.filter(s=>s.type==='Training').every(s => !p[sessionKey(s.id)] || p[sessionKey(s.id)] === 'no-reply')
+      ).length;
+
+      el.innerHTML =
+        '<div class="training-hero">' +
+          '<div><div class="eyebrow">Training Centre</div><h1>Training Dashboard</h1>' +
+          '<p>Session overview, attendance trends and squad management.</p></div>' +
+          '<div class="training-hero-stats">' +
+            '<div class="training-stat"><span class="lbl">Sessions</span><strong>' + schedSessions.filter(s=>s.type==='Training').length + '</strong><small>scheduled</small></div>' +
+            '<div class="training-stat"><span class="lbl">Avg attend</span><strong>' + (avgPct!==null?avgPct+'%':'—') + '</strong><small>recent</small></div>' +
+            '<div class="training-stat"><span class="lbl">Available</span><strong>' + available.length + '</strong><small>next session</small></div>' +
+          '</div>' +
+        '</div>' +
+        _trainingTabBar() +
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">' +
+          '<div class="card" style="padding:14px 16px">' +
+            '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Next training</div>' +
+            (upcomingSess
+              ? '<div style="font-size:15px;font-weight:800">' + esc(upcomingSess.title) + '</div>' +
+                '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + esc(upcomingSess.date||'Date TBC') + (upcomingSess.startTime?' · '+esc(upcomingSess.startTime):'') + '</div>' +
+                (upcomingSess.location?'<div style="font-size:12px;color:var(--muted)">📍 '+esc(upcomingSess.location)+'</div>':'') +
+                '<div style="font-size:12px;color:#34d399;font-weight:700;margin-top:4px">' + available.length + ' confirmed available</div>'
+              : '<div style="font-size:13px;color:var(--muted)">No upcoming session</div>') +
+          '</div>' +
+          '<div class="card" style="padding:14px 16px">' +
+            '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Avg attendance</div>' +
+            (avgPct!==null
+              ? '<div style="font-size:32px;font-weight:800;color:' + (avgPct>=75?'#34d399':avgPct>=50?'#fbbf24':'#f87171') + '">' + avgPct + '%</div>' +
+                '<div style="font-size:12px;color:var(--muted);margin-top:2px">Last ' + withData.length + ' session' + (withData.length!==1?'s':'') + '</div>'
+              : '<div style="font-size:32px;font-weight:800;color:var(--muted)">—</div>' +
+                '<div style="font-size:12px;color:var(--muted);margin-top:2px">Record attendance to track trends</div>') +
+          '</div>' +
+          '<div class="card" style="padding:14px 16px">' +
+            '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">No response</div>' +
+            '<div style="font-size:32px;font-weight:800;color:' + (noReplyCount>0?'#f87171':'#34d399') + '">' + noReplyCount + '</div>' +
+            '<div style="font-size:12px;color:var(--muted);margin-top:2px">Player' + (noReplyCount!==1?'s have':' has') + ' not responded</div>' +
+          '</div>' +
+        '</div>' +
+        (withData.length > 0
+          ? '<div class="card" style="margin-bottom:14px;padding:14px 16px">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Attendance trend — last ' + withData.length + ' sessions</div>' +
+              '<div style="display:flex;gap:8px;align-items:flex-end;height:64px">' +
+                withData.map(s => {
+                  const a = trainingAttendanceForSession(s.id, state.players);
+                  const h = Math.max(8, Math.round(a.pct*0.6));
+                  const c = a.pct>=75?'#34d399':a.pct>=50?'#fbbf24':'#f87171';
+                  return '<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:4px">' +
+                    '<div style="font-size:10px;color:var(--muted)">' + a.pct + '%</div>' +
+                    '<div style="width:100%;height:' + h + 'px;background:' + c + ';border-radius:4px 4px 0 0"></div>' +
+                    '<div style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64px;text-align:center">' + esc((s.title||'').slice(0,8)) + '</div>' +
+                  '</div>';
+                }).join('') +
+              '</div>' +
+            '</div>'
+          : '') +
+        '<div class="card" style="margin-bottom:14px">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+            '<div style="font-size:14px;font-weight:700">Sessions (' + schedSessions.length + ')</div>' +
+            '<button class="btn primary" type="button" style="font-size:12px" onclick="trainingToggleNewSession()">+ New session</button>' +
+          '</div>' +
+          (_trainingNewSessionOpen
+            ? '<div style="margin-bottom:14px;padding:14px;background:var(--panel-2);border-radius:10px;border:1px solid var(--line);display:grid;gap:10px">' +
+                '<div style="font-size:13px;font-weight:700">Create new session</div>' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+                  '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Title *<input id="ts-title" style="' + INP + '" placeholder="Tuesday training"></label>' +
+                  '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Date<input id="ts-date" type="date" style="' + INP + '"></label>' +
+                '</div>' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">' +
+                  '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Start time<input id="ts-start" type="time" style="' + INP + '"></label>' +
+                  '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Finish time<input id="ts-end" type="time" style="' + INP + '"></label>' +
+                  '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Location<input id="ts-location" style="' + INP + '" placeholder="Training ground"></label>' +
+                '</div>' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">' +
+                  '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Age grade<input id="ts-agegrade" style="' + INP + '" placeholder="e.g. Senior"></label>' +
+                  '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Squad<input id="ts-squad" style="' + INP + '" placeholder="e.g. 1st XV"></label>' +
+                  '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Coach<input id="ts-coach" style="' + INP + '" placeholder="Head coach name"></label>' +
+                '</div>' +
+                '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Notes<textarea id="ts-notes" rows="2" style="' + INP + ';resize:vertical" placeholder="Session focus…"></textarea></label>' +
+                '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+                  '<button class="btn" type="button" onclick="trainingToggleNewSession()">Cancel</button>' +
+                  '<button class="btn primary" type="button" onclick="trainingCreateSession()">Create session</button>' +
+                '</div>' +
+              '</div>'
+            : '') +
+          '<div>' +
+            schedSessions.map(s => {
+              const att = trainingAttendanceForSession(s.id, state.players);
+              const hasAtt = Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0;
+              const canDel = !['tue','thu','game'].includes(s.id);
+              return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">' +
+                '<div style="width:34px;height:34px;border-radius:8px;background:var(--panel-2);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">' + (s.type==='Training'?'🏉':'🏆') + '</div>' +
+                '<div style="flex:1;min-width:120px">' +
+                  '<div style="font-size:13px;font-weight:700">' + esc(s.title) + '</div>' +
+                  '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + esc(s.date||'No date') + (s.startTime?' · '+esc(s.startTime):'') + (s.location?' · '+esc(s.location):'') + '</div>' +
+                '</div>' +
+                (hasAtt?'<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(52,211,153,0.12);color:#34d399">'+att.pct+'%</span>':'') +
+                '<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;text-transform:uppercase;background:' + (s.published?'rgba(52,211,153,0.12)':'var(--panel)') + ';color:' + (s.published?'#34d399':'var(--muted)') + '">' + (s.published?'Published':'Draft') + '</span>' +
+                '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="setTrainingSession(\''+s.id+'\');setTrainingTab(\'planner\')">Planner</button>' +
+                '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="setTrainingSession(\''+s.id+'\');setTrainingTab(\'attendance\')">Attendance</button>' +
+                (canDel?'<button class="btn" type="button" style="font-size:11px;padding:3px 7px;color:#f87171;border-color:rgba(248,113,113,0.3)" onclick="trainingDeleteSession(\''+s.id+'\')">✕</button>':'') +
+              '</div>';
+            }).join('') +
+          '</div>' +
+        '</div>';
+    }
+
+    function _renderTrainingAttendance() {
+      const el = document.getElementById('coach-training');
+      if (!el) return;
+      const schedSessions = state.schedule || [];
+      const rawId  = state.trainingActiveSession || (schedSessions[0]?.id ?? 'tue');
+      const sessId = schedSessions.find(s => s.id === rawId) ? rawId : (schedSessions[0]?.id ?? 'tue');
+      const sessObj = schedSessions.find(s => s.id === sessId);
+      const att = trainingAttendanceForSession(sessId, state.players);
+      const players = activeRosterPlayers(state.players);
+      const STATUSES = ['present','late','excused','injured','absent'];
+
+      const statusBtn = (pid, st) => {
+        const cfg = TRAINING_ATTENDANCE_COLORS[st];
+        const isAct = att.attMap[pid] === st;
+        return '<button type="button" onclick="trainingSetAttendance(\''+esc(sessId)+'\',\''+esc(pid)+'\',\''+st+'\')"' +
+          ' style="font-size:11px;padding:3px 8px;border-radius:999px;white-space:nowrap;cursor:pointer;' +
+          'border:1.5px solid '+(isAct?cfg.color:'var(--line)')+';' +
+          'background:'+(isAct?cfg.bg:'transparent')+';' +
+          'color:'+(isAct?cfg.color:'var(--muted)')+';font-weight:'+(isAct?700:400)+'">' +
+          TRAINING_ATTENDANCE_LABELS[st]+'</button>';
+      };
+
+      el.innerHTML =
+        '<div class="training-hero">' +
+          '<div><div class="eyebrow">Training Centre</div><h1>Attendance Register</h1>' +
+          '<p>Mark attendance for each player. Updates save automatically.</p></div>' +
+          '<div class="training-hero-stats">' +
+            '<div class="training-stat"><span class="lbl">Attended</span><strong>'+att.attended+'</strong><small>present+late</small></div>' +
+            '<div class="training-stat"><span class="lbl">Rate</span><strong>'+att.pct+'%</strong><small>of squad</small></div>' +
+            '<div class="training-stat"><span class="lbl">No record</span><strong>'+att.noRecord+'</strong><small>players</small></div>' +
+          '</div>' +
+        '</div>' +
+        _trainingTabBar() +
+        _trainingSessionSelector(sessId, 'attendance') +
+        '<div class="card" style="margin-bottom:14px;padding:12px 16px">' +
+          '<div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px">' + esc(sessObj?.title||'Session') + (sessObj?.date?' · '+esc(sessObj.date):'') + '</div>' +
+          '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;text-align:center">' +
+            STATUSES.map(st => {
+              const cfg = TRAINING_ATTENDANCE_COLORS[st];
+              return '<div><div style="font-size:20px;font-weight:800;color:'+cfg.color+'">'+(att[st]||0)+'</div>' +
+                '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+TRAINING_ATTENDANCE_LABELS[st]+'</div></div>';
+            }).join('') +
+          '</div>' +
+        '</div>' +
+        '<div class="card">' +
+          (players.length === 0
+            ? '<div style="text-align:center;padding:32px 20px;color:var(--muted);font-size:13px">No active players. Add players to record attendance.</div>'
+            : players.map(p => {
+                const cur = att.attMap[p.id];
+                const curCfg = cur ? TRAINING_ATTENDANCE_COLORS[cur] : null;
+                const hist = playerAttendanceHistory(p.id, state.trainingAttendance, schedSessions);
+                return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">' +
+                  '<div style="width:36px;height:36px;border-radius:50%;flex-shrink:0;' +
+                    'background:'+(curCfg?curCfg.bg:'var(--panel-2)')+';' +
+                    'border:2px solid '+(curCfg?curCfg.color:'var(--line)')+';' +
+                    'display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;' +
+                    'color:'+(curCfg?curCfg.color:'var(--muted)')+'">'+
+                    (cur?TRAINING_ATTENDANCE_LABELS[cur].slice(0,2).toUpperCase():'—')+'</div>' +
+                  '<div style="flex:1;min-width:100px">' +
+                    '<div style="font-size:13px;font-weight:700">'+esc(p.name)+'</div>' +
+                    (hist.total>0
+                      ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">'+hist.attended+'/'+hist.total+' sessions · '+hist.pct+'%</div>'
+                      : '<div style="font-size:11px;color:var(--muted);margin-top:1px">No history yet</div>') +
+                  '</div>' +
+                  '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">'+STATUSES.map(st=>statusBtn(p.id,st)).join('')+'</div>' +
+                '</div>';
+              }).join('')) +
+        '</div>';
+    }
+
+    function _renderTrainingNotes() {
+      const el = document.getElementById('coach-training');
+      if (!el) return;
+      const schedSessions = state.schedule || [];
+      const rawId  = state.trainingActiveSession || (schedSessions[0]?.id ?? 'tue');
+      const sessId = schedSessions.find(s => s.id === rawId) ? rawId : (schedSessions[0]?.id ?? 'tue');
+      const sessObj = schedSessions.find(s => s.id === sessId);
+      const notes = normalizeSessionNotes((state.sessionNotes||{})[sessId]);
+      const INPT = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;min-height:80px';
+
+      const noteField = (field, label, placeholder, rows) =>
+        '<label style="display:grid;gap:6px">' +
+          '<span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">'+label+'</span>' +
+          '<textarea id="tn-'+field+'" rows="'+(rows||3)+'" style="'+INPT+'"' +
+            ' oninput="trainingSaveNotes(\''+esc(sessId)+'\',\''+field+'\',this.value)"' +
+            ' placeholder="'+esc(placeholder)+'">'+esc(notes[field])+'</textarea>' +
+        '</label>';
+
+      el.innerHTML =
+        '<div class="training-hero">' +
+          '<div><div class="eyebrow">Training Centre</div><h1>Session Notes</h1>' +
+          '<p>Record objectives, coaching points and post-session review.</p></div>' +
+          '<div class="training-hero-stats">' +
+            '<div class="training-stat"><span class="lbl">Session</span><strong>'+esc((sessObj?.title||'—').slice(0,12))+'</strong><small>&nbsp;</small></div>' +
+            '<div class="training-stat"><span class="lbl">Date</span><strong>'+esc(sessObj?.date||'—')+'</strong><small>&nbsp;</small></div>' +
+            '<div class="training-stat"><span class="lbl">Notes</span><strong>'+(Object.values(notes).some(v=>v)?'Saved':'Empty')+'</strong><small>&nbsp;</small></div>' +
+          '</div>' +
+        '</div>' +
+        _trainingTabBar() +
+        _trainingSessionSelector(sessId, 'notes') +
+        '<div class="card">' +
+          '<div style="font-size:14px;font-weight:800;margin-bottom:16px">'+esc(sessObj?.title||'Session') +
+            (sessObj?.date?'<span style="font-weight:400;font-size:12px;color:var(--muted);margin-left:8px">'+esc(sessObj.date)+'</span>':'')+
+          '</div>' +
+          '<div style="display:grid;gap:16px">' +
+            noteField('objectives',     'Objectives',        'What do you want to achieve this session?',     3) +
+            noteField('equipment',      'Equipment needed',  'Cones, bibs, balls, tackle bags…',              2) +
+            noteField('coachingPoints', 'Coaching points',   'Key technical or tactical focus points…',       4) +
+            noteField('review',         'Post-session review','How did it go? What worked, what didn\'t?',    3) +
+            noteField('followUpActions','Follow-up actions', 'Actions for next session, individual feedback…',3) +
+          '</div>' +
+        '</div>';
+    }
+
+    function _renderTrainingHistory() {
+      const el = document.getElementById('coach-training');
+      if (!el) return;
+      const schedSessions = state.schedule || [];
+      const activePlayers = activeRosterPlayers(state.players);
+
+      const sessionsWithData = schedSessions.filter(s => {
+        const hasBlocks = ((state.trainingBlocks||{})[s.id]||[]).length > 0;
+        const hasAtt    = Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0;
+        const hasNotes  = Object.values((state.sessionNotes||{})[s.id]||{}).some(v=>v);
+        return hasBlocks || hasAtt || hasNotes;
+      });
+
+      const shown = _trainingHistoryMonth
+        ? sessionsWithData.filter(s => (s.date||'').startsWith(_trainingHistoryMonth))
+        : sessionsWithData;
+
+      const months = [...new Set(sessionsWithData.map(s => (s.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
+
+      const pill = (m, label, active) =>
+        '<button type="button" onclick="_trainingHistoryMonth=\''+m+'\';render()"' +
+        ' style="padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;' +
+        'border:1.5px solid '+(active?'var(--green)':'var(--line)')+';' +
+        'background:'+(active?'rgba(16,185,129,0.12)':'var(--panel-2)')+';' +
+        'color:'+(active?'var(--green)':'var(--muted)')+'">'+label+'</button>';
+
+      el.innerHTML =
+        '<div class="training-hero">' +
+          '<div><div class="eyebrow">Training Centre</div><h1>Training History</h1>' +
+          '<p>All sessions with attendance records, plans and notes.</p></div>' +
+          '<div class="training-hero-stats">' +
+            '<div class="training-stat"><span class="lbl">Sessions</span><strong>'+sessionsWithData.length+'</strong><small>with data</small></div>' +
+            '<div class="training-stat"><span class="lbl">Players</span><strong>'+activePlayers.length+'</strong><small>active</small></div>' +
+            '<div class="training-stat"><span class="lbl">Filter</span><strong>'+(_trainingHistoryMonth||'All')+'</strong><small>&nbsp;</small></div>' +
+          '</div>' +
+        '</div>' +
+        _trainingTabBar() +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">' +
+          pill('', 'All', !_trainingHistoryMonth) +
+          months.map(m => {
+            const lbl = new Date(m+'-01T12:00:00').toLocaleDateString('en-GB',{month:'short',year:'numeric'});
+            return pill(m, lbl, _trainingHistoryMonth===m);
+          }).join('') +
+        '</div>' +
+        (shown.length === 0
+          ? '<div class="card" style="text-align:center;padding:36px 20px">' +
+              '<div style="font-size:32px;margin-bottom:10px">📋</div>' +
+              '<div style="font-weight:700;margin-bottom:6px">'+(sessionsWithData.length===0?'No session history yet':'No sessions in this period')+'</div>' +
+              '<div style="font-size:13px;color:var(--muted)">Record attendance or add session blocks to build your history.</div>' +
+            '</div>'
+          : '<div style="display:grid;gap:10px;margin-bottom:14px">' +
+              [...shown].reverse().map(s => {
+                const att = trainingAttendanceForSession(s.id, state.players);
+                const hasAtt    = Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0;
+                const blocksCnt = ((state.trainingBlocks||{})[s.id]||[]).length;
+                const hasNotes  = Object.values((state.sessionNotes||{})[s.id]||{}).some(v=>v);
+                return '<div class="card" style="padding:14px 16px">' +
+                  '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">' +
+                    '<div>' +
+                      '<div style="font-size:14px;font-weight:800">'+esc(s.title)+'</div>' +
+                      '<div style="font-size:12px;color:var(--muted);margin-top:1px">'+esc(s.date||'No date')+(s.startTime?' · '+esc(s.startTime):'')+(s.location?' · '+esc(s.location):'')+'</div>' +
+                    '</div>' +
+                    (hasAtt?'<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(52,211,153,0.12);color:#34d399">'+att.pct+'%</span>':'') +
+                  '</div>' +
+                  '<div style="display:flex;gap:12px;font-size:12px;color:var(--muted)">' +
+                    (hasAtt?'<span>✓ '+att.attended+'/'+att.total+' players</span>':'<span>No attendance</span>') +
+                    (blocksCnt>0?'<span>📋 '+blocksCnt+' block'+(blocksCnt!==1?'s':'')+'</span>':'') +
+                    (hasNotes?'<span>📝 Notes saved</span>':'') +
+                  '</div>' +
+                  (hasAtt&&(att.present||att.late||att.excused||att.injured||att.absent)
+                    ? '<div style="margin-top:8px;display:flex;gap:8px;font-size:11px;flex-wrap:wrap">' +
+                        (att.present?'<span style="color:#34d399">'+att.present+' present</span>':'') +
+                        (att.late?'<span style="color:#fbbf24">'+att.late+' late</span>':'') +
+                        (att.excused?'<span style="color:#60a5fa">'+att.excused+' excused</span>':'') +
+                        (att.injured?'<span style="color:#f87171">'+att.injured+' injured</span>':'') +
+                        (att.absent?'<span style="color:#dc2626">'+att.absent+' absent</span>':'') +
+                      '</div>' : '') +
+                  '<div style="display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">' +
+                    '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="setTrainingSession(\''+s.id+'\');setTrainingTab(\'planner\')">Planner</button>' +
+                    '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="setTrainingSession(\''+s.id+'\');setTrainingTab(\'attendance\')">Attendance</button>' +
+                    '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="setTrainingSession(\''+s.id+'\');setTrainingTab(\'notes\')">Notes</button>' +
+                  '</div>' +
+                '</div>';
+              }).join('') +
+            '</div>') +
+        (activePlayers.length>0 && sessionsWithData.filter(s=>s.type==='Training').length>0
+          ? '<div class="card" style="margin-bottom:14px">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Player attendance summary (all time)</div>' +
+              '<div>' +
+                activePlayers.map(p => {
+                  const hist = playerAttendanceHistory(p.id, state.trainingAttendance, schedSessions);
+                  if (hist.total===0) return '';
+                  const c = hist.pct>=75?'#34d399':hist.pct>=50?'#fbbf24':'#f87171';
+                  return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">' +
+                    '<div style="flex:1;font-size:13px;font-weight:600">'+esc(p.name)+'</div>' +
+                    '<div style="font-size:12px;color:var(--muted)">'+hist.attended+'/'+hist.total+' sessions</div>' +
+                    '<div style="font-size:13px;font-weight:800;color:'+c+';min-width:40px;text-align:right">'+hist.pct+'%</div>' +
+                  '</div>';
+                }).filter(Boolean).join('') +
+              '</div>' +
+            '</div>'
+          : '');
+    }
+
     // ─── PHASE 18 — FIXTURE AVAILABILITY ────────────────────────────────────
 
     const FIXTURE_AVAIL_STATES = {
@@ -13081,6 +13619,9 @@
     // Phase 18 — Fixture availability board UI state
     let _fxAvailBoardId   = null;  // fixtureId of open availability board | null
     let _fxAvailPosFilter = 'all'; // 'all' | position group name
+    // Phase 19 — Training management UI state
+    let _trainingNewSessionOpen = false; // new session form open
+    let _trainingHistoryMonth   = '';    // 'YYYY-MM' | '' = all
 
     // ─── SQUAD SELECTION UI STATE (not persisted — transient per-session) ───────
     let _selectionEditId         = null;  // null = list view | selId = editor open
