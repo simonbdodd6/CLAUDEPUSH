@@ -6477,6 +6477,203 @@
       </div>`;
     }
 
+    // ── Club Command Dashboard ─────────────────────────────────────────────────
+    // Presentation-only summary of club state. Reads existing helpers and state
+    // fields — no new business logic, no AI, no Stripe changes.
+
+    function renderClubCommandDashboard() {
+      const players      = state.players || [];
+      const activePlayers = players.filter(function(p) { return p.id && !p._archived; });
+
+      // ── Availability ──────────────────────────────────────────────────────────
+      const tonightId   = getTonightSessionId();
+      const tonightSess = tonightId ? (state.schedule || []).find(function(s) { return s.id === tonightId; }) : null;
+      const availKey    = sessionKey(tonightId || 'game');
+      const avail       = activePlayers.filter(function(p) { return p[availKey] === 'available'; }).length;
+      const unavail     = activePlayers.filter(function(p) { return p[availKey] === 'unavailable'; }).length;
+      const noReply     = activePlayers.filter(function(p) { return (p[availKey] || 'no-reply') === 'no-reply'; }).length;
+      const totalPl     = activePlayers.length;
+      const availPct    = totalPl ? Math.round(avail / totalPl * 100) : 0;
+      const availLabel  = tonightSess ? (tonightSess.title || 'Training') : 'Next Match';
+      const availCol    = availPct >= 70 ? 'var(--green)' : availPct >= 40 ? '#fbbf24' : '#f87171';
+
+      // ── Upcoming Training ─────────────────────────────────────────────────────
+      const sessions     = state.schedule || [];
+      const tonightBlks  = tonightId ? ((state.trainingBlocks || {})[tonightId] || []).length : 0;
+
+      // ── Upcoming Fixture ──────────────────────────────────────────────────────
+      const mc        = state.matchCentre || {};
+      const todayIso  = new Date().toISOString().slice(0, 10);
+      const phase     = matchCentrePhase();
+      const mcActive  = !!(mc.kickoffDate && mc.kickoffDate >= todayIso);
+      const nextFx    = (state.fixtures || [])
+        .filter(function(f) { return f.date && f.date >= todayIso; })
+        .sort(function(a, b) { return a.date > b.date ? 1 : -1; })[0] || null;
+
+      // ── Unread Messages ───────────────────────────────────────────────────────
+      const legacyUnread = (state.messages || []).filter(function(m) { return m.unread && m.to === 'Coach'; }).length;
+      const totalUnread  = chatUnreadTotal() + legacyUnread;
+
+      // ── Medical ───────────────────────────────────────────────────────────────
+      const medNotes     = state.medicalNotes || {};
+      const injuredCount = players.filter(function(p) {
+        return (p.status === 'injured') || (p.game === 'injured') ||
+               (typeof p.medical === 'string' && p.medical.trim().length > 0);
+      }).length;
+      const flaggedCount = Object.values(medNotes).filter(function(n) { return n && n.condition && String(n.condition).trim(); }).length;
+      const noReturnCount = getInjuredNoReturnDate().length;
+      const medTotal     = injuredCount + flaggedCount;
+
+      // ── Recent Activity ───────────────────────────────────────────────────────
+      const receipts    = getTodayReceipts();
+      const recentFeed  = (state.masterFeed || []).slice(0, 3);
+      const activityItems = receipts.slice(0, 3).map(function(r) {
+        return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink)"><span style="color:var(--green);flex-shrink:0">✓</span>${esc(r)}</div>`;
+      }).concat(
+        recentFeed.slice(0, Math.max(0, 3 - receipts.length)).map(function(f) {
+          return `<div style="font-size:12px;color:var(--ink)">${esc(f.event || '')}${f.detail ? `<span class="muted"> · ${esc(f.detail)}</span>` : ''}</div>`;
+        })
+      );
+
+      // ── Subscription ──────────────────────────────────────────────────────────
+      const isPro     = isProTeam();
+      const isEnt     = isEnterpriseTeam();
+      const onTrial   = isTrialActive();
+      const daysLeft  = trialDaysRemaining();
+      const planLabel = isPro ? 'Pro' : isEnt ? 'Enterprise' : onTrial ? 'Trial' : 'Core';
+      const planCol   = isPro ? 'var(--green)' : isEnt ? '#818cf8' : onTrial ? '#fbbf24' : 'var(--muted)';
+      const canManage = canI('manage_subscriptions');
+
+      // ── Card builder helpers ──────────────────────────────────────────────────
+      function cardHead(label, aside) {
+        return `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted)">${esc(label)}</span>
+          ${aside || ''}
+        </div>`;
+      }
+      function bigNum(n, label, color) {
+        return `<div style="font-size:22px;font-weight:700;color:${color || 'var(--ink)'}">
+          ${n}<span style="font-size:13px;font-weight:400;color:var(--muted)"> ${esc(label)}</span>
+        </div>`;
+      }
+      function allClearLine(text) {
+        return `<div style="display:flex;align-items:center;gap:8px"><span style="color:var(--green)">✓</span><span class="muted" style="font-size:13px">${esc(text)}</span></div>`;
+      }
+      function progressBar(pct, color) {
+        return `<div style="height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin:6px 0 8px">
+          <div style="height:100%;width:${Math.min(100, Math.max(0, pct))}%;background:${color || 'var(--green)'};border-radius:2px;transition:width 0.3s"></div>
+        </div>`;
+      }
+
+      return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:12px;margin-top:4px">
+
+        <!-- Team Availability -->
+        <div class="card" style="padding:14px 16px;cursor:pointer" onclick="setSection('coach','message')">
+          ${cardHead('Team Availability', totalPl ? `<span style="font-size:11px;font-weight:700;color:${availCol}">${availPct}%</span>` : '')}
+          ${totalPl ? `
+            ${bigNum(avail, `/ ${totalPl} · ${availLabel}`)}
+            ${progressBar(availPct, availCol)}
+            <div style="display:flex;gap:10px">
+              ${noReply ? `<span class="muted" style="font-size:12px">${noReply} no reply</span>` : ''}
+              ${unavail ? `<span style="font-size:12px;color:#f87171">${unavail} unavailable</span>` : ''}
+              ${!noReply && !unavail ? `<span style="font-size:12px;color:var(--green)">All responded ✓</span>` : ''}
+            </div>
+          ` : `<p class="muted" style="font-size:13px;margin:0">No players added yet.</p>`}
+        </div>
+
+        <!-- Upcoming Training -->
+        <div class="card" style="padding:14px 16px;cursor:pointer" onclick="setSection('coach','training')">
+          ${cardHead('Upcoming Training')}
+          ${tonightSess ? `
+            <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">${esc(tonightSess.title || 'Training')}</div>
+            <div class="muted" style="font-size:12px;margin-bottom:8px">${esc(tonightSess.date || '')}${tonightBlks ? ` · ${tonightBlks} block${tonightBlks !== 1 ? 's' : ''}` : ''}</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;${tonightSess.published ? 'background:rgba(52,211,153,0.15);color:#34d399' : 'background:rgba(251,191,36,0.15);color:#fbbf24'}">${tonightSess.published ? 'Published' : 'Draft'}</span>
+              ${avail ? `<span class="muted" style="font-size:12px">${avail} confirmed</span>` : ''}
+            </div>
+          ` : sessions.length ? `
+            <div style="display:grid;gap:6px">
+              ${sessions.slice(0, 2).map(function(s) {
+                return `<div style="font-size:13px;color:var(--ink)">${esc(s.title || s.type || 'Session')}<span class="muted"> · ${esc(s.date || '')}</span></div>`;
+              }).join('')}
+            </div>
+          ` : `<p class="muted" style="font-size:13px;margin:0">No sessions scheduled yet.</p>`}
+        </div>
+
+        <!-- Upcoming Fixture -->
+        <div class="card" style="padding:14px 16px;cursor:pointer" onclick="setSection('coach','matchday')">
+          ${cardHead('Upcoming Fixture')}
+          ${mcActive ? `
+            <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">vs ${esc(mc.opposition || 'TBC')}</div>
+            <div class="muted" style="font-size:12px;margin-bottom:6px">${esc(mc.kickoffDate || '')}${mc.kickoffTime ? ' · ' + esc(mc.kickoffTime) : ''}${mc.venue ? ' · ' + esc(mc.venue) : ''}</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              ${phase.msLeft > 0 ? `<span style="font-size:11px;color:#fbbf24;font-weight:600">${esc(matchCountdownStr())}</span>` : ''}
+              ${mc.published ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(52,211,153,0.15);color:#34d399">Squad live</span>` : ''}
+            </div>
+          ` : nextFx ? `
+            <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">vs ${esc(nextFx.opposition || 'TBC')}</div>
+            <div class="muted" style="font-size:12px">${esc(nextFx.date || '')}${nextFx.time ? ' · ' + esc(nextFx.time) : ''}${nextFx.venue ? ' · ' + esc(nextFx.venue) : ''}</div>
+          ` : `${allClearLine('No upcoming fixtures.')}`}
+        </div>
+
+        <!-- Unread Messages -->
+        <div class="card" style="padding:14px 16px;cursor:pointer" onclick="setSection('coach','messages')">
+          ${cardHead('Messages', totalUnread ? `<span style="font-size:11px;font-weight:700;min-width:20px;padding:1px 6px;border-radius:10px;background:#f87171;color:#fff">${totalUnread}</span>` : '')}
+          ${totalUnread ? `
+            ${bigNum(totalUnread, `unread message${totalUnread !== 1 ? 's' : ''}`, '#f87171')}
+          ` : allClearLine('All caught up')}
+        </div>
+
+        <!-- Medical Status -->
+        <div class="card" style="padding:14px 16px;cursor:pointer" onclick="setSection('coach','medical')">
+          ${cardHead('Medical', medTotal ? `<span style="font-size:11px;font-weight:700;color:${injuredCount ? '#f87171' : '#fbbf24'}">${medTotal} flagged</span>` : '')}
+          ${medTotal || noReturnCount ? `
+            ${bigNum(medTotal, `player${medTotal !== 1 ? 's' : ''} flagged`, injuredCount ? '#f87171' : '#fbbf24')}
+            <div style="display:flex;flex-direction:column;gap:3px;margin-top:6px">
+              ${injuredCount ? `<span class="muted" style="font-size:12px">${injuredCount} injured</span>` : ''}
+              ${flaggedCount ? `<span class="muted" style="font-size:12px">${flaggedCount} condition noted</span>` : ''}
+              ${noReturnCount ? `<span style="font-size:12px;color:#fbbf24">${noReturnCount} without return date</span>` : ''}
+            </div>
+          ` : allClearLine('All players fit')}
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="card" style="padding:14px 16px">
+          ${cardHead('Recent Activity')}
+          ${activityItems.length ? `<div style="display:flex;flex-direction:column;gap:5px">${activityItems.join('')}</div>`
+            : `<p class="muted" style="font-size:13px;margin:0">No activity yet today.</p>`}
+        </div>
+
+        <!-- Subscription Status -->
+        <div class="card" style="padding:14px 16px">
+          ${cardHead('Subscription', `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.06);color:${planCol}">${esc(planLabel)}</span>`)}
+          ${isPro ? `
+            <div style="font-size:13px;color:var(--ink);margin-bottom:8px">You're on the <strong>Pro plan</strong> — all features unlocked.</div>
+            ${canManage ? `<button class="btn" type="button" onclick="settingsManageBilling()" style="font-size:12px;min-height:30px;padding:0 12px">Manage billing</button>` : ''}
+          ` : isEnt ? `
+            <div style="font-size:13px;color:var(--ink)">You're on the <strong>Enterprise plan</strong>.</div>
+          ` : onTrial ? `
+            <div style="font-size:13px;color:var(--ink);margin-bottom:8px">${daysLeft !== null ? `<strong>${daysLeft}</strong> day${daysLeft !== 1 ? 's' : ''} left in your free trial.` : 'Free trial active.'}</div>
+            ${canManage ? `<button class="btn primary" type="button" onclick="upgradeFromFeature('dashboard_sub')" style="font-size:12px;min-height:30px;padding:0 12px">Upgrade to Pro</button>` : `<span class="muted" style="font-size:12px">Ask your admin to upgrade</span>`}
+          ` : `
+            <div style="font-size:13px;color:var(--ink);margin-bottom:8px">You're on the <strong>Core plan</strong>. Unlock AI, video and more.</div>
+            ${canManage ? `<button class="btn primary" type="button" onclick="upgradeFromFeature('dashboard_sub')" style="font-size:12px;min-height:30px;padding:0 12px">Upgrade to Pro</button>` : `<span class="muted" style="font-size:12px">Ask your admin to upgrade</span>`}
+          `}
+        </div>
+
+        ${onTrial && daysLeft !== null ? `
+        <!-- Trial Remaining (only when on trial) -->
+        <div class="card" style="padding:14px 16px;border-color:rgba(251,191,36,0.3)">
+          ${cardHead('Trial Remaining', `<span style="font-size:11px;font-weight:700;color:#fbbf24">${daysLeft}d</span>`)}
+          ${bigNum(daysLeft, `day${daysLeft !== 1 ? 's' : ''} remaining`, 'var(--ink)')}
+          ${progressBar(Math.min(100, Math.max(0, 100 - (daysLeft / 14) * 100)), '#fbbf24')}
+          ${canManage ? `<button class="btn" type="button" onclick="upgradeFromFeature('trial_banner')" style="font-size:12px;min-height:30px;padding:0 12px;border-color:rgba(251,191,36,0.5);color:#fbbf24">Upgrade before trial ends</button>` : `<span class="muted" style="font-size:12px">Ask your admin to upgrade to Pro</span>`}
+        </div>
+        ` : ''}
+
+      </div>`;
+    }
+
     function renderCoachOverview() {
       if (state.features?.coachTimeline      && isCoach()) { renderCoachTimeline();        return; }
       if (state.features?.executiveDashboard && isCoach()) { renderExecutiveDashboard();   return; }
@@ -6565,6 +6762,10 @@
               </button>`).join('')}
             </div>
           </div>` : ''}
+
+          <!-- ── Club Command Dashboard ──────────────────────── -->
+          <div class="mctl-section-label">Club overview</div>
+          ${renderClubCommandDashboard()}
 
           <!-- ── NOW ───────────────────────────────────────────── -->
           ${nowItems.length ? `
