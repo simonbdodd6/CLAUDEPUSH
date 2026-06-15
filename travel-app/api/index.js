@@ -224,7 +224,8 @@ export function createTravelApi(options = {}) {
   async function getTimeline(token) {
     const id = travellerFor(token);
     const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
-    return { days: presentTimeline(events) };
+    const trip = await getCurrentTrip(id);
+    return { days: presentTimeline(events, { tripStartDate: trip?.startDate ?? null, destination: trip?.destination ?? null }) };
   }
 
   // Generate deterministic trip-readiness candidates and route the high-impact

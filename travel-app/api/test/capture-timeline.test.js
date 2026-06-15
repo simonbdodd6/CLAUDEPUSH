@@ -19,9 +19,16 @@ async function signedInApp(dir = freshDir()) {
 // Fields a consumer DTO must NEVER expose (raw platform ids / backend terms).
 const FORBIDDEN_KEYS = ['sourceEntityId', 'sourcePlatform', 'idempotencyKey', 'eventName', 'sequence', 'recordedAt', 'effectiveStatus', 'superseded', 'metadata', 'eventType', 'travellerIdentityId'];
 
+// A premium consumer entry (M24.0) — clean fields only, no backend leakage.
+const ENTRY_KEYS = ['accent', 'detail', 'id', 'kind', 'partOfDay', 'photoRef', 'subtitle', 'time', 'timestamp', 'title'];
+
+function assertNoBackendLeak(obj) {
+  for (const k of FORBIDDEN_KEYS) assert.ok(!(k in obj), `must not expose "${k}"`);
+}
+
 function assertCleanEntry(entry) {
-  for (const k of FORBIDDEN_KEYS) assert.ok(!(k in entry), `entry must not expose "${k}"`);
-  assert.deepEqual(Object.keys(entry).sort(), ['detail', 'id', 'kind', 'photoRef', 'time', 'timestamp', 'title']);
+  assertNoBackendLeak(entry);
+  assert.deepEqual(Object.keys(entry).sort(), ENTRY_KEYS);
 }
 
 test('capture: journal entry returns a clean DTO and appears on the timeline', async () => {
@@ -44,7 +51,12 @@ test('capture: photo reference returns kind photo with the reference (no binary)
   assert.equal(capture.kind, 'photo');
   assert.equal(capture.photoRef, 'photo_abc');
   assert.equal(capture.time, '18:05');
-  assertCleanEntry({ id: capture.id, kind: capture.kind, title: capture.title, detail: capture.detail, time: capture.time, timestamp: capture.timestamp, photoRef: capture.photoRef });
+  // premium fields present + emotional framing; capture adds `day`, no backend leak
+  assert.equal(capture.accent, 'sunset');
+  assert.equal(capture.partOfDay, 'Evening');
+  assert.equal(capture.subtitle, 'Evening · Photo memory');
+  assertNoBackendLeak(capture);
+  assert.deepEqual(Object.keys(capture).sort(), [...ENTRY_KEYS, 'day'].sort());
 });
 
 test('capture requires a note or a photo', async () => {

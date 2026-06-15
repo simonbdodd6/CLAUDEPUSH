@@ -24,20 +24,38 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | POST | `/capture` | `{ note?, photoRef?, day?, timestamp? }` (note **or** photoRef required) | `{ capture: Entry }` | timeline (journal_entry / photo_imported) |
 | GET | `/timeline` | — | `{ days: [Day] }` | timeline-platform |
 
-### Consumer DTOs (M23.3)
+### Consumer DTOs (M23.3 · premium experience M24.0)
 
 The app never sees raw platform records. `/timeline` and `/capture` return
-clean, app-facing shapes (no `sourceEntityId` / `sourcePlatform` /
+clean, **premium** app-facing shapes (no `sourceEntityId` / `sourcePlatform` /
 `idempotencyKey` / `eventName` / `sequence` / `metadata` / `eventType`):
 
 ```
-Day   = { date: "2026-07-11", title: "Saturday, 11 July 2026", entries: [Entry] }
-Entry = { id, kind, title, detail, time: "09:30", timestamp, photoRef|null }
+Day = {
+  date:    "2026-07-12",            // sort/group key
+  title:   "Sunday, 12 July 2026",  // full human date
+  label:   "Day 2" | null,          // trip-relative (deterministic from trip start)
+  story:   "Day 2 in Bali",         // emotional one-line headline for the memory card
+  summary: "2 moments · 2 photos",  // gentle count line
+  entries: [Entry],
+}
+Entry = {
+  id, kind,
+  accent:    "sunset",              // semantic colour/symbol token (app maps it; no hex)
+  title:     "Echo Beach sunset",   // human (journal/photo note becomes the title)
+  subtitle:  "Evening · Photo memory",
+  detail:    "…",
+  partOfDay: "Morning|Afternoon|Evening|Night",
+  time:      "18:10",
+  timestamp, photoRef|null,
+}
 ```
 
 - `kind` ∈ `trip | itinerary | activity | photo | journal | memory | destination | other`.
-- `title` is human ("Trip created"; for journal/photo the note becomes the title).
-- `days` are newest-first; `entries` within a day are chronological.
+- `accent` ∈ `sky | slate | forest | sunset | dusk | ocean | sand` — the app maps the token to a colour/symbol (no styling leaks from the backend).
+- `story`/`label` are framed relative to the trip when known ("Arrival in Bali", "Day 3 in Bali") and fall back gracefully ("A moment to remember") with no trip.
+- `days` are newest-first; `entries` within a day are chronological (the day reads as a story).
+- `/capture` returns one `Entry` plus a `day` field.
 - Photos are **references only** (`photoRef`) — the binary stays on device; EXIF
   GPS must be stripped client-side.
 | GET | `/trip-readiness` | — | `{ candidates, approvalRequests }` | context → insight → action → orchestrator → approval |
