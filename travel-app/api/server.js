@@ -49,6 +49,7 @@ export function createHttpServer(apiOptions = {}) {
     if (m === 'GET' && pathname === '/journey') return api.getJourney(token);
     if (m === 'GET' && pathname === '/journey/replay') return api.getJourneyReplay(token);
     if (m === 'GET' && pathname === '/globe') return api.getGlobe(token);
+    if (m === 'GET' && pathname === '/world') return api.getWorld(token);
     if (m === 'GET' && pathname === '/trip-readiness') return api.getTripReadiness(token);
     if (m === 'GET' && pathname === '/approvals') return api.getApprovals(token);
     const approvalMatch = pathname.match(/^\/approvals\/([^/]+)$/);

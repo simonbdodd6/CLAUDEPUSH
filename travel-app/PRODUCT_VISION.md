@@ -701,6 +701,53 @@ implemented**.
 - **Tier:** V2.
 - **Possible API:** Internal (compose across trips).
 
+## P. Lifetime World deepeners (added M28)
+
+The Lifetime World Engine (`/world`) aggregates every visited place into
+countries/regions/islands/cities, eras, connections, heat and statistics. These
+would make the lifetime view authoritative and richer — still **not implemented**.
+
+### Authoritative geo classification (gazetteer / Natural Earth / OSM, offline)
+- **Why:** Accurate country/region/island/city typing and continent mapping for
+  every place (raise coverage; correct islands vs cities), region-granularity only.
+- **Complexity:** Medium (curate/import an offline geo dataset).
+- **Tier:** V2.
+- **Possible API:** Offline gazetteer; Natural Earth / OSM extracts.
+
+### Trip-bounded lifetime aggregation
+- **Why:** Separate concatenated trips so cross-trip transitions never create
+  phantom legs and durations stay trip-accurate (already mitigated; a tripId on
+  markers would make it exact).
+- **Complexity:** Low–Medium (thread tripId through journey → globe → world).
+- **Tier:** V2.
+- **Possible API:** Internal.
+
+### World heat map & choropleth rendering (client)
+- **Why:** Render the normalised heat values as a country/region choropleth and
+  density overlays — the data layer is ready; this is rendering.
+- **Complexity:** Medium (client GL/MapKit).
+- **Tier:** V2 (UI; no new API).
+
+### Continents, milestones & "world progress"
+- **Why:** "You've visited 12% of the world's countries", continent badges,
+  bucket-list progress — gamified, deterministic from the statistics.
+- **Complexity:** Low (compose existing stats + a static country/continent set).
+- **Tier:** V2.
+- **Possible API:** Internal + static reference data.
+
+### Spend & carbon per country (with evidence)
+- **Why:** "Where you spent most" and a deterministic travel-carbon estimate per
+  flight/ferry leg — only when evidence exists.
+- **Complexity:** Medium (spend data; emission factors per transport/distance).
+- **Tier:** V3.
+- **Possible API:** Manual/Wallet spend; static emission-factor tables + distances.
+
+### Shareable lifetime world card/poster
+- **Why:** Export a personal world map/poster ("my world so far") — distribution.
+- **Complexity:** Medium (deterministic render of the world DTO).
+- **Tier:** V3.
+- **Possible API:** Client/server render.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

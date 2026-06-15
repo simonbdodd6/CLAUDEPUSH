@@ -31,6 +31,7 @@ import { buildPredictions } from './predictions.js';
 import { buildJourney, normalizeMove } from './journey.js';
 import { buildJourneyReplay } from './journey-replay.js';
 import { buildGlobe } from './globe.js';
+import { buildWorld } from './world.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -304,6 +305,15 @@ export function createTravelApi(options = {}) {
     return buildGlobe(events, ownedTrips);
   }
 
+  // Lifetime World Engine — the deterministic data layer for every place the
+  // traveller has ever visited (countries, eras, connections, heat, stats).
+  async function getWorld(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildWorld(events, ownedTrips);
+  }
+
   // Predictive Travel Companion — gently anticipates what the traveller will
   // likely enjoy next, from deterministic evidence only.
   async function getPredictions(token) {
@@ -424,6 +434,7 @@ export function createTravelApi(options = {}) {
     getJourney,
     getJourneyReplay,
     getGlobe,
+    getWorld,
     getTripReadiness,
     getApprovals,
     resolveApproval,

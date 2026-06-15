@@ -34,6 +34,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/journey` | — | `{ route, stops, segments, chapters, basedOn }` | journey visualisation (ordered replayable route) |
 | GET | `/journey/replay` | — | `{ replay, timeline, chapters, capabilities, controls, basedOn }` | interactive journey replay (timeline + controls) |
 | GET | `/globe` | — | `{ globe, markers, arcs, cameraMoves, replayFrames, highlights, replay, filters, basedOn }` | 3D globe data layer |
+| GET | `/world` | — | `{ profile, countries, regions, islands, cities, eras, connections, repeatVisits, favouriteReturns, longestGaps, heat, statistics, worldStatistics, filters, basedOn }` | lifetime world data layer |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -376,6 +377,38 @@ Highlight = { id, kind, refType:"marker|arc", refId, label, value, unit? }
 
 Filters return id ranges so the UI can replay the whole trip or filter to one
 country / transport / activity / year / favourites-only / longest journeys — all
+deterministic, offline-first, no backend leakage.
+
+### Lifetime World DTO (M28)
+
+The deterministic data layer for a traveller's **entire visited world** (not one
+trip) — **no graphics, no AI**. Aggregates every place ever visited into
+countries / regions / islands / cities, plus travel eras, world connections, heat
+values and lifetime statistics. Built on `/globe` + shared enrichment.
+
+```
+World = {
+  profile: { firstVisit, latestVisit, span, totalCountries, totalPlaces, mostVisitedCountry, favouritePlace },
+  countries|regions|islands|cities: [VisitedLocation],
+  eras: [{ year, countries, countryCount, placeCount, memoryCount, photoCount, trips, span }],
+  connections: [{ id, kind:"flight|ferry|land", level:"country|island|region|place", from, to, count, transports, totalKm }],
+  repeatVisits: [{ place, country, visitCount, firstVisit, latestVisit }],
+  favouriteReturns: [...], longestGaps: [{ place, gapDays, from, to }],
+  heat: { countryIntensity, cityIntensity, islandIntensity, revisitIntensity, memoryDensity,
+          emotionalSignificance, photographyDensity, activityDensity },   // each [{ name, value:0..100 }]
+  statistics: { totalCountries, totalCities, totalIslands, continents, yearsTravelled,
+                totalTransportLegs, totalFlights, totalFerries, totalJourneys, totalPlaces, totalMemories, totalPhotos, totalDays },
+  worldStatistics: [{ id, label, value }],
+  filters: { byYear, byContinent, byCountry, byCompanion, byActivity, bySeason, favourites, firstVisits, latestVisits },
+}
+VisitedLocation = { type, name, country, places, firstVisit, latestVisit, visitCount, totalDays,
+  memoryCount, photoCount, companions:[{name,count}], favouriteSeason, favouriteMemories,
+  coordinates, confidence, isFavourite, highlightScore, heat:{ intensity, revisitIntensity,
+  memoryDensity, photographyDensity, activityDensity, emotionalSignificance } }
+```
+
+`totalDays` is distinct memory-days; `connections` include only evidenced legs
+(flights/ferries), no self-loops; heat arrays are normalised 0–100. All
 deterministic, offline-first, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
