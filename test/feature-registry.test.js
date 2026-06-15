@@ -133,13 +133,15 @@ const allFeatures = proScope.getAllFeatures();
 
 // ── 1. Registry size ──────────────────────────────────────────────────────────
 
-test('Registry contains exactly 14 features (4 active + 10 coming soon)', () => {
-  assert.equal(allFeatures.length, 14,
-    'Expected 14 features; got ' + allFeatures.length + ': ' + allFeatures.map(f => f.id).join(', '));
-  const active    = allFeatures.filter(f => !f.comingSoon);
-  const comingSoon = allFeatures.filter(f => f.comingSoon);
-  assert.equal(active.length,    4,  'Expected 4 active features');
-  assert.equal(comingSoon.length, 10, 'Expected 10 coming-soon features');
+test('Registry contains exactly 22 features (8 core + 4 active pro + 10 coming soon)', () => {
+  assert.equal(allFeatures.length, 22,
+    'Expected 22 features; got ' + allFeatures.length + ': ' + allFeatures.map(f => f.id).join(', '));
+  const coreFeatures = allFeatures.filter(f => f.minimumPlan === 'core');
+  const activePro    = allFeatures.filter(f => !f.comingSoon && f.minimumPlan !== 'core');
+  const comingSoon   = allFeatures.filter(f => f.comingSoon);
+  assert.equal(coreFeatures.length, 8,  'Expected 8 core features');
+  assert.equal(activePro.length,    4,  'Expected 4 active pro features');
+  assert.equal(comingSoon.length,   10, 'Expected 10 coming-soon features');
 });
 
 // ── 2. No duplicate IDs ───────────────────────────────────────────────────────
@@ -175,7 +177,10 @@ test('All minimumPlan values are valid plan keys', () => {
 // ── 5. All categories are non-empty strings ────────────────────────────────────
 
 test('All category values are non-empty strings from the known set', () => {
-  const VALID_CATS = new Set(['intelligence', 'content', 'analytics', 'communication']);
+  const VALID_CATS = new Set([
+    'coaching', 'intelligence', 'video', 'analytics',
+    'communication', 'player_development', 'club_intelligence',
+  ]);
   for (const f of allFeatures) {
     assert.ok(typeof f.category === 'string' && f.category.length > 0,
       f.id + ' has empty category');
@@ -215,10 +220,10 @@ test('getFeature("unknown_feature") returns null', () => {
 
 // ── 9. getAllFeatures returns a snapshot ──────────────────────────────────────
 
-test('getAllFeatures() returns all 14 entries as an independent array', () => {
+test('getAllFeatures() returns all 22 entries as an independent array', () => {
   const a = proScope.getAllFeatures();
   const b = proScope.getAllFeatures();
-  assert.equal(a.length, 14);
+  assert.equal(a.length, 22);
   assert.notEqual(a, b, 'getAllFeatures should return a new array each call');
 });
 
@@ -380,9 +385,14 @@ test('All Phase 8 helpers and registry are defined in index.html', () => {
   assert.ok(html.includes('function getAllFeatures('),    'getAllFeatures must be defined');
   assert.ok(html.includes('function getLockedFeatures('), 'getLockedFeatures must be defined');
   assert.ok(html.includes('function getAvailableFeatures('), 'getAvailableFeatures must be defined');
-  // All 14 feature IDs are registered
+  // All 22 feature IDs are registered
   const expectedIds = [
+    // Core
+    'availability', 'match_centre', 'training_planner', 'player_database',
+    'fixtures', 'medical', 'messaging', 'video_library',
+    // Active Pro
     'ai_intelligence', 'unlimited_videos', 'advanced_analytics', 'unlimited_push',
+    // Coming Soon
     'sc_ai', 'player_dev_ai', 'match_prep_intelligence', 'coach_dna',
     'season_intelligence', 'club_intelligence', 'digital_twin',
     'ai_assistant', 'recruitment_intelligence', 'video_intelligence',

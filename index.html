@@ -9288,6 +9288,8 @@
             </div>
           </div>
 
+          ${renderFeatureDiscovery()}
+
           <!-- Coach account -->
           <div class="card">
             <h2 style="margin-bottom:4px">Coach account</h2>
@@ -12576,10 +12578,83 @@
     function planLevel(plan) { return PLAN_LEVEL[plan] ?? 0; }
 
     // ── Feature Registry ──────────────────────────────────────────────────────
-    // Each entry describes one capability: who can use it, what to show when
-    // it is locked, and whether it is already live or coming soon.
+    // Single source of truth for all features: Core, Pro premium, and coming soon.
+    // UI code must call canUseFeature() or read this registry — never check plan directly.
     const FEATURE_REGISTRY = [
-      // Active premium features
+      // ── Core features — available on all plans ──────────────────────────────
+      {
+        id: 'availability',
+        displayName: 'Availability',
+        description: 'Squad availability tracking and player check-ins before every session.',
+        minimumPlan: 'core',
+        category: 'coaching',
+        upgradeMessage: 'Availability is included in all Coach\'s Eye plans.',
+        section: 'overview',
+      },
+      {
+        id: 'match_centre',
+        displayName: 'Match Centre',
+        description: 'Match day management, team sheets and live substitution tracking.',
+        minimumPlan: 'core',
+        category: 'coaching',
+        upgradeMessage: 'Match Centre is included in all Coach\'s Eye plans.',
+        section: 'match',
+      },
+      {
+        id: 'training_planner',
+        displayName: 'Training Planner',
+        description: 'Session planning, drill libraries and attendance tracking.',
+        minimumPlan: 'core',
+        category: 'coaching',
+        upgradeMessage: 'Training Planner is included in all Coach\'s Eye plans.',
+        section: 'training',
+      },
+      {
+        id: 'player_database',
+        displayName: 'Player Database',
+        description: 'Complete squad register with positions, ratings and profile photos.',
+        minimumPlan: 'core',
+        category: 'coaching',
+        upgradeMessage: 'Player Database is included in all Coach\'s Eye plans.',
+        section: 'players',
+      },
+      {
+        id: 'fixtures',
+        displayName: 'Fixtures',
+        description: 'Season schedule, results and league table.',
+        minimumPlan: 'core',
+        category: 'coaching',
+        upgradeMessage: 'Fixtures is included in all Coach\'s Eye plans.',
+        section: 'fixtures',
+      },
+      {
+        id: 'medical',
+        displayName: 'Medical Records',
+        description: 'Injury tracking, medical clearances and return-to-play monitoring.',
+        minimumPlan: 'core',
+        category: 'coaching',
+        upgradeMessage: 'Medical Records is included in all Coach\'s Eye plans.',
+        section: 'medical',
+      },
+      {
+        id: 'messaging',
+        displayName: 'Team Messaging',
+        description: 'Direct messaging between coaches and players.',
+        minimumPlan: 'core',
+        category: 'communication',
+        upgradeMessage: 'Team Messaging is included in all Coach\'s Eye plans.',
+        section: 'chat',
+      },
+      {
+        id: 'video_library',
+        displayName: 'Video Library',
+        description: 'Training clip library with up to 10 clips on the Core plan.',
+        minimumPlan: 'core',
+        category: 'video',
+        upgradeMessage: 'Upgrade to Pro to store up to 100 training clips instead of 10.',
+        section: 'training',
+      },
+      // ── Active premium features ─────────────────────────────────────────────
       {
         id: 'ai_intelligence',
         displayName: 'AI Intelligence',
@@ -12587,14 +12662,16 @@
         minimumPlan: 'pro',
         category: 'intelligence',
         upgradeMessage: 'Get AI-powered squad insights, form analysis and match preparation.',
+        section: 'overview',
       },
       {
         id: 'unlimited_videos',
         displayName: 'Unlimited Video Storage',
         description: 'Store up to 100 training clips directly in your club library.',
         minimumPlan: 'pro',
-        category: 'content',
+        category: 'video',
         upgradeMessage: 'Upgrade to Pro to store up to 100 training clips instead of 10.',
+        section: 'training',
       },
       {
         id: 'advanced_analytics',
@@ -12612,13 +12689,13 @@
         category: 'communication',
         upgradeMessage: 'Upgrade to Pro for unlimited push notifications to your squad.',
       },
-      // Coming soon — registered here for catalogue completeness; not yet implemented
+      // ── Coming soon — registered for catalogue completeness; not yet implemented
       {
         id: 'sc_ai',
         displayName: 'Strength and Conditioning AI',
         description: 'AI-powered load management, physical performance and injury risk tracking.',
         minimumPlan: 'pro',
-        category: 'intelligence',
+        category: 'player_development',
         upgradeMessage: 'Coming soon to Pro.',
         comingSoon: true,
       },
@@ -12627,7 +12704,7 @@
         displayName: 'Individual Player Development AI',
         description: 'Personalised development pathways and progress tracking for each player.',
         minimumPlan: 'pro',
-        category: 'intelligence',
+        category: 'player_development',
         upgradeMessage: 'Coming soon to Pro.',
         comingSoon: true,
       },
@@ -12663,7 +12740,7 @@
         displayName: 'Club Intelligence',
         description: 'Cross-team analytics, club-wide trends and long-term development data.',
         minimumPlan: 'enterprise',
-        category: 'analytics',
+        category: 'club_intelligence',
         upgradeMessage: 'Coming soon to Enterprise.',
         comingSoon: true,
       },
@@ -12672,7 +12749,7 @@
         displayName: 'Digital Twin',
         description: 'A live computational model of your squad for simulation and planning.',
         minimumPlan: 'enterprise',
-        category: 'intelligence',
+        category: 'club_intelligence',
         upgradeMessage: 'Coming soon to Enterprise.',
         comingSoon: true,
       },
@@ -12690,7 +12767,7 @@
         displayName: 'Recruitment Intelligence',
         description: 'AI-driven player profiling, scouting reports and squad gap analysis.',
         minimumPlan: 'enterprise',
-        category: 'intelligence',
+        category: 'club_intelligence',
         upgradeMessage: 'Coming soon to Enterprise.',
         comingSoon: true,
       },
@@ -12699,11 +12776,22 @@
         displayName: 'Video Intelligence',
         description: 'Automated video tagging, clip highlights and pattern recognition.',
         minimumPlan: 'pro',
-        category: 'intelligence',
+        category: 'video',
         upgradeMessage: 'Coming soon to Pro.',
         comingSoon: true,
       },
     ];
+
+    // ── Category metadata — display labels and render order ───────────────────
+    const CATEGORY_META = {
+      coaching:           { label: 'Coaching',          order: 1 },
+      intelligence:       { label: 'AI Intelligence',   order: 2 },
+      video:              { label: 'Video',              order: 3 },
+      analytics:          { label: 'Analytics',          order: 4 },
+      communication:      { label: 'Communication',      order: 5 },
+      player_development: { label: 'Player Development', order: 6 },
+      club_intelligence:  { label: 'Club Intelligence',  order: 7 },
+    };
 
     function getFeature(id) {
       return FEATURE_REGISTRY.find(f => f.id === id) || null;
@@ -12758,6 +12846,112 @@
         <p class="muted" style="font-size:13px;margin:0 0 16px">${esc(msg)}</p>
         ${upgradeBtn}
       </div>`;
+    }
+
+    // ── Feature Discovery Centre ──────────────────────────────────────────────
+
+    let _featDiscoveryFilter = 'all';
+
+    function discoveryFilteredFeatures(filter) {
+      const all = getAllFeatures();
+      const level = planLevel(isEnterpriseTeam() ? 'enterprise' : isProTeam() ? 'pro' : 'core');
+      if (filter === 'available')   return all.filter(function(f) { return !f.comingSoon && planLevel(f.minimumPlan) <= level; });
+      if (filter === 'locked')      return all.filter(function(f) { return !f.comingSoon && planLevel(f.minimumPlan) > level; });
+      if (filter === 'coming_soon') return all.filter(function(f) { return f.comingSoon; });
+      if (filter === 'ai')          return all.filter(function(f) { return f.category === 'intelligence' || f.category === 'player_development' || f.category === 'club_intelligence'; });
+      if (filter === 'core')        return all.filter(function(f) { return f.minimumPlan === 'core'; });
+      return all;
+    }
+
+    function groupFeaturesByCategory(features) {
+      const groups = {};
+      for (const f of features) {
+        if (!groups[f.category]) groups[f.category] = [];
+        groups[f.category].push(f);
+      }
+      return Object.entries(groups)
+        .sort(function(a, b) { return (CATEGORY_META[a[0]]?.order ?? 99) - (CATEGORY_META[b[0]]?.order ?? 99); })
+        .map(function(e) { return { cat: e[0], label: CATEGORY_META[e[0]]?.label || e[0], feats: e[1] }; });
+    }
+
+    function renderFeatureCard(feature) {
+      const level = planLevel(isEnterpriseTeam() ? 'enterprise' : isProTeam() ? 'pro' : 'core');
+      const isAvailable = planLevel(feature.minimumPlan) <= level;
+      const isLocked = !isAvailable && !feature.comingSoon;
+      const planLabel = feature.minimumPlan === 'enterprise' ? 'ENTERPRISE' : feature.minimumPlan === 'pro' ? 'PRO' : 'CORE';
+      const badge = feature.comingSoon
+        ? `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);color:#fbbf24">SOON</span>`
+        : isAvailable
+          ? `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(52,211,153,0.15);color:#34d399">ACTIVE</span>`
+          : `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(99,102,241,0.15);color:#818cf8">${planLabel}</span>`;
+      const lockIcon = isLocked ? `<span style="font-size:12px;opacity:0.5;position:absolute;top:10px;right:10px">🔒</span>` : '';
+      const opacity = feature.comingSoon ? 'opacity:0.65;' : '';
+      const cursor  = feature.comingSoon ? 'cursor:default;' : 'cursor:pointer;';
+      return `<div onclick="featureCardClick('${feature.id}')" style="position:relative;padding:14px 16px;background:var(--panel-2);border-radius:10px;border:1px solid var(--line);${opacity}${cursor}">
+        ${lockIcon}
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <span style="font-size:13px;font-weight:600;flex:1;color:var(--ink)">${esc(feature.displayName)}</span>
+          ${badge}
+        </div>
+        <p class="muted" style="font-size:12px;margin:0;line-height:1.45">${esc(feature.description)}</p>
+      </div>`;
+    }
+
+    function renderDiscoveryCards() {
+      const features = discoveryFilteredFeatures(_featDiscoveryFilter);
+      if (!features.length) {
+        return `<p class="muted" style="text-align:center;padding:24px;font-size:13px">No features match this filter.</p>`;
+      }
+      const groups = groupFeaturesByCategory(features);
+      return groups.map(function(g) {
+        return `<div style="margin-bottom:18px">
+          <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);margin:0 0 8px">${esc(g.label)}</p>
+          <div style="display:grid;gap:7px">${g.feats.map(function(f) { return renderFeatureCard(f); }).join('')}</div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderFeatureDiscovery() {
+      if (!isCoach()) return '';
+      const filters = [
+        { id: 'all',         label: 'All' },
+        { id: 'available',   label: 'Available' },
+        { id: 'locked',      label: 'Locked' },
+        { id: 'coming_soon', label: 'Coming Soon' },
+        { id: 'ai',          label: 'AI' },
+        { id: 'core',        label: 'Core' },
+      ];
+      const filterBtns = filters.map(function(f) {
+        return `<button class="btn${_featDiscoveryFilter === f.id ? ' primary' : ''}" type="button" data-feat-filter="${f.id}" onclick="featureDiscoveryFilter('${f.id}')" style="font-size:11px;min-height:28px;padding:0 10px;border-radius:14px">${esc(f.label)}</button>`;
+      }).join('');
+      return `<div class="card" style="border-color:rgba(255,255,255,0.07)">
+        <h2 style="margin-bottom:4px">Feature Catalogue</h2>
+        <p class="muted" style="font-size:12px;margin-bottom:14px">Everything available in Coach's Eye — Core, Pro and coming soon.</p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">${filterBtns}</div>
+        <div id="feat-discovery-cards">${renderDiscoveryCards()}</div>
+      </div>`;
+    }
+
+    function featureDiscoveryFilter(filter) {
+      _featDiscoveryFilter = filter;
+      document.querySelectorAll('[data-feat-filter]').forEach(function(btn) {
+        btn.classList.toggle('primary', btn.dataset.featFilter === filter);
+      });
+      const el = document.getElementById('feat-discovery-cards');
+      if (el) el.innerHTML = renderDiscoveryCards();
+    }
+
+    function featureCardClick(id) {
+      const f = getFeature(id);
+      if (!f) return;
+      if (f.comingSoon) { showToast(esc(f.displayName) + ' — coming soon to Coach\'s Eye'); return; }
+      if (!canUseFeature(id)) {
+        if (canI('manage_subscriptions')) { settingsUpgradeToPro(); }
+        else { showToast('Ask your admin to upgrade to unlock ' + esc(f.displayName)); }
+        return;
+      }
+      if (f.section) { setSection('coach', f.section); return; }
+      showToast(esc(f.displayName) + ' — available in Coach\'s Eye');
     }
 
     // The one question every client surface asks. Offline / pre-load falls
