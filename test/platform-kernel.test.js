@@ -7,6 +7,7 @@ import {
   EXACT_LOCATION_FIELDS,
   findExactLocationFields,
   assertNoExactLocation,
+  assertNoExactLocationShallow,
   scrubExactLocation,
   normalizeReference,
   assertReference,
@@ -51,6 +52,21 @@ test('assertNoExactLocation throws on first forbidden field via injected error +
   const factory = (m, d) => new MyError(m, d);
   assert.throws(() => assertNoExactLocation({ gps: 1 }, factory, { label: 'Ctx' }),
     err => err instanceof MyError && err.code === 'VALIDATION_FAILED');
+});
+
+test('assertNoExactLocationShallow checks top-level only, batch-reports, honours custom field list', () => {
+  // top-level batch report
+  assert.throws(() => assertNoExactLocationShallow({ lat: 1, lng: 2, ok: 3 }, undefined, { label: 'timeline input' }),
+    err => /timeline input must not include exact traveller location/.test(err.message)
+      && err.details.fields.includes('lat') && err.details.fields.includes('lng'));
+  // shallow: nested forbidden field is NOT caught (matches legacy shallow behaviour)
+  assert.deepEqual(assertNoExactLocationShallow({ nested: { lat: 1 } }, undefined, { label: 'x' }), { nested: { lat: 1 } });
+  // custom field list (memory's 10-field set, no gps/geo): gps is allowed
+  const memoryFields = ['coordinates', 'lat', 'lng', 'latitude', 'longitude', 'exactLocation', 'liveLocation'];
+  assert.equal(assertNoExactLocationShallow({ gps: 'x' }, undefined, { label: 'm', fields: memoryFields }).gps, 'x');
+  // non-objects pass through
+  assert.equal(assertNoExactLocationShallow(null), null);
+  assert.equal(assertNoExactLocationShallow('str'), 'str');
 });
 
 test('scrubExactLocation removes forbidden fields deeply, keeping the rest', () => {
