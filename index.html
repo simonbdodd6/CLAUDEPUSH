@@ -3121,6 +3121,33 @@
       });
       // Migrate players to have photo field
       next.players.forEach(p => { if (p.photo === undefined) p.photo = ""; });
+      // Phase 17 — migrate players to have lifecycle & extended profile fields
+      next.players.forEach(p => {
+        if (!p.lifecycleStatus) {
+          // Derive from existing data: archived flag → archived status
+          p.lifecycleStatus = p._archived ? 'archived' : 'active';
+        }
+        if (p.firstName          === undefined) p.firstName          = '';
+        if (p.lastName           === undefined) p.lastName           = '';
+        if (p.preferredName      === undefined) p.preferredName      = '';
+        if (p.dateOfBirth        === undefined) p.dateOfBirth        = '';
+        if (p.ageGroup           === undefined) p.ageGroup           = '';
+        if (p.primaryPosition    === undefined) p.primaryPosition    = p.position || '';
+        if (!Array.isArray(p.secondaryPositions)) p.secondaryPositions = [];
+        if (p.jerseyNumber       === undefined) p.jerseyNumber       = '';
+        if (p.emergencyContact   === undefined) p.emergencyContact   = '';
+        if (p.emergencyPhone     === undefined) p.emergencyPhone     = '';
+        if (p.parentGuardianName === undefined) p.parentGuardianName = '';
+        if (p.parentGuardianEmail=== undefined) p.parentGuardianEmail= '';
+        if (p.registrationStatus === undefined) p.registrationStatus = 'unregistered';
+        if (p.federationId       === undefined) p.federationId       = '';
+        if (p.joinedDate         === undefined) p.joinedDate         = '';
+        if (p.archivedDate       === undefined) p.archivedDate       = null;
+        if (p.membershipPlanId   === undefined) p.membershipPlanId   = '';
+        if (p.consentFormSignedAt=== undefined) p.consentFormSignedAt= null;
+        if (!Array.isArray(p.transferHistory))  p.transferHistory    = [];
+        if (!Array.isArray(p.documentIds))      p.documentIds        = [];
+      });
       next.users = ensurePlayerUsersForRoster(next.players, next.users);
       next.subPlan          = input.subPlan          || structuredClone(defaultState.subPlan);
       next.treatmentLogs    = input.treatmentLogs    || structuredClone(defaultState.treatmentLogs);
@@ -3419,7 +3446,14 @@
     function byStatus(s)  { return state.players.filter(p => p.game === s); }
     const EMPTY_PLAYER = { id:"", name:"—", position:"—", status:"no-reply", game:"no-reply",
       attendance:0, history:[], trainingTuesday:"no-reply", trainingThursday:"no-reply",
-      phone:"", email:"", medical:"", blockedDates:[] };
+      phone:"", email:"", medical:"", blockedDates:[],
+      // Phase 17 lifecycle & extended profile
+      lifecycleStatus:"active", firstName:"", lastName:"", preferredName:"",
+      dateOfBirth:"", ageGroup:"", primaryPosition:"", secondaryPositions:[],
+      jerseyNumber:"", emergencyContact:"", emergencyPhone:"",
+      parentGuardianName:"", parentGuardianEmail:"",
+      registrationStatus:"unregistered", federationId:"", joinedDate:"", archivedDate:null,
+      membershipPlanId:"", consentFormSignedAt:null, transferHistory:[], documentIds:[] };
     function getPlayer()  {
       const user = currentUser();
       const id   = user?.role === "player" ? canonicalPlayerIdForUser(user) : state.selectedPlayerId;
@@ -4513,10 +4547,30 @@
     }
     function showAddPlayerForm() { state.showAddPlayer=!state.showAddPlayer; saveState(); render(); }
     function addPlayer() {
-      const name=document.getElementById("apName")?.value.trim(), pos=document.getElementById("apPos")?.value, phone=document.getElementById("apPhone")?.value.trim(), email=document.getElementById("apEmail")?.value.trim();
+      const g = id => document.getElementById(id)?.value.trim() || '';
+      const name = g('apName'), pos = g('apPos'), phone = g('apPhone'), email = g('apEmail');
       if (!name) return showToast("Player name required");
-      const id="p"+Date.now();
-      const player = {id,name,position:pos||"SUB",status:"no-reply",game:"no-reply",phone:phone||"",email:email||`${name.toLowerCase().replaceAll(" ",".")}@player.test`,trainingTuesday:"no-reply",trainingThursday:"no-reply",attendance:0,history:[],blockedDates:[],medical:"",mediaConsent:false,contractStatus:"active"};
+      const id = "p"+Date.now();
+      const nameParts = name.trim().split(/\s+/);
+      const player = {
+        id, name,
+        position: pos || "SUB",
+        status: "no-reply", game: "no-reply",
+        phone: phone || "", email: email || `${name.toLowerCase().replaceAll(" ",".")}@player.test`,
+        trainingTuesday: "no-reply", trainingThursday: "no-reply",
+        attendance: 0, history: [], blockedDates: [], medical: "", mediaConsent: false, contractStatus: "active",
+        // Phase 17 lifecycle & profile fields
+        lifecycleStatus: 'active',
+        firstName:  nameParts[0] || '',
+        lastName:   nameParts.slice(1).join(' ') || '',
+        preferredName: '', dateOfBirth: g('apDob'),
+        ageGroup: g('apAgeGroup'), primaryPosition: pos || 'SUB', secondaryPositions: [],
+        jerseyNumber: g('apJerseyNum'),
+        emergencyContact: g('apEmergencyContact'), emergencyPhone: g('apEmergencyPhone'),
+        parentGuardianName: '', parentGuardianEmail: '',
+        registrationStatus: 'unregistered', federationId: '', joinedDate: new Date().toISOString().slice(0,10),
+        archivedDate: null, membershipPlanId: '', consentFormSignedAt: null, transferHistory: [], documentIds: [],
+      };
       upsertCanonicalPlayerRecord(player);
       state.showAddPlayer=false; notify(`${name} added to squad`);
     }
@@ -6519,7 +6573,7 @@
 
     function renderClubCommandDashboard() {
       const players      = state.players || [];
-      const activePlayers = players.filter(function(p) { return p.id && !p._archived; });
+      const activePlayers = players.filter(function(p) { return p.id && !playerIsArchived(p); });
 
       // ── Availability ──────────────────────────────────────────────────────────
       const tonightId   = getTonightSessionId();
@@ -8604,8 +8658,18 @@
       if (isCoach()) loadInviteList().catch(()=>{});
       if (isCoach()) setTimeout(() => loadIdentityRequests().catch(()=>{}), 0);
 
+      // Phase 17 — show player detail panel if one is open
+      if (_playerDetailId) {
+        document.getElementById("coach-players").innerHTML =
+          `<div class="section-inner">${renderPlayerDetail(_playerDetailId)}</div>`;
+        return;
+      }
+
       const schedSessions = state.schedule || [];
-      const members    = canonicalVisiblePlayers();
+      const allMembers = canonicalVisiblePlayers();
+      // Phase 17 — separate active from archived
+      const members    = _showArchivedPlayers ? allMembers : allMembers.filter(p => !playerIsArchived(p));
+      const archivedCount = allMembers.filter(playerIsArchived).length;
       const filter     = state.playerFilter || "all";
       const filterMap  = { all: ()=>true, available: p=>p.game==="available", injured: p=>p.game==="injured", "no-reply": p=>p.game==="no-reply", consent: p=>!p.mediaConsent };
       const filtered   = members.filter(filterMap[filter] || (()=>true));
@@ -8722,8 +8786,11 @@
               </select></label>
               <label>Phone<input id="apPhone" placeholder="+32470000000" type="tel"></label>
               <label>Email<input id="apEmail" placeholder="player@example.com" type="email"></label>
-              <label>Emergency contact<input placeholder="Name — +32 ..."></label>
-              <label>Date of birth<input type="date"></label>
+              <label>Emergency contact<input id="apEmergencyContact" placeholder="Name"></label>
+              <label>Emergency phone<input id="apEmergencyPhone" placeholder="+32 ..."></label>
+              <label>Date of birth<input id="apDob" type="date"></label>
+              <label>Age group<input id="apAgeGroup" placeholder="e.g. Senior Men"></label>
+              <label>Jersey #<input id="apJerseyNum" placeholder="1–23" style="width:80px"></label>
             </div>
             <div style="display:flex;gap:8px;margin-top:14px">
               <button class="btn primary" type="button" onclick="addPlayer()">Add to squad</button>
@@ -8792,11 +8859,14 @@
                       ${p.mediaConsent?"Granted":"Pending"}
                     </button>
                   </td>
-                  <td><span style="font-size:12px;color:var(--green);font-weight:600">Active</span></td>
+                  <td>${playerLifecycleBadge(p)}${playerHasMedicalFlag(p)?'<span style="margin-left:4px;font-size:11px" title="Medical flag">⚕</span>':''}</td>
                   <td style="padding-right:14px">
                     <div style="display:flex;gap:5px">
+                      <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px" onclick="playerOpenDetail('${p.id}')">Profile</button>
                       <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px" onclick="requestMedical('${p.id}')">Medical</button>
-                      <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--red)" onclick="removePlayerFromSquad('${p.id}')">Remove</button>
+                      ${playerIsArchived(p)
+                        ? `<button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--green)" onclick="restorePlayer('${p.id}')">Restore</button>`
+                        : `<button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--red)" onclick="archivePlayer('${p.id}')">Archive</button>`}
                     </div>
                   </td>
                 </tr>`).join("")}
@@ -8809,6 +8879,12 @@
                   <p>Use <strong>Invite &amp; team access</strong> above to generate your first invite link — players join with one tap.</p>
                 </div>`
               : `<div style="padding:28px;text-align:center;color:var(--muted)">No players match this filter.</div>`) : ""}
+            ${archivedCount > 0 ? `<div style="padding:10px 18px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+              <span class="muted" style="font-size:12px">${archivedCount} archived player${archivedCount !== 1 ? 's' : ''}</span>
+              <button class="btn ghost" type="button" style="font-size:12px;padding:3px 10px" onclick="_showArchivedPlayers=!_showArchivedPlayers;renderPlayers()">
+                ${_showArchivedPlayers ? 'Hide archived' : 'Show archived'}
+              </button>
+            </div>` : ''}
           </div>`}
 
           <!-- Sent invites — collapsed by default -->
@@ -9522,6 +9598,324 @@
       try { localStorage.setItem('_lastSyncAt', String(Date.now())); } catch {}
     }
 
+    // ─── PHASE 17: PLAYER LIFECYCLE ──────────────────────────────────────────────
+
+    const PLAYER_LIFECYCLE_STATUSES = [
+      'active','invited','incomplete_profile','injured','unavailable',
+      'inactive','archived','left_club',
+    ];
+
+    const PLAYER_LIFECYCLE_LABELS = {
+      active:             { label:'Active',              color:'#34d399', bg:'rgba(52,211,153,0.15)',  border:'rgba(52,211,153,0.3)' },
+      invited:            { label:'Invited',             color:'#60a5fa', bg:'rgba(96,165,250,0.15)',  border:'rgba(96,165,250,0.3)' },
+      incomplete_profile: { label:'Incomplete',          color:'#f59e0b', bg:'rgba(245,158,11,0.15)',  border:'rgba(245,158,11,0.3)' },
+      injured:            { label:'Injured',             color:'#f87171', bg:'rgba(248,113,113,0.15)', border:'rgba(248,113,113,0.3)' },
+      unavailable:        { label:'Unavailable',         color:'#f59e0b', bg:'rgba(245,158,11,0.15)',  border:'rgba(245,158,11,0.3)' },
+      inactive:           { label:'Inactive',            color:'#94a3b8', bg:'rgba(100,116,139,0.1)',  border:'rgba(100,116,139,0.2)' },
+      archived:           { label:'Archived',            color:'#64748b', bg:'rgba(100,116,139,0.08)', border:'rgba(100,116,139,0.15)' },
+      left_club:          { label:'Left club',           color:'#64748b', bg:'rgba(100,116,139,0.08)', border:'rgba(100,116,139,0.15)' },
+    };
+
+    const REGISTRATION_LABELS = {
+      unregistered: { label:'Unregistered', color:'#f87171' },
+      pending:      { label:'Pending',      color:'#f59e0b' },
+      registered:   { label:'Registered',   color:'#34d399' },
+    };
+
+    // ── Pure helpers ──────────────────────────────────────────────────────────
+
+    function playerLifecycleInfo(p) {
+      if (!p) return PLAYER_LIFECYCLE_LABELS.active;
+      const st = p.lifecycleStatus || 'active';
+      return PLAYER_LIFECYCLE_LABELS[st] || PLAYER_LIFECYCLE_LABELS.active;
+    }
+
+    function playerProfileCompleteness(p) {
+      if (!p) return { score: 0, missing: ['name','email','phone','position','emergencyContact','dateOfBirth'] };
+      const checks = [
+        { field:'name',             ok: !!(p.name && p.name !== '—' && p.name.trim()) },
+        { field:'email',            ok: !!(p.email && !p.email.endsWith('@player.test')) },
+        { field:'phone',            ok: !!(p.phone && p.phone.trim()) },
+        { field:'position',         ok: !!(p.position && p.position !== 'SUB') || !!(p.primaryPosition && p.primaryPosition !== 'SUB') },
+        { field:'emergencyContact', ok: !!(p.emergencyContact && p.emergencyContact.trim()) || !!(p.emergencyPhone && p.emergencyPhone.trim()) },
+        { field:'dateOfBirth',      ok: !!(p.dateOfBirth && p.dateOfBirth.trim()) },
+      ];
+      const missing = checks.filter(c => !c.ok).map(c => c.field);
+      const score   = Math.round(100 * (checks.length - missing.length) / checks.length);
+      return { score, missing };
+    }
+
+    function playerHasMedicalFlag(p) {
+      if (!p || !p.id) return false;
+      const notes = (state.medicalNotes || {})[p.id];
+      return (notes && notes.condition && String(notes.condition).trim().length > 0)
+          || (p.game === 'injured')
+          || (typeof p.medical === 'string' && p.medical.trim().length > 0);
+    }
+
+    function playerIsArchived(p) {
+      return !!(p && (p.lifecycleStatus === 'archived' || p._archived === true));
+    }
+
+    function activeRosterPlayers(players) {
+      return (players || []).filter(p => p.id && !playerIsArchived(p));
+    }
+
+    // ── Lifecycle mutation helpers ─────────────────────────────────────────────
+
+    async function archivePlayer(id) {
+      const p = state.players.find(pl => pl.id === id);
+      if (!p) return;
+      const ok = await ceConfirm(
+        `Archive ${p.name}?`,
+        'They will be hidden from active lists. Their data is preserved and can be restored.',
+        { confirmLabel: 'Archive' }
+      );
+      if (!ok) return;
+      p.lifecycleStatus = 'archived';
+      p.archivedDate    = new Date().toISOString().slice(0,10);
+      if (!state.removedMemberNames) state.removedMemberNames = [];
+      const nameLower = p.name.toLowerCase();
+      if (!state.removedMemberNames.includes(nameLower)) state.removedMemberNames.push(nameLower);
+      saveState('Player archived');
+      showToast(`${p.name} archived`);
+      if (_playerDetailId === id) _playerDetailId = null;
+      render();
+    }
+
+    function restorePlayer(id) {
+      const p = state.players.find(pl => pl.id === id);
+      if (!p) return;
+      p.lifecycleStatus = 'active';
+      p.archivedDate    = null;
+      p._archived       = false;
+      saveState('Player restored');
+      showToast(`${p.name} restored ✓`);
+      render();
+    }
+
+    function playerSetLifecycle(id, status) {
+      const p = state.players.find(pl => pl.id === id);
+      if (!p || !PLAYER_LIFECYCLE_STATUSES.includes(status)) return;
+      p.lifecycleStatus = status;
+      if (status === 'archived') {
+        p.archivedDate = new Date().toISOString().slice(0,10);
+      }
+      saveState('Player status updated');
+      renderPlayers();
+    }
+
+    function playerSaveProfile(id) {
+      const p = state.players.find(pl => pl.id === id);
+      if (!p) return;
+      const g = sfx => { const el = document.getElementById('pp-' + sfx + '-' + id); return el ? el.value.trim() : ''; };
+      p.firstName          = g('firstname');
+      p.lastName           = g('lastname');
+      p.preferredName      = g('preferred');
+      p.dateOfBirth        = g('dob');
+      p.ageGroup           = g('agegroup');
+      p.jerseyNumber       = g('jersey');
+      p.phone              = g('phone')  || p.phone;
+      p.email              = g('email')  || p.email;
+      p.position           = g('position') || p.position;
+      p.primaryPosition    = p.position;
+      p.emergencyContact   = g('ec-name');
+      p.emergencyPhone     = g('ec-phone');
+      p.parentGuardianName = g('guardian-name');
+      p.parentGuardianEmail= g('guardian-email');
+      p.registrationStatus = g('reg-status') || p.registrationStatus;
+      p.federationId       = g('fed-id');
+      // Recompute name from first+last if both supplied
+      const fullName = [p.firstName, p.lastName].filter(Boolean).join(' ');
+      if (fullName) p.name = fullName;
+      saveState('Player profile saved');
+      showToast('Profile saved ✓');
+      render();
+    }
+
+    // ── Player detail panel ───────────────────────────────────────────────────
+
+    function playerOpenDetail(id) {
+      _playerDetailId = id;
+      renderPlayers();
+    }
+
+    function playerCloseDetail() {
+      _playerDetailId = null;
+      renderPlayers();
+    }
+
+    function renderPlayerDetail(id) {
+      const p = state.players.find(pl => pl.id === id);
+      if (!p) return `<div class="card"><p class="muted">Player not found.</p></div>`;
+      const lc  = playerLifecycleInfo(p);
+      const pc  = playerProfileCompleteness(p);
+      const med = playerHasMedicalFlag(p);
+      const medNotes = (state.medicalNotes || {})[p.id] || {};
+      const logs = (state.treatmentLogs || []).filter(l => l.playerId === p.id);
+      const regLabel = REGISTRATION_LABELS[p.registrationStatus] || REGISTRATION_LABELS.unregistered;
+
+      const field = (label, id, val, type='text', extra='') =>
+        `<div style="margin-bottom:10px">
+          <label style="display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">${label}</label>
+          <input id="${id}" type="${type}" value="${esc(val||'')}" ${extra}
+            style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--fg);font-size:13px;box-sizing:border-box"/>
+        </div>`;
+
+      const sel = (label, id, val, opts) =>
+        `<div style="margin-bottom:10px">
+          <label style="display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">${label}</label>
+          <select id="${id}" style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--fg);font-size:13px;box-sizing:border-box">
+            ${opts.map(o => typeof o === 'string'
+              ? `<option ${val===o?'selected':''}>${esc(o)}</option>`
+              : `<option value="${esc(o.v)}" ${val===o.v?'selected':''}>${esc(o.l)}</option>`
+            ).join('')}
+          </select>
+        </div>`;
+
+      const posOptions = ["1 — Loosehead prop","2 — Hooker","3 — Tighthead prop","4 — Lock","5 — Lock","6 — Blindside flanker","7 — Openside flanker","8 — Number 8","9 — Scrum half","10 — Fly half","11 — Left wing","12 — Inside centre","13 — Outside centre","14 — Right wing","15 — Fullback","SUB — Squad player"];
+      const lcOptions = PLAYER_LIFECYCLE_STATUSES.map(s => ({ v: s, l: PLAYER_LIFECYCLE_LABELS[s]?.label || s }));
+      const regOptions = [
+        { v:'unregistered', l:'Unregistered' }, { v:'pending', l:'Pending' }, { v:'registered', l:'Registered' }
+      ];
+
+      return `
+        <!-- Back nav -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <button class="btn ghost" type="button" onclick="playerCloseDetail()" style="font-size:13px;padding:5px 12px">← Members</button>
+          <div style="display:flex;align-items:center;gap:10px">
+            ${p.photo
+              ? `<img src="${p.photo}" style="width:44px;height:44px;border-radius:50%;object-fit:cover">`
+              : `<div style="width:44px;height:44px;border-radius:50%;background:${playerAvatarColor(p.id||p.name)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:800">${p.name.split(" ").map(w=>w[0]).slice(0,2).join("")}</div>`}
+            <div>
+              <div style="font-size:17px;font-weight:900">${esc(p.preferredName || p.name)}</div>
+              <div style="display:flex;gap:6px;align-items:center;margin-top:3px">
+                <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:${lc.bg};color:${lc.color};border:1px solid ${lc.border}">${lc.label}</span>
+                ${pc.score < 100 ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.25)">${pc.score}% complete</span>` : ''}
+                ${med ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(248,113,113,0.12);color:#f87171;border:1px solid rgba(248,113,113,0.25)">⚕ Medical</span>` : ''}
+                <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:${regLabel.color==='#34d399'?'rgba(52,211,153,0.12)':'rgba(100,116,139,0.1)'};color:${regLabel.color};border:1px solid ${regLabel.color==='#34d399'?'rgba(52,211,153,0.3)':'rgba(100,116,139,0.2)'}">${regLabel.label}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Profile section -->
+        <div class="card" style="margin-bottom:14px">
+          <h3 style="font-size:13px;font-weight:800;margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Profile</h3>
+          <div class="grid two-col">
+            ${field('First name',    'pp-firstname-'+id,  p.firstName   || '')}
+            ${field('Last name',     'pp-lastname-'+id,   p.lastName    || '')}
+            ${field('Preferred name','pp-preferred-'+id,  p.preferredName||'')}
+            ${field('Date of birth', 'pp-dob-'+id,        p.dateOfBirth || '', 'date')}
+            ${field('Phone',         'pp-phone-'+id,      p.phone       || '', 'tel')}
+            ${field('Email',         'pp-email-'+id,      p.email && !p.email.endsWith('@player.test') ? p.email : '')}
+          </div>
+        </div>
+
+        <!-- Rugby section -->
+        <div class="card" style="margin-bottom:14px">
+          <h3 style="font-size:13px;font-weight:800;margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Rugby</h3>
+          <div class="grid two-col">
+            ${sel('Position', 'pp-position-'+id, p.position || p.primaryPosition || 'SUB', posOptions)}
+            ${field('Jersey #',   'pp-jersey-'+id,   p.jerseyNumber || '')}
+            ${field('Age group',  'pp-agegroup-'+id, p.ageGroup     || '', 'text', 'placeholder="e.g. Senior Men"')}
+            ${sel('Status', 'pp-lifecycle-'+id, p.lifecycleStatus || 'active', lcOptions)}
+          </div>
+        </div>
+
+        <!-- Contacts section -->
+        <div class="card" style="margin-bottom:14px">
+          <h3 style="font-size:13px;font-weight:800;margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Contacts</h3>
+          <div class="grid two-col">
+            ${field('Emergency contact', 'pp-ec-name-'+id,      p.emergencyContact    || '')}
+            ${field('Emergency phone',   'pp-ec-phone-'+id,     p.emergencyPhone      || '', 'tel')}
+            ${field('Parent/Guardian',   'pp-guardian-name-'+id, p.parentGuardianName || '')}
+            ${field('Guardian email',    'pp-guardian-email-'+id,p.parentGuardianEmail|| '', 'email')}
+          </div>
+        </div>
+
+        <!-- Registration section -->
+        <div class="card" style="margin-bottom:14px">
+          <h3 style="font-size:13px;font-weight:800;margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Registration</h3>
+          <div class="grid two-col">
+            ${sel('Registration status', 'pp-reg-status-'+id, p.registrationStatus || 'unregistered', regOptions)}
+            ${field('Federation ID', 'pp-fed-id-'+id, p.federationId || '', 'text', 'placeholder="e.g. IRL-12345"')}
+            ${field('Joined date',   'pp-joined-'+id, p.joinedDate   || '', 'date')}
+          </div>
+          <div class="grid two-col" style="margin-top:0">
+            <div style="font-size:12px;color:var(--muted);padding:8px 10px;border-radius:7px;background:var(--panel-2);border:1px solid var(--line)">
+              <strong>Future:</strong> membership payments, consent forms, player documents, federation sync
+            </div>
+          </div>
+        </div>
+
+        <!-- Medical summary (read-only) -->
+        <div class="card" style="margin-bottom:14px">
+          <h3 style="font-size:13px;font-weight:800;margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Medical Summary</h3>
+          ${medNotes.condition
+            ? `<div style="padding:10px 12px;border-radius:8px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);margin-bottom:10px">
+                <div style="font-size:12px;font-weight:700;color:#f87171;margin-bottom:3px">${esc(medNotes.condition)}</div>
+                ${medNotes.notes ? `<div style="font-size:12px;color:var(--muted)">${esc(medNotes.notes)}</div>` : ''}
+                ${medNotes.returnTarget ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Return target: ${esc(medNotes.returnTarget)}</div>` : ''}
+              </div>`
+            : `<p class="muted" style="font-size:12px;margin:0 0 10px">No active medical flags. Use Medical section to add notes.</p>`}
+          ${logs.length ? `<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px">Recent treatment (${logs.length})</div>
+            ${logs.slice(0,3).map(l => `<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--line)">
+              <span style="color:var(--fg)">${esc(l.date)} — ${esc(l.treatment)}</span>
+              ${l.therapist !== 'Self' ? `<span class="muted"> · ${esc(l.therapist)}</span>` : ''}
+            </div>`).join('')}` : ''}
+        </div>
+
+        <!-- Availability history -->
+        <div class="card" style="margin-bottom:14px">
+          <h3 style="font-size:13px;font-weight:800;margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Availability</h3>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div class="history-bar" style="flex:1;max-width:200px"><span style="width:${p.attendance}%;background:${p.attendance>=80?'var(--green)':p.attendance>=60?'#d97706':'#dc2626'}"></span></div>
+            <span style="font-size:14px;font-weight:800">${p.attendance}%</span>
+            <span class="muted" style="font-size:12px">attendance</span>
+          </div>
+          ${p.history && p.history.length ? `<div class="muted" style="font-size:12px">${p.history.length} session record${p.history.length !== 1 ? 's' : ''}</div>` : `<p class="muted" style="font-size:12px;margin:0">No availability history yet.</p>`}
+        </div>
+
+        <!-- Save + archive actions -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div>
+            ${playerIsArchived(p)
+              ? `<button class="btn" type="button" onclick="restorePlayer('${esc(id)}')">Restore player</button>`
+              : `<button class="btn ghost" type="button" onclick="archivePlayer('${esc(id)}')" style="color:#f87171">Archive player</button>`}
+          </div>
+          <button class="btn primary" type="button" onclick="playerSaveProfile('${esc(id)}')">Save profile</button>
+        </div>`;
+    }
+
+    // ── Lifecycle badge for player table ──────────────────────────────────────
+
+    function playerLifecycleBadge(p) {
+      const lc = playerLifecycleInfo(p);
+      return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:${lc.bg};color:${lc.color};border:1px solid ${lc.border}">${lc.label}</span>`;
+    }
+
+    // ── Player lifecycle stats (for dashboards) ───────────────────────────────
+
+    function playerLifecycleStats(players) {
+      const all         = players || [];
+      const active      = all.filter(p => !playerIsArchived(p) && (p.lifecycleStatus||'active') !== 'left_club');
+      const archived    = all.filter(p => playerIsArchived(p));
+      const injured     = active.filter(p => p.lifecycleStatus === 'injured' || p.game === 'injured');
+      const incomplete  = active.filter(p => playerProfileCompleteness(p).score < 100);
+      const needAttention = active.filter(p =>
+        playerHasMedicalFlag(p) ||
+        (p.lifecycleStatus && p.lifecycleStatus !== 'active' && p.lifecycleStatus !== 'invited') ||
+        playerProfileCompleteness(p).score < 50
+      );
+      const unregistered = active.filter(p => (p.registrationStatus || 'unregistered') === 'unregistered');
+      return { all: all.length, active: active.length, archived: archived.length,
+               injured: injured.length, incomplete: incomplete.length,
+               needAttention: needAttention.length, unregistered: unregistered.length };
+    }
+
+    // ─── END PHASE 17 ─────────────────────────────────────────────────────────
+
     // ─── PHASE 16: CLUB OPERATING SYSTEM ────────────────────────────────────────
 
     const CLUB_STAFF_ROLES = [
@@ -9639,9 +10033,10 @@
       const availPct     = withAvail.length
         ? Math.round(100 * withAvail.filter(p => p.game === 'available').length / withAvail.length)
         : null;
+      const lcStats = playerLifecycleStats(players);
       return {
         teams, staff, players, upcomingFx, pubSquads, pubTraining, announcements,
-        withAvail, availPct,
+        withAvail, availPct, lcStats,
       };
     }
 
@@ -9929,13 +10324,13 @@
 
         <div class="grid two-col" style="margin-bottom:20px">
           ${statCard('Teams',             s.teams.length   || '0', s.teams.filter(t=>t.active).length+' active',       'var(--fg)', "clubTabSwitch('teams')")}
-          ${statCard('Players',           s.players.length || '0', 'squad members',                                     'var(--fg)')}
+          ${statCard('Active Players',    s.lcStats.active || '0', s.lcStats.archived > 0 ? s.lcStats.archived+' archived':'squad members', 'var(--fg)')}
           ${statCard('Staff',             s.staff.length   || '0', '',                                                  'var(--fg)', "clubTabSwitch('staff')")}
           ${statCard('Upcoming Fixtures', s.upcomingFx.length||'0', s.upcomingFx[0]?'Next: vs '+esc(s.upcomingFx[0].opposition):'none scheduled', 'var(--fg)')}
           ${statCard('Published Squads',  s.pubSquads.length||'0',  '',                                                 '#34d399')}
           ${statCard('Training Sessions', s.pubTraining.length||'0','published',                                        '#60a5fa')}
-          ${statCard('Announcements',     s.announcements.length||'0','team announced',                                 '#a78bfa')}
-          ${statCard('Availability',      s.availPct !== null ? s.availPct+'%' : '—', s.withAvail.length+' responded', availColor)}
+          ${s.lcStats.injured > 0 ? statCard('Injured',  s.lcStats.injured+'', '',                                     '#f87171') : statCard('Announcements', s.announcements.length||'0', 'team announced', '#a78bfa')}
+          ${s.lcStats.incomplete > 0 ? statCard('Incomplete Profiles', s.lcStats.incomplete+'', 'need attention',      '#f59e0b') : statCard('Availability', s.availPct !== null ? s.availPct+'%' : '—', s.withAvail.length+' responded', availColor)}
         </div>
 
         <div class="card">
@@ -12438,6 +12833,9 @@
     let _clubStaffEditId = null;   // null = list | id = edit form open
     let _clubTeamNewOpen  = false; // new-team inline form visible
     let _clubStaffNewOpen = false; // new-staff inline form visible
+    // Phase 17 — Player Lifecycle view state
+    let _playerDetailId   = null;  // null = list | playerId = detail panel open
+    let _showArchivedPlayers = false; // show archived in Members list
 
     function chatLoadStateModule() {
       if (!_chatStatePromise) {

@@ -119,6 +119,12 @@ function buildClubScope(opts = {}) {
     ${extractFn(html, 'normalizeClubStaff')}
     ${extractFn(html, 'normalizeSeason')}
     ${extractFn(html, 'normalizeFederationMeta')}
+    // Phase 17 helpers needed by clubDashboardStats
+    ${extractConst(html, 'PLAYER_LIFECYCLE_LABELS')}
+    ${extractFn(html, 'playerIsArchived')}
+    ${extractFn(html, 'playerProfileCompleteness')}
+    ${extractFn(html, 'playerHasMedicalFlag')}
+    ${extractFn(html, 'playerLifecycleStats')}
     ${extractFn(html, 'clubDashboardStats')}
     return {
       normalizeClubProfile,

@@ -142,6 +142,9 @@ function buildScope({
     extractFn(html, 'planLevel') + '\n' +
     extractFn(html, 'isProTeam') + '\n' +
     extractFn(html, 'isEnterpriseTeam') + '\n' +
+    // Phase 17 player lifecycle helpers (needed by renderClubCommandDashboard)
+    extractConst(html, 'PLAYER_LIFECYCLE_LABELS') + '\n' +
+    extractFn(html, 'playerIsArchived') + '\n' +
     // The function under test
     extractFn(html, 'renderClubCommandDashboard') + '\n' +
     'return { renderClubCommandDashboard, _get: function(k) { return eval(k); } };\n';
