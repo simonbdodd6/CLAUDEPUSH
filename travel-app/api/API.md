@@ -32,6 +32,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/travel-dna` | — | `{ headline, traits, basedOn }` | travel DNA (long-term characteristics) |
 | GET | `/predictions` | — | `{ predictions, basedOn }` | predictive companion (anticipates from evidence) |
 | GET | `/journey` | — | `{ route, stops, segments, chapters, basedOn }` | journey visualisation (ordered replayable route) |
+| GET | `/journey/replay` | — | `{ replay, timeline, chapters, capabilities, controls, basedOn }` | interactive journey replay (timeline + controls) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -302,6 +303,46 @@ area → destination → country); segments come from explicit `move` tags
 (`confidence:"emerging"`); Home bookends are `inferred`. The UI can animate
 routes/flights/boats, build journey ribbons, replay a whole holiday, and zoom
 into chapters — with no logic of its own.
+
+### Interactive Journey Replay DTO (M26)
+
+A pure presentation layer over `/journey` that makes the route **replay-ready** —
+**no AI, no animations here, only the data a UI needs to animate**. Replay times
+are abstract ms of a continuous replay clock (reproducible), so the UI can play /
+pause / resume at any point and jump/filter via the control ranges.
+
+```
+Replay = {
+  replay: { replayStart:0, replayEnd, replayDuration, nodeCount },
+  timeline: [ReplayStop | ReplaySegment],   // contiguous: node[i].endAt === node[i+1].startAt
+  chapters: [{ index, label, title, places, nodeIds, startAt, endAt }],
+  capabilities: { play, pause, resume, jumpToChapter, replayDestination, replayTransport, replayFlightsOnly, replayIslandsOnly },
+  controls: {
+    jumpToChapter:     [{ index, label, startAt, endAt }],
+    replayDestination: [{ place, nodeId, startAt, endAt }],
+    replayTransport:   [{ transport, segments:[{ id, origin, destination, startAt, endAt }] }],
+    replayFlightsOnly: { transport:"flight", segments:[…] } | null,
+    replayIslandsOnly: [{ place, nodeId, startAt, endAt }],
+  },
+  basedOn: { memories, stops, segments, span },
+}
+ReplaySegment = Segment & {
+  transportIcon, transportColour, animationStyle, pathType, path:{ style, curve, dashed },
+  replay: { order, startAt, endAt, duration, movementSpeed, zoomLevel },
+}
+ReplayStop = Stop & {
+  chapterTitle, coverPhoto, favouriteMemories, highlightMemories, activitySummary,
+  arrivedBy, isIsland,
+  replay: { order, startAt, endAt, arrivalPause, stayDuration, departurePause, zoomLevel, arrivalAnimation },
+}
+```
+
+- `pathType` ∈ `flight | sea | rail | road | walking | generic`; `transportColour`
+  is a semantic token (UI maps to a colour). `isIsland` is derived from a sea
+  arrival. Home bookends are `inferred`.
+- The continuous timeline + control ranges let the UI replay the whole holiday,
+  jump to a chapter, replay one destination/transport, or filter to flights-only
+  / islands-only — with no logic of its own.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

@@ -29,6 +29,7 @@ import { buildLifeStory } from './life-story.js';
 import { buildTravelDna } from './travel-dna.js';
 import { buildPredictions } from './predictions.js';
 import { buildJourney, normalizeMove } from './journey.js';
+import { buildJourneyReplay } from './journey-replay.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -284,6 +285,15 @@ export function createTravelApi(options = {}) {
     return buildJourney(events, ownedTrips);
   }
 
+  // Interactive Journey Replay — replay-ready metadata (timeline, timing, paths,
+  // controls) layered deterministically over the journey route.
+  async function getJourneyReplay(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildJourneyReplay(events, ownedTrips);
+  }
+
   // Predictive Travel Companion — gently anticipates what the traveller will
   // likely enjoy next, from deterministic evidence only.
   async function getPredictions(token) {
@@ -402,6 +412,7 @@ export function createTravelApi(options = {}) {
     getTravelDna,
     getPredictions,
     getJourney,
+    getJourneyReplay,
     getTripReadiness,
     getApprovals,
     resolveApproval,

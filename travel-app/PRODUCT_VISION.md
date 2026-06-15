@@ -606,6 +606,53 @@ field already exists so the UI is ready.
 - **Tier:** V2.
 - **Possible API:** Internal (compose `/journey` across trips) + region coords.
 
+## N. Interactive Replay deepeners (added M26)
+
+The Interactive Journey Replay (`/journey/replay`) exposes a deterministic replay
+timeline + controls; the UI animates it. These would make replays richer — still
+**not implemented**.
+
+### Map-accurate flight arcs & boat wakes (Apple Maps coordinates)
+- **Why:** Once stops carry region coordinates, paths animate along real great-
+  circle flight arcs and sea routes instead of abstract styles.
+- **Complexity:** Medium (needs region coords from section M).
+- **Tier:** V2.
+- **Possible API:** MapKit overlays/geodesics (client-side); region gazetteer.
+
+### Real durations & speeds (Flighty / TripIt / Health)
+- **Why:** Replace abstract replay timing with proportional real durations
+  (flight 13h vs ferry 2h) and movement data for true-to-life pacing.
+- **Complexity:** Medium–High (transport-leg integrations, section M).
+- **Tier:** V2–V3.
+- **Possible API:** Flighty, TripIt, HealthKit workouts.
+
+### Soundtracked replay (Spotify / Apple Music)
+- **Why:** Score the replay with the trip's music per chapter — the emotional
+  multiplier for a "watch your holiday" moment.
+- **Complexity:** Medium (OAuth; per-period tracks).
+- **Tier:** V2.
+- **Possible API:** Spotify Web API / MusicKit.
+
+### Photo/video-backed replay frames (Apple/Google Photos, GoPro, DJI)
+- **Why:** Drop real cover photos and clips onto stops/segments as the replay
+  plays — a cinematic Polarsteps/Apple-Memories montage.
+- **Complexity:** Medium–High (on-device photo access + media import).
+- **Tier:** V2 (covers) → V3 (clips).
+- **Possible API:** PhotoKit / Google Photos, GoPro/DJI media, AVFoundation.
+
+### Shareable replay export (video render)
+- **Why:** Export the replay as a shareable film/GIF — distribution + virality.
+- **Complexity:** High (deterministic render pipeline).
+- **Tier:** V3.
+- **Possible API:** AVFoundation / server-side render of the deterministic timeline.
+
+### Scrub, speed & per-leg controls
+- **Why:** Scrub bar, variable playback speed, and tap-a-leg-to-replay — the data
+  (continuous timeline + ranges) already supports it; this is UI affordances.
+- **Complexity:** Low–Medium (client-side; no new API).
+- **Tier:** V2.
+- **Possible API:** Client-side over the existing replay DTO.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the
