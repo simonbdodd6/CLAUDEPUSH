@@ -556,6 +556,56 @@ and several need integrations above. All must remain rule-based and explainable
 - **Tier:** V2.
 - **Possible API:** Internal (relationships + predictions).
 
+## M. Journey Visualisation deepeners (added M25)
+
+The Journey Visualisation Engine (`/journey`) builds a deterministic, replayable
+route from existing evidence + optional `place`/`move` tags. These would make the
+ribbon richer and map-accurate — still **not implemented**; the `coordinates`
+field already exists so the UI is ready.
+
+### Region-granularity map coordinates (Apple Maps / curated gazetteer)
+- **Why:** Fill the `coordinates` field so the UI can draw and animate real map
+  routes — at region granularity only (never exact pins; platform-safe).
+- **Complexity:** Medium (reverse-geocode place names to approximate regions; cache).
+- **Tier:** V2.
+- **Possible API:** MapKit geocoding (region), curated offline gazetteer.
+
+### Auto-detected transport legs (Flighty / TripIt / Apple Wallet / Maps)
+- **Why:** Populate flights, ferries and drives automatically (with times,
+  carriers, flight numbers) instead of inferring from text — segments become
+  `defining` confidence.
+- **Complexity:** Medium–High (partner APIs / share-in / pass parsing).
+- **Tier:** V2 (Flighty/TripIt/Wallet) → V3 (ride-hailing legs).
+- **Possible API:** Flighty, TripIt, PassKit (boarding passes), Maps directions.
+
+### Movement-inferred stops & legs (Apple Health / Significant Locations — opt-in)
+- **Why:** Detect place changes and transport modes from on-device motion/visit
+  data so the route builds itself — opt-in, approximate, privacy-first.
+- **Complexity:** High (sensitive; on-device; coarse granularity only).
+- **Tier:** V3.
+- **Possible API:** CoreMotion / Visits (opt-in), HealthKit workouts.
+
+### Animated route playback assets (covers, ribbons, flight arcs)
+- **Why:** Turn the deterministic route into cinematic playback — flight arcs,
+  boat wakes, day-by-day ribbon fills, chapter zoom.
+- **Complexity:** Medium (UI/animation; the data model is already in place).
+- **Tier:** V2 (UI work — out of scope for the API).
+- **Possible API:** Client-side (MapKit overlays, SwiftUI/Canvas); no new API.
+
+### Accommodation & activity nodes from bookings (Booking / Airbnb / itinerary)
+- **Why:** Promote `accommodation`/`activities` from text hints to real stay and
+  activity nodes on the ribbon (check-in/out, dive sites, tours).
+- **Complexity:** Medium–High (booking + itinerary integrations).
+- **Tier:** V3.
+- **Possible API:** Booking/Airbnb partner APIs, itinerary platform.
+
+### Multi-trip lifetime map ("everywhere you've been")
+- **Why:** Stitch every journey into one lifetime route/map — a Polarsteps-style
+  world view, composed deterministically from per-trip journeys.
+- **Complexity:** Low–Medium (compose existing journeys; needs region coords).
+- **Tier:** V2.
+- **Possible API:** Internal (compose `/journey` across trips) + region coords.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

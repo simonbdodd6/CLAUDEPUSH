@@ -71,9 +71,12 @@ export function enrichMemories(events, trips) {
     metaById.set(ev.timelineEventId, {
       destination: trip?.destination ?? null,
       country: trip?.country ?? null,
+      area: trip?.area ?? null,
       companions: normalizeCompanions(ev.metadata?.companions),
       tripId: ev.tripId ?? null,
       tripStartDate: trip?.startDate ?? null,
+      place: typeof ev.metadata?.place === 'string' && ev.metadata.place.trim() ? ev.metadata.place.trim() : null,
+      move: ev.metadata?.move && typeof ev.metadata.move === 'object' ? ev.metadata.move : null,
     });
   }
   // ascending (chronological) clean entries enriched with evidence
@@ -83,7 +86,7 @@ export function enrichMemories(events, trips) {
     text: `${entry.title} ${entry.detail}`,
     cats: categoriesFor(entry),
     hour: hourOf(entry.timestamp),
-    ...(metaById.get(entry.id) ?? { destination: null, country: null, companions: [], tripId: null, tripStartDate: null }),
+    ...(metaById.get(entry.id) ?? { destination: null, country: null, area: null, companions: [], tripId: null, tripStartDate: null, place: null, move: null }),
   }));
 }
 

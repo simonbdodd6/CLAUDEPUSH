@@ -21,7 +21,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | PUT | `/trip` | trip fields (`tripName, country, destination, area, startDate, endDate`) | `{ trip }` | trip-platform (publishes timeline + graph) |
 | GET | `/itinerary` | — | `{ itinerary }` | itinerary-platform |
 | PUT | `/itinerary` | `{ days?, day?, section?, block? }` | `{ itinerary }` | itinerary-platform (publishes timeline + graph) |
-| POST | `/capture` | `{ note?, photoRef?, day?, timestamp?, with?:[name] }` (note **or** photoRef required) | `{ capture: Entry & { day, with } }` | timeline (journal_entry / photo_imported) |
+| POST | `/capture` | `{ note?, photoRef?, day?, timestamp?, with?:[name], place?, move?:{type,from?,to?} }` (note **or** photoRef required) | `{ capture: Entry & { day, with } }` | timeline (journal_entry / photo_imported) |
 | GET | `/timeline` | — | `{ days: [Day] }` | timeline-platform |
 | GET | `/feed` | — | `{ hero, featuredPhotos, highlights, today, stats }` | feed (derived from timeline + trip) |
 | GET | `/stats` | — | `{ stats: TravelStats }` | feed (derived from timeline + trip) |
@@ -31,6 +31,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/life-story` | — | `{ stories, basedOn }` | life story engine (derived from whole history) |
 | GET | `/travel-dna` | — | `{ headline, traits, basedOn }` | travel DNA (long-term characteristics) |
 | GET | `/predictions` | — | `{ predictions, basedOn }` | predictive companion (anticipates from evidence) |
+| GET | `/journey` | — | `{ route, stops, segments, chapters, basedOn }` | journey visualisation (ordered replayable route) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -267,6 +268,40 @@ likely-companion, likely-return, likely-destination-type, likely-trip-style
 (Travel-DNA match %), likely-season, likely-trip-length, likely-food, and
 likely-packing (evidence-derived suggestions). All deterministic, offline-first,
 no backend leakage.
+
+### Journey Visualisation DTO (M25)
+
+A deterministic, replayable ROUTE the UI can animate departure → return — **no AI,
+no randomness**. `route` is an ordered ribbon alternating stops and transport
+segments (with inferred Home bookends), each carrying `replayOrder`. Assembled
+from memories + trips + optional `place`/`move` capture tags. `coordinates` is
+always present but `null` until a future region-granularity source fills it (the
+platform forbids exact location).
+
+```
+Stop = {
+  type:"stop", id, place, country, transition:"home|start|country|place",
+  startDate, endDate, durationDays, memoryCount,
+  supportingMemories:[Entry], supportingPhotos:[ref],
+  accommodation:[title], activities:[label], chapter:{index,label}|null,
+  icon, coordinates:null, confidence, inferred, replayOrder,
+}
+Segment = {
+  type:"segment", id, transport:"flight|fast boat|ferry|boat|train|taxi|walk|travel|…",
+  origin, destination, startDate, endDate, durationHours,
+  supportingMemories:[Entry], supportingPhotos:[ref],
+  icon, coordinates:null, confidence, inferred, replayOrder,
+}
+Journey = { route:[Stop|Segment], stops:[Stop], segments:[Segment],
+            chapters:[{index,label,places,from,to}], basedOn:{memories,stops,segments,span} }
+```
+
+Stops form from consecutive same-`place` memories (place falls back to trip
+area → destination → country); segments come from explicit `move` tags
+(`confidence:"strong"`) or transport keywords in the memory text
+(`confidence:"emerging"`); Home bookends are `inferred`. The UI can animate
+routes/flights/boats, build journey ribbons, replay a whole holiday, and zoom
+into chapters — with no logic of its own.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

@@ -28,6 +28,7 @@ import { buildMemories } from './memories.js';
 import { buildLifeStory } from './life-story.js';
 import { buildTravelDna } from './travel-dna.js';
 import { buildPredictions } from './predictions.js';
+import { buildJourney, normalizeMove } from './journey.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -214,6 +215,8 @@ export function createTravelApi(options = {}) {
     const captureId = body.captureId ?? `capture_${timestamp}_${Math.abs(hash(note + (photoRef ?? '')))}`;
     const eventType = photoRef ? 'photo_imported' : 'journal_entry';
     const companions = normalizeCompanions(body.with ?? body.companions);
+    const place = typeof body.place === 'string' && body.place.trim() ? body.place.trim() : null;
+    const move = normalizeMove(body.move);
     const event = await timeline.appendEvent({
       travellerIdentityId: id,
       tripId: trip?.tripId ?? null,
@@ -221,7 +224,7 @@ export function createTravelApi(options = {}) {
       sourcePlatform: 'travel-app',
       sourceEntityId: captureId,
       timestamp,
-      metadata: { eventName: eventType, note, photoRef, day: body.day ?? null, companions },
+      metadata: { eventName: eventType, note, photoRef, day: body.day ?? null, companions, place, move },
       idempotencyKey: `travel-app:${eventType}:${captureId}`,
     });
     return { capture: presentCapture(event) };
@@ -270,6 +273,15 @@ export function createTravelApi(options = {}) {
     const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
     const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
     return buildMemories(events, ownedTrips);
+  }
+
+  // Journey Visualisation Engine — an ordered, replayable route (stops +
+  // transport segments) the UI can animate, from deterministic evidence.
+  async function getJourney(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildJourney(events, ownedTrips);
   }
 
   // Predictive Travel Companion — gently anticipates what the traveller will
@@ -389,6 +401,7 @@ export function createTravelApi(options = {}) {
     getLifeStory,
     getTravelDna,
     getPredictions,
+    getJourney,
     getTripReadiness,
     getApprovals,
     resolveApproval,
