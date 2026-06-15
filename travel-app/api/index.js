@@ -23,6 +23,7 @@ import { createAppleAuth } from './auth.js';
 import { presentTimeline, presentCapture } from './presenters.js';
 import { buildFeed, buildStats } from './feed.js';
 import { buildIntelligence } from './intelligence.js';
+import { buildRelationships, normalizeCompanions } from './relationships.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -208,6 +209,7 @@ export function createTravelApi(options = {}) {
     const timestamp = body.timestamp ?? todayIso();
     const captureId = body.captureId ?? `capture_${timestamp}_${Math.abs(hash(note + (photoRef ?? '')))}`;
     const eventType = photoRef ? 'photo_imported' : 'journal_entry';
+    const companions = normalizeCompanions(body.with ?? body.companions);
     const event = await timeline.appendEvent({
       travellerIdentityId: id,
       tripId: trip?.tripId ?? null,
@@ -215,7 +217,7 @@ export function createTravelApi(options = {}) {
       sourcePlatform: 'travel-app',
       sourceEntityId: captureId,
       timestamp,
-      metadata: { eventName: eventType, note, photoRef, day: body.day ?? null },
+      metadata: { eventName: eventType, note, photoRef, day: body.day ?? null, companions },
       idempotencyKey: `travel-app:${eventType}:${captureId}`,
     });
     return { capture: presentCapture(event) };
@@ -255,6 +257,14 @@ export function createTravelApi(options = {}) {
     const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
     const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
     return buildIntelligence(events, ownedTrips);
+  }
+
+  // Deterministic shared-journey intelligence — the people you travel with.
+  async function getRelationships(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildRelationships(events, ownedTrips);
   }
 
   // Generate deterministic trip-readiness candidates and route the high-impact
@@ -334,6 +344,7 @@ export function createTravelApi(options = {}) {
     getFeed,
     getStats,
     getIntelligence,
+    getRelationships,
     getTripReadiness,
     getApprovals,
     resolveApproval,

@@ -21,11 +21,12 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | PUT | `/trip` | trip fields (`tripName, country, destination, area, startDate, endDate`) | `{ trip }` | trip-platform (publishes timeline + graph) |
 | GET | `/itinerary` | — | `{ itinerary }` | itinerary-platform |
 | PUT | `/itinerary` | `{ days?, day?, section?, block? }` | `{ itinerary }` | itinerary-platform (publishes timeline + graph) |
-| POST | `/capture` | `{ note?, photoRef?, day?, timestamp? }` (note **or** photoRef required) | `{ capture: Entry }` | timeline (journal_entry / photo_imported) |
+| POST | `/capture` | `{ note?, photoRef?, day?, timestamp?, with?:[name] }` (note **or** photoRef required) | `{ capture: Entry & { day, with } }` | timeline (journal_entry / photo_imported) |
 | GET | `/timeline` | — | `{ days: [Day] }` | timeline-platform |
 | GET | `/feed` | — | `{ hero, featuredPhotos, highlights, today, stats }` | feed (derived from timeline + trip) |
 | GET | `/stats` | — | `{ stats: TravelStats }` | feed (derived from timeline + trip) |
 | GET | `/intelligence` | — | `{ travelStyle, insights, locked, basedOn }` | intelligence (derived from memories + trips) |
+| GET | `/relationships` | — | `{ mostTravelledWith, companions, recurringCompanions, circles, locked, basedOn }` | relationships (derived from shared memories + trips) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -121,6 +122,35 @@ underwater-vs-land photos, favourite activity, daily rhythm (early riser),
 longest travel streak, longest dive streak, favourite country, average trip
 length, favourite season, revisits, and a gentle "you should go back" nudge.
 All deterministic, offline-first, and free of backend terms.
+
+### Relationship & Shared-Journey DTO (M24.3)
+
+Deterministic shared-journey intelligence — **not AI**. Warm, emotional
+observations about the people you travel with, derived purely from the memories
+you tagged them in (`/capture` `with:[name]`) + your trips. A companion story is
+emitted only with evidence; the rest is `locked`.
+
+```
+Relationships = {
+  mostTravelledWith:   { name, tripsTogether, daysTogether, sharedMemories } | null,
+  companions:          [Companion],        // strongest bond first
+  recurringCompanions: [{ name, tripsTogether }],   // friends met on multiple trips
+  circles:             [{ members:[name], tripsTogether }],  // travel circles
+  locked:              [{ id, title, hint }],
+  basedOn:             { companions, sharedMemories },
+}
+Companion = {
+  name, headline:"You and Manon", summary, favouriteDestination,
+  stats: { tripsTogether, daysTogether, countriesTogether, placesTogether,
+           sharedMemories, sharedSunsets, sharedDives, sharedFlights, sharedPhotos },
+  insights: [Insight],   // "You've watched 31 sunsets together", "You always dive together"
+}
+```
+
+Companions are a product concept (names tagged on a memory). They could later be
+promoted to graph `COMPANION` entities + `TRAVELLED_WITH` edges (see
+PRODUCT_VISION.md); the aggregation here is presentation logic with zero platform
+duplication.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

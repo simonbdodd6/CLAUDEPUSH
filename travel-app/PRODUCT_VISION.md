@@ -293,6 +293,55 @@ and several depend on integrations above (kept opt-in, privacy-first).
 - **Tier:** V2.
 - **Possible API:** Internal composer over `/intelligence`; share sheet for export.
 
+## H. Relationship & shared-journey deepeners (added M24.3)
+
+The relationship layer (`/relationships`) is deterministic and derives only from
+who you tag in a memory. These would make shared journeys richer — still **not
+implemented**.
+
+### Companions as graph entities (`COMPANION` + `TRAVELLED_WITH`)
+- **Why:** Promote tagged names to first-class people so companion stats, circles
+  and "friends met on multiple trips" are backed by the relationship graph (which
+  already models `COMPANION` / `TRAVELLED_WITH`) rather than name strings.
+- **Complexity:** Medium (identity resolution for names; merge duplicates).
+- **Tier:** V2.
+- **Possible API:** Internal (travel-relationship-graph); Contacts (opt-in) for
+  real names/avatars.
+
+### Shared wishlists & collaborative trips (Airbnb wishlist / Apple Family Sharing)
+- **Why:** Plan a trip together — shared itinerary, shared "places to go",
+  co-owned memories. The social core of the product.
+- **Complexity:** High (multi-user auth, sync, permissions — beyond single-user MVP).
+- **Tier:** V3.
+- **Possible API:** Internal multi-user platform; CloudKit sharing for Apple-native sync.
+
+### Spotify Blend-style "Travel Blend"
+- **Why:** Merge two travellers' styles into a shared profile — "you and Manon
+  both love reef dives and quiet beaches" — a delightful pairs card.
+- **Complexity:** Medium (compose two `/intelligence` profiles deterministically).
+- **Tier:** V2 (once a companion has their own profile / shared data).
+- **Possible API:** Internal composer over two intelligence profiles.
+
+### Occasion tagging (anniversaries, honeymoon, birthdays)
+- **Why:** Unlocks "Anniversary trips" and "Honeymoon timeline" as their own
+  beautiful stories — currently locked.
+- **Complexity:** Low (a trip/memory occasion tag) → Medium (recurring anniversary detection).
+- **Tier:** V2.
+- **Possible API:** Internal (trip/memory metadata); Calendar (opt-in) for dates.
+
+### Shared accommodation & "hotels you've shared"
+- **Why:** Unlocks the locked "Hotels you've shared" card; "your favourite place
+  to stay together".
+- **Complexity:** Medium (needs stay data — pairs with TripIt/Booking/Airbnb, section B).
+- **Tier:** V3.
+
+### Face grouping for auto-companion suggestions (on-device)
+- **Why:** Suggest "tag Manon?" from on-device photo face grouping — effortless
+  companion capture, privacy-preserving.
+- **Complexity:** High (on-device only; sensitive; opt-in).
+- **Tier:** V3.
+- **Possible API:** Apple Vision face grouping (on-device); never leaves device.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

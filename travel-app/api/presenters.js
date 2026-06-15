@@ -192,7 +192,11 @@ export function presentTimeline(events, context = {}) {
 }
 
 export function presentCapture(event) {
-  return { ...toEntry(event), day: event.metadata?.day ?? null };
+  return {
+    ...toEntry(event),
+    day: event.metadata?.day ?? null,
+    with: Array.isArray(event.metadata?.companions) ? event.metadata.companions : [],
+  };
 }
 
 // Flat list of premium entries (single source of truth for cards used by the

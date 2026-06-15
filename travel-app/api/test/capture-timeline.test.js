@@ -56,7 +56,7 @@ test('capture: photo reference returns kind photo with the reference (no binary)
   assert.equal(capture.partOfDay, 'Evening');
   assert.equal(capture.subtitle, 'Evening · Photo memory');
   assertNoBackendLeak(capture);
-  assert.deepEqual(Object.keys(capture).sort(), [...ENTRY_KEYS, 'day'].sort());
+  assert.deepEqual(Object.keys(capture).sort(), [...ENTRY_KEYS, 'day', 'with'].sort());
 });
 
 test('capture requires a note or a photo', async () => {
