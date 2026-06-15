@@ -6858,12 +6858,20 @@
             const isPub    = nextSel.status === 'published';
             const stCount  = selectionStarterCount(nextSel);
             const bCount   = selectionBenchCount(nextSel);
-            return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px">
-              <div>
-                <div style="font-size:13px;font-weight:700;${isPub?'color:#34d399':'color:#f59e0b'}">${isPub?'✓ Squad published':'Draft squad saved'}</div>
-                <div class="muted" style="font-size:11px;margin-top:2px">${stCount}/15 starters · ${bCount}/8 bench</div>
+            const annSt    = isPub ? selectionAnnouncementStatus(nextSel) : null;
+            const notAnn   = annSt && annSt.status === 'not_announced';
+            return `<div class="card" style="padding:12px 16px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                <div>
+                  <div style="font-size:13px;font-weight:700;${isPub?'color:#34d399':'color:#f59e0b'}">${isPub?'✓ Squad published':'Draft squad saved'}</div>
+                  <div class="muted" style="font-size:11px;margin-top:2px">${stCount}/15 starters · ${bCount}/8 bench</div>
+                </div>
+                <button class="btn${isPub?'':' primary'}" type="button" onclick="selectionGoEdit('${esc(nextSel.id)}')">${isPub?'View squad':'Complete &amp; publish'}</button>
               </div>
-              <button class="btn${isPub?'':' primary'}" type="button" onclick="selectionGoEdit('${esc(nextSel.id)}')">${isPub?'View squad':'Complete &amp; publish'}</button>
+              ${isPub && annSt ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <span style="font-size:12px;font-weight:600;color:${annSt.color}">${annSt.label}</span>
+                ${notAnn ? `<button class="btn" type="button" style="font-size:12px;padding:4px 12px" onclick="selectionGoEdit('${esc(nextSel.id)}')">Announce</button>` : ''}
+              </div>` : ''}
             </div>`;
           })() : ''}
 
@@ -10705,6 +10713,15 @@
         updatedAt:        sel.updatedAt        || '',
         publishedAt:      sel.publishedAt      || null,
         createdBy:        sel.createdBy        || '',
+        // ── Announcement (Phase 15) ────────────────────────────────────────────
+        announcementStatus:  sel.announcementStatus  || 'not_announced', // 'not_announced' | 'draft_ready' | 'announced'
+        announcementDraft:   sel.announcementDraft   || '',              // coach-edited message text
+        announcementMessage: sel.announcementMessage || '',              // finalized sent text
+        announcementSentAt:  sel.announcementSentAt  || null,
+        // Future-proofing (data model only — not implemented yet):
+        announcementChannels:       Array.isArray(sel.announcementChannels) ? sel.announcementChannels : [],
+        announcementApprovers:      Array.isArray(sel.announcementApprovers) ? sel.announcementApprovers : [],
+        announcementApprovalStatus: sel.announcementApprovalStatus || null,
       };
     }
 
@@ -10745,6 +10762,145 @@
       if (g === 'available')   return '#34d399';
       if (g === 'unavailable' || g === 'injured') return '#f87171';
       return '#94a3b8';
+    }
+
+    // ── Announcement helpers ──────────────────────────────────────────────────
+
+    function selectionAnnouncementStatus(sel) {
+      const st = sel && sel.announcementStatus || 'not_announced';
+      if (st === 'announced')   return { status: 'announced',    label: '📢 Announced',  color: '#34d399', bg: 'rgba(16,185,129,0.15)',   border: 'rgba(16,185,129,0.3)' };
+      if (st === 'draft_ready') return { status: 'draft_ready',  label: 'Draft ready',   color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',   border: 'rgba(245,158,11,0.3)' };
+      return                          { status: 'not_announced', label: 'Not announced', color: '#64748b', bg: 'rgba(100,116,139,0.1)',   border: 'rgba(100,116,139,0.2)' };
+    }
+
+    function selectionCanAnnounce(sel) {
+      if (!sel) return false;
+      return selectionPlayerCount(sel) > 0;
+    }
+
+    function selectionGenerateAnnouncementMessage(sel, fixtures, players) {
+      if (!sel) return '';
+      const norm    = normalizeSquadSelection(sel);
+      const fx      = (fixtures || []).find(f => f.id === norm.fixtureId);
+      const lookup  = id => id ? (players || []).find(p => p.id === id) || null : null;
+      const lines   = [];
+
+      // Header
+      lines.push('🏉 Team Announcement' + (fx ? ' — vs ' + fx.opposition : ''));
+      if (fx) {
+        const fxDate = fx.date
+          ? new Date(fx.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+          : '';
+        const details = [fxDate, fx.kickoffTime ? 'KO ' + fx.kickoffTime : ''].filter(Boolean);
+        if (details.length) lines.push(details.join(' · '));
+        if (fx.venue)       lines.push('📍 ' + fx.venue);
+        if (fx.meetTime)    lines.push('🕐 Meet: ' + fx.meetTime);
+        if (fx.competition) lines.push('🏆 ' + fx.competition);
+      }
+      lines.push('');
+
+      // Starting XV
+      const starterRows = rugbySlots
+        .filter(([label]) => norm.starters && norm.starters[label])
+        .map(([label]) => {
+          const p = lookup(norm.starters[label]);
+          const posName = SEL_POSITION_NAMES[label] || '';
+          return label + '. ' + (p ? p.name : 'TBC') + (posName ? ' (' + posName + ')' : '');
+        });
+      if (starterRows.length) {
+        lines.push('STARTING XV');
+        starterRows.forEach(r => lines.push(r));
+        lines.push('');
+      }
+
+      // Bench
+      const benchRows = (Array.isArray(norm.bench) ? norm.bench : [])
+        .map((pid, i) => pid ? (i + 16) + '. ' + ((lookup(pid) || {}).name || 'TBC') : null)
+        .filter(Boolean);
+      if (benchRows.length) {
+        lines.push('BENCH');
+        benchRows.forEach(r => lines.push(r));
+        lines.push('');
+      }
+
+      // Captain / VC
+      const cap = lookup(norm.captainId);
+      const vc  = lookup(norm.viceCaptainId);
+      if (cap) lines.push('Captain: ' + cap.name);
+      if (vc)  lines.push('Vice-Captain: ' + vc.name);
+      if (cap || vc) lines.push('');
+
+      // Coach notes
+      if (norm.notes) { lines.push('📝 ' + norm.notes); lines.push(''); }
+
+      return lines.join('\n').trim();
+    }
+
+    // ── Announcement CRUD ─────────────────────────────────────────────────────
+
+    function announcementOpenComposer() {
+      const sel = (state.squadSelections || []).find(s => s.id === _selectionEditId);
+      if (!sel) return;
+      // Auto-generate draft text if none already saved
+      if (!sel.announcementDraft) {
+        const msg = selectionGenerateAnnouncementMessage(sel, state.fixtures || [], state.players || []);
+        _selectionUpdateCurrent(s => { s.announcementDraft = msg; });
+        saveState('Announcement draft generated');
+      }
+      _announcementComposerOpen = true;
+      render();
+    }
+
+    function announcementCloseComposer() {
+      _announcementComposerOpen = false;
+      render();
+    }
+
+    function announcementSaveDraft(text) {
+      _selectionUpdateCurrent(sel => {
+        sel.announcementDraft  = text;
+        sel.announcementStatus = text.trim() ? 'draft_ready' : 'not_announced';
+      });
+      _announcementComposerOpen = false;
+      saveState('Announcement draft saved');
+      render();
+    }
+
+    async function announcementSend() {
+      const sel = (state.squadSelections || []).find(s => s.id === _selectionEditId);
+      if (!sel) return;
+      if (!selectionCanAnnounce(sel)) {
+        showToast('No players selected — cannot announce.');
+        return;
+      }
+      const ok = await ceConfirm('Send this team announcement? Players will be able to see it.');
+      if (!ok) return;
+      const now = new Date().toISOString();
+      const msg = sel.announcementDraft || selectionGenerateAnnouncementMessage(sel, state.fixtures || [], state.players || []);
+      _selectionUpdateCurrent(s => {
+        s.announcementMessage = msg;
+        s.announcementDraft   = msg;
+        s.announcementStatus  = 'announced';
+        s.announcementSentAt  = now;
+      });
+      _announcementComposerOpen = false;
+      saveState('Announcement sent');
+      showToast('Team announced ✓');
+      render();
+    }
+
+    async function announcementReset() {
+      const ok = await ceConfirm('Reset announcement? Players will no longer see it.', null, { danger: true });
+      if (!ok) return;
+      _selectionUpdateCurrent(s => {
+        s.announcementStatus  = 'not_announced';
+        s.announcementMessage = '';
+        s.announcementDraft   = '';
+        s.announcementSentAt  = null;
+      });
+      _announcementComposerOpen = false;
+      saveState('Announcement reset');
+      render();
     }
 
     function selectionCreate(fixtureId) {
@@ -11031,11 +11187,15 @@
         const bCount   = sel ? selectionBenchCount(sel) : 0;
         const isPub    = sel && sel.status === 'published';
         const isDraft  = sel && sel.status === 'draft';
+        const annSt   = isPub ? selectionAnnouncementStatus(sel) : null;
         const statusBadge = isPub
           ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(16,185,129,0.15);color:#34d399;border:1px solid rgba(16,185,129,0.3)">✓ Published</span>`
           : isDraft
           ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">Draft saved</span>`
           : `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--panel-2);color:var(--muted);border:1px solid var(--line)">No squad</span>`;
+        const annBadge = annSt && annSt.status !== 'not_announced'
+          ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:${annSt.bg};color:${annSt.color};border:1px solid ${annSt.border}">${annSt.label}</span>`
+          : '';
         const ctaBtn = isPub
           ? `<button class="btn" type="button" onclick="selectionOpenEditor('${esc(sel.id)}')">View / Edit</button>`
           : isDraft
@@ -11045,6 +11205,7 @@
           <div style="min-width:0;flex:1">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
               ${statusBadge}
+              ${annBadge}
               ${haLabel ? `<span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;background:${fx.homeAway==='home'?'rgba(52,211,153,0.12)':'rgba(148,163,184,0.1)'};color:${fx.homeAway==='home'?'#34d399':'#94a3b8'}">${haLabel}</span>` : ''}
               <span style="font-size:11px;padding:2px 7px;border-radius:999px;background:${fxSt.bg};color:${fxSt.color};font-weight:700">${fxSt.label}</span>
             </div>
@@ -11320,6 +11481,65 @@
               : `<button class="btn" type="button" onclick="selectionDuplicate('${esc(norm.id)}')">Create new draft</button>`}
           </div>
         </div>
+
+        <!-- Announcement panel (published squads only) -->
+        ${isPub ? (() => {
+          const annSt   = selectionAnnouncementStatus(norm);
+          const canAnn  = selectionCanAnnounce(norm);
+          const warnMsg = starters < 15
+            ? `⚠ Only ${starters}/15 positions filled — preview shows gaps.`
+            : '';
+
+          // Announced state: show summary + reset option
+          if (annSt.status === 'announced') {
+            return `<div class="card" style="border-color:rgba(16,185,129,0.25)">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-size:14px;font-weight:800;color:#34d399">📢 Announced</span>
+                  ${norm.announcementSentAt ? `<span class="muted" style="font-size:11px">${new Date(norm.announcementSentAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span>` : ''}
+                </div>
+                <button class="btn ghost" type="button" onclick="announcementReset()" style="color:#f87171;font-size:12px">Reset</button>
+              </div>
+              <pre style="font-size:12px;color:var(--muted);white-space:pre-wrap;word-break:break-word;margin:0;background:var(--panel-2);border-radius:8px;padding:10px 12px;line-height:1.6;max-height:200px;overflow-y:auto">${esc(norm.announcementMessage)}</pre>
+            </div>`;
+          }
+
+          // Composer open: show editable textarea
+          if (_announcementComposerOpen) {
+            return `<div class="card">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+                <strong style="font-size:14px">Team announcement</strong>
+                <button class="btn ghost" type="button" onclick="announcementCloseComposer()" style="font-size:12px">Cancel</button>
+              </div>
+              ${warnMsg ? `<div style="padding:8px 12px;border-radius:7px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);font-size:12px;color:#f59e0b;margin-bottom:10px">${warnMsg}</div>` : ''}
+              <textarea id="ann-composer-ta" rows="14"
+                style="width:100%;font-size:12px;font-family:monospace;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--panel-2);color:var(--fg);resize:vertical;line-height:1.6;box-sizing:border-box"
+              >${esc(norm.announcementDraft)}</textarea>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+                <button class="btn ghost" type="button" onclick="announcementSaveDraft(document.getElementById('ann-composer-ta').value)">Save draft</button>
+                <button class="btn primary" type="button" ${canAnn?'':'disabled title="No players selected"'} onclick="announcementSend()">Send announcement</button>
+              </div>
+            </div>`;
+          }
+
+          // Default: show status + open-composer button
+          const draftReady = annSt.status === 'draft_ready';
+          return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:14px 16px">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:${draftReady?'#f59e0b':'var(--muted)'}">
+                ${draftReady ? '📝 Draft ready to send' : 'Not announced yet'}
+              </div>
+              ${draftReady ? '<div class="muted" style="font-size:11px;margin-top:2px">Preview and send when ready</div>' : '<div class="muted" style="font-size:11px;margin-top:2px">Compose a message for your players</div>'}
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              ${!canAnn ? `<span style="font-size:11px;color:#f87171">No players selected</span>` : ''}
+              <button class="btn${draftReady?'':' primary'}" type="button" onclick="announcementOpenComposer()" ${canAnn?'':'disabled'}>
+                ${draftReady ? 'Edit &amp; send' : 'Compose announcement'}
+              </button>
+            </div>
+          </div>`;
+        })() : ''}
+
       </div>`;
     }
 
@@ -11372,7 +11592,9 @@
             const haLabel = f.homeAway === 'home' ? 'Home' : f.homeAway === 'away' ? 'Away' : f.homeAway === 'neutral' ? 'Neutral' : '';
             const pubSel  = (state.squadSelections || []).find(s => s.fixtureId === f.id && s.status === 'published');
             const pId     = player.id;
+            const isAnnounced = pubSel && pubSel.announcementStatus === 'announced';
             let squadBadge = '';
+            let announcedCard = '';
             if (pubSel && pId) {
               const pSt = selectionGetPlayerStatus(pubSel, pId);
               if (pSt.status === 'starter') {
@@ -11382,16 +11604,39 @@
               } else {
                 squadBadge = `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:var(--panel-2);color:var(--muted);border:1px solid var(--line)">Not selected</span>`;
               }
+              // Rich announcement card — only when coach has officially announced
+              if (isAnnounced) {
+                const posName  = pSt.status === 'starter' ? (SEL_POSITION_NAMES[pSt.slot] || ('Position ' + pSt.slot)) : '';
+                const isCap    = pubSel.captainId === pId;
+                const isVC     = pubSel.viceCaptainId === pId;
+                const roleLabel = pSt.status === 'starter'
+                  ? `Starting — #${pSt.slot} ${posName}${isCap?' (Captain)':isVC?' (Vice-Captain)':''}`
+                  : pSt.status === 'bench'
+                    ? `Replacement — jersey #${pSt.slot}${isCap?' (Captain)':isVC?' (Vice-Captain)':''}`
+                    : 'Not selected for this match';
+                const roleColor = pSt.status === 'starter' ? '#34d399' : pSt.status === 'bench' ? '#f59e0b' : 'var(--muted)';
+                announcedCard = `<div style="margin:8px 0 4px;padding:12px 14px;border-radius:10px;background:var(--panel-2);border:1px solid var(--line)">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+                    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(16,185,129,0.15);color:#34d399;border:1px solid rgba(16,185,129,0.25)">📢 Announced</span>
+                  </div>
+                  <div style="font-size:14px;font-weight:800;color:${roleColor};margin-bottom:2px">${esc(roleLabel)}</div>
+                  ${[f.kickoffTime||f.time, f.venue, pubSel.notes ? ('Coach notes: ' + pubSel.notes) : ''].filter(Boolean).map(t => `<div class="muted" style="font-size:12px;margin-top:3px">${esc(t)}</div>`).join('')}
+                  ${pubSel.announcementMessage ? `<pre style="font-size:11px;color:var(--muted);white-space:pre-wrap;word-break:break-word;margin:8px 0 0;line-height:1.5">${esc(pubSel.announcementMessage)}</pre>` : ''}
+                </div>`;
+              }
             }
-            return `<div style="padding:11px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-              <div>
-                <strong style="font-size:14px">vs ${esc(f.opposition)}</strong>
-                <div class="muted" style="font-size:12px;margin-top:2px">${[fDate, f.kickoffTime||f.time, f.venue, haLabel].filter(Boolean).join(' · ')}</div>
+            return `<div style="padding:11px 0;border-bottom:1px solid var(--line)">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                <div>
+                  <strong style="font-size:14px">vs ${esc(f.opposition)}</strong>
+                  <div class="muted" style="font-size:12px;margin-top:2px">${[fDate, f.kickoffTime||f.time, f.venue, haLabel].filter(Boolean).join(' · ')}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  ${squadBadge}
+                  ${haLabel ? `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:${f.homeAway==='home'?'rgba(16,185,129,0.12)':'rgba(255,255,255,0.06)'};color:${f.homeAway==='home'?'var(--green)':'var(--muted)'};border:1px solid ${f.homeAway==='home'?'rgba(16,185,129,0.3)':'var(--line)'}">${haLabel}</span>` : ''}
+                </div>
               </div>
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                ${squadBadge}
-                ${haLabel ? `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:${f.homeAway==='home'?'rgba(16,185,129,0.12)':'rgba(255,255,255,0.06)'};color:${f.homeAway==='home'?'var(--green)':'var(--muted)'};border:1px solid ${f.homeAway==='home'?'rgba(16,185,129,0.3)':'var(--line)'}">${haLabel}</span>` : ''}
-              </div>
+              ${announcedCard}
             </div>`;
           }).join('')}
         </div>` : ''}
@@ -11460,8 +11705,9 @@
     let _fixtureCompFilter = '';    // competition string filter ('' = no competition filter)
 
     // ─── SQUAD SELECTION UI STATE (not persisted — transient per-session) ───────
-    let _selectionEditId = null;  // null = list view | selId = editor open
-    let _selectionPickId = null;  // playerId awaiting slot assignment (click-to-assign flow)
+    let _selectionEditId         = null;  // null = list view | selId = editor open
+    let _selectionPickId         = null;  // playerId awaiting slot assignment (click-to-assign flow)
+    let _announcementComposerOpen = false; // composer panel expanded in selection editor
 
     function chatLoadStateModule() {
       if (!_chatStatePromise) {
