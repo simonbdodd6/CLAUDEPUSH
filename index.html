@@ -12569,8 +12569,159 @@
     }
 
     // ── Subscription capability layer ─────────────────────────────────────────
-    // All premium feature checks must go through canUseFeature() — never read
-    // state.teamPlan directly in UI code.
+    // Single source of truth for all premium capabilities. UI code must never
+    // read state.teamPlan directly — always use canUseFeature() or the helpers.
+
+    const PLAN_LEVEL = { core: 0, trial: 0, pro: 1, enterprise: 2 };
+    function planLevel(plan) { return PLAN_LEVEL[plan] ?? 0; }
+
+    // ── Feature Registry ──────────────────────────────────────────────────────
+    // Each entry describes one capability: who can use it, what to show when
+    // it is locked, and whether it is already live or coming soon.
+    const FEATURE_REGISTRY = [
+      // Active premium features
+      {
+        id: 'ai_intelligence',
+        displayName: 'AI Intelligence',
+        description: 'Weekly Intelligence Brief powered by the Coach\'s Eye Intelligence engine.',
+        minimumPlan: 'pro',
+        category: 'intelligence',
+        upgradeMessage: 'Get AI-powered squad insights, form analysis and match preparation.',
+      },
+      {
+        id: 'unlimited_videos',
+        displayName: 'Unlimited Video Storage',
+        description: 'Store up to 100 training clips directly in your club library.',
+        minimumPlan: 'pro',
+        category: 'content',
+        upgradeMessage: 'Upgrade to Pro to store up to 100 training clips instead of 10.',
+      },
+      {
+        id: 'advanced_analytics',
+        displayName: 'Advanced Analytics',
+        description: 'Deep performance metrics, squad trends and season-level analysis.',
+        minimumPlan: 'pro',
+        category: 'analytics',
+        upgradeMessage: 'Unlock detailed performance data, squad trends and season analytics.',
+      },
+      {
+        id: 'unlimited_push',
+        displayName: 'Unlimited Push Notifications',
+        description: 'Send unlimited push notifications to your squad and individuals.',
+        minimumPlan: 'pro',
+        category: 'communication',
+        upgradeMessage: 'Upgrade to Pro for unlimited push notifications to your squad.',
+      },
+      // Coming soon — registered here for catalogue completeness; not yet implemented
+      {
+        id: 'sc_ai',
+        displayName: 'Strength and Conditioning AI',
+        description: 'AI-powered load management, physical performance and injury risk tracking.',
+        minimumPlan: 'pro',
+        category: 'intelligence',
+        upgradeMessage: 'Coming soon to Pro.',
+        comingSoon: true,
+      },
+      {
+        id: 'player_dev_ai',
+        displayName: 'Individual Player Development AI',
+        description: 'Personalised development pathways and progress tracking for each player.',
+        minimumPlan: 'pro',
+        category: 'intelligence',
+        upgradeMessage: 'Coming soon to Pro.',
+        comingSoon: true,
+      },
+      {
+        id: 'match_prep_intelligence',
+        displayName: 'Match Preparation Intelligence',
+        description: 'Opponent analysis, game-plan recommendations and pre-match briefings.',
+        minimumPlan: 'pro',
+        category: 'intelligence',
+        upgradeMessage: 'Coming soon to Pro.',
+        comingSoon: true,
+      },
+      {
+        id: 'coach_dna',
+        displayName: 'Coach DNA',
+        description: 'Your coaching style, system preferences and tactical fingerprint.',
+        minimumPlan: 'pro',
+        category: 'intelligence',
+        upgradeMessage: 'Coming soon to Pro.',
+        comingSoon: true,
+      },
+      {
+        id: 'season_intelligence',
+        displayName: 'Season Intelligence',
+        description: 'Full-season performance narratives, milestone tracking and projection.',
+        minimumPlan: 'pro',
+        category: 'analytics',
+        upgradeMessage: 'Coming soon to Pro.',
+        comingSoon: true,
+      },
+      {
+        id: 'club_intelligence',
+        displayName: 'Club Intelligence',
+        description: 'Cross-team analytics, club-wide trends and long-term development data.',
+        minimumPlan: 'enterprise',
+        category: 'analytics',
+        upgradeMessage: 'Coming soon to Enterprise.',
+        comingSoon: true,
+      },
+      {
+        id: 'digital_twin',
+        displayName: 'Digital Twin',
+        description: 'A live computational model of your squad for simulation and planning.',
+        minimumPlan: 'enterprise',
+        category: 'intelligence',
+        upgradeMessage: 'Coming soon to Enterprise.',
+        comingSoon: true,
+      },
+      {
+        id: 'ai_assistant',
+        displayName: 'AI Assistant',
+        description: 'Conversational coaching assistant for instant answers and planning support.',
+        minimumPlan: 'pro',
+        category: 'intelligence',
+        upgradeMessage: 'Coming soon to Pro.',
+        comingSoon: true,
+      },
+      {
+        id: 'recruitment_intelligence',
+        displayName: 'Recruitment Intelligence',
+        description: 'AI-driven player profiling, scouting reports and squad gap analysis.',
+        minimumPlan: 'enterprise',
+        category: 'intelligence',
+        upgradeMessage: 'Coming soon to Enterprise.',
+        comingSoon: true,
+      },
+      {
+        id: 'video_intelligence',
+        displayName: 'Video Intelligence',
+        description: 'Automated video tagging, clip highlights and pattern recognition.',
+        minimumPlan: 'pro',
+        category: 'intelligence',
+        upgradeMessage: 'Coming soon to Pro.',
+        comingSoon: true,
+      },
+    ];
+
+    function getFeature(id) {
+      return FEATURE_REGISTRY.find(f => f.id === id) || null;
+    }
+
+    function getAllFeatures() {
+      return FEATURE_REGISTRY.slice();
+    }
+
+    function getLockedFeatures(plan) {
+      const level = planLevel(plan);
+      return FEATURE_REGISTRY.filter(f => planLevel(f.minimumPlan) > level);
+    }
+
+    function getAvailableFeatures(plan) {
+      const level = planLevel(plan);
+      return FEATURE_REGISTRY.filter(f => planLevel(f.minimumPlan) <= level);
+    }
 
     function isProTeam() {
       return state.teamPlan === 'pro' && state.teamPlanStatus === 'active';
@@ -12581,24 +12732,16 @@
     }
 
     function canUseFeature(featureName) {
-      const isPaid = isProTeam() || isEnterpriseTeam();
-      switch (featureName) {
-        case 'ai_intelligence':    return isPaid;
-        case 'unlimited_videos':   return isPaid;
-        case 'advanced_analytics': return isPaid;
-        case 'unlimited_push':     return isPaid;
-        default:                   return true;
-      }
+      const feature = getFeature(featureName);
+      if (!feature) return true; // unknown IDs never block access
+      const level = planLevel(isEnterpriseTeam() ? 'enterprise' : isProTeam() ? 'pro' : 'core');
+      return level >= planLevel(feature.minimumPlan);
     }
 
     function renderUpgradePrompt(featureName, { compact = false } = {}) {
-      const NAMES = {
-        ai_intelligence:    'AI Intelligence',
-        unlimited_videos:   'Unlimited Video Storage',
-        advanced_analytics: 'Advanced Analytics',
-        unlimited_push:     'Unlimited Push Notifications',
-      };
-      const name = NAMES[featureName] || featureName;
+      const feature = getFeature(featureName);
+      const name = feature ? feature.displayName : featureName;
+      const msg  = feature ? feature.upgradeMessage : 'Available on the Pro plan. Upgrade to unlock all premium features.';
       const upgradeBtn = canI('manage_subscriptions')
         ? `<button class="btn primary" type="button" onclick="settingsUpgradeToPro()" style="font-size:12px;min-height:32px;padding:0 14px;flex-shrink:0">Upgrade to Pro</button>`
         : `<span class="muted" style="font-size:12px">Ask your admin to upgrade</span>`;
@@ -12612,7 +12755,7 @@
       return `<div class="card" style="text-align:center;padding:32px 20px;border-color:rgba(99,102,241,0.2)">
         <div style="width:44px;height:44px;margin:0 auto 14px;border-radius:50%;background:rgba(99,102,241,0.12);display:flex;align-items:center;justify-content:center;font-size:20px;color:#818cf8">◆</div>
         <strong style="font-size:15px;display:block;margin-bottom:6px">${esc(name)}</strong>
-        <p class="muted" style="font-size:13px;margin:0 0 16px">Available on the Pro plan. Upgrade to unlock all premium features.</p>
+        <p class="muted" style="font-size:13px;margin:0 0 16px">${esc(msg)}</p>
         ${upgradeBtn}
       </div>`;
     }

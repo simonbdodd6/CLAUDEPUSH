@@ -64,10 +64,33 @@ function extractFn(source, name) {
   throw new Error('function ' + name + ' — could not find closing brace');
 }
 
+// Extract a const declaration whose value starts with [ or {.
+// Counts only the outer bracket/brace type to correctly handle nested structures.
+function extractConst(source, name) {
+  const marker = '    const ' + name + ' = ';
+  const start = source.indexOf(marker);
+  if (start === -1) throw new Error('const ' + name + ' not found');
+  let i = start + marker.length;
+  while (i < source.length && (source[i] === ' ' || source[i] === '\n')) i++;
+  const opener = source[i];
+  const closer = opener === '[' ? ']' : opener === '{' ? '}' : null;
+  if (!closer) throw new Error('const ' + name + ': unexpected opener ' + JSON.stringify(opener));
+  let depth = 0;
+  while (i < source.length) {
+    if (source[i] === opener) depth++;
+    else if (source[i] === closer) { depth--; if (depth === 0) { i++; break; } }
+    i++;
+  }
+  if (source[i] === ';') i++;
+  return source.slice(start, i);
+}
+
 // Build an isolated scope with mocked globals and return the helper functions.
 // IMPORTANT: must NOT use a template literal to build the Function body — the
 // extracted functions contain backtick template literals that would prematurely
 // close an outer template literal. Use string concatenation instead.
+// Phase 8: includes PLAN_LEVEL, FEATURE_REGISTRY, and registry helpers since
+// canUseFeature() and renderUpgradePrompt() now read from the registry.
 function buildScope({ teamPlan = null, teamPlanStatus = null, permissions = [], isCoach = false } = {}) {
   const stateJson = JSON.stringify({ teamPlan, teamPlanStatus });
   const permsJson = JSON.stringify(permissions);
@@ -80,6 +103,13 @@ function buildScope({ teamPlan = null, teamPlanStatus = null, permissions = [], 
     'function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }\n' +
     'function canI(perm) { if (_myPermissions === null) return isCoach(); return _myPermissions.includes(perm); }\n' +
     'function settingsUpgradeToPro() {}\n' +
+    extractConst(html, 'PLAN_LEVEL') + '\n' +
+    extractFn(html, 'planLevel') + '\n' +
+    extractConst(html, 'FEATURE_REGISTRY') + '\n' +
+    extractFn(html, 'getFeature') + '\n' +
+    extractFn(html, 'getAllFeatures') + '\n' +
+    extractFn(html, 'getLockedFeatures') + '\n' +
+    extractFn(html, 'getAvailableFeatures') + '\n' +
     extractFn(html, 'isProPlan') + '\n' +
     extractFn(html, 'isProTeam') + '\n' +
     extractFn(html, 'isEnterpriseTeam') + '\n' +
@@ -160,11 +190,12 @@ test('Enterprise team can use all premium features', () => {
 
 // ── 10. renderUpgradePrompt full card ─────────────────────────────────────────
 
-test('renderUpgradePrompt renders feature name and Pro plan mention (full card)', () => {
+test('renderUpgradePrompt renders feature name and upgrade message from registry (full card)', () => {
   const { renderUpgradePrompt } = buildScope({ teamPlan: 'core', teamPlanStatus: 'active', permissions: [] });
   const html = renderUpgradePrompt('advanced_analytics');
   assert.ok(html.includes('Advanced Analytics'), 'Should include human-readable feature name');
-  assert.ok(html.includes('Pro plan'), 'Should mention Pro plan');
+  // Phase 8: message comes from the registry upgradeMessage field
+  assert.ok(html.includes('Unlock detailed performance data'), 'Should include registry upgradeMessage');
   assert.ok(html.includes('card'), 'Should use card layout class');
 });
 
