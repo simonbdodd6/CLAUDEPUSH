@@ -38,6 +38,7 @@ export const COACHES_EYE_MANIFEST = Object.freeze({
     { key: CAPABILITY.MATCH_STRATEGY,        tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE] },
     { key: CAPABILITY.LIVE_MATCH,            tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE] },
     { key: CAPABILITY.SEASON_INTELLIGENCE,   tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE] },
+    { key: CAPABILITY.EXECUTIVE_RECOMMENDATIONS, tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE] },         // M38: presents Brain-produced recs
     { key: CAPABILITY.LEARNING,              tiers: [T.STARTER, T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE] },  // infra, not a sold product
   ],
 
@@ -75,6 +76,7 @@ export const COACHES_EYE_MANIFEST = Object.freeze({
     { slot: CAPABILITY.MATCH_STRATEGY,        engine: 'match-strategy',      version: '1.0', tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE],      flag: FLAG.MATCH_STRATEGY },
     { slot: CAPABILITY.LIVE_MATCH,            engine: 'live-match',          version: '1.0', tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE],      flag: FLAG.LIVE_MATCH },
     { slot: CAPABILITY.SEASON_INTELLIGENCE,   engine: 'season',              version: '1.0', tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE],      flag: FLAG.SEASON_INTELLIGENCE },
+    { slot: CAPABILITY.EXECUTIVE_RECOMMENDATIONS, engine: 'recommendation-engine', version: '1.0', tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE], flag: FLAG.ENABLED },
     { slot: CAPABILITY.LEARNING,              engine: 'learning',            version: '1.0', tiers: [T.STARTER, T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE], flag: FLAG.LEARNING },
   ],
 

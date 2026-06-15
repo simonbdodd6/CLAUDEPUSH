@@ -83,6 +83,22 @@ export const VISUAL_STATES = Object.freeze(['live', 'placeholder', 'locked', 'id
  */
 
 /**
+ * @typedef {Object} ExecutiveRecommendation
+ * @property {string} id
+ * @property {string} title
+ * @property {string} detail
+ * @property {string} category
+ * @property {'high'|'medium'|'low'} [priority]
+ * @property {number} confidence  0..100
+ */
+
+/**
+ * @typedef {Object} ExecutiveRecommendationsSlice
+ * @property {'live'|'placeholder'|'locked'|'idle'} state
+ * @property {ExecutiveRecommendation[]} items   recommendations PRODUCED by the Brain
+ */
+
+/**
  * @typedef {Object} MemoryNode
  * @property {string}  id
  * @property {string}  label
@@ -111,6 +127,7 @@ export const VISUAL_STATES = Object.freeze(['live', 'placeholder', 'locked', 'id
  * @property {VisualBrainState}    brain
  * @property {MatchReadinessSlice} matchReadiness
  * @property {OpponentSlice}       opponent
+ * @property {ExecutiveRecommendationsSlice} executiveRecommendations
  * @property {CoachDnaSlice}       coachDna
  * @property {SeasonSlice}         season
  * @property {MemorySlice}         memory

@@ -116,6 +116,15 @@ export function placeholderVisualModel() {
         { label: 'Play width in early phases' },
       ],
     },
+    executiveRecommendations: {
+      state: 'placeholder',
+      items: [
+        { id: 'r1', title: 'Send attendance reminder to the squad', detail: 'Average attendance dropped 8% over the last 3 sessions.', category: 'Training', priority: 'high', confidence: 80 },
+        { id: 'r2', title: 'Review depth at prop', detail: '2 props unavailable for Saturday — confirm cover or reposition.', category: 'Selection', priority: 'high', confidence: 85 },
+        { id: 'r3', title: 'Taper match-week training load', detail: 'Fixture is 5 days away — cap session length and contact.', category: 'Performance', priority: 'medium', confidence: 72 },
+        { id: 'r4', title: 'Draft the weekly newsletter', detail: 'Last newsletter sent 3 weeks ago.', category: 'Communications', priority: 'low', confidence: 60 },
+      ],
+    },
     coachDna: {
       state: 'placeholder',
       maturity: 0.62,

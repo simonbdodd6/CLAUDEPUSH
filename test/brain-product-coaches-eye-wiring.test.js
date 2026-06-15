@@ -198,21 +198,33 @@ test('a throwing port → brain_unavailable (never throws)', async () => {
 // PART 5 — WIRED registry + isWired
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('WIRED_CAPABILITIES contains matchReadiness + coachDna + season + opponent (M37)', () => {
+test('WIRED_CAPABILITIES contains MR + coachDna + season + opponent + execRecs (M38)', () => {
   assert.deepEqual(Object.keys(WIRED_CAPABILITIES).sort(),
-    ['coach.coachDna', 'coach.matchReadiness', 'coach.opponentIntelligence', 'coach.seasonIntelligence'])
+    ['coach.coachDna', 'coach.executiveRecommendations', 'coach.matchReadiness', 'coach.opponentIntelligence', 'coach.seasonIntelligence'])
   assert.equal(WIRED_CAPABILITIES['coach.matchReadiness'], 'getMatchReadiness')
   assert.equal(WIRED_CAPABILITIES['coach.coachDna'], 'getCoachDna')
   assert.equal(WIRED_CAPABILITIES['coach.seasonIntelligence'], 'getSeasonIntelligence')
   assert.equal(WIRED_CAPABILITIES['coach.opponentIntelligence'], 'getOpponentIntelligence')
+  assert.equal(WIRED_CAPABILITIES['coach.executiveRecommendations'], 'getExecutiveRecommendations')
   assert.ok(Object.isFrozen(WIRED_CAPABILITIES))
-  assert.equal(isWired('coach.matchReadiness'), true)
-  assert.equal(isWired('coach.coachDna'), true)
-  assert.equal(isWired('coach.seasonIntelligence'), true)
-  assert.equal(isWired('coach.opponentIntelligence'), true)
-  for (const k of ['coach.liveMatch', 'coach.dashboard', 'coach.trainingDesigner', 'coach.matchStrategy']) {
-    assert.equal(isWired(k), false, `${k} must remain unwired after M37`)
+  for (const k of ['coach.matchReadiness', 'coach.coachDna', 'coach.seasonIntelligence', 'coach.opponentIntelligence', 'coach.executiveRecommendations']) {
+    assert.equal(isWired(k), true, `${k} must be wired after M38`)
   }
+  for (const k of ['coach.liveMatch', 'coach.dashboard', 'coach.trainingDesigner', 'coach.matchStrategy']) {
+    assert.equal(isWired(k), false, `${k} must remain unwired after M38`)
+  }
+})
+
+test('coach.executiveRecommendations wires live through an injected port (M38)', async () => {
+  const recs = [{ id: 'r1', title: 'Send attendance reminder', category: 'Training', priority: 'high', confidence: 80 }]
+  let calls = 0
+  const port = { getExecutiveRecommendations: async () => { calls++; return recs } }
+  const r = await invoke('coach.executiveRecommendations', { tier: 'professional', payload: {} }, port)
+  assertEnvelopeShape(r, 'execRecs live')
+  assert.equal(r.available, true)
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.data, recs)
+  assert.equal(calls, 1)
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

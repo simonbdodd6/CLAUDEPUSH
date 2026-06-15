@@ -24,6 +24,7 @@ export const VERSION_CONTRACTS = Object.freeze([
   { capability: 'coach.matchStrategy',            outputVersion: '1.0', supports: ['1.0'] }, // STRATEGY_VERSION
   { capability: 'coach.liveMatch',                outputVersion: '1.0', supports: ['1.0'] }, // LIVE_VERSION
   { capability: 'coach.seasonIntelligence',       outputVersion: '1.0', supports: ['1.0'] }, // SEASON_VERSION
+  { capability: 'coach.executiveRecommendations', outputVersion: '1.0', supports: ['1.0'] }, // M38: recommendation-engine
 ])
 
 export const VERSION_CONTRACT_BY_CAPABILITY = Object.freeze(

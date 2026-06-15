@@ -12,18 +12,21 @@
  *
  * DORMANT: nothing imports this yet (Core included). It activates no feature
  * flag and changes no Core API/UI. It wires coach.matchReadiness (M31.5),
- * coach.coachDna (M35), coach.seasonIntelligence (M36) and
- * coach.opponentIntelligence (M37) — each via the AI Brain's own integration
- * layer (read-only engine imports; never edits Core).
+ * coach.coachDna (M35), coach.seasonIntelligence (M36),
+ * coach.opponentIntelligence (M37) and coach.executiveRecommendations (M38) —
+ * each via the AI Brain's own integration layer (read-only engine imports;
+ * never edits Core). Executive recommendations are PRODUCED by the Brain; the
+ * host only reads the already-produced list.
  */
 
 import { invoke, WIRED_CAPABILITIES } from '@brain/product-coaches-eye'
 import { getMatchReadiness } from '../coach-products/match-readiness/index.js'
-// M35: coach DNA; M36: season; M37: opponent — AI namespace integration entries (read-only)
+// M35: DNA; M36: season; M37: opponent; M38: executive recs — AI namespace entries (read-only)
 import {
   getCoachDNA,
   getSeasonIntelligence as aiGetSeasonIntelligence,
   getOpponentProfile as aiGetOpponentProfile,
+  activeRecommendations as aiActiveRecommendations,
 } from '../ai-brain/index.js'
 
 /** Extract the coachId the coach-DNA engine keys on from a runtime payload. */
@@ -49,7 +52,7 @@ function opponentOf(payload) {
  * store's observations into the DNA builders.
  *
  * @param {{ coachAI?: object }} [opts]
- * @returns {Readonly<{ getMatchReadiness: (payload: object) => Promise<object>, getCoachDna: (payload: object) => Promise<object>, getSeasonIntelligence: (payload: object) => Promise<object>, getOpponentIntelligence: (payload: object) => Promise<object> }>}
+ * @returns {Readonly<{ getMatchReadiness: Function, getCoachDna: Function, getSeasonIntelligence: Function, getOpponentIntelligence: Function, getExecutiveRecommendations: Function }>}
  */
 export function createCoachesEyeRuntime(opts = {}) {
   const coachAI = opts && typeof opts === 'object' ? opts.coachAI : undefined
@@ -68,6 +71,8 @@ export function createCoachesEyeRuntime(opts = {}) {
       const { opponentId, opponentName } = opponentOf(payload)
       return aiGetOpponentProfile(opponentId, { opponentName })
     },
+    // Presents the Brain's already-produced active recommendations (read-only list).
+    getExecutiveRecommendations: () => aiActiveRecommendations(),
   })
 }
 
