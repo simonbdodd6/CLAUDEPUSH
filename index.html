@@ -2176,6 +2176,7 @@
       <section id="coach-admin"       class="section"></section>
       <section id="coach-settings"    class="section"></section>
       <section id="coach-fixtures"    class="section"></section>
+      <section id="coach-selection"   class="section"></section>
 
       <section id="player-availability" class="section"></section>
       <section id="player-week"         class="section"></section>
@@ -2215,6 +2216,7 @@
       ["messages",  "Messages"],
       ["training",  "Training"],
       ["fixtures",  "Fixtures"],
+      ["selection", "Selection"],
       ["matchday",  "Match Centre"],
       ["medical",   "Medical"],
       ["players",   "Members"],
@@ -2545,6 +2547,7 @@
       autoSendSchedule: { day:"monday", time:"09:00" },
       trainingAutoSend: false,
       benchPlayers: ["","","","","","","",""],
+      squadSelections: [],
       subPlan: [],
       treatmentLogs: [],
       medicalNotes: {},
@@ -2623,7 +2626,7 @@
     const SECTION_ICONS = {
       overview: 'home', message: 'calcheck', messages: 'chat', training: 'clipboard',
       matchday: 'trophy', medical: 'medical', players: 'users', admin: 'shield', settings: 'settings',
-      availability: 'calcheck', week: 'week', fixtures: 'calendar',
+      availability: 'calcheck', week: 'week', fixtures: 'calendar', selection: 'users',
     };
 
     // ─── DESIGN SYSTEM: BRANDED DIALOGS ──────────────────────────────────────
@@ -3066,6 +3069,7 @@
       next.autoSendSchedule = input.autoSendSchedule || { day:"monday", time:"09:00" };
       next.trainingAutoSend = input.trainingAutoSend ?? false;
       next.benchPlayers     = input.benchPlayers     || Array(8).fill("");
+      next.squadSelections  = Array.isArray(input.squadSelections) ? input.squadSelections : [];
       next.matchCentre = { ...structuredClone(defaultState.matchCentre), ...(input.matchCentre || {}) };
       // Guard schedule: ensure it's a valid array, migrate sessions to have deadline field
       if (!Array.isArray(next.schedule) || next.schedule.length === 0) {
@@ -5028,7 +5032,7 @@
       if (_nameEl) _nameEl.textContent = _clubName;
       if (_cardEl) _cardEl.textContent = _clubName + ' · Coach\'s Eye';
       document.title = 'Coach\'s Eye · ' + _clubName;
-      const SECTION_PERMS = { medical: 'medical_access', admin: 'manage_teams', fixtures: 'manage_teams', message: 'reports', messages: 'messaging', training: 'publish_training', matchday: 'publish_squads', players: 'manage_players' };
+      const SECTION_PERMS = { medical: 'medical_access', admin: 'manage_teams', fixtures: 'manage_teams', selection: 'publish_squads', message: 'reports', messages: 'messaging', training: 'publish_training', matchday: 'publish_squads', players: 'manage_players' };
       document.getElementById("coachNav").innerHTML = coachSections
         .filter(([id]) => !SECTION_PERMS[id] || canI(SECTION_PERMS[id]))
         .map(([id, label]) =>
@@ -6839,6 +6843,27 @@
                   <div style="font-size:10px;color:var(--muted);margin-top:2px">until kick-off</div>
                 </div>` : ''}
               </div>
+            </div>`;
+          })() : ''}
+
+          <!-- ── SQUAD STATUS (for next fixture) ───────────────── -->
+          ${nextFx ? (() => {
+            const nextSel = selectionFindForFixture(nextFx.id);
+            if (!nextSel) {
+              return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px">
+                <span style="font-size:13px;color:var(--muted)">No squad selected yet</span>
+                <button class="btn primary" type="button" onclick="selectionGoCreate('${esc(nextFx.id)}')">+ Select squad</button>
+              </div>`;
+            }
+            const isPub    = nextSel.status === 'published';
+            const stCount  = selectionStarterCount(nextSel);
+            const bCount   = selectionBenchCount(nextSel);
+            return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px">
+              <div>
+                <div style="font-size:13px;font-weight:700;${isPub?'color:#34d399':'color:#f59e0b'}">${isPub?'✓ Squad published':'Draft squad saved'}</div>
+                <div class="muted" style="font-size:11px;margin-top:2px">${stCount}/15 starters · ${bCount}/8 bench</div>
+              </div>
+              <button class="btn${isPub?'':' primary'}" type="button" onclick="selectionGoEdit('${esc(nextSel.id)}')">${isPub?'View squad':'Complete &amp; publish'}</button>
             </div>`;
           })() : ''}
 
@@ -10649,6 +10674,655 @@
         </div>`;
     }
 
+    // ─── SQUAD SELECTION ─────────────────────────────────────────────────────
+
+    const SEL_POSITION_NAMES = {
+      '1':'Loosehead Prop','2':'Hooker','3':'Tighthead Prop',
+      '4':'Lock','5':'Lock',
+      '6':'Blindside','7':'Openside','8':'No. 8',
+      '9':'Scrum-Half','10':'Fly-Half',
+      '11':'Left Wing','12':'Inside Centre','13':'Outside Centre',
+      '14':'Right Wing','15':'Full-Back',
+    };
+
+    function normalizeSquadSelection(sel) {
+      if (!sel || typeof sel !== 'object') return null;
+      return {
+        id:               sel.id               || '',
+        fixtureId:        sel.fixtureId        || '',
+        name:             sel.name             || '',
+        status:           sel.status           || 'draft',
+        starters:         (sel.starters && typeof sel.starters === 'object') ? sel.starters : {},
+        bench:            Array.isArray(sel.bench) ? sel.bench.slice(0, 8) : ['','','','','','','',''],
+        captainId:        sel.captainId        || '',
+        viceCaptainId:    sel.viceCaptainId    || '',
+        notes:            sel.notes            || '',
+        sourceType:       sel.sourceType       || 'manual',
+        aiRecommendationId: sel.aiRecommendationId || null,
+        approvalStatus:   sel.approvalStatus   || null,
+        collaboratorIds:  Array.isArray(sel.collaboratorIds) ? sel.collaboratorIds : [],
+        createdAt:        sel.createdAt        || '',
+        updatedAt:        sel.updatedAt        || '',
+        publishedAt:      sel.publishedAt      || null,
+        createdBy:        sel.createdBy        || '',
+      };
+    }
+
+    function selectionStarterCount(sel) {
+      if (!sel || !sel.starters) return 0;
+      return rugbySlots.filter(([label]) => !!sel.starters[label]).length;
+    }
+
+    function selectionBenchCount(sel) {
+      if (!Array.isArray(sel && sel.bench)) return 0;
+      return sel.bench.filter(id => !!id).length;
+    }
+
+    function selectionPlayerCount(sel) {
+      return selectionStarterCount(sel) + selectionBenchCount(sel);
+    }
+
+    function selectionGetPlayerStatus(sel, playerId) {
+      if (!sel || !playerId) return { status: 'not-selected', slot: null };
+      const starterSlot = rugbySlots.find(([label]) => sel.starters && sel.starters[label] === playerId);
+      if (starterSlot) return { status: 'starter', slot: starterSlot[0] };
+      const benchIdx = Array.isArray(sel.bench) ? sel.bench.indexOf(playerId) : -1;
+      if (benchIdx >= 0) return { status: 'bench', slot: String(benchIdx + 16) };
+      return { status: 'not-selected', slot: null };
+    }
+
+    function selectionFindForFixture(fixtureId) {
+      const sels = state.squadSelections || [];
+      return sels.find(s => s.fixtureId === fixtureId && s.status === 'published')
+          || sels.filter(s => s.fixtureId === fixtureId && s.status === 'draft')
+                 .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))[0]
+          || null;
+    }
+
+    function selectionAvailColor(player) {
+      if (!player) return '#94a3b8';
+      const g = player.game || 'no-reply';
+      if (g === 'available')   return '#34d399';
+      if (g === 'unavailable' || g === 'injured') return '#f87171';
+      return '#94a3b8';
+    }
+
+    function selectionCreate(fixtureId) {
+      const fx  = (state.fixtures || []).find(f => f.id === fixtureId);
+      const now = new Date().toISOString();
+      const sel = normalizeSquadSelection({
+        id:        'sel_' + Date.now().toString(36),
+        fixtureId,
+        name:      fx ? 'vs ' + fx.opposition : 'New Squad',
+        status:    'draft',
+        createdAt: now,
+        updatedAt: now,
+        createdBy: state.currentUserId || '',
+      });
+      state.squadSelections = [...(state.squadSelections || []), sel];
+      _selectionEditId = sel.id;
+      _selectionPickId = null;
+      saveState('Squad draft created');
+      render();
+    }
+
+    function selectionGoCreate(fixtureId) {
+      state.activeView = 'coach';
+      state.activeCoachSection = 'selection';
+      selectionCreate(fixtureId);
+    }
+
+    function selectionGoEdit(id) {
+      _selectionEditId = id;
+      _selectionPickId = null;
+      state.activeView = 'coach';
+      state.activeCoachSection = 'selection';
+      render();
+    }
+
+    function selectionOpenEditor(id) {
+      _selectionEditId = id;
+      _selectionPickId = null;
+      render();
+    }
+
+    function selectionCloseEditor() {
+      _selectionEditId = null;
+      _selectionPickId = null;
+      render();
+    }
+
+    function _selectionUpdateCurrent(fn) {
+      const sels = [...(state.squadSelections || [])];
+      const idx  = sels.findIndex(s => s.id === _selectionEditId);
+      if (idx < 0) return;
+      const sel  = normalizeSquadSelection(sels[idx]);
+      fn(sel);
+      sel.updatedAt = new Date().toISOString();
+      sels[idx] = sel;
+      state.squadSelections = sels;
+    }
+
+    function selectionAssignStarter(slot, playerId) {
+      _selectionUpdateCurrent(sel => {
+        if (playerId) {
+          rugbySlots.forEach(([lbl]) => { if (sel.starters[lbl] === playerId) delete sel.starters[lbl]; });
+          sel.bench = sel.bench.map(id => id === playerId ? '' : id);
+          sel.starters[slot] = playerId;
+        } else {
+          delete sel.starters[slot];
+        }
+      });
+      _selectionPickId = null;
+      saveState('Starter assigned');
+      render();
+    }
+
+    function selectionAssignBench(idx, playerId) {
+      _selectionUpdateCurrent(sel => {
+        if (playerId) {
+          rugbySlots.forEach(([lbl]) => { if (sel.starters[lbl] === playerId) delete sel.starters[lbl]; });
+          sel.bench = sel.bench.map((id, i) => (i !== idx && id === playerId) ? '' : id);
+        }
+        if (!Array.isArray(sel.bench)) sel.bench = Array(8).fill('');
+        sel.bench[idx] = playerId || '';
+      });
+      _selectionPickId = null;
+      saveState('Bench slot assigned');
+      render();
+    }
+
+    function selectionClearSlot(slot) {
+      _selectionUpdateCurrent(sel => { delete sel.starters[slot]; });
+      saveState('Slot cleared');
+      render();
+    }
+
+    function selectionClearBench(idx) {
+      _selectionUpdateCurrent(sel => {
+        if (!Array.isArray(sel.bench)) sel.bench = Array(8).fill('');
+        sel.bench[idx] = '';
+      });
+      saveState('Bench slot cleared');
+      render();
+    }
+
+    function selectionSetCaptain(playerId) {
+      _selectionUpdateCurrent(sel => {
+        sel.captainId = sel.captainId === playerId ? '' : playerId;
+      });
+      saveState('Captain set');
+      render();
+    }
+
+    function selectionSetViceCaptain(playerId) {
+      _selectionUpdateCurrent(sel => {
+        sel.viceCaptainId = sel.viceCaptainId === playerId ? '' : playerId;
+      });
+      saveState('Vice-captain set');
+      render();
+    }
+
+    async function selectionPublish() {
+      const sels = state.squadSelections || [];
+      const sel  = sels.find(s => s.id === _selectionEditId);
+      if (!sel) return;
+      const starters = selectionStarterCount(sel);
+      const msg = starters < 15
+        ? `Only ${starters}/15 positions filled. Publish anyway?`
+        : 'Publish this squad? Players will be notified.';
+      const ok = await ceConfirm(msg);
+      if (!ok) return;
+      const now = new Date().toISOString();
+      state.squadSelections = (state.squadSelections || []).map(s => {
+        if (s.id !== sel.id && s.fixtureId === sel.fixtureId && s.status === 'published') {
+          return { ...normalizeSquadSelection(s), status: 'archived' };
+        }
+        return s;
+      });
+      const idx = state.squadSelections.findIndex(s => s.id === sel.id);
+      if (idx >= 0) {
+        state.squadSelections[idx] = { ...normalizeSquadSelection(sel), status: 'published', publishedAt: now, updatedAt: now };
+      }
+      const fx = (state.fixtures || []).find(f => f.id === sel.fixtureId);
+      state.formationNames = {};
+      state.fphotoIds = {};
+      rugbySlots.forEach(([label]) => {
+        const pid = sel.starters && sel.starters[label];
+        if (pid) {
+          const p = state.players.find(pl => pl.id === pid);
+          if (p) { state.formationNames[label] = p.name; state.fphotoIds[label] = p.id; }
+        }
+      });
+      state.benchPlayers = Array(8).fill('');
+      (Array.isArray(sel.bench) ? sel.bench : []).forEach((pid, i) => {
+        if (pid) { const p = state.players.find(pl => pl.id === pid); if (p) state.benchPlayers[i] = p.name; }
+      });
+      if (fx) {
+        state.matchCentre = {
+          ...state.matchCentre,
+          opposition:  fx.opposition  || state.matchCentre.opposition,
+          competition: fx.competition || state.matchCentre.competition,
+          kickoffDate: fx.date        || state.matchCentre.kickoffDate,
+          kickoffTime: fx.kickoffTime || state.matchCentre.kickoffTime,
+          arrivalTime: fx.meetTime    || state.matchCentre.arrivalTime,
+          venue:       fx.venue       || state.matchCentre.venue,
+          published:   true,
+        };
+      } else {
+        state.matchCentre = { ...state.matchCentre, published: true };
+      }
+      saveState('Squad published');
+      syncSquadToServer().catch(() => {});
+      showToast('Squad published — players notified ✓');
+      render();
+    }
+
+    async function selectionDuplicate(id) {
+      const orig = (state.squadSelections || []).find(s => s.id === id);
+      if (!orig) return;
+      const now = new Date().toISOString();
+      const copy = normalizeSquadSelection({
+        ...orig,
+        id:          'sel_' + Date.now().toString(36),
+        name:        (orig.name || 'Squad') + ' (copy)',
+        status:      'draft',
+        publishedAt: null,
+        createdAt:   now,
+        updatedAt:   now,
+        createdBy:   state.currentUserId || '',
+      });
+      state.squadSelections = [...(state.squadSelections || []), copy];
+      _selectionEditId = copy.id;
+      _selectionPickId = null;
+      saveState('Squad duplicated');
+      render();
+    }
+
+    async function selectionDelete(id) {
+      const ok = await ceConfirm('Delete this draft?', null, { danger: true });
+      if (!ok) return;
+      state.squadSelections = (state.squadSelections || []).filter(s => s.id !== id);
+      if (_selectionEditId === id) { _selectionEditId = null; _selectionPickId = null; }
+      saveState('Draft deleted');
+      render();
+    }
+
+    function handleSelDragStart(event, playerId) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('selPlayerId', playerId);
+    }
+
+    function handleSelSlotDrop(slot, event) {
+      event.preventDefault();
+      const pid = event.dataTransfer.getData('selPlayerId');
+      if (pid) selectionAssignStarter(slot, pid);
+    }
+
+    function handleSelBenchDrop(idx, event) {
+      event.preventDefault();
+      const pid = event.dataTransfer.getData('selPlayerId');
+      if (pid) selectionAssignBench(idx, pid);
+    }
+
+    function handleSelPoolClick(playerId) {
+      if (_selectionPickId === playerId) { _selectionPickId = null; render(); return; }
+      _selectionPickId = playerId;
+      render();
+    }
+
+    function handleSelSlotClick(slot) {
+      if (_selectionPickId) {
+        selectionAssignStarter(slot, _selectionPickId);
+      } else {
+        const sel = (state.squadSelections || []).find(s => s.id === _selectionEditId);
+        if (sel && sel.starters && sel.starters[slot]) selectionClearSlot(slot);
+      }
+    }
+
+    function handleSelBenchClick(idx) {
+      if (_selectionPickId) {
+        selectionAssignBench(idx, _selectionPickId);
+      } else {
+        const sel = (state.squadSelections || []).find(s => s.id === _selectionEditId);
+        if (sel && sel.bench && sel.bench[idx]) selectionClearBench(idx);
+      }
+    }
+
+    function printTeamSheet() { window.print(); }
+
+    function renderCoachSelection() {
+      const el = document.getElementById('coach-selection');
+      if (!el) return;
+      if (_selectionEditId) {
+        const sel = (state.squadSelections || []).find(s => s.id === _selectionEditId);
+        if (sel) { el.innerHTML = renderSelectionEditor(sel); return; }
+        _selectionEditId = null;
+      }
+      el.innerHTML = renderSelectionList();
+    }
+
+    function renderSelectionList() {
+      const allFixtures = state.fixtures || [];
+      const upcoming    = fixtureSortByDate(allFixtures.filter(f => f.opposition && f.status !== 'cancelled'))
+        .filter(fx => {
+          const ds = fixtureDisplayStatus(fx);
+          return ds.label !== 'Completed' && ds.label !== 'Cancelled';
+        });
+      const allSels = state.squadSelections || [];
+
+      if (!allFixtures.length) {
+        return `<div style="max-width:560px;margin:0 auto">
+          <div class="card" style="text-align:center;padding:36px 20px">
+            <div style="font-size:32px;margin-bottom:10px">📋</div>
+            <div style="font-weight:700;margin-bottom:6px">No fixtures yet</div>
+            <div class="muted" style="font-size:13px;margin-bottom:16px">Add fixtures before selecting a squad.</div>
+            <button class="btn primary" type="button" onclick="setSection('coach','fixtures')">Go to Fixtures</button>
+          </div>
+        </div>`;
+      }
+
+      const upcomingCards = upcoming.map(fx => {
+        const sel      = selectionFindForFixture(fx.id);
+        const fxDate   = fx.date ? new Date(fx.date + 'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) : '';
+        const fxSt     = fixtureDisplayStatus(fx);
+        const haLabel  = {home:'Home',away:'Away',neutral:'Neutral'}[fx.homeAway] || '';
+        const stCount  = sel ? selectionStarterCount(sel) : 0;
+        const bCount   = sel ? selectionBenchCount(sel) : 0;
+        const isPub    = sel && sel.status === 'published';
+        const isDraft  = sel && sel.status === 'draft';
+        const statusBadge = isPub
+          ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(16,185,129,0.15);color:#34d399;border:1px solid rgba(16,185,129,0.3)">✓ Published</span>`
+          : isDraft
+          ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">Draft saved</span>`
+          : `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--panel-2);color:var(--muted);border:1px solid var(--line)">No squad</span>`;
+        const ctaBtn = isPub
+          ? `<button class="btn" type="button" onclick="selectionOpenEditor('${esc(sel.id)}')">View / Edit</button>`
+          : isDraft
+          ? `<button class="btn primary" type="button" onclick="selectionOpenEditor('${esc(sel.id)}')">Continue editing</button>`
+          : `<button class="btn primary" type="button" onclick="selectionCreate('${esc(fx.id)}')">+ Create squad</button>`;
+        return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div style="min-width:0;flex:1">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+              ${statusBadge}
+              ${haLabel ? `<span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;background:${fx.homeAway==='home'?'rgba(52,211,153,0.12)':'rgba(148,163,184,0.1)'};color:${fx.homeAway==='home'?'#34d399':'#94a3b8'}">${haLabel}</span>` : ''}
+              <span style="font-size:11px;padding:2px 7px;border-radius:999px;background:${fxSt.bg};color:${fxSt.color};font-weight:700">${fxSt.label}</span>
+            </div>
+            <div style="font-size:16px;font-weight:800;letter-spacing:-0.02em">vs ${esc(fx.opposition)}</div>
+            <div class="muted" style="font-size:12px;margin-top:2px">${[fxDate, fx.kickoffTime?'KO '+fx.kickoffTime:'', fx.venue].filter(Boolean).join(' · ')}</div>
+            ${sel ? `<div class="muted" style="font-size:11px;margin-top:3px">${stCount}/15 starters · ${bCount}/8 bench</div>` : ''}
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0;align-items:center">
+            ${sel ? `<button class="btn ghost" type="button" onclick="selectionDuplicate('${esc(sel.id)}')" title="Duplicate squad">⧉</button>` : ''}
+            ${sel && sel.status === 'draft' ? `<button class="btn ghost" type="button" onclick="selectionDelete('${esc(sel.id)}')" style="color:#f87171" title="Delete draft">✕</button>` : ''}
+            ${ctaBtn}
+          </div>
+        </div>`;
+      });
+
+      const pastPub = allSels.filter(s => s.status === 'published' && !upcoming.find(fx => fx.id === s.fixtureId));
+
+      return `<div style="max-width:720px;margin:0 auto;display:grid;gap:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <h2 style="margin:0;font-size:18px;font-weight:800;letter-spacing:-0.02em">Squad Selection</h2>
+          <span class="muted" style="font-size:12px">Tap a fixture to build or edit its squad</span>
+        </div>
+        ${upcomingCards.length
+          ? upcomingCards.join('')
+          : `<div class="card" style="text-align:center;padding:28px;color:var(--muted)">No upcoming fixtures. <button class="btn" type="button" style="margin-left:8px" onclick="setSection('coach','fixtures')">Add fixture</button></div>`}
+        ${pastPub.length ? `
+        <details style="margin-top:4px">
+          <summary style="cursor:pointer;font-size:13px;color:var(--muted);padding:8px 0">Past published squads (${pastPub.length})</summary>
+          <div style="display:grid;gap:8px;margin-top:8px">
+            ${pastPub.map(s => {
+              const fx = (state.fixtures||[]).find(f => f.id === s.fixtureId);
+              const fxDate = fx && fx.date ? new Date(fx.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '';
+              return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <div>
+                  <div style="font-size:14px;font-weight:700">${esc(s.name || (fx ? 'vs '+fx.opposition : 'Unknown'))}</div>
+                  ${fxDate ? `<div class="muted" style="font-size:12px">${fxDate}</div>` : ''}
+                </div>
+                <button class="btn ghost" type="button" onclick="selectionOpenEditor('${esc(s.id)}')">View</button>
+              </div>`;
+            }).join('')}
+          </div>
+        </details>` : ''}
+      </div>`;
+    }
+
+    function renderSelectionEditor(sel) {
+      const norm      = normalizeSquadSelection(sel);
+      const fx        = (state.fixtures || []).find(f => f.id === norm.fixtureId);
+      const players   = (state.players || []).filter(p => p.name && p.id);
+      const fxDate    = fx && fx.date ? new Date(fx.date + 'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) : '';
+      const isPub     = norm.status === 'published';
+      const starters  = selectionStarterCount(norm);
+      const benched   = selectionBenchCount(norm);
+      const total     = starters + benched;
+
+      const assignedIds = new Set([
+        ...rugbySlots.map(([lbl]) => norm.starters && norm.starters[lbl]).filter(Boolean),
+        ...((Array.isArray(norm.bench) ? norm.bench : [])).filter(Boolean),
+      ]);
+
+      // Player pool
+      const poolHTML = players.length
+        ? players.map(p => {
+            const inSquad  = assignedIds.has(p.id);
+            const picking  = _selectionPickId === p.id;
+            const pSt      = selectionGetPlayerStatus(norm, p.id);
+            const posLabel = pSt.status === 'starter' ? `#${pSt.slot}` : pSt.status === 'bench' ? 'Bench' : '';
+            const isCap    = norm.captainId === p.id;
+            const isVC     = norm.viceCaptainId === p.id;
+            const availClr = selectionAvailColor(p);
+            return `<div draggable="true" ondragstart="handleSelDragStart(event,'${esc(p.id)}')"
+              onclick="handleSelPoolClick('${esc(p.id)}')"
+              style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;cursor:pointer;
+                     border:1px solid ${picking?'var(--green)':inSquad?'rgba(255,255,255,0.06)':'var(--line)'};
+                     background:${picking?'rgba(16,185,129,0.1)':'var(--panel)'};
+                     opacity:${inSquad&&!picking?'0.55':'1'};transition:all .12s">
+              <span style="width:7px;height:7px;border-radius:50%;background:${availClr};flex-shrink:0"></span>
+              <span style="flex:1;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${picking?'var(--green)':'var(--fg)'}">${esc(p.name)}</span>
+              ${isCap ? `<span style="font-size:9px;font-weight:800;color:#f59e0b;padding:1px 4px;border-radius:3px;background:rgba(245,158,11,0.15)">C</span>` : ''}
+              ${isVC  ? `<span style="font-size:9px;font-weight:800;color:#94a3b8;padding:1px 4px;border-radius:3px;background:rgba(148,163,184,0.1)">VC</span>` : ''}
+              ${posLabel ? `<span style="font-size:10px;font-weight:700;color:var(--green);flex-shrink:0">${posLabel}</span>` : ''}
+            </div>`;
+          }).join('')
+        : `<div class="muted" style="text-align:center;padding:16px;font-size:12px">No players yet.<br>
+           <button class="btn ghost" type="button" style="margin-top:8px" onclick="setSection('coach','players')">Add players</button></div>`;
+
+      // Pitch slots
+      const pitchSlotsHTML = rugbySlots.map(([label, x, y]) => {
+        const pid      = norm.starters && norm.starters[label];
+        const p        = pid ? players.find(pl => pl.id === pid) : null;
+        const isCap    = p && norm.captainId === p.id;
+        const initials = p ? p.name.split(' ').map(w => w[0] || '').join('').slice(0,2).toUpperCase() : '';
+        const availClr = p ? selectionAvailColor(p) : null;
+        const picking  = !!_selectionPickId;
+        const shortName = p ? p.name.split(' ').slice(-1)[0] || p.name : '';
+        return `<div class="slot-big" data-slot="${label}" style="left:${x}%;top:${y}%;z-index:2"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="this.classList.remove('drag-over');handleSelSlotDrop('${label}',event)"
+          onclick="handleSelSlotClick('${label}')">
+          <div class="slot-photo" style="${p ? `border-color:${availClr}` : picking ? 'border-color:rgba(16,185,129,0.6);box-shadow:0 0 0 3px rgba(16,185,129,0.15)' : ''}">
+            ${p
+              ? `<span style="font-size:11px;font-weight:800;color:#e2e8f0">${initials}</span>`
+              : `<span style="font-size:14px;opacity:0.25">+</span>`}
+            <span class="slot-num">${label}</span>
+            ${isCap ? `<span style="position:absolute;bottom:-2px;left:-2px;width:16px;height:16px;border-radius:50%;background:#f59e0b;color:#000;font-size:8px;font-weight:900;display:flex;align-items:center;justify-content:center;border:2px solid #090d14;z-index:3">C</span>` : ''}
+          </div>
+          <div class="slot-name-lbl" style="font-size:9px;margin-top:2px;line-height:1.2;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${p ? esc(shortName) : `<span style="opacity:0.3;font-weight:400">${SEL_POSITION_NAMES[label]||label}</span>`}
+          </div>
+          ${p ? `<button type="button" onclick="event.stopPropagation();selectionClearSlot('${label}')"
+            style="position:absolute;right:-3px;top:-3px;width:15px;height:15px;border-radius:50%;background:rgba(9,13,20,0.9);border:1px solid rgba(255,255,255,0.12);color:#94a3b8;font-size:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1">✕</button>` : ''}
+        </div>`;
+      }).join('');
+
+      // Bench slots
+      const benchHTML = Array.from({length:8}, (_, i) => {
+        const pid     = norm.bench && norm.bench[i] || '';
+        const p       = pid ? players.find(pl => pl.id === pid) : null;
+        const picking = !!_selectionPickId;
+        return `<div class="bench-slot"
+          ondragover="event.preventDefault()"
+          ondrop="handleSelBenchDrop(${i},event)"
+          onclick="handleSelBenchClick(${i})"
+          style="cursor:pointer;${picking&&!p?'border-color:rgba(16,185,129,0.35)':''}">
+          <small>${i+16}</small>
+          ${p
+            ? `<span style="color:#e2e8f0">${esc(p.name.split(' ').slice(-1)[0] || p.name)}</span>
+               <button type="button" onclick="event.stopPropagation();selectionClearBench(${i})"
+                 style="background:none;border:none;color:#64748b;font-size:8px;cursor:pointer;margin-top:1px;padding:0">✕</button>`
+            : `<span style="color:rgba(255,255,255,0.2)">${picking?'Tap':'—'}</span>`}
+        </div>`;
+      }).join('');
+
+      // Insight panel
+      const availCount   = players.filter(p => p.game === 'available').length;
+      const unavailCount = players.filter(p => p.game === 'unavailable' || p.game === 'injured').length;
+      const missing      = rugbySlots.filter(([lbl]) => !norm.starters || !norm.starters[lbl])
+                                     .map(([lbl]) => `${lbl} – ${SEL_POSITION_NAMES[lbl]||lbl}`);
+
+      // Captain/VC selector
+      const assignedPlayers = [...assignedIds].map(id => players.find(p => p.id === id)).filter(Boolean);
+      const captainHTML = assignedPlayers.length ? `
+        <div class="card" style="padding:12px 16px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Captain &amp; Vice-Captain</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${assignedPlayers.map(p => {
+              const isCap = norm.captainId === p.id;
+              const isVC  = norm.viceCaptainId === p.id;
+              const firstName = p.name.split(' ')[0] || p.name;
+              return `<div style="display:flex;align-items:center;gap:4px">
+                <button type="button" onclick="selectionSetCaptain('${esc(p.id)}')"
+                  style="padding:3px 8px;border-radius:6px;border:1px solid ${isCap?'#f59e0b':'var(--line)'};background:${isCap?'rgba(245,158,11,0.15)':'var(--panel-2)'};color:${isCap?'#f59e0b':'var(--muted)'};font-size:11px;font-weight:700;cursor:pointer">
+                  C ${esc(firstName)}
+                </button>
+                <button type="button" onclick="selectionSetViceCaptain('${esc(p.id)}')"
+                  style="padding:3px 8px;border-radius:6px;border:1px solid ${isVC?'#94a3b8':'var(--line)'};background:${isVC?'rgba(148,163,184,0.1)':'var(--panel-2)'};color:${isVC?'#94a3b8':'var(--muted)'};font-size:11px;font-weight:700;cursor:pointer">
+                  VC
+                </button>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>` : '';
+
+      const fixtureHeader = fx
+        ? `<div style="font-size:15px;font-weight:800">vs ${esc(fx.opposition)}</div>
+           <div class="muted" style="font-size:12px">${[fxDate, fx.kickoffTime?'KO '+fx.kickoffTime:'', fx.venue].filter(Boolean).join(' · ')}</div>`
+        : `<div style="font-size:15px;font-weight:800">Squad</div>`;
+
+      return `<div style="max-width:960px;margin:0 auto;display:grid;gap:12px">
+
+        <!-- Header -->
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button class="btn ghost" type="button" onclick="selectionCloseEditor()" style="padding:6px 12px;flex-shrink:0">← Back</button>
+          <div style="flex:1;min-width:0">${fixtureHeader}</div>
+          <div style="flex-shrink:0">
+            ${isPub
+              ? `<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(16,185,129,0.15);color:#34d399;border:1px solid rgba(16,185,129,0.3)">✓ Published</span>`
+              : `<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">Draft</span>`}
+          </div>
+        </div>
+
+        <!-- Pick hint banner -->
+        ${_selectionPickId ? (() => {
+          const pp = players.find(p => p.id === _selectionPickId);
+          return `<div style="padding:8px 14px;border-radius:8px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <span style="font-size:13px;font-weight:600;color:var(--green)">Tap a slot or bench position to place ${esc(pp&&pp.name||'player')}</span>
+            <button type="button" onclick="_selectionPickId=null;render()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0">Cancel ✕</button>
+          </div>`;
+        })() : ''}
+
+        <!-- 3-column layout -->
+        <div style="display:grid;grid-template-columns:170px 1fr 210px;gap:10px;align-items:start">
+
+          <!-- Player pool -->
+          <div class="card" style="padding:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Players (${players.length})</div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#34d399;margin-right:2px"></span>Available</span>
+              <span><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#f87171;margin-left:4px;margin-right:2px"></span>Unavail</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;max-height:580px;overflow-y:auto">${poolHTML}</div>
+          </div>
+
+          <!-- Pitch -->
+          <div>
+            <div class="pitch-big pitch-compact" style="position:relative">
+              <div class="pitch-inner"></div>
+              <div class="pitch-line" style="top:18%"></div>
+              <div class="pitch-line" style="top:40%"></div>
+              <div class="pitch-line" style="top:50%"></div>
+              <div class="pitch-line" style="top:60%"></div>
+              <div class="pitch-line" style="top:82%"></div>
+              ${pitchSlotsHTML}
+            </div>
+            <div style="margin-top:8px;text-align:right">
+              <button class="btn" type="button" onclick="printTeamSheet()">🖨 Print team sheet</button>
+            </div>
+          </div>
+
+          <!-- Right column -->
+          <div style="display:grid;gap:10px;align-content:start">
+            <!-- Bench -->
+            <div class="card" style="padding:12px">
+              <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Bench (16–23)</div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">${benchHTML}</div>
+            </div>
+            <!-- Match insight -->
+            <div class="card" style="padding:12px">
+              <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Match insight</div>
+              <div style="display:grid;gap:5px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+                  <div style="padding:8px;background:var(--panel-2);border-radius:7px;text-align:center">
+                    <div style="font-size:18px;font-weight:800;color:var(--green)">${starters}</div>
+                    <div style="font-size:9px;color:var(--muted)">/ 15 starters</div>
+                  </div>
+                  <div style="padding:8px;background:var(--panel-2);border-radius:7px;text-align:center">
+                    <div style="font-size:18px;font-weight:800;color:#94a3b8">${benched}</div>
+                    <div style="font-size:9px;color:var(--muted)">/ 8 bench</div>
+                  </div>
+                </div>
+                <div style="padding:8px;background:var(--panel-2);border-radius:7px;display:flex;justify-content:space-between">
+                  <span style="font-size:11px;color:var(--muted)">Available</span>
+                  <span style="font-size:11px;font-weight:700;color:#34d399">${availCount}</span>
+                </div>
+                ${unavailCount ? `<div style="padding:8px;background:var(--panel-2);border-radius:7px;display:flex;justify-content:space-between">
+                  <span style="font-size:11px;color:var(--muted)">Unavail / injured</span>
+                  <span style="font-size:11px;font-weight:700;color:#f87171">${unavailCount}</span>
+                </div>` : ''}
+                ${missing.length > 0 && missing.length <= 6 ? `<div style="padding:8px;background:var(--panel-2);border-radius:7px">
+                  <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Missing</div>
+                  ${missing.map(m=>`<div style="font-size:10px;color:#f59e0b;padding:1px 0">${esc(m)}</div>`).join('')}
+                </div>` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Captain / VC -->
+        ${captainHTML}
+
+        <!-- Actions bar -->
+        <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${norm.status === 'draft'
+              ? `<button class="btn ghost" type="button" onclick="selectionDelete('${esc(norm.id)}')" style="color:#f87171">Delete draft</button>`
+              : `<button class="btn ghost" type="button" onclick="selectionDuplicate('${esc(norm.id)}')">Duplicate</button>`}
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <span class="muted" style="font-size:11px">${total} of 23 selected</span>
+            ${norm.status === 'draft'
+              ? `<button class="btn primary" type="button" onclick="selectionPublish()">Publish Team</button>`
+              : `<button class="btn" type="button" onclick="selectionDuplicate('${esc(norm.id)}')">Create new draft</button>`}
+          </div>
+        </div>
+      </div>`;
+    }
+
     function renderPlayerFixtures() {
       const player   = getPlayer();
       const sched    = state.schedule || [];
@@ -10694,14 +11368,30 @@
           <h2>Season fixtures</h2>
           <p class="muted" style="margin-bottom:14px">Upcoming matches for ${esc(state.clubName || 'your team')}.</p>
           ${fixtures.map(f => {
-            const fDate = f.date ? new Date(f.date + 'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) : '';
+            const fDate   = f.date ? new Date(f.date + 'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) : '';
             const haLabel = f.homeAway === 'home' ? 'Home' : f.homeAway === 'away' ? 'Away' : f.homeAway === 'neutral' ? 'Neutral' : '';
+            const pubSel  = (state.squadSelections || []).find(s => s.fixtureId === f.id && s.status === 'published');
+            const pId     = player.id;
+            let squadBadge = '';
+            if (pubSel && pId) {
+              const pSt = selectionGetPlayerStatus(pubSel, pId);
+              if (pSt.status === 'starter') {
+                squadBadge = `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:rgba(16,185,129,0.15);color:#34d399;border:1px solid rgba(16,185,129,0.3)">Starting #${pSt.slot}</span>`;
+              } else if (pSt.status === 'bench') {
+                squadBadge = `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">Bench #${pSt.slot}</span>`;
+              } else {
+                squadBadge = `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:var(--panel-2);color:var(--muted);border:1px solid var(--line)">Not selected</span>`;
+              }
+            }
             return `<div style="padding:11px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
               <div>
                 <strong style="font-size:14px">vs ${esc(f.opposition)}</strong>
-                <div class="muted" style="font-size:12px;margin-top:2px">${[fDate, f.time, f.venue, haLabel].filter(Boolean).join(' · ')}</div>
+                <div class="muted" style="font-size:12px;margin-top:2px">${[fDate, f.kickoffTime||f.time, f.venue, haLabel].filter(Boolean).join(' · ')}</div>
               </div>
-              ${haLabel ? `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:${f.homeAway==='home'?'rgba(16,185,129,0.12)':'rgba(255,255,255,0.06)'};color:${f.homeAway==='home'?'var(--green)':'var(--muted)'};border:1px solid ${f.homeAway==='home'?'rgba(16,185,129,0.3)':'var(--line)'}">${haLabel}</span>` : ''}
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                ${squadBadge}
+                ${haLabel ? `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:${f.homeAway==='home'?'rgba(16,185,129,0.12)':'rgba(255,255,255,0.06)'};color:${f.homeAway==='home'?'var(--green)':'var(--muted)'};border:1px solid ${f.homeAway==='home'?'rgba(16,185,129,0.3)':'var(--line)'}">${haLabel}</span>` : ''}
+              </div>
             </div>`;
           }).join('')}
         </div>` : ''}
@@ -10768,6 +11458,10 @@
     let _fixtureDraft      = {};    // in-memory edit buffer, never written to state until save
     let _fixtureFilter     = 'all'; // 'all' | 'upcoming' | 'past' | 'home' | 'away'
     let _fixtureCompFilter = '';    // competition string filter ('' = no competition filter)
+
+    // ─── SQUAD SELECTION UI STATE (not persisted — transient per-session) ───────
+    let _selectionEditId = null;  // null = list view | selId = editor open
+    let _selectionPickId = null;  // playerId awaiting slot assignment (click-to-assign flow)
 
     function chatLoadStateModule() {
       if (!_chatStatePromise) {
@@ -12705,6 +13399,7 @@
       safeRender('coach-admin',         () => renderClubAdmin());
       safeRender('coach-settings',      () => renderSettings());
       safeRender('coach-fixtures',      () => renderCoachFixtures());
+      safeRender('coach-selection',     () => renderCoachSelection());
       safeRender('player-week',         () => renderPlayerWeek());
       safeRender('player-availability', () => renderPlayerAvailability());
       safeRender('player-fixtures',     () => renderPlayerFixtures());
