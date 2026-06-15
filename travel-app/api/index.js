@@ -20,6 +20,7 @@ import {
 } from './persistence/durable-repositories.js';
 import { createSessionManager } from './session.js';
 import { createAppleAuth } from './auth.js';
+import { presentTimeline, presentCapture } from './presenters.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -190,28 +191,38 @@ export function createTravelApi(options = {}) {
   }
 
   // Capture a journal entry and/or a photo reference (photo binary stays on the
-  // device; only a reference id is recorded — never exact location).
+  // device; only a reference id is recorded — never exact location). Requires a
+  // note or a photoRef; returns a consumer-ready capture DTO.
   async function capture(token, body = {}) {
     const id = travellerFor(token);
+    const note = typeof body.note === 'string' ? body.note.trim() : '';
+    const photoRef = body.photoRef ?? null;
+    if (!note && !photoRef) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'A note or a photo is required to capture a moment');
+    }
     const trip = await getCurrentTrip(id);
-    const captureId = body.captureId ?? `capture_${todayIso()}_${Math.abs(hash(body.note ?? '') )}`;
-    const eventType = body.photoRef ? 'photo_imported' : 'journal_entry';
+    const timestamp = body.timestamp ?? todayIso();
+    const captureId = body.captureId ?? `capture_${timestamp}_${Math.abs(hash(note + (photoRef ?? '')))}`;
+    const eventType = photoRef ? 'photo_imported' : 'journal_entry';
     const event = await timeline.appendEvent({
       travellerIdentityId: id,
       tripId: trip?.tripId ?? null,
       eventType,
       sourcePlatform: 'travel-app',
       sourceEntityId: captureId,
-      timestamp: body.timestamp ?? todayIso(),
-      metadata: { note: body.note ?? '', photoRef: body.photoRef ?? null, day: body.day ?? null },
+      timestamp,
+      metadata: { eventName: eventType, note, photoRef, day: body.day ?? null },
       idempotencyKey: `travel-app:${eventType}:${captureId}`,
     });
-    return { capture: { id: captureId, eventType, timelineEventId: event.timelineEventId } };
+    return { capture: presentCapture(event) };
   }
 
+  // Consumer-ready timeline: days newest-first, clean human entries, no raw
+  // platform ids or backend terminology.
   async function getTimeline(token) {
     const id = travellerFor(token);
-    return { days: await timeline.groupByDay({ travellerIdentityId: id }) };
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    return { days: presentTimeline(events) };
   }
 
   // Generate deterministic trip-readiness candidates and route the high-impact

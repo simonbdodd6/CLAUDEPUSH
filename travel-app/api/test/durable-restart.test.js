@@ -115,11 +115,11 @@ test('PRODUCTION PROOF: create entire trip, restart fresh API, retrieve everythi
   const { itinerary } = await a2.getItinerary(token);
   assert.equal(itinerary.days.length, 3);
 
-  // Captured memories + Timeline
+  // Captured memories + Timeline (consumer-ready DTOs persist across restart)
   const tl = await a2.getTimeline(token);
-  const events = tl.days.flatMap(d => d.events);
-  assert.ok(events.some(e => e.metadata?.eventName === 'trip_created'));
-  assert.ok(events.some(e => e.eventType === 'photo_imported'));
+  const entries = tl.days.flatMap(d => d.entries);
+  assert.ok(entries.some(e => e.title === 'Trip created' && e.kind === 'trip'));
+  assert.ok(entries.some(e => e.kind === 'photo'));
 
   // Relationship graph (traveller OWNS trip persisted)
   const owns = await a2._platforms.graph.queryNeighbours({ type: 'traveller', id: travellerId }, { relationshipType: 'owns' });

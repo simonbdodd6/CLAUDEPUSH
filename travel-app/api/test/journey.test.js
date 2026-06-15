@@ -43,13 +43,14 @@ test('END-TO-END: Sign In → Trip → Itinerary → Capture → Timeline → Re
 
   // 4. Capture a memory (journal + photo ref)
   const cap = await app.capture(token, { note: 'Sunset at Echo Beach', photoRef: 'photo_1', day: 1 });
-  assert.equal(cap.capture.eventType, 'photo_imported');
+  assert.equal(cap.capture.kind, 'photo');
 
-  // 5. View Timeline — trip_created + capture present, grouped by day
+  // 5. View Timeline — consumer-ready days/entries; trip + photo present
   const tl = await app.getTimeline(token);
-  const allEvents = tl.days.flatMap(d => d.events);
-  assert.ok(allEvents.some(e => e.metadata?.eventName === 'trip_created'));
-  assert.ok(allEvents.some(e => e.eventType === 'photo_imported'));
+  const entries = tl.days.flatMap(d => d.entries);
+  assert.ok(tl.days.every(d => typeof d.title === 'string' && d.title.length > 0)); // human day titles
+  assert.ok(entries.some(e => e.title === 'Trip created' && e.kind === 'trip'));
+  assert.ok(entries.some(e => e.kind === 'photo'));
 
   // 6. Trip Readiness — deterministic candidates + routed approval requests
   const readiness = await app.getTripReadiness(token);

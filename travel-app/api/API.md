@@ -17,8 +17,25 @@ Run locally: `PORT=8787 TRAVEL_STORE_DIR=./.travel-data node travel-app/api/serv
 | PUT | `/trip` | trip fields (`tripName, country, destination, area, startDate, endDate`) | `{ trip }` | trip-platform (publishes timeline + graph) |
 | GET | `/itinerary` | — | `{ itinerary }` | itinerary-platform |
 | PUT | `/itinerary` | `{ days?, day?, section?, block? }` | `{ itinerary }` | itinerary-platform (publishes timeline + graph) |
-| POST | `/capture` | `{ note?, photoRef?, day?, timestamp? }` | `{ capture }` | timeline (journal_entry / photo_imported) |
-| GET | `/timeline` | — | `{ days: [{ day, events }] }` | timeline-platform (groupByDay) |
+| POST | `/capture` | `{ note?, photoRef?, day?, timestamp? }` (note **or** photoRef required) | `{ capture: Entry }` | timeline (journal_entry / photo_imported) |
+| GET | `/timeline` | — | `{ days: [Day] }` | timeline-platform |
+
+### Consumer DTOs (M23.3)
+
+The app never sees raw platform records. `/timeline` and `/capture` return
+clean, app-facing shapes (no `sourceEntityId` / `sourcePlatform` /
+`idempotencyKey` / `eventName` / `sequence` / `metadata` / `eventType`):
+
+```
+Day   = { date: "2026-07-11", title: "Saturday, 11 July 2026", entries: [Entry] }
+Entry = { id, kind, title, detail, time: "09:30", timestamp, photoRef|null }
+```
+
+- `kind` ∈ `trip | itinerary | activity | photo | journal | memory | destination | other`.
+- `title` is human ("Trip created"; for journal/photo the note becomes the title).
+- `days` are newest-first; `entries` within a day are chronological.
+- Photos are **references only** (`photoRef`) — the binary stays on device; EXIF
+  GPS must be stripped client-side.
 | GET | `/trip-readiness` | — | `{ candidates, approvalRequests }` | context → insight → action → orchestrator → approval |
 | GET | `/approvals` | — | `{ pending }` | approval-platform |
 | POST | `/approvals/:id` | `{ decision: 'approve'\|'reject', reason? }` | `{ request }` | approval-platform |
