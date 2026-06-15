@@ -35,6 +35,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/journey/replay` | — | `{ replay, timeline, chapters, capabilities, controls, basedOn }` | interactive journey replay (timeline + controls) |
 | GET | `/globe` | — | `{ globe, markers, arcs, cameraMoves, replayFrames, highlights, replay, filters, basedOn }` | 3D globe data layer |
 | GET | `/world` | — | `{ profile, countries, regions, islands, cities, eras, connections, repeatVisits, favouriteReturns, longestGaps, heat, statistics, worldStatistics, filters, basedOn }` | lifetime world data layer |
+| GET | `/achievements` | — | `{ summary, categories, series, achievements, earned, timeline, rewards, statistics, basedOn }` | achievement engine (earned from evidence) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -410,6 +411,43 @@ VisitedLocation = { type, name, country, places, firstVisit, latestVisit, visitC
 `totalDays` is distinct memory-days; `connections` include only evidenced legs
 (flights/ferries), no self-loops; heat arrays are normalised 0–100. All
 deterministic, offline-first, no backend leakage.
+
+### Achievement DTO (M29)
+
+Achievements are **never manually awarded** — each is earned deterministically
+from stored evidence via the lifetime data layers. **No AI, no randomness.**
+Tiered series (Bronze→Legend), one-off milestones, seasonal/yearly/lifetime
+scopes, hidden achievements, progress %, rarity scoring, and an earned timeline.
+
+```
+Achievement = {
+  id, seriesId|null, category, scope:"lifetime|seasonal|yearly", hidden,
+  title, subtitle, tier:"Bronze|Silver|Gold|Platinum|Legend",
+  rarity:"common|uncommon|rare|epic|legendary", rarityScore:0..100, iconId,
+  earned, earnedDate, confidence,
+  progress: { current, target, percent, remaining, isComplete },
+  remaining, evidence:{ count, detail },
+  supportingMemories:[Entry], supportingTrips:[{tripId,name}], statistics,
+}
+Achievements = {
+  summary: { totalEarned, totalAvailable, completion, byTier, rarityScore },
+  categories: [{ id, label, icon, total, earned }],
+  series: [{ id, category, title, icon, levels:[{tier,title,achievementId,earned}], currentTier, nextTier, progressToNext }],
+  achievements: [Achievement],          // all (earned + locked, with progress)
+  earned: [achievementId],
+  timeline: [{ achievementId, title, tier, category, earnedDate }],   // earned, chronological
+  rewards: [{ achievementId, tier, badge, frame, titleUnlock }],
+  statistics: { totalEarned, totalAvailable, completion, byTier, byCategory, rarityScore, legendCount, hiddenEarned },
+}
+```
+
+Categories include Countries, Islands, Cities, Continents, Flights, Ferries, Road
+Trips, Diving, Surfing, Hiking, Mountains, Beaches, Photography, Wildlife, Food,
+Culture, Adventure, Return Traveller, National Parks, UNESCO, Seasonal, Yearly,
+Lifetime. Earned dates are the moment the threshold was crossed (the Nth
+qualifying event). Hidden milestones (e.g. *Returned to Same Island*, *Most
+Remote Island*) only matter once earned. All deterministic, offline-first, no
+backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

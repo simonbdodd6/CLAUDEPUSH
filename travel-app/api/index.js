@@ -32,6 +32,7 @@ import { buildJourney, normalizeMove } from './journey.js';
 import { buildJourneyReplay } from './journey-replay.js';
 import { buildGlobe } from './globe.js';
 import { buildWorld } from './world.js';
+import { buildAchievements } from './achievements.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -314,6 +315,15 @@ export function createTravelApi(options = {}) {
     return buildWorld(events, ownedTrips);
   }
 
+  // Travel Achievement Engine — achievements earned purely from stored evidence
+  // (never manually awarded): tiered series, milestones, seasonal/yearly badges.
+  async function getAchievements(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildAchievements(events, ownedTrips);
+  }
+
   // Predictive Travel Companion — gently anticipates what the traveller will
   // likely enjoy next, from deterministic evidence only.
   async function getPredictions(token) {
@@ -435,6 +445,7 @@ export function createTravelApi(options = {}) {
     getJourneyReplay,
     getGlobe,
     getWorld,
+    getAchievements,
     getTripReadiness,
     getApprovals,
     resolveApproval,

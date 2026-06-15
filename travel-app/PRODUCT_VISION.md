@@ -748,6 +748,55 @@ would make the lifetime view authoritative and richer — still **not implemente
 - **Tier:** V3.
 - **Possible API:** Client/server render.
 
+## Q. Achievement deepeners (added M29)
+
+The Achievement Engine (`/achievements`) earns everything from stored evidence.
+These would unlock the evidence-starved categories and enrich rarity — still
+**not implemented**.
+
+### National Parks & UNESCO detection (curated datasets)
+- **Why:** The National Parks and UNESCO categories currently rely on note
+  keywords (mostly locked). A curated park/heritage dataset matched to
+  approximate regions would award them accurately.
+- **Complexity:** Medium (offline datasets + region matching; no exact GPS).
+- **Tier:** V2.
+- **Possible API:** Offline National Parks / UNESCO World Heritage datasets.
+
+### Sensor-verified activity achievements (Garmin / Strava / dive logs / Health)
+- **Why:** Make Diving/Surfing/Hiking achievements objective (logged dives, surf
+  sessions, summits, steps) rather than note-inferred — and unlock depth/distance
+  milestones.
+- **Complexity:** High (wearable/dive integrations).
+- **Tier:** V3.
+- **Possible API:** Garmin Connect/Dive, Strava, Shearwater, Apple HealthKit.
+
+### Population-based rarity (true rarity scoring)
+- **Why:** Rarity is currently difficulty-based (deterministic). With anonymised,
+  opt-in aggregate stats, rarity could reflect how few travellers hold a badge.
+- **Complexity:** High (privacy-preserving aggregation; backend).
+- **Tier:** V3.
+- **Possible API:** Aggregate analytics (opt-in, anonymised).
+
+### Shareable badges & reward unlocks
+- **Why:** Turn `AchievementReward` into real cosmetics (profile frames, map
+  themes, shareable badge cards) for delight and distribution.
+- **Complexity:** Medium (UI assets + share rendering).
+- **Tier:** V2 (UI).
+
+### Notifications on unlock & "almost there" nudges
+- **Why:** Celebrate the moment a threshold is crossed and gently nudge near-miss
+  achievements ("1 more island for Silver") — using progress/remaining already exposed.
+- **Complexity:** Low–Medium (local notifications + progress thresholds).
+- **Tier:** V2.
+- **Possible API:** Local notifications.
+
+### Geo-aware milestones (Apple Maps regions)
+- **Why:** "Most Remote Island", continent badges and distance milestones become
+  geographically accurate with the expanded gazetteer (section M/O).
+- **Complexity:** Medium (depends on coordinate coverage).
+- **Tier:** V2.
+- **Possible API:** Region gazetteer / MapKit.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the
