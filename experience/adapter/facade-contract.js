@@ -25,11 +25,13 @@
 // @property {(payload:any) => (Promise<any>|any)} [getMatchReadiness]
 // @property {(payload:any) => (Promise<any>|any)} [getCoachDna]
 // @property {(payload:any) => (Promise<any>|any)} [getSeasonIntelligence]
+// @property {(payload:any) => (Promise<any>|any)} [getOpponentIntelligence]
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The capabilities the adapter knows how to map. Mirror façade.WIRED_CAPABILITIES. */
 export const CAP_MATCH_READINESS = 'coach.matchReadiness'
 export const CAP_COACH_DNA = 'coach.coachDna'
 export const CAP_SEASON_INTELLIGENCE = 'coach.seasonIntelligence'
+export const CAP_OPPONENT_INTELLIGENCE = 'coach.opponentIntelligence'
 
 export {}

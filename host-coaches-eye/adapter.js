@@ -12,19 +12,30 @@
  *
  * DORMANT: nothing imports this yet (Core included). It activates no feature
  * flag and changes no Core API/UI. It wires coach.matchReadiness (M31.5),
- * coach.coachDna (M35) and coach.seasonIntelligence (M36) — each via the AI
- * Brain's own integration layer (read-only engine imports; never edits Core).
+ * coach.coachDna (M35), coach.seasonIntelligence (M36) and
+ * coach.opponentIntelligence (M37) — each via the AI Brain's own integration
+ * layer (read-only engine imports; never edits Core).
  */
 
 import { invoke, WIRED_CAPABILITIES } from '@brain/product-coaches-eye'
 import { getMatchReadiness } from '../coach-products/match-readiness/index.js'
-// M35: coach DNA; M36: season intelligence — AI namespace integration entries (read-only)
-import { getCoachDNA, getSeasonIntelligence as aiGetSeasonIntelligence } from '../ai-brain/index.js'
+// M35: coach DNA; M36: season; M37: opponent — AI namespace integration entries (read-only)
+import {
+  getCoachDNA,
+  getSeasonIntelligence as aiGetSeasonIntelligence,
+  getOpponentProfile as aiGetOpponentProfile,
+} from '../ai-brain/index.js'
 
 /** Extract the coachId the coach-DNA engine keys on from a runtime payload. */
 function coachIdOf(payload) {
   if (!payload || typeof payload !== 'object') return null
   return payload.coachId ?? payload.user?.coachId ?? null
+}
+
+/** Extract the opponentId + name the opponent engine keys on from a runtime payload. */
+function opponentOf(payload) {
+  const p = payload && typeof payload === 'object' ? payload : {}
+  return { opponentId: p.opponentId ?? p.opponent?.id ?? null, opponentName: p.opponentName ?? p.opponent?.name ?? null }
 }
 
 /**
@@ -38,7 +49,7 @@ function coachIdOf(payload) {
  * store's observations into the DNA builders.
  *
  * @param {{ coachAI?: object }} [opts]
- * @returns {Readonly<{ getMatchReadiness: (payload: object) => Promise<object>, getCoachDna: (payload: object) => Promise<object>, getSeasonIntelligence: (payload: object) => Promise<object> }>}
+ * @returns {Readonly<{ getMatchReadiness: (payload: object) => Promise<object>, getCoachDna: (payload: object) => Promise<object>, getSeasonIntelligence: (payload: object) => Promise<object>, getOpponentIntelligence: (payload: object) => Promise<object> }>}
  */
 export function createCoachesEyeRuntime(opts = {}) {
   const coachAI = opts && typeof opts === 'object' ? opts.coachAI : undefined
@@ -52,6 +63,11 @@ export function createCoachesEyeRuntime(opts = {}) {
     // `payload` is the season context: { fixtures, league, ... }.
     getSeasonIntelligence: (payload) =>
       aiGetSeasonIntelligence(payload && typeof payload === 'object' ? payload : {}, {}),
+    // `payload` carries the opponentId (+ optional name); profile from its observations.
+    getOpponentIntelligence: (payload) => {
+      const { opponentId, opponentName } = opponentOf(payload)
+      return aiGetOpponentProfile(opponentId, { opponentName })
+    },
   })
 }
 

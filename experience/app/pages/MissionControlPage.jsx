@@ -4,6 +4,7 @@ import LivingNeuralBrain from '../../panels/LivingNeuralBrain.jsx'
 import MemoryNetwork from '../../panels/MemoryNetwork.jsx'
 import CoachDna from '../../panels/CoachDna.jsx'
 import MatchReadiness from '../../panels/MatchReadiness.jsx'
+import OpponentIntelligence from '../../panels/OpponentIntelligence.jsx'
 import Season from '../../panels/Season.jsx'
 import { createExperienceAdapter } from '../../adapter/index.js'
 import { resolveInjectedBrain } from '../brain-provider.js'
@@ -84,6 +85,7 @@ export default function MissionControlPage() {
           <MatchReadiness matchReadiness={model.matchReadiness} />
         </div>
 
+        <OpponentIntelligence opponent={model.opponent} />
         <CoachDna coachDna={model.coachDna} />
         <Season season={model.season} />
 

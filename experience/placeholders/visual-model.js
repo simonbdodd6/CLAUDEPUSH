@@ -92,6 +92,30 @@ export function placeholderVisualModel() {
         { label: '1 medical clearance pending' },
       ],
     },
+    opponent: {
+      state: 'placeholder',
+      name: 'Naas RFC',
+      summary: 'Strong set-piece and kicking game; vulnerable under the high ball and in transition.',
+      maturity: 0.5,
+      strengths: [
+        { key: 'setPiece', label: 'Set-piece', score: 78, confidence: 0.6 },
+        { key: 'kicking', label: 'Kicking game', score: 72, confidence: 0.55 },
+        { key: 'discipline', label: 'Discipline', score: 64, confidence: 0.5 },
+      ],
+      weaknesses: [
+        { key: 'highBall', label: 'High ball', score: 38, confidence: 0.55 },
+        { key: 'transition', label: 'Transition defence', score: 44, confidence: 0.5 },
+        { key: 'bench', label: 'Bench impact', score: 48, confidence: 0.45 },
+      ],
+      threats: [
+        { label: 'Contestable kicks to the back three', severity: 'high' },
+        { label: 'Driving maul from the lineout', severity: 'medium' },
+      ],
+      opportunities: [
+        { label: 'Attack the high ball' },
+        { label: 'Play width in early phases' },
+      ],
+    },
     coachDna: {
       state: 'placeholder',
       maturity: 0.62,

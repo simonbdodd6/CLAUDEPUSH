@@ -63,6 +63,26 @@ export const VISUAL_STATES = Object.freeze(['live', 'placeholder', 'locked', 'id
  */
 
 /**
+ * @typedef {Object} OpponentTrait
+ * @property {string} key
+ * @property {string} label
+ * @property {number} score       0..100
+ * @property {number} confidence  0..1
+ */
+
+/**
+ * @typedef {Object} OpponentSlice
+ * @property {'live'|'placeholder'|'locked'|'idle'} state
+ * @property {string} name
+ * @property {string} summary
+ * @property {number} maturity  0..1
+ * @property {OpponentTrait[]} strengths
+ * @property {OpponentTrait[]} weaknesses
+ * @property {{ label:string, severity?:'high'|'medium'|'low' }[]} threats
+ * @property {{ label:string }[]} opportunities
+ */
+
+/**
  * @typedef {Object} MemoryNode
  * @property {string}  id
  * @property {string}  label
@@ -90,6 +110,7 @@ export const VISUAL_STATES = Object.freeze(['live', 'placeholder', 'locked', 'id
  * @property {SystemSlice}         system
  * @property {VisualBrainState}    brain
  * @property {MatchReadinessSlice} matchReadiness
+ * @property {OpponentSlice}       opponent
  * @property {CoachDnaSlice}       coachDna
  * @property {SeasonSlice}         season
  * @property {MemorySlice}         memory
