@@ -653,6 +653,54 @@ timeline + controls; the UI animates it. These would make replays richer — sti
 - **Tier:** V2.
 - **Possible API:** Client-side over the existing replay DTO.
 
+## O. 3D Globe deepeners (added M27)
+
+The 3D Globe Engine (`/globe`) exposes the full data layer (markers, great-circle
+arcs, camera moves, replay frames, filters) from a curated region-level
+gazetteer. These would make the globe accurate and richer — still **not
+implemented**.
+
+### Expanded & authoritative gazetteer (offline dataset / Apple Maps)
+- **Why:** Resolve far more places accurately (raise `resolved` coverage) so
+  markers land correctly worldwide — region granularity only (no exact GPS).
+- **Complexity:** Medium (curate/import an offline place dataset; cache).
+- **Tier:** V2.
+- **Possible API:** Curated offline gazetteer; MapKit reverse-geocode (region).
+
+### Real island/city/region classification
+- **Why:** Replace the sea-arrival island heuristic with true island/city/region
+  typing for accurate marker styling and "islands-only" replay.
+- **Complexity:** Medium (dataset-driven classification).
+- **Tier:** V2.
+- **Possible API:** Curated dataset; Natural Earth / OSM region data (offline).
+
+### Globe basemap & 3D terrain (client-side)
+- **Why:** Render the markers/arcs on a real 3D globe with terrain/bathymetry —
+  the data layer is already complete; this is rendering.
+- **Complexity:** Medium–High (client GL/SceneKit/RealityKit).
+- **Tier:** V2 (UI; no new API).
+- **Possible API:** Client-side (MapKit 3D, SceneKit, globe.gl-style).
+
+### Live position & "where next" projection
+- **Why:** Show the traveller's current approximate region on the globe and a
+  deterministic projected next-leg arc from predictions.
+- **Complexity:** Medium (approximate region only; reuse `/predictions`).
+- **Tier:** V3.
+- **Possible API:** CoreLocation (coarse, opt-in) + internal predictions.
+
+### Shareable globe flyover export
+- **Why:** Export a globe flyover of a trip/lifetime as a shareable film.
+- **Complexity:** High (deterministic render of camera moves + arcs).
+- **Tier:** V3.
+- **Possible API:** Client/server render of the deterministic globe DTO.
+
+### Lifetime globe ("everywhere you've been")
+- **Why:** Aggregate every trip's markers/arcs into one world view with density
+  heat and most-travelled corridors — composed deterministically.
+- **Complexity:** Low–Medium (compose `/globe` across trips; needs coords).
+- **Tier:** V2.
+- **Possible API:** Internal (compose across trips).
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

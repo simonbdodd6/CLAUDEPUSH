@@ -30,6 +30,7 @@ import { buildTravelDna } from './travel-dna.js';
 import { buildPredictions } from './predictions.js';
 import { buildJourney, normalizeMove } from './journey.js';
 import { buildJourneyReplay } from './journey-replay.js';
+import { buildGlobe } from './globe.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -294,6 +295,15 @@ export function createTravelApi(options = {}) {
     return buildJourneyReplay(events, ownedTrips);
   }
 
+  // 3D Globe Journey Engine — the deterministic data layer (markers, great-
+  // circle arcs, camera moves, replay frames, filters) for a future globe.
+  async function getGlobe(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildGlobe(events, ownedTrips);
+  }
+
   // Predictive Travel Companion — gently anticipates what the traveller will
   // likely enjoy next, from deterministic evidence only.
   async function getPredictions(token) {
@@ -413,6 +423,7 @@ export function createTravelApi(options = {}) {
     getPredictions,
     getJourney,
     getJourneyReplay,
+    getGlobe,
     getTripReadiness,
     getApprovals,
     resolveApproval,

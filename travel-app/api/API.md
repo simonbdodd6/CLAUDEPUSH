@@ -33,6 +33,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/predictions` | — | `{ predictions, basedOn }` | predictive companion (anticipates from evidence) |
 | GET | `/journey` | — | `{ route, stops, segments, chapters, basedOn }` | journey visualisation (ordered replayable route) |
 | GET | `/journey/replay` | — | `{ replay, timeline, chapters, capabilities, controls, basedOn }` | interactive journey replay (timeline + controls) |
+| GET | `/globe` | — | `{ globe, markers, arcs, cameraMoves, replayFrames, highlights, replay, filters, basedOn }` | 3D globe data layer |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -343,6 +344,39 @@ ReplayStop = Stop & {
 - The continuous timeline + control ranges let the UI replay the whole holiday,
   jump to a chapter, replay one destination/transport, or filter to flights-only
   / islands-only — with no logic of its own.
+
+### 3D Globe DTO (M27)
+
+The complete deterministic data layer a future interactive globe needs — **no
+graphics, no AI**. Coordinates come from a curated **region-level gazetteer**
+(public place centroids, not the traveller's GPS); unknown places get a
+deterministic fallback flagged `resolved:false`. Built on `/journey/replay`
+(home bookends excluded from the globe).
+
+```
+Globe = {
+  globe: { defaultZoom, markerCount, arcCount, bounds:{minLat,maxLat,minLng,maxLng}, span },
+  markers: [Marker], arcs: [TransportArc],
+  cameraMoves: [CameraMove], replayFrames: [ReplayFrame], highlights: [Highlight],
+  replay: { replayStart, replayEnd, replayDuration },
+  filters: { byCountry, byTransport, byActivity, byYear, favouritesOnly, longestJourneys },
+  basedOn,
+}
+Marker = { id, place, visitOrder, latitude, longitude, coordinateSource:"gazetteer|derived",
+  resolved, country, island, city, region, isIsland, isFavourite, zoomLevel, cameraAngle,
+  arrivalDirection, departureDirection, markerSize, markerColour, startDate, endDate, year,
+  startAt, endAt, durationDays, memoryCount, coverPhoto, chapterTitle, activities }
+TransportArc = { id, transport, family, fromMarkerId, toMarkerId, origin:{lat,lng}, destination:{lat,lng},
+  greatCircleArc:[{lat,lng}×24], distanceKm, bearing, pathCurvature, elevation, flightHeight, boatHeight,
+  travelColour, glowIntensity, animationDuration, startAt, endAt }
+ReplayFrame = { order, kind:"marker|arc", refId, action, startAt, endAt, camera:CameraMove }
+CameraMove = { id, target:{latitude,longitude}, markerId, zoomLevel, angle, bearing, durationMs, startAt, easing }
+Highlight = { id, kind, refType:"marker|arc", refId, label, value, unit? }
+```
+
+Filters return id ranges so the UI can replay the whole trip or filter to one
+country / transport / activity / year / favourites-only / longest journeys — all
+deterministic, offline-first, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 
