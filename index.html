@@ -2418,8 +2418,11 @@
     }
 
     // Render the Weekly Intelligence Brief card for the Overview AI slot.
-    // Returns '' if the flag is off, the permission is absent, or the engine has not loaded.
+    // Returns '' if not applicable; locked card if on Core plan; brief if Pro + flag enabled.
     function renderWeeklyBriefSlot() {
+      if (!canUseFeature('ai_intelligence')) {
+        return isCoach() ? `<div class="home-ai-slot">${renderUpgradePrompt('ai_intelligence', { compact: true })}</div>` : '';
+      }
       if (!state.features?.aiWeeklyBrief || !canI('ai_intelligence')) return '';
 
       if (!_briefEngine) {
@@ -7746,20 +7749,22 @@
         <div class="grid two-col">
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-              <div><h2 style="margin:0">Club video library</h2><p class="muted" style="margin-top:2px">Upload up to 100 × 120-second training clips.</p></div>
-              <span class="pill">${(state.clubVideos||[]).length}/100</span>
+              <div><h2 style="margin:0">Club video library</h2><p class="muted" style="margin-top:2px">${canUseFeature('unlimited_videos') ? 'Upload up to 100 × 120-second training clips.' : 'Save up to 10 training clips. Upgrade to Pro for unlimited storage.'}</p></div>
+              <span class="pill">${(state.clubVideos||[]).length}/${canUseFeature('unlimited_videos') ? 100 : 10}</span>
             </div>
             ${!(state.clubVideos||[]).length ? `<p class="muted" style="font-size:12px;margin-bottom:14px">Save training clips here — reference them during sessions or share with coaches.</p>` : ''}
+            ${!canUseFeature('unlimited_videos') && (state.clubVideos||[]).length >= 10 ? `<div style="margin-bottom:12px">${renderUpgradePrompt('unlimited_videos', { compact: true })}</div>` : ''}
             <div class="video-grid">
               ${(state.clubVideos||[]).map(v=>`
                 <div class="video-card">
                   <div class="video-thumb"><div class="play-btn">▶</div><span class="video-dur">${v.duration}</span></div>
                   <div class="video-card-body"><strong>${v.title}</strong><small>${v.date}</small></div>
                 </div>`).join("")}
+              ${(state.clubVideos||[]).length < (canUseFeature('unlimited_videos') ? 100 : 10) ? `
               <div class="video-card" style="cursor:pointer;border:2px dashed var(--line)" onclick="document.getElementById('addVideoForm').classList.toggle('hidden')">
                 <div class="video-thumb" style="background:var(--panel-2)"><div class="play-btn" style="background:rgba(16,185,129,0.15);color:var(--green);font-size:18px">+</div></div>
                 <div class="video-card-body"><strong style="color:var(--green)">Add video</strong><small>Click to upload or link</small></div>
-              </div>
+              </div>` : ''}
             </div>
             <div id="addVideoForm" class="hidden" style="margin-top:14px;display:grid;grid-template-columns:1fr 80px auto;gap:8px;align-items:end">
               <label>Title<input id="newVidTitle" placeholder="Tuesday ruck drill"></label>
@@ -7787,7 +7792,10 @@
               <button class="btn primary" type="button" style="margin-top:auto" onclick="addCoachingLink()">Save</button>
             </div>
           </div>
-        </div>`;
+        </div>
+
+        <!-- Advanced analytics — Pro feature placeholder -->
+        ${!canUseFeature('advanced_analytics') ? renderUpgradePrompt('advanced_analytics') : ''}`;
 
     }
 
@@ -9351,6 +9359,7 @@
             ${toggle('emailEnabled', 'Email notifications', 'Applies to reminder emails (account emails always send)')}
             ${toggle('matchReminders', 'Match reminders', 'Availability chasers for match day')}
             ${toggle('trainingReminders', 'Training reminders', 'Availability chasers for training sessions')}
+            ${!canUseFeature('unlimited_push') ? `<div style="margin-top:12px">${renderUpgradePrompt('unlimited_push', { compact: true })}</div>` : ''}
           </div>
 
           <!-- Device -->
@@ -12557,6 +12566,55 @@
 
     function isProPlan() {
       return state.teamPlan === 'pro' && state.teamPlanStatus === 'active';
+    }
+
+    // ── Subscription capability layer ─────────────────────────────────────────
+    // All premium feature checks must go through canUseFeature() — never read
+    // state.teamPlan directly in UI code.
+
+    function isProTeam() {
+      return state.teamPlan === 'pro' && state.teamPlanStatus === 'active';
+    }
+
+    function isEnterpriseTeam() {
+      return state.teamPlan === 'enterprise' && state.teamPlanStatus === 'active';
+    }
+
+    function canUseFeature(featureName) {
+      const isPaid = isProTeam() || isEnterpriseTeam();
+      switch (featureName) {
+        case 'ai_intelligence':    return isPaid;
+        case 'unlimited_videos':   return isPaid;
+        case 'advanced_analytics': return isPaid;
+        case 'unlimited_push':     return isPaid;
+        default:                   return true;
+      }
+    }
+
+    function renderUpgradePrompt(featureName, { compact = false } = {}) {
+      const NAMES = {
+        ai_intelligence:    'AI Intelligence',
+        unlimited_videos:   'Unlimited Video Storage',
+        advanced_analytics: 'Advanced Analytics',
+        unlimited_push:     'Unlimited Push Notifications',
+      };
+      const name = NAMES[featureName] || featureName;
+      const upgradeBtn = canI('manage_subscriptions')
+        ? `<button class="btn primary" type="button" onclick="settingsUpgradeToPro()" style="font-size:12px;min-height:32px;padding:0 14px;flex-shrink:0">Upgrade to Pro</button>`
+        : `<span class="muted" style="font-size:12px">Ask your admin to upgrade</span>`;
+      if (compact) {
+        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.05);border-radius:8px;border:1px solid rgba(99,102,241,0.18)">
+          <span style="font-size:13px;font-weight:600;flex:1;color:var(--ink)">${esc(name)}</span>
+          <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(99,102,241,0.15);color:#818cf8;flex-shrink:0">PRO</span>
+          ${upgradeBtn}
+        </div>`;
+      }
+      return `<div class="card" style="text-align:center;padding:32px 20px;border-color:rgba(99,102,241,0.2)">
+        <div style="width:44px;height:44px;margin:0 auto 14px;border-radius:50%;background:rgba(99,102,241,0.12);display:flex;align-items:center;justify-content:center;font-size:20px;color:#818cf8">◆</div>
+        <strong style="font-size:15px;display:block;margin-bottom:6px">${esc(name)}</strong>
+        <p class="muted" style="font-size:13px;margin:0 0 16px">Available on the Pro plan. Upgrade to unlock all premium features.</p>
+        ${upgradeBtn}
+      </div>`;
     }
 
     // The one question every client surface asks. Offline / pre-load falls
