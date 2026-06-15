@@ -9,3 +9,7 @@ qa/playwright-report/
 qa/results/
 qa/test-results/
 qa/mission-control/dashboard.html
+
+# Experience Layer (standalone Vite app, not in the root workspace)
+experience/app/dist/
+experience/package-lock.json

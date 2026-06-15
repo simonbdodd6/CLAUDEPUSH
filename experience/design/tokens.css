@@ -1,0 +1,71 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   HUD design tokens — ported from the retired mission-control/styles.css.
+   ONLY the reusable HUD palette, glow system and framing primitives are carried
+   over. Domain styles (.mi-score / .lp-score) and the old shell are intentionally
+   dropped. Layered on top of design/globals.css.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Neural command-centre HUD palette */
+  --hud-bg:     #020617;
+  --hud-cyan:   #22d3ee;
+  --hud-blue:   #38bdf8;
+  --hud-green:  #34d399;
+  --hud-violet: #a78bfa;
+  --hud-pink:   #fb7185;
+  --hud-amber:  #fbbf24;
+  --hud-ink:    #e0f2fe;
+  --hud-muted:  #7dd3fc;
+  --hud-glass:  rgba(8, 20, 38, 0.58);
+  --hud-line:   rgba(125, 211, 252, 0.18);
+}
+
+/* Translucent glass surface with a luminous hairline border. */
+.hud-glass {
+  background: var(--hud-glass);
+  border: 1px solid var(--hud-line);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Ambient nebula backdrop for the command-centre canvas areas. */
+.hud-nebula {
+  background:
+    radial-gradient(circle at 24% 18%, rgba(34, 211, 238, 0.15), transparent 34%),
+    radial-gradient(circle at 84% 74%, rgba(59, 130, 246, 0.13), transparent 32%),
+    linear-gradient(135deg, #020617 0%, #050b18 52%, #000 100%);
+}
+
+/* Monospace HUD readouts. */
+.hud-mono {
+  font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Soft outer glow used on live/active elements. */
+.hud-glow-cyan   { box-shadow: 0 0 28px rgba(34, 211, 238, 0.22); }
+.hud-glow-violet { box-shadow: 0 0 28px rgba(167, 139, 250, 0.22); }
+.hud-glow-green  { box-shadow: 0 0 28px rgba(52, 211, 153, 0.22); }
+
+/* Animated scanline sweep for "thinking" surfaces. */
+@keyframes hud-scan {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  50%  { opacity: 0.5; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+.hud-scanline::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent, rgba(34, 211, 238, 0.08), transparent);
+  animation: hud-scan 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Slow breathing pulse for placeholder "live" dots. */
+@keyframes hud-breathe {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.78); }
+}
+.hud-pulse { animation: hud-breathe 2.4s ease-in-out infinite; }

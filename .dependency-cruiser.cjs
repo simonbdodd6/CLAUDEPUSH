@@ -53,6 +53,38 @@ module.exports = {
       from: { path: '^host-coaches-eye/' },
       to: { path: '^(app|api|src)/' },
     },
+
+    // ── Experience Layer (M32) boundary rules — report-only ──────────────────
+    {
+      name: 'experience-imports-facade-and-self-only',
+      comment: 'The Experience Layer imports only itself; never an AI engine, Coach\'s Eye Core, the host adapter, or @brain platform internals. (From M33 the brain is reachable only via @brain/product-coaches-eye.)',
+      severity: 'warn',
+      from: { path: '^experience/' },
+      to: {
+        path: '^(ai-brain|coach-products|app|api|src|host-coaches-eye|packages/brain-contracts|packages/brain-products|packages/brain-versioning)/',
+      },
+    },
+    {
+      name: 'render-layers-are-pure',
+      comment: 'Experience render layers (visuals/components/shell/panels) must not import the dev-only placeholders. Data is injected by experience/app/ as props.',
+      severity: 'warn',
+      from: { path: '^experience/(visuals|components|shell|panels)/' },
+      to: { path: '^experience/placeholders/' },
+    },
+    {
+      name: 'placeholders-are-dev-only',
+      comment: 'The dev-only placeholders are importable only by the experience/app/ bootstrap.',
+      severity: 'warn',
+      from: { path: '^experience/', pathNot: '^experience/(app|placeholders)/' },
+      to: { path: '^experience/placeholders/' },
+    },
+    {
+      name: 'no-reverse-into-experience',
+      comment: 'Nothing in the engines / Core / @brain / host may import the Experience Layer.',
+      severity: 'warn',
+      from: { path: '^(ai-brain|coach-products|app|api|src|host-coaches-eye|packages)/' },
+      to: { path: '^experience/' },
+    },
     {
       name: 'no-orphans',
       comment: 'Flag unreferenced platform modules (informational).',
@@ -64,7 +96,7 @@ module.exports = {
 
   options: {
     doNotFollow: { path: 'node_modules' },
-    exclude: { path: '(node_modules|app/.*/dist|\\.git)' },
+    exclude: { path: '(node_modules|app/.*/dist|experience/app/dist|\\.git)' },
     tsPreCompilationDeps: false,
     combinedDependencies: false,
   },
