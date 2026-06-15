@@ -23,6 +23,8 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | PUT | `/itinerary` | `{ days?, day?, section?, block? }` | `{ itinerary }` | itinerary-platform (publishes timeline + graph) |
 | POST | `/capture` | `{ note?, photoRef?, day?, timestamp? }` (note **or** photoRef required) | `{ capture: Entry }` | timeline (journal_entry / photo_imported) |
 | GET | `/timeline` | — | `{ days: [Day] }` | timeline-platform |
+| GET | `/feed` | — | `{ hero, featuredPhotos, highlights, today, stats }` | feed (derived from timeline + trip) |
+| GET | `/stats` | — | `{ stats: TravelStats }` | feed (derived from timeline + trip) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -61,6 +63,39 @@ Entry = {
 | GET | `/trip-readiness` | — | `{ candidates, approvalRequests }` | context → insight → action → orchestrator → approval |
 | GET | `/approvals` | — | `{ pending }` | approval-platform |
 | POST | `/approvals/:id` | `{ decision: 'approve'\|'reject', reason? }` | `{ request }` | approval-platform |
+
+### Premium feed & statistics DTOs (M24.1)
+
+"Instagram Explore meets Apple Journal." `/feed` and `/stats` are **derived,
+read-only** views over the timeline + trip — deterministic, offline-friendly,
+display-ready (almost zero UI logic), and free of any backend term. They derive
+from the same premium entries as `/timeline` (single source of truth).
+
+```
+Feed = {
+  hero:           Entry & { place, featured: true } | null,   // the standout memory
+  featuredPhotos: [Entry],                                     // up to 6, newest-first
+  highlights:     [{ id, kind:"milestone", accent, icon, title, subtitle }],
+  today:          Day | null,                                  // newest premium day card
+  stats:          TravelStats,
+}
+
+TravelStats = {
+  headline:   { daysTravelling, placesVisited, countries, memories },  // hero numbers
+  journey:    { tripDuration, daysTravelling, countries, countriesList, placesVisited, placesList },
+  activity:   { flightsTaken, diveCount, memories, photoCount, journalCount, memoryCount },
+  streaks:    { current, longest, unit:"days" },
+  categories: [{ key, label, accent, icon, count }],  // richest-first
+}
+```
+
+- **Memory categories** are derived deterministically from each memory's own
+  words: `sunset · beach · mountain · city · wildlife · food · dive · flight`.
+  (Counts populate "sunset count", "beach count", "dives", "flights", etc.)
+- `tripDuration` is inclusive days from the trip dates (null if unknown);
+  `daysTravelling` is distinct days with memories; `streaks` are consecutive
+  memory-days.
+- All numbers/labels are display-ready; the app binds them with no computation.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

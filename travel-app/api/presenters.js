@@ -194,3 +194,13 @@ export function presentTimeline(events, context = {}) {
 export function presentCapture(event) {
   return { ...toEntry(event), day: event.metadata?.day ?? null };
 }
+
+// Flat list of premium entries (single source of truth for cards used by the
+// feed/stats layer). `order` 'desc' (newest first, default) or 'asc'.
+export function presentEntries(events, order = 'desc') {
+  const entries = events.map(toEntry).sort((a, b) =>
+    new Date(a.timestamp) - new Date(b.timestamp)
+    || String(a.id).localeCompare(String(b.id)));
+  if (order === 'desc') entries.reverse();
+  return entries;
+}

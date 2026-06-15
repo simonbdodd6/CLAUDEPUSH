@@ -21,6 +21,7 @@ import {
 import { createSessionManager } from './session.js';
 import { createAppleAuth } from './auth.js';
 import { presentTimeline, presentCapture } from './presenters.js';
+import { buildFeed, buildStats } from './feed.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -228,6 +229,24 @@ export function createTravelApi(options = {}) {
     return { days: presentTimeline(events, { tripStartDate: trip?.startDate ?? null, destination: trip?.destination ?? null }) };
   }
 
+  // Premium feed the traveller sees on open: hero memory, featured photos,
+  // journey highlights, today's story, and travel statistics — display-ready.
+  async function getFeed(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const trip = await getCurrentTrip(id);
+    return buildFeed(events, trip);
+  }
+
+  // Beautiful travel statistics (streaks, countries, places, dives, flights,
+  // memory categories) for the stats screen.
+  async function getStats(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const trip = await getCurrentTrip(id);
+    return { stats: buildStats(events, trip) };
+  }
+
   // Generate deterministic trip-readiness candidates and route the high-impact
   // (approval-required) ones into the approval queue.
   async function getTripReadiness(token) {
@@ -302,6 +321,8 @@ export function createTravelApi(options = {}) {
     putItinerary,
     capture,
     getTimeline,
+    getFeed,
+    getStats,
     getTripReadiness,
     getApprovals,
     resolveApproval,

@@ -197,6 +197,50 @@ Each candidate below is rated:
 
 ---
 
+## F. Feed, memory & storytelling intelligence (added M24.1)
+
+These deepen the *feel* of the feed/stats experience rather than pulling in
+third-party data. Still **not implemented** — captured here so the feed evolves
+deliberately.
+
+### On-device photo aesthetics (Vision framework)
+- **Why:** Auto-pick the most beautiful photo of a day as the hero; classify
+  scenes (beach/sunset/mountain/food/wildlife) to power memory categories from
+  pixels, not just words — far richer than note keywords.
+- **Complexity:** Medium. On-device only (privacy); no photo leaves the device.
+- **Tier:** V2.
+- **Possible API:** Apple Vision (`VNClassifyImageRequest`, saliency, aesthetics
+  score), Core ML scene classifiers.
+
+### Auto-generated trip recaps ("Year in Bali" / end-of-trip film)
+- **Why:** Polarsteps/Apple Memories-style auto montage + a written recap of the
+  journey — a delightful, shareable artifact.
+- **Complexity:** Medium (compose from existing memories + music; on-device).
+- **Tier:** V2 (still recap) → V3 (video montage).
+- **Possible API:** AVFoundation (video), our own deterministic recap composer.
+
+### Weather & golden-hour enrichment
+- **Why:** "32°C, golden hour at 18:14" makes a sunset memory richer; backfill
+  historical weather for a day/place (approximate area only).
+- **Complexity:** Low–Medium (historical weather API by approximate area + date).
+- **Tier:** V2.
+- **Possible API:** Apple WeatherKit (current/forecast), historical weather
+  providers (Open-Meteo, Visual Crossing).
+
+### Currency & spend awareness
+- **Why:** Gentle "what this trip cost" stats without being a finance app;
+  per-day or per-country spend as a travel statistic.
+- **Complexity:** Medium (manual entry first; bank/Wallet later — sensitive).
+- **Tier:** V3.
+- **Possible API:** Manual entry + FX rates API; Apple Wallet transactions (heavy/restricted).
+
+### Maps-based "places visited" mosaic
+- **Why:** A beautiful map of approximate areas visited (country/region tiles),
+  feeding "countries" and "places visited" stats visually.
+- **Complexity:** Medium (approximate regions only — never exact pins).
+- **Tier:** V2 (Apple Maps snapshots) — see Apple Maps above.
+- **Possible API:** MapKit snapshotter at region granularity.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

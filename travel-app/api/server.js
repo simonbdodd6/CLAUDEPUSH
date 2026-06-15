@@ -38,6 +38,8 @@ export function createHttpServer(apiOptions = {}) {
     if (m === 'PUT' && pathname === '/itinerary') return api.putItinerary(token, body);
     if (m === 'POST' && pathname === '/capture') return api.capture(token, body);
     if (m === 'GET' && pathname === '/timeline') return api.getTimeline(token);
+    if (m === 'GET' && pathname === '/feed') return api.getFeed(token);
+    if (m === 'GET' && pathname === '/stats') return api.getStats(token);
     if (m === 'GET' && pathname === '/trip-readiness') return api.getTripReadiness(token);
     if (m === 'GET' && pathname === '/approvals') return api.getApprovals(token);
     const approvalMatch = pathname.match(/^\/approvals\/([^/]+)$/);
