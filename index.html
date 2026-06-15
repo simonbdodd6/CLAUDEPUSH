@@ -9588,6 +9588,25 @@
             </div>
           </div>
 
+          <!-- Beta Readiness -->
+          <div class="card">
+            <h2 style="margin-bottom:4px">Beta Readiness</h2>
+            <p class="muted" style="font-size:12px;margin-bottom:2px">Diagnostic snapshot — read-only, no business logic.</p>
+            ${[
+              ['Build',         _BUILD_INFO.env === 'production' ? '✓ Production' : `⚠ ${_BUILD_INFO.env || 'local'}`,         _BUILD_INFO.env === 'production'],
+              ['Commit',        _BUILD_INFO.sha || '—',                                                                          true],
+              ['Session',       _serverAuthState === 'authed' ? '✓ Authenticated' : _serverAuthState === 'anon' ? '✗ Not signed in' : '… Checking', _serverAuthState === 'authed'],
+              ['Notifications', typeof Notification !== 'undefined' ? (Notification.permission === 'granted' ? '✓ Granted' : Notification.permission === 'denied' ? '✗ Denied' : '⚠ Not requested') : '— Unsupported', typeof Notification !== 'undefined' && Notification.permission === 'granted'],
+              ['Role',          currentUser()?.role || '— not signed in',                                                        !!currentUser()?.role],
+              ['Team',          esc(state.clubName || state.teamId || '— not configured'),                                       !!(state.clubName || state.teamId)],
+              ['Plan',          (state.teamPlan || 'core') + (state.teamPlanStatus && state.teamPlanStatus !== 'active' ? ` · ${state.teamPlanStatus}` : ''), true],
+            ].map(([label, value, ok]) => `
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:12px">
+                <span style="color:var(--muted);flex-shrink:0;margin-right:12px">${label}</span>
+                <span style="font-weight:700;color:${ok ? 'var(--green)' : '#f87171'};font-family:monospace;text-align:right">${value}</span>
+              </div>`).join('')}
+          </div>
+
           <!-- Danger zone -->
           <div class="card" style="border-color:rgba(248,113,113,0.35)">
             <h2 style="margin-bottom:4px;color:#f87171">Danger zone</h2>
@@ -12214,10 +12233,27 @@
     }
 
     function render() {
-      renderNav();
-      showSection();
-      renderCoachOverview();
-      renderMessageCenter();
+      // Wrap each section so one failing helper can't leave the page blank.
+      // If a section element is empty after a throw, insert a minimal error card.
+      function safeRender(sectionId, fn) {
+        try { fn(); }
+        catch(e) {
+          console.error('[render] ' + (sectionId || 'global'), e);
+          if (sectionId) {
+            const el = document.getElementById(sectionId);
+            if (el && !el.innerHTML) {
+              el.innerHTML = '<div class="card" style="border-color:rgba(248,113,113,0.25);text-align:center;padding:28px 16px">'
+                + '<p style="font-weight:700;color:#f87171;margin:0 0 6px">This section failed to load</p>'
+                + '<p class="muted" style="font-size:12px;margin:0">Reload the page to try again.</p></div>';
+            }
+          }
+        }
+      }
+
+      safeRender(null,                () => renderNav());
+      safeRender(null,                () => showSection());
+      safeRender('coach-overview',    () => renderCoachOverview());
+      safeRender(null,                () => renderMessageCenter());
       const inMessages = (state.activeView==='coach' && state.activeCoachSection==='messages') ||
                          (state.activeView==='player' && state.activePlayerSection==='messages');
       if (!inMessages) chatStopPolling();
@@ -12232,23 +12268,23 @@
       if (state.activeView === 'coach') {
         const playerEl = document.getElementById('player-messages');
         if (playerEl && playerEl.innerHTML) { playerEl.innerHTML = ''; _chatShellRendered = null; }
-        renderCoachMessages();
+        safeRender('coach-messages',    () => renderCoachMessages());
       } else {
         const coachEl = document.getElementById('coach-messages');
         if (coachEl && coachEl.innerHTML) { coachEl.innerHTML = ''; _chatShellRendered = null; }
-        renderPlayerMessages();
+        safeRender('player-messages',   () => renderPlayerMessages());
       }
-      renderTraining();
-      renderMatchday();
-      renderMedical();
-      renderPlayers();
-      renderClubAdmin();
-      renderSettings();
-      renderPlayerWeek();
-      renderPlayerAvailability();
-      renderPlayerFixtures();
-      renderAuthBanner();
-      renderDebugOverlay();
+      safeRender('coach-training',      () => renderTraining());
+      safeRender('coach-matchday',      () => renderMatchday());
+      safeRender('coach-medical',       () => renderMedical());
+      safeRender('coach-players',       () => renderPlayers());
+      safeRender('coach-admin',         () => renderClubAdmin());
+      safeRender('coach-settings',      () => renderSettings());
+      safeRender('player-week',         () => renderPlayerWeek());
+      safeRender('player-availability', () => renderPlayerAvailability());
+      safeRender('player-fixtures',     () => renderPlayerFixtures());
+      safeRender(null,                  () => renderAuthBanner());
+      safeRender(null,                  () => renderDebugOverlay());
       // Async live-data panels — non-blocking, fills in after render
       if (state.activeCoachSection === "message") {
         loadLiveMessaging();
