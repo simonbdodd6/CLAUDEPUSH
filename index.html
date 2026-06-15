@@ -9613,6 +9613,7 @@
             <div style="display:grid;gap:8px;margin-top:10px">
               <button class="btn" type="button" onclick="settingsExportClub(this)" style="min-height:40px;font-size:13px">📦 Export club data (JSON)</button>
               <button class="btn" type="button" onclick="settingsDeleteClub()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Delete club setup data…</button>
+              ${canI('danger_zone') ? `<button class="btn" type="button" onclick="settingsCleanTestData()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Delete test data…</button>` : ''}
               <button class="btn" type="button" onclick="settingsSignOut()" style="min-height:40px;font-size:13px">Sign out</button>
             </div>
             <p class="muted" style="font-size:11px;margin:10px 0 0">Deleting club data clears the club profile, published sessions, squad and roster for this club only. Player accounts and message history are kept.</p>
@@ -9838,6 +9839,26 @@
         state.fixtures = []; state.clubLogo = '';
         saveState('Club data deleted');
         render();
+      } catch(e) { showToast(e.message || 'Delete failed'); }
+    }
+
+    async function settingsCleanTestData() {
+      const typed = await cePrompt(
+        'Delete test data?',
+        'Removes published sessions titled “TEST”, availability responses from test accounts, chat messages sent by test accounts, and test roster entries.\n\nThis cannot be undone. Type DELETE TEST DATA to confirm:',
+        { placeholder: 'DELETE TEST DATA', confirmLabel: 'Delete test data', danger: true }
+      );
+      if (typed === null) return;
+      if (typed.trim() !== 'DELETE TEST DATA') { showToast('Type DELETE TEST DATA exactly to confirm'); return; }
+      try {
+        const res = await fetch('/api/publish?resource=club', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete_test_data', confirmPhrase: typed.trim() }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Delete failed');
+        const d = data.deleted || {};
+        showToast(`Test data removed — ${d.sessions || 0} session${d.sessions === 1 ? '' : 's'}, ${d.availability || 0} availability ${d.availability === 1 ? 'entry' : 'entries'}, ${d.messages || 0} message${d.messages === 1 ? '' : 's'}, ${d.rosterPlayers || 0} roster ${d.rosterPlayers === 1 ? 'player' : 'players'} deleted`);
       } catch(e) { showToast(e.message || 'Delete failed'); }
     }
 

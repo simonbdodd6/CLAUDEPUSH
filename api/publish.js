@@ -16,8 +16,8 @@
 // DELETE /api/publish { type: 'squad'|'sessions' }
 //   → coach/admin only; clears the named store
 
-import { kvGet, kvSet } from './_kv.js';
-import { key } from './_keys.js';
+import { kvGet, kvSet, kvDel, kvLpush, kvLrange, kvScanKeys } from './_kv.js';
+import { key, APP_PREFIX, LEGACY_PREFIX } from './_keys.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
 import { DEFAULT_TEAM } from './_identityStore.js';
@@ -33,6 +33,17 @@ function sendAuthError(res, error) {
 // the default team's data before scoping — reads fall back to them for the
 // default team only; writes always go to the scoped key. No migration needed.
 const MAX_PLAYERS = 200;
+
+// ── Test-data identification — exported for unit testing ───────────────────
+// Conservative: only records tied to the known test player account or
+// explicitly labelled "TEST" are flagged. Real club data is never touched.
+export const TEST_USER_IDS = new Set(['player-simon-test']);
+export const TEST_LABEL_RE = /\btest\b/i;
+
+export function isTestSession(s)       { return TEST_LABEL_RE.test(String(s?.title || '')); }
+export function isTestAvailEntry(l, v) { return TEST_USER_IDS.has(v?.userId) || TEST_USER_IDS.has(v?.playerId) || TEST_LABEL_RE.test(String(l)); }
+export function isTestChatMessage(m)   { return TEST_USER_IDS.has(m?.senderId); }
+export function isTestRosterPlayer(p)  { return TEST_USER_IDS.has(p?.id) || TEST_LABEL_RE.test(String(p?.name || '')); }
 
 function sessionsKey(teamId) { return key(`publish:${teamId}:sessions`); }
 function squadKey(teamId)    { return key(`publish:${teamId}:squad`); }
@@ -229,6 +240,72 @@ async function clubHandler(req, res) {
         kvSet(rosterKey(session.teamId), null),
       ]);
       return res.status(200).json({ ok: true, deleted: ['club', 'sessions', 'squad', 'roster'] });
+    }
+
+    if (req.body?.action === 'delete_test_data') {
+      if (!can(session, PERM.DANGER_ZONE)) return res.status(403).json({ error: 'Not authorized' });
+      if (String(req.body?.confirmPhrase || '') !== 'DELETE TEST DATA') {
+        return res.status(400).json({ error: 'Type DELETE TEST DATA to confirm' });
+      }
+
+      const deleted = { sessions: 0, availability: 0, messages: 0, rosterPlayers: 0 };
+
+      // 1. Published training sessions with TEST in the title
+      const pubSessions = (await readScoped(sessionsKey(session.teamId), 'publish:sessions', session.teamId)) || [];
+      const cleanSessions = pubSessions.filter(s => !isTestSession(s));
+      if (cleanSessions.length < pubSessions.length) {
+        deleted.sessions = pubSessions.length - cleanSessions.length;
+        await kvSet(sessionsKey(session.teamId), cleanSessions);
+      }
+
+      // 2. Availability records — strip per-player entries that match test markers
+      const availKeys = [...new Set([
+        ...(await kvScanKeys(`${APP_PREFIX}:availability:*`)),
+        ...(await kvScanKeys(`${LEGACY_PREFIX}:availability:*`)),
+      ])];
+      for (const k of availKeys) {
+        const rec = await kvGet(k);
+        if (!rec || typeof rec !== 'object') continue;
+        const clean = {};
+        let changed = false;
+        for (const [label, value] of Object.entries(rec)) {
+          if (isTestAvailEntry(label, value)) { changed = true; deleted.availability++; }
+          else clean[label] = value;
+        }
+        if (changed) await kvSet(k, clean);
+      }
+
+      // 3. Chat messages — remove messages sent by test accounts in every conversation
+      const convs = (await kvGet(key('chat:convs'))) || [];
+      for (const conv of convs) {
+        if (!conv?.id) continue;
+        const msgsKey = key(`chat:conv:${conv.id}:msgs`);
+        const msgs = await kvLrange(msgsKey, 0, 499);
+        const cleanMsgs = msgs.filter(m => !isTestChatMessage(m));
+        if (cleanMsgs.length < msgs.length) {
+          deleted.messages += msgs.length - cleanMsgs.length;
+          await kvDel(msgsKey);
+          // Re-push oldest-first so newest ends up at index 0 (LPUSH prepends)
+          for (const m of cleanMsgs) await kvLpush(msgsKey, m);
+        }
+      }
+
+      // 4. Roster — remove test player entries
+      const roster = await kvGet(rosterKey(session.teamId));
+      if (Array.isArray(roster?.players)) {
+        const cleanPlayers = roster.players.filter(p => !isTestRosterPlayer(p));
+        if (cleanPlayers.length < roster.players.length) {
+          deleted.rosterPlayers = roster.players.length - cleanPlayers.length;
+          await kvSet(rosterKey(session.teamId), {
+            ...roster,
+            players:   cleanPlayers,
+            updatedAt: new Date().toISOString(),
+            updatedBy: session.user.id,
+          });
+        }
+      }
+
+      return res.status(200).json({ ok: true, deleted });
     }
 
     const club = sanitiseClubConfig(req.body?.club);
