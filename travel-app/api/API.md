@@ -25,6 +25,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/timeline` | — | `{ days: [Day] }` | timeline-platform |
 | GET | `/feed` | — | `{ hero, featuredPhotos, highlights, today, stats }` | feed (derived from timeline + trip) |
 | GET | `/stats` | — | `{ stats: TravelStats }` | feed (derived from timeline + trip) |
+| GET | `/intelligence` | — | `{ travelStyle, insights, locked, basedOn }` | intelligence (derived from memories + trips) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -96,6 +97,30 @@ TravelStats = {
   `daysTravelling` is distinct days with memories; `streaks` are consecutive
   memory-days.
 - All numbers/labels are display-ready; the app binds them with no computation.
+
+### Travel Intelligence DTO (M24.2)
+
+Deterministic product intelligence — **not AI**. Spotify-Wrapped-style
+observations derived purely + honestly from the traveller's own memories + trips
+("You chase the light", "Sunsets appear in 33% of your memories", "Indonesia is
+your kind of place"). An insight is emitted **only** when the data supports it;
+everything else is `locked` with a friendly hint.
+
+```
+Intelligence = {
+  travelStyle: { headline, detail, accent, icon } | null,   // the signature line
+  insights:    [Insight],                                    // strongest-first deck
+  locked:      [{ id, title, hint }],                         // "keep travelling to unlock"
+  basedOn:     { memories, trips, activeDays },               // the evidence base
+}
+Insight = { id, kind:"insight", title, detail, accent, icon, stat?: { value, label } }
+```
+
+Observations include: signature travel style, sunset share %, beaches-vs-cities,
+underwater-vs-land photos, favourite activity, daily rhythm (early riser),
+longest travel streak, longest dive streak, favourite country, average trip
+length, favourite season, revisits, and a gentle "you should go back" nudge.
+All deterministic, offline-first, and free of backend terms.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

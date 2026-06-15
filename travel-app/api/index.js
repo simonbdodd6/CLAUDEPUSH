@@ -22,6 +22,7 @@ import { createSessionManager } from './session.js';
 import { createAppleAuth } from './auth.js';
 import { presentTimeline, presentCapture } from './presenters.js';
 import { buildFeed, buildStats } from './feed.js';
+import { buildIntelligence } from './intelligence.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -247,6 +248,15 @@ export function createTravelApi(options = {}) {
     return { stats: buildStats(events, trip) };
   }
 
+  // Deterministic Travel Intelligence — Spotify-Wrapped-style observations from
+  // the traveller's own data (their memories + trips). Not AI; pure + honest.
+  async function getIntelligence(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildIntelligence(events, ownedTrips);
+  }
+
   // Generate deterministic trip-readiness candidates and route the high-impact
   // (approval-required) ones into the approval queue.
   async function getTripReadiness(token) {
@@ -323,6 +333,7 @@ export function createTravelApi(options = {}) {
     getTimeline,
     getFeed,
     getStats,
+    getIntelligence,
     getTripReadiness,
     getApprovals,
     resolveApproval,

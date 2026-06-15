@@ -37,13 +37,32 @@ export function categoriesFor(entry) {
   return CATEGORY_RULES.filter(r => r.re.test(text)).map(r => r.key);
 }
 
+// Category display metadata (key -> { label, accent, icon }) — shared by the
+// feed and the intelligence layer so labels never drift.
+export const CATEGORY_META = Object.fromEntries(
+  CATEGORY_RULES.map(r => [r.key, { label: r.label, accent: r.accent, icon: r.icon }]),
+);
+
 // Personal memories = the traveller's own captured moments.
 const MEMORY_KINDS = new Set(['photo', 'journal', 'memory']);
 function isMemory(entry) { return MEMORY_KINDS.has(entry.kind); }
 
-function dayOf(iso) { return String(iso).slice(0, 10); }
+// The traveller's memories as premium entries, newest-first (single source of
+// truth, reused by stats + intelligence).
+export function selectMemories(events) {
+  return presentEntries(events, 'desc').filter(isMemory);
+}
 
-function inclusiveDays(startDate, endDate) {
+// Count category hits across a list of memory entries.
+export function countCategories(memories) {
+  const counts = Object.fromEntries(CATEGORY_RULES.map(r => [r.key, 0]));
+  for (const m of memories) for (const key of categoriesFor(m)) counts[key] += 1;
+  return counts;
+}
+
+export function dayOf(iso) { return String(iso).slice(0, 10); }
+
+export function inclusiveDays(startDate, endDate) {
   if (!startDate || !endDate) return null;
   const start = Date.parse(`${String(startDate).slice(0, 10)}T00:00:00Z`);
   const end = Date.parse(`${String(endDate).slice(0, 10)}T00:00:00Z`);
@@ -52,7 +71,7 @@ function inclusiveDays(startDate, endDate) {
 }
 
 // Longest + current run of consecutive calendar days from a set of day keys.
-function streaks(dayKeys) {
+export function streaks(dayKeys) {
   const sorted = [...new Set(dayKeys)].sort();
   if (!sorted.length) return { current: 0, longest: 0, unit: 'days' };
   let longest = 1; let run = 1; let current = 1;
@@ -74,8 +93,7 @@ export function buildStats(events, trip = null) {
   const entries = presentEntries(events, 'desc');
   const memories = entries.filter(isMemory);
 
-  const counts = Object.fromEntries(CATEGORY_RULES.map(r => [r.key, 0]));
-  for (const m of memories) for (const key of categoriesFor(m)) counts[key] += 1;
+  const counts = countCategories(memories);
 
   const memoryDays = memories.map(m => dayOf(m.timestamp));
   const photoCount = memories.filter(m => m.kind === 'photo').length;

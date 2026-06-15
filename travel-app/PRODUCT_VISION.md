@@ -241,6 +241,58 @@ deliberately.
 - **Tier:** V2 (Apple Maps snapshots) — see Apple Maps above.
 - **Possible API:** MapKit snapshotter at region granularity.
 
+## G. Travel intelligence deepeners (added M24.2)
+
+The intelligence layer (`/intelligence`) is deterministic and derives only from
+the traveller's own data. These would make it richer — still **not implemented**,
+and several depend on integrations above (kept opt-in, privacy-first).
+
+### Destination similarity graph ("places like ones you loved")
+- **Why:** Power "places similar to Bali" / "you'd love Lombok" honestly, from a
+  curated attribute graph (climate, vibe, activities) — not a black-box model.
+- **Complexity:** Medium (build/curate a deterministic destination attribute set
+  + similarity scoring; ships offline).
+- **Tier:** V2.
+- **Possible API:** Internal curated dataset; optionally enriched by geographic
+  open data (no per-user location).
+
+### Companion intelligence ("your favourite travel companion")
+- **Why:** "You travel best with …", trips-together count — a warm, social
+  Wrapped card.
+- **Complexity:** Low–Medium (needs a lightweight "who came" capture; the
+  relationship-graph platform already models companions).
+- **Tier:** V2 (once companions are captured in-product).
+- **Possible API:** Internal (relationship graph); Contacts (opt-in) for names.
+
+### Accommodation & stay intelligence
+- **Why:** "Your favourite place to stay" (villa vs hostel vs liveaboard), avg
+  nights per stay — depends on itinerary/booking data.
+- **Complexity:** Medium (needs stay data; pairs with TripIt/Booking/Airbnb).
+- **Tier:** V3.
+- **Possible API:** Itinerary platform + booking integrations (section B).
+
+### Quiet-vs-busy preference
+- **Why:** "You stay longer in quiet places" — correlate trip length with a
+  destination's population/density tier.
+- **Complexity:** Medium (needs a coarse density classification per destination,
+  approximate only).
+- **Tier:** V3.
+- **Possible API:** Curated destination density tiers (offline dataset).
+
+### Activity intelligence from wearables
+- **Why:** "You take more photos underwater than on land" gets verified by actual
+  dive logs; "longest dive streak" backed by Garmin Dive / Shearwater.
+- **Complexity:** High (depends on dive/wearable integrations in sections C).
+- **Tier:** V3.
+- **Possible API:** Garmin Connect/Dive, Shearwater Cloud, Apple Health (section A/C).
+
+### Year-in-review / Trip Wrapped
+- **Why:** A seasonal, shareable "Travel Wrapped" deck assembled from these
+  insights — the emotional payoff of the whole layer.
+- **Complexity:** Low (composes existing `/intelligence` cards) → Medium (share art).
+- **Tier:** V2.
+- **Possible API:** Internal composer over `/intelligence`; share sheet for export.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

@@ -40,6 +40,7 @@ export function createHttpServer(apiOptions = {}) {
     if (m === 'GET' && pathname === '/timeline') return api.getTimeline(token);
     if (m === 'GET' && pathname === '/feed') return api.getFeed(token);
     if (m === 'GET' && pathname === '/stats') return api.getStats(token);
+    if (m === 'GET' && pathname === '/intelligence') return api.getIntelligence(token);
     if (m === 'GET' && pathname === '/trip-readiness') return api.getTripReadiness(token);
     if (m === 'GET' && pathname === '/approvals') return api.getApprovals(token);
     const approvalMatch = pathname.match(/^\/approvals\/([^/]+)$/);
