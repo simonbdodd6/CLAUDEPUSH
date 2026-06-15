@@ -8,7 +8,16 @@
 // No platform module is modified and no business logic is duplicated — every
 // handler delegates to a platform service.
 
-import { FileTripRepository, FileEventRepository, FileTimelineRepository } from './persistence/durable-repositories.js';
+import {
+  FileTripRepository,
+  FileEventRepository,
+  FileTimelineRepository,
+  FileIdentityRepository,
+  FileItineraryRepository,
+  FileTravelMemoryRepository,
+  FileRelationshipRepository,
+  FileApprovalRepository,
+} from './persistence/durable-repositories.js';
 import { createSessionManager } from './session.js';
 import { createAppleAuth } from './auth.js';
 
@@ -47,9 +56,10 @@ export function createTravelApi(options = {}) {
 
   // --- platform composition (frozen modules via public APIs/ports) ---
   const timeline = createTravelTimelinePlatform({ repository: repo(store, FileTimelineRepository) });
-  const graph = createTravelRelationshipGraph();           // durable graph repo: follow-up
+  const graph = createTravelRelationshipGraph({ repository: repo(store, FileRelationshipRepository) });
   const events = createEventPlatform({ repository: repo(store, FileEventRepository) });
-  const identity = createIdentityPlatform();               // durable identity repo: follow-up
+  const identity = createIdentityPlatform({ repository: repo(store, FileIdentityRepository) });
+  // traveller-identity is a pure port (no repository) — it projects over the now-durable identity source.
   const travellerIdentity = createTravellerIdentityPlatform({
     identitySource: new IdentityPlatformSourceAdapter({ identityPlatform: identity }),
   });
@@ -59,8 +69,16 @@ export function createTravelApi(options = {}) {
     timelinePublisher: timeline,
     relationshipPublisher: graph,
   });
-  const itineraries = createItineraryPlatform({ timelinePublisher: timeline, relationshipPublisher: graph });
-  const memory = createTravelMemoryPlatform({ timelinePublisher: timeline, relationshipPublisher: graph });
+  const itineraries = createItineraryPlatform({
+    repository: repo(store, FileItineraryRepository),
+    timelinePublisher: timeline,
+    relationshipPublisher: graph,
+  });
+  const memory = createTravelMemoryPlatform({
+    repository: repo(store, FileTravelMemoryRepository),
+    timelinePublisher: timeline,
+    relationshipPublisher: graph,
+  });
   const preferences = createTravellerPreferencesPlatform();
   const discovery = createCompanionDiscoveryPlatform();
   const context = createTravelIntelligenceContext({
@@ -73,7 +91,7 @@ export function createTravelApi(options = {}) {
   });
   const insight = createTravelInsightEngine({ travelIntelligenceContext: context });
   const actionCandidates = createTravelActionCandidateEngine({ travelInsightEngine: insight });
-  const approval = createApprovalPlatform();
+  const approval = createApprovalPlatform({ repository: repo(store, FileApprovalRepository) });
   const orchestrator = createTravelIntelligenceOrchestrator({
     travelActionCandidateEngine: actionCandidates,
     approvalPlatform: approval,
