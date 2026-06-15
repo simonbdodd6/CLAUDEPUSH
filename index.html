@@ -2191,6 +2191,11 @@
     const STORAGE_KEY = "coach-eye-real-workflow-mvp-state-v1";
     const BACKUP_KEY  = "coach-eye-real-workflow-mvp-state-v1-backup";
 
+    // ─── BUILD INFO ───────────────────────────────────────────────────────────
+    // Injected at deploy time by build-inject.js via Vercel buildCommand.
+    // Shows "DEV" / "local" when running from the working tree without a build.
+    const _BUILD_INFO = {"sha":"DEV","env":"local","branch":"local","time":"n/a"};
+
     // ─── PUSH CONFIG ──────────────────────────────────────────────────────────
     // Loaded from /api/config so each deployed club can use its own VAPID key.
     // Private push credentials are never exposed to the browser.
@@ -9570,6 +9575,13 @@
             <h2 style="margin-bottom:4px">Device</h2>
             <div style="${rowStyle}"><span style="font-size:13px">App version</span><strong style="font-size:13px;font-family:monospace">${esc(_settingsVersion || '…')}</strong></div>
             <div style="${rowStyle}"><span style="font-size:13px">Last sync</span><strong style="font-size:13px">${esc(lastSyncLabel())}</strong></div>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);margin-bottom:6px">Build</div>
+              <div style="${rowStyle}"><span style="font-size:12px;color:var(--muted)">Commit</span><strong style="font-size:12px;font-family:monospace">${esc(_BUILD_INFO.sha)}</strong></div>
+              <div style="${rowStyle}"><span style="font-size:12px;color:var(--muted)">Environment</span><strong style="font-size:12px;font-family:monospace">${esc(_BUILD_INFO.env)}</strong></div>
+              <div style="${rowStyle}"><span style="font-size:12px;color:var(--muted)">Branch</span><strong style="font-size:12px;font-family:monospace">${esc(_BUILD_INFO.branch)}</strong></div>
+              <div style="${rowStyle}"><span style="font-size:12px;color:var(--muted)">Built</span><strong style="font-size:12px;font-family:monospace">${esc(_BUILD_INFO.time === 'n/a' ? 'local dev' : _BUILD_INFO.time.replace('T',' ').slice(0,16) + ' UTC')}</strong></div>
+            </div>
             <div style="display:grid;gap:8px;margin-top:12px">
               <button class="btn" type="button" onclick="settingsForceSync(this)" style="min-height:40px;font-size:13px">↺ Force sync now</button>
               <button class="btn" type="button" onclick="clearDeviceState()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.3)">Clear cached data on this device</button>

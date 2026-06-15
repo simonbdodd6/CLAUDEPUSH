@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "node build-inject.js",
     "test": "node --test test/*.test.js",
     "market:pipeline": "node qa/market-intel/pipeline.js",
     "market:import": "node qa/market-intel/pipeline.js --import",
