@@ -69,7 +69,13 @@
     "learning": "echo \"CLI:     npm run learning:cli\nAPI:     npm run learning:api (port 3006)\nAll:     npm run learning:all\""
   },
   "dependencies": {
+    "@react-spring/web": "^10.1.1",
+    "@react-three/drei": "^10.7.7",
+    "gsap": "^3.15.0",
+    "leva": "^0.10.1",
+    "lottie-react": "^2.4.1",
     "motion": "^12.40.0",
+    "postprocessing": "^6.39.1",
     "stripe": "^22.2.1",
     "web-push": "^3.6.7"
   }
