@@ -23,13 +23,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { isObj } from './shape-guards.js'
-import { CAP_MATCH_READINESS, CAP_COACH_DNA, CAP_SEASON_INTELLIGENCE, CAP_OPPONENT_INTELLIGENCE, CAP_EXECUTIVE_RECOMMENDATIONS, CAP_MEMORY_INTELLIGENCE } from './facade-contract.js'
+import { CAP_MATCH_READINESS, CAP_COACH_DNA, CAP_SEASON_INTELLIGENCE, CAP_OPPONENT_INTELLIGENCE, CAP_EXECUTIVE_RECOMMENDATIONS, CAP_MEMORY_INTELLIGENCE, CAP_TRAINING_INTELLIGENCE } from './facade-contract.js'
 import { mapMatchReadiness } from './mappers/match-readiness.js'
 import { mapCoachDna } from './mappers/coach-dna.js'
 import { mapSeason } from './mappers/season.js'
 import { mapOpponent } from './mappers/opponent.js'
 import { mapExecutiveRecommendations } from './mappers/executive-recommendations.js'
 import { mapMemory } from './mappers/memory.js'
+import { mapTraining } from './mappers/training.js'
 
 /**
  * @param {Object}  deps
@@ -62,16 +63,17 @@ export function createExperienceAdapter({ facade = null, runtime = null, fallbac
 
     // The wired capabilities, each through the façade only. Every other slice
     // stays as the placeholder fallback.
-    const [matchReadiness, coachDna, season, opponent, executiveRecommendations, memory] = await Promise.all([
+    const [matchReadiness, coachDna, season, opponent, executiveRecommendations, memory, training] = await Promise.all([
       resolveSlice(CAP_MATCH_READINESS, fallback.matchReadiness, mapMatchReadiness, context),
       resolveSlice(CAP_COACH_DNA, fallback.coachDna, mapCoachDna, context),
       resolveSlice(CAP_SEASON_INTELLIGENCE, fallback.season, mapSeason, context),
       resolveSlice(CAP_OPPONENT_INTELLIGENCE, fallback.opponent, mapOpponent, context),
       resolveSlice(CAP_EXECUTIVE_RECOMMENDATIONS, fallback.executiveRecommendations, mapExecutiveRecommendations, context),
       resolveSlice(CAP_MEMORY_INTELLIGENCE, fallback.memory, mapMemory, context),
+      resolveSlice(CAP_TRAINING_INTELLIGENCE, fallback.training, mapTraining, context),
     ])
 
-    return { ...fallback, system, matchReadiness, coachDna, season, opponent, executiveRecommendations, memory }
+    return { ...fallback, system, matchReadiness, coachDna, season, opponent, executiveRecommendations, memory, training }
   }
 
   // Invoke one capability through the façade and map its envelope to a view slice.

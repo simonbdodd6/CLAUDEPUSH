@@ -26,6 +26,7 @@ export const VERSION_CONTRACTS = Object.freeze([
   { capability: 'coach.seasonIntelligence',       outputVersion: '1.0', supports: ['1.0'] }, // SEASON_VERSION
   { capability: 'coach.executiveRecommendations', outputVersion: '1.0', supports: ['1.0'] }, // M38: recommendation-engine
   { capability: 'coach.memoryIntelligence',       outputVersion: '1.0', supports: ['1.0'] }, // M39: knowledge-graph
+  { capability: 'coach.trainingIntelligence',     outputVersion: '1.0', supports: ['1.0'] }, // M40: training-designer
 ])
 
 export const VERSION_CONTRACT_BY_CAPABILITY = Object.freeze(

@@ -13,10 +13,11 @@
  * DORMANT: nothing imports this yet (Core included). It activates no feature
  * flag and changes no Core API/UI. It wires coach.matchReadiness (M31.5),
  * coach.coachDna (M35), coach.seasonIntelligence (M36),
- * coach.opponentIntelligence (M37), coach.executiveRecommendations (M38) and
- * coach.memoryIntelligence (M39) — each via the AI Brain's own integration layer
- * (read-only engine imports; never edits Core). Executive recommendations and the
- * memory knowledge graph are PRODUCED by the Brain; the host only reads them.
+ * coach.opponentIntelligence (M37), coach.executiveRecommendations (M38),
+ * coach.memoryIntelligence (M39) and coach.trainingIntelligence (M40) — each via
+ * the AI Brain's own integration layer (read-only engine imports; never edits
+ * Core). The recs, the memory knowledge graph and the training session plan are
+ * PRODUCED by the Brain; the host only reads them.
  */
 
 import { invoke, WIRED_CAPABILITIES } from '@brain/product-coaches-eye'
@@ -27,6 +28,7 @@ import {
   getSeasonIntelligence as aiGetSeasonIntelligence,
   getOpponentProfile as aiGetOpponentProfile,
   activeRecommendations as aiActiveRecommendations,
+  designTrainingSession as aiDesignTrainingSession,   // M40: training intelligence (read-only)
 } from '../ai-brain/index.js'
 // M39: memory intelligence — the Brain's knowledge graph (read-only getters)
 import { getAllNodes as kgNodes, getAllEdges as kgEdges } from '../knowledge-graph/index.js'
@@ -54,7 +56,7 @@ function opponentOf(payload) {
  * store's observations into the DNA builders.
  *
  * @param {{ coachAI?: object }} [opts]
- * @returns {Readonly<{ getMatchReadiness: Function, getCoachDna: Function, getSeasonIntelligence: Function, getOpponentIntelligence: Function, getExecutiveRecommendations: Function, getMemoryIntelligence: Function }>}
+ * @returns {Readonly<{ getMatchReadiness: Function, getCoachDna: Function, getSeasonIntelligence: Function, getOpponentIntelligence: Function, getExecutiveRecommendations: Function, getMemoryIntelligence: Function, getTrainingIntelligence: Function }>}
  */
 export function createCoachesEyeRuntime(opts = {}) {
   const coachAI = opts && typeof opts === 'object' ? opts.coachAI : undefined
@@ -79,6 +81,9 @@ export function createCoachesEyeRuntime(opts = {}) {
     getMemoryIntelligence: () => {
       try { return { nodes: kgNodes(), edges: kgEdges() } } catch { return { nodes: [], edges: [] } }
     },
+    // `payload` is the training context: { format, grade, durationMin, squad, ... }.
+    getTrainingIntelligence: (payload) =>
+      aiDesignTrainingSession(payload && typeof payload === 'object' ? payload : {}, {}),
   })
 }
 

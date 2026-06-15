@@ -6,6 +6,7 @@ import CoachDna from '../../panels/CoachDna.jsx'
 import MatchReadiness from '../../panels/MatchReadiness.jsx'
 import OpponentIntelligence from '../../panels/OpponentIntelligence.jsx'
 import ExecutiveRecommendations from '../../panels/ExecutiveRecommendations.jsx'
+import TrainingIntelligence from '../../panels/TrainingIntelligence.jsx'
 import Season from '../../panels/Season.jsx'
 import { createExperienceAdapter } from '../../adapter/index.js'
 import { resolveInjectedBrain } from '../brain-provider.js'
@@ -88,6 +89,7 @@ export default function MissionControlPage() {
 
         <ExecutiveRecommendations executiveRecommendations={model.executiveRecommendations} />
         <OpponentIntelligence opponent={model.opponent} />
+        <TrainingIntelligence training={model.training} />
         <CoachDna coachDna={model.coachDna} />
         <Season season={model.season} />
 

@@ -148,6 +148,7 @@ export const WIRED_CAPABILITIES = Object.freeze({
   'coach.opponentIntelligence': 'getOpponentIntelligence',
   'coach.executiveRecommendations': 'getExecutiveRecommendations',
   'coach.memoryIntelligence': 'getMemoryIntelligence',
+  'coach.trainingIntelligence': 'getTrainingIntelligence',
 })
 
 /** Is this capability wired to a runtime port? */

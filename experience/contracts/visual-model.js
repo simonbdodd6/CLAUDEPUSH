@@ -99,6 +99,16 @@ export const VISUAL_STATES = Object.freeze(['live', 'placeholder', 'locked', 'id
  */
 
 /**
+ * @typedef {Object} TrainingSlice
+ * @property {'live'|'placeholder'|'locked'|'idle'} state
+ * @property {string} theme
+ * @property {number} durationMin
+ * @property {string} workloadStatus
+ * @property {{ label:string, outcome:string }[]} objectives
+ * @property {{ label:string, durationMin:number }[]} phases
+ */
+
+/**
  * @typedef {Object} MemoryNode
  * @property {string}  id
  * @property {string}  label
@@ -128,6 +138,7 @@ export const VISUAL_STATES = Object.freeze(['live', 'placeholder', 'locked', 'id
  * @property {MatchReadinessSlice} matchReadiness
  * @property {OpponentSlice}       opponent
  * @property {ExecutiveRecommendationsSlice} executiveRecommendations
+ * @property {TrainingSlice}       training
  * @property {CoachDnaSlice}       coachDna
  * @property {SeasonSlice}         season
  * @property {MemorySlice}         memory

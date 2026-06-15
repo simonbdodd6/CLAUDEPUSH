@@ -53,6 +53,7 @@ export const CAPABILITY = Object.freeze({
   SEASON_INTELLIGENCE:  'coach.seasonIntelligence',
   EXECUTIVE_RECOMMENDATIONS: 'coach.executiveRecommendations',
   MEMORY_INTELLIGENCE:  'coach.memoryIntelligence',
+  TRAINING_INTELLIGENCE: 'coach.trainingIntelligence',
   LEARNING:             'coach.learning',
 })
 

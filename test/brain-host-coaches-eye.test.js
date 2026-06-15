@@ -85,12 +85,26 @@ test('real wiring — default runtime reaches the live integration layer without
 // PART 3 — matchReadiness + coachDna are wired; everything else stays dormant
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('runtime port exposes the six wired capability methods (M39)', () => {
+test('runtime port exposes the seven wired capability methods (M40)', () => {
   const runtime = createCoachesEyeRuntime({ coachAI: mockCoachAI })
   assert.deepEqual(Object.keys(runtime).sort(),
-    ['getCoachDna', 'getExecutiveRecommendations', 'getMatchReadiness', 'getMemoryIntelligence', 'getOpponentIntelligence', 'getSeasonIntelligence'])
+    ['getCoachDna', 'getExecutiveRecommendations', 'getMatchReadiness', 'getMemoryIntelligence', 'getOpponentIntelligence', 'getSeasonIntelligence', 'getTrainingIntelligence'])
   assert.deepEqual(Object.keys(ADAPTER_WIRED_CAPABILITIES).sort(),
-    ['coach.coachDna', 'coach.executiveRecommendations', 'coach.matchReadiness', 'coach.memoryIntelligence', 'coach.opponentIntelligence', 'coach.seasonIntelligence'])
+    ['coach.coachDna', 'coach.executiveRecommendations', 'coach.matchReadiness', 'coach.memoryIntelligence', 'coach.opponentIntelligence', 'coach.seasonIntelligence', 'coach.trainingIntelligence'])
+})
+
+test('coach.trainingIntelligence resolves live through the adapter (M40)', async () => {
+  const r = await invokeCoachesEye('coach.trainingIntelligence', { tier: 'professional', payload: { format: 'fifteens', grade: 'senior', durationMin: 75 } })
+  assert.equal(r.available, true)
+  assert.equal(r.ok, true)
+  assert.equal(r.reason, null)
+  assert.ok(r.data && typeof r.data === 'object', 'a training session plan is returned')
+  assert.equal(r.data.designerVersion != null, true)
+  // gated off below the tier (free) → engine never reached
+  const denied = await invokeCoachesEye('coach.trainingIntelligence', { tier: 'free', payload: {} })
+  assert.equal(denied.available, false)
+  assert.equal(denied.reason, 'insufficient_tier')
+  assert.equal(denied.data, null)
 })
 
 test('coach.memoryIntelligence resolves live through the adapter (M39)', async () => {

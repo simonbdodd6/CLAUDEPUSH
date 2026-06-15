@@ -40,6 +40,7 @@ export const COACHES_EYE_MANIFEST = Object.freeze({
     { key: CAPABILITY.SEASON_INTELLIGENCE,   tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE] },
     { key: CAPABILITY.EXECUTIVE_RECOMMENDATIONS, tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE] },         // M38: presents Brain-produced recs
     { key: CAPABILITY.MEMORY_INTELLIGENCE,   tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE] },            // M39: presents the Brain knowledge graph
+    { key: CAPABILITY.TRAINING_INTELLIGENCE, tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE] },            // M40: presents the Brain training session plan
     { key: CAPABILITY.LEARNING,              tiers: [T.STARTER, T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE] },  // infra, not a sold product
   ],
 
@@ -79,6 +80,7 @@ export const COACHES_EYE_MANIFEST = Object.freeze({
     { slot: CAPABILITY.SEASON_INTELLIGENCE,   engine: 'season',              version: '1.0', tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE],      flag: FLAG.SEASON_INTELLIGENCE },
     { slot: CAPABILITY.EXECUTIVE_RECOMMENDATIONS, engine: 'recommendation-engine', version: '1.0', tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE], flag: FLAG.ENABLED },
     { slot: CAPABILITY.MEMORY_INTELLIGENCE,   engine: 'knowledge-graph',     version: '1.0', tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE],      flag: FLAG.ENABLED },
+    { slot: CAPABILITY.TRAINING_INTELLIGENCE, engine: 'training-designer',    version: '1.0', tiers: [T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE],      flag: FLAG.TRAINING_DESIGNER },
     { slot: CAPABILITY.LEARNING,              engine: 'learning',            version: '1.0', tiers: [T.STARTER, T.PERFORMANCE, T.CLUB, T.PROFESSIONAL, T.ENTERPRISE], flag: FLAG.LEARNING },
   ],
 

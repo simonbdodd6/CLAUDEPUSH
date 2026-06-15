@@ -10,6 +10,7 @@ const AREAS = [
   { href: '#area-readiness', label: 'Match Readiness',     icon: <ReadinessIcon /> },
   { href: '#area-recommendations', label: 'Recommendations', icon: <RecommendIcon />, badge: 'AI' },
   { href: '#area-opponent',  label: 'Opponent Intel',      icon: <OpponentIcon />, badge: 'AI' },
+  { href: '#area-training',  label: 'Training Intel',      icon: <TrainingIcon />, badge: 'AI' },
   { href: '#area-season',    label: 'Season',              icon: <SeasonIcon /> },
 ]
 
@@ -112,6 +113,16 @@ function SeasonIcon() {
     <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4">
       <path d="M2 11l3.5-4 3 2.5L13 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M10 4h3v3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+function TrainingIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4">
+      <path d="M2 8h2M12 8h2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+      <rect x="4" y="5.5" width="2" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.2"/>
+      <rect x="10" y="5.5" width="2" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.2"/>
+      <path d="M6 8h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
     </svg>
   )
 }

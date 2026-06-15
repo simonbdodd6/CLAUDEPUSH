@@ -125,6 +125,24 @@ export function placeholderVisualModel() {
         { id: 'r4', title: 'Draft the weekly newsletter', detail: 'Last newsletter sent 3 weeks ago.', category: 'Communications', priority: 'low', confidence: 60 },
       ],
     },
+    training: {
+      state: 'placeholder',
+      theme: 'Attack shape & set-piece',
+      durationMin: 75,
+      workloadStatus: 'within cap',
+      objectives: [
+        { label: 'Lineout accuracy', outcome: 'Win clean ball at the front and middle' },
+        { label: 'Attack from set-piece', outcome: 'Two strike plays off first phase' },
+        { label: 'Breakdown speed', outcome: 'Sub-3s ruck on attacking ball' },
+      ],
+      phases: [
+        { label: 'Warm-up', durationMin: 12 },
+        { label: 'Skill', durationMin: 25 },
+        { label: 'Unit', durationMin: 20 },
+        { label: 'Game', durationMin: 12 },
+        { label: 'Review', durationMin: 6 },
+      ],
+    },
     coachDna: {
       state: 'placeholder',
       maturity: 0.62,
