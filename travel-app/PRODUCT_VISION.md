@@ -342,6 +342,64 @@ implemented**.
 - **Tier:** V3.
 - **Possible API:** Apple Vision face grouping (on-device); never leaves device.
 
+## I. Memory Engine deepeners (added M24.4)
+
+The Memory Engine (`/memories`) assembles stories deterministically from existing
+memories. These would make those stories richer and more cinematic — still **not
+implemented**. Several depend on integrations in sections A–C.
+
+### Photo-backed reels & covers (Apple Photos / Google Photos)
+- **Why:** Today reels reference `photoRef` only; with the photo libraries the
+  app can render real cinematic reels and auto-pick the most beautiful cover.
+- **Complexity:** Medium (on-device; strip EXIF GPS before any reference leaves).
+- **Tier:** V2.
+- **Possible API:** PhotoKit / `PHPickerViewController`; Google Photos Library API.
+
+### Cinematic recap films (GoPro / DJI / AVFoundation)
+- **Why:** Turn the deterministic recap + reels into an actual shareable film,
+  with action/aerial footage cut to the trip's beats.
+- **Complexity:** High (media transfer + on-device composition).
+- **Tier:** V3.
+- **Possible API:** GoPro/DJI media import; AVFoundation for composition.
+
+### Map-animated journey chapters (Apple Maps / Polarsteps)
+- **Why:** Each chapter animates across an approximate-region map — the
+  Polarsteps "watch your journey move" moment.
+- **Complexity:** Medium (region granularity only; never exact pins).
+- **Tier:** V2–V3.
+- **Possible API:** MapKit snapshotter / overlays.
+
+### Sensor-enriched story cards (Garmin / dive logs / Apple Health / Weather / Surfline)
+- **Why:** "Your best dive day" gains real depth/time from a dive log; "your
+  longest day" gains steps/elevation; "first sunset" gains the actual golden-hour
+  time and conditions; surf days gain swell.
+- **Complexity:** High (depends on wearable/dive/weather/surf integrations).
+- **Tier:** V3.
+- **Possible API:** Garmin Connect/Dive, Shearwater Cloud & other dive-log
+  providers, Apple Health (HealthKit), Apple WeatherKit / historical weather,
+  Surfline API.
+
+### Soundtracked memories (Spotify)
+- **Why:** Score a recap or reel with what you actually listened to on the trip —
+  the emotional multiplier of music.
+- **Complexity:** Medium (OAuth; recently-played).
+- **Tier:** V2.
+- **Possible API:** Spotify Web API.
+
+### On-this-day & resurfacing (Meta Memories / Apple Photos)
+- **Why:** "A year ago today in Bali" notifications resurface old memories — a
+  powerful re-engagement + emotional loop. Deterministic from existing dates.
+- **Complexity:** Low–Medium (date math + notifications).
+- **Tier:** V2.
+- **Possible API:** Internal (dates) + local notifications.
+
+### Trip & travel-document context (Flighty / Booking.com / Airbnb / TripIt)
+- **Why:** Anchor story cards and chapters to real flights and stays ("the day
+  you flew to Lombok", "your villa week") rather than inferred phases.
+- **Complexity:** Medium–High (partner APIs / share-in / email parsing).
+- **Tier:** V2 (Flighty share-in / TripIt) → V3 (Booking/Airbnb).
+- **Possible API:** Flighty share-in, TripIt API, Booking/Airbnb partner APIs.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

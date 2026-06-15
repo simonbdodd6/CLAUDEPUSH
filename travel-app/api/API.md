@@ -27,6 +27,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/stats` | — | `{ stats: TravelStats }` | feed (derived from timeline + trip) |
 | GET | `/intelligence` | — | `{ travelStyle, insights, locked, basedOn }` | intelligence (derived from memories + trips) |
 | GET | `/relationships` | — | `{ mostTravelledWith, companions, recurringCompanions, circles, locked, basedOn }` | relationships (derived from shared memories + trips) |
+| GET | `/memories` | — | `{ recap, storyCards, chapters, collections, reels, basedOn }` | memory engine (derived from memories + trips) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -151,6 +152,34 @@ Companions are a product concept (names tagged on a memory). They could later be
 promoted to graph `COMPANION` entities + `TRAVELLED_WITH` edges (see
 PRODUCT_VISION.md); the aggregation here is presentation logic with zero platform
 duplication.
+
+### Memory Engine DTO (M24.4)
+
+Deterministic memory storytelling — **no AI, no generated prose**. Every label is
+a fixed template filled with the traveller's own numbers/dates. Assembled from
+existing memories + trips; the UI renders it with almost zero logic.
+
+```
+Memories = {
+  recap:       { id, title:"Your Bali story", period, year, headline:{memories,days,places,photos},
+                 storyLine, topCategories:[{label,count,accent,icon}], cover } | null,
+  storyCards:  [{ id, kind:"story", title, subtitle, accent, icon, date, cover, entries }],
+  chapters:    [{ id, kind:"chapter", title:"Chapter 1 · Arrival", story, subtitle, dayCount, memoryCount, accent, cover }],
+  collections: [{ id, kind:"collection", title, subtitle, accent, icon, count, cover, entries }],
+  reels:       [{ id, kind:"reel", title, subtitle, accent, count, cover, entries }],
+  basedOn:     { memories, days },
+}
+```
+
+- **Story cards** (superlatives, evidence-gated): best day, quietest day, most
+  adventurous day, most photographed day, best dive day, longest day, first/last
+  sunset, first/final memory, trip beginning/ending, busiest week.
+- **Chapters**: the trip week-by-week ("Chapter 1 · Arrival", "A week of beaches").
+- **Collections**: themed sets (dive trip, food/wildlife journey, sunsets,
+  beaches, high ground, road trip) — formed only with ≥2 matching memories.
+- **Reels**: ordered photo/moment sequences (the day in photos, the most moving day).
+- **Recap**: the trip/year packaged as a shareable summary.
+- All `cover`/`entries` are premium `Entry` objects (same shape as `/timeline`).
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

@@ -24,6 +24,7 @@ import { presentTimeline, presentCapture } from './presenters.js';
 import { buildFeed, buildStats } from './feed.js';
 import { buildIntelligence } from './intelligence.js';
 import { buildRelationships, normalizeCompanions } from './relationships.js';
+import { buildMemories } from './memories.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -259,6 +260,15 @@ export function createTravelApi(options = {}) {
     return buildIntelligence(events, ownedTrips);
   }
 
+  // Memory Engine — beautiful stories assembled deterministically from memories:
+  // recap, superlative story cards, journey chapters, themed collections, reels.
+  async function getMemories(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildMemories(events, ownedTrips);
+  }
+
   // Deterministic shared-journey intelligence — the people you travel with.
   async function getRelationships(token) {
     const id = travellerFor(token);
@@ -345,6 +355,7 @@ export function createTravelApi(options = {}) {
     getStats,
     getIntelligence,
     getRelationships,
+    getMemories,
     getTripReadiness,
     getApprovals,
     resolveApproval,
