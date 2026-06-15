@@ -5066,7 +5066,7 @@
       document.getElementById("coachViewBtn").title    = !isCoach() ? "Player accounts cannot open coach tools" : "";
 
       const roleLabel = { coach:'🎯 Coach', admin:'⚙️ Admin', medical:'🏥 Medical', player:'🏉 Player' };
-      const rlbl = roleLabel[user.role] || '👤 Player';
+      const rlbl = roleLabel[user?.role] || '👤 Player';
       const switchAccounts = canonicalSwitchAccounts().filter(u => u.id !== state.currentUserId);
 
       document.getElementById("authPanel").innerHTML = authTab === 'login' ? `
@@ -5169,7 +5169,7 @@
       ` : `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div>
-            <strong>${user.name}</strong>
+            <strong>${user?.name || ''}</strong>
             <small>${rlbl}</small>
           </div>
           <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
