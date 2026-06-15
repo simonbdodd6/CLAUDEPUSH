@@ -86,6 +86,13 @@ module.exports = {
       to: { path: '^experience/' },
     },
     {
+      name: 'experience-host-composes-approved-only',
+      comment: 'The live composition root (experience-host) reaches the Brain ONLY via the approved façade + host runtime port; it must never import an AI engine or Coach\'s Eye Core directly.',
+      severity: 'warn',
+      from: { path: '^experience-host/' },
+      to: { path: '^(ai-brain|coach-products|app|api|src)/' },
+    },
+    {
       name: 'no-orphans',
       comment: 'Flag unreferenced platform modules (informational).',
       severity: 'info',

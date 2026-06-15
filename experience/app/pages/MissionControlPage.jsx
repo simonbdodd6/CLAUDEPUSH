@@ -6,6 +6,7 @@ import CoachDna from '../../panels/CoachDna.jsx'
 import MatchReadiness from '../../panels/MatchReadiness.jsx'
 import Season from '../../panels/Season.jsx'
 import { createExperienceAdapter } from '../../adapter/index.js'
+import { resolveInjectedBrain } from '../brain-provider.js'
 import { placeholderVisualModel } from '../../placeholders/visual-model.js'
 import { placeholderBrainState } from '../../placeholders/brain-state.js'
 import { MOCK } from '../../placeholders/mock-data.js'
@@ -15,11 +16,13 @@ import { MOCK } from '../../placeholders/mock-data.js'
 // the Experience Adapter, and feeds the resulting VisualModel / VisualBrainState to
 // the render layers as props. No live data, no /api calls, no business logic here.
 //
-// M33 wiring point: the adapter consumes the AI Brain ONLY through an injected
-// `@brain/product-coaches-eye` façade (+ a host runtime port). Building that port
-// needs the host/engine, which is out of scope this milestone — so we inject
-// `facade: null`, every slice resolves to the placeholder fallback, and a future
-// composition root flips this on by passing the real façade + port here.
+// M34 activation: the adapter consumes the AI Brain ONLY through an injected
+// `@brain/product-coaches-eye` façade (+ host runtime port). The browser app never
+// imports @brain (so it stays standalone); instead it reads an optional, externally
+// injected provider (experience/app/brain-provider.js). A host shell sets that
+// provider — built by experience-host/createLiveExperienceProvider — to activate
+// live Match Readiness. When it is absent (the default standalone build) the adapter
+// preserves the placeholder fallback for every panel.
 const EXPERIENCE_CONTEXT = {
   tier: 'professional',
   payload: { user: { tier: 'professional', coachId: 'c1' }, team: { teamId: 'team-1' } },
@@ -29,11 +32,16 @@ export default function MissionControlPage() {
   // Complete synthetic fallback — stable reference so panels don't needlessly re-seed.
   const fallback = useMemo(() => placeholderVisualModel(), [])
 
-  // The adapter. M33: façade + runtime are null → standalone, all placeholders.
-  const adapter = useMemo(
-    () => createExperienceAdapter({ facade: null, runtime: null, fallbackModel: fallback }),
-    [fallback],
-  )
+  // The adapter, fed by the optional injected brain provider. No provider (the
+  // default standalone build) → facade/runtime null → every panel stays placeholder.
+  const adapter = useMemo(() => {
+    const brain = resolveInjectedBrain()
+    return createExperienceAdapter({
+      facade: brain?.facade ?? null,
+      runtime: brain?.runtime ?? null,
+      fallbackModel: fallback,
+    })
+  }, [fallback])
 
   // VisualModel flows THROUGH the adapter (placeholder-resolved in M33).
   const [model, setModel] = useState(fallback)
