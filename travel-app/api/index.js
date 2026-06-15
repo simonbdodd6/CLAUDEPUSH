@@ -26,6 +26,8 @@ import { buildIntelligence } from './intelligence.js';
 import { buildRelationships, normalizeCompanions } from './relationships.js';
 import { buildMemories } from './memories.js';
 import { buildLifeStory } from './life-story.js';
+import { buildTravelDna } from './travel-dna.js';
+import { buildPredictions } from './predictions.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -270,6 +272,24 @@ export function createTravelApi(options = {}) {
     return buildMemories(events, ownedTrips);
   }
 
+  // Predictive Travel Companion — gently anticipates what the traveller will
+  // likely enjoy next, from deterministic evidence only.
+  async function getPredictions(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildPredictions(events, ownedTrips);
+  }
+
+  // Personal Travel DNA — long-term characteristics of who the traveller is,
+  // learned deterministically from evidence across every journey.
+  async function getTravelDna(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildTravelDna(events, ownedTrips);
+  }
+
   // Life Story Engine — the traveller's whole history curated into meaningful
   // life stories ("The Bali Chapter", "Travelling With Manon"). Deterministic.
   async function getLifeStory(token) {
@@ -367,6 +387,8 @@ export function createTravelApi(options = {}) {
     getRelationships,
     getMemories,
     getLifeStory,
+    getTravelDna,
+    getPredictions,
     getTripReadiness,
     getApprovals,
     resolveApproval,

@@ -448,6 +448,114 @@ cinematic — still **not implemented**; several depend on integrations above.
 - **Tier:** V3.
 - **Possible API:** Internal multi-user platform; CloudKit sharing.
 
+## K. Personal Travel DNA deepeners (added M24.6)
+
+The Travel DNA layer (`/travel-dna`) learns long-term characteristics from
+existing evidence. These would unlock the traits that are currently absent for
+lack of data, and sharpen the rest — still **not implemented**; most depend on
+integrations above.
+
+### Spending tier (only with evidence) — Apple Wallet / manual
+- **Why:** Unlocks "Luxury vs Backpacker" honestly, per-trip and over time.
+- **Complexity:** Medium (manual entry first; Wallet/bank later — sensitive).
+- **Tier:** V3.
+- **Possible API:** Manual entry + FX; Apple Wallet transactions (restricted).
+
+### Accommodation & transport DNA — TripIt / Booking / Airbnb / Flighty / ride-hailing
+- **Why:** Unlocks "Favourite accommodation" (villa vs hostel vs liveaboard) and
+  "Favourite transport" (fly vs drive vs scooter vs ferry) from real itinerary data.
+- **Complexity:** Medium–High (partner APIs / share-in / email parsing).
+- **Tier:** V2 (TripIt/Flighty) → V3 (Booking/Airbnb/Grab/Gojek).
+- **Possible API:** TripIt, Flighty, Booking/Airbnb partner APIs, ride-hailing APIs.
+
+### Climate & region DNA — Apple Maps / WeatherKit
+- **Why:** "Favourite climate" (tropical vs alpine) and richer "Favourite regions"
+  from approximate-region geocoding + historical weather.
+- **Complexity:** Medium (region granularity; never exact pins).
+- **Tier:** V2–V3.
+- **Possible API:** MapKit reverse-geocode (region), WeatherKit / historical weather.
+
+### Sensor-true identities — Garmin / Strava / Apple Health / dive logs / Surfline
+- **Why:** "Diving / Surfing / Hiking" identities become objective (logged dives,
+  surf sessions + swell, vertical climbed, steps) rather than note-inferred;
+  "fast vs slow" gains real movement data.
+- **Complexity:** High (wearable/dive/surf integrations, sections A & C).
+- **Tier:** V3.
+- **Possible API:** Garmin Connect/Dive, Strava, Apple HealthKit, Shearwater/dive
+  logs, Surfline.
+
+### Photo-derived identity (on-device) — Apple Photos / Vision
+- **Why:** Sharpen "Photography habits" and category traits from actual photo
+  scene/aesthetics analysis, not just note keywords.
+- **Complexity:** Medium (on-device only; privacy-first).
+- **Tier:** V2.
+- **Possible API:** PhotoKit metadata + Apple Vision scene/aesthetics (on-device).
+
+### DNA over time — "This year you travelled differently"
+- **Why:** Turn the `trend` field into a yearly narrative — how the traveller's
+  DNA shifts across years (Wrapped-style "this year vs last").
+- **Complexity:** Low–Medium (compose per-year DNA snapshots deterministically).
+- **Tier:** V2.
+- **Possible API:** Internal (per-period DNA snapshots).
+
+### Return probability model (deterministic)
+- **Why:** Strengthen "return affinity" into a calibrated, explainable likelihood
+  per destination (visits, recency, memory density) — still rule-based, not ML.
+- **Complexity:** Medium (transparent scoring; no black box).
+- **Tier:** V2.
+- **Possible API:** Internal.
+
+## L. Predictive Companion deepeners (added M24.7)
+
+The Predictive Companion (`/predictions`) anticipates from deterministic evidence
+only. These would broaden and sharpen predictions — still **not implemented**,
+and several need integrations above. All must remain rule-based and explainable
+(no black-box ML).
+
+### Destination DNA-match scoring (curated destination dataset)
+- **Why:** Deliver true "This destination matches 82% of your Travel DNA" by
+  scoring a candidate destination's attributes (climate, activities, vibe)
+  against the traveller's DNA — deterministic, transparent.
+- **Complexity:** Medium (curate a destination attribute dataset + scoring).
+- **Tier:** V2.
+- **Possible API:** Internal curated dataset; geographic open data (no per-user location).
+
+### Likely accommodation & transport — TripIt / Booking / Airbnb / Flighty / ride-hailing
+- **Why:** Unlocks the currently-absent "likely accommodation style" and "likely
+  transport" predictions from real itinerary history.
+- **Complexity:** Medium–High (partner APIs / share-in / email parsing).
+- **Tier:** V2 (TripIt/Flighty) → V3 (Booking/Airbnb/Grab/Gojek).
+- **Possible API:** TripIt, Flighty, Booking/Airbnb partner APIs, ride-hailing APIs.
+
+### Weather/season-aware suggestions — WeatherKit / historical / Surfline
+- **Why:** "Best travel season" and packing become condition-aware ("pack a
+  wetsuit — water's 24°C", "swell builds in July"); golden-hour timing for
+  "likely photography moments".
+- **Complexity:** Medium (historical weather / surf APIs by approximate area).
+- **Tier:** V2–V3.
+- **Possible API:** Apple WeatherKit, Open-Meteo/Visual Crossing, Surfline.
+
+### Smart packing lists — sensor + itinerary aware
+- **Why:** Turn likely-packing into a full, deterministic checklist driven by
+  destination, season, planned activities and dive/surf gear history.
+- **Complexity:** Medium (compose existing evidence + destination/season data).
+- **Tier:** V2.
+- **Possible API:** Internal; enriched by weather + dive/activity integrations.
+
+### Proactive, calm nudges — local notifications
+- **Why:** Surface a prediction at the right moment ("You usually dive on day 2 —
+  want to plan it?") without being a dashboard. Opt-in, gentle, Apple-like.
+- **Complexity:** Low–Medium (local notifications + timing rules).
+- **Tier:** V2.
+- **Possible API:** Local notifications (no server push needed for MVP).
+
+### Companion-aware predictions — relationship graph
+- **Why:** "You usually travel with Manon in July" — combine companion + season +
+  destination evidence into richer joint predictions.
+- **Complexity:** Medium (cross-evidence joins; still deterministic).
+- **Tier:** V2.
+- **Possible API:** Internal (relationships + predictions).
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

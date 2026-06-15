@@ -29,6 +29,8 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/relationships` | — | `{ mostTravelledWith, companions, recurringCompanions, circles, locked, basedOn }` | relationships (derived from shared memories + trips) |
 | GET | `/memories` | — | `{ recap, storyCards, chapters, collections, reels, basedOn }` | memory engine (derived from memories + trips) |
 | GET | `/life-story` | — | `{ stories, basedOn }` | life story engine (derived from whole history) |
+| GET | `/travel-dna` | — | `{ headline, traits, basedOn }` | travel DNA (long-term characteristics) |
+| GET | `/predictions` | — | `{ predictions, basedOn }` | predictive companion (anticipates from evidence) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -208,6 +210,63 @@ Stories include place chapters, "learned to dive" milestone, theme journeys
 (diving / sunsets / ocean / food / wild), companion stories, "where you always
 return", "your island years", "the year of adventure", "your quiet places" and
 "places that changed you". All deterministic, offline-first, no backend leakage.
+
+### Personal Travel DNA DTO (M24.6)
+
+The long-term sense of WHO the traveller is — learned deterministically from
+evidence across every journey. **No AI, no generated prose, no randomness.** A
+trait appears only with evidence; traits with no data (e.g. spending,
+accommodation) are honestly absent.
+
+```
+Trait = {
+  id, label, statement,                 // "You live for the ocean." (templated)
+  category,                              // element|drive|identity|habit|spectrum|pattern|favourite
+  accent, icon,
+  score: 0..100, level:"low|medium|high",
+  evidence: { count, detail },
+  confidence: "emerging|strong|defining",
+  trend: "rising|falling|steady|new",   // earlier half vs later half
+  firstObserved, latestObserved,        // ISO | null
+  value?,                               // for favourites/spectra (e.g. "Indonesia", 15)
+}
+TravelDna = { headline: { statement, trait } | null, traits: [Trait], basedOn: { memories, trips, span } }
+```
+
+Traits include ocean affinity, adventure, relaxation, food/diving/surfing/hiking/
+culture identities, photography, spectra (water↔mountains, cities↔nature,
+mornings↔nights, solo↔together, pace), explorer breadth, memory density, return
+affinity, and favourites (country, region, month, companion, trip length). All
+deterministic, offline-first, no backend leakage.
+
+### Predictive Companion DTO (M24.7)
+
+Gently anticipates what the traveller will likely enjoy next — **deterministic
+evidence only. No AI, no generated prose, no randomness.** A prediction appears
+only with sufficient evidence; no guessing.
+
+```
+Prediction = {
+  id, category,                          // likely-activity | likely-wake-rhythm | likely-return | …
+  statement, explanation,                // templated WHY, never LLM
+  score: 0..100,
+  confidence: "emerging|strong|defining",
+  evidence: { count, detail },
+  supportingMemories: [Entry],           // up to 8
+  firstObserved, lastObserved,           // ISO | null
+  trend: "rising|falling|steady|new",
+  accent, icon,
+  items?: [{ item, reason }],            // for likely-packing
+}
+PredictionsResponse = { predictions: [Prediction], basedOn: { memories, trips, span } }
+```
+
+Categories: likely-activity ("You normally dive on your 2nd day"), likely-wake-
+rhythm ("You usually wake before sunrise near the ocean"), likely-photography,
+likely-companion, likely-return, likely-destination-type, likely-trip-style
+(Travel-DNA match %), likely-season, likely-trip-length, likely-food, and
+likely-packing (evidence-derived suggestions). All deterministic, offline-first,
+no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

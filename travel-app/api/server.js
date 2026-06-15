@@ -44,6 +44,8 @@ export function createHttpServer(apiOptions = {}) {
     if (m === 'GET' && pathname === '/relationships') return api.getRelationships(token);
     if (m === 'GET' && pathname === '/memories') return api.getMemories(token);
     if (m === 'GET' && pathname === '/life-story') return api.getLifeStory(token);
+    if (m === 'GET' && pathname === '/travel-dna') return api.getTravelDna(token);
+    if (m === 'GET' && pathname === '/predictions') return api.getPredictions(token);
     if (m === 'GET' && pathname === '/trip-readiness') return api.getTripReadiness(token);
     if (m === 'GET' && pathname === '/approvals') return api.getApprovals(token);
     const approvalMatch = pathname.match(/^\/approvals\/([^/]+)$/);
