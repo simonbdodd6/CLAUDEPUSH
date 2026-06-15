@@ -5,37 +5,64 @@ import MemoryNetwork from '../../panels/MemoryNetwork.jsx'
 import CoachDna from '../../panels/CoachDna.jsx'
 import MatchReadiness from '../../panels/MatchReadiness.jsx'
 import Season from '../../panels/Season.jsx'
+import { createExperienceAdapter } from '../../adapter/index.js'
 import { placeholderVisualModel } from '../../placeholders/visual-model.js'
 import { placeholderBrainState } from '../../placeholders/brain-state.js'
 import { MOCK } from '../../placeholders/mock-data.js'
 
-// MissionControlPage (M32) — the command centre. The ONLY injector of data: it
-// builds a synthetic VisualModel + an animated VisualBrainState from the
-// dev-only placeholders and passes them to the render layers as props. No live
-// data, no /api calls, no business logic — animated placeholders only.
-export default function MissionControlPage() {
-  // Static synthetic model — stable reference so panels don't needlessly re-seed.
-  const model = useMemo(() => placeholderVisualModel(), [])
+// MissionControlPage (M33) — the command centre + the adapter composition root.
+// The page is the ONLY data injector: it builds the placeholder fallback, composes
+// the Experience Adapter, and feeds the resulting VisualModel / VisualBrainState to
+// the render layers as props. No live data, no /api calls, no business logic here.
+//
+// M33 wiring point: the adapter consumes the AI Brain ONLY through an injected
+// `@brain/product-coaches-eye` façade (+ a host runtime port). Building that port
+// needs the host/engine, which is out of scope this milestone — so we inject
+// `facade: null`, every slice resolves to the placeholder fallback, and a future
+// composition root flips this on by passing the real façade + port here.
+const EXPERIENCE_CONTEXT = {
+  tier: 'professional',
+  payload: { user: { tier: 'professional', coachId: 'c1' }, team: { teamId: 'team-1' } },
+}
 
-  // Gently breathing brain state, advanced by an animation loop (throttled).
+export default function MissionControlPage() {
+  // Complete synthetic fallback — stable reference so panels don't needlessly re-seed.
+  const fallback = useMemo(() => placeholderVisualModel(), [])
+
+  // The adapter. M33: façade + runtime are null → standalone, all placeholders.
+  const adapter = useMemo(
+    () => createExperienceAdapter({ facade: null, runtime: null, fallbackModel: fallback }),
+    [fallback],
+  )
+
+  // VisualModel flows THROUGH the adapter (placeholder-resolved in M33).
+  const [model, setModel] = useState(fallback)
+  useEffect(() => {
+    let live = true
+    Promise.resolve(adapter.getVisualModel(EXPERIENCE_CONTEXT)).then(m => {
+      if (live && m) setModel(m)
+    })
+    return () => { live = false }
+  }, [adapter])
+
+  // Gently breathing brain state, routed through the adapter's activity seam.
   const [brain, setBrain] = useState(() => placeholderBrainState(0))
   const startRef = useRef(null)
-
   useEffect(() => {
     let raf = 0
     let last = 0
     const tick = (ts) => {
       if (startRef.current == null) startRef.current = ts
       const t = (ts - startRef.current) / 1000
-      if (ts - last > 140) {            // ~7 fps state updates — the canvas brain runs at full fps internally
+      if (ts - last > 140) {
         last = ts
-        setBrain(placeholderBrainState(t))
+        setBrain(adapter.getBrainState(t, placeholderBrainState(t)))
       }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [])
+  }, [adapter])
 
   return (
     <div>
@@ -53,8 +80,8 @@ export default function MissionControlPage() {
         <Season season={model.season} />
 
         <p className="hud-mono text-[9px] text-ink-3 text-center pt-2">
-          Experience Layer · all surfaces are animated placeholders · synthetic source:
-          {' '}{MOCK.platformStatus.engines} engines · no live data · no API calls
+          Experience Layer · adapter-fed · all surfaces are placeholders until the façade
+          {' '}is injected · synthetic source: {MOCK.platformStatus.engines} engines · no live data
         </p>
       </div>
     </div>

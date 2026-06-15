@@ -66,10 +66,10 @@ module.exports = {
     },
     {
       name: 'render-layers-are-pure',
-      comment: 'Experience render layers (visuals/components/shell/panels) must not import the dev-only placeholders. Data is injected by experience/app/ as props.',
+      comment: 'Experience render layers (visuals/components/shell/panels) must not import the adapter or the dev-only placeholders. Data is composed by experience/app/ and injected as props.',
       severity: 'warn',
       from: { path: '^experience/(visuals|components|shell|panels)/' },
-      to: { path: '^experience/placeholders/' },
+      to: { path: '^experience/(adapter|placeholders)/' },
     },
     {
       name: 'placeholders-are-dev-only',
