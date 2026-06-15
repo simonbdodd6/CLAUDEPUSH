@@ -54,6 +54,8 @@ function repo(store, Make) {
 
 export function createTravelApi(options = {}) {
   const store = options.store ?? null;
+  const config = options.config ?? null;
+  const appleConfigured = typeof options.appleVerifier === 'function';
 
   // --- platform composition (frozen modules via public APIs/ports) ---
   const timeline = createTravelTimelinePlatform({ repository: repo(store, FileTimelineRepository) });
@@ -97,7 +99,7 @@ export function createTravelApi(options = {}) {
     travelActionCandidateEngine: actionCandidates,
     approvalPlatform: approval,
   });
-  const sessions = createSessionManager({ store });
+  const sessions = createSessionManager({ store, ttlMs: config?.session?.ttlMs });
   const auth = createAppleAuth({
     identityPlatform: identity,
     travellerIdentityPlatform: travellerIdentity,
@@ -233,6 +235,40 @@ export function createTravelApi(options = {}) {
     return { candidates, approvalRequests };
   }
 
+  // Liveness + readiness probe (unauthenticated). Proves the API is up, the
+  // config is loaded, the durable store is read/writable, and reports whether a
+  // real Apple verifier is wired. Never exposes secrets.
+  async function getHealth() {
+    const checks = {};
+    checks.api = { ok: true };
+    checks.config = config
+      ? { ok: true, env: config.env }
+      : { ok: false, detail: 'no config loaded (using ad-hoc options)' };
+
+    // Store probe: round-trip a tiny record through the durable layer.
+    if (!store) {
+      checks.store = { ok: true, driver: 'memory', detail: 'in-memory (non-durable)' };
+    } else {
+      try {
+        const probe = await store.read('_health');
+        await store.write('_health', [{ pingAt: todayIso() }]);
+        checks.store = { ok: true, driver: config?.store?.driver ?? 'file', priorWrites: probe.length };
+      } catch (error) {
+        checks.store = { ok: false, detail: error.message };
+      }
+    }
+
+    const appleMode = config?.apple?.mode ?? (appleConfigured ? 'custom' : 'disabled');
+    checks.apple = { ok: appleMode !== 'disabled' && (appleConfigured || appleMode === 'jwks'), mode: appleMode, configured: appleConfigured };
+
+    // The store is the only HARD readiness dependency; config/apple gaps degrade
+    // but do not take the service down (a probe must still answer).
+    const hardOk = checks.api.ok && checks.store.ok;
+    const fullyReady = hardOk && checks.config.ok && checks.apple.ok;
+    const status = !hardOk ? 'error' : (fullyReady ? 'ok' : 'degraded');
+    return { status, env: config?.env ?? 'unknown', time: todayIso(), checks };
+  }
+
   async function getApprovals(token) {
     travellerFor(token);
     return { pending: await approval.queryPending() };
@@ -256,6 +292,7 @@ export function createTravelApi(options = {}) {
   return {
     // expose underlying platforms for tests/introspection (read-only use)
     _platforms: { trips, itineraries, memory, timeline, graph, events, approval, identity },
+    getHealth,
     signIn,
     getToday,
     getTrip,

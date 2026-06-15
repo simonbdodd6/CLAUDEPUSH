@@ -8,6 +8,8 @@
 import { createServer } from 'http';
 import { FileStore } from './persistence/file-store.js';
 import { createTravelApi, ApiError } from './index.js';
+import { loadConfig, describeConfig } from './config.js';
+import { selectAppleVerifier } from './apple-verifier.js';
 
 export function createHttpServer(apiOptions = {}) {
   const api = createTravelApi(apiOptions);
@@ -27,6 +29,7 @@ export function createHttpServer(apiOptions = {}) {
   async function route(req, body, token, url) {
     const { pathname } = url;
     const m = req.method;
+    if (m === 'GET' && (pathname === '/health' || pathname === '/healthz')) return api.getHealth();
     if (m === 'POST' && pathname === '/auth/apple') return api.signIn(body);
     if (m === 'GET' && pathname === '/today') return api.getToday(token);
     if (m === 'GET' && pathname === '/trip') return api.getTrip(token);
@@ -47,7 +50,10 @@ export function createHttpServer(apiOptions = {}) {
     try {
       const body = (req.method === 'POST' || req.method === 'PUT') ? await readBody(req) : {};
       const result = await route(req, body, bearer(req), url);
-      res.writeHead(200, { 'content-type': 'application/json' });
+      // Readiness probes get a real status code: 503 when a hard check fails.
+      const isHealth = url.pathname === '/health' || url.pathname === '/healthz';
+      const code = isHealth && result?.status === 'error' ? 503 : 200;
+      res.writeHead(code, { 'content-type': 'application/json' });
       res.end(JSON.stringify(result ?? {}));
     } catch (error) {
       const status = error instanceof ApiError ? error.status : (error.code ? 400 : 500);
@@ -57,12 +63,16 @@ export function createHttpServer(apiOptions = {}) {
   });
 }
 
-// Start only when run directly (never during tests).
+// Start only when run directly (never during tests). Wires everything from the
+// validated config: durable store dir, Apple verifier mode, session TTL.
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
-  const port = Number(process.env.PORT ?? 8787);
-  const store = process.env.TRAVEL_STORE_DIR ? new FileStore(process.env.TRAVEL_STORE_DIR) : null;
-  createHttpServer({ store }).listen(port, () => {
+  const config = loadConfig(process.env);
+  const store = new FileStore(config.store.dir);
+  const appleVerifier = selectAppleVerifier(config) ?? undefined;
+  createHttpServer({ store, config, appleVerifier }).listen(config.port, () => {
     // eslint-disable-next-line no-console
-    console.log(`travel-app api listening on http://localhost:${port}`);
+    console.log(`travel-app api listening on ${config.baseUrl}`);
+    // eslint-disable-next-line no-console
+    console.log('config:', JSON.stringify(describeConfig(config)));
   });
 }

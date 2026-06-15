@@ -3,4 +3,8 @@
 .env.local
 .env.*.local
 .env*
+!.env.example
+!**/.env.example
+# Travel App durable store (never commit traveller data)
+travel-app/**/.travel-data/
 node_modules

@@ -7,10 +7,14 @@ issued by `POST /auth/apple`.
 
 Run locally: `PORT=8787 TRAVEL_STORE_DIR=./.travel-data node travel-app/api/server.js`
 
+Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
+[DEPLOYMENT.md](./DEPLOYMENT.md) and [.env.example](./.env.example).
+
 ## Endpoints
 
 | Method | Path | Body | Returns | Platform module(s) |
 |---|---|---|---|---|
+| GET | `/health` (`/healthz`) | — | `{ status, env, time, checks }` (200 ready / 503 store down) | composition — liveness + readiness probe, unauthenticated |
 | POST | `/auth/apple` | `{ identityToken, displayName? }` | `{ token, traveller, expiresAt }` | auth → identity-platform + traveller-identity port + session |
 | GET | `/today` | — | `{ traveller, currentTrip, recentTimeline }` | identity port, trip-platform, timeline |
 | GET | `/trip` | — | `{ trip }` | trip-platform |
@@ -56,5 +60,5 @@ POST /approvals/:id     → approve  (human decision; nothing auto-executes)
 ## Notes & follow-ups
 - **Photos:** only a reference id is stored (`photoRef`); binaries stay on device; EXIF GPS must be stripped client-side (platform forbids exact location).
 - **Durable today:** trips, timeline, events, sessions, Apple links. **Follow-up:** durable identity / itinerary / memory / graph / approval repositories (in-memory within a running process for now — reads survive restart for the durable set; `createTrip` after restart needs the durable identity repo).
-- **Apple verifier is injected** — production supplies a real JWKS verifier; no Apple secrets in the repo.
+- **Apple verifier is injected and now real** — `apple-verifier.js` validates the identity token against Apple's public JWKS (signature + iss/aud/exp); selected by `APPLE_VERIFIER_MODE` (`disabled`/`fake`/`jwks`). No Apple secrets in the repo (verification uses only public keys + the public client id).
 - **No platform module was modified.** The API is pure composition over the frozen V2 contracts.
