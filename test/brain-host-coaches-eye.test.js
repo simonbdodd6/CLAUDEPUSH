@@ -85,10 +85,31 @@ test('real wiring — default runtime reaches the live integration layer without
 // PART 3 — matchReadiness + coachDna are wired; everything else stays dormant
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('runtime port exposes getMatchReadiness + getCoachDna (M35)', () => {
+test('runtime port exposes matchReadiness + coachDna + seasonIntelligence (M36)', () => {
   const runtime = createCoachesEyeRuntime({ coachAI: mockCoachAI })
-  assert.deepEqual(Object.keys(runtime).sort(), ['getCoachDna', 'getMatchReadiness'])
-  assert.deepEqual(Object.keys(ADAPTER_WIRED_CAPABILITIES).sort(), ['coach.coachDna', 'coach.matchReadiness'])
+  assert.deepEqual(Object.keys(runtime).sort(), ['getCoachDna', 'getMatchReadiness', 'getSeasonIntelligence'])
+  assert.deepEqual(Object.keys(ADAPTER_WIRED_CAPABILITIES).sort(), ['coach.coachDna', 'coach.matchReadiness', 'coach.seasonIntelligence'])
+})
+
+test('coach.seasonIntelligence resolves live through the adapter (M36)', async () => {
+  const seasonCtx = {
+    fixtures: [
+      { fixtureId: 'f1', round: 1, opponentId: 'o1', venue: 'home', result: { pointsFor: 28, pointsAgainst: 12, outcome: 'W', bonusPoints: 1 } },
+      { fixtureId: 'f2', round: 2, opponentId: 'o2', venue: 'away', result: { pointsFor: 10, pointsAgainst: 26, outcome: 'L', bonusPoints: 0 } },
+    ],
+    league: { teams: 12, pointsForWin: 4, pointsForDraw: 2, playoffSpots: 4, relegationSpots: 2 },
+  }
+  const r = await invokeCoachesEye('coach.seasonIntelligence', { tier: 'professional', payload: seasonCtx })
+  assert.equal(r.available, true)
+  assert.equal(r.ok, true)
+  assert.equal(r.reason, null)
+  assert.ok(r.data && typeof r.data === 'object', 'a season profile is returned')
+  assert.equal(r.data.seasonVersion != null, true)
+  // gated off below the season tier (free) → engine never reached
+  const denied = await invokeCoachesEye('coach.seasonIntelligence', { tier: 'free', payload: seasonCtx })
+  assert.equal(denied.available, false)
+  assert.equal(denied.reason, 'insufficient_tier')
+  assert.equal(denied.data, null)
 })
 
 test('coach.coachDna resolves live through the adapter (M35)', async () => {
@@ -108,7 +129,7 @@ test('coach.coachDna resolves live through the adapter (M35)', async () => {
 
 test('other capabilities resolve dormant through the adapter', async () => {
   // permitted but not wired → dormant
-  const dna = await invokeCoachesEye('coach.seasonIntelligence', { tier: 'professional', payload: ENGINE_CONTEXT }, { coachAI: mockCoachAI })
+  const dna = await invokeCoachesEye('coach.opponentIntelligence', { tier: 'professional', payload: ENGINE_CONTEXT }, { coachAI: mockCoachAI })
   assert.equal(dna.available, true)
   assert.equal(dna.ok, false)
   assert.equal(dna.data, null)

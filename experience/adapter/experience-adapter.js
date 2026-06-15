@@ -23,9 +23,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { isObj } from './shape-guards.js'
-import { CAP_MATCH_READINESS, CAP_COACH_DNA } from './facade-contract.js'
+import { CAP_MATCH_READINESS, CAP_COACH_DNA, CAP_SEASON_INTELLIGENCE } from './facade-contract.js'
 import { mapMatchReadiness } from './mappers/match-readiness.js'
 import { mapCoachDna } from './mappers/coach-dna.js'
+import { mapSeason } from './mappers/season.js'
 
 /**
  * @param {Object}  deps
@@ -58,12 +59,13 @@ export function createExperienceAdapter({ facade = null, runtime = null, fallbac
 
     // The wired capabilities, each through the façade only. Every other slice
     // stays as the placeholder fallback.
-    const [matchReadiness, coachDna] = await Promise.all([
+    const [matchReadiness, coachDna, season] = await Promise.all([
       resolveSlice(CAP_MATCH_READINESS, fallback.matchReadiness, mapMatchReadiness, context),
       resolveSlice(CAP_COACH_DNA, fallback.coachDna, mapCoachDna, context),
+      resolveSlice(CAP_SEASON_INTELLIGENCE, fallback.season, mapSeason, context),
     ])
 
-    return { ...fallback, system, matchReadiness, coachDna }
+    return { ...fallback, system, matchReadiness, coachDna, season }
   }
 
   // Invoke one capability through the façade and map its envelope to a view slice.
