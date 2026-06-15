@@ -140,9 +140,10 @@ export function request(capabilityKey, context = {}) {
 // @typedef {Object} CoachesEyeRuntimePort
 // @property {(payload: any) => (Promise<any>|any)} [getMatchReadiness]  the match-readiness engine adapter
 
-/** Capability → runtime port method name. M31.4: match readiness only. */
+/** Capability → runtime port method name. M31.4: match readiness; M35: + coach DNA. */
 export const WIRED_CAPABILITIES = Object.freeze({
   'coach.matchReadiness': 'getMatchReadiness',
+  'coach.coachDna': 'getCoachDna',
 })
 
 /** Is this capability wired to a runtime port? */

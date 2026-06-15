@@ -11,23 +11,33 @@
  * not — and should not — apply to it.
  *
  * DORMANT: nothing imports this yet (Core included). It activates no feature
- * flag and changes no Core API/UI. In M31.5 it wires exactly one capability —
- * coach.matchReadiness — via the engine's own integration layer.
+ * flag and changes no Core API/UI. In M31.5 it wired one capability —
+ * coach.matchReadiness; M35 adds coach.coachDna — both via the AI Brain's own
+ * integration layer (read-only engine imports; this layer never edits Core).
  */
 
 import { invoke, WIRED_CAPABILITIES } from '@brain/product-coaches-eye'
 import { getMatchReadiness } from '../coach-products/match-readiness/index.js'
+import { getCoachDNA } from '../ai-brain/index.js'   // M35: coach DNA integration entry (read-only)
+
+/** Extract the coachId the coach-DNA engine keys on from a runtime payload. */
+function coachIdOf(payload) {
+  if (!payload || typeof payload !== 'object') return null
+  return payload.coachId ?? payload.user?.coachId ?? null
+}
 
 /**
  * Build the Coach's Eye runtime port for the façade. The port exposes ONLY the
- * wired capability method(s) — M31.5: `getMatchReadiness` only.
+ * wired capability method(s) — M35: `getMatchReadiness` + `getCoachDna`.
  *
- * The engine (M21 match-readiness) consumes the AI Brain integration layer
+ * The match-readiness engine (M21) consumes the AI Brain integration layer
  * (`CoachAI`) by default. `opts.coachAI` injects a CoachAI for deterministic
- * testing; when omitted the engine uses the real integration layer.
+ * testing; when omitted the engine uses the real integration layer. Coach DNA
+ * is served by the AI namespace (`getCoachDNA`), which bridges the Learning
+ * store's observations into the DNA builders.
  *
  * @param {{ coachAI?: object }} [opts]
- * @returns {Readonly<{ getMatchReadiness: (payload: object) => Promise<object> }>}
+ * @returns {Readonly<{ getMatchReadiness: (payload: object) => Promise<object>, getCoachDna: (payload: object) => Promise<object> }>}
  */
 export function createCoachesEyeRuntime(opts = {}) {
   const coachAI = opts && typeof opts === 'object' ? opts.coachAI : undefined
@@ -35,6 +45,9 @@ export function createCoachesEyeRuntime(opts = {}) {
     // `payload` is the engine context: { user, team, fixtureId?, generatedAt? }.
     getMatchReadiness: (payload) =>
       coachAI ? getMatchReadiness(payload, coachAI) : getMatchReadiness(payload),
+    // `payload` carries the coachId; DNA is built from the Learning store's observations.
+    getCoachDna: (payload) =>
+      getCoachDNA(coachIdOf(payload), { asOf: payload?.asOf ?? null }),
   })
 }
 

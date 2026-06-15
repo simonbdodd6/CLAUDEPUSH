@@ -23,9 +23,11 @@
 //
 // @typedef {Object} CoachesEyeRuntimePort
 // @property {(payload:any) => (Promise<any>|any)} [getMatchReadiness]
+// @property {(payload:any) => (Promise<any>|any)} [getCoachDna]
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The capability the adapter knows how to map. Mirrors façade.WIRED_CAPABILITIES. */
+/** The capabilities the adapter knows how to map. Mirror façade.WIRED_CAPABILITIES. */
 export const CAP_MATCH_READINESS = 'coach.matchReadiness'
+export const CAP_COACH_DNA = 'coach.coachDna'
 
 export {}

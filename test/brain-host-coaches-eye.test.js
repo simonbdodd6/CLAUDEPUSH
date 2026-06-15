@@ -82,18 +82,33 @@ test('real wiring — default runtime reaches the live integration layer without
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PART 3 — only matchReadiness is wired; everything else stays dormant
+// PART 3 — matchReadiness + coachDna are wired; everything else stays dormant
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('runtime port exposes ONLY getMatchReadiness', () => {
+test('runtime port exposes getMatchReadiness + getCoachDna (M35)', () => {
   const runtime = createCoachesEyeRuntime({ coachAI: mockCoachAI })
-  assert.deepEqual(Object.keys(runtime), ['getMatchReadiness'])
-  assert.deepEqual(Object.keys(ADAPTER_WIRED_CAPABILITIES), ['coach.matchReadiness'])
+  assert.deepEqual(Object.keys(runtime).sort(), ['getCoachDna', 'getMatchReadiness'])
+  assert.deepEqual(Object.keys(ADAPTER_WIRED_CAPABILITIES).sort(), ['coach.coachDna', 'coach.matchReadiness'])
+})
+
+test('coach.coachDna resolves live through the adapter (M35)', async () => {
+  // wired + permitted (professional) → live; coachId with no observations is deterministic
+  const r = await invokeCoachesEye('coach.coachDna', { tier: 'professional', payload: { coachId: '__m35_no_obs__' } })
+  assert.equal(r.available, true)
+  assert.equal(r.ok, true)
+  assert.equal(r.reason, null)
+  assert.ok(r.data && typeof r.data === 'object', 'a coach-DNA product is returned')
+  assert.equal(r.data.dnaVersion, '1.0')
+  // gated off below the DNA tier (performance) → engine never reached
+  const denied = await invokeCoachesEye('coach.coachDna', { tier: 'performance', payload: { coachId: 'c1' } })
+  assert.equal(denied.available, false)
+  assert.equal(denied.reason, 'insufficient_tier')
+  assert.equal(denied.data, null)
 })
 
 test('other capabilities resolve dormant through the adapter', async () => {
   // permitted but not wired → dormant
-  const dna = await invokeCoachesEye('coach.coachDna', { tier: 'professional', payload: ENGINE_CONTEXT }, { coachAI: mockCoachAI })
+  const dna = await invokeCoachesEye('coach.seasonIntelligence', { tier: 'professional', payload: ENGINE_CONTEXT }, { coachAI: mockCoachAI })
   assert.equal(dna.available, true)
   assert.equal(dna.ok, false)
   assert.equal(dna.data, null)

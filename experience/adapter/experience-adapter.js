@@ -23,8 +23,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { isObj } from './shape-guards.js'
-import { CAP_MATCH_READINESS } from './facade-contract.js'
+import { CAP_MATCH_READINESS, CAP_COACH_DNA } from './facade-contract.js'
 import { mapMatchReadiness } from './mappers/match-readiness.js'
+import { mapCoachDna } from './mappers/coach-dna.js'
 
 /**
  * @param {Object}  deps
@@ -55,24 +56,30 @@ export function createExperienceAdapter({ facade = null, runtime = null, fallbac
       }
     }
 
-    // The one wired capability: coach.matchReadiness, through the façade only.
-    const matchReadiness = await resolveMatchReadiness(context)
+    // The wired capabilities, each through the façade only. Every other slice
+    // stays as the placeholder fallback.
+    const [matchReadiness, coachDna] = await Promise.all([
+      resolveSlice(CAP_MATCH_READINESS, fallback.matchReadiness, mapMatchReadiness, context),
+      resolveSlice(CAP_COACH_DNA, fallback.coachDna, mapCoachDna, context),
+    ])
 
-    return { ...fallback, system, matchReadiness }
+    return { ...fallback, system, matchReadiness, coachDna }
   }
 
-  async function resolveMatchReadiness(context) {
-    const fb = fallback.matchReadiness
+  // Invoke one capability through the façade and map its envelope to a view slice.
+  // ok+data → 'live' (mapped); available:false → 'locked'; dormant / no port /
+  // façade error → the placeholder fallback is preserved.
+  async function resolveSlice(capability, fb, mapper, context) {
     let env
     try {
-      env = await facade.invoke(CAP_MATCH_READINESS, context, runtime)
+      env = await facade.invoke(capability, context, runtime)
     } catch {
-      return withState(fb, 'placeholder')   // façade itself misbehaved → safe placeholder
+      return withState(fb, 'placeholder')
     }
     if (!isObj(env)) return withState(fb, 'placeholder')
-    if (env.ok && env.data != null) return mapMatchReadiness(env.data, fb)   // live, mapped
-    if (env.available === false) return withState(fb, 'locked')              // gated off (tier/flag/ai-off)
-    return withState(fb, 'placeholder')                                      // permitted but dormant / no port
+    if (env.ok && env.data != null) return mapper(env.data, fb)
+    if (env.available === false) return withState(fb, 'locked')
+    return withState(fb, 'placeholder')
   }
 
   // Activity-stream seam for the brain. M33: pure passthrough of the placeholder
