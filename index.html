@@ -2592,7 +2592,12 @@
         announcement:  "",
         gamePlan:      "",
         published:     false,
+        homeAway:      '',
       },
+      matchEvents:    {},
+      matchDayNotes:  {},
+      matchStatus:    {},
+      activeMatchTab: 'planner',
       features: {
         autopilot:       true,   // Coach Autopilot: auto availability, fixture autofill, duplication
         aiSuggestions:   false,  // Intelligence: phase-aware session plan block suggestions
@@ -3101,6 +3106,12 @@
       next.seasons          = Array.isArray(input.seasons)    ? input.seasons.map(normalizeSeason).filter(Boolean)      : [];
       next.federationMeta   = normalizeFederationMeta(input.federationMeta);
       next.matchCentre = { ...structuredClone(defaultState.matchCentre), ...(input.matchCentre || {}) };
+      if (next.matchCentre.homeAway === undefined) next.matchCentre.homeAway = '';
+      // Phase 20 — match event/notes/status maps
+      next.matchEvents   = (typeof input.matchEvents   === 'object' && input.matchEvents   !== null) ? input.matchEvents   : {};
+      next.matchDayNotes = (typeof input.matchDayNotes === 'object' && input.matchDayNotes !== null) ? input.matchDayNotes : {};
+      next.matchStatus   = (typeof input.matchStatus   === 'object' && input.matchStatus   !== null) ? input.matchStatus   : {};
+      next.activeMatchTab = input.activeMatchTab || 'planner';
       // Guard schedule: ensure it's a valid array, migrate sessions to have deadline field
       if (!Array.isArray(next.schedule) || next.schedule.length === 0) {
         next.schedule = structuredClone(defaultState.schedule);
@@ -7004,6 +7015,58 @@
             '</div>';
           })() : ''}
 
+          ${/* Phase 20 — Match Centre overview widget */ isCoach() ? (() => {
+            const mc    = state.matchCentre || {};
+            const key   = matchKey();
+            const events = (state.matchEvents || {})[key] || [];
+            const score  = matchComputeScore(events);
+            const status = (state.matchStatus || {})[key] || 'pre';
+            const hasMatch = mc.kickoffDate || mc.opposition;
+            const statusColors = { pre:'#60a5fa', live:'#34d399', ht:'#fbbf24', ft:'#94a3b8' };
+            const sColor = statusColors[status] || '#60a5fa';
+            const kickoffDisplay = mc.kickoffDate
+              ? new Date(mc.kickoffDate + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short' })
+              : '';
+            const pastMatches = Object.entries(state.matchEvents || {})
+              .filter(([k,evs]) => {
+                const s = (state.matchStatus||{})[k];
+                return s === 'ft' && evs.length > 0;
+              });
+            const lastResult = pastMatches.length > 0
+              ? (() => {
+                  const [lKey, lEvs] = pastMatches[pastMatches.length - 1];
+                  const lScore = matchComputeScore(lEvs);
+                  return { score: lScore, key: lKey };
+                })()
+              : null;
+            return '<div class="card" style="margin-bottom:14px">' +
+              '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+                '<div style="font-size:13px;font-weight:700">Match Centre</div>' +
+                '<button class="btn" style="font-size:12px" onclick="setSection(\'coach\',\'matchday\')">Open →</button>' +
+              '</div>' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+                '<div style="background:var(--panel-2);border-radius:10px;padding:12px">' +
+                  '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Next match</div>' +
+                  (hasMatch
+                    ? '<div style="font-size:14px;font-weight:800">vs ' + esc(mc.opposition||'TBC') + '</div>' +
+                      (kickoffDisplay ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + kickoffDisplay + (mc.kickoffTime?' · '+esc(mc.kickoffTime):'') + '</div>' : '') +
+                      '<div style="margin-top:6px;display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + sColor + '1a;color:' + sColor + '">' + MATCH_STATUS_LABELS[status] + '</div>'
+                    : '<div style="font-size:12px;color:var(--muted)">No match configured</div>') +
+                '</div>' +
+                '<div style="background:var(--panel-2);border-radius:10px;padding:12px">' +
+                  '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Last result</div>' +
+                  (lastResult
+                    ? '<div style="font-size:22px;font-weight:900">' +
+                        '<span style="color:' + (lastResult.score.us>lastResult.score.them?'#34d399':lastResult.score.us<lastResult.score.them?'#f87171':'#fbbf24') + '">' + lastResult.score.us + '</span>' +
+                        '<span style="color:var(--muted);font-size:14px;margin:0 4px">–</span>' +
+                        '<span style="color:#f87171">' + lastResult.score.them + '</span>' +
+                      '</div>'
+                    : '<div style="font-size:12px;color:var(--muted)">No results yet</div>') +
+                '</div>' +
+              '</div>' +
+            '</div>';
+          })() : ''}
+
           ${aiHTML}
 
         </div>`;
@@ -8211,6 +8274,15 @@
 
     // ─── MATCH CENTRE ────────────────────────────────────────────────────────
     function renderMatchday() {
+      // Phase 20 — tab delegation; planner falls through to existing render
+      const _mTab = state.activeMatchTab || 'planner';
+      if (_mTab === 'overview')   { _renderMatchOverview();   return; }
+      if (_mTab === 'timeline')   { _renderMatchTimeline();   return; }
+      if (_mTab === 'scoreboard') { _renderMatchScoreboard(); return; }
+      if (_mTab === 'bench')      { _renderMatchBench();      return; }
+      if (_mTab === 'notes')      { _renderMatchNotes();      return; }
+      if (_mTab === 'summary')    { _renderMatchSummary();    return; }
+
       if (autopilotOn() && isCoach()) autopilotFillMatchFromFixture();
       const mc      = state.matchCentre || {};
       const phase   = matchCentrePhase();
@@ -8278,6 +8350,8 @@
         <datalist id="squad-names">
           ${playerNameOptions.map(name=>`<option value="${esc(name)}">`).join("")}
         </datalist>
+
+        ${_matchTabBar()}
 
         <!-- ── COMPACT FIXTURE HEADER ────────────────────────────────────────── -->
         <div class="mc-header">
@@ -11878,6 +11952,650 @@
         </div>`;
     }
 
+    // ─── PHASE 20 — MATCH CENTRE ─────────────────────────────────────────────
+
+    const MATCH_EVENT_TYPES = {
+      try: 'Try', conversion: 'Conversion', penalty: 'Penalty', dropGoal: 'Drop Goal',
+      yellowCard: 'Yellow Card', redCard: 'Red Card', injury: 'Injury', substitution: 'Substitution',
+    };
+
+    const MATCH_POINT_VALUES = { try: 5, conversion: 2, penalty: 3, dropGoal: 3 };
+
+    const MATCH_EVENT_ICONS = {
+      try: '🏉', conversion: '🎯', penalty: '⚽', dropGoal: '🦶',
+      yellowCard: '🟡', redCard: '🔴', injury: '🏥', substitution: '🔄',
+    };
+
+    const MATCH_STATUS_LABELS = { pre: 'Pre-match', live: 'Live', ht: 'Half time', ft: 'Full time' };
+    const MATCH_NOTES_SECTIONS = ['attack','defence','setPiece','discipline','referee','general'];
+    const MATCH_NOTES_LABELS   = { attack:'Attack', defence:'Defence', setPiece:'Set Piece', discipline:'Discipline', referee:'Referee', general:'General' };
+
+    function matchKey() {
+      const mc = state.matchCentre || {};
+      if (mc.kickoffDate && mc.opposition) {
+        const opp = (mc.opposition || '').replace(/[^a-zA-Z0-9]/g,'').toLowerCase().slice(0,20);
+        return mc.kickoffDate + '_' + opp;
+      }
+      if (mc.kickoffDate) return mc.kickoffDate;
+      return 'current';
+    }
+
+    function matchComputeScore(events) {
+      let us = 0, them = 0;
+      (events || []).forEach(ev => {
+        const p = MATCH_POINT_VALUES[ev.type] || 0;
+        if (ev.team === 'us')   us   += p;
+        else if (ev.team === 'them') them += p;
+      });
+      return { us, them };
+    }
+
+    function normalizeMatchDayNotes(notes) {
+      if (!notes || typeof notes !== 'object') notes = {};
+      return {
+        attack:     notes.attack     || '',
+        defence:    notes.defence    || '',
+        setPiece:   notes.setPiece   || '',
+        discipline: notes.discipline || '',
+        referee:    notes.referee    || '',
+        general:    notes.general    || '',
+      };
+    }
+
+    function matchEventsSummary(events) {
+      const ev = events || [];
+      return {
+        tries:         ev.filter(e => e.type === 'try'),
+        conversions:   ev.filter(e => e.type === 'conversion'),
+        penalties:     ev.filter(e => e.type === 'penalty'),
+        dropGoals:     ev.filter(e => e.type === 'dropGoal'),
+        yellowCards:   ev.filter(e => e.type === 'yellowCard'),
+        redCards:      ev.filter(e => e.type === 'redCard'),
+        injuries:      ev.filter(e => e.type === 'injury'),
+        substitutions: ev.filter(e => e.type === 'substitution'),
+      };
+    }
+
+    function setMatchTab(tab) {
+      state.activeMatchTab = tab;
+      saveState('match tab');
+      render();
+    }
+
+    function matchAddEvent(type, team, playerId, minute, notes) {
+      const key = matchKey();
+      if (!state.matchEvents)      state.matchEvents = {};
+      if (!state.matchEvents[key]) state.matchEvents[key] = [];
+      const ev = {
+        id:       'mev_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+        type, team,
+        playerId: playerId || '',
+        minute:   parseInt(minute) || 0,
+        notes:    notes || '',
+      };
+      state.matchEvents[key] = [...state.matchEvents[key], ev].sort((a,b)=>a.minute-b.minute);
+      saveState('match event added');
+      render();
+    }
+
+    function matchDeleteEvent(eventId) {
+      const key = matchKey();
+      if (!state.matchEvents?.[key]) return;
+      state.matchEvents[key] = state.matchEvents[key].filter(e => e.id !== eventId);
+      saveState('match event deleted');
+      render();
+    }
+
+    function matchSetStatus(status) {
+      const key = matchKey();
+      if (!state.matchStatus) state.matchStatus = {};
+      state.matchStatus[key] = status;
+      saveState('match status');
+      render();
+    }
+
+    function matchSaveDayNotes(field, value) {
+      const key = matchKey();
+      if (!state.matchDayNotes)      state.matchDayNotes = {};
+      if (!state.matchDayNotes[key]) state.matchDayNotes[key] = {};
+      state.matchDayNotes[key][field] = value;
+      saveState('match notes');
+    }
+
+    function matchUpdateField(field, value) {
+      state.matchCentre = state.matchCentre || {};
+      state.matchCentre[field] = value;
+      saveState('match field');
+    }
+
+    function _matchTabBar() {
+      const act = state.activeMatchTab || 'planner';
+      const TABS = [
+        ['planner',    'Planner'],
+        ['overview',   'Dashboard'],
+        ['timeline',   'Timeline'],
+        ['scoreboard', 'Scoreboard'],
+        ['bench',      'Bench'],
+        ['notes',      'Notes'],
+        ['summary',    'Summary'],
+      ];
+      return '<div style="display:flex;gap:0;flex-wrap:wrap;margin-bottom:16px;border-bottom:2px solid var(--line)">' +
+        TABS.map(([id, label]) => {
+          const isAct = act === id;
+          return '<button type="button" onclick="setMatchTab(\'' + id + '\')"' +
+            ' style="padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;border:none;' +
+            'background:none;color:' + (isAct ? 'var(--green)' : 'var(--muted)') + ';' +
+            'border-bottom:2.5px solid ' + (isAct ? 'var(--green)' : 'transparent') + ';' +
+            'margin-bottom:-2px;border-radius:0;white-space:nowrap">' + label + '</button>';
+        }).join('') + '</div>';
+    }
+
+    function _renderMatchOverview() {
+      const el = document.getElementById('coach-matchday');
+      if (!el) return;
+      const mc     = state.matchCentre || {};
+      const key    = matchKey();
+      const events = (state.matchEvents || {})[key] || [];
+      const score  = matchComputeScore(events);
+      const status = (state.matchStatus || {})[key] || 'pre';
+      const summ   = matchEventsSummary(events);
+      const countdown = matchCountdownStr ? matchCountdownStr() : '';
+
+      const kickoffDisplay = mc.kickoffDate
+        ? new Date(mc.kickoffDate + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' })
+        : 'Date TBC';
+      const INP = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);width:100%;box-sizing:border-box';
+
+      const statusColors = { pre:'#60a5fa', live:'#34d399', ht:'#fbbf24', ft:'#94a3b8' };
+      const sColor = statusColors[status] || '#60a5fa';
+
+      el.innerHTML =
+        '<div class="mc-header">' +
+          '<div class="mc-header-top">' +
+            '<div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+              '<span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:3px 10px;border-radius:999px;' +
+                'background:' + sColor + '1a;color:' + sColor + '">' + MATCH_STATUS_LABELS[status] + '</span>' +
+              '<div>' +
+                '<div style="font-size:18px;font-weight:800">vs ' + esc(mc.opposition || 'Opponent TBC') + '</div>' +
+                '<div style="font-size:12px;color:var(--muted);margin-top:2px">' +
+                  esc(mc.competition || '') + (mc.competition && mc.kickoffDate ? ' · ' : '') +
+                  kickoffDisplay + (mc.kickoffTime ? ' · ' + esc(mc.kickoffTime) : '') +
+                  (mc.venue ? ' · 📍 ' + esc(mc.venue) : '') +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+              '<span style="font-size:12px;color:var(--muted)">' + countdown + '</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        _matchTabBar() +
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">' +
+          '<div class="card" style="padding:12px 14px;text-align:center">' +
+            '<div style="font-size:28px;font-weight:900;color:var(--green)">' + score.us + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">Our score</div>' +
+          '</div>' +
+          '<div class="card" style="padding:12px 14px;text-align:center">' +
+            '<div style="font-size:28px;font-weight:900;color:#f87171">' + score.them + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">Their score</div>' +
+          '</div>' +
+          '<div class="card" style="padding:12px 14px;text-align:center">' +
+            '<div style="font-size:28px;font-weight:900">' + events.length + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">Events logged</div>' +
+          '</div>' +
+          '<div class="card" style="padding:12px 14px;text-align:center">' +
+            '<div style="font-size:28px;font-weight:900;color:' + sColor + '">' + MATCH_STATUS_LABELS[status] + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">Match status</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">' +
+          '<div class="card">' +
+            '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Match details</div>' +
+            '<div style="display:grid;gap:10px">' +
+              [
+                ['Opposition',  'opposition',  mc.opposition  || '', 'text',  'e.g. Kituro RFC'],
+                ['Competition', 'competition', mc.competition || '', 'text',  'League / Cup'],
+                ['Date',        'kickoffDate', mc.kickoffDate || '', 'date',  ''],
+                ['Kickoff',     'kickoffTime', mc.kickoffTime || '', 'time',  ''],
+                ['Venue',       'venue',       mc.venue       || '', 'text',  'Ground name'],
+              ].map(([lbl, fld, val, type, ph]) =>
+                '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">' + lbl +
+                '<input type="' + type + '" style="' + INP + '" value="' + esc(val) + '"' +
+                ' placeholder="' + esc(ph) + '"' +
+                ' onchange="matchUpdateField(\'' + fld + '\',this.value)">' +
+                '</label>'
+              ).join('') +
+              '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Home / Away' +
+                '<select style="' + INP + '" onchange="matchUpdateField(\'homeAway\',this.value)">' +
+                  '<option value="" ' + (!mc.homeAway?'selected':'') + '>Select…</option>' +
+                  '<option value="home" ' + (mc.homeAway==='home'?'selected':'') + '>Home</option>' +
+                  '<option value="away" ' + (mc.homeAway==='away'?'selected':'') + '>Away</option>' +
+                '</select>' +
+              '</label>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:grid;gap:14px">' +
+            '<div class="card">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:10px">Match status</div>' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">' +
+                ['pre','live','ht','ft'].map(s =>
+                  '<button type="button" onclick="matchSetStatus(\'' + s + '\')"' +
+                  ' style="padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;' +
+                  'border:1.5px solid ' + (status===s ? statusColors[s] : 'var(--line)') + ';' +
+                  'background:' + (status===s ? statusColors[s]+'1a' : 'transparent') + ';' +
+                  'color:' + (status===s ? statusColors[s] : 'var(--muted)') + '">' +
+                  MATCH_STATUS_LABELS[s] + '</button>'
+                ).join('') +
+              '</div>' +
+            '</div>' +
+            '<div class="card">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:10px">Weather placeholder</div>' +
+              '<div style="text-align:center;padding:16px 0;color:var(--muted);font-size:13px">' +
+                '<div style="font-size:36px;margin-bottom:8px">⛅</div>' +
+                '<div>Weather data — future integration point</div>' +
+                '<div style="font-size:11px;margin-top:4px">Connect a weather API to display conditions</div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="card">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:10px">Quick stats</div>' +
+              '<div style="display:grid;gap:6px;font-size:12px">' +
+                '<div style="display:flex;justify-content:space-between"><span>Tries</span><strong>' + summ.tries.filter(e=>e.team==='us').length + ' / ' + summ.tries.filter(e=>e.team==='them').length + '</strong></div>' +
+                '<div style="display:flex;justify-content:space-between"><span>Penalties</span><strong>' + summ.penalties.filter(e=>e.team==='us').length + ' / ' + summ.penalties.filter(e=>e.team==='them').length + '</strong></div>' +
+                '<div style="display:flex;justify-content:space-between"><span>Yellow cards</span><strong>' + summ.yellowCards.length + '</strong></div>' +
+                '<div style="display:flex;justify-content:space-between"><span>Red cards</span><strong>' + summ.redCards.length + '</strong></div>' +
+                '<div style="display:flex;justify-content:space-between"><span>Injuries</span><strong>' + summ.injuries.length + '</strong></div>' +
+                '<div style="display:flex;justify-content:space-between"><span>Substitutions</span><strong>' + summ.substitutions.length + '</strong></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    }
+
+    function _renderMatchTimeline() {
+      const el = document.getElementById('coach-matchday');
+      if (!el) return;
+      const mc       = state.matchCentre || {};
+      const key      = matchKey();
+      const events   = (state.matchEvents || {})[key] || [];
+      const score    = matchComputeScore(events);
+      const players  = activeRosterPlayers(state.players);
+      const INP = 'padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);box-sizing:border-box';
+
+      const typeBtn = (type) => {
+        const isAct = _matchEventType === type;
+        return '<button type="button" onclick="_matchEventType=\'' + type + '\';document.getElementById(\'mt-type-lbl\').textContent=\'' + esc(MATCH_EVENT_TYPES[type]) + '\';[...document.querySelectorAll(\'.mt-type-btn\')].forEach(b=>b.classList.remove(\'active\'))"' +
+          ' class="btn mt-type-btn' + (isAct?' active':'') + '"' +
+          ' style="font-size:11px;padding:4px 8px;' + (isAct?'border-color:var(--green);color:var(--green)':'') + '">' +
+          MATCH_EVENT_ICONS[type] + ' ' + MATCH_EVENT_TYPES[type] + '</button>';
+      };
+
+      el.innerHTML =
+        '<div class="mc-header">' +
+          '<div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Match Centre</div>' +
+          '<h1 style="margin:0;font-size:22px">Live Timeline</h1>' +
+          '<p style="color:var(--muted);font-size:13px;margin:4px 0 0">vs ' + esc(mc.opposition||'Opponent') + ' · Score: ' + score.us + ' – ' + score.them + '</p></div>' +
+        '</div>' +
+        _matchTabBar() +
+        '<div class="card" style="margin-bottom:14px">' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Record event</div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">' +
+            Object.keys(MATCH_EVENT_TYPES).map(typeBtn).join('') +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:80px 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:10px">' +
+            '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Minute' +
+              '<input id="mt-minute" type="number" min="0" max="100" style="' + INP + ';width:100%" placeholder="0">' +
+            '</label>' +
+            '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Team' +
+              '<select id="mt-team" style="' + INP + ';width:100%">' +
+                '<option value="us" ' + (_matchEventTeam==='us'?'selected':'') + '>Us</option>' +
+                '<option value="them" ' + (_matchEventTeam==='them'?'selected':'') + '>Opposition</option>' +
+              '</select>' +
+            '</label>' +
+            '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Player (optional)' +
+              '<select id="mt-player" style="' + INP + ';width:100%">' +
+                '<option value="">— No player —</option>' +
+                players.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>').join('') +
+              '</select>' +
+            '</label>' +
+            '<button class="btn primary" type="button" style="height:38px;align-self:end;white-space:nowrap" onclick="(function(){' +
+              'const min=document.getElementById(\'mt-minute\')?.value||0;' +
+              'const team=document.getElementById(\'mt-team\')?.value||\'us\';' +
+              '_matchEventTeam=team;' +
+              'const pid=document.getElementById(\'mt-player\')?.value||\'\';' +
+              'matchAddEvent(_matchEventType,team,pid,min,\'\');' +
+            '})()">Add event</button>' +
+          '</div>' +
+          '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Notes (optional)' +
+            '<input id="mt-notes" style="' + INP + ';width:100%" placeholder="Any context for this event…">' +
+          '</label>' +
+        '</div>' +
+        '<div class="card">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+            '<div style="font-size:13px;font-weight:700">Timeline (' + events.length + ' events)</div>' +
+            (events.length>0 ? '<div style="font-size:12px;color:var(--green);font-weight:700">' + score.us + ' – ' + score.them + '</div>' : '') +
+          '</div>' +
+          (events.length===0
+            ? '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No events recorded yet. Use the form above to log match events as they happen.</div>'
+            : events.map(ev => {
+                const player = state.players.find(p => p.id === ev.playerId);
+                const isUs   = ev.team === 'us';
+                return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)">' +
+                  '<span style="font-size:10px;font-weight:800;color:var(--muted);min-width:32px;text-align:center">' + ev.minute + '\'</span>' +
+                  '<span style="font-size:18px;flex-shrink:0">' + (MATCH_EVENT_ICONS[ev.type]||'📋') + '</span>' +
+                  '<div style="flex:1;min-width:0">' +
+                    '<div style="font-size:13px;font-weight:700">' + MATCH_EVENT_TYPES[ev.type] +
+                      '<span style="font-size:11px;font-weight:400;margin-left:6px;color:' + (isUs?'var(--green)':'#f87171') + '">' + (isUs?'Us':'Opposition') + '</span>' +
+                    '</div>' +
+                    (player ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + esc(player.name) + '</div>' : '') +
+                    (ev.notes ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + esc(ev.notes) + '</div>' : '') +
+                  '</div>' +
+                  (MATCH_POINT_VALUES[ev.type] ? '<span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;background:' + (isUs?'rgba(52,211,153,0.12)':'rgba(248,113,113,0.1)') + ';color:' + (isUs?'#34d399':'#f87171') + '">+' + MATCH_POINT_VALUES[ev.type] + 'pts</span>' : '') +
+                  '<button type="button" onclick="matchDeleteEvent(\'' + ev.id + '\')"' +
+                    ' style="font-size:11px;padding:3px 7px;border:1px solid rgba(248,113,113,0.3);border-radius:6px;background:transparent;color:#f87171;cursor:pointer;flex-shrink:0">✕</button>' +
+                '</div>';
+              }).join('')) +
+        '</div>';
+    }
+
+    function _renderMatchScoreboard() {
+      const el = document.getElementById('coach-matchday');
+      if (!el) return;
+      const mc     = state.matchCentre || {};
+      const key    = matchKey();
+      const events = (state.matchEvents || {})[key] || [];
+      const score  = matchComputeScore(events);
+      const status = (state.matchStatus || {})[key] || 'pre';
+      const statusColors = { pre:'#60a5fa', live:'#34d399', ht:'#fbbf24', ft:'#94a3b8' };
+      const sColor = statusColors[status] || '#60a5fa';
+
+      const half1Events = events.filter(e => e.minute <= 40);
+      const half2Events = events.filter(e => e.minute > 40);
+
+      const eventRow = (ev) => {
+        const player = state.players.find(p => p.id === ev.playerId);
+        const isUs   = ev.team === 'us';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)">' +
+          '<span style="font-size:10px;font-weight:800;color:var(--muted);min-width:28px">' + ev.minute + '\'</span>' +
+          '<span style="font-size:16px">' + (MATCH_EVENT_ICONS[ev.type]||'📋') + '</span>' +
+          '<div style="flex:1;font-size:12px">' +
+            '<span style="font-weight:700">' + MATCH_EVENT_TYPES[ev.type] + '</span>' +
+            (player ? ' · ' + esc(player.name) : '') +
+            '<span style="color:' + (isUs?'var(--green)':'#f87171') + ';margin-left:6px;font-size:11px">' + (isUs?'Us':'Them') + '</span>' +
+          '</div>' +
+          (MATCH_POINT_VALUES[ev.type] ? '<span style="font-size:11px;font-weight:700;color:' + (isUs?'#34d399':'#f87171') + '">' + (isUs?'+':'') + (isUs?1:-0)*0 + (isUs?'+'+MATCH_POINT_VALUES[ev.type]:'') + 'pts</span>' : '') +
+        '</div>';
+      };
+
+      el.innerHTML =
+        '<div class="mc-header">' +
+          '<div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Match Centre</div>' +
+          '<h1 style="margin:0;font-size:22px">Live Scoreboard</h1>' +
+          '<p style="color:var(--muted);font-size:13px;margin:4px 0 0">' + esc(mc.competition||'') + (mc.competition&&mc.kickoffDate?' · ':'') + esc(mc.kickoffDate||'Date TBC') + '</p></div>' +
+        '</div>' +
+        _matchTabBar() +
+        '<div class="card" style="margin-bottom:14px;text-align:center;padding:24px 16px">' +
+          '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">' +
+            esc(mc.homeAway==='home'?'Home':'Away') + ' · vs ' + esc(mc.opposition||'Opponent') +
+          '</div>' +
+          '<div style="display:flex;align-items:center;justify-content:center;gap:24px;margin-bottom:12px">' +
+            '<div>' +
+              '<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px">US</div>' +
+              '<div style="font-size:72px;font-weight:900;color:var(--green);line-height:1">' + score.us + '</div>' +
+            '</div>' +
+            '<div style="font-size:32px;color:var(--muted);font-weight:300">–</div>' +
+            '<div>' +
+              '<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px">THEM</div>' +
+              '<div style="font-size:72px;font-weight:900;color:#f87171;line-height:1">' + score.them + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:inline-block;padding:5px 16px;border-radius:999px;font-size:12px;font-weight:700;' +
+            'background:' + sColor + '1a;color:' + sColor + '">' + MATCH_STATUS_LABELS[status] + '</div>' +
+          '<div style="margin-top:12px;display:flex;justify-content:center;gap:8px">' +
+            ['pre','live','ht','ft'].map(s =>
+              '<button type="button" onclick="matchSetStatus(\'' + s + '\')"' +
+              ' style="padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;' +
+              'border:1.5px solid ' + (status===s?statusColors[s]:'var(--line)') + ';' +
+              'background:' + (status===s?statusColors[s]+'1a':'transparent') + ';' +
+              'color:' + (status===s?statusColors[s]:'var(--muted)') + '">' + MATCH_STATUS_LABELS[s] + '</button>'
+            ).join('') +
+          '</div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">' +
+          '<div class="card">' +
+            '<div style="font-size:13px;font-weight:700;margin-bottom:10px">First half (1–40\')</div>' +
+            (half1Events.length===0
+              ? '<div style="color:var(--muted);font-size:12px;padding:8px 0">No events</div>'
+              : half1Events.map(eventRow).join('')) +
+          '</div>' +
+          '<div class="card">' +
+            '<div style="font-size:13px;font-weight:700;margin-bottom:10px">Second half (41+\')</div>' +
+            (half2Events.length===0
+              ? '<div style="color:var(--muted);font-size:12px;padding:8px 0">No events</div>'
+              : half2Events.map(eventRow).join('')) +
+          '</div>' +
+        '</div>';
+    }
+
+    function _renderMatchBench() {
+      const el = document.getElementById('coach-matchday');
+      if (!el) return;
+      const mc       = state.matchCentre || {};
+      const key      = matchKey();
+      const events   = (state.matchEvents || {})[key] || [];
+      const subEvents = events.filter(e => e.type === 'substitution');
+      const injEvents = events.filter(e => e.type === 'injury');
+      const fnames    = state.formationNames || {};
+      const bench     = state.benchPlayers || Array(8).fill('');
+      const rugbySlotLabels = (typeof rugbySlots !== 'undefined' ? rugbySlots : []).map(([label]) => label);
+
+      const startingSlots = rugbySlotLabels.map((label, i) => {
+        const name = Object.prototype.hasOwnProperty.call(fnames, label) ? fnames[label] : '';
+        return { slot: i + 1, label, name };
+      });
+
+      const subbedOff = new Set(subEvents.map(e => {
+        const p = state.players.find(pl => pl.id === e.playerId);
+        return p ? p.name : '';
+      }).filter(Boolean));
+      const injured = new Set(injEvents.map(e => {
+        const p = state.players.find(pl => pl.id === e.playerId);
+        return p ? p.name : '';
+      }).filter(Boolean));
+
+      const playerStatus = (name) => {
+        if (!name) return { label: 'Empty', color: 'var(--muted)', bg: 'transparent' };
+        if (injured.has(name)) return { label: 'Injured', color: '#f87171', bg: 'rgba(248,113,113,0.1)' };
+        if (subbedOff.has(name)) return { label: 'Off', color: '#94a3b8', bg: 'rgba(148,163,184,0.1)' };
+        return { label: 'On field', color: '#34d399', bg: 'rgba(52,211,153,0.1)' };
+      };
+
+      el.innerHTML =
+        '<div class="mc-header">' +
+          '<div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Match Centre</div>' +
+          '<h1 style="margin:0;font-size:22px">Bench Manager</h1>' +
+          '<p style="color:var(--muted);font-size:13px;margin:4px 0 0">vs ' + esc(mc.opposition||'Opponent') + ' · ' + subEvents.length + ' substitutions made</p></div>' +
+        '</div>' +
+        _matchTabBar() +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">' +
+          '<div class="card">' +
+            '<div style="font-size:13px;font-weight:700;margin-bottom:10px">Starting XV</div>' +
+            (startingSlots.filter(s=>s.name).length===0
+              ? '<div style="font-size:12px;color:var(--muted);padding:8px 0">Build your team in the Planner tab.</div>'
+              : startingSlots.map(s => {
+                  const st = playerStatus(s.name);
+                  return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)">' +
+                    '<span style="font-size:11px;font-weight:800;color:var(--muted);min-width:18px;text-align:center">' + s.slot + '</span>' +
+                    '<div style="flex:1;font-size:13px;font-weight:600">' + esc(s.name||'—') + '</div>' +
+                    (s.name ? '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:' + st.bg + ';color:' + st.color + '">' + st.label + '</span>' : '') +
+                  '</div>';
+                }).join('')) +
+          '</div>' +
+          '<div class="card">' +
+            '<div style="font-size:13px;font-weight:700;margin-bottom:10px">Bench (replacements)</div>' +
+            bench.slice(0,8).map((name, i) => {
+              const st = playerStatus(name);
+              const isUsed = subbedOff.has(name) || injured.has(name);
+              return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)">' +
+                '<span style="font-size:11px;font-weight:800;color:var(--muted);min-width:24px;text-align:center">' + (i+16) + '</span>' +
+                '<div style="flex:1;font-size:13px;font-weight:600;color:' + (name?'var(--text)':'var(--muted)') + '">' + esc(name||'Empty slot') + '</div>' +
+                (name ? '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:' + st.bg + ';color:' + st.color + '">' + st.label + '</span>' : '') +
+              '</div>';
+            }).join('') +
+            (bench.every(b=>!b) ? '<div style="font-size:12px;color:var(--muted);padding:8px 0">Set bench in the Planner tab.</div>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="card">' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:10px">Substitutions (' + subEvents.length + ')</div>' +
+          (subEvents.length===0
+            ? '<div style="font-size:12px;color:var(--muted);padding:8px 0">No substitutions recorded. Log a \'Substitution\' event in the Timeline tab.</div>'
+            : subEvents.map(ev => {
+                const player = state.players.find(p => p.id === ev.playerId);
+                return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">' +
+                  '<span style="font-size:14px">🔄</span>' +
+                  '<span style="font-size:11px;font-weight:800;color:var(--muted);min-width:28px">' + ev.minute + '\'</span>' +
+                  '<div style="flex:1;font-size:13px">' +
+                    (player ? '<strong>' + esc(player.name) + '</strong>' : '<span style="color:var(--muted)">No player recorded</span>') +
+                    (ev.notes ? ' · <span style="color:var(--muted);font-size:12px">' + esc(ev.notes) + '</span>' : '') +
+                  '</div>' +
+                '</div>';
+              }).join('')) +
+        '</div>';
+    }
+
+    function _renderMatchNotes() {
+      const el = document.getElementById('coach-matchday');
+      if (!el) return;
+      const mc    = state.matchCentre || {};
+      const key   = matchKey();
+      const notes = normalizeMatchDayNotes((state.matchDayNotes || {})[key]);
+      const INPT  = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;min-height:80px';
+
+      const noteField = (field, placeholder, rows) =>
+        '<label style="display:grid;gap:6px">' +
+          '<span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">' + MATCH_NOTES_LABELS[field] + '</span>' +
+          '<textarea rows="' + (rows||3) + '" style="' + INPT + '"' +
+            ' oninput="matchSaveDayNotes(\'' + field + '\',this.value)"' +
+            ' placeholder="' + esc(placeholder) + '">' + esc(notes[field]) + '</textarea>' +
+        '</label>';
+
+      el.innerHTML =
+        '<div class="mc-header">' +
+          '<div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Match Centre</div>' +
+          '<h1 style="margin:0;font-size:22px">Match Notes</h1>' +
+          '<p style="color:var(--muted);font-size:13px;margin:4px 0 0">vs ' + esc(mc.opposition||'Opponent') + ' · Autosaves as you type</p></div>' +
+        '</div>' +
+        _matchTabBar() +
+        '<div class="card">' +
+          '<div style="display:grid;gap:16px">' +
+            noteField('attack',     'Attacking shape, line breaks, set plays that worked or failed…', 4) +
+            noteField('defence',    'Defensive line, blitz, rush, missed tackles, line speed…',        4) +
+            noteField('setPiece',   'Scrum, lineout, restart wins and losses…',                        3) +
+            noteField('discipline', 'Penalties conceded, cards, key calls from the referee…',          3) +
+            noteField('referee',    'Referee name, interpretations, anything to flag for next time…',  2) +
+            noteField('general',    'General observations, half-time adjustments, post-match notes…',  4) +
+          '</div>' +
+        '</div>';
+    }
+
+    function _renderMatchSummary() {
+      const el = document.getElementById('coach-matchday');
+      if (!el) return;
+      const mc     = state.matchCentre || {};
+      const key    = matchKey();
+      const events = (state.matchEvents || {})[key] || [];
+      const score  = matchComputeScore(events);
+      const status = (state.matchStatus || {})[key] || 'pre';
+      const notes  = normalizeMatchDayNotes((state.matchDayNotes || {})[key]);
+      const summ   = matchEventsSummary(events);
+      const isWin  = score.us > score.them;
+      const isDraw = score.us === score.them;
+
+      const kickoffDisplay = mc.kickoffDate
+        ? new Date(mc.kickoffDate + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' })
+        : 'Date TBC';
+
+      const eventBlock = (label, evList) => {
+        if (evList.length === 0) return '';
+        return '<div style="margin-bottom:14px">' +
+          '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">' + label + '</div>' +
+          evList.map(ev => {
+            const player = state.players.find(p => p.id === ev.playerId);
+            const isUs   = ev.team === 'us';
+            return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px">' +
+              '<span style="color:var(--muted);font-size:11px;min-width:28px">' + ev.minute + '\'</span>' +
+              '<span>' + (MATCH_EVENT_ICONS[ev.type]||'📋') + '</span>' +
+              (player?'<strong>'+esc(player.name)+'</strong>':'') +
+              '<span style="color:' + (isUs?'var(--green)':'#f87171') + ';font-size:11px">' + (isUs?'Us':'Them') + '</span>' +
+              (ev.notes?'<span style="color:var(--muted);font-size:11px">'+esc(ev.notes)+'</span>':'') +
+            '</div>';
+          }).join('') +
+        '</div>';
+      };
+
+      const noteBlock = (section) => {
+        if (!notes[section]) return '';
+        return '<div style="margin-bottom:12px">' +
+          '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">' + MATCH_NOTES_LABELS[section] + '</div>' +
+          '<div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.5">' + esc(notes[section]) + '</div>' +
+        '</div>';
+      };
+
+      const resultColor = status==='ft' ? (isWin?'#34d399':isDraw?'#fbbf24':'#f87171') : '#60a5fa';
+      const resultLabel = status==='ft' ? (isWin?'Win':isDraw?'Draw':'Loss') : MATCH_STATUS_LABELS[status];
+
+      el.innerHTML =
+        '<div class="mc-header">' +
+          '<div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Match Centre</div>' +
+          '<h1 style="margin:0;font-size:22px">Post-Match Summary</h1>' +
+          '<p style="color:var(--muted);font-size:13px;margin:4px 0 0">vs ' + esc(mc.opposition||'Opponent') + ' · ' + kickoffDisplay + '</p></div>' +
+        '</div>' +
+        _matchTabBar() +
+        '<div class="card" style="margin-bottom:14px;text-align:center;padding:20px 16px">' +
+          '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">' +
+            esc(mc.competition||'Match') + (mc.homeAway ? ' · ' + (mc.homeAway==='home'?'Home':'Away') : '') + ' · ' + kickoffDisplay +
+          '</div>' +
+          '<div style="font-size:56px;font-weight:900;margin:4px 0">' +
+            '<span style="color:var(--green)">' + score.us + '</span>' +
+            '<span style="font-size:32px;color:var(--muted);margin:0 12px">–</span>' +
+            '<span style="color:#f87171">' + score.them + '</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Us vs ' + esc(mc.opposition||'Them') + '</div>' +
+          '<div style="display:inline-block;padding:5px 20px;border-radius:999px;font-size:14px;font-weight:800;' +
+            'background:' + resultColor + '1a;color:' + resultColor + '">' + resultLabel + '</div>' +
+        '</div>' +
+        '<div class="card" style="margin-bottom:14px">' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:14px">Match timeline</div>' +
+          (events.length===0
+            ? '<div style="font-size:12px;color:var(--muted)">No events recorded.</div>'
+            : eventBlock('Tries & scores', summ.tries.concat(summ.conversions, summ.penalties, summ.dropGoals).sort((a,b)=>a.minute-b.minute)) +
+              eventBlock('Cards', summ.yellowCards.concat(summ.redCards).sort((a,b)=>a.minute-b.minute)) +
+              eventBlock('Injuries', summ.injuries) +
+              eventBlock('Substitutions', summ.substitutions)) +
+        '</div>' +
+        (MATCH_NOTES_SECTIONS.some(s=>notes[s])
+          ? '<div class="card" style="margin-bottom:14px">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:14px">Coach notes</div>' +
+              MATCH_NOTES_SECTIONS.map(noteBlock).join('') +
+            '</div>'
+          : '') +
+        '<div class="card" style="margin-bottom:14px">' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:10px">Match stats</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center">' +
+            [
+              ['Tries',        summ.tries.filter(e=>e.team==='us').length,       summ.tries.filter(e=>e.team==='them').length],
+              ['Conversions',  summ.conversions.filter(e=>e.team==='us').length, summ.conversions.filter(e=>e.team==='them').length],
+              ['Penalties',    summ.penalties.filter(e=>e.team==='us').length,   summ.penalties.filter(e=>e.team==='them').length],
+              ['Drop goals',   summ.dropGoals.filter(e=>e.team==='us').length,   summ.dropGoals.filter(e=>e.team==='them').length],
+              ['Yellow cards', summ.yellowCards.length,                           '—'],
+              ['Red cards',    summ.redCards.length,                              '—'],
+            ].map(([lbl, us, them]) =>
+              '<div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">' + lbl + '</div>' +
+              '<div style="font-size:16px;font-weight:800"><span style="color:var(--green)">' + us + '</span> – <span style="color:#f87171">' + them + '</span></div></div>'
+            ).join('') +
+          '</div>' +
+        '</div>';
+    }
+
     // ─── PHASE 19 — TRAINING & SESSION MANAGEMENT ────────────────────────────
 
     const TRAINING_ATTENDANCE_LABELS = {
@@ -13622,6 +14340,9 @@
     // Phase 19 — Training management UI state
     let _trainingNewSessionOpen = false; // new session form open
     let _trainingHistoryMonth   = '';    // 'YYYY-MM' | '' = all
+    // Phase 20 — Match Centre UI state
+    let _matchEventType = 'try';         // selected event type in recorder
+    let _matchEventTeam = 'us';          // 'us' | 'them'
 
     // ─── SQUAD SELECTION UI STATE (not persisted — transient per-session) ───────
     let _selectionEditId         = null;  // null = list view | selId = editor open
