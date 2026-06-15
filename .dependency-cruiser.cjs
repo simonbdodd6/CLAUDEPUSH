@@ -57,11 +57,11 @@ module.exports = {
     // ── Experience Layer (M32) boundary rules — report-only ──────────────────
     {
       name: 'experience-imports-facade-and-self-only',
-      comment: 'The Experience Layer imports only itself; never an AI engine, Coach\'s Eye Core, the host adapter, or @brain platform internals. (From M33 the brain is reachable only via @brain/product-coaches-eye.)',
+      comment: 'The Experience Layer imports only itself; never an AI engine, Coach\'s Eye Core, the host adapter, the live composition root (experience-host), or @brain platform internals. The brain reaches the app ONLY via runtime injection (experience/app/brain-provider.js), so the browser bundle stays standalone. (From M33 the brain is reachable only via @brain/product-coaches-eye.)',
       severity: 'warn',
       from: { path: '^experience/' },
       to: {
-        path: '^(ai-brain|coach-products|app|api|src|host-coaches-eye|packages/brain-contracts|packages/brain-products|packages/brain-versioning)/',
+        path: '^(ai-brain|coach-products|app|api|src|experience-host|host-coaches-eye|packages/brain-contracts|packages/brain-products|packages/brain-versioning)/',
       },
     },
     {
