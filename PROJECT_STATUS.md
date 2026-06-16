@@ -1,5 +1,43 @@
 # Project Status
 
+## 2026-06-16 — Availability V2 (player availability rewrite) — CLOSED
+
+**Root cause.** The player Availability page used a single shared pending/reason
+state (`_reasonPickerOpen`) and DEFERRED the save for "Maybe"/"Can't make it" —
+the status was only persisted when a reason or Skip was tapped. Tapping a second
+card moved that shared state, so the first card's unsaved status was discarded
+and it reverted to its stored value. This made Training session 1, Training
+session 2 and Match appear linked (changing one reset another). Several earlier
+attempts (merge/write/render/recency fixes) addressed real but separate issues
+and did not remove this shared-pending UX flaw.
+
+**Availability V2 architecture.** The player Availability UI was replaced with
+fully independent per-session cards:
+- `renderPlayerAvailabilityV2()` renders the player Availability tab (old
+  `renderPlayerAvailability`/`availabilityBlock` removed).
+- Pure `availabilityCardModel(player, session)` → `{ key, label, status, reason,
+  respondedAt, isOpenReasonPicker }`; each card derives ONLY from its own session
+  key plus its own picker visibility — no cross-session reads.
+- Reason-picker visibility lives in a PER-KEY map `_availReasonOpenByKey`; the
+  shared `_reasonPickerOpen` variable was removed entirely.
+- Every status tap (`availabilityV2SetStatus`) saves immediately for that one
+  key; "Maybe"/"Can't make it" then open that card's OPTIONAL post-save reason
+  picker. `availabilityV2SetReason`/`OpenReason`/`CloseReason` act on one key only.
+- Same data/API contract: `setPlayerAvailability`, `availabilityApplyToRecord`,
+  server endpoints and Redis data keys unchanged; the coach board reads the same
+  saved values. `normalizeState`, `safeRender` and Simon Test Player preserved.
+- Coverage: `test/availability-cards-independent.test.js` (16 tests) drives the
+  real V2 handlers; the critical linked-card flow fails on the old shared-pending
+  flow and passes on V2. Temporary `?availtrace=1` debug trace + overwrite
+  watcher used during diagnosis were removed once the fix was verified.
+
+**Production verification completed** (Simon, Incognito): training session 1/2
+independent; Match independent; reason picker scoped to its own session; hard
+refresh preserves all saved availability; original linked-card sequence no longer
+reproduces. Issue CLOSED.
+
+**Date completed:** 2026-06-16.
+
 ## 2026-06-11 — Proactive Intelligence Engine
 
 - Added a read-only Proactive Intelligence Engine at `lib/ai/proactive-intelligence/`.
