@@ -24,6 +24,7 @@ import { deriveDedupeGroups } from './dedupe.js'
 import { deriveProvenanceProposals } from './provenance.js'
 import { deriveConfidenceReweightProposals } from './reweight.js'
 import { deriveConfidenceUpdatePlan } from './confidence-update.js'
+import { deriveMemoryLinkPlan } from './memory-link.js'
 
 const ok = (stage, output) => Object.freeze({ stage, status: 'ok', output: Object.freeze(output) })
 const deferred = (stage, output) => Object.freeze({ stage, status: 'deferred', output: Object.freeze(output) })
@@ -140,10 +141,27 @@ export const prepareConfidenceUpdate = Object.freeze({
   },
 })
 
-/** 6 — prepare memory link: knowledge-graph upserts (deferred placeholder). */
+/**
+ * 6 — prepare memory link: knowledge-graph upserts (§3.5).
+ *
+ * Dormant. `run()` stays the inert placeholder (no nodes/edges) so end-to-end
+ * `submit()` is unchanged. `plan({ accepted, records })` is the M61 DATA-ONLY contract:
+ * it composes the dedupe chain (groups → provenance, M57–M58) and assembles a deferred
+ * MemoryLinkPlan — the subject/evidence nodes, `about` edges and dedupe
+ * derivedFrom/supersedes edges the graph WOULD receive. It reads/writes NO graph,
+ * creates nothing, never mutates input; unknown sources / invalid signals are not in
+ * `accepted`, so they never produce a node or edge.
+ */
 export const prepareMemoryLink = Object.freeze({
   name: 'prepareMemoryLink',
   run() { return deferred('prepareMemoryLink', { nodes: Object.freeze([]), edges: Object.freeze([]) }) },
+  plan(input) {
+    const records = input && Array.isArray(input.records) ? input.records : []
+    const accepted = input && Array.isArray(input.accepted) ? input.accepted : []
+    const { groups } = deriveDedupeGroups({ accepted, records })
+    const { proposals } = deriveProvenanceProposals({ groups, records })
+    return deferred('prepareMemoryLink', deriveMemoryLinkPlan({ accepted, records, proposals }))
+  },
 })
 
 /** 7 — prepare audit: append-only audit entries (deferred placeholder). */

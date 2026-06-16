@@ -19,4 +19,5 @@ export { deriveDedupeGroups, deriveDedupeKey, observedAtBucket } from './dedupe.
 export { deriveProvenanceProposals } from './provenance.js'
 export { deriveConfidenceReweightProposals } from './reweight.js'
 export { deriveConfidenceUpdatePlan } from './confidence-update.js'
+export { deriveMemoryLinkPlan } from './memory-link.js'
 export * from './types.js'
