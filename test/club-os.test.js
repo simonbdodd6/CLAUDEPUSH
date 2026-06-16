@@ -369,11 +369,15 @@ test('clubDashboardStats: counts players from players array', () => {
 });
 
 test('clubDashboardStats: counts upcoming fixtures (date >= today)', () => {
+  // Use relative dates so this test never drifts past its own fixture dates
+  const today    = new Date().toISOString().slice(0,10);
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0,10);
   const { clubDashboardStats } = buildClubScope({
     fixtures: [
-      { id:'f1', date:'2026-06-20', opposition:'Munster' },
-      { id:'f2', date:'2026-06-10', opposition:'Leinster' }, // past
-      { id:'f3', date:'2026-06-15', opposition:'Ulster'  }, // today = included
+      { id:'f1', date: tomorrow,  opposition:'Munster'  }, // future  → included
+      { id:'f2', date: yesterday, opposition:'Leinster' }, // past    → excluded
+      { id:'f3', date: today,     opposition:'Ulster'   }, // today   → included
     ],
   });
   const s = clubDashboardStats();

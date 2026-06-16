@@ -2572,6 +2572,7 @@
       subPlan: [],
       treatmentLogs: [],
       medicalNotes: {},
+      medicalRecords: {},
       coachNotes: "",
       playerFilter: "all",
       showAddPlayer: false,
@@ -3163,6 +3164,7 @@
         if (p.jerseyNumber       === undefined) p.jerseyNumber       = '';
         if (p.emergencyContact   === undefined) p.emergencyContact   = '';
         if (p.emergencyPhone     === undefined) p.emergencyPhone     = '';
+        if (p.trainingStatus     === undefined) p.trainingStatus     = '';
         if (p.parentGuardianName === undefined) p.parentGuardianName = '';
         if (p.parentGuardianEmail=== undefined) p.parentGuardianEmail= '';
         if (p.registrationStatus === undefined) p.registrationStatus = 'unregistered';
@@ -3177,7 +3179,8 @@
       next.users = ensurePlayerUsersForRoster(next.players, next.users);
       next.subPlan          = input.subPlan          || structuredClone(defaultState.subPlan);
       next.treatmentLogs    = input.treatmentLogs    || structuredClone(defaultState.treatmentLogs);
-      next.medicalNotes     = input.medicalNotes     || structuredClone(defaultState.medicalNotes);
+      next.medicalNotes   = input.medicalNotes   || structuredClone(defaultState.medicalNotes);
+      next.medicalRecords = (typeof input.medicalRecords === 'object' && input.medicalRecords !== null) ? input.medicalRecords : {};
       next.coachNotes       = input.coachNotes       || "";
       next.playerFilter     = input.playerFilter     || "all";
       next.showAddPlayer    = false; // never restore open form across sessions
@@ -8643,6 +8646,12 @@
 
     // ─── MEDICAL ─────────────────────────────────────────────────────────────
     function renderMedical() {
+      // Phase 21 — tab delegation; existing content preserved as legacy fallback
+      const _mTab = _medActiveTab || 'dashboard';
+      if (_mTab === 'dashboard') { _renderMedicalDashboard(); return; }
+      if (_mTab === 'record')    { _renderMedicalRecord(_medActivePlayerId); return; }
+      if (_mTab === 'timeline')  { _renderMedicalTimeline(_medActivePlayerId); return; }
+
       const injured     = state.players.filter(p => p.game === "injured");
       const hasIssues   = state.players.filter(p => p.game === "injured" || p.medical);
       const medNotes    = state.medicalNotes   || {};
@@ -11952,6 +11961,454 @@
         </div>`;
     }
 
+    // ─── PHASE 21 — MEDICAL & WELFARE CENTRE ─────────────────────────────────
+
+    const MEDICAL_SEVERITY_LABELS = { minor:'Minor', moderate:'Moderate', severe:'Severe', '':'Unknown' };
+    const MEDICAL_SEVERITY_COLORS = { minor:'#fbbf24', moderate:'#f97316', severe:'#f87171', '':'#94a3b8' };
+    const MEDICAL_CLEARANCE_LABELS = { pending:'Pending', cleared:'Cleared', restricted:'Restricted', '':'Not set' };
+    const MEDICAL_CLEARANCE_COLORS = { pending:'#fbbf24', cleared:'#34d399', restricted:'#f87171', '':'#94a3b8' };
+    const MEDICAL_TRAINING_LABELS = {
+      '':'Not set', full:'Full Training', modified:'Modified Training',
+      gymOnly:'Gym Only', noContact:'No Contact', unavailable:'Unavailable',
+    };
+    const MEDICAL_TRAINING_COLORS = {
+      '':'#94a3b8', full:'#34d399', modified:'#fbbf24',
+      gymOnly:'#60a5fa', noContact:'#f97316', unavailable:'#f87171',
+    };
+    const MEDICAL_TIMELINE_TYPES  = ['injury','physio','clearance','return','surgery','note'];
+    const MEDICAL_TIMELINE_LABELS = {
+      injury:'Injury', physio:'Physio', clearance:'Clearance',
+      return:'Return to Play', surgery:'Surgery', note:'Note',
+    };
+    const MEDICAL_TIMELINE_COLORS = {
+      injury:'#f87171', physio:'#60a5fa', clearance:'#34d399',
+      return:'#34d399', surgery:'#f97316', note:'#94a3b8',
+    };
+    const MEDICAL_BODY_LOCATIONS = [
+      'Head','Neck','Shoulder','Collarbone','Chest','Ribs','Abdomen',
+      'Lower Back','Hip','Groin','Hamstring','Quad','Knee','Calf',
+      'Shin','Ankle','Foot','Thumb','Wrist','Elbow','Other',
+    ];
+
+    function medicalSeverityColor(severity) {
+      return MEDICAL_SEVERITY_COLORS[severity] || MEDICAL_SEVERITY_COLORS[''];
+    }
+
+    function medicalTrainingStatusColor(status) {
+      return MEDICAL_TRAINING_COLORS[status] || MEDICAL_TRAINING_COLORS[''];
+    }
+
+    function medicalTrainingStatusLabel(status) {
+      return MEDICAL_TRAINING_LABELS[status] || MEDICAL_TRAINING_LABELS[''];
+    }
+
+    function normalizeMedicalRecord(rec) {
+      if (!rec || typeof rec !== 'object') rec = {};
+      return {
+        currentInjury:   rec.currentInjury   || '',
+        bodyLocation:    rec.bodyLocation     || '',
+        severity:        rec.severity         || '',
+        dateInjured:     rec.dateInjured      || '',
+        expectedReturn:  rec.expectedReturn   || '',
+        clearanceStatus: rec.clearanceStatus  || '',
+        physiNotes:      rec.physiNotes       || '',
+        surgeryHistory:  rec.surgeryHistory   || '',
+        allergies:       rec.allergies        || '',
+        medication:      rec.medication       || '',
+        concussionCount: Number(rec.concussionCount) || 0,
+        concussionNotes: rec.concussionNotes  || '',
+        timeline:        Array.isArray(rec.timeline) ? rec.timeline : [],
+      };
+    }
+
+    function medicalDashboardSummary(players, medRecords, medNotes) {
+      const active = activeRosterPlayers(players);
+      const rec = pid => normalizeMedicalRecord((medRecords||{})[pid]);
+      const mn  = pid => (medNotes||{})[pid] || {};
+      const injured = active.filter(p =>
+        p.game === 'injured' || p.trainingStatus === 'unavailable' ||
+        rec(p.id).severity === 'severe'
+      );
+      const returning = active.filter(p => {
+        const r = rec(p.id);
+        return r.expectedReturn && r.clearanceStatus !== 'cleared' &&
+               (p.game === 'injured' || p.trainingStatus === 'unavailable' ||
+                p.trainingStatus === 'noContact' || p.trainingStatus === 'modified');
+      });
+      const cleared = active.filter(p => rec(p.id).clearanceStatus === 'cleared');
+      const rehab   = active.filter(p =>
+        p.trainingStatus === 'modified' || p.trainingStatus === 'gymOnly' || p.trainingStatus === 'noContact'
+      );
+      const alerts = active.filter(p =>
+        p.game === 'injured' || p.trainingStatus === 'unavailable' ||
+        (p.medical && String(p.medical).trim()) ||
+        (mn(p.id).condition && String(mn(p.id).condition).trim()) ||
+        rec(p.id).severity === 'severe' || rec(p.id).severity === 'moderate'
+      );
+      return { injured, returning, cleared, rehab, alerts, all: active };
+    }
+
+    function setMedicalTab(tab) {
+      _medActiveTab = tab;
+      render();
+    }
+
+    function openMedicalRecord(playerId) {
+      _medActivePlayerId = playerId;
+      _medActiveTab = 'record';
+      render();
+    }
+
+    function openMedicalTimeline(playerId) {
+      _medActivePlayerId = playerId;
+      _medActiveTab = 'timeline';
+      render();
+    }
+
+    function saveMedRecord(playerId, field, value) {
+      if (!state.medicalRecords)             state.medicalRecords = {};
+      if (!state.medicalRecords[playerId])   state.medicalRecords[playerId] = {};
+      state.medicalRecords[playerId][field] = value;
+      saveState('medical record updated');
+    }
+
+    function setPlayerTrainingStatus(playerId, status) {
+      const p = state.players.find(pl => pl.id === playerId);
+      if (!p) return;
+      p.trainingStatus = status;
+      saveState('training status updated');
+      render();
+    }
+
+    function addMedTimelineEntry(playerId, type, notes, date) {
+      if (!state.medicalRecords)           state.medicalRecords = {};
+      if (!state.medicalRecords[playerId]) state.medicalRecords[playerId] = {};
+      const rec = state.medicalRecords[playerId];
+      if (!Array.isArray(rec.timeline)) rec.timeline = [];
+      rec.timeline.push({
+        id:    'mt_' + Date.now(),
+        date:  date || new Date().toISOString().slice(0,10),
+        type:  type || 'note',
+        notes: notes || '',
+      });
+      rec.timeline.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+      saveState('medical timeline entry added');
+      render();
+    }
+
+    function deleteMedTimelineEntry(playerId, entryId) {
+      const rec = (state.medicalRecords||{})[playerId];
+      if (!rec || !Array.isArray(rec.timeline)) return;
+      rec.timeline = rec.timeline.filter(e => e.id !== entryId);
+      saveState('medical timeline entry deleted');
+      render();
+    }
+
+    function _medTabBar(showPlayerTabs) {
+      const act = _medActiveTab || 'dashboard';
+      const TABS = [['dashboard','Dashboard']];
+      if (showPlayerTabs || act === 'record'   || act === 'timeline') {
+        TABS.push(['record','Medical Record'], ['timeline','Timeline']);
+      }
+      return '<div style="display:flex;gap:0;flex-wrap:wrap;margin-bottom:16px;border-bottom:2px solid var(--line)">' +
+        TABS.map(([id, label]) => {
+          const isAct = act === id;
+          return '<button type="button" onclick="setMedicalTab(\'' + id + '\')"' +
+            ' style="padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;border:none;' +
+            'background:none;color:' + (isAct ? 'var(--green)' : 'var(--muted)') + ';' +
+            'border-bottom:2.5px solid ' + (isAct ? 'var(--green)' : 'transparent') + ';' +
+            'margin-bottom:-2px;border-radius:0;white-space:nowrap">' + label + '</button>';
+        }).join('') + '</div>';
+    }
+
+    function _renderMedicalDashboard() {
+      const el = document.getElementById('coach-medical');
+      if (!el) return;
+      const summ    = medicalDashboardSummary(state.players, state.medicalRecords, state.medicalNotes);
+      const medNotes = state.medicalNotes || {};
+      const medRecs  = state.medicalRecords || {};
+      const INP = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);width:100%;box-sizing:border-box';
+
+      el.innerHTML =
+        '<div class="training-hero">' +
+          '<div><div class="eyebrow">Medical Centre</div><h1>Medical Dashboard</h1>' +
+          '<p>Squad health overview, injury tracking and return-to-play management.</p></div>' +
+          '<div class="training-hero-stats">' +
+            '<div class="training-stat"><span class="lbl">Injured</span><strong style="color:#f87171">' + summ.injured.length + '</strong><small>unavailable</small></div>' +
+            '<div class="training-stat"><span class="lbl">Rehab</span><strong style="color:#fbbf24">' + summ.rehab.length + '</strong><small>in rehab</small></div>' +
+            '<div class="training-stat"><span class="lbl">Cleared</span><strong style="color:#34d399">' + summ.cleared.length + '</strong><small>cleared</small></div>' +
+          '</div>' +
+        '</div>' +
+        _medTabBar(false) +
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">' +
+          [
+            ['Active injuries', summ.injured.length,  '#f87171'],
+            ['In rehabilitation', summ.rehab.length,  '#fbbf24'],
+            ['Returning this week', summ.returning.length, '#60a5fa'],
+            ['Medical alerts', summ.alerts.length,    '#f97316'],
+          ].map(([lbl, val, col]) =>
+            '<div class="card" style="padding:14px 16px;text-align:center">' +
+              '<div style="font-size:28px;font-weight:900;color:' + col + '">' + val + '</div>' +
+              '<div style="font-size:11px;color:var(--muted);margin-top:4px">' + lbl + '</div>' +
+            '</div>'
+          ).join('') +
+        '</div>' +
+        (summ.alerts.length > 0
+          ? '<div class="card" style="margin-bottom:14px">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Medical alerts (' + summ.alerts.length + ')</div>' +
+              summ.alerts.map(p => {
+                const mn  = medNotes[p.id] || {};
+                const rec = normalizeMedicalRecord(medRecs[p.id]);
+                const ts  = p.trainingStatus || '';
+                const tsColor = medicalTrainingStatusColor(ts);
+                const sevColor = medicalSeverityColor(rec.severity);
+                return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">' +
+                  '<div style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;' +
+                    'background:rgba(248,113,113,0.12);border:2px solid #f87171">🏥</div>' +
+                  '<div style="flex:1;min-width:120px">' +
+                    '<div style="font-size:13px;font-weight:700">' + esc(p.name) + '</div>' +
+                    '<div style="font-size:11px;color:var(--muted);margin-top:2px">' +
+                      esc(rec.currentInjury || mn.condition || p.medical || 'Under review') +
+                      (rec.bodyLocation ? ' · ' + esc(rec.bodyLocation) : '') +
+                    '</div>' +
+                  '</div>' +
+                  (ts ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + tsColor + '1a;color:' + tsColor + '">' + esc(medicalTrainingStatusLabel(ts)) + '</span>' : '') +
+                  (rec.severity ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + sevColor + '1a;color:' + sevColor + '">' + MEDICAL_SEVERITY_LABELS[rec.severity] + '</span>' : '') +
+                  (rec.expectedReturn ? '<span style="font-size:11px;color:var(--muted)">Return: ' + esc(rec.expectedReturn) + '</span>' : '') +
+                  '<div style="display:flex;gap:6px">' +
+                    '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="openMedicalRecord(\'' + p.id + '\')">Record</button>' +
+                    '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="openMedicalTimeline(\'' + p.id + '\')">Timeline</button>' +
+                  '</div>' +
+                '</div>';
+              }).join('') +
+            '</div>'
+          : '') +
+        '<div class="card" style="margin-bottom:14px">' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Squad medical status (' + summ.all.length + ' players)</div>' +
+          (summ.all.length === 0
+            ? '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No active players.</div>'
+            : summ.all.map(p => {
+                const mn  = medNotes[p.id] || {};
+                const rec = normalizeMedicalRecord(medRecs[p.id]);
+                const ts  = p.trainingStatus || '';
+                const tsColor = ts ? medicalTrainingStatusColor(ts) : '#34d399';
+                const tsLabel = ts ? medicalTrainingStatusLabel(ts) : 'Full Training';
+                return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">' +
+                  '<div style="flex:1;min-width:120px">' +
+                    '<div style="font-size:13px;font-weight:700">' + esc(p.name) + '</div>' +
+                    (rec.currentInjury || mn.condition || p.medical
+                      ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + esc(rec.currentInjury || mn.condition || p.medical) + '</div>'
+                      : '') +
+                  '</div>' +
+                  '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + tsColor + '1a;color:' + tsColor + '">' + esc(tsLabel) + '</span>' +
+                  (rec.clearanceStatus ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + MEDICAL_CLEARANCE_COLORS[rec.clearanceStatus] + '1a;color:' + MEDICAL_CLEARANCE_COLORS[rec.clearanceStatus] + '">' + MEDICAL_CLEARANCE_LABELS[rec.clearanceStatus] + '</span>' : '') +
+                  '<button class="btn" type="button" style="font-size:11px;padding:3px 8px" onclick="openMedicalRecord(\'' + p.id + '\')">Edit</button>' +
+                '</div>';
+              }).join('')) +
+        '</div>';
+    }
+
+    function _renderMedicalRecord(playerId) {
+      const el = document.getElementById('coach-medical');
+      if (!el) return;
+      if (!playerId) {
+        el.innerHTML = _medTabBar(true) +
+          '<div class="card" style="text-align:center;padding:40px"><div style="font-size:32px;margin-bottom:10px">📋</div><div style="font-weight:700">No player selected</div><div style="font-size:13px;color:var(--muted);margin-top:6px">Select a player from the Dashboard to view their medical record.</div><button class="btn" style="margin-top:14px" onclick="setMedicalTab(\'dashboard\')">Back to dashboard</button></div>';
+        return;
+      }
+      const p    = state.players.find(pl => pl.id === playerId);
+      if (!p) { el.innerHTML = _medTabBar(true) + '<div class="card" style="padding:24px;text-align:center;color:var(--muted)">Player not found.</div>'; return; }
+      const rec  = normalizeMedicalRecord((state.medicalRecords||{})[playerId]);
+      const mn   = (state.medicalNotes||{})[playerId] || {};
+      const ts   = p.trainingStatus || '';
+      const INP  = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);width:100%;box-sizing:border-box';
+      const TA   = INP + ';font-family:inherit;resize:vertical;min-height:72px';
+
+      const field = (label, fld, val, type, placeholder, isPlayer) =>
+        '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">' + label +
+          '<input type="' + (type||'text') + '" value="' + esc(val) + '" placeholder="' + esc(placeholder||'') + '"' +
+          ' style="' + INP + '"' +
+          ' onchange="' + (isPlayer
+              ? 'state.players.find(pl=>pl.id===\'' + playerId + '\')[\''+fld+'\''+']=this.value;saveState(\'medical\');'
+              : 'saveMedRecord(\'' + playerId + '\',\'' + fld + '\',this.value)') + '">' +
+        '</label>';
+
+      const selectField = (label, fld, val, opts) =>
+        '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">' + label +
+          '<select style="' + INP + '" onchange="saveMedRecord(\'' + playerId + '\',\'' + fld + '\',this.value)">' +
+            opts.map(([v,l]) => '<option value="' + v + '"' + (val===v?' selected':'') + '>' + l + '</option>').join('') +
+          '</select>' +
+        '</label>';
+
+      const taField = (label, fld, val) =>
+        '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">' + label +
+          '<textarea style="' + TA + '"' +
+          ' oninput="saveMedRecord(\'' + playerId + '\',\'' + fld + '\',this.value)">' + esc(val) + '</textarea>' +
+        '</label>';
+
+      el.innerHTML =
+        '<div class="training-hero" style="margin-bottom:0">' +
+          '<div>' +
+            '<div class="eyebrow">Medical Centre</div>' +
+            '<h1 style="margin:0;font-size:20px">' + esc(p.name) + '</h1>' +
+            '<p style="color:var(--muted);font-size:13px;margin:4px 0 0">' + esc(p.position||'No position') + '</p>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+            (ts ? '<span style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:999px;background:' + medicalTrainingStatusColor(ts) + '1a;color:' + medicalTrainingStatusColor(ts) + '">' + esc(medicalTrainingStatusLabel(ts)) + '</span>' : '') +
+            '<button class="btn" type="button" style="font-size:11px" onclick="openMedicalTimeline(\'' + playerId + '\')">View timeline →</button>' +
+          '</div>' +
+        '</div>' +
+        _medTabBar(true) +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">' +
+          '<div style="display:grid;gap:14px">' +
+            '<div class="card">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Training status</div>' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">' +
+                Object.entries(MEDICAL_TRAINING_LABELS).filter(([k])=>k).map(([val, label]) => {
+                  const isAct = ts === val;
+                  const col   = MEDICAL_TRAINING_COLORS[val];
+                  return '<button type="button" onclick="setPlayerTrainingStatus(\'' + playerId + '\',\'' + val + '\')"' +
+                    ' style="padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;text-align:left;' +
+                    'border:1.5px solid ' + (isAct ? col : 'var(--line)') + ';' +
+                    'background:' + (isAct ? col + '1a' : 'transparent') + ';' +
+                    'color:' + (isAct ? col : 'var(--muted)') + '">' + label + '</button>';
+                }).join('') +
+              '</div>' +
+            '</div>' +
+            '<div class="card">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Current injury</div>' +
+              '<div style="display:grid;gap:10px">' +
+                field('Injury description', 'currentInjury', rec.currentInjury, 'text', 'e.g. Hamstring strain') +
+                selectField('Body location', 'bodyLocation', rec.bodyLocation,
+                  [['','— Select location —'], ...MEDICAL_BODY_LOCATIONS.map(l=>[l,l])]) +
+                selectField('Severity', 'severity', rec.severity,
+                  [['','— Select severity —'],['minor','Minor'],['moderate','Moderate'],['severe','Severe']]) +
+                field('Date injured', 'dateInjured', rec.dateInjured, 'date', '') +
+                field('Expected return', 'expectedReturn', rec.expectedReturn, 'date', '') +
+                selectField('Clearance status', 'clearanceStatus', rec.clearanceStatus,
+                  [['','— Not set —'],['pending','Pending clearance'],['cleared','Cleared to play'],['restricted','Restricted']]) +
+              '</div>' +
+            '</div>' +
+            '<div class="card">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Physio & clinical notes</div>' +
+              '<div style="display:grid;gap:10px">' +
+                taField('Physio notes', 'physiNotes', rec.physiNotes) +
+                taField('Surgery history', 'surgeryHistory', rec.surgeryHistory) +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:grid;gap:14px;align-content:start">' +
+            '<div class="card">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Emergency contact</div>' +
+              '<div style="display:grid;gap:10px">' +
+                field('Emergency contact name', 'emergencyContact', p.emergencyContact, 'text', 'Full name', true) +
+                field('Emergency contact phone', 'emergencyPhone', p.emergencyPhone, 'tel', '+44 7xxx xxxxxx', true) +
+              '</div>' +
+            '</div>' +
+            '<div class="card">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Medications & allergies</div>' +
+              '<div style="display:grid;gap:10px">' +
+                taField('Known allergies', 'allergies', rec.allergies) +
+                taField('Current medication', 'medication', rec.medication) +
+              '</div>' +
+            '</div>' +
+            '<div class="card">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Concussion history</div>' +
+              '<div style="display:grid;gap:10px">' +
+                '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Number of concussions' +
+                  '<input type="number" min="0" style="' + INP + '" value="' + rec.concussionCount + '"' +
+                  ' onchange="saveMedRecord(\'' + playerId + '\',\'concussionCount\',Number(this.value))">' +
+                '</label>' +
+                taField('Concussion notes / dates', 'concussionNotes', rec.concussionNotes) +
+              '</div>' +
+            '</div>' +
+            '<div class="card">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Legacy rehab (existing)</div>' +
+              '<div style="display:grid;gap:10px">' +
+                '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Condition' +
+                  '<input type="text" value="' + esc(mn.condition||p.medical||'') + '" placeholder="Brief condition note"' +
+                  ' style="' + INP + '"' +
+                  ' onchange="state.medicalNotes=state.medicalNotes||{};state.medicalNotes[\'' + playerId + '\']=state.medicalNotes[\'' + playerId + '\']||{};state.medicalNotes[\'' + playerId + '\'].condition=this.value;saveState(\'medical\');">' +
+                '</label>' +
+                '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Return target' +
+                  '<input type="date" value="' + esc(mn.returnTarget||'') + '"' +
+                  ' style="' + INP + '"' +
+                  ' onchange="state.medicalNotes=state.medicalNotes||{};state.medicalNotes[\'' + playerId + '\']=state.medicalNotes[\'' + playerId + '\']||{};state.medicalNotes[\'' + playerId + '\'].returnTarget=this.value;saveState(\'medical\');">' +
+                '</label>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    }
+
+    function _renderMedicalTimeline(playerId) {
+      const el = document.getElementById('coach-medical');
+      if (!el) return;
+      if (!playerId) {
+        el.innerHTML = _medTabBar(true) +
+          '<div class="card" style="text-align:center;padding:40px"><div style="font-size:32px;margin-bottom:10px">📋</div><div style="font-weight:700">No player selected</div><div style="font-size:13px;color:var(--muted);margin-top:6px">Select a player from the Dashboard.</div><button class="btn" style="margin-top:14px" onclick="setMedicalTab(\'dashboard\')">Back to dashboard</button></div>';
+        return;
+      }
+      const p   = state.players.find(pl => pl.id === playerId);
+      if (!p) { el.innerHTML = _medTabBar(true) + '<div class="card" style="padding:24px;text-align:center;color:var(--muted)">Player not found.</div>'; return; }
+      const rec = normalizeMedicalRecord((state.medicalRecords||{})[playerId]);
+      const INP = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);box-sizing:border-box';
+
+      el.innerHTML =
+        '<div class="training-hero" style="margin-bottom:0">' +
+          '<div><div class="eyebrow">Medical Centre</div><h1 style="margin:0;font-size:20px">' + esc(p.name) + ' — Timeline</h1>' +
+          '<p style="color:var(--muted);font-size:13px;margin:4px 0 0">' + rec.timeline.length + ' event' + (rec.timeline.length!==1?'s':'') + ' on record</p></div>' +
+          '<button class="btn" type="button" onclick="openMedicalRecord(\'' + playerId + '\')">View record →</button>' +
+        '</div>' +
+        _medTabBar(true) +
+        '<div class="card" style="margin-bottom:14px">' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Add timeline entry</div>' +
+          '<div style="display:grid;grid-template-columns:120px 1fr 1fr auto;gap:8px;align-items:end">' +
+            '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Date' +
+              '<input type="date" id="mtl-date" style="' + INP + '">' +
+            '</label>' +
+            '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Type' +
+              '<select id="mtl-type" style="' + INP + ';width:100%">' +
+                MEDICAL_TIMELINE_TYPES.map(t => '<option value="' + t + '">' + MEDICAL_TIMELINE_LABELS[t] + '</option>').join('') +
+              '</select>' +
+            '</label>' +
+            '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Notes' +
+              '<input type="text" id="mtl-notes" style="' + INP + '" placeholder="Brief note…">' +
+            '</label>' +
+            '<button class="btn primary" type="button" style="height:38px;white-space:nowrap"' +
+              ' onclick="(function(){' +
+                'const d=document.getElementById(\'mtl-date\')?.value;' +
+                'const t=document.getElementById(\'mtl-type\')?.value||\'note\';' +
+                'const n=document.getElementById(\'mtl-notes\')?.value||\'\';;' +
+                'addMedTimelineEntry(\'' + playerId + '\',t,n,d);' +
+              '})()">Add entry</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="card">' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Chronological history</div>' +
+          (rec.timeline.length === 0
+            ? '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No timeline entries yet. Use the form above to log injuries, physio sessions, clearances and return to play.</div>'
+            : [...rec.timeline].reverse().map(ev => {
+                const col = MEDICAL_TIMELINE_COLORS[ev.type] || '#94a3b8';
+                return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">' +
+                  '<div style="display:flex;flex-direction:column;align-items:center;gap:0;flex-shrink:0">' +
+                    '<div style="width:10px;height:10px;border-radius:50%;background:' + col + ';margin-top:4px"></div>' +
+                    '<div style="width:1px;flex:1;background:var(--line);margin-top:4px"></div>' +
+                  '</div>' +
+                  '<div style="flex:1;min-width:0">' +
+                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">' +
+                      '<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;background:' + col + '1a;color:' + col + '">' + (MEDICAL_TIMELINE_LABELS[ev.type]||ev.type) + '</span>' +
+                      '<span style="font-size:11px;color:var(--muted)">' + esc(ev.date||'') + '</span>' +
+                    '</div>' +
+                    (ev.notes ? '<div style="font-size:13px;color:var(--text);line-height:1.4">' + esc(ev.notes) + '</div>' : '') +
+                  '</div>' +
+                  '<button type="button" onclick="deleteMedTimelineEntry(\'' + playerId + '\',\'' + ev.id + '\')"' +
+                    ' style="font-size:11px;padding:2px 7px;border:1px solid rgba(248,113,113,0.3);border-radius:6px;background:transparent;color:#f87171;cursor:pointer;flex-shrink:0;align-self:flex-start">✕</button>' +
+                '</div>';
+              }).join('')) +
+        '</div>';
+    }
+
     // ─── PHASE 20 — MATCH CENTRE ─────────────────────────────────────────────
 
     const MATCH_EVENT_TYPES = {
@@ -13168,18 +13625,25 @@
     }
 
     function fixtureAvailabilitySummary(fixtureId, players) {
-      const availMap    = ((state.fixtureAvailability || {})[fixtureId]) || {};
-      const active      = activeRosterPlayers(players);
-      const total       = active.length;
-      const available   = active.filter(p => availMap[p.id] === 'available').length;
-      const unavailable = active.filter(p => availMap[p.id] === 'unavailable').length;
-      const maybe       = active.filter(p => availMap[p.id] === 'maybe').length;
-      const noReply     = active.filter(p => !availMap[p.id] || availMap[p.id] === 'no-reply').length;
-      const responded   = total - noReply;
-      const availPct    = total > 0 ? Math.round(100 * available / total) : 0;
-      const warnings    = fixturePositionWarnings(availMap, active);
-      const missingReplies = active.filter(p => !availMap[p.id] || availMap[p.id] === 'no-reply');
-      return { total, available, unavailable, maybe, noReply, responded, availPct, warnings, missingReplies, availMap };
+      const availMap = ((state.fixtureAvailability || {})[fixtureId]) || {};
+      const active   = activeRosterPlayers(players);
+      const total    = active.length;
+      // Phase 21 — medical override: trainingStatus 'unavailable' forces fixture unavailability
+      const effectiveMap = {};
+      active.forEach(p => {
+        effectiveMap[p.id] = (p.trainingStatus === 'unavailable')
+          ? 'unavailable'
+          : (availMap[p.id] || 'no-reply');
+      });
+      const available      = active.filter(p => effectiveMap[p.id] === 'available').length;
+      const unavailable    = active.filter(p => effectiveMap[p.id] === 'unavailable').length;
+      const maybe          = active.filter(p => effectiveMap[p.id] === 'maybe').length;
+      const noReply        = active.filter(p => effectiveMap[p.id] === 'no-reply').length;
+      const responded      = total - noReply;
+      const availPct       = total > 0 ? Math.round(100 * available / total) : 0;
+      const warnings       = fixturePositionWarnings(effectiveMap, active);
+      const missingReplies = active.filter(p => effectiveMap[p.id] === 'no-reply');
+      return { total, available, unavailable, maybe, noReply, responded, availPct, warnings, missingReplies, availMap: effectiveMap };
     }
 
     function fixtureAvailSet(fixtureId, playerId, status) {
@@ -14343,6 +14807,9 @@
     // Phase 20 — Match Centre UI state
     let _matchEventType = 'try';         // selected event type in recorder
     let _matchEventTeam = 'us';          // 'us' | 'them'
+    // Phase 21 — Medical & Welfare UI state
+    let _medActivePlayerId = null;       // playerId of open medical record | null
+    let _medActiveTab      = 'dashboard'; // 'dashboard' | 'record' | 'timeline'
 
     // ─── SQUAD SELECTION UI STATE (not persisted — transient per-session) ───────
     let _selectionEditId         = null;  // null = list view | selId = editor open
