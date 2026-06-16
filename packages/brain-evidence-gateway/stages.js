@@ -19,6 +19,7 @@
 
 import { assertTenant } from '@brain/evidence-store'
 import { EVIDENCE_CONTRACT_VERSION } from '@brain/evidence-contracts'
+import { planBatchNormalization, planNormalizationApplication } from '@brain/evidence-normalization'
 
 const ok = (stage, output) => Object.freeze({ stage, status: 'ok', output: Object.freeze(output) })
 const deferred = (stage, output) => Object.freeze({ stage, status: 'deferred', output: Object.freeze(output) })
@@ -45,10 +46,27 @@ export const validate = Object.freeze({
   },
 })
 
-/** 3 — normalize: raw → NormalizedSignal[] (deferred placeholder). */
+/**
+ * 3 — normalize: raw → NormalizedSignal[].
+ *
+ * `run()` stays the inert pipeline placeholder (empty signals) so the end-to-end
+ * `submit()` flow remains dormant and unchanged. `plan()` WIRES this stage to the
+ * completed normalization pipeline (M50–M54): given an INJECTED normalizer registry,
+ * the evidence records, and a passed-in NormalizationContext, it builds the M53 batch
+ * plan and folds it into the M54 ApplicationPlan — describing exactly what WOULD be
+ * forwarded to the Evidence Store. It uses the existing helpers (no duplicated logic),
+ * writes NOTHING, never advances to `deduplicate`, and never mutates its input. The
+ * result is a DEFERRED stage output (nothing is executed/applied). Unknown sources and
+ * invalid signals stay structured data inside the plan.
+ */
 export const normalize = Object.freeze({
   name: 'normalize',
   run() { return deferred('normalize', { signals: Object.freeze([]) }) },
+  plan({ registry, records, context } = {}) {
+    const batch = planBatchNormalization(registry, records, context)
+    const applicationPlan = planNormalizationApplication(batch)
+    return deferred('normalize', { applicationPlan })
+  },
 })
 
 /** 4 — deduplicate: collapse repeats by a deterministic key (deferred placeholder). */

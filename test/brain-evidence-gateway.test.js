@@ -110,7 +110,7 @@ test('no I/O — package source imports only the evidence layer; no fs/net/db; n
     assert.ok(!FORBIDDEN.test(src), `${rel} must not import storage/file/network modules`)
     assert.ok(!/\b(Math\.random|Date\.now|new Date)\b/.test(src), `${rel} must be deterministic (no clock/randomness)`)
     for (const spec of [...src.matchAll(/from\s+'([^']+)'/g)].map(m => m[1])) {
-      const ok = spec.startsWith('./') || spec === '@brain/evidence-contracts' || spec === '@brain/evidence-store'
+      const ok = spec.startsWith('./') || spec === '@brain/evidence-contracts' || spec === '@brain/evidence-store' || spec === '@brain/evidence-normalization'
       assert.ok(ok, `${rel} illegal import: ${spec}`)
     }
   }

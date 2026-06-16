@@ -184,9 +184,9 @@ test('completely dormant — no runtime code imports @brain/evidence-normalizati
   const files = collectJs(REPO)
   const offenders = files
     .filter(f => !/brain-evidence-normalization.*\.test\.js$/.test(f) && f !== TEST_FILE)
-    .filter(f => !f.includes('/packages/brain-evidence-normalization/'))
+    .filter(f => !f.includes('/packages/brain-evidence-normalization/') && !f.includes('/packages/brain-evidence-gateway/'))
     .filter(f => IMPORTS_PKG.test(readFileSync(f, 'utf8')))
     .map(f => f.replace(REPO + '/', ''))
-  assert.deepEqual(offenders, [], `evidence-normalization must be imported by nobody yet; found: ${offenders.join(', ')}`)
+  assert.deepEqual(offenders, [], `evidence-normalization may be imported only by the dormant gateway (M55); no runtime/browser/Core importer allowed; found: ${offenders.join(', ')}`)
   assert.ok(files.length > 50, 'sanity: the scan walked the source tree')
 })

@@ -5,9 +5,10 @@
   "type": "module",
   "main": "index.js",
   "exports": "./index.js",
-  "description": "Dormant AI Brain Evidence Gateway: the write-side composition root defining the deterministic ingestion pipeline (receive → validate → normalize → deduplicate → prepare confidence/memory/audit/exposure). Pure placeholder stages; no work, no persistence (M45). Depends only on @brain/evidence-contracts + @brain/evidence-store.",
+  "description": "Dormant AI Brain Evidence Gateway: the write-side composition root defining the deterministic ingestion pipeline (receive → validate → normalize → deduplicate → prepare confidence/memory/audit/exposure). Pure placeholder stages; no work, no persistence. The normalize stage's plan() wires (still dormant) to @brain/evidence-normalization to produce a deferred ApplicationPlan (M55). Depends only on @brain/evidence-contracts + @brain/evidence-store + @brain/evidence-normalization.",
   "dependencies": {
     "@brain/evidence-contracts": "0.0.0",
-    "@brain/evidence-store": "0.0.0"
+    "@brain/evidence-store": "0.0.0",
+    "@brain/evidence-normalization": "0.0.0"
   }
 }
