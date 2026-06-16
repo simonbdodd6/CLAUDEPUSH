@@ -9436,6 +9436,17 @@
     // checklist. Existing clubs are untouched — the API is purely additive.
 
     let _clubWiz = null;
+    let _cwFinishing = false; // duplicate-submit guard for clubWizFinish
+
+    // Pure helper — maps HTTP status to a deterministic user-facing message.
+    // Exported as window.clubWizErrorMessage for testability.
+    function clubWizErrorMessage(status, serverMsg) {
+      if (status === 401) return 'Your session has expired. Please refresh and try again.';
+      if (status === 409) return 'This club or team already exists. Please choose a different name.';
+      if (status === 429) return 'Too many attempts. Please wait a few minutes before trying again.';
+      return serverMsg || 'We couldn\'t create your club. Please try again.';
+    }
+    if (typeof window !== 'undefined') window.clubWizErrorMessage = clubWizErrorMessage;
 
     function startClubWizard() {
       _clubWiz = { step: 0, data: { sport: 'Rugby', logoDataUrl: '' } };
@@ -9494,7 +9505,9 @@
     }
 
     async function clubWizFinish() {
+      if (_cwFinishing) return; // prevent duplicate submissions
       const d = _clubWiz?.data || {};
+      _cwFinishing = true;
       const btn = document.getElementById('cw-finish-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Creating your club…'; }
       try {
@@ -9507,7 +9520,9 @@
           }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not create the club');
+        if (!res.ok || data.ok === false) {
+          throw new Error(clubWizErrorMessage(res.status, data.error));
+        }
 
         // Local identity: the new coach IS this device's user now.
         state.users = (state.users || []).filter(u => u.id !== data.user.id);
@@ -9538,8 +9553,12 @@
         render();
         showToast('Club created — check your email to verify your account.');
       } catch(e) {
-        if (btn) { btn.disabled = false; btn.textContent = 'Create my club →'; }
-        showToast(e.message || 'Could not create the club');
+        // Re-query the button — it may have been replaced if the wizard re-rendered.
+        const liveBtn = document.getElementById('cw-finish-btn');
+        if (liveBtn) { liveBtn.disabled = false; liveBtn.textContent = 'Create my club →'; }
+        showToast(e.message || 'We couldn\'t create your club. Please try again.');
+      } finally {
+        _cwFinishing = false;
       }
     }
 
@@ -19606,7 +19625,7 @@
       let el = document.getElementById('srv-auth-banner');
       // The Welcome screen owns the empty-device case; the banner covers
       // devices that HAVE local data but no server session.
-      const show = _serverAuthState === 'anon' && isCoach() && !document.getElementById('ce-welcome');
+      const show = _serverAuthState === 'anon' && isCoach() && !document.getElementById('ce-welcome') && !document.getElementById('club-wizard');
       if (!show) { el?.remove(); return; }
       if (!el) {
         el = document.createElement('div');
