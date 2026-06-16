@@ -194,6 +194,34 @@ receive → validate → normalize → deduplicate → link → reweight → exp
 same store state (dedupe + deterministic reweight). The store can be rebuilt from
 the append-only raw log.
 
+### 3a. Implementation realization (M43–M45) — canonical stage set
+
+The dormant `@brain/evidence-gateway` (M45) realises this conceptual pipeline as
+**eight explicit, individually-deferred stages** — this is the canonical order:
+
+```
+receive → validate → normalize → deduplicate
+        → prepareConfidenceUpdate → prepareMemoryLink → prepareAudit → prepareEngineExposure
+```
+
+Mapping to the seven conceptual steps above: §3.5 *link to memory* → `prepareMemoryLink`,
+§3.6 *update confidence* → `prepareConfidenceUpdate`, §3.7 *expose* → `prepareEngineExposure`.
+Two refinements were made when the gateway was built:
+
+- **Audit is surfaced as an explicit `prepareAudit` stage** (in addition to the
+  cross-cutting `AuditEntry` every stage records), so audit preparation is a
+  first-class, testable step.
+- The two `prepare*` stages for confidence and memory-link are **sibling deferred
+  stages**; when implemented, *application* still honours §3/§6 — evidence is linked
+  before aggregate confidence is recomputed.
+
+Today all six post-`validate` stages are inert placeholders; `validate` is the only
+active gate (strict tenant scoping, via the store's `assertTenant`). The §4a
+**attribution** check (reject a record with no `author`) is part of the *validate*
+seam but is **not yet enforced** by the M44 store skeleton's `validateRecord` (which
+checks `sourceType`/`subjectType`/`confidence` but not `author`) — it lands when the
+dormant validate/store stages are hardened (see §4a).
+
 ---
 
 ## 4. Rules (invariants the pipeline must enforce)
