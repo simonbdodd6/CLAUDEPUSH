@@ -50,6 +50,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/recommendations` | `?date=YYYY-MM-DD` (optional; defaults today) `&current=<experience>` | `{ version, referenceDate, recommendations, top, continuation, emptyState, meta, basedOn }` | rule-based next-experience recommendations |
 | GET | `/home` | `?date=YYYY-MM-DD` (optional; defaults today) `&current=<experience>` | `Home` | the daily home dashboard model |
 | GET | `/search` | `?q=<query>` | `Search` | deterministic search across every experience |
+| GET | `/profile` | `?date=YYYY-MM-DD` (optional; defaults today) | `Profile` | the canonical traveller profile |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -818,6 +819,38 @@ matched-token count (+ all-match / exact-title bonuses), then kind, then title.
 Dates match via year + month-name tokens. Empty query → a browse empty-state with
 suggestions; no match → a no-results empty-state. Deterministic, serialisable,
 references only, no backend leakage.
+
+### Traveller Profile DTO (M42)
+
+One canonical traveller profile **assembled entirely from existing engines** —
+**no new intelligence, no AI, no prose**. The reference date is explicit
+(defaults to today).
+
+```
+Profile = {
+  version, referenceDate, hasProfile,
+  identity: { since, latest, span, mostVisitedCountry, favouritePlace, signature } | null,
+  hero: { title, subtitle, accent, icon, mediaRef, mapRef } | null,
+  travelDna: { headline, topTraits:[{id,label,statement,score}] } | null,
+  lifetimeStatistics: { …world.statistics },
+  favouriteCountries|favouriteCities|favouriteIslands: [{ name, country?, visitCount, deepLink? }],
+  favouriteCompanions: [{ name, sharedMemories, deepLink }],
+  favouriteActivities|favouriteTransport: [{ id, title, count }],
+  favouriteCollections: [{ id, title, subtitle, count, cover, deepLink }],
+  achievementSummary: { totalEarned, completion, rarityScore, top:[{id,title,tier}], deepLink } | null,
+  storyHighlights | cinematicHighlights | wrappedHighlights: { …, deepLink } | null,
+  currentRecommendations: [Recommendation], recentMemories: [{ id, title, date, kind, place, mediaRefs }],
+  timelineSummary: { span, momentCount, years:[{year,memories}] } | null,
+  mediaReferences:[ref], mapReferences:[{place,isIsland}], achievementReferences:[{id,tier}],
+  statistics:{ items:[{id,label,value,icon}] }, deepLinks:[{experience,title,deepLink}],
+  emptyState: { title, subtitle, icon, cta } | null, meta, basedOn,
+}
+```
+
+Composes world, travel-DNA, achievements, collections, story, cinematic, wrapped,
+recommendations, navigation and the lifetime timeline. Empty history → a profile
+empty-state with a capture CTA. Deterministic, serialisable, references only, no
+backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

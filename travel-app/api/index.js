@@ -45,6 +45,7 @@ import { buildNavigation } from './navigation.js';
 import { buildRecommendations } from './recommendations.js';
 import { buildHome } from './home.js';
 import { buildSearch } from './search.js';
+import { buildProfile } from './profile.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -348,6 +349,15 @@ export function createTravelApi(options = {}) {
     }
   }
 
+  // Traveller Profile — one canonical profile composed from existing engines.
+  // Reference date explicit (defaults to today).
+  async function getProfile(token, { date } = {}) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildProfile(events, ownedTrips, { referenceDate: date ?? todayIso() });
+  }
+
   // Experience Search — one deterministic search across every premium experience
   // by indexing existing engine outputs (simple token matching, no AI).
   async function getSearch(token, { q } = {}) {
@@ -600,6 +610,7 @@ export function createTravelApi(options = {}) {
     getRecommendations,
     getHome,
     getSearch,
+    getProfile,
     getTripReadiness,
     getApprovals,
     resolveApproval,

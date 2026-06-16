@@ -1287,6 +1287,42 @@ and all must stay deterministic (no AI/embeddings/ML).
 - **Complexity:** Low–Medium (date parsing over existing tokens).
 - **Tier:** V2.
 
+## AD. Traveller Profile deepeners (added M42)
+
+The Traveller Profile Engine (`/profile`) composes one canonical profile from
+existing engines. These would extend it — still **not implemented**.
+
+### Real identity & avatar (Sign in with Apple / Contacts)
+- **Why:** Populate name/handle/avatar from the authenticated identity rather
+  than an anonymous profile — the profile shell is ready.
+- **Complexity:** Low–Medium (read the existing auth identity; on-device avatar).
+- **Tier:** V2.
+
+### Shareable public profile card
+- **Why:** Export a deterministic "traveller card" (DNA + top stats + favourites)
+  as a shareable image/web page.
+- **Complexity:** Medium (render the profile DTO).
+- **Tier:** V3.
+
+### Profile editing & pinned favourites
+- **Why:** Let the traveller pin/hide favourites and choose a hero — deterministic
+  given the pin state.
+- **Complexity:** Low–Medium (a small preference store).
+- **Tier:** V2.
+
+### Performance: shared engine memoisation
+- **Why:** The profile composes ~10 engines (many recompute world/enrichment
+  internally); a per-request memo of base layers would cut work without changing
+  outputs.
+- **Complexity:** Medium (internal cache keyed by inputs).
+- **Tier:** V2.
+
+### Multi-traveller / companion profiles
+- **Why:** Companion profiles ("your travels with Manon") composed the same way
+  once companions have their own data.
+- **Complexity:** Medium–High (multi-user data).
+- **Tier:** V3.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the
