@@ -16,6 +16,7 @@
 import { EVIDENCE_GATEWAY_STAGES, EVIDENCE_GATEWAY_STAGE_NAMES } from './registry.js'
 import { createGatewayContext, isGatewayContext } from './context.js'
 import { prepareFullPipelinePlan } from './pipeline.js'
+import { snapshotPipelinePlan } from './snapshot.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -65,6 +66,15 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     planRun(input) {
       return prepareFullPipelinePlan(input)
+    },
+
+    /**
+     * Run the dormant pipeline once and return its deterministic snapshot (canonical
+     * JSON + fingerprint, M65). Pure composition of `planRun` + `snapshotPipelinePlan`.
+     * @param {{ registry: object, records: object[], context: object }} input
+     */
+    snapshotRun(input) {
+      return snapshotPipelinePlan(prepareFullPipelinePlan(input))
     },
   })
 }
