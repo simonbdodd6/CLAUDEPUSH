@@ -37,6 +37,16 @@ module.exports = {
       to: { path: '^packages/(?!brain-evidence-contracts/)' },
     },
     {
+      name: 'evidence-store-imports-only-evidence-contracts',
+      comment: '@brain/evidence-store (M44, dormant) may import only @brain/evidence-contracts (+ self) — no storage/engine/Core.',
+      severity: 'warn',
+      from: { path: '^packages/brain-evidence-store/' },
+      to: {
+        path: '^packages/',
+        pathNot: '^packages/(brain-evidence-store/|brain-evidence-contracts/)',
+      },
+    },
+    {
       name: 'packages-only-import-contracts',
       comment: 'brain-products / brain-versioning may import only @brain/contracts (+ self).',
       severity: 'warn',

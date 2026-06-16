@@ -1,0 +1,12 @@
+{
+  "name": "@brain/evidence-store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": "./index.js",
+  "description": "Dormant AI Brain Evidence Store skeleton: the tenant-scoped store contract + API surface (append/get/query/list/audit/resolve). Validates only — no persistence, no I/O, no driver (M44). Depends only on @brain/evidence-contracts.",
+  "dependencies": {
+    "@brain/evidence-contracts": "0.0.0"
+  }
+}
