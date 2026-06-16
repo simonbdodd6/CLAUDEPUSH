@@ -37,6 +37,8 @@ import { buildLifetimeTimeline } from './lifetime-timeline.js';
 import { buildTravelWrapped } from './travel-wrapped.js';
 import { buildOnThisDay } from './on-this-day.js';
 import { buildCollections } from './collections.js';
+import { buildStoryComposer } from './story-composer.js';
+import { buildCinematic } from './cinematic.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -319,6 +321,24 @@ export function createTravelApi(options = {}) {
     return buildWorld(events, ownedTrips);
   }
 
+  // Journey Cinematic — a deterministic storyboard (ordered scenes + fixed-enum
+  // pacing/transition/emotion hints) composed from existing engines. No media.
+  async function getCinematic(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildCinematic(events, ownedTrips);
+  }
+
+  // Story Composer — an immersive chronological story (chapters → days →
+  // moments + transitions) composed from existing engines. Presentation-only.
+  async function getStory(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildStoryComposer(events, ownedTrips);
+  }
+
   // Memory Collections — deterministic themed collections composed from the
   // existing engines (no new intelligence). Presentation-only.
   async function getCollections(token) {
@@ -490,6 +510,8 @@ export function createTravelApi(options = {}) {
     getTravelWrapped,
     getOnThisDay,
     getCollections,
+    getStory,
+    getCinematic,
     getTripReadiness,
     getApprovals,
     resolveApproval,

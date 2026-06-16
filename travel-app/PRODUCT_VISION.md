@@ -964,6 +964,92 @@ composing existing engines. These would enrich them — still **not implemented*
 - **Tier:** V2.
 - **Possible API:** Internal.
 
+## V. Story Composer deepeners (added M34)
+
+The Story Composer (`/story`) weaves moments + transitions into a chronological,
+chapter-grouped story. These would make it cinematic — still **not implemented**.
+
+### Photo/video-backed story scenes (Apple/Google Photos)
+- **Why:** Render each day's `flow` with real cover photos and clips — an
+  immersive scrollable story (Apple-Photos-Memories / Day One feel).
+- **Complexity:** Medium (on-device; strip EXIF GPS before any reference leaves).
+- **Tier:** V2.
+- **Possible API:** PhotoKit / Google Photos Library API.
+
+### Map-synced story playback (Polarsteps + globe)
+- **Why:** As the story scrolls, the globe/map animates the transitions — pairs
+  the Story Composer with the globe/journey-replay DTOs.
+- **Complexity:** Medium (client; reuses globe + story).
+- **Tier:** V2 (UI; no new API).
+
+### Soundtracked story chapters (Spotify / Apple Music)
+- **Why:** A signature track per chapter/era while the story plays.
+- **Complexity:** Medium (OAuth; per-period tracks).
+- **Tier:** V2.
+- **Possible API:** Spotify Web API / MusicKit.
+
+### Shareable story export (video / web)
+- **Why:** Export a chapter or the whole story as a shareable film or web page,
+  rendered deterministically from the story DTO.
+- **Complexity:** High (render pipeline).
+- **Tier:** V3.
+
+### Scoped & themed stories (a trip, a year, a collection)
+- **Why:** Compose the story over a single trip, year, or collection window — the
+  same composition over a filter.
+- **Complexity:** Low–Medium (parameterise the window).
+- **Tier:** V2.
+- **Possible API:** Internal.
+
+### Optional template captions (still no LLM)
+- **Why:** Deterministic, template-only captions per scene ("Day 3 · Gili Air")
+  for accessibility — fixed templates filled with existing data, never generated.
+- **Complexity:** Low.
+- **Tier:** V2.
+- **Possible API:** Internal.
+
+## W. Journey Cinematic deepeners (added M35)
+
+The Journey Cinematic Engine (`/cinematic`) produces a deterministic storyboard.
+These would turn it into an actual premium playback — still **not implemented**.
+
+### SwiftUI cinematic player (client)
+- **Why:** Render the storyboard as a Ken-Burns / map-fly playback honouring each
+  scene's `transitionHint` / `pacingHint` / `emotionalCategory` — the data is ready.
+- **Complexity:** Medium–High (client animation; no new API).
+- **Tier:** V2 (UI).
+
+### Photo/video-backed scenes (Apple/Google Photos)
+- **Why:** Fill each scene's `mediaRefs` with real cover photos/clips — the
+  cinematic "memories movie".
+- **Complexity:** Medium (on-device; strip EXIF GPS before any reference leaves).
+- **Tier:** V2.
+- **Possible API:** PhotoKit / Google Photos Library API.
+
+### Map-fly transitions (Apple Maps + globe)
+- **Why:** `border-crossing` / `transport` scenes animate as great-circle map
+  flights/sails using the globe coordinates.
+- **Complexity:** Medium (reuses globe coords + cinematic scenes).
+- **Tier:** V2 (UI).
+
+### Scene soundtrack & beat-matching (Spotify / Apple Music)
+- **Why:** Drive `pacingHint` against a track's tempo for a beat-matched recap.
+- **Complexity:** Medium–High (audio analysis; OAuth).
+- **Tier:** V3.
+
+### Shareable cinematic export (deterministic render)
+- **Why:** Export the storyboard as a shareable film, rendered deterministically
+  from the scene list (a renderer would be a separate, non-AI service).
+- **Complexity:** High (render pipeline).
+- **Tier:** V3.
+
+### Scoped cinematics (per trip / year / collection)
+- **Why:** Produce a cinematic for one trip, year, or collection — the same
+  composition over a filtered scope (`scope`/`sourceJourneyId` are already modelled).
+- **Complexity:** Low–Medium (parameterise the scope window).
+- **Tier:** V2.
+- **Possible API:** Internal.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

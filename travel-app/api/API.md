@@ -40,6 +40,8 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/travel-wrapped` | — | `{ headline, stats, highlights, bySeason, achievements, travelDna, lifeStory, sections, years, basedOn }` | travel wrapped (composed deck, no new intelligence) |
 | GET | `/on-this-day` | `?date=YYYY-MM-DD` (optional; defaults to today) | `{ date, monthDay, referenceYear, hasMemories, label, hero, items, byYear, anniversaryBadges, milestones, comparisons, categories, basedOn }` | on this day (same calendar day, previous years) |
 | GET | `/collections` | — | `{ collections, summary, basedOn }` | memory collections (auto-generated themed sets) |
+| GET | `/story` | — | `{ story, chapters, hero, anchors, basedOn }` | story composer (immersive chronological story) |
+| GET | `/cinematic` | — | `{ cinematicId, scope, sourceJourneyId, dateRange, scenes, sceneOrder, openingScene, closingScene, heroScene, statistics, basedOn }` | journey cinematic (storyboard playback model) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -574,6 +576,64 @@ Parks, UNESCO, Favourite Places) via the lifetime world; per-country ("Exploring
 Trips, Long Expeditions). `achievementRefs`/`highlightRefs` cross-reference the
 achievement and timeline engines. Media is references only. Deterministic,
 offline-first, no backend leakage.
+
+### Story Composer DTO (M34)
+
+An immersive, chronological travel story — **composed, never generated**. It
+weaves the lifetime timeline (typed moments) with the journey engine (transport
+transitions + location/border changes), grouped into chapters → days. **No AI, no
+prose generation.** Media/achievements/companions are references only.
+
+```
+Story = { story: { span, chapterCount, momentCount, transitionCount, hero },
+          chapters: [StoryChapter], hero: { id, title, date, iconId } | null,
+          anchors: [{ id, type:"chapter|day", date, title?, label?, chapterId }], basedOn }
+StoryChapter = { id, title, subtitle, span, years, hero, days:[StoryDay],
+                 highlights:[id], milestones:[id], transitions:[id], statistics, sortOrder }
+StoryDay = { id, date, label, moments:[StoryMoment], transitions:[StoryTransition],
+             flow:[{ kind:"moment|transition", refId, date }], hero, milestones:[id],
+             locationChanges:[{ id, from, to, crossedCountry }] }
+StoryMoment = { id, sourceId, type, kind, title, subtitle, date, time, isHero, isMilestone,
+                emotionalTone, iconId, mediaRefs:[ref], achievementRefs:[id], companionRefs:[name], place, confidence, evidence }
+StoryTransition = { id, kind:"transport", transport, icon, from, to, date, time,
+                    crossedCountry, locationChange, mediaRefs:[ref], inferred }
+```
+
+`flow` is the per-day render order (transitions set the scene, then moments, by
+time). `anchors` drive scroll/scrub. Deterministic, offline-first, references
+only, no backend leakage.
+
+### Journey Cinematic DTO (M35)
+
+A deterministic **storyboard** playback model for a future premium SwiftUI
+experience — **not a video renderer, not an AI story generator, creates no
+media**. It composes the story composer + journey + lifetime timeline into an
+ordered set of scenes with **fixed-enum** transition / pacing / emotion hints and
+**references only**.
+
+```
+Cinematic = {
+  cinematicId, scope:"lifetime", sourceJourneyId|null, dateRange:{from,to},
+  scenes:[Scene], sceneOrder:[id],
+  openingScene:id|null, closingScene:id|null, heroScene:id|null,
+  statistics:{ scenes, byType, locations, companions, mediaCount, milestones, hasHero },
+}
+Scene = {
+  id, order, type, title, subtitle, timelineAnchor, dateRange,
+  locationRefs:[name], mapRefs:[{place,isIsland}], companionRefs:[name],
+  mediaRefs:[ref], achievementRefs:[id],
+  transitionHint, pacingHint, emotionalCategory,   // FIXED enums only
+  heroCandidate, isMilestone, sourceKind, sourceRef, chapterId, dayId, transport?,
+}
+```
+
+Fixed enums (exported): `SCENE_TYPES` (departure, arrival, transport,
+first-moment, location-change, border-crossing, beach, island, dive, surf, hike,
+food, city, sunset, milestone, achievement, final-evening, journey-home, memory,
+photo, other), `EMOTIONS`, `TRANSITION_HINTS`, `PACING_HINTS`. The opening
+`departure` and closing `journey-home` are synthesised from home bookends; the
+hero scene mirrors the story hero. Deterministic, offline-first, references only,
+no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 
