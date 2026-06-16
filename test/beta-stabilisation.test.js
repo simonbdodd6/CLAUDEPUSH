@@ -34,13 +34,14 @@ function buildScope() {
     'sessionKey',
     'keyToSessionId',
     'availabilityApplyToRecord',
+    'findLiveAvailabilityRecords',
     'findLiveAvailabilityRecord',
     'matchPlannerLayout',
   ].map(extractFn).join('\n');
   const body = `
     "use strict";
     ${fns}
-    return { sessionKey, keyToSessionId, availabilityApplyToRecord, findLiveAvailabilityRecord, matchPlannerLayout };
+    return { sessionKey, keyToSessionId, availabilityApplyToRecord, findLiveAvailabilityRecords, findLiveAvailabilityRecord, matchPlannerLayout };
   `;
   return new Function(body)();
 }
