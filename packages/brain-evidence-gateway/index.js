@@ -18,4 +18,5 @@ export { EVIDENCE_GATEWAY_STAGES, EVIDENCE_GATEWAY_STAGE_NAMES, STAGE_BY_NAME } 
 export { deriveDedupeGroups, deriveDedupeKey, observedAtBucket } from './dedupe.js'
 export { deriveProvenanceProposals } from './provenance.js'
 export { deriveConfidenceReweightProposals } from './reweight.js'
+export { deriveConfidenceUpdatePlan } from './confidence-update.js'
 export * from './types.js'

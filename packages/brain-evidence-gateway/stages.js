@@ -23,6 +23,7 @@ import { planBatchNormalization, planNormalizationApplication } from '@brain/evi
 import { deriveDedupeGroups } from './dedupe.js'
 import { deriveProvenanceProposals } from './provenance.js'
 import { deriveConfidenceReweightProposals } from './reweight.js'
+import { deriveConfidenceUpdatePlan } from './confidence-update.js'
 
 const ok = (stage, output) => Object.freeze({ stage, status: 'ok', output: Object.freeze(output) })
 const deferred = (stage, output) => Object.freeze({ stage, status: 'deferred', output: Object.freeze(output) })
@@ -115,10 +116,28 @@ export const deduplicate = Object.freeze({
   },
 })
 
-/** 5 — prepare confidence update: per (subject, signal) reweight plan (deferred placeholder). */
+/**
+ * 5 — prepare confidence update: per (subject, signal.key) reweight plan (§3.6).
+ *
+ * Dormant. `run()` stays the inert placeholder (empty updates) so end-to-end `submit()`
+ * is unchanged. `plan({ accepted, records })` is the M60 DATA-ONLY contract: it composes
+ * the dedupe chain (groups → provenance → reweight, M57–M59) and folds the M59 reweight
+ * proposals into a deferred ConfidenceUpdatePlan — the per-(subject, signal.key) "set
+ * confidence to X" instructions the store WOULD apply, each carrying the §4.6 tenant
+ * scope. It applies/writes NOTHING, never mutates input; unknown sources / invalid
+ * signals are not in `accepted`, so they never produce an update.
+ */
 export const prepareConfidenceUpdate = Object.freeze({
   name: 'prepareConfidenceUpdate',
   run() { return deferred('prepareConfidenceUpdate', { updates: Object.freeze([]) }) },
+  plan(input) {
+    const records = input && Array.isArray(input.records) ? input.records : []
+    const accepted = input && Array.isArray(input.accepted) ? input.accepted : []
+    const { groups } = deriveDedupeGroups({ accepted, records })
+    const { proposals } = deriveProvenanceProposals({ groups, records })
+    const { proposals: reweightProposals } = deriveConfidenceReweightProposals({ proposals, accepted })
+    return deferred('prepareConfidenceUpdate', deriveConfidenceUpdatePlan({ reweightProposals, records }))
+  },
 })
 
 /** 6 — prepare memory link: knowledge-graph upserts (deferred placeholder). */
