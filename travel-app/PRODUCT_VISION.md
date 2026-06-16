@@ -797,6 +797,53 @@ These would unlock the evidence-starved categories and enrich rarity — still
 - **Tier:** V2.
 - **Possible API:** Region gazetteer / MapKit.
 
+## R. Lifetime Timeline deepeners (added M30)
+
+The Lifetime Travel Timeline (`/lifetime-timeline`) stitches every moment into one
+chronological story. These would make it richer and more cinematic — still **not
+implemented**.
+
+### Photo-backed moment cards (Apple Photos / Google Photos)
+- **Why:** Render each moment with its real cover photo and a mini gallery — the
+  Apple-Photos-Memories feel; today moments reference `photoRef` only.
+- **Complexity:** Medium (on-device; strip EXIF GPS before any reference leaves).
+- **Tier:** V2.
+- **Possible API:** PhotoKit / Google Photos Library API.
+
+### "On this day" resurfacing (Facebook/Apple Memories)
+- **Why:** Resurface a past moment on its anniversary ("3 years ago today in
+  Bali") — deterministic from moment dates + local notifications.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+- **Possible API:** Internal (dates) + local notifications.
+
+### Auto-narrated lifetime recap film / Wrapped (Spotify Wrapped style)
+- **Why:** Turn the timeline + chapters into a shareable year-in-review or
+  lifetime recap montage, scored with the trip's music.
+- **Complexity:** Medium–High (media composition; Spotify/Music).
+- **Tier:** V2 (yearly recap) → V3 (film export).
+- **Possible API:** AVFoundation; Spotify/MusicKit.
+
+### Map-animated timeline scrubbing (Polarsteps)
+- **Why:** Scrub the timeline and watch the journey move across the globe/map in
+  sync — pairs the timeline with the globe replay.
+- **Complexity:** Medium (client; reuses globe + timeline DTOs).
+- **Tier:** V2 (UI; no new API).
+
+### Richer moment detection (weather, milestones, life events)
+- **Why:** Add weather/golden-hour context, certification milestones (dive/surf),
+  and life-event tagging (anniversary/honeymoon) as first-class moments.
+- **Complexity:** Medium–High (depends on weather + dive + occasion integrations).
+- **Tier:** V2–V3.
+- **Possible API:** WeatherKit, Garmin/PADI/SSI, internal occasion tags.
+
+### Shareable timeline poster / story export
+- **Why:** Export a beautiful chronological poster or Instagram-Stories-style
+  sequence of the year or whole life.
+- **Complexity:** Medium (deterministic render of the timeline DTO).
+- **Tier:** V3.
+- **Possible API:** Client/server render.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

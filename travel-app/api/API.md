@@ -36,6 +36,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/globe` | — | `{ globe, markers, arcs, cameraMoves, replayFrames, highlights, replay, filters, basedOn }` | 3D globe data layer |
 | GET | `/world` | — | `{ profile, countries, regions, islands, cities, eras, connections, repeatVisits, favouriteReturns, longestGaps, heat, statistics, worldStatistics, filters, basedOn }` | lifetime world data layer |
 | GET | `/achievements` | — | `{ summary, categories, series, achievements, earned, timeline, rewards, statistics, basedOn }` | achievement engine (earned from evidence) |
+| GET | `/lifetime-timeline` | — | `{ summary, years, chapters, moments, filters, basedOn }` | lifetime travel timeline (whole life as one story) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -448,6 +449,37 @@ Lifetime. Earned dates are the moment the threshold was crossed (the Nth
 qualifying event). Hidden milestones (e.g. *Returned to Same Island*, *Most
 Remote Island*) only matter once earned. All deterministic, offline-first, no
 backend leakage.
+
+### Lifetime Travel Timeline DTO (M30)
+
+The traveller's **entire travel life** as one chronological story of typed
+moments — **no AI, no generated prose**. Assembled from the achievements, world,
+globe, relationships and memory engines; the UI renders it with almost no logic.
+
+```
+LifetimeTimeline = {
+  summary: { totalMoments, years, chapters, span, firstMoment, latestMoment, byType },
+  years:   [{ year, summary:{trips,countries,places,memories,photos,moments}, months:[TravelMonth], momentIds, topMoment }],
+  chapters:[{ id, title:"2024–2026", years, from, to, summary:{years,countries,memories,moments} }],   // travel eras
+  moments: [Moment],   // chronological
+  filters: { byYear, byMonth, byCountry, byCompanion, byActivity, byAchievement, favourites, firsts, returns },
+}
+TravelMonth = { year, month, label, momentIds, momentCount }
+Moment = {
+  id, type:"first-visit|milestone|achievement|return|relationship|memory|journey",
+  title, subtitle, date, year, month,
+  supportingMemories:[Entry], supportingTrips:[{tripId,name}],
+  relatedAchievements:[id], relatedPlaces:[name], relatedCompanions:[name],
+  emotionalTone:"joyful|proud|nostalgic|warm|reflective|adventurous",
+  iconId, confidence, evidence:{count,detail}, category, tier, favourite,
+}
+```
+
+Includes first trip / first country / island / flight / dive / memory / first
+trip with a companion, returns to the same place, longest trip, most photographed
+day, major achievements, favourite memories, yearly & monthly summaries, travel
+eras (chapters), and relationship / country / island milestones. All
+deterministic, offline-first, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

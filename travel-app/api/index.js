@@ -33,6 +33,7 @@ import { buildJourneyReplay } from './journey-replay.js';
 import { buildGlobe } from './globe.js';
 import { buildWorld } from './world.js';
 import { buildAchievements } from './achievements.js';
+import { buildLifetimeTimeline } from './lifetime-timeline.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -315,6 +316,15 @@ export function createTravelApi(options = {}) {
     return buildWorld(events, ownedTrips);
   }
 
+  // Lifetime Travel Timeline — the traveller's whole travel life as one
+  // chronological story of typed moments, grouped into years/months/eras.
+  async function getLifetimeTimeline(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildLifetimeTimeline(events, ownedTrips);
+  }
+
   // Travel Achievement Engine — achievements earned purely from stored evidence
   // (never manually awarded): tiered series, milestones, seasonal/yearly badges.
   async function getAchievements(token) {
@@ -446,6 +456,7 @@ export function createTravelApi(options = {}) {
     getGlobe,
     getWorld,
     getAchievements,
+    getLifetimeTimeline,
     getTripReadiness,
     getApprovals,
     resolveApproval,
