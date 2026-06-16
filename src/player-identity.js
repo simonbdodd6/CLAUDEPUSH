@@ -233,6 +233,27 @@ function mergeRosterPlayer(existing = {}, incoming = {}, context = {}) {
   merged.game = preferResponseValue(preferred.game, other.game);
   merged.trainingTuesday = preferResponseValue(preferred.trainingTuesday, other.trainingTuesday);
   merged.trainingThursday = preferResponseValue(preferred.trainingThursday, other.trainingThursday);
+  // Preserve the COMPLETE per-session availability picture across a roster
+  // merge. The fixed keys above cover only the default schedule; custom sessions
+  // (avail_*) and every *Reason field must survive too. Without this, a no-reply
+  // on the higher-scored record clobbers a real answer on the other record, so
+  // answering one session resets another (the availability cross-contamination
+  // blocker). This mirrors the inline dedupeRosterMembers fix in index.html so
+  // the read/display dedup path and the persist dedup path stay in lockstep.
+  const availStatusKeys = new Set();
+  const availReasonKeys = new Set();
+  [preferred, other].forEach(rec => {
+    Object.keys(rec || {}).forEach(k => {
+      if (/Reason$/.test(k)) availReasonKeys.add(k);
+      else if (k.indexOf('avail_') === 0) availStatusKeys.add(k);
+    });
+  });
+  availStatusKeys.forEach(k => { merged[k] = preferResponseValue(preferred[k], other[k]); });
+  availReasonKeys.forEach(k => {
+    const pv = preferred[k];
+    const ov = other[k];
+    merged[k] = (pv !== undefined && pv !== '') ? pv : (ov || '');
+  });
   merged.attendance = Number(preferred.attendance || 0) || Number(other.attendance || 0) || 0;
   merged.history = Array.isArray(preferred.history) && preferred.history.length
     ? preferred.history
