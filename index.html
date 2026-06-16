@@ -2178,6 +2178,7 @@
       <section id="coach-fixtures"    class="section"></section>
       <section id="coach-selection"   class="section"></section>
       <section id="coach-club"        class="section"></section>
+      <section id="coach-reports"     class="section"></section>
 
       <section id="player-availability" class="section"></section>
       <section id="player-week"         class="section"></section>
@@ -2223,6 +2224,7 @@
       ["players",   "Members"],
       ["admin",     "Club Admin"],
       ["club",      "Club"],
+      ["reports",   "Reports"],
       ["settings",  "Settings"]
     ];
 
@@ -11961,6 +11963,709 @@
         </div>`;
     }
 
+    // ─── PHASE 22 — REPORTS & EXPORT CENTRE ──────────────────────────────────
+
+    // ── Pure report generators (no state mutation, fully testable) ────────────
+
+    function generatePlayerReport(playerId, players, medRecords, medNotes, allAttendance, schedSessions) {
+      const player = (players || []).find(p => p.id === playerId) || null;
+      if (!player) return { ok: false, error: 'Player not found' };
+      const rec  = normalizeMedicalRecord((medRecords||{})[playerId]);
+      const mn   = (medNotes||{})[playerId] || {};
+      const hist = playerAttendanceHistory(playerId, allAttendance || {}, schedSessions || []);
+      return {
+        ok: true,
+        player: {
+          id:               player.id,
+          name:             player.name || '',
+          position:         player.position || player.primaryPosition || '',
+          jerseyNumber:     player.jerseyNumber || '',
+          email:            player.email || '',
+          emergencyContact: player.emergencyContact || '',
+          emergencyPhone:   player.emergencyPhone  || '',
+          trainingStatus:   player.trainingStatus  || '',
+          gameStatus:       player.game            || '',
+          medical:          player.medical         || '',
+          contractStatus:   player.contractStatus  || '',
+        },
+        medRecord: rec,
+        medNote:   mn,
+        attendance: hist,
+      };
+    }
+
+    function generateAvailabilityReport(players, fixtures, fixtureAvailability, medRecords) {
+      const active = activeRosterPlayers(players || []);
+      const fxList = (fixtures || []).slice().sort((a, b) => (a.date||'').localeCompare(b.date||''));
+      const medUnavailable = active.filter(p => p.trainingStatus === 'unavailable');
+
+      const fixtureRows = fxList.map(fx => {
+        const availMap = ((fixtureAvailability||{})[fx.id]) || {};
+        const effectiveMap = {};
+        active.forEach(p => {
+          effectiveMap[p.id] = (p.trainingStatus === 'unavailable') ? 'unavailable'
+            : (availMap[p.id] || 'no-reply');
+        });
+        const avail    = active.filter(p => effectiveMap[p.id] === 'available').length;
+        const unavail  = active.filter(p => effectiveMap[p.id] === 'unavailable').length;
+        const maybe    = active.filter(p => effectiveMap[p.id] === 'maybe').length;
+        const noReply  = active.filter(p => effectiveMap[p.id] === 'no-reply').length;
+        return { fixture: fx, avail, unavail, maybe, noReply, total: active.length, effectiveMap };
+      });
+
+      return { ok: true, players: active, fixtures: fixtureRows, medUnavailable };
+    }
+
+    function generateMatchReport(mc, events, dayNotes, matchStatusMap, players) {
+      const evList = events || [];
+      const score  = matchComputeScore(evList);
+      const summ   = matchEventsSummary(evList);
+      const mc2    = mc || {};
+      const key    = (mc2.kickoffDate && mc2.opposition)
+        ? mc2.kickoffDate + '_' + (mc2.opposition||'').replace(/[^a-zA-Z0-9]/g,'').toLowerCase().slice(0,20)
+        : (mc2.kickoffDate || 'current');
+      const status = (matchStatusMap||{})[key] || 'pre';
+      const notes  = normalizeMatchDayNotes((dayNotes||{})[key]);
+      return {
+        ok: true,
+        match:  { ...mc2 },
+        score,
+        status,
+        events: [...evList].sort((a,b)=>a.minute-b.minute),
+        notes,
+        summary: {
+          tries:         summ.tries.length,
+          conversions:   summ.conversions.length,
+          penalties:     summ.penalties.length,
+          dropGoals:     summ.dropGoals.length,
+          yellowCards:   summ.yellowCards.length,
+          redCards:      summ.redCards.length,
+          injuries:      summ.injuries.length,
+          substitutions: summ.substitutions.length,
+        },
+        eventDetails: summ,
+        players: players || [],
+      };
+    }
+
+    function generateMedicalReport(players, medRecords, medNotes) {
+      const active = activeRosterPlayers(players || []);
+      const rows = active.map(p => {
+        const rec = normalizeMedicalRecord((medRecords||{})[p.id]);
+        const mn  = (medNotes||{})[p.id] || {};
+        return {
+          player:           p,
+          trainingStatus:   p.trainingStatus || '',
+          gameStatus:       p.game || '',
+          currentInjury:    rec.currentInjury || mn.condition || p.medical || '',
+          bodyLocation:     rec.bodyLocation,
+          severity:         rec.severity,
+          dateInjured:      rec.dateInjured,
+          expectedReturn:   rec.expectedReturn || mn.returnTarget || '',
+          clearanceStatus:  rec.clearanceStatus,
+          allergies:        rec.allergies,
+          medication:       rec.medication,
+          concussionCount:  rec.concussionCount,
+          timelineCount:    rec.timeline.length,
+          hasAlert: (
+            p.game === 'injured' || p.trainingStatus === 'unavailable' ||
+            rec.severity === 'severe' || rec.severity === 'moderate' ||
+            Boolean(rec.currentInjury || mn.condition || p.medical)
+          ),
+        };
+      });
+      const alerts    = rows.filter(r => r.hasAlert);
+      const rehab     = rows.filter(r => ['modified','gymOnly','noContact'].includes(r.trainingStatus));
+      const unavailable = rows.filter(r => r.trainingStatus === 'unavailable' || r.gameStatus === 'injured');
+      return { ok: true, rows, alerts, rehab, unavailable, total: active.length };
+    }
+
+    function generateTrainingReport(players, schedSessions, allAttendance, sessionNotes) {
+      const active   = activeRosterPlayers(players || []);
+      const training = (schedSessions || []).filter(s => s.type === 'Training');
+      const sessRows = training.map(s => {
+        const attMap = (allAttendance||{})[s.id] || {};
+        const present = active.filter(p => attMap[p.id] === 'present' || attMap[p.id] === 'late').length;
+        const absent  = active.filter(p => attMap[p.id] === 'absent'  || attMap[p.id] === 'injured').length;
+        const excused = active.filter(p => attMap[p.id] === 'excused').length;
+        const noRec   = active.filter(p => !attMap[p.id]).length;
+        const pct     = active.length > 0 ? Math.round(100 * present / active.length) : 0;
+        const sNotes  = sessionNotes && sessionNotes[s.id] ? sessionNotes[s.id] : {};
+        return { session: s, present, absent, excused, noRec, pct, total: active.length, notes: sNotes };
+      });
+      const playerRows = active.map(p => {
+        const hist = playerAttendanceHistory(p.id, allAttendance || {}, schedSessions || []);
+        return { player: p, ...hist };
+      }).sort((a,b) => (b.pct||0) - (a.pct||0));
+      const avgPct = sessRows.length > 0
+        ? Math.round(sessRows.reduce((s,r)=>s+r.pct,0) / sessRows.length) : null;
+      return { ok: true, sessions: sessRows, players: playerRows, avgPct, totalSessions: training.length };
+    }
+
+    // ── Report text serializers (for clipboard copy) ──────────────────────────
+
+    function reportToText(type, reportData) {
+      const LINE  = '─'.repeat(48);
+      const lines = [];
+      if (type === 'player') {
+        const d = reportData;
+        lines.push('PLAYER REPORT — ' + (d.player?.name||'Unknown'));
+        lines.push(LINE);
+        lines.push('Position:       ' + (d.player?.position||'—'));
+        lines.push('Jersey:         ' + (d.player?.jerseyNumber||'—'));
+        lines.push('Game status:    ' + (d.player?.gameStatus||'—'));
+        lines.push('Training:       ' + medicalTrainingStatusLabel(d.player?.trainingStatus||''));
+        lines.push('');
+        lines.push('MEDICAL');
+        lines.push('Injury:         ' + (d.medRecord?.currentInjury||d.medNote?.condition||d.player?.medical||'None'));
+        lines.push('Severity:       ' + (MEDICAL_SEVERITY_LABELS[d.medRecord?.severity]||'—'));
+        lines.push('Expected return:' + (d.medRecord?.expectedReturn||d.medNote?.returnTarget||'—'));
+        lines.push('Clearance:      ' + (MEDICAL_CLEARANCE_LABELS[d.medRecord?.clearanceStatus]||'—'));
+        lines.push('Allergies:      ' + (d.medRecord?.allergies||'None'));
+        lines.push('Medication:     ' + (d.medRecord?.medication||'None'));
+        lines.push('');
+        lines.push('ATTENDANCE');
+        lines.push('Sessions:       ' + (d.attendance?.total||0));
+        lines.push('Attended:       ' + (d.attendance?.attended||0));
+        lines.push('Rate:           ' + (d.attendance?.pct!=null?d.attendance.pct+'%':'—'));
+        lines.push('');
+        lines.push('EMERGENCY CONTACT');
+        lines.push('Name:           ' + (d.player?.emergencyContact||'—'));
+        lines.push('Phone:          ' + (d.player?.emergencyPhone||'—'));
+      } else if (type === 'availability') {
+        lines.push('TEAM AVAILABILITY REPORT');
+        lines.push(LINE);
+        lines.push('Squad size:     ' + (reportData.players?.length||0));
+        lines.push('Med. unavail:   ' + (reportData.medUnavailable?.length||0));
+        lines.push('');
+        (reportData.fixtures||[]).forEach(r => {
+          const fx = r.fixture;
+          lines.push((fx.date||'Date TBC') + '  vs ' + (fx.opposition||'TBC'));
+          lines.push('  Available: '+r.avail+'  Unavail: '+r.unavail+'  Maybe: '+r.maybe+'  No reply: '+r.noReply);
+        });
+      } else if (type === 'match') {
+        const d = reportData;
+        const mc = d.match||{};
+        lines.push('MATCH REPORT — ' + (mc.opposition||'Opponent'));
+        lines.push(LINE);
+        lines.push('Date:     ' + (mc.kickoffDate||'—') + (mc.kickoffTime?' · '+mc.kickoffTime:''));
+        lines.push('Venue:    ' + (mc.venue||'—'));
+        lines.push('Status:   ' + (MATCH_STATUS_LABELS[d.status]||'—'));
+        lines.push('Score:    ' + d.score.us + ' – ' + d.score.them);
+        lines.push('');
+        lines.push('EVENTS');
+        (d.events||[]).forEach(ev => {
+          const pl = (d.players||[]).find(p=>p.id===ev.playerId);
+          lines.push(ev.minute+'\' '+MATCH_EVENT_TYPES[ev.type]+' ('+( ev.team==='us'?'Us':'Them')+')'+(pl?' — '+pl.name:'')+(ev.notes?' — '+ev.notes:''));
+        });
+        lines.push('');
+        lines.push('COACH NOTES');
+        ['attack','defence','setPiece','discipline','referee','general'].forEach(s => {
+          if (d.notes&&d.notes[s]) lines.push(s.toUpperCase()+': '+d.notes[s]);
+        });
+      } else if (type === 'medical') {
+        lines.push('MEDICAL & WELFARE REPORT');
+        lines.push(LINE);
+        lines.push('Squad:          ' + (reportData.total||0) + ' active players');
+        lines.push('Medical alerts: ' + (reportData.alerts?.length||0));
+        lines.push('Unavailable:    ' + (reportData.unavailable?.length||0));
+        lines.push('In rehab:       ' + (reportData.rehab?.length||0));
+        lines.push('');
+        lines.push('PLAYER DETAILS');
+        (reportData.alerts||[]).forEach(r => {
+          lines.push(r.player.name + ' — ' + (r.currentInjury||'No condition noted'));
+          lines.push('  Status: ' + medicalTrainingStatusLabel(r.trainingStatus) + '  Return: ' + (r.expectedReturn||'TBC'));
+        });
+      } else if (type === 'training') {
+        lines.push('TRAINING ATTENDANCE REPORT');
+        lines.push(LINE);
+        lines.push('Sessions:       ' + (reportData.totalSessions||0));
+        lines.push('Avg attendance: ' + (reportData.avgPct!=null?reportData.avgPct+'%':'—'));
+        lines.push('');
+        lines.push('BY SESSION');
+        (reportData.sessions||[]).forEach(r => {
+          lines.push((r.session.date||r.session.title||r.session.id) + '  ' + r.pct + '%  (' + r.present + '/' + r.total + ')');
+        });
+        lines.push('');
+        lines.push('BY PLAYER');
+        (reportData.players||[]).filter(r=>r.total>0).forEach(r => {
+          lines.push(r.player.name + '  ' + (r.pct!=null?r.pct+'%':'—') + '  (' + r.attended + '/' + r.total + ')');
+        });
+      }
+      return lines.join('\n');
+    }
+
+    // ── UI helpers ────────────────────────────────────────────────────────────
+
+    function setReportType(type) {
+      _reportType = type;
+      render();
+    }
+
+    function setReportPlayer(pid) {
+      _reportPlayerId = pid;
+      render();
+    }
+
+    function reportCopyToClipboard(type, data) {
+      const text = reportToText(type, data);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => notify('Report copied to clipboard'));
+      } else {
+        const el = document.createElement('textarea');
+        el.value = text;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        notify('Report copied');
+      }
+    }
+
+    // ── Main render ───────────────────────────────────────────────────────────
+
+    function renderReports() {
+      const el = document.getElementById('coach-reports');
+      if (!el) return;
+
+      const REPORT_CARDS = [
+        { id:'player',       icon:'👤', label:'Player Report',           desc:'Individual player profile, medical, attendance and contact details.' },
+        { id:'availability', icon:'📋', label:'Availability Report',     desc:'Fixture-by-fixture availability across the squad including medical overrides.' },
+        { id:'match',        icon:'🏆', label:'Match Report',            desc:'Final score, event timeline, substitutions and coach notes.' },
+        { id:'medical',      icon:'🏥', label:'Medical & Welfare Report',desc:'Squad health overview, injuries, clearance status and return dates.' },
+        { id:'training',     icon:'🏉', label:'Training Attendance',     desc:'Session-by-session attendance and per-player history.' },
+      ];
+
+      const picker = '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px">' +
+        REPORT_CARDS.map(rc => {
+          const isAct = _reportType === rc.id;
+          return '<button type="button" onclick="setReportType(\'' + rc.id + '\')" style="' +
+            'padding:14px 10px;border-radius:12px;cursor:pointer;text-align:center;' +
+            'border:2px solid ' + (isAct?'var(--green)':'var(--line)') + ';' +
+            'background:' + (isAct?'rgba(16,185,129,0.08)':'var(--panel-2)') + ';' +
+            'color:' + (isAct?'var(--green)':'var(--text)') + ';font-weight:700;' +
+            'transition:border-color .15s">' +
+            '<div style="font-size:24px;margin-bottom:6px">' + rc.icon + '</div>' +
+            '<div style="font-size:12px;font-weight:700">' + rc.label + '</div>' +
+          '</button>';
+        }).join('') +
+      '</div>';
+
+      let body = '';
+
+      if (!_reportType) {
+        body = '<div class="card" style="text-align:center;padding:40px 20px">' +
+          '<div style="font-size:40px;margin-bottom:12px">📊</div>' +
+          '<div style="font-size:16px;font-weight:700;margin-bottom:8px">Select a report type above</div>' +
+          '<div style="font-size:13px;color:var(--muted)">Choose from Player, Availability, Match, Medical or Training to generate a printable report from your existing data.</div>' +
+        '</div>';
+      } else if (_reportType === 'player') {
+        body = _renderPlayerReport();
+      } else if (_reportType === 'availability') {
+        body = _renderAvailabilityReport();
+      } else if (_reportType === 'match') {
+        body = _renderMatchReport();
+      } else if (_reportType === 'medical') {
+        body = _renderMedicalReport();
+      } else if (_reportType === 'training') {
+        body = _renderTrainingReport();
+      }
+
+      el.innerHTML =
+        '<div class="training-hero">' +
+          '<div><div class="eyebrow">Reports & Export</div><h1>Reports Centre</h1>' +
+          '<p>Generate and export clean reports from your squad data.</p></div>' +
+          '<div style="display:flex;gap:8px;align-items:center">' +
+            '<button class="btn" type="button" onclick="window.print()" style="font-size:12px">🖨 Print</button>' +
+          '</div>' +
+        '</div>' +
+        picker +
+        body;
+    }
+
+    function _reportActions(type, data) {
+      return '<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:12px;flex-wrap:wrap">' +
+        '<button class="btn" type="button" onclick="window.print()" style="font-size:12px">🖨 Print report</button>' +
+        '<button class="btn" type="button" onclick="reportCopyToClipboard(\'' + type + '\',' + 'window.__rptData_' + type + ')" style="font-size:12px">📋 Copy as text</button>' +
+      '</div>';
+    }
+
+    function _statCard(label, value, color) {
+      return '<div class="card" style="padding:14px 16px;text-align:center">' +
+        '<div style="font-size:26px;font-weight:900;color:' + color + '">' + value + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-top:4px">' + label + '</div>' +
+      '</div>';
+    }
+
+    function _renderPlayerReport() {
+      const players = activeRosterPlayers(state.players);
+      const INP = 'padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);width:100%;box-sizing:border-box';
+      const pid = _reportPlayerId || (players[0]?.id || '');
+
+      const playerPicker =
+        '<div class="card" style="margin-bottom:14px;padding:12px 16px">' +
+          '<label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:4px">Select player' +
+            '<select style="' + INP + '" onchange="setReportPlayer(this.value)">' +
+              players.map(p => '<option value="' + esc(p.id) + '"' + (pid===p.id?' selected':'') + '>' + esc(p.name) + '</option>').join('') +
+            '</select>' +
+          '</label>' +
+        '</div>';
+
+      if (!pid) {
+        return playerPicker + '<div class="card" style="text-align:center;padding:24px;color:var(--muted)">No players in squad.</div>';
+      }
+
+      const rpt = generatePlayerReport(pid, state.players, state.medicalRecords, state.medicalNotes, state.trainingAttendance, state.schedule);
+      if (!rpt.ok) return playerPicker + '<div class="card" style="padding:20px;color:#f87171">' + esc(rpt.error) + '</div>';
+      const d = rpt;
+      const ts = d.player.trainingStatus;
+      const tsColor = ts ? medicalTrainingStatusColor(ts) : '#34d399';
+      const tsLabel = ts ? medicalTrainingStatusLabel(ts) : 'Full Training';
+      const sevColor = medicalSeverityColor(d.medRecord.severity);
+      const clrColor = MEDICAL_CLEARANCE_COLORS[d.medRecord.clearanceStatus] || '#94a3b8';
+      const clrLabel = MEDICAL_CLEARANCE_LABELS[d.medRecord.clearanceStatus] || '—';
+
+      window.__rptData_player = rpt;
+
+      return playerPicker +
+        '<div id="report-player-content">' +
+          '<div class="card" style="margin-bottom:14px">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">' +
+              '<div>' +
+                '<div style="font-size:20px;font-weight:800">' + esc(d.player.name) + '</div>' +
+                '<div style="font-size:13px;color:var(--muted);margin-top:2px">' + esc(d.player.position||'No position') + (d.player.jerseyNumber?' · #'+esc(d.player.jerseyNumber):'') + '</div>' +
+              '</div>' +
+              '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+                '<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:' + tsColor + '1a;color:' + tsColor + '">' + esc(tsLabel) + '</span>' +
+                (d.medRecord.severity?'<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:' + sevColor + '1a;color:' + sevColor + '">' + MEDICAL_SEVERITY_LABELS[d.medRecord.severity] + '</span>':'') +
+                (d.medRecord.clearanceStatus?'<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:' + clrColor + '1a;color:' + clrColor + '">' + clrLabel + '</span>':'') +
+              '</div>' +
+            '</div>' +
+            '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">' +
+              _statCard('Sessions attended', d.attendance.attended, '#34d399') +
+              _statCard('Attendance rate', d.attendance.pct!=null?d.attendance.pct+'%':'—', d.attendance.pct>=75?'#34d399':d.attendance.pct>=50?'#fbbf24':'#f87171') +
+              _statCard('Missed', d.attendance.missed, d.attendance.missed>0?'#fbbf24':'#34d399') +
+            '</div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">' +
+              '<div>' +
+                '<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Medical</div>' +
+                '<table style="width:100%;font-size:12px;border-collapse:collapse">' +
+                  [
+                    ['Injury',           d.medRecord.currentInjury || d.medNote.condition || d.player.medical || '—'],
+                    ['Body location',    d.medRecord.bodyLocation || '—'],
+                    ['Severity',         MEDICAL_SEVERITY_LABELS[d.medRecord.severity]||'—'],
+                    ['Date injured',     d.medRecord.dateInjured||'—'],
+                    ['Expected return',  d.medRecord.expectedReturn || d.medNote.returnTarget || '—'],
+                    ['Clearance',        clrLabel],
+                    ['Allergies',        d.medRecord.allergies||'—'],
+                    ['Medication',       d.medRecord.medication||'—'],
+                    ['Concussions',      String(d.medRecord.concussionCount||0)],
+                  ].map(([k,v]) =>
+                    '<tr style="border-bottom:1px solid var(--line)">' +
+                      '<td style="padding:5px 8px 5px 0;color:var(--muted);white-space:nowrap">' + k + '</td>' +
+                      '<td style="padding:5px 0 5px 8px;font-weight:600">' + esc(String(v)) + '</td>' +
+                    '</tr>'
+                  ).join('') +
+                '</table>' +
+              '</div>' +
+              '<div>' +
+                '<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Contact</div>' +
+                '<table style="width:100%;font-size:12px;border-collapse:collapse">' +
+                  [
+                    ['Email',      d.player.email||'—'],
+                    ['Emergency',  d.player.emergencyContact||'—'],
+                    ['Emerg. ph.', d.player.emergencyPhone||'—'],
+                    ['Contract',   d.player.contractStatus||'—'],
+                  ].map(([k,v]) =>
+                    '<tr style="border-bottom:1px solid var(--line)">' +
+                      '<td style="padding:5px 8px 5px 0;color:var(--muted);white-space:nowrap">' + k + '</td>' +
+                      '<td style="padding:5px 0 5px 8px;font-weight:600">' + esc(v) + '</td>' +
+                    '</tr>'
+                  ).join('') +
+                '</table>' +
+                (d.medRecord.physiNotes?'<div style="font-size:11px;font-weight:700;color:var(--muted);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.05em">Physio notes</div><div style="font-size:12px;line-height:1.5;white-space:pre-wrap">' + esc(d.medRecord.physiNotes) + '</div>':'') +
+              '</div>' +
+            '</div>' +
+            (d.medRecord.timeline.length>0
+              ? '<div style="margin-top:14px"><div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Medical timeline (' + d.medRecord.timeline.length + ' events)</div>' +
+                  d.medRecord.timeline.slice().reverse().slice(0,5).map(ev => {
+                    const col = MEDICAL_TIMELINE_COLORS[ev.type]||'#94a3b8';
+                    return '<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);font-size:12px">' +
+                      '<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:' + col + '1a;color:' + col + ';white-space:nowrap">' + (MEDICAL_TIMELINE_LABELS[ev.type]||ev.type) + '</span>' +
+                      '<span style="color:var(--muted)">' + esc(ev.date||'') + '</span>' +
+                      (ev.notes?'<span>' + esc(ev.notes) + '</span>':'') +
+                    '</div>';
+                  }).join('') +
+                '</div>'
+              : '') +
+          '</div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+            '<button class="btn" type="button" onclick="window.print()" style="font-size:12px">🖨 Print</button>' +
+            '<button class="btn" type="button" onclick="reportCopyToClipboard(\'player\',' + 'window.__rptData_player)" style="font-size:12px">📋 Copy as text</button>' +
+          '</div>' +
+        '</div>';
+    }
+
+    function _renderAvailabilityReport() {
+      const rpt = generateAvailabilityReport(state.players, state.fixtures, state.fixtureAvailability, state.medicalRecords);
+      window.__rptData_availability = rpt;
+      const statusColor = { available:'#34d399', unavailable:'#f87171', maybe:'#fbbf24', 'no-reply':'#94a3b8' };
+
+      return '<div id="report-availability-content">' +
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">' +
+          _statCard('Squad size', rpt.players.length, '#34d399') +
+          _statCard('Fixtures', rpt.fixtures.length, '#60a5fa') +
+          _statCard('Med. unavailable', rpt.medUnavailable.length, '#f87171') +
+          _statCard('Resp. rate avg', rpt.fixtures.length>0?Math.round(rpt.fixtures.reduce((s,r)=>s+(r.avail+r.unavail+r.maybe),0)/rpt.fixtures.length/Math.max(rpt.players.length,1)*100)+'%':'—', '#fbbf24') +
+        '</div>' +
+        (rpt.medUnavailable.length>0
+          ? '<div class="card" style="margin-bottom:14px;border-left:3px solid #f87171">' +
+              '<div style="font-size:12px;font-weight:700;color:#f87171;margin-bottom:8px">Medical unavailability override (' + rpt.medUnavailable.length + ')</div>' +
+              rpt.medUnavailable.map(p =>
+                '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(248,113,113,0.12);color:#f87171;margin:2px 4px 2px 0;display:inline-block">' + esc(p.name) + '</span>'
+              ).join('') +
+              '<div style="font-size:11px;color:var(--muted);margin-top:6px">These players are marked as medically unavailable and automatically count as unavailable for all fixtures.</div>' +
+            '</div>'
+          : '') +
+        (rpt.fixtures.length===0
+          ? '<div class="card" style="text-align:center;padding:24px;color:var(--muted)">No fixtures found. Add fixtures in the Fixtures section.</div>'
+          : '<div class="card" style="overflow-x:auto">' +
+              '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+                '<thead><tr style="border-bottom:2px solid var(--line)">' +
+                  '<th style="padding:8px 10px 8px 0;text-align:left;font-weight:700;color:var(--muted);white-space:nowrap">Fixture</th>' +
+                  '<th style="padding:8px 6px;text-align:center;color:#34d399;font-weight:700">Available</th>' +
+                  '<th style="padding:8px 6px;text-align:center;color:#f87171;font-weight:700">Unavailable</th>' +
+                  '<th style="padding:8px 6px;text-align:center;color:#fbbf24;font-weight:700">Maybe</th>' +
+                  '<th style="padding:8px 6px;text-align:center;color:#94a3b8;font-weight:700">No reply</th>' +
+                  '<th style="padding:8px 0 8px 6px;text-align:right;font-weight:700;color:var(--muted)">Rate</th>' +
+                '</tr></thead><tbody>' +
+                rpt.fixtures.map(r => {
+                  const fx  = r.fixture;
+                  const pct = r.total>0?Math.round(100*(r.avail+r.unavail+r.maybe)/r.total):0;
+                  return '<tr style="border-bottom:1px solid var(--line)">' +
+                    '<td style="padding:8px 10px 8px 0;white-space:nowrap">' +
+                      '<div style="font-weight:700">' + esc(fx.opposition||'TBC') + '</div>' +
+                      '<div style="font-size:11px;color:var(--muted)">' + esc(fx.date||'Date TBC') + (fx.competition?' · '+esc(fx.competition):'') + '</div>' +
+                    '</td>' +
+                    '<td style="text-align:center;padding:6px;font-weight:700;color:#34d399">' + r.avail + '</td>' +
+                    '<td style="text-align:center;padding:6px;font-weight:700;color:#f87171">' + r.unavail + '</td>' +
+                    '<td style="text-align:center;padding:6px;font-weight:700;color:#fbbf24">' + r.maybe + '</td>' +
+                    '<td style="text-align:center;padding:6px;color:#94a3b8">' + r.noReply + '</td>' +
+                    '<td style="text-align:right;padding:6px 0;font-weight:700;color:' + (pct>=70?'#34d399':pct>=40?'#fbbf24':'#f87171') + '">' + pct + '%</td>' +
+                  '</tr>';
+                }).join('') +
+              '</tbody></table>' +
+            '</div>') +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">' +
+          '<button class="btn" type="button" onclick="window.print()" style="font-size:12px">🖨 Print</button>' +
+          '<button class="btn" type="button" onclick="reportCopyToClipboard(\'availability\',window.__rptData_availability)" style="font-size:12px">📋 Copy as text</button>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function _renderMatchReport() {
+      const mc     = state.matchCentre || {};
+      const key    = matchKey();
+      const events = (state.matchEvents||{})[key] || [];
+      const rpt    = generateMatchReport(mc, events, state.matchDayNotes, state.matchStatus, state.players);
+      const d      = rpt;
+      const sc     = d.score;
+      const isWin  = d.status==='ft' && sc.us > sc.them;
+      const isDraw = d.status==='ft' && sc.us === sc.them;
+      const resultColor = d.status==='ft' ? (isWin?'#34d399':isDraw?'#fbbf24':'#f87171') : '#60a5fa';
+      const kickoffDisplay = mc.kickoffDate
+        ? new Date(mc.kickoffDate+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})
+        : 'Date TBC';
+
+      const eventRow = ev => {
+        const pl = d.players.find(p=>p.id===ev.playerId);
+        const isUs = ev.team==='us';
+        return '<tr style="border-bottom:1px solid var(--line)">' +
+          '<td style="padding:5px 8px 5px 0;color:var(--muted);white-space:nowrap">' + ev.minute + '\'</td>' +
+          '<td style="padding:5px 6px">' + (MATCH_EVENT_ICONS[ev.type]||'') + ' ' + (MATCH_EVENT_TYPES[ev.type]||ev.type) + '</td>' +
+          '<td style="padding:5px 6px;color:' + (isUs?'#34d399':'#f87171') + ';font-weight:700">' + (isUs?'Us':'Them') + '</td>' +
+          '<td style="padding:5px 6px">' + esc(pl?pl.name:'—') + '</td>' +
+          '<td style="padding:5px 0 5px 6px;color:var(--muted)">' + esc(ev.notes||'') + '</td>' +
+        '</tr>';
+      };
+
+      window.__rptData_match = rpt;
+
+      return '<div id="report-match-content">' +
+        '<div class="card" style="margin-bottom:14px;text-align:center;padding:20px">' +
+          '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">' +
+            esc(mc.competition||'Match') + ' · ' + kickoffDisplay + (mc.venue?' · '+esc(mc.venue):'') +
+          '</div>' +
+          '<div style="font-size:48px;font-weight:900;margin:8px 0;line-height:1">' +
+            '<span style="color:#34d399">' + sc.us + '</span>' +
+            '<span style="font-size:24px;color:var(--muted);margin:0 16px">–</span>' +
+            '<span style="color:#f87171">' + sc.them + '</span>' +
+          '</div>' +
+          '<div style="font-size:13px;color:var(--muted);margin-bottom:8px">Us vs ' + esc(mc.opposition||'Opposition') + '</div>' +
+          '<span style="font-size:12px;font-weight:700;padding:4px 14px;border-radius:999px;background:' + resultColor + '1a;color:' + resultColor + '">' +
+            (d.status==='ft'?(isWin?'Win':isDraw?'Draw':'Loss'):(MATCH_STATUS_LABELS[d.status]||d.status)) +
+          '</span>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:14px">' +
+          [
+            ['Tries',    d.summary.tries,         '#34d399'],
+            ['Conv.',    d.summary.conversions,    '#60a5fa'],
+            ['Penalties',d.summary.penalties,     '#fbbf24'],
+            ['Yellows',  d.summary.yellowCards,   '#fbbf24'],
+            ['Reds',     d.summary.redCards,      '#f87171'],
+            ['Subs',     d.summary.substitutions, '#94a3b8'],
+          ].map(([l,v,c]) => _statCard(l,v,c)).join('') +
+        '</div>' +
+        (d.events.length>0
+          ? '<div class="card" style="margin-bottom:14px;overflow-x:auto">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:10px">Event timeline (' + d.events.length + ')</div>' +
+              '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead>' +
+                '<tr style="border-bottom:2px solid var(--line)">' +
+                  '<th style="padding:6px 8px 6px 0;text-align:left;color:var(--muted)">Min</th>' +
+                  '<th style="padding:6px;text-align:left;color:var(--muted)">Event</th>' +
+                  '<th style="padding:6px;text-align:left;color:var(--muted)">Team</th>' +
+                  '<th style="padding:6px;text-align:left;color:var(--muted)">Player</th>' +
+                  '<th style="padding:6px 0 6px 6px;text-align:left;color:var(--muted)">Notes</th>' +
+                '</tr></thead><tbody>' +
+                d.events.map(eventRow).join('') +
+              '</tbody></table>' +
+            '</div>'
+          : '<div class="card" style="margin-bottom:14px;text-align:center;padding:20px;color:var(--muted)">No events recorded. Log events in Match Centre → Timeline.</div>') +
+        (Object.values(d.notes).some(v=>v)
+          ? '<div class="card" style="margin-bottom:14px">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Coach notes</div>' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+                ['attack','defence','setPiece','discipline','referee','general'].filter(s=>d.notes[s]).map(s =>
+                  '<div>' +
+                    '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">' + MATCH_NOTES_LABELS[s] + '</div>' +
+                    '<div style="font-size:12px;line-height:1.5;white-space:pre-wrap">' + esc(d.notes[s]) + '</div>' +
+                  '</div>'
+                ).join('') +
+              '</div>' +
+            '</div>'
+          : '') +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button class="btn" type="button" onclick="window.print()" style="font-size:12px">🖨 Print</button>' +
+          '<button class="btn" type="button" onclick="reportCopyToClipboard(\'match\',window.__rptData_match)" style="font-size:12px">📋 Copy as text</button>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function _renderMedicalReport() {
+      const rpt = generateMedicalReport(state.players, state.medicalRecords, state.medicalNotes);
+      window.__rptData_medical = rpt;
+
+      return '<div id="report-medical-content">' +
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">' +
+          _statCard('Total players', rpt.total, '#60a5fa') +
+          _statCard('Medical alerts', rpt.alerts.length, '#f87171') +
+          _statCard('Unavailable', rpt.unavailable.length, '#f87171') +
+          _statCard('In rehab', rpt.rehab.length, '#fbbf24') +
+        '</div>' +
+        '<div class="card" style="overflow-x:auto">' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Full squad medical status</div>' +
+          (rpt.rows.length===0
+            ? '<div style="text-align:center;padding:20px;color:var(--muted)">No active players.</div>'
+            : '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+                '<thead><tr style="border-bottom:2px solid var(--line)">' +
+                  '<th style="padding:7px 8px 7px 0;text-align:left;color:var(--muted)">Player</th>' +
+                  '<th style="padding:7px 6px;text-align:left;color:var(--muted)">Training status</th>' +
+                  '<th style="padding:7px 6px;text-align:left;color:var(--muted)">Injury / condition</th>' +
+                  '<th style="padding:7px 6px;text-align:left;color:var(--muted)">Severity</th>' +
+                  '<th style="padding:7px 6px;text-align:left;color:var(--muted)">Return date</th>' +
+                  '<th style="padding:7px 0 7px 6px;text-align:left;color:var(--muted)">Clearance</th>' +
+                '</tr></thead><tbody>' +
+                rpt.rows.map(r => {
+                  const ts    = r.trainingStatus || '';
+                  const tsC   = ts ? medicalTrainingStatusColor(ts) : '#34d399';
+                  const tsL   = ts ? medicalTrainingStatusLabel(ts) : 'Full Training';
+                  const sevC  = medicalSeverityColor(r.severity);
+                  const clrC  = MEDICAL_CLEARANCE_COLORS[r.clearanceStatus]||'#94a3b8';
+                  const clrL  = MEDICAL_CLEARANCE_LABELS[r.clearanceStatus]||'—';
+                  return '<tr style="border-bottom:1px solid var(--line)' + (r.hasAlert?';background:rgba(248,113,113,0.04)':'') + '">' +
+                    '<td style="padding:7px 8px 7px 0;font-weight:700">' + esc(r.player.name) + '</td>' +
+                    '<td style="padding:7px 6px"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:' + tsC + '1a;color:' + tsC + '">' + esc(tsL) + '</span></td>' +
+                    '<td style="padding:7px 6px;color:' + (r.currentInjury?'var(--text)':'var(--muted)') + '">' + esc(r.currentInjury||'—') + '</td>' +
+                    '<td style="padding:7px 6px">' + (r.severity?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:' + sevC + '1a;color:' + sevC + '">' + MEDICAL_SEVERITY_LABELS[r.severity] + '</span>':'<span style="color:var(--muted)">—</span>') + '</td>' +
+                    '<td style="padding:7px 6px;color:' + (r.expectedReturn?'var(--text)':'var(--muted)') + '">' + esc(r.expectedReturn||'—') + '</td>' +
+                    '<td style="padding:7px 0 7px 6px">' + (r.clearanceStatus?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:' + clrC + '1a;color:' + clrC + '">' + clrL + '</span>':'<span style="color:var(--muted)">—</span>') + '</td>' +
+                  '</tr>';
+                }).join('') +
+              '</tbody></table>') +
+        '</div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">' +
+          '<button class="btn" type="button" onclick="window.print()" style="font-size:12px">🖨 Print</button>' +
+          '<button class="btn" type="button" onclick="reportCopyToClipboard(\'medical\',window.__rptData_medical)" style="font-size:12px">📋 Copy as text</button>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function _renderTrainingReport() {
+      const rpt = generateTrainingReport(state.players, state.schedule, state.trainingAttendance, state.sessionNotes);
+      window.__rptData_training = rpt;
+
+      return '<div id="report-training-content">' +
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">' +
+          _statCard('Total sessions', rpt.totalSessions, '#60a5fa') +
+          _statCard('Avg attendance', rpt.avgPct!=null?rpt.avgPct+'%':'—', rpt.avgPct>=75?'#34d399':rpt.avgPct>=50?'#fbbf24':'#f87171') +
+          _statCard('Players tracked', rpt.players.filter(r=>r.total>0).length, '#34d399') +
+        '</div>' +
+        (rpt.sessions.length===0
+          ? '<div class="card" style="text-align:center;padding:24px;color:var(--muted)">No training sessions with attendance records found. Record attendance in the Training section.</div>'
+          : '<div class="card" style="margin-bottom:14px;overflow-x:auto">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">By session</div>' +
+              '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+                '<thead><tr style="border-bottom:2px solid var(--line)">' +
+                  '<th style="padding:7px 8px 7px 0;text-align:left;color:var(--muted)">Session</th>' +
+                  '<th style="padding:7px 6px;text-align:center;color:#34d399">Present</th>' +
+                  '<th style="padding:7px 6px;text-align:center;color:#fbbf24">Excused</th>' +
+                  '<th style="padding:7px 6px;text-align:center;color:#f87171">Absent</th>' +
+                  '<th style="padding:7px 0 7px 6px;text-align:right;color:var(--muted)">Rate</th>' +
+                '</tr></thead><tbody>' +
+                rpt.sessions.map(r =>
+                  '<tr style="border-bottom:1px solid var(--line)">' +
+                    '<td style="padding:7px 8px 7px 0">' +
+                      '<div style="font-weight:700">' + esc(r.session.title||r.session.id) + '</div>' +
+                      '<div style="font-size:11px;color:var(--muted)">' + esc(r.session.date||'No date') + (r.session.location?' · '+esc(r.session.location):'') + '</div>' +
+                    '</td>' +
+                    '<td style="text-align:center;padding:6px;font-weight:700;color:#34d399">' + r.present + '</td>' +
+                    '<td style="text-align:center;padding:6px;color:#60a5fa">' + r.excused + '</td>' +
+                    '<td style="text-align:center;padding:6px;color:#f87171">' + r.absent + '</td>' +
+                    '<td style="text-align:right;padding:6px 0;font-weight:700;color:' + (r.pct>=75?'#34d399':r.pct>=50?'#fbbf24':'#f87171') + '">' + r.pct + '%</td>' +
+                  '</tr>'
+                ).join('') +
+              '</tbody></table>' +
+            '</div>') +
+        (rpt.players.filter(r=>r.total>0).length>0
+          ? '<div class="card" style="margin-bottom:14px;overflow-x:auto">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">By player</div>' +
+              '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+                '<thead><tr style="border-bottom:2px solid var(--line)">' +
+                  '<th style="padding:7px 8px 7px 0;text-align:left;color:var(--muted)">Player</th>' +
+                  '<th style="padding:7px 6px;text-align:center;color:#34d399">Attended</th>' +
+                  '<th style="padding:7px 6px;text-align:center;color:#fbbf24">Excused</th>' +
+                  '<th style="padding:7px 6px;text-align:center;color:#f87171">Missed</th>' +
+                  '<th style="padding:7px 0 7px 6px;text-align:right;color:var(--muted)">Rate</th>' +
+                '</tr></thead><tbody>' +
+                rpt.players.filter(r=>r.total>0).map(r =>
+                  '<tr style="border-bottom:1px solid var(--line)">' +
+                    '<td style="padding:7px 8px 7px 0;font-weight:700">' + esc(r.player.name) + '</td>' +
+                    '<td style="text-align:center;padding:6px;font-weight:700;color:#34d399">' + r.attended + '</td>' +
+                    '<td style="text-align:center;padding:6px;color:#60a5fa">' + r.excused + '</td>' +
+                    '<td style="text-align:center;padding:6px;color:#f87171">' + r.missed + '</td>' +
+                    '<td style="text-align:right;padding:6px 0;font-weight:700;color:' + (r.pct>=75?'#34d399':r.pct>=50?'#fbbf24':'#f87171') + '">' + (r.pct!=null?r.pct+'%':'—') + '</td>' +
+                  '</tr>'
+                ).join('') +
+              '</tbody></table>' +
+            '</div>'
+          : '') +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button class="btn" type="button" onclick="window.print()" style="font-size:12px">🖨 Print</button>' +
+          '<button class="btn" type="button" onclick="reportCopyToClipboard(\'training\',window.__rptData_training)" style="font-size:12px">📋 Copy as text</button>' +
+        '</div>' +
+      '</div>';
+    }
+
     // ─── PHASE 21 — MEDICAL & WELFARE CENTRE ─────────────────────────────────
 
     const MEDICAL_SEVERITY_LABELS = { minor:'Minor', moderate:'Moderate', severe:'Severe', '':'Unknown' };
@@ -14810,6 +15515,10 @@
     // Phase 21 — Medical & Welfare UI state
     let _medActivePlayerId = null;       // playerId of open medical record | null
     let _medActiveTab      = 'dashboard'; // 'dashboard' | 'record' | 'timeline'
+    // Phase 22 — Reports & Export Centre UI state
+    let _reportType      = '';  // '' | 'player' | 'availability' | 'match' | 'medical' | 'training'
+    let _reportPlayerId  = '';  // for player report
+    let _reportFixtureId = '';  // for match report (uses matchKey() when empty)
 
     // ─── SQUAD SELECTION UI STATE (not persisted — transient per-session) ───────
     let _selectionEditId         = null;  // null = list view | selId = editor open
@@ -16762,6 +17471,7 @@
       safeRender('coach-settings',      () => renderSettings());
       safeRender('coach-fixtures',      () => renderCoachFixtures());
       safeRender('coach-selection',     () => renderCoachSelection());
+      safeRender('coach-reports',       () => renderReports());
       safeRender('player-week',         () => renderPlayerWeek());
       safeRender('player-availability', () => renderPlayerAvailability());
       safeRender('player-fixtures',     () => renderPlayerFixtures());
