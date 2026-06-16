@@ -2180,6 +2180,7 @@
       <section id="coach-club"        class="section"></section>
       <section id="coach-reports"     class="section"></section>
       <section id="coach-calendar"    class="section"></section>
+      <section id="coach-qa"          class="section"></section>
 
       <section id="player-home"         class="section"></section>
       <section id="player-availability" class="section"></section>
@@ -2228,7 +2229,8 @@
       ["club",      "Club"],
       ["reports",   "Reports"],
       ["calendar",  "Calendar"],
-      ["settings",  "Settings"]
+      ["settings",  "Settings"],
+      ["qa",        "Beta QA"],
     ];
 
     const playerSections = [
@@ -2632,6 +2634,8 @@
       activeCalendarView: 'month',
       calendarMonth: '',
       calendarTypeFilter: 'all',
+      // Phase 26 — Beta QA
+      betaQAChecklist: {},
     };
 
     // ─── STATE ────────────────────────────────────────────────────────────────
@@ -3200,6 +3204,7 @@
       next.activeCalendarView  = input.activeCalendarView  || 'month';
       next.calendarMonth       = input.calendarMonth       || '';
       next.calendarTypeFilter  = input.calendarTypeFilter  || 'all';
+      next.betaQAChecklist     = (input.betaQAChecklist && typeof input.betaQAChecklist === 'object') ? input.betaQAChecklist : {};
       const user = next.users.find(u => u.id === next.currentUserId);
       if (user?.role === "player") {
         const canonicalPlayerId = canonicalPlayerIdForUser(user);
@@ -11997,6 +12002,328 @@
         </div>`;
     }
 
+    // ─── PHASE 26 — BETA READINESS QA DASHBOARD ─────────────────────────────
+
+    // ── Checklist items (fixed list, IDs must be stable) ─────────────────────
+    const QA_CHECKLIST_ITEMS = [
+      { id: 'qa_club_name',     section: 'club',     label: 'Club and team name confirmed' },
+      { id: 'qa_club_logo',     section: 'club',     label: 'Club logo uploaded and visible' },
+      { id: 'qa_player_add',    section: 'players',  label: 'Player added to roster manually' },
+      { id: 'qa_player_invite', section: 'players',  label: 'Player invite link generated and tested' },
+      { id: 'qa_fixture_add',   section: 'fixtures', label: 'Fixture added with date, time, venue' },
+      { id: 'qa_fixture_past',  section: 'fixtures', label: 'Past fixture result recorded' },
+      { id: 'qa_avail_send',    section: 'avail',    label: 'Availability request sent to squad' },
+      { id: 'qa_avail_reply',   section: 'avail',    label: 'Player availability reply recorded' },
+      { id: 'qa_train_sched',   section: 'training', label: 'Training session scheduled' },
+      { id: 'qa_train_blocks',  section: 'training', label: 'Session plan blocks added to a session' },
+      { id: 'qa_train_attend',  section: 'training', label: 'Attendance marked for a session' },
+      { id: 'qa_match_lineup',  section: 'match',    label: 'Team lineup built and published' },
+      { id: 'qa_match_events',  section: 'match',    label: 'Match events entered (try, kick, card)' },
+      { id: 'qa_match_ft',      section: 'match',    label: 'Full time score confirmed' },
+      { id: 'qa_med_record',    section: 'medical',  label: 'Medical record added for a player' },
+      { id: 'qa_med_status',    section: 'medical',  label: 'Training status updated (unavailable / modified)' },
+      { id: 'qa_report_view',   section: 'reports',  label: 'Match report generated and previewed' },
+      { id: 'qa_report_copy',   section: 'reports',  label: 'Copy to clipboard tested' },
+      { id: 'qa_cal_month',     section: 'calendar', label: 'Calendar month view loads events correctly' },
+      { id: 'qa_cal_agenda',    section: 'calendar', label: 'Agenda view checked' },
+      { id: 'qa_portal_home',   section: 'portal',   label: 'Player portal home loads correctly' },
+      { id: 'qa_portal_avail',  section: 'portal',   label: 'Player sets availability through portal' },
+      { id: 'qa_portal_squad',  section: 'portal',   label: 'Published squad visible in player portal' },
+    ];
+
+    // ── Pure readiness helpers ────────────────────────────────────────────────
+
+    function qaClubReadiness(clubName, teamName) {
+      const hasName = !!(clubName && String(clubName).trim());
+      const hasTeam = !!(teamName && String(teamName).trim());
+      if (hasName && hasTeam) return { status: 'ready', summary: String(clubName) + ' · ' + String(teamName) };
+      if (hasName)            return { status: 'needs-data', summary: String(clubName) + ' — team name missing' };
+      return { status: 'not-checked', summary: 'No club name set' };
+    }
+
+    function qaPlayersReadiness(players) {
+      const active = (players || []).filter(p => !playerIsArchived(p));
+      const n = active.length;
+      if (n >= 5) return { status: 'ready', count: n, summary: n + ' active players' };
+      if (n > 0)  return { status: 'needs-data', count: n, summary: n + ' player' + (n === 1 ? '' : 's') + ' — aim for a full squad' };
+      return { status: 'not-checked', count: 0, summary: 'No players added' };
+    }
+
+    function qaFixturesReadiness(fixtures, today) {
+      const _today = today || new Date().toISOString().slice(0, 10);
+      const fx     = (fixtures || []);
+      const future = fx.filter(f => f.date && f.date >= _today).length;
+      const past   = fx.filter(f => f.date && f.date  < _today).length;
+      if (future > 0 && past > 0) return { status: 'ready',      count: fx.length, future, past, summary: fx.length + ' fixture(s) — ' + future + ' upcoming, ' + past + ' past' };
+      if (fx.length > 0)          return { status: 'needs-data', count: fx.length, future, past, summary: fx.length + ' fixture(s) — add both past and future for full testing' };
+      return { status: 'not-checked', count: 0, future: 0, past: 0, summary: 'No fixtures added' };
+    }
+
+    function qaAvailabilityReadiness(players, schedule) {
+      const active   = (players || []).filter(p => !playerIsArchived(p));
+      const sessions = (schedule || []).filter(s => s.type === 'Training');
+      const FIELDS   = ['game', 'trainingTuesday', 'trainingThursday'];
+      const responded = active.filter(p => FIELDS.some(f => p[f] && p[f] !== 'no-reply')).length;
+      if (sessions.length > 0 && responded > 0) return { status: 'ready',      sessions: sessions.length, responded, summary: responded + ' player(s) responded' };
+      if (sessions.length > 0)                  return { status: 'needs-data', sessions: sessions.length, responded: 0, summary: sessions.length + ' session(s) — no player responses yet' };
+      return { status: 'not-checked', sessions: 0, responded: 0, summary: 'No sessions or availability data' };
+    }
+
+    function qaTrainingReadiness(schedule, trainingBlocks) {
+      const sessions = (schedule || []).filter(s => s.type === 'Training');
+      const withPlan = sessions.filter(s => ((trainingBlocks || {})[s.id] || []).length > 0).length;
+      if (sessions.length > 0 && withPlan > 0) return { status: 'ready',      count: sessions.length, withPlan, summary: sessions.length + ' session(s), ' + withPlan + ' with session plan' };
+      if (sessions.length > 0)                 return { status: 'needs-data', count: sessions.length, withPlan: 0, summary: sessions.length + ' session(s) — add plan blocks to at least one' };
+      return { status: 'not-checked', count: 0, withPlan: 0, summary: 'No training sessions' };
+    }
+
+    function qaMatchCentreReadiness(matchEventsMap, matchStatusMap) {
+      const keys       = Object.keys(matchEventsMap || {});
+      const withEvents = keys.filter(k => ((matchEventsMap || {})[k] || []).length > 0).length;
+      const completed  = keys.filter(k => (matchStatusMap || {})[k] === 'ft').length;
+      if (completed > 0)   return { status: 'ready',      matches: keys.length, withEvents, completed, summary: completed + ' completed match(es) with events' };
+      if (withEvents > 0)  return { status: 'needs-data', matches: keys.length, withEvents, completed: 0, summary: withEvents + ' match(es) with events — mark full time to complete' };
+      return { status: 'not-checked', matches: 0, withEvents: 0, completed: 0, summary: 'No match centre data' };
+    }
+
+    function qaMedicalReadiness(players, medRecords) {
+      const active   = (players || []).filter(p => !playerIsArchived(p));
+      const STATUSES = ['unavailable', 'noContact', 'modified', 'gymOnly'];
+      const flagged  = active.filter(p => {
+        const r = normalizeMedicalRecord((medRecords || {})[p.id]);
+        return !!(r.currentInjury || r.severity || STATUSES.includes(p.trainingStatus));
+      }).length;
+      if (flagged > 0)      return { status: 'ready',      total: active.length, flagged, summary: flagged + ' player(s) with medical status' };
+      if (active.length > 0) return { status: 'needs-data', total: active.length, flagged: 0, summary: active.length + ' player(s) — no medical records yet' };
+      return { status: 'not-checked', total: 0, flagged: 0, summary: 'No player or medical data' };
+    }
+
+    function qaReportsReadiness(matchEventsMap, matchStatusMap) {
+      const completed = Object.keys(matchEventsMap || {}).filter(k =>
+        (matchStatusMap || {})[k] === 'ft' && ((matchEventsMap || {})[k] || []).length > 0
+      ).length;
+      if (completed >= 2) return { status: 'ready',      count: completed, summary: completed + ' match reports available' };
+      if (completed > 0)  return { status: 'needs-data', count: completed, summary: '1 report available — complete more matches for full testing' };
+      return { status: 'not-checked', count: 0, summary: 'No completed matches to report on' };
+    }
+
+    function qaCalendarReadiness(fixtures, schedule) {
+      const total = (fixtures || []).length + (schedule || []).filter(s => s.type === 'Training').length;
+      if (total >= 5) return { status: 'ready',      total, summary: total + ' events in calendar' };
+      if (total > 0)  return { status: 'needs-data', total, summary: total + ' event(s) — add more fixtures and sessions' };
+      return { status: 'not-checked', total: 0, summary: 'No calendar events' };
+    }
+
+    function qaPlayerPortalReadiness(players) {
+      const active  = (players || []).filter(p => !playerIsArchived(p));
+      const invited = active.filter(p => p.userId || p.email).length;
+      if (invited > 0 && active.length >= 3) return { status: 'ready',      active: active.length, invited, summary: invited + ' player(s) with portal access' };
+      if (invited > 0)                        return { status: 'needs-data', active: active.length, invited, summary: invited + ' player(s) with access — add more for squad testing' };
+      return { status: 'not-checked', active: active.length, invited: 0, summary: 'No players with portal access' };
+    }
+
+    function qaBuildSections(s, today) {
+      const mc = s.matchCentre || {};
+      return [
+        { id: 'club',     name: 'Club Setup',       icon: '🏟️', ...qaClubReadiness(s.clubName, s.teamName) },
+        { id: 'players',  name: 'Players',           icon: '👥', ...qaPlayersReadiness(s.players) },
+        { id: 'fixtures', name: 'Fixtures',          icon: '🏆', ...qaFixturesReadiness(s.fixtures, today) },
+        { id: 'avail',    name: 'Availability',      icon: '📋', ...qaAvailabilityReadiness(s.players, s.schedule) },
+        { id: 'training', name: 'Training',          icon: '🏉', ...qaTrainingReadiness(s.schedule, s.trainingBlocks) },
+        { id: 'match',    name: 'Match Centre',      icon: '⏱️', ...qaMatchCentreReadiness(mc.events, mc.status) },
+        { id: 'medical',  name: 'Medical & Welfare', icon: '🏥', ...qaMedicalReadiness(s.players, s.medicalRecords) },
+        { id: 'reports',  name: 'Reports',           icon: '📊', ...qaReportsReadiness(mc.events, mc.status) },
+        { id: 'calendar', name: 'Calendar',          icon: '📅', ...qaCalendarReadiness(s.fixtures, s.schedule) },
+        { id: 'portal',   name: 'Player Portal',     icon: '📱', ...qaPlayerPortalReadiness(s.players) },
+      ];
+    }
+
+    function qaBetaSummaryText(sections, clubName, today) {
+      const _today = today || new Date().toISOString().slice(0, 10);
+      const ready  = sections.filter(s => s.status === 'ready').length;
+      return [
+        "Coach's Eye — Beta Readiness Report",
+        'Club: ' + (clubName || 'Not set'),
+        'Date: ' + _today,
+        'Status: ' + ready + '/' + sections.length + ' sections ready',
+        '',
+        ...sections.map(s => {
+          const badge = s.status === 'ready' ? '✅' : s.status === 'needs-data' ? '⚠️' : '⬜';
+          return badge + ' ' + s.name + ': ' + s.summary;
+        }),
+      ].join('\n');
+    }
+
+    // ── UI actions ────────────────────────────────────────────────────────────
+
+    function betaQAToggle(itemId) {
+      state.betaQAChecklist = state.betaQAChecklist || {};
+      state.betaQAChecklist[itemId] = !state.betaQAChecklist[itemId];
+      saveState('QA checklist');
+      safeRender('coach-qa', () => renderBetaQA());
+    }
+
+    function betaQAReset() {
+      state.betaQAChecklist = {};
+      saveState('QA checklist reset');
+      safeRender('coach-qa', () => renderBetaQA());
+    }
+
+    function betaQACopySummary(sections, clubName) {
+      const text = qaBetaSummaryText(sections, clubName);
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => showToast('Summary copied to clipboard ✓')).catch(() => showToast('Copy failed — try selecting the text manually'));
+      } else {
+        showToast('Clipboard not available in this browser');
+      }
+    }
+
+    // ── Main renderer ─────────────────────────────────────────────────────────
+
+    function renderBetaQA() {
+      const el = document.getElementById('coach-qa');
+      if (!el) return;
+
+      const today    = new Date().toISOString().slice(0, 10);
+      const sections = qaBuildSections(state, today);
+      const checklist = state.betaQAChecklist || {};
+      const totalItems = QA_CHECKLIST_ITEMS.length;
+      const doneItems  = QA_CHECKLIST_ITEMS.filter(i => checklist[i.id]).length;
+
+      const STATUS_COLOR = { 'ready': '#34d399', 'needs-data': '#fbbf24', 'not-checked': '#94a3b8' };
+      const STATUS_LABEL = { 'ready': 'Ready', 'needs-data': 'Needs Data', 'not-checked': 'Not Checked' };
+
+      function statusBadge(status) {
+        const c = STATUS_COLOR[status] || '#94a3b8';
+        const l = STATUS_LABEL[status] || status;
+        return '<span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:999px;background:' + c + '1a;color:' + c + ';text-transform:uppercase;letter-spacing:.06em">' + esc(l) + '</span>';
+      }
+
+      const readyCount     = sections.filter(s => s.status === 'ready').length;
+      const needsDataCount = sections.filter(s => s.status === 'needs-data').length;
+      const overallPct     = Math.round((readyCount / sections.length) * 100);
+      const overallColor   = overallPct >= 80 ? '#34d399' : overallPct >= 50 ? '#fbbf24' : '#f87171';
+
+      // ── Header ────────────────────────────────────────────────────────────
+      const header =
+        '<div class="training-hero" style="margin:0 0 16px">' +
+          '<div>' +
+            '<div class="eyebrow">Coach\'s Eye · Internal</div>' +
+            '<h1>Beta Readiness Dashboard</h1>' +
+            '<p style="font-size:13px;color:var(--muted)">Manual QA checklist and state summary for pre-launch verification.</p>' +
+          '</div>' +
+        '</div>';
+
+      // ── Readiness score bar ───────────────────────────────────────────────
+      const scoreBar =
+        '<div class="card" style="padding:14px 16px;margin-bottom:12px">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Overall Readiness</div>' +
+            '<div style="font-size:22px;font-weight:900;color:' + overallColor + '">' + overallPct + '%</div>' +
+          '</div>' +
+          '<div style="height:6px;background:var(--line);border-radius:999px;overflow:hidden;margin-bottom:8px">' +
+            '<div style="height:100%;width:' + overallPct + '%;background:' + overallColor + ';border-radius:999px;transition:width .5s"></div>' +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--muted)">' +
+            readyCount + ' ready · ' + needsDataCount + ' needs data · ' + (sections.length - readyCount - needsDataCount) + ' not checked' +
+          '</div>' +
+        '</div>';
+
+      // ── Section tiles ─────────────────────────────────────────────────────
+      const tiles =
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-bottom:16px">' +
+          sections.map(sec =>
+            '<div class="card" style="padding:12px 14px">' +
+              '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+                '<span style="font-size:18px">' + sec.icon + '</span>' +
+                '<div style="flex:1;min-width:0">' +
+                  '<div style="font-size:13px;font-weight:800">' + esc(sec.name) + '</div>' +
+                '</div>' +
+                statusBadge(sec.status) +
+              '</div>' +
+              '<div style="font-size:11px;color:var(--muted);line-height:1.4">' + esc(sec.summary) + '</div>' +
+            '</div>'
+          ).join('') +
+        '</div>';
+
+      // ── Manual checklist ──────────────────────────────────────────────────
+      const checklistSectionIds = [...new Set(QA_CHECKLIST_ITEMS.map(i => i.section))];
+      const SECTION_META = {
+        club:     { name: 'Club Setup',       icon: '🏟️' },
+        players:  { name: 'Players',           icon: '👥' },
+        fixtures: { name: 'Fixtures',          icon: '🏆' },
+        avail:    { name: 'Availability',      icon: '📋' },
+        training: { name: 'Training',          icon: '🏉' },
+        match:    { name: 'Match Centre',      icon: '⏱️' },
+        medical:  { name: 'Medical & Welfare', icon: '🏥' },
+        reports:  { name: 'Reports',           icon: '📊' },
+        calendar: { name: 'Calendar',          icon: '📅' },
+        portal:   { name: 'Player Portal',     icon: '📱' },
+      };
+
+      const checklistHtml =
+        '<div class="card" style="padding:14px 16px;margin-bottom:12px">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">' +
+            '<div>' +
+              '<div style="font-size:13px;font-weight:800">Manual Testing Checklist</div>' +
+              '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + doneItems + ' / ' + totalItems + ' items checked</div>' +
+            '</div>' +
+            '<button type="button" onclick="betaQAReset()" class="btn" style="font-size:11px;min-height:30px;padding:0 12px;color:var(--muted)">Reset all</button>' +
+          '</div>' +
+          '<div style="height:3px;background:var(--line);border-radius:999px;overflow:hidden;margin-bottom:14px">' +
+            '<div style="height:100%;width:' + Math.round(doneItems / totalItems * 100) + '%;background:#34d399;border-radius:999px;transition:width .4s"></div>' +
+          '</div>' +
+          checklistSectionIds.map(sid => {
+            const meta  = SECTION_META[sid] || { name: sid, icon: '•' };
+            const items = QA_CHECKLIST_ITEMS.filter(i => i.section === sid);
+            return '<div style="margin-bottom:14px">' +
+              '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">' +
+                meta.icon + ' ' + esc(meta.name) +
+              '</div>' +
+              items.map(item => {
+                const checked = !!(checklist[item.id]);
+                return '<div onclick="betaQAToggle(\'' + item.id + '\')" style="' +
+                  'display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;cursor:pointer;' +
+                  'margin-bottom:2px;background:' + (checked ? 'rgba(52,211,153,0.07)' : 'transparent') + ';' +
+                  'border:1px solid ' + (checked ? 'rgba(52,211,153,0.25)' : 'var(--line)') + '">' +
+                  '<div style="width:18px;height:18px;border-radius:5px;border:2px solid ' + (checked ? '#34d399' : '#64748b') + ';' +
+                    'background:' + (checked ? '#34d399' : 'transparent') + ';flex-shrink:0;display:flex;align-items:center;justify-content:center">' +
+                    (checked ? '<span style="color:#fff;font-size:11px;font-weight:900">✓</span>' : '') +
+                  '</div>' +
+                  '<span style="font-size:12px;' + (checked ? 'text-decoration:line-through;color:var(--muted)' : '') + '">' +
+                    esc(item.label) +
+                  '</span>' +
+                '</div>';
+              }).join('') +
+            '</div>';
+          }).join('') +
+        '</div>';
+
+      // ── Beta handover summary ─────────────────────────────────────────────
+      const summaryText = qaBetaSummaryText(sections, state.clubName, today);
+      const summaryCard =
+        '<div class="card" style="padding:14px 16px;margin-bottom:12px">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
+            '<div style="font-size:13px;font-weight:800">Beta Handover Summary</div>' +
+            '<button type="button" onclick="betaQACopySummary(' +
+              'window._qaCurrentSections,' +
+              'state.clubName' +
+            ')" class="btn" style="font-size:11px;min-height:30px;padding:0 12px">Copy to clipboard</button>' +
+          '</div>' +
+          '<pre style="font-size:11px;line-height:1.6;color:var(--muted);white-space:pre-wrap;word-break:break-word;margin:0;background:var(--panel-2);border-radius:8px;padding:10px 12px;border:1px solid var(--line)">' +
+            esc(summaryText) +
+          '</pre>' +
+        '</div>';
+
+      // Store sections for clipboard access
+      window._qaCurrentSections = sections;
+
+      el.innerHTML =
+        '<div style="max-width:900px;margin:0 auto">' +
+          header + scoreBar + tiles + checklistHtml + summaryCard +
+        '</div>';
+    }
+
     // ─── PHASE 25 — PLAYER PORTAL HOME ──────────────────────────────────────
 
     // ── Pure helpers (testable, no state references) ──────────────────────────
@@ -18534,6 +18861,7 @@
       safeRender('coach-selection',     () => renderCoachSelection());
       safeRender('coach-reports',       () => renderReports());
       safeRender('coach-calendar',      () => renderCalendar());
+      safeRender('coach-qa',            () => renderBetaQA());
       safeRender('player-home',         () => renderPlayerHome());
       safeRender('player-week',         () => renderPlayerWeek());
       safeRender('player-availability', () => renderPlayerAvailability());
