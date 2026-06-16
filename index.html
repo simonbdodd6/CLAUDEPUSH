@@ -3586,6 +3586,31 @@
       record[key + "Reason"] = reason || "";
       return record;
     }
+    // Pure helper: MERGE server availability into a local record WITHOUT ever
+    // overwriting a session the player has already answered on this device.
+    //
+    // Beta blocker: the player availability fetch used to overwrite any session
+    // whose local value differed from the server. Because that GET is async, it
+    // resolved AFTER the player had tapped — re-applying the server's stale
+    // 'available' and flipping just-answered sibling sessions (and match → other
+    // sessions) back to Available. Local intent is authoritative: only fill in
+    // sessions the player has NOT answered (no-reply / blank). Touches one
+    // session key + its Reason at a time; never resets a sibling. Returns whether
+    // the record changed.
+    function mergeServerAvailabilityIntoRecord(record, responses) {
+      if (!record || !responses) return false;
+      let changed = false;
+      Object.entries(responses).forEach(([sid, entry]) => {
+        if (!entry) return;
+        const k  = sessionKey(sid);
+        const rk = k + "Reason";
+        const localAnswered = record[k] && record[k] !== "no-reply";
+        if (localAnswered) return; // never overwrite a local answer
+        if (entry.response && record[k] !== entry.response) { record[k] = entry.response; changed = true; }
+        if (entry.reason !== undefined && record[rk] !== entry.reason) { record[rk] = entry.reason; }
+      });
+      return changed;
+    }
     // Pure helper: locate ALL live state.players entries for a (possibly canonical/
     // deduped) player copy. Matches across id / userId / legacyPlayerId / playerId.
     // A player can have more than one raw record (e.g. an invite record plus a
@@ -9337,19 +9362,12 @@
         if (!data?.responses) return;
         const player = getPlayer();
         const liveRecords = findLiveAvailabilityRecords(state.players, player);
-        let changed = false;
-        Object.entries(data.responses).forEach(([sid, entry]) => {
-          const k  = sessionKey(sid);
-          const rk = k + 'Reason';
-          if (entry.response && player[k] !== entry.response) {
-            player[k] = entry.response;
-            liveRecords.forEach(rec => { rec[k] = entry.response; });
-            changed = true;
-          }
-          if (entry.reason !== undefined && player[rk] !== entry.reason) {
-            player[rk] = entry.reason;
-            liveRecords.forEach(rec => { rec[rk] = entry.reason; });
-          }
+        // Merge, never overwrite: only adopt server values for sessions the
+        // player has NOT answered locally, so a late/stale server response can
+        // never reset a just-answered sibling session back to Available.
+        let changed = mergeServerAvailabilityIntoRecord(player, data.responses);
+        liveRecords.forEach(rec => {
+          if (mergeServerAvailabilityIntoRecord(rec, data.responses)) changed = true;
         });
         if (changed) { saveState('Server availability loaded'); renderPlayerAvailability(); }
       } catch { /* non-critical — player already sees local state */ }
