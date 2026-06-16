@@ -3851,6 +3851,16 @@
     }
 
     function selectAvailabilityStatusPending(key, status) {
+      // TRACE: the REAL entry handler for every status button tap. 'available'
+      // commits immediately; 'unavailable'/'maybe' only OPEN the reason picker —
+      // the actual write (setPlayerAvailability) does not run until a reason or
+      // Skip is tapped. This is why a "Can't make it" tap shows only the render
+      // trace and no write trace.
+      if (availTraceEnabled()) {
+        _availTraceSeq++;
+        availTrace(`TAP selectAvailabilityStatusPending key=${key} status=${status} → ${status === 'available' ? 'COMMIT now (setPlayerAvailability)' : 'OPEN reason picker — NO write until a reason/Skip is tapped'}`,
+          { key, status, reasonPickerWasOpenFor: _reasonPickerOpen });
+      }
       if (status === 'available') {
         // Available needs no reason — save immediately
         setPlayerAvailability(key, 'available', '');
@@ -3861,6 +3871,7 @@
     }
 
     function cancelReasonPicker() {
+      if (availTraceEnabled()) availTrace('TAP cancelReasonPicker — pending selection DISCARDED, no write', { wasPendingFor: _reasonPickerOpen });
       _reasonPickerOpen = null;
       renderPlayerAvailability();
     }
