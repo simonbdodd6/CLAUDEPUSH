@@ -41,5 +41,8 @@ export {
   INVOCATION_STATUS,
   invokeNormalizer,
 } from './invocation.js'
+export {
+  planBatchNormalization,
+} from './batch.js'
 export { NormalizationError, NORMALIZATION_ERROR } from './errors.js'
 export * from './types.js'   // JSDoc typedefs only (no runtime values)

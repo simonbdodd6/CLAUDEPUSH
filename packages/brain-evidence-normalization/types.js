@@ -77,4 +77,16 @@
  * @property {ReadonlyArray<string>} problems             human-readable problems, deterministic order
  */
 
+/**
+ * The frozen, deterministic result of planning normalization across a batch of
+ * records (M53). Per-record envelopes are in input order; counts derive solely from
+ * the M52 statuses; problems are collected as data (never thrown).
+ * @typedef {Object} BatchNormalizationPlan
+ * @property {number}  total
+ * @property {boolean} allOk                              no unknown_source and no invalid_signals
+ * @property {Readonly<{ total:number, ok:number, unknown_source:number, invalid_signals:number }>} counts
+ * @property {ReadonlyArray<Readonly<{ index:number, recordId:string, invocation:NormalizationInvocation }>>} results
+ * @property {ReadonlyArray<Readonly<{ index:number, recordId:string, problems:ReadonlyArray<string> }>>} problems
+ */
+
 export {}
