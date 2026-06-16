@@ -20,6 +20,7 @@
 import { assertTenant } from '@brain/evidence-store'
 import { EVIDENCE_CONTRACT_VERSION } from '@brain/evidence-contracts'
 import { planBatchNormalization, planNormalizationApplication } from '@brain/evidence-normalization'
+import { deriveDedupeGroups } from './dedupe.js'
 
 const ok = (stage, output) => Object.freeze({ stage, status: 'ok', output: Object.freeze(output) })
 const deferred = (stage, output) => Object.freeze({ stage, status: 'deferred', output: Object.freeze(output) })
@@ -79,10 +80,20 @@ export const normalize = Object.freeze({
   plan(input) { return buildNormalizeApplicationPlan(input) },
 })
 
-/** 4 — deduplicate: collapse repeats by a deterministic key (deferred placeholder). */
+/**
+ * 4 — deduplicate: collapse repeats by a deterministic §3.4 key.
+ *
+ * Dormant. `run()` stays the inert placeholder (no work) so end-to-end `submit()` is
+ * unchanged. `groups({ accepted, records })` is the M57 DATA-ONLY contract: it derives
+ * §3.4 dedupe keys over the ACCEPTED entries of an ApplicationPlan and returns a
+ * DEFERRED grouping report of which signals WOULD collapse — it collapses NOTHING,
+ * reads/writes no store, never mutates input. Unknown sources / invalid signals are
+ * not in `accepted`, so they never enter a group.
+ */
 export const deduplicate = Object.freeze({
   name: 'deduplicate',
   run() { return deferred('deduplicate', { isDuplicate: false, dedupeKey: null }) },
+  groups(input) { return deferred('deduplicate', deriveDedupeGroups(input)) },
 })
 
 /** 5 — prepare confidence update: per (subject, signal) reweight plan (deferred placeholder). */
