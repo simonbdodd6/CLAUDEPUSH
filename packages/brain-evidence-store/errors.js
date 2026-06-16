@@ -11,7 +11,9 @@ export const STORE_ERROR = Object.freeze({
   INVALID_RECORD:   'invalid_record',    // EvidenceRecord fails the contract shape
   INVALID_ARGUMENT: 'invalid_argument',  // id / query / subject / auditEntry malformed
   CROSS_TENANT:     'cross_tenant',      // an operation crossed a tenant boundary (reserved for the driver)
-  NOT_IMPLEMENTED:  'not_implemented',   // skeleton has no storage driver yet (M44 — dormant)
+  CONFLICT:         'conflict',          // append-only: a record id already exists (M46 driver)
+  NOT_FOUND:        'not_found',         // audit target / referenced record does not exist (M46 driver)
+  NOT_IMPLEMENTED:  'not_implemented',   // no storage driver injected — store is dormant (M44 default)
 })
 
 export class EvidenceStoreError extends Error {

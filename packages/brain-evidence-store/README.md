@@ -1,14 +1,20 @@
-# `@brain/evidence-store` — dormant Evidence Store skeleton (M44)
+# `@brain/evidence-store` — Evidence Store (M44 skeleton + M46 in-memory driver)
 
 The tenant-scoped **store contract + API surface** for the inbound (evidence) half
 of the AI Brain, per the approved
 [M42 Evidence Ingestion Architecture](../../docs/M42-evidence-ingestion-architecture.md).
 Built on `@brain/evidence-contracts` (its **only** dependency).
 
-> **Status: DORMANT (M44).** Contract only. It **validates** (strict tenant scoping
-> + EvidenceRecord/argument shape) and **persists nothing** — no in-memory state, no
-> files, no database, no network, no driver. Every well-formed call resolves to
-> `not_implemented`. Imported by nobody yet.
+> **Status: DORMANT BY DEFAULT (M44 + M46).** The store **validates** (strict tenant
+> scoping + EvidenceRecord/argument shape) and, by default, **persists nothing** — no
+> files, no database, no network. With no driver, every well-formed call resolves to
+> `not_implemented`.
+>
+> **M46 adds an injectable in-memory `EvidenceDriver`** (`createInMemoryEvidenceDriver`)
+> — deterministic, append-only, tenant-scoped, for **tests and future dormant gateway
+> validation only** (NOT production storage; no files/db/network, no clock/randomness,
+> no auto-generated ids). Inject it with `createEvidenceStore({ driver })`. Imported by
+> no runtime code.
 
 ## Why a skeleton first
 

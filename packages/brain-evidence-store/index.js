@@ -13,6 +13,7 @@
  */
 
 export { createEvidenceStore, EVIDENCE_STORE_METHODS } from './store.js'
+export { createInMemoryEvidenceDriver } from './in-memory-driver.js'
 export { EvidenceStoreError, STORE_ERROR, fail } from './errors.js'
 export { assertTenant, sameTenant } from './validate.js'
 export * from './types.js'
