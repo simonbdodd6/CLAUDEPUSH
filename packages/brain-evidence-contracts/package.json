@@ -1,0 +1,10 @@
+{
+  "name": "@brain/evidence-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": "./index.js",
+  "description": "Shared AI Brain evidence-ingestion contracts: EvidenceRecord / NormalizedSignal / AuditEntry shapes + source/subject/sensitivity enums + the confidence-weight contract (M43, dormant). Pure data. Depends on nothing.",
+  "dependencies": {}
+}

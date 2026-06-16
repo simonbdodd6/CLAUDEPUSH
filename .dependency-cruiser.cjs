@@ -30,6 +30,13 @@ module.exports = {
       to: { path: '^packages/(?!brain-contracts/)' },
     },
     {
+      name: 'evidence-contracts-depends-on-nothing',
+      comment: '@brain/evidence-contracts is pure data (M43, dormant); it must import nothing else.',
+      severity: 'warn',
+      from: { path: '^packages/brain-evidence-contracts/' },
+      to: { path: '^packages/(?!brain-evidence-contracts/)' },
+    },
+    {
       name: 'packages-only-import-contracts',
       comment: 'brain-products / brain-versioning may import only @brain/contracts (+ self).',
       severity: 'warn',
