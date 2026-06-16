@@ -7082,6 +7082,9 @@
             '</div>';
           })() : ''}
 
+          <!-- Phase 24 — Command Dashboard section -->
+          ${isCoach() ? _renderCommandDashboard() : ''}
+
           ${aiHTML}
 
         </div>`;
@@ -11971,6 +11974,248 @@
           ${shown.map(fx => fixtureCard(fx)).join('')}
 
         </div>`;
+    }
+
+    // ─── PHASE 24 — COACH HOME COMMAND DASHBOARD ─────────────────────────────
+
+    // ── Pure helpers (testable — no state references) ─────────────────────────
+
+    function dashboardNextTraining(schedule, today) {
+      const _today = today || new Date().toISOString().slice(0, 10);
+      return (schedule || [])
+        .filter(s => s.type === 'Training' && s.date && s.date >= _today)
+        .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+    }
+
+    function dashboardMedicalAlerts(players, medRecords, medNotes) {
+      const active = (players || []).filter(p => !playerIsArchived(p));
+      const alerts = [];
+      const rehab  = [];
+      const unavailable = [];
+
+      active.forEach(p => {
+        const rec = normalizeMedicalRecord((medRecords || {})[p.id]);
+        const mn  = (medNotes || {})[p.id] || {};
+        const isUnavail  = p.trainingStatus === 'unavailable' || p.game === 'injured';
+        const isRehab    = ['modified','gymOnly','noContact'].includes(p.trainingStatus||'');
+        const hasCondition = rec.currentInjury || mn.condition || p.medical || rec.severity === 'severe' || rec.severity === 'moderate';
+
+        if (isUnavail) unavailable.push(p);
+        if (isRehab)   rehab.push(p);
+        if (isUnavail || isRehab || hasCondition) alerts.push({ player: p, rec, mn });
+      });
+
+      return {
+        total:       active.length,
+        alertCount:  alerts.length,
+        alerts:      alerts,
+        rehabCount:  rehab.length,
+        unavailableCount: unavailable.length,
+      };
+    }
+
+    function dashboardRecentResult(matchEventsMap, matchStatusMap) {
+      const statusMap  = matchStatusMap  || {};
+      const eventsMap  = matchEventsMap  || {};
+      const ftKeys = Object.keys(eventsMap).filter(k => {
+        const s = statusMap[k];
+        return s === 'ft' && Array.isArray(eventsMap[k]) && eventsMap[k].length > 0;
+      });
+      if (ftKeys.length === 0) return null;
+      // Pick the key with the latest date-like prefix
+      ftKeys.sort();
+      const latestKey = ftKeys[ftKeys.length - 1];
+      const score = matchComputeScore(eventsMap[latestKey]);
+      const datePart = latestKey.split('_')[0];
+      return { key: latestKey, score, date: /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : '' };
+    }
+
+    function dashboardUpcomingCalendar(fixtures, schedule, matchEventsMap, matchStatusMap, players, medRecords, announcements, today, limit) {
+      const _today = today || new Date().toISOString().slice(0, 10);
+      const _limit = limit || 5;
+      const all = calendarBuildEvents(fixtures || [], schedule || [], matchEventsMap || {}, matchStatusMap || {}, players || [], medRecords || {}, announcements || []);
+      return calendarSortEvents(all.filter(e => e.date && e.date >= _today)).slice(0, _limit);
+    }
+
+    // ── UI renderer ───────────────────────────────────────────────────────────
+
+    function _renderCommandDashboard() {
+      const today          = new Date().toISOString().slice(0, 10);
+      const nextTrain      = dashboardNextTraining(state.schedule, today);
+      const medSumm        = dashboardMedicalAlerts(state.players, state.medicalRecords, state.medicalNotes);
+      const recentResult   = dashboardRecentResult(state.matchEvents, state.matchStatus);
+      const upcomingEvents = dashboardUpcomingCalendar(
+        state.fixtures, state.schedule, state.matchEvents, state.matchStatus,
+        state.players, state.medicalRecords, state.announcements, today, 5
+      );
+
+      // ── Quick actions bar ─────────────────────────────────────────────────
+      const QUICK_ACTIONS = [
+        { icon: '🏆', label: 'Fixtures',     action: "setSection('coach','fixtures')" },
+        { icon: '🏉', label: 'Training',     action: "setSection('coach','training')" },
+        { icon: '📋', label: 'Availability', action: "setSection('coach','message')" },
+        { icon: '🏥', label: 'Medical',      action: "setSection('coach','medical')" },
+        { icon: '📊', label: 'Reports',      action: "setSection('coach','reports')" },
+        { icon: '📅', label: 'Calendar',     action: "setSection('coach','calendar')" },
+        { icon: '🎯', label: 'Match Centre', action: "setSection('coach','matchday')" },
+      ];
+
+      const quickActionsBar =
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 14px">' +
+          QUICK_ACTIONS.map(qa =>
+            '<button type="button" onclick="' + qa.action + '" style="' +
+              'display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;' +
+              'padding:6px 12px;border-radius:999px;cursor:pointer;' +
+              'border:1.5px solid var(--line);background:var(--panel-2);color:var(--text);' +
+              'transition:border-color .15s">' +
+              qa.icon + ' ' + qa.label +
+            '</button>'
+          ).join('') +
+        '</div>';
+
+      // ── Helper: small stat card ───────────────────────────────────────────
+      function dashCard(content, onclick) {
+        return '<div class="card" style="padding:14px 16px' + (onclick?';cursor:pointer':'') + '"' + (onclick?' onclick="'+onclick+'"':'') + '>' + content + '</div>';
+      }
+      function dashCardHead(label) {
+        return '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px">' + esc(label) + '</div>';
+      }
+
+      // ── Next Training card ────────────────────────────────────────────────
+      let nextTrainingCard = '';
+      if (nextTrain) {
+        const td = new Date(nextTrain.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+        const daysAway = Math.round((new Date(nextTrain.date+'T12:00:00') - new Date(today+'T12:00:00')) / 86400000);
+        const daysLabel = daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : daysAway + ' days';
+        nextTrainingCard = dashCard(
+          dashCardHead('Next Training') +
+          '<div style="font-size:15px;font-weight:800">' + esc(nextTrain.title || 'Training') + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-top:3px">' + td + (nextTrain.location ? ' · ' + esc(nextTrain.location) : '') + (nextTrain.startTime ? ' · ' + esc(nextTrain.startTime) : '') + '</div>' +
+          '<div style="margin-top:8px;display:flex;align-items:center;gap:8px">' +
+            '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(96,165,250,0.12);color:#60a5fa">' + daysLabel + '</span>' +
+            (nextTrain.published ? '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(52,211,153,0.12);color:#34d399">Published</span>' : '') +
+          '</div>',
+          "setSection('coach','training')"
+        );
+      } else {
+        nextTrainingCard = dashCard(
+          dashCardHead('Next Training') +
+          '<div style="font-size:13px;color:var(--muted)">No upcoming training sessions.</div>' +
+          '<button type="button" onclick="setSection(\'coach\',\'training\')" class="btn" style="margin-top:8px;font-size:12px">Go to Training →</button>'
+        );
+      }
+
+      // ── Medical alerts card ───────────────────────────────────────────────
+      const medColor = medSumm.alertCount > 0 ? (medSumm.unavailableCount > 0 ? '#f87171' : '#fbbf24') : '#34d399';
+      const medCard = dashCard(
+        dashCardHead('Medical') +
+        (medSumm.total === 0
+          ? '<div style="font-size:13px;color:var(--muted)">No active players.</div>'
+          : medSumm.alertCount === 0
+            ? '<div style="display:flex;align-items:center;gap:6px"><span style="color:#34d399">✓</span><span style="font-size:13px;color:var(--muted)">All clear — no medical flags.</span></div>'
+            : '<div style="font-size:22px;font-weight:800;color:' + medColor + ';line-height:1">' + medSumm.alertCount + '<span style="font-size:13px;font-weight:400;color:var(--muted)"> alert' + (medSumm.alertCount !== 1 ? 's' : '') + '</span></div>' +
+              '<div style="display:flex;gap:10px;margin-top:6px;font-size:12px;flex-wrap:wrap">' +
+                (medSumm.unavailableCount > 0 ? '<span style="color:#f87171;font-weight:700">' + medSumm.unavailableCount + ' unavailable</span>' : '') +
+                (medSumm.rehabCount > 0 ? '<span style="color:#fbbf24;font-weight:700">' + medSumm.rehabCount + ' in rehab</span>' : '') +
+              '</div>' +
+              '<div style="margin-top:8px">' +
+                medSumm.alerts.slice(0, 3).map(a =>
+                  '<div style="font-size:12px;padding:3px 0;border-bottom:1px solid var(--line)">' +
+                    '<span style="font-weight:700">' + esc(a.player.name) + '</span>' +
+                    (a.rec.currentInjury || a.mn.condition || a.player.medical ? ' · <span style="color:var(--muted)">' + esc(a.rec.currentInjury || a.mn.condition || a.player.medical) + '</span>' : '') +
+                  '</div>'
+                ).join('') +
+                (medSumm.alerts.length > 3 ? '<div style="font-size:11px;color:var(--muted);margin-top:4px">+' + (medSumm.alerts.length - 3) + ' more</div>' : '') +
+              '</div>'
+        ),
+        "setSection('coach','medical')"
+      );
+
+      // ── Last result card ──────────────────────────────────────────────────
+      let lastResultCard = '';
+      if (recentResult) {
+        const sc = recentResult.score;
+        const isWin  = sc.us > sc.them;
+        const isDraw = sc.us === sc.them;
+        const resultColor = isWin ? '#34d399' : isDraw ? '#fbbf24' : '#f87171';
+        const resultLabel = isWin ? 'Win' : isDraw ? 'Draw' : 'Loss';
+        const datePart = recentResult.date
+          ? new Date(recentResult.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'})
+          : '';
+        lastResultCard = dashCard(
+          dashCardHead('Last Result') +
+          '<div style="font-size:32px;font-weight:900;line-height:1">' +
+            '<span style="color:' + resultColor + '">' + sc.us + '</span>' +
+            '<span style="color:var(--muted);font-size:18px;margin:0 8px">–</span>' +
+            '<span style="color:#f87171">' + sc.them + '</span>' +
+          '</div>' +
+          '<div style="margin-top:6px;display:flex;gap:6px;align-items:center">' +
+            '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + resultColor + '1a;color:' + resultColor + '">' + resultLabel + '</span>' +
+            (datePart ? '<span style="font-size:11px;color:var(--muted)">' + datePart + '</span>' : '') +
+          '</div>',
+          "setSection('coach','matchday')"
+        );
+      } else {
+        lastResultCard = dashCard(
+          dashCardHead('Last Result') +
+          '<div style="font-size:13px;color:var(--muted)">No results recorded yet.</div>' +
+          '<button type="button" onclick="setSection(\'coach\',\'matchday\')" class="btn" style="margin-top:8px;font-size:12px">Match Centre →</button>'
+        );
+      }
+
+      // ── Upcoming calendar card ────────────────────────────────────────────
+      const calendarCard = dashCard(
+        dashCardHead('Coming Up') +
+        (upcomingEvents.length === 0
+          ? '<div style="font-size:13px;color:var(--muted)">Nothing scheduled in the coming days.</div>' +
+            '<button type="button" onclick="setSection(\'coach\',\'calendar\')" class="btn" style="margin-top:8px;font-size:12px">Open Calendar →</button>'
+          : upcomingEvents.map(ev => {
+              const cfg = CALENDAR_EVENT_TYPES[ev.type] || { icon:'•', color:'#94a3b8', label: ev.type };
+              const d   = new Date(ev.date+'T12:00:00');
+              const dl  = d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+              return '<div style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)">' +
+                '<div style="width:24px;height:24px;border-radius:6px;background:' + cfg.color + '1a;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px">' + cfg.icon + '</div>' +
+                '<div style="min-width:0;flex:1">' +
+                  '<div style="font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(ev.title) + '</div>' +
+                  '<div style="font-size:11px;color:var(--muted)">' + dl + '</div>' +
+                '</div>' +
+              '</div>';
+            }).join('') +
+          '<button type="button" onclick="setSection(\'coach\',\'calendar\')" class="btn" style="margin-top:10px;font-size:12px;width:100%">View full calendar →</button>'
+        ),
+        null
+      );
+
+      // ── Reports shortcuts card ────────────────────────────────────────────
+      const REPORT_SHORTCUTS = [
+        { icon:'👤', label:'Player',      action:"setSection('coach','reports');setReportType('player')" },
+        { icon:'📋', label:'Availability',action:"setSection('coach','reports');setReportType('availability')" },
+        { icon:'🏆', label:'Match',       action:"setSection('coach','reports');setReportType('match')" },
+        { icon:'🏥', label:'Medical',     action:"setSection('coach','reports');setReportType('medical')" },
+        { icon:'🏉', label:'Training',    action:"setSection('coach','reports');setReportType('training')" },
+      ];
+      const reportsCard = dashCard(
+        dashCardHead('Reports') +
+        '<div style="display:flex;flex-direction:column;gap:4px">' +
+          REPORT_SHORTCUTS.map(rs =>
+            '<button type="button" onclick="' + rs.action + '" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:var(--panel);border:1px solid var(--line);cursor:pointer;font-size:12px;font-weight:700;text-align:left;width:100%">' +
+              rs.icon + ' ' + rs.label + ' Report' +
+            '</button>'
+          ).join('') +
+        '</div>',
+        null
+      );
+
+      // ── Assemble ──────────────────────────────────────────────────────────
+      return '<div class="mctl-section-label" style="margin-top:16px">Command centre</div>' +
+        quickActionsBar +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:4px">' +
+          nextTrainingCard +
+          medCard +
+          lastResultCard +
+          calendarCard +
+          reportsCard +
+        '</div>';
     }
 
     // ─── PHASE 23 — CALENDAR & SEASON PLANNER ────────────────────────────────
