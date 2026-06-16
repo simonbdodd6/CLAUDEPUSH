@@ -39,6 +39,9 @@ const RE = {
   nationalPark: /\b(national park)\b/i,
   unesco: /\b(unesco|world heritage)\b/i,
 };
+// Shared, single-source-of-truth memory detectors (reused by the Collections
+// engine — no duplicated enrichment).
+export const MEMORY_PATTERNS = RE;
 const hasCat = (i, c) => i.cats.includes(c);
 const isAdventure = (i) => i.cats.some(c => c === 'dive' || c === 'mountain' || c === 'wildlife');
 

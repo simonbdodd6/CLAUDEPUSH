@@ -925,6 +925,45 @@ previous years, composed from existing engines. These would enrich it — still
 - **Tier:** V2.
 - **Possible API:** Internal.
 
+## U. Memory Collections deepeners (added M33)
+
+The Memory Collections Engine (`/collections`) auto-generates themed sets by
+composing existing engines. These would enrich them — still **not implemented**.
+
+### Photo/video-backed collection covers (Apple/Google Photos)
+- **Why:** Render `coverCandidate`/`mediaRefs` as real cover art and galleries —
+  the Apple-Photos "Collections" feel.
+- **Complexity:** Medium (on-device; strip EXIF GPS before any reference leaves).
+- **Tier:** V2.
+- **Possible API:** PhotoKit / Google Photos Library API.
+
+### Smart cover selection (on-device aesthetics)
+- **Why:** Pick the most beautiful cover per collection via on-device image
+  aesthetics rather than "first photo".
+- **Complexity:** Medium (on-device Vision aesthetics).
+- **Tier:** V2.
+- **Possible API:** Apple Vision (saliency / aesthetics).
+
+### Curated place collections (parks / UNESCO / dive sites datasets)
+- **Why:** National Parks / UNESCO / dive-site collections become accurate and
+  rich via curated datasets matched to approximate regions (today keyword-only).
+- **Complexity:** Medium (offline datasets + region matching).
+- **Tier:** V2.
+- **Possible API:** Offline parks / UNESCO / dive-site datasets.
+
+### Shareable & pinned collections
+- **Why:** Let travellers pin favourites and export a collection as a shareable
+  album/poster.
+- **Complexity:** Medium (UI + share render + a small pin store).
+- **Tier:** V2–V3.
+
+### Auto-playlists / dynamic collections
+- **Why:** "Best of 2026", "Your dive year", "Sunsets of Indonesia" — parameterised
+  collections over a window or filter, composed the same way.
+- **Complexity:** Low–Medium (parameterise the composition).
+- **Tier:** V2.
+- **Possible API:** Internal.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

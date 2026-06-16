@@ -39,6 +39,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/lifetime-timeline` | — | `{ summary, years, chapters, moments, filters, basedOn }` | lifetime travel timeline (whole life as one story) |
 | GET | `/travel-wrapped` | — | `{ headline, stats, highlights, bySeason, achievements, travelDna, lifeStory, sections, years, basedOn }` | travel wrapped (composed deck, no new intelligence) |
 | GET | `/on-this-day` | `?date=YYYY-MM-DD` (optional; defaults to today) | `{ date, monthDay, referenceYear, hasMemories, label, hero, items, byYear, anniversaryBadges, milestones, comparisons, categories, basedOn }` | on this day (same calendar day, previous years) |
+| GET | `/collections` | — | `{ collections, summary, basedOn }` | memory collections (auto-generated themed sets) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -544,6 +545,35 @@ dives/surf/hikes/beaches/photos (via memory cats), favourite memories,
 achievements, companions, countries/cities/islands, return visits, first-time
 experiences and milestones — each tagged with `yearsAgo` (anniversaries). Empty
 days return a valid empty-state DTO. Deterministic, offline-first, no leakage.
+
+### Memory Collections DTO (M33)
+
+Auto-generated themed travel collections — **composed from existing engines only**
+(shared enrichment, journey transport, lifetime world, achievements, lifetime
+timeline). **No new intelligence, no AI, no prose.** Each is evidence-gated (min
+members) so thin data never fabricates a collection.
+
+```
+Collections = { collections: [Collection], summary: { total, byType }, basedOn }
+Collection = {
+  id, type:"activity|transport|media|place|country|companion|trip", hidden,
+  title, subtitle, icon, sortOrder,
+  coverCandidate: { memoryId, photoRef } | null,
+  timeSpan: { from, to },
+  locations:[name], companions:[name], journeyCount,
+  mediaRefs:[ref], achievementRefs:[id], highlightRefs:[momentId], memoryRefs:[id],
+  statistics: { memories, photos, days, locations, companions, journeys },
+}
+```
+
+Collection families: activities (Diving, Surf, Mountains, Beaches, City Breaks,
+Food, Wildlife) via memory cats + achievement detectors; transport (Flights,
+Ferry, Train, Road) via the journey engine; places (Island Escapes, National
+Parks, UNESCO, Favourite Places) via the lifetime world; per-country ("Exploring
+{Country}"), per-companion ("Travelling with {name}"), and trip-shape (Weekend
+Trips, Long Expeditions). `achievementRefs`/`highlightRefs` cross-reference the
+achievement and timeline engines. Media is references only. Deterministic,
+offline-first, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

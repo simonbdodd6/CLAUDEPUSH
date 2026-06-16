@@ -36,6 +36,7 @@ import { buildAchievements } from './achievements.js';
 import { buildLifetimeTimeline } from './lifetime-timeline.js';
 import { buildTravelWrapped } from './travel-wrapped.js';
 import { buildOnThisDay } from './on-this-day.js';
+import { buildCollections } from './collections.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -318,6 +319,15 @@ export function createTravelApi(options = {}) {
     return buildWorld(events, ownedTrips);
   }
 
+  // Memory Collections — deterministic themed collections composed from the
+  // existing engines (no new intelligence). Presentation-only.
+  async function getCollections(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildCollections(events, ownedTrips);
+  }
+
   // On This Day — everything that happened on the same calendar day across
   // previous years. Reference date is explicit (defaults to today) → deterministic.
   async function getOnThisDay(token, { date } = {}) {
@@ -479,6 +489,7 @@ export function createTravelApi(options = {}) {
     getLifetimeTimeline,
     getTravelWrapped,
     getOnThisDay,
+    getCollections,
     getTripReadiness,
     getApprovals,
     resolveApproval,
