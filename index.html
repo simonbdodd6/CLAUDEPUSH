@@ -2181,6 +2181,7 @@
       <section id="coach-reports"     class="section"></section>
       <section id="coach-calendar"    class="section"></section>
 
+      <section id="player-home"         class="section"></section>
       <section id="player-availability" class="section"></section>
       <section id="player-week"         class="section"></section>
       <section id="player-fixtures"     class="section"></section>
@@ -2231,6 +2232,7 @@
     ];
 
     const playerSections = [
+      ["home",         "Home"],
       ["messages",     "Messages"],
       ["availability", "Availability"],
       ["week",         "This Week"],
@@ -2492,7 +2494,7 @@
     const defaultState = {
       activeView: "coach",
       activeCoachSection: "overview",
-      activePlayerSection: "messages",
+      activePlayerSection: "home",
       selectedPlayerId: "",
       selectedMessagePlayerId: "",
       selectedChatId: "coach",
@@ -3207,7 +3209,7 @@
         }
         next.activeView = "player";
         next.selectedPlayerId = user.playerId;
-        next.activePlayerSection = input.activePlayerSection || "messages";
+        next.activePlayerSection = input.activePlayerSection || "home";
         next.selectedChatId = "coach";
       }
       return next;
@@ -11976,6 +11978,364 @@
         </div>`;
     }
 
+    // ─── PHASE 25 — PLAYER PORTAL HOME ──────────────────────────────────────
+
+    // ── Pure helpers (testable, no state references) ──────────────────────────
+
+    function playerPortalNextFixture(fixtures, today) {
+      const _today = today || new Date().toISOString().slice(0, 10);
+      return (fixtures || [])
+        .filter(f => f.date && f.date >= _today && f.status !== 'cancelled')
+        .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+    }
+
+    function playerPortalNextTraining(schedule, today) {
+      const _today = today || new Date().toISOString().slice(0, 10);
+      return (schedule || [])
+        .filter(s => s.type === 'Training' && s.date && s.date >= _today)
+        .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+    }
+
+    function playerPortalAvailabilityStatus(player, sessionId) {
+      if (!player || !player.id) return { status: 'no-reply', label: 'No reply', color: '#94a3b8' };
+      const key    = sessionId === 'tue'  ? 'trainingTuesday'
+                   : sessionId === 'thu'  ? 'trainingThursday'
+                   : sessionId === 'game' ? 'game'
+                   : 'avail_' + sessionId;
+      const status = player[key] || 'no-reply';
+      const map = {
+        available:   { status, label: 'Available',     color: '#34d399' },
+        unavailable: { status, label: 'Not available', color: '#f87171' },
+        injured:     { status, label: 'Injured',       color: '#f87171' },
+        maybe:       { status, label: 'Maybe',         color: '#fbbf24' },
+        'no-reply':  { status, label: 'Not replied',   color: '#94a3b8' },
+      };
+      return map[status] || { status, label: status, color: '#94a3b8' };
+    }
+
+    function playerPortalSquadStatus(playerName, squadSelections, formationNames, benchPlayers) {
+      const sels   = (squadSelections || []).filter(s => s.status === 'published');
+      const name   = String(playerName || '').trim().toLowerCase();
+      if (!name || sels.length === 0) return { found: false, status: 'not-selected', slot: null, fixtureId: null };
+
+      // Check most recent published selection
+      const sorted = sels.slice().sort((a, b) => (b.publishedAt||b.updatedAt||'').localeCompare(a.publishedAt||a.updatedAt||''));
+      const sel    = sorted[0];
+      const norm   = sel.starters || {};
+      const bench  = Array.isArray(sel.bench) ? sel.bench : (benchPlayers || []);
+
+      // Check starters (by player id OR name in legacy formationNames path)
+      const starterEntry = Object.entries(norm).find(([slot, pid]) =>
+        String(pid || '').trim().toLowerCase() === name
+      );
+      if (starterEntry) return { found: true, status: 'starting', slot: starterEntry[0], fixtureId: sel.fixtureId };
+
+      // Check bench
+      const benchIdx = bench.findIndex(pid => String(pid || '').trim().toLowerCase() === name);
+      if (benchIdx >= 0) return { found: true, status: 'bench', slot: String(benchIdx + 16), fixtureId: sel.fixtureId };
+
+      return { found: true, status: 'not-selected', slot: null, fixtureId: sel.fixtureId };
+    }
+
+    function playerPortalOwnMedical(playerId, medRecords, medNotes) {
+      if (!playerId) return { hasRecord: false };
+      const rec = normalizeMedicalRecord((medRecords || {})[playerId]);
+      const mn  = (medNotes || {})[playerId] || {};
+      const hasCondition = !!(rec.currentInjury || mn.condition);
+      const hasReturn    = !!(rec.expectedReturn || mn.returnTarget);
+      return {
+        hasRecord:      hasCondition || hasReturn || !!rec.severity || !!rec.clearanceStatus,
+        currentInjury:  rec.currentInjury || mn.condition || '',
+        severity:       rec.severity || '',
+        expectedReturn: rec.expectedReturn || mn.returnTarget || '',
+        clearanceStatus:rec.clearanceStatus || '',
+        physiNotes:     rec.physiNotes || '',
+        allergies:      rec.allergies || '',
+        medication:     rec.medication || '',
+      };
+    }
+
+    function playerPortalRecentAnnouncement(announcements) {
+      const dated = (announcements || []).filter(a => a.date || a.sentAt || a.createdAt || a.title);
+      if (dated.length === 0) return null;
+      const sorted = dated.slice().sort((a, b) => {
+        const da = (a.date || a.sentAt || a.createdAt || '').slice(0, 10);
+        const db = (b.date || b.sentAt || b.createdAt || '').slice(0, 10);
+        return db.localeCompare(da);
+      });
+      const a = sorted[0];
+      return {
+        title:  a.title || a.subject || 'Team Announcement',
+        body:   a.body || '',
+        date:   (a.date || a.sentAt || a.createdAt || '').slice(0, 10),
+        id:     a.id || '',
+      };
+    }
+
+    function playerPortalUpcomingEvents(fixtures, schedule, today, limit) {
+      const _today = today || new Date().toISOString().slice(0, 10);
+      const _limit = limit || 5;
+      const events = [];
+
+      (fixtures || []).filter(f => f.date && f.date >= _today && f.status !== 'cancelled').forEach(f => {
+        events.push({ date: f.date, type: 'fixture', title: 'vs ' + (f.opposition || 'TBC'), subtitle: [f.competition, f.kickoffTime].filter(Boolean).join(' · '), id: f.id });
+      });
+
+      (schedule || []).filter(s => s.type === 'Training' && s.date && s.date >= _today).forEach(s => {
+        events.push({ date: s.date, type: 'training', title: s.title || 'Training', subtitle: [s.location, s.startTime].filter(Boolean).join(' · '), id: s.id });
+      });
+
+      return events.sort((a, b) => a.date.localeCompare(b.date)).slice(0, _limit);
+    }
+
+    // ── UI renderer ───────────────────────────────────────────────────────────
+
+    function renderPlayerHome() {
+      const el = document.getElementById('player-home');
+      if (!el) return;
+
+      const player  = getPlayer();
+      const today   = new Date().toISOString().slice(0, 10);
+      const mc      = state.matchCentre || {};
+      const clubName= state.clubName || 'your team';
+
+      if (!player.id) {
+        el.innerHTML = '<div class="card" style="text-align:center;padding:40px 20px;max-width:560px;margin:0 auto">' +
+          '<div style="font-size:40px;margin-bottom:12px">🏉</div>' +
+          '<div style="font-size:16px;font-weight:700;margin-bottom:8px">Welcome to Coach\'s Eye</div>' +
+          '<div style="font-size:13px;color:var(--muted)">Your coach will add you to the squad shortly.</div>' +
+        '</div>';
+        return;
+      }
+
+      const nextFx      = playerPortalNextFixture(state.fixtures, today);
+      const nextTrain   = playerPortalNextTraining(state.schedule, today);
+      const ownMed      = playerPortalOwnMedical(player.id, state.medicalRecords, state.medicalNotes);
+      const recentAnn   = playerPortalRecentAnnouncement(state.announcements);
+      const upcoming    = playerPortalUpcomingEvents(state.fixtures, state.schedule, today, 5);
+      const squadSt     = playerPortalSquadStatus(
+        player.name,
+        state.squadSelections,
+        state.formationNames,
+        state.benchPlayers
+      );
+
+      const todayStr = new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
+      const firstName = (player.name || 'Player').split(' ')[0];
+
+      // Helper for consistent small card building
+      function pCard(content, onclick) {
+        return '<div class="card" style="padding:14px 16px' + (onclick ? ';cursor:pointer' : '') + '"' +
+          (onclick ? ' onclick="' + onclick + '"' : '') + '>' + content + '</div>';
+      }
+      function pCardHead(label) {
+        return '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px">' + esc(label) + '</div>';
+      }
+      function pBadge(label, color) {
+        return '<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:' + color + '1a;color:' + color + '">' + esc(label) + '</span>';
+      }
+
+      // ── Quick actions bar ─────────────────────────────────────────────────
+      const quickActions =
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 16px">' +
+          [
+            { icon:'📋', label:'Set Availability',  action:"setSection('player','availability')" },
+            { icon:'🏆', label:'View Fixtures',     action:"setSection('player','fixtures')" },
+            { icon:'🏉', label:'Training',          action:"setSection('player','week')" },
+            { icon:'💬', label:'Messages',          action:"setSection('player','messages')" },
+          ].map(qa =>
+            '<button type="button" onclick="' + qa.action + '" style="' +
+              'display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;' +
+              'padding:6px 12px;border-radius:999px;cursor:pointer;' +
+              'border:1.5px solid var(--line);background:var(--panel-2);color:var(--text)">' +
+              qa.icon + ' ' + qa.label +
+            '</button>'
+          ).join('') +
+        '</div>';
+
+      // ── Next fixture card ─────────────────────────────────────────────────
+      let nextFxCard = '';
+      if (nextFx) {
+        const fd = new Date(nextFx.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+        const daysAway = Math.round((new Date(nextFx.date+'T12:00:00') - new Date(today+'T12:00:00')) / 86400000);
+        const cntLabel = daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : daysAway + ' days';
+        const avail    = playerPortalAvailabilityStatus(player, 'game');
+        nextFxCard = pCard(
+          pCardHead('Next Fixture') +
+          '<div style="font-size:16px;font-weight:800">vs ' + esc(nextFx.opposition || 'TBC') + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-top:3px">' + fd +
+            (nextFx.kickoffTime ? ' · KO ' + esc(nextFx.kickoffTime) : '') +
+            (nextFx.venue ? ' · ' + esc(nextFx.venue) : '') +
+          '</div>' +
+          '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+            pBadge(cntLabel, '#60a5fa') +
+            pBadge(avail.label, avail.color) +
+          '</div>' +
+          (avail.status === 'no-reply'
+            ? '<button type="button" onclick="setSection(\'player\',\'availability\')" class="btn" style="margin-top:10px;font-size:12px">Set availability →</button>'
+            : '') ,
+          "setSection('player','fixtures')"
+        );
+      } else {
+        nextFxCard = pCard(
+          pCardHead('Next Fixture') +
+          '<div style="font-size:13px;color:var(--muted)">No fixtures scheduled.</div>'
+        );
+      }
+
+      // ── Next training card ────────────────────────────────────────────────
+      let nextTrainCard = '';
+      if (nextTrain) {
+        const td = new Date(nextTrain.date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+        const daysAway = Math.round((new Date(nextTrain.date+'T12:00:00') - new Date(today+'T12:00:00')) / 86400000);
+        const cntLabel = daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : daysAway + ' days';
+        const avail    = playerPortalAvailabilityStatus(player, nextTrain.id);
+        const blocks   = nextTrain.published ? ((state.trainingBlocks || {})[nextTrain.id] || []) : [];
+        nextTrainCard = pCard(
+          pCardHead('Next Training') +
+          '<div style="font-size:15px;font-weight:800">' + esc(nextTrain.title || 'Training') + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-top:3px">' + td +
+            (nextTrain.location ? ' · ' + esc(nextTrain.location) : '') +
+            (nextTrain.startTime ? ' · ' + esc(nextTrain.startTime) : '') +
+          '</div>' +
+          '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+            pBadge(cntLabel, '#60a5fa') +
+            pBadge(avail.label, avail.color) +
+          '</div>' +
+          (blocks.length > 0
+            ? '<div style="margin-top:8px;padding:8px 10px;background:var(--panel);border-radius:8px;border-left:3px solid var(--green)">' +
+                '<div style="font-size:10px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Session plan</div>' +
+                blocks.slice(0, 3).map(b =>
+                  '<div style="font-size:11px;padding:2px 0">' + (b.time ? '<span style="color:var(--muted)">' + esc(b.time) + '</span> ' : '') + esc(b.activity || '') + '</div>'
+                ).join('') +
+                (blocks.length > 3 ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">+' + (blocks.length-3) + ' more blocks</div>' : '') +
+              '</div>'
+            : '') +
+          (avail.status === 'no-reply'
+            ? '<button type="button" onclick="setSection(\'player\',\'availability\')" class="btn" style="margin-top:10px;font-size:12px">Set availability →</button>'
+            : ''),
+          "setSection('player','week')"
+        );
+      } else {
+        nextTrainCard = pCard(
+          pCardHead('Next Training') +
+          '<div style="font-size:13px;color:var(--muted)">No training sessions scheduled.</div>'
+        );
+      }
+
+      // ── Squad status card ─────────────────────────────────────────────────
+      let squadCard = '';
+      const pubSels = (state.squadSelections || []).filter(s => s.status === 'published');
+      if (pubSels.length === 0) {
+        squadCard = pCard(
+          pCardHead('My Squad Status') +
+          '<div style="font-size:13px;color:var(--muted)">Squad not published yet.</div>'
+        );
+      } else {
+        const ssColor  = squadSt.status === 'starting' ? '#34d399' : squadSt.status === 'bench' ? '#60a5fa' : '#94a3b8';
+        const ssLabel  = squadSt.status === 'starting' ? '✅ Starting — #' + squadSt.slot
+                       : squadSt.status === 'bench'    ? '📋 Bench — #' + squadSt.slot
+                       :                                 '⚪ Not selected';
+        const fxForSel = squadSt.fixtureId ? (state.fixtures || []).find(f => f.id === squadSt.fixtureId) : null;
+        squadCard = pCard(
+          pCardHead('My Squad Status') +
+          '<div style="font-size:16px;font-weight:800;color:' + ssColor + '">' + ssLabel + '</div>' +
+          (fxForSel ? '<div style="font-size:12px;color:var(--muted);margin-top:4px">vs ' + esc(fxForSel.opposition || 'TBC') + (fxForSel.date ? ' · ' + new Date(fxForSel.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : '') + '</div>' : '') +
+          '<button type="button" onclick="setSection(\'player\',\'availability\')" class="btn" style="margin-top:10px;font-size:12px">View team sheet →</button>',
+          null
+        );
+      }
+
+      // ── Medical card (own data only) ──────────────────────────────────────
+      let medCard = '';
+      if (!ownMed.hasRecord) {
+        medCard = pCard(
+          pCardHead('My Health') +
+          '<div style="display:flex;align-items:center;gap:6px">' +
+            '<span style="color:#34d399">✓</span>' +
+            '<span style="font-size:13px;color:var(--muted)">No medical flags on record.</span>' +
+          '</div>'
+        );
+      } else {
+        const sevColor = ownMed.severity === 'severe' ? '#f87171' : ownMed.severity === 'moderate' ? '#f97316' : '#fbbf24';
+        medCard = pCard(
+          pCardHead('My Health') +
+          (ownMed.currentInjury
+            ? '<div style="font-size:14px;font-weight:700;color:#f87171;margin-bottom:4px">' + esc(ownMed.currentInjury) + '</div>'
+            : '') +
+          '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+            (ownMed.severity ? '<tr style="border-bottom:1px solid var(--line)"><td style="padding:4px 8px 4px 0;color:var(--muted)">Severity</td><td style="font-weight:600;color:' + sevColor + '">' + (ownMed.severity.charAt(0).toUpperCase()+ownMed.severity.slice(1)) + '</td></tr>' : '') +
+            (ownMed.expectedReturn ? '<tr style="border-bottom:1px solid var(--line)"><td style="padding:4px 8px 4px 0;color:var(--muted)">Expected return</td><td style="font-weight:600">' + esc(ownMed.expectedReturn) + '</td></tr>' : '') +
+            (ownMed.clearanceStatus ? '<tr style="border-bottom:1px solid var(--line)"><td style="padding:4px 8px 4px 0;color:var(--muted)">Clearance</td><td style="font-weight:600">' + esc(ownMed.clearanceStatus) + '</td></tr>' : '') +
+            (ownMed.allergies ? '<tr style="border-bottom:1px solid var(--line)"><td style="padding:4px 8px 4px 0;color:var(--muted)">Allergies</td><td style="font-weight:600">' + esc(ownMed.allergies) + '</td></tr>' : '') +
+          '</table>'
+        );
+      }
+
+      // ── Announcement card ─────────────────────────────────────────────────
+      let annCard = '';
+      if (recentAnn) {
+        const annDate = recentAnn.date
+          ? new Date(recentAnn.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'})
+          : '';
+        annCard = pCard(
+          pCardHead('Team Announcement') +
+          '<div style="font-size:14px;font-weight:700;margin-bottom:4px">' + esc(recentAnn.title) + '</div>' +
+          (annDate ? '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">' + annDate + '</div>' : '') +
+          (recentAnn.body ? '<div style="font-size:12px;color:var(--muted);line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">' + esc(recentAnn.body.slice(0, 200)) + '</div>' : ''),
+          "setSection('player','messages')"
+        );
+      } else {
+        annCard = pCard(
+          pCardHead('Team Announcement') +
+          '<div style="font-size:13px;color:var(--muted)">No recent announcements.</div>'
+        );
+      }
+
+      // ── Coming up card ────────────────────────────────────────────────────
+      const calColors = { fixture:'#34d399', training:'#60a5fa' };
+      const calIcons  = { fixture:'🏆', training:'🏉' };
+      const upcomingCard = pCard(
+        pCardHead('Coming Up') +
+        (upcoming.length === 0
+          ? '<div style="font-size:13px;color:var(--muted)">Nothing scheduled yet.</div>'
+          : upcoming.map(ev => {
+              const col = calColors[ev.type] || '#94a3b8';
+              const ico = calIcons[ev.type]  || '•';
+              const dl  = new Date(ev.date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+              return '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)">' +
+                '<div style="width:24px;height:24px;border-radius:6px;background:' + col + '1a;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px">' + ico + '</div>' +
+                '<div style="min-width:0;flex:1">' +
+                  '<div style="font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(ev.title) + '</div>' +
+                  '<div style="font-size:11px;color:var(--muted)">' + dl + (ev.subtitle ? ' · ' + esc(ev.subtitle) : '') + '</div>' +
+                '</div>' +
+              '</div>';
+            }).join('')),
+        "setSection('player','fixtures')"
+      );
+
+      // ── Assemble ──────────────────────────────────────────────────────────
+      el.innerHTML =
+        '<div style="max-width:600px;margin:0 auto">' +
+          '<div class="training-hero" style="margin:0 0 4px">' +
+            '<div>' +
+              '<div class="eyebrow">' + esc(clubName) + '</div>' +
+              '<h1>Hi, ' + esc(firstName) + '</h1>' +
+              '<p style="font-size:13px;color:var(--muted)">' + esc(todayStr) + '</p>' +
+            '</div>' +
+          '</div>' +
+          quickActions +
+          '<div style="display:grid;grid-template-columns:1fr;gap:12px">' +
+            nextFxCard +
+            nextTrainCard +
+            squadCard +
+            medCard +
+            annCard +
+            upcomingCard +
+          '</div>' +
+        '</div>';
+    }
+
     // ─── PHASE 24 — COACH HOME COMMAND DASHBOARD ─────────────────────────────
 
     // ── Pure helpers (testable — no state references) ─────────────────────────
@@ -18155,6 +18515,7 @@
       safeRender('coach-selection',     () => renderCoachSelection());
       safeRender('coach-reports',       () => renderReports());
       safeRender('coach-calendar',      () => renderCalendar());
+      safeRender('player-home',         () => renderPlayerHome());
       safeRender('player-week',         () => renderPlayerWeek());
       safeRender('player-availability', () => renderPlayerAvailability());
       safeRender('player-fixtures',     () => renderPlayerFixtures());
