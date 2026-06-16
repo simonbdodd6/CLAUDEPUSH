@@ -64,4 +64,17 @@
  * @property {(normalizer:NormalizerContract) => NormalizerRegistry} register     returns a NEW registry
  */
 
+/**
+ * The frozen, deterministic outcome of invoking a normalizer for one record (M52).
+ * Outcomes are reported as data — `status` + `problems` — never thrown.
+ * @typedef {Object} NormalizationInvocation
+ * @property {'ok'|'unknown_source'|'invalid_signals'} status
+ * @property {boolean} ok                                 status === 'ok'
+ * @property {string}  sourceType                         the record's sourceType
+ * @property {string|null} normalizerKey                  `sourceType@version` of the normalizer that ran
+ * @property {ReadonlyArray<import('@brain/evidence-contracts').NormalizedSignal>} signals
+ * @property {SignalsValidation|null} validation          M50 validation result (null when unknown source)
+ * @property {ReadonlyArray<string>} problems             human-readable problems, deterministic order
+ */
+
 export {}

@@ -37,5 +37,9 @@ export {
   createNormalizerRegistry,
   compareVersions,
 } from './registry.js'
+export {
+  INVOCATION_STATUS,
+  invokeNormalizer,
+} from './invocation.js'
 export { NormalizationError, NORMALIZATION_ERROR } from './errors.js'
 export * from './types.js'   // JSDoc typedefs only (no runtime values)
