@@ -24,4 +24,5 @@ export { deriveAuditPlan, AUDIT_PLAN_ACTION, AUDIT_OUTCOME_DEFERRED } from './au
 export { deriveEngineExposurePlan } from './exposure.js'
 export { prepareFullPipelinePlan } from './pipeline.js'
 export { snapshotPipelinePlan, canonicalStringify, pipelineDigest } from './snapshot.js'
+export { diffPipelineSnapshots } from './diff.js'
 export * from './types.js'
