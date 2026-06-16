@@ -2181,6 +2181,7 @@
       <section id="coach-reports"     class="section"></section>
       <section id="coach-calendar"    class="section"></section>
       <section id="coach-qa"          class="section"></section>
+      <section id="coach-beta"        class="section"></section>
 
       <section id="player-home"         class="section"></section>
       <section id="player-availability" class="section"></section>
@@ -2231,6 +2232,7 @@
       ["calendar",  "Calendar"],
       ["settings",  "Settings"],
       ["qa",        "Beta QA"],
+      ["beta",      "Beta Info"],
     ];
 
     const playerSections = [
@@ -12004,6 +12006,227 @@
         </div>`;
     }
 
+    // ─── PHASE 28 — BETA LAUNCH SUPPORT SCREEN ───────────────────────────────
+
+    const BETA_APP_VERSION = '28.0.0-beta';
+
+    const BETA_COMPLETED_PHASES = [
+      { phase: 'Phase 16', name: 'Club Operating System',        desc: 'Club profile, teams, staff, seasons, federation config' },
+      { phase: 'Phase 17', name: 'Player Lifecycle Foundation',  desc: 'Lifecycle status, profile completeness, registration' },
+      { phase: 'Phase 18', name: 'Fixture Availability & Match Week Intelligence', desc: 'Match-week state, fixture availability windows' },
+      { phase: 'Phase 19', name: 'Training & Session Management',desc: 'Session scheduling, attendance, blocks, history' },
+      { phase: 'Phase 20', name: 'Match Centre',                 desc: 'Live timeline, scoreboard, bench manager, notes, summary' },
+      { phase: 'Phase 21', name: 'Medical & Welfare Centre',     desc: 'Injury records, training status, clearance workflow' },
+      { phase: 'Phase 22', name: 'Reports & Export Centre',      desc: 'Match reports, export, copy-to-clipboard' },
+      { phase: 'Phase 23', name: 'Calendar & Season Planner',    desc: 'Monthly grid, agenda view, event type filters' },
+      { phase: 'Phase 24', name: 'Coach Home Command Dashboard', desc: 'Quick-action bar, snapshot cards, upcoming calendar' },
+      { phase: 'Phase 25', name: 'Player Portal Home',           desc: 'Player-facing dashboard, availability, squad status' },
+      { phase: 'Phase 26', name: 'Beta Readiness QA Dashboard',  desc: 'Manual testing checklist, readiness scoring, handover summary' },
+      { phase: 'Phase 27', name: 'Club Directory & Season Hub',  desc: 'Club overview, teams, season W/D/L, medical snapshot, quick links' },
+      { phase: 'Phase 28', name: 'Beta Launch Support Screen',   desc: 'App version, known limits, diagnostics, copy-to-clipboard' },
+    ];
+
+    const BETA_KNOWN_LIMITATIONS = [
+      'Push notifications require HTTPS and browser permission — not available in all environments.',
+      'Availability responses sync when a player is online; offline changes apply locally first.',
+      'Match Centre supports one active match at a time per team.',
+      'File upload for club logos is limited to 200 KB compressed.',
+      'Calendar events are derived from existing Core state — no external calendar integration.',
+      'Player portal requires the player to have a registered invite email to log in.',
+      'Reports are generated client-side and are not stored on the server.',
+      'LocalStorage is used for all Core data — clearing browser storage resets the app.',
+    ];
+
+    const BETA_SUPPORT_INSTRUCTIONS = [
+      'To report a bug: copy the diagnostics block below and include it in your report.',
+      'To reset the app to a clean state: Settings → Clear this device (coach) or use the Reset button.',
+      'For player access issues: check the Invite link in Club Admin → Members.',
+      'For availability not showing: ensure the player is signed in with their invite email.',
+      'Contact: simonbdodd@gmail.com — include your club name and diagnostics text.',
+    ];
+
+    // ── Pure helpers ──────────────────────────────────────────────────────────
+
+    function betaVersionLabel(version) {
+      return 'v' + (version || BETA_APP_VERSION);
+    }
+
+    function betaPhaseSummaryText(phases, version, today) {
+      const _today = today || new Date().toISOString().slice(0, 10);
+      const lines  = [
+        "Coach's Eye — Beta Phase Summary",
+        'Version: ' + betaVersionLabel(version),
+        'Date: ' + _today,
+        'Completed phases: ' + (phases || []).length,
+        '',
+        ...(phases || []).map(p => '✅ ' + p.phase + ' — ' + p.name + ': ' + p.desc),
+      ];
+      return lines.join('\n');
+    }
+
+    function betaDiagnosticsText(opts) {
+      const o = opts || {};
+      const lines = [
+        "Coach's Eye — Diagnostics",
+        'Version:        ' + betaVersionLabel(o.version),
+        'Date:           ' + (o.today   || '(unavailable)'),
+        'User agent:     ' + (o.ua       || '(unavailable)'),
+        'Screen:         ' + (o.screen   || '(unavailable)'),
+        'View:           ' + (o.view     || '(unavailable)'),
+        'Role:           ' + (o.role     || '(unavailable)'),
+        'Club:           ' + (o.clubName || '(not set)'),
+        'Team:           ' + (o.teamName || '(not set)'),
+        'Storage (est.): ' + (o.storage  || '(unavailable)'),
+        'Notifications:  ' + (o.notifPerm|| '(unavailable)'),
+      ];
+      return lines.join('\n');
+    }
+
+    function betaBuildDiagnosticsOpts(stateRef) {
+      const s        = stateRef || {};
+      const user     = (s.users || []).find(u => u.id === s.currentUserId) || {};
+      let storage    = '(unavailable)';
+      try {
+        const raw = JSON.stringify(localStorage);
+        storage = Math.round(raw.length / 1024) + ' KB (estimate)';
+      } catch {}
+      let notifPerm = '(unavailable)';
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission) {
+          notifPerm = Notification.permission;
+        }
+      } catch {}
+      let ua     = '(unavailable)';
+      let screen = '(unavailable)';
+      try { ua     = navigator.userAgent; }            catch {}
+      try { screen = window.innerWidth + 'x' + window.innerHeight; } catch {}
+
+      return {
+        version:   BETA_APP_VERSION,
+        today:     new Date().toISOString().slice(0, 10),
+        ua,
+        screen,
+        view:      (s.activeView || '') + '/' + (s.activeCoachSection || s.activePlayerSection || ''),
+        role:      user.role || '(none)',
+        clubName:  s.clubName  || '',
+        teamName:  s.teamName  || '',
+        storage,
+        notifPerm,
+      };
+    }
+
+    // ── Actions ───────────────────────────────────────────────────────────────
+
+    function betaCopyDiagnostics() {
+      const opts = betaBuildDiagnosticsOpts(state);
+      const text = betaDiagnosticsText(opts);
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text)
+          .then(() => showToast('Diagnostics copied ✓'))
+          .catch(() => showToast('Copy failed — select the text manually'));
+      } else {
+        showToast('Clipboard not available in this browser');
+      }
+    }
+
+    // ── Renderer ──────────────────────────────────────────────────────────────
+
+    function renderBetaLaunch() {
+      const el = document.getElementById('coach-beta');
+      if (!el) return;
+
+      const today = new Date().toISOString().slice(0, 10);
+      const opts  = betaBuildDiagnosticsOpts(state);
+      const diagText = betaDiagnosticsText(opts);
+
+      function section(title, content) {
+        return '<div class="card" style="padding:16px 18px;margin-bottom:12px">' +
+          '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px">' + esc(title) + '</div>' +
+          content +
+        '</div>';
+      }
+
+      // ── Header ─────────────────────────────────────────────────────────
+      const header =
+        '<div class="training-hero" style="margin:0 0 16px">' +
+          '<div>' +
+            '<div class="eyebrow">Coach\'s Eye · Beta</div>' +
+            '<h1>Beta Launch Information</h1>' +
+            '<p style="font-size:13px;color:var(--muted)">App version, known limitations, diagnostics, and support instructions for beta testers.</p>' +
+          '</div>' +
+        '</div>';
+
+      // ── Version badge ───────────────────────────────────────────────────
+      const versionCard =
+        '<div class="card" style="padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">' +
+          '<div>' +
+            '<div style="font-size:22px;font-weight:900;color:var(--green)">' + esc(betaVersionLabel(BETA_APP_VERSION)) + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">Coach\'s Eye Core · Beta</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            '<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(52,211,153,0.12);color:#34d399">Active Beta</span>' +
+            '<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(96,165,250,0.12);color:#60a5fa">' + esc(today) + '</span>' +
+            '<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(167,139,250,0.12);color:#a78bfa">' + BETA_COMPLETED_PHASES.length + ' phases complete</span>' +
+          '</div>' +
+        '</div>';
+
+      // ── Completed phases ────────────────────────────────────────────────
+      const phasesCard = section('Completed Features',
+        '<div style="display:grid;gap:6px">' +
+          BETA_COMPLETED_PHASES.map(p =>
+            '<div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)">' +
+              '<span style="color:#34d399;font-size:13px;flex-shrink:0;margin-top:1px">✅</span>' +
+              '<div style="min-width:0">' +
+                '<div style="font-size:12px;font-weight:700">' + esc(p.phase) + ' — ' + esc(p.name) + '</div>' +
+                '<div style="font-size:11px;color:var(--muted);line-height:1.4">' + esc(p.desc) + '</div>' +
+              '</div>' +
+            '</div>'
+          ).join('') +
+        '</div>'
+      );
+
+      // ── Known limitations ───────────────────────────────────────────────
+      const limitsCard = section('Known Limitations',
+        '<div style="display:grid;gap:6px">' +
+          BETA_KNOWN_LIMITATIONS.map(lim =>
+            '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)">' +
+              '<span style="color:#fbbf24;font-size:12px;flex-shrink:0;margin-top:2px">⚠️</span>' +
+              '<div style="font-size:12px;color:var(--muted);line-height:1.45">' + esc(lim) + '</div>' +
+            '</div>'
+          ).join('') +
+        '</div>'
+      );
+
+      // ── Support instructions ────────────────────────────────────────────
+      const supportCard = section('Support & Bug Reporting',
+        '<div style="display:grid;gap:6px">' +
+          BETA_SUPPORT_INSTRUCTIONS.map(inst =>
+            '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)">' +
+              '<span style="color:#60a5fa;font-size:12px;flex-shrink:0;margin-top:2px">ℹ️</span>' +
+              '<div style="font-size:12px;line-height:1.45">' + esc(inst) + '</div>' +
+            '</div>'
+          ).join('') +
+        '</div>'
+      );
+
+      // ── Diagnostics ─────────────────────────────────────────────────────
+      const diagCard =
+        '<div class="card" style="padding:16px 18px;margin-bottom:12px">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
+            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Client Diagnostics</div>' +
+            '<button type="button" onclick="betaCopyDiagnostics()" class="btn" style="font-size:11px;min-height:30px;padding:0 12px">Copy diagnostics</button>' +
+          '</div>' +
+          '<pre style="font-size:11px;line-height:1.6;color:var(--muted);white-space:pre-wrap;word-break:break-word;margin:0;background:var(--panel-2);border-radius:8px;padding:10px 12px;border:1px solid var(--line)">' +
+            esc(diagText) +
+          '</pre>' +
+        '</div>';
+
+      el.innerHTML =
+        '<div style="max-width:760px;margin:0 auto">' +
+          header + versionCard + phasesCard + limitsCard + supportCard + diagCard +
+        '</div>';
+    }
+
     // ─── PHASE 27 — CLUB DIRECTORY & SEASON HUB ─────────────────────────────
 
     // ── Pure helpers (testable, no state references) ──────────────────────────
@@ -19103,6 +19326,7 @@
       safeRender('coach-reports',       () => renderReports());
       safeRender('coach-calendar',      () => renderCalendar());
       safeRender('coach-qa',            () => renderBetaQA());
+      safeRender('coach-beta',          () => renderBetaLaunch());
       safeRender('player-home',         () => renderPlayerHome());
       safeRender('player-week',         () => renderPlayerWeek());
       safeRender('player-availability', () => renderPlayerAvailability());
