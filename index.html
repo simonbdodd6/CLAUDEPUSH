@@ -3867,28 +3867,31 @@
       showToast(`Exported ${rows.length} players to CSV`);
     }
 
+    // Status button tap. SAVE IMMEDIATELY for every status — there is no shared
+    // pending state, so one card can never reset another. For Maybe / Can't make
+    // it we then open an OPTIONAL, post-save reason picker for THIS session only;
+    // the status is already persisted whether or not a reason is chosen.
     function selectAvailabilityStatusPending(key, status) {
-      // TRACE: the REAL entry handler for every status button tap. 'available'
-      // commits immediately; 'unavailable'/'maybe' only OPEN the reason picker —
-      // the actual write (setPlayerAvailability) does not run until a reason or
-      // Skip is tapped. This is why a "Can't make it" tap shows only the render
-      // trace and no write trace.
+      const norm = status === 'injured' ? 'unavailable' : status;
       if (availTraceEnabled()) {
         _availTraceSeq++;
-        availTrace(`TAP selectAvailabilityStatusPending key=${key} status=${status} → ${status === 'available' ? 'COMMIT now (setPlayerAvailability)' : 'OPEN reason picker — NO write until a reason/Skip is tapped'}`,
-          { key, status, reasonPickerWasOpenFor: _reasonPickerOpen });
+        availTrace(`TAP selectAvailabilityStatusPending key=${key} status=${norm} → SAVE NOW (reason optional, post-save)`, { key, status: norm });
       }
-      if (status === 'available') {
-        // Available needs no reason — save immediately
-        setPlayerAvailability(key, 'available', '');
-        return;
-      }
-      _reasonPickerOpen = { key, status };
+      setPlayerAvailability(key, norm, '');                 // persists ONLY this session; resets its reason
+      _reasonPickerOpen = (norm === 'available') ? null : { key, status: norm };
+      renderPlayerAvailability();
+    }
+
+    // Open the optional reason picker for one session WITHOUT changing its saved
+    // status (used by the "change" link on an answered card).
+    function openReasonPicker(key, status) {
+      _reasonPickerOpen = { key, status: status === 'injured' ? 'unavailable' : status };
       renderPlayerAvailability();
     }
 
     function cancelReasonPicker() {
-      if (availTraceEnabled()) availTrace('TAP cancelReasonPicker — pending selection DISCARDED, no write', { wasPendingFor: _reasonPickerOpen });
+      // Close the optional reason picker. The session's status is already saved —
+      // cancelling touches NOTHING (no status, no reason, no other session).
       _reasonPickerOpen = null;
       renderPlayerAvailability();
     }
@@ -9545,9 +9548,11 @@
       const key           = sessionKey(session.id);
       const current       = player[key] || 'no-reply';
       const currentReason = player[key + 'Reason'] || '';
-      const isPending     = _reasonPickerOpen?.key === key;
-      const pendingStatus = isPending ? _reasonPickerOpen.status : null;
-      const displayStatus = isPending ? pendingStatus : (current === 'injured' ? 'unavailable' : current);
+      // Display is driven ONLY by this session's SAVED status — never by any
+      // shared pending state. The reason picker is an optional post-save panel
+      // for this one session; whether it is open cannot change any card's status.
+      const isPicker      = _reasonPickerOpen?.key === key;
+      const displayStatus = current === 'injured' ? 'unavailable' : current;
 
       const borderColors = { available:'#16a34a', unavailable:'#dc2626', maybe:'#d97706', 'no-reply':'var(--line)' };
       const border = borderColors[displayStatus] || 'var(--line)';
@@ -9557,9 +9562,7 @@
       const meta  = [session.date, session.focus].filter(Boolean).join(' · ');
 
       const selBtn = (val, btnLabel, color) => {
-        const isActive = isPending
-          ? val === pendingStatus
-          : (val === current || (val === 'unavailable' && current === 'injured'));
+        const isActive = (val === current || (val === 'unavailable' && current === 'injured'));
         return `<button type="button" class="avail-btn" onclick="selectAvailabilityStatusPending('${key}','${val}')"
           style="min-height:48px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.14s;
             border:2px solid ${color};
@@ -9567,30 +9570,30 @@
             color:${isActive ? '#060b12' : color}">${btnLabel}</button>`;
       };
 
-      const reasonBadge = !isPending && currentReason ? `
+      const reasonBadge = !isPicker && currentReason ? `
         <div style="margin-top:8px;font-size:11px;color:${currentReason==='injury'?'#f87171':'var(--muted)'};display:flex;align-items:center;gap:6px">
           ${currentReason === 'injury' ? '<span style="color:#f87171;font-weight:700">⚠ Injury flagged</span>' : `Reason: <strong>${REASON_LABELS[currentReason] || currentReason}</strong>`}
-          <button type="button" onclick="selectAvailabilityStatusPending('${key}','${current === 'injured' ? 'unavailable' : current}')"
+          <button type="button" onclick="openReasonPicker('${key}','${displayStatus}')"
             style="font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;padding:0">change</button>
         </div>` : '';
 
-      const reasonPicker = isPending ? `
+      const reasonPicker = isPicker ? `
         <div style="margin-top:12px;padding:14px;background:rgba(255,255,255,0.04);border-radius:10px;border:1px solid rgba(255,255,255,0.1)">
           <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">
-            ${pendingStatus === 'maybe' ? "What's making you unsure?" : "Why can't you make it?"}&nbsp;<span style="opacity:.5;font-weight:400;text-transform:none">(optional)</span>
+            Saved ✓ — ${displayStatus === 'maybe' ? "what's making you unsure?" : "why can't you make it?"}&nbsp;<span style="opacity:.5;font-weight:400;text-transform:none">(optional)</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:10px">
             ${[['injury','⚠ Injury','#f87171'],['work','Work','#94a3b8'],['holiday','Holiday','#38bdf8'],['family','Family','#a78bfa'],['other','Other','#64748b']].map(([r,l,c]) => `
-              <button type="button" onclick="setPlayerAvailability('${key}','${pendingStatus}','${r}')"
+              <button type="button" onclick="setPlayerAvailability('${key}','${displayStatus}','${r}')"
                 style="padding:10px 4px;border-radius:8px;font-size:12px;font-weight:700;border:1.5px solid ${c};color:${c};background:transparent;cursor:pointer;transition:all .12s">${l}</button>`).join('')}
           </div>
           <div style="display:flex;gap:12px;font-size:11px;color:var(--muted)">
-            <button type="button" onclick="setPlayerAvailability('${key}','${pendingStatus}','')"
+            <button type="button" onclick="setPlayerAvailability('${key}','${displayStatus}','')"
               style="color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;font-size:12px">
-              Skip — no reason
+              No reason
             </button>
             <button type="button" onclick="cancelReasonPicker()"
-              style="color:var(--muted);background:none;border:none;cursor:pointer;font-size:12px">Cancel</button>
+              style="color:var(--muted);background:none;border:none;cursor:pointer;font-size:12px">Close</button>
           </div>
         </div>` : '';
 
