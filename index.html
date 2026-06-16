@@ -2182,6 +2182,7 @@
       <section id="coach-calendar"    class="section"></section>
       <section id="coach-qa"          class="section"></section>
       <section id="coach-beta"        class="section"></section>
+      <section id="coach-search"      class="section"></section>
 
       <section id="player-home"         class="section"></section>
       <section id="player-availability" class="section"></section>
@@ -2233,6 +2234,7 @@
       ["settings",  "Settings"],
       ["qa",        "Beta QA"],
       ["beta",      "Beta Info"],
+      ["search",    "Search"],
     ];
 
     const playerSections = [
@@ -2638,6 +2640,8 @@
       calendarTypeFilter: 'all',
       // Phase 26 — Beta QA
       betaQAChecklist: {},
+      // Phase 29 — Universal Search
+      searchQuery: '',
     };
 
     // ─── STATE ────────────────────────────────────────────────────────────────
@@ -3207,6 +3211,7 @@
       next.calendarMonth       = input.calendarMonth       || '';
       next.calendarTypeFilter  = input.calendarTypeFilter  || 'all';
       next.betaQAChecklist     = (input.betaQAChecklist && typeof input.betaQAChecklist === 'object') ? input.betaQAChecklist : {};
+      next.searchQuery         = typeof input.searchQuery === 'string' ? input.searchQuery : '';
       const user = next.users.find(u => u.id === next.currentUserId);
       if (user?.role === "player") {
         const canonicalPlayerId = canonicalPlayerIdForUser(user);
@@ -12006,6 +12011,256 @@
         </div>`;
     }
 
+    // ─── PHASE 29 — UNIVERSAL SEARCH & QUICK NAVIGATION ─────────────────────
+
+    function _searchMatch(haystack, needle) {
+      if (!needle) return false;
+      return String(haystack || '').toLowerCase().includes(needle.toLowerCase());
+    }
+
+    function searchPlayers(s, query) {
+      if (!query || !query.trim()) return [];
+      const q = query.trim();
+      return (s.players || [])
+        .filter(function(p) {
+          return _searchMatch(p.name, q) ||
+                 _searchMatch(p.position, q) ||
+                 _searchMatch(p.primaryPosition, q) ||
+                 _searchMatch(p.jerseyNumber, q) ||
+                 _searchMatch(p.email, q) ||
+                 _searchMatch(p.team, q) ||
+                 _searchMatch(p.ageGroup, q) ||
+                 _searchMatch(p.lifecycleStatus, q);
+        })
+        .map(function(p) {
+          var subtitle = [p.position || p.primaryPosition, p.ageGroup, p.lifecycleStatus !== 'active' ? p.lifecycleStatus : ''].filter(Boolean).join(' · ');
+          return { category: 'Players', icon: '👤', title: p.name || '(unnamed)', subtitle: subtitle, dest: 'players', id: p.id };
+        });
+    }
+
+    function searchTeams(s, query) {
+      if (!query || !query.trim()) return [];
+      var q = query.trim();
+      return (s.clubTeams || [])
+        .filter(function(t) {
+          return _searchMatch(t.name, q) ||
+                 _searchMatch(t.ageGroup, q) ||
+                 _searchMatch(t.sport, q) ||
+                 _searchMatch(t.league, q) ||
+                 _searchMatch(t.season, q);
+        })
+        .map(function(t) {
+          var subtitle = [t.ageGroup, t.league, t.season].filter(Boolean).join(' · ');
+          return { category: 'Teams', icon: '🏉', title: t.name || '(unnamed team)', subtitle: subtitle, dest: 'admin', id: t.id };
+        });
+    }
+
+    function searchFixtures(s, query) {
+      if (!query || !query.trim()) return [];
+      var q = query.trim();
+      return (s.fixtures || [])
+        .filter(function(f) {
+          return _searchMatch(f.opposition, q) ||
+                 _searchMatch(f.competition, q) ||
+                 _searchMatch(f.venue, q) ||
+                 _searchMatch(f.homeAway, q) ||
+                 _searchMatch(f.date, q) ||
+                 _searchMatch(f.status, q);
+        })
+        .map(function(f) {
+          var subtitle = [f.date, f.competition, f.venue, f.homeAway].filter(Boolean).join(' · ');
+          return { category: 'Fixtures', icon: '🏆', title: 'vs ' + (f.opposition || '(TBC)'), subtitle: subtitle, dest: 'fixtures', id: f.id };
+        });
+    }
+
+    function searchTraining(s, query) {
+      if (!query || !query.trim()) return [];
+      var q = query.trim();
+      return (s.schedule || [])
+        .filter(function(sess) {
+          return _searchMatch(sess.title, q) ||
+                 _searchMatch(sess.focus, q) ||
+                 _searchMatch(sess.date, q) ||
+                 _searchMatch(sess.type, q);
+        })
+        .map(function(sess) {
+          var subtitle = [sess.type, sess.date, sess.focus].filter(Boolean).join(' · ');
+          return { category: 'Training', icon: '🏋️', title: sess.title || sess.id, subtitle: subtitle, dest: 'training', id: sess.id };
+        });
+    }
+
+    function searchMedical(s, query) {
+      if (!query || !query.trim()) return [];
+      var q = query.trim();
+      var medRecords = s.medicalRecords || {};
+      var results = [];
+      (s.players || []).forEach(function(p) {
+        var rec = medRecords[p.id] || {};
+        if (_searchMatch(rec.currentInjury, q) ||
+            _searchMatch(rec.bodyLocation, q) ||
+            _searchMatch(rec.severity, q) ||
+            _searchMatch(rec.clearanceStatus, q) ||
+            _searchMatch(rec.allergies, q) ||
+            _searchMatch(rec.medication, q)) {
+          var subtitle = [rec.currentInjury, rec.severity, rec.clearanceStatus].filter(Boolean).join(' · ');
+          results.push({ category: 'Medical', icon: '🏥', title: p.name || '(unnamed)', subtitle: subtitle || 'Medical record', dest: 'medical', id: p.id });
+        }
+      });
+      return results;
+    }
+
+    function searchReports(s, query) {
+      if (!query || !query.trim()) return [];
+      var q = query.trim();
+      var results = [];
+      (s.fixtures || []).forEach(function(f) {
+        var evts = (s.matchEvents || {})[f.id] || [];
+        var st   = (s.matchStatus  || {})[f.id] || '';
+        if (!evts.length && st !== 'ft') return;
+        if (_searchMatch(f.opposition, q) ||
+            _searchMatch(f.date, q) ||
+            _searchMatch(f.competition, q) ||
+            _searchMatch(st, q)) {
+          var subtitle = [f.date, f.competition, 'Status: ' + (st || 'pending')].filter(Boolean).join(' · ');
+          results.push({ category: 'Reports', icon: '📊', title: 'Match report vs ' + (f.opposition || '(TBC)'), subtitle: subtitle, dest: 'reports', id: f.id });
+        }
+      });
+      return results;
+    }
+
+    function searchCalendar(s, query) {
+      if (!query || !query.trim()) return [];
+      var q = query.trim();
+      var results = [];
+      (s.fixtures || []).forEach(function(f) {
+        if (_searchMatch(f.opposition, q) || _searchMatch(f.date, q) || _searchMatch(f.competition, q)) {
+          results.push({ category: 'Calendar', icon: '📅', title: 'vs ' + (f.opposition || '(TBC)'), subtitle: f.date || '', dest: 'calendar', id: 'cal-fx-' + f.id });
+        }
+      });
+      (s.schedule || []).forEach(function(sess) {
+        if (_searchMatch(sess.title, q) || _searchMatch(sess.date, q) || _searchMatch(sess.focus, q)) {
+          results.push({ category: 'Calendar', icon: '📅', title: sess.title || sess.id, subtitle: sess.date || '', dest: 'calendar', id: 'cal-sess-' + sess.id });
+        }
+      });
+      return results;
+    }
+
+    function searchEverything(s, query) {
+      if (!query || !query.trim()) return [];
+      var seen = new Set();
+      var all  = [].concat(
+        searchPlayers(s, query),
+        searchTeams(s, query),
+        searchFixtures(s, query),
+        searchTraining(s, query),
+        searchMedical(s, query),
+        searchReports(s, query),
+        searchCalendar(s, query)
+      );
+      return all.filter(function(r) {
+        var key = r.category + ':' + r.id + ':' + r.title;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    function searchQuickLinks() {
+      return [
+        { icon: '👥', label: 'Players',     dest: 'players'  },
+        { icon: '🏆', label: 'Fixtures',    dest: 'fixtures' },
+        { icon: '🏋️', label: 'Training',    dest: 'training' },
+        { icon: '📅', label: 'Calendar',    dest: 'calendar' },
+        { icon: '🏥', label: 'Medical',     dest: 'medical'  },
+        { icon: '📊', label: 'Reports',     dest: 'reports'  },
+        { icon: '📋', label: 'Availability',dest: 'message'  },
+        { icon: '⏱️', label: 'Match Centre',dest: 'matchday' },
+        { icon: '🏟️', label: 'Club',        dest: 'club'     },
+        { icon: '⚙️', label: 'Settings',    dest: 'settings' },
+      ];
+    }
+
+    function searchGroupByCategory(results) {
+      var groups = {};
+      results.forEach(function(r) {
+        if (!groups[r.category]) groups[r.category] = [];
+        groups[r.category].push(r);
+      });
+      return groups;
+    }
+
+    function renderSearchResult(r) {
+      return '<div onclick="setSection(\'coach\',\'' + r.dest + '\')" style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:8px;cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'rgba(255,255,255,0.06)\'" onmouseout="this.style.background=\'\'">' +
+        '<span style="font-size:18px;flex-shrink:0;margin-top:1px">' + r.icon + '</span>' +
+        '<div style="min-width:0">' +
+          '<div style="font-size:14px;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.title) + '</div>' +
+          (r.subtitle ? '<div style="font-size:12px;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.subtitle) + '</div>' : '') +
+        '</div>' +
+        '<div style="margin-left:auto;font-size:11px;color:#64748b;white-space:nowrap;padding-top:3px">→ ' + esc(r.dest) + '</div>' +
+      '</div>';
+    }
+
+    function renderSearch() {
+      var query  = state.searchQuery || '';
+      var results = query.trim() ? searchEverything(state, query) : [];
+      var groups  = searchGroupByCategory(results);
+      var links   = searchQuickLinks();
+
+      var html = '<div style="max-width:660px;margin:0 auto;padding:16px">';
+      html += '<h2 style="font-size:20px;font-weight:700;color:#f1f5f9;margin:0 0 18px">Search</h2>';
+
+      // Search box
+      html += '<div style="position:relative;margin-bottom:24px">' +
+        '<span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none">🔍</span>' +
+        '<input id="search-query-input" type="text" placeholder="Search players, fixtures, training, medical…" ' +
+          'value="' + esc(query) + '" ' +
+          'oninput="state.searchQuery=this.value;render()" ' +
+          'style="width:100%;box-sizing:border-box;background:#1e293b;border:1.5px solid #334155;border-radius:10px;color:#e2e8f0;font-size:15px;padding:11px 14px 11px 42px;outline:none;transition:border .2s" ' +
+          'onfocus="this.style.borderColor=\'#60a5fa\'" onblur="this.style.borderColor=\'#334155\'">' +
+        '</div>';
+
+      // Results section
+      if (query.trim()) {
+        if (results.length === 0) {
+          html += '<div style="text-align:center;padding:40px 20px;color:#64748b">' +
+            '<div style="font-size:36px;margin-bottom:12px">🔎</div>' +
+            '<div style="font-size:15px;font-weight:600;margin-bottom:6px">No results for "' + esc(query) + '"</div>' +
+            '<div style="font-size:13px">Try a player name, fixture opponent, position, or date.</div>' +
+          '</div>';
+        } else {
+          html += '<div style="margin-bottom:6px;font-size:12px;color:#64748b;font-weight:600;letter-spacing:.05em">' + results.length + ' result' + (results.length !== 1 ? 's' : '') + '</div>';
+          Object.keys(groups).forEach(function(cat) {
+            var items = groups[cat];
+            html += '<div style="margin-bottom:20px">' +
+              '<div style="font-size:11px;font-weight:700;color:#60a5fa;letter-spacing:.08em;text-transform:uppercase;padding:0 4px;margin-bottom:6px">' + esc(cat) + ' (' + items.length + ')</div>' +
+              '<div style="background:#1e293b;border:1px solid #334155;border-radius:10px;overflow:hidden">';
+            items.forEach(function(r, i) {
+              if (i > 0) html += '<div style="height:1px;background:#334155;margin:0 14px"></div>';
+              html += renderSearchResult(r);
+            });
+            html += '</div></div>';
+          });
+        }
+      }
+
+      // Quick navigation
+      html += '<div style="margin-top:' + (query.trim() ? '32px' : '0') + '">';
+      html += '<div style="font-size:12px;font-weight:700;color:#94a3b8;letter-spacing:.07em;text-transform:uppercase;margin-bottom:12px">Quick Navigation</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px">';
+      links.forEach(function(lk) {
+        html += '<button onclick="setSection(\'coach\',\'' + lk.dest + '\')" ' +
+          'style="background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;transition:background .15s;width:100%" ' +
+          'onmouseover="this.style.background=\'#243247\'" onmouseout="this.style.background=\'#1e293b\'">' +
+          '<div style="font-size:22px;margin-bottom:6px">' + lk.icon + '</div>' +
+          '<div style="font-size:13px;font-weight:600;color:#e2e8f0">' + esc(lk.label) + '</div>' +
+        '</button>';
+      });
+      html += '</div></div>';
+
+      html += '</div>';
+      document.getElementById('coach-search').innerHTML = html;
+    }
+
     // ─── PHASE 28 — BETA LAUNCH SUPPORT SCREEN ───────────────────────────────
 
     const BETA_APP_VERSION = '28.0.0-beta';
@@ -19327,6 +19582,7 @@
       safeRender('coach-calendar',      () => renderCalendar());
       safeRender('coach-qa',            () => renderBetaQA());
       safeRender('coach-beta',          () => renderBetaLaunch());
+      safeRender('coach-search',        () => renderSearch());
       safeRender('player-home',         () => renderPlayerHome());
       safeRender('player-week',         () => renderPlayerWeek());
       safeRender('player-availability', () => renderPlayerAvailability());
