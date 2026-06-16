@@ -2179,6 +2179,7 @@
       <section id="coach-selection"   class="section"></section>
       <section id="coach-club"        class="section"></section>
       <section id="coach-reports"     class="section"></section>
+      <section id="coach-calendar"    class="section"></section>
 
       <section id="player-availability" class="section"></section>
       <section id="player-week"         class="section"></section>
@@ -2225,6 +2226,7 @@
       ["admin",     "Club Admin"],
       ["club",      "Club"],
       ["reports",   "Reports"],
+      ["calendar",  "Calendar"],
       ["settings",  "Settings"]
     ];
 
@@ -2624,6 +2626,10 @@
       teamPlan: '',
       teamPlanStatus: '',
       trialEndsAt: null,
+      // Phase 23 — Calendar
+      activeCalendarView: 'month',
+      calendarMonth: '',
+      calendarTypeFilter: 'all',
     };
 
     // ─── STATE ────────────────────────────────────────────────────────────────
@@ -3188,6 +3194,10 @@
       next.showAddPlayer    = false; // never restore open form across sessions
       next.onboardingDismissed = input.onboardingDismissed ?? false;
       next.features         = { ...structuredClone(defaultState.features), ...(input.features || {}) };
+      // Phase 23 — Calendar
+      next.activeCalendarView  = input.activeCalendarView  || 'month';
+      next.calendarMonth       = input.calendarMonth       || '';
+      next.calendarTypeFilter  = input.calendarTypeFilter  || 'all';
       const user = next.users.find(u => u.id === next.currentUserId);
       if (user?.role === "player") {
         const canonicalPlayerId = canonicalPlayerIdForUser(user);
@@ -11963,6 +11973,431 @@
         </div>`;
     }
 
+    // ─── PHASE 23 — CALENDAR & SEASON PLANNER ────────────────────────────────
+
+    // ── Event type config ─────────────────────────────────────────────────────
+
+    const CALENDAR_EVENT_TYPES = {
+      fixture:      { label: 'Fixture',       color: '#34d399', icon: '🏆' },
+      training:     { label: 'Training',      color: '#60a5fa', icon: '🏉' },
+      matchReport:  { label: 'Match Report',  color: '#a78bfa', icon: '📋' },
+      medReturn:    { label: 'Medical Return',color: '#fbbf24', icon: '🏥' },
+      announcement: { label: 'Announcement',  color: '#f97316', icon: '📢' },
+    };
+
+    // ── Pure helpers ──────────────────────────────────────────────────────────
+
+    function calendarBuildEvents(fixtures, schedSessions, matchEvents, matchStatus, players, medRecords, announcements) {
+      const events = [];
+
+      // Fixtures
+      (fixtures || []).forEach(fx => {
+        if (!fx.date) return;
+        events.push({
+          id:         'fx_' + (fx.id || fx.date),
+          type:       'fixture',
+          date:       fx.date,
+          title:      'vs ' + (fx.opposition || 'TBC'),
+          subtitle:   [fx.competition, fx.venue, fx.kickoffTime || fx.time].filter(Boolean).join(' · '),
+          payload:    { ...fx },
+        });
+      });
+
+      // Training sessions (from schedule)
+      (schedSessions || []).filter(s => s.type === 'Training' && s.date).forEach(s => {
+        events.push({
+          id:      'tr_' + s.id,
+          type:    'training',
+          date:    s.date,
+          title:   s.title || 'Training',
+          subtitle:[s.location, s.startTime].filter(Boolean).join(' · '),
+          payload: { ...s },
+        });
+      });
+
+      // Match reports — one per key in matchEvents that has events
+      const seenKeys = new Set();
+      Object.entries(matchEvents || {}).forEach(([key, evts]) => {
+        if (!Array.isArray(evts) || evts.length === 0) return;
+        // Extract date from key (format: YYYY-MM-DD_opp or YYYY-MM-DD)
+        const datePart = key.split('_')[0];
+        if (!datePart || !/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return;
+        if (seenKeys.has(key)) return;
+        seenKeys.add(key);
+        const score = matchComputeScore(evts);
+        const status = (matchStatus || {})[key] || 'pre';
+        events.push({
+          id:      'mr_' + key,
+          type:    'matchReport',
+          date:    datePart,
+          title:   'Match Report',
+          subtitle:'Score: ' + score.us + '–' + score.them + (status === 'ft' ? ' (FT)' : ''),
+          payload: { key, score, status, events: evts },
+        });
+      });
+
+      // Medical return dates
+      (players || []).filter(p => {
+        if (p.lifecycleStatus === 'archived' || p._archived) return false;
+        const rec = (medRecords || {})[p.id];
+        return rec && rec.expectedReturn;
+      }).forEach(p => {
+        const rec = (medRecords || {})[p.id];
+        events.push({
+          id:      'med_' + p.id,
+          type:    'medReturn',
+          date:    rec.expectedReturn,
+          title:   p.name + ' — Return date',
+          subtitle:(rec.currentInjury || rec.bodyLocation || 'Medical'),
+          payload: { player: p, medRecord: rec },
+        });
+      });
+
+      // Announcements (date-stamped only)
+      (announcements || []).filter(a => a.date || a.sentAt || a.createdAt).forEach(a => {
+        const rawDate = a.date || a.sentAt || a.createdAt || '';
+        const date = rawDate.slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+        events.push({
+          id:      'ann_' + (a.id || date),
+          type:    'announcement',
+          date:    date,
+          title:   a.title || a.subject || 'Announcement',
+          subtitle:(a.body || '').slice(0, 80),
+          payload: { ...a },
+        });
+      });
+
+      return events;
+    }
+
+    function calendarSortEvents(events) {
+      return (events || []).slice().sort((a, b) => {
+        if (a.date < b.date) return -1;
+        if (a.date > b.date) return 1;
+        return (a.type || '').localeCompare(b.type || '');
+      });
+    }
+
+    function calendarFilterEvents(events, typeFilter) {
+      if (!typeFilter || typeFilter === 'all') return events || [];
+      return (events || []).filter(e => e.type === typeFilter);
+    }
+
+    function calendarEventsForMonth(events, yearMonth) {
+      if (!yearMonth) return events || [];
+      return (events || []).filter(e => e.date && e.date.startsWith(yearMonth));
+    }
+
+    function calendarCurrentYearMonth() {
+      const d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+
+    function calendarMonthGrid(yearMonth) {
+      const [year, month] = yearMonth.split('-').map(Number);
+      const firstDay = new Date(year, month - 1, 1).getDay(); // 0=Sun
+      const daysInMonth = new Date(year, month, 0).getDate();
+      // Adjust so week starts Monday: 0=Mon..6=Sun
+      const startOffset = (firstDay + 6) % 7;
+      const cells = [];
+      for (let i = 0; i < startOffset; i++) cells.push(null);
+      for (let d = 1; d <= daysInMonth; d++) {
+        cells.push(yearMonth + '-' + String(d).padStart(2, '0'));
+      }
+      // Pad to full weeks
+      while (cells.length % 7 !== 0) cells.push(null);
+      return cells;
+    }
+
+    function calendarGroupByDate(events) {
+      const map = {};
+      (events || []).forEach(ev => {
+        if (!ev.date) return;
+        if (!map[ev.date]) map[ev.date] = [];
+        map[ev.date].push(ev);
+      });
+      return map;
+    }
+
+    function calendarNavMonth(yearMonth, direction) {
+      const [year, month] = yearMonth.split('-').map(Number);
+      const d = new Date(year, month - 1 + direction, 1);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+
+    function calendarMonthLabel(yearMonth) {
+      if (!yearMonth) return '';
+      const [y, m] = yearMonth.split('-').map(Number);
+      const d = new Date(y, m - 1, 1);
+      return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    }
+
+    // ── UI helpers ────────────────────────────────────────────────────────────
+
+    function calendarSetMonth(ym) {
+      state.calendarMonth = ym;
+      _calendarSelectedEvent = null;
+      saveState();
+      render();
+    }
+
+    function calendarSetView(v) {
+      state.activeCalendarView = v;
+      _calendarSelectedEvent = null;
+      saveState();
+      render();
+    }
+
+    function calendarSetFilter(f) {
+      state.calendarTypeFilter = f;
+      _calendarSelectedEvent = null;
+      saveState();
+      render();
+    }
+
+    function calendarSelectEvent(eventId) {
+      const all = calendarBuildEvents(
+        state.fixtures, state.schedule,
+        state.matchEvents, state.matchStatus,
+        state.players, state.medicalRecords,
+        state.announcements
+      );
+      const ev = all.find(e => e.id === eventId) || null;
+      _calendarSelectedEvent = (_calendarSelectedEvent && _calendarSelectedEvent.id === eventId) ? null : ev;
+      render();
+    }
+
+    // ── Renderers ─────────────────────────────────────────────────────────────
+
+    function _calEventBadge(type) {
+      const cfg = CALENDAR_EVENT_TYPES[type] || { label: type, color: '#94a3b8', icon: '•' };
+      return '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;background:' + cfg.color + '1a;color:' + cfg.color + ';white-space:nowrap">' + cfg.icon + ' ' + cfg.label + '</span>';
+    }
+
+    function _calEventDot(type) {
+      const cfg = CALENDAR_EVENT_TYPES[type] || { color: '#94a3b8' };
+      return '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:' + cfg.color + ';margin:1px"></span>';
+    }
+
+    function _renderCalendarEventDetail(ev) {
+      if (!ev) return '';
+      const cfg = CALENDAR_EVENT_TYPES[ev.type] || { label: ev.type, color: '#94a3b8', icon: '•' };
+      const d   = new Date(ev.date + 'T12:00:00');
+      const dateLabel = d.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+
+      let details = '';
+      if (ev.type === 'fixture') {
+        const p = ev.payload || {};
+        details = '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+          [
+            ['Date',        dateLabel],
+            ['Opposition',  p.opposition || '—'],
+            ['Competition', p.competition || '—'],
+            ['Venue',       p.venue || '—'],
+            ['Home/Away',   p.homeAway ? (p.homeAway === 'home' ? 'Home' : 'Away') : '—'],
+            ['Kick-off',    p.kickoffTime || p.time || '—'],
+            ['Status',      p.status || '—'],
+          ].map(([k,v]) =>
+            '<tr style="border-bottom:1px solid var(--line)"><td style="padding:5px 8px 5px 0;color:var(--muted);white-space:nowrap">' + k + '</td><td style="padding:5px 0;font-weight:600">' + esc(v) + '</td></tr>'
+          ).join('') +
+        '</table>' +
+        (p.notes ? '<div style="margin-top:8px;font-size:12px;line-height:1.5;white-space:pre-wrap">' + esc(p.notes) + '</div>' : '');
+      } else if (ev.type === 'training') {
+        const p = ev.payload || {};
+        details = '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+          [
+            ['Date',     dateLabel],
+            ['Location', p.location || '—'],
+            ['Start',    p.startTime || '—'],
+            ['End',      p.endTime   || '—'],
+            ['Coach',    p.coachName || '—'],
+            ['Focus',    p.focus     || '—'],
+          ].map(([k,v]) =>
+            '<tr style="border-bottom:1px solid var(--line)"><td style="padding:5px 8px 5px 0;color:var(--muted);white-space:nowrap">' + k + '</td><td style="padding:5px 0;font-weight:600">' + esc(v) + '</td></tr>'
+          ).join('') +
+        '</table>';
+      } else if (ev.type === 'matchReport') {
+        const p = ev.payload || {};
+        details = '<div style="text-align:center;padding:14px 0">' +
+          '<div style="font-size:40px;font-weight:900"><span style="color:#34d399">' + p.score.us + '</span><span style="color:var(--muted);margin:0 12px;font-size:22px">–</span><span style="color:#f87171">' + p.score.them + '</span></div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-top:4px">' + (p.status === 'ft' ? 'Full time' : p.status === 'ht' ? 'Half time' : p.status) + '</div>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--muted)">' + (p.events || []).length + ' recorded events. Open Match Centre for full details.</div>';
+      } else if (ev.type === 'medReturn') {
+        const p = ev.payload || {};
+        const rec = p.medRecord || {};
+        details = '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+          [
+            ['Player',    (p.player && p.player.name) || '—'],
+            ['Condition', rec.currentInjury || rec.bodyLocation || '—'],
+            ['Severity',  MEDICAL_SEVERITY_LABELS[rec.severity] || '—'],
+            ['Expected',  dateLabel],
+            ['Clearance', MEDICAL_CLEARANCE_LABELS[rec.clearanceStatus] || '—'],
+          ].map(([k,v]) =>
+            '<tr style="border-bottom:1px solid var(--line)"><td style="padding:5px 8px 5px 0;color:var(--muted);white-space:nowrap">' + k + '</td><td style="padding:5px 0;font-weight:600">' + esc(v) + '</td></tr>'
+          ).join('') +
+        '</table>';
+      } else if (ev.type === 'announcement') {
+        const p = ev.payload || {};
+        details = '<div style="font-size:12px"><div style="font-weight:700;margin-bottom:6px">' + esc(p.title || p.subject || 'Announcement') + '</div><div style="line-height:1.6;color:var(--muted);">' + esc(p.body || '') + '</div></div>';
+      }
+
+      return '<div class="card" style="margin-bottom:14px;border-left:3px solid ' + cfg.color + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">' +
+          '<div>' +
+            _calEventBadge(ev.type) +
+            '<div style="font-size:15px;font-weight:800;margin-top:6px">' + esc(ev.title) + '</div>' +
+            (ev.subtitle ? '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + esc(ev.subtitle) + '</div>' : '') +
+          '</div>' +
+          '<button type="button" onclick="calendarSelectEvent(\'' + esc(ev.id) + '\')" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);line-height:1">×</button>' +
+        '</div>' +
+        details +
+      '</div>';
+    }
+
+    function _renderCalendarMonth(yearMonth, allEvents) {
+      const grid     = calendarMonthGrid(yearMonth);
+      const byDate   = calendarGroupByDate(allEvents);
+      const today    = new Date().toISOString().slice(0, 10);
+      const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+      const header = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px">' +
+        dayNames.map(d => '<div style="text-align:center;font-size:10px;font-weight:700;color:var(--muted);padding:4px 0">' + d + '</div>').join('') +
+      '</div>';
+
+      const cells = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">' +
+        grid.map(date => {
+          if (!date) {
+            return '<div style="min-height:60px;border-radius:8px"></div>';
+          }
+          const eventsHere = byDate[date] || [];
+          const isToday    = date === today;
+          return '<div style="min-height:60px;border-radius:8px;padding:4px;background:var(--panel-2);border:1.5px solid ' + (isToday ? 'var(--green)' : 'var(--line)') + ';cursor:' + (eventsHere.length ? 'pointer' : 'default') + '">' +
+            '<div style="font-size:11px;font-weight:' + (isToday ? '900' : '600') + ';color:' + (isToday ? 'var(--green)' : 'var(--text)') + ';margin-bottom:3px">' + Number(date.slice(8)) + '</div>' +
+            eventsHere.slice(0, 3).map(ev => {
+              const cfg = CALENDAR_EVENT_TYPES[ev.type] || { color: '#94a3b8', icon: '•', label: ev.type };
+              return '<div onclick="calendarSelectEvent(\'' + ev.id.replace(/'/g,"\\'") + '\')" style="font-size:9px;font-weight:700;padding:1px 4px;border-radius:4px;background:' + cfg.color + '1a;color:' + cfg.color + ';margin-bottom:1px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + cfg.icon + ' ' + esc(ev.title.slice(0,20)) + '</div>';
+            }).join('') +
+            (eventsHere.length > 3 ? '<div style="font-size:9px;color:var(--muted)">+' + (eventsHere.length - 3) + ' more</div>' : '') +
+          '</div>';
+        }).join('') +
+      '</div>';
+
+      return header + cells;
+    }
+
+    function _renderCalendarAgenda(sortedEvents) {
+      if (sortedEvents.length === 0) {
+        return '<div class="card" style="text-align:center;padding:40px 20px">' +
+          '<div style="font-size:36px;margin-bottom:10px">📅</div>' +
+          '<div style="font-size:15px;font-weight:700;margin-bottom:6px">No events this month</div>' +
+          '<div style="font-size:13px;color:var(--muted)">Add fixtures, training sessions or medical records to see events here.</div>' +
+        '</div>';
+      }
+
+      const byDate = calendarGroupByDate(sortedEvents);
+      const today  = new Date().toISOString().slice(0, 10);
+
+      return Object.keys(byDate).sort().map(date => {
+        const d   = new Date(date + 'T12:00:00');
+        const lbl = d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+        const isToday = date === today;
+        return '<div style="margin-bottom:16px">' +
+          '<div style="font-size:11px;font-weight:700;color:' + (isToday ? 'var(--green)' : 'var(--muted)') + ';text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">' +
+            lbl + (isToday ? ' · Today' : '') +
+          '</div>' +
+          byDate[date].map(ev => {
+            const cfg = CALENDAR_EVENT_TYPES[ev.type] || { label: ev.type, color: '#94a3b8', icon: '•' };
+            const isSelected = _calendarSelectedEvent && _calendarSelectedEvent.id === ev.id;
+            return '<div onclick="calendarSelectEvent(\'' + ev.id.replace(/'/g,"\\'") + '\')" style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;border:1.5px solid ' + (isSelected ? cfg.color : 'var(--line)') + ';background:' + (isSelected ? cfg.color + '0d' : 'var(--panel-2)') + ';cursor:pointer;margin-bottom:6px;transition:border-color .15s">' +
+              '<div style="width:32px;height:32px;border-radius:8px;background:' + cfg.color + '1a;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">' + cfg.icon + '</div>' +
+              '<div style="flex:1;min-width:0">' +
+                '<div style="font-weight:700;font-size:13px">' + esc(ev.title) + '</div>' +
+                (ev.subtitle ? '<div style="font-size:11px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(ev.subtitle) + '</div>' : '') +
+              '</div>' +
+              _calEventBadge(ev.type) +
+            '</div>';
+          }).join('') +
+        '</div>';
+      }).join('');
+    }
+
+    function renderCalendar() {
+      const el = document.getElementById('coach-calendar');
+      if (!el) return;
+
+      const ym      = state.calendarMonth || calendarCurrentYearMonth();
+      const filter  = state.calendarTypeFilter || 'all';
+      const view    = state.activeCalendarView || 'month';
+      const allEvts = calendarBuildEvents(
+        state.fixtures, state.schedule,
+        state.matchEvents, state.matchStatus,
+        state.players, state.medicalRecords,
+        state.announcements
+      );
+      const monthEvts  = calendarEventsForMonth(allEvts, ym);
+      const filtered   = calendarFilterEvents(monthEvts, filter);
+      const sorted     = calendarSortEvents(filtered);
+      const prevYm     = calendarNavMonth(ym, -1);
+      const nextYm     = calendarNavMonth(ym, 1);
+
+      const filterBar = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">' +
+        [['all','All'], ...Object.entries(CALENDAR_EVENT_TYPES).map(([k,v]) => [k, v.label])].map(([key, label]) => {
+          const cfg  = CALENDAR_EVENT_TYPES[key] || null;
+          const isAct = filter === key;
+          const col  = cfg ? cfg.color : '#60a5fa';
+          return '<button type="button" onclick="calendarSetFilter(\'' + key + '\')" style="' +
+            'font-size:11px;font-weight:700;padding:4px 12px;border-radius:999px;cursor:pointer;' +
+            'border:1.5px solid ' + (isAct ? col : 'var(--line)') + ';' +
+            'background:' + (isAct ? col + '1a' : 'var(--panel-2)') + ';' +
+            'color:' + (isAct ? col : 'var(--muted)') + '">' + label + '</button>';
+        }).join('') +
+      '</div>';
+
+      const navBar = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          '<button type="button" onclick="calendarSetMonth(\'' + prevYm + '\')" class="btn" style="font-size:13px;padding:6px 10px">‹</button>' +
+          '<span style="font-size:16px;font-weight:800;min-width:160px;text-align:center">' + calendarMonthLabel(ym) + '</span>' +
+          '<button type="button" onclick="calendarSetMonth(\'' + nextYm + '\')" class="btn" style="font-size:13px;padding:6px 10px">›</button>' +
+          '<button type="button" onclick="calendarSetMonth(\'' + calendarCurrentYearMonth() + '\')" class="btn" style="font-size:12px">Today</button>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px">' +
+          ['month','agenda'].map(v =>
+            '<button type="button" onclick="calendarSetView(\'' + v + '\')" style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:999px;cursor:pointer;border:1.5px solid ' + (view === v ? 'var(--green)' : 'var(--line)') + ';background:' + (view === v ? 'rgba(16,185,129,0.08)' : 'var(--panel-2)') + ';color:' + (view === v ? 'var(--green)' : 'var(--muted)') + '">' + (v === 'month' ? '📅 Month' : '📋 Agenda') + '</button>'
+          ).join('') +
+        '</div>' +
+      '</div>';
+
+      const totalThisMonth = monthEvts.length;
+      const statsBar = totalThisMonth > 0
+        ? '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">' +
+            Object.entries(CALENDAR_EVENT_TYPES).map(([k, cfg]) => {
+              const count = monthEvts.filter(e => e.type === k).length;
+              if (count === 0) return '';
+              return '<div style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:' + cfg.color + '1a;color:' + cfg.color + '">' + cfg.icon + ' ' + count + ' ' + cfg.label + (count !== 1 ? 's' : '') + '</div>';
+            }).join('') +
+          '</div>'
+        : '';
+
+      const mainContent = view === 'month'
+        ? '<div class="card" style="padding:12px">' + _renderCalendarMonth(ym, filtered) + '</div>'
+        : _renderCalendarAgenda(sorted);
+
+      const detailPanel = _calendarSelectedEvent ? _renderCalendarEventDetail(_calendarSelectedEvent) : '';
+
+      el.innerHTML =
+        '<div class="training-hero">' +
+          '<div><div class="eyebrow">Season Planner</div><h1>Calendar</h1>' +
+          '<p>All fixtures, training, medical returns and announcements in one view.</p></div>' +
+        '</div>' +
+        navBar +
+        filterBar +
+        statsBar +
+        detailPanel +
+        mainContent;
+    }
+
     // ─── PHASE 22 — REPORTS & EXPORT CENTRE ──────────────────────────────────
 
     // ── Pure report generators (no state mutation, fully testable) ────────────
@@ -15519,6 +15954,8 @@
     let _reportType      = '';  // '' | 'player' | 'availability' | 'match' | 'medical' | 'training'
     let _reportPlayerId  = '';  // for player report
     let _reportFixtureId = '';  // for match report (uses matchKey() when empty)
+    // Phase 23 — Calendar & Season Planner
+    let _calendarSelectedEvent = null; // { id, type, date, ... } | null
 
     // ─── SQUAD SELECTION UI STATE (not persisted — transient per-session) ───────
     let _selectionEditId         = null;  // null = list view | selId = editor open
@@ -17472,6 +17909,7 @@
       safeRender('coach-fixtures',      () => renderCoachFixtures());
       safeRender('coach-selection',     () => renderCoachSelection());
       safeRender('coach-reports',       () => renderReports());
+      safeRender('coach-calendar',      () => renderCalendar());
       safeRender('player-week',         () => renderPlayerWeek());
       safeRender('player-availability', () => renderPlayerAvailability());
       safeRender('player-fixtures',     () => renderPlayerFixtures());
