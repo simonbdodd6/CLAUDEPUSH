@@ -89,4 +89,17 @@
  * @property {ReadonlyArray<Readonly<{ index:number, recordId:string, problems:ReadonlyArray<string> }>>} problems
  */
 
+/**
+ * The frozen, deterministic description of what WOULD happen if the gateway applied a
+ * batch plan to the Evidence Store (M54). Writes nothing. Ordering of the batch's
+ * results is preserved within every partition.
+ * @typedef {Object} ApplicationPlan
+ * @property {number}  total
+ * @property {boolean} willApply                          accepted.length > 0
+ * @property {Readonly<{ total:number, accepted:number, unknown_source:number, invalid_signals:number, signals:number }>} counts
+ * @property {ReadonlyArray<Readonly<{ index:number, recordId:string, normalizerKey:string|null, signals:ReadonlyArray<import('@brain/evidence-contracts').NormalizedSignal> }>>} accepted
+ * @property {ReadonlyArray<Readonly<{ index:number, recordId:string, sourceType:string }>>} unknownSource
+ * @property {ReadonlyArray<Readonly<{ index:number, recordId:string, problems:ReadonlyArray<string> }>>} invalidSignals
+ */
+
 export {}

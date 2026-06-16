@@ -44,5 +44,8 @@ export {
 export {
   planBatchNormalization,
 } from './batch.js'
+export {
+  planNormalizationApplication,
+} from './application.js'
 export { NormalizationError, NORMALIZATION_ERROR } from './errors.js'
 export * from './types.js'   // JSDoc typedefs only (no runtime values)
