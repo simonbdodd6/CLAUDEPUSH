@@ -2931,15 +2931,18 @@
       // Beta blocker: the old code kept only a hardcoded 4-key subset, so
       // reason fields and custom (avail_*) sessions were dropped on every
       // dedup/hydration pass — collapsing distinct per-session answers and
-      // resetting sessions to stale values. Collect every session status key
-      // and every *Reason key present on either record and merge them
-      // field-by-field, preferring an answered value over 'no-reply'.
+      // resetting sessions to stale values. Collect every session status key,
+      // every *Reason field and every *RespondedAt timestamp present on either
+      // record and merge them field-by-field, preferring an answered value over
+      // 'no-reply' and a non-empty reason/timestamp over an empty one. Kept in
+      // lockstep with mergeRosterPlayer in src/player-identity.js (the canonical
+      // read path the coach availability board now reads).
       const _availStatusKeys = new Set(['status', 'game', 'trainingTuesday', 'trainingThursday']);
-      const _availReasonKeys = new Set();
+      const _availMetaKeys = new Set(); // *Reason + *RespondedAt — non-status metadata
       [preferred, other].forEach(rec => {
         Object.keys(rec || {}).forEach(k => {
-          if (k.indexOf('avail_') === 0) _availStatusKeys.add(k);
-          if (/Reason$/.test(k)) _availReasonKeys.add(k);
+          if (/Reason$/.test(k) || /RespondedAt$/.test(k)) _availMetaKeys.add(k);
+          else if (k.indexOf('avail_') === 0) _availStatusKeys.add(k);
         });
       });
       _availStatusKeys.forEach(key => {
@@ -2948,7 +2951,7 @@
         else if (ov && ov !== 'no-reply') merged[key] = ov;
         else merged[key] = pv || ov || 'no-reply';
       });
-      _availReasonKeys.forEach(key => {
+      _availMetaKeys.forEach(key => {
         const pv = preferred[key], ov = other[key];
         merged[key] = (pv !== undefined && pv !== '') ? pv : (ov || '');
       });
@@ -3611,7 +3614,13 @@
     function sessionRows(id)  {
       const key = sessionKey(id);
       const rKey = sessionReasonKey(id);
-      return state.players.map(p => ({
+      // Read the canonical, deduped roster — NOT raw state.players. A player can
+      // hold two raw records (invite + permanent account) until the next
+      // normalizeState pass; reading raw would show the coach duplicate rows or a
+      // stale duplicate's per-session answer, bypassing the merge that preserves
+      // each session's status/reason/respondedAt. This is a read-only view; save
+      // behaviour and state.players are unchanged.
+      return canonicalVisiblePlayers().map(p => ({
         player:         p,
         status:         p[key],
         reason:         p[rKey] || '',
@@ -14596,7 +14605,8 @@
     }
 
     function _renderAvailabilityReport() {
-      const rpt = generateAvailabilityReport(state.players, state.fixtures, state.fixtureAvailability, state.medicalRecords);
+      // Canonical deduped roster, not raw state.players — see sessionRows().
+      const rpt = generateAvailabilityReport(canonicalVisiblePlayers(), state.fixtures, state.fixtureAvailability, state.medicalRecords);
       window.__rptData_availability = rpt;
       const statusColor = { available:'#34d399', unavailable:'#f87171', maybe:'#fbbf24', 'no-reply':'#94a3b8' };
 

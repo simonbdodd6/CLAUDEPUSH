@@ -235,21 +235,23 @@ function mergeRosterPlayer(existing = {}, incoming = {}, context = {}) {
   merged.trainingThursday = preferResponseValue(preferred.trainingThursday, other.trainingThursday);
   // Preserve the COMPLETE per-session availability picture across a roster
   // merge. The fixed keys above cover only the default schedule; custom sessions
-  // (avail_*) and every *Reason field must survive too. Without this, a no-reply
-  // on the higher-scored record clobbers a real answer on the other record, so
-  // answering one session resets another (the availability cross-contamination
-  // blocker). This mirrors the inline dedupeRosterMembers fix in index.html so
-  // the read/display dedup path and the persist dedup path stay in lockstep.
+  // (avail_*) and every *Reason / *RespondedAt field must survive too. Without
+  // this, a no-reply on the higher-scored record clobbers a real answer on the
+  // other record, so answering one session resets another (the availability
+  // cross-contamination blocker), and the coach board — which reads this
+  // canonical roster — loses reasons and "responded at" timestamps. This mirrors
+  // the inline dedupeRosterMembers fix in index.html so the read/display dedup
+  // path and the persist dedup path stay in lockstep.
   const availStatusKeys = new Set();
-  const availReasonKeys = new Set();
+  const availMetaKeys = new Set(); // *Reason + *RespondedAt — non-status metadata
   [preferred, other].forEach(rec => {
     Object.keys(rec || {}).forEach(k => {
-      if (/Reason$/.test(k)) availReasonKeys.add(k);
+      if (/Reason$/.test(k) || /RespondedAt$/.test(k)) availMetaKeys.add(k);
       else if (k.indexOf('avail_') === 0) availStatusKeys.add(k);
     });
   });
   availStatusKeys.forEach(k => { merged[k] = preferResponseValue(preferred[k], other[k]); });
-  availReasonKeys.forEach(k => {
+  availMetaKeys.forEach(k => {
     const pv = preferred[k];
     const ov = other[k];
     merged[k] = (pv !== undefined && pv !== '') ? pv : (ov || '');
