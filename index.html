@@ -3693,10 +3693,11 @@
       return `${day} ${hhmm}`;
     }
 
-    // ─── AVAILABILITY REASON PICKER STATE ─────────────────────────────────────
-    // Controls which session's inline reason picker is currently visible.
-    // Set by selectAvailabilityStatusPending(); cleared by setPlayerAvailability().
-    let _reasonPickerOpen = null; // { key, status } — null means no picker shown
+    // ─── AVAILABILITY REASON PICKER STATE (AvailabilityV2) ────────────────────
+    // PER-CARD reason-picker visibility, keyed by SESSION KEY. There is NO shared
+    // pending status and NO single shared picker — each card opens/closes its own
+    // reason picker independently, so no card can ever affect another.
+    let _availReasonOpenByKey = {}; // { [sessionKey]: true } — only visibility, never status
     let _sessionFormMode  = null; // 'add' | 'edit' | null
     let _sessionFormId    = null; // session id being edited, or null for new
 
@@ -3867,33 +3868,41 @@
       showToast(`Exported ${rows.length} players to CSV`);
     }
 
-    // Status button tap. SAVE IMMEDIATELY for every status — there is no shared
-    // pending state, so one card can never reset another. For Maybe / Can't make
-    // it we then open an OPTIONAL, post-save reason picker for THIS session only;
-    // the status is already persisted whether or not a reason is chosen.
-    function selectAvailabilityStatusPending(key, status) {
+    // ─── AvailabilityV2 entry handlers ────────────────────────────────────────
+    // Every handler acts on ONE session key only and persists immediately. The
+    // reason picker visibility lives in _availReasonOpenByKey[key], so opening or
+    // closing one card's picker can never touch another card's status or reason.
+
+    // Status tap: save immediately for THIS session, then (for maybe/unavailable)
+    // open this card's optional reason picker. Never reads/writes another key.
+    function availabilityV2SetStatus(key, status) {
       const norm = status === 'injured' ? 'unavailable' : status;
-      if (availTraceEnabled()) {
-        _availTraceSeq++;
-        availTrace(`TAP selectAvailabilityStatusPending key=${key} status=${norm} → SAVE NOW (reason optional, post-save)`, { key, status: norm });
-      }
-      setPlayerAvailability(key, norm, '');                 // persists ONLY this session; resets its reason
-      _reasonPickerOpen = (norm === 'available') ? null : { key, status: norm };
-      renderPlayerAvailability();
+      if (availTraceEnabled()) { _availTraceSeq++; availTrace(`V2 setStatus key=${key} status=${norm} → SAVE NOW`, { key, status: norm }); }
+      setPlayerAvailability(key, norm, '');                 // persists ONLY this session key
+      if (norm === 'available') delete _availReasonOpenByKey[key];
+      else _availReasonOpenByKey[key] = true;               // optional reason picker for THIS card
+      renderPlayerAvailabilityV2();
     }
 
-    // Open the optional reason picker for one session WITHOUT changing its saved
-    // status (used by the "change" link on an answered card).
-    function openReasonPicker(key, status) {
-      _reasonPickerOpen = { key, status: status === 'injured' ? 'unavailable' : status };
-      renderPlayerAvailability();
+    // Open this card's reason picker WITHOUT changing its saved status (the
+    // "change reason" link). Per-key — never affects another card.
+    function availabilityV2OpenReason(key) {
+      _availReasonOpenByKey[key] = true;
+      renderPlayerAvailabilityV2();
     }
 
-    function cancelReasonPicker() {
-      // Close the optional reason picker. The session's status is already saved —
-      // cancelling touches NOTHING (no status, no reason, no other session).
-      _reasonPickerOpen = null;
-      renderPlayerAvailability();
+    // Choose/clear a reason for THIS session only, then close this card's picker.
+    function availabilityV2SetReason(key, status, reason) {
+      const norm = status === 'injured' ? 'unavailable' : status;
+      setPlayerAvailability(key, norm, reason || '');       // writes ONLY this session key + its reason
+      delete _availReasonOpenByKey[key];
+      renderPlayerAvailabilityV2();
+    }
+
+    // Close this card's reason picker. Status already saved — touches NOTHING else.
+    function availabilityV2CloseReason(key) {
+      delete _availReasonOpenByKey[key];
+      renderPlayerAvailabilityV2();
     }
 
     const REASON_LABELS = { injury: 'Injury', work: 'Work', holiday: 'Holiday', family: 'Family', other: 'Other' };
@@ -9494,17 +9503,35 @@
           availTraceTable('6b. records AFTER server merge (OVERWRITE applied)', _availSnapAll());
         }
         if (availTraceEnabled()) availWatchCheck('fetchMyAvailabilityFromServer');
-        if (changed) { saveState('Server availability loaded'); renderPlayerAvailability(); }
+        if (changed) { saveState('Server availability loaded'); renderPlayerAvailabilityV2(); }
       } catch { /* non-critical — player already sees local state */ }
     }
 
-    function renderPlayerAvailability() {
+    // ─── AvailabilityV2 — clean, fully independent per-session cards ───────────
+    // Pure model for ONE card. Everything is derived from this session's OWN key
+    // on the player record plus this card's OWN reason-picker visibility. No
+    // shared/pending state and no cross-session reads — so a card can only ever
+    // describe itself. Returns the shape the spec asks for.
+    function availabilityCardModel(player, session) {
+      const key = sessionKey(session.id);
+      const raw = player[key] || 'no-reply';
+      return {
+        key,
+        label: session.title || session.id,
+        status: raw === 'injured' ? 'unavailable' : raw,
+        reason: player[key + 'Reason'] || '',
+        respondedAt: player[key + 'RespondedAt'] || null,
+        isOpenReasonPicker: !!_availReasonOpenByKey[key],
+      };
+    }
+
+    function renderPlayerAvailabilityV2() {
       const player = getPlayer();
       if (!player.id) { document.getElementById("player-availability").innerHTML = noSquadMsg(); return; }
 
       if (availTraceEnabled()) {
-        availWatchCheck('renderPlayerAvailability(entry)');
-        availTrace('RENDER renderPlayerAvailability — player the UI will show', _availSnap(player));
+        availWatchCheck('renderPlayerAvailabilityV2(entry)');
+        availTrace('RENDER renderPlayerAvailabilityV2 — player the UI will show', _availSnap(player));
       }
 
       fetchMyAvailabilityFromServer();
@@ -9537,62 +9564,56 @@
             </div>
           </div>
 
-          <!-- Per-session cards -->
-          ${sessions.map(s => availabilityBlock(player, s)).join('')}
+          <!-- Per-session cards — each fully independent -->
+          ${sessions.map(s => availabilityCardV2(availabilityCardModel(player, s), s)).join('')}
 
           ${sessions.length === 0 ? `<p class="muted" style="text-align:center;padding:30px">No sessions scheduled yet — check back soon.</p>` : ''}
         </div>`;
     }
 
-    function availabilityBlock(player, session) {
-      const key           = sessionKey(session.id);
-      const current       = player[key] || 'no-reply';
-      const currentReason = player[key + 'Reason'] || '';
-      // Display is driven ONLY by this session's SAVED status — never by any
-      // shared pending state. The reason picker is an optional post-save panel
-      // for this one session; whether it is open cannot change any card's status.
-      const isPicker      = _reasonPickerOpen?.key === key;
-      const displayStatus = current === 'injured' ? 'unavailable' : current;
-
+    function availabilityCardV2(model, session) {
+      const { key, status, reason, isOpenReasonPicker } = model;
       const borderColors = { available:'#16a34a', unavailable:'#dc2626', maybe:'#d97706', 'no-reply':'var(--line)' };
-      const border = borderColors[displayStatus] || 'var(--line)';
+      const border = borderColors[status] || 'var(--line)';
 
       const icon  = sessionTypeIcon(session.type);
-      const title = session.title || session.id;
+      const title = model.label;
       const meta  = [session.date, session.focus].filter(Boolean).join(' · ');
 
+      // Every button acts ONLY on this card's key. isActive reflects this card's
+      // own saved status — there is no shared pending status to read.
       const selBtn = (val, btnLabel, color) => {
-        const isActive = (val === current || (val === 'unavailable' && current === 'injured'));
-        return `<button type="button" class="avail-btn" onclick="selectAvailabilityStatusPending('${key}','${val}')"
+        const isActive = (val === status);
+        return `<button type="button" class="avail-btn" onclick="availabilityV2SetStatus('${key}','${val}')"
           style="min-height:48px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.14s;
             border:2px solid ${color};
             background:${isActive ? color : 'transparent'};
             color:${isActive ? '#060b12' : color}">${btnLabel}</button>`;
       };
 
-      const reasonBadge = !isPicker && currentReason ? `
-        <div style="margin-top:8px;font-size:11px;color:${currentReason==='injury'?'#f87171':'var(--muted)'};display:flex;align-items:center;gap:6px">
-          ${currentReason === 'injury' ? '<span style="color:#f87171;font-weight:700">⚠ Injury flagged</span>' : `Reason: <strong>${REASON_LABELS[currentReason] || currentReason}</strong>`}
-          <button type="button" onclick="openReasonPicker('${key}','${displayStatus}')"
+      const reasonBadge = !isOpenReasonPicker && reason ? `
+        <div style="margin-top:8px;font-size:11px;color:${reason==='injury'?'#f87171':'var(--muted)'};display:flex;align-items:center;gap:6px">
+          ${reason === 'injury' ? '<span style="color:#f87171;font-weight:700">⚠ Injury flagged</span>' : `Reason: <strong>${REASON_LABELS[reason] || reason}</strong>`}
+          <button type="button" onclick="availabilityV2OpenReason('${key}')"
             style="font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;padding:0">change</button>
         </div>` : '';
 
-      const reasonPicker = isPicker ? `
+      const reasonPicker = isOpenReasonPicker ? `
         <div style="margin-top:12px;padding:14px;background:rgba(255,255,255,0.04);border-radius:10px;border:1px solid rgba(255,255,255,0.1)">
           <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">
-            Saved ✓ — ${displayStatus === 'maybe' ? "what's making you unsure?" : "why can't you make it?"}&nbsp;<span style="opacity:.5;font-weight:400;text-transform:none">(optional)</span>
+            Saved ✓ — ${status === 'maybe' ? "what's making you unsure?" : "why can't you make it?"}&nbsp;<span style="opacity:.5;font-weight:400;text-transform:none">(optional)</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:10px">
             ${[['injury','⚠ Injury','#f87171'],['work','Work','#94a3b8'],['holiday','Holiday','#38bdf8'],['family','Family','#a78bfa'],['other','Other','#64748b']].map(([r,l,c]) => `
-              <button type="button" onclick="setPlayerAvailability('${key}','${displayStatus}','${r}')"
+              <button type="button" onclick="availabilityV2SetReason('${key}','${status}','${r}')"
                 style="padding:10px 4px;border-radius:8px;font-size:12px;font-weight:700;border:1.5px solid ${c};color:${c};background:transparent;cursor:pointer;transition:all .12s">${l}</button>`).join('')}
           </div>
           <div style="display:flex;gap:12px;font-size:11px;color:var(--muted)">
-            <button type="button" onclick="setPlayerAvailability('${key}','${displayStatus}','')"
+            <button type="button" onclick="availabilityV2SetReason('${key}','${status}','')"
               style="color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;font-size:12px">
               No reason
             </button>
-            <button type="button" onclick="cancelReasonPicker()"
+            <button type="button" onclick="availabilityV2CloseReason('${key}')"
               style="color:var(--muted);background:none;border:none;cursor:pointer;font-size:12px">Close</button>
           </div>
         </div>` : '';
@@ -9608,7 +9629,7 @@
               ${meta ? `<div class="avail-player-card-meta">${esc(meta)}</div>` : ''}
               ${session.deadline ? `<div class="avail-player-card-meta" style="margin-top:3px;color:var(--amber)">⏰ Reply by ${esc(session.deadline)}</div>` : ''}
             </div>
-            <span class="avail-status-chip" style="border:1px solid ${border};color:${border === 'var(--line)' ? 'var(--muted)' : border};background:${displayStatus === 'no-reply' ? 'transparent' : border + '20'}">${statusLabel(displayStatus)}</span>
+            <span class="avail-status-chip" style="border:1px solid ${border};color:${border === 'var(--line)' ? 'var(--muted)' : border};background:${status === 'no-reply' ? 'transparent' : border + '20'}">${statusLabel(status)}</span>
           </div>
           <div class="avail-btns">
             ${selBtn('available',   'Available',     '#16a34a')}
@@ -9623,7 +9644,7 @@
     function setAllAvailable() {
       const player = getPlayer();
       if (!player.id) return;
-      _reasonPickerOpen = null;
+      _availReasonOpenByKey = {}; // all become Available — no reason pickers needed
       const liveRecords = findLiveAvailabilityRecords(state.players, player);
       if (availTraceEnabled()) {
         _availTraceSeq++;
@@ -9650,7 +9671,9 @@
     }
 
     function setPlayerAvailability(key, status, reason) {
-      _reasonPickerOpen = null; // always close reason picker on save
+      // Surgical save — writes ONLY this session key (+ reason/respondedAt) onto
+      // every matching record. AvailabilityV2 owns reason-picker visibility via
+      // _availReasonOpenByKey, so this never touches any picker or other session.
       const player    = getPlayer();
       const sessionId = keyToSessionId(key);
       // ── TRACE: click + raw records BEFORE write + merged BEFORE ──────────────
@@ -20160,7 +20183,7 @@
       safeRender('coach-search',        () => renderSearch());
       safeRender('player-home',         () => renderPlayerHome());
       safeRender('player-week',         () => renderPlayerWeek());
-      safeRender('player-availability', () => renderPlayerAvailability());
+      safeRender('player-availability', () => renderPlayerAvailabilityV2());
       safeRender('player-fixtures',     () => renderPlayerFixtures());
       safeRender(null,                  () => renderAuthBanner());
       safeRender(null,                  () => renderDebugOverlay());
