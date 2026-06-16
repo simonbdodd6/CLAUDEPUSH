@@ -149,5 +149,5 @@ test('createGatewayContext / isGatewayContext are pure + deterministic', () => {
   assert.deepEqual(createGatewayContext({ ingestRunId: 'r', tenant: TENANT, submission: SUBMISSION }), c)
   // garbage in → null fields, never throws
   const empty = createGatewayContext({})
-  assert.deepEqual(empty, { ingestRunId: null, tenant: null, submission: null })
+  assert.deepEqual(empty, { ingestRunId: null, tenant: null, submission: null, normalization: null })
 })

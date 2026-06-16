@@ -13,6 +13,9 @@
  * @property {string|null} ingestRunId  caller-supplied run id (no clock/randomness here)
  * @property {Tenant|null} tenant        the tenant scope — validated FIRST
  * @property {object|null} submission    the raw inbound submission ({ sourceType, raw, … })
+ * @property {{ registry:object|null, records:object[]|null, context:object|null }|null} normalization
+ *   optional dormant normalization inputs (M56); when present the `normalize` stage
+ *   emits the deferred ApplicationPlan in the ordered result. Absent → null.
  */
 
 /**

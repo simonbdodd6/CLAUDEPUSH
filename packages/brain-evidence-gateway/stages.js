@@ -47,26 +47,36 @@ export const validate = Object.freeze({
 })
 
 /**
+ * Build the deferred ApplicationPlan output from injected normalization inputs, via
+ * the existing M53/M54 helpers (no duplicated logic). Writes nothing; never advances
+ * to `deduplicate`; never mutates its input.
+ */
+function buildNormalizeApplicationPlan({ registry, records, context } = {}) {
+  const batch = planBatchNormalization(registry, records, context)
+  const applicationPlan = planNormalizationApplication(batch)
+  return deferred('normalize', { applicationPlan })
+}
+
+/**
  * 3 — normalize: raw → NormalizedSignal[].
  *
- * `run()` stays the inert pipeline placeholder (empty signals) so the end-to-end
- * `submit()` flow remains dormant and unchanged. `plan()` WIRES this stage to the
- * completed normalization pipeline (M50–M54): given an INJECTED normalizer registry,
- * the evidence records, and a passed-in NormalizationContext, it builds the M53 batch
- * plan and folds it into the M54 ApplicationPlan — describing exactly what WOULD be
- * forwarded to the Evidence Store. It uses the existing helpers (no duplicated logic),
- * writes NOTHING, never advances to `deduplicate`, and never mutates its input. The
- * result is a DEFERRED stage output (nothing is executed/applied). Unknown sources and
- * invalid signals stay structured data inside the plan.
+ * Dormant. `run(context)`: when the GatewayContext carries `normalization`
+ * (`{ registry, records, context }`, threaded through `submit()` in M56) it emits the
+ * deferred M54 ApplicationPlan INSIDE the ordered pipeline result; otherwise it stays
+ * the inert placeholder (empty signals) so existing `submit()` behaviour is unchanged.
+ * `plan(input)` is the M55 direct-call API (same helper). Both describe exactly what
+ * WOULD be forwarded to the Evidence Store — they write NOTHING, never advance to
+ * `deduplicate`, never mutate input; unknown sources / invalid signals stay structured
+ * data inside the plan.
  */
 export const normalize = Object.freeze({
   name: 'normalize',
-  run() { return deferred('normalize', { signals: Object.freeze([]) }) },
-  plan({ registry, records, context } = {}) {
-    const batch = planBatchNormalization(registry, records, context)
-    const applicationPlan = planNormalizationApplication(batch)
-    return deferred('normalize', { applicationPlan })
+  run(context) {
+    const n = context && context.normalization
+    if (n) return buildNormalizeApplicationPlan(n)
+    return deferred('normalize', { signals: Object.freeze([]) })
   },
+  plan(input) { return buildNormalizeApplicationPlan(input) },
 })
 
 /** 4 — deduplicate: collapse repeats by a deterministic key (deferred placeholder). */
