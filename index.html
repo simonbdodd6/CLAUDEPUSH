@@ -2927,31 +2927,42 @@
       merged.email = preferred.email || other.email || merged.email || '';
       merged.phone = preferred.phone || other.phone || merged.phone || '';
       merged.position = preferred.position || other.position || merged.position || 'TBC';
-      // Preserve the COMPLETE availability picture across a roster merge.
-      // Beta blocker: the old code kept only a hardcoded 4-key subset, so
-      // reason fields and custom (avail_*) sessions were dropped on every
-      // dedup/hydration pass — collapsing distinct per-session answers and
-      // resetting sessions to stale values. Collect every session status key,
-      // every *Reason field and every *RespondedAt timestamp present on either
-      // record and merge them field-by-field, preferring an answered value over
-      // 'no-reply' and a non-empty reason/timestamp over an empty one. Kept in
-      // lockstep with mergeRosterPlayer in src/player-identity.js (the canonical
-      // read path the coach availability board now reads).
+      // Preserve the COMPLETE per-session availability picture across a roster
+      // merge, RECENCY-AWARE. Default schedule keys + every custom (avail_*)
+      // session are resolved by _preferRecentResponse so the most recently
+      // stamped answer wins — preventing a stale duplicate record from
+      // resurfacing an old answer over a freshly-written one. Every *Reason field
+      // is preserved (non-empty wins); *RespondedAt is owned by the recency merge.
+      // Kept in lockstep with mergeRosterPlayer in src/player-identity.js.
+      const _preferRecentResponse = (target, pref, oth, key) => {
+        const rk = key + 'RespondedAt';
+        const pv = pref[key], ov = oth[key];
+        const pt = String(pref[rk] || ''), ot = String(oth[rk] || '');
+        const pAns = pv && pv !== 'no-reply';
+        const oAns = ov && ov !== 'no-reply';
+        let val, ts;
+        if (pAns && oAns) {
+          if (pt && ot)  { if (pt >= ot) { val = pv; ts = pt; } else { val = ov; ts = ot; } }
+          else if (pt)   { val = pv; ts = pt; }
+          else if (ot)   { val = ov; ts = ot; }
+          else           { val = pv; ts = ''; }
+        } else if (pAns) { val = pv; ts = pt; }
+        else if (oAns)   { val = ov; ts = ot; }
+        else             { val = pv || ov || 'no-reply'; ts = pt || ot; }
+        target[key] = val;
+        if (ts) target[rk] = ts;
+      };
       const _availStatusKeys = new Set(['status', 'game', 'trainingTuesday', 'trainingThursday']);
-      const _availMetaKeys = new Set(); // *Reason + *RespondedAt — non-status metadata
+      const _availReasonKeys = new Set();
       [preferred, other].forEach(rec => {
         Object.keys(rec || {}).forEach(k => {
-          if (/Reason$/.test(k) || /RespondedAt$/.test(k)) _availMetaKeys.add(k);
+          if (/Reason$/.test(k)) _availReasonKeys.add(k);
+          else if (/RespondedAt$/.test(k)) { /* owned by _preferRecentResponse */ }
           else if (k.indexOf('avail_') === 0) _availStatusKeys.add(k);
         });
       });
-      _availStatusKeys.forEach(key => {
-        const pv = preferred[key], ov = other[key];
-        if (pv && pv !== 'no-reply') merged[key] = pv;
-        else if (ov && ov !== 'no-reply') merged[key] = ov;
-        else merged[key] = pv || ov || 'no-reply';
-      });
-      _availMetaKeys.forEach(key => {
+      _availStatusKeys.forEach(key => _preferRecentResponse(merged, preferred, other, key));
+      _availReasonKeys.forEach(key => {
         const pv = preferred[key], ov = other[key];
         merged[key] = (pv !== undefined && pv !== '') ? pv : (ov || '');
       });
@@ -3584,6 +3595,12 @@
       if (!record || !key) return record;
       record[key] = status;
       record[key + "Reason"] = reason || "";
+      // Stamp recency on every UI write so the canonical merge can tell this
+      // just-written answer apart from a stale duplicate record's older value —
+      // the just-written (newer-stamped) value wins. Without this stamp, two
+      // records carrying conflicting answered values are indistinguishable and
+      // the higher-scored (often stale permanent) record resurfaces its answer.
+      record[key + "RespondedAt"] = new Date().toISOString();
       return record;
     }
     // Pure helper: MERGE server availability into a local record WITHOUT ever

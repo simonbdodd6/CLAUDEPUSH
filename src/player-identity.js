@@ -211,6 +211,31 @@ function preferResponseValue(primary, secondary, fallback = 'no-reply') {
   return primary || secondary || fallback;
 }
 
+// Recency-aware per-session merge. When BOTH records carry an answered value,
+// prefer the one with the newer <key>RespondedAt — a stamped UI write beats an
+// unstamped/older value. This stops a stale duplicate record (e.g. a permanent
+// user_ record still holding the ORIGINAL availability) from resurfacing an old
+// answer over a freshly-written one, even though that record scores highest.
+// Sets merged[key] and the matching merged[key+'RespondedAt'].
+function preferRecentResponse(merged, preferred, other, key) {
+  const rk = key + 'RespondedAt';
+  const pv = preferred[key], ov = other[key];
+  const pt = String(preferred[rk] || ''), ot = String(other[rk] || '');
+  const pAns = pv && pv !== 'no-reply';
+  const oAns = ov && ov !== 'no-reply';
+  let val, ts;
+  if (pAns && oAns) {
+    if (pt && ot)  { if (pt >= ot) { val = pv; ts = pt; } else { val = ov; ts = ot; } }
+    else if (pt)   { val = pv; ts = pt; }   // stamped (real UI write) beats unstamped (stale/imported)
+    else if (ot)   { val = ov; ts = ot; }
+    else           { val = pv; ts = ''; }    // neither stamped — keep the higher-scored record
+  } else if (pAns) { val = pv; ts = pt; }
+  else if (oAns)   { val = ov; ts = ot; }
+  else             { val = pv || ov || 'no-reply'; ts = pt || ot; }
+  merged[key] = val;
+  if (ts) merged[rk] = ts;
+}
+
 function mergeRosterPlayer(existing = {}, incoming = {}, context = {}) {
   const incomingWins = rosterPlayerScore(incoming, context) > rosterPlayerScore(existing, context);
   const preferred = incomingWins ? incoming : existing;
@@ -229,29 +254,25 @@ function mergeRosterPlayer(existing = {}, incoming = {}, context = {}) {
   merged.email = usefulValue(preferred.email) || usefulValue(other.email) || merged.email || '';
   merged.phone = usefulValue(preferred.phone) || usefulValue(other.phone) || merged.phone || '';
   merged.position = usefulValue(preferred.position) || usefulValue(other.position) || merged.position || 'TBC';
-  merged.status = preferResponseValue(preferred.status, other.status);
-  merged.game = preferResponseValue(preferred.game, other.game);
-  merged.trainingTuesday = preferResponseValue(preferred.trainingTuesday, other.trainingTuesday);
-  merged.trainingThursday = preferResponseValue(preferred.trainingThursday, other.trainingThursday);
-  // Preserve the COMPLETE per-session availability picture across a roster
-  // merge. The fixed keys above cover only the default schedule; custom sessions
-  // (avail_*) and every *Reason / *RespondedAt field must survive too. Without
-  // this, a no-reply on the higher-scored record clobbers a real answer on the
-  // other record, so answering one session resets another (the availability
-  // cross-contamination blocker), and the coach board — which reads this
-  // canonical roster — loses reasons and "responded at" timestamps. This mirrors
-  // the inline dedupeRosterMembers fix in index.html so the read/display dedup
-  // path and the persist dedup path stay in lockstep.
+  // Preserve the COMPLETE per-session availability picture across a roster merge,
+  // RECENCY-AWARE. Default schedule keys + every custom (avail_*) session are
+  // resolved by preferRecentResponse so the most recently stamped answer wins —
+  // preventing a stale duplicate record from resurfacing an old answer over a
+  // freshly-written one. Every *Reason field is preserved too (non-empty wins).
+  // *RespondedAt is owned by preferRecentResponse (it tracks the chosen answer).
+  // Kept in lockstep with the inline dedupeRosterMembers merge in index.html.
   const availStatusKeys = new Set();
-  const availMetaKeys = new Set(); // *Reason + *RespondedAt — non-status metadata
+  const availReasonKeys = new Set();
   [preferred, other].forEach(rec => {
     Object.keys(rec || {}).forEach(k => {
-      if (/Reason$/.test(k) || /RespondedAt$/.test(k)) availMetaKeys.add(k);
+      if (/Reason$/.test(k)) availReasonKeys.add(k);
+      else if (/RespondedAt$/.test(k)) { /* owned by preferRecentResponse */ }
       else if (k.indexOf('avail_') === 0) availStatusKeys.add(k);
     });
   });
-  availStatusKeys.forEach(k => { merged[k] = preferResponseValue(preferred[k], other[k]); });
-  availMetaKeys.forEach(k => {
+  ['status', 'game', 'trainingTuesday', 'trainingThursday'].forEach(k => preferRecentResponse(merged, preferred, other, k));
+  availStatusKeys.forEach(k => preferRecentResponse(merged, preferred, other, k));
+  availReasonKeys.forEach(k => {
     const pv = preferred[k];
     const ov = other[k];
     merged[k] = (pv !== undefined && pv !== '') ? pv : (ov || '');
