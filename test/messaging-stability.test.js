@@ -112,6 +112,58 @@ test('coach-side and player-side conversation IDs match for approved permanent u
   assert.equal(coachConvId, 'dm:coach-demo:user_dodsy_approved');
 });
 
+// ─── Beta hotfix: newly created player ────────────────────────────────────
+// A coach adds a new player and immediately messages them. The conversation ID
+// the coach writes to must equal the one the new player's portal reads from,
+// otherwise the message "disappears" on the player's phone.
+
+test('coach send and new player read resolve the same conversation ID (invite-only record)', () => {
+  const coachId = 'coach-demo';
+  // Brand-new roster member created by the coach — invite id, no permanent user yet.
+  const newPlayer = { id: 'inv-Newb1234', name: 'New Beta Player', position: 'Centre' };
+  // The player signs in; their portal user is linked to the roster record by playerId.
+  const newUser   = { id: 'player-newb', role: 'player', name: 'New Beta Player', playerId: 'inv-Newb1234' };
+  const context   = { users: [newUser], players: [newPlayer] };
+
+  // Coach compose path (createCoachDmConversationRequestForPlayerId mirrors chatStartCoachDm)
+  const coachRequest = createCoachDmConversationRequestForPlayerId(
+    [newPlayer], 'inv-Newb1234', coachId, context);
+  assert.ok(coachRequest, 'coach must be able to build a DM request for the new player');
+
+  // Player portal inbox
+  const portalId     = resolvePlayerPortalMessagingId(newUser, context);
+  const portalConvId = dmConvId(coachId, portalId);
+
+  assert.equal(coachRequest.id, portalConvId,
+    `coach writes ${coachRequest.id} but new player reads ${portalConvId} — message would vanish`);
+});
+
+test('coach send and new player read align when the new player has a permanent userId', () => {
+  const coachId = 'coach-demo';
+  const newPlayer = { id: 'user_newbeta', userId: 'user_newbeta', name: 'Approved Newbie', email: 'newbie@beta.test' };
+  const newUser   = { id: 'user_newbeta', role: 'player', name: 'Approved Newbie', email: 'newbie@beta.test', playerId: 'user_newbeta' };
+  const context   = { users: [newUser], players: [newPlayer] };
+
+  const coachRequest = createCoachDmConversationRequestForPlayerId(
+    [newPlayer], 'user_newbeta', coachId, context);
+  const portalId     = resolvePlayerPortalMessagingId(newUser, context);
+  const portalConvId = dmConvId(coachId, portalId);
+
+  assert.equal(coachRequest.id, portalConvId);
+  assert.equal(coachRequest.id, 'dm:coach-demo:user_newbeta');
+});
+
+test('coach DM request is stable across repeated builds for a new player', () => {
+  const coachId = 'coach-demo';
+  const newPlayer = { id: 'inv-Stable99', name: 'Stable Player' };
+  const newUser   = { id: 'player-stable', role: 'player', name: 'Stable Player', playerId: 'inv-Stable99' };
+  const context   = { users: [newUser], players: [newPlayer] };
+
+  const a = createCoachDmConversationRequestForPlayerId([newPlayer], 'inv-Stable99', coachId, context);
+  const b = createCoachDmConversationRequestForPlayerId([newPlayer], 'inv-Stable99', coachId, context);
+  assert.equal(a.id, b.id, 'conversation id must be deterministic across builds');
+});
+
 // ─── Duplicate conversations ──────────────────────────────────────────────
 // When render() is called many times, chatBuildContacts is called each time.
 // If the roster has duplicate entries, multiple DM contacts are generated for

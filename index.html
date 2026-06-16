@@ -2642,6 +2642,9 @@
       betaQAChecklist: {},
       // Phase 29 — Universal Search
       searchQuery: '',
+      // Beta hotfix — Match Centre: collapse the match-details panel by default
+      // so the team-selection graphic is the focus of the page.
+      matchDetailsCollapsed: true,
     };
 
     // ─── STATE ────────────────────────────────────────────────────────────────
@@ -3212,6 +3215,7 @@
       next.calendarTypeFilter  = input.calendarTypeFilter  || 'all';
       next.betaQAChecklist     = (input.betaQAChecklist && typeof input.betaQAChecklist === 'object') ? input.betaQAChecklist : {};
       next.searchQuery         = typeof input.searchQuery === 'string' ? input.searchQuery : '';
+      next.matchDetailsCollapsed = input.matchDetailsCollapsed === undefined ? true : !!input.matchDetailsCollapsed;
       const user = next.users.find(u => u.id === next.currentUserId);
       if (user?.role === "player") {
         const canonicalPlayerId = canonicalPlayerIdForUser(user);
@@ -3542,7 +3546,37 @@
     function keyToSessionId(key) {
       if (key === "trainingTuesday")  return "tue";
       if (key === "trainingThursday") return "thu";
+      if (key === "game") return "game";
+      // Custom sessions are stored as "avail_<id>" — invert so each session
+      // round-trips to its own id. Previously every non-tue/thu key collapsed
+      // to "game", which made custom sessions collide on the server + coach feed.
+      if (typeof key === "string" && key.indexOf("avail_") === 0) return key.slice(6);
       return "game";
+    }
+    // Pure helper: write a single session's availability onto a player record,
+    // touching ONLY that session's status + reason. Guarantees changing one
+    // session can never mutate another session's stored value.
+    function availabilityApplyToRecord(record, key, status, reason) {
+      if (!record || !key) return record;
+      record[key] = status;
+      record[key + "Reason"] = reason || "";
+      return record;
+    }
+    // Pure helper: locate the live state.players entry for a (possibly canonical/
+    // deduped) player copy. Matches across id / userId / legacyPlayerId / playerId
+    // so a player's saved response always lands on the record the coach board reads.
+    function findLiveAvailabilityRecord(players, player) {
+      if (!Array.isArray(players) || !player) return null;
+      const wanted = new Set(
+        [player.id, player.userId, player.legacyPlayerId, player.playerId]
+          .map(v => String(v || "").trim()).filter(Boolean)
+      );
+      if (!wanted.size) return null;
+      return players.find(p => {
+        const cand = [p.id, p.userId, p.legacyPlayerId, p.playerId]
+          .map(v => String(v || "").trim()).filter(Boolean);
+        return cand.some(c => wanted.has(c));
+      }) || null;
     }
     function sessionTitle(id) { return state.schedule.find(s => s.id === id)?.title || "this week"; }
     function percent(p, t)    { return !t ? 0 : Math.round((p / t) * 100); }
@@ -8012,7 +8046,15 @@
 
         if (audience === 'individual' && playerId) {
           await chatLoadStateModule();
-          const target = state.players.find(p => p.id === playerId);
+          // Resolve the target from the CANONICAL roster (same path chatStartCoachDm
+          // uses) so the coach always writes to the exact conversation ID the player
+          // listens on. Reading raw state.players here could pick an un-merged record
+          // whose participant ID differs from the canonical one → message invisible.
+          const target = canonicalVisiblePlayers().find(p =>
+            String(p.id || '') === String(playerId) ||
+            String(p.userId || '') === String(playerId) ||
+            String(chatResolvePlayerParticipantId(p)) === String(playerId)
+          ) || state.players.find(p => p.id === playerId);
           const targetParticipantId = chatResolvePlayerParticipantId(target);
           // Write to BOTH: canonical DM participant ID (permanent userId when available)
           // AND squad channel (guaranteed fallback — every player sees squad)
@@ -8305,6 +8347,22 @@
     }
 
     // ─── MATCH CENTRE ────────────────────────────────────────────────────────
+    // Pure helper: decide Match Centre planner layout. Collapsed (default) hides
+    // the match-details panel behind a summary and gives the team-selection pitch
+    // the full-size graphic. Keeps all data + behaviour — only changes presentation.
+    function matchPlannerLayout(collapsed) {
+      const isCollapsed = collapsed !== false; // default: collapsed
+      return {
+        detailsCollapsed: isCollapsed,
+        detailsOpenAttr:  isCollapsed ? '' : 'open',
+        pitchClass:       isCollapsed ? 'pitch-big' : 'pitch-big pitch-compact',
+      };
+    }
+    function toggleMatchDetails(open) {
+      state.matchDetailsCollapsed = (open === undefined) ? !state.matchDetailsCollapsed : !open;
+      saveState('Match details toggled');
+    }
+
     function renderMatchday() {
       // Phase 20 — tab delegation; planner falls through to existing render
       const _mTab = state.activeMatchTab || 'planner';
@@ -8319,6 +8377,7 @@
       const mc      = state.matchCentre || {};
       const phase   = matchCentrePhase();
       const countdown = matchCountdownStr();
+      const layout  = matchPlannerLayout(state.matchDetailsCollapsed);
 
       // Availability summary across sessions
       const sessions    = state.schedule || [];
@@ -8491,9 +8550,14 @@
               }).join('') : `<p class="muted" style="padding:6px 0">All players cleared — no medical alerts.</p>`}
             </div>
 
-            <!-- Match details (editable) -->
-            <div class="card">
-              <h2 style="margin-bottom:12px">Match details</h2>
+            <!-- Match details (editable) — collapsible so the team-selection
+                 graphic below is the focus of the page -->
+            <details class="card" ${layout.detailsOpenAttr} ontoggle="toggleMatchDetails(this.open)" style="padding:0">
+              <summary style="cursor:pointer;list-style:none;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <h2 style="margin:0">Match details</h2>
+                <span style="font-size:12px;color:var(--muted)">${[mc.opposition && ('vs ' + mc.opposition), mc.kickoffDate, mc.venue].filter(Boolean).join(' · ') || 'Tap to edit'}</span>
+              </summary>
+              <div style="padding:0 16px 14px">
               ${[
                 ['Opposition',  'opposition',  mc.opposition  || '', 'text', 'e.g. Kituro RFC'],
                 ['Competition', 'competition', mc.competition || '', 'text', 'League / Cup'],
@@ -8511,7 +8575,8 @@
                     style="font-size:13px;padding:6px 9px"
                     onchange="saveMatchCentre('${field}',this.value);render()">
                 </div>`).join("")}
-            </div>
+              </div>
+            </details>
 
             <!-- Coach notes -->
             <div class="card">
@@ -8547,9 +8612,9 @@
 
         <div class="mc-team-grid">
 
-          <!-- Col 1: Compact pitch -->
+          <!-- Col 1: Team selection pitch (full-size when match details collapsed) -->
           <div class="card" style="padding:12px">
-            <div id="matchday-pitch" class="pitch-big pitch-compact">
+            <div id="matchday-pitch" class="${layout.pitchClass}">
               <div class="pitch-inner"></div>
               <div class="pitch-line" style="top:18%"></div>
               <div class="pitch-line" style="top:40%"></div>
@@ -9217,10 +9282,7 @@
         const data = await fetch('/api/availability?myResponse=1').then(r => r.ok ? r.json() : null).catch(() => null);
         if (!data?.responses) return;
         const player = getPlayer();
-        const live   = state.players.find(p =>
-          String(p.id || '') === String(player.id || '') ||
-          String(p.userId || '') === String(player.id || '')
-        );
+        const live   = findLiveAvailabilityRecord(state.players, player);
         let changed = false;
         Object.entries(data.responses).forEach(([sid, entry]) => {
           const k  = sessionKey(sid);
@@ -9360,15 +9422,11 @@
       const player = getPlayer();
       if (!player.id) return;
       _reasonPickerOpen = null;
-      const live = state.players.find(p =>
-        String(p.id || '') === String(player.id || '') ||
-        String(p.userId || '') === String(player.id || '')
-      );
+      const live = findLiveAvailabilityRecord(state.players, player);
       state.schedule.forEach(session => {
         const k = sessionKey(session.id);
-        player[k] = 'available';
-        player[k + 'Reason'] = '';
-        if (live) { live[k] = 'available'; live[k + 'Reason'] = ''; }
+        availabilityApplyToRecord(player, k, 'available', '');
+        if (live) availabilityApplyToRecord(live, k, 'available', '');
         saveAvailabilityResponseToServer(session.id, 'available', '');
       });
       if (player.history[0] !== 'available') player.history.unshift('available');
@@ -9382,15 +9440,12 @@
       _reasonPickerOpen = null; // always close reason picker on save
       const player    = getPlayer();
       const sessionId = keyToSessionId(key);
-      player[key]          = status;
-      player[key + 'Reason'] = reason || '';
+      availabilityApplyToRecord(player, key, status, reason);
       // getPlayer() returns a shallow copy; update state.players directly so the
-      // change survives the next render() call.
-      const live = state.players.find(p =>
-        String(p.id || '') === String(player.id || '') ||
-        String(p.userId || '') === String(player.id || '')
-      );
-      if (live) { live[key] = status; live[key + 'Reason'] = reason || ''; }
+      // change survives the next render() call AND the coach board (which reads
+      // state.players via sessionRows) reflects the player's selection.
+      const live = findLiveAvailabilityRecord(state.players, player);
+      if (live) availabilityApplyToRecord(live, key, status, reason);
       if (key === "game" && player.history[0] !== status) player.history.unshift(status);
       player.history  = player.history.slice(0, 5);
       addMasterFeed(`${player.name} updated ${sessionTitle(sessionId)}`, statusLabel(status));
