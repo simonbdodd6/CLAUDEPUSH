@@ -77,6 +77,16 @@ module.exports = {
       },
     },
     {
+      name: 'recommendation-validation-imports-only-evidence-layer',
+      comment: '@brain/recommendation-validation (M49, dormant) may import only the evidence layer (contracts/store/citation/weighting) (+ self) — no gateway/engine/Core.',
+      severity: 'warn',
+      from: { path: '^packages/brain-recommendation-validation/' },
+      to: {
+        path: '^packages/',
+        pathNot: '^packages/(brain-recommendation-validation/|brain-evidence-contracts/|brain-evidence-store/|brain-evidence-citation/|brain-evidence-weighting/)',
+      },
+    },
+    {
       name: 'packages-only-import-contracts',
       comment: 'brain-products / brain-versioning may import only @brain/contracts (+ self).',
       severity: 'warn',

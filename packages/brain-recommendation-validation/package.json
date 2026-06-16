@@ -1,0 +1,14 @@
+{
+  "name": "@brain/recommendation-validation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": "./index.js",
+  "description": "Dormant AI Brain recommendation-validation layer: pure deterministic functions proving a recommendation is tenant-scoped, evidence-backed, citation-valid, confidence-scored and non-duplicated before the façade could ever expose it (M49). Owns no storage; reads via an injected @brain/evidence-store. Depends only on the evidence layer.",
+  "dependencies": {
+    "@brain/evidence-store": "0.0.0",
+    "@brain/evidence-citation": "0.0.0",
+    "@brain/evidence-weighting": "0.0.0"
+  }
+}
