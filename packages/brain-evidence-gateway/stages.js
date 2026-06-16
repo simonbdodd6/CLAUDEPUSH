@@ -25,6 +25,7 @@ import { deriveProvenanceProposals } from './provenance.js'
 import { deriveConfidenceReweightProposals } from './reweight.js'
 import { deriveConfidenceUpdatePlan } from './confidence-update.js'
 import { deriveMemoryLinkPlan } from './memory-link.js'
+import { deriveAuditPlan } from './audit.js'
 
 const ok = (stage, output) => Object.freeze({ stage, status: 'ok', output: Object.freeze(output) })
 const deferred = (stage, output) => Object.freeze({ stage, status: 'deferred', output: Object.freeze(output) })
@@ -164,10 +165,34 @@ export const prepareMemoryLink = Object.freeze({
   },
 })
 
-/** 7 — prepare audit: append-only audit entries (deferred placeholder). */
+/**
+ * 7 — prepare audit: append-only audit entries (§2/§3).
+ *
+ * Dormant. `run()` stays the inert placeholder (no entries) so end-to-end `submit()` is
+ * unchanged. `plan({ registry, records, context })` is the M62 DATA-ONLY contract: it
+ * composes the full pipeline (normalization → dedupe → provenance → reweight →
+ * confidence-update → memory-link) reusing the existing helpers, then folds those plans
+ * into a deferred AuditPlan — the append-only stage-transition entries that WOULD be
+ * recorded, each timestamped from the caller-supplied NormalizationContext.now (no
+ * clock). It writes NO audit, reads NO history, never mutates input; unknown sources /
+ * invalid signals are audited as rejected, accepted records as accepted.
+ */
 export const prepareAudit = Object.freeze({
   name: 'prepareAudit',
   run() { return deferred('prepareAudit', { entries: Object.freeze([]) }) },
+  plan(input) {
+    const records = input && Array.isArray(input.records) ? input.records : []
+    const registry = input ? input.registry : null
+    const context = input ? input.context : null
+    const applicationPlan = planNormalizationApplication(planBatchNormalization(registry, records, context))
+    const accepted = applicationPlan.accepted
+    const { groups } = deriveDedupeGroups({ accepted, records })
+    const { proposals } = deriveProvenanceProposals({ groups, records })
+    const { proposals: reweightProposals } = deriveConfidenceReweightProposals({ proposals, accepted })
+    const confidenceUpdatePlan = deriveConfidenceUpdatePlan({ reweightProposals, records })
+    const memoryLinkPlan = deriveMemoryLinkPlan({ accepted, records, proposals })
+    return deferred('prepareAudit', deriveAuditPlan({ applicationPlan, confidenceUpdatePlan, memoryLinkPlan, proposals, records, context }))
+  },
 })
 
 /** 8 — prepare engine exposure: signals the engines may later read (deferred placeholder). */
