@@ -41,6 +41,8 @@ import { buildStoryComposer } from './story-composer.js';
 import { buildCinematic } from './cinematic.js';
 import { buildExperience, listExperiences } from './experience-presentation.js';
 import { getDesignTokens, buildExperienceTokens } from './design-tokens.js';
+import { buildNavigation } from './navigation.js';
+import { buildRecommendations } from './recommendations.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -344,6 +346,24 @@ export function createTravelApi(options = {}) {
     }
   }
 
+  // Experience Recommendations — deterministic, rule-based suggestions for which
+  // premium experience to view next. Reference date explicit (defaults to today).
+  async function getRecommendations(token, { date, current } = {}) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildRecommendations(events, ownedTrips, { referenceDate: date ?? todayIso(), current });
+  }
+
+  // Experience Navigation — a deterministic graph of how the premium experiences
+  // connect (nodes, edges, recommended next/previous, entry points, deep links).
+  async function getNavigation(token, { current } = {}) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildNavigation(events, ownedTrips, { current });
+  }
+
   // Experience Design Tokens — deterministic, platform-neutral visual guidance
   // for the shared presentation contract. Static (no traveller data); authed.
   async function getDesignTokensHandler(token) {
@@ -556,6 +576,8 @@ export function createTravelApi(options = {}) {
     getExperience,
     getDesignTokens: getDesignTokensHandler,
     getExperienceTokens,
+    getNavigation,
+    getRecommendations,
     getTripReadiness,
     getApprovals,
     resolveApproval,

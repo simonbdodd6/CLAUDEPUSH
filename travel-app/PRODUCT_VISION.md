@@ -1130,6 +1130,84 @@ them — still **not implemented**.
 - **Complexity:** Low–Medium.
 - **Tier:** V2.
 
+## Z. Navigation deepeners (added M38)
+
+The Experience Navigation Engine (`/navigation`) is a deterministic graph of how
+experiences connect. These would extend it — still **not implemented**.
+
+### Context-aware recommendations (deterministic, rule-based)
+- **Why:** Boost an experience when it's especially relevant (e.g. On This Day
+  when it has matches for the supplied date) — using transparent rules + the
+  caller's date, never ML or randomness.
+- **Complexity:** Low–Medium (compose availability + supplied context).
+- **Tier:** V2.
+- **Possible API:** Internal.
+
+### Per-experience availability conditions
+- **Why:** Refine availability beyond "has memories" (e.g. cinematic needs ≥N
+  scenes, on-this-day needs a same-day match) so the graph hides experiences that
+  would be empty.
+- **Complexity:** Low–Medium (per-experience predicates over existing engines).
+- **Tier:** V2.
+
+### Deep-link resolution & universal links
+- **Why:** Resolve `travelapp://experience/<id>` (and web universal links) back
+  to a concrete experience + anchor for share/open flows.
+- **Complexity:** Medium (client routing + a resolver table).
+- **Tier:** V2.
+
+### Home dashboard composition
+- **Why:** Compose a deterministic "home" feed ordering experiences by the
+  navigation graph (default entry + recommended next) into a single screen model.
+- **Complexity:** Low–Medium (compose navigation + presentation contracts).
+- **Tier:** V2.
+- **Possible API:** Internal.
+
+### Onboarding paths
+- **Why:** Deterministic guided paths for new travellers (capture → first
+  experience) driven by the empty-state CTA + entry priority.
+- **Complexity:** Low.
+- **Tier:** V2.
+
+## AA. Recommendation deepeners (added M39)
+
+The Recommendations Engine (`/recommendations`) is deterministic and rule-based.
+These would extend it — still **not implemented**, and all must stay rule-based
+(no ML).
+
+### Weighted, tunable rule config
+- **Why:** Externalise rule thresholds/scores into a deterministic config so
+  priorities can be tuned without code changes.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+- **Possible API:** Internal config.
+
+### Dismissal & cooldown state (respecting expiry conditions)
+- **Why:** Honour `expiry` (daily / until-viewed / until-new-memory) with a small
+  per-user state store so dismissed recommendations don't immediately reappear.
+- **Complexity:** Medium (lightweight state; still deterministic given inputs).
+- **Tier:** V2.
+
+### Notification-ready recommendations (local notifications)
+- **Why:** Turn high-priority timely recommendations (On This Day) into a gentle
+  daily local notification.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+- **Possible API:** Local notifications.
+
+### More reason codes from new signals
+- **Why:** Add deterministic reasons as new evidence lands (e.g. RETURN_DUE from
+  return-affinity, SEASON_MATCH from favourite season, COMPANION_REUNION).
+- **Complexity:** Low (per-rule additions).
+- **Tier:** V2.
+
+### Home feed assembly
+- **Why:** Compose recommendations + navigation + presentation into a single
+  deterministic "home" screen model (hero recommendation + sections).
+- **Complexity:** Low–Medium (compose existing contracts).
+- **Tier:** V2.
+- **Possible API:** Internal.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

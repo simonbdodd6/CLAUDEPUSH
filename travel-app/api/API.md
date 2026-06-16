@@ -46,6 +46,8 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/experience` | `?name=wrapped\|on-this-day\|collections\|story\|cinematic` (`&date=` for on-this-day) | `ExperiencePresentation` | shared presentation contract for any premium experience |
 | GET | `/design-tokens` | — | full token system | deterministic visual guidance (palette, typography, layouts, cards…) |
 | GET | `/experience-tokens` | `?name=…` | `{ experience, identity, hero, timeline, statistic, media, map, achievement, emptyState, system }` | per-experience design tokens |
+| GET | `/navigation` | `?current=<experience>` (optional) | `{ graph, entryPoints, defaultEntry, recommendedSequence, availableSequence, cursor, timelineAnchors, emptyState, meta, basedOn }` | experience navigation graph |
+| GET | `/recommendations` | `?date=YYYY-MM-DD` (optional; defaults today) `&current=<experience>` | `{ version, referenceDate, recommendations, top, continuation, emptyState, meta, basedOn }` | rule-based next-experience recommendations |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -696,6 +698,67 @@ ExperienceTokens = {
 (base × emphasis modifier). Every accent referenced resolves to a palette swatch
 (`{token, hex, on, role}`). Covers all five experiences. Deterministic,
 offline-first, serialisable, no backend leakage.
+
+### Experience Navigation DTO (M38)
+
+One deterministic model describing how the premium experiences connect — a graph
+to navigate by, **not UI / SwiftUI navigation / routing**. Reuses the experience
+index (availability) + design-token identities. **No AI, no randomness, no
+Date.now.**
+
+```
+Navigation = {
+  graph: { nodes:[NavNode], edges:[{ from, to, relation:"related" }] },
+  entryPoints:[id], defaultEntry:id|null,
+  recommendedSequence:[id], availableSequence:[id],
+  cursor: { current, next, previous } | null,        // when ?current= is given
+  timelineAnchors:[{ order, experience, deepLink }],
+  emptyState: { title, subtitle, icon, cta:{id,label,deepLink} } | null,
+  meta: { version, experienceCount, availableCount, hasMemories }, basedOn,
+}
+NavNode = {
+  id, title, subtitle, icon, mood, accent, accentSwatch,
+  deepLink:"travelapp://experience/<id>", available, entryPoint,
+  related:[id], recommendedNext:id|null, previous:id|null,
+  quickActions:[{ id, label, icon }], timelineAnchor:{ experience, deepLink }, meta,
+}
+```
+
+`recommendedNext`/`previous` chain over the available experiences in a fixed
+recommended order; `defaultEntry`/`entryPoints` follow a fixed entry priority;
+edges are a curated adjacency. Empty history → unavailable nodes + an
+empty-state CTA. Deterministic, serialisable, no backend leakage.
+
+### Experience Recommendations DTO (M39)
+
+A deterministic, **rule-based** layer suggesting which premium experience to view
+next — **not AI, not ML, not generated reasoning**. Every recommendation comes
+from fixed rules over existing engine outputs, with fixed enums. The reference
+date is an explicit argument (defaults to today).
+
+```
+Recommendations = {
+  version, referenceDate,
+  recommendations: [Recommendation],   // de-duped by target, sorted by score desc
+  top: id | null,
+  continuation: { current, next, previous } | null,   // when ?current= given
+  emptyState: { title, subtitle, icon, cta } | null,
+  meta: { count, hasMemories }, basedOn,
+}
+Recommendation = {
+  id, rank, reasonCode, category, priority, score,
+  sourceExperience: id|null, targetExperience: id,
+  title, accent, icon,
+  supportingRefs: [{ type, id }], timelineAnchors:[{experience,deepLink}], quickActions:[{id,label,icon}],
+  expiry: { condition, date? }, deepLink,
+}
+```
+
+Fixed enums (exported): `REASON_CODES` (ON_THIS_DAY_MATCH, NEW_ACHIEVEMENTS,
+STORY_READY, RICH_COLLECTIONS, WRAPPED_READY, CINEMATIC_READY, START_HERE),
+`CATEGORIES`, `PRIORITIES`, `EXPIRY_CONDITIONS`. One recommendation per target
+(highest score wins); continuation is a separate pointer. Deterministic,
+serialisable, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 
