@@ -49,6 +49,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/navigation` | `?current=<experience>` (optional) | `{ graph, entryPoints, defaultEntry, recommendedSequence, availableSequence, cursor, timelineAnchors, emptyState, meta, basedOn }` | experience navigation graph |
 | GET | `/recommendations` | `?date=YYYY-MM-DD` (optional; defaults today) `&current=<experience>` | `{ version, referenceDate, recommendations, top, continuation, emptyState, meta, basedOn }` | rule-based next-experience recommendations |
 | GET | `/home` | `?date=YYYY-MM-DD` (optional; defaults today) `&current=<experience>` | `Home` | the daily home dashboard model |
+| GET | `/search` | `?q=<query>` | `Search` | deterministic search across every experience |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -791,6 +792,32 @@ Home = {
 
 Empty history returns a welcome empty-state with only a capture action.
 Deterministic, serialisable, references only, no backend leakage.
+
+### Search DTO (M41)
+
+One deterministic search across every premium experience. It **indexes existing
+engine outputs** and matches with **simple token matching** — **no AI, no
+embeddings, no ML, no fuzzy scoring**. Reference layer only.
+
+```
+Search = {
+  version, query, hasQuery,
+  matchedSections:[kind], grouped:[{ kind, count, results:[Result] }], results:[Result],
+  navigationTargets:[{ experience, deepLink }], experienceTargets:[{ experience, deepLink }],
+  timelineAnchors:[{ id, date, experience, deepLink }],
+  mapReferences:[{ place, isIsland }], mediaReferences:[ref],
+  statistics:{ total, byKind }, emptyState:{ kind, title, subtitle, suggestions } | null, basedOn,
+}
+Result = { id, kind, title, subtitle, score, target:{experience,deepLink}, ref:{type,id}, date, place, mediaRefs, earned? }
+```
+
+Kinds (`SEARCH_KINDS`): experience, country, island, city, companion, collection,
+achievement, activity, transport, story-chapter, cinematic-scene, memory,
+timeline-event. Matching = query tokens vs indexed tokens (substring); ranked by
+matched-token count (+ all-match / exact-title bonuses), then kind, then title.
+Dates match via year + month-name tokens. Empty query → a browse empty-state with
+suggestions; no match → a no-results empty-state. Deterministic, serialisable,
+references only, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

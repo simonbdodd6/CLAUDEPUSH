@@ -44,6 +44,7 @@ import { getDesignTokens, buildExperienceTokens } from './design-tokens.js';
 import { buildNavigation } from './navigation.js';
 import { buildRecommendations } from './recommendations.js';
 import { buildHome } from './home.js';
+import { buildSearch } from './search.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -347,6 +348,15 @@ export function createTravelApi(options = {}) {
     }
   }
 
+  // Experience Search — one deterministic search across every premium experience
+  // by indexing existing engine outputs (simple token matching, no AI).
+  async function getSearch(token, { q } = {}) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildSearch(events, ownedTrips, { query: q ?? '' });
+  }
+
   // Home — the deterministic daily dashboard assembled from existing engines.
   // Reference date explicit (defaults to today).
   async function getHome(token, { date, current } = {}) {
@@ -589,6 +599,7 @@ export function createTravelApi(options = {}) {
     getNavigation,
     getRecommendations,
     getHome,
+    getSearch,
     getTripReadiness,
     getApprovals,
     resolveApproval,

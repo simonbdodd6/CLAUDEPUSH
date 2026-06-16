@@ -1245,6 +1245,48 @@ engines. These would extend it — still **not implemented**.
 - **Complexity:** Medium (lightweight state store).
 - **Tier:** V2.
 
+## AC. Search deepeners (added M41)
+
+The Experience Search Engine (`/search`) indexes existing outputs with
+deterministic token matching. These would extend it — still **not implemented**,
+and all must stay deterministic (no AI/embeddings/ML).
+
+### Synonyms & aliases (deterministic dictionary)
+- **Why:** Map "scuba"→dive, "kids"→companions, country aliases ("UK"→"United
+  Kingdom") via a fixed dictionary — still rule-based, no ML.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
+### Typo tolerance (bounded edit distance)
+- **Why:** Tolerate small typos with a deterministic Levenshtein threshold (not
+  fuzzy AI) so "balli" finds Bali.
+- **Complexity:** Medium.
+- **Tier:** V2.
+
+### Faceted filtering (kind / year / country)
+- **Why:** Let the caller filter results by kind, year or country alongside the
+  query — deterministic facets over the existing index.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
+### Index memoisation / incremental index
+- **Why:** Search rebuilds the index per request from ~7 engines; a per-request
+  or cached index would cut work without changing outputs.
+- **Complexity:** Medium (cache keyed by inputs).
+- **Tier:** V2.
+
+### Recent & suggested searches
+- **Why:** Deterministic suggestion list (top countries/companions/activities)
+  and a recent-searches store for the search entry screen.
+- **Complexity:** Low–Medium (suggestions are deterministic; recents need state).
+- **Tier:** V2.
+
+### Date-range & "around this time" queries
+- **Why:** Parse explicit date ranges deterministically (e.g. "July 2024") and
+  return matching memories/scenes/chapters.
+- **Complexity:** Low–Medium (date parsing over existing tokens).
+- **Tier:** V2.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the
