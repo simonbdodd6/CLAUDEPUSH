@@ -225,6 +225,29 @@ the append-only raw log.
 9. **Sensitivity is honoured end-to-end.** `medical`/`restricted` records carry
    access + retention constraints; redaction is an audited action, not a delete.
 
+### 4a. Enforcement seams (the invariants are mechanical, not conventional)
+
+So the rules above are *enforced*, not merely honoured by engine discipline, each
+binds to a concrete, deterministic, testable gate:
+
+- **Tenant isolation (rule 6)** — enforced inside the Evidence Gateway at `validate`
+  (writes) and in **every** store query (reads). All store access is keyed by
+  `clubId`; no code path can read or write across tenants. (Extends the manifest's
+  namespace isolation; mirrors the existing façade gate pattern.)
+- **No-evidence / citation (rules 1–2)** — enforced at the **engine → façade output
+  boundary** by an *evidence-citation gate*: a deterministic validator (in the
+  recommendation/envelope contract) that rejects any non-fallback claim whose
+  `evidence[]` does not resolve to ≥1 real `EvidenceRecord.id` **in the same tenant**.
+  The ONLY uncited output permitted is an explicit fallback/placeholder, which is
+  always low/zero-confidence. This makes "no evidence ⇒ no claim" a hard gate, not a
+  convention.
+- **Attribution / no LLM-only claims (rule 7)** — enforced at `validate`: a record
+  with no `author`/`sourceType`, or LLM-derived content without
+  `provenance.derivedFrom`, is `rejected` (audited) and never reaches the store.
+
+These gates are pure functions over their input + a store snapshot — testable in
+isolation exactly like the M41 mapper tests and the façade capability gate.
+
 ---
 
 ## 5. Manual evidence collection (design targets — no UI now)
@@ -244,8 +267,10 @@ All manual inputs are just submissions to the Evidence Gateway with
 - **Referee / weather / pitch / context notes** — `manual.contextNote` on a fixture;
   conditions that contextualise other evidence (e.g. weather explains a kicking dip).
 - **Attachments (later)** — voice note / photo / video reference as `raw`
-  attachments; transcription/tagging is a *future* normalizer, still deterministic
-  at the signal layer (no LLM-only claims — see §4.7).
+  attachments **submitted through the same Evidence Gateway**; transcription/tagging
+  is a *future* normalizer, still deterministic at the signal layer (no LLM-only
+  claims — see §4.7). Manual, provider and attachment evidence therefore share one
+  ingress.
 
 Every manual submission still flows the full pipeline (validate → normalize →
 dedupe → link → reweight) and is fully attributed + audited.
