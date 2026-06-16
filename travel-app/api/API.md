@@ -44,6 +44,8 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/cinematic` | — | `{ cinematicId, scope, sourceJourneyId, dateRange, scenes, sceneOrder, openingScene, closingScene, heroScene, statistics, basedOn }` | journey cinematic (storyboard playback model) |
 | GET | `/experiences` | — | `{ experiences:[{id,title,subtitle,icon,available}], basedOn }` | experience catalogue (index) |
 | GET | `/experience` | `?name=wrapped\|on-this-day\|collections\|story\|cinematic` (`&date=` for on-this-day) | `ExperiencePresentation` | shared presentation contract for any premium experience |
+| GET | `/design-tokens` | — | full token system | deterministic visual guidance (palette, typography, layouts, cards…) |
+| GET | `/experience-tokens` | `?name=…` | `{ experience, identity, hero, timeline, statistic, media, map, achievement, emptyState, system }` | per-experience design tokens |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -665,6 +667,35 @@ Fixed enums (exported): `SECTION_LAYOUTS` (hero, deck, grid, list, carousel,
 stat-grid, timeline), `CARD_KINDS`, `EMPHASIS`, `EXPERIENCES`. `GET /experiences`
 lists the catalogue; `GET /experience?name=` returns the contract for one. All
 deterministic, offline-first, references only, no backend leakage.
+
+### Experience Design Tokens (M37)
+
+Deterministic, platform-neutral **visual guidance** that maps the presentation
+contract's enums to design tokens — **not UI, not CSS, not animation, not AI
+design**. Static + serialisable; built from fixed enums and deterministic
+mappings.
+
+```
+DesignTokens = {
+  version, palette:{ token:{token,hex,on,role} }, typography, spacing, radii, elevation,
+  layouts:{ <SECTION_LAYOUT>:{ columns, scroll, cardStyle, snap, spacing, connector } },
+  cards:{ byKind:{ <CARD_KIND>:{ surface, accentUsage, density, showMedia, titleType, valueType } },
+          defaults:{ radius, elevation, mediaShape, scale }, emphasisModifiers:{ <EMPHASIS>:{…} } },
+  hero, timeline, statistic, media, map,
+  achievement:{ Bronze|Silver|Gold|Platinum|Legend:{ tier, swatch, glow, badgeShape, emphasis } },
+  emptyState, moods, enums,
+}
+ExperienceTokens = {
+  experience, identity:{ id, title, subtitle, accent, secondaryAccent, icon, mood, gradient,
+                         accentSwatch, secondarySwatch, gradientSwatches, heroLayout },
+  hero, timeline, statistic, media, map, achievement, emptyState, system,
+}
+```
+
+`cardTreatment(kind, emphasis)` resolves a card's treatment deterministically
+(base × emphasis modifier). Every accent referenced resolves to a palette swatch
+(`{token, hex, on, role}`). Covers all five experiences. Deterministic,
+offline-first, serialisable, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

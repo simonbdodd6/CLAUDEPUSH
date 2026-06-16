@@ -40,6 +40,7 @@ import { buildCollections } from './collections.js';
 import { buildStoryComposer } from './story-composer.js';
 import { buildCinematic } from './cinematic.js';
 import { buildExperience, listExperiences } from './experience-presentation.js';
+import { getDesignTokens, buildExperienceTokens } from './design-tokens.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -343,6 +344,23 @@ export function createTravelApi(options = {}) {
     }
   }
 
+  // Experience Design Tokens — deterministic, platform-neutral visual guidance
+  // for the shared presentation contract. Static (no traveller data); authed.
+  async function getDesignTokensHandler(token) {
+    travellerFor(token);
+    return getDesignTokens();
+  }
+  async function getExperienceTokens(token, { name } = {}) {
+    travellerFor(token);
+    if (!name) throw new ApiError(400, 'VALIDATION_FAILED', 'An experience name is required');
+    try {
+      return buildExperienceTokens(name);
+    } catch (error) {
+      if (error.code === 'UNKNOWN_EXPERIENCE') throw new ApiError(404, error.code, error.message);
+      throw error;
+    }
+  }
+
   // Journey Cinematic — a deterministic storyboard (ordered scenes + fixed-enum
   // pacing/transition/emotion hints) composed from existing engines. No media.
   async function getCinematic(token) {
@@ -536,6 +554,8 @@ export function createTravelApi(options = {}) {
     getCinematic,
     getExperiences,
     getExperience,
+    getDesignTokens: getDesignTokensHandler,
+    getExperienceTokens,
     getTripReadiness,
     getApprovals,
     resolveApproval,

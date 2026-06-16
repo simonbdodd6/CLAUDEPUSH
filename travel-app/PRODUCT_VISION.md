@@ -1088,6 +1088,48 @@ composition contract for premium experiences. These would extend it — still
 - **Complexity:** Low–Medium.
 - **Tier:** V2.
 
+## Y. Design Token deepeners (added M37)
+
+The Experience Design Tokens (`/design-tokens`, `/experience-tokens`) provide
+deterministic visual guidance over the presentation contract. These would extend
+them — still **not implemented**.
+
+### Dark mode & high-contrast palettes
+- **Why:** Provide alternate deterministic palette sets (dark / high-contrast)
+  keyed by the same tokens, so screens switch themes without logic.
+- **Complexity:** Low–Medium (additional fixed palette tables).
+- **Tier:** V2.
+
+### SwiftUI token export (build-time generator)
+- **Why:** Generate a Swift token file (Color/Font/spacing constants) from the
+  deterministic token system at build time — no runtime AI, pure codegen.
+- **Complexity:** Medium (a small generator; client/build tooling).
+- **Tier:** V2.
+
+### Accessibility tokens (Dynamic Type, contrast, reduce-motion)
+- **Why:** Carry deterministic accessibility guidance (min contrast pairings,
+  Dynamic-Type ramps, reduce-motion transition fallbacks) alongside the tokens.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
+### Per-mood motion guidance (still declarative, no animation code)
+- **Why:** Map each `mood` to declarative motion hints (easing curve name,
+  duration band) so a future player animates consistently — guidance, not code.
+- **Complexity:** Low.
+- **Tier:** V2.
+
+### Seasonal / trip-type theme variants
+- **Why:** Deterministic theme variants (e.g. a "dive trip" or "winter" palette)
+  selected by evidence, layered over the base tokens.
+- **Complexity:** Medium.
+- **Tier:** V3.
+
+### Token versioning & migration
+- **Why:** `version` is modelled; a migration map would let screens target a
+  pinned token version safely as the system evolves.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the
