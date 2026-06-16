@@ -15,6 +15,7 @@
 
 import { EVIDENCE_GATEWAY_STAGES, EVIDENCE_GATEWAY_STAGE_NAMES } from './registry.js'
 import { createGatewayContext, isGatewayContext } from './context.js'
+import { prepareFullPipelinePlan } from './pipeline.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -54,6 +55,16 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
         stages: EVIDENCE_GATEWAY_STAGE_NAMES,
         results: Object.freeze(results),
       })
+    },
+
+    /**
+     * Run the entire DORMANT pipeline once and return one immutable PipelinePlan
+     * (M64). Pure composition over the existing stage helpers — deferred, deterministic,
+     * stores/writes nothing. Delegates to `prepareFullPipelinePlan`.
+     * @param {{ registry: object, records: object[], context: object }} input
+     */
+    planRun(input) {
+      return prepareFullPipelinePlan(input)
     },
   })
 }
