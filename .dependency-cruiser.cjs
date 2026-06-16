@@ -57,6 +57,16 @@ module.exports = {
       },
     },
     {
+      name: 'evidence-weighting-imports-only-evidence-contracts',
+      comment: '@brain/evidence-weighting (M47, dormant) may import only @brain/evidence-contracts (+ self) — pure maths, no storage/engine/Core.',
+      severity: 'warn',
+      from: { path: '^packages/brain-evidence-weighting/' },
+      to: {
+        path: '^packages/',
+        pathNot: '^packages/(brain-evidence-weighting/|brain-evidence-contracts/)',
+      },
+    },
+    {
       name: 'packages-only-import-contracts',
       comment: 'brain-products / brain-versioning may import only @brain/contracts (+ self).',
       severity: 'warn',

@@ -1,0 +1,12 @@
+{
+  "name": "@brain/evidence-weighting",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": "./index.js",
+  "description": "Dormant AI Brain confidence-weighting library: pure deterministic functions (source trust · recency · corroboration · conflict · volume saturation) per the M42 architecture. No side effects, no clock, no randomness (M47). Depends only on @brain/evidence-contracts.",
+  "dependencies": {
+    "@brain/evidence-contracts": "0.0.0"
+  }
+}
