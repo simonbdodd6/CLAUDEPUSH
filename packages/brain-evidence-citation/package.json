@@ -1,0 +1,12 @@
+{
+  "name": "@brain/evidence-citation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": "./index.js",
+  "description": "Dormant AI Brain evidence-citation validation: pure deterministic functions that guarantee a recommendation's evidence citation resolves to real, same-tenant, non-duplicate records (M48). No storage of its own; reads via an injected @brain/evidence-store. Depends only on @brain/evidence-store.",
+  "dependencies": {
+    "@brain/evidence-store": "0.0.0"
+  }
+}
