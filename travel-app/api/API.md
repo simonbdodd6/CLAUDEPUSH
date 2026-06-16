@@ -38,6 +38,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/achievements` | — | `{ summary, categories, series, achievements, earned, timeline, rewards, statistics, basedOn }` | achievement engine (earned from evidence) |
 | GET | `/lifetime-timeline` | — | `{ summary, years, chapters, moments, filters, basedOn }` | lifetime travel timeline (whole life as one story) |
 | GET | `/travel-wrapped` | — | `{ headline, stats, highlights, bySeason, achievements, travelDna, lifeStory, sections, years, basedOn }` | travel wrapped (composed deck, no new intelligence) |
+| GET | `/on-this-day` | `?date=YYYY-MM-DD` (optional; defaults to today) | `{ date, monthDay, referenceYear, hasMemories, label, hero, items, byYear, anniversaryBadges, milestones, comparisons, categories, basedOn }` | on this day (same calendar day, previous years) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -508,6 +509,41 @@ TravelWrapped = {
 Every value is pulled verbatim from the source engines (e.g. `stats.countries ===`
 world `totalCountries`, `stats.dives ===` the diving achievement's current
 count). Deterministic, offline-first, no backend leakage.
+
+### On This Day DTO (M32)
+
+Everything that happened on the **same calendar day (month + day) across previous
+years**. **Composes existing engines only** (lifetime timeline + shared enrichment
++ journey transport tagging) — **no new intelligence, no AI, no prose**. The
+reference date is an explicit argument (the API defaults it to today), so the
+engine is deterministic. Media is exposed as **references only** (`mediaRefs`),
+never loaded.
+
+```
+OnThisDay = {
+  date, monthDay:"MM-DD", referenceYear, hasMemories, label,
+  hero: OnThisDayMoment | null,
+  items: [OnThisDayMoment],                 // chronological (oldest first)
+  byYear: [{ year, yearsAgo, count, place, itemIds }],
+  anniversaryBadges: [{ yearsAgo, label, count }],
+  milestones: [itemId],
+  comparisons: [{ year, yearsAgo, headline, place, count }],
+  categories: [{ category, count }],
+}
+OnThisDayMoment = {
+  id, sourceId, type, category, title, subtitle, date, year, yearsAgo,
+  isMilestone, isAnniversary, borderCrossing,
+  place, companions:[], relatedAchievements:[],
+  supportingMemories:[Entry], mediaRefs:[ref],
+  emotionalTone, iconId, confidence, evidence, tier, favourite,
+}
+```
+
+Covers trips, transport legs (flights/ferries/trains via the journey engine),
+dives/surf/hikes/beaches/photos (via memory cats), favourite memories,
+achievements, companions, countries/cities/islands, return visits, first-time
+experiences and milestones — each tagged with `yearsAgo` (anniversaries). Empty
+days return a valid empty-state DTO. Deterministic, offline-first, no leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

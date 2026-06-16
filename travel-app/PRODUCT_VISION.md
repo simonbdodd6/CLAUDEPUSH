@@ -883,6 +883,48 @@ deck. These would enrich the deck — still **not implemented**.
 - **Tier:** V2.
 - **Possible API:** Internal.
 
+## T. On This Day deepeners (added M32)
+
+The On This Day Engine (`/on-this-day`) surfaces same-calendar-day memories from
+previous years, composed from existing engines. These would enrich it — still
+**not implemented**.
+
+### Daily resurfacing notifications (local notifications)
+- **Why:** A gentle morning "a year ago today in Bali" push — the engine already
+  produces the deterministic payload; this is delivery.
+- **Complexity:** Low–Medium (local notifications + a scheduled check).
+- **Tier:** V2.
+- **Possible API:** Local notifications (no server push needed for MVP).
+
+### Photo/video-backed "on this day" cards (Apple/Google Photos)
+- **Why:** Render the `mediaRefs` as real cover photos / a mini reel — the
+  Apple-Photos "On This Day" feel.
+- **Complexity:** Medium (on-device; strip EXIF GPS before any reference leaves).
+- **Tier:** V2.
+- **Possible API:** PhotoKit / Google Photos Library API.
+
+### Anniversary & occasion awareness (occasion tags)
+- **Why:** Promote "3 years ago today" into true anniversaries (first dive
+  anniversary, trip anniversary, honeymoon) and surface them as special cards.
+- **Complexity:** Low–Medium (occasion tags + date math).
+- **Tier:** V2.
+- **Possible API:** Internal (trip/memory occasion tags).
+
+### Border-crossing detection on the day
+- **Why:** The `borderCrossing` field is modelled but not yet populated; a
+  region/country lookup over transport legs would light it up ("you crossed into
+  Thailand on this day").
+- **Complexity:** Medium (needs country-of-place mapping per leg; region only).
+- **Tier:** V2.
+- **Possible API:** Internal gazetteer (no exact GPS).
+
+### "On this week / month" windows
+- **Why:** Widen the lookback to a week or month for days with no exact-day
+  match — same composition over a small date window.
+- **Complexity:** Low (parameterise the match window).
+- **Tier:** V2.
+- **Possible API:** Internal.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the
