@@ -10773,6 +10773,7 @@
       if (!el) return;
       const tab  = state.activeClubTab || 'dashboard';
       const tabs = [
+        { id:'directory',  label:'Directory'  },
         { id:'dashboard',  label:'Dashboard'  },
         { id:'profile',    label:'Profile'    },
         { id:'teams',      label:'Teams'      },
@@ -10788,6 +10789,7 @@
       </div>`;
 
       let body = '';
+      if (tab === 'directory')  body = renderClubDirectory();
       if (tab === 'dashboard')  body = renderClubDashboard();
       if (tab === 'profile')    body = renderClubProfile();
       if (tab === 'teams')      body = renderClubTeams();
@@ -12000,6 +12002,245 @@
           ${shown.map(fx => fixtureCard(fx)).join('')}
 
         </div>`;
+    }
+
+    // ─── PHASE 27 — CLUB DIRECTORY & SEASON HUB ─────────────────────────────
+
+    // ── Pure helpers (testable, no state references) ──────────────────────────
+
+    function clubOverviewSummary(clubName, teamName, seasonName, sport, players, teams, staff, fixtures, schedule, today) {
+      const _today   = today || new Date().toISOString().slice(0, 10);
+      const active   = (players || []).filter(p => !playerIsArchived(p));
+      const upcoming = (fixtures || []).filter(f => f.date && f.date >= _today && f.status !== 'cancelled').length;
+      const sessions = (schedule || []).filter(s => s.type === 'Training' && s.date && s.date >= _today).length;
+      const coaches  = (staff || []).filter(m => {
+        const r = String(m.role || '').toLowerCase();
+        return r.includes('coach') || r.includes('director') || r.includes('analyst');
+      }).length;
+      return {
+        clubName:    clubName    || '',
+        teamName:    teamName    || '',
+        seasonName:  seasonName  || '',
+        sport:       sport       || 'Rugby',
+        playerCount: active.length,
+        teamCount:   (teams || []).length,
+        coachCount:  coaches,
+        upcomingFixtures: upcoming,
+        upcomingSessions: sessions,
+      };
+    }
+
+    function clubTeamsSummary(teams, players, fixtures, schedule, today) {
+      const _today   = today || new Date().toISOString().slice(0, 10);
+      const allTeams = (teams || []);
+      if (allTeams.length === 0) return [];
+      return allTeams.map(t => {
+        const teamPlayers = (players || []).filter(p => !playerIsArchived(p) && (p.team === t.id || p.team === t.name));
+        const nextFx      = (fixtures || [])
+          .filter(f => f.date && f.date >= _today && f.status !== 'cancelled' && (!f.teamId || f.teamId === t.id))
+          .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+        const nextTrain   = (schedule || [])
+          .filter(s => s.type === 'Training' && s.date && s.date >= _today)
+          .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+        return {
+          id:          t.id,
+          name:        t.name || 'Unnamed Team',
+          ageGroup:    t.ageGroup || '',
+          playerCount: teamPlayers.length,
+          nextFixture: nextFx  ? { date: nextFx.date,   opposition: nextFx.opposition  || 'TBC' } : null,
+          nextTraining:nextTrain? { date: nextTrain.date, title: nextTrain.title || 'Training'  } : null,
+        };
+      });
+    }
+
+    function clubSeasonSnapshot(fixtures, schedule, matchEventsMap, matchStatusMap, today) {
+      const _today    = today || new Date().toISOString().slice(0, 10);
+      const allFx     = fixtures || [];
+      const played    = allFx.filter(f => f.date && f.date < _today);
+      const remaining = allFx.filter(f => f.date && f.date >= _today && f.status !== 'cancelled');
+      const evMap     = matchEventsMap  || {};
+      const stMap     = matchStatusMap  || {};
+
+      let wins = 0, draws = 0, losses = 0;
+      played.forEach(f => {
+        const key = Object.keys(evMap).find(k => k.startsWith(f.date || ''));
+        if (!key || stMap[key] !== 'ft') return;
+        const { us, them } = matchComputeScore(evMap[key] || []);
+        if (us > them) wins++;
+        else if (us < them) losses++;
+        else draws++;
+      });
+
+      const sessions     = (schedule || []).filter(s => s.type === 'Training');
+      const sessionsComp = sessions.filter(s => s.date && s.date < _today).length;
+      const sessionsSched= sessions.filter(s => s.date && s.date >= _today).length;
+
+      return {
+        fixturesPlayed:    played.length,
+        fixturesRemaining: remaining.length,
+        wins, draws, losses,
+        sessionsCompleted: sessionsComp,
+        sessionsScheduled: sessionsSched,
+      };
+    }
+
+    function clubMedicalSnapshot(players, medRecords) {
+      const active = (players || []).filter(p => !playerIsArchived(p));
+      const REHAB  = ['modified', 'gymOnly', 'noContact'];
+      let available = 0, injured = 0, rehab = 0, returningCount = 0;
+      const _today = new Date().toISOString().slice(0, 10);
+      const _weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      active.forEach(p => {
+        const med = normalizeMedicalRecord((medRecords || {})[p.id]);
+        if (p.trainingStatus === 'unavailable' || p.game === 'injured') {
+          injured++;
+        } else if (REHAB.includes(p.trainingStatus)) {
+          rehab++;
+          const ret = med.expectedReturn || '';
+          if (ret >= _today && ret <= _weekEnd) returningCount++;
+        } else {
+          available++;
+        }
+      });
+      return { available, injured, rehab, returningThisWeek: returningCount, total: active.length };
+    }
+
+    function clubQuickLinks() {
+      return [
+        { label: 'Players',      section: 'players',   icon: '👥' },
+        { label: 'Fixtures',     section: 'fixtures',  icon: '🏆' },
+        { label: 'Calendar',     section: 'calendar',  icon: '📅' },
+        { label: 'Reports',      section: 'reports',   icon: '📊' },
+        { label: 'Match Centre', section: 'matchday',  icon: '⏱️' },
+        { label: 'Availability', section: 'message',   icon: '📋' },
+        { label: 'Training',     section: 'training',  icon: '🏉' },
+      ];
+    }
+
+    // ── Renderer ──────────────────────────────────────────────────────────────
+
+    function renderClubDirectory() {
+      const today    = new Date().toISOString().slice(0, 10);
+      const players  = canonicalVisiblePlayers();
+      const overview = clubOverviewSummary(
+        state.clubName, state.teamName, state.seasonName, state.sport,
+        players, state.clubTeams, state.clubStaff, state.fixtures, state.schedule, today
+      );
+      const teams    = clubTeamsSummary(state.clubTeams, players, state.fixtures, state.schedule, today);
+      const season   = clubSeasonSnapshot(state.fixtures, state.schedule, state.matchEvents, state.matchStatus, today);
+      const medical  = clubMedicalSnapshot(players, state.medicalRecords);
+      const links    = clubQuickLinks();
+
+      function statRow(label, value, color) {
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)">' +
+          '<span style="font-size:12px;color:var(--muted)">' + esc(label) + '</span>' +
+          '<span style="font-size:14px;font-weight:800;color:' + (color || 'var(--fg)') + '">' + esc(String(value)) + '</span>' +
+        '</div>';
+      }
+
+      // ── Section 1: Club Overview ──────────────────────────────────────────
+      const overviewCard =
+        '<div class="card" style="padding:16px 18px;margin-bottom:12px">' +
+          '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">' +
+            (state.clubLogo
+              ? '<img src="' + esc(state.clubLogo) + '" alt="club logo" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex-shrink:0">'
+              : '<div style="width:48px;height:48px;border-radius:10px;background:var(--green-soft);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🏟️</div>') +
+            '<div>' +
+              '<div style="font-size:17px;font-weight:900">' + esc(overview.clubName || 'Your Club') + '</div>' +
+              '<div style="font-size:12px;color:var(--muted)">' +
+                [overview.teamName, overview.sport, overview.seasonName].filter(Boolean).map(esc).join(' · ') +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0">' +
+            statRow('Registered players', overview.playerCount) +
+            statRow('Teams',              overview.teamCount) +
+            statRow('Coaches / staff',    overview.coachCount) +
+            statRow('Upcoming fixtures',  overview.upcomingFixtures) +
+            statRow('Upcoming sessions',  overview.upcomingSessions) +
+          '</div>' +
+        '</div>';
+
+      // ── Section 2: Teams ──────────────────────────────────────────────────
+      let teamsSection = '';
+      if (teams.length === 0) {
+        teamsSection =
+          '<div class="card" style="padding:16px 18px;margin-bottom:12px">' +
+            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px">Teams</div>' +
+            '<div style="font-size:13px;color:var(--muted)">No teams added yet. Add teams in the Teams tab.</div>' +
+            '<button type="button" onclick="clubTabSwitch(\'teams\')" class="btn" style="margin-top:10px;font-size:12px">+ Add Team →</button>' +
+          '</div>';
+      } else {
+        teamsSection =
+          '<div style="margin-bottom:12px">' +
+            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px">Teams</div>' +
+            '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">' +
+              teams.map(t => {
+                const fxLine   = t.nextFixture   ? new Date(t.nextFixture.date + 'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'}) + ' vs ' + esc(t.nextFixture.opposition) : 'No fixture';
+                const trainLine= t.nextTraining  ? new Date(t.nextTraining.date + 'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'}) + ' · ' + esc(t.nextTraining.title)  : 'No training';
+                return '<div class="card" style="padding:12px 14px">' +
+                  '<div style="font-size:13px;font-weight:800;margin-bottom:4px">' + esc(t.name) + (t.ageGroup ? ' <span style="font-size:10px;color:var(--muted);font-weight:600">· ' + esc(t.ageGroup) + '</span>' : '') + '</div>' +
+                  '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">' + t.playerCount + ' player' + (t.playerCount === 1 ? '' : 's') + '</div>' +
+                  '<div style="font-size:11px;display:flex;flex-direction:column;gap:3px">' +
+                    '<div><span style="color:var(--muted)">Next fixture:</span> ' + fxLine + '</div>' +
+                    '<div><span style="color:var(--muted)">Next training:</span> ' + trainLine + '</div>' +
+                  '</div>' +
+                '</div>';
+              }).join('') +
+            '</div>' +
+          '</div>';
+      }
+
+      // ── Section 3: Season Snapshot ────────────────────────────────────────
+      const winPct = season.fixturesPlayed > 0 ? Math.round(season.wins / season.fixturesPlayed * 100) : null;
+      const seasonCard =
+        '<div class="card" style="padding:16px 18px;margin-bottom:12px">' +
+          '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px">Season Snapshot</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0">' +
+            statRow('Fixtures played',   season.fixturesPlayed) +
+            statRow('Fixtures remaining',season.fixturesRemaining) +
+            statRow('Wins',   season.wins,   season.wins   > 0 ? '#34d399' : undefined) +
+            statRow('Draws',  season.draws,  season.draws  > 0 ? '#fbbf24' : undefined) +
+            statRow('Losses', season.losses, season.losses > 0 ? '#f87171' : undefined) +
+            (winPct !== null ? statRow('Win rate', winPct + '%', winPct >= 50 ? '#34d399' : '#fbbf24') : '') +
+            statRow('Sessions completed', season.sessionsCompleted) +
+            statRow('Sessions scheduled', season.sessionsScheduled) +
+          '</div>' +
+        '</div>';
+
+      // ── Section 4: Medical Summary ────────────────────────────────────────
+      const medCard =
+        '<div class="card" style="padding:16px 18px;margin-bottom:12px">' +
+          '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px">Medical Summary</div>' +
+          (medical.total === 0
+            ? '<div style="font-size:13px;color:var(--muted)">No players in squad yet.</div>'
+            : '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0">' +
+                statRow('Available',           medical.available,         '#34d399') +
+                statRow('Injured / unavailable',medical.injured,          medical.injured  > 0 ? '#f87171' : undefined) +
+                statRow('Rehab / modified',    medical.rehab,             medical.rehab    > 0 ? '#fbbf24' : undefined) +
+                statRow('Returning this week', medical.returningThisWeek, medical.returningThisWeek > 0 ? '#60a5fa' : undefined) +
+              '</div>'
+          ) +
+          '<button type="button" onclick="setSection(\'coach\',\'medical\')" class="btn" style="margin-top:10px;font-size:12px">View Medical →</button>' +
+        '</div>';
+
+      // ── Section 5: Quick Links ────────────────────────────────────────────
+      const quickLinksCard =
+        '<div class="card" style="padding:16px 18px;margin-bottom:12px">' +
+          '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px">Quick Links</div>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:8px">' +
+            links.map(lk =>
+              '<button type="button" onclick="setSection(\'coach\',\'' + lk.section + '\')" style="' +
+                'display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;' +
+                'padding:7px 14px;border-radius:999px;cursor:pointer;' +
+                'border:1.5px solid var(--line);background:var(--panel-2);color:var(--text)">' +
+                lk.icon + ' ' + esc(lk.label) +
+              '</button>'
+            ).join('') +
+          '</div>' +
+        '</div>';
+
+      return overviewCard + teamsSection + seasonCard + medCard + quickLinksCard;
     }
 
     // ─── PHASE 26 — BETA READINESS QA DASHBOARD ─────────────────────────────
