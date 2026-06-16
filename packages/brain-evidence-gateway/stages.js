@@ -21,6 +21,7 @@ import { assertTenant } from '@brain/evidence-store'
 import { EVIDENCE_CONTRACT_VERSION } from '@brain/evidence-contracts'
 import { planBatchNormalization, planNormalizationApplication } from '@brain/evidence-normalization'
 import { deriveDedupeGroups } from './dedupe.js'
+import { deriveProvenanceProposals } from './provenance.js'
 
 const ok = (stage, output) => Object.freeze({ stage, status: 'ok', output: Object.freeze(output) })
 const deferred = (stage, output) => Object.freeze({ stage, status: 'deferred', output: Object.freeze(output) })
@@ -86,14 +87,21 @@ export const normalize = Object.freeze({
  * Dormant. `run()` stays the inert placeholder (no work) so end-to-end `submit()` is
  * unchanged. `groups({ accepted, records })` is the M57 DATA-ONLY contract: it derives
  * §3.4 dedupe keys over the ACCEPTED entries of an ApplicationPlan and returns a
- * DEFERRED grouping report of which signals WOULD collapse — it collapses NOTHING,
- * reads/writes no store, never mutates input. Unknown sources / invalid signals are
- * not in `accepted`, so they never enter a group.
+ * DEFERRED grouping report of which signals WOULD collapse. `provenance({ accepted,
+ * records })` is the M58 DATA-ONLY contract: it folds those groups into deferred
+ * provenance-link PROPOSALS (canonical + derivedFrom/supersedes patches the duplicates
+ * WOULD receive). Both collapse/link/store NOTHING, never mutate input; unknown sources
+ * / invalid signals are not in `accepted`, so they never enter a group or proposal.
  */
 export const deduplicate = Object.freeze({
   name: 'deduplicate',
   run() { return deferred('deduplicate', { isDuplicate: false, dedupeKey: null }) },
   groups(input) { return deferred('deduplicate', deriveDedupeGroups(input)) },
+  provenance(input) {
+    const { groups } = deriveDedupeGroups(input)
+    const records = input && Array.isArray(input.records) ? input.records : []
+    return deferred('deduplicate', deriveProvenanceProposals({ groups, records }))
+  },
 })
 
 /** 5 — prepare confidence update: per (subject, signal) reweight plan (deferred placeholder). */
