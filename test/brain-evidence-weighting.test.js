@@ -174,9 +174,9 @@ const IMPORTS_PKG = /(?:from|import|require\(\s*)['"]@brain\/evidence-weighting[
 test('completely dormant — no runtime code imports @brain/evidence-weighting', () => {
   const files = collectJs(REPO)
   const offenders = files
-    .filter(f => f !== TEST_FILE && !f.includes('/packages/brain-evidence-weighting/'))
+    .filter(f => f !== TEST_FILE && !f.includes('/packages/brain-evidence-weighting/') && !f.includes('/packages/brain-evidence-gateway/'))
     .filter(f => IMPORTS_PKG.test(readFileSync(f, 'utf8')))
     .map(f => f.replace(REPO + '/', ''))
-  assert.deepEqual(offenders, [], `evidence-weighting must be imported by nobody yet; found: ${offenders.join(', ')}`)
+  assert.deepEqual(offenders, [], `evidence-weighting may be imported only by the dormant gateway (M59); no runtime/browser/Core importer allowed; found: ${offenders.join(', ')}`)
   assert.ok(files.length > 50, 'sanity: the scan walked the source tree')
 })

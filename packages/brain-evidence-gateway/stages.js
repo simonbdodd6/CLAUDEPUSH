@@ -22,6 +22,7 @@ import { EVIDENCE_CONTRACT_VERSION } from '@brain/evidence-contracts'
 import { planBatchNormalization, planNormalizationApplication } from '@brain/evidence-normalization'
 import { deriveDedupeGroups } from './dedupe.js'
 import { deriveProvenanceProposals } from './provenance.js'
+import { deriveConfidenceReweightProposals } from './reweight.js'
 
 const ok = (stage, output) => Object.freeze({ stage, status: 'ok', output: Object.freeze(output) })
 const deferred = (stage, output) => Object.freeze({ stage, status: 'deferred', output: Object.freeze(output) })
@@ -90,8 +91,11 @@ export const normalize = Object.freeze({
  * DEFERRED grouping report of which signals WOULD collapse. `provenance({ accepted,
  * records })` is the M58 DATA-ONLY contract: it folds those groups into deferred
  * provenance-link PROPOSALS (canonical + derivedFrom/supersedes patches the duplicates
- * WOULD receive). Both collapse/link/store NOTHING, never mutate input; unknown sources
- * / invalid signals are not in `accepted`, so they never enter a group or proposal.
+ * WOULD receive). `reweight({ accepted, records })` is the M59 DATA-ONLY contract: it
+ * folds those proposals into deferred CONFIDENCE-REWEIGHT proposals (the aggregate
+ * confidence each canonical signal WOULD carry, via @brain/evidence-weighting). All
+ * collapse/link/reweight/store NOTHING, never mutate input; unknown sources / invalid
+ * signals are not in `accepted`, so they never enter a group, proposal or reweight.
  */
 export const deduplicate = Object.freeze({
   name: 'deduplicate',
@@ -101,6 +105,13 @@ export const deduplicate = Object.freeze({
     const { groups } = deriveDedupeGroups(input)
     const records = input && Array.isArray(input.records) ? input.records : []
     return deferred('deduplicate', deriveProvenanceProposals({ groups, records }))
+  },
+  reweight(input) {
+    const { groups } = deriveDedupeGroups(input)
+    const records = input && Array.isArray(input.records) ? input.records : []
+    const accepted = input && Array.isArray(input.accepted) ? input.accepted : []
+    const { proposals } = deriveProvenanceProposals({ groups, records })
+    return deferred('deduplicate', deriveConfidenceReweightProposals({ proposals, accepted }))
   },
 })
 

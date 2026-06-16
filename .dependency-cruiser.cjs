@@ -48,12 +48,12 @@ module.exports = {
     },
     {
       name: 'evidence-gateway-imports-only-evidence-layer',
-      comment: '@brain/evidence-gateway (dormant) may import only @brain/evidence-contracts + @brain/evidence-store + @brain/evidence-normalization (+ self) — the normalize stage wires to the normalization pipeline (M55). No storage/engine/Core.',
+      comment: '@brain/evidence-gateway (dormant) may import only @brain/evidence-contracts + @brain/evidence-store + @brain/evidence-normalization + @brain/evidence-weighting (+ self) — normalize wires to the normalization pipeline (M55), deduplicate reuses the weighting library for reweight proposals (M59). No storage/engine/Core.',
       severity: 'warn',
       from: { path: '^packages/brain-evidence-gateway/' },
       to: {
         path: '^packages/',
-        pathNot: '^packages/(brain-evidence-gateway/|brain-evidence-contracts/|brain-evidence-store/|brain-evidence-normalization/)',
+        pathNot: '^packages/(brain-evidence-gateway/|brain-evidence-contracts/|brain-evidence-store/|brain-evidence-normalization/|brain-evidence-weighting/)',
       },
     },
     {
