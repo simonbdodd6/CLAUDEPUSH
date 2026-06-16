@@ -9357,6 +9357,43 @@
     }
 
 
+    // ─── AVAILABILITY TRACE (diagnostic, OFF by default) ──────────────────────
+    // Enable on production with ?availtrace=1 in the URL, or run
+    // localStorage.setItem('ce-avail-trace','1') in the console, then reproduce.
+    // Emits a deterministic trace: click → records-before → records-selected →
+    // records-updated → merged-canonical → rendered → any-subsequent-overwrite.
+    // No behaviour change; purely observational.
+    function availTraceEnabled() {
+      try {
+        if (new URLSearchParams(window.location.search).get('availtrace') === '1') return true;
+        return window.localStorage.getItem('ce-avail-trace') === '1';
+      } catch { return false; }
+    }
+    let _availTraceSeq = 0;
+    function _availSnap(rec) {
+      if (!rec) return null;
+      const keys = (state.schedule || []).map(s => sessionKey(s.id));
+      const out = {
+        id: rec.id || '', userId: rec.userId || '', legacyPlayerId: rec.legacyPlayerId || '',
+        playerId: rec.playerId || '', name: rec.name || '', email: rec.email || '',
+      };
+      keys.forEach(k => {
+        out[k] = rec[k] ?? '·';
+        if (rec[k + 'Reason']) out[k + 'Reason'] = rec[k + 'Reason'];
+        if (rec[k + 'RespondedAt']) out[k + 'RespondedAt'] = rec[k + 'RespondedAt'];
+      });
+      return out;
+    }
+    function _availSnapAll() { return (state.players || []).map(_availSnap); }
+    function availTrace(label, payload) {
+      if (!availTraceEnabled()) return;
+      try { console.log(`%c[AVAILTRACE#${_availTraceSeq}] ${label}`, 'color:#ffa040;font-weight:700', payload); } catch {}
+    }
+    function availTraceTable(label, rows) {
+      if (!availTraceEnabled()) return;
+      try { console.log(`%c[AVAILTRACE#${_availTraceSeq}] ${label}`, 'color:#ffa040;font-weight:700'); console.table(rows); } catch {}
+    }
+
     // ─── PLAYER AVAILABILITY ─────────────────────────────────────────────────
     // Fetch the logged-in player's own responses from the server and patch local state.
     // Called once when the player opens the Availability section so they see the latest
@@ -9370,6 +9407,10 @@
         if (!data?.responses) return;
         const player = getPlayer();
         const liveRecords = findLiveAvailabilityRecords(state.players, player);
+        if (availTraceEnabled()) {
+          availTrace('6. SUBSEQUENT (server fetch) — server responses received', data.responses);
+          availTraceTable('6a. records BEFORE server merge', _availSnapAll());
+        }
         // Merge, never overwrite: only adopt server values for sessions the
         // player has NOT answered locally, so a late/stale server response can
         // never reset a just-answered sibling session back to Available.
@@ -9377,6 +9418,9 @@
         liveRecords.forEach(rec => {
           if (mergeServerAvailabilityIntoRecord(rec, data.responses)) changed = true;
         });
+        if (availTraceEnabled() && changed) {
+          availTraceTable('6b. records AFTER server merge (OVERWRITE applied)', _availSnapAll());
+        }
         if (changed) { saveState('Server availability loaded'); renderPlayerAvailability(); }
       } catch { /* non-critical — player already sees local state */ }
     }
@@ -9384,6 +9428,10 @@
     function renderPlayerAvailability() {
       const player = getPlayer();
       if (!player.id) { document.getElementById("player-availability").innerHTML = noSquadMsg(); return; }
+
+      if (availTraceEnabled()) {
+        availTrace('RENDER renderPlayerAvailability — player the UI will show', _availSnap(player));
+      }
 
       fetchMyAvailabilityFromServer();
       loadPublishedStateForPlayer().catch(() => {});
@@ -9503,12 +9551,22 @@
       if (!player.id) return;
       _reasonPickerOpen = null;
       const liveRecords = findLiveAvailabilityRecords(state.players, player);
+      if (availTraceEnabled()) {
+        _availTraceSeq++;
+        availTrace('CLICK setAllAvailable', { getPlayerId: player.id });
+        availTraceTable('1. RAW records BEFORE write (all state.players)', _availSnapAll());
+        availTrace(`2. records SELECTED for write → ${liveRecords.length}`, { selectedIds: liveRecords.map(r => r.id) });
+      }
       state.schedule.forEach(session => {
         const k = sessionKey(session.id);
         availabilityApplyToRecord(player, k, 'available', '');
         liveRecords.forEach(rec => availabilityApplyToRecord(rec, k, 'available', ''));
         saveAvailabilityResponseToServer(session.id, 'available', '');
       });
+      if (availTraceEnabled()) {
+        availTraceTable('3. records ACTUALLY updated (all → available)', liveRecords.map(_availSnap));
+        availTrace('4. MERGED canonical AFTER write', _availSnap(getPlayer()));
+      }
       if (player.history[0] !== 'available') player.history.unshift('available');
       player.history = player.history.slice(0, 5);
       saveState('All available set');
@@ -9520,13 +9578,28 @@
       _reasonPickerOpen = null; // always close reason picker on save
       const player    = getPlayer();
       const sessionId = keyToSessionId(key);
+      // ── TRACE: click + raw records BEFORE write + merged BEFORE ──────────────
+      if (availTraceEnabled()) {
+        _availTraceSeq++;
+        availTrace(`CLICK setPlayerAvailability key=${key} sessionId=${sessionId} status=${status} reason=${reason || ''}`,
+          { currentUserId: state.currentUserId, getPlayerId: player.id });
+        availTraceTable('1. RAW records BEFORE write (all state.players)', _availSnapAll());
+        availTrace('1b. MERGED canonical BEFORE write', _availSnap(player));
+      }
       availabilityApplyToRecord(player, key, status, reason);
       // getPlayer() returns a shallow copy; update EVERY matching state.players
       // record so the change survives the next render()/hydration AND the coach
       // board (which reads state.players via sessionRows) reflects it. Writing to
       // all duplicates keeps them consistent so dedup can't restore a stale value.
-      findLiveAvailabilityRecords(state.players, player)
-        .forEach(rec => availabilityApplyToRecord(rec, key, status, reason));
+      const _writeTargets = findLiveAvailabilityRecords(state.players, player);
+      if (availTraceEnabled()) {
+        availTrace(`2. records SELECTED for write (findLiveAvailabilityRecords) → ${_writeTargets.length} record(s)`,
+          { selectedIds: _writeTargets.map(r => r.id), playerIdKeys: { id: player.id, userId: player.userId, legacyPlayerId: player.legacyPlayerId, playerId: player.playerId } });
+      }
+      _writeTargets.forEach(rec => availabilityApplyToRecord(rec, key, status, reason));
+      if (availTraceEnabled()) {
+        availTraceTable(`3. records ACTUALLY updated (${key}=${status})`, _writeTargets.map(_availSnap));
+      }
       if (key === "game" && player.history[0] !== status) player.history.unshift(status);
       player.history  = player.history.slice(0, 5);
       addMasterFeed(`${player.name} updated ${sessionTitle(sessionId)}`, statusLabel(status));
@@ -9534,7 +9607,18 @@
       // POST to server so coach sees it in real time; authenticated users do not need push enabled.
       saveAvailabilityResponseToServer(sessionId, status, reason);
       saveState("Player availability saved");
+      if (availTraceEnabled()) {
+        const mergedAfter = getPlayer();
+        availTrace(`4. MERGED canonical AFTER write — ${key}=${mergedAfter[key]}`, _availSnap(mergedAfter));
+        if (mergedAfter[key] !== status) {
+          availTrace(`⚠️ DIVERGENCE: wrote ${key}=${status} but merged shows ${key}=${mergedAfter[key]} — write did not reach the record the merge prefers`,
+            { wroteTo: _writeTargets.map(r => r.id), mergedId: mergedAfter.id, rawAfter: _availSnapAll() });
+        }
+      }
       render();
+      if (availTraceEnabled()) {
+        availTrace(`5. RENDERED player (post-render getPlayer) — ${key}=${getPlayer()[key]}`, _availSnap(getPlayer()));
+      }
       showToast(reason ? `Saved — ${REASON_LABELS[reason] || 'reason noted'}` : "Availability saved");
     }
 
@@ -21313,6 +21397,11 @@
           // Merge: replace matching IDs, keep local-only sessions appended.
           const serverIds = new Set(data.sessions.map(s => s.id));
           const localOnly = (state.schedule || []).filter(s => !serverIds.has(s.id));
+          if (availTraceEnabled()) {
+            availTrace('7. SUBSEQUENT (loadPublishedStateForPlayer) replacing state.schedule',
+              { before: (state.schedule || []).map(s => ({ id: s.id, title: s.title, key: sessionKey(s.id) })),
+                serverSessions: data.sessions.map(s => ({ id: s.id, title: s.title, key: sessionKey(s.id) })) });
+          }
           state.schedule = [...data.sessions, ...localOnly];
           changed = true;
         }
