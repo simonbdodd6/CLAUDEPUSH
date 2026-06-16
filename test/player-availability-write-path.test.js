@@ -43,8 +43,13 @@ function extractFn(name) {
 }
 
 function buildScope() {
-  const fns = ['sessionKey', 'availabilityApplyToRecord', 'findLiveAvailabilityRecords', 'mergeServerAvailabilityIntoRecord']
-    .map(extractFn).join('\n');
+  // findLiveAvailabilityRecords groups by the canonical rosterIdentityKeys, so the
+  // identity-grouping graph must be in scope too.
+  const fns = [
+    'identityNameKey', 'identityCompactKey', 'canonicalIdentityNameKey', 'identityEmailKey',
+    'isPermanentPlayerUserId', 'findPermanentRosterUser', 'resolveRosterMessagingId', 'rosterIdentityKeys',
+    'sessionKey', 'availabilityApplyToRecord', 'findLiveAvailabilityRecords', 'mergeServerAvailabilityIntoRecord',
+  ].map(extractFn).join('\n');
   const body = `"use strict";\n${fns}\nreturn { sessionKey, availabilityApplyToRecord, findLiveAvailabilityRecords, mergeServerAvailabilityIntoRecord };`;
   return new Function(body)();
 }

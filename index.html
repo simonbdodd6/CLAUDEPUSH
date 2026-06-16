@@ -3611,24 +3611,32 @@
       });
       return changed;
     }
-    // Pure helper: locate ALL live state.players entries for a (possibly canonical/
-    // deduped) player copy. Matches across id / userId / legacyPlayerId / playerId.
-    // A player can have more than one raw record (e.g. an invite record plus a
-    // permanent-user record). Writing to EVERY matching record keeps duplicates
-    // consistent so the dedup/merge pass can never resurrect a stale per-session
-    // value — the root of the availability cross-reset blocker.
-    function findLiveAvailabilityRecords(players, player) {
+    // Pure helper: locate ALL live state.players entries that belong to the same
+    // real player as a (possibly canonical/deduped) player copy.
+    //
+    // It MUST group records exactly the way the canonical roster dedupe does
+    // (rosterIdentityKeys → user:/email:/legacy:/name: keys), NOT just by literal
+    // id/userId/legacyPlayerId/playerId equality. A player can hold more than one
+    // raw record (invite record + permanent-user record). The merged/canonical id
+    // is often a permanent user_ id resolved by email, which is NOT literally
+    // present on every duplicate raw record — so literal-id matching MISSED the
+    // record the merge prefers, the write never reached it, and its stale value
+    // resurfaced on the next merge, flipping sessions back to Available. Grouping
+    // by rosterIdentityKeys writes to every record the dedupe will collapse,
+    // keeping them consistent.
+    function findLiveAvailabilityRecords(players, player, users) {
       if (!Array.isArray(players) || !player) return [];
-      const wanted = new Set(
-        [player.id, player.userId, player.legacyPlayerId, player.playerId]
-          .map(v => String(v || "").trim()).filter(Boolean)
-      );
-      if (!wanted.size) return [];
-      return players.filter(p => {
-        const cand = [p.id, p.userId, p.legacyPlayerId, p.playerId]
-          .map(v => String(v || "").trim()).filter(Boolean);
-        return cand.some(c => wanted.has(c));
-      });
+      const roster = (users !== undefined) ? users : (typeof state !== "undefined" ? state.users : []);
+      const wanted = new Set(rosterIdentityKeys(player, roster));
+      if (!wanted.size) {
+        // Defensive fallback: no identity keys — fall back to literal id match.
+        const ids = new Set([player.id, player.userId, player.legacyPlayerId, player.playerId]
+          .map(v => String(v || "").trim()).filter(Boolean));
+        if (!ids.size) return [];
+        return players.filter(p => [p.id, p.userId, p.legacyPlayerId, p.playerId]
+          .map(v => String(v || "").trim()).filter(Boolean).some(c => ids.has(c)));
+      }
+      return players.filter(p => rosterIdentityKeys(p, roster).some(k => wanted.has(k)));
     }
     // Singular convenience wrapper — returns the first matching record or null.
     function findLiveAvailabilityRecord(players, player) {

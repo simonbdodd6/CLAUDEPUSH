@@ -20,17 +20,20 @@ function extractFn(name) {
   const m = src.match(pattern);
   if (!m) throw new Error(`Function ${name} not found`);
   const start = src.indexOf(m[0]);
-  let depth = 0, i = start;
-  while (i < src.length) {
+  let depth = 0, i = start + m[0].length - 1; // start brace-count at the body '{' (skip default-param braces)
+  for (; i < src.length; i++) {
     if (src[i] === '{') depth++;
     else if (src[i] === '}') { depth--; if (depth === 0) break; }
-    i++;
   }
   return src.slice(start, i + 1);
 }
 
 function buildScope() {
   const fns = [
+    // findLiveAvailabilityRecords now groups by the canonical rosterIdentityKeys,
+    // so its identity-grouping dependency graph must be in scope too.
+    'identityNameKey', 'identityCompactKey', 'canonicalIdentityNameKey', 'identityEmailKey',
+    'isPermanentPlayerUserId', 'findPermanentRosterUser', 'resolveRosterMessagingId', 'rosterIdentityKeys',
     'sessionKey',
     'keyToSessionId',
     'availabilityApplyToRecord',
