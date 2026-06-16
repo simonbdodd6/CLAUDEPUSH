@@ -1208,6 +1208,43 @@ These would extend it — still **not implemented**, and all must stay rule-base
 - **Tier:** V2.
 - **Possible API:** Internal.
 
+## AB. Home Experience deepeners (added M40)
+
+The Home Experience Engine (`/home`) assembles the daily dashboard from existing
+engines. These would extend it — still **not implemented**.
+
+### Section personalisation & ordering config
+- **Why:** Let the deterministic `sectionOrder` be tuned per traveller preference
+  (pin/hide sections) via a config — still rule-based, no ML.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
+### Photo-backed home cards (Apple/Google Photos)
+- **Why:** Resolve `mediaRefs`/covers into real images for hero + recent memories
+  + collection covers.
+- **Complexity:** Medium (on-device; strip EXIF GPS before any reference leaves).
+- **Tier:** V2.
+- **Possible API:** PhotoKit / Google Photos Library API.
+
+### Performance: shared engine memoisation
+- **Why:** Home composes ~7 engines (several recompute world/globe internally); a
+  per-request memo of the base layers (world/enrichment/journey) would cut work
+  without changing outputs — purely an optimisation.
+- **Complexity:** Medium (internal cache keyed by inputs).
+- **Tier:** V2.
+
+### Widget & lock-screen snapshot
+- **Why:** A compact deterministic subset of Home (today's recommendation + on
+  this day) for an iOS widget.
+- **Complexity:** Low–Medium (a trimmed projection of Home).
+- **Tier:** V2.
+
+### Pull-to-refresh state & seen tracking
+- **Why:** Track which home cards have been seen (honouring recommendation
+  expiry) so the dashboard evolves between visits — deterministic given state.
+- **Complexity:** Medium (lightweight state store).
+- **Tier:** V2.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

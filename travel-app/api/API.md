@@ -48,6 +48,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/experience-tokens` | `?name=…` | `{ experience, identity, hero, timeline, statistic, media, map, achievement, emptyState, system }` | per-experience design tokens |
 | GET | `/navigation` | `?current=<experience>` (optional) | `{ graph, entryPoints, defaultEntry, recommendedSequence, availableSequence, cursor, timelineAnchors, emptyState, meta, basedOn }` | experience navigation graph |
 | GET | `/recommendations` | `?date=YYYY-MM-DD` (optional; defaults today) `&current=<experience>` | `{ version, referenceDate, recommendations, top, continuation, emptyState, meta, basedOn }` | rule-based next-experience recommendations |
+| GET | `/home` | `?date=YYYY-MM-DD` (optional; defaults today) `&current=<experience>` | `Home` | the daily home dashboard model |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -759,6 +760,37 @@ STORY_READY, RICH_COLLECTIONS, WRAPPED_READY, CINEMATIC_READY, START_HERE),
 `CATEGORIES`, `PRIORITIES`, `EXPIRY_CONDITIONS`. One recommendation per target
 (highest score wins); continuation is a separate pointer. Deterministic,
 serialisable, no backend leakage.
+
+### Home DTO (M40)
+
+The single deterministic model for the home screen — it **assembles** the daily
+dashboard from existing engines (recommendations, navigation, world, on-this-day,
+collections, achievements, lifetime timeline). **No new intelligence, no AI, no
+prose.** The reference date is explicit (defaults to today).
+
+```
+Home = {
+  version, referenceDate, hasMemories,
+  hero: { experience, title, subtitle, accent, icon, deepLink, reasonCode, priority } | null,
+  todaysRecommendation: Recommendation | null, moreRecommendations: [Recommendation],
+  continueJourney: { current, next, previous, resume, nextDeepLink },
+  onThisDay: { available, label, count, hero, deepLink },
+  recentMemories: [{ id, title, date, kind, icon, place, mediaRefs }],     // newest-first, refs only
+  favouriteCollections: [{ id, title, subtitle, count, cover, icon, deepLink }],
+  currentAchievements: { totalEarned, completion, rarityScore, recent:[{id,title,tier,earnedDate}], deepLink },
+  travelStatistics: { items:[{ id, label, value, icon }] },
+  quickActions: [{ id, label, icon, deepLink }],
+  timelineSnapshot: { span, years:[{ year, memories, countries }] },
+  destinationsOverview: { totalCountries, totalIslands, totalCities, mostVisitedCountry, topPlaces:[{name,type,country,visitCount}] },
+  navigationShortcuts: [{ id, title, icon, accent, deepLink }],
+  emptyState: { title, subtitle, icon, cta } | null,
+  sectionOrder: [sectionId],     // deterministic; present sections only
+  meta: { generatedFrom }, basedOn,
+}
+```
+
+Empty history returns a welcome empty-state with only a capture action.
+Deterministic, serialisable, references only, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

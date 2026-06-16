@@ -43,6 +43,7 @@ import { buildExperience, listExperiences } from './experience-presentation.js';
 import { getDesignTokens, buildExperienceTokens } from './design-tokens.js';
 import { buildNavigation } from './navigation.js';
 import { buildRecommendations } from './recommendations.js';
+import { buildHome } from './home.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -346,6 +347,15 @@ export function createTravelApi(options = {}) {
     }
   }
 
+  // Home — the deterministic daily dashboard assembled from existing engines.
+  // Reference date explicit (defaults to today).
+  async function getHome(token, { date, current } = {}) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildHome(events, ownedTrips, { referenceDate: date ?? todayIso(), current });
+  }
+
   // Experience Recommendations — deterministic, rule-based suggestions for which
   // premium experience to view next. Reference date explicit (defaults to today).
   async function getRecommendations(token, { date, current } = {}) {
@@ -578,6 +588,7 @@ export function createTravelApi(options = {}) {
     getExperienceTokens,
     getNavigation,
     getRecommendations,
+    getHome,
     getTripReadiness,
     getApprovals,
     resolveApproval,

@@ -63,6 +63,7 @@ export function createHttpServer(apiOptions = {}) {
     if (m === 'GET' && pathname === '/experience-tokens') return api.getExperienceTokens(token, { name: url.searchParams.get('name') || undefined });
     if (m === 'GET' && pathname === '/navigation') return api.getNavigation(token, { current: url.searchParams.get('current') || undefined });
     if (m === 'GET' && pathname === '/recommendations') return api.getRecommendations(token, { date: url.searchParams.get('date') || undefined, current: url.searchParams.get('current') || undefined });
+    if (m === 'GET' && pathname === '/home') return api.getHome(token, { date: url.searchParams.get('date') || undefined, current: url.searchParams.get('current') || undefined });
     if (m === 'GET' && pathname === '/trip-readiness') return api.getTripReadiness(token);
     if (m === 'GET' && pathname === '/approvals') return api.getApprovals(token);
     const approvalMatch = pathname.match(/^\/approvals\/([^/]+)$/);
