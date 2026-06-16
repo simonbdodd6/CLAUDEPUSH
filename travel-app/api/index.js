@@ -39,6 +39,7 @@ import { buildOnThisDay } from './on-this-day.js';
 import { buildCollections } from './collections.js';
 import { buildStoryComposer } from './story-composer.js';
 import { buildCinematic } from './cinematic.js';
+import { buildExperience, listExperiences } from './experience-presentation.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -321,6 +322,27 @@ export function createTravelApi(options = {}) {
     return buildWorld(events, ownedTrips);
   }
 
+  // Experience Presentation — the single shared composition layer that adapts
+  // every premium experience into one consistent presentation contract.
+  async function getExperiences(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return listExperiences(events, ownedTrips);
+  }
+  async function getExperience(token, { name, date } = {}) {
+    const id = travellerFor(token);
+    if (!name) throw new ApiError(400, 'VALIDATION_FAILED', 'An experience name is required');
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    try {
+      return buildExperience(events, ownedTrips, { name, referenceDate: date ?? todayIso() });
+    } catch (error) {
+      if (error.code === 'UNKNOWN_EXPERIENCE') throw new ApiError(404, error.code, error.message);
+      throw error;
+    }
+  }
+
   // Journey Cinematic — a deterministic storyboard (ordered scenes + fixed-enum
   // pacing/transition/emotion hints) composed from existing engines. No media.
   async function getCinematic(token) {
@@ -512,6 +534,8 @@ export function createTravelApi(options = {}) {
     getCollections,
     getStory,
     getCinematic,
+    getExperiences,
+    getExperience,
     getTripReadiness,
     getApprovals,
     resolveApproval,

@@ -1050,6 +1050,44 @@ These would turn it into an actual premium playback — still **not implemented*
 - **Tier:** V2.
 - **Possible API:** Internal.
 
+## X. Experience Presentation deepeners (added M36)
+
+The Experience Presentation Engine (`/experience`) is the single shared
+composition contract for premium experiences. These would extend it — still
+**not implemented**.
+
+### Migrate experiences to consume the shared contract end-to-end
+- **Why:** Have the SwiftUI screens read ONLY the shared contract (not the raw
+  per-engine DTOs), so every screen renders from one card/section/hero model.
+- **Complexity:** Medium (UI refactor; no new API).
+- **Tier:** V2.
+
+### Theme tokens & design-system mapping
+- **Why:** Map the shared `accent` / `emphasis` / layout enums to a real design
+  system (colours, type ramp, spacing) for one consistent premium look.
+- **Complexity:** Low–Medium (client; a token table over the enums).
+- **Tier:** V2.
+
+### Personalised experience ordering (deterministic ranking)
+- **Why:** Rank which experiences to surface first (e.g. On This Day when it has
+  matches today) using a transparent, rule-based score — no ML.
+- **Complexity:** Low–Medium (compose availability + recency signals).
+- **Tier:** V2.
+- **Possible API:** Internal.
+
+### New experiences plug in for free
+- **Why:** Future experiences (e.g. Year in Review, Trip Recap, Companion Blend)
+  only need an adapter to the shared contract — screens get them automatically.
+- **Complexity:** Low (per new experience adapter).
+- **Tier:** V2.
+- **Possible API:** Internal.
+
+### Localisation & accessibility hints (still no LLM)
+- **Why:** Carry deterministic, template-only display strings + accessibility
+  labels through the shared model for localisation.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

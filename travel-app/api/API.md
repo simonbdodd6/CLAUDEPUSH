@@ -42,6 +42,8 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/collections` | — | `{ collections, summary, basedOn }` | memory collections (auto-generated themed sets) |
 | GET | `/story` | — | `{ story, chapters, hero, anchors, basedOn }` | story composer (immersive chronological story) |
 | GET | `/cinematic` | — | `{ cinematicId, scope, sourceJourneyId, dateRange, scenes, sceneOrder, openingScene, closingScene, heroScene, statistics, basedOn }` | journey cinematic (storyboard playback model) |
+| GET | `/experiences` | — | `{ experiences:[{id,title,subtitle,icon,available}], basedOn }` | experience catalogue (index) |
+| GET | `/experience` | `?name=wrapped\|on-this-day\|collections\|story\|cinematic` (`&date=` for on-this-day) | `ExperiencePresentation` | shared presentation contract for any premium experience |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -634,6 +636,35 @@ photo, other), `EMOTIONS`, `TRANSITION_HINTS`, `PACING_HINTS`. The opening
 `departure` and closing `journey-home` are synthesised from home bookends; the
 hero scene mirrors the story hero. Deterministic, offline-first, references only,
 no backend leakage.
+
+### Experience Presentation contract (M36)
+
+The **single composition layer** for all premium experiences. It creates no new
+intelligence — it **adapts** each experience engine (Travel Wrapped, On This Day,
+Memory Collections, Story Composer, Journey Cinematic) into ONE shared,
+serialisable contract so SwiftUI screens never rebuild presentation logic.
+
+```
+ExperiencePresentation = {
+  id, experience, title, subtitle,
+  hero: Hero | null, sections: [Section], timeline: Timeline | null,
+  statistics: { items: [Stat] }, generatedFrom: [engineName], basedOn,
+}
+Hero    = { id, kind, title, subtitle, mediaRef|null, mapRef|null, accent, icon }
+Section = { id, kind, title, layout, cards: [Card], subtitle? }     // layout ∈ SECTION_LAYOUTS
+Card    = { id, kind, title, subtitle, value, date, accent, icon, emphasis,
+            mediaRefs:[MediaRef], mapRefs:[MapRef], achievementRefs:[AchRef], companionRefs:[name], sourceRef }
+Timeline = { anchors:[{ id, date, label, kind }], entries:[] }
+Stat    = { id, label, value, unit, icon }
+MediaRef = { photoRef }            // reference only
+MapRef   = { place, isIsland, latitude, longitude }   // coords null until resolved
+AchRef   = { id }
+```
+
+Fixed enums (exported): `SECTION_LAYOUTS` (hero, deck, grid, list, carousel,
+stat-grid, timeline), `CARD_KINDS`, `EMPHASIS`, `EXPERIENCES`. `GET /experiences`
+lists the catalogue; `GET /experience?name=` returns the contract for one. All
+deterministic, offline-first, references only, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 
