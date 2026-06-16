@@ -47,6 +47,16 @@ module.exports = {
       },
     },
     {
+      name: 'evidence-gateway-imports-only-evidence-layer',
+      comment: '@brain/evidence-gateway (M45, dormant) may import only @brain/evidence-contracts + @brain/evidence-store (+ self) — no storage/engine/Core.',
+      severity: 'warn',
+      from: { path: '^packages/brain-evidence-gateway/' },
+      to: {
+        path: '^packages/',
+        pathNot: '^packages/(brain-evidence-gateway/|brain-evidence-contracts/|brain-evidence-store/)',
+      },
+    },
+    {
       name: 'packages-only-import-contracts',
       comment: 'brain-products / brain-versioning may import only @brain/contracts (+ self).',
       severity: 'warn',

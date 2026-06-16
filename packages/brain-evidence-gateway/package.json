@@ -1,0 +1,13 @@
+{
+  "name": "@brain/evidence-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": "./index.js",
+  "description": "Dormant AI Brain Evidence Gateway: the write-side composition root defining the deterministic ingestion pipeline (receive → validate → normalize → deduplicate → prepare confidence/memory/audit/exposure). Pure placeholder stages; no work, no persistence (M45). Depends only on @brain/evidence-contracts + @brain/evidence-store.",
+  "dependencies": {
+    "@brain/evidence-contracts": "0.0.0",
+    "@brain/evidence-store": "0.0.0"
+  }
+}
