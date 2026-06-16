@@ -9120,14 +9120,14 @@
                 </tr>
               </thead>
               <tbody>
-                ${filtered.map(p => `<tr>
+                ${filtered.map(p => `<tr class="member-row" onclick="playerOpenDetail('${p.id}')" style="cursor:pointer">
                   <td style="padding-left:18px">
                     <div style="display:flex;align-items:center;gap:9px">
                       <div class="player-photo-wrap">
                         ${p.photo ? `<img src="${p.photo}" style="width:36px;height:36px;border-radius:50%;object-fit:cover">` : `<div style="width:36px;height:36px;border-radius:50%;background:${playerAvatarColor(p.id||p.name)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800">${p.name.split(" ").map(w=>w[0]).slice(0,2).join("")}</div>`}
-                        <label class="photo-badge" title="Upload photo">
+                        <label class="photo-badge" title="Upload photo" onclick="event.stopPropagation()">
                           📷
-                          <input type="file" accept="image/*" style="display:none" onchange="savePlayerPhoto('${p.id}',this)">
+                          <input type="file" accept="image/*" style="display:none" onclick="event.stopPropagation()" onchange="savePlayerPhoto('${p.id}',this)">
                         </label>
                       </div>
                       <div><strong style="font-size:13px">${p.name}</strong><div style="font-size:11px;color:var(--muted)">${p.email||""}</div></div>
@@ -9144,7 +9144,7 @@
                     </div>
                   </td>
                   <td>
-                    <button type="button" onclick="toggleMediaConsent('${p.id}')" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:${p.mediaConsent?"var(--green)":"var(--red)"}">
+                    <button type="button" onclick="event.stopPropagation();toggleMediaConsent('${p.id}')" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:${p.mediaConsent?"var(--green)":"var(--red)"}">
                       <span class="consent-dot ${p.mediaConsent?"c-yes":"c-no"}"></span>
                       ${p.mediaConsent?"Granted":"Pending"}
                     </button>
@@ -9152,11 +9152,11 @@
                   <td>${playerLifecycleBadge(p)}${playerHasMedicalFlag(p)?'<span style="margin-left:4px;font-size:11px" title="Medical flag">⚕</span>':''}</td>
                   <td style="padding-right:14px">
                     <div style="display:flex;gap:5px">
-                      <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px" onclick="playerOpenDetail('${p.id}')">Profile</button>
-                      <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px" onclick="requestMedical('${p.id}')">Medical</button>
+                      <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px" onclick="event.stopPropagation();playerOpenDetail('${p.id}')">Profile</button>
+                      <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px" onclick="event.stopPropagation();requestMedical('${p.id}')">Medical</button>
                       ${playerIsArchived(p)
-                        ? `<button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--green)" onclick="restorePlayer('${p.id}')">Restore</button>`
-                        : `<button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--red)" onclick="archivePlayer('${p.id}')">Archive</button>`}
+                        ? `<button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--green)" onclick="event.stopPropagation();restorePlayer('${p.id}')">Restore</button>`
+                        : `<button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--red)" onclick="event.stopPropagation();archivePlayer('${p.id}')">Archive</button>`}
                     </div>
                   </td>
                 </tr>`).join("")}
