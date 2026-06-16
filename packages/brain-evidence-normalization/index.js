@@ -33,5 +33,9 @@ export {
   signalKeySegments,
   signalKeyNamespace,
 } from './keys.js'
+export {
+  createNormalizerRegistry,
+  compareVersions,
+} from './registry.js'
 export { NormalizationError, NORMALIZATION_ERROR } from './errors.js'
 export * from './types.js'   // JSDoc typedefs only (no runtime values)

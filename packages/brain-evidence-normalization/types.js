@@ -48,4 +48,20 @@
  * @property {Array<{ index:number, problems:string[] }>} problems
  */
 
+/**
+ * An immutable normalizer registry (M51). Every mutating-looking operation
+ * (`register`) returns a NEW registry; the original is never changed. Lookups report
+ * misses as `null`. Listing/ordering is deterministic (sourceType, then version).
+ * @typedef {Object} NormalizerRegistry
+ * @property {number} size
+ * @property {(sourceType:string, version?:string) => boolean} has
+ * @property {(sourceType:string, version:string) => (object|null)} get          exact normalizer
+ * @property {(sourceType:string, version?:string) => (object|null)} resolve     exact, or latest version
+ * @property {(sourceType:string, version:string) => (NormalizerDescriptor|null)} describe
+ * @property {() => ReadonlyArray<NormalizerDescriptor>} list
+ * @property {() => ReadonlyArray<string>} keys                                   `sourceType@version`
+ * @property {() => ReadonlyArray<string>} sourceTypes
+ * @property {(normalizer:NormalizerContract) => NormalizerRegistry} register     returns a NEW registry
+ */
+
 export {}

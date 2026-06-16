@@ -9,8 +9,9 @@
  */
 
 export const NORMALIZATION_ERROR = Object.freeze({
-  INVALID_INPUT:    'invalid_input',     // malformed arguments to a helper
-  INVALID_CONTRACT: 'invalid_contract',  // a normalizer object fails the NormalizerContract
+  INVALID_INPUT:        'invalid_input',         // malformed arguments to a helper
+  INVALID_CONTRACT:     'invalid_contract',      // a normalizer object fails the NormalizerContract
+  DUPLICATE_NORMALIZER: 'duplicate_normalizer',  // two normalizers claim the same sourceType@version
 })
 
 export class NormalizationError extends Error {
