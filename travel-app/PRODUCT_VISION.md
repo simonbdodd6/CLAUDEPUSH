@@ -844,6 +844,45 @@ implemented**.
 - **Tier:** V3.
 - **Possible API:** Client/server render.
 
+## S. Travel Wrapped deepeners (added M31)
+
+The Travel Wrapped Engine (`/travel-wrapped`) composes existing engines into a
+deck. These would enrich the deck — still **not implemented**.
+
+### Oceans & seas visited (curated ocean-basin lookup)
+- **Why:** A "3 oceans explored" Wrapped card. Today no engine yields oceans;
+  it would need a deterministic country/region/island → ocean-basin mapping
+  (region granularity, offline) — composed, not new per-user computation.
+- **Complexity:** Low–Medium (small static basin lookup over visited places).
+- **Tier:** V2.
+- **Possible API:** Internal static dataset (no exact GPS).
+
+### Animated, shareable Wrapped (SwiftUI + export)
+- **Why:** Turn the ordered `sections` deck into the actual animated card-by-card
+  SwiftUI experience and a shareable Wrapped video/story — the data is ready.
+- **Complexity:** Medium (UI + share render).
+- **Tier:** V2 (UI; no new API).
+
+### Soundtracked Wrapped (Spotify / Apple Music)
+- **Why:** Score the Wrapped deck with the year's music — the Spotify-Wrapped feel.
+- **Complexity:** Medium (OAuth; per-period tracks).
+- **Tier:** V2.
+- **Possible API:** Spotify Web API / MusicKit.
+
+### Period-scoped Wrapped (year / trip / decade)
+- **Why:** Generate Wrapped for a single year, a single trip, or a whole decade —
+  the same composition over a filtered window.
+- **Complexity:** Low (parameterise the composition window).
+- **Tier:** V2.
+- **Possible API:** Internal (compose over a date/trip filter).
+
+### Comparative Wrapped ("this year vs last")
+- **Why:** Show deltas between periods ("4 more countries than last year") using
+  the `trend`-style comparison already modelled in Travel DNA.
+- **Complexity:** Low–Medium (diff two composed Wrapped models).
+- **Tier:** V2.
+- **Possible API:** Internal.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

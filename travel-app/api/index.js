@@ -34,6 +34,7 @@ import { buildGlobe } from './globe.js';
 import { buildWorld } from './world.js';
 import { buildAchievements } from './achievements.js';
 import { buildLifetimeTimeline } from './lifetime-timeline.js';
+import { buildTravelWrapped } from './travel-wrapped.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -316,6 +317,15 @@ export function createTravelApi(options = {}) {
     return buildWorld(events, ownedTrips);
   }
 
+  // Travel Wrapped — a Spotify-Wrapped-style deck composed from the existing
+  // engines (no new intelligence). Presentation-only.
+  async function getTravelWrapped(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildTravelWrapped(events, ownedTrips);
+  }
+
   // Lifetime Travel Timeline — the traveller's whole travel life as one
   // chronological story of typed moments, grouped into years/months/eras.
   async function getLifetimeTimeline(token) {
@@ -457,6 +467,7 @@ export function createTravelApi(options = {}) {
     getWorld,
     getAchievements,
     getLifetimeTimeline,
+    getTravelWrapped,
     getTripReadiness,
     getApprovals,
     resolveApproval,

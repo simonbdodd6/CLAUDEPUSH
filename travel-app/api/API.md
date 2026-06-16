@@ -37,6 +37,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/world` | — | `{ profile, countries, regions, islands, cities, eras, connections, repeatVisits, favouriteReturns, longestGaps, heat, statistics, worldStatistics, filters, basedOn }` | lifetime world data layer |
 | GET | `/achievements` | — | `{ summary, categories, series, achievements, earned, timeline, rewards, statistics, basedOn }` | achievement engine (earned from evidence) |
 | GET | `/lifetime-timeline` | — | `{ summary, years, chapters, moments, filters, basedOn }` | lifetime travel timeline (whole life as one story) |
+| GET | `/travel-wrapped` | — | `{ headline, stats, highlights, bySeason, achievements, travelDna, lifeStory, sections, years, basedOn }` | travel wrapped (composed deck, no new intelligence) |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -480,6 +481,33 @@ trip with a companion, returns to the same place, longest trip, most photographe
 day, major achievements, favourite memories, yearly & monthly summaries, travel
 eras (chapters), and relationship / country / island milestones. All
 deterministic, offline-first, no backend leakage.
+
+### Travel Wrapped DTO (M31)
+
+A Spotify-Wrapped-style deck for a future SwiftUI experience. It **composes
+existing engines only** (lifetime timeline, world, journey replay, achievements,
+travel DNA, life story, relationships) — **no new intelligence, no AI, no prose
+generation**. Pure presentation; the UI renders the ordered `sections` deck.
+
+```
+TravelWrapped = {
+  headline: { statement, favouriteDestination, mostActiveYear, span },
+  stats: { countries, cities, islands, continents, travelDays, trips, flights,
+           ferries, dives, photos, beachDays, returnVisits, memories },
+  highlights: { favouriteDestination, favouriteCountry, favouriteCompanion,
+                longestTrip, mostActiveYear, mostPhotographedDay, firstTrip },
+  bySeason: [{ season, moments }],                 // reshape of timeline moments
+  achievements: { totalEarned, completion, rarityScore, topBadges:[{id,title,tier,category,earnedDate}] },
+  travelDna: { headline, topTraits:[{id,label,statement,score}] },
+  lifeStory: [{ id, title, framing }],
+  sections: [{ id, kind, title, value, subtitle, accent, icon }],   // ordered deck
+  years: [{ year, summary, countries, topMoment, topAchievement, bySeason, momentIds }],
+}
+```
+
+Every value is pulled verbatim from the source engines (e.g. `stats.countries ===`
+world `totalCountries`, `stats.dives ===` the diving achievement's current
+count). Deterministic, offline-first, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 
