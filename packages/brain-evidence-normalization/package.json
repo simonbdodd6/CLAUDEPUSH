@@ -1,0 +1,12 @@
+{
+  "name": "@brain/evidence-normalization",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": "./index.js",
+  "description": "Dormant AI Brain evidence-normalization contracts: the single common language every future source normalizer must speak — the NormalizerContract interface, the deterministic NormalizationContext, the canonical signal-key grammar, and pure NormalizedSignal validators (M50). No normalizers, no providers, no storage, no clock, no randomness. Depends only on @brain/evidence-contracts.",
+  "dependencies": {
+    "@brain/evidence-contracts": "0.0.0"
+  }
+}

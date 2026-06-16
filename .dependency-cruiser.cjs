@@ -77,6 +77,16 @@ module.exports = {
       },
     },
     {
+      name: 'evidence-normalization-imports-only-evidence-contracts',
+      comment: '@brain/evidence-normalization (M50, dormant) may import only @brain/evidence-contracts (+ self) — contracts/validators only, no storage/engine/Core.',
+      severity: 'warn',
+      from: { path: '^packages/brain-evidence-normalization/' },
+      to: {
+        path: '^packages/',
+        pathNot: '^packages/(brain-evidence-normalization/|brain-evidence-contracts/)',
+      },
+    },
+    {
       name: 'recommendation-validation-imports-only-evidence-layer',
       comment: '@brain/recommendation-validation (M49, dormant) may import only the evidence layer (contracts/store/citation/weighting) (+ self) — no gateway/engine/Core.',
       severity: 'warn',
