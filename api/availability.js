@@ -161,13 +161,19 @@ export default async function handler(req, res) {
     if (!validSessionId(sessionId)) return res.status(400).json({ error: 'Invalid sessionId' });
     const responses = await loadAvailability(sessionId);
     const list = Object.entries(responses).map(([k, value]) => ({
-      key:         k,
-      label:       typeof value === 'string' ? k     : value?.label       || k,
-      userId:      typeof value === 'string' ? ''    : value?.userId      || '',
-      playerId:    typeof value === 'string' ? ''    : value?.playerId    || '',
-      response:    typeof value === 'string' ? value : value?.response,
-      reason:      typeof value === 'string' ? ''    : value?.reason      || '',
-      respondedAt: typeof value === 'string' ? null  : value?.respondedAt,
+      key:            k,
+      label:          typeof value === 'string' ? k     : value?.label          || k,
+      userId:         typeof value === 'string' ? ''    : value?.userId         || '',
+      playerId:       typeof value === 'string' ? ''    : value?.playerId       || '',
+      // legacyPlayerId is the invite id (inv-…). A player answering while
+      // authenticated is stored under their permanent user_ id, but the coach's
+      // roster record is often keyed by this invite id — so it is frequently the
+      // ONLY shared identifier. The player self-read already matches on it; the
+      // coach read must expose it too or the coach sees "No Reply".
+      legacyPlayerId: typeof value === 'string' ? ''    : value?.legacyPlayerId || '',
+      response:       typeof value === 'string' ? value : value?.response,
+      reason:         typeof value === 'string' ? ''    : value?.reason         || '',
+      respondedAt:    typeof value === 'string' ? null  : value?.respondedAt,
     }));
     return res.status(200).json({ sessionId, responses: list, count: list.length });
   }

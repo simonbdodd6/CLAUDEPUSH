@@ -20086,6 +20086,22 @@
     }
 
     // Pull player availability from Redis and update state.players + re-render session detail
+    // Pure: the lowercased identifiers a coach can match a LIVE availability entry
+    // (from GET /api/availability?sessionId=…) on. legacyPlayerId (the invite id)
+    // is included because a player who answered while authenticated is stored
+    // under their PERMANENT user id, while the coach's roster record is often keyed
+    // by the invite id — frequently the ONLY shared identifier. Omitting it made
+    // the coach show a saved player as "No Reply".
+    function liveAvailabilityEntryKeys(entry = {}) {
+      return [...new Set([entry.key, entry.userId, entry.playerId, entry.legacyPlayerId, entry.label]
+        .map(v => String(v || '').trim().toLowerCase()).filter(Boolean))];
+    }
+    // Pure: the lowercased identifiers a roster player can be matched by.
+    function liveAvailabilityPlayerKeys(player = {}) {
+      return [...new Set([player.userId, player.id, player.legacyPlayerId, player.playerId, player.name]
+        .map(v => String(v || '').trim().toLowerCase()).filter(Boolean))];
+    }
+
     async function refreshLiveAvailability() {
       const btn = document.getElementById('avail-refresh-btn');
       const ts  = document.getElementById('avail-refresh-ts');
@@ -20103,29 +20119,29 @@
           )
         );
 
-        // Build identity→{sid:{response,reason,respondedAt}} map.
+        // Build identity→{sid:{response,reason,respondedAt}} map. Each entry is
+        // indexed under EVERY identifier it carries (incl. legacyPlayerId).
         const byLabel = {};
         results.forEach((data, i) => {
           const sid = sessionIds[i];
-          (data.responses || []).forEach(({ key, label, userId, playerId, response, reason, respondedAt }) => {
-            const keys = [key, userId, playerId, label].filter(Boolean).map(v => String(v).toLowerCase());
-            [...new Set(keys)].forEach(k => {
+          (data.responses || []).forEach((entry) => {
+            const { response, reason, respondedAt } = entry;
+            liveAvailabilityEntryKeys(entry).forEach(k => {
               if (!byLabel[k]) byLabel[k] = {};
               byLabel[k][sid] = { response, reason: reason || '', respondedAt: respondedAt || null };
             });
           });
         });
 
-        // Patch state.players with live responses + reasons.
+        // Patch state.players with live responses + reasons. Match each player by
+        // ANY of its identifiers (userId / id / legacyPlayerId / playerId / name).
         let changed = false;
         state.players.forEach(p => {
-          const nameLower   = p.name.toLowerCase();
-          const idLower     = String(p.id || '').toLowerCase();
-          const userIdLower = String(p.userId || '').toLowerCase();
-          const firstName   = nameLower.split(' ')[0];
-          let live = byLabel[userIdLower] || byLabel[idLower] || byLabel[nameLower];
+          let live = null;
+          for (const k of liveAvailabilityPlayerKeys(p)) { if (byLabel[k]) { live = byLabel[k]; break; } }
           if (!live) {
-            const fallbackKey = Object.keys(byLabel).find(k => k.split(' ')[0] === firstName);
+            const firstName = String(p.name || '').toLowerCase().split(' ')[0];
+            const fallbackKey = firstName && Object.keys(byLabel).find(k => k.split(' ')[0] === firstName);
             if (fallbackKey) live = byLabel[fallbackKey];
           }
           if (!live) return;
