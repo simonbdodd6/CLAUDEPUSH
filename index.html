@@ -22003,7 +22003,41 @@
       }
     });
 
+    // ─── Build / domain safety banner ─────────────────────────────────────────
+    // Standalone diagnostic. Does NOT touch messaging, dashboard, API or state.
+    // Loudly warns when the app is served from the DEPRECATED -gpt test domain
+    // (which carries a stale build); otherwise shows a small, unobtrusive footer
+    // pill with the build sha, environment and current domain.
+    function renderBuildDomainBanner() {
+      try {
+        const host = window.location.hostname || '';
+        const isStaleDomain = host === 'boitsfort-coachseye-gpt.vercel.app';
+        const sha = (typeof _BUILD_INFO === 'object' && _BUILD_INFO.sha) || '—';
+        const env = (typeof _BUILD_INFO === 'object' && _BUILD_INFO.env) || 'local';
+        document.getElementById('buildDomainBanner')?.remove();
+        const el = document.createElement('div');
+        el.id = 'buildDomainBanner';
+        if (isStaleDomain) {
+          el.setAttribute('role', 'alert');
+          el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#b91c1c;color:#fff;'
+            + 'padding:11px 14px;font:600 13px/1.45 system-ui,-apple-system,sans-serif;text-align:center;'
+            + 'box-shadow:0 2px 12px rgba(0,0,0,.4)';
+          el.innerHTML = '⚠ This is an old test domain. Please use '
+            + '<a href="https://boitsfort-coachseye.vercel.app" style="color:#fff;text-decoration:underline;font-weight:800">boitsfort-coachseye.vercel.app</a>.';
+          document.body.appendChild(el);
+          document.body.style.paddingTop = '44px'; // keep content below the fixed warning
+        } else {
+          el.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:9998;background:rgba(15,23,42,.82);'
+            + 'color:#94a3b8;padding:4px 9px;border-radius:999px;border:1px solid rgba(148,163,184,.25);'
+            + 'font:500 10px/1.2 ui-monospace,SFMono-Regular,monospace;pointer-events:none;letter-spacing:.02em';
+          el.textContent = `build ${sha} · ${env} · ${host || 'local'}`;
+          document.body.appendChild(el);
+        }
+      } catch (_) { /* a diagnostic must never break the app */ }
+    }
+
     render();
+    renderBuildDomainBanner();
     initServiceWorker();
     // Check for invite link AFTER render (so modal overlays on top)
     checkInviteParam();
