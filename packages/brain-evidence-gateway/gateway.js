@@ -28,6 +28,7 @@ import { evaluateGatePolicy } from './evaluate-policy.js'
 import { decideGate } from './decide-gate.js'
 import { gateCI } from './gate-ci.js'
 import { serializeGateDecision } from './serialize-decision.js'
+import { serializeGateReport } from './serialize-report.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -220,6 +221,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     serializeGateDecision(decision, options = {}) {
       return serializeGateDecision(decision, options)
+    },
+
+    /**
+     * Serialize an M69 human report into a stable text representation — "text", "json",
+     * or "markdown" (M81). Pure delegation to `serializeGateReport`; returns a string,
+     * writes nothing.
+     * @param {object} report
+     * @param {{ format?: ('text'|'json'|'markdown') }} [options]
+     */
+    serializeGateReport(report, options = {}) {
+      return serializeGateReport(report, options)
     },
   })
 }
