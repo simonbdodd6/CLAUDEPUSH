@@ -34,13 +34,13 @@ const TOP_STAGE = Object.freeze({
 const isObj = (v) => v !== null && typeof v === 'object'
 
 /** Coerce an input (snapshot or raw plan) to an M65 snapshot — reuses the M65 contract. */
-function toSnapshot(x) {
+export function toSnapshot(x) {
   if (x && typeof x === 'object' && typeof x.digest === 'string' && isObj(x.snapshot)) return x
   return snapshotPipelinePlan(x)
 }
 
 /** Attribute a diff path to a stage. `results[N]` → that stage; else the top-level key map. */
-function stageOf(path, snapA, snapB) {
+export function stageOf(path, snapA, snapB) {
   const m = /^results\[(\d+)\]/.exec(path)
   if (m) {
     const i = Number(m[1])

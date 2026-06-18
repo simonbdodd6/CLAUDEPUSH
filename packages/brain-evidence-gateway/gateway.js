@@ -17,6 +17,7 @@ import { EVIDENCE_GATEWAY_STAGES, EVIDENCE_GATEWAY_STAGE_NAMES } from './registr
 import { createGatewayContext, isGatewayContext } from './context.js'
 import { prepareFullPipelinePlan } from './pipeline.js'
 import { snapshotPipelinePlan } from './snapshot.js'
+import { checkPipelineAgainstExpected } from './check.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -75,6 +76,18 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     snapshotRun(input) {
       return snapshotPipelinePlan(prepareFullPipelinePlan(input))
+    },
+
+    /**
+     * Run the dormant pipeline once and check it against a stored EXPECTED snapshot —
+     * a dormant regression gate (M67). Pure composition of `planRun` +
+     * `checkPipelineAgainstExpected`; reads only, persists nothing.
+     * @param {{ registry: object, records: object[], context: object }} input
+     * @param {object} expectedSnapshot  the stored baseline (M65 snapshot or M64 plan)
+     * @param {{ allowlist?: (string[] | { paths?: string[], stages?: string[] }) }} [options]
+     */
+    checkRun(input, expectedSnapshot, options = {}) {
+      return checkPipelineAgainstExpected(prepareFullPipelinePlan(input), expectedSnapshot, options)
     },
   })
 }
