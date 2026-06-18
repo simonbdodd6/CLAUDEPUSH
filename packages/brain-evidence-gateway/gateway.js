@@ -23,6 +23,7 @@ import { formatPipelineSuiteReport } from './check-report.js'
 import { createExpectationSet, resolveExpectationSet } from './expectation-set.js'
 import { runExpectationGate } from './run-gate.js'
 import { emitGateOutcome } from './emit-gate.js'
+import { serializeGateOutcome } from './serialize-gate.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -158,6 +159,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     emitGateOutcome(envelopeOrVerdict, options = {}) {
       return emitGateOutcome(envelopeOrVerdict, options)
+    },
+
+    /**
+     * Serialize an M72 gate outcome into a stable CI text representation — "json",
+     * "line", or "annotations" (M73). Pure delegation to `serializeGateOutcome`;
+     * returns a string, writes nothing.
+     * @param {object} outcome
+     * @param {{ format?: ('json'|'line'|'annotations') }} [options]
+     */
+    serializeGateOutcome(outcome, options = {}) {
+      return serializeGateOutcome(outcome, options)
     },
   })
 }
