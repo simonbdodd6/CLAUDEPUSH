@@ -21379,9 +21379,19 @@
         const data = await res.json();
         let changed = false;
         if (Array.isArray(data.sessions) && data.sessions.length) {
-          // Merge: replace matching IDs, keep local-only sessions appended.
+          // Merge: published sessions are authoritative. A local session is kept
+          // ONLY when the server has nothing equivalent — matched by id OR by
+          // canonical title (the same logical slot). Without the title check, a
+          // coach-created session (generated slug-timestamp id) left the player's
+          // default tue/thu sessions behind as DUPLICATE cards under a different
+          // id, so the player could answer under an id the coach never reads
+          // (Match was immune only because its id "game" never changes). Ids are
+          // never rewritten; genuinely-local sessions (unique title) are retained.
+          const canonTitle = t => String(t || '').trim().toLowerCase().replace(/\s+/g, ' ');
           const serverIds = new Set(data.sessions.map(s => s.id));
-          const localOnly = (state.schedule || []).filter(s => !serverIds.has(s.id));
+          const serverTitles = new Set(data.sessions.map(s => canonTitle(s.title)).filter(Boolean));
+          const localOnly = (state.schedule || []).filter(s =>
+            !serverIds.has(s.id) && !serverTitles.has(canonTitle(s.title)));
           state.schedule = [...data.sessions, ...localOnly];
           changed = true;
         }
