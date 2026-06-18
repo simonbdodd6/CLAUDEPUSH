@@ -22,6 +22,15 @@ const EMPTY = Object.freeze({})   // stageOf falls back to its top-level key map
 
 const isObj = (v) => v !== null && typeof v === 'object'
 
+/** First violation entry of a case (added → removed → changed, each path-sorted), or null. */
+function firstViolationEntry(caseVerdict) {
+  for (const kind of ['added', 'removed', 'changed']) {
+    const bucket = caseVerdict.violations[kind]
+    if (bucket.length) return bucket[0]
+  }
+  return null
+}
+
 /** Coerce an M71 envelope / M68 suite verdict / M67 single verdict to the common suite shape. */
 function resolveSuiteVerdict(input) {
   if (!isObj(input)) {
@@ -48,7 +57,9 @@ function resolveSuiteVerdict(input) {
  *   violations:number, tolerated:number,
  *   affectedStages: ReadonlyArray<string>,
  *   annotations: ReadonlyArray<Readonly<{ caseName:string, stage:string, path:string }>>,
- *   overflow:number
+ *   overflow:number,
+ *   perCase: ReadonlyArray<Readonly<{ name:string, pass:boolean, violations:number, tolerated:number,
+ *     affectedStages:ReadonlyArray<string>, firstViolationPath:(string|null), firstViolationStage:(string|null) }>>
  * }>}
  */
 export function emitGateOutcome(envelopeOrVerdict, options = {}) {
@@ -77,6 +88,21 @@ export function emitGateOutcome(envelopeOrVerdict, options = {}) {
   }
   const overflow = violations - annotations.length
 
+  // per-case enrichment — one entry per evaluated case, in suite order; reuses M68/M72 fields
+  // only (no recomputation beyond reading the existing per-case verdicts).
+  const perCase = suite.cases.map((c) => {
+    const first = firstViolationEntry(c.verdict)
+    return Object.freeze({
+      name: c.name,
+      pass: c.pass,
+      violations: c.verdict.summary.total,
+      tolerated: c.verdict.summary.tolerated,
+      affectedStages: Object.freeze([...c.verdict.affectedStages]),
+      firstViolationPath: first ? first.path : null,
+      firstViolationStage: first ? stageOf(first.path, EMPTY, EMPTY) : null,
+    })
+  })
+
   const parts = [`gate=${status}`, `cases=${suite.passed}/${suite.total}`]
   if (suite.firstFailingCase !== null && suite.firstFailingCase !== undefined) {
     parts.push(`first=${suite.firstFailingCase}`)
@@ -94,5 +120,6 @@ export function emitGateOutcome(envelopeOrVerdict, options = {}) {
     affectedStages: Object.freeze([...suite.affectedStages]),
     annotations: Object.freeze(annotations),
     overflow,
+    perCase: Object.freeze(perCase),
   })
 }
