@@ -5716,6 +5716,12 @@
           player = {
             id: playerId,
             userId: profile.userId,
+            // Carry the invite id (legacyPlayerId). A player who answered while
+            // authenticated is stored under their permanent user_ id, but the
+            // coach's roster row is frequently keyed by the invite id — so this is
+            // often the ONLY identifier shared with the availability reply. Without
+            // it the reply cannot attach and the coach sees "No Reply".
+            legacyPlayerId: profile.legacyPlayerId || '',
             name,
             position: profile.position || 'TBC',
             status: 'no-reply',
@@ -5734,7 +5740,7 @@
           state.players.push(player);
           changed = true;
         } else {
-          const before = JSON.stringify({ id: player.id, userId: player.userId, name: player.name, email: player.email, position: player.position });
+          const before = JSON.stringify({ id: player.id, userId: player.userId, legacyPlayerId: player.legacyPlayerId, name: player.name, email: player.email, position: player.position });
           const profileLooksPermanent = isPermanentPlayerUserId(profile.userId);
           if (profileLooksPermanent) {
             // Permanent user IDs (user_*) are the canonical messaging ID
@@ -5749,10 +5755,13 @@
             player.id = player.id || playerId;
           }
           player.userId = player.userId || profile.userId;
+          // Backfill the invite id onto existing roster rows too, so a reply
+          // sharing only the legacyPlayerId still attaches (see create branch).
+          player.legacyPlayerId = player.legacyPlayerId || profile.legacyPlayerId || '';
           player.name = player.name || name;
           player.email = player.email || email;
           player.position = player.position || profile.position || 'TBC';
-          changed = changed || before !== JSON.stringify({ id: player.id, userId: player.userId, name: player.name, email: player.email, position: player.position });
+          changed = changed || before !== JSON.stringify({ id: player.id, userId: player.userId, legacyPlayerId: player.legacyPlayerId, name: player.name, email: player.email, position: player.position });
         }
 
         const existingUser = state.users.find(item => item.id === profile.userId);
