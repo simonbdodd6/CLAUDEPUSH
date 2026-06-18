@@ -139,7 +139,14 @@ export default async function handler(req, res) {
       const identity = availabilityIdentityFromSession(sessionContext);
       if (!identity) return res.status(200).json({ responses: {} });
       const result = {};
-      const sessionIds = await activeSessionIds(sessionContext?.teamMember?.teamId || sessionContext?.session?.teamId);
+      // The player's app POSTs under its CLIENT schedule ids, which may be the
+      // coach's published ids OR the default tue/thu/game (kept as local-only
+      // sessions when the coach published custom-id sessions). The read-back must
+      // cover the SAME universe — otherwise an answer saved under e.g. "tue" while
+      // the team publishes "training-1-xyz" is never read and myResponse returns {}.
+      // Union the published ids with the defaults the client can post under.
+      const baseTeamId = sessionContext?.teamMember?.teamId || sessionContext?.session?.teamId;
+      const sessionIds = [...new Set([...(await activeSessionIds(baseTeamId)), ...DEMO_SESSIONS])];
       await Promise.all(sessionIds.map(async sid => {
         const data = await loadAvailability(sid);
         const entry = Object.values(data).find(v =>
