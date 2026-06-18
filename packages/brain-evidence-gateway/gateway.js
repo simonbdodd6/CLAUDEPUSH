@@ -35,6 +35,7 @@ import { compareGateManifests } from './compare-manifests.js'
 import { serializeGateManifest } from './serialize-manifest.js'
 import { summarizeManifestComparison } from './summarize-comparison.js'
 import { verifyGateManifest } from './verify-manifest.js'
+import { gateManifestSigningPayload } from './signing-payload.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -301,6 +302,16 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     verifyGateManifest(manifest) {
       return verifyGateManifest(manifest)
+    },
+
+    /**
+     * Expose the deterministic signing payload for an M83 gate manifest — { pipelineDigest,
+     * canonical } — groundwork for future attestation/signing (M88). No crypto, no real
+     * signing. Pure delegation to `gateManifestSigningPayload`; reads only, writes nothing.
+     * @param {object} manifest
+     */
+    gateManifestSigningPayload(manifest) {
+      return gateManifestSigningPayload(manifest)
     },
   })
 }
