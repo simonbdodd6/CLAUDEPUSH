@@ -30,6 +30,7 @@ import { gateCI } from './gate-ci.js'
 import { serializeGateDecision } from './serialize-decision.js'
 import { serializeGateReport } from './serialize-report.js'
 import { serializeGateCI } from './serialize-ci.js'
+import { createGateManifest } from './manifest.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -244,6 +245,16 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     serializeGateCI(result, options = {}) {
       return serializeGateCI(result, options)
+    },
+
+    /**
+     * Build a deterministic, deeply-frozen provenance manifest describing a gateCI result —
+     * for audit, replay, caching, signatures (M83). Pure delegation to `createGateManifest`;
+     * reads only, describes the result only (reruns nothing), persists nothing.
+     * @param {object} result   a gateCI result { envelope, outcome, decision }
+     */
+    createGateManifest(result) {
+      return createGateManifest(result)
     },
   })
 }
