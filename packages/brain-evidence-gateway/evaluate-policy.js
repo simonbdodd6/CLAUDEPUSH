@@ -25,7 +25,11 @@ const isObj = (v) => v !== null && typeof v === 'object'
 const isInt = (v) => typeof v === 'number' && Number.isInteger(v)
 const isStringArray = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string')
 
-const ALLOWED_KEYS = Object.freeze(['requirePass', 'maxViolations', 'maxTolerated', 'forbiddenStages', 'allowedFailingCases'])
+const ALLOWED_KEYS = Object.freeze([
+  'requirePass', 'maxViolations', 'maxTolerated', 'forbiddenStages', 'allowedFailingCases',
+  // M78 — per-case budgets (additive; only present in policyApplied when supplied)
+  'maxViolationsPerCase', 'maxToleratedPerCase', 'forbiddenStagesPerCase',
+])
 
 /** Sorted, de-duplicated copy of a string array. */
 const uniqSorted = (arr) => [...new Set(arr)].sort()
@@ -82,7 +86,28 @@ function normalizePolicy(policy) {
     allowedFailingCases = uniqSorted(policy.allowedFailingCases)
   }
 
-  return Object.freeze({ requirePass, maxViolations, maxTolerated, forbiddenStages, allowedFailingCases })
+  // base policy — shape preserved exactly for additive compatibility
+  const applied = { requirePass, maxViolations, maxTolerated, forbiddenStages, allowedFailingCases }
+
+  // M78 per-case budgets — only added to policyApplied when actually supplied
+  if (policy.maxViolationsPerCase !== undefined) {
+    if (!isInt(policy.maxViolationsPerCase) || policy.maxViolationsPerCase < 0) {
+      throw new TypeError('evaluateGatePolicy: maxViolationsPerCase must be a non-negative integer')
+    }
+    applied.maxViolationsPerCase = policy.maxViolationsPerCase
+  }
+  if (policy.maxToleratedPerCase !== undefined) {
+    if (!isInt(policy.maxToleratedPerCase) || policy.maxToleratedPerCase < 0) {
+      throw new TypeError('evaluateGatePolicy: maxToleratedPerCase must be a non-negative integer')
+    }
+    applied.maxToleratedPerCase = policy.maxToleratedPerCase
+  }
+  if (policy.forbiddenStagesPerCase !== undefined) {
+    if (!isStringArray(policy.forbiddenStagesPerCase)) throw new TypeError('evaluateGatePolicy: forbiddenStagesPerCase must be an array of strings')
+    applied.forbiddenStagesPerCase = uniqSorted(policy.forbiddenStagesPerCase)
+  }
+
+  return Object.freeze(applied)
 }
 
 /** Minimal shape check for an M72 outcome. */
@@ -99,7 +124,8 @@ function assertOutcome(outcome) {
  *
  * @param {object} outcome  an outcome from `emitGateOutcome` (M72)
  * @param {{ requirePass?:boolean, maxViolations?:number, maxTolerated?:number,
- *           forbiddenStages?:string[], allowedFailingCases?:string[] }} [policy]
+ *           forbiddenStages?:string[], allowedFailingCases?:string[],
+ *           maxViolationsPerCase?:number, maxToleratedPerCase?:number, forbiddenStagesPerCase?:string[] }} [policy]
  * @returns {Readonly<{ ok:boolean, reasons:ReadonlyArray<string>, policyApplied:Readonly<object> }>}
  */
 export function evaluateGatePolicy(outcome, policy = {}) {
@@ -145,6 +171,42 @@ export function evaluateGatePolicy(outcome, policy = {}) {
   if (policyApplied.forbiddenStages.length) {
     const matched = policyApplied.forbiddenStages.filter((s) => effAffectedStages.includes(s))
     if (matched.length) reasons.push(`forbiddenStages: ${matched.join(', ')}`)
+  }
+
+  // 5–7 — per-case budgets (M78). Reuse outcome.perCase only; allowed failing cases are
+  // excused first; rules are checked in field order, cases in perCase (suite) order.
+  const hasPerCaseRule = policyApplied.maxViolationsPerCase !== undefined ||
+    policyApplied.maxToleratedPerCase !== undefined ||
+    policyApplied.forbiddenStagesPerCase !== undefined
+  if (hasPerCaseRule) {
+    if (!Array.isArray(outcome.perCase)) {
+      throw new TypeError('evaluateGatePolicy: per-case policy fields require an M72 outcome with a perCase array (M77+)')
+    }
+    const cases = outcome.perCase.filter((pc) => !allowed.has(pc.name))
+
+    // 5 — maxViolationsPerCase
+    if (policyApplied.maxViolationsPerCase !== undefined) {
+      for (const pc of cases) {
+        if (pc.violations > policyApplied.maxViolationsPerCase) {
+          reasons.push(`${pc.name} exceeded maxViolationsPerCase (${pc.violations} > ${policyApplied.maxViolationsPerCase})`)
+        }
+      }
+    }
+    // 6 — maxToleratedPerCase
+    if (policyApplied.maxToleratedPerCase !== undefined) {
+      for (const pc of cases) {
+        if (pc.tolerated > policyApplied.maxToleratedPerCase) {
+          reasons.push(`${pc.name} exceeded maxToleratedPerCase (${pc.tolerated} > ${policyApplied.maxToleratedPerCase})`)
+        }
+      }
+    }
+    // 7 — forbiddenStagesPerCase
+    if (policyApplied.forbiddenStagesPerCase !== undefined && policyApplied.forbiddenStagesPerCase.length) {
+      for (const pc of cases) {
+        const matched = policyApplied.forbiddenStagesPerCase.filter((s) => pc.affectedStages.includes(s))
+        if (matched.length) reasons.push(`${pc.name} affected forbidden stage(s): ${matched.join(', ')}`)
+      }
+    }
   }
 
   return deepFreeze({ ok: reasons.length === 0, reasons, policyApplied })
