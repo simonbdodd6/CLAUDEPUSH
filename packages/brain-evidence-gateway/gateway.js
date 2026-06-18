@@ -36,6 +36,7 @@ import { serializeGateManifest } from './serialize-manifest.js'
 import { summarizeManifestComparison } from './summarize-comparison.js'
 import { verifyGateManifest } from './verify-manifest.js'
 import { gateManifestSigningPayload } from './signing-payload.js'
+import { verifyGateManifestSignature } from './verify-signature.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -312,6 +313,18 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     gateManifestSigningPayload(manifest) {
       return gateManifestSigningPayload(manifest)
+    },
+
+    /**
+     * Verify a signature over an M83 manifest's signing payload using an injected,
+     * external crypto verifier (M89). No crypto is imported or implemented here. Pure
+     * delegation to `verifyGateManifestSignature`; reads only.
+     * @param {object} manifest
+     * @param {*} signature
+     * @param {(payload: object, signature:*) => boolean} verifyFn
+     */
+    verifyGateManifestSignature(manifest, signature, verifyFn) {
+      return verifyGateManifestSignature(manifest, signature, verifyFn)
     },
   })
 }
