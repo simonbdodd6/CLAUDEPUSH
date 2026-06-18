@@ -20,6 +20,7 @@ import { snapshotPipelinePlan } from './snapshot.js'
 import { checkPipelineAgainstExpected } from './check.js'
 import { checkPipelineSuite } from './check-suite.js'
 import { formatPipelineSuiteReport } from './check-report.js'
+import { createExpectationSet, resolveExpectationSet } from './expectation-set.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -113,6 +114,25 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     formatSuiteReport(verdict, options = {}) {
       return formatPipelineSuiteReport(verdict, options)
+    },
+
+    /**
+     * Assemble a frozen, named expectation-set registry (M70). Pure data assembly —
+     * runs no checks; reads only.
+     * @param {Array<object>} entries
+     */
+    createExpectationSet(entries) {
+      return createExpectationSet(entries)
+    },
+
+    /**
+     * Resolve an expectation set against fresh runs into an M68-compatible cases array
+     * (M70). Pure data assembly; reads only.
+     * @param {object} expectationSet
+     * @param {(Record<string, object>|Array<object>)} [runs]
+     */
+    resolveExpectationSet(expectationSet, runs = {}) {
+      return resolveExpectationSet(expectationSet, runs)
     },
   })
 }
