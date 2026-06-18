@@ -5706,9 +5706,18 @@
         const email = profile.email || profileUser.email || '';
         const emailKey = String(email || '').toLowerCase();
         const nameKey = canonicalIdentityNameKey(name);
+        // Also bridge by the invite id (legacyPlayerId). A coach roster row is
+        // often keyed by the invite id while the player later registered under a
+        // permanent user_ id with a DIFFERENT display name — so id/userId/name all
+        // differ and only the invite id is shared. Without this bridge the row
+        // never links to its profile, stays orphaned, and shows "No Reply" even
+        // though the availability reply exists. Invite ids are unique, so this can
+        // never merge two different people.
+        const profLegacyId = String(profile.legacyPlayerId || '');
         let player = state.players.find(item =>
           String(item.id || '') === playerId ||
           String(item.userId || '') === profile.userId ||
+          (profLegacyId && (String(item.legacyPlayerId || '') === profLegacyId || String(item.id || '') === profLegacyId)) ||
           (emailKey && String(item.email || '').toLowerCase() === emailKey) ||
           (nameKey && canonicalIdentityNameKey(item.name) === nameKey)
         );
@@ -5791,9 +5800,11 @@
       state.players = state.players.filter(player => {
         const uid = String(player.userId || '');
         const pid = String(player.id || '');
-        if (!uid && !pid) return true;
+        const lid = String(player.legacyPlayerId || '');
+        if (!uid && !pid && !lid) return true;
         return serverProfileUserIds.has(uid) || serverProfileUserIds.has(pid) ||
-               serverProfileLegacyIds.has(pid) || serverProfileLegacyIds.has(uid);
+               serverProfileLegacyIds.has(pid) || serverProfileLegacyIds.has(uid) ||
+               serverProfileLegacyIds.has(lid);
       });
       if (state.players.length !== beforePrune) {
         console.log('[CLEANUP] Pruned', beforePrune - state.players.length, 'non-canonical players from local roster');
