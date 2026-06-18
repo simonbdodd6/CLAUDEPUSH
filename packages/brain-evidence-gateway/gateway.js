@@ -24,6 +24,7 @@ import { createExpectationSet, resolveExpectationSet } from './expectation-set.j
 import { runExpectationGate } from './run-gate.js'
 import { emitGateOutcome } from './emit-gate.js'
 import { serializeGateOutcome } from './serialize-gate.js'
+import { evaluateGatePolicy } from './evaluate-policy.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -170,6 +171,16 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     serializeGateOutcome(outcome, options = {}) {
       return serializeGateOutcome(outcome, options)
+    },
+
+    /**
+     * Evaluate a declarative release policy against an existing M72 gate outcome (M74).
+     * Pure delegation to `evaluateGatePolicy`; reads only, reruns nothing, persists nothing.
+     * @param {object} outcome
+     * @param {object} [policy]
+     */
+    evaluateGatePolicy(outcome, policy = {}) {
+      return evaluateGatePolicy(outcome, policy)
     },
   })
 }

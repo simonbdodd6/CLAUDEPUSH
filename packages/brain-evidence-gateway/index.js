@@ -32,4 +32,5 @@ export { createExpectationSet, resolveExpectationSet } from './expectation-set.j
 export { runExpectationGate } from './run-gate.js'
 export { emitGateOutcome } from './emit-gate.js'
 export { serializeGateOutcome } from './serialize-gate.js'
+export { evaluateGatePolicy } from './evaluate-policy.js'
 export * from './types.js'
