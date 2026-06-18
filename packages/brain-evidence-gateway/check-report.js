@@ -39,7 +39,7 @@ function isSuiteVerdict(v) {
 }
 
 /** Normalise either verdict to a common suite shape so one code path handles both. */
-function toSuiteShape(verdict) {
+export function toSuiteShape(verdict) {
   if (isSuiteVerdict(verdict)) return verdict
   if (isSingleVerdict(verdict)) {
     return {

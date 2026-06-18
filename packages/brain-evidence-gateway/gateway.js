@@ -22,6 +22,7 @@ import { checkPipelineSuite } from './check-suite.js'
 import { formatPipelineSuiteReport } from './check-report.js'
 import { createExpectationSet, resolveExpectationSet } from './expectation-set.js'
 import { runExpectationGate } from './run-gate.js'
+import { emitGateOutcome } from './emit-gate.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -146,6 +147,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     runExpectationGate(expectationSet, runs = {}, options = {}) {
       return runExpectationGate(expectationSet, runs, options)
+    },
+
+    /**
+     * Convert an M71 envelope / M68 suite verdict / M67 single verdict into a
+     * deterministic machine-readable gate outcome for CI (M72). Pure delegation to
+     * `emitGateOutcome`; reads only, persists nothing.
+     * @param {object} envelopeOrVerdict
+     * @param {{ maxAnnotations?: number }} [options]
+     */
+    emitGateOutcome(envelopeOrVerdict, options = {}) {
+      return emitGateOutcome(envelopeOrVerdict, options)
     },
   })
 }
