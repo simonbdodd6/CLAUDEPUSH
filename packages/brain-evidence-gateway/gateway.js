@@ -25,6 +25,7 @@ import { runExpectationGate } from './run-gate.js'
 import { emitGateOutcome } from './emit-gate.js'
 import { serializeGateOutcome } from './serialize-gate.js'
 import { evaluateGatePolicy } from './evaluate-policy.js'
+import { decideGate } from './decide-gate.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -181,6 +182,18 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     evaluateGatePolicy(outcome, policy = {}) {
       return evaluateGatePolicy(outcome, policy)
+    },
+
+    /**
+     * Turn a policy decision into a CI-friendly release decision — { ok, exitCode (0|1),
+     * reasons, line, policyApplied } (M75). Pure delegation to `decideGate`; reads only,
+     * reruns nothing, persists nothing.
+     * @param {object} outcomeOrEnvelope
+     * @param {object} [policy]
+     * @param {{ format?: ('line'|'full') }} [options]
+     */
+    decideGate(outcomeOrEnvelope, policy = {}, options = {}) {
+      return decideGate(outcomeOrEnvelope, policy, options)
     },
   })
 }
