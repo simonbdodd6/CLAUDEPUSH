@@ -27,4 +27,5 @@ export { snapshotPipelinePlan, canonicalStringify, pipelineDigest } from './snap
 export { diffPipelineSnapshots } from './diff.js'
 export { checkPipelineAgainstExpected } from './check.js'
 export { checkPipelineSuite } from './check-suite.js'
+export { formatPipelineSuiteReport } from './check-report.js'
 export * from './types.js'

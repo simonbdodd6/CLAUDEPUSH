@@ -19,6 +19,7 @@ import { prepareFullPipelinePlan } from './pipeline.js'
 import { snapshotPipelinePlan } from './snapshot.js'
 import { checkPipelineAgainstExpected } from './check.js'
 import { checkPipelineSuite } from './check-suite.js'
+import { formatPipelineSuiteReport } from './check-report.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -101,6 +102,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     checkSuite(cases, options = {}) {
       return checkPipelineSuite(cases, options)
+    },
+
+    /**
+     * Format an M68 suite verdict (or a single M67 verdict) into a deterministic,
+     * human-readable report (M69). Pure delegation to `formatPipelineSuiteReport`;
+     * reads only, persists nothing.
+     * @param {object} verdict  an M68 suite verdict or an M67 single verdict
+     * @param {{ maxEntriesPerCase?: number }} [options]
+     */
+    formatSuiteReport(verdict, options = {}) {
+      return formatPipelineSuiteReport(verdict, options)
     },
   })
 }
