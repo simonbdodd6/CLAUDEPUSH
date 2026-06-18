@@ -7375,6 +7375,7 @@
               <div style="display:flex;align-items:center;gap:8px">
                 <span id="avail-refresh-ts" style="font-size:11px;color:var(--muted)">Loading…</span>
                 <button id="avail-refresh-btn" class="btn" type="button" onclick="refreshLiveAvailability()" style="font-size:11px;padding:4px 10px">↺ Refresh</button>
+                ${location.search.includes('debugAvailability=1') ? `<button id="avail-debug-btn" class="btn" type="button" onclick="debugAvailabilityMatch()" style="font-size:11px;padding:4px 10px">Debug Availability Match</button>` : ''}
               </div>
             </div>
             <p class="muted">Who is coming, who is not, who still needs chasing.</p>
@@ -20223,6 +20224,74 @@
         if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh'; }
       }
     }
+
+    // TEMP DIAGNOSTIC (Phase 25D): dump the coach roster ↔ API availability match
+    // for the currently selected session. Console: window.debugAvailabilityMatch().
+    // Also wired to a "Debug Availability Match" button shown only with
+    // ?debugAvailability=1 in the URL. Read-only — mutates nothing.
+    async function debugAvailabilityMatch() {
+      const sid = state.messageDetail || (state.schedule && state.schedule[0] && state.schedule[0].id) || 'game';
+      console.log('%c[debugAvailabilityMatch] selected session = ' + sid, 'font-weight:bold;font-size:13px');
+      let responses = [];
+      try {
+        const data = await fetch('/api/availability?sessionId=' + encodeURIComponent(sid)).then(r => r.json());
+        responses = Array.isArray(data.responses) ? data.responses : [];
+      } catch (e) { console.warn('[debugAvailabilityMatch] availability fetch failed', e); }
+
+      const roster = (typeof canonicalVisiblePlayers === 'function') ? canonicalVisiblePlayers() : (state.players || []);
+
+      const rosterTable = roster.map(p => ({
+        name: p.name, id: p.id, userId: p.userId || '', playerId: p.playerId || '',
+        legacyPlayerId: p.legacyPlayerId || '', email: p.email || '',
+        matchKeys: liveAvailabilityPlayerKeys(p).join(' | '),
+        allObjectKeys: Object.keys(p).join(','),
+      }));
+      console.log('%c--- COACH ROSTER ROWS (' + roster.length + ') ---', 'font-weight:bold');
+      (console.table ? console.table : console.log)(rosterTable);
+
+      const entryTable = responses.map(e => ({
+        label: e.label, key: e.key, userId: e.userId || '', playerId: e.playerId || '',
+        legacyPlayerId: e.legacyPlayerId || '', email: e.email || '(not in response)',
+        matchKeys: liveAvailabilityEntryKeys(e).join(' | '),
+      }));
+      console.log('%c--- API RESPONSES (' + responses.length + ') for ' + sid + ' ---', 'font-weight:bold');
+      (console.table ? console.table : console.log)(entryTable);
+
+      const entryKeySet = new Set();
+      responses.forEach(e => liveAvailabilityEntryKeys(e).forEach(k => entryKeySet.add(k)));
+
+      const matched = [], unmatched = [];
+      roster.forEach(p => {
+        const overlap = liveAvailabilityPlayerKeys(p).filter(k => entryKeySet.has(k));
+        (overlap.length ? matched : unmatched).push({ name: p.name, via: overlap.join(',') });
+      });
+      console.log('%c--- MATCHED (' + matched.length + ') ---', 'color:green;font-weight:bold');
+      (console.table ? console.table : console.log)(matched);
+      console.log('%c--- NOT MATCHED (' + unmatched.length + ') ---', 'color:#d97706;font-weight:bold');
+      (console.table ? console.table : console.log)(unmatched.map(m => ({ name: m.name })));
+
+      const target = roster.find(p => /newest test p/i.test(String(p.name || '')));
+      console.log('%c--- "newest test player" detail ---', 'font-weight:bold;font-size:13px');
+      if (!target) {
+        console.log('No roster row matching /newest test p/i found. Roster names:', roster.map(p => p.name));
+      } else {
+        const tKeys = liveAvailabilityPlayerKeys(target);
+        const overlap = tKeys.filter(k => entryKeySet.has(k));
+        console.log('roster row     :', JSON.stringify({ id: target.id, userId: target.userId || '', playerId: target.playerId || '', legacyPlayerId: target.legacyPlayerId || '', email: target.email || '', name: target.name }));
+        console.log('roster matchKeys:', tKeys);
+        console.log('all entry keys :', [...entryKeySet]);
+        console.log('overlap        :', overlap);
+        if (!overlap.length) {
+          console.log('%cNO MATCH — none of the roster row keys appear in any API response key. ' +
+            'The reply exists but shares no userId / playerId / legacyPlayerId / name with this roster row, ' +
+            'so the board shows "No Reply".', 'color:red;font-weight:bold');
+        } else {
+          console.log('%cMATCHES via: ' + overlap.join(','), 'color:green;font-weight:bold');
+        }
+      }
+      return { session: sid, roster: rosterTable, responses: entryTable, matched, unmatched };
+    }
+    if (typeof window !== 'undefined') window.debugAvailabilityMatch = debugAvailabilityMatch;
 
     async function loadLiveResponses() {
       const panel = document.getElementById("live-responses-panel");
