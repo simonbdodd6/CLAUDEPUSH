@@ -31,6 +31,7 @@ import { serializeGateDecision } from './serialize-decision.js'
 import { serializeGateReport } from './serialize-report.js'
 import { serializeGateCI } from './serialize-ci.js'
 import { createGateManifest } from './manifest.js'
+import { compareGateManifests } from './compare-manifests.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -255,6 +256,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     createGateManifest(result) {
       return createGateManifest(result)
+    },
+
+    /**
+     * Compare two M83 gate manifests and report what changed — a deterministic, deeply
+     * frozen diff (M84). Pure delegation to `compareGateManifests`; reads manifest fields
+     * only, re-digests nothing, reruns nothing.
+     * @param {object} a   an M83 manifest (before)
+     * @param {object} b   an M83 manifest (after)
+     */
+    compareGateManifests(a, b) {
+      return compareGateManifests(a, b)
     },
   })
 }
