@@ -32,6 +32,7 @@ import { serializeGateReport } from './serialize-report.js'
 import { serializeGateCI } from './serialize-ci.js'
 import { createGateManifest } from './manifest.js'
 import { compareGateManifests } from './compare-manifests.js'
+import { serializeGateManifest } from './serialize-manifest.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -267,6 +268,16 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     compareGateManifests(a, b) {
       return compareGateManifests(a, b)
+    },
+
+    /**
+     * Serialize an M83 gate manifest into a stable text representation — "json" or "line"
+     * (M85). Pure delegation to `serializeGateManifest`; returns a string, writes nothing.
+     * @param {object} manifest
+     * @param {{ format?: ('json'|'line') }} [options]
+     */
+    serializeGateManifest(manifest, options = {}) {
+      return serializeGateManifest(manifest, options)
     },
   })
 }
