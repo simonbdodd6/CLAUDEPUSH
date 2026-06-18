@@ -33,6 +33,7 @@ import { serializeGateCI } from './serialize-ci.js'
 import { createGateManifest } from './manifest.js'
 import { compareGateManifests } from './compare-manifests.js'
 import { serializeGateManifest } from './serialize-manifest.js'
+import { summarizeManifestComparison } from './summarize-comparison.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -278,6 +279,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     serializeGateManifest(manifest, options = {}) {
       return serializeGateManifest(manifest, options)
+    },
+
+    /**
+     * Summarize an M84 manifest comparison into a stable text representation — "line",
+     * "text", "markdown", or "json" (M86). Pure delegation to
+     * `summarizeManifestComparison`; returns a string, writes nothing.
+     * @param {object} comparison
+     * @param {{ format?: ('line'|'text'|'markdown'|'json') }} [options]
+     */
+    summarizeManifestComparison(comparison, options = {}) {
+      return summarizeManifestComparison(comparison, options)
     },
   })
 }
