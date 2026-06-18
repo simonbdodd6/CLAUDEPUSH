@@ -37,6 +37,7 @@ import { summarizeManifestComparison } from './summarize-comparison.js'
 import { verifyGateManifest } from './verify-manifest.js'
 import { gateManifestSigningPayload } from './signing-payload.js'
 import { verifyGateManifestSignature } from './verify-signature.js'
+import { attestationEnvelope } from './attestation-envelope.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -325,6 +326,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     verifyGateManifestSignature(manifest, signature, verifyFn) {
       return verifyGateManifestSignature(manifest, signature, verifyFn)
+    },
+
+    /**
+     * Package an M83 manifest's M88 signing payload with optional, externally-supplied
+     * signature metadata into a frozen transport envelope (M90). No crypto/signing/hashing.
+     * Pure delegation to `attestationEnvelope`; reads only.
+     * @param {object} manifest
+     * @param {{ signature?:*, keyId?:*, algorithm?:* }} [options]
+     */
+    attestationEnvelope(manifest, options = {}) {
+      return attestationEnvelope(manifest, options)
     },
   })
 }
