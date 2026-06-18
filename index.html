@@ -20122,11 +20122,38 @@
         .map(v => String(v || '').trim().toLowerCase()).filter(Boolean))];
     }
 
+    // The Availability board renders saved-roster rows (loadRosterFromServer) that
+    // may PRE-DATE the player registering — so they carry no permanent userId /
+    // legacyPlayerId and a coach-typed name that differs from the registered
+    // displayName. Such a row then shares NO identifier with the availability reply
+    // and shows "No Reply" even though the reply exists. syncIdentityStateToLocalRoster
+    // links each saved row to its server profile (by email / name / invite id) and
+    // stamps the canonical userId + legacyPlayerId, after which the reply attaches.
+    // The Players section already runs this; the Availability board did not — so do
+    // it here, throttled so the 30s poll never refetches identity every tick.
+    let _availRosterLinkedAt = 0;
+    async function ensureCoachRosterIdentityLinked() {
+      if (!isCoach()) return;
+      const now = Date.now();
+      if (now - _availRosterLinkedAt < 60000) return;
+      _availRosterLinkedAt = now;
+      try {
+        const data = await fetch('/api/identity').then(r => r.ok ? r.json() : null);
+        if (data && data.ok !== false && syncIdentityStateToLocalRoster(data)) {
+          saveState('Roster identity linked for availability');
+        }
+      } catch { /* non-critical — board still shows local state */ }
+    }
+
     async function refreshLiveAvailability() {
       const btn = document.getElementById('avail-refresh-btn');
       const ts  = document.getElementById('avail-refresh-ts');
       if (btn) { btn.disabled = true; btn.textContent = '↺ Refreshing…'; }
       try {
+        // Link saved roster rows to their server identity BEFORE matching, so a
+        // pre-registration row (no userId/legacyPlayerId, divergent name) gains the
+        // canonical ids and its reply attaches instead of showing "No Reply".
+        await ensureCoachRosterIdentityLinked();
         // Fetch all known sessions dynamically from state.schedule
         const sessionIds = (state.schedule || []).map(s => s.id).filter(Boolean);
         if (!sessionIds.length) return;
