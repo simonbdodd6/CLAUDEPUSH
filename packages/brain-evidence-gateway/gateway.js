@@ -38,6 +38,7 @@ import { verifyGateManifest } from './verify-manifest.js'
 import { gateManifestSigningPayload } from './signing-payload.js'
 import { verifyGateManifestSignature } from './verify-signature.js'
 import { attestationEnvelope } from './attestation-envelope.js'
+import { verifyAttestationEnvelope } from './verify-envelope.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -337,6 +338,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     attestationEnvelope(manifest, options = {}) {
       return attestationEnvelope(manifest, options)
+    },
+
+    /**
+     * Verify an M90 attestation envelope using an injected, external crypto verifier
+     * (M91). No crypto is imported or implemented here; the envelope's own payload is used
+     * as-is. Pure delegation to `verifyAttestationEnvelope`; reads only.
+     * @param {object} envelope
+     * @param {(payload: object, signature:*) => boolean} verifyFn
+     */
+    verifyAttestationEnvelope(envelope, verifyFn) {
+      return verifyAttestationEnvelope(envelope, verifyFn)
     },
   })
 }
