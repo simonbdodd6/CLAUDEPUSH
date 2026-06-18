@@ -26,6 +26,7 @@ import { emitGateOutcome } from './emit-gate.js'
 import { serializeGateOutcome } from './serialize-gate.js'
 import { evaluateGatePolicy } from './evaluate-policy.js'
 import { decideGate } from './decide-gate.js'
+import { gateCI } from './gate-ci.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -194,6 +195,19 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     decideGate(outcomeOrEnvelope, policy = {}, options = {}) {
       return decideGate(outcomeOrEnvelope, policy, options)
+    },
+
+    /**
+     * Run the complete dormant verification pipeline in one call — resolve (M70) → suite
+     * (M68) → report (M69) → outcome (M72) → policy (M74) → decision (M75) — returning a
+     * frozen { envelope, outcome, decision } (M76). Pure delegation to `gateCI`; reads
+     * only, persists nothing.
+     * @param {object} expectationSet
+     * @param {(Record<string, object>|Array<object>)} [runs]
+     * @param {{ allowlist?:any, maxEntriesPerCase?:number, policy?:object, decisionFormat?:('line'|'full') }} [options]
+     */
+    gateCI(expectationSet, runs = {}, options = {}) {
+      return gateCI(expectationSet, runs, options)
     },
   })
 }
