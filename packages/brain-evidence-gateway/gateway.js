@@ -18,6 +18,7 @@ import { createGatewayContext, isGatewayContext } from './context.js'
 import { prepareFullPipelinePlan } from './pipeline.js'
 import { snapshotPipelinePlan } from './snapshot.js'
 import { checkPipelineAgainstExpected } from './check.js'
+import { checkPipelineSuite } from './check-suite.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -88,6 +89,18 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     checkRun(input, expectedSnapshot, options = {}) {
       return checkPipelineAgainstExpected(prepareFullPipelinePlan(input), expectedSnapshot, options)
+    },
+
+    /**
+     * Run a suite of expectation cases through the dormant gate and aggregate the
+     * verdicts — a multi-case regression gate (M68). Pure delegation to
+     * `checkPipelineSuite`; reads only, persists nothing.
+     * @param {Array<{ name:string, planOrSnapshot:object, expectedSnapshot:object,
+     *                 allowlist?:(string[] | { paths?:string[], stages?:string[] }) }>} cases
+     * @param {{ allowlist?: (string[] | { paths?:string[], stages?:string[] }) }} [options]
+     */
+    checkSuite(cases, options = {}) {
+      return checkPipelineSuite(cases, options)
     },
   })
 }
