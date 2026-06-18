@@ -29,6 +29,7 @@ import { decideGate } from './decide-gate.js'
 import { gateCI } from './gate-ci.js'
 import { serializeGateDecision } from './serialize-decision.js'
 import { serializeGateReport } from './serialize-report.js'
+import { serializeGateCI } from './serialize-ci.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -232,6 +233,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     serializeGateReport(report, options = {}) {
       return serializeGateReport(report, options)
+    },
+
+    /**
+     * Bundle the serialized artifacts of a gateCI result — report (M81), outcome (M73),
+     * and decision (M79) — into one frozen { report, outcome, decision } record of
+     * strings (M82). Pure delegation to `serializeGateCI`; reads only, writes nothing.
+     * @param {object} result   a gateCI result { envelope, outcome, decision }
+     * @param {{ reportFormat?:string, outcomeFormat?:string, decisionFormat?:string }} [options]
+     */
+    serializeGateCI(result, options = {}) {
+      return serializeGateCI(result, options)
     },
   })
 }
