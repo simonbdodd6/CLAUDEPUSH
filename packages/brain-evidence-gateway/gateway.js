@@ -27,6 +27,7 @@ import { serializeGateOutcome } from './serialize-gate.js'
 import { evaluateGatePolicy } from './evaluate-policy.js'
 import { decideGate } from './decide-gate.js'
 import { gateCI } from './gate-ci.js'
+import { serializeGateDecision } from './serialize-decision.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -208,6 +209,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     gateCI(expectationSet, runs = {}, options = {}) {
       return gateCI(expectationSet, runs, options)
+    },
+
+    /**
+     * Serialize an M75 gate decision into a stable text representation — "json", "line",
+     * or "reasons" (M79). Pure delegation to `serializeGateDecision`; returns a string,
+     * writes nothing.
+     * @param {object} decision
+     * @param {{ format?: ('json'|'line'|'reasons') }} [options]
+     */
+    serializeGateDecision(decision, options = {}) {
+      return serializeGateDecision(decision, options)
     },
   })
 }
