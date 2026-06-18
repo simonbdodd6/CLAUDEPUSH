@@ -34,6 +34,7 @@ import { createGateManifest } from './manifest.js'
 import { compareGateManifests } from './compare-manifests.js'
 import { serializeGateManifest } from './serialize-manifest.js'
 import { summarizeManifestComparison } from './summarize-comparison.js'
+import { verifyGateManifest } from './verify-manifest.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -290,6 +291,16 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     summarizeManifestComparison(comparison, options = {}) {
       return summarizeManifestComparison(comparison, options)
+    },
+
+    /**
+     * Verify an M83 gate manifest's self-digest — recompute its pipelineDigest from the
+     * payload and compare to the stored value (M87). Pure delegation to
+     * `verifyGateManifest`; reads only, reruns nothing, persists nothing.
+     * @param {object} manifest
+     */
+    verifyGateManifest(manifest) {
+      return verifyGateManifest(manifest)
     },
   })
 }
