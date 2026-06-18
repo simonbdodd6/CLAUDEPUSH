@@ -48,7 +48,8 @@ function toOutcome(x) {
  * @param {{ format?: ('line'|'full') }} [options]
  *   format — "line" (default): `policy=pass` / `policy=fail reasons=2 requirePass,forbiddenStages`;
  *            "full": the same, plus the M73 gate status line appended after " | ".
- * @returns {Readonly<{ ok:boolean, exitCode:(0|1), reasons:ReadonlyArray<string>, line:string, policyApplied:object }>}
+ * @returns {Readonly<{ ok:boolean, exitCode:(0|1), reasons:ReadonlyArray<string>,
+ *   reasonCodes:ReadonlyArray<string>, line:string, policyApplied:object }>}
  */
 export function decideGate(outcomeOrEnvelope, policy = {}, options = {}) {
   const format = (options && options.format !== undefined) ? options.format : 'line'
@@ -62,7 +63,8 @@ export function decideGate(outcomeOrEnvelope, policy = {}, options = {}) {
   const ok = policyResult.ok
   const exitCode = ok ? 0 : 1
 
-  const ruleNames = policyResult.reasons.map((r) => r.split(':')[0])
+  // consume the M74 reasonCodes directly (no string parsing) — parallel to reasons (M80)
+  const ruleNames = policyResult.reasonCodes
   const base = ok ? 'policy=pass' : `policy=fail reasons=${policyResult.reasons.length} ${ruleNames.join(',')}`
   const line = format === 'full'
     ? `${base} | ${serializeGateOutcome(outcome, { format: 'line' })}`   // reuse M73
@@ -72,6 +74,7 @@ export function decideGate(outcomeOrEnvelope, policy = {}, options = {}) {
     ok,
     exitCode,
     reasons: policyResult.reasons,
+    reasonCodes: policyResult.reasonCodes,
     line,
     policyApplied: policyResult.policyApplied,
   })

@@ -126,7 +126,10 @@ function assertOutcome(outcome) {
  * @param {{ requirePass?:boolean, maxViolations?:number, maxTolerated?:number,
  *           forbiddenStages?:string[], allowedFailingCases?:string[],
  *           maxViolationsPerCase?:number, maxToleratedPerCase?:number, forbiddenStagesPerCase?:string[] }} [policy]
- * @returns {Readonly<{ ok:boolean, reasons:ReadonlyArray<string>, policyApplied:Readonly<object> }>}
+ * @returns {Readonly<{ ok:boolean, reasons:ReadonlyArray<string>,
+ *   reasonCodes:ReadonlyArray<string>, policyApplied:Readonly<object> }>}
+ *   `reasonCodes` is parallel to `reasons` (same length/order) — the machine-readable rule
+ *   code for each failed rule (e.g. 'requirePass', 'maxViolationsPerCase').
  */
 export function evaluateGatePolicy(outcome, policy = {}) {
   assertOutcome(outcome)
@@ -153,24 +156,29 @@ export function evaluateGatePolicy(outcome, policy = {}) {
 
   const gatePassedEffectively = outcome.status === 'pass' || remainingFailing.length === 0
 
+  // `reasons` (human-readable) and `reasonCodes` (machine-readable rule code) are kept
+  // strictly parallel — same length, same order — via addReason, so downstream layers can
+  // consume the codes without parsing strings (M80).
   const reasons = []
+  const reasonCodes = []
+  const addReason = (code, message) => { reasonCodes.push(code); reasons.push(message) }
 
   // 1 — requirePass
   if (policyApplied.requirePass && !gatePassedEffectively) {
-    reasons.push(`requirePass: gate failed with un-allowed failing case(s): ${remainingFailing.join(', ')}`)
+    addReason('requirePass', `requirePass: gate failed with un-allowed failing case(s): ${remainingFailing.join(', ')}`)
   }
   // 2 — maxViolations (gate-wide total)
   if (policyApplied.maxViolations !== null && outcome.violations > policyApplied.maxViolations) {
-    reasons.push(`maxViolations: ${outcome.violations} > ${policyApplied.maxViolations}`)
+    addReason('maxViolations', `maxViolations: ${outcome.violations} > ${policyApplied.maxViolations}`)
   }
   // 3 — maxTolerated (gate-wide total)
   if (policyApplied.maxTolerated !== null && outcome.tolerated > policyApplied.maxTolerated) {
-    reasons.push(`maxTolerated: ${outcome.tolerated} > ${policyApplied.maxTolerated}`)
+    addReason('maxTolerated', `maxTolerated: ${outcome.tolerated} > ${policyApplied.maxTolerated}`)
   }
   // 4 — forbiddenStages
   if (policyApplied.forbiddenStages.length) {
     const matched = policyApplied.forbiddenStages.filter((s) => effAffectedStages.includes(s))
-    if (matched.length) reasons.push(`forbiddenStages: ${matched.join(', ')}`)
+    if (matched.length) addReason('forbiddenStages', `forbiddenStages: ${matched.join(', ')}`)
   }
 
   // 5–7 — per-case budgets (M78). Reuse outcome.perCase only; allowed failing cases are
@@ -188,7 +196,7 @@ export function evaluateGatePolicy(outcome, policy = {}) {
     if (policyApplied.maxViolationsPerCase !== undefined) {
       for (const pc of cases) {
         if (pc.violations > policyApplied.maxViolationsPerCase) {
-          reasons.push(`${pc.name} exceeded maxViolationsPerCase (${pc.violations} > ${policyApplied.maxViolationsPerCase})`)
+          addReason('maxViolationsPerCase', `${pc.name} exceeded maxViolationsPerCase (${pc.violations} > ${policyApplied.maxViolationsPerCase})`)
         }
       }
     }
@@ -196,7 +204,7 @@ export function evaluateGatePolicy(outcome, policy = {}) {
     if (policyApplied.maxToleratedPerCase !== undefined) {
       for (const pc of cases) {
         if (pc.tolerated > policyApplied.maxToleratedPerCase) {
-          reasons.push(`${pc.name} exceeded maxToleratedPerCase (${pc.tolerated} > ${policyApplied.maxToleratedPerCase})`)
+          addReason('maxToleratedPerCase', `${pc.name} exceeded maxToleratedPerCase (${pc.tolerated} > ${policyApplied.maxToleratedPerCase})`)
         }
       }
     }
@@ -204,10 +212,10 @@ export function evaluateGatePolicy(outcome, policy = {}) {
     if (policyApplied.forbiddenStagesPerCase !== undefined && policyApplied.forbiddenStagesPerCase.length) {
       for (const pc of cases) {
         const matched = policyApplied.forbiddenStagesPerCase.filter((s) => pc.affectedStages.includes(s))
-        if (matched.length) reasons.push(`${pc.name} affected forbidden stage(s): ${matched.join(', ')}`)
+        if (matched.length) addReason('forbiddenStagesPerCase', `${pc.name} affected forbidden stage(s): ${matched.join(', ')}`)
       }
     }
   }
 
-  return deepFreeze({ ok: reasons.length === 0, reasons, policyApplied })
+  return deepFreeze({ ok: reasons.length === 0, reasons, reasonCodes, policyApplied })
 }
