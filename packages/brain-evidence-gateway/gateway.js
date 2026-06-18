@@ -21,6 +21,7 @@ import { checkPipelineAgainstExpected } from './check.js'
 import { checkPipelineSuite } from './check-suite.js'
 import { formatPipelineSuiteReport } from './check-report.js'
 import { createExpectationSet, resolveExpectationSet } from './expectation-set.js'
+import { runExpectationGate } from './run-gate.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -133,6 +134,18 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     resolveExpectationSet(expectationSet, runs = {}) {
       return resolveExpectationSet(expectationSet, runs)
+    },
+
+    /**
+     * Run the whole dormant gate chain in one call — resolve (M70) → check (M68) →
+     * report (M69) — returning a frozen { cases, verdict, report } envelope (M71).
+     * Pure delegation to `runExpectationGate`; reads only, persists nothing.
+     * @param {object} expectationSet
+     * @param {(Record<string, object>|Array<object>)} [runs]
+     * @param {{ allowlist?: (string[]|{paths?:string[],stages?:string[]}), maxEntriesPerCase?: number }} [options]
+     */
+    runExpectationGate(expectationSet, runs = {}, options = {}) {
+      return runExpectationGate(expectationSet, runs, options)
     },
   })
 }
