@@ -8,3 +8,5 @@
  */
 
 export { runCoachIntelligencePipeline } from './pipeline.js'
+
+export { buildCoachRecommendation } from './recommendation.js'
