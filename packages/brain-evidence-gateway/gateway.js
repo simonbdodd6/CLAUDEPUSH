@@ -42,6 +42,7 @@ import { verifyAttestationEnvelope } from './verify-envelope.js'
 import { serializeAttestationEnvelope } from './serialize-envelope.js'
 import { verifyAttestationEnvelopes } from './verify-envelopes.js'
 import { summarizeAttestationBatch } from './summarize-attestation-batch.js'
+import { gateManifestIndex } from './manifest-index.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -386,6 +387,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     summarizeAttestationBatch(batchResult, options = {}) {
       return summarizeAttestationBatch(batchResult, options)
+    },
+
+    /**
+     * Index an array of M83 manifests by pipelineDigest into a deterministic, deeply
+     * frozen lookup { total, unique, duplicates, digests, entries } (M95). Not
+     * verification/serialization/comparison/hashing. Pure delegation to
+     * `gateManifestIndex`; reads only, references manifests (no clone).
+     * @param {object[]} manifests
+     */
+    gateManifestIndex(manifests) {
+      return gateManifestIndex(manifests)
     },
   })
 }
