@@ -10,3 +10,5 @@
 export { runCoachIntelligencePipeline } from './pipeline.js'
 
 export { buildCoachRecommendation } from './recommendation.js'
+
+export { evaluateSelectionCandidate } from './selection-engine.js'
