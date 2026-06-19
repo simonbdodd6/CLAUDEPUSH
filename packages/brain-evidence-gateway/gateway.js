@@ -43,6 +43,9 @@ import { serializeAttestationEnvelope } from './serialize-envelope.js'
 import { verifyAttestationEnvelopes } from './verify-envelopes.js'
 import { summarizeAttestationBatch } from './summarize-attestation-batch.js'
 import { gateManifestIndex } from './manifest-index.js'
+import { lookupGateManifest } from './manifest-lookup.js'
+import { summarizeManifestIndex } from './manifest-summary.js'
+import { mergeGateManifestIndexes } from './manifest-merge.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -398,6 +401,40 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     gateManifestIndex(manifests) {
       return gateManifestIndex(manifests)
+    },
+
+    /**
+     * Look up an M95 index entry by pipelineDigest — returns the existing frozen entry
+     * { count, firstIndex, manifest } (identity preserved) or null if absent (M96). Pure
+     * delegation to `lookupGateManifest`; reads only, clones nothing.
+     * @param {object} index
+     * @param {string} pipelineDigest
+     */
+    lookupGateManifest(index, pipelineDigest) {
+      return lookupGateManifest(index, pipelineDigest)
+    },
+
+    /**
+     * Summarize an M95 manifest index into a stable text representation — "line", "text",
+     * "markdown", or "json" (M97). Presentation only; computes nothing new. Pure
+     * delegation to `summarizeManifestIndex`; returns a string, writes nothing.
+     * @param {object} index
+     * @param {{ format?: ('line'|'text'|'markdown'|'json') }} [options]
+     */
+    summarizeManifestIndex(index, options = {}) {
+      return summarizeManifestIndex(index, options)
+    },
+
+    /**
+     * Merge two M95 manifest indexes into one deeply-frozen index — summing overlapping
+     * counts, keeping a's firstIndex/manifest for overlaps and offsetting b-only firstIndex
+     * by a.total (M98). Reuses existing index fields; no manifest cloning. Pure delegation
+     * to `mergeGateManifestIndexes`; reads only.
+     * @param {object} a
+     * @param {object} b
+     */
+    mergeGateManifestIndexes(a, b) {
+      return mergeGateManifestIndexes(a, b)
     },
   })
 }
