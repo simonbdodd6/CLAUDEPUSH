@@ -828,12 +828,23 @@ export async function loginUser(input = {}) {
   }
 
   const members = await loadTeamMembers();
-  // Default-team behaviour unchanged; users whose only membership is a
-  // self-created club (Start a New Club) fall back to their active
-  // membership in any team.
+  // Phase 1 team-resolution preference. The previous rule resolved
+  // `input.teamId || DEFAULT_TEAM.id` first, which snapped any coach who also
+  // belonged to the default team away from their own/last-used club. New order:
+  //   legacy demo → explicit teamId → last active team → owned club (head) →
+  //   any active membership → default team.
+  // Single-club coaches are unaffected: with no explicit or last-active team
+  // they fall straight through to their owned/active club, exactly as before.
+  const mine         = members.filter(item => item.userId === user.id);
+  const activeMine   = mine.filter(item => item.status === 'active');
+  const byTeam       = id => (id ? mine.find(item => item.teamId === id) : null);
+  const activeByTeam = id => (id ? activeMine.find(item => item.teamId === id) : null);
   const member = legacyMember ||
-    members.find(item => item.userId === user.id && item.teamId === (input.teamId || DEFAULT_TEAM.id)) ||
-    members.find(item => item.userId === user.id && item.status === 'active');
+    byTeam(input.teamId) ||
+    activeByTeam(user.lastActiveTeamId) ||
+    activeMine.find(item => item.staffLevel === 'head') ||
+    activeMine[0] ||
+    byTeam(DEFAULT_TEAM.id);
   if (!member || member.status !== 'active') {
     const error = new Error(member?.status === 'pending' ? 'Waiting for coach approval' : 'Account is not active for this team');
     error.status = 403;
@@ -846,6 +857,9 @@ export async function loginUser(input = {}) {
     Object.assign(user, hashPassword(input.password), { passwordMigratedAt: nowIso() });
   }
   user.lastLoginAt = nowIso();
+  // Phase 1: remember the resolved team so the next login returns the coach
+  // here. Written incrementally per-login; no migration of existing records.
+  user.lastActiveTeamId = member.teamId;
   await saveUsers(users);
   const session = await createSession({ userId: user.id, teamId: member.teamId, role: member.role });
   return withIdentityComputed({ user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, session }, member);
@@ -1111,6 +1125,10 @@ export async function switchTeam(token = '', targetTeamId = '') {
   const membership = (current.memberships || []).find(m => m.teamId === String(targetTeamId));
   if (!membership) { const e = new Error('No active membership in that team'); e.status = 403; throw e; }
   await destroySession(token);
+  // Phase 1: remember the switched-to team so the next login returns here.
+  const users = await loadUsers();
+  const switchedUser = users.find(item => item.id === current.user.id);
+  if (switchedUser) { switchedUser.lastActiveTeamId = membership.teamId; await saveUsers(users); }
   const session = await createSession({ userId: current.user.id, teamId: membership.teamId, role: membership.role });
   return { session, teamId: membership.teamId };
 }
