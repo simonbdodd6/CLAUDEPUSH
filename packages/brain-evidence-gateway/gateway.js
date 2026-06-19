@@ -39,6 +39,7 @@ import { gateManifestSigningPayload } from './signing-payload.js'
 import { verifyGateManifestSignature } from './verify-signature.js'
 import { attestationEnvelope } from './attestation-envelope.js'
 import { verifyAttestationEnvelope } from './verify-envelope.js'
+import { serializeAttestationEnvelope } from './serialize-envelope.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -349,6 +350,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     verifyAttestationEnvelope(envelope, verifyFn) {
       return verifyAttestationEnvelope(envelope, verifyFn)
+    },
+
+    /**
+     * Serialize an M90/M91 attestation envelope into a stable text representation — "json"
+     * or "line" (M92). Pure delegation to `serializeAttestationEnvelope`; returns a string,
+     * writes nothing.
+     * @param {object} envelope
+     * @param {{ format?: ('json'|'line') }} [options]
+     */
+    serializeAttestationEnvelope(envelope, options = {}) {
+      return serializeAttestationEnvelope(envelope, options)
     },
   })
 }
