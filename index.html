@@ -2278,6 +2278,548 @@
       *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
       .card, .stat-card, .row, .btn { transform: none !important; }
     }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       CORE BETA v2 — PRODUCT REDESIGN  (presentation only · loaded last)
+       A ground-up visual language inspired by Linear/Vercel/Notion/Stripe:
+       deep charcoal canvas, glass chrome, floating cards, large quiet type,
+       indigo accent, motion. No markup / logic / API / storage changes.
+       ═══════════════════════════════════════════════════════════════════════════ */
+
+    /* ── Tokens v2 — sophisticated neutrals, brand & glass (semantics kept) ──── */
+    :root {
+      --page:        #08090d;
+      --panel:       #0f1015;
+      --panel-2:     #16171f;
+      --elev:        #1b1d26;
+      --line:        rgba(255,255,255,0.07);
+      --line-2:      rgba(255,255,255,0.12);
+      --ink:         #ECEDF2;
+      --muted:       #888d9c;
+      --faint:       #5b606e;
+
+      --brand:       #6e74f0;
+      --brand-2:     #8d92fb;
+      --brand-ink:   #ffffff;
+      --brand-soft:  rgba(110,116,240,0.14);
+      --brand-line:  rgba(110,116,240,0.32);
+      --ring:        rgba(110,116,240,0.55);
+      --brand-grad:  linear-gradient(135deg, #7c82f7 0%, #6e74f0 55%, #5b62ec 100%);
+
+      --glass:       rgba(255,255,255,0.045);
+      --glass-2:     rgba(255,255,255,0.06);
+      --glass-line:  rgba(255,255,255,0.10);
+
+      --r-sm:        10px;
+      --r:           14px;
+      --r-lg:        18px;
+      --r-xl:        24px;
+
+      --shadow-sm:   0 1px 2px rgba(0,0,0,0.35);
+      --shadow:      0 2px 6px rgba(0,0,0,0.26), 0 18px 40px -20px rgba(0,0,0,0.7);
+      --shadow-lift: 0 4px 10px rgba(0,0,0,0.30), 0 32px 64px -26px rgba(0,0,0,0.78);
+      --glow-brand:  0 0 0 1px rgba(110,116,240,0.22), 0 10px 30px -8px rgba(110,116,240,0.45);
+    }
+
+    /* ── Canvas — deep charcoal with a quiet ambient wash ────────────────────── */
+    body {
+      background:
+        radial-gradient(1200px 700px at 78% -8%, rgba(110,116,240,0.10), transparent 60%),
+        radial-gradient(900px 600px at 8% 102%, rgba(110,116,240,0.05), transparent 55%),
+        var(--page);
+      background-attachment: fixed;
+      letter-spacing: -0.012em;
+    }
+
+    /* ── Layout rhythm — narrower sidebar, airier workspace ──────────────────── */
+    .app-shell { grid-template-columns: 236px minmax(0, 1fr); }
+    .workspace { padding: 40px clamp(28px, 4vw, 60px) 72px; max-width: 1320px; }
+
+    /* ── SIDEBAR — compact glass rail, icons-first nav ───────────────────────── */
+    .sidebar {
+      gap: 14px;
+      padding: 18px 13px;
+      background: linear-gradient(180deg, rgba(20,21,28,0.72), rgba(10,11,15,0.72));
+      backdrop-filter: blur(18px) saturate(140%);
+      -webkit-backdrop-filter: blur(18px) saturate(140%);
+      border-right: 1px solid var(--line);
+    }
+    .brand { padding: 2px 6px 4px; gap: 10px; }
+    .brand-mark {
+      width: 34px; height: 34px; border-radius: 11px;
+      background: var(--brand-grad);
+      box-shadow: var(--glow-brand);
+      font-size: 12px;
+    }
+    .brand strong { font-size: 14.5px; letter-spacing: -0.02em; }
+    .brand p, .sidebar-card p { color: var(--faint); font-size: 11.5px; }
+
+    nav { gap: 2px; }
+    nav button {
+      min-height: 40px; padding: 9px 11px; border-radius: 11px;
+      font-size: 13.5px; font-weight: 540; color: #9a9fae;
+      letter-spacing: -0.01em; position: relative;
+      transition: background .18s ease, color .18s ease, transform .12s ease;
+    }
+    nav button svg { width: 17px; height: 17px; opacity: .7; transition: opacity .18s ease; }
+    nav button:not(.active):hover { background: rgba(255,255,255,0.05); color: var(--ink); transform: translateX(1px); }
+    nav button:not(.active):hover svg { opacity: .95; }
+    nav button.active {
+      background: var(--brand-soft); color: #c9ccff; font-weight: 660;
+      box-shadow: inset 0 0 0 1px var(--brand-line);
+      padding-left: 11px; border-left: 0;
+    }
+    nav button.active svg { opacity: 1; color: var(--brand-2); }
+    nav button.active::before {
+      content: ''; position: absolute; left: -13px; top: 50%; transform: translateY(-50%);
+      width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--brand-2);
+      box-shadow: 0 0 12px var(--brand-2);
+    }
+    /* Coach profile / club card — integrated, glassy */
+    .sidebar-card {
+      background: var(--glass); border: 1px solid var(--glass-line);
+      border-radius: var(--r); padding: 11px 13px;
+    }
+    .sidebar-card strong { color: #cfd2dd; font-size: 12.5px; }
+    .view-switch { background: rgba(0,0,0,0.4); border-color: var(--line); border-radius: 11px; }
+    .view-switch button.active { background: var(--brand-grad); color: #fff; box-shadow: var(--glow-brand); }
+
+    /* ── HEADER — minimal chrome, large contextual title ─────────────────────── */
+    .topbar { margin-bottom: 34px; align-items: center; }
+    .eyebrow { color: var(--brand-2); font-size: 10.5px; font-weight: 700; letter-spacing: .16em; opacity: .9; }
+    h1 { font-size: clamp(30px, 3.6vw, 46px); font-weight: 780; letter-spacing: -0.033em; line-height: 1.02; }
+    h2 { font-weight: 720; letter-spacing: -0.022em; font-size: 19px; }
+    h3 { font-weight: 660; letter-spacing: -0.015em; }
+    .muted { color: var(--muted); }
+
+    /* ── CARDS — floating, soft, premium ─────────────────────────────────────── */
+    .card {
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line); border-radius: var(--r-lg);
+      box-shadow: var(--shadow); padding: 22px;
+      transition: transform .2s cubic-bezier(.22,.61,.36,1), border-color .2s ease, box-shadow .2s ease;
+    }
+    .card:hover { border-color: var(--line-2); }
+    .stat-card, .training-stat, .mc-kpi, .med-stat {
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line); border-radius: var(--r-lg);
+      transition: transform .2s cubic-bezier(.22,.61,.36,1), box-shadow .2s ease, border-color .2s ease;
+    }
+    .stat-card:hover, .training-stat:hover, .med-stat:hover {
+      transform: translateY(-3px); box-shadow: var(--shadow-lift); border-color: var(--brand-line);
+    }
+    .stat-card strong, .pkg-stat strong, .msgs-sent-stat strong,
+    .training-stat strong, .mc-kpi strong, .ce-kpi strong, .med-stat strong {
+      font-weight: 760 !important; letter-spacing: -0.035em; font-feature-settings: 'tnum' 1;
+    }
+
+    /* ── BUTTONS — rounded, confident, tactile ───────────────────────────────── */
+    .btn {
+      border-radius: 12px; min-height: 40px; font-weight: 600; letter-spacing: -0.01em;
+      box-shadow: var(--shadow-sm);
+      transition: transform .14s cubic-bezier(.22,.61,.36,1), background .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease;
+    }
+    .btn:hover { transform: translateY(-1.5px); border-color: var(--line-2); box-shadow: var(--shadow); }
+    .btn:active { transform: translateY(0) scale(.985); }
+    .btn.primary {
+      background: var(--brand-grad); border-color: transparent; color: #fff;
+      box-shadow: var(--glow-brand);
+    }
+    .btn.primary:hover { filter: brightness(1.07); box-shadow: var(--glow-brand), var(--shadow); }
+    .btn.ghost { background: transparent; border-color: transparent; box-shadow: none; color: var(--muted); }
+    .btn.ghost:hover { background: rgba(255,255,255,0.05); color: var(--ink); box-shadow: none; }
+
+    /* ── FORMS — quiet inputs, indigo focus ──────────────────────────────────── */
+    input, select, textarea { border-radius: 11px; background: rgba(255,255,255,0.025); border-color: var(--line-2); }
+    input:focus, select:focus, textarea:focus, .btn:focus-visible, nav button:focus-visible {
+      outline: none; border-color: var(--brand) !important; box-shadow: 0 0 0 3px var(--ring);
+    }
+    .pill, .chip, .filter-pill, .msg-chip, .mc-stat-pill, .pkg-badge { border-radius: 999px; }
+
+    /* ── MOTION — liveliness via hover/press only (no per-render entrance,
+          which would re-flash on every render() this app does per interaction) ── */
+    .card { animation: none; }
+
+    /* ── OVERVIEW — Mission Control ──────────────────────────────────────────── */
+    .home-wrap { display: grid; gap: 18px; }
+    .mctl-strip {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 2px; color: var(--muted);
+    }
+    .mctl-date { font-size: 13px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+    .mctl-section-label {
+      font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--faint); margin: 10px 2px 2px;
+    }
+    .home-attn-list { display: grid; gap: 11px; }
+    .home-attn-item {
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line); border-radius: var(--r-lg); padding: 16px 18px;
+      box-shadow: var(--shadow); transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+    }
+    .home-attn-item:hover { transform: translateY(-2px); border-color: var(--brand-line); box-shadow: var(--shadow-lift); }
+    .mctl-row { border-radius: 12px; transition: background .15s ease, transform .15s ease; }
+    .mctl-row:hover { background: rgba(255,255,255,0.04); transform: translateX(2px); }
+
+    /* ── AVAILABILITY — large session cards ──────────────────────────────────── */
+    .msg-hero, .training-hero {
+      background: linear-gradient(135deg, rgba(110,116,240,0.10), rgba(255,255,255,0.02));
+      border: 1px solid var(--glass-line); border-radius: var(--r-xl); padding: 26px 28px;
+      box-shadow: var(--shadow);
+    }
+    .msg-card { border-radius: var(--r-lg); border-color: var(--line); box-shadow: var(--shadow); }
+    .msg-kpi { border-radius: var(--r-lg); }
+    .avail-player-card, .msg-session-card {
+      border-radius: var(--r-lg) !important; border-color: var(--line) !important;
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+    .avail-player-card:hover, .msg-session-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+
+    /* ── MATCH CENTRE — flagship: pitch dominant, tactile selection ──────────── */
+    .mc-team-grid .card { box-shadow: var(--shadow-lift); }
+    #matchday-pitch { border-radius: var(--r-lg); }
+    .pitch-slot, .slot, .squad-slot { transition: transform .14s ease, box-shadow .14s ease; }
+    .pitch-slot:hover, .slot:hover, .squad-slot:hover { transform: scale(1.06); }
+
+    /* ── MEDICAL — clean clinical dashboard ──────────────────────────────────── */
+    .med-overview-grid { gap: 11px; }
+    .rehab-card {
+      border-radius: var(--r-lg); border: 1px solid var(--line);
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+    .rehab-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); border-color: var(--brand-line); }
+
+    /* ── MESSAGES — modern chat ──────────────────────────────────────────────── */
+    .chat-list { border-radius: var(--r-lg); }
+    .chat-bubble, .chat-bubble-wrap .bubble { border-radius: 16px !important; }
+
+    /* ── MEMBERS / generic rows → soft cards ─────────────────────────────────── */
+    .row { border-radius: 12px; border-color: var(--line); }
+    .row:hover { border-color: var(--line-2); background: var(--panel-2); transform: translateY(-1px); }
+    .filter-pill { transition: background .15s ease, color .15s ease, border-color .15s ease; }
+
+    /* ── Tables — airy ───────────────────────────────────────────────────────── */
+    th { color: var(--faint); letter-spacing: .08em; }
+    th, td { border-bottom-color: var(--line); }
+
+    /* ── Modals / drawers — glass ────────────────────────────────────────────── */
+    .modal, .modal-card, .drawer, .sheet {
+      border-radius: var(--r-xl) !important; border: 1px solid var(--glass-line);
+      box-shadow: var(--shadow-lift);
+    }
+
+    /* ── RESPONSIVE — phone & tablet ─────────────────────────────────────────── */
+    @media (max-width: 980px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .workspace { padding: 24px 18px 64px; }
+      h1 { font-size: clamp(26px, 7vw, 34px); }
+    }
+
+    /* ── Reduced-motion guard (v2) ───────────────────────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      .section.active > *, .card, .btn, .row, .home-attn-item, .rehab-card, .stat-card,
+      .avail-player-card, .pitch-slot, .mctl-row { animation: none !important; transform: none !important; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       CORE BETA v3 — VISUAL IDENTITY  (presentation only · loaded last)
+       Borderless depth surfaces · rugby-as-atmosphere · tactile Match Centre ·
+       ambient living motion. Pure CSS — no markup / logic / API / storage change.
+       ═══════════════════════════════════════════════════════════════════════════ */
+
+    /* ── Warmer, more confident neutrals ─────────────────────────────────────── */
+    :root {
+      --page:   #07080b;
+      --panel:  #0e0f15;
+      --panel-2:#15161e;
+      --ink:    #F2F3F7;
+      --muted:  #8d92a1;
+      --faint:  #595e6c;
+      --hair:   rgba(255,255,255,0.06);
+      --sheen:  inset 0 1px 0 rgba(255,255,255,0.055);
+      --float:  0 1px 2px rgba(0,0,0,0.4), 0 26px 56px -24px rgba(0,0,0,0.85);
+      --float-hi: 0 2px 4px rgba(0,0,0,0.4), 0 40px 80px -28px rgba(0,0,0,0.9);
+    }
+
+    /* ── ATMOSPHERE — ambient light + the faintest chalk/field texture ───────── */
+    body::before {
+      content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        repeating-linear-gradient(116deg, rgba(255,255,255,0.014) 0 1px, transparent 1px 78px),
+        repeating-linear-gradient(26deg,  rgba(255,255,255,0.010) 0 1px, transparent 1px 116px);
+      mask-image: radial-gradient(120% 100% at 80% 0%, #000 30%, transparent 78%);
+      -webkit-mask-image: radial-gradient(120% 100% at 80% 0%, #000 30%, transparent 78%);
+    }
+    .app-shell { position: relative; z-index: 1; }
+
+    /* ── SURFACES — borderless, lit-from-above, floating (kill the boxes) ────── */
+    .card, .msg-card, .home-attn-item, .rehab-card,
+    .stat-card, .training-stat, .mc-kpi, .med-stat {
+      border: 1px solid transparent !important;
+      background: linear-gradient(180deg, #181922, #0f1016) !important;
+      box-shadow: var(--sheen), var(--float) !important;
+    }
+    .card:hover, .msg-card:hover, .home-attn-item:hover, .rehab-card:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--sheen), var(--float-hi) !important;
+      border-color: var(--brand-line) !important;
+    }
+    .stat-card:hover, .training-stat:hover, .med-stat:hover {
+      transform: translateY(-4px); box-shadow: var(--sheen), var(--float-hi) !important;
+    }
+    /* Quiet the inner separators — let spacing do the work */
+    .row { border: 0 !important; background: rgba(255,255,255,0.022) !important; }
+    .row:hover { background: rgba(255,255,255,0.05) !important; transform: translateY(-1px); }
+    .srv-panel { border-color: var(--hair) !important; }
+    hr, .divider { border-color: var(--hair) !important; opacity: .6; }
+
+    /* ── HERO SURFACES — a faint pitch-arc breathes in the corner ────────────── */
+    .msg-hero, .training-hero {
+      position: relative; overflow: hidden;
+      background:
+        radial-gradient(150% 120% at 100% -20%, rgba(110,116,240,0.14), transparent 60%),
+        linear-gradient(180deg, #15161f, #0e0f15) !important;
+      border: 1px solid transparent !important; box-shadow: var(--sheen), var(--float) !important;
+    }
+    .msg-hero::after, .training-hero::after {
+      content: ''; position: absolute; right: -90px; bottom: -150px; width: 380px; height: 380px;
+      border-radius: 50%; pointer-events: none;
+      background:
+        radial-gradient(circle, transparent 60%, rgba(255,255,255,0.05) 60.6% 61.4%, transparent 62%),
+        radial-gradient(circle, transparent 38%, rgba(255,255,255,0.035) 38.6% 39.2%, transparent 40%);
+      animation: v3drift 18s ease-in-out infinite alternate;
+    }
+    @keyframes v3drift { from { transform: translate(0,0) rotate(0deg); } to { transform: translate(-18px,-14px) rotate(8deg); } }
+
+    /* ── BUTTONS — confident, breathing primary ──────────────────────────────── */
+    .btn { border-radius: 12px; box-shadow: var(--shadow-sm); }
+    .btn.primary {
+      background: var(--brand-grad); border: 0; color: #fff;
+      box-shadow: 0 0 0 1px rgba(110,116,240,0.3), 0 10px 26px -8px rgba(110,116,240,0.55);
+    }
+    .btn.primary:hover { filter: brightness(1.08) saturate(1.05); transform: translateY(-2px); }
+    .brand-mark { animation: v3breathe 5.5s ease-in-out infinite; }
+    @keyframes v3breathe {
+      0%,100% { box-shadow: 0 0 0 1px rgba(110,116,240,0.25), 0 8px 22px -8px rgba(110,116,240,0.4); }
+      50%     { box-shadow: 0 0 0 1px rgba(110,116,240,0.45), 0 12px 32px -6px rgba(110,116,240,0.7); }
+    }
+
+    /* ══ MATCH CENTRE — the hero. Stadium pitch + magnet selection ════════════ */
+    .pitch-big, #matchday-pitch {
+      position: relative; overflow: hidden;
+      border-radius: var(--r-lg) !important;
+      box-shadow: var(--sheen), var(--float-hi);
+    }
+    /* mown stripes + stadium light, layered over the existing green (non-destructive) */
+    .pitch-big::before, #matchday-pitch::before {
+      content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+      background-image:
+        radial-gradient(120% 80% at 50% -10%, rgba(255,255,255,0.10), transparent 55%),
+        repeating-linear-gradient(180deg, rgba(255,255,255,0.05) 0 38px, rgba(0,0,0,0.05) 38px 76px);
+      mix-blend-mode: soft-light;
+    }
+    .pitch-big > *, #matchday-pitch > * { position: relative; z-index: 1; }
+    /* player magnets — tactile, draggable feel */
+    .slot-photo {
+      transition: transform .16s cubic-bezier(.34,1.56,.64,1), box-shadow .16s ease, border-color .16s ease;
+      will-change: transform;
+    }
+    .slot-big:hover .slot-photo, .slot:hover {
+      transform: scale(1.12);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.7), 0 0 0 3px rgba(110,116,240,0.5);
+      border-color: var(--brand-2);
+    }
+    .slot-big:active .slot-photo { transform: scale(1.05); }
+
+    /* ── EMPTY STATES — calm, intentional, crafted ───────────────────────────── */
+    .empty-state { padding: 48px 28px; }
+    .empty-state .empty-icon {
+      font-size: 34px; opacity: .5; margin-bottom: 12px;
+      filter: drop-shadow(0 6px 16px rgba(110,116,240,0.3));
+    }
+    .empty-state strong { font-size: 16px; font-weight: 680; letter-spacing: -0.02em; }
+    .empty-state p { color: var(--faint); max-width: 360px; margin: 6px auto 0; }
+
+    /* ── SIDEBAR — quieter, deeper ───────────────────────────────────────────── */
+    .sidebar { border-right: 1px solid var(--hair); background: linear-gradient(180deg, rgba(18,19,26,0.66), rgba(8,9,13,0.72)); }
+    .sidebar-card { background: rgba(255,255,255,0.035); border-color: var(--hair); }
+
+    /* ── MESSAGES — comfortable, readable chat ───────────────────────────────── */
+    .chat-list { border: 0 !important; background: rgba(255,255,255,0.018) !important; }
+    .chat-bubble, .bubble { border-radius: 18px !important; box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+
+    /* ── Inputs keep a quiet hairline for usability ──────────────────────────── */
+    input, select, textarea { border: 1px solid var(--line-2) !important; background: rgba(255,255,255,0.03) !important; }
+    input:focus, select:focus, textarea:focus { border-color: var(--brand) !important; box-shadow: 0 0 0 3px var(--ring) !important; }
+
+    /* ── MEMBERS — people, not a spreadsheet ─────────────────────────────────── */
+    .player-db-table { border-collapse: separate !important; border-spacing: 0 10px !important; }
+    .player-db-table thead th {
+      border: 0 !important; background: transparent !important;
+      color: var(--faint); font-size: 10.5px; letter-spacing: .12em; font-weight: 700;
+      padding: 0 12px 2px !important;
+    }
+    .player-db-table tbody td {
+      border: 0 !important; background: linear-gradient(180deg, #181922, #0f1016);
+      padding: 14px 12px !important; vertical-align: middle;
+    }
+    .player-db-table tbody td:first-child { border-radius: 16px 0 0 16px; padding-left: 16px !important; }
+    .player-db-table tbody td:last-child  { border-radius: 0 16px 16px 0; padding-right: 16px !important; }
+    .member-row { box-shadow: var(--sheen), var(--float); transition: transform .18s cubic-bezier(.22,.61,.36,1), box-shadow .18s ease; }
+    .member-row:hover { transform: translateY(-3px); box-shadow: var(--sheen), var(--float-hi); }
+    .member-row:hover td { background: linear-gradient(180deg, #1d1e29, #131421); }
+    .player-photo-wrap { width: 48px !important; height: 48px !important; font-size: 17px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .brand-mark, .msg-hero::after, .training-hero::after { animation: none !important; }
+      .member-row:hover { transform: none !important; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       CORE BETA v4 — MATCH CENTRE HERO  (presentation only · loaded last)
+       The flagship team board: cinematic pitch dominates, magnet selection,
+       jersey-numbered bench, secondary panels recede. CSS only — drag/drop,
+       handlers, save/publish and selection data all unchanged.
+       ═══════════════════════════════════════════════════════════════════════════ */
+
+    /* ── Layout — pitch is the hero: spans the full height on the left ───────── */
+    .mc-team-grid {
+      grid-template-columns: minmax(0, 1.9fr) minmax(296px, 0.92fr) !important;
+      grid-template-areas: "pitch bench" "pitch avail" !important;
+      gap: 16px !important; align-items: start !important;
+    }
+    .mc-team-grid > :nth-child(1) { grid-area: pitch; }
+    .mc-team-grid > :nth-child(2) { grid-area: bench; }
+    .mc-team-grid > :nth-child(3) { grid-area: avail; }
+
+    /* ── Cinematic bezel around the pitch (dark scoreboard frame) ────────────── */
+    .mc-team-grid > .card:first-child {
+      padding: 10px !important;
+      background: linear-gradient(180deg, #0b0c11, #070809) !important;
+      border: 1px solid rgba(255,255,255,0.05) !important;
+      box-shadow: var(--sheen), var(--float-hi) !important;
+    }
+
+    /* ── The pitch — broadcast turf, floodlight, vignette, chalk markings ────── */
+    .pitch-big, #matchday-pitch {
+      min-height: 768px !important; border-radius: 14px !important;
+      border: 1px solid rgba(0,0,0,0.55) !important;
+      background:
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0 66px, rgba(0,0,0,0.055) 66px 132px),
+        linear-gradient(180deg, #12592f 0%, #0d4626 52%, #0a3b20 100%) !important;
+      box-shadow: inset 0 0 130px rgba(0,0,0,0.62), var(--float-hi) !important;
+    }
+    /* floodlight glow from above + corner vignette */
+    .pitch-big::before, #matchday-pitch::before {
+      content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(130% 80% at 50% -18%, rgba(255,255,255,0.18), transparent 52%),
+        radial-gradient(80% 70% at 0% 100%, rgba(0,0,0,0.4), transparent 55%),
+        radial-gradient(80% 70% at 100% 100%, rgba(0,0,0,0.4), transparent 55%);
+      mix-blend-mode: normal !important;
+    }
+    /* chalk centre circle + faint tactical arcs */
+    .pitch-big::after, #matchday-pitch::after {
+      content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        radial-gradient(circle at 50% 50%, transparent 62px, rgba(255,255,255,0.10) 62px 64px, transparent 64px),
+        radial-gradient(circle at 50% 50%, transparent 6px, rgba(255,255,255,0.16) 6px 7px, transparent 7px);
+    }
+    .pitch-big > *, #matchday-pitch > * { position: relative; z-index: 1; }
+    .pitch-big .pitch-inner { inset: 16px !important; border: 2px solid rgba(255,255,255,0.92) !important; }
+    .pitch-big .pitch-line { background: rgba(255,255,255,0.78) !important; }
+
+    /* ── Magnets — tactile, draggable, readable ──────────────────────────────── */
+    .slot-big { width: 94px !important; }
+    .slot-photo {
+      width: 58px !important; height: 58px !important;
+      border: 3px solid rgba(255,255,255,0.94) !important;
+      background: radial-gradient(circle at 50% 32%, #1e2433, #0a0e16) !important;
+      box-shadow: 0 7px 18px rgba(0,0,0,0.72), inset 0 2px 6px rgba(255,255,255,0.16) !important;
+      cursor: grab;
+      transition: transform .16s cubic-bezier(.34,1.56,.64,1), box-shadow .16s ease, border-color .16s ease !important;
+    }
+    .slot-big:hover .slot-photo {
+      transform: scale(1.14) translateY(-2px);
+      box-shadow: 0 12px 28px rgba(0,0,0,0.82), 0 0 0 3px var(--ring) !important;
+      border-color: var(--brand-2) !important;
+    }
+    .slot-big:active .slot-photo, .slot-big.drag-over .slot-photo { transform: scale(1.06); cursor: grabbing; }
+    .slot-num {
+      width: 23px !important; height: 23px !important; top: -5px !important; right: -5px !important;
+      font-size: 11px !important; font-weight: 900 !important;
+      background: #fff !important; color: #0b3a20 !important;
+      border: 2px solid #0a3319 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.6) !important;
+    }
+    .slot-name-input {
+      background: rgba(6,9,14,0.82) !important; border: 1px solid rgba(255,255,255,0.16) !important;
+      border-radius: 9px !important; color: #fff !important; font-weight: 700 !important;
+      font-size: 11.5px !important; padding: 5px 6px !important;
+      -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px);
+    }
+    .slot-name-input:focus { border-color: var(--brand-2) !important; box-shadow: 0 0 0 2px var(--ring) !important; }
+    .slot-big.drag-over { outline: 3px dashed var(--brand-2) !important; outline-offset: 4px; border-radius: 12px; }
+
+    /* ── Bench — beautiful jersey tiles, clear 16–23 ─────────────────────────── */
+    .mc-team-grid > :nth-child(2) > .card:first-child { box-shadow: var(--sheen), var(--float) !important; }
+    .mc-team-grid > :nth-child(2) > .card:first-child > div:first-child strong { font-size: 15px !important; letter-spacing: -0.02em; }
+    .bench-slot {
+      border: 1px solid rgba(255,255,255,0.09) !important;
+      background: linear-gradient(180deg, #1b1d27, #111218) !important;
+      border-radius: 13px !important; padding: 11px 6px 9px !important;
+      box-shadow: var(--sheen), 0 8px 18px -8px rgba(0,0,0,0.75) !important;
+      transition: transform .15s cubic-bezier(.22,.61,.36,1), border-color .15s ease, box-shadow .15s ease;
+    }
+    .bench-slot:hover { transform: translateY(-3px); border-color: var(--brand-line) !important; box-shadow: var(--sheen), var(--float) !important; }
+    .bench-slot.drag-over { border-color: var(--brand-2) !important; box-shadow: 0 0 0 2px var(--ring) !important; }
+    .bench-slot small {
+      font-size: 17px !important; font-weight: 900 !important; color: var(--brand-2) !important;
+      letter-spacing: -0.03em; line-height: 1; opacity: .92;
+    }
+    .bench-slot input {
+      background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.10) !important;
+      border-radius: 7px !important; color: #fff !important; font-size: 11px !important;
+      padding: 4px 3px !important; margin-top: 6px !important;
+    }
+    .bench-slot input:focus { border-color: var(--brand-2) !important; box-shadow: 0 0 0 2px var(--ring) !important; }
+
+    /* ── Secondary panels recede (subs + available pool) ─────────────────────── */
+    .mc-team-grid > :nth-child(3) .card,
+    .mc-team-grid > :nth-child(2) > .card:last-child {
+      background: linear-gradient(180deg, #121319, #0c0d12) !important;
+      box-shadow: none !important; border: 1px solid var(--hair) !important;
+    }
+    .mc-team-grid > :nth-child(3) .card h2,
+    .mc-team-grid > :nth-child(2) > .card:last-child h2 { font-size: 13px !important; color: var(--muted) !important; }
+    .squad-player-drag {
+      border: 0 !important; background: rgba(255,255,255,0.03) !important; border-radius: 10px !important;
+      transition: transform .14s ease, background .14s ease, box-shadow .14s ease;
+    }
+    .squad-player-drag:hover { background: rgba(255,255,255,0.07) !important; transform: translateX(2px); box-shadow: 0 0 0 1px var(--brand-line); }
+    .squad-player-drag:active { cursor: grabbing; transform: scale(.98); }
+
+    /* ── Hero header — make "Team Selection" feel like the page title ────────── */
+    .mc-team-grid + *, .section .mc-team-grid { }
+    #coach-matchday h2 { letter-spacing: -0.02em; }
+
+    /* ── Responsive — tablet: pitch first, bench below; phone: stacked ───────── */
+    @media (max-width: 1100px) {
+      .mc-team-grid {
+        grid-template-columns: 1fr !important;
+        grid-template-areas: "pitch" "bench" "avail" !important;
+      }
+      .pitch-big, #matchday-pitch { min-height: 640px !important; }
+    }
+    @media (max-width: 600px) {
+      .pitch-big, #matchday-pitch { min-height: 540px !important; }
+      .slot-big { width: 78px !important; }
+      .slot-photo { width: 46px !important; height: 46px !important; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .slot-photo, .bench-slot, .squad-player-drag { transition: none !important; transform: none !important; }
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
