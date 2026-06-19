@@ -12,24 +12,32 @@
   <style>
     /* ── MIDNIGHT STADIUM ─ Dark-first premium design system ───────────────── */
     /* Palette: Page #090d14 · Card #0f1724 · Accent #10b981                   */
-    /* Fonts: Bebas Neue · DM Sans · JetBrains Mono                             */
-    @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300..900;1,9..40,300..900&family=JetBrains+Mono:wght@400;700&display=swap');
+    /* Fonts: Inter (premium UI) · DM Sans (legacy fallback) · JetBrains Mono    */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..900&family=DM+Sans:ital,opsz,wght@0,9..40,300..900;1,9..40,300..900&family=JetBrains+Mono:wght@400;700&display=swap');
 
     :root {
-      /* ── Core tokens ──────────────────────────────────────────────────────── */
-      --ink:         #e2e8f0;
-      --muted:       #7a8899;
-      --page:        #090d14;
-      --panel:       #0f1724;
-      --panel-2:     #141e2e;
-      --line:        #1e2d3d;
-      --line-soft:   #141e2e;
+      /* ── Core tokens (Core Beta — premium neutral palette) ─────────────────── */
+      --ink:         #e7e9ef;
+      --muted:       #9298a6;
+      --page:        #0a0b0f;
+      --panel:       #111319;
+      --panel-2:     #171a22;
+      --line:        #23262f;
+      --line-soft:   #181b22;
 
       /* Sidebar */
-      --nav:         #060b12;
-      --nav-soft:    #0b1420;
+      --nav:         #0c0d11;
+      --nav-soft:    #14161d;
 
-      /* Accents */
+      /* Brand accent — premium indigo (replaces rugby green in chrome) */
+      --brand:       #6366f1;
+      --brand-2:     #818cf8;
+      --brand-ink:   #ffffff;
+      --brand-soft:  rgba(99,102,241,0.13);
+      --brand-line:  rgba(99,102,241,0.34);
+      --ring:        rgba(99,102,241,0.45);
+
+      /* Accents (semantic — unchanged: availability/medical/etc. keep meaning) */
       --green:       #10b981;
       --green-soft:  rgba(16,185,129,0.12);
       --green-mid:   #059669;
@@ -40,14 +48,22 @@
       --blue:        #60a5fa;
       --blue-soft:   rgba(96,165,250,0.12);
 
-      /* Shadows */
-      --shadow:      0 1px 3px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.4);
-      --shadow-sm:   0 1px 2px rgba(0,0,0,0.4);
-      --glow-green:  0 0 24px rgba(16,185,129,0.18);
+      /* Radius scale */
+      --r-sm:        8px;
+      --r:           12px;
+      --r-lg:        16px;
+      --r-xl:        22px;
 
-      /* Typography */
-      --font-body:    'DM Sans', ui-sans-serif, system-ui, sans-serif;
-      --font-display: 'Bebas Neue', sans-serif;
+      /* Shadows — softer, more diffuse (premium depth) */
+      --shadow:      0 1px 2px rgba(0,0,0,0.28), 0 16px 40px -14px rgba(0,0,0,0.6);
+      --shadow-sm:   0 1px 2px rgba(0,0,0,0.30);
+      --shadow-lift: 0 2px 4px rgba(0,0,0,0.30), 0 24px 48px -16px rgba(0,0,0,0.66);
+      --glow-green:  0 0 24px rgba(16,185,129,0.18);
+      --glow-brand:  0 0 0 1px rgba(99,102,241,0.18), 0 8px 24px -6px rgba(99,102,241,0.4);
+
+      /* Typography — Inter throughout for a modern SaaS feel */
+      --font-body:    'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+      --font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
       --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
     }
 
@@ -2113,6 +2129,155 @@
       /* Add-player form: single column on small phones */
       .add-player-grid { grid-template-columns: 1fr; }
     }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       CORE BETA — PREMIUM THEME LAYER  (presentation only)
+       A cohesive override layer that lifts the beta to a Linear / Vercel / Notion
+       feel. Pure CSS: no markup, IDs, classes, handlers or logic are touched.
+       Loaded last so it wins the cascade at equal specificity. Repoints the
+       rugby-green chrome to a calm indigo brand, adds breathing room, softens
+       depth, standardises radius/typography, and adds restrained motion.
+       ═══════════════════════════════════════════════════════════════════════════ */
+
+    /* ── Core Beta (Phase 3): hide advanced clutter — DOM + logic stay intact ── */
+    .beta-hidden { display: none !important; }
+
+    /* ── Base typography polish ───────────────────────────────────────────────── */
+    body { letter-spacing: -0.011em; font-feature-settings: 'cv05','ss01'; }
+    h1 { font-weight: 760; letter-spacing: -0.028em; font-size: clamp(28px, 3.4vw, 40px); line-height: 1.04; }
+    h2 { font-weight: 720; letter-spacing: -0.02em; font-size: 19px; }
+    h3 { font-weight: 680; letter-spacing: -0.013em; }
+    .eyebrow { color: var(--brand-2); letter-spacing: .12em; font-weight: 700; font-size: 11px; }
+    /* Re-weight the large display numerals now that Inter (not Bebas) renders them */
+    .stat-card strong, .pkg-stat strong, .msgs-sent-stat strong,
+    .training-stat strong, .mc-kpi strong, .ce-kpi strong {
+      font-weight: 740 !important;
+      letter-spacing: -0.03em;
+      font-feature-settings: 'tnum' 1;
+    }
+
+    /* ── Layout breathing room ────────────────────────────────────────────────── */
+    .app-shell { grid-template-columns: 260px minmax(0, 1fr); }
+    .workspace { padding: 36px 40px 56px; }
+    .topbar { margin-bottom: 30px; }
+
+    /* ── Sidebar — calm slate, indigo brand ──────────────────────────────────── */
+    .sidebar {
+      gap: 16px;
+      padding: 20px 14px;
+      background:
+        radial-gradient(120% 60% at 0% 0%, rgba(99,102,241,0.06), transparent 56%),
+        linear-gradient(180deg, #101116 0%, #0b0c10 100%);
+      border-right: 1px solid var(--line);
+      color: var(--ink);
+    }
+    .brand-mark {
+      background: linear-gradient(150deg, var(--brand-2), var(--brand));
+      color: var(--brand-ink);
+      border-radius: var(--r);
+      box-shadow: var(--glow-brand);
+    }
+    .brand strong { color: #fff; letter-spacing: -0.02em; }
+    .brand p, .sidebar-card p { color: var(--muted); }
+    .sidebar-card { background: rgba(255,255,255,0.022); border-color: var(--line); border-radius: var(--r); }
+    .sidebar-card strong { color: #c7cbd6; }
+
+    /* ── Navigation — premium spacing & selected state ───────────────────────── */
+    nav { gap: 3px; }
+    nav button {
+      min-height: 42px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      color: #98a0b0;
+      font-weight: 560;
+      font-size: 13.5px;
+      letter-spacing: -0.01em;
+      transition: background .16s ease, color .16s ease, transform .16s ease;
+    }
+    nav button svg { width: 18px; height: 18px; opacity: .85; flex-shrink: 0; }
+    nav button:not(.active):hover {
+      background: rgba(255,255,255,0.045);
+      color: #e7e9ef;
+    }
+    nav button:not(.active):active { transform: scale(0.985); }
+    nav button.active {
+      background: var(--brand-soft);
+      color: #c3c8ff;
+      font-weight: 680;
+      border-left: 0;
+      padding-left: 12px;
+      box-shadow: inset 0 0 0 1px var(--brand-line);
+    }
+    nav button.active svg { opacity: 1; }
+    .view-switch button.active { background: var(--brand); color: #fff; box-shadow: var(--glow-brand); }
+    .auth-tab.active { background: var(--brand-soft); color: var(--brand-2); }
+
+    /* ── Cards — softer depth, gentle hover lift ─────────────────────────────── */
+    .card {
+      border-radius: var(--r-lg);
+      border-color: var(--line);
+      box-shadow: var(--shadow);
+      padding: 20px;
+      transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+    }
+    .card:hover { border-color: #2e323d; }
+    .stat-card { border-radius: var(--r-lg); background: var(--panel); transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease; }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); border-color: var(--brand-line); }
+
+    /* ── Rows / list items ───────────────────────────────────────────────────── */
+    .row { border-radius: var(--r); border-color: var(--line); transition: border-color .16s ease, background .16s ease, transform .16s ease; }
+    .row:hover { border-color: #2e323d; background: var(--panel-2); transform: translateY(-1px); }
+
+    /* ── Buttons — cohesive premium system ───────────────────────────────────── */
+    .btn {
+      border-radius: 10px;
+      min-height: 38px;
+      font-weight: 620;
+      letter-spacing: -0.01em;
+      transition: background .15s ease, border-color .15s ease, color .15s ease, transform .12s ease, box-shadow .15s ease;
+    }
+    .btn:hover { background: var(--panel-2); border-color: #313542; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0) scale(0.99); }
+    .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; box-shadow: var(--glow-brand); }
+    .btn.primary:hover { background: var(--brand-2); border-color: var(--brand-2); }
+    .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+    .btn.ghost:hover { color: var(--ink); background: rgba(255,255,255,0.05); }
+
+    /* ── Forms — cleaner focus, indigo ring ──────────────────────────────────── */
+    input, select, textarea {
+      border-radius: 10px;
+      transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+    }
+    input:focus, select:focus, textarea:focus, .btn:focus-visible, nav button:focus-visible {
+      outline: none;
+      border-color: var(--brand) !important;
+      box-shadow: 0 0 0 3px var(--ring);
+    }
+    nav button:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+
+    /* ── Pills / chips ───────────────────────────────────────────────────────── */
+    .pill, .chip { border-radius: 999px; }
+
+    /* ── Welcome / first-run hero — harmonise to brand ───────────────────────── */
+    .ce-welcome { background: radial-gradient(1100px 520px at 50% -10%, rgba(99,102,241,0.12), transparent), var(--page); }
+    .ce-welcome-card .ce-logo { background: var(--brand-soft); border-color: var(--brand-line); border-radius: var(--r-lg); }
+    .ce-welcome-card .ce-logo svg { color: var(--brand-2); stroke: var(--brand-2); }
+    .ce-welcome-card h1 { letter-spacing: -0.03em; font-weight: 780; }
+
+    /* ── Empty states — intentional & calm ───────────────────────────────────── */
+    .empty-state { padding: 40px 24px; }
+    .empty-state .empty-icon { opacity: 0.55; }
+    .empty-state strong { font-weight: 680; letter-spacing: -0.015em; }
+
+    /* ── Tables — lighter, airier ────────────────────────────────────────────── */
+    th { color: var(--muted); letter-spacing: 0.07em; }
+    th, td { border-bottom-color: var(--line); }
+
+    /* ── Restrained motion (respect reduced-motion) ──────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+      .card, .stat-card, .row, .btn { transform: none !important; }
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -2236,6 +2401,24 @@
       ["beta",      "Beta Info"],
       ["search",    "Search"],
     ];
+
+    // ── Core Beta — simplified navigation (Phase 1) ───────────────────────────
+    // Beta hides advanced / club / automation surfaces from the coach sidebar.
+    // Nothing is deleted: every section, route, screen and handler stays intact
+    // and reachable programmatically — they are only withheld from the sidebar.
+    // Set BETA_SIMPLE_NAV = false to restore the complete navigation.
+    const BETA_SIMPLE_NAV = true;
+    // Workflow order: Overview → Availability → Training → Match Centre →
+    // Messages → Members → Medical → Settings. In beta mode the sidebar renders
+    // in THIS order (not coachSections order); labels are looked up from coachSections.
+    const BETA_NAV_IDS = ["overview", "message", "training", "matchday", "messages", "players", "medical", "settings"];
+
+    // ── Core Beta — commercial UX simplification (Phase 3) ────────────────────
+    // Hides advanced/admin clutter from key coach pages (Availability, Training,
+    // Match Centre) so the Beta reads as a simple, premium rugby tool. NOTHING is
+    // deleted: the markup stays in the DOM (hidden via the .beta-hidden class) so
+    // every id, handler, API call and data path is intact. Flip to false to restore.
+    const BETA_SIMPLE_UI = true;
 
     const playerSections = [
       ["home",         "Home"],
@@ -2742,7 +2925,7 @@
           <p class="ce-tagline">Selection, availability and team communication —<br>everything your club needs for match week.</p>
           <button class="btn primary" type="button" onclick="welcomeLogin()">Log in</button>
           <button class="btn" type="button" onclick="welcomeJoin()">Join a team</button>
-          <button class="btn" type="button" onclick="_welcomeDismissed=true;document.getElementById('ce-welcome')?.remove();startClubWizard()" style="border-color:rgba(16,185,129,0.35);color:var(--green)">Start a new club</button>
+          <button class="btn" type="button" onclick="_welcomeDismissed=true;document.getElementById('ce-welcome')?.remove();startClubWizard()" style="border-color:var(--brand-line);color:var(--brand-2)">Start a new club</button>
           <p class="muted" style="font-size:11.5px;margin-top:14px">Got an invite link? Just open it — no setup needed.</p>
         </div>`;
       document.body.appendChild(el);
@@ -4721,6 +4904,33 @@
       state.medicalNotes[playerId]={...(state.medicalNotes[playerId]||{}),condition:cond||"",notes:notes||"",returnTarget:ret||""};
       notify("Medical record saved for "+(state.players.find(p=>p.id===playerId)?.name||playerId));
     }
+    // ── Core Beta (Phase 3): quick Add Injury ──────────────────────────────────
+    // Writes to EXISTING medical stores (state.medicalRecords rich record +
+    // state.medicalNotes.condition) and persists via the existing saveState()
+    // path. No new API, no schema change, no availability/p.game change.
+    function toggleAddInjury() {
+      document.getElementById("addInjuryForm")?.classList.toggle("beta-hidden");
+    }
+    function saveNewInjury() {
+      const val = id => (document.getElementById(id)?.value || "").trim();
+      const pid = document.getElementById("injPlayer")?.value || "";
+      if (!pid) { showToast("Select a player first"); return; }
+      const type = val("injType");
+      if (!type) { showToast("Enter an injury type or name"); return; }
+      const area = val("injArea"), severity = val("injSeverity"), ret = val("injReturn"), notes = val("injNotes");
+      // Rich record (new Medical dashboard model)
+      state.medicalRecords = state.medicalRecords || {};
+      const rec = state.medicalRecords[pid] = state.medicalRecords[pid] || {};
+      rec.currentInjury = type; rec.bodyLocation = area; rec.severity = severity;
+      rec.expectedReturn = ret; rec.physiNotes = notes;
+      if (!rec.dateInjured) rec.dateInjured = new Date().toISOString().slice(0, 10);
+      // Legacy note (so it also surfaces in alerts, treatment tracker & Match Centre)
+      state.medicalNotes = state.medicalNotes || {};
+      state.medicalNotes[pid] = { ...(state.medicalNotes[pid] || {}), condition: type, returnTarget: ret || (state.medicalNotes[pid]?.returnTarget || "") };
+      saveState("injury added");
+      showToast("Injury added for " + (state.players.find(p => String(p.id) === String(pid))?.name || "player"));
+      render();
+    }
     function setRehabProgress(playerId, val) {
       state.medicalNotes=state.medicalNotes||{}; state.medicalNotes[playerId]=state.medicalNotes[playerId]||{};
       state.medicalNotes[playerId].rehabProgress=Number(val);
@@ -5310,7 +5520,13 @@
       if (_cardEl) _cardEl.textContent = _clubName + ' · Coach\'s Eye';
       document.title = 'Coach\'s Eye · ' + _clubName;
       const SECTION_PERMS = { medical: 'medical_access', admin: 'manage_teams', club: 'manage_teams', fixtures: 'manage_teams', selection: 'publish_squads', message: 'reports', messages: 'messaging', training: 'publish_training', matchday: 'publish_squads', players: 'manage_players' };
-      document.getElementById("coachNav").innerHTML = coachSections
+      // In beta mode render in BETA_NAV_IDS order (workflow order); otherwise the
+      // full coachSections order. Labels are always sourced from coachSections.
+      const _sectionLabels = Object.fromEntries(coachSections);
+      const _navSections = BETA_SIMPLE_NAV
+        ? BETA_NAV_IDS.map(id => [id, _sectionLabels[id]]).filter(([, label]) => label)
+        : coachSections;
+      document.getElementById("coachNav").innerHTML = _navSections
         .filter(([id]) => !SECTION_PERMS[id] || canI(SECTION_PERMS[id]))
         .map(([id, label]) =>
         `<button type="button" class="${state.activeView==="coach" && state.activeCoachSection===id ? "active" : ""}" onclick="setSection('coach','${id}')">${icon(SECTION_ICONS[id] || 'home')}${label}</button>`
@@ -7664,8 +7880,7 @@
 
           <section class="msg-kpi-grid">
             <article class="msg-kpi available"><span>Available</span><strong>${available.length}/${rows.length}</strong></article>
-            <article class="msg-kpi unavailable"><span>Unavailable</span><strong>${unavailable.length}</strong></article>
-            <article class="msg-kpi chase"><span>Maybe</span><strong>${maybe.length}</strong></article>
+            <article class="msg-kpi chase"><span>No reply</span><strong>${noReply.length}</strong></article>
             <article class="msg-kpi"><span>Response rate</span><strong>${responseRate}%</strong></article>
           </section>
 
@@ -7782,7 +7997,7 @@
             ${state.selectedMessagePlayerId ? buildPlayerDetailHtml(selectedPlayer, selectedStatus) : ""}
           </div>
 
-          <section class="msg-command-grid" style="grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr)">
+          <section class="msg-command-grid${BETA_SIMPLE_UI ? ' beta-hidden' : ''}" style="grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr)">
             <article class="msg-card">
               <div class="msg-card-head">
                 <div>
@@ -8423,7 +8638,7 @@
         })()}
 
         <!-- Video library row -->
-        <div class="grid two-col">
+        <div class="grid two-col${BETA_SIMPLE_UI ? ' beta-hidden' : ''}">
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
               <div><h2 style="margin:0">Club video library</h2><p class="muted" style="margin-top:2px">${canUseFeature('unlimited_videos') ? 'Upload up to 100 × 120-second training clips.' : 'Save up to 10 training clips. Upgrade to Pro for unlimited storage.'}</p></div>
@@ -8471,8 +8686,8 @@
           </div>
         </div>
 
-        <!-- Advanced analytics — Pro feature placeholder -->
-        ${!canUseFeature('advanced_analytics') ? renderUpgradePrompt('advanced_analytics') : ''}`;
+        <!-- Advanced analytics — Pro feature placeholder (hidden in commercial Beta) -->
+        ${(!BETA_SIMPLE_UI && !canUseFeature('advanced_analytics')) ? renderUpgradePrompt('advanced_analytics') : ''}`;
 
     }
 
@@ -8606,8 +8821,8 @@
           </div>
         </div>
 
-        <!-- ── PLANNING GRID ──────────────────────────────────────────────────── -->
-        <div class="mc-grid" style="margin-bottom:14px">
+        <!-- ── PLANNING GRID (hidden in commercial Beta — match selector focus) ── -->
+        <div class="mc-grid${BETA_SIMPLE_UI ? ' beta-hidden' : ''}" style="margin-bottom:14px">
 
           <!-- LEFT: Phase guide + Availability -->
           <div style="display:grid;gap:14px">
@@ -9092,7 +9307,7 @@
 
           <!-- ── Invite & Access panel ── -->
           <div class="card" style="padding:0;overflow:hidden">
-            <details class="srv-panel" open ontoggle="if(this.open) loadInviteList()">
+            <details class="srv-panel" ontoggle="if(this.open) loadInviteList()">
               <summary>🔗 Invite & team access</summary>
               <div class="srv-panel-body" style="padding-top:4px">
 
@@ -9245,7 +9460,6 @@
                   <td>${playerLifecycleBadge(p)}${playerHasMedicalFlag(p)?'<span style="margin-left:4px;font-size:11px" title="Medical flag">⚕</span>':''}</td>
                   <td style="padding-right:14px">
                     <div style="display:flex;gap:5px">
-                      <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px" onclick="event.stopPropagation();playerOpenDetail('${p.id}')">Profile</button>
                       <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px" onclick="event.stopPropagation();requestMedical('${p.id}')">Medical</button>
                       ${playerIsArchived(p)
                         ? `<button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--green)" onclick="event.stopPropagation();restorePlayer('${p.id}')">Restore</button>`
@@ -15436,6 +15650,29 @@
           '</div>' +
         '</div>' +
         _medTabBar(false) +
+        // ── Core Beta (Phase 3): prominent Add Injury action + quick form ──
+        '<div class="card" style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+          '<div><div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px">' + icon('medical') + 'Injury log</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-top:2px">Record a new injury in seconds.</div></div>' +
+          '<button class="btn primary" type="button" onclick="toggleAddInjury()" style="display:flex;align-items:center;gap:7px">' + icon('medical') + 'Add Injury</button>' +
+        '</div>' +
+        '<div id="addInjuryForm" class="beta-hidden" style="margin-bottom:14px">' +
+          '<div class="card" style="border:1px solid var(--brand-line)">' +
+            '<div style="font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px">' + icon('medical') + 'Add injury</div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+              '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Player<select id="injPlayer" style="' + INP + '">' + (state.players.length ? state.players.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>').join('') : '<option value="">No players yet — add players first</option>') + '</select></label>' +
+              '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Injury type / name<input id="injType" placeholder="e.g. Hamstring strain" style="' + INP + '"></label>' +
+              '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Body area<select id="injArea" style="' + INP + '">' + ['','Head','Neck','Shoulder','Arm','Elbow','Wrist / Hand','Chest','Ribs','Back','Hip','Groin','Hamstring','Quad','Knee','Calf','Ankle','Foot','Other'].map(a => '<option value="' + a + '">' + (a || 'Select…') + '</option>').join('') + '</select></label>' +
+              '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Severity<select id="injSeverity" style="' + INP + '"><option value="">Select…</option><option value="minor">Minor</option><option value="moderate">Moderate</option><option value="severe">Severe</option></select></label>' +
+              '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Expected return<input id="injReturn" type="date" style="' + INP + '"></label>' +
+              '<label style="font-size:12px;font-weight:600;display:grid;gap:4px;grid-column:1 / -1">Notes<textarea id="injNotes" placeholder="Mechanism, treatment, restrictions…" style="' + INP + ';min-height:60px"></textarea></label>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">' +
+              '<button class="btn" type="button" onclick="toggleAddInjury()">Cancel</button>' +
+              '<button class="btn primary" type="button" onclick="saveNewInjury()">Save injury</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
         '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">' +
           [
             ['Active injuries', summ.injured.length,  '#f87171'],
@@ -15939,14 +16176,6 @@
                   'color:' + (status===s ? statusColors[s] : 'var(--muted)') + '">' +
                   MATCH_STATUS_LABELS[s] + '</button>'
                 ).join('') +
-              '</div>' +
-            '</div>' +
-            '<div class="card">' +
-              '<div style="font-size:13px;font-weight:700;margin-bottom:10px">Weather placeholder</div>' +
-              '<div style="text-align:center;padding:16px 0;color:var(--muted);font-size:13px">' +
-                '<div style="font-size:36px;margin-bottom:8px">⛅</div>' +
-                '<div>Weather data — future integration point</div>' +
-                '<div style="font-size:11px;margin-top:4px">Connect a weather API to display conditions</div>' +
               '</div>' +
             '</div>' +
             '<div class="card">' +

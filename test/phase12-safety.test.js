@@ -123,6 +123,7 @@ function buildNavScope({ users = [], currentUserId = '' } = {}) {
     function updateNavBadge() {}
     const coachSections = [['overview','Overview'],['messages','Messages'],['training','Training'],['matchday','Match Centre'],['medical','Medical'],['players','Players'],['admin','Admin'],['settings','Settings']];
     const playerSections = [['availability','Availability'],['week','This Week'],['fixtures','Fixtures'],['messages','Messages']];
+    const BETA_SIMPLE_NAV = false; const BETA_NAV_IDS = [];
     const SECTION_ICONS = {};
     ${extractFn(html, 'renderNav')}
     return { renderNav };
