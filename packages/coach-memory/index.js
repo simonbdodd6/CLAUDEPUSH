@@ -20,3 +20,5 @@ export { scoreCoachMemoryEntry } from './scoring.js'
 export { createCoachMemoryStoreContract } from './adapter-contract.js'
 
 export { createCoachMemoryQueryPlan, COACH_MEMORY_SORTS } from './query-plan.js'
+
+export { retrieveCoachMemories } from './retrieval.js'
