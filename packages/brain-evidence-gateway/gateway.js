@@ -49,6 +49,7 @@ import { mergeGateManifestIndexes } from './manifest-merge.js'
 import { filterManifestIndex } from './manifest-filter.js'
 import { diffManifestIndexes } from './manifest-diff.js'
 import { summarizeManifestDiff } from './manifest-diff-summary.js'
+import { explainManifestDiff } from './manifest-diff-explanation.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -473,6 +474,16 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     summarizeManifestDiff(diff, options = {}) {
       return summarizeManifestDiff(diff, options)
+    },
+
+    /**
+     * Explain an M100 manifest diff in a deterministic, structured form —
+     * { verdict, summary, statements } (M102). Reads the existing diff only; inspects no
+     * manifests and recomputes nothing. Pure delegation to `explainManifestDiff`.
+     * @param {object} diff
+     */
+    explainManifestDiff(diff) {
+      return explainManifestDiff(diff)
     },
   })
 }
