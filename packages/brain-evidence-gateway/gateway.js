@@ -51,6 +51,7 @@ import { diffManifestIndexes } from './manifest-diff.js'
 import { summarizeManifestDiff } from './manifest-diff-summary.js'
 import { explainManifestDiff } from './manifest-diff-explanation.js'
 import { assessManifestExplanation } from './manifest-explanation-assessment.js'
+import { summarizeManifestAssessment } from './manifest-assessment-summary.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -496,6 +497,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     assessManifestExplanation(explanation, policy = {}) {
       return assessManifestExplanation(explanation, policy)
+    },
+
+    /**
+     * Summarize an M103 assessment into a stable text representation — "line", "text",
+     * "markdown", or "json" (M104). Presentation only; computes nothing. Pure delegation to
+     * `summarizeManifestAssessment`; returns a string, writes nothing.
+     * @param {object} assessment
+     * @param {{ format?: ('line'|'text'|'markdown'|'json') }} [options]
+     */
+    summarizeManifestAssessment(assessment, options = {}) {
+      return summarizeManifestAssessment(assessment, options)
     },
   })
 }
