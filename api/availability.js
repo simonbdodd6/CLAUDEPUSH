@@ -1,11 +1,11 @@
 // Availability replies from notification actions or the player app.
 // Also handles dev-only seed/reset actions when DEV_LOGIN=true.
 import { load } from './_lib.js';
-import { loadAvailability, saveAvailability } from './_availabilityStore.js';
+import { loadAvailability, saveAvailability, loadAvailabilityForIdentity, resolveAvailabilityForIdentities } from './_availabilityStore.js';
 import { setCors } from './_http.js';
 import { kvConfigured, kvGet } from './_kv.js';
 import { key } from './_keys.js';
-import { DEFAULT_TEAM, resolveSessionFromRequest } from './_identityStore.js';
+import { DEFAULT_TEAM, resolveSessionFromRequest, listIdentityState } from './_identityStore.js';
 import { requireTenantPermission, PERM } from './_tenant.js';
 
 function sendAuthError(res, error) {
@@ -138,25 +138,41 @@ export default async function handler(req, res) {
       const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
       const identity = availabilityIdentityFromSession(sessionContext);
       if (!identity) return res.status(200).json({ responses: {} });
+      // Read by IDENTITY across every stored session, not a published session-id
+      // list. The player's app can POST under a sessionId the published list no
+      // longer contains (stale schedule, republished/custom ids) — constraining
+      // the read to that list made this self-read return {} even though the answer
+      // was persisted. Scanning by identity finds the latest saved answer wherever
+      // it lives. Write path and storage format are unchanged.
+      const found = await loadAvailabilityForIdentity(identity);
       const result = {};
-      // The player's app POSTs under its CLIENT schedule ids, which may be the
-      // coach's published ids OR the default tue/thu/game (kept as local-only
-      // sessions when the coach published custom-id sessions). The read-back must
-      // cover the SAME universe — otherwise an answer saved under e.g. "tue" while
-      // the team publishes "training-1-xyz" is never read and myResponse returns {}.
-      // Union the published ids with the defaults the client can post under.
-      const baseTeamId = sessionContext?.teamMember?.teamId || sessionContext?.session?.teamId;
-      const sessionIds = [...new Set([...(await activeSessionIds(baseTeamId)), ...DEMO_SESSIONS])];
-      await Promise.all(sessionIds.map(async sid => {
-        const data = await loadAvailability(sid);
-        const entry = Object.values(data).find(v =>
-          (v.userId && v.userId === identity.userId) ||
-          (v.playerId && v.playerId === identity.playerId) ||
-          (v.legacyPlayerId && v.legacyPlayerId === identity.legacyPlayerId)
-        );
-        if (entry) result[sid] = { response: entry.response, reason: entry.reason || '' };
-      }));
+      for (const [sid, v] of Object.entries(found)) result[sid] = { response: v.response, reason: v.reason || '' };
       return res.status(200).json({ responses: result });
+    }
+
+    // Coach board read — resolves every roster player's availability through the
+    // SAME shared resolution layer as the player self-read (one resolver, one
+    // interpretation). Returns { resolved: { <identifier>: { sessionId: {response,
+    // reason} } } } indexed by each player's userId + legacyPlayerId (lowercased),
+    // so the coach board attaches answers by identity regardless of which (stale /
+    // republished / custom) sessionId they were saved under.
+    if (req.query?.resolveRoster === '1') {
+      let tenant;
+      try { tenant = await requireTenantPermission(req, PERM.REPORTS); }
+      catch (error) { return sendAuthError(res, error); }
+      const roster = await listIdentityState(tenant.teamId).catch(() => ({ player_profiles: [] }));
+      const identities = (roster.player_profiles || []).map(p => ({
+        userId: p.userId, playerId: p.userId, legacyPlayerId: p.legacyPlayerId || '',
+      }));
+      const resolvedList = await resolveAvailabilityForIdentities(identities);
+      const resolved = {};
+      resolvedList.forEach(({ identity, answers }) => {
+        if (!answers || !Object.keys(answers).length) return;
+        const shaped = {};
+        for (const [sid, v] of Object.entries(answers)) shaped[sid] = { response: v.response, reason: v.reason || '', respondedAt: v.respondedAt || null };
+        [identity.userId, identity.legacyPlayerId].filter(Boolean).forEach(id => { resolved[String(id).toLowerCase()] = shaped; });
+      });
+      return res.status(200).json({ resolved });
     }
 
     try {

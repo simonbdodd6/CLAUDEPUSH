@@ -20155,52 +20155,35 @@
         // pre-registration row (no userId/legacyPlayerId, divergent name) gains the
         // canonical ids and its reply attaches instead of showing "No Reply".
         await ensureCoachRosterIdentityLinked();
-        // Fetch all known sessions dynamically from state.schedule
-        const sessionIds = (state.schedule || []).map(s => s.id).filter(Boolean);
-        if (!sessionIds.length) return;
 
-        const results = await Promise.all(
-          sessionIds.map(sid =>
-            fetch(`/api/availability?sessionId=${encodeURIComponent(sid)}`)
-              .then(r => r.json())
-              .catch(() => ({ responses: [] }))
-          )
-        );
+        // Resolve every roster player's availability through the SHARED resolution
+        // layer (the SAME resolver the player self-read uses). The server reads the
+        // availability records once and resolves by identity, returning
+        // { <identifier>: { sessionId: {response,reason,respondedAt} } } indexed by
+        // each player's userId + legacyPlayerId. The coach board no longer
+        // re-interprets raw records per published sessionId — it consumes the same
+        // resolved model, so answers saved under stale / republished / custom
+        // session ids attach identically to the player view.
+        const resolved = await fetch('/api/availability?resolveRoster=1')
+          .then(r => r.ok ? r.json() : { resolved: {} })
+          .then(d => d.resolved || {})
+          .catch(() => ({}));
 
-        // Build identity→{sid:{response,reason,respondedAt}} map. Each entry is
-        // indexed under EVERY identifier it carries (incl. legacyPlayerId).
-        const byLabel = {};
-        results.forEach((data, i) => {
-          const sid = sessionIds[i];
-          (data.responses || []).forEach((entry) => {
-            const { response, reason, respondedAt } = entry;
-            liveAvailabilityEntryKeys(entry).forEach(k => {
-              if (!byLabel[k]) byLabel[k] = {};
-              byLabel[k][sid] = { response, reason: reason || '', respondedAt: respondedAt || null };
-            });
-          });
-        });
-
-        // Patch state.players with live responses + reasons. Match each player by
-        // ANY of its identifiers (userId / id / legacyPlayerId / playerId / name).
+        // Patch state.players from the resolved model. Match each roster player by
+        // ANY of its identity keys (userId / id / legacyPlayerId / playerId).
         let changed = false;
         state.players.forEach(p => {
-          let live = null;
-          for (const k of liveAvailabilityPlayerKeys(p)) { if (byLabel[k]) { live = byLabel[k]; break; } }
-          if (!live) {
-            const firstName = String(p.name || '').toLowerCase().split(' ')[0];
-            const fallbackKey = firstName && Object.keys(byLabel).find(k => k.split(' ')[0] === firstName);
-            if (fallbackKey) live = byLabel[fallbackKey];
-          }
-          if (!live) return;
-          sessionIds.forEach(sid => {
-            if (!live[sid]) return;
+          let mine = null;
+          for (const k of liveAvailabilityPlayerKeys(p)) { if (resolved[k]) { mine = resolved[k]; break; } }
+          if (!mine) return;
+          Object.entries(mine).forEach(([sid, ans]) => {
+            if (!ans) return;
             const k  = sessionKey(sid);
             const rk = k + 'Reason';
-            if (live[sid].response !== undefined && p[k] !== live[sid].response) { p[k]  = live[sid].response; changed = true; }
-            if (live[sid].reason   !== undefined && p[rk] !== live[sid].reason)  { p[rk] = live[sid].reason; }
             const tk = k + 'RespondedAt';
-            if (live[sid].respondedAt && p[tk] !== live[sid].respondedAt) { p[tk] = live[sid].respondedAt; }
+            if (ans.response !== undefined && p[k] !== ans.response) { p[k]  = ans.response; changed = true; }
+            if (ans.reason   !== undefined && p[rk] !== ans.reason)  { p[rk] = ans.reason; }
+            if (ans.respondedAt && p[tk] !== ans.respondedAt) { p[tk] = ans.respondedAt; }
           });
         });
         if (changed) saveState('Live availability synced');

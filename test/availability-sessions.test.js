@@ -27,7 +27,11 @@ globalThis.fetch = async (_url, options = {}) => {
   if (command === 'GET')  result = kv.has(args[0]) ? kv.get(args[0]) : null;
   if (command === 'SET') { kv.set(args[0], args[1]); result = 'OK'; }
   if (command === 'DEL') { kv.delete(args[0]); result = 1; }
-  if (command === 'SCAN') result = ['0', []];
+  if (command === 'SCAN') {
+    const pat = String(args[2] || '*');
+    const re = new RegExp('^' + pat.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+    result = ['0', [...kv.keys()].filter(k => re.test(k))];
+  }
   return { ok: true, json: async () => ({ result }) };
 };
 
