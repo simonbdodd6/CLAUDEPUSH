@@ -24,3 +24,5 @@ export { createCoachMemoryQueryPlan, COACH_MEMORY_SORTS } from './query-plan.js'
 export { retrieveCoachMemories } from './retrieval.js'
 
 export { assessCoachMemoryCandidate } from './learning.js'
+
+export { synthesizeCoachMemories } from './synthesis.js'
