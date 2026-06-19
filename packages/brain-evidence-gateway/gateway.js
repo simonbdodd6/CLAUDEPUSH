@@ -41,6 +41,7 @@ import { attestationEnvelope } from './attestation-envelope.js'
 import { verifyAttestationEnvelope } from './verify-envelope.js'
 import { serializeAttestationEnvelope } from './serialize-envelope.js'
 import { verifyAttestationEnvelopes } from './verify-envelopes.js'
+import { summarizeAttestationBatch } from './summarize-attestation-batch.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -374,6 +375,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     verifyAttestationEnvelopes(envelopes, verifyFn) {
       return verifyAttestationEnvelopes(envelopes, verifyFn)
+    },
+
+    /**
+     * Summarize an M93 attestation batch result into a stable text representation — "json",
+     * "line", "text", or "markdown" (M94). Presentation only; no verification/crypto. Pure
+     * delegation to `summarizeAttestationBatch`; returns a string, writes nothing.
+     * @param {object} batchResult
+     * @param {{ format?: ('json'|'line'|'text'|'markdown') }} [options]
+     */
+    summarizeAttestationBatch(batchResult, options = {}) {
+      return summarizeAttestationBatch(batchResult, options)
     },
   })
 }
