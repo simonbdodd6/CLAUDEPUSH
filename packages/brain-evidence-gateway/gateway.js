@@ -40,6 +40,7 @@ import { verifyGateManifestSignature } from './verify-signature.js'
 import { attestationEnvelope } from './attestation-envelope.js'
 import { verifyAttestationEnvelope } from './verify-envelope.js'
 import { serializeAttestationEnvelope } from './serialize-envelope.js'
+import { verifyAttestationEnvelopes } from './verify-envelopes.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -361,6 +362,18 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     serializeAttestationEnvelope(envelope, options = {}) {
       return serializeAttestationEnvelope(envelope, options)
+    },
+
+    /**
+     * Verify a batch of M90/M91 attestation envelopes with an injected verifier, folding
+     * the per-envelope results into an aggregate { total, valid, invalid, allValid,
+     * results } (M93). No crypto here. Pure delegation to `verifyAttestationEnvelopes`;
+     * reads only.
+     * @param {object[]} envelopes
+     * @param {(payload: object, signature:*) => boolean} verifyFn
+     */
+    verifyAttestationEnvelopes(envelopes, verifyFn) {
+      return verifyAttestationEnvelopes(envelopes, verifyFn)
     },
   })
 }
