@@ -47,6 +47,8 @@ import { lookupGateManifest } from './manifest-lookup.js'
 import { summarizeManifestIndex } from './manifest-summary.js'
 import { mergeGateManifestIndexes } from './manifest-merge.js'
 import { filterManifestIndex } from './manifest-filter.js'
+import { diffManifestIndexes } from './manifest-diff.js'
+import { summarizeManifestDiff } from './manifest-diff-summary.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -448,6 +450,29 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     filterManifestIndex(index, predicate) {
       return filterManifestIndex(index, predicate)
+    },
+
+    /**
+     * Diff two M95 manifest indexes (previous → current) into a deeply-frozen
+     * { added, removed, changed, unchanged, summary } — comparing only digests + per-entry
+     * count, never manifest contents (M100). Pure delegation to `diffManifestIndexes`;
+     * reads only.
+     * @param {object} previousIndex
+     * @param {object} currentIndex
+     */
+    diffManifestIndexes(previousIndex, currentIndex) {
+      return diffManifestIndexes(previousIndex, currentIndex)
+    },
+
+    /**
+     * Summarize an M100 manifest diff into a stable text representation — "line", "text",
+     * "markdown", or "json" (M101). Presentation only; computes nothing. Pure delegation to
+     * `summarizeManifestDiff`; returns a string, writes nothing.
+     * @param {object} diff
+     * @param {{ format?: ('line'|'text'|'markdown'|'json') }} [options]
+     */
+    summarizeManifestDiff(diff, options = {}) {
+      return summarizeManifestDiff(diff, options)
     },
   })
 }
