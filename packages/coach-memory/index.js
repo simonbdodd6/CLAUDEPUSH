@@ -28,3 +28,5 @@ export { assessCoachMemoryCandidate } from './learning.js'
 export { synthesizeCoachMemories } from './synthesis.js'
 
 export { extractCoachDnaSignals } from './dna-signals.js'
+
+export { buildCoachDnaProfile } from './dna-profile.js'
