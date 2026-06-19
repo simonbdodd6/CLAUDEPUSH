@@ -32,3 +32,5 @@ export { extractCoachDnaSignals } from './dna-signals.js'
 export { buildCoachDnaProfile } from './dna-profile.js'
 
 export { buildDecisionExplanation } from './decision-explanation.js'
+
+export { scoreDecisionAlignment } from './decision-alignment.js'
