@@ -46,6 +46,7 @@ import { gateManifestIndex } from './manifest-index.js'
 import { lookupGateManifest } from './manifest-lookup.js'
 import { summarizeManifestIndex } from './manifest-summary.js'
 import { mergeGateManifestIndexes } from './manifest-merge.js'
+import { filterManifestIndex } from './manifest-filter.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -435,6 +436,18 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     mergeGateManifestIndexes(a, b) {
       return mergeGateManifestIndexes(a, b)
+    },
+
+    /**
+     * Derive a new deeply-frozen M95 index keeping only entries whose (pipelineDigest,
+     * entry) satisfy the predicate; preserves digest order + manifest references and
+     * recomputes total/unique/duplicates over the retained entries (M99). Pure delegation
+     * to `filterManifestIndex`; reads only, clones no manifests.
+     * @param {object} index
+     * @param {(pipelineDigest:string, entry:object) => boolean} predicate
+     */
+    filterManifestIndex(index, predicate) {
+      return filterManifestIndex(index, predicate)
     },
   })
 }
