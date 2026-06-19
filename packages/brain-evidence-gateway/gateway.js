@@ -50,6 +50,7 @@ import { filterManifestIndex } from './manifest-filter.js'
 import { diffManifestIndexes } from './manifest-diff.js'
 import { summarizeManifestDiff } from './manifest-diff-summary.js'
 import { explainManifestDiff } from './manifest-diff-explanation.js'
+import { assessManifestExplanation } from './manifest-explanation-assessment.js'
 
 /**
  * Build the dormant Evidence Gateway.
@@ -484,6 +485,17 @@ export function createEvidenceGateway({ store = null, onStage = null } = {}) {
      */
     explainManifestDiff(diff) {
       return explainManifestDiff(diff)
+    },
+
+    /**
+     * Evaluate an M102 explanation against a declarative policy — { ok, verdict, reasons }
+     * (M103). Inspects no manifests and recomputes nothing. Pure delegation to
+     * `assessManifestExplanation`; reads only.
+     * @param {object} explanation
+     * @param {object} [policy]
+     */
+    assessManifestExplanation(explanation, policy = {}) {
+      return assessManifestExplanation(explanation, policy)
     },
   })
 }
