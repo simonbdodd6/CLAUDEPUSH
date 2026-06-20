@@ -22204,6 +22204,209 @@
         window.location.href = '/mission-control';
       }
     });
+
+    /* ===== Coach QA Mode — hidden, presentation-only, read-only diagnostics =====
+       Enable with ?qa=1 (persists via localStorage 'ce-qa-mode'); ZERO footprint
+       when off. No backend / schema / identity / auth changes: it only reads
+       existing APIs and uses existing coach actions. Disable from the panel. */
+    (function initCoachQA(){
+      function qaOn(){ try { return new URLSearchParams(location.search).get('qa') === '1' || localStorage.getItem('ce-qa-mode') === '1'; } catch(e){ return false; } }
+      if (!qaOn()) return;
+      try { localStorage.setItem('ce-qa-mode', '1'); } catch(e){}
+
+      // ---- passive capture (installed only in QA mode) ----
+      var LOG = { errors: [], fetches: [], warnings: [] };
+      window.addEventListener('error', function(e){ LOG.errors.push((e.message || 'error') + ' @ ' + (e.filename || '') + ':' + (e.lineno || '')); });
+      window.addEventListener('unhandledrejection', function(e){ var r = e && e.reason; LOG.errors.push('promise: ' + ((r && r.message) || r)); });
+      var _warn = console.warn; console.warn = function(){ try { LOG.warnings.push(Array.prototype.slice.call(arguments).join(' ')); } catch(e){} return _warn.apply(console, arguments); };
+      var _fetch = window.fetch;
+      window.fetch = function(){
+        var args = arguments, url = (args[0] && args[0].url) || args[0];
+        return _fetch.apply(this, args).then(
+          function(res){ try { if (!res.ok) LOG.fetches.push(res.status + ' ' + url); } catch(e){} return res; },
+          function(err){ try { LOG.fetches.push('ERR ' + url); } catch(e){} throw err; });
+      };
+
+      // ---- helpers ----
+      function J(path, opts){ return fetch(path, Object.assign({ credentials: 'same-origin' }, opts || {})).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, status: r.status, body: j }; }, function(){ return { ok: r.ok, status: r.status, body: {} }; }); }); }
+      function POSTj(path, payload){ return J(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); }
+      function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+      function pill(ok){ return '<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;color:#fff;background:' + (ok ? '#16a34a' : '#dc2626') + '">' + (ok ? 'PASS' : 'FAIL') + '</span>'; }
+      function dot(ok){ return '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + (ok ? '#16a34a' : '#dc2626') + '"></span>'; }
+      function row(label, val){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid rgba(148,163,184,.15)"><span style="color:#94a3b8;font-size:12px">' + esc(label) + '</span><span style="font-weight:700;font-size:12px;text-align:right;word-break:break-all">' + val + '</span></div>'; }
+      function setHTML(id, html){ var el = document.getElementById(id); if (el) el.innerHTML = html; }
+      var btnCss = 'font-size:10px;padding:3px 9px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;cursor:pointer';
+
+      var REPORT = { version: '', health: [], data: [], quick: {}, nav: [] };
+
+      // ---- SECTION 1: Production Health ----
+      function refreshHealth(){
+        setHTML('qa-s1', '<div style="color:#94a3b8;font-size:12px">Loading…</div>');
+        return Promise.all([ J('/api/config'), J('/api/identity?action=session') ]).then(function(r){
+          var cfg = r[0].body || {}, sess = r[1].body || {};
+          var u = (typeof currentUser === 'function' && currentUser()) || {};
+          var sessOk = !!(sess && sess.session);
+          var rows = [
+            ['Deployed commit', esc(cfg.version || '?')],
+            ['Environment', esc(location.host) + (cfg.devLogin ? ' · devLogin' : '')],
+            ['API status', pill(r[0].ok)],
+            ['Redis connected', pill(!!cfg.storageConfigured)],
+            ['Logged-in club', esc((typeof state !== 'undefined' && state.clubName) || '—')],
+            ['Logged-in team', esc((sess.teamMember && sess.teamMember.teamId) || (typeof state !== 'undefined' && state.teamName) || '—')],
+            ['Logged-in user', esc((u.email || u.name) || (sess.user && sess.user.email) || '—')],
+            ['Session status', pill(sessOk)]
+          ];
+          REPORT.version = cfg.version || '';
+          REPORT.health = rows.map(function(x){ return x[0] + ': ' + x[1].replace(/<[^>]+>/g, ''); });
+          setHTML('qa-s1', rows.map(function(x){ return row(x[0], x[1]); }).join(''));
+        }).catch(function(e){ setHTML('qa-s1', '<div style="color:#fca5a5;font-size:12px">Health error: ' + esc(e.message) + '</div>'); });
+      }
+
+      // ---- SECTION 2: Data Summary ----
+      function refreshData(){
+        setHTML('qa-s2', '<div style="color:#94a3b8;font-size:12px">Loading…</div>');
+        return Promise.all([ J('/api/identity'), J('/api/publish?type=sessions'), J('/api/availability?resolveRoster=1'), J('/api/invite') ]).then(function(r){
+          var id = r[0].body || {}, pub = r[1].body || {}, av = r[2].body || {}, inv = r[3].body || {};
+          var members = id.team_members || id.members || [];
+          var players = members.filter(function(m){ return m.role === 'player'; }).length;
+          var coaches = members.filter(function(m){ return m.role === 'coach' || m.role === 'admin'; }).length;
+          var sessions = (pub.sessions || []).length;
+          var resolved = av.resolved || {}, responses = 0;
+          Object.keys(resolved).forEach(function(k){ responses += Object.keys(resolved[k] || {}).length; });
+          var pending = (inv.invites || []).filter(function(i){ return i.status === 'pending'; }).length;
+          var rows = [['Players', players], ['Coaches', coaches], ['Published sessions', sessions], ['Availability responses', responses], ['Pending invites', pending]];
+          REPORT.data = rows.map(function(x){ return x[0] + ': ' + x[1]; });
+          setHTML('qa-s2', rows.map(function(x){ return row(x[0], '<b>' + x[1] + '</b>'); }).join(''));
+        }).catch(function(e){ setHTML('qa-s2', '<div style="color:#fca5a5;font-size:12px">Data error: ' + esc(e.message) + '</div>'); });
+      }
+
+      // ---- SECTION 3: Quick QA ----
+      var QUICK = [
+        ['create-demo', 'Create demo session', function(){ return J('/api/publish?type=sessions').then(function(r){ var s = (r.body && r.body.sessions) || []; if (!s.some(function(x){ return x.id === 'qa-demo'; })) s = s.concat([{ id: 'qa-demo', title: 'QA Demo Session', type: 'Training' }]); return POSTj('/api/publish', { type: 'sessions', data: s }); }).then(function(r){ return r.ok; }); }],
+        ['clear-demo', 'Clear demo session', function(){ return J('/api/publish?type=sessions').then(function(r){ var s = ((r.body && r.body.sessions) || []).filter(function(x){ return x.id !== 'qa-demo'; }); return POSTj('/api/publish', { type: 'sessions', data: s }); }).then(function(r){ return r.ok; }); }],
+        ['demo-invite', 'Send demo invite', function(){ return POSTj('/api/invite', { name: 'QA Demo Player', role: 'player', email: '', sendEmail: false }).then(function(r){ return r.ok && !!(r.body && r.body.token); }); }],
+        ['refresh-avail', 'Refresh availability', function(){ return J('/api/availability?resolveRoster=1').then(function(r){ return r.ok; }); }],
+        ['refresh-members', 'Refresh members', function(){ return J('/api/identity').then(function(r){ return r.ok; }); }],
+        ['refresh-msgs', 'Refresh messages', function(){ return J('/api/chat?action=conversations').then(function(r){ return r.ok; }); }],
+        ['verify-isolation', 'Verify tenant isolation', function(){ return Promise.all([ J('/api/identity?action=session'), J('/api/identity'), J('/api/availability?resolveRoster=1') ]).then(function(rs){ var s = rs[0].body || {}; var team = (s.teamMember && s.teamMember.teamId) || (s.session && s.session.teamId); var id = rs[1].body || {}; var members = id.team_members || id.members || []; var ids = {}; members.forEach(function(m){ ids[String(m.userId).toLowerCase()] = 1; }); (id.player_profiles || []).forEach(function(p){ if (p.legacyPlayerId) ids[String(p.legacyPlayerId).toLowerCase()] = 1; }); var memOk = members.length > 0 && members.every(function(m){ return m.teamId === team; }); var resolved = (rs[2].body && rs[2].body.resolved) || {}; var resOk = Object.keys(resolved).every(function(k){ return ids[k.toLowerCase()]; }); return memOk && resOk; }); }]
+      ];
+      function buildQuick(){
+        setHTML('qa-s3', QUICK.map(function(q){ return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0"><button data-qa-quick="' + q[0] + '" style="' + btnCss + ';flex:1;text-align:left">' + esc(q[1]) + '</button><span id="qa-q-' + q[0] + '" style="font-size:10px;color:#64748b;min-width:42px;text-align:right">—</span></div>'; }).join(''));
+        var p = document.getElementById('qa-panel');
+        (p ? p.querySelectorAll('[data-qa-quick]') : []).forEach(function(btn){
+          btn.addEventListener('click', function(){
+            var key = btn.getAttribute('data-qa-quick');
+            var entry = QUICK.filter(function(x){ return x[0] === key; })[0];
+            var span = document.getElementById('qa-q-' + key); if (span) span.innerHTML = '…';
+            Promise.resolve().then(entry[2]).then(function(ok){ if (span) span.innerHTML = pill(!!ok); REPORT.quick[entry[1]] = !!ok; }).catch(function(){ if (span) span.innerHTML = pill(false); REPORT.quick[entry[1]] = false; });
+          });
+        });
+      }
+
+      // ---- SECTION 4: Navigation Audit ----
+      var NAV = [['overview', 'Overview'], ['message', 'Availability'], ['messages', 'Messages'], ['players', 'Members'], ['medical', 'Medical'], ['training', 'Training'], ['settings', 'Settings']];
+      function runNavAudit(){
+        var orig = (typeof state !== 'undefined' && state.activeCoachSection) || 'overview';
+        var out = NAV.map(function(p){
+          var ok = false;
+          try { if (typeof setSection === 'function') setSection('coach', p[0]); var el = document.getElementById('coach-' + p[0]); ok = !!(el && el.innerHTML && el.innerHTML.length > 0); } catch(e){ ok = false; }
+          return [p[1], ok];
+        });
+        try { if (typeof setSection === 'function') setSection('coach', orig); } catch(e){}
+        REPORT.nav = out.map(function(x){ return x[0] + ': ' + (x[1] ? 'OK' : 'FAIL'); });
+        setHTML('qa-s4', out.map(function(x){ return '<div style="display:flex;justify-content:space-between;padding:4px 0"><span style="font-size:12px">' + dot(x[1]) + ' ' + esc(x[0]) + '</span><span style="font-size:11px;color:#94a3b8">' + (x[1] ? 'loaded' : 'error') + '</span></div>'; }).join(''));
+      }
+
+      // ---- SECTION 5: Console Health ----
+      function refreshConsole(){
+        function blk(t, arr){ return '<div style="margin-bottom:7px"><div style="font-size:11px;color:#94a3b8">' + t + ' (' + arr.length + ')</div>' + (arr.length ? arr.slice(-8).map(function(x){ return '<div style="font-size:11px;color:#fca5a5;word-break:break-all">• ' + esc(x) + '</div>'; }).join('') : '<div style="font-size:11px;color:#16a34a">none</div>') + '</div>'; }
+        var f404 = LOG.fetches.filter(function(x){ return /^404 /.test(x); });
+        var apifail = LOG.fetches.filter(function(x){ return !/^404 /.test(x); });
+        setHTML('qa-s5', blk('JavaScript errors', LOG.errors) + blk('API / fetch failures', apifail) + blk('404 assets', f404) + blk('Warnings', LOG.warnings));
+      }
+
+      // ---- SECTION 6: UX Polish Checklist ----
+      var CHECKS = ['Spacing', 'Button alignment', 'Overflow', 'Missing icons', 'Broken images', 'Horizontal scrolling', 'Long text clipping', 'Responsive issues'];
+      function loadChecks(){ try { return JSON.parse(localStorage.getItem('ce-qa-checklist') || '{}'); } catch(e){ return {}; } }
+      function renderChecklist(){
+        var c = loadChecks();
+        setHTML('qa-s6', CHECKS.map(function(it){ return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;cursor:pointer"><input type="checkbox" data-qa-check="' + esc(it) + '"' + (c[it] ? ' checked' : '') + '> ' + esc(it) + '</label>'; }).join(''));
+        var p = document.getElementById('qa-panel');
+        (p ? p.querySelectorAll('[data-qa-check]') : []).forEach(function(cb){ cb.addEventListener('change', function(){ var cur = loadChecks(); cur[cb.getAttribute('data-qa-check')] = cb.checked; try { localStorage.setItem('ce-qa-checklist', JSON.stringify(cur)); } catch(e){} }); });
+      }
+
+      // ---- SECTION 7: Export ----
+      function buildReport(){
+        var L = [], quick = REPORT.quick || {}, qk = Object.keys(quick);
+        var navFail = (REPORT.nav || []).filter(function(s){ return /FAIL/.test(s); }).length;
+        L.push('# Coach\'s Eye — Production QA Report', '');
+        L.push('- Version: ' + (REPORT.version || '?'));
+        L.push('- Date: ' + new Date().toISOString());
+        L.push('- Host: ' + location.host, '');
+        L.push('## PASS / FAIL summary');
+        L.push('- Quick QA: ' + qk.filter(function(k){ return quick[k]; }).length + '/' + qk.length + ' PASS');
+        L.push('- Navigation: ' + ((REPORT.nav || []).length - navFail) + '/' + (REPORT.nav || []).length + ' loaded');
+        L.push('- Console: ' + LOG.errors.length + ' JS errors, ' + LOG.fetches.length + ' fetch failures, ' + LOG.warnings.length + ' warnings', '');
+        L.push('## Section 1 — Production Health'); (REPORT.health || []).forEach(function(x){ L.push('- ' + x); });
+        L.push('## Section 2 — Data Summary'); (REPORT.data || []).forEach(function(x){ L.push('- ' + x); });
+        L.push('## Section 3 — Quick QA'); qk.forEach(function(k){ L.push('- ' + k + ': ' + (quick[k] ? 'PASS' : 'FAIL')); });
+        L.push('## Section 4 — Navigation Audit'); (REPORT.nav || []).forEach(function(x){ L.push('- ' + x); });
+        L.push('## Section 5 — Console Health');
+        L.push('### JavaScript errors'); (LOG.errors.length ? LOG.errors : ['none']).forEach(function(x){ L.push('- ' + x); });
+        L.push('### Fetch / API failures'); (LOG.fetches.length ? LOG.fetches : ['none']).forEach(function(x){ L.push('- ' + x); });
+        L.push('### Warnings'); (LOG.warnings.length ? LOG.warnings : ['none']).forEach(function(x){ L.push('- ' + x); });
+        L.push('## Section 6 — UX Polish Checklist'); var c = loadChecks(); CHECKS.forEach(function(it){ L.push('- [' + (c[it] ? 'x' : ' ') + '] ' + it); });
+        return L.join('\n');
+      }
+      function exportReport(){
+        refreshHealth(); refreshData(); runNavAudit(); refreshConsole();
+        setTimeout(function(){
+          var txt = buildReport();
+          try { var blob = new Blob([txt], { type: 'text/markdown' }); var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'coacheye-qa-report-' + Date.now() + '.md'; document.body.appendChild(a); a.click(); a.remove(); } catch(e){ alert(txt); }
+        }, 1400);
+      }
+
+      // ---- panel + floating button ----
+      function sec(title, contentId, refreshId){ return '<div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 4px"><span style="font-weight:700;font-size:13px">' + title + '</span><button id="' + refreshId + '" style="' + btnCss + '">↻</button></div><div id="' + contentId + '"></div>'; }
+      function mount(){
+        if (document.getElementById('qa-fab')) return;
+        var panel = document.createElement('div');
+        panel.id = 'qa-panel';
+        panel.style.cssText = 'position:fixed;top:0;right:0;width:390px;max-width:92vw;height:100vh;overflow-y:auto;background:#0f172a;color:#e2e8f0;z-index:99999;box-shadow:-4px 0 24px rgba(0,0,0,.45);font-family:system-ui,-apple-system,sans-serif;display:none;padding:14px 16px';
+        panel.innerHTML =
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><strong style="font-size:15px">🧪 Coach QA</strong><div style="display:flex;gap:6px"><button id="qa-runall" style="' + btnCss + '">Run all</button><button id="qa-close" style="' + btnCss + '">✕</button></div></div>' +
+          '<div style="font-size:10px;color:#64748b;margin-bottom:6px">Read-only diagnostics. No data model changes.</div>' +
+          sec('1 · Production Health', 'qa-s1', 'qa-r1') +
+          sec('2 · Data Summary', 'qa-s2', 'qa-r2') +
+          '<div style="font-weight:700;font-size:13px;margin:12px 0 4px">3 · Quick QA</div><div id="qa-s3"></div>' +
+          sec('4 · Navigation Audit', 'qa-s4', 'qa-r4') +
+          sec('5 · Console Health', 'qa-s5', 'qa-r5') +
+          '<div style="font-weight:700;font-size:13px;margin:12px 0 4px">6 · UX Polish Checklist</div><div id="qa-s6"></div>' +
+          '<div style="font-weight:700;font-size:13px;margin:12px 0 4px">7 · Export</div>' +
+          '<button id="qa-export" style="' + btnCss + ';width:100%;padding:8px;background:#7c3aed;border-color:#7c3aed;color:#fff;font-weight:700">⬇ Export Production QA Report</button>' +
+          '<button id="qa-disable" style="' + btnCss + ';width:100%;padding:7px;margin-top:8px">Disable QA mode</button>';
+        document.body.appendChild(panel);
+
+        var fab = document.createElement('button');
+        fab.id = 'qa-fab';
+        fab.textContent = '🧪 QA';
+        fab.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:99998;background:#7c3aed;color:#fff;border:none;border-radius:999px;padding:10px 15px;font-weight:800;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3)';
+        document.body.appendChild(fab);
+
+        function runAll(){ refreshHealth(); refreshData(); buildQuick(); runNavAudit(); refreshConsole(); renderChecklist(); }
+        fab.addEventListener('click', function(){ var show = panel.style.display === 'none'; panel.style.display = show ? 'block' : 'none'; if (show) runAll(); });
+        document.getElementById('qa-close').addEventListener('click', function(){ panel.style.display = 'none'; });
+        document.getElementById('qa-runall').addEventListener('click', runAll);
+        document.getElementById('qa-r1').addEventListener('click', refreshHealth);
+        document.getElementById('qa-r2').addEventListener('click', refreshData);
+        document.getElementById('qa-r4').addEventListener('click', runNavAudit);
+        document.getElementById('qa-r5').addEventListener('click', refreshConsole);
+        document.getElementById('qa-export').addEventListener('click', exportReport);
+        document.getElementById('qa-disable').addEventListener('click', function(){ try { localStorage.removeItem('ce-qa-mode'); } catch(e){} var u = location.origin + location.pathname; location.href = u; });
+        buildQuick(); renderChecklist();
+      }
+      if (document.body) mount(); else window.addEventListener('DOMContentLoaded', mount);
+    })();
   </script>
 </body>
 </html>
