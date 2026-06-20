@@ -52,6 +52,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/search` | `?q=<query>` | `Search` | deterministic search across every experience |
 | GET | `/profile` | `?date=YYYY-MM-DD` (optional; defaults today) | `Profile` | the canonical traveller profile |
 | GET | `/traveller-timeline` | — | `TravellerTimeline` | every travel event in one chronological life stream |
+| GET | `/passport` | — | `Passport` | compact traveller identity card and stamp book |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -882,6 +883,39 @@ serialisable, references only, no backend leakage.
 > **Note:** exposed at `GET /traveller-timeline` to avoid colliding with the
 > existing `GET /timeline` (per-trip consumer day-feed). Repointing `/timeline`
 > to this engine is a one-line change if desired.
+
+### Traveller Passport DTO (M44)
+
+A compact, offline-first **traveller passport**: cover, credentials, stamps,
+year pages and highlights composed from the canonical profile (M42) plus the
+complete traveller timeline (M43). **No new intelligence, no AI.** This is a
+presentation DTO for a passport/stamp-book UI.
+
+```
+Passport = {
+  version, referenceDate, hasPassport,
+  cover:{ title, subtitle, heroPlace, country, mediaRef, accent, deepLink } | null,
+  identity:{ since, latest, favouritePlace, mostVisitedCountry, signature } | null,
+  credentials:{ countries, islands, cities, travelDays, memories, achievements, timelineEntries, years },
+  stamps:[Stamp],
+  pages:[{ year, count, stampIds, types:[{type,label}] }],
+  highlights:{ first, latest, recent:[stampId], transport:[stampId] },
+  references:{ media:[ref], map:[{place,isIsland}], achievements:[{id}] },
+  actions:[{ id, label, deepLink, icon }],
+  emptyState:{ title, subtitle, icon, cta } | null,
+  meta, basedOn,
+}
+Stamp = {
+  id, orderingIndex, type, label, subtitle, date, icon, accent,
+  locationRefs:[name], companionRefs:[name], mediaRefs:[ref], achievementRefs:[id],
+  ref:{ type, id }, deepLink,
+}
+```
+
+Stamp types (`PASSPORT_STAMP_TYPES`): trip, country, island, city, flight,
+ferry, transport, border-crossing, dive, surf, achievement, return. Stamps are
+ordered by timeline date with deterministic tiebreaks. Credentials mirror source
+engine values; references are ids only, no media binaries or backend records.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

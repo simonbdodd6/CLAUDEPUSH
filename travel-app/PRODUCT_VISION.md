@@ -1365,6 +1365,42 @@ one chronological stream. These would extend it — still **not implemented**.
 - **Complexity:** Medium.
 - **Tier:** V2.
 
+## AF. Traveller Passport deepeners (added M44)
+
+The Traveller Passport Engine (`/passport`) packages the canonical profile and
+complete traveller timeline into a compact identity card and stamp book. These
+would extend it — still **not implemented**.
+
+### Passport themes and layouts
+- **Why:** Offer deterministic visual variants (classic stamp book, minimalist
+  card, map-first) while binding to the existing design-token system.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
+### Share/export package
+- **Why:** Build a local-only export DTO for image/PDF generation on device,
+  preserving references and never uploading media.
+- **Complexity:** Medium.
+- **Tier:** V2.
+
+### Stamp filters and page modes
+- **Why:** Let the UI show countries only, transport only, activity stamps, or a
+  year-by-year passport without recomputing the source timeline.
+- **Complexity:** Low.
+- **Tier:** V2.
+
+### Map-backed stamp pages
+- **Why:** Pair passport pages with the world/globe data layer so a page can
+  render approximate places behind its stamps.
+- **Complexity:** Medium.
+- **Tier:** V2.
+
+### Companion passport pages
+- **Why:** Add deterministic pages for shared journeys with a companion once the
+  product supports scoped companion profiles.
+- **Complexity:** Medium–High.
+- **Tier:** V3.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

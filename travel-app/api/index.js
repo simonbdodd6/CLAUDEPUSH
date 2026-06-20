@@ -47,6 +47,7 @@ import { buildHome } from './home.js';
 import { buildSearch } from './search.js';
 import { buildProfile } from './profile.js';
 import { buildTravellerTimeline } from './traveller-timeline.js';
+import { buildPassport } from './passport.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -360,6 +361,15 @@ export function createTravelApi(options = {}) {
     return buildTravellerTimeline(events, ownedTrips);
   }
 
+  // Traveller Passport — compact offline identity card and stamp book composed
+  // from the canonical profile plus the complete traveller timeline.
+  async function getPassport(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildPassport(events, ownedTrips);
+  }
+
   // Traveller Profile — one canonical profile composed from existing engines.
   // Reference date explicit (defaults to today).
   async function getProfile(token, { date } = {}) {
@@ -623,6 +633,7 @@ export function createTravelApi(options = {}) {
     getSearch,
     getProfile,
     getTravellerTimeline,
+    getPassport,
     getTripReadiness,
     getApprovals,
     resolveApproval,
