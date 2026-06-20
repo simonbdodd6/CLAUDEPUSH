@@ -5420,6 +5420,18 @@
       if (typeof key === "string" && key.indexOf("avail_") === 0) return key.slice(6);
       return "game";
     }
+    // Canonicalize availability session ids so aliases collapse to ONE display
+    // bucket: tue/trainingTuesday → tue, thu/trainingThursday → thu, game/match →
+    // game (custom ids pass through). Lets the coach board read the server-resolved
+    // answer regardless of which id the player's reply or the coach's local
+    // schedule used.
+    function normalizeSessionId(id) {
+      const s = String(id || '').toLowerCase();
+      if (s === 'tue' || s === 'trainingtuesday')  return 'tue';
+      if (s === 'thu' || s === 'trainingthursday') return 'thu';
+      if (s === 'game' || s === 'match')           return 'game';
+      return String(id || '');
+    }
     // Pure helper: write a single session's availability onto a player record,
     // touching ONLY that session's status + reason. Guarantees changing one
     // session can never mutate another session's stored value.
@@ -5493,22 +5505,54 @@
     }
     function sessionTitle(id) { return state.schedule.find(s => s.id === id)?.title || "this week"; }
     function percent(p, t)    { return !t ? 0 : Math.round((p / t) * 100); }
+    // Coach board source of truth at RENDER time: the last server-resolved
+    // availability map (GET /api/availability?resolveRoster=1), keyed by each
+    // player's identity (userId / legacyPlayerId / playerId, lowercased) → its
+    // answers keyed by sessionId. Set by refreshLiveAvailability. Reading it here
+    // guarantees the LATEST resolved response wins regardless of which raw/canonical
+    // row or session-id alias the local state holds.
+    let _resolvedAvailability = {};
+    function resolvedAnswerFor(player, sessionId) {
+      const want = normalizeSessionId(sessionId);
+      let mine = null;
+      for (const k of liveAvailabilityPlayerKeys(player)) { if (_resolvedAvailability[k]) { mine = _resolvedAvailability[k]; break; } }
+      if (!mine) return null;
+      // Across all answered ids that normalize to the same bucket, the newest
+      // respondedAt wins (handles tue vs trainingTuesday aliasing).
+      let best = null;
+      for (const sid of Object.keys(mine)) {
+        if (normalizeSessionId(sid) !== want) continue;
+        const ans = mine[sid];
+        if (!ans) continue;
+        if (!best || (ans.respondedAt && (!best.respondedAt || String(ans.respondedAt) > String(best.respondedAt)))) best = ans;
+      }
+      return best;
+    }
     function sessionRows(id)  {
       const key = sessionKey(id);
       const rKey = sessionReasonKey(id);
-      // Read the canonical, deduped roster — NOT raw state.players. A player can
-      // hold two raw records (invite + permanent account) until the next
-      // normalizeState pass; reading raw would show the coach duplicate rows or a
-      // stale duplicate's per-session answer, bypassing the merge that preserves
-      // each session's status/reason/respondedAt. This is a read-only view; save
-      // behaviour and state.players are unchanged.
-      return canonicalVisiblePlayers().map(p => ({
-        player:         p,
-        status:         p[key],
-        reason:         p[rKey] || '',
-        attendanceRate: p.attendance,
-        respondedAt:    p[key + 'RespondedAt'] || null,
-      }));
+      // Render from the canonical, deduped roster, but let the server-resolved
+      // answer override the per-row field so the LATEST API value always wins —
+      // fixing stale display when the patched representation (raw state.players or
+      // a session-id alias) diverged from the rendered (canonical) one. Falls back
+      // to the local per-session field when the resolved map has no entry yet.
+      return canonicalVisiblePlayers().map(p => {
+        const live = resolvedAnswerFor(p, id);
+        if (live) return {
+          player:         p,
+          status:         live.response,
+          reason:         live.reason || '',
+          attendanceRate: p.attendance,
+          respondedAt:    live.respondedAt || null,
+        };
+        return {
+          player:         p,
+          status:         p[key],
+          reason:         p[rKey] || '',
+          attendanceRate: p.attendance,
+          respondedAt:    p[key + 'RespondedAt'] || null,
+        };
+      });
     }
 
     function fmtRespondedAt(iso) {
@@ -22251,6 +22295,8 @@
           .then(r => r.ok ? r.json() : { resolved: {} })
           .then(d => d.resolved || {})
           .catch(() => ({}));
+        // Source of truth for the coach board at render time (see sessionRows).
+        _resolvedAvailability = resolved;
 
         // Patch state.players from the resolved model. Match each roster player by
         // ANY of its identity keys (userId / id / legacyPlayerId / playerId).
