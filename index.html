@@ -24279,9 +24279,20 @@
     }
     setTimeout(bgPollUnread, 0);
     setInterval(() => { if (!document.hidden) bgPollUnread(); }, 5000);
+    // The coach Availability board went stale when the laptop tab was backgrounded
+    // (browsers throttle/suspend the 30s poll while hidden) and a player changed a
+    // reply on another device. The backend already serves the latest value; we just
+    // re-pull the board the instant the coach returns to the tab, instead of waiting
+    // for the next poll tick — so latest-saved-response wins on the coach UI too.
+    function refreshAvailabilityOnReturn() {
+      if (state.activeView === 'coach' && state.activeCoachSection === 'message' && typeof refreshLiveAvailability === 'function') {
+        refreshLiveAvailability();
+      }
+    }
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) bgPollUnread();
+      if (!document.hidden) { bgPollUnread(); refreshAvailabilityOnReturn(); }
     });
+    window.addEventListener('focus', refreshAvailabilityOnReturn);
 
     document.addEventListener('keydown', event => {
       const target = event.target;
