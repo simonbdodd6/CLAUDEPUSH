@@ -16,3 +16,5 @@ export { evaluateSelectionCandidate } from './selection-engine.js'
 export { evaluateSquad } from './squad-evaluation.js'
 
 export { buildDepthChart } from './depth-chart.js'
+
+export { recommendStartingXV, DEFAULT_FORMATION } from './recommend-starting-xv.js'
