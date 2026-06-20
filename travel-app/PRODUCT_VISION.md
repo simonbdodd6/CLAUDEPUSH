@@ -1437,6 +1437,42 @@ extend it — still **not implemented**.
 - **Complexity:** Medium–High.
 - **Tier:** V3.
 
+## AH. Traveller Insights deepeners (added M46)
+
+The Traveller Insights Engine (`/insights`) turns existing traveller DTOs into
+fixed-category insight cards with fixed reason codes. These would extend it —
+still **not implemented**.
+
+### Insight filters and pinning
+- **Why:** Let the UI show geography, activity, relationship or achievement
+  insights, and allow a traveller to pin favourite cards locally.
+- **Complexity:** Low.
+- **Tier:** V2.
+
+### Seasonal insight packs
+- **Why:** Produce the same fixed insight catalogue for a selected season or
+  year after date-window statistics exist.
+- **Complexity:** Medium.
+- **Tier:** V2.
+
+### Insight evidence drawer
+- **Why:** Expose the exact source refs behind each insight as an expandable UI
+  drawer without changing the card logic.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
+### Companion-scoped insights
+- **Why:** Build the same fixed-card catalogue for journeys shared with a chosen
+  companion once companion profile scope exists.
+- **Complexity:** Medium–High.
+- **Tier:** V3.
+
+### Device-rendered insight shares
+- **Why:** Render cards into share images locally using media refs and design
+  tokens, with no upload or generated prose.
+- **Complexity:** Medium.
+- **Tier:** V2.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the

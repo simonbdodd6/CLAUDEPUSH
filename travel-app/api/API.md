@@ -54,6 +54,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/traveller-timeline` | — | `TravellerTimeline` | every travel event in one chronological life stream |
 | GET | `/passport` | — | `Passport` | compact traveller identity card and stamp book |
 | GET | `/statistics` | — | `Statistics` | deterministic traveller history statistics |
+| GET | `/insights` | — | `Insights` | fixed-category traveller insight cards |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -956,6 +957,39 @@ travelled, trips completed, memories captured, achievements unlocked,
 collections completed and timeline entries. `source` names the composed engine
 field that supplied the value. Deterministic, serialisable, reference-only, no
 backend leakage.
+
+### Traveller Insights DTO (M46)
+
+Fixed-category **traveller insight cards** composed from statistics, passport,
+profile, traveller timeline, collections, achievements and relationships. This
+is **not AI**, **not generated prose**, and **not recommendation logic**: every
+card uses a fixed title and fixed reason code.
+
+```
+Insights = {
+  version, referenceDate, hasInsights,
+  cards:[InsightCard],
+  categories:[{ id, count }],
+  reasonCodes:[code],
+  sourceSummaries:{ statistics, passport, profile, travellerTimeline, collections, achievements, relationships },
+  actions:[{ id, label, deepLink, icon }],
+  emptyState:{ title, subtitle, icon, cta } | null,
+  meta, basedOn,
+}
+InsightCard = {
+  id, rank, category, title, reasonCode, value, icon, accent, source,
+  refs:{
+    metricIds, stampIds, entryIds, collectionIds, achievementIds,
+    companionRefs, mapRefs, mediaRefs,
+  },
+}
+```
+
+Reason codes (`INSIGHT_REASON_CODES`): most visited country, most active travel
+year, favourite activity, strongest travel style, biggest collection, longest
+travel streak, most repeated destination, first major milestone, latest
+achievement, ocean/island/beach tendency and companion-based insight.
+Deterministic, serialisable, reference-only, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 
