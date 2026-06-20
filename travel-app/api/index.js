@@ -48,6 +48,7 @@ import { buildSearch } from './search.js';
 import { buildProfile } from './profile.js';
 import { buildTravellerTimeline } from './traveller-timeline.js';
 import { buildPassport } from './passport.js';
+import { buildStatistics } from './statistics.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -370,6 +371,15 @@ export function createTravelApi(options = {}) {
     return buildPassport(events, ownedTrips);
   }
 
+  // Traveller Statistics — deterministic presentation summary composed from
+  // profile, passport, traveller timeline, collections and achievements.
+  async function getStatistics(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildStatistics(events, ownedTrips);
+  }
+
   // Traveller Profile — one canonical profile composed from existing engines.
   // Reference date explicit (defaults to today).
   async function getProfile(token, { date } = {}) {
@@ -634,6 +644,7 @@ export function createTravelApi(options = {}) {
     getProfile,
     getTravellerTimeline,
     getPassport,
+    getStatistics,
     getTripReadiness,
     getApprovals,
     resolveApproval,

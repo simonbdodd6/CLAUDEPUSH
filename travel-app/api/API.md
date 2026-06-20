@@ -53,6 +53,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/profile` | `?date=YYYY-MM-DD` (optional; defaults today) | `Profile` | the canonical traveller profile |
 | GET | `/traveller-timeline` | — | `TravellerTimeline` | every travel event in one chronological life stream |
 | GET | `/passport` | — | `Passport` | compact traveller identity card and stamp book |
+| GET | `/statistics` | — | `Statistics` | deterministic traveller history statistics |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -916,6 +917,45 @@ Stamp types (`PASSPORT_STAMP_TYPES`): trip, country, island, city, flight,
 ferry, transport, border-crossing, dive, surf, achievement, return. Stamps are
 ordered by timeline date with deterministic tiebreaks. Credentials mirror source
 engine values; references are ids only, no media binaries or backend records.
+
+### Traveller Statistics DTO (M45)
+
+A deterministic **traveller statistics** presentation model composed from the
+traveller profile, passport, traveller timeline, collections and achievements.
+It adds no new detectors and no intelligence; values mirror existing source
+engine outputs.
+
+```
+Statistics = {
+  version, referenceDate, hasStatistics,
+  headline:[Metric],
+  metrics:[Metric],
+  groups:[{ id, title, icon, metricIds }],
+  milestones:{
+    firstTrip:{ id, title, destination, country, startDate, endDate } | null,
+    latestTrip:{ id, title, destination, country, startDate, endDate } | null,
+    firstTimelineEntry:{ id, title, date } | null,
+    latestTimelineEntry:{ id, title, date } | null,
+  },
+  sourceSummaries:{
+    profile, passport, travellerTimeline, achievements, collections,
+  },
+  highlights:{ topCollections, topAchievements, timelineYears },
+  references:{ media:[ref], map:[{place,isIsland}], achievements:[{id}] },
+  actions:[{ id, label, deepLink, icon }],
+  emptyState:{ title, subtitle, icon, cta } | null,
+  meta, basedOn,
+}
+Metric = {
+  id, label, value, unit:"count", icon, group, source,
+}
+```
+
+Metrics include countries, cities, islands, dives, flights, ferries, nights
+travelled, trips completed, memories captured, achievements unlocked,
+collections completed and timeline entries. `source` names the composed engine
+field that supplied the value. Deterministic, serialisable, reference-only, no
+backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

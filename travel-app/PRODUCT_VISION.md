@@ -1401,6 +1401,42 @@ would extend it — still **not implemented**.
 - **Complexity:** Medium–High.
 - **Tier:** V3.
 
+## AG. Traveller Statistics deepeners (added M45)
+
+The Traveller Statistics Engine (`/statistics`) summarises history by composing
+profile, passport, traveller timeline, collections and achievements. These would
+extend it — still **not implemented**.
+
+### Date-window statistics
+- **Why:** Let the app request statistics for a year, trip, or custom range using
+  the same source engines over a filtered input set.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
+### Comparison cards
+- **Why:** Compare deterministic periods (this year vs last year, Bali trips vs
+  Thailand trips) without generating new claims.
+- **Complexity:** Medium.
+- **Tier:** V2.
+
+### Personal bests
+- **Why:** Surface maximums already present in source engines, such as most
+  active year, longest journey, most photographed day and richest collection.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
+### Exportable statistics packs
+- **Why:** Produce a local-only DTO for share images, widgets or PDF summaries
+  while keeping media as references.
+- **Complexity:** Medium.
+- **Tier:** V2.
+
+### Companion-scoped statistics
+- **Why:** Show statistics for journeys with a selected companion once companion
+  profile scope exists.
+- **Complexity:** Medium–High.
+- **Tier:** V3.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the
