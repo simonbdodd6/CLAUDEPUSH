@@ -46,6 +46,7 @@ import { buildRecommendations } from './recommendations.js';
 import { buildHome } from './home.js';
 import { buildSearch } from './search.js';
 import { buildProfile } from './profile.js';
+import { buildTravellerTimeline } from './traveller-timeline.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -349,6 +350,16 @@ export function createTravelApi(options = {}) {
     }
   }
 
+  // Traveller Timeline — every known travel event in one chronological stream,
+  // composed from existing engines. (The existing /timeline is the per-trip
+  // consumer day-feed; this is the lifetime stream.)
+  async function getTravellerTimeline(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildTravellerTimeline(events, ownedTrips);
+  }
+
   // Traveller Profile — one canonical profile composed from existing engines.
   // Reference date explicit (defaults to today).
   async function getProfile(token, { date } = {}) {
@@ -611,6 +622,7 @@ export function createTravelApi(options = {}) {
     getHome,
     getSearch,
     getProfile,
+    getTravellerTimeline,
     getTripReadiness,
     getApprovals,
     resolveApproval,

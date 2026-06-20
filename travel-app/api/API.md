@@ -51,6 +51,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/home` | `?date=YYYY-MM-DD` (optional; defaults today) `&current=<experience>` | `Home` | the daily home dashboard model |
 | GET | `/search` | `?q=<query>` | `Search` | deterministic search across every experience |
 | GET | `/profile` | `?date=YYYY-MM-DD` (optional; defaults today) | `Profile` | the canonical traveller profile |
+| GET | `/traveller-timeline` | — | `TravellerTimeline` | every travel event in one chronological life stream |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -851,6 +852,36 @@ Composes world, travel-DNA, achievements, collections, story, cinematic, wrapped
 recommendations, navigation and the lifetime timeline. Empty history → a profile
 empty-state with a capture CTA. Deterministic, serialisable, references only, no
 backend leakage.
+
+### Traveller Timeline DTO (M43)
+
+Every known travel event assembled into **one complete chronological life
+stream** — composed from existing engines (lifetime moments, journey transport
+legs, story chapters, yearly markers). **No new intelligence, no AI.** Distinct
+from `/timeline` (the per-trip consumer day-feed); this is the lifetime stream.
+
+```
+TravellerTimeline = {
+  version, entries:[Entry], span:{from,to},
+  statistics:{ total, byType }, byYear:[{ year, count, entryIds }],
+  emptyState:{ title, subtitle, icon, cta } | null, basedOn,
+}
+Entry = {
+  id, orderingIndex, type, title, subtitle, date,
+  locationRefs:[name], companionRefs:[name], mediaRefs:[ref], achievementRefs:[id],
+  ref:{ type, id }, navigationTarget:{ experience, deepLink },
+}
+```
+
+Entry types (`TIMELINE_ENTRY_TYPES`): trip, flight, ferry, transport,
+border-crossing, country, island, city, dive, surf, memory, achievement,
+milestone, relationship, return, story-anchor, year. Ordered by date with
+deterministic tiebreaks; each entry carries a navigation target. Deterministic,
+serialisable, references only, no backend leakage.
+
+> **Note:** exposed at `GET /traveller-timeline` to avoid colliding with the
+> existing `GET /timeline` (per-trip consumer day-feed). Repointing `/timeline`
+> to this engine is a one-line change if desired.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

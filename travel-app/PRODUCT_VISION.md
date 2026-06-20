@@ -1323,6 +1323,48 @@ existing engines. These would extend it — still **not implemented**.
 - **Complexity:** Medium–High (multi-user data).
 - **Tier:** V3.
 
+## AE. Traveller Timeline deepeners (added M43)
+
+The Traveller Timeline Engine (`/traveller-timeline`) assembles every event into
+one chronological stream. These would extend it — still **not implemented**.
+
+### Unify the timeline routes
+- **Why:** Decide whether `/timeline` (per-trip consumer feed) and
+  `/traveller-timeline` (lifetime stream) coexist or merge under one route with a
+  `scope` param — a small deterministic API tidy-up.
+- **Complexity:** Low.
+- **Tier:** V2.
+
+### Date-window & scope filters
+- **Why:** Return the stream for a year, a trip, or a date range — the same
+  composition over a filtered window.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
+### Type filters & clustering
+- **Why:** Filter by entry type (flights only, dives only) or cluster dense days
+  into a single expandable entry — deterministic grouping.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
+### Photo/video-backed timeline rows (Apple/Google Photos)
+- **Why:** Resolve `mediaRefs` into real thumbnails for a rich scrollable
+  timeline.
+- **Complexity:** Medium (on-device; strip EXIF GPS before any reference leaves).
+- **Tier:** V2.
+
+### Map-synced scrubbing (globe)
+- **Why:** As the timeline scrolls, animate the globe to each entry's location —
+  pairs the timeline with the globe DTO.
+- **Complexity:** Medium (client; reuses globe + timeline).
+- **Tier:** V2.
+
+### Performance: shared engine memoisation
+- **Why:** The timeline composes several engines that recompute base layers;
+  per-request memoisation would cut work without changing outputs.
+- **Complexity:** Medium.
+- **Tier:** V2.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the
