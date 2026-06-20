@@ -24,3 +24,5 @@ export { evaluateSelectionRisk } from './selection-risk.js'
 export { summarizeSelectionRisk } from './summarize-selection-risk.js'
 
 export { evaluateTeamSignOff } from './team-signoff.js'
+
+export { composeTeamSheet } from './team-sheet.js'
