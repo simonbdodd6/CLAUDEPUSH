@@ -1,52 +1,108 @@
-# Travel App — iOS (SwiftUI shell, M23.2)
+# Travel Intelligence iOS — Phase 1 SwiftUI Foundation
 
-A native SwiftUI client for the Indonesia Travel MVP. It consumes the
-`travel-app/api` HTTP API **only** — no platform logic, no business logic, no
-repository access. All state changes go through the API; the app renders results.
+Native SwiftUI foundation for the Travel Intelligence app. This phase is visual
+and architectural only: no authentication, no networking, no persistence, no
+maps, and no business logic. Baseline: Xcode 15+ / iOS 17+ for Swift
+Observation.
 
-Design language: **Apple Journal + Flighty + Things 3 + Day One** — clean,
-modern, premium, Apple-native (system materials, SF Symbols, large titles,
-generous spacing, restrained colour).
+Design target: Apple Photos, Flighty, Day One, Polarsteps, Airbnb and Spotify
+Wrapped. Large typography, glass, depth, whitespace, route-like textures and
+premium cards.
 
-## ⚠️ Build environment
-
-This shell was authored outside Xcode (the CI/agent environment has Swift CLT but
-not full Xcode), so **it has not been compiled here.** Build & verify in Xcode:
-
-1. Open Xcode 15+, **File ▸ New ▸ Project ▸ iOS App** (SwiftUI lifecycle), name
-   it `TravelApp`, then add the files under `TravelApp/` to the target (or point
-   the target's sources at this folder).
-2. Capabilities: add **Sign in with Apple**. Set a bundle id + your team.
-3. Set `APIClient.baseURL` (Settings or `AppConfig`) to your running API, e.g.
-   `http://localhost:8787` for dev, or your deployed URL.
-4. Run the API: `PORT=8787 TRAVEL_STORE_DIR=./.travel-data node ../api/server.js`.
-5. Build & run on a simulator/device → TestFlight via Archive.
-
-## Architecture
+## Folder structure
 
 ```
 TravelApp/
-  TravelApp.swift     @main App + scene; injects AppState
-  AppState.swift      session token + current traveller; auth lifecycle (ObservableObject)
-  APIClient.swift     async HTTP client + Codable DTOs — the ONLY integration point
-  DesignSystem.swift  colours, typography, spacing, reusable components
-  RootView.swift      routes: signed-out -> SignInView, signed-in -> MainTabView
-  MainTabView.swift   tab navigation + placeholder screens (Trip/Itinerary/Capture/Settings)
-  Screens/
-    SignInView.swift  Sign in with Apple (wired)
-    TodayView.swift   today overview (wired)
+  App/
+    TravelIntelligenceApp.swift       app entry + root app state
+  Core/
+    Components/
+      PremiumComponents.swift         glass cards, heroes, sections, grid
+      FeatureShell.swift              reusable empty feature surface
+    DesignSystem/
+      TravelTheme.swift               colour palette, spacing, radius
+      TravelTypography.swift          type scale
+      TravelMotion.swift              motion tokens only
+    DTOs/
+      APIContracts.swift              Codable shells matching existing endpoints
+    Navigation/
+      RootShellView.swift             tab shell + more hub
+      TravelTab.swift                 screen registry and endpoint mapping
+  Features/
+    Home/
+    Passport/
+    Timeline/
+    Story/
+    Cinematic/
+    Collections/
+    Statistics/
+    Insights/
+    Highlights/
+    Search/
+    Settings/
 ```
 
-## Wiring status (incremental, per milestone)
+## Architecture
 
-- ✅ Shell: App, AppState, APIClient, DesignSystem, RootView, MainTabView.
-- ✅ Wired: **Sign In** (`POST /auth/apple`), **Today** (`GET /today`).
-- ⏳ Next: Timeline (`GET /timeline`), Itinerary (`GET/PUT /itinerary`),
-  Capture (`POST /capture`), Trip (`GET/PUT /trip`), Settings.
+- SwiftUI lifecycle.
+- MVVM using `@Observable` view models.
+- Views are presentation-only.
+- Feature folders own screen-specific shells.
+- Shared presentation primitives live in `Core/Components`.
+- Backend contracts are represented as inert `Codable` DTO shells only.
+- No API client is implemented in this phase.
 
-## Principles
+## Navigation
 
-- The app calls the API; it never imports or re-implements platform logic.
-- Offline-first comes next (local cache + queued mutations); the shell already
-  centralises all I/O in `APIClient` so caching slots in behind it.
-- No AI screens (V2). No maps, bookings, companions, recommendations (V2).
+`TravelTab` is the single screen registry. The primary tab bar exposes Home,
+Passport, Timeline, Story and an Explore hub. Explore links to Cinematic,
+Collections, Statistics, Insights, Highlights, Search and Settings.
+
+Deep-link-ready endpoint strings are present for existing API contracts, but
+they are display metadata only in Phase 1.
+
+## Design system
+
+- `TravelTheme`: palette, background and semantic accent colours.
+- `TravelTypography`: rounded Apple-native display, title, section and caption
+  styles.
+- `TravelMotion`: named animation tokens for future transitions.
+- `GlassCard`: reusable material-backed card.
+- `ScreenHero`: large premium first-viewport surface.
+- `PremiumSection`: consistent section rhythm.
+- `MapTexturePlaceholder`: decorative route texture, not MapKit.
+
+## Component hierarchy
+
+```
+TravelIntelligenceApp
+  RootShellView
+    TabView
+      HomeScreen
+        FeatureShellView
+          ScreenHero
+          PremiumSection
+            PlaceholderCard
+      PassportScreen
+      TimelineScreen
+      StoryScreen
+      MoreScreensHub
+        FeatureLinkGrid
+          FeatureDestinationView
+```
+
+## Phase boundaries
+
+Not included yet:
+
+- Authentication
+- Networking
+- Persistence
+- Offline cache
+- MapKit
+- Real animations beyond motion tokens
+- Business logic
+- Backend model invention
+
+Build in Xcode 15+ by creating an iOS SwiftUI app target and adding the
+`TravelApp/` source folder to the target.
