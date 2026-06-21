@@ -5,6 +5,7 @@ enum TravelTab: String, CaseIterable, Identifiable, Hashable {
     case passport
     case timeline
     case story
+    case explore
     case cinematic
     case collections
     case statistics
@@ -21,6 +22,7 @@ enum TravelTab: String, CaseIterable, Identifiable, Hashable {
         case .passport: "Passport"
         case .timeline: "Timeline"
         case .story: "Story"
+        case .explore: "Explore"
         case .cinematic: "Cinematic"
         case .collections: "Collections"
         case .statistics: "Statistics"
@@ -37,6 +39,7 @@ enum TravelTab: String, CaseIterable, Identifiable, Hashable {
         case .passport: "person.text.rectangle.fill"
         case .timeline: "clock.fill"
         case .story: "book.pages.fill"
+        case .explore: "square.grid.2x2.fill"
         case .cinematic: "film.stack.fill"
         case .collections: "rectangle.stack.fill"
         case .statistics: "chart.bar.xaxis"
@@ -53,6 +56,7 @@ enum TravelTab: String, CaseIterable, Identifiable, Hashable {
         case .passport: "/passport"
         case .timeline: "/traveller-timeline"
         case .story: "/story"
+        case .explore: "local"
         case .cinematic: "/cinematic"
         case .collections: "/collections"
         case .statistics: "/statistics"
@@ -63,7 +67,6 @@ enum TravelTab: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    static let primaryTabs: [TravelTab] = [.home, .passport, .timeline, .story, .highlights]
-    static let allScreens: [TravelTab] = [.home, .passport, .timeline, .story, .cinematic, .collections, .statistics, .insights, .highlights, .search, .settings]
+    static let primaryTabs: [TravelTab] = [.home, .passport, .timeline, .story, .explore]
+    static let allScreens: [TravelTab] = [.home, .passport, .timeline, .story, .explore, .cinematic, .collections, .statistics, .insights, .highlights, .search, .settings]
 }
-

@@ -19,8 +19,8 @@ struct RootShellView: View {
                 .tabItem { Label(TravelTab.timeline.title, systemImage: TravelTab.timeline.symbol) }
             StoryScreen().tag(TravelTab.story)
                 .tabItem { Label(TravelTab.story.title, systemImage: TravelTab.story.symbol) }
-            MoreScreensHub().tag(TravelTab.highlights)
-                .tabItem { Label("More", systemImage: "square.grid.2x2.fill") }
+            MoreScreensHub().tag(TravelTab.explore)
+                .tabItem { Label(TravelTab.explore.title, systemImage: TravelTab.explore.symbol) }
         }
         .background(TravelTheme.current.background)
     }
@@ -33,8 +33,8 @@ struct MoreScreensHub: View {
                 ScreenHero(
                     eyebrow: "Travel Intelligence",
                     title: "Explore",
-                    subtitle: "Premium surfaces waiting for API data.",
-                    symbol: "square.grid.2x2.fill",
+                    subtitle: "The quiet control room for deeper travel surfaces as data arrives.",
+                    symbol: TravelTab.explore.symbol,
                     endpoint: nil
                 )
                 FeatureLinkGrid(tabs: [.cinematic, .collections, .statistics, .insights, .highlights, .search, .settings])
@@ -44,4 +44,3 @@ struct MoreScreensHub: View {
         }
     }
 }
-

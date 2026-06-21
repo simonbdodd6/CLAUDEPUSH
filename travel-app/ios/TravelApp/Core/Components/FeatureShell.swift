@@ -60,6 +60,7 @@ struct FeatureDestinationView: View {
         case .passport: PassportScreen()
         case .timeline: TimelineScreen()
         case .story: StoryScreen()
+        case .explore: MoreScreensHub()
         case .cinematic: CinematicScreen()
         case .collections: CollectionsScreen()
         case .statistics: StatisticsScreen()
@@ -70,4 +71,3 @@ struct FeatureDestinationView: View {
         }
     }
 }
-

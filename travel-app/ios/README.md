@@ -1,4 +1,4 @@
-# Travel Intelligence iOS — Phase 1 SwiftUI Foundation
+# Travel Intelligence iOS — SwiftUI Foundation
 
 Native SwiftUI foundation for the Travel Intelligence app. This phase is visual
 and architectural only: no authentication, no networking, no persistence, no
@@ -17,6 +17,7 @@ TravelApp/
     TravelIntelligenceApp.swift       app entry + root app state
   Core/
     Components/
+      DashboardCards.swift            home cards and dashboard primitives
       PremiumComponents.swift         glass cards, heroes, sections, grid
       FeatureShell.swift              reusable empty feature surface
     DesignSystem/
@@ -70,6 +71,9 @@ they are display metadata only in Phase 1.
 - `GlassCard`: reusable material-backed card.
 - `ScreenHero`: large premium first-viewport surface.
 - `PremiumSection`: consistent section rhythm.
+- `TripMemoryCard`, `PassportProgressCard`, `TimelinePreviewRow`,
+  `HighlightCard`, `InsightCard` and `CinematicCTACard`: static Phase 2
+  dashboard components.
 - `MapTexturePlaceholder`: decorative route texture, not MapKit.
 
 ## Component hierarchy
@@ -79,10 +83,13 @@ TravelIntelligenceApp
   RootShellView
     TabView
       HomeScreen
-        FeatureShellView
-          ScreenHero
-          PremiumSection
-            PlaceholderCard
+        HomeHeroHeader
+        TripMemoryCard
+        PassportProgressCard
+        TimelinePreviewRow
+        HighlightCard
+        InsightCard
+        CinematicCTACard
       PassportScreen
       TimelineScreen
       StoryScreen
