@@ -28,3 +28,5 @@ export { evaluateTeamSignOff } from './team-signoff.js'
 export { composeTeamSheet } from './team-sheet.js'
 
 export { recommendCaptain } from './captain-recommendation.js'
+
+export { recommendBench } from './bench-recommendation.js'
