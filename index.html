@@ -9807,7 +9807,9 @@
         saveState('Club created');
 
         // Persist the club profile server-side (session is now scoped to the new team).
-        saveClubConfigToServer({ logoDataUrl: d.logoDataUrl || '', sport: d.sport }).catch(() => {});
+        // Seed clubName/teamName explicitly so the config carries the created names
+        // from the start — the seed-from-local path can never capture a stale name.
+        saveClubConfigToServer({ logoDataUrl: d.logoDataUrl || '', sport: d.sport, clubName: state.clubName, teamName: state.teamName }).catch(() => {});
         syncSessionsToServer().catch(() => {});
         ensureAutopilotSchedule().catch(() => {});
         markSynced();
@@ -11877,14 +11879,18 @@
             <p class="muted" style="font-size:12px;margin-bottom:14px">Shown to players in their app and in invite emails.</p>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
               <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Club name
-                <input value="${esc(state.clubName || '')}" style="${inputStyle}"
+                <input id="admin-club-name" value="${esc(state.clubName || '')}" style="${inputStyle}"
                   onchange="state.clubName=this.value.trim();adminSaveClub()"></label>
               <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Team name
-                <input value="${esc(state.teamName || '')}" style="${inputStyle}"
+                <input id="admin-team-name" value="${esc(state.teamName || '')}" style="${inputStyle}"
                   onchange="state.teamName=this.value.trim();adminSaveClub()"></label>
               <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Season
-                <input value="${esc(state.seasonName || '')}" style="${inputStyle}"
+                <input id="admin-season-name" value="${esc(state.seasonName || '')}" style="${inputStyle}"
                   onchange="state.seasonName=this.value.trim();adminSaveClub()"></label>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap">
+              <button class="btn primary" type="button" onclick="adminSaveClubNow()">💾 Save Club Settings</button>
+              <span id="admin-club-status" style="font-size:12px;color:var(--muted)" aria-live="polite"></span>
             </div>
           </div>
 
@@ -12028,6 +12034,28 @@
         showToast(saved ? 'Club details saved ✓' : '⚠️ Saved on this device — server sync failed, will retry on next change');
       }, 800);
       renderNav();
+    }
+
+    // Explicit "Save Club Settings" action — reads the inputs directly (so it works
+    // even if an onchange didn't fire), persists via the existing club-config path,
+    // updates the header immediately, and shows inline saved/failed feedback.
+    async function adminSaveClubNow() {
+      const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : undefined; };
+      const cn = g('admin-club-name'), tn = g('admin-team-name'), sn = g('admin-season-name');
+      if (cn !== undefined) state.clubName = cn;
+      if (tn !== undefined) state.teamName = tn;
+      if (sn !== undefined) state.seasonName = sn;
+      clearTimeout(window._clubCfgT);        // supersede any pending debounced auto-save
+      saveState('Club details saved');
+      renderNav();                            // header reflects the new name immediately
+      const status = document.getElementById('admin-club-status');
+      if (status) { status.textContent = 'Saving…'; status.style.color = 'var(--muted)'; }
+      const saved = await saveClubConfigToServer();
+      if (status) {
+        status.textContent = saved ? 'Saved ✓' : '⚠️ Saved on this device — will retry sync';
+        status.style.color = saved ? 'var(--green)' : 'var(--amber)';
+      }
+      showToast(saved ? 'Club settings saved ✓' : '⚠️ Saved on device — server sync failed');
     }
 
     function adminEditSession(id, field, value) {
@@ -20729,12 +20757,25 @@
     let _myPermissions = null;   // array of permission ids, or null = not loaded
     let _myMemberships = [];     // [{teamId, teamName, role, current}]
 
+    let _adoptedTeamId = null;
     function adoptIdentityPayload(d) {
       if (Array.isArray(d?.permissions)) _myPermissions = d.permissions;
       if (Array.isArray(d?.memberships)) _myMemberships = d.memberships;
       if (d?.teamPlan       !== undefined) state.teamPlan       = d.teamPlan;
       if (d?.teamPlanStatus !== undefined) state.teamPlanStatus = d.teamPlanStatus;
       if (d?.trialEndsAt    !== undefined) state.trialEndsAt    = d.trialEndsAt;
+      // Prevent a stale/demo club name (left in localStorage from a previous team)
+      // from displaying or being re-persisted for a freshly authenticated session:
+      // when the ACTIVE team changes, reset the header club name to the authenticated
+      // team's name. loadClubConfigFromServer then refines it from the server club
+      // config (a legitimate rename). Same-team re-adopts are left untouched, so a
+      // loaded/renamed club name is never clobbered.
+      const current = (d?.memberships || []).find(m => m.current) || (d?.memberships || [])[0];
+      if (current && current.teamId && current.teamId !== _adoptedTeamId) {
+        _adoptedTeamId = current.teamId;
+        if (current.teamName) state.clubName = current.teamName;
+        _clubConfigChecked = false; // allow the new team's club config to be fetched
+      }
     }
 
     function trialDaysRemaining() {
