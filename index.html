@@ -5847,8 +5847,18 @@
       const sendReason   = response === 'injured' ? 'injury'     : (reason || '');
       let endpoint = '';
       try {
-        const sub = await navigator.serviceWorker?.ready
-          .then(reg => reg.pushManager.getSubscription());
+        // Best-effort push endpoint, used ONLY for the unauthenticated fallback.
+        // NEVER block the save on it: navigator.serviceWorker.ready can stay
+        // pending forever when no active SW exists (iOS / first load / private
+        // mode / notifications declined), which hung this POST so a tap updated
+        // the UI but never reached the server. Race it against a short timeout so
+        // the authenticated POST always fires.
+        const sub = await Promise.race([
+          Promise.resolve(navigator.serviceWorker?.ready)
+            .then(reg => (reg ? reg.pushManager.getSubscription() : null))
+            .catch(() => null),
+          new Promise(resolve => setTimeout(() => resolve(null), 600)),
+        ]);
         endpoint = sub?.endpoint || '';
       } catch {}
       return fetch('/api/availability', {
