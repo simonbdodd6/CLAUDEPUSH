@@ -55,6 +55,7 @@ Configuration + deployment (env vars, Apple Sign In setup, Postgres seam): see
 | GET | `/passport` | — | `Passport` | compact traveller identity card and stamp book |
 | GET | `/statistics` | — | `Statistics` | deterministic traveller history statistics |
 | GET | `/insights` | — | `Insights` | fixed-category traveller insight cards |
+| GET | `/highlights` | — | `Highlights` | fixed-category traveller highlight cards |
 
 ### Consumer DTOs (M23.3 · premium experience M24.0)
 
@@ -990,6 +991,40 @@ year, favourite activity, strongest travel style, biggest collection, longest
 travel streak, most repeated destination, first major milestone, latest
 achievement, ocean/island/beach tendency and companion-based insight.
 Deterministic, serialisable, reference-only, no backend leakage.
+
+### Traveller Highlights DTO (M47)
+
+Fixed-category **traveller highlight cards** selected from existing outputs:
+insights, statistics, passport, profile, traveller timeline, collections,
+achievements, story composer and cinematic. This is **not AI**, **not generated
+prose**, and **not recommendations**: every card uses a fixed title and fixed
+reason code.
+
+```
+Highlights = {
+  version, referenceDate, hasHighlights,
+  cards:[HighlightCard],
+  categories:[{ id, count }],
+  reasonCodes:[code],
+  sourceSummaries:{ insights, statistics, passport, profile, travellerTimeline, collections, achievements, story, cinematic },
+  actions:[{ id, label, deepLink, icon }],
+  emptyState:{ title, subtitle, icon, cta } | null,
+  meta, basedOn,
+}
+HighlightCard = {
+  id, rank, category, title, reasonCode, value, icon, accent, source,
+  refs:{
+    tripIds, metricIds, insightIds, stampIds, entryIds, collectionIds,
+    achievementIds, storyMomentIds, sceneIds, companionRefs, mapRefs, mediaRefs,
+  },
+}
+```
+
+Reason codes (`HIGHLIGHT_REASON_CODES`): first trip, latest trip, biggest trip,
+longest trip, top achievement, most meaningful collection, most active year,
+favourite destination, most repeated place, strongest activity theme, companion
+highlight, island/ocean/beach highlight, story hero moment and cinematic hero
+scene. Deterministic, serialisable, reference-only, no backend leakage.
 
 ## End-to-end journey (validated by `test/journey.test.js`)
 

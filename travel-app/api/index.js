@@ -50,6 +50,7 @@ import { buildTravellerTimeline } from './traveller-timeline.js';
 import { buildPassport } from './passport.js';
 import { buildStatistics } from './statistics.js';
 import { buildInsights } from './insights.js';
+import { buildHighlights } from './highlights.js';
 
 import { createIdentityPlatform } from '../../lib/identity-platform/index.js';
 import { IdentityPlatformSourceAdapter, createTravellerIdentityPlatform } from '../../lib/traveller-identity-platform/index.js';
@@ -390,6 +391,15 @@ export function createTravelApi(options = {}) {
     return buildInsights(events, ownedTrips);
   }
 
+  // Traveller Highlights — fixed-category, deterministic highlight cards
+  // selected from existing traveller presentation engines. Not AI.
+  async function getHighlights(token) {
+    const id = travellerFor(token);
+    const events = await timeline.listByTraveller(id, { order: 'asc', limit: 1000 });
+    const ownedTrips = await trips.listTripsForIdentity(id, actorFor(id));
+    return buildHighlights(events, ownedTrips);
+  }
+
   // Traveller Profile — one canonical profile composed from existing engines.
   // Reference date explicit (defaults to today).
   async function getProfile(token, { date } = {}) {
@@ -656,6 +666,7 @@ export function createTravelApi(options = {}) {
     getPassport,
     getStatistics,
     getInsights,
+    getHighlights,
     getTripReadiness,
     getApprovals,
     resolveApproval,

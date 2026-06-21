@@ -1473,6 +1473,42 @@ still **not implemented**.
 - **Complexity:** Medium.
 - **Tier:** V2.
 
+## AI. Traveller Highlights deepeners (added M47)
+
+The Traveller Highlights Engine (`/highlights`) selects fixed-category highlight
+cards from existing traveller DTOs. These would extend it — still **not
+implemented**.
+
+### Highlight pinning and ordering
+- **Why:** Let travellers locally pin, hide or reorder highlight cards without
+  changing deterministic server selection.
+- **Complexity:** Low.
+- **Tier:** V2.
+
+### Highlight evidence drawer
+- **Why:** Show the exact trips, scenes, timeline entries, collections and
+  achievements behind each highlight.
+- **Complexity:** Low–Medium.
+- **Tier:** V2.
+
+### Year and trip highlight packs
+- **Why:** Run the same fixed highlight catalogue over a selected year or trip
+  once date-window source DTOs exist.
+- **Complexity:** Medium.
+- **Tier:** V2.
+
+### Widget-ready highlight DTO
+- **Why:** Produce compact local widget variants for lock screen or home screen
+  surfaces while preserving references only.
+- **Complexity:** Medium.
+- **Tier:** V2.
+
+### Companion highlight packs
+- **Why:** Build highlight sets for journeys shared with a selected companion
+  once companion profile scope exists.
+- **Complexity:** Medium–High.
+- **Tier:** V3.
+
 ## Integration design rules (when any of these is built)
 
 - **Opt-in, least-privilege, read-only first.** Never request a scope before the
