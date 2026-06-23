@@ -26,7 +26,18 @@ TravelApp/
       TravelTypography.swift          type scale
       TravelMotion.swift              motion tokens only
     DTOs/
-      APIContracts.swift              Codable shells matching existing endpoints
+      APIContracts.swift              DTO foundation: TravelDTO, DTOPreviewProviding, DTOMeta
+      TravellerDTO.swift              root traveller profile + summary
+      PassportDTO.swift               completion, stamps and stats
+      TimelineDTO.swift               year-grouped travel events
+      StoryDTO.swift                  collections and story drafts
+      CinematicDTO.swift              reels and memory scenes
+      StatisticsDTO.swift             keyed travel metrics
+      InsightsDTO.swift               reason-code insight cards
+      HighlightsDTO.swift             standout moments and achievements
+      CollectionDTO.swift             standalone memory collection
+      OnThisDayDTO.swift              same-day memories across years
+      MockDTOProvider.swift           single deterministic mock data source
     Navigation/
       RootShellView.swift             tab shell + Explore hub (registry-driven)
       TravelTab.swift                 screen identity and endpoint metadata
