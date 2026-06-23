@@ -20791,10 +20791,16 @@
     }
     let _allowedDmParticipantIds = _buildInitialAllowedDmIds();
     function _filterCanonicalConversations(convs) {
+      const meId = String(chatMe()?.id || '');
       return (Array.isArray(convs) ? convs : []).filter(c => {
         const id = String(c?.id || '');
         if (!id.startsWith('dm:')) return true;
         const parts = id.split(':').slice(1);
+        // Server-authoritative: keep any DM the current user participates in, even
+        // if the other participant (e.g. the coach) is not yet in the local roster /
+        // state.users. Otherwise a valid server DM is discarded and _chatConversations
+        // can never populate (circular with playerCoachDmId, which reads it back).
+        if (meId && parts.some(p => String(p) === meId)) return true;
         return parts.every(p => _allowedDmParticipantIds.has(p));
       });
     }
@@ -20804,15 +20810,12 @@
         const me = chatMe();
         const data = await fetch(`/api/chat?action=conversations&userId=${encodeURIComponent(me.id)}`).then(r => r.json());
         if (data.ok) {
-          let conversations = _filterCanonicalConversations(data.conversations || []);
-          if (currentUser()?.role === 'player') {
-            const allowed = playerAllowedConversationIds();
-            conversations = conversations.filter(sc => {
-              if (!allowed.has(sc.id)) return false;
-              return true;
-            });
-          }
-          _chatConversations = conversations;
+          // Server-returned conversations are authoritative. _filterCanonicalConversations
+          // already keeps any DM the current user participates in, so we must NOT re-filter
+          // the player list through playerAllowedConversationIds(): that allow-list derives
+          // from playerCoachDmId(), which derives from _chatConversations — a circular
+          // dependency that previously discarded the valid server DM, leaving it [].
+          _chatConversations = _filterCanonicalConversations(data.conversations || []);
           // Update nav badge for the current user's unread total
           chatSetUnreadTotal(chatUnreadTotal());
         }
