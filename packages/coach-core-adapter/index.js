@@ -54,3 +54,7 @@ export {
 export {
   buildDecisionPlanContext,
 } from './decision-plan-builder.js'
+
+export {
+  runSelectionDryRun,
+} from './selection-dry-run.js'
