@@ -36,6 +36,7 @@ TravelApp/
     Timeline/
       TimelineComponents.swift        timeline hero, year groups, cards and empty state
     Story/
+      StoryComponents.swift           story composer cards, clusters and empty state
     Cinematic/
     Collections/
     Statistics/
@@ -84,6 +85,9 @@ they are display metadata only in the current visual phases.
 - `TimelineHeroCard`, `TimelineYearHeader`, `TimelineEventCard`,
   `JourneyMilestoneCard`, `TravelMomentRow` and `TimelineEmptyState`: static
   Phase 4 traveller timeline components.
+- `StoryHeroCard`, `StoryCollectionCard`, `StoryDraftCard`, `StoryThemeCard`,
+  `MemoryClusterCard`, `StoryStatisticCard` and `StoryEmptyState`: static
+  Phase 5 story composer components.
 
 ## Component hierarchy
 
@@ -114,6 +118,13 @@ TravelIntelligenceApp
         TravelMomentRow
         TimelineEmptyState
       StoryScreen
+        StoryHeroCard
+        StoryCollectionCard
+        StoryDraftCard
+        MemoryClusterCard
+        StoryThemeCard
+        StoryStatisticCard
+        StoryEmptyState
       MoreScreensHub
         FeatureLinkGrid
           FeatureDestinationView
