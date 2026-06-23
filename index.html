@@ -22222,15 +22222,19 @@
       loadLiveResponses();
       // Pull live availability from Redis into the session detail panels
       await refreshLiveAvailability();
-      // Auto-refresh every 30 s while Message Center is open
+      // Live board refresh while the Availability section is open. Board-only
+      // ticks are cheap: they fetch the resolved map and repaint the selected
+      // board ONLY when the data actually changed (skipping the side-panel
+      // reloads), so the current session updates live without the coach switching
+      // sessions, and idle ticks cause no re-render/network churn.
       clearInterval(_availPollTimer);
       _availPollTimer = setInterval(() => {
         if (state.activeView === 'coach' && state.activeCoachSection === 'message') {
-          refreshLiveAvailability();
+          refreshLiveAvailability({ boardOnly: true });
         } else {
           clearInterval(_availPollTimer);
         }
-      }, 30000);
+      }, 5000);
     }
 
     // Pull player availability from Redis and update state.players + re-render session detail
@@ -22273,10 +22277,10 @@
       } catch { /* non-critical — board still shows local state */ }
     }
 
-    async function refreshLiveAvailability() {
+    async function refreshLiveAvailability(opts = {}) {
       const btn = document.getElementById('avail-refresh-btn');
       const ts  = document.getElementById('avail-refresh-ts');
-      if (btn) { btn.disabled = true; btn.textContent = '↺ Refreshing…'; }
+      if (btn && !opts.boardOnly) { btn.disabled = true; btn.textContent = '↺ Refreshing…'; }
       try {
         // Link saved roster rows to their server identity BEFORE matching, so a
         // pre-registration row (no userId/legacyPlayerId, divergent name) gains the
@@ -22296,7 +22300,9 @@
           .then(d => d.resolved || {})
           .catch(() => ({}));
         // Source of truth for the coach board at render time (see sessionRows).
+        const _prevResolvedSig = JSON.stringify(_resolvedAvailability);
         _resolvedAvailability = resolved;
+        const _resolvedChanged = JSON.stringify(resolved) !== _prevResolvedSig;
 
         // Patch state.players from the resolved model. Match each roster player by
         // ANY of its identity keys (userId / id / legacyPlayerId / playerId).
@@ -22321,19 +22327,26 @@
           ts.textContent = `Synced ${new Date(_availLastSync).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}`;
           ts.className = 'msg-chip available';
         }
-        renderMessageCenter();
-        setTimeout(() => {
-          renderAudiencePicker();
-          renderPushStatusCard();
-          loadLiveSchedules();
-          loadLiveTemplates();
-          loadLiveLog();
-        }, 50);
+        // Re-render the currently selected board whenever the resolved data
+        // changed (or on a full/manual refresh) — so the selected session updates
+        // LIVE without the coach switching sessions. Lightweight board-only poll
+        // ticks repaint ONLY when data changed (no churn while idle) and skip the
+        // heavier side-panel reloads.
+        if (!opts.boardOnly || _resolvedChanged) renderMessageCenter();
+        if (!opts.boardOnly) {
+          setTimeout(() => {
+            renderAudiencePicker();
+            renderPushStatusCard();
+            loadLiveSchedules();
+            loadLiveTemplates();
+            loadLiveLog();
+          }, 50);
+        }
       } catch(e) {
         console.warn('[refreshLiveAvailability]', e);
         if (ts) { ts.textContent = 'Sync failed'; ts.className = 'msg-chip unavailable'; }
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh'; }
+        if (btn && !opts.boardOnly) { btn.disabled = false; btn.textContent = '↺ Refresh'; }
       }
     }
 
