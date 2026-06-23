@@ -34,6 +34,7 @@ TravelApp/
     Home/
     Passport/
     Timeline/
+      TimelineComponents.swift        timeline hero, year groups, cards and empty state
     Story/
     Cinematic/
     Collections/
@@ -80,6 +81,9 @@ they are display metadata only in the current visual phases.
   `PassportStyleCard`, `PassportStampCell`/`PassportStampGrid`,
   `PassportMomentRow` and `PassportEmptyState`: static Phase 3 premium passport
   components. `CompletionRing` is a drawn progress ring, not a chart library.
+- `TimelineHeroCard`, `TimelineYearHeader`, `TimelineEventCard`,
+  `JourneyMilestoneCard`, `TravelMomentRow` and `TimelineEmptyState`: static
+  Phase 4 traveller timeline components.
 
 ## Component hierarchy
 
@@ -103,6 +107,12 @@ TravelIntelligenceApp
         PassportMomentRow
         PassportEmptyState
       TimelineScreen
+        TimelineHeroCard
+        JourneyMilestoneCard
+        TimelineYearHeader
+        TimelineEventCard
+        TravelMomentRow
+        TimelineEmptyState
       StoryScreen
       MoreScreensHub
         FeatureLinkGrid
