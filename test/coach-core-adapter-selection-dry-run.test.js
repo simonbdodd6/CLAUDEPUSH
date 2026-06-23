@@ -72,7 +72,8 @@ test('pipelineInput has the expected contract shape', () => {
   const { services } = makeServices()
   const r = runSelectionDryRun(input(), services)
   const pi = r.pipelineInput
-  assert.deepEqual(Object.keys(pi).sort(), ['candidates', 'decision', 'formation', 'intelligenceServices', 'memoryProvider', 'plan', 'positionGroups'])
+  assert.deepEqual(Object.keys(pi).sort(), ['candidates', 'decision', 'formation', 'intelligenceServices', 'memoryProvider', 'plan', 'positionGroups', 'squadOptions'])
+  assert.deepEqual(pi.squadOptions, {})   // default when omitted
   assert.equal(pi.candidates, r.selectionContext.candidates)
   assert.equal(pi.formation, r.selectionContext.formation)
   assert.equal(pi.positionGroups, r.selectionContext.positionGroups)
@@ -89,6 +90,15 @@ test('runSelectionPipeline is called exactly once, with pipelineInput', () => {
   const r = runSelectionDryRun(input(), services)
   assert.equal(calls.length, 1)
   assert.equal(calls[0], r.pipelineInput)
+})
+
+// ── squadOptions passthrough (M141) ──────────────────────────────────────────────────
+
+test('input.squadOptions is preserved into pipelineInput; invalid squadOptions throws', () => {
+  const { services } = makeServices()
+  const squadOptions = { limit: 23 }
+  assert.equal(runSelectionDryRun(input({ squadOptions }), services).pipelineInput.squadOptions, squadOptions)
+  assert.throws(() => runSelectionDryRun(input({ squadOptions: 5 }), services), TypeError)
 })
 
 // ── validation ───────────────────────────────────────────────────────────────────────

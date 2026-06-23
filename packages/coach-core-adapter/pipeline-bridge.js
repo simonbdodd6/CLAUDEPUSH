@@ -19,6 +19,7 @@ function assertPipelineInput(pi) {
   for (const k of ['formation', 'positionGroups', 'plan', 'decision', 'memoryProvider', 'intelligenceServices']) {
     if (!isObj(pi[k])) throw new TypeError(`runPipelineBridge: pipelineInput.${k} must be an object`)
   }
+  if (pi.squadOptions !== undefined && !isObj(pi.squadOptions)) throw new TypeError('runPipelineBridge: pipelineInput.squadOptions must be an object')   // optional
 }
 
 function assertServices(s) {
@@ -32,7 +33,7 @@ function assertServices(s) {
  * Bridge M118 → M119 → M131 using injected implementations.
  *
  * @param {{ candidates:object[], formation:object, positionGroups:object, plan:object,
- *   decision:object, memoryProvider:object, intelligenceServices:object }} pipelineInput
+ *   decision:object, memoryProvider:object, intelligenceServices:object, squadOptions?:object }} pipelineInput
  * @param {{ runCoachIntelligencePipeline:Function, buildCoachRecommendation:Function, runSelectionPipeline:Function }} services
  * @returns {Readonly<{ pipelineResult:any, recommendation:any, selectionInput:object, result:any, metadata:object }>}
  */
@@ -57,6 +58,7 @@ export function runPipelineBridge(pipelineInput, services) {
     recommendation,
     formation: pipelineInput.formation,
     positionGroups: pipelineInput.positionGroups,
+    squadOptions: pipelineInput.squadOptions !== undefined ? pipelineInput.squadOptions : {},   // passthrough to M131→M121
   }
 
   // 4. M131 selection pipeline — injected; called exactly once; exceptions propagate

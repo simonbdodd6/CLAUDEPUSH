@@ -74,7 +74,24 @@ test('M119 output (and M118 output) are passed to M131', () => {
   assert.equal(si.candidates, pi.candidates)
   assert.equal(si.formation, pi.formation)
   assert.equal(si.positionGroups, pi.positionGroups)
-  assert.deepEqual(Object.keys(si).sort(), ['candidates', 'formation', 'pipelineResult', 'positionGroups', 'recommendation'])
+  assert.deepEqual(si.squadOptions, {})   // default when omitted
+  assert.deepEqual(Object.keys(si).sort(), ['candidates', 'formation', 'pipelineResult', 'positionGroups', 'recommendation', 'squadOptions'])
+})
+
+// ── squadOptions passthrough (M141) ──────────────────────────────────────────────────
+
+test('squadOptions are passed through from pipelineInput to selectionInput', () => {
+  const { services, calls } = makeServices()
+  const squadOptions = { limit: 23 }
+  runPipelineBridge(pipelineInput({ squadOptions }), services)
+  assert.equal(calls.m131[0].squadOptions, squadOptions)   // same reference, threaded to M131
+})
+
+test('omitted squadOptions default to {} and an invalid squadOptions throws', () => {
+  const { services, calls } = makeServices()
+  runPipelineBridge(pipelineInput(), services)
+  assert.deepEqual(calls.m131[0].squadOptions, {})
+  assert.throws(() => runPipelineBridge(pipelineInput({ squadOptions: 5 }), services), TypeError)
 })
 
 // ── single calls ─────────────────────────────────────────────────────────────────────

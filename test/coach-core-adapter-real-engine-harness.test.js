@@ -45,6 +45,9 @@ function makeData() {
     player('u13', 'Outside Centre', 0.77), player('u14', 'Right Wing', 0.76), player('u15', 'Fullback', 0.81),
     // bench-depth (available)
     player('u16', 'Loosehead Prop', 0.60), player('u17', 'Lock', 0.62), player('u18', 'Scrum-half', 0.55), player('u19', 'Hooker', 0.58),
+    // further depth (available) — enough eligible (>23) to produce both bench and reserves
+    player('u23', 'Loosehead Prop', 0.50), player('u24', 'Lock', 0.52), player('u25', 'Inside Centre', 0.51),
+    player('u26', 'Right Wing', 0.49), player('u27', 'Fly-half', 0.53),
     // unavailable / maybe
     player('u20', 'Fly-half', 0.70), player('u21', 'Fullback', 0.68), player('u22', 'Outside Centre', 0.66),
   ]
@@ -99,6 +102,7 @@ function runChain(data) {
     decision,
     memoryProvider,
     intelligenceServices,
+    squadOptions: { limit: 30 },   // (3, M141) lift M121's default 15 cap so a real bench/reserves form
   }
 
   // real M118 → M119 → M131 via the bridge
@@ -127,10 +131,10 @@ test('Core-shaped input flows through the REAL engines to a match-day squad', ()
   assert.ok(squad && typeof squad === 'object')
   assert.equal(squad.startingXV.length, 15)
   assert.equal(squad.startingXV.filter((s) => s.status === 'filled').length, 15)   // complete XV
-  // bench/reserves are exposed (arrays). They are empty here because M121's default limit (15)
-  // caps the ranked pool to exactly the XV, and the M137 bridge does not forward squadOptions.
-  assert.ok(Array.isArray(squad.bench))
-  assert.ok(Array.isArray(squad.reserves))
+  // M141: squadOptions.limit (30) lifts M121's default 15 cap, so the ranked pool exceeds the XV
+  // and a real bench + reserves form (24 eligible − 15 XV = 9 → 8 bench + 1 reserve).
+  assert.ok(Array.isArray(squad.bench) && squad.bench.length >= 1)
+  assert.ok(Array.isArray(squad.reserves) && squad.reserves.length >= 1)
   assert.ok('captain' in squad && 'viceCaptain' in squad && 'signOff' in squad && 'risk' in squad)
 })
 

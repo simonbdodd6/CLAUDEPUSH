@@ -35,6 +35,7 @@ export function runSelectionDryRun(input, services) {
   if (typeof services.runSelectionPipeline !== 'function') throw new TypeError('runSelectionDryRun: services.runSelectionPipeline must be a function')
   if (!isObj(services.memoryProvider)) throw new TypeError('runSelectionDryRun: services.memoryProvider must be an object')
   if (!isObj(services.intelligenceServices)) throw new TypeError('runSelectionDryRun: services.intelligenceServices must be an object')
+  if (input.squadOptions !== undefined && !isObj(input.squadOptions)) throw new TypeError('runSelectionDryRun: input.squadOptions must be an object')   // optional, threaded to the pipeline
 
   // selection side (M134) — validates players / availability / confidence provider / options
   const selectionContext = buildSelectionContext({
@@ -60,6 +61,7 @@ export function runSelectionDryRun(input, services) {
     decision: decisionPlanContext.decision,
     memoryProvider: services.memoryProvider,
     intelligenceServices: services.intelligenceServices,
+    squadOptions: input.squadOptions !== undefined ? input.squadOptions : {},   // threaded through to M131→M121
   }
 
   const result = services.runSelectionPipeline(pipelineInput)   // injected; called exactly once; exceptions propagate
