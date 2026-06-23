@@ -58,3 +58,7 @@ export {
 export {
   runSelectionDryRun,
 } from './selection-dry-run.js'
+
+export {
+  runPipelineBridge,
+} from './pipeline-bridge.js'
