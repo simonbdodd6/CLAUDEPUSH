@@ -39,6 +39,7 @@ TravelApp/
       OnThisDayDTO.swift              same-day memories across years
       MockDTOProvider.swift           single deterministic mock data source
     Navigation/
+      RootFlowView.swift              app entry gate: launch → onboarding → ready
       RootShellView.swift             tab shell + Explore hub (registry-driven)
       TravelTab.swift                 screen identity and endpoint metadata
       FeatureRegistry.swift           feature metadata + composition source of truth
@@ -47,6 +48,10 @@ TravelApp/
       FutureFeature.swift             future-feature placeholder definitions
       FeatureNavigationGrid.swift     registry-driven Explore feature grid
   Features/
+    Onboarding/
+      LaunchScreen.swift              animated launch / splash
+      OnboardingView.swift            paged onboarding + welcome flow
+      OnboardingComponents.swift      pages, primers, dots, brand mark, buttons
     ComingSoon/
       ComingSoonScreen.swift          placeholder destination for future features
     Home/
@@ -72,7 +77,9 @@ TravelApp/
 
 ## Architecture
 
-- SwiftUI lifecycle.
+- SwiftUI lifecycle. App entry is `RootFlowView`, which gates an animated
+  launch screen and a multi-page onboarding flow before `RootShellView`
+  (in-memory flow state only; nothing persisted).
 - MVVM using `@Observable` view models.
 - Views are presentation-only.
 - Feature folders own screen-specific shells.
@@ -154,6 +161,11 @@ are display metadata only in the current visual phases.
   `OnThisDayEmptyState`: static Phase 14 On This Day components. The screen
   binds to `OnThisDayDTO` via `MockDTOProvider.onThisDay`, deriving hero
   metrics and today's memories from the DTO.
+- `LaunchScreen`, `OnboardingView`, `OnboardingPageView`,
+  `OnboardingValuePrimerRow`, `OnboardingWelcomeCard`, `OnboardingProgressDots`,
+  `LaunchBrandMark` and `OnboardingPrimaryButton`/`OnboardingSecondaryButton`:
+  static Phase 15 launch & onboarding components. `RootFlowView` gates app
+  entry through launch → onboarding → ready with in-memory state only.
 
 ### Phase 10 design-system pass
 

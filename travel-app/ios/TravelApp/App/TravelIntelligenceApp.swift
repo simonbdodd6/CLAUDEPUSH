@@ -7,7 +7,7 @@ struct TravelIntelligenceApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootShellView()
+            RootFlowView()
                 .environment(appState)
                 .tint(TravelTheme.current.tint)
         }
