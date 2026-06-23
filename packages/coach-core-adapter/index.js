@@ -70,3 +70,7 @@ export {
 export {
   completeIntelligenceInput,
 } from './intelligence-input-completer.js'
+
+export {
+  resolvePositionAssignments,
+} from './position-assignment-resolver.js'
