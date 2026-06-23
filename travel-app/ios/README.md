@@ -44,6 +44,7 @@ TravelApp/
     Insights/
       InsightsComponents.swift        pattern, trend, seasonality and insight cards
     Highlights/
+      HighlightsComponents.swift      moment, achievement, country and memory cards
     Search/
     Settings/
 ```
@@ -96,6 +97,9 @@ they are display metadata only in the current visual phases.
 - `InsightsHeroCard`, `TravelPatternCard`, `DestinationTrendCard`,
   `SeasonalityCard`, `JourneyInsightCard`, `InsightRecommendationCard` and
   `InsightsEmptyState`: static Phase 8 traveller insights components.
+- `HighlightsHeroCard`, `HighlightMomentCard`, `AchievementHighlightCard`,
+  `CountryHighlightCard`, `TravelMemoryCard` and `HighlightsEmptyState`:
+  static Phase 9 traveller highlights components.
 
 ## Component hierarchy
 
@@ -149,6 +153,13 @@ TravelIntelligenceApp
         JourneyInsightCard
         InsightRecommendationCard
         InsightsEmptyState
+      HighlightsScreen
+        HighlightsHeroCard
+        HighlightMomentCard
+        AchievementHighlightCard
+        CountryHighlightCard
+        TravelMemoryCard
+        HighlightsEmptyState
       MoreScreensHub
         FeatureLinkGrid
           FeatureDestinationView
