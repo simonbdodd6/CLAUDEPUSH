@@ -92,6 +92,7 @@ enum FeatureRegistry {
         .screen(.statistics, category: .explore, summary: "Counts, totals and travel patterns."),
         .screen(.insights, category: .explore, summary: "Reason-code travel insights."),
         .screen(.highlights, category: .explore, summary: "The best of your travels."),
+        .screen(.onThisDay, category: .explore, summary: "Anniversaries and memories from this date."),
         .screen(.search, category: .explore, summary: "Find journeys, places and memories."),
         .screen(.settings, category: .explore, summary: "Appearance and local preferences.")
     ]

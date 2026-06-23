@@ -66,6 +66,7 @@ struct FeatureDestinationView: View {
         case .statistics: StatisticsScreen()
         case .insights: InsightsScreen()
         case .highlights: HighlightsScreen()
+        case .onThisDay: OnThisDayScreen()
         case .search: SearchScreen()
         case .settings: SettingsScreen()
         }

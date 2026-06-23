@@ -64,6 +64,8 @@ TravelApp/
       InsightsComponents.swift        pattern, trend, seasonality and insight cards
     Highlights/
       HighlightsComponents.swift      moment, achievement, country and memory cards
+    OnThisDay/
+      OnThisDayComponents.swift       anniversary, historical, year-in-review cards
     Search/
     Settings/
 ```
@@ -98,7 +100,7 @@ The navigation architecture (Phase 11) separates four concerns:
 The primary tab bar (Home, Passport, Timeline, Story, Explore) is composed from
 `FeatureRegistry.primary`. The Explore hub renders `FeatureRegistry.explore`:
 the built secondary surfaces (Cinematic, Collections, Statistics, Insights,
-Highlights, Search, Settings) followed by registered future-feature
+Highlights, On This Day, Search, Settings) followed by registered future-feature
 placeholders, which route to `ComingSoonScreen`.
 
 Deep-link `endpoint` strings remain present for existing API contracts; they
@@ -147,6 +149,11 @@ are display metadata only in the current visual phases.
   `CollectionDetailPreviewCard`, `CollectionStatisticCard` and
   `CollectionsEmptyState`: static Phase 13 collections components. The gallery
   binds to `CollectionDTO` via `MockDTOProvider.collections`.
+- `OnThisDayHeroCard`, `AnniversaryMomentCard`, `HistoricalMemoryCard`,
+  `YearInReviewCard`, `TravelAnniversaryCard`, `OnThisDayStatisticCard` and
+  `OnThisDayEmptyState`: static Phase 14 On This Day components. The screen
+  binds to `OnThisDayDTO` via `MockDTOProvider.onThisDay`, deriving hero
+  metrics and today's memories from the DTO.
 
 ### Phase 10 design-system pass
 
@@ -228,6 +235,14 @@ TravelIntelligenceApp
         CollectionThemeCard
         CollectionStatisticCard
         CollectionsEmptyState
+      OnThisDayScreen
+        OnThisDayHeroCard
+        AnniversaryMomentCard
+        TravelAnniversaryCard
+        HistoricalMemoryCard
+        YearInReviewCard
+        OnThisDayStatisticCard
+        OnThisDayEmptyState
       MoreScreensHub
         FeatureNavigationGrid
           FeatureCard

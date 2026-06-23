@@ -11,6 +11,7 @@ enum TravelTab: String, CaseIterable, Identifiable, Hashable {
     case statistics
     case insights
     case highlights
+    case onThisDay
     case search
     case settings
 
@@ -28,6 +29,7 @@ enum TravelTab: String, CaseIterable, Identifiable, Hashable {
         case .statistics: "Statistics"
         case .insights: "Insights"
         case .highlights: "Highlights"
+        case .onThisDay: "On This Day"
         case .search: "Search"
         case .settings: "Settings"
         }
@@ -45,6 +47,7 @@ enum TravelTab: String, CaseIterable, Identifiable, Hashable {
         case .statistics: "chart.bar.xaxis"
         case .insights: "sparkles"
         case .highlights: "star.fill"
+        case .onThisDay: "calendar.badge.clock"
         case .search: "magnifyingglass"
         case .settings: "gearshape.fill"
         }
@@ -62,6 +65,7 @@ enum TravelTab: String, CaseIterable, Identifiable, Hashable {
         case .statistics: "/statistics"
         case .insights: "/insights"
         case .highlights: "/highlights"
+        case .onThisDay: "/on-this-day"
         case .search: "/search"
         case .settings: "local"
         }
