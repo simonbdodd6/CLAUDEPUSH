@@ -47,51 +47,25 @@ struct HighlightsHeroCard: View {
     let highlight: HighlightsHeroPreview
 
     var body: some View {
-        GlassCard(prominence: .hero) {
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: TravelRadius.lg, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                TravelTheme.current.ink,
-                                TravelTheme.current.coral.opacity(0.82),
-                                TravelTheme.current.sun.opacity(0.74)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-
-                HighlightSparkTexture()
-                    .padding(TravelSpacing.lg)
-                    .opacity(0.52)
-
-                VStack(alignment: .leading, spacing: TravelSpacing.lg) {
-                    Label("Traveller highlights", systemImage: "star.fill")
-                        .font(TravelTypography.caption)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.white.opacity(0.76))
-
-                    VStack(alignment: .leading, spacing: TravelSpacing.xs) {
-                        Text(highlight.title)
-                            .font(TravelTypography.display)
-                            .foregroundStyle(.white)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(highlight.subtitle)
-                            .font(TravelTypography.body)
-                            .foregroundStyle(.white.opacity(0.76))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    HStack(spacing: TravelSpacing.sm) {
-                        HighlightsHeroMetric(value: highlight.moments, label: "Moments")
-                        HighlightsHeroMetric(value: highlight.achievements, label: "Achievements")
-                        HighlightsHeroMetric(value: highlight.countries, label: "Countries")
-                    }
-                }
+        FeatureHeroScaffold(
+            eyebrow: "Traveller highlights",
+            symbol: "star.fill",
+            title: highlight.title,
+            subtitle: highlight.subtitle,
+            gradient: [
+                TravelTheme.current.ink,
+                TravelTheme.current.coral.opacity(0.82),
+                TravelTheme.current.sun.opacity(0.74)
+            ],
+            metrics: [
+                HeroMetric(value: highlight.moments, label: "Moments"),
+                HeroMetric(value: highlight.achievements, label: "Achievements"),
+                HeroMetric(value: highlight.countries, label: "Countries")
+            ]
+        ) {
+            HighlightSparkTexture()
                 .padding(TravelSpacing.lg)
-            }
-            .frame(minHeight: 318)
+                .opacity(0.52)
         }
     }
 }
@@ -211,49 +185,13 @@ struct TravelMemoryCard: View {
 
 struct HighlightsEmptyState: View {
     var body: some View {
-        GlassCard(prominence: .hero) {
-            VStack(spacing: TravelSpacing.md) {
-                Image(systemName: "star.fill")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(TravelTheme.current.sun)
-                    .frame(width: 88, height: 88)
-                    .background(.thinMaterial, in: Circle())
-                Text("Your highlights are waiting")
-                    .font(TravelTypography.section)
-                Text("Completed journeys can surface best moments, achievements and memorable events here.")
-                    .font(TravelTypography.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Ready for best moments")
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, TravelSpacing.sm)
-                    .padding(.vertical, TravelSpacing.xs)
-                    .background(.thinMaterial, in: Capsule())
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, TravelSpacing.md)
-        }
-    }
-}
-
-private struct HighlightsHeroMetric: View {
-    let value: String
-    let label: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-            Text(value)
-                .font(TravelTypography.cardTitle)
-                .foregroundStyle(.white)
-            Text(label)
-                .font(TravelTypography.caption)
-                .foregroundStyle(.white.opacity(0.68))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(TravelSpacing.sm)
-        .background(.white.opacity(0.13), in: RoundedRectangle(cornerRadius: TravelRadius.sm, style: .continuous))
+        FeatureEmptyState(
+            symbol: "star.fill",
+            accent: TravelTheme.current.sun,
+            title: "Your highlights are waiting",
+            message: "Completed journeys can surface best moments, achievements and memorable events here.",
+            pill: "Ready for best moments"
+        )
     }
 }
 

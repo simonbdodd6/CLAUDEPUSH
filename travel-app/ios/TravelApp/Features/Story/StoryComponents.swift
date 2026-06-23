@@ -54,51 +54,25 @@ struct StoryHeroCard: View {
     let story: StoryHeroPreview
 
     var body: some View {
-        GlassCard(prominence: .hero) {
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: TravelRadius.lg, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                TravelTheme.current.ink,
-                                TravelTheme.current.coral.opacity(0.82),
-                                TravelTheme.current.sun.opacity(0.68)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-
-                StoryPageTexture()
-                    .padding(TravelSpacing.lg)
-                    .opacity(0.56)
-
-                VStack(alignment: .leading, spacing: TravelSpacing.lg) {
-                    Label("Story composer", systemImage: "book.pages.fill")
-                        .font(TravelTypography.caption)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.white.opacity(0.76))
-
-                    VStack(alignment: .leading, spacing: TravelSpacing.xs) {
-                        Text(story.title)
-                            .font(TravelTypography.display)
-                            .foregroundStyle(.white)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(story.subtitle)
-                            .font(TravelTypography.body)
-                            .foregroundStyle(.white.opacity(0.76))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    HStack(spacing: TravelSpacing.sm) {
-                        StoryHeroMetric(value: story.collections, label: "Collections")
-                        StoryHeroMetric(value: story.drafts, label: "Drafts")
-                        StoryHeroMetric(value: story.memories, label: "Memories")
-                    }
-                }
+        FeatureHeroScaffold(
+            eyebrow: "Story composer",
+            symbol: "book.pages.fill",
+            title: story.title,
+            subtitle: story.subtitle,
+            gradient: [
+                TravelTheme.current.ink,
+                TravelTheme.current.coral.opacity(0.82),
+                TravelTheme.current.sun.opacity(0.68)
+            ],
+            metrics: [
+                HeroMetric(value: story.collections, label: "Collections"),
+                HeroMetric(value: story.drafts, label: "Drafts"),
+                HeroMetric(value: story.memories, label: "Memories")
+            ]
+        ) {
+            StoryPageTexture()
                 .padding(TravelSpacing.lg)
-            }
-            .frame(minHeight: 318)
+                .opacity(0.56)
         }
     }
 }
@@ -246,49 +220,12 @@ struct StoryStatisticCard: View {
 
 struct StoryEmptyState: View {
     var body: some View {
-        GlassCard(prominence: .hero) {
-            VStack(spacing: TravelSpacing.md) {
-                Image(systemName: "book.closed.fill")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(TravelTheme.current.tint)
-                    .frame(width: 88, height: 88)
-                    .background(.thinMaterial, in: Circle())
-                Text("Your story shelf is ready")
-                    .font(TravelTypography.section)
-                Text("Completed trips and memory clusters can become story cards here.")
-                    .font(TravelTypography.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Ready for memories")
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, TravelSpacing.sm)
-                    .padding(.vertical, TravelSpacing.xs)
-                    .background(.thinMaterial, in: Capsule())
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, TravelSpacing.md)
-        }
-    }
-}
-
-private struct StoryHeroMetric: View {
-    let value: String
-    let label: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-            Text(value)
-                .font(TravelTypography.cardTitle)
-                .foregroundStyle(.white)
-            Text(label)
-                .font(TravelTypography.caption)
-                .foregroundStyle(.white.opacity(0.68))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(TravelSpacing.sm)
-        .background(.white.opacity(0.13), in: RoundedRectangle(cornerRadius: TravelRadius.sm, style: .continuous))
+        FeatureEmptyState(
+            symbol: "book.closed.fill",
+            title: "Your story shelf is ready",
+            message: "Completed trips and memory clusters can become story cards here.",
+            pill: "Ready for memories"
+        )
     }
 }
 

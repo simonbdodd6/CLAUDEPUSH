@@ -55,51 +55,26 @@ struct CinematicHeroCard: View {
     let preview: CinematicHeroPreview
 
     var body: some View {
-        GlassCard(prominence: .hero) {
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: TravelRadius.lg, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                TravelTheme.current.ink,
-                                TravelTheme.current.ocean.opacity(0.92),
-                                TravelTheme.current.coral.opacity(0.72)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-
-                FilmStripTexture()
-                    .padding(TravelSpacing.lg)
-                    .opacity(0.58)
-
-                VStack(alignment: .leading, spacing: TravelSpacing.lg) {
-                    Label("Cinematic travel", systemImage: "film.stack.fill")
-                        .font(TravelTypography.caption)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.white.opacity(0.76))
-
-                    VStack(alignment: .leading, spacing: TravelSpacing.xs) {
-                        Text(preview.title)
-                            .font(TravelTypography.display)
-                            .foregroundStyle(.white)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(preview.subtitle)
-                            .font(TravelTypography.body)
-                            .foregroundStyle(.white.opacity(0.76))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    HStack(spacing: TravelSpacing.sm) {
-                        CinematicHeroMetric(value: preview.scenes, label: "Scenes")
-                        CinematicHeroMetric(value: preview.destinations, label: "Places")
-                        CinematicHeroMetric(value: preview.duration, label: "Reel")
-                    }
-                }
+        FeatureHeroScaffold(
+            eyebrow: "Cinematic travel",
+            symbol: "film.stack.fill",
+            title: preview.title,
+            subtitle: preview.subtitle,
+            gradient: [
+                TravelTheme.current.ink,
+                TravelTheme.current.ocean.opacity(0.92),
+                TravelTheme.current.coral.opacity(0.72)
+            ],
+            minHeight: 330,
+            metrics: [
+                HeroMetric(value: preview.scenes, label: "Scenes"),
+                HeroMetric(value: preview.destinations, label: "Places"),
+                HeroMetric(value: preview.duration, label: "Reel")
+            ]
+        ) {
+            FilmStripTexture()
                 .padding(TravelSpacing.lg)
-            }
-            .frame(minHeight: 330)
+                .opacity(0.58)
         }
     }
 }
@@ -253,49 +228,12 @@ struct CinematicStatisticCard: View {
 
 struct CinematicEmptyState: View {
     var body: some View {
-        GlassCard(prominence: .hero) {
-            VStack(spacing: TravelSpacing.md) {
-                Image(systemName: "film.stack.fill")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(TravelTheme.current.tint)
-                    .frame(width: 88, height: 88)
-                    .background(.thinMaterial, in: Circle())
-                Text("Your travel reel is ready")
-                    .font(TravelTypography.section)
-                Text("Completed trips and memory scenes can become a cinematic travel reel here.")
-                    .font(TravelTypography.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Ready for scenes")
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, TravelSpacing.sm)
-                    .padding(.vertical, TravelSpacing.xs)
-                    .background(.thinMaterial, in: Capsule())
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, TravelSpacing.md)
-        }
-    }
-}
-
-private struct CinematicHeroMetric: View {
-    let value: String
-    let label: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-            Text(value)
-                .font(TravelTypography.cardTitle)
-                .foregroundStyle(.white)
-            Text(label)
-                .font(TravelTypography.caption)
-                .foregroundStyle(.white.opacity(0.68))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(TravelSpacing.sm)
-        .background(.white.opacity(0.13), in: RoundedRectangle(cornerRadius: TravelRadius.sm, style: .continuous))
+        FeatureEmptyState(
+            symbol: "film.stack.fill",
+            title: "Your travel reel is ready",
+            message: "Completed trips and memory scenes can become a cinematic travel reel here.",
+            pill: "Ready for scenes"
+        )
     }
 }
 

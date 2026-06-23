@@ -45,50 +45,26 @@ struct TimelineHeroCard: View {
     let summary: TimelineSummaryPreview
 
     var body: some View {
-        GlassCard(prominence: .hero) {
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: TravelRadius.lg, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                TravelTheme.current.ink,
-                                TravelTheme.current.ocean,
-                                TravelTheme.current.sky.opacity(0.72)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                RouteLineTexture()
-                    .opacity(0.62)
-                    .padding(TravelSpacing.lg)
-
-                VStack(alignment: .leading, spacing: TravelSpacing.lg) {
-                    Label("Traveller timeline", systemImage: "clock.fill")
-                        .font(TravelTypography.caption)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.white.opacity(0.76))
-
-                    VStack(alignment: .leading, spacing: TravelSpacing.xs) {
-                        Text(summary.title)
-                            .font(TravelTypography.display)
-                            .foregroundStyle(.white)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(summary.subtitle)
-                            .font(TravelTypography.body)
-                            .foregroundStyle(.white.opacity(0.76))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    HStack(spacing: TravelSpacing.sm) {
-                        TimelineMetricPill(value: summary.countries, label: "Countries")
-                        TimelineMetricPill(value: summary.journeys, label: "Journeys")
-                        TimelineMetricPill(value: summary.years, label: "Years")
-                    }
-                }
+        FeatureHeroScaffold(
+            eyebrow: "Traveller timeline",
+            symbol: "clock.fill",
+            title: summary.title,
+            subtitle: summary.subtitle,
+            gradient: [
+                TravelTheme.current.ink,
+                TravelTheme.current.ocean,
+                TravelTheme.current.sky.opacity(0.72)
+            ],
+            minHeight: 312,
+            metrics: [
+                HeroMetric(value: summary.countries, label: "Countries"),
+                HeroMetric(value: summary.journeys, label: "Journeys"),
+                HeroMetric(value: summary.years, label: "Years")
+            ]
+        ) {
+            RouteLineTexture()
+                .opacity(0.62)
                 .padding(TravelSpacing.lg)
-            }
-            .frame(minHeight: 312)
         }
     }
 }
@@ -214,49 +190,12 @@ struct TravelMomentRow: View {
 
 struct TimelineEmptyState: View {
     var body: some View {
-        GlassCard(prominence: .hero) {
-            VStack(spacing: TravelSpacing.md) {
-                Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(TravelTheme.current.tint)
-                    .frame(width: 88, height: 88)
-                    .background(.thinMaterial, in: Circle())
-                Text("Your timeline is ready")
-                    .font(TravelTypography.section)
-                Text("Completed journeys will form a calm, year-by-year travel history here.")
-                    .font(TravelTypography.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Ready for journeys")
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, TravelSpacing.sm)
-                    .padding(.vertical, TravelSpacing.xs)
-                    .background(.thinMaterial, in: Capsule())
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, TravelSpacing.md)
-        }
-    }
-}
-
-private struct TimelineMetricPill: View {
-    let value: String
-    let label: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-            Text(value)
-                .font(TravelTypography.cardTitle)
-                .foregroundStyle(.white)
-            Text(label)
-                .font(TravelTypography.caption)
-                .foregroundStyle(.white.opacity(0.68))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(TravelSpacing.sm)
-        .background(.white.opacity(0.13), in: RoundedRectangle(cornerRadius: TravelRadius.sm, style: .continuous))
+        FeatureEmptyState(
+            symbol: "point.topleft.down.curvedto.point.bottomright.up",
+            title: "Your timeline is ready",
+            message: "Completed journeys will form a calm, year-by-year travel history here.",
+            pill: "Ready for journeys"
+        )
     }
 }
 

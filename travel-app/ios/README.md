@@ -77,6 +77,13 @@ they are display metadata only in the current visual phases.
 - `GlassCard`: reusable material-backed card.
 - `ScreenHero`: large premium first-viewport surface.
 - `PremiumSection`: consistent section rhythm.
+- `FeatureHeroScaffold`: the shared cinematic hero used by every feature hero
+  card. Each feature supplies its gradient, eyebrow, copy, metrics and a
+  decorative texture; the scaffold owns the layout, typography and spacing.
+- `HeroMetric`/`HeroMetricTile`: the value/label metric model and its
+  white-on-glass tile rendered in each hero's metric row.
+- `FeatureEmptyState`: the shared icon/title/message/pill empty state used by
+  every feature surface (symbol, accent, title, message and pill are supplied).
 - `TripMemoryCard`, `PassportProgressCard`, `TimelinePreviewRow`,
   `HighlightCard`, `InsightCard` and `CinematicCTACard`: static Phase 2
   dashboard components.
@@ -100,6 +107,20 @@ they are display metadata only in the current visual phases.
 - `HighlightsHeroCard`, `HighlightMomentCard`, `AchievementHighlightCard`,
   `CountryHighlightCard`, `TravelMemoryCard` and `HighlightsEmptyState`:
   static Phase 9 traveller highlights components.
+
+### Phase 10 design-system pass
+
+Every feature hero card (`TimelineHeroCard`, `StoryHeroCard`,
+`CinematicHeroCard`, `InsightsHeroCard`, `HighlightsHeroCard`) and every feature
+empty state (`PassportEmptyState`, `TimelineEmptyState`, `StoryEmptyState`,
+`CinematicEmptyState`, `InsightsEmptyState`, `HighlightsEmptyState`) now
+delegates to the shared `FeatureHeroScaffold` and `FeatureEmptyState`
+primitives. The previously duplicated per-feature metric tiles
+(`InsightsHeroMetric`, `HighlightsHeroMetric`, `CinematicHeroMetric`,
+`StoryHeroMetric`, `TimelineMetricPill`) were removed in favour of a single
+`HeroMetricTile`. Public component names, layouts and visuals are unchanged;
+only the duplicated implementation was consolidated. Decorative hero textures
+remain private to each feature so each surface keeps its own character.
 
 ## Component hierarchy
 

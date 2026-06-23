@@ -326,29 +326,11 @@ struct PassportMomentRow: View {
 /// Empty-state friendly layout for a new traveller with no trips yet.
 struct PassportEmptyState: View {
     var body: some View {
-        GlassCard(prominence: .hero) {
-            VStack(spacing: TravelSpacing.md) {
-                Image(systemName: "airplane.departure")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(TravelTheme.current.tint)
-                    .frame(width: 88, height: 88)
-                    .background(.thinMaterial, in: Circle())
-                Text("Your passport is ready")
-                    .font(TravelTypography.section)
-                Text("No journeys are recorded yet. Once trips arrive, stamps, streaks and captured memories can fill this passport.")
-                    .font(TravelTypography.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Static preview")
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, TravelSpacing.sm)
-                    .padding(.vertical, TravelSpacing.xs)
-                    .background(.thinMaterial, in: Capsule())
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, TravelSpacing.md)
-        }
+        FeatureEmptyState(
+            symbol: "airplane.departure",
+            title: "Your passport is ready",
+            message: "No journeys are recorded yet. Once trips arrive, stamps, streaks and captured memories can fill this passport.",
+            pill: "Static preview"
+        )
     }
 }
