@@ -40,3 +40,9 @@ export {
   assembleCandidate,
   assembleCandidates,
 } from './candidate-assembler.js'
+
+export {
+  resolveFormationFromCandidates,
+  DEFAULT_FORMATION,
+  DEFAULT_POSITION_GROUPS,
+} from './formation-resolver.js'
