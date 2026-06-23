@@ -14,16 +14,12 @@ struct TravelIntelligenceApp: App {
     }
 }
 
+/// Root application state. Navigation is delegated to a single
+/// `NavigationCoordinator` (the source of truth for tab selection, navigation
+/// context and deep-link handling), keeping app-wide concerns composable.
 @Observable
 final class TravelAppState {
-    var selectedTab: TravelTab = .home
-    var navigationContext = NavigationContext()
+    let coordinator = NavigationCoordinator()
     var theme: TravelTheme = .current
-}
-
-@Observable
-final class NavigationContext {
-    var lastSelectedFeature: TravelTab = .home
-    var prefersReducedGlass = false
 }
 

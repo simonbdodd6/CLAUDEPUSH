@@ -144,35 +144,6 @@ struct MapTexturePlaceholder: View {
     }
 }
 
-struct FeatureLinkGrid: View {
-    let tabs: [TravelTab]
-
-    var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
-            ForEach(tabs) { tab in
-                NavigationLink {
-                    FeatureDestinationView(tab: tab)
-                } label: {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                            Image(systemName: tab.symbol)
-                                .font(.title2)
-                                .foregroundStyle(TravelTheme.current.tint)
-                            Text(tab.title)
-                                .font(TravelTypography.cardTitle)
-                                .foregroundStyle(.primary)
-                            Text(tab.endpoint)
-                                .font(TravelTypography.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-}
-
 // MARK: - Shared feature primitives (Phase 10 design-system pass)
 
 /// A single white-on-glass metric tile used inside feature hero cards.

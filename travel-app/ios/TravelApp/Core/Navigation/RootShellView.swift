@@ -1,31 +1,31 @@
 import SwiftUI
 
+/// The application shell: a primary tab bar composed declaratively from
+/// `FeatureRegistry.primary` and bound to the `NavigationCoordinator`. Adding,
+/// removing or reordering a root tab is a registry change, not a view change.
 struct RootShellView: View {
     @Environment(TravelAppState.self) private var appState
 
+    private var coordinator: NavigationCoordinator { appState.coordinator }
+
     var body: some View {
         TabView(selection: Binding(
-            get: { appState.selectedTab },
-            set: {
-                appState.navigationContext.lastSelectedFeature = appState.selectedTab
-                appState.selectedTab = $0
-            }
+            get: { coordinator.selectedTab },
+            set: { coordinator.select($0) }
         )) {
-            HomeScreen().tag(TravelTab.home)
-                .tabItem { Label(TravelTab.home.title, systemImage: TravelTab.home.symbol) }
-            PassportScreen().tag(TravelTab.passport)
-                .tabItem { Label(TravelTab.passport.title, systemImage: TravelTab.passport.symbol) }
-            TimelineScreen().tag(TravelTab.timeline)
-                .tabItem { Label(TravelTab.timeline.title, systemImage: TravelTab.timeline.symbol) }
-            StoryScreen().tag(TravelTab.story)
-                .tabItem { Label(TravelTab.story.title, systemImage: TravelTab.story.symbol) }
-            MoreScreensHub().tag(TravelTab.explore)
-                .tabItem { Label(TravelTab.explore.title, systemImage: TravelTab.explore.symbol) }
+            ForEach(FeatureRegistry.primary) { feature in
+                let tab = feature.tab ?? .home
+                FeatureDestinationView(tab: tab)
+                    .tag(tab)
+                    .tabItem { Label(feature.title, systemImage: feature.symbol) }
+            }
         }
         .background(TravelTheme.current.background)
     }
 }
 
+/// The Explore hub: a registry-driven grid of secondary surfaces and
+/// registered future-feature placeholders.
 struct MoreScreensHub: View {
     var body: some View {
         NavigationStack {
@@ -37,7 +37,7 @@ struct MoreScreensHub: View {
                     symbol: TravelTab.explore.symbol,
                     endpoint: nil
                 )
-                FeatureLinkGrid(tabs: [.cinematic, .collections, .statistics, .insights, .highlights, .search, .settings])
+                FeatureNavigationGrid(features: FeatureRegistry.explore)
             }
             .navigationTitle("Explore")
             .navigationBarTitleDisplayMode(.inline)

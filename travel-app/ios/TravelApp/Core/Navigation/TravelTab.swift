@@ -66,7 +66,8 @@ enum TravelTab: String, CaseIterable, Identifiable, Hashable {
         case .settings: "local"
         }
     }
-
-    static let primaryTabs: [TravelTab] = [.home, .passport, .timeline, .story, .explore]
-    static let allScreens: [TravelTab] = [.home, .passport, .timeline, .story, .explore, .cinematic, .collections, .statistics, .insights, .highlights, .search, .settings]
 }
+
+// Navigation composition (primary tabs, Explore surfaces and future features)
+// now lives in `FeatureRegistry`, the app's single source of truth. `TravelTab`
+// remains the stable identity and display metadata for built screens.

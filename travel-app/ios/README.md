@@ -28,9 +28,16 @@ TravelApp/
     DTOs/
       APIContracts.swift              Codable shells matching existing endpoints
     Navigation/
-      RootShellView.swift             tab shell + more hub
-      TravelTab.swift                 screen registry and endpoint mapping
+      RootShellView.swift             tab shell + Explore hub (registry-driven)
+      TravelTab.swift                 screen identity and endpoint metadata
+      FeatureRegistry.swift           feature metadata + composition source of truth
+      TravelRoute.swift               deep-link-ready route definitions
+      NavigationCoordinator.swift     observable navigation source of truth
+      FutureFeature.swift             future-feature placeholder definitions
+      FeatureNavigationGrid.swift     registry-driven Explore feature grid
   Features/
+    ComingSoon/
+      ComingSoonScreen.swift          placeholder destination for future features
     Home/
     Passport/
     Timeline/
@@ -61,12 +68,29 @@ TravelApp/
 
 ## Navigation
 
-`TravelTab` is the single screen registry. The primary tab bar exposes Home,
-Passport, Timeline, Story and an Explore hub. Explore links to Cinematic,
-Collections, Statistics, Insights, Highlights, Search and Settings.
+The navigation architecture (Phase 11) separates four concerns:
 
-Deep-link-ready endpoint strings are present for existing API contracts, but
-they are display metadata only in the current visual phases.
+- `TravelTab` — stable identity and display metadata (title, symbol, API
+  `endpoint`) for each built screen.
+- `FeatureRegistry` — the single source of truth for navigation composition.
+  `FeatureMetadata` describes every surface (`primary`, `explore`, `future`)
+  with its `availability`, and views read filtered slices instead of embedding
+  hard-coded screen lists.
+- `TravelRoute` — deep-link-ready, value-type routes that parse from and
+  serialise to `travelintelligence://…` URLs using only local string work. No
+  networking is performed.
+- `NavigationCoordinator` — an `@Observable` single source of truth for tab
+  selection and navigation context, exposing intent methods (`select`, `open`,
+  `handle(url:)`). `TravelAppState` owns one coordinator.
+
+The primary tab bar (Home, Passport, Timeline, Story, Explore) is composed from
+`FeatureRegistry.primary`. The Explore hub renders `FeatureRegistry.explore`:
+the built secondary surfaces (Cinematic, Collections, Statistics, Insights,
+Highlights, Search, Settings) followed by registered future-feature
+placeholders, which route to `ComingSoonScreen`.
+
+Deep-link `endpoint` strings remain present for existing API contracts; they
+are display metadata only in the current visual phases.
 
 ## Design system
 
