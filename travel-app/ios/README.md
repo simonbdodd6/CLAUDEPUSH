@@ -38,6 +38,7 @@ TravelApp/
     Story/
       StoryComponents.swift           story composer cards, clusters and empty state
     Cinematic/
+      CinematicComponents.swift       film reels, memory scenes, moods and empty state
     Collections/
     Statistics/
     Insights/
@@ -88,6 +89,9 @@ they are display metadata only in the current visual phases.
 - `StoryHeroCard`, `StoryCollectionCard`, `StoryDraftCard`, `StoryThemeCard`,
   `MemoryClusterCard`, `StoryStatisticCard` and `StoryEmptyState`: static
   Phase 5 story composer components.
+- `CinematicHeroCard`, `FilmReelCard`, `MemorySceneCard`,
+  `DestinationMoodCard`, `CinematicMomentRow`, `CinematicStatisticCard` and
+  `CinematicEmptyState`: static Phase 6 cinematic travel components.
 
 ## Component hierarchy
 
@@ -125,6 +129,14 @@ TravelIntelligenceApp
         StoryThemeCard
         StoryStatisticCard
         StoryEmptyState
+      CinematicScreen
+        CinematicHeroCard
+        FilmReelCard
+        MemorySceneCard
+        DestinationMoodCard
+        CinematicMomentRow
+        CinematicStatisticCard
+        CinematicEmptyState
       MoreScreensHub
         FeatureLinkGrid
           FeatureDestinationView
