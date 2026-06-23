@@ -66,3 +66,7 @@ export {
 export {
   assembleIntelligenceServices,
 } from './intelligence-services-assembler.js'
+
+export {
+  completeIntelligenceInput,
+} from './intelligence-input-completer.js'
