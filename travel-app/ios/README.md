@@ -42,6 +42,7 @@ TravelApp/
     Collections/
     Statistics/
     Insights/
+      InsightsComponents.swift        pattern, trend, seasonality and insight cards
     Highlights/
     Search/
     Settings/
@@ -92,6 +93,9 @@ they are display metadata only in the current visual phases.
 - `CinematicHeroCard`, `FilmReelCard`, `MemorySceneCard`,
   `DestinationMoodCard`, `CinematicMomentRow`, `CinematicStatisticCard` and
   `CinematicEmptyState`: static Phase 6 cinematic travel components.
+- `InsightsHeroCard`, `TravelPatternCard`, `DestinationTrendCard`,
+  `SeasonalityCard`, `JourneyInsightCard`, `InsightRecommendationCard` and
+  `InsightsEmptyState`: static Phase 8 traveller insights components.
 
 ## Component hierarchy
 
@@ -137,6 +141,14 @@ TravelIntelligenceApp
         CinematicMomentRow
         CinematicStatisticCard
         CinematicEmptyState
+      InsightsScreen
+        InsightsHeroCard
+        TravelPatternCard
+        DestinationTrendCard
+        SeasonalityCard
+        JourneyInsightCard
+        InsightRecommendationCard
+        InsightsEmptyState
       MoreScreensHub
         FeatureLinkGrid
           FeatureDestinationView
