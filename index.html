@@ -18424,10 +18424,17 @@
 
     function playerCoachDmId() {
       const me = chatMe();
+      // Server conversations are the source of truth: the API returns only DMs
+      // this player may see, so use the real server DM id rather than recomputing
+      // one locally. This prevents the player UI from diverging to a coach-demo
+      // (or otherwise mismatched) id that hides a valid server-returned DM when
+      // the device's state.users lacks the real coach. Fall back to the local
+      // computation only before conversations have been fetched (no server DM yet).
+      const serverDm = (_chatConversations || []).find(c =>
+        String(c?.type || '').toUpperCase() === 'DIRECT' || String(c?.id || '').startsWith('dm:'));
+      if (serverDm && serverDm.id) return String(serverDm.id);
       const coachId = playerCoachParticipantId();
-      const id = dmConvId(coachId, me.id);
-      console.log(`[playerCoachDmId] me.id=${me.id} coachId=${coachId} → convId=${id}`);
-      return id;
+      return dmConvId(coachId, me.id);
     }
 
     function playerAllowedConversationIds() {
