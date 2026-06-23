@@ -18,6 +18,7 @@ TravelApp/
   Core/
     Components/
       DashboardCards.swift            home cards and dashboard primitives
+      PassportComponents.swift        passport cover, stamps, stats and empty state
       PremiumComponents.swift         glass cards, heroes, sections, grid
       FeatureShell.swift              reusable empty feature surface
     DesignSystem/
@@ -60,7 +61,7 @@ Passport, Timeline, Story and an Explore hub. Explore links to Cinematic,
 Collections, Statistics, Insights, Highlights, Search and Settings.
 
 Deep-link-ready endpoint strings are present for existing API contracts, but
-they are display metadata only in Phase 1.
+they are display metadata only in the current visual phases.
 
 ## Design system
 
@@ -75,6 +76,10 @@ they are display metadata only in Phase 1.
   `HighlightCard`, `InsightCard` and `CinematicCTACard`: static Phase 2
   dashboard components.
 - `MapTexturePlaceholder`: decorative route texture, not MapKit.
+- `PassportCoverCard`, `CompletionRing`, `PassportStatTile`/`PassportStatGrid`,
+  `PassportStyleCard`, `PassportStampCell`/`PassportStampGrid`,
+  `PassportMomentRow` and `PassportEmptyState`: static Phase 3 premium passport
+  components. `CompletionRing` is a drawn progress ring, not a chart library.
 
 ## Component hierarchy
 
@@ -91,6 +96,12 @@ TravelIntelligenceApp
         InsightCard
         CinematicCTACard
       PassportScreen
+        PassportCoverCard
+        PassportStatGrid
+        PassportStyleCard
+        PassportStampGrid
+        PassportMomentRow
+        PassportEmptyState
       TimelineScreen
       StoryScreen
       MoreScreensHub
