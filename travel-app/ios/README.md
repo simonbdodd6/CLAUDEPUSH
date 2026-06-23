@@ -58,6 +58,7 @@ TravelApp/
     Cinematic/
       CinematicComponents.swift       film reels, memory scenes, moods and empty state
     Collections/
+      CollectionsComponents.swift     gallery, theme, detail and statistic cards
     Statistics/
     Insights/
       InsightsComponents.swift        pattern, trend, seasonality and insight cards
@@ -142,6 +143,10 @@ are display metadata only in the current visual phases.
 - `HighlightsHeroCard`, `HighlightMomentCard`, `AchievementHighlightCard`,
   `CountryHighlightCard`, `TravelMemoryCard` and `HighlightsEmptyState`:
   static Phase 9 traveller highlights components.
+- `CollectionHeroCard`, `CollectionGalleryCard`, `CollectionThemeCard`,
+  `CollectionDetailPreviewCard`, `CollectionStatisticCard` and
+  `CollectionsEmptyState`: static Phase 13 collections components. The gallery
+  binds to `CollectionDTO` via `MockDTOProvider.collections`.
 
 ### Phase 10 design-system pass
 
@@ -216,9 +221,17 @@ TravelIntelligenceApp
         CountryHighlightCard
         TravelMemoryCard
         HighlightsEmptyState
+      CollectionsScreen
+        CollectionHeroCard
+        CollectionGalleryCard
+        CollectionDetailPreviewCard
+        CollectionThemeCard
+        CollectionStatisticCard
+        CollectionsEmptyState
       MoreScreensHub
-        FeatureLinkGrid
-          FeatureDestinationView
+        FeatureNavigationGrid
+          FeatureCard
+          FeatureDestinationView / ComingSoonScreen
 ```
 
 ## Phase boundaries
