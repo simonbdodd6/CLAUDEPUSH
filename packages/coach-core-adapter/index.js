@@ -46,3 +46,7 @@ export {
   DEFAULT_FORMATION,
   DEFAULT_POSITION_GROUPS,
 } from './formation-resolver.js'
+
+export {
+  buildSelectionContext,
+} from './selection-context-builder.js'
