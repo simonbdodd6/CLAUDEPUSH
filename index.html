@@ -20500,9 +20500,17 @@
       const allowed = playerAllowedConversationIds();
       const coachDm = playerCoachDmId();
       const current = state.selectedChatId;
-      if (!current || current === 'coach' || !allowed.has(current)) {
-        state.selectedChatId = coachDm;
-        return true;
+      // A stale, locally-computed coach DM must be replaced once the real server DM
+      // is known: the 'coach' default, OR any coach-demo dm: id (either participant
+      // order), OR anything no longer in the allowed set. Only swap when we actually
+      // have a different, real coach DM — never downgrade to the same/worse id.
+      const c = typeof current === 'string' ? current : '';
+      const isStaleCoachDm = c === 'coach' || c.startsWith('dm:coach-demo:') || c.includes(':coach-demo:');
+      if (!current || isStaleCoachDm || !allowed.has(current)) {
+        if (coachDm && current !== coachDm) {
+          state.selectedChatId = coachDm;
+          return true;
+        }
       }
       return false;
     }
@@ -21009,13 +21017,36 @@
           ].join('\n');
         }
 
-        // ---- overlay ----
-        let box;
+        // ---- overlay (collapsible so it never blocks the mobile composer) ----
+        let box, bodyWrap, collapsed = false;
+        function applyCollapsed(){
+          if (!box) return;
+          if (collapsed) {
+            // Shrink to a small pill in the TOP-right corner, away from the composer.
+            box.style.left = 'auto'; box.style.right = '6px'; box.style.bottom = 'auto'; box.style.top = '6px';
+            box.style.maxHeight = 'none'; box.style.width = 'auto';
+            if (bodyWrap) bodyWrap.style.display = 'none';
+          } else {
+            box.style.left = '6px'; box.style.right = '6px'; box.style.top = 'auto'; box.style.bottom = '6px';
+            box.style.maxHeight = '48vh'; box.style.width = 'auto';
+            if (bodyWrap) bodyWrap.style.display = 'block';
+          }
+        }
         function ensureBox(){
           if (box) return box;
           box = document.createElement('div');
           box.id = 'qaMsgDiag';
           box.style.cssText = 'position:fixed;left:6px;right:6px;bottom:6px;z-index:2147483647;background:rgba(10,12,20,.95);color:#7CFC9A;font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;padding:8px 10px;border:1px solid #2a3550;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.5);max-height:48vh;overflow:auto;';
+          // Header (tap to collapse/expand)
+          const header = document.createElement('div');
+          header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;user-select:none;';
+          const title = document.createElement('span'); title.textContent = '📊 Messaging QA';
+          const tog = document.createElement('button'); tog.id = 'qaMsgDiagToggle'; tog.textContent = 'Hide';
+          tog.style.cssText = 'padding:3px 8px;background:#2a3550;color:#fff;border:0;border-radius:5px;font:600 11px system-ui;';
+          header.appendChild(title); header.appendChild(tog);
+          header.onclick = function(){ collapsed = !collapsed; tog.textContent = collapsed ? 'Show' : 'Hide'; applyCollapsed(); };
+          // Body (report text + copy)
+          bodyWrap = document.createElement('div'); bodyWrap.style.cssText = 'margin-top:6px;';
           const pre = document.createElement('div'); pre.id = 'qaMsgDiagText'; pre.style.cssText = 'white-space:pre-wrap;margin:0 0 6px;';
           const btn = document.createElement('button');
           btn.textContent = 'Copy Messaging Debug Report';
@@ -21032,8 +21063,10 @@
             try { (navigator.clipboard && navigator.clipboard.writeText(txt) || Promise.reject()).then(done, () => fallbackCopy(txt, done)); }
             catch(e){ fallbackCopy(txt, done); }
           };
-          box.appendChild(pre); box.appendChild(btn);
+          bodyWrap.appendChild(pre); bodyWrap.appendChild(btn);
+          box.appendChild(header); box.appendChild(bodyWrap);
           document.body.appendChild(box);
+          applyCollapsed();
           return box;
         }
         function qaVisible(){
@@ -21564,7 +21597,17 @@
         chatRenderContactList('player');
         if (!_chatPollTimer && state.selectedChatId) chatStartPolling(state.selectedChatId);
         if (state.activePlayerSection === 'messages' && state.selectedChatId) chatMarkRead(state.selectedChatId);
-        chatFetchConversations().then(() => chatRenderContactList('player'));
+        chatFetchConversations().then(() => {
+          // Conversations are now loaded — force selectedChatId off any stale pre-fetch
+          // 'coach'/coach-demo id onto the real server DM, then repoint reads to it.
+          if (canonicalizePlayerSelectedChat()) {
+            chatStartPolling(state.selectedChatId);
+            if (!(_chatMessages[state.selectedChatId]?.length)) {
+              chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'player'));
+            }
+          }
+          chatRenderContactList('player');
+        });
       }
     }
 
