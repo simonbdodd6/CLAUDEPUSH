@@ -62,3 +62,7 @@ export {
 export {
   runPipelineBridge,
 } from './pipeline-bridge.js'
+
+export {
+  assembleIntelligenceServices,
+} from './intelligence-services-assembler.js'
