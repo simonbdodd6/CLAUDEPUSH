@@ -21238,19 +21238,24 @@
       // triggers chatRenderMessages(), and causes a visible scroll jump.
       if (!_chatLastPoll[convId]) _chatLastPoll[convId] = Date.now();
       _chatPollTimer = setInterval(async () => {
-        const since = _chatLastPoll[convId] || 0;
-        const msgs = await chatFetchMessages(convId, since);
+        // Poll the conversation that is actually open now. The convId captured when
+        // polling started can be a pre-fetch coach-demo id (selected before the server
+        // conversations loaded); state.selectedChatId is the canonical id, so reads
+        // must follow it rather than the stale closure value.
+        const liveConvId = state.selectedChatId || convId;
+        const since = _chatLastPoll[liveConvId] || 0;
+        const msgs = await chatFetchMessages(liveConvId, since);
         if (msgs.length) {
-          _chatLastPoll[convId] = Date.now();
+          _chatLastPoll[liveConvId] = Date.now();
           const mode = state.activeView === 'coach' ? 'coach' : 'player';
-          chatRenderMessages(convId, mode);
+          chatRenderMessages(liveConvId, mode);
           const inMessages = (state.activeView === 'coach' && state.activeCoachSection === 'messages') ||
             (state.activeView === 'player' && state.activePlayerSection === 'messages');
-          if (inMessages && state.selectedChatId === convId) chatMarkRead(convId);
+          if (inMessages && state.selectedChatId === liveConvId) chatMarkRead(liveConvId);
           const feed = document.getElementById('chatFeed');
           if (feed) { const atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80; if (atBottom) chatScrollToBottom(); }
         }
-        await chatPollTyping(convId);
+        await chatPollTyping(liveConvId);
       }, 2500);
     }
 
@@ -21543,6 +21548,11 @@
         }
         // After Redis conversations load, re-render contact list (may add DMs from coach)
         chatFetchConversations().then(() => {
+          // Conversations are now loaded. canonicalizePlayerSelectedChat() above ran
+          // BEFORE this fetch, so selectedChatId may still be a pre-fetch coach-demo id.
+          // Re-canonicalise now and repoint polling so message reads use the real
+          // server DM rather than the stale id selected before conversations loaded.
+          if (canonicalizePlayerSelectedChat()) chatStartPolling(state.selectedChatId);
           chatRenderContactList('player');
           // If we have a selected conv with no messages yet, fetch now
           if (state.selectedChatId && !(_chatMessages[state.selectedChatId]?.length)) {
