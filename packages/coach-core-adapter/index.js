@@ -50,3 +50,7 @@ export {
 export {
   buildSelectionContext,
 } from './selection-context-builder.js'
+
+export {
+  buildDecisionPlanContext,
+} from './decision-plan-builder.js'
