@@ -92,3 +92,8 @@ export {
 export {
   createDnaConfidenceProvider,
 } from './dna-confidence-provider.js'
+
+export {
+  composeCoachDnaProfile,
+  DEFAULT_COACH_DNA_MAPPINGS,
+} from './coach-dna-profile.js'
