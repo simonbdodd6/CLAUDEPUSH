@@ -101,3 +101,7 @@ export {
 export {
   coachDnaProfileFromMemories,
 } from './coach-dna-from-memories.js'
+
+export {
+  createSelectionInputs,
+} from './create-selection-inputs.js'
