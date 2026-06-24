@@ -65,6 +65,7 @@ TravelApp/
     Collections/
       CollectionsComponents.swift     gallery, theme, detail and statistic cards
     Statistics/
+      StatisticsComponents.swift      footprint, coverage, velocity and milestone cards
     Insights/
       InsightsComponents.swift        pattern, trend, seasonality and insight cards
     Highlights/
@@ -161,6 +162,12 @@ are display metadata only in the current visual phases.
   `OnThisDayEmptyState`: static Phase 14 On This Day components. The screen
   binds to `OnThisDayDTO` via `MockDTOProvider.onThisDay`, deriving hero
   metrics and today's memories from the DTO.
+- `StatisticsHeroCard`, `CountryCountCard`, `ContinentCoverageCard`,
+  `TravelVelocityCard`, `JourneyDistanceCard`, `MilestoneStatisticCard` and
+  `StatisticsEmptyState`: static Phase 16 traveller statistics components. The
+  screen binds to `StatisticsDTO` via `MockDTOProvider.statistics`, keeping
+  keyed-metric mapping and deterministic display ratios in the view layer. It
+  composes the existing `TravelPatternCard` for fixed archive observations.
 - `LaunchScreen`, `OnboardingView`, `OnboardingPageView`,
   `OnboardingValuePrimerRow`, `OnboardingWelcomeCard`, `OnboardingProgressDots`,
   `LaunchBrandMark` and `OnboardingPrimaryButton`/`OnboardingSecondaryButton`:
@@ -247,6 +254,16 @@ TravelIntelligenceApp
         CollectionThemeCard
         CollectionStatisticCard
         CollectionsEmptyState
+      StatisticsScreen
+        StatisticsHeroCard
+        CountryCountCard
+        ContinentCoverageCard
+        MilestoneStatisticCard
+        TravelVelocityCard
+        JourneyDistanceCard
+        TravelPatternCard
+        StatisticsSummaryCard
+        StatisticsEmptyState
       OnThisDayScreen
         OnThisDayHeroCard
         AnniversaryMomentCard
