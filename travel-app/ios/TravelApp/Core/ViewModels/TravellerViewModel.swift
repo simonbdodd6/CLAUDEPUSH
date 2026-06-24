@@ -6,8 +6,8 @@ import Observation
 final class TravellerViewModel {
     let traveller: TravellerDTO
 
-    init(traveller: TravellerDTO = MockDTOProvider.traveller) {
-        self.traveller = traveller
+    init(repository: any TravellerRepository = MockTravellerRepository()) {
+        self.traveller = repository.traveller
     }
 
     var displayName: String { traveller.displayName }

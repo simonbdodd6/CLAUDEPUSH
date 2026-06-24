@@ -7,11 +7,11 @@ final class StoryViewModel {
     let traveller: TravellerDTO
 
     init(
-        story: StoryDTO = MockDTOProvider.story,
-        traveller: TravellerDTO = MockDTOProvider.traveller
+        storyRepository: any StoryRepository = MockStoryRepository(),
+        travellerRepository: any TravellerRepository = MockTravellerRepository()
     ) {
-        self.story = story
-        self.traveller = traveller
+        self.story = storyRepository.story
+        self.traveller = travellerRepository.traveller
     }
 
     var hasStories: Bool { !story.collections.isEmpty || !story.drafts.isEmpty }

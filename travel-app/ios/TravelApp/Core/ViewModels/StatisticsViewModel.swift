@@ -5,8 +5,8 @@ import Observation
 final class StatisticsViewModel {
     let statistics: StatisticsDTO
 
-    init(statistics: StatisticsDTO = MockDTOProvider.statistics) {
-        self.statistics = statistics
+    init(repository: any StatisticsRepository = MockStatisticsRepository()) {
+        self.statistics = repository.statistics
     }
 
     var hasStatistics: Bool { !statistics.metrics.isEmpty }

@@ -10,17 +10,17 @@ final class SearchViewModel {
     let highlights: HighlightsDTO
 
     init(
-        traveller: TravellerDTO = MockDTOProvider.traveller,
-        timeline: TimelineDTO = MockDTOProvider.timeline,
-        story: StoryDTO = MockDTOProvider.story,
-        collections: [CollectionDTO] = MockDTOProvider.collections,
-        highlights: HighlightsDTO = MockDTOProvider.highlights
+        travellerRepository: any TravellerRepository = MockTravellerRepository(),
+        timelineRepository: any TimelineRepository = MockTimelineRepository(),
+        storyRepository: any StoryRepository = MockStoryRepository(),
+        collectionsRepository: any CollectionsRepository = MockCollectionsRepository(),
+        highlightsRepository: any HighlightsRepository = MockHighlightsRepository()
     ) {
-        self.traveller = traveller
-        self.timeline = timeline
-        self.story = story
-        self.collections = collections
-        self.highlights = highlights
+        self.traveller = travellerRepository.traveller
+        self.timeline = timelineRepository.timeline
+        self.story = storyRepository.story
+        self.collections = collectionsRepository.collections
+        self.highlights = highlightsRepository.highlights
     }
 
     var hero: SearchHeroPreview {

@@ -5,8 +5,8 @@ import Observation
 final class HighlightsViewModel {
     let highlights: HighlightsDTO
 
-    init(highlights: HighlightsDTO = MockDTOProvider.highlights) {
-        self.highlights = highlights
+    init(repository: any HighlightsRepository = MockHighlightsRepository()) {
+        self.highlights = repository.highlights
     }
 
     var hasHighlights: Bool { !highlights.moments.isEmpty || !highlights.achievements.isEmpty }

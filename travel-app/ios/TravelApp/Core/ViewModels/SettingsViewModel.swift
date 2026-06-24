@@ -9,15 +9,15 @@ final class SettingsViewModel {
     let collections: [CollectionDTO]
 
     init(
-        traveller: TravellerDTO = MockDTOProvider.traveller,
-        passport: PassportDTO = MockDTOProvider.passport,
-        statistics: StatisticsDTO = MockDTOProvider.statistics,
-        collections: [CollectionDTO] = MockDTOProvider.collections
+        travellerRepository: any TravellerRepository = MockTravellerRepository(),
+        passportRepository: any PassportRepository = MockPassportRepository(),
+        statisticsRepository: any StatisticsRepository = MockStatisticsRepository(),
+        collectionsRepository: any CollectionsRepository = MockCollectionsRepository()
     ) {
-        self.traveller = traveller
-        self.passport = passport
-        self.statistics = statistics
-        self.collections = collections
+        self.traveller = travellerRepository.traveller
+        self.passport = passportRepository.passport
+        self.statistics = statisticsRepository.statistics
+        self.collections = collectionsRepository.collections
     }
 
     var hasProfile: Bool { !traveller.displayName.isEmpty }

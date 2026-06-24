@@ -38,6 +38,17 @@ TravelApp/
       CollectionDTO.swift             standalone memory collection
       OnThisDayDTO.swift              same-day memories across years
       MockDTOProvider.swift           single deterministic mock data source
+    Repositories/
+      TravellerRepository.swift       traveller protocol + mock implementation
+      PassportRepository.swift        passport protocol + mock implementation
+      TimelineRepository.swift        timeline protocol + mock implementation
+      StoryRepository.swift           story protocol + mock implementation
+      CinematicRepository.swift       cinematic protocol + mock implementation
+      StatisticsRepository.swift      statistics protocol + mock implementation
+      InsightsRepository.swift        insights protocol + mock implementation
+      HighlightsRepository.swift      highlights protocol + mock implementation
+      CollectionsRepository.swift     collections protocol + mock implementation
+      OnThisDayRepository.swift       anniversary protocol + mock implementation
     ViewModels/
       TravellerViewModel.swift        root traveller presentation adapter
       PassportViewModel.swift         passport DTO mapping and display state
@@ -116,8 +127,23 @@ their data mapping lives in one corresponding `Core/ViewModels` type.
 - Computed properties perform deterministic formatting, filtering and
   presentation mapping.
 - No ViewModel performs I/O, persistence, navigation or backend work.
-- Initializer injection keeps mappings independently testable without adding a
-  service or repository abstraction.
+- Initializer injection keeps mappings independently testable without coupling
+  presentation code to a concrete data source.
+
+### Repository layer
+
+Phase 20 inserts a narrow repository boundary between ViewModels and the
+deterministic fixture provider:
+
+```
+ViewModels → Repository protocols → Mock repositories → MockDTOProvider
+```
+
+Each DTO domain has one read-only repository protocol and one immutable mock
+implementation. ViewModels accept repository protocols through initializer
+injection and retain the same DTO-backed presentation outputs as Phase 19.
+Only mock implementations can access `MockDTOProvider`; there are no live
+repositories, API clients, persistence stores or side effects.
 
 ## Navigation
 

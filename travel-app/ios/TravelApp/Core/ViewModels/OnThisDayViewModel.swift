@@ -6,8 +6,8 @@ final class OnThisDayViewModel {
     /// Source contract for this surface, from the Phase 12 DTO layer.
     let onThisDay: OnThisDayDTO
 
-    init(onThisDay: OnThisDayDTO = MockDTOProvider.onThisDay) {
-        self.onThisDay = onThisDay
+    init(repository: any OnThisDayRepository = MockOnThisDayRepository()) {
+        self.onThisDay = repository.onThisDay
     }
 
     /// Fixed reference year for deterministic "years ago" arithmetic. Kept in

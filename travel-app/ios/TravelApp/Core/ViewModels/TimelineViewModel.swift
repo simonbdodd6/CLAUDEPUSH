@@ -7,11 +7,11 @@ final class TimelineViewModel {
     let traveller: TravellerDTO
 
     init(
-        timeline: TimelineDTO = MockDTOProvider.timeline,
-        traveller: TravellerDTO = MockDTOProvider.traveller
+        timelineRepository: any TimelineRepository = MockTimelineRepository(),
+        travellerRepository: any TravellerRepository = MockTravellerRepository()
     ) {
-        self.timeline = timeline
-        self.traveller = traveller
+        self.timeline = timelineRepository.timeline
+        self.traveller = travellerRepository.traveller
     }
 
     var hasEvents: Bool { timeline.years.contains { !$0.events.isEmpty } }
