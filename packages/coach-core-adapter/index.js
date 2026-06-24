@@ -74,3 +74,8 @@ export {
 export {
   resolvePositionAssignments,
 } from './position-assignment-resolver.js'
+
+export {
+  deriveAvailabilityConfidence,
+  createBaselineConfidenceProvider,
+} from './confidence-source.js'
