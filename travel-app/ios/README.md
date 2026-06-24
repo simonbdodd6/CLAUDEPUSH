@@ -38,6 +38,19 @@ TravelApp/
       CollectionDTO.swift             standalone memory collection
       OnThisDayDTO.swift              same-day memories across years
       MockDTOProvider.swift           single deterministic mock data source
+    ViewModels/
+      TravellerViewModel.swift        root traveller presentation adapter
+      PassportViewModel.swift         passport DTO mapping and display state
+      TimelineViewModel.swift         timeline and traveller presentation mapping
+      StoryViewModel.swift            story shelf presentation mapping
+      CinematicViewModel.swift        reel and scene presentation mapping
+      StatisticsViewModel.swift       keyed metric presentation mapping
+      InsightsViewModel.swift         reason-code insight presentation mapping
+      HighlightsViewModel.swift       moments and achievements presentation mapping
+      CollectionsViewModel.swift      collection shelf presentation mapping
+      OnThisDayViewModel.swift        anniversary presentation mapping
+      SearchViewModel.swift           deterministic local search mapping
+      SettingsViewModel.swift         profile and archive presentation mapping
     Navigation/
       RootFlowView.swift              app entry gate: launch → onboarding → ready
       RootShellView.swift             tab shell + Explore hub (registry-driven)
@@ -83,12 +96,28 @@ TravelApp/
 - SwiftUI lifecycle. App entry is `RootFlowView`, which gates an animated
   launch screen and a multi-page onboarding flow before `RootShellView`
   (in-memory flow state only; nothing persisted).
-- MVVM using `@Observable` view models.
+- MVVM using `@Observable` view models. Phase 19 centralises feature adapters in
+  `Core/ViewModels`; each owns immutable DTO input defaulted from
+  `MockDTOProvider` and exposes presentation-ready computed values.
 - Views are presentation-only.
 - Feature folders own screen-specific shells.
 - Shared presentation primitives live in `Core/Components`.
 - Backend contracts are represented as inert `Codable` DTO shells only.
 - No API client is implemented in this phase.
+
+### ViewModel layer
+
+The Phase 19 ViewModel layer sits between inert DTO contracts and SwiftUI
+screens. Feature screens retain their existing layouts and bindings while
+their data mapping lives in one corresponding `Core/ViewModels` type.
+
+- Inputs are immutable DTO values supplied through initializers.
+- Default inputs come only from `MockDTOProvider`.
+- Computed properties perform deterministic formatting, filtering and
+  presentation mapping.
+- No ViewModel performs I/O, persistence, navigation or backend work.
+- Initializer injection keeps mappings independently testable without adding a
+  service or repository abstraction.
 
 ## Navigation
 
