@@ -83,3 +83,8 @@ export {
 export {
   applyPlayerDnaInfluence,
 } from './player-dna-influence.js'
+
+export {
+  derivePlayerDnaSignals,
+  DEFAULT_DNA_MAPPINGS,
+} from './player-dna-source.js'
