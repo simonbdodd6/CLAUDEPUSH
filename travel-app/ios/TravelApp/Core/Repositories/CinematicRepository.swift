@@ -7,7 +7,7 @@ protocol CinematicRepository {
 struct MockCinematicRepository: CinematicRepository {
     let cinematic: CinematicDTO
 
-    init(cinematic: CinematicDTO = MockDTOProvider.cinematic) {
-        self.cinematic = cinematic
+    init(dataSource: any CinematicDataSource = MockCinematicDataSource()) {
+        self.cinematic = dataSource.cinematic
     }
 }

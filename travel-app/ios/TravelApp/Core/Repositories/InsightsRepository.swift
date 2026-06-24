@@ -7,7 +7,7 @@ protocol InsightsRepository {
 struct MockInsightsRepository: InsightsRepository {
     let insights: InsightsDTO
 
-    init(insights: InsightsDTO = MockDTOProvider.insights) {
-        self.insights = insights
+    init(dataSource: any InsightsDataSource = MockInsightsDataSource()) {
+        self.insights = dataSource.insights
     }
 }

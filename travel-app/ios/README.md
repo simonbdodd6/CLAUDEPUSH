@@ -40,6 +40,17 @@ TravelApp/
       CollectionDTO.swift             standalone memory collection
       OnThisDayDTO.swift              same-day memories across years
       MockDTOProvider.swift           single deterministic mock data source
+    DataSources/
+      TravellerDataSource.swift       traveller source protocol + mock source
+      PassportDataSource.swift        passport source protocol + mock source
+      TimelineDataSource.swift        timeline source protocol + mock source
+      StoryDataSource.swift           story source protocol + mock source
+      CinematicDataSource.swift       cinematic source protocol + mock source
+      StatisticsDataSource.swift      statistics source protocol + mock source
+      InsightsDataSource.swift        insights source protocol + mock source
+      HighlightsDataSource.swift      highlights source protocol + mock source
+      CollectionsDataSource.swift     collections source protocol + mock source
+      OnThisDayDataSource.swift       anniversary source protocol + mock source
     Repositories/
       TravellerRepository.swift       traveller protocol + mock implementation
       PassportRepository.swift        passport protocol + mock implementation
@@ -138,14 +149,15 @@ Phase 20 inserts a narrow repository boundary between ViewModels and the
 deterministic fixture provider:
 
 ```
-ViewModels → AppContainer → Repository protocols → Mock repositories → MockDTOProvider
+ViewModels → AppContainer → Repository protocols → Mock repositories
+           → Data-source protocols → Mock data sources → MockDTOProvider
 ```
 
 Each DTO domain has one read-only repository protocol and one immutable mock
 implementation. ViewModels accept repository protocols through initializer
 injection and retain the same DTO-backed presentation outputs as Phase 19.
-Only mock implementations can access `MockDTOProvider`; there are no live
-repositories, API clients, persistence stores or side effects.
+Repositories consume data-source protocols rather than knowing where DTOs
+originate.
 
 ### Dependency container
 
@@ -156,11 +168,22 @@ mock composition, then reads only the repositories it needs.
 
 ```
 Views → ViewModels → AppContainer → Repository protocols
-      → Mock repositories → MockDTOProvider
+      → Mock repositories → Data-source protocols
+      → Mock data sources → MockDTOProvider
 ```
 
 This keeps feature screens unchanged, removes concrete repository construction
 from ViewModels and provides one composition root for future dependency sets.
+
+### Data-source layer
+
+Phase 22 separates repository behavior from the origin of its DTO values. Each
+domain has a read-only data-source protocol and an immutable mock data source.
+Mock repositories consume those protocols while preserving their Phase 20
+repository interfaces and outputs.
+
+Only mock data sources access `MockDTOProvider`. There are no remote or local
+persistent data sources, API clients, authentication flows or side effects.
 
 ## Navigation
 

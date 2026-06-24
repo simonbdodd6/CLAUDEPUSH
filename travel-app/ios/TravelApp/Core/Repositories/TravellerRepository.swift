@@ -7,7 +7,7 @@ protocol TravellerRepository {
 struct MockTravellerRepository: TravellerRepository {
     let traveller: TravellerDTO
 
-    init(traveller: TravellerDTO = MockDTOProvider.traveller) {
-        self.traveller = traveller
+    init(dataSource: any TravellerDataSource = MockTravellerDataSource()) {
+        self.traveller = dataSource.traveller
     }
 }

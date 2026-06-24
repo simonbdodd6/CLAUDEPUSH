@@ -7,7 +7,7 @@ protocol StoryRepository {
 struct MockStoryRepository: StoryRepository {
     let story: StoryDTO
 
-    init(story: StoryDTO = MockDTOProvider.story) {
-        self.story = story
+    init(dataSource: any StoryDataSource = MockStoryDataSource()) {
+        self.story = dataSource.story
     }
 }

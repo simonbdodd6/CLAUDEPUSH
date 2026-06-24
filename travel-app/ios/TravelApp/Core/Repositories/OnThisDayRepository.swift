@@ -7,7 +7,7 @@ protocol OnThisDayRepository {
 struct MockOnThisDayRepository: OnThisDayRepository {
     let onThisDay: OnThisDayDTO
 
-    init(onThisDay: OnThisDayDTO = MockDTOProvider.onThisDay) {
-        self.onThisDay = onThisDay
+    init(dataSource: any OnThisDayDataSource = MockOnThisDayDataSource()) {
+        self.onThisDay = dataSource.onThisDay
     }
 }

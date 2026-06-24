@@ -7,7 +7,7 @@ protocol StatisticsRepository {
 struct MockStatisticsRepository: StatisticsRepository {
     let statistics: StatisticsDTO
 
-    init(statistics: StatisticsDTO = MockDTOProvider.statistics) {
-        self.statistics = statistics
+    init(dataSource: any StatisticsDataSource = MockStatisticsDataSource()) {
+        self.statistics = dataSource.statistics
     }
 }

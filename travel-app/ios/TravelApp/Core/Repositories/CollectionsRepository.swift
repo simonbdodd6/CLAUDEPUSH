@@ -7,7 +7,7 @@ protocol CollectionsRepository {
 struct MockCollectionsRepository: CollectionsRepository {
     let collections: [CollectionDTO]
 
-    init(collections: [CollectionDTO] = MockDTOProvider.collections) {
-        self.collections = collections
+    init(dataSource: any CollectionsDataSource = MockCollectionsDataSource()) {
+        self.collections = dataSource.collections
     }
 }

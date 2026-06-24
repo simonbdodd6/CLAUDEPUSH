@@ -7,7 +7,7 @@ protocol TimelineRepository {
 struct MockTimelineRepository: TimelineRepository {
     let timeline: TimelineDTO
 
-    init(timeline: TimelineDTO = MockDTOProvider.timeline) {
-        self.timeline = timeline
+    init(dataSource: any TimelineDataSource = MockTimelineDataSource()) {
+        self.timeline = dataSource.timeline
     }
 }

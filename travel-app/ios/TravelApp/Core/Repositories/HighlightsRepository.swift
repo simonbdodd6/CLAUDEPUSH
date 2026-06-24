@@ -7,7 +7,7 @@ protocol HighlightsRepository {
 struct MockHighlightsRepository: HighlightsRepository {
     let highlights: HighlightsDTO
 
-    init(highlights: HighlightsDTO = MockDTOProvider.highlights) {
-        self.highlights = highlights
+    init(dataSource: any HighlightsDataSource = MockHighlightsDataSource()) {
+        self.highlights = dataSource.highlights
     }
 }

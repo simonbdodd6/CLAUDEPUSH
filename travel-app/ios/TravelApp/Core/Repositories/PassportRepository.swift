@@ -7,7 +7,7 @@ protocol PassportRepository {
 struct MockPassportRepository: PassportRepository {
     let passport: PassportDTO
 
-    init(passport: PassportDTO = MockDTOProvider.passport) {
-        self.passport = passport
+    init(dataSource: any PassportDataSource = MockPassportDataSource()) {
+        self.passport = dataSource.passport
     }
 }
