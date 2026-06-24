@@ -105,3 +105,7 @@ export {
 export {
   createSelectionInputs,
 } from './create-selection-inputs.js'
+
+export {
+  assembleSelectionInputs,
+} from './assemble-selection-inputs.js'
