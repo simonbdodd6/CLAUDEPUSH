@@ -109,3 +109,7 @@ export {
 export {
   assembleSelectionInputs,
 } from './assemble-selection-inputs.js'
+
+export {
+  createCoreSquadLoaderContract,
+} from './core-squad-loader-contract.js'
