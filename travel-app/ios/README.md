@@ -73,6 +73,7 @@ TravelApp/
     OnThisDay/
       OnThisDayComponents.swift       anniversary, historical, year-in-review cards
     Search/
+      SearchComponents.swift          destinations, suggestions, results and search stats
     Settings/
 ```
 
@@ -168,6 +169,12 @@ are display metadata only in the current visual phases.
   screen binds to `StatisticsDTO` via `MockDTOProvider.statistics`, keeping
   keyed-metric mapping and deterministic display ratios in the view layer. It
   composes the existing `TravelPatternCard` for fixed archive observations.
+- `SearchHeroCard`, `RecentDestinationCard`, `SearchSuggestionCard`,
+  `SearchCategoryCard`, `SearchResultPreviewCard`, `SearchStatisticCard` and
+  `SearchEmptyState`: static Phase 17 search components. The screen composes
+  existing Timeline, Story, Collection, Highlights and Traveller DTO fixtures
+  through `MockDTOProvider`; local matching remains deterministic presentation
+  logic and does not introduce a search contract or backend dependency.
 - `LaunchScreen`, `OnboardingView`, `OnboardingPageView`,
   `OnboardingValuePrimerRow`, `OnboardingWelcomeCard`, `OnboardingProgressDots`,
   `LaunchBrandMark` and `OnboardingPrimaryButton`/`OnboardingSecondaryButton`:
@@ -264,6 +271,14 @@ TravelIntelligenceApp
         TravelPatternCard
         StatisticsSummaryCard
         StatisticsEmptyState
+      SearchScreen
+        SearchHeroCard
+        RecentDestinationCard
+        SearchSuggestionCard
+        SearchCategoryCard
+        SearchResultPreviewCard
+        SearchStatisticCard
+        SearchEmptyState
       OnThisDayScreen
         OnThisDayHeroCard
         AnniversaryMomentCard
