@@ -113,3 +113,7 @@ export {
 export {
   createCoreSquadLoaderContract,
 } from './core-squad-loader-contract.js'
+
+export {
+  loaderToSelectionInputs,
+} from './loader-to-selection-inputs.js'
