@@ -75,6 +75,7 @@ TravelApp/
     Search/
       SearchComponents.swift          destinations, suggestions, results and search stats
     Settings/
+      SettingsComponents.swift        profile, preferences, archive and app information
 ```
 
 ## Architecture
@@ -175,6 +176,12 @@ are display metadata only in the current visual phases.
   existing Timeline, Story, Collection, Highlights and Traveller DTO fixtures
   through `MockDTOProvider`; local matching remains deterministic presentation
   logic and does not introduce a search contract or backend dependency.
+- `SettingsHeroCard`, `TravellerProfileCard`, `PreferenceCategoryCard`,
+  `TravelArchiveCard`, `AppInformationCard`, `SettingsStatisticCard` and
+  `SettingsEmptyState`: static Phase 18 settings components. The screen
+  composes existing Traveller, Passport, Statistics and Collection fixtures
+  through `MockDTOProvider`. Preference cards are read-only presentation
+  statuses, so the feature introduces no persistence or configuration storage.
 - `LaunchScreen`, `OnboardingView`, `OnboardingPageView`,
   `OnboardingValuePrimerRow`, `OnboardingWelcomeCard`, `OnboardingProgressDots`,
   `LaunchBrandMark` and `OnboardingPrimaryButton`/`OnboardingSecondaryButton`:
@@ -279,6 +286,14 @@ TravelIntelligenceApp
         SearchResultPreviewCard
         SearchStatisticCard
         SearchEmptyState
+      SettingsScreen
+        SettingsHeroCard
+        TravellerProfileCard
+        PreferenceCategoryCard
+        TravelArchiveCard
+        AppInformationCard
+        SettingsStatisticCard
+        SettingsEmptyState
       OnThisDayScreen
         OnThisDayHeroCard
         AnniversaryMomentCard
