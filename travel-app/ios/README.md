@@ -16,6 +16,8 @@ TravelApp/
   App/
     TravelIntelligenceApp.swift       app entry + root app state
   Core/
+    Dependencies/
+      AppContainer.swift              centralized mock repository composition root
     Components/
       DashboardCards.swift            home cards and dashboard primitives
       PassportComponents.swift        passport cover, stamps, stats and empty state
@@ -108,8 +110,8 @@ TravelApp/
   launch screen and a multi-page onboarding flow before `RootShellView`
   (in-memory flow state only; nothing persisted).
 - MVVM using `@Observable` view models. Phase 19 centralises feature adapters in
-  `Core/ViewModels`; each owns immutable DTO input defaulted from
-  `MockDTOProvider` and exposes presentation-ready computed values.
+  `Core/ViewModels`; each owns immutable DTO input resolved through the shared
+  dependency container and exposes presentation-ready computed values.
 - Views are presentation-only.
 - Feature folders own screen-specific shells.
 - Shared presentation primitives live in `Core/Components`.
@@ -122,8 +124,8 @@ The Phase 19 ViewModel layer sits between inert DTO contracts and SwiftUI
 screens. Feature screens retain their existing layouts and bindings while
 their data mapping lives in one corresponding `Core/ViewModels` type.
 
-- Inputs are immutable DTO values supplied through initializers.
-- Default inputs come only from `MockDTOProvider`.
+- Inputs are immutable DTO values resolved from injected repositories.
+- Default dependencies come from `AppContainer.mock`.
 - Computed properties perform deterministic formatting, filtering and
   presentation mapping.
 - No ViewModel performs I/O, persistence, navigation or backend work.
@@ -136,7 +138,7 @@ Phase 20 inserts a narrow repository boundary between ViewModels and the
 deterministic fixture provider:
 
 ```
-ViewModels → Repository protocols → Mock repositories → MockDTOProvider
+ViewModels → AppContainer → Repository protocols → Mock repositories → MockDTOProvider
 ```
 
 Each DTO domain has one read-only repository protocol and one immutable mock
@@ -144,6 +146,21 @@ implementation. ViewModels accept repository protocols through initializer
 injection and retain the same DTO-backed presentation outputs as Phase 19.
 Only mock implementations can access `MockDTOProvider`; there are no live
 repositories, API clients, persistence stores or side effects.
+
+### Dependency container
+
+Phase 21 centralises dependency composition in `AppContainer`. The container
+stores all ten repository protocols and exposes one deterministic `.mock`
+registration set. Every ViewModel accepts an `AppContainer`, defaulting to that
+mock composition, then reads only the repositories it needs.
+
+```
+Views → ViewModels → AppContainer → Repository protocols
+      → Mock repositories → MockDTOProvider
+```
+
+This keeps feature screens unchanged, removes concrete repository construction
+from ViewModels and provides one composition root for future dependency sets.
 
 ## Navigation
 

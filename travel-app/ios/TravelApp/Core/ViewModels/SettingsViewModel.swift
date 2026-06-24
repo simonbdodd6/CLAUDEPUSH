@@ -8,16 +8,11 @@ final class SettingsViewModel {
     let statistics: StatisticsDTO
     let collections: [CollectionDTO]
 
-    init(
-        travellerRepository: any TravellerRepository = MockTravellerRepository(),
-        passportRepository: any PassportRepository = MockPassportRepository(),
-        statisticsRepository: any StatisticsRepository = MockStatisticsRepository(),
-        collectionsRepository: any CollectionsRepository = MockCollectionsRepository()
-    ) {
-        self.traveller = travellerRepository.traveller
-        self.passport = passportRepository.passport
-        self.statistics = statisticsRepository.statistics
-        self.collections = collectionsRepository.collections
+    init(container: AppContainer = .mock) {
+        self.traveller = container.travellerRepository.traveller
+        self.passport = container.passportRepository.passport
+        self.statistics = container.statisticsRepository.statistics
+        self.collections = container.collectionsRepository.collections
     }
 
     var hasProfile: Bool { !traveller.displayName.isEmpty }

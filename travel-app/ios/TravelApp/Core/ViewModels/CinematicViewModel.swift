@@ -5,8 +5,8 @@ import Observation
 final class CinematicViewModel {
     let cinematic: CinematicDTO
 
-    init(repository: any CinematicRepository = MockCinematicRepository()) {
-        self.cinematic = repository.cinematic
+    init(container: AppContainer = .mock) {
+        self.cinematic = container.cinematicRepository.cinematic
     }
 
     var hasScenes: Bool { !cinematic.scenes.isEmpty }

@@ -5,8 +5,8 @@ import Observation
 final class PassportViewModel {
     let passport: PassportDTO
 
-    init(repository: any PassportRepository = MockPassportRepository()) {
-        self.passport = repository.passport
+    init(container: AppContainer = .mock) {
+        self.passport = container.passportRepository.passport
     }
 
     var hasJourneys: Bool { passport.stamps.contains(where: \.isStamped) }
