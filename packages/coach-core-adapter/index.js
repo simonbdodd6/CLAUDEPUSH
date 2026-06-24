@@ -97,3 +97,7 @@ export {
   composeCoachDnaProfile,
   DEFAULT_COACH_DNA_MAPPINGS,
 } from './coach-dna-profile.js'
+
+export {
+  coachDnaProfileFromMemories,
+} from './coach-dna-from-memories.js'
