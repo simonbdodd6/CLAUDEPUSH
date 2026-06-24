@@ -2104,7 +2104,10 @@
       /* Sidebar: hide decorative elements and tighten spacing on mobile */
       .sidebar { gap: 12px; padding: 14px 12px; }
       .sidebar-card { display: none; }
-      #pushSidebar { display: none !important; }
+      /* Keep #pushSidebar visible on mobile: it is the only player-facing control
+         that reaches subscribePush() — hiding it left phone users with no way to
+         enable notifications. The sidebar is position:static on mobile so the pill
+         renders inline at the top of the page. */
       /* Nav buttons need 44px touch target when rendered as a 2-col grid */
       nav button { min-height: 44px; }
       /* Add-player form: 2-col on tablet */
