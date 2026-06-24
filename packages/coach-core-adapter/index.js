@@ -79,3 +79,7 @@ export {
   deriveAvailabilityConfidence,
   createBaselineConfidenceProvider,
 } from './confidence-source.js'
+
+export {
+  applyPlayerDnaInfluence,
+} from './player-dna-influence.js'
