@@ -88,3 +88,7 @@ export {
   derivePlayerDnaSignals,
   DEFAULT_DNA_MAPPINGS,
 } from './player-dna-source.js'
+
+export {
+  createDnaConfidenceProvider,
+} from './dna-confidence-provider.js'
