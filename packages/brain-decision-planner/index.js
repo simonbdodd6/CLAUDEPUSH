@@ -12,3 +12,7 @@ export {
 export {
   mapDecisionPlanContext,
 } from './decision-plan-context-mapper.js'
+
+export {
+  completeDecisionPlanningInput,
+} from './intelligence-boundary-harness.js'
