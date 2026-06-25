@@ -86,22 +86,41 @@ function scenarioSummary(s) {
   }
 }
 
+/**
+ * Aggregate explanation coverage across the scenarios (read-only over per-scenario explanationCoverage).
+ * `scored` = scenarios with a non-null coverage; mean/min are over those (null when none);
+ * `fullyExplained` = scenarios with coverage exactly 1.
+ */
+function coverageRollup(scenarios) {
+  const vals = scenarios.map((s) => s.explanationCoverage).filter((v) => typeof v === 'number' && Number.isFinite(v))
+  const scored = vals.length
+  return {
+    scored,
+    mean: scored === 0 ? null : Math.round((vals.reduce((a, b) => a + b, 0) / scored) * 100) / 100,
+    min: scored === 0 ? null : Math.min(...vals),
+    fullyExplained: scenarios.filter((s) => s.explanationCoverage === 1).length,
+  }
+}
+
 /** Build the normalized summary object (fixed key order → deterministic JSON). */
 function buildSummary(matrixResult) {
   const { total, passed, failed } = matrixResult
   const passRate = total === 0 ? 0 : Math.round((passed / total) * 100) / 100
+  const scenarios = matrixResult.scenarios.map(scenarioSummary)
   return {
     total,
     passed,
     failed,
     passRate,
-    scenarios: matrixResult.scenarios.map(scenarioSummary),
+    coverage: coverageRollup(scenarios),
+    scenarios,
   }
 }
 
 /** Render the summary as a deterministic multi-line string. */
 function renderText(summary) {
-  const header = `BrainDryRunMatrix total=${summary.total} passed=${summary.passed} failed=${summary.failed} passRate=${summary.passRate}`
+  const c = summary.coverage
+  const header = `BrainDryRunMatrix total=${summary.total} passed=${summary.passed} failed=${summary.failed} passRate=${summary.passRate} coverageScored=${c.scored} coverageMean=${c.mean} coverageMin=${c.min} fullyExplained=${c.fullyExplained}`
   const lines = summary.scenarios.map((s) => {
     const base = `${s.id} ok=${s.ok}`
     if (s.error !== null) return `${base} error="${s.error}"`

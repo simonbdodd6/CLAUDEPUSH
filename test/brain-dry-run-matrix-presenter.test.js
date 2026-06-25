@@ -32,6 +32,7 @@ test('object format returns the normalized summary with explanation counts', () 
   assert.equal(out.passed, 2)
   assert.equal(out.failed, 1)
   assert.equal(out.passRate, 0.67)
+  assert.deepEqual(out.coverage, { scored: 2, mean: 1, min: 1, fullyExplained: 2 })   // M190 rollup (invalid scenario unscored)
   assert.deepEqual(out.scenarios[0], { id: 'full-squad', ok: true, startingCount: 15, benchCount: 8, reserveCount: 1, warningCount: 0, explanationStarterCount: 15, explanationBenchCount: 8, explanationRiskCount: 0, explanationCoverage: 1, error: null })
   assert.deepEqual(out.scenarios[1], { id: 'injury-thinned', ok: true, startingCount: 14, benchCount: 8, reserveCount: 0, warningCount: 1, explanationStarterCount: 14, explanationBenchCount: 8, explanationRiskCount: 1, explanationCoverage: 1, error: null })
   // failed scenario: explanation counts + coverage safely null
@@ -42,7 +43,7 @@ test('object format returns the normalized summary with explanation counts', () 
 
 test('text format renders explanation counts on success lines', () => {
   const lines = summarizeBrainDryRunMatrix(MATRIX, 'text').split('\n')
-  assert.equal(lines[0], 'BrainDryRunMatrix total=3 passed=2 failed=1 passRate=0.67')
+  assert.equal(lines[0], 'BrainDryRunMatrix total=3 passed=2 failed=1 passRate=0.67 coverageScored=2 coverageMean=1 coverageMin=1 fullyExplained=2')
   assert.equal(lines[1], 'full-squad ok=true starting=15 bench=8 reserves=1 warnings=0 explanationStarters=15 explanationBench=8 explanationRisks=0 explanationCoverage=1')
   assert.equal(lines[2], 'injury-thinned ok=true starting=14 bench=8 reserves=0 warnings=1 explanationStarters=14 explanationBench=8 explanationRisks=1 explanationCoverage=1')
   assert.equal(lines[3], 'invalid-provider ok=false error="loaderToSelectionInputs: provider must implement getActivePlayers"')
@@ -103,6 +104,27 @@ test('text and json carry explanationCoverage', () => {
   assert.equal(JSON.parse(summarizeBrainDryRunMatrix(m, 'json')).scenarios[0].explanationCoverage, 0.8)
 })
 
+// ── coverage rollup (M190) ─────────────────────────────────────────────────────────────
+
+test('coverage rollup aggregates per-scenario coverage', () => {
+  const full = okScenario('full', verification({ startingCount: 15 }), dryRunWith({ starters: 15, bench: 0, risks: 0 }))     // 1
+  const partial = okScenario('partial', verification({ startingCount: 15 }), dryRunWith({ starters: 12, bench: 0, risks: 0 })) // 0.8
+  const failed = failScenario('bad', 'boom')                                                                                   // unscored
+  const out = summarizeBrainDryRunMatrix(makeMatrix([full, partial, failed]), 'object')
+  assert.deepEqual(out.coverage, { scored: 2, mean: 0.9, min: 0.8, fullyExplained: 1 })   // mean (1+0.8)/2 = 0.9
+})
+
+test('coverage rollup is null/zero when nothing is scored, and appears in text/json', () => {
+  const out = summarizeBrainDryRunMatrix(makeMatrix([failScenario('a', 'x'), failScenario('b', 'y')]), 'object')
+  assert.deepEqual(out.coverage, { scored: 0, mean: null, min: null, fullyExplained: 0 })
+  // empty matrix
+  assert.deepEqual(summarizeBrainDryRunMatrix(makeMatrix([]), 'object').coverage, { scored: 0, mean: null, min: null, fullyExplained: 0 })
+  // rollup is present in text header and json
+  const m = makeMatrix([okScenario('full', verification({ startingCount: 15 }), dryRunWith({ starters: 15, bench: 0, risks: 0 }))])
+  assert.match(summarizeBrainDryRunMatrix(m, 'text').split('\n')[0], / coverageScored=1 coverageMean=1 coverageMin=1 fullyExplained=1$/)
+  assert.deepEqual(JSON.parse(summarizeBrainDryRunMatrix(m, 'json')).coverage, { scored: 1, mean: 1, min: 1, fullyExplained: 1 })
+})
+
 test('success scenario without explanation on dryRun → null explanation counts, no text segment', () => {
   const noExpl = okScenario('no-expl', verification(), {})   // dryRun present but no explanationView
   const out = summarizeBrainDryRunMatrix(makeMatrix([noExpl]), 'object')
@@ -135,7 +157,7 @@ test('deterministic — repeated calls are identical', () => {
 
 test('object output is deeply frozen', () => {
   const out = summarizeBrainDryRunMatrix(MATRIX, 'object')
-  assert.ok(Object.isFrozen(out) && Object.isFrozen(out.scenarios) && Object.isFrozen(out.scenarios[0]))
+  assert.ok(Object.isFrozen(out) && Object.isFrozen(out.scenarios) && Object.isFrozen(out.scenarios[0]) && Object.isFrozen(out.coverage))
   assert.throws(() => { out.passed = 0 })
 })
 
