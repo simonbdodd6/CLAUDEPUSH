@@ -160,19 +160,7 @@ struct PlaceholderCard: View {
     let symbol: String
 
     var body: some View {
-        GlassCard {
-            HStack(spacing: TravelSpacing.md) {
-                Image(systemName: symbol)
-                    .font(.title2)
-                    .foregroundStyle(TravelTheme.current.tint)
-                    .frame(width: 42, height: 42)
-                    .background(.thinMaterial, in: Circle())
-                VStack(alignment: .leading, spacing: TravelSpacing.xs) {
-                    Text(title).font(TravelTypography.cardTitle)
-                    Text(subtitle).font(TravelTypography.caption).foregroundStyle(.secondary)
-                }
-            }
-        }
+        PremiumCard(symbol: symbol, title: title, subtitle: subtitle)
     }
 }
 

@@ -235,27 +235,18 @@ struct AppInformationCard: View {
     let preview: AppInformationPreview
 
     var body: some View {
-        GlassCard {
-            HStack(alignment: .center, spacing: TravelSpacing.md) {
-                Image(systemName: preview.symbol)
-                    .font(.headline)
-                    .foregroundStyle(TravelTheme.current.tint)
-                    .frame(width: 44, height: 44)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: TravelRadius.sm, style: .continuous))
-                VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                    Text(preview.title)
-                        .font(TravelTypography.cardTitle)
-                    Text(preview.detail)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: TravelSpacing.sm)
-                Text(preview.value)
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.trailing)
-            }
+        PremiumCard(
+            symbol: preview.symbol,
+            badge: .roundedRect,
+            title: preview.title,
+            subtitle: preview.detail,
+            subtitleFixedSize: true,
+            contentSpacing: TravelSpacing.xxs
+        ) {
+            Text(preview.value)
+                .font(TravelTypography.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
         }
     }
 }

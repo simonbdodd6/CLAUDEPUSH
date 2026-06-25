@@ -83,33 +83,13 @@ struct FilmReelCard: View {
     let reel: FilmReelPreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                ZStack(alignment: .bottomLeading) {
-                    RoundedRectangle(cornerRadius: TravelRadius.md, style: .continuous)
-                        .fill(LinearGradient(colors: reel.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Image(systemName: reel.symbol)
-                        .font(.system(size: 42, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.86))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(TravelSpacing.md)
-                    Text(reel.sceneCount)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.white.opacity(0.78))
-                        .padding(TravelSpacing.md)
-                }
-                .frame(height: 148)
-
-                VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                    Text(reel.title)
-                        .font(TravelTypography.cardTitle)
-                    Text(reel.subtitle)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
+        PremiumMediaCard(
+            gradient: reel.gradient,
+            symbol: reel.symbol,
+            caption: reel.sceneCount,
+            title: reel.title,
+            subtitle: reel.subtitle
+        )
     }
 }
 
