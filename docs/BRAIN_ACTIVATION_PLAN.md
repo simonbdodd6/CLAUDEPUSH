@@ -72,6 +72,13 @@ getCoachIdentity()         → { coachId: session.userId, clubId: session.teamId
 Position normalization already exists in `coach-core-adapter` (M132-era), so Core position strings map to
 the engine's jersey positions without new logic.
 
+**Availability ↔ fixture linkage (a real gap, resolved for v1).** Core availability is keyed by a single
+`sessionId` (default `"game"`) — it is *not* per-fixture. So "availability for the next fixture" is, in
+v1, **the current availability poll (`sessionId="game"`) paired with the next upcoming `app:fixtures`
+entry by date**. This is an explicit v1 simplification: the draft answers "best XV for the next fixture,
+given who has responded to the current availability poll." Per-fixture availability is a later Core
+enhancement, not a Phase-0 requirement. The route accepts `?sessionId=` to override the default.
+
 ## 5. Runtime architecture
 
 ```
@@ -134,11 +141,12 @@ Phase 2 turns on Coach DNA (M113/M114 → per-player confidence influence, M152�
 
 ## 10. Packaging & deploy constraints (real)
 
-- **Vercel function cap.** Core is already near the **12-function** limit (`api/` has ~12 routes). Adding
-  `api/brain-draft.js` may exceed it. Options: (a) gate behind a dev/preview deploy first; (b) fold the
-  draft route into an existing low-traffic function (e.g. extend a dev-only endpoint) behind an action
-  param; (c) retire a dev-only route (`mission-control`/`system-status`) if acceptable. **Decide before
-  Phase 1.**
+- **Vercel function cap — DECISION (locked for Phase 0).** Core is already near the **12-function**
+  limit. **Phase 0 runs on a preview deployment only**, so it does not consume a production function slot
+  and the cap is *not* a Phase-0 blocker. The production-slot decision is deferred to **Phase 1**, where
+  the options are: (a) fold the draft route into an existing low-traffic function behind an `action`
+  param (no new slot); (b) retire/merge a dev-only route (`mission-control`/`system-status`). Phase 1
+  must not ship without resolving this.
 - **ESM import.** The Brain packages are relative-import ESM with no `package.json`; the function must
   import them by path (Vercel bundles the repo). Verify the bundler includes `packages/coach-*` and
   `packages/brain-decision-planner` (+ the one `@brain/evidence-gateway` workspace dep used by M125/M127).
@@ -146,9 +154,12 @@ Phase 2 turns on Coach DNA (M113/M114 → per-player confidence influence, M152�
 
 ## 11. Phased rollout
 
-- **Phase 0 — Shadow (no UI).** Build the gated read-only function; behind the flag it returns the draft
-  JSON. Verify on the demo team (`boitsfort-rfc`/`coach-demo`) that it produces a complete XV from live
-  data. No coach-facing surface yet. *Smallest real proof that the boundary runs on production data.*
+- **Phase 0 — Shadow (no UI), PREVIEW DEPLOY ONLY.** Build the gated read-only function; behind the flag
+  it returns the draft JSON. Runs on a **preview deployment** (no production function slot consumed).
+  Verify on the demo team (`boitsfort-rfc`/`coach-demo`) that it produces a complete XV from live data. No
+  coach-facing surface yet. The committed deliverable is the **function + read-only adapters + an
+  integration test that stubs `_kv`** (so it runs in CI without Redis); the preview deploy is the manual
+  smoke test. *Smallest real proof that the boundary runs on production-shaped data.*
 - **Phase 1 — Draft review UI.** A premium-only screen that calls the function and shows the draft XV +
   the M184 explanation codes, with a manual "use this as a starting point" that drops the coach into the
   existing matchday flow (their edit, their save). Still read-only/draft-only.
@@ -162,7 +173,7 @@ Phase 2 turns on Coach DNA (M113/M114 → per-player confidence influence, M152�
 - [ ] Read-only adapters for the 4 ready providers (+ empty memories/tags, default intent).
 - [ ] Function composes the proven boundary and returns a complete, explained draft for `boitsfort-rfc`.
 - [ ] No writes; tenant-scoped; deterministic; covered by an integration test using a stubbed `_kv`.
-- [ ] Fits the Vercel function budget (decision from §10 made and documented).
+- [ ] Runs on a **preview deploy** (no production slot); production-slot decision explicitly deferred to Phase 1 (§10).
 
 ## 13. Risks & mitigations
 
@@ -173,6 +184,54 @@ Phase 2 turns on Coach DNA (M113/M114 → per-player confidence influence, M152�
 | Empty/sparse live data (no availability yet) | Boundary already handles vacant jerseys (M124 risk + coverage < 1); draft degrades gracefully. |
 | Premium scope creep | Phase 0 is shadow-only; no UI until the draft is proven on real data. |
 | Brain bundling in serverless | Verify import paths in a preview build before wiring any UI. |
+
+## 14. Draft response shape (Phase 0)
+
+The function returns a read-only JSON envelope — a draft, explicitly labelled as such:
+
+```jsonc
+{
+  "draft": true,                       // never a saved/published selection
+  "generatedFor": { "coachId": "coach-demo", "teamId": "boitsfort-rfc",
+                    "fixtureId": "fix_…", "sessionId": "game" },
+  "squad": { /* M130 match-day squad: startingXV, captain, viceCaptain, bench, reserves, risk, signOff */ },
+  "explanation": { /* M184: summary, starters[codes], bench[codes], risks, alternatives, confidenceNotes */ },
+  "verification": { /* M178-style counts: startingCount, benchCount, reserveCount, warningCount */ },
+  "meta": { "deterministic": true, "dnaApplied": false, "intent": "selection-preference" }
+}
+```
+
+`dnaApplied: false` makes the v1 "neutral DNA" explicit. No field references any Core mutation.
+
+## 15. File layout (activation surface)
+
+Keep the wiring **out of `packages/*`** (which must stay store-agnostic). Suggested:
+
+```
+api/
+  brain-draft.js          # the gated, read-only route (resolve session → flags → adapters → boundary → draft)
+  _brainProviders.js      # read-only M164/M167 adapters over _kv/_identityStore/_availabilityStore/fixtures
+  _brainFlags.js          # BRAIN_ENABLED + app:brain:flags:{teamId} resolution
+test/
+  api-brain-draft.test.js # integration test with a stubbed _kv (no Redis), asserts complete XV + no writes
+```
+
+The route imports the proven boundary from `packages/brain-decision-planner` and injects the
+`coach-intelligence` engines as `pipelineServices`. `_brainProviders.js` is the *only* new Core-coupled
+code, and it is read-only.
+
+## 16. Open design questions (decide during refinement / Phase 0)
+
+1. **"Next fixture" selection** — earliest `app:fixtures` entry with `date >= today`? Tie-break by
+   `kickoff`/`createdAt`? (v1: earliest future date, then `createdAt`.)
+2. **Decision intent source** — fixed `DEFAULT_INTENT` for v1 (agreed); when does a coach-specified intent
+   arrive (Phase 3)?
+3. **Memory capture flow (Phase 2)** — how does a coach insight become an M108 entry in
+   `app:brain:memories:{coachId}`? (Out of scope for Phase 0.)
+4. **Bench/formation defaults** — confirm the formation (DEFAULT_FORMATION, 15-a-side union) and bench
+   size for the draft; expose as route options later.
+5. **Empty-data behaviour** — no fixtures ⇒ 200 with `squad: null` + reason, or 422? (Proposed: 200 with a
+   clear `reason`, so the UI can message "add a fixture / collect availability".)
 
 ---
 
