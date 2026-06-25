@@ -179,6 +179,14 @@ pure, read-only **explanation helpers** (M184/M185) are imported directly by the
   Decision Intelligence diff (`diffDecisions`, M192), and renders it (`summarizeDecisionDiff`, M193).
   Returns a frozen `{ beforeSummary, afterSummary, diff, diffView }`. It rebuilds no squads, reruns no
   Brain logic, and reuses the existing read-only `coach-intelligence` import (no new dependency edge).
+- **M196 — `runBrainDryRunDiffMatrix(pairs, options)`** — runs M194 across a list of `{ id, before,
+  after, expected? }` pairs **in input order** (one failing pair never stops the run; errors captured
+  per pair), and returns a frozen `{ total, passed, failed, pairs:[{ id, ok, diff, diffView, error }],
+  rollup }`. The `rollup` deterministically counts change codes across successfully-run pairs
+  (`changeCodeCounts` keys sorted) plus `changedPairCount` / `unchangedPairCount`.
+- **M197 — `summarizeBrainDryRunDiffMatrix(matrixResult, format)`** — a pure presenter of an M196
+  result in `object` (default), `text`, or `json` for engineering logs (per-pair codes + the rollup).
+  Reads only; JSON via deterministic `JSON.stringify` (no new dependency edge, as in M180).
 
 ---
 

@@ -362,14 +362,18 @@ two decision states  →  diffDecisions (M192)  →  summarizeDecisionDiff (M193
                             explanationChanges, coverageChanges }
 brain-decision-planner: diffBrainDryRuns (M194) reads a decision state out of each M186 dry-run result,
                         then runs M192 → M193 → { beforeSummary, afterSummary, diff, diffView }
+                        runBrainDryRunDiffMatrix (M196) runs M194 over many pairs → rollup of change codes
+                        summarizeBrainDryRunDiffMatrix (M197) → object | text | json report
 ```
 
 - **M192/M193** live in `coach-intelligence`, are pure and read-only, and emit/render change codes
   (`PLAYER_PROMOTED`, `CAPTAIN_CHANGED`, `RISK_INCREASED`, `EXPLANATION_GAINED`, `COVERAGE_DECREASED`, …).
 - **M194** lives in `brain-decision-planner` and is composition only — it reuses the existing read-only
   `coach-intelligence` import (no new dependency edge) and reruns no Brain logic.
+- **M196/M197** (also `brain-decision-planner`) run the diff over many before/after pairs in order and
+  roll up which change codes appeared across the set, then present it — diagnostics only, deterministic.
 
 ---
 
 *This document is descriptive only. It adds no exports, changes no runtime behaviour, and describes the
-architecture exactly as it exists after M194.*
+architecture exactly as it exists after M197.*
