@@ -52,3 +52,7 @@ export {
 export {
   summarizeBrainDryRunDiffMatrix,
 } from './brain-dry-run-diff-matrix-presenter.js'
+
+export {
+  filterDiffMatrixBySeverity,
+} from './brain-dry-run-diff-severity-filter.js'
