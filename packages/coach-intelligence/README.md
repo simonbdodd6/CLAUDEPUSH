@@ -196,6 +196,25 @@ turns it on* differ.
 4. **Add deterministic tests** asserting exact output + repeatability; keep `dependency-cruiser` green.
 5. **Never change Core**, and keep any eventual runtime use gated and driven by adapter-injected services.
 
+## 13. Selection Explanation layer (M184–M185)
+
+A dormant, deterministic **explanation** layer that interprets an already-built squad — "the coach makes
+the decision; the Brain explains what it sees." It **never selects, scores, ranks, or recommends**, runs
+no pipeline, inspects no provider, and generates no prose — it reads existing outputs and emits codes.
+
+- **M184 — `buildSelectionExplanation(squad)`** — takes an M130 match-day squad and returns a deeply
+  frozen `{ summary, starters, bench, risks, alternatives, confidenceNotes }`. `starters`/`bench` carry
+  **explanation codes only** (`FORMATION_REQUIREMENT`, `CAPTAIN_SELECTION`, `POSITION_MATCH`,
+  `HIGH_ALIGNMENT`, `CONSISTENT_SELECTION`, `LOW_SELECTION_RISK`, `BENCH_COVER`) derived in a fixed
+  canonical order from existing fields; `risks` reuses the M124 entries verbatim; `alternatives`
+  exposes the existing reserves; `confidenceNotes` surfaces existing `score`/`alignmentTier` only.
+- **M185 — `summarizeSelectionExplanation(explanation, format)`** — a pure presenter of an M184
+  explanation in `object` (default), `text`, or `json` (canonical, via the shared `@brain/evidence-gateway`
+  serializer, as in M125/M127), adding a `counts` block. Reads only; derives no new conclusions.
+
+These power the dormant dry-run diagnostics in `brain-decision-planner` (M186 attaches both to the
+dry-run result; M187/M188 surface their counts and a coverage metric across the regression matrix).
+
 ---
 
 *This document is descriptive only. It adds no exports and changes no runtime behaviour; it describes

@@ -134,7 +134,7 @@ live data and never in the product.
   decoupling and keeping this package free of any engine dependency.
 - **Deeply-frozen, deterministic outputs**; inputs never mutated.
 
-## 12. Dry-run regression diagnostics (M178–M182)
+## 12. Dry-run regression diagnostics (M178–M188)
 
 A dormant, **engineering-diagnostics-only** harness for verifying the whole stack from fixed in-memory
 scenarios. It is **not production runtime, not Core integration, and not user-facing coaching advice**;
@@ -155,9 +155,18 @@ services stay injected, providers stay read-only, and every output is determinis
   objects** every call (no shared mutable references).
 - **M182 — fixture consolidation** — every test using that scenario pair (M172/M178/M179) imports the
   shared fixtures; the adapter/contract-unit tests keep their own layer-specific fixtures.
+- **M186 — explanation attached** — `runBrainDryRun` also returns `explanation` (M184
+  `buildSelectionExplanation` of the squad) and `explanationView` (M185 presenter view + counts).
+- **M187 — matrix propagation** — each matrix scenario preserves the full `dryRun` (so
+  `dryRun.explanation`/`dryRun.explanationView` carry through), and the matrix presenter surfaces
+  `explanationStarterCount` / `explanationBenchCount` / `explanationRiskCount` (read-only; null when absent).
+- **M188 — coverage metric** — the matrix presenter adds `explanationCoverage`
+  (`explanationStarterCount / startingCount`, 2 d.p.; null when starters are 0 or unexplained) in
+  object/text/json, flagging any squad whose starters weren't fully explained.
 
-The engines (M118/M119/M131) are still **injected** via `options.pipelineServices` throughout — no
-diagnostics module imports `coach-intelligence` or Core.
+The selection **engines** (M118/M119/M131) are still **injected** via `options.pipelineServices`. The
+pure, read-only **explanation helpers** (M184/M185) are imported directly by the dry-run harness (M186)
+— they only read the already-built squad and never select, score, or run the pipeline.
 
 ---
 

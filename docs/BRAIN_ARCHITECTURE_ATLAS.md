@@ -327,10 +327,29 @@ fixtures (M181)  →  runBrainDryRun (M178)  →  runBrainDryRunMatrix (M179)  �
 - **M182 consolidation** — all dry-run/capstone tests share those fixtures; adapter/contract tests keep
   their own layer-specific fixtures.
 
-The coach-intelligence engines stay injected (`options.pipelineServices`) throughout; no diagnostics
-module imports `coach-intelligence` or Core.
+The coach-intelligence selection **engines** stay injected (`options.pipelineServices`) throughout.
+
+## 22. Selection explanation + coverage (M184–M188)
+
+A dormant **explanation** layer (in `coach-intelligence`) interprets an already-built squad as codes —
+"the coach decides; the Brain explains what it sees" — and the dry-run diagnostics surface it.
+
+```
+M184 buildSelectionExplanation(squad)  →  explanation { summary, starters[codes], bench[codes], risks, alternatives, confidenceNotes }
+M185 summarizeSelectionExplanation     →  object | text | json (+ counts)
+M186 runBrainDryRun                    →  result also carries { explanation, explanationView }
+M187 matrix presenter                  →  per-scenario explanationStarter/Bench/RiskCount (read from dryRun)
+M188 matrix presenter                  →  explanationCoverage = explained starters / starters (2 d.p.)
+```
+
+- **M184/M185** are pure and read-only: they never select, score, rank, recommend, or generate prose;
+  codes are a fixed enum in canonical order, risks reuse M124 verbatim, confidence surfaces existing
+  values only.
+- **M186** introduces the one direct `brain-decision-planner → coach-intelligence` import edge — but only
+  for the read-only explanation helpers; the selection engines remain injected.
+- **M187/M188** read only what M186 already returned (never recompute), defaulting to null when absent.
 
 ---
 
 *This document is descriptive only. It adds no exports, changes no runtime behaviour, and describes the
-architecture exactly as it exists after M182.*
+architecture exactly as it exists after M188.*
