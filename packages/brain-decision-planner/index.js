@@ -16,3 +16,7 @@ export {
 export {
   completeDecisionPlanningInput,
 } from './intelligence-boundary-harness.js'
+
+export {
+  buildBrainInputs,
+} from './brain-inputs-facade.js'
