@@ -38,3 +38,5 @@ export { runSelectionPipeline } from './selection-pipeline.js'
 export { buildSelectionExplanation } from './selection-explanation.js'
 
 export { summarizeSelectionExplanation } from './selection-explanation-presenter.js'
+
+export { diffDecisions } from './decision-intelligence-diff.js'
