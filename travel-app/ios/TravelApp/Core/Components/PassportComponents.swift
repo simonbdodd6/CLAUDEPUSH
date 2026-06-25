@@ -117,19 +117,11 @@ struct CompletionRing: View {
     let progress: Double
 
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(.white.opacity(0.18), lineWidth: 7)
-            Circle()
-                .trim(from: 0, to: clampedProgress)
-                .stroke(
-                    AngularGradient(
-                        colors: [TravelTheme.current.sun, TravelTheme.current.coral, TravelTheme.current.sky],
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: 7, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
+        PremiumRingProgress(
+            progress: progress,
+            colors: [TravelTheme.current.sun, TravelTheme.current.coral, TravelTheme.current.sky],
+            trackColor: .white.opacity(0.18)
+        ) {
             Text("\(percentage)%")
                 .font(.system(.subheadline, design: .rounded, weight: .bold))
                 .foregroundStyle(.white)
@@ -137,12 +129,8 @@ struct CompletionRing: View {
         .accessibilityLabel("Passport completion \(percentage) percent")
     }
 
-    private var clampedProgress: Double {
-        min(max(progress, 0), 1)
-    }
-
     private var percentage: Int {
-        Int((clampedProgress * 100).rounded())
+        Int((min(max(progress, 0), 1) * 100).rounded())
     }
 }
 

@@ -22,6 +22,7 @@ TravelApp/
       DashboardCards.swift            home cards and dashboard primitives
       PassportComponents.swift        passport cover, stamps, stats and empty state
       PremiumComponents.swift         glass cards, heroes, sections, grid
+      PremiumChartComponents.swift    bars, progress, rings and chart legends
       PremiumTileComponents.swift     collection, compact and thumbnail tiles
       PremiumTimelineComponents.swift timeline items, connectors and sections
       FeatureShell.swift              reusable empty feature surface
@@ -275,6 +276,9 @@ I/O or changes feature behavior.
   styles.
 - `TravelMotion`: named animation tokens for future transitions.
 - `GlassCard`: reusable material-backed card.
+- `PremiumBarChart`, `PremiumProgressBar`, `PremiumRingProgress` and
+  `PremiumChartLegend`: deterministic Phase 37 chart primitives built from
+  SwiftUI shapes without external chart libraries.
 - `PremiumCollectionTile`, `PremiumCompactTile` and `PremiumThumbnailTile`:
   reusable Phase 35 archive tiles with optional copy, metadata and symbols.
 - `PremiumTimelineItem`, `PremiumTimelineConnector`,

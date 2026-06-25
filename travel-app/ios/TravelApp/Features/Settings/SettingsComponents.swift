@@ -124,22 +124,10 @@ struct TravellerProfileCard: View {
                             .font(TravelTypography.caption)
                             .foregroundStyle(TravelTheme.current.tint)
                     }
-                    GeometryReader { proxy in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color.secondary.opacity(0.14))
-                            Capsule()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [TravelTheme.current.tint, TravelTheme.current.sky],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .frame(width: proxy.size.width * max(0, min(preview.passportProgress, 1)))
-                        }
-                    }
-                    .frame(height: 8)
+                    PremiumProgressBar(
+                        progress: preview.passportProgress,
+                        colors: [TravelTheme.current.tint, TravelTheme.current.sky]
+                    )
                 }
             }
         }

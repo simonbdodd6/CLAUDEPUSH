@@ -190,21 +190,10 @@ struct TravelVelocityCard: View {
                         .foregroundStyle(TravelTheme.current.coral)
                 }
 
-                HStack(alignment: .bottom, spacing: TravelSpacing.xs) {
-                    ForEach(Array(preview.activity.enumerated()), id: \.offset) { _, value in
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [TravelTheme.current.coral, TravelTheme.current.sun],
-                                    startPoint: .bottom,
-                                    endPoint: .top
-                                )
-                            )
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 28 + (72 * value))
-                    }
-                }
-                .frame(height: 100, alignment: .bottom)
+                PremiumBarChart(
+                    values: preview.activity,
+                    colors: [TravelTheme.current.coral, TravelTheme.current.sun]
+                )
 
                 Text(preview.caption)
                     .font(TravelTypography.caption)
