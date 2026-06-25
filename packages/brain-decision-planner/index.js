@@ -32,3 +32,7 @@ export {
 export {
   runBrainDryRun,
 } from './brain-dry-run-harness.js'
+
+export {
+  runBrainDryRunMatrix,
+} from './brain-dry-run-matrix.js'
