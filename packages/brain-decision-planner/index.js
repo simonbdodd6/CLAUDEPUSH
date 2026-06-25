@@ -8,3 +8,7 @@
 export {
   createDecisionPlanSourceContract,
 } from './decision-plan-source-contract.js'
+
+export {
+  mapDecisionPlanContext,
+} from './decision-plan-context-mapper.js'
