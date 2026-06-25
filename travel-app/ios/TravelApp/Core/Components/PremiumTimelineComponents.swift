@@ -110,9 +110,10 @@ struct PremiumTimelineItem: View {
                                 .font(TravelTypography.cardTitle)
                             if let subtitle {
                                 if let subtitleSymbol {
-                                    Label(subtitle, systemImage: subtitleSymbol)
-                                        .font(TravelTypography.caption)
-                                        .foregroundStyle(.secondary)
+                                    PremiumLocationBadge(
+                                        label: subtitle,
+                                        symbol: subtitleSymbol
+                                    )
                                 } else {
                                     Text(subtitle)
                                         .font(TravelTypography.caption)

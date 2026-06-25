@@ -91,11 +91,10 @@ struct RecentDestinationCard: View {
         GlassCard {
             VStack(alignment: .leading, spacing: TravelSpacing.md) {
                 HStack {
-                    Image(systemName: preview.symbol)
-                        .font(.title2)
-                        .foregroundStyle(preview.accent)
-                        .frame(width: 48, height: 48)
-                        .background(.thinMaterial, in: Circle())
+                    PremiumMapPin(
+                        symbol: preview.symbol,
+                        accent: preview.accent
+                    )
                     Spacer()
                     Text(preview.date)
                         .font(TravelTypography.caption)

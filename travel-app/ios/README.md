@@ -23,6 +23,7 @@ TravelApp/
       PassportComponents.swift        passport cover, stamps, stats and empty state
       PremiumComponents.swift         glass cards, heroes, sections, grid
       PremiumChartComponents.swift    bars, progress, rings and chart legends
+      PremiumMapComponents.swift      static maps, pins, badges and overlays
       PremiumPassportComponents.swift passport stamps, grids and progress
       PremiumTileComponents.swift     collection, compact and thumbnail tiles
       PremiumTimelineComponents.swift timeline items, connectors and sections
@@ -280,6 +281,9 @@ I/O or changes feature behavior.
 - `PremiumBarChart`, `PremiumProgressBar`, `PremiumRingProgress` and
   `PremiumChartLegend`: deterministic Phase 37 chart primitives built from
   SwiftUI shapes without external chart libraries.
+- `PremiumMapCard`, `PremiumMapPin`, `PremiumLocationBadge` and
+  `PremiumMapOverlay`: deterministic Phase 39 map presentation primitives
+  built without MapKit, location services or live data.
 - `PremiumPassportStamp`, `PremiumStampGrid`, `PremiumStampBadge` and
   `PremiumPassportProgressSummary`: deterministic Phase 38 passport and stamp
   primitives for progress and collection surfaces.

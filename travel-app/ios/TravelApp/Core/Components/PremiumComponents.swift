@@ -166,26 +166,14 @@ struct PlaceholderCard: View {
 
 struct MapTexturePlaceholder: View {
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: TravelRadius.lg, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [TravelTheme.current.ocean.opacity(0.90), TravelTheme.current.sky.opacity(0.65), TravelTheme.current.sun.opacity(0.40)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            HStack(spacing: TravelSpacing.sm) {
-                ForEach(0..<5, id: \.self) { index in
-                    Capsule()
-                        .fill(.white.opacity(0.22))
-                        .frame(width: 34 + CGFloat(index * 8), height: 8)
-                        .rotationEffect(.degrees(Double(index * 9 - 18)))
-                }
-            }
-            Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
-                .font(.system(size: 42, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.85))
+        PremiumMapCard(
+            gradient: [
+                TravelTheme.current.ocean.opacity(0.90),
+                TravelTheme.current.sky.opacity(0.65),
+                TravelTheme.current.sun.opacity(0.40)
+            ]
+        ) {
+            PremiumMapOverlay()
         }
         .accessibilityLabel("Decorative route texture")
     }
@@ -321,4 +309,3 @@ struct FeatureEmptyState: View {
         }
     }
 }
-
