@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { runBrainDryRun, summarizeBrainInputs } from '../packages/brain-decision-planner/index.js'
-import { runCoachIntelligencePipeline, buildCoachRecommendation, runSelectionPipeline } from '../packages/coach-intelligence/index.js'
+import { runCoachIntelligencePipeline, buildCoachRecommendation, runSelectionPipeline, buildSelectionExplanation, summarizeSelectionExplanation } from '../packages/coach-intelligence/index.js'
 import { createFullSquadScenario } from './fixtures/brain-regression-fixtures.js'
 
 const ENGINES = { runCoachIntelligencePipeline, buildCoachRecommendation, runSelectionPipeline }
@@ -23,8 +23,21 @@ const run = (input = makeInput()) => runBrainDryRun(input, { pipelineServices: E
 
 test('valid input returns the full dry-run result', () => {
   const out = run()
-  assert.deepEqual(Object.keys(out).sort(), ['brainInputs', 'capstone', 'summary', 'verification'])
-  assert.ok(isObjLike(out.brainInputs) && isObjLike(out.summary) && isObjLike(out.capstone) && isObjLike(out.verification))
+  assert.deepEqual(Object.keys(out).sort(), ['brainInputs', 'capstone', 'explanation', 'explanationView', 'summary', 'verification'])
+  assert.ok(isObjLike(out.brainInputs) && isObjLike(out.summary) && isObjLike(out.capstone) && isObjLike(out.verification) &&
+    isObjLike(out.explanation) && isObjLike(out.explanationView))
+})
+
+test('explanation is the M184 explanation of the squad; explanationView is the M185 presenter view', () => {
+  const out = run()
+  // explanation == buildSelectionExplanation(squad) (M184), read-only over the built squad
+  assert.deepEqual(out.explanation, buildSelectionExplanation(out.capstone.squad))
+  assert.deepEqual(Object.keys(out.explanation).sort(), ['alternatives', 'bench', 'confidenceNotes', 'risks', 'starters', 'summary'])
+  assert.equal(out.explanation.starters.length, 15)
+  assert.ok(out.explanation.starters[0].explanationCodes.includes('FORMATION_REQUIREMENT'))
+  // explanationView == summarizeSelectionExplanation(explanation) (M185, object form + counts)
+  assert.deepEqual(out.explanationView, summarizeSelectionExplanation(out.explanation))
+  assert.equal(out.explanationView.counts.starters, 15)
 })
 
 test('summary is the M171 snapshot of brainInputs', () => {
@@ -82,7 +95,8 @@ test('deterministic — repeated runs are identical', () => {
 test('output is deeply frozen', () => {
   const out = run()
   assert.ok(Object.isFrozen(out) && Object.isFrozen(out.brainInputs) && Object.isFrozen(out.summary) &&
-    Object.isFrozen(out.capstone) && Object.isFrozen(out.verification))
+    Object.isFrozen(out.capstone) && Object.isFrozen(out.verification) &&
+    Object.isFrozen(out.explanation) && Object.isFrozen(out.explanationView))
   assert.throws(() => { out.verification.startingCount = 0 })
 })
 

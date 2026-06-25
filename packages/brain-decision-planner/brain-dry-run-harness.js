@@ -7,19 +7,24 @@
  *   { squadLoader, decisionPlanSource }
  *   → runBoundarySquadCapstone (M172)   → { brainInputs (M170), candidates, formation, squad }
  *   → summarizeBrainInputs (M171)        → summary
+ *   → buildSelectionExplanation (M184)   → explanation (code-level "why" of the squad)
+ *   → summarizeSelectionExplanation (M185) → explanationView (presenter view + counts)
  *   → verification                       → deterministic counts of what was present
  *
  * NOT production wiring, runtime activation, Core integration, AI, or live recommendation. Thin
- * composition over M170–M172: it adds no coaching conclusions, changes no squad/recommendation logic,
- * and produces no user-facing output. No networking, persistence, feature flags, live providers,
- * timestamps, clock or randomness. Providers/inputs are never mutated; the result is deeply frozen.
+ * composition over M170–M172 + M184/M185: it adds no coaching conclusions, changes no squad/
+ * recommendation logic, and produces no user-facing output. No networking, persistence, feature
+ * flags, live providers, timestamps, clock or randomness. Providers/inputs are never mutated; the
+ * result is deeply frozen.
  *
- * The coach-intelligence engines stay INJECTED via options.pipelineServices (passed through to M172) —
- * never imported here — preserving the existing decoupling.
+ * The coach-intelligence SELECTION ENGINES stay INJECTED via options.pipelineServices (passed through
+ * to M172). The pure, read-only EXPLANATION helpers (M184/M185) are imported directly — they only
+ * read the already-built squad and never select, score, or run the pipeline.
  */
 
 import { runBoundarySquadCapstone } from './boundary-squad-capstone-harness.js'
 import { summarizeBrainInputs } from './brain-inputs-summary.js'
+import { buildSelectionExplanation, summarizeSelectionExplanation } from '../coach-intelligence/index.js'
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
@@ -44,7 +49,8 @@ function countFilledStarters(squad) {
  * @param {{ squadLoader: object, decisionPlanSource: object }} input
  * @param {{ pipelineServices: object, confidenceProvider?: object, squadOptions?: object }} [options]
  *   passed through to M172 — pipelineServices are the injected coach-intelligence engines
- * @returns {Readonly<{ brainInputs: object, summary: object, capstone: object, verification: object }>}
+ * @returns {Readonly<{ brainInputs: object, summary: object, capstone: object, verification: object,
+ *   explanation: object, explanationView: object }>}
  */
 export function runBrainDryRun(input, options = {}) {
   if (!isObj(options)) throw new TypeError('runBrainDryRun: options must be an object')
@@ -54,6 +60,10 @@ export function runBrainDryRun(input, options = {}) {
   const brainInputs = capstone.brainInputs        // == buildBrainInputs(input) (M170), via M172
   const summary = summarizeBrainInputs(brainInputs) // M171
   const squad = capstone.squad
+
+  // explain the already-built squad (read-only; never selects/scores/ranks)
+  const explanation = buildSelectionExplanation(squad)              // M184
+  const explanationView = summarizeSelectionExplanation(explanation) // M185 (object form + counts)
 
   const verification = {
     hasSquadInput: summary.hasSquadInput,
@@ -65,5 +75,5 @@ export function runBrainDryRun(input, options = {}) {
     warningCount: isObj(squad) && isObj(squad.risk) && Array.isArray(squad.risk.risks) ? squad.risk.risks.length : 0,
   }
 
-  return deepFreeze({ brainInputs, summary, capstone, verification })
+  return deepFreeze({ brainInputs, summary, capstone, verification, explanation, explanationView })
 }
