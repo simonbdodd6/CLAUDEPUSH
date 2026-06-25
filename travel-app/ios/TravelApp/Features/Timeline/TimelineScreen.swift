@@ -13,9 +13,10 @@ struct TimelineScreen: View {
             PremiumScrollView {
                 TimelineHeroCard(summary: viewModel.summary)
 
-                if let presentation = viewModel.statePresentation {
-                    StatePresentationView(presentation: presentation)
-                } else {
+                PremiumScreenStateContainer(
+                    loadingState: viewModel.loadingState,
+                    presentation: viewModel.statePresentation
+                ) {
                     populatedContent
                 }
             }

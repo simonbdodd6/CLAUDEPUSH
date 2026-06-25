@@ -14,9 +14,10 @@ struct SearchScreen: View {
             PremiumScrollView {
                 SearchHeroCard(preview: viewModel.hero)
 
-                if let presentation = viewModel.statePresentation {
-                    StatePresentationView(presentation: presentation)
-                } else {
+                PremiumScreenStateContainer(
+                    loadingState: viewModel.loadingState,
+                    presentation: viewModel.statePresentation
+                ) {
                     populatedContent
                 }
             }
