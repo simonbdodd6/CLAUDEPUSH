@@ -92,17 +92,11 @@ struct PassportCoverCard: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    HStack(alignment: .center, spacing: TravelSpacing.lg) {
+                    PremiumPassportProgressSummary(
+                        title: completionLabel,
+                        subtitle: "Passport completion"
+                    ) {
                         CompletionRing(progress: progress)
-                            .frame(width: 64, height: 64)
-                        VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                            Text(completionLabel)
-                                .font(TravelTypography.cardTitle)
-                                .foregroundStyle(.white)
-                            Text("Passport completion")
-                                .font(TravelTypography.caption)
-                                .foregroundStyle(.white.opacity(0.7))
-                        }
                     }
                 }
                 .padding(TravelSpacing.lg)
@@ -214,47 +208,14 @@ struct PassportStampCell: View {
     let stamp: PassportStampPreview
 
     var body: some View {
-        VStack(spacing: TravelSpacing.xs) {
-            ZStack {
-                Circle()
-                    .fill(
-                        stamp.isStamped
-                            ? AnyShapeStyle(LinearGradient(colors: stamp.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
-                            : AnyShapeStyle(Color.clear)
-                    )
-                    .background(stamp.isStamped ? AnyShapeStyle(Color.clear) : AnyShapeStyle(.ultraThinMaterial), in: Circle())
-                Circle()
-                    .strokeBorder(
-                        stamp.isStamped ? .white.opacity(0.55) : Color.secondary.opacity(0.35),
-                        style: StrokeStyle(lineWidth: stamp.isStamped ? 2 : 1.5, dash: stamp.isStamped ? [] : [4, 4])
-                    )
-                if stamp.isStamped {
-                    VStack(spacing: 2) {
-                        Text(stamp.glyph)
-                            .font(.title3)
-                        Image(systemName: stamp.symbol)
-                            .font(.caption2)
-                            .foregroundStyle(.white.opacity(0.9))
-                    }
-                } else {
-                    Image(systemName: "plus")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 72, height: 72)
-            .rotationEffect(.degrees(stamp.isStamped ? -6 : 0))
-            .shadow(color: .black.opacity(stamp.isStamped ? 0.12 : 0), radius: 6, x: 0, y: 4)
-
-            Text(stamp.isStamped ? stamp.country : "Ready")
-                .font(TravelTypography.caption)
-                .foregroundStyle(stamp.isStamped ? .primary : .secondary)
-                .lineLimit(1)
-            Text(stamp.isStamped ? stamp.dateLabel : "Next")
-                .font(.system(.caption2, design: .rounded))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
+        PremiumPassportStamp(
+            title: stamp.isStamped ? stamp.country : "Ready",
+            metadata: stamp.isStamped ? stamp.dateLabel : "Next",
+            glyph: stamp.glyph,
+            symbol: stamp.isStamped ? stamp.symbol : "plus",
+            gradient: stamp.gradient,
+            isStamped: stamp.isStamped
+        )
     }
 }
 
@@ -263,13 +224,10 @@ struct PassportStampGrid: View {
     let stamps: [PassportStampPreview]
 
     var body: some View {
-        GlassCard {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: TravelSpacing.md)], spacing: TravelSpacing.lg) {
-                ForEach(stamps) { stamp in
-                    PassportStampCell(stamp: stamp)
-                }
+        PremiumStampGrid {
+            ForEach(stamps) { stamp in
+                PassportStampCell(stamp: stamp)
             }
-            .padding(.vertical, TravelSpacing.xs)
         }
     }
 }
