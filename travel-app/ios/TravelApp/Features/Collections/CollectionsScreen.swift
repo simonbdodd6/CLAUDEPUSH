@@ -52,7 +52,7 @@ struct CollectionsScreen: View {
         }
 
         PremiumSection(title: "Collection statistics", subtitle: "A compact overview of the collection shelf.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumMetricGrid(minimumWidth: 156) {
                 ForEach(viewModel.statistics) { statistic in
                     CollectionStatisticCard(statistic: statistic)
                 }
