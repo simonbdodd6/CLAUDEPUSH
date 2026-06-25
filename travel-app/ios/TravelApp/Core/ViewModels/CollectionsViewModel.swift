@@ -5,8 +5,8 @@ import Observation
 final class CollectionsViewModel {
     let collections: [CollectionDTO]
 
-    init(container: AppContainer = .mock) {
-        self.collections = container.collectionsRepository.collections
+    init(repository: any CollectionsRepository) {
+        self.collections = repository.collections
     }
 
     var hasCollections: Bool { !collections.isEmpty }

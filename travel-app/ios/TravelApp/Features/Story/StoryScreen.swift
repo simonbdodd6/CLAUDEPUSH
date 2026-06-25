@@ -2,7 +2,11 @@ import SwiftUI
 import Observation
 
 struct StoryScreen: View {
-    @State private var viewModel = StoryViewModel()
+    @State private var viewModel: StoryViewModel
+
+    init(container: AppContainer = .mock()) {
+        _viewModel = State(initialValue: container.makeStoryViewModel())
+    }
 
     var body: some View {
         NavigationStack {

@@ -2,8 +2,12 @@ import SwiftUI
 import Observation
 
 struct SearchScreen: View {
-    @State private var viewModel = SearchViewModel()
+    @State private var viewModel: SearchViewModel
     @State private var query = ""
+
+    init(container: AppContainer = .mock()) {
+        _viewModel = State(initialValue: container.makeSearchViewModel())
+    }
 
     var body: some View {
         NavigationStack {

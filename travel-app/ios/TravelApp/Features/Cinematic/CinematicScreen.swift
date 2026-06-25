@@ -2,7 +2,11 @@ import SwiftUI
 import Observation
 
 struct CinematicScreen: View {
-    @State private var viewModel = CinematicViewModel()
+    @State private var viewModel: CinematicViewModel
+
+    init(container: AppContainer = .mock()) {
+        _viewModel = State(initialValue: container.makeCinematicViewModel())
+    }
 
     var body: some View {
         NavigationStack {

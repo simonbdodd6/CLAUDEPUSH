@@ -2,7 +2,11 @@ import SwiftUI
 import Observation
 
 struct OnThisDayScreen: View {
-    @State private var viewModel = OnThisDayViewModel()
+    @State private var viewModel: OnThisDayViewModel
+
+    init(container: AppContainer = .mock()) {
+        _viewModel = State(initialValue: container.makeOnThisDayViewModel())
+    }
 
     var body: some View {
         NavigationStack {

@@ -6,9 +6,12 @@ final class TimelineViewModel {
     let timeline: TimelineDTO
     let traveller: TravellerDTO
 
-    init(container: AppContainer = .mock) {
-        self.timeline = container.timelineRepository.timeline
-        self.traveller = container.travellerRepository.traveller
+    init(
+        timelineRepository: any TimelineRepository,
+        travellerRepository: any TravellerRepository
+    ) {
+        self.timeline = timelineRepository.timeline
+        self.traveller = travellerRepository.traveller
     }
 
     var hasEvents: Bool { timeline.years.contains { !$0.events.isEmpty } }

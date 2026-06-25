@@ -2,7 +2,11 @@ import SwiftUI
 import Observation
 
 struct CollectionsScreen: View {
-    @State private var viewModel = CollectionsViewModel()
+    @State private var viewModel: CollectionsViewModel
+
+    init(container: AppContainer = .mock()) {
+        _viewModel = State(initialValue: container.makeCollectionsViewModel())
+    }
 
     var body: some View {
         NavigationStack {

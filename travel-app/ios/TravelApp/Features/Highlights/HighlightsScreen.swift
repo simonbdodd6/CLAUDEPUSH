@@ -2,7 +2,11 @@ import SwiftUI
 import Observation
 
 struct HighlightsScreen: View {
-    @State private var viewModel = HighlightsViewModel()
+    @State private var viewModel: HighlightsViewModel
+
+    init(container: AppContainer = .mock()) {
+        _viewModel = State(initialValue: container.makeHighlightsViewModel())
+    }
 
     var body: some View {
         NavigationStack {

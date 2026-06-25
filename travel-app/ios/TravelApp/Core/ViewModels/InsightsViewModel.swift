@@ -5,8 +5,8 @@ import Observation
 final class InsightsViewModel {
     let insights: InsightsDTO
 
-    init(container: AppContainer = .mock) {
-        self.insights = container.insightsRepository.insights
+    init(repository: any InsightsRepository) {
+        self.insights = repository.insights
     }
 
     var hasInsights: Bool { !insights.cards.isEmpty }

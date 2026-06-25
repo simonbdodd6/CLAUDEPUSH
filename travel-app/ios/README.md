@@ -121,8 +121,8 @@ TravelApp/
   launch screen and a multi-page onboarding flow before `RootShellView`
   (in-memory flow state only; nothing persisted).
 - MVVM using `@Observable` view models. Phase 19 centralises feature adapters in
-  `Core/ViewModels`; each owns immutable DTO input resolved through the shared
-  dependency container and exposes presentation-ready computed values.
+  `Core/ViewModels`; each owns immutable DTO input resolved through injected
+  repository protocols and exposes presentation-ready computed values.
 - Views are presentation-only.
 - Feature folders own screen-specific shells.
 - Shared presentation primitives live in `Core/Components`.
@@ -135,8 +135,8 @@ The Phase 19 ViewModel layer sits between inert DTO contracts and SwiftUI
 screens. Feature screens retain their existing layouts and bindings while
 their data mapping lives in one corresponding `Core/ViewModels` type.
 
-- Inputs are immutable DTO values resolved from injected repositories.
-- Default dependencies come from `AppContainer.mock`.
+- Inputs are immutable DTO values resolved from injected repository protocols.
+- ViewModels do not construct repositories or depend on `AppContainer`.
 - Computed properties perform deterministic formatting, filtering and
   presentation mapping.
 - No ViewModel performs I/O, persistence, navigation or backend work.
@@ -162,9 +162,7 @@ originate.
 ### Dependency container
 
 Phase 21 centralises dependency composition in `AppContainer`. The container
-stores all ten repository protocols and exposes one deterministic `.mock`
-registration set. Every ViewModel accepts an `AppContainer`, defaulting to that
-mock composition, then reads only the repositories it needs.
+stores all ten repository protocols and exposes deterministic mock composition.
 
 ```
 Views → ViewModels → AppContainer → Repository protocols
@@ -174,6 +172,17 @@ Views → ViewModels → AppContainer → Repository protocols
 
 This keeps feature screens unchanged, removes concrete repository construction
 from ViewModels and provides one composition root for future dependency sets.
+
+### Constructor injection
+
+Phase 23 completes the dependency wiring. Repository-backed screens accept an
+`AppContainer` through their initializer and use its feature factory to create
+their `@State` ViewModel. The container injects only the repository protocols
+required by that ViewModel.
+
+`AppContainer.mock()` creates a fresh immutable composition for default and
+preview use. No container, repository or ViewModel is held in global mutable
+state, and ViewModels have no dependency on the container type.
 
 ### Data-source layer
 

@@ -2,7 +2,11 @@ import SwiftUI
 import Observation
 
 struct TimelineScreen: View {
-    @State private var viewModel = TimelineViewModel()
+    @State private var viewModel: TimelineViewModel
+
+    init(container: AppContainer = .mock()) {
+        _viewModel = State(initialValue: container.makeTimelineViewModel())
+    }
 
     var body: some View {
         NavigationStack {

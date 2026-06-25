@@ -2,7 +2,11 @@ import SwiftUI
 import Observation
 
 struct PassportScreen: View {
-    @State private var viewModel = PassportViewModel()
+    @State private var viewModel: PassportViewModel
+
+    init(container: AppContainer = .mock()) {
+        _viewModel = State(initialValue: container.makePassportViewModel())
+    }
 
     var body: some View {
         NavigationStack {

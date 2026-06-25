@@ -41,16 +41,83 @@ struct AppContainer {
         self.onThisDayRepository = onThisDayRepository
     }
 
-    static let mock = AppContainer(
-        travellerRepository: MockTravellerRepository(),
-        passportRepository: MockPassportRepository(),
-        timelineRepository: MockTimelineRepository(),
-        storyRepository: MockStoryRepository(),
-        cinematicRepository: MockCinematicRepository(),
-        statisticsRepository: MockStatisticsRepository(),
-        insightsRepository: MockInsightsRepository(),
-        highlightsRepository: MockHighlightsRepository(),
-        collectionsRepository: MockCollectionsRepository(),
-        onThisDayRepository: MockOnThisDayRepository()
-    )
+    static func mock() -> AppContainer {
+        AppContainer(
+            travellerRepository: MockTravellerRepository(),
+            passportRepository: MockPassportRepository(),
+            timelineRepository: MockTimelineRepository(),
+            storyRepository: MockStoryRepository(),
+            cinematicRepository: MockCinematicRepository(),
+            statisticsRepository: MockStatisticsRepository(),
+            insightsRepository: MockInsightsRepository(),
+            highlightsRepository: MockHighlightsRepository(),
+            collectionsRepository: MockCollectionsRepository(),
+            onThisDayRepository: MockOnThisDayRepository()
+        )
+    }
+
+    func makeTravellerViewModel() -> TravellerViewModel {
+        TravellerViewModel(repository: travellerRepository)
+    }
+
+    func makePassportViewModel() -> PassportViewModel {
+        PassportViewModel(repository: passportRepository)
+    }
+
+    func makeTimelineViewModel() -> TimelineViewModel {
+        TimelineViewModel(
+            timelineRepository: timelineRepository,
+            travellerRepository: travellerRepository
+        )
+    }
+
+    func makeStoryViewModel() -> StoryViewModel {
+        StoryViewModel(
+            storyRepository: storyRepository,
+            travellerRepository: travellerRepository
+        )
+    }
+
+    func makeCinematicViewModel() -> CinematicViewModel {
+        CinematicViewModel(repository: cinematicRepository)
+    }
+
+    func makeStatisticsViewModel() -> StatisticsViewModel {
+        StatisticsViewModel(repository: statisticsRepository)
+    }
+
+    func makeInsightsViewModel() -> InsightsViewModel {
+        InsightsViewModel(repository: insightsRepository)
+    }
+
+    func makeHighlightsViewModel() -> HighlightsViewModel {
+        HighlightsViewModel(repository: highlightsRepository)
+    }
+
+    func makeCollectionsViewModel() -> CollectionsViewModel {
+        CollectionsViewModel(repository: collectionsRepository)
+    }
+
+    func makeOnThisDayViewModel() -> OnThisDayViewModel {
+        OnThisDayViewModel(repository: onThisDayRepository)
+    }
+
+    func makeSearchViewModel() -> SearchViewModel {
+        SearchViewModel(
+            travellerRepository: travellerRepository,
+            timelineRepository: timelineRepository,
+            storyRepository: storyRepository,
+            collectionsRepository: collectionsRepository,
+            highlightsRepository: highlightsRepository
+        )
+    }
+
+    func makeSettingsViewModel() -> SettingsViewModel {
+        SettingsViewModel(
+            travellerRepository: travellerRepository,
+            passportRepository: passportRepository,
+            statisticsRepository: statisticsRepository,
+            collectionsRepository: collectionsRepository
+        )
+    }
 }

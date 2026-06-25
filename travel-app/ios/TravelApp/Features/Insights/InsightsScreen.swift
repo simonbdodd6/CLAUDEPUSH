@@ -2,7 +2,11 @@ import SwiftUI
 import Observation
 
 struct InsightsScreen: View {
-    @State private var viewModel = InsightsViewModel()
+    @State private var viewModel: InsightsViewModel
+
+    init(container: AppContainer = .mock()) {
+        _viewModel = State(initialValue: container.makeInsightsViewModel())
+    }
 
     var body: some View {
         NavigationStack {
