@@ -6019,13 +6019,29 @@
     function getPlayerSquadStatus(player) {
       const fnames = state.formationNames || {};
       const bench  = state.benchPlayers  || [];
-      const name   = String(player.name || '').trim().toLowerCase();
-      if (!name) return { status: 'not-selected', slot: null };
-      const startSlot = rugbySlots.find(([label]) =>
-        String(fnames[label] || '').trim().toLowerCase() === name
-      );
+      // Robust match. The published squad stores NAMES, but a logged-in player's
+      // display name can differ from the exact roster string (canonicalisation,
+      // typed vs dragged, etc.) — which made selected players read "not selected".
+      // Match on the player's name AND by resolving each squad name back to a
+      // roster identity (id/userId), reusing the existing roster + findPlayerByName.
+      const myIds = new Set([player.id, player.userId, player.legacyPlayerId]
+        .map(x => String(x || '').trim().toLowerCase()).filter(Boolean));
+      const myName = String(player.name || '').trim().toLowerCase();
+      const isMe = squadName => {
+        const n = String(squadName || '').trim().toLowerCase();
+        if (!n) return false;
+        if (myName && n === myName) return true;                         // direct name match
+        const rp = findPlayerByName(squadName);                          // squad name → roster identity
+        if (rp) {
+          const rid = [rp.id, rp.userId, rp.legacyPlayerId].map(x => String(x || '').trim().toLowerCase());
+          if (rid.some(x => myIds.has(x))) return true;
+        }
+        return false;
+      };
+      if (!myName && !myIds.size) return { status: 'not-selected', slot: null };
+      const startSlot = rugbySlots.find(([label]) => isMe(fnames[label]));
       if (startSlot) return { status: 'starting', slot: startSlot[0] };
-      const benchIdx = bench.findIndex(n => String(n || '').trim().toLowerCase() === name);
+      const benchIdx = bench.findIndex(n => isMe(n));
       if (benchIdx >= 0) return { status: 'bench', slot: String(benchIdx + 16) };
       return { status: 'not-selected', slot: null };
     }
@@ -6036,22 +6052,32 @@
       const bench  = state.benchPlayers  || [];
       const { status, slot } = getPlayerSquadStatus(player);
 
-      const statusColor = status === 'starting' ? 'var(--green)' : status === 'bench' ? 'var(--blue)' : 'var(--muted)';
-      const statusLabel = status === 'starting' ? `✓ Starting 15 — #${slot}`
-                        : status === 'bench'    ? `Bench — #${slot}`
-                        :                         '⚪ Not selected this week';
-
       const kickoffDisplay = mc.kickoffDate
         ? new Date(`${mc.kickoffDate}T${mc.kickoffTime || '15:00'}:00`).toLocaleDateString('en-GB',
             { weekday:'long', day:'numeric', month:'long' })
         : '';
 
+      // Not in the published squad → say so plainly (only AFTER checking the squad).
+      if (status === 'not-selected') {
+        return `
+          <div style="border:1.5px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:16px;background:var(--panel)">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+              <strong style="font-size:16px">You are not selected for this match.</strong>
+              <span style="font-size:10px;font-weight:800;padding:3px 10px;border-radius:999px;background:var(--green);color:#fff;text-transform:uppercase;letter-spacing:.07em">Squad Published</span>
+            </div>
+            <div style="font-size:13px;color:var(--muted)">vs ${esc(mc.opposition || 'Upcoming match')}${kickoffDisplay ? ' · ' + esc(kickoffDisplay) : ''}</div>
+          </div>`;
+      }
+
+      // Selected → show the full published team sheet, highlighting the player's slot.
+      const statusColor = status === 'starting' ? 'var(--green)' : 'var(--blue)';
+      const statusLabel = status === 'starting' ? `✓ Starting XV — #${slot}` : `Bench — #${slot}`;
       const starting = rugbySlots.map(([label]) => {
         const n = (fnames[label] || '').trim();
         return n ? { slot: label, name: n } : null;
       }).filter(Boolean);
-
-      const playerNameLC = String(player.name || '').trim().toLowerCase();
+      const isMyStart = lbl => status === 'starting' && String(lbl) === String(slot);
+      const isMyBench = i   => status === 'bench'    && (i + 16) === Number(slot);
 
       return `
         <div style="border:2px solid ${statusColor};border-radius:14px;padding:18px 20px;margin-bottom:16px;background:var(--panel)">
@@ -6080,25 +6106,25 @@
             "${esc(mc.announcement)}"
           </div>` : ''}
 
-          <!-- Starting 15 -->
+          <!-- Starting XV -->
           ${starting.length ? `
-          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px">Starting 15</div>
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px">Starting XV</div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px 8px;margin-bottom:12px">
             ${starting.map(s => `
               <div style="font-size:13px;display:flex;align-items:center;gap:5px;padding:3px 0">
                 <span style="font-size:10px;font-weight:700;color:var(--muted);min-width:18px;flex-shrink:0">#${s.slot}</span>
-                <span style="font-weight:${s.name.toLowerCase()===playerNameLC?'800':'600'};color:${s.name.toLowerCase()===playerNameLC?'var(--green)':'var(--ink)'}">${esc(s.name)}</span>
+                <span style="font-weight:${isMyStart(s.slot)?'800':'600'};color:${isMyStart(s.slot)?'var(--green)':'var(--ink)'}">${esc(s.name)}${isMyStart(s.slot)?' — you':''}</span>
               </div>`).join('')}
           </div>` : ''}
 
-          <!-- Bench -->
+          <!-- Bench / Reserves -->
           ${bench.filter(n=>n).length ? `
           <div style="border-top:1px solid var(--line);padding-top:10px">
-            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px">Bench</div>
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px">Bench / Reserves</div>
             <div style="display:flex;flex-wrap:wrap;gap:6px 14px">
               ${bench.map((n,i) => n ? `
-                <span style="font-size:13px;font-weight:${(n||'').toLowerCase()===playerNameLC?'800':'600'};color:${(n||'').toLowerCase()===playerNameLC?'var(--blue)':'var(--ink)'}">
-                  #${i+16} ${esc(n)}
+                <span style="font-size:13px;font-weight:${isMyBench(i)?'800':'600'};color:${isMyBench(i)?'var(--blue)':'var(--ink)'}">
+                  #${i+16} ${esc(n)}${isMyBench(i)?' — you':''}
                 </span>` : '').filter(Boolean).join('')}
             </div>
           </div>` : ''}
@@ -11460,14 +11486,6 @@
       if (!player.id) { document.getElementById("player-week").innerHTML = noSquadMsg(); return; }
       const mc = state.matchCentre || {};
       document.getElementById("player-week").innerHTML = `
-        ${mc.published ? `
-        <div style="max-width:560px;margin:0 auto 14px;padding:14px 18px;background:rgba(16,185,129,0.08);border:1.5px solid var(--green);border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-          <div>
-            <strong style="color:var(--green);font-size:15px">✓ Squad published</strong>
-            <div style="font-size:12px;color:var(--muted);margin-top:2px">vs ${esc(mc.opposition || 'Upcoming match')}${mc.kickoffDate ? ' · ' + new Date(mc.kickoffDate + 'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : ''}</div>
-          </div>
-          <button class="btn primary" type="button" onclick="setSection('player','availability')">View team sheet →</button>
-        </div>` : ''}
         <div class="card" style="max-width:560px;margin:0 auto">
           <h2>Training</h2>
           <p class="muted" style="margin-bottom:18px">Your sessions at ${esc(state.clubName || 'your team')} — tap a card to set your availability.</p>
@@ -11506,8 +11524,7 @@
             <div class="history-bar"><span style="width:${player.attendance}%"></span></div>
             <p style="margin-top:7px;font-size:13px"><strong>${player.attendance}%</strong> season training attendance</p>
           </div>
-        </div>
-        ${renderMyDetailsCard()}`;
+        </div>`;
     }
 
     // ─── Player training-session details (read-only, player-safe) ─────────────
@@ -15989,7 +16006,7 @@
           pCardHead('My Squad Status') +
           '<div style="font-size:16px;font-weight:800;color:' + ssColor + '">' + ssLabel + '</div>' +
           (fxForSel ? '<div style="font-size:12px;color:var(--muted);margin-top:4px">vs ' + esc(fxForSel.opposition || 'TBC') + (fxForSel.date ? ' · ' + new Date(fxForSel.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : '') + '</div>' : '') +
-          '<button type="button" onclick="setSection(\'player\',\'availability\')" class="btn" style="margin-top:10px;font-size:12px">View team sheet →</button>',
+          '<button type="button" onclick="setSection(\'player\',\'availability\')" class="btn" style="margin-top:10px;font-size:12px">View Match Squad →</button>',
           null
         );
       }
