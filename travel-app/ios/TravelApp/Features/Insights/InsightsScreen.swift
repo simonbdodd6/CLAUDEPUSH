@@ -13,10 +13,10 @@ struct InsightsScreen: View {
             PremiumScrollView {
                 InsightsHeroCard(insight: viewModel.hero)
 
-                if viewModel.hasInsights {
-                    populatedContent
+                if let presentation = viewModel.statePresentation {
+                    StatePresentationView(presentation: presentation)
                 } else {
-                    InsightsEmptyState()
+                    populatedContent
                 }
             }
             .navigationTitle("Insights")

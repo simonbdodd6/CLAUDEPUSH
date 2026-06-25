@@ -13,10 +13,10 @@ struct StoryScreen: View {
             PremiumScrollView {
                 StoryHeroCard(story: viewModel.hero)
 
-                if viewModel.hasStories {
-                    populatedContent
+                if let presentation = viewModel.statePresentation {
+                    StatePresentationView(presentation: presentation)
                 } else {
-                    StoryEmptyState()
+                    populatedContent
                 }
             }
             .navigationTitle("Story")

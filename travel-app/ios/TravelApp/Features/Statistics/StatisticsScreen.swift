@@ -13,10 +13,10 @@ struct StatisticsScreen: View {
             PremiumScrollView {
                 StatisticsHeroCard(preview: viewModel.hero)
 
-                if viewModel.hasStatistics {
-                    populatedContent
+                if let presentation = viewModel.statePresentation {
+                    StatePresentationView(presentation: presentation)
                 } else {
-                    StatisticsEmptyState()
+                    populatedContent
                 }
             }
             .navigationTitle("Statistics")

@@ -13,10 +13,10 @@ struct OnThisDayScreen: View {
             PremiumScrollView {
                 OnThisDayHeroCard(preview: viewModel.hero)
 
-                if viewModel.hasMemories {
-                    populatedContent
+                if let presentation = viewModel.statePresentation {
+                    StatePresentationView(presentation: presentation)
                 } else {
-                    OnThisDayEmptyState()
+                    populatedContent
                 }
             }
             .navigationTitle("On This Day")

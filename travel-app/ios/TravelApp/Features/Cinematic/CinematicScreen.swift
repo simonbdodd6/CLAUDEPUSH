@@ -13,10 +13,10 @@ struct CinematicScreen: View {
             PremiumScrollView {
                 CinematicHeroCard(preview: viewModel.hero)
 
-                if viewModel.hasScenes {
-                    populatedContent
+                if let presentation = viewModel.statePresentation {
+                    StatePresentationView(presentation: presentation)
                 } else {
-                    CinematicEmptyState()
+                    populatedContent
                 }
             }
             .navigationTitle("Cinematic")

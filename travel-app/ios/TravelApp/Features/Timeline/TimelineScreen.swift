@@ -13,10 +13,10 @@ struct TimelineScreen: View {
             PremiumScrollView {
                 TimelineHeroCard(summary: viewModel.summary)
 
-                if viewModel.hasEvents {
-                    populatedContent
+                if let presentation = viewModel.statePresentation {
+                    StatePresentationView(presentation: presentation)
                 } else {
-                    TimelineEmptyState()
+                    populatedContent
                 }
             }
             .navigationTitle("Timeline")

@@ -13,10 +13,10 @@ struct HighlightsScreen: View {
             PremiumScrollView {
                 HighlightsHeroCard(highlight: viewModel.hero)
 
-                if viewModel.hasHighlights {
-                    populatedContent
+                if let presentation = viewModel.statePresentation {
+                    StatePresentationView(presentation: presentation)
                 } else {
-                    HighlightsEmptyState()
+                    populatedContent
                 }
             }
             .navigationTitle("Highlights")

@@ -13,10 +13,10 @@ struct CollectionsScreen: View {
             PremiumScrollView {
                 CollectionHeroCard(preview: viewModel.hero)
 
-                if viewModel.hasCollections {
-                    populatedContent
+                if let presentation = viewModel.statePresentation {
+                    StatePresentationView(presentation: presentation)
                 } else {
-                    CollectionsEmptyState()
+                    populatedContent
                 }
             }
             .navigationTitle("Collections")

@@ -18,10 +18,10 @@ struct PassportScreen: View {
                     progress: viewModel.completionProgress
                 )
 
-                if viewModel.hasJourneys {
-                    populatedContent
+                if let presentation = viewModel.statePresentation {
+                    StatePresentationView(presentation: presentation)
                 } else {
-                    PassportEmptyState()
+                    populatedContent
                 }
             }
             .navigationTitle("Passport")

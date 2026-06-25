@@ -13,10 +13,10 @@ struct SettingsScreen: View {
             PremiumScrollView {
                 SettingsHeroCard(preview: viewModel.hero)
 
-                if viewModel.hasProfile {
-                    populatedContent
+                if let presentation = viewModel.statePresentation {
+                    StatePresentationView(presentation: presentation)
                 } else {
-                    SettingsEmptyState()
+                    populatedContent
                 }
             }
             .navigationTitle("Settings")
