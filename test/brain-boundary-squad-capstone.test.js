@@ -2,8 +2,9 @@
  * brain-decision-planner — Boundary → Squad Capstone Harness tests
  *
  * Proves two validated read-only providers compose, via the read boundaries (M170) and the proven
- * pipeline bridge, into a complete match-day squad. Real coach-intelligence engines are injected.
- * Test/proof only: deterministic in-memory fixtures, no networking/persistence/AI/runtime wiring.
+ * pipeline bridge, into a complete match-day squad. Providers come from the shared canonical
+ * regression fixtures; real coach-intelligence engines are injected. Test/proof only: deterministic
+ * in-memory fixtures, no networking/persistence/AI/runtime wiring.
  */
 
 import assert from 'node:assert/strict'
@@ -11,30 +12,12 @@ import { test } from 'node:test'
 
 import { runBoundarySquadCapstone } from '../packages/brain-decision-planner/index.js'
 import { runCoachIntelligencePipeline, buildCoachRecommendation, runSelectionPipeline } from '../packages/coach-intelligence/index.js'
+import { createFullSquadScenario } from './fixtures/brain-regression-fixtures.js'
 
 const ENGINES = { runCoachIntelligencePipeline, buildCoachRecommendation, runSelectionPipeline }
 
-const corePlayer = (userId, position) => ({ id: `profile_${userId}`, userId, displayName: userId, position })
-const memory = (id, type) => ({ id, coachId: 'coach-demo', clubId: 'boitsfort-rfc', type, statement: `insight ${id}`, source: 'manual', confidence: 0.8, weight: 0.7, tags: [], ontologyLinks: [], evidenceRefs: [], createdAt: `2026-06-0${id.slice(1)}T00:00:00.000Z` })
-
-// 24 players covering every jersey (one starter each, Lock x2) plus depth for bench/reserves
-const STARTERS = [
-  corePlayer('u_lh', 'Loosehead Prop'), corePlayer('u_hk', 'Hooker'), corePlayer('u_th', 'Tighthead Prop'), corePlayer('u_lk1', 'Lock'), corePlayer('u_lk2', 'Lock'),
-  corePlayer('u_bs', 'Blindside Flanker'), corePlayer('u_os', 'Openside Flanker'), corePlayer('u_n8', 'Number 8'), corePlayer('u_sh', 'Scrum-half'), corePlayer('u_fh', 'Fly-half'),
-  corePlayer('u_lw', 'Left Wing'), corePlayer('u_ic', 'Inside Centre'), corePlayer('u_oc', 'Outside Centre'), corePlayer('u_rw', 'Right Wing'), corePlayer('u_fb', 'Fullback'),
-]
-const DEPTH = [corePlayer('d_lh', 'Loosehead Prop'), corePlayer('d_hk', 'Hooker'), corePlayer('d_th', 'Tighthead Prop'), corePlayer('d_lk', 'Lock'), corePlayer('d_n8', 'Number 8'), corePlayer('d_sh', 'Scrum-half'), corePlayer('d_fh', 'Fly-half'), corePlayer('d_fb', 'Fullback'), corePlayer('d_lw', 'Left Wing')]
-const PLAYERS = [...STARTERS, ...DEPTH]   // 24
-const AVAILABILITY = Object.fromEntries(PLAYERS.map((p) => [p.userId, { response: 'available' }]))
-const MEMORIES = [memory('m1', 'selection-preference'), memory('m2', 'selection-preference'), memory('m3', 'selection-preference'), memory('m4', 'tactical-preference')]
-const TAGS = { u_sh: { tags: ['reliable'] } }
-const FIXTURE = { fixtureId: 'fix_1', opponent: 'Leinster', competition: 'AIL', venue: 'Home', date: '2026-07-05' }
-const MATCH = { category: 'selection-preference', confidence: 0.7, matchedSignals: ['form'] }
-const IDENTITY = { coachId: 'coach-demo', clubId: 'boitsfort-rfc', tags: [] }
-
-const makeSquadLoader = (over = {}) => ({ getActivePlayers: () => PLAYERS, getAvailabilityResponses: () => AVAILABILITY, getCoachMemories: () => MEMORIES, getPlayerTags: () => TAGS, ...over })
-const makeDecisionSource = (over = {}) => ({ getFixtureContext: () => ({ fixture: FIXTURE, match: MATCH }), getCoachIdentity: () => IDENTITY, ...over })
-const makeInput = (over = {}) => ({ squadLoader: makeSquadLoader(), decisionPlanSource: makeDecisionSource(), ...over })
+const baseInput = () => { const s = createFullSquadScenario(); return { squadLoader: s.squadLoader, decisionPlanSource: s.decisionPlanSource } }
+const makeInput = (over = {}) => ({ ...baseInput(), ...over })
 const run = (input = makeInput()) => runBoundarySquadCapstone(input, { pipelineServices: ENGINES })
 
 // ── complete squad ───────────────────────────────────────────────────────────────────
@@ -75,10 +58,11 @@ test('missing pipelineServices is rejected', () => {
 
 test('the squad boundary is read before the decision boundary', () => {
   const order = []
-  const input = makeInput({
-    squadLoader: makeSquadLoader({ getActivePlayers: () => { order.push('squad'); return PLAYERS } }),
-    decisionPlanSource: makeDecisionSource({ getFixtureContext: () => { order.push('decision'); return { fixture: FIXTURE, match: MATCH } } }),
-  })
+  const s = createFullSquadScenario()
+  const input = {
+    squadLoader: { ...s.squadLoader, getActivePlayers: () => { order.push('squad'); return s.squadLoader.getActivePlayers() } },
+    decisionPlanSource: { ...s.decisionPlanSource, getFixtureContext: () => { order.push('decision'); return s.decisionPlanSource.getFixtureContext() } },
+  }
   runBoundarySquadCapstone(input, { pipelineServices: ENGINES })
   assert.ok(order.indexOf('squad') !== -1 && order.indexOf('squad') < order.indexOf('decision'))
 })
@@ -97,9 +81,18 @@ test('output is deeply frozen', () => {
 })
 
 test('does not mutate the provider data', () => {
-  const before = JSON.stringify({ PLAYERS, AVAILABILITY, MEMORIES, TAGS, FIXTURE, MATCH, IDENTITY })
-  run()
-  assert.equal(JSON.stringify({ PLAYERS, AVAILABILITY, MEMORIES, TAGS, FIXTURE, MATCH, IDENTITY }), before)
+  const s = createFullSquadScenario()
+  const snapshot = () => JSON.stringify({
+    players: s.squadLoader.getActivePlayers(),
+    availability: s.squadLoader.getAvailabilityResponses(),
+    memories: s.squadLoader.getCoachMemories(),
+    tags: s.squadLoader.getPlayerTags(),
+    fixture: s.decisionPlanSource.getFixtureContext(),
+    identity: s.decisionPlanSource.getCoachIdentity(),
+  })
+  const before = snapshot()
+  runBoundarySquadCapstone({ squadLoader: s.squadLoader, decisionPlanSource: s.decisionPlanSource }, { pipelineServices: ENGINES })
+  assert.equal(snapshot(), before)
 })
 
 // ── export ───────────────────────────────────────────────────────────────────────────
