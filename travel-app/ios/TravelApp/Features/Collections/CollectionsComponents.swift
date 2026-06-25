@@ -109,37 +109,14 @@ struct CollectionGalleryCard: View {
     let collection: CollectionDTO
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                ZStack(alignment: .bottomLeading) {
-                    RoundedRectangle(cornerRadius: TravelRadius.md, style: .continuous)
-                        .fill(LinearGradient(colors: collection.kind.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Image(systemName: collection.coverSymbol)
-                        .font(.system(size: 38, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.86))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(TravelSpacing.md)
-                    Text("\(collection.memoryCount) memories")
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.white.opacity(0.78))
-                        .padding(TravelSpacing.md)
-                }
-                .frame(height: 132)
-
-                VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                    Text(collection.title)
-                        .font(TravelTypography.cardTitle)
-                    Text(collection.kind.displayName)
-                        .font(TravelTypography.caption)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-                    Text(collection.subtitle)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
+        PremiumThumbnailTile(
+            gradient: collection.kind.gradient,
+            title: collection.title,
+            subtitle: collection.subtitle,
+            badge: "\(collection.memoryCount) memories",
+            metadata: collection.kind.displayName,
+            symbol: collection.coverSymbol
+        )
     }
 }
 
@@ -149,19 +126,13 @@ struct CollectionThemeCard: View {
     let theme: CollectionThemePreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                Image(systemName: theme.symbol)
-                    .font(.title2)
-                    .foregroundStyle(theme.accent)
-                Text(theme.title)
-                    .font(TravelTypography.cardTitle)
-                Text(theme.caption)
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        PremiumCollectionTile(
+            title: theme.title,
+            subtitle: theme.caption,
+            badge: nil,
+            symbol: theme.symbol,
+            accent: theme.accent
+        )
     }
 }
 

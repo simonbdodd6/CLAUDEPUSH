@@ -175,35 +175,13 @@ struct SearchResultPreviewCard: View {
     let preview: SearchResultPreview
 
     var body: some View {
-        GlassCard {
-            HStack(alignment: .top, spacing: TravelSpacing.md) {
-                Image(systemName: preview.symbol)
-                    .font(.headline)
-                    .foregroundStyle(TravelTheme.current.tint)
-                    .frame(width: 46, height: 46)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: TravelRadius.sm, style: .continuous))
-
-                VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                    Text(preview.category)
-                        .font(.system(.caption2, design: .rounded, weight: .semibold))
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-                    Text(preview.title)
-                        .font(TravelTypography.cardTitle)
-                    Text(preview.subtitle)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: TravelSpacing.sm)
-
-                Text(preview.metadata)
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.trailing)
-            }
-        }
+        PremiumCompactTile(
+            title: preview.title,
+            subtitle: preview.subtitle,
+            badge: preview.category,
+            metadata: preview.metadata,
+            symbol: preview.symbol
+        )
     }
 }
 
