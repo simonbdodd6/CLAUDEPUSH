@@ -94,20 +94,12 @@ struct HomeScreen: View {
 
 private struct HomeHeroHeader: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: TravelSpacing.sm) {
-            Label("Travel Intelligence", systemImage: "sparkles")
-                .font(TravelTypography.caption)
-                .textCase(.uppercase)
-                .foregroundStyle(.secondary)
-            Text("Your journeys, beautifully gathered.")
-                .font(TravelTypography.display)
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("A premium offline-first shell for memories, passport progress, timeline moments and deterministic insights.")
-                .font(TravelTypography.body)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        PremiumHeroHeader(
+            eyebrow: "Travel Intelligence",
+            symbol: "sparkles",
+            title: "Your journeys, beautifully gathered.",
+            subtitle: "A premium offline-first shell for memories, passport progress, timeline moments and deterministic insights."
+        )
         .padding(.top, TravelSpacing.sm)
     }
 }

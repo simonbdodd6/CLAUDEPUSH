@@ -44,38 +44,26 @@ struct ScreenHero: View {
     let endpoint: String?
 
     var body: some View {
-        GlassCard(prominence: .hero) {
-            VStack(alignment: .leading, spacing: TravelSpacing.lg) {
-                HStack {
-                    Label(eyebrow, systemImage: symbol)
+        PremiumHero(
+            eyebrow: eyebrow,
+            symbol: symbol,
+            title: title,
+            subtitle: subtitle,
+            accessory: {
+                if let endpoint {
+                    Text(endpoint)
                         .font(TravelTypography.caption)
-                        .textCase(.uppercase)
                         .foregroundStyle(.secondary)
-                    Spacer()
-                    if let endpoint {
-                        Text(endpoint)
-                            .font(TravelTypography.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, TravelSpacing.sm)
-                            .padding(.vertical, TravelSpacing.xs)
-                            .background(.thinMaterial, in: Capsule())
-                    }
+                        .padding(.horizontal, TravelSpacing.sm)
+                        .padding(.vertical, TravelSpacing.xs)
+                        .background(.thinMaterial, in: Capsule())
                 }
-
-                VStack(alignment: .leading, spacing: TravelSpacing.sm) {
-                    Text(title)
-                        .font(TravelTypography.display)
-                        .foregroundStyle(.primary)
-                    Text(subtitle)
-                        .font(TravelTypography.body)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
+            },
+            content: {
                 MapTexturePlaceholder()
                     .frame(height: 148)
             }
-        }
+        )
     }
 }
 
