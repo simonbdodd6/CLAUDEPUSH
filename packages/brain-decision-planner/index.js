@@ -48,3 +48,7 @@ export {
 export {
   runBrainDryRunDiffMatrix,
 } from './brain-dry-run-diff-matrix.js'
+
+export {
+  summarizeBrainDryRunDiffMatrix,
+} from './brain-dry-run-diff-matrix-presenter.js'
