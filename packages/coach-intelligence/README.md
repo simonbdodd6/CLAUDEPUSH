@@ -215,7 +215,7 @@ no pipeline, inspects no provider, and generates no prose — it reads existing 
 These power the dormant dry-run diagnostics in `brain-decision-planner` (M186 attaches both to the
 dry-run result; M187/M188 surface their counts and a coverage metric across the regression matrix).
 
-## 14. Decision Intelligence layer (M192–M193)
+## 14. Decision Intelligence layer (M192–M193, M199)
 
 The first dormant **Decision Intelligence** engine: it compares two already-completed decision states
 and reports WHAT changed and WHY — as deterministic codes only. It **never selects, scores, ranks,
@@ -232,6 +232,10 @@ supplied states.
   and `COVERAGE_INCREASED`/`COVERAGE_DECREASED`. All ordering is deterministic.
 - **M193 — `summarizeDecisionDiff(diff, format)`** — a pure presenter of an M192 diff in `object`
   (default, + a flat `changeCount`), `text`, or `json` (canonical, via the shared serializer). Reads only.
+- **M199 — `classifyDecisionDiff(diff)`** — classifies an M192 diff's impact magnitude as a
+  deterministic severity band (`NONE`/`MINOR`/`MODERATE`/`MAJOR`/`CRITICAL`) from a transparent
+  fixed-weight score (captain change weighted heaviest; improvements weigh 0). Returns
+  `{ severity, score, changed, factors }` — classification only, never advice.
 
 End-to-end composition lives in `brain-decision-planner` (M194 `diffBrainDryRuns` diffs two M186
 dry-run results by reading their decision states).

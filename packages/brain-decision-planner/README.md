@@ -187,6 +187,9 @@ pure, read-only **explanation helpers** (M184/M185) are imported directly by the
 - **M197 — `summarizeBrainDryRunDiffMatrix(matrixResult, format)`** — a pure presenter of an M196
   result in `object` (default), `text`, or `json` for engineering logs (per-pair codes + the rollup).
   Reads only; JSON via deterministic `JSON.stringify` (no new dependency edge, as in M180).
+- **M200 — severity in the matrix** — M196 classifies each successful pair via M199
+  `classifyDecisionDiff` (injectable `deps.classify`), adding a per-pair `severity` band and a
+  `rollup.severityCounts` distribution; M197 surfaces both (per-pair `severity=…` and a `severity` line).
 
 ---
 

@@ -350,7 +350,7 @@ M190 matrix presenter                  →  run-wide coverage rollup { scored, m
   for the read-only explanation helpers; the selection engines remain injected.
 - **M187/M188** read only what M186 already returned (never recompute), defaulting to null when absent.
 
-## 23. Decision Intelligence diff (M192–M194)
+## 23. Decision Intelligence diff (M192–M200)
 
 The first dormant **Decision Intelligence** engine — it compares two already-completed decision states
 and reports what changed and why, as deterministic codes. It never selects, scores, ranks, recommends,
@@ -372,8 +372,11 @@ brain-decision-planner: diffBrainDryRuns (M194) reads a decision state out of ea
   `coach-intelligence` import (no new dependency edge) and reruns no Brain logic.
 - **M196/M197** (also `brain-decision-planner`) run the diff over many before/after pairs in order and
   roll up which change codes appeared across the set, then present it — diagnostics only, deterministic.
+- **M199** (`coach-intelligence`) classifies a diff's impact magnitude as a deterministic severity band
+  (`NONE…CRITICAL`); **M200** surfaces per-pair severity + a `severityCounts` rollup in the M196 matrix
+  and M197 presenter. Classification only — never advice.
 
 ---
 
 *This document is descriptive only. It adds no exports, changes no runtime behaviour, and describes the
-architecture exactly as it exists after M197.*
+architecture exactly as it exists after M200.*
