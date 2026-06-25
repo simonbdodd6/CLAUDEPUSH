@@ -66,16 +66,22 @@ function assertMatrix(matrixResult) {
 function scenarioSummary(s) {
   const v = isObj(s.verification) ? s.verification : {}
   const e = explanationCounts(s.dryRun)   // read-only from M186's dryRun.explanation/explanationView
+  const startingCount = numOr0(v.startingCount)
+  // explanation coverage = explained starters / starters; null when undefined (no starters or no explanation)
+  const explanationCoverage = (startingCount === 0 || e.explanationStarterCount === null)
+    ? null
+    : Math.round((e.explanationStarterCount / startingCount) * 100) / 100
   return {
     id: s.id,
     ok: s.ok === true,
-    startingCount: numOr0(v.startingCount),
+    startingCount,
     benchCount: numOr0(v.benchCount),
     reserveCount: numOr0(v.reserveCount),
     warningCount: numOr0(v.warningCount),
     explanationStarterCount: e.explanationStarterCount,
     explanationBenchCount: e.explanationBenchCount,
     explanationRiskCount: e.explanationRiskCount,
+    explanationCoverage,
     error: typeof s.error === 'string' ? s.error : null,
   }
 }
@@ -100,7 +106,7 @@ function renderText(summary) {
     const base = `${s.id} ok=${s.ok}`
     if (s.error !== null) return `${base} error="${s.error}"`
     const expl = s.explanationStarterCount !== null
-      ? ` explanationStarters=${s.explanationStarterCount} explanationBench=${s.explanationBenchCount} explanationRisks=${s.explanationRiskCount}`
+      ? ` explanationStarters=${s.explanationStarterCount} explanationBench=${s.explanationBenchCount} explanationRisks=${s.explanationRiskCount} explanationCoverage=${s.explanationCoverage}`
       : ''
     return `${base} starting=${s.startingCount} bench=${s.benchCount} reserves=${s.reserveCount} warnings=${s.warningCount}${expl}`
   })

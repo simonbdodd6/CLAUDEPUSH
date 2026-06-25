@@ -32,10 +32,10 @@ test('object format returns the normalized summary with explanation counts', () 
   assert.equal(out.passed, 2)
   assert.equal(out.failed, 1)
   assert.equal(out.passRate, 0.67)
-  assert.deepEqual(out.scenarios[0], { id: 'full-squad', ok: true, startingCount: 15, benchCount: 8, reserveCount: 1, warningCount: 0, explanationStarterCount: 15, explanationBenchCount: 8, explanationRiskCount: 0, error: null })
-  assert.deepEqual(out.scenarios[1], { id: 'injury-thinned', ok: true, startingCount: 14, benchCount: 8, reserveCount: 0, warningCount: 1, explanationStarterCount: 14, explanationBenchCount: 8, explanationRiskCount: 1, error: null })
-  // failed scenario: explanation counts safely null
-  assert.deepEqual(out.scenarios[2], { id: 'invalid-provider', ok: false, startingCount: 0, benchCount: 0, reserveCount: 0, warningCount: 0, explanationStarterCount: null, explanationBenchCount: null, explanationRiskCount: null, error: 'loaderToSelectionInputs: provider must implement getActivePlayers' })
+  assert.deepEqual(out.scenarios[0], { id: 'full-squad', ok: true, startingCount: 15, benchCount: 8, reserveCount: 1, warningCount: 0, explanationStarterCount: 15, explanationBenchCount: 8, explanationRiskCount: 0, explanationCoverage: 1, error: null })
+  assert.deepEqual(out.scenarios[1], { id: 'injury-thinned', ok: true, startingCount: 14, benchCount: 8, reserveCount: 0, warningCount: 1, explanationStarterCount: 14, explanationBenchCount: 8, explanationRiskCount: 1, explanationCoverage: 1, error: null })
+  // failed scenario: explanation counts + coverage safely null
+  assert.deepEqual(out.scenarios[2], { id: 'invalid-provider', ok: false, startingCount: 0, benchCount: 0, reserveCount: 0, warningCount: 0, explanationStarterCount: null, explanationBenchCount: null, explanationRiskCount: null, explanationCoverage: null, error: 'loaderToSelectionInputs: provider must implement getActivePlayers' })
 })
 
 // ── text format (incl. explanation counts on success lines) ───────────────────────────
@@ -43,8 +43,8 @@ test('object format returns the normalized summary with explanation counts', () 
 test('text format renders explanation counts on success lines', () => {
   const lines = summarizeBrainDryRunMatrix(MATRIX, 'text').split('\n')
   assert.equal(lines[0], 'BrainDryRunMatrix total=3 passed=2 failed=1 passRate=0.67')
-  assert.equal(lines[1], 'full-squad ok=true starting=15 bench=8 reserves=1 warnings=0 explanationStarters=15 explanationBench=8 explanationRisks=0')
-  assert.equal(lines[2], 'injury-thinned ok=true starting=14 bench=8 reserves=0 warnings=1 explanationStarters=14 explanationBench=8 explanationRisks=1')
+  assert.equal(lines[1], 'full-squad ok=true starting=15 bench=8 reserves=1 warnings=0 explanationStarters=15 explanationBench=8 explanationRisks=0 explanationCoverage=1')
+  assert.equal(lines[2], 'injury-thinned ok=true starting=14 bench=8 reserves=0 warnings=1 explanationStarters=14 explanationBench=8 explanationRisks=1 explanationCoverage=1')
   assert.equal(lines[3], 'invalid-provider ok=false error="loaderToSelectionInputs: provider must implement getActivePlayers"')
 })
 
@@ -74,7 +74,33 @@ test('passRate: all pass → 1, none → 0, empty → 0', () => {
 
 test('failed scenario renders its error, zeroed verification counts, null explanation counts', () => {
   const out = summarizeBrainDryRunMatrix(makeMatrix([failScenario('boom', 'kaboom')]), 'object')
-  assert.deepEqual(out.scenarios[0], { id: 'boom', ok: false, startingCount: 0, benchCount: 0, reserveCount: 0, warningCount: 0, explanationStarterCount: null, explanationBenchCount: null, explanationRiskCount: null, error: 'kaboom' })
+  assert.deepEqual(out.scenarios[0], { id: 'boom', ok: false, startingCount: 0, benchCount: 0, reserveCount: 0, warningCount: 0, explanationStarterCount: null, explanationBenchCount: null, explanationRiskCount: null, explanationCoverage: null, error: 'kaboom' })
+})
+
+// ── explanation coverage (M188) ──────────────────────────────────────────────────────
+
+test('explanationCoverage: full=1, partial=0.8, missing/zero-starters=null', () => {
+  const full = okScenario('full', verification({ startingCount: 15 }), dryRunWith({ starters: 15, bench: 8, risks: 0 }))
+  const partial = okScenario('partial', verification({ startingCount: 15 }), dryRunWith({ starters: 12, bench: 8, risks: 0 }))
+  const noExpl = okScenario('no-expl', verification({ startingCount: 15 }), {})                 // explanationStarterCount null
+  const zeroStart = okScenario('zero', verification({ startingCount: 0 }), dryRunWith({ starters: 0, bench: 0, risks: 0 }))
+  const out = summarizeBrainDryRunMatrix(makeMatrix([full, partial, noExpl, zeroStart]), 'object')
+  assert.equal(out.scenarios[0].explanationCoverage, 1)
+  assert.equal(out.scenarios[1].explanationCoverage, 0.8)
+  assert.equal(out.scenarios[2].explanationCoverage, null)
+  assert.equal(out.scenarios[3].explanationCoverage, null)   // startingCount 0 → null (no divide-by-zero)
+})
+
+test('explanationCoverage rounds to two decimals deterministically', () => {
+  const s = okScenario('round', verification({ startingCount: 15 }), dryRunWith({ starters: 13, bench: 0, risks: 0 }))
+  assert.equal(summarizeBrainDryRunMatrix(makeMatrix([s]), 'object').scenarios[0].explanationCoverage, 0.87)   // 13/15 = 0.8666… → 0.87
+})
+
+test('text and json carry explanationCoverage', () => {
+  const s = okScenario('partial', verification({ startingCount: 15 }), dryRunWith({ starters: 12, bench: 8, risks: 0 }))
+  const m = makeMatrix([s])
+  assert.match(summarizeBrainDryRunMatrix(m, 'text').split('\n')[1], / explanationCoverage=0\.8$/)
+  assert.equal(JSON.parse(summarizeBrainDryRunMatrix(m, 'json')).scenarios[0].explanationCoverage, 0.8)
 })
 
 test('success scenario without explanation on dryRun → null explanation counts, no text segment', () => {
@@ -96,7 +122,7 @@ test('explanation counts fall back to explanation section lengths when explanati
 test('missing verification fields default safely to 0', () => {
   const partial = { id: 'p', ok: true, dryRun: {}, verification: { startingCount: 12 }, error: null }
   const out = summarizeBrainDryRunMatrix(makeMatrix([partial]), 'object')
-  assert.deepEqual(out.scenarios[0], { id: 'p', ok: true, startingCount: 12, benchCount: 0, reserveCount: 0, warningCount: 0, explanationStarterCount: null, explanationBenchCount: null, explanationRiskCount: null, error: null })
+  assert.deepEqual(out.scenarios[0], { id: 'p', ok: true, startingCount: 12, benchCount: 0, reserveCount: 0, warningCount: 0, explanationStarterCount: null, explanationBenchCount: null, explanationRiskCount: null, explanationCoverage: null, error: null })
 })
 
 // ── determinism / frozen ───────────────────────────────────────────────────────────────
