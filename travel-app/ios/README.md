@@ -23,6 +23,7 @@ TravelApp/
       PassportComponents.swift        passport cover, stamps, stats and empty state
       PremiumComponents.swift         glass cards, heroes, sections, grid
       FeatureShell.swift              reusable empty feature surface
+      StatePresentationViews.swift    reusable loading, empty and error views
     DesignSystem/
       TravelTheme.swift               colour palette, spacing, radius
       TravelTypography.swift          type scale
@@ -167,6 +168,13 @@ Each repository-backed ViewModel owns deterministic feature-specific empty
 copy and failure titles through an internal `statePresentation` property.
 Screens do not consume these contracts yet, so visible empty and error UI is
 unchanged.
+
+Phase 27 adds reusable, presentation-only SwiftUI views in
+`StatePresentationViews.swift`: `LoadingStateView`, `EmptyStateView`,
+`ErrorStateView` and a `StatePresentationView` container that renders the
+matching view for a `ViewModelStatePresentation` value. These components are
+deterministic and carry no data or logic. They are not wired into feature
+screens yet, so visible UI is unchanged.
 
 ### Repository layer
 
