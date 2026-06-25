@@ -40,3 +40,7 @@ export {
 export {
   summarizeBrainDryRunMatrix,
 } from './brain-dry-run-matrix-presenter.js'
+
+export {
+  diffBrainDryRuns,
+} from './brain-dry-run-diff-harness.js'
