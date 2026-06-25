@@ -34,3 +34,5 @@ export { recommendBench } from './bench-recommendation.js'
 export { composeMatchDaySquad } from './match-day-squad.js'
 
 export { runSelectionPipeline } from './selection-pipeline.js'
+
+export { buildSelectionExplanation } from './selection-explanation.js'
