@@ -303,7 +303,34 @@ When adding to the Brain (without going live):
 6. **Document** new boundaries in the package README; keep this atlas current.
 7. **Never change Core behaviour**, and gate any eventual runtime use behind a premium flag, off by default.
 
+## 21. Dry-run regression diagnostics (M178–M182)
+
+A dormant verification harness in `brain-decision-planner` for exercising the whole stack from fixed
+in-memory scenarios. It is **engineering diagnostics only** — not production runtime, not Core
+integration, and not user-facing coaching advice. Services remain **injected**, providers remain
+**read-only**, outputs are **deterministic**, and scenarios are **fixed in-memory test fixtures**.
+
+```
+fixtures (M181)  →  runBrainDryRun (M178)  →  runBrainDryRunMatrix (M179)  →  summarizeBrainDryRunMatrix (M180)
+{squadLoader,       full stack →               many fixed scenarios,            object | text | json report
+ decisionPlanSource} {brainInputs, summary,     in order, per-scenario
+                      capstone, verification}    capture { ok, verification, error }
+```
+
+- **M178 `runBrainDryRun`** — runs M172 capstone + M171 summary; returns frozen `{ brainInputs, summary,
+  capstone, verification }` (verification = deterministic counts of starters/bench/reserves/warnings).
+- **M179 `runBrainDryRunMatrix`** — runs M178 across scenarios in input order; one failure never stops
+  the matrix; returns frozen `{ total, passed, failed, scenarios }`.
+- **M180 `summarizeBrainDryRunMatrix`** — pure presenter (`object`/`text`/`json`) for engineering logs.
+- **M181 canonical fixtures** (`test/fixtures/brain-regression-fixtures.js`) — full-squad /
+  injury-thinned / invalid-provider builders; fresh deterministic objects every call.
+- **M182 consolidation** — all dry-run/capstone tests share those fixtures; adapter/contract tests keep
+  their own layer-specific fixtures.
+
+The coach-intelligence engines stay injected (`options.pipelineServices`) throughout; no diagnostics
+module imports `coach-intelligence` or Core.
+
 ---
 
 *This document is descriptive only. It adds no exports, changes no runtime behaviour, and describes the
-architecture exactly as it exists after M173.*
+architecture exactly as it exists after M182.*

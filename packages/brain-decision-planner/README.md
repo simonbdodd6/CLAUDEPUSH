@@ -134,6 +134,31 @@ live data and never in the product.
   decoupling and keeping this package free of any engine dependency.
 - **Deeply-frozen, deterministic outputs**; inputs never mutated.
 
+## 12. Dry-run regression diagnostics (M178–M182)
+
+A dormant, **engineering-diagnostics-only** harness for verifying the whole stack from fixed in-memory
+scenarios. It is **not production runtime, not Core integration, and not user-facing coaching advice**;
+services stay injected, providers stay read-only, and every output is deterministic.
+
+- **M178 — `runBrainDryRun(input, options)`** — runs the full stack (M172 capstone → M171 summary) and
+  returns frozen `{ brainInputs, summary, capstone, verification }`, where `verification` is a small
+  deterministic count of what was present (`hasSquadInput`, `hasDecisionInput`, `hasSquad`,
+  `startingCount`, `benchCount`, `reserveCount`, `warningCount`).
+- **M179 — `runBrainDryRunMatrix(scenarios, options)`** — runs M178 across a fixed list of scenarios
+  **in input order**, capturing each outcome (one failing scenario never stops the matrix) and
+  returning frozen `{ total, passed, failed, scenarios:[{ id, ok, dryRun, verification, error }] }`.
+- **M180 — `summarizeBrainDryRunMatrix(matrixResult, format)`** — a pure presenter of an M179 result in
+  `object` (default), `text`, or `json` for engineering logs. Reads only; derives no conclusions.
+- **M181 — canonical regression fixtures** (`test/fixtures/brain-regression-fixtures.js`) —
+  `createFullSquadScenario` / `createInjuryThinnedScenario` / `createInvalidProviderScenario`: the
+  single source of truth for the dry-run/capstone scenario pair, returning **fresh deterministic
+  objects** every call (no shared mutable references).
+- **M182 — fixture consolidation** — every test using that scenario pair (M172/M178/M179) imports the
+  shared fixtures; the adapter/contract-unit tests keep their own layer-specific fixtures.
+
+The engines (M118/M119/M131) are still **injected** via `options.pipelineServices` throughout — no
+diagnostics module imports `coach-intelligence` or Core.
+
 ---
 
 *This document is descriptive only. It adds no exports and changes no runtime behaviour.*
