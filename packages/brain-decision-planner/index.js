@@ -44,3 +44,7 @@ export {
 export {
   diffBrainDryRuns,
 } from './brain-dry-run-diff-harness.js'
+
+export {
+  runBrainDryRunDiffMatrix,
+} from './brain-dry-run-diff-matrix.js'
