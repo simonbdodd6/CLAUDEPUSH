@@ -28,3 +28,7 @@ export {
 export {
   runBoundarySquadCapstone,
 } from './boundary-squad-capstone-harness.js'
+
+export {
+  runBrainDryRun,
+} from './brain-dry-run-harness.js'
