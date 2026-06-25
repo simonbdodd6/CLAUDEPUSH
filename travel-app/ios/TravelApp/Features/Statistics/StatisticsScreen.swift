@@ -27,7 +27,11 @@ struct StatisticsScreen: View {
 
     @ViewBuilder
     private var populatedContent: some View {
-        PremiumSection(title: "Travel footprint", subtitle: "The scale of the traveller archive at a glance.") {
+        PremiumSection(
+            title: "Travel footprint",
+            subtitle: "The scale of the traveller archive at a glance.",
+            accessory: { EmptyView() }
+        ) {
             CountryCountCard(preview: viewModel.countryCount)
         }
 

@@ -27,7 +27,11 @@ struct StoryScreen: View {
 
     @ViewBuilder
     private var populatedContent: some View {
-        PremiumSection(title: "Story collections", subtitle: "Shelves for related travel memories.") {
+        PremiumSection(
+            title: "Story collections",
+            subtitle: "Shelves for related travel memories.",
+            accessory: { EmptyView() }
+        ) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
                 ForEach(viewModel.collections) { collection in
                     StoryCollectionCard(collection: collection)

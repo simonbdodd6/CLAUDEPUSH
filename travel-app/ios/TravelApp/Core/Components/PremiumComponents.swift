@@ -79,19 +79,90 @@ struct ScreenHero: View {
     }
 }
 
-struct PremiumSection<Content: View>: View {
-    let title: String
-    let subtitle: String
-    @ViewBuilder var content: Content
+/// Standard section wrapper that standardises header spacing and presentation.
+///
+/// Title, subtitle and a trailing accessory are all optional, so the same
+/// component covers a plain titled section, a header-only section, an
+/// accessory-bearing section, or content with no header at all. It reuses the
+/// existing design-system tokens only — no new colours, type or spacing.
+///
+/// The original `PremiumSection(title:subtitle:) { … }` call form is preserved
+/// via the `Accessory == EmptyView` convenience initializer below and renders
+/// identically to the previous implementation.
+struct PremiumSection<Content: View, Accessory: View>: View {
+    let title: String?
+    let subtitle: String?
+    let hasAccessory: Bool
+    let accessory: Accessory
+    let content: Content
+
+    init(
+        title: String? = nil,
+        subtitle: String? = nil,
+        @ViewBuilder accessory: () -> Accessory,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.hasAccessory = true
+        self.accessory = accessory()
+        self.content = content()
+    }
+
+    fileprivate init(
+        title: String?,
+        subtitle: String?,
+        hasAccessory: Bool,
+        accessory: Accessory,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.hasAccessory = hasAccessory
+        self.accessory = accessory
+        self.content = content()
+    }
+
+    private var hasHeaderText: Bool { title != nil || subtitle != nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: TravelSpacing.md) {
-            VStack(alignment: .leading, spacing: TravelSpacing.xs) {
-                Text(title).font(TravelTypography.section)
-                Text(subtitle).font(TravelTypography.caption).foregroundStyle(.secondary)
+            if hasHeaderText || hasAccessory {
+                HStack(alignment: .firstTextBaseline, spacing: TravelSpacing.md) {
+                    if hasHeaderText {
+                        VStack(alignment: .leading, spacing: TravelSpacing.xs) {
+                            if let title { Text(title).font(TravelTypography.section) }
+                            if let subtitle {
+                                Text(subtitle).font(TravelTypography.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    if hasAccessory {
+                        Spacer(minLength: 0)
+                        accessory
+                    }
+                }
             }
             content
         }
+    }
+}
+
+extension PremiumSection where Accessory == EmptyView {
+    /// Backward-compatible initializer for sections with no trailing accessory.
+    /// Preserves the original `PremiumSection(title:subtitle:) { … }` call form.
+    init(
+        title: String? = nil,
+        subtitle: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.init(
+            title: title,
+            subtitle: subtitle,
+            hasAccessory: false,
+            accessory: EmptyView(),
+            content: content
+        )
     }
 }
 

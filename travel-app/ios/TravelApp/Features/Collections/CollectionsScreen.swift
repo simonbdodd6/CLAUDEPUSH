@@ -27,7 +27,11 @@ struct CollectionsScreen: View {
 
     @ViewBuilder
     private var populatedContent: some View {
-        PremiumSection(title: "Collection gallery", subtitle: "Themed memory sets from the traveller archive.") {
+        PremiumSection(
+            title: "Collection gallery",
+            subtitle: "Themed memory sets from the traveller archive.",
+            accessory: { EmptyView() }
+        ) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
                 ForEach(viewModel.collections) { collection in
                     CollectionGalleryCard(collection: collection)
