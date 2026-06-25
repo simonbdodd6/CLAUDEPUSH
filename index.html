@@ -3779,6 +3779,29 @@
     .mc-picker-clear { color: #f2718c; font-weight: 700; font-size: 12px; }
     .mc-picker-clear:hover { background: rgba(242,113,140,.12); }
     .mc-picker-empty { padding: 16px 8px; text-align: center; color: var(--faint); font-size: 12px; }
+
+    /* Player training-session details modal (read-only, player-safe) */
+    #ptm { position: fixed; inset: 0; z-index: 5000; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,0.55); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+    #ptm.ptm-open { display: flex; }
+    .ptm-card { width: 100%; max-width: 440px; max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column;
+      background: #14151c; border: 1px solid var(--line, #23262f); border-radius: 16px;
+      box-shadow: 0 24px 60px -18px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,.04); animation: ptmIn .16s ease; }
+    @keyframes ptmIn { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+    .ptm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 16px 18px 10px; }
+    .ptm-head strong { font-size: 17px; }
+    .ptm-badge { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 999px; background: var(--green); color: #fff; margin-left: 8px; vertical-align: middle; }
+    .ptm-x { background: none; border: 0; color: var(--faint); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 6px; flex-shrink: 0; }
+    .ptm-x:hover { color: var(--ink, #fff); }
+    .ptm-body { padding: 0 18px 8px; }
+    .ptm-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+    .ptm-label { color: var(--muted); flex-shrink: 0; }
+    .ptm-val { font-weight: 650; text-align: right; }
+    .ptm-sec { margin-top: 14px; }
+    .ptm-sec-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; color: var(--green); margin-bottom: 8px; }
+    .ptm-obj { font-size: 14px; line-height: 1.5; margin: 0; }
+    .ptm-block { display: flex; gap: 10px; font-size: 14px; padding: 5px 0; }
+    .ptm-time { color: var(--muted); min-width: 46px; flex-shrink: 0; }
+    .ptm-close { margin: 12px 18px 18px; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -11451,18 +11474,18 @@
           ${state.schedule.map(item => {
             const key       = sessionKey(item.id);
             const status    = player[key] || 'no-reply';
-            const planBlocks = item.published ? ((state.trainingBlocks || {})[item.id] || []) : [];
             // Optional fields are shown only when the coach has published them.
             const _t    = item.startTime || item.time || '';
             const meta  = [item.date, _t, item.location].filter(Boolean).join(' · ');
-            const objectives = item.focus || item.objectives || '';
             const leadCoach  = item.coachName || item.leadCoach || '';
-            const blockRows = planBlocks.map(b => `<div style="display:flex;gap:8px;font-size:13px;padding:3px 0">${b.time ? `<span style="color:var(--muted);min-width:38px;flex-shrink:0">${esc(b.time)}</span>` : ''}<span>${esc(b.activity)}</span></div>`).join('');
+            const titleHtml = item.published
+              ? `<button type="button" onclick="openTrainingDetails('${esc(item.id)}')" style="background:none;border:0;padding:0;font-size:15px;font-weight:700;color:inherit;cursor:pointer;text-align:left">${esc(item.title)}</button>`
+              : `<strong style="font-size:15px">${esc(item.title)}</strong>`;
             return `<div style="padding:14px 0;border-bottom:1px solid var(--line)">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
                 <div style="min-width:0">
                   <div style="display:flex;align-items:center;gap:7px">
-                    <strong style="font-size:15px">${esc(item.title)}</strong>
+                    ${titleHtml}
                     ${item.published ? `<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:999px;background:var(--green);color:#fff">PUBLISHED</span>` : ''}
                   </div>
                   ${meta ? `<div class="muted" style="font-size:13px;margin-top:2px">${esc(meta)}</div>` : ''}
@@ -11476,10 +11499,7 @@
                   ${status==='available'?'✓ Available':status==='unavailable'||status==='injured'?'✗ Not available':status==='maybe'?'? Maybe':'Set availability →'}
                 </button>
               </div>
-              ${objectives ? `<div style="margin-top:8px;font-size:13px"><span style="color:var(--muted)">Objectives:</span> ${esc(objectives)}</div>` : ''}
-              ${planBlocks.length ? (planBlocks.length > 3
-                ? `<details style="margin-top:10px"><summary style="cursor:pointer;font-size:11px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:.07em">Session plan · ${planBlocks.length} blocks</summary><div style="margin-top:6px;padding:10px 12px;background:var(--panel);border-radius:8px;border-left:3px solid var(--green)">${blockRows}</div></details>`
-                : `<div style="margin-top:10px;padding:10px 12px;background:var(--panel);border-radius:8px;border-left:3px solid var(--green)"><div style="font-size:10px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Session plan</div>${blockRows}</div>`) : ''}
+              ${item.published ? `<button class="btn" type="button" onclick="openTrainingDetails('${esc(item.id)}')" style="margin-top:10px;width:100%;justify-content:center;font-size:13px">View session details →</button>` : ''}
             </div>`;
           }).join("")}
           <div style="margin-top:20px">
@@ -11489,6 +11509,46 @@
         </div>
         ${renderMyDetailsCard()}`;
     }
+
+    // ─── Player training-session details (read-only, player-safe) ─────────────
+    // Opens a simple modal with the published session details. Shows ONLY the
+    // player-facing fields (date/time/location/lead coach/objectives + the drill
+    // schedule, which the server already sanitises to time+activity). No coach-only
+    // private notes. Presentation only — no API/availability/identity change.
+    function openTrainingDetails(id) {
+      const s = (state.schedule || []).find(x => String(x.id) === String(id));
+      if (!s) return;
+      const t    = s.startTime || s.time || '';
+      const rows = [['Date', s.date], ['Time', t], ['Location', s.location], ['Lead coach', s.coachName || s.leadCoach]]
+        .filter(([, v]) => v && String(v).trim());
+      const objectives = s.focus || s.objectives || '';
+      const blocks = s.published ? ((state.trainingBlocks || {})[s.id] || []) : [];
+      let host = document.getElementById('ptm');
+      if (!host) { host = document.createElement('div'); host.id = 'ptm'; document.body.appendChild(host); }
+      host.innerHTML =
+        '<div class="ptm-card" role="dialog" aria-modal="true" aria-label="Training session details">' +
+          '<div class="ptm-head"><div><strong>' + esc(s.title) + '</strong>' +
+            (s.published ? '<span class="ptm-badge">PUBLISHED</span>' : '') + '</div>' +
+            '<button class="ptm-x" type="button" aria-label="Close" onclick="closeTrainingDetails()">✕</button></div>' +
+          '<div class="ptm-body">' +
+            rows.map(([l, v]) => '<div class="ptm-row"><span class="ptm-label">' + l + '</span><span class="ptm-val">' + esc(v) + '</span></div>').join('') +
+            (objectives ? '<div class="ptm-sec"><div class="ptm-sec-h">Objectives</div><p class="ptm-obj">' + esc(objectives) + '</p></div>' : '') +
+            (blocks.length ? '<div class="ptm-sec"><div class="ptm-sec-h">Session plan</div>' +
+              blocks.map(b => '<div class="ptm-block">' + (b.time ? '<span class="ptm-time">' + esc(b.time) + '</span>' : '') + '<span>' + esc(b.activity) + '</span></div>').join('') + '</div>' : '') +
+            (!objectives && !blocks.length ? '<p class="muted" style="font-size:13px;margin:10px 0 0">No further details published for this session yet.</p>' : '') +
+          '</div>' +
+          '<button class="btn primary ptm-close" type="button" onclick="closeTrainingDetails()">Close</button>' +
+        '</div>';
+      host.classList.add('ptm-open');
+      host.onclick = e => { if (e.target === host) closeTrainingDetails(); };
+      document.addEventListener('keydown', _ptmKey);
+    }
+    function closeTrainingDetails() {
+      const h = document.getElementById('ptm');
+      if (h) { h.classList.remove('ptm-open'); h.innerHTML = ''; }
+      document.removeEventListener('keydown', _ptmKey);
+    }
+    function _ptmKey(e) { if (e.key === 'Escape') closeTrainingDetails(); }
 
     // ─── Player self-service profile (Autopilot) ─────────────────────────────
     // Players keep their own details current; the coach approves instead of
