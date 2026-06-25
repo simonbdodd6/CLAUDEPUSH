@@ -204,9 +204,10 @@ The navigation architecture (Phase 11) separates four concerns:
   `FeatureMetadata` describes every surface (`primary`, `explore`, `future`)
   with its `availability`, and views read filtered slices instead of embedding
   hard-coded screen lists.
-- `TravelRoute` — deep-link-ready, value-type routes that parse from and
-  serialise to `travelintelligence://…` URLs using only local string work. No
-  networking is performed.
+- `TravelRoute` — the Phase 24 typed route layer. Every built destination has
+  an explicit route case, while future placeholders carry a typed
+  `FutureFeature`. Routes expose deterministic tab, root-tab, path and local
+  `travelintelligence://…` URL mappings.
 - `NavigationCoordinator` — an `@Observable` single source of truth for tab
   selection and navigation context, exposing intent methods (`select`, `open`,
   `handle(url:)`). `TravelAppState` owns one coordinator.
@@ -219,6 +220,18 @@ placeholders, which route to `ComingSoonScreen`.
 
 Deep-link `endpoint` strings remain present for existing API contracts; they
 are display metadata only in the current visual phases.
+
+### Typed route layer
+
+Phase 24 promotes each current destination from a generic tab wrapper to an
+explicit `TravelRoute` case. `TravelRoute.current` provides a stable catalog of
+all built destinations, and `TravelRoute(tab:)` preserves compatibility with
+existing tab-driven composition.
+
+Explore cards pass typed routes into `FeatureDestinationView`; root tabs can
+continue using its `TravelTab` initializer. `NavigationCoordinator.open(_:)`
+selects the deterministic `rootTab` exposed by each route. No route performs
+I/O or changes feature behavior.
 
 ## Design system
 

@@ -52,10 +52,18 @@ struct FeatureShellView: View {
 }
 
 struct FeatureDestinationView: View {
-    let tab: TravelTab
+    let route: TravelRoute
+
+    init(tab: TravelTab) {
+        self.route = tab.route
+    }
+
+    init(route: TravelRoute) {
+        self.route = route
+    }
 
     var body: some View {
-        switch tab {
+        switch route {
         case .home: HomeScreen()
         case .passport: PassportScreen()
         case .timeline: TimelineScreen()
@@ -69,6 +77,8 @@ struct FeatureDestinationView: View {
         case .onThisDay: OnThisDayScreen()
         case .search: SearchScreen()
         case .settings: SettingsScreen()
+        case .comingSoon(let feature):
+            ComingSoonScreen(feature: FeatureMetadata.placeholder(feature))
         }
     }
 }

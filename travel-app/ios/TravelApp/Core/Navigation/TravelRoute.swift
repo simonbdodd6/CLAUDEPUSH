@@ -1,37 +1,104 @@
 import Foundation
 
-/// Deep-link-ready, value-type description of a navigable destination.
+/// Typed, deterministic address space for every current app destination.
 ///
-/// Routes are deterministic and offline: they parse from and serialise to a
-/// custom-scheme URL (`travelintelligence://…`) using only local string work.
-/// No networking, no `URLSession`, no external resolution is performed — this
-/// type is purely the address space the app is ready to navigate when a later
-/// phase wires real deep links, universal links or restoration state.
-enum TravelRoute: Hashable {
-    /// A first-class feature screen backed by an existing `TravelTab`.
-    case feature(TravelTab)
-    /// A registered but not-yet-built future feature placeholder.
+/// Routes contain identity only. They perform no I/O and can be converted to
+/// local deep-link paths without resolving an external service.
+enum TravelRoute: Hashable, Identifiable {
+    case home
+    case passport
+    case timeline
+    case story
+    case explore
+    case cinematic
+    case collections
+    case statistics
+    case insights
+    case highlights
+    case onThisDay
+    case search
+    case settings
     case comingSoon(FutureFeature)
 
-    /// Custom URL scheme reserved for in-app deep links.
     static let scheme = "travelintelligence"
 
-    /// Canonical, slash-prefixed path for this route (e.g. `/passport`).
-    var path: String {
+    /// Every currently built route in stable navigation order.
+    static let current: [TravelRoute] = [
+        .home,
+        .passport,
+        .timeline,
+        .story,
+        .explore,
+        .cinematic,
+        .collections,
+        .statistics,
+        .insights,
+        .highlights,
+        .onThisDay,
+        .search,
+        .settings
+    ]
+
+    var id: String { path }
+
+    /// The built feature represented by this route, if one exists.
+    var tab: TravelTab? {
         switch self {
-        case .feature(let tab): tab.routePath
-        case .comingSoon(let feature): "/coming-soon/\(feature.rawValue)"
+        case .home: .home
+        case .passport: .passport
+        case .timeline: .timeline
+        case .story: .story
+        case .explore: .explore
+        case .cinematic: .cinematic
+        case .collections: .collections
+        case .statistics: .statistics
+        case .insights: .insights
+        case .highlights: .highlights
+        case .onThisDay: .onThisDay
+        case .search: .search
+        case .settings: .settings
+        case .comingSoon: nil
         }
     }
 
-    /// A shareable deep-link URL for this route, e.g.
-    /// `travelintelligence://passport`. Constructed locally; never fetched.
+    /// Root tab selected when this route is opened.
+    var rootTab: TravelTab {
+        guard let tab else { return .explore }
+        return FeatureRegistry.primaryTabSet.contains(tab) ? tab : .explore
+    }
+
+    /// Canonical, slash-prefixed path for this route.
+    var path: String {
+        switch self {
+        case .comingSoon(let feature): "/coming-soon/\(feature.rawValue)"
+        default: tab?.routePath ?? "/explore"
+        }
+    }
+
+    /// Locally constructed deep-link URL. It is never fetched.
     var url: URL? {
         URL(string: "\(Self.scheme):/\(path)")
     }
 
-    /// Parse a route from a canonical path such as `/passport` or
-    /// `/coming-soon/companions`. Returns `nil` for unknown paths.
+    init(tab: TravelTab) {
+        switch tab {
+        case .home: self = .home
+        case .passport: self = .passport
+        case .timeline: self = .timeline
+        case .story: self = .story
+        case .explore: self = .explore
+        case .cinematic: self = .cinematic
+        case .collections: self = .collections
+        case .statistics: self = .statistics
+        case .insights: self = .insights
+        case .highlights: self = .highlights
+        case .onThisDay: self = .onThisDay
+        case .search: self = .search
+        case .settings: self = .settings
+        }
+    }
+
+    /// Parse a route from a canonical path.
     init?(path raw: String) {
         let trimmed = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
         let components = trimmed.split(separator: "/").map(String.init)
@@ -44,10 +111,10 @@ enum TravelRoute: Hashable {
         }
 
         guard let tab = TravelTab.matching(path: first) else { return nil }
-        self = .feature(tab)
+        self.init(tab: tab)
     }
 
-    /// Parse a route from a `travelintelligence://` deep-link URL.
+    /// Parse a route from a local `travelintelligence://` URL.
     init?(url: URL) {
         guard url.scheme == Self.scheme else { return nil }
         let host = url.host.map { "/\($0)" } ?? ""
@@ -56,14 +123,11 @@ enum TravelRoute: Hashable {
 }
 
 extension TravelTab {
-    /// Canonical app route for this tab.
-    var route: TravelRoute { .feature(self) }
+    var route: TravelRoute { TravelRoute(tab: self) }
 
-    /// Canonical, slash-prefixed deep-link path (distinct from `endpoint`,
-    /// which describes the backend API contract).
+    /// Canonical route path, distinct from the backend endpoint metadata.
     var routePath: String { "/\(rawValue)" }
 
-    /// Resolve a tab from the leading path component of a route.
     static func matching(path component: String) -> TravelTab? {
         let slug = component.split(separator: "/").last.map(String.init) ?? component
         return TravelTab(rawValue: slug)

@@ -23,8 +23,8 @@ struct FeatureNavigationGrid: View {
 
     @ViewBuilder
     private func destination(for feature: FeatureMetadata) -> some View {
-        if feature.availability == .available, let tab = feature.tab {
-            FeatureDestinationView(tab: tab)
+        if feature.availability == .available {
+            FeatureDestinationView(route: feature.route)
         } else {
             ComingSoonScreen(feature: feature)
         }

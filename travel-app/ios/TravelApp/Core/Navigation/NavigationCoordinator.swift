@@ -39,14 +39,8 @@ final class NavigationCoordinator {
     /// push the specific destination onto Explore's stack.
     @discardableResult
     func open(_ route: TravelRoute) -> Bool {
-        switch route {
-        case .feature(let tab):
-            select(FeatureRegistry.primaryTabSet.contains(tab) ? tab : .explore)
-            return true
-        case .comingSoon:
-            select(.explore)
-            return true
-        }
+        select(route.rootTab)
+        return true
     }
 
     /// Handle a `travelintelligence://` deep-link URL. Returns `false` for
