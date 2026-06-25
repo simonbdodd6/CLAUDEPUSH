@@ -350,7 +350,26 @@ M190 matrix presenter                  →  run-wide coverage rollup { scored, m
   for the read-only explanation helpers; the selection engines remain injected.
 - **M187/M188** read only what M186 already returned (never recompute), defaulting to null when absent.
 
+## 23. Decision Intelligence diff (M192–M194)
+
+The first dormant **Decision Intelligence** engine — it compares two already-completed decision states
+and reports what changed and why, as deterministic codes. It never selects, scores, ranks, recommends,
+rebuilds squads, or recalculates explanations.
+
+```
+two decision states  →  diffDecisions (M192)  →  summarizeDecisionDiff (M193)
+                          { playerChanges, captainChanges, benchChanges, riskChanges,
+                            explanationChanges, coverageChanges }
+brain-decision-planner: diffBrainDryRuns (M194) reads a decision state out of each M186 dry-run result,
+                        then runs M192 → M193 → { beforeSummary, afterSummary, diff, diffView }
+```
+
+- **M192/M193** live in `coach-intelligence`, are pure and read-only, and emit/render change codes
+  (`PLAYER_PROMOTED`, `CAPTAIN_CHANGED`, `RISK_INCREASED`, `EXPLANATION_GAINED`, `COVERAGE_DECREASED`, …).
+- **M194** lives in `brain-decision-planner` and is composition only — it reuses the existing read-only
+  `coach-intelligence` import (no new dependency edge) and reruns no Brain logic.
+
 ---
 
 *This document is descriptive only. It adds no exports, changes no runtime behaviour, and describes the
-architecture exactly as it exists after M190.*
+architecture exactly as it exists after M194.*

@@ -171,6 +171,15 @@ The selection **engines** (M118/M119/M131) are still **injected** via `options.p
 pure, read-only **explanation helpers** (M184/M185) are imported directly by the dry-run harness (M186)
 — they only read the already-built squad and never select, score, or run the pipeline.
 
+## 13. Decision diff composition (M194)
+
+- **M194 — `diffBrainDryRuns(beforeDryRun, afterDryRun)`** — composition only: it reads an
+  already-completed decision state out of each M186 dry-run result (the M184 explanation's
+  starters/bench, the M130 squad's captain/vice, the M124 risks, and the M188 coverage ratio), runs the
+  Decision Intelligence diff (`diffDecisions`, M192), and renders it (`summarizeDecisionDiff`, M193).
+  Returns a frozen `{ beforeSummary, afterSummary, diff, diffView }`. It rebuilds no squads, reruns no
+  Brain logic, and reuses the existing read-only `coach-intelligence` import (no new dependency edge).
+
 ---
 
 *This document is descriptive only. It adds no exports and changes no runtime behaviour.*

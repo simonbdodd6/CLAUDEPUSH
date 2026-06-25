@@ -215,6 +215,27 @@ no pipeline, inspects no provider, and generates no prose — it reads existing 
 These power the dormant dry-run diagnostics in `brain-decision-planner` (M186 attaches both to the
 dry-run result; M187/M188 surface their counts and a coverage metric across the regression matrix).
 
+## 14. Decision Intelligence layer (M192–M193)
+
+The first dormant **Decision Intelligence** engine: it compares two already-completed decision states
+and reports WHAT changed and WHY — as deterministic codes only. It **never selects, scores, ranks,
+recommends, rebuilds squads, reruns selection, or recalculates explanations**; it reads only the two
+supplied states.
+
+- **M192 — `diffDecisions(beforeDecision, afterDecision)`** — each decision state is
+  `{ starters:[{playerId, codes}], bench:[{playerId, codes}], captain, viceCaptain, riskCount|risks,
+  coverage }` (accepts `explanationCodes` as a `codes` alias, so an M184 explanation feeds in directly).
+  Returns a deeply frozen `{ summary, playerChanges, captainChanges, benchChanges, riskChanges,
+  explanationChanges, coverageChanges }`, with change codes such as `PLAYER_PROMOTED`/`PLAYER_DEMOTED`/
+  `PLAYER_ADDED`/`PLAYER_REMOVED`, `CAPTAIN_CHANGED`/`VICE_CAPTAIN_CHANGED`, `RISK_INCREASED`/
+  `RISK_DECREASED`, `EXPLANATION_GAINED`/`EXPLANATION_LOST` (only for players whose role is unchanged),
+  and `COVERAGE_INCREASED`/`COVERAGE_DECREASED`. All ordering is deterministic.
+- **M193 — `summarizeDecisionDiff(diff, format)`** — a pure presenter of an M192 diff in `object`
+  (default, + a flat `changeCount`), `text`, or `json` (canonical, via the shared serializer). Reads only.
+
+End-to-end composition lives in `brain-decision-planner` (M194 `diffBrainDryRuns` diffs two M186
+dry-run results by reading their decision states).
+
 ---
 
 *This document is descriptive only. It adds no exports and changes no runtime behaviour; it describes
