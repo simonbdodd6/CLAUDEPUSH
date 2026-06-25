@@ -38,8 +38,7 @@ struct TimelineScreen: View {
         PremiumSection(title: "Travel history", subtitle: "Year groups, markers and memory-led event cards.") {
             VStack(alignment: .leading, spacing: TravelSpacing.lg) {
                 ForEach(viewModel.years) { year in
-                    VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                        TimelineYearHeader(year: year)
+                    PremiumTimelineSection(title: year.year, subtitle: year.summary) {
                         VStack(spacing: TravelSpacing.md) {
                             ForEach(year.events) { event in
                                 TimelineEventCard(event: event)

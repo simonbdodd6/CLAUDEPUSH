@@ -175,28 +175,21 @@ struct TravelAnniversaryCard: View {
     let anniversary: TravelAnniversaryPreview
 
     var body: some View {
-        GlassCard {
-            HStack(alignment: .top, spacing: TravelSpacing.md) {
-                Image(systemName: anniversary.symbol)
-                    .font(.title3)
-                    .foregroundStyle(anniversary.accent)
-                    .frame(width: 46, height: 46)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: TravelRadius.sm, style: .continuous))
-                VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                    Text(anniversary.title)
-                        .font(TravelTypography.cardTitle)
-                    Text(anniversary.milestone)
-                        .font(TravelTypography.caption)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-                    Text(anniversary.detail)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: TravelSpacing.sm)
-            }
-        }
+        PremiumTimelineItem(
+            title: anniversary.title,
+            subtitle: anniversary.milestone,
+            subtitleSymbol: nil,
+            subtitleUppercase: true,
+            eyebrow: nil,
+            detail: anniversary.detail,
+            detailPlacement: .inline,
+            symbol: anniversary.symbol,
+            dateLabel: nil,
+            accent: anniversary.accent,
+            showsConnector: false,
+            symbolSize: 46,
+            symbolFont: .title3
+        )
     }
 }
 

@@ -23,6 +23,7 @@ TravelApp/
       PassportComponents.swift        passport cover, stamps, stats and empty state
       PremiumComponents.swift         glass cards, heroes, sections, grid
       PremiumTileComponents.swift     collection, compact and thumbnail tiles
+      PremiumTimelineComponents.swift timeline items, connectors and sections
       FeatureShell.swift              reusable empty feature surface
       StatePresentationViews.swift    reusable loading, empty and error views
     DesignSystem/
@@ -276,6 +277,9 @@ I/O or changes feature behavior.
 - `GlassCard`: reusable material-backed card.
 - `PremiumCollectionTile`, `PremiumCompactTile` and `PremiumThumbnailTile`:
   reusable Phase 35 archive tiles with optional copy, metadata and symbols.
+- `PremiumTimelineItem`, `PremiumTimelineConnector`,
+  `PremiumTimelineSection` and `PremiumTimelineDateBadge`: reusable Phase 36
+  chronology primitives for dated travel and memory surfaces.
 - `ScreenHero`: large premium first-viewport surface.
 - `PremiumSection`: consistent section rhythm.
 - `FeatureHeroScaffold`: the shared cinematic hero used by every feature hero

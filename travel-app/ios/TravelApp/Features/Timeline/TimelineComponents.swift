@@ -90,54 +90,16 @@ struct TimelineEventCard: View {
     let event: TimelineEventPreview
 
     var body: some View {
-        HStack(alignment: .top, spacing: TravelSpacing.md) {
-            VStack(spacing: 0) {
-                Circle()
-                    .fill(event.accent)
-                    .frame(width: 14, height: 14)
-                    .overlay {
-                        Circle()
-                            .stroke(.white.opacity(0.82), lineWidth: 2)
-                    }
-                Rectangle()
-                    .fill(event.accent.opacity(0.24))
-                    .frame(width: 2)
-                    .frame(maxHeight: .infinity)
-            }
-            .frame(width: 18)
-
-            GlassCard {
-                VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                    HStack(alignment: .top, spacing: TravelSpacing.md) {
-                        Image(systemName: event.symbol)
-                            .font(.headline)
-                            .foregroundStyle(event.accent)
-                            .frame(width: 42, height: 42)
-                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: TravelRadius.sm, style: .continuous))
-                        VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                            Text(event.category)
-                                .font(.system(.caption2, design: .rounded, weight: .semibold))
-                                .textCase(.uppercase)
-                                .foregroundStyle(.secondary)
-                            Text(event.title)
-                                .font(TravelTypography.cardTitle)
-                            Label(event.place, systemImage: "mappin.and.ellipse")
-                                .font(TravelTypography.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: TravelSpacing.sm)
-                        Text(event.dateLabel)
-                            .font(TravelTypography.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Text(event.detail)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
+        PremiumTimelineItem(
+            title: event.title,
+            subtitle: event.place,
+            subtitleSymbol: "mappin.and.ellipse",
+            eyebrow: event.category,
+            detail: event.detail,
+            symbol: event.symbol,
+            dateLabel: event.dateLabel,
+            accent: event.accent
+        )
     }
 }
 
