@@ -163,6 +163,9 @@ services stay injected, providers stay read-only, and every output is determinis
 - **M188 — coverage metric** — the matrix presenter adds `explanationCoverage`
   (`explanationStarterCount / startingCount`, 2 d.p.; null when starters are 0 or unexplained) in
   object/text/json, flagging any squad whose starters weren't fully explained.
+- **M190 — coverage rollup** — the matrix presenter adds a run-wide `coverage` summary
+  `{ scored, mean, min, fullyExplained }` (mean/min over scored scenarios, null when none) in the
+  object summary, the `text` header, and `json` — one-glance explanation completeness for the whole run.
 
 The selection **engines** (M118/M119/M131) are still **injected** via `options.pipelineServices`. The
 pure, read-only **explanation helpers** (M184/M185) are imported directly by the dry-run harness (M186)

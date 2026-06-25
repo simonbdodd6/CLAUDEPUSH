@@ -329,7 +329,7 @@ fixtures (M181)  →  runBrainDryRun (M178)  →  runBrainDryRunMatrix (M179)  �
 
 The coach-intelligence selection **engines** stay injected (`options.pipelineServices`) throughout.
 
-## 22. Selection explanation + coverage (M184–M188)
+## 22. Selection explanation + coverage (M184–M190)
 
 A dormant **explanation** layer (in `coach-intelligence`) interprets an already-built squad as codes —
 "the coach decides; the Brain explains what it sees" — and the dry-run diagnostics surface it.
@@ -340,6 +340,7 @@ M185 summarizeSelectionExplanation     →  object | text | json (+ counts)
 M186 runBrainDryRun                    →  result also carries { explanation, explanationView }
 M187 matrix presenter                  →  per-scenario explanationStarter/Bench/RiskCount (read from dryRun)
 M188 matrix presenter                  →  explanationCoverage = explained starters / starters (2 d.p.)
+M190 matrix presenter                  →  run-wide coverage rollup { scored, mean, min, fullyExplained }
 ```
 
 - **M184/M185** are pure and read-only: they never select, score, rank, recommend, or generate prose;
@@ -352,4 +353,4 @@ M188 matrix presenter                  →  explanationCoverage = explained star
 ---
 
 *This document is descriptive only. It adds no exports, changes no runtime behaviour, and describes the
-architecture exactly as it exists after M188.*
+architecture exactly as it exists after M190.*
