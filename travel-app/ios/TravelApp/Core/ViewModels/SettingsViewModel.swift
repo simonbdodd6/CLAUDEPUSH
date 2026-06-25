@@ -25,6 +25,18 @@ final class SettingsViewModel {
 
     var hasProfile: Bool { loadingState == .loaded }
 
+    var statePresentation: ViewModelStatePresentation? {
+        loadingState.presentation(
+            empty: EmptyStatePresentation(
+                title: "Traveller profile unavailable",
+                message: "Profile and archive summaries will appear when traveller data is available.",
+                actionLabel: nil,
+                reasonCode: "settings_profile_empty"
+            ),
+            failureTitle: "Unable to load settings"
+        )
+    }
+
     var hero: SettingsHeroPreview {
         SettingsHeroPreview(
             title: "Your travel space",

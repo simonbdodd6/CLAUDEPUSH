@@ -16,6 +16,18 @@ final class HighlightsViewModel {
 
     var hasHighlights: Bool { loadingState == .loaded }
 
+    var statePresentation: ViewModelStatePresentation? {
+        loadingState.presentation(
+            empty: EmptyStatePresentation(
+                title: "Your highlights are ready",
+                message: "Completed journeys can surface best moments and achievements here.",
+                actionLabel: nil,
+                reasonCode: "highlights_content_empty"
+            ),
+            failureTitle: "Unable to load highlights"
+        )
+    }
+
     var hero: HighlightsHeroPreview {
         HighlightsHeroPreview(
             title: "The best of your travels",

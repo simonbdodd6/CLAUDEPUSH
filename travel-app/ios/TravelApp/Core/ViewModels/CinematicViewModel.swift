@@ -14,6 +14,18 @@ final class CinematicViewModel {
 
     var hasScenes: Bool { loadingState == .loaded }
 
+    var statePresentation: ViewModelStatePresentation? {
+        loadingState.presentation(
+            empty: EmptyStatePresentation(
+                title: "Your travel reel is ready",
+                message: "Completed trips and memory scenes can become a cinematic travel reel here.",
+                actionLabel: nil,
+                reasonCode: "cinematic_scenes_empty"
+            ),
+            failureTitle: "Unable to load cinematic memories"
+        )
+    }
+
     var hero: CinematicHeroPreview {
         CinematicHeroPreview(
             title: "Your travels as a film reel",

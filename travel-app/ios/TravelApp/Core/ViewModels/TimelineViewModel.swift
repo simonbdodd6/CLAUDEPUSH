@@ -19,6 +19,18 @@ final class TimelineViewModel {
 
     var hasEvents: Bool { loadingState == .loaded }
 
+    var statePresentation: ViewModelStatePresentation? {
+        loadingState.presentation(
+            empty: EmptyStatePresentation(
+                title: "Your timeline is ready",
+                message: "Completed journeys will form a year-by-year travel history here.",
+                actionLabel: nil,
+                reasonCode: "timeline_events_empty"
+            ),
+            failureTitle: "Unable to load timeline"
+        )
+    }
+
     var summary: TimelineSummaryPreview {
         TimelineSummaryPreview(
             title: "A life in motion",

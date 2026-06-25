@@ -14,6 +14,18 @@ final class StatisticsViewModel {
 
     var hasStatistics: Bool { loadingState == .loaded }
 
+    var statePresentation: ViewModelStatePresentation? {
+        loadingState.presentation(
+            empty: EmptyStatePresentation(
+                title: "Your statistics will grow here",
+                message: "Completed journeys can build a picture of reach, rhythm and milestones.",
+                actionLabel: nil,
+                reasonCode: "statistics_metrics_empty"
+            ),
+            failureTitle: "Unable to load statistics"
+        )
+    }
+
     var hero: StatisticsHeroPreview {
         StatisticsHeroPreview(
             title: "Your travel life, measured",

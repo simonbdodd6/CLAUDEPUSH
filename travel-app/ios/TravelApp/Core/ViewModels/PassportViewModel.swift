@@ -21,6 +21,18 @@ final class PassportViewModel {
     }
     var completionProgress: Double { passport.completion }
 
+    var statePresentation: ViewModelStatePresentation? {
+        loadingState.presentation(
+            empty: EmptyStatePresentation(
+                title: "Your passport is ready",
+                message: "No journeys are recorded yet. Completed trips will add stamps and milestones.",
+                actionLabel: nil,
+                reasonCode: "passport_journeys_empty"
+            ),
+            failureTitle: "Unable to load passport"
+        )
+    }
+
     let stats = [
         PassportStatPreview(
             id: "stat-countries",

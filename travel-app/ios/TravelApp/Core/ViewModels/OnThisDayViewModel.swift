@@ -19,6 +19,18 @@ final class OnThisDayViewModel {
 
     var hasMemories: Bool { loadingState == .loaded }
 
+    var statePresentation: ViewModelStatePresentation? {
+        loadingState.presentation(
+            empty: EmptyStatePresentation(
+                title: "No memories on this day yet",
+                message: "Anniversaries and past moments will appear when matching memories are available.",
+                actionLabel: nil,
+                reasonCode: "on_this_day_memories_empty"
+            ),
+            failureTitle: "Unable to load this day's memories"
+        )
+    }
+
     /// Hero metrics derived directly from the DTO's entries.
     var hero: OnThisDayHeroPreview {
         let years = onThisDay.entries.compactMap { Int($0.year) }

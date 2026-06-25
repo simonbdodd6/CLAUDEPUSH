@@ -38,6 +38,18 @@ final class SearchViewModel {
         )
     }
 
+    var statePresentation: ViewModelStatePresentation? {
+        loadingState.presentation(
+            empty: EmptyStatePresentation(
+                title: "No searchable travel content",
+                message: "Destinations, memories and stories will appear as the archive grows.",
+                actionLabel: nil,
+                reasonCode: "search_content_empty"
+            ),
+            failureTitle: "Unable to load search content"
+        )
+    }
+
     var hero: SearchHeroPreview {
         SearchHeroPreview(
             title: "Find any travel memory",

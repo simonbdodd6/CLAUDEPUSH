@@ -14,6 +14,18 @@ final class InsightsViewModel {
 
     var hasInsights: Bool { loadingState == .loaded }
 
+    var statePresentation: ViewModelStatePresentation? {
+        loadingState.presentation(
+            empty: EmptyStatePresentation(
+                title: "Your insights are ready",
+                message: "Completed journeys can reveal travel patterns, trends and habits here.",
+                actionLabel: nil,
+                reasonCode: "insights_cards_empty"
+            ),
+            failureTitle: "Unable to load insights"
+        )
+    }
+
     var hero: InsightsHeroPreview {
         InsightsHeroPreview(
             title: "Patterns in your travel life",

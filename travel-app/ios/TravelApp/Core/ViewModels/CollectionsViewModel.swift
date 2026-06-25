@@ -14,6 +14,18 @@ final class CollectionsViewModel {
 
     var hasCollections: Bool { loadingState == .loaded }
 
+    var statePresentation: ViewModelStatePresentation? {
+        loadingState.presentation(
+            empty: EmptyStatePresentation(
+                title: "Your collections are ready",
+                message: "Completed journeys can group into themed memory collections here.",
+                actionLabel: nil,
+                reasonCode: "collections_empty"
+            ),
+            failureTitle: "Unable to load collections"
+        )
+    }
+
     let themes = [
         CollectionThemePreview(id: "theme-coast", title: "Ocean & islands", caption: "Coastlines, harbours and sea crossings.", symbol: "sailboat.fill", accent: TravelTheme.current.ocean),
         CollectionThemePreview(id: "theme-city", title: "City notes", caption: "Walkable days and quiet evening streets.", symbol: "building.2.fill", accent: TravelTheme.current.tint),

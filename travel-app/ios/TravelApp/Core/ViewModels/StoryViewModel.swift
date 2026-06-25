@@ -19,6 +19,18 @@ final class StoryViewModel {
 
     var hasStories: Bool { loadingState == .loaded }
 
+    var statePresentation: ViewModelStatePresentation? {
+        loadingState.presentation(
+            empty: EmptyStatePresentation(
+                title: "Your story shelf is ready",
+                message: "Completed trips and memory clusters can become story cards here.",
+                actionLabel: nil,
+                reasonCode: "story_content_empty"
+            ),
+            failureTitle: "Unable to load stories"
+        )
+    }
+
     var hero: StoryHeroPreview {
         StoryHeroPreview(
             title: "Turn journeys into stories",

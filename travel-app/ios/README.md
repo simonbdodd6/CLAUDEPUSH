@@ -64,6 +64,7 @@ TravelApp/
       OnThisDayRepository.swift       anniversary protocol + mock implementation
     ViewModels/
       ViewModelLoadingState.swift     typed repository loading lifecycle
+      ViewModelStatePresentation.swift typed empty and failure contracts
       TravellerViewModel.swift        root traveller presentation adapter
       PassportViewModel.swift         passport DTO mapping and display state
       TimelineViewModel.swift         timeline and traveller presentation mapping
@@ -154,6 +155,18 @@ its synchronous mock input to `loaded` or `empty` during initialization.
 Existing `has…` presentation properties now read that state using the same
 content predicates as before, so current screens, empty states and mock output
 remain unchanged. No loading or failure UI is rendered in this phase.
+
+### Empty and error contracts
+
+Phase 26 adds typed `EmptyStatePresentation` and `ErrorStatePresentation`
+values with a title, message, optional action label and stable reason code.
+`ViewModelStatePresentation` maps only `empty` and `failed` loading states;
+idle, loading and loaded states produce no presentation value.
+
+Each repository-backed ViewModel owns deterministic feature-specific empty
+copy and failure titles through an internal `statePresentation` property.
+Screens do not consume these contracts yet, so visible empty and error UI is
+unchanged.
 
 ### Repository layer
 

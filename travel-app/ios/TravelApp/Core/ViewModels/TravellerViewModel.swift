@@ -21,4 +21,16 @@ final class TravellerViewModel {
     var journeysLabel: String { "\(traveller.summary.journeys)" }
     var memoriesLabel: String { "\(traveller.summary.memories)" }
     var hasProfile: Bool { loadingState == .loaded }
+
+    var statePresentation: ViewModelStatePresentation? {
+        loadingState.presentation(
+            empty: EmptyStatePresentation(
+                title: "Traveller profile unavailable",
+                message: "Traveller details will appear when profile data is available.",
+                actionLabel: nil,
+                reasonCode: "traveller_profile_empty"
+            ),
+            failureTitle: "Unable to load traveller profile"
+        )
+    }
 }
