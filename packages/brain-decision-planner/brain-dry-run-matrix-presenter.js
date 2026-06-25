@@ -16,6 +16,30 @@ const SUPPORTED_FORMATS = Object.freeze(['object', 'text', 'json'])
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const numOr0 = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : 0)
+const numOrNull = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null)
+const lenOrNull = (x) => (Array.isArray(x) ? x.length : null)
+
+/**
+ * Read the M184/M185 explanation counts that M186 already placed on dryRun — never recompute.
+ * Prefers the M185 explanationView.counts; falls back to M184 explanation section lengths; otherwise
+ * (no explanation present, e.g. a failed scenario) returns nulls.
+ */
+function explanationCounts(dryRun) {
+  const counts = isObj(dryRun) && isObj(dryRun.explanationView) && isObj(dryRun.explanationView.counts) ? dryRun.explanationView.counts : null
+  if (counts) {
+    return {
+      explanationStarterCount: numOrNull(counts.starters),
+      explanationBenchCount: numOrNull(counts.bench),
+      explanationRiskCount: numOrNull(counts.risks),
+    }
+  }
+  const expl = isObj(dryRun) && isObj(dryRun.explanation) ? dryRun.explanation : null
+  return {
+    explanationStarterCount: expl ? lenOrNull(expl.starters) : null,
+    explanationBenchCount: expl ? lenOrNull(expl.bench) : null,
+    explanationRiskCount: expl ? lenOrNull(expl.risks) : null,
+  }
+}
 
 function deepFreeze(value) {
   if (value && typeof value === 'object') {
@@ -38,9 +62,10 @@ function assertMatrix(matrixResult) {
   }
 }
 
-/** Normalise one matrix scenario; missing verification fields default safely to 0. */
+/** Normalise one matrix scenario; missing verification fields default to 0, missing explanation to null. */
 function scenarioSummary(s) {
   const v = isObj(s.verification) ? s.verification : {}
+  const e = explanationCounts(s.dryRun)   // read-only from M186's dryRun.explanation/explanationView
   return {
     id: s.id,
     ok: s.ok === true,
@@ -48,6 +73,9 @@ function scenarioSummary(s) {
     benchCount: numOr0(v.benchCount),
     reserveCount: numOr0(v.reserveCount),
     warningCount: numOr0(v.warningCount),
+    explanationStarterCount: e.explanationStarterCount,
+    explanationBenchCount: e.explanationBenchCount,
+    explanationRiskCount: e.explanationRiskCount,
     error: typeof s.error === 'string' ? s.error : null,
   }
 }
@@ -71,7 +99,10 @@ function renderText(summary) {
   const lines = summary.scenarios.map((s) => {
     const base = `${s.id} ok=${s.ok}`
     if (s.error !== null) return `${base} error="${s.error}"`
-    return `${base} starting=${s.startingCount} bench=${s.benchCount} reserves=${s.reserveCount} warnings=${s.warningCount}`
+    const expl = s.explanationStarterCount !== null
+      ? ` explanationStarters=${s.explanationStarterCount} explanationBench=${s.explanationBenchCount} explanationRisks=${s.explanationRiskCount}`
+      : ''
+    return `${base} starting=${s.startingCount} bench=${s.benchCount} reserves=${s.reserveCount} warnings=${s.warningCount}${expl}`
   })
   return [header, ...lines].join('\n')
 }

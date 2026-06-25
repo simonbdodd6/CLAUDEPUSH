@@ -10,6 +10,10 @@
  * live providers, AI calls, timestamps, clock or randomness. Scenario inputs are never mutated; the
  * result is deeply frozen. One failing scenario never stops the matrix — its failure is captured
  * deterministically and execution continues.
+ *
+ * Each scenario result stores the FULL M178/M186 dry-run under `dryRun`, so the code-level
+ * explanation (M184 `dryRun.explanation`) and its presenter view (M185 `dryRun.explanationView`) are
+ * preserved verbatim for the matrix presenter (M187) — the matrix never recomputes them.
  */
 
 import { runBrainDryRun } from './brain-dry-run-harness.js'

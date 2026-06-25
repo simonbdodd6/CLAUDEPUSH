@@ -30,6 +30,16 @@ test('all scenarios pass', () => {
   assert.ok(thinned.verification.warningCount >= 1)
 })
 
+test('matrix preserves dryRun.explanation and dryRun.explanationView (M186/M187)', () => {
+  const out = runBrainDryRunMatrix([createFullSquadScenario()], OPTIONS)
+  const dryRun = out.scenarios[0].dryRun
+  assert.ok(dryRun && typeof dryRun === 'object')
+  assert.ok(dryRun.explanation && typeof dryRun.explanation === 'object')          // M184
+  assert.ok(dryRun.explanationView && typeof dryRun.explanationView === 'object')  // M185
+  assert.equal(dryRun.explanation.starters.length, 15)
+  assert.equal(dryRun.explanationView.counts.starters, 15)
+})
+
 // ── failure isolation ────────────────────────────────────────────────────────────────
 
 test('one scenario fails while later scenarios still run', () => {
