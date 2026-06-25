@@ -44,3 +44,5 @@ export { diffDecisions } from './decision-intelligence-diff.js'
 export { summarizeDecisionDiff } from './decision-intelligence-diff-presenter.js'
 
 export { classifyDecisionDiff } from './decision-intelligence-diff-severity.js'
+
+export { assessMatchReadiness } from './match-readiness.js'
