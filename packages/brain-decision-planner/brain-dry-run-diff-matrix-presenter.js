@@ -40,7 +40,7 @@ function assertMatrix(matrixResult) {
   }
 }
 
-/** Normalise one pair from its diffView (missing/failed → safe defaults). */
+/** Normalise one pair from its diffView + severity (missing/failed → safe defaults). */
 function pairSummary(p) {
   const dv = isObj(p.diffView) ? p.diffView : null
   return {
@@ -49,6 +49,7 @@ function pairSummary(p) {
     changed: dv ? dv.changed === true : false,
     changeCount: dv ? numOr0(dv.changeCount) : 0,
     codes: dv ? codesOf(dv.codes) : [],
+    severity: typeof p.severity === 'string' ? p.severity : null,
     error: typeof p.error === 'string' ? p.error : null,
   }
 }
@@ -69,6 +70,7 @@ function buildSummary(matrixResult) {
     pairs: matrixResult.pairs.map(pairSummary),
     rollup: {
       changeCodeCounts: sortedCounts(r.changeCodeCounts),
+      severityCounts: sortedCounts(r.severityCounts),
       changedPairCount: numOr0(r.changedPairCount),
       unchangedPairCount: numOr0(r.unchangedPairCount),
     },
@@ -80,11 +82,13 @@ function renderText(summary) {
   const lines = [`BrainDryRunDiffMatrix total=${summary.total} passed=${summary.passed} failed=${summary.failed} changed=${summary.rollup.changedPairCount} unchanged=${summary.rollup.unchangedPairCount}`]
   for (const p of summary.pairs) {
     if (p.error !== null) { lines.push(`${p.id} ok=${p.ok} error="${p.error}"`); continue }
-    lines.push(`${p.id} ok=${p.ok} changed=${p.changed} changes=${p.changeCount} codes=${p.codes.join(',')}`)
+    lines.push(`${p.id} ok=${p.ok} changed=${p.changed} changes=${p.changeCount} codes=${p.codes.join(',')} severity=${p.severity}`)
   }
-  const counts = summary.rollup.changeCodeCounts
-  const rollupStr = Object.keys(counts).map((k) => `${k}=${counts[k]}`).join(' ')
+  const kv = (counts) => Object.keys(counts).map((k) => `${k}=${counts[k]}`).join(' ')
+  const rollupStr = kv(summary.rollup.changeCodeCounts)
   lines.push(rollupStr ? `rollup ${rollupStr}` : 'rollup')
+  const sevStr = kv(summary.rollup.severityCounts)
+  lines.push(sevStr ? `severity ${sevStr}` : 'severity')
   return lines.join('\n')
 }
 

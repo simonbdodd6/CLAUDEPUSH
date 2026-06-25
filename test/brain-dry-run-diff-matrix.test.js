@@ -12,7 +12,9 @@ import { runBrainDryRunDiffMatrix } from '../packages/brain-decision-planner/ind
 
 // fake M194 result with a controlled code set (matrix reads result.diff / result.diffView)
 const fr = (codes) => ({ beforeSummary: {}, afterSummary: {}, diff: { summary: { changed: codes.length > 0, codes } }, diffView: { changed: codes.length > 0, changeCount: codes.length, codes } })
-const fakeDeps = { diff: (before, after) => { if (after && after.fail) throw new Error('diff boom'); return fr((after && after.codes) || []) } }
+// fake classifier: band from how many codes the (fake) diff carries
+const fakeClassify = (diff) => { const n = diff.summary.codes.length; return { severity: n >= 2 ? 'MAJOR' : n === 1 ? 'MINOR' : 'NONE' } }
+const fakeDeps = { diff: (before, after) => { if (after && after.fail) throw new Error('diff boom'); return fr((after && after.codes) || []) }, classify: fakeClassify }
 const pair = (id, codes, extra = {}) => ({ id, before: {}, after: { codes }, ...extra })
 const failPair = (id) => ({ id, before: {}, after: { fail: true } })
 
@@ -58,6 +60,10 @@ test('rollup counts change codes across successful pairs', () => {
   assert.deepEqual(out.rollup.changeCodeCounts, { CAPTAIN_CHANGED: 1, PLAYER_PROMOTED: 2 })
   assert.equal(out.rollup.changedPairCount, 2)
   assert.equal(out.rollup.unchangedPairCount, 1)
+  // M200 severity: pair 'a' has 2 codes → MAJOR, 'b' has 1 → MINOR, 'c' has 0 → NONE (bad excluded)
+  assert.deepEqual(out.rollup.severityCounts, { MAJOR: 1, MINOR: 1, NONE: 1 })
+  assert.equal(out.pairs.find((p) => p.id === 'a').severity, 'MAJOR')
+  assert.equal(out.pairs.find((p) => p.id === 'bad').severity, null)
 })
 
 test('changeCodeCounts keys are sorted deterministically', () => {
@@ -103,6 +109,9 @@ test('real diffBrainDryRuns path rolls up a genuine change', () => {
   assert.equal(out.rollup.changeCodeCounts.CAPTAIN_CHANGED, 1)
   assert.equal(out.rollup.changedPairCount, 1)
   assert.equal(out.rollup.unchangedPairCount, 1)
+  // real M199 classifier: captain change alone → MODERATE; identical pair → NONE
+  assert.deepEqual(out.rollup.severityCounts, { MODERATE: 1, NONE: 1 })
+  assert.equal(out.pairs.find((p) => p.id === 'captain').severity, 'MODERATE')
 })
 
 // ── determinism / frozen / mutation / validation / export ───────────────────────────────
@@ -133,6 +142,7 @@ test('malformed input rejected clearly', () => {
   assert.throws(() => runBrainDryRunDiffMatrix([{ before: {}, after: {} }], {}, fakeDeps), TypeError)   // no id
   assert.throws(() => runBrainDryRunDiffMatrix([pair('a', [], { expected: 'x' })], {}, fakeDeps), TypeError)
   assert.throws(() => runBrainDryRunDiffMatrix([pair('a', [])], 'x', fakeDeps), TypeError)
+  assert.throws(() => runBrainDryRunDiffMatrix([pair('a', [])], {}, { diff: fakeDeps.diff }), TypeError)   // missing deps.classify
 })
 
 test('export exists', () => {

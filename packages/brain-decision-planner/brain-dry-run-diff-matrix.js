@@ -10,6 +10,7 @@
  */
 
 import { diffBrainDryRuns } from './brain-dry-run-diff-harness.js'
+import { classifyDecisionDiff } from '../coach-intelligence/index.js'
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const isNonEmptyString = (v) => typeof v === 'string' && v.trim().length > 0
@@ -23,16 +24,24 @@ function deepFreeze(value) {
   return value
 }
 
-const DEFAULT_DEPS = Object.freeze({ diff: diffBrainDryRuns })
+const DEFAULT_DEPS = Object.freeze({ diff: diffBrainDryRuns, classify: classifyDecisionDiff })
 
 /** A pair's `expected` is a partial match over the diff view (M193 object form). */
 function matchesExpected(diffView, expected) {
   return Object.keys(expected).every((k) => JSON.stringify(isObj(diffView) ? diffView[k] : undefined) === JSON.stringify(expected[k]))
 }
 
-/** Roll up change codes across pairs that ran successfully (errored pairs excluded). */
+/** Build a fresh object with sorted keys (deterministic). */
+function sortedCounts(counts) {
+  const out = {}
+  for (const k of Object.keys(counts).sort(sortStr)) out[k] = counts[k]
+  return out
+}
+
+/** Roll up change codes + severities across pairs that ran successfully (errored pairs excluded). */
 function buildRollup(entries) {
   const counts = {}
+  const severity = {}
   let changedPairCount = 0
   let unchangedPairCount = 0
   for (const e of entries) {
@@ -42,10 +51,9 @@ function buildRollup(entries) {
     if (summary && summary.changed) changedPairCount += 1
     else unchangedPairCount += 1
     for (const c of codes) if (typeof c === 'string') counts[c] = (counts[c] || 0) + 1
+    if (typeof e.severity === 'string') severity[e.severity] = (severity[e.severity] || 0) + 1
   }
-  const changeCodeCounts = {}
-  for (const k of Object.keys(counts).sort(sortStr)) changeCodeCounts[k] = counts[k]
-  return { changeCodeCounts, changedPairCount, unchangedPairCount }
+  return { changeCodeCounts: sortedCounts(counts), severityCounts: sortedCounts(severity), changedPairCount, unchangedPairCount }
 }
 
 /**
@@ -54,15 +62,16 @@ function buildRollup(entries) {
  * @param {Array<{ id:string, before:object, after:object, expected?:object }>} pairs
  *   before/after are completed M186 dry-run results
  * @param {object} [options]  reserved (no options consumed today; validated for shape)
- * @param {{ diff: Function }} [deps]  defaults to the real M194 harness — injectable for tests
+ * @param {{ diff: Function, classify: Function }} [deps]  default to the real M194 harness + M199
+ *   classifier — injectable for tests
  * @returns {Readonly<{ total:number, passed:number, failed:number,
- *   pairs: ReadonlyArray<Readonly<{ id:string, ok:boolean, diff:(object|null), diffView:(object|null), error:(string|null) }>>,
- *   rollup: Readonly<{ changeCodeCounts:object, changedPairCount:number, unchangedPairCount:number }> }>}
+ *   pairs: ReadonlyArray<Readonly<{ id:string, ok:boolean, diff:(object|null), diffView:(object|null), severity:(string|null), error:(string|null) }>>,
+ *   rollup: Readonly<{ changeCodeCounts:object, severityCounts:object, changedPairCount:number, unchangedPairCount:number }> }>}
  */
 export function runBrainDryRunDiffMatrix(pairs, options = {}, deps = DEFAULT_DEPS) {
   if (!Array.isArray(pairs)) throw new TypeError('runBrainDryRunDiffMatrix requires an array of pairs')
   if (!isObj(options)) throw new TypeError('runBrainDryRunDiffMatrix: options must be an object')
-  if (!isObj(deps) || typeof deps.diff !== 'function') throw new TypeError('runBrainDryRunDiffMatrix: deps.diff must be a function')
+  if (!isObj(deps) || typeof deps.diff !== 'function' || typeof deps.classify !== 'function') throw new TypeError('runBrainDryRunDiffMatrix: deps.diff and deps.classify must be functions')
 
   // validate pair SHAPES upfront — malformed pairs are rejected clearly (bad dry-run data fails per-pair)
   pairs.forEach((p, i) => {
@@ -80,11 +89,13 @@ export function runBrainDryRunDiffMatrix(pairs, options = {}, deps = DEFAULT_DEP
       const out = deps.diff(p.before, p.after)   // M194 → { beforeSummary, afterSummary, diff, diffView }
       const diff = isObj(out) ? out.diff : null
       const diffView = isObj(out) ? out.diffView : null
+      const classification = diff !== null ? deps.classify(diff) : null   // M199 — impact band
+      const severity = isObj(classification) && typeof classification.severity === 'string' ? classification.severity : null
       const ok = p.expected === undefined ? true : matchesExpected(diffView, p.expected)
       if (ok) passed += 1
-      entry = { id: p.id, ok, diff, diffView, error: null }
+      entry = { id: p.id, ok, diff, diffView, severity, error: null }
     } catch (e) {
-      entry = { id: p.id, ok: false, diff: null, diffView: null, error: e instanceof Error ? e.message : String(e) }
+      entry = { id: p.id, ok: false, diff: null, diffView: null, severity: null, error: e instanceof Error ? e.message : String(e) }
     }
     results.push(entry)
   }
