@@ -24,3 +24,7 @@ export {
 export {
   summarizeBrainInputs,
 } from './brain-inputs-summary.js'
+
+export {
+  runBoundarySquadCapstone,
+} from './boundary-squad-capstone-harness.js'
