@@ -20,3 +20,7 @@ export {
 export {
   buildBrainInputs,
 } from './brain-inputs-facade.js'
+
+export {
+  summarizeBrainInputs,
+} from './brain-inputs-summary.js'
