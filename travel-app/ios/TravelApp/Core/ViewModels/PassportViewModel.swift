@@ -4,12 +4,15 @@ import Observation
 @Observable
 final class PassportViewModel {
     let passport: PassportDTO
+    private(set) var loadingState: ViewModelLoadingState
 
     init(repository: any PassportRepository) {
-        self.passport = repository.passport
+        let passport = repository.passport
+        self.passport = passport
+        self.loadingState = .resolved(isEmpty: !passport.stamps.contains(where: \.isStamped))
     }
 
-    var hasJourneys: Bool { passport.stamps.contains(where: \.isStamped) }
+    var hasJourneys: Bool { loadingState == .loaded }
 
     var coverName: String { passport.holderName }
     let coverTagline = "A cinematic passport for completed journeys, stamps and milestones."

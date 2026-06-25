@@ -5,16 +5,19 @@ import Observation
 final class TimelineViewModel {
     let timeline: TimelineDTO
     let traveller: TravellerDTO
+    private(set) var loadingState: ViewModelLoadingState
 
     init(
         timelineRepository: any TimelineRepository,
         travellerRepository: any TravellerRepository
     ) {
-        self.timeline = timelineRepository.timeline
+        let timeline = timelineRepository.timeline
+        self.timeline = timeline
         self.traveller = travellerRepository.traveller
+        self.loadingState = .resolved(isEmpty: !timeline.years.contains { !$0.events.isEmpty })
     }
 
-    var hasEvents: Bool { timeline.years.contains { !$0.events.isEmpty } }
+    var hasEvents: Bool { loadingState == .loaded }
 
     var summary: TimelineSummaryPreview {
         TimelineSummaryPreview(

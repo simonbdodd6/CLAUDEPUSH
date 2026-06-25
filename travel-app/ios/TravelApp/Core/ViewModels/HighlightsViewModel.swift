@@ -4,12 +4,17 @@ import Observation
 @Observable
 final class HighlightsViewModel {
     let highlights: HighlightsDTO
+    private(set) var loadingState: ViewModelLoadingState
 
     init(repository: any HighlightsRepository) {
-        self.highlights = repository.highlights
+        let highlights = repository.highlights
+        self.highlights = highlights
+        self.loadingState = .resolved(
+            isEmpty: highlights.moments.isEmpty && highlights.achievements.isEmpty
+        )
     }
 
-    var hasHighlights: Bool { !highlights.moments.isEmpty || !highlights.achievements.isEmpty }
+    var hasHighlights: Bool { loadingState == .loaded }
 
     var hero: HighlightsHeroPreview {
         HighlightsHeroPreview(

@@ -4,12 +4,15 @@ import Observation
 @Observable
 final class StatisticsViewModel {
     let statistics: StatisticsDTO
+    private(set) var loadingState: ViewModelLoadingState
 
     init(repository: any StatisticsRepository) {
-        self.statistics = repository.statistics
+        let statistics = repository.statistics
+        self.statistics = statistics
+        self.loadingState = .resolved(isEmpty: statistics.metrics.isEmpty)
     }
 
-    var hasStatistics: Bool { !statistics.metrics.isEmpty }
+    var hasStatistics: Bool { loadingState == .loaded }
 
     var hero: StatisticsHeroPreview {
         StatisticsHeroPreview(

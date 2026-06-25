@@ -5,9 +5,12 @@ import Observation
 @Observable
 final class TravellerViewModel {
     let traveller: TravellerDTO
+    private(set) var loadingState: ViewModelLoadingState
 
     init(repository: any TravellerRepository) {
-        self.traveller = repository.traveller
+        let traveller = repository.traveller
+        self.traveller = traveller
+        self.loadingState = .resolved(isEmpty: traveller.displayName.isEmpty)
     }
 
     var displayName: String { traveller.displayName }
@@ -17,5 +20,5 @@ final class TravellerViewModel {
     var citiesLabel: String { "\(traveller.summary.cities)" }
     var journeysLabel: String { "\(traveller.summary.journeys)" }
     var memoriesLabel: String { "\(traveller.summary.memories)" }
-    var hasProfile: Bool { !traveller.displayName.isEmpty }
+    var hasProfile: Bool { loadingState == .loaded }
 }

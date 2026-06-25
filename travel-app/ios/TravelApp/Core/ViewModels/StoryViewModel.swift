@@ -5,16 +5,19 @@ import Observation
 final class StoryViewModel {
     let story: StoryDTO
     let traveller: TravellerDTO
+    private(set) var loadingState: ViewModelLoadingState
 
     init(
         storyRepository: any StoryRepository,
         travellerRepository: any TravellerRepository
     ) {
-        self.story = storyRepository.story
+        let story = storyRepository.story
+        self.story = story
         self.traveller = travellerRepository.traveller
+        self.loadingState = .resolved(isEmpty: story.collections.isEmpty && story.drafts.isEmpty)
     }
 
-    var hasStories: Bool { !story.collections.isEmpty || !story.drafts.isEmpty }
+    var hasStories: Bool { loadingState == .loaded }
 
     var hero: StoryHeroPreview {
         StoryHeroPreview(

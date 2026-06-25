@@ -63,6 +63,7 @@ TravelApp/
       CollectionsRepository.swift     collections protocol + mock implementation
       OnThisDayRepository.swift       anniversary protocol + mock implementation
     ViewModels/
+      ViewModelLoadingState.swift     typed repository loading lifecycle
       TravellerViewModel.swift        root traveller presentation adapter
       PassportViewModel.swift         passport DTO mapping and display state
       TimelineViewModel.swift         timeline and traveller presentation mapping
@@ -142,6 +143,17 @@ their data mapping lives in one corresponding `Core/ViewModels` type.
 - No ViewModel performs I/O, persistence, navigation or backend work.
 - Initializer injection keeps mappings independently testable without coupling
   presentation code to a concrete data source.
+
+### Loading-state foundation
+
+Phase 25 adds `ViewModelLoadingState`, a shared deterministic lifecycle with
+`idle`, `loading`, `loaded`, `empty` and typed `failed` states. Each
+repository-backed ViewModel exposes a privately settable state and resolves
+its synchronous mock input to `loaded` or `empty` during initialization.
+
+Existing `has…` presentation properties now read that state using the same
+content predicates as before, so current screens, empty states and mock output
+remain unchanged. No loading or failure UI is rendered in this phase.
 
 ### Repository layer
 

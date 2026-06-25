@@ -5,16 +5,19 @@ import Observation
 final class OnThisDayViewModel {
     /// Source contract for this surface, from the Phase 12 DTO layer.
     let onThisDay: OnThisDayDTO
+    private(set) var loadingState: ViewModelLoadingState
 
     init(repository: any OnThisDayRepository) {
-        self.onThisDay = repository.onThisDay
+        let onThisDay = repository.onThisDay
+        self.onThisDay = onThisDay
+        self.loadingState = .resolved(isEmpty: onThisDay.entries.isEmpty)
     }
 
     /// Fixed reference year for deterministic "years ago" arithmetic. Kept in
     /// the view layer so the DTO performs no date work and stays Foundation-only.
     private let referenceYear = 2026
 
-    var hasMemories: Bool { !onThisDay.entries.isEmpty }
+    var hasMemories: Bool { loadingState == .loaded }
 
     /// Hero metrics derived directly from the DTO's entries.
     var hero: OnThisDayHeroPreview {

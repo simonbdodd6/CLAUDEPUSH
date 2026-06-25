@@ -4,12 +4,15 @@ import Observation
 @Observable
 final class CinematicViewModel {
     let cinematic: CinematicDTO
+    private(set) var loadingState: ViewModelLoadingState
 
     init(repository: any CinematicRepository) {
-        self.cinematic = repository.cinematic
+        let cinematic = repository.cinematic
+        self.cinematic = cinematic
+        self.loadingState = .resolved(isEmpty: cinematic.scenes.isEmpty)
     }
 
-    var hasScenes: Bool { !cinematic.scenes.isEmpty }
+    var hasScenes: Bool { loadingState == .loaded }
 
     var hero: CinematicHeroPreview {
         CinematicHeroPreview(

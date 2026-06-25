@@ -7,6 +7,7 @@ final class SettingsViewModel {
     let passport: PassportDTO
     let statistics: StatisticsDTO
     let collections: [CollectionDTO]
+    private(set) var loadingState: ViewModelLoadingState
 
     init(
         travellerRepository: any TravellerRepository,
@@ -14,13 +15,15 @@ final class SettingsViewModel {
         statisticsRepository: any StatisticsRepository,
         collectionsRepository: any CollectionsRepository
     ) {
-        self.traveller = travellerRepository.traveller
+        let traveller = travellerRepository.traveller
+        self.traveller = traveller
         self.passport = passportRepository.passport
         self.statistics = statisticsRepository.statistics
         self.collections = collectionsRepository.collections
+        self.loadingState = .resolved(isEmpty: traveller.displayName.isEmpty)
     }
 
-    var hasProfile: Bool { !traveller.displayName.isEmpty }
+    var hasProfile: Bool { loadingState == .loaded }
 
     var hero: SettingsHeroPreview {
         SettingsHeroPreview(

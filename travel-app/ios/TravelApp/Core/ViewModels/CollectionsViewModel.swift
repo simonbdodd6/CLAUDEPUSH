@@ -4,12 +4,15 @@ import Observation
 @Observable
 final class CollectionsViewModel {
     let collections: [CollectionDTO]
+    private(set) var loadingState: ViewModelLoadingState
 
     init(repository: any CollectionsRepository) {
-        self.collections = repository.collections
+        let collections = repository.collections
+        self.collections = collections
+        self.loadingState = .resolved(isEmpty: collections.isEmpty)
     }
 
-    var hasCollections: Bool { !collections.isEmpty }
+    var hasCollections: Bool { loadingState == .loaded }
 
     let themes = [
         CollectionThemePreview(id: "theme-coast", title: "Ocean & islands", caption: "Coastlines, harbours and sea crossings.", symbol: "sailboat.fill", accent: TravelTheme.current.ocean),

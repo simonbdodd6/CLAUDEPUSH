@@ -4,12 +4,15 @@ import Observation
 @Observable
 final class InsightsViewModel {
     let insights: InsightsDTO
+    private(set) var loadingState: ViewModelLoadingState
 
     init(repository: any InsightsRepository) {
-        self.insights = repository.insights
+        let insights = repository.insights
+        self.insights = insights
+        self.loadingState = .resolved(isEmpty: insights.cards.isEmpty)
     }
 
-    var hasInsights: Bool { !insights.cards.isEmpty }
+    var hasInsights: Bool { loadingState == .loaded }
 
     var hero: InsightsHeroPreview {
         InsightsHeroPreview(

@@ -8,6 +8,7 @@ final class SearchViewModel {
     let story: StoryDTO
     let collections: [CollectionDTO]
     let highlights: HighlightsDTO
+    private(set) var loadingState: ViewModelLoadingState
 
     init(
         travellerRepository: any TravellerRepository,
@@ -16,11 +17,25 @@ final class SearchViewModel {
         collectionsRepository: any CollectionsRepository,
         highlightsRepository: any HighlightsRepository
     ) {
-        self.traveller = travellerRepository.traveller
-        self.timeline = timelineRepository.timeline
-        self.story = storyRepository.story
-        self.collections = collectionsRepository.collections
-        self.highlights = highlightsRepository.highlights
+        let traveller = travellerRepository.traveller
+        let timeline = timelineRepository.timeline
+        let story = storyRepository.story
+        let collections = collectionsRepository.collections
+        let highlights = highlightsRepository.highlights
+
+        self.traveller = traveller
+        self.timeline = timeline
+        self.story = story
+        self.collections = collections
+        self.highlights = highlights
+        self.loadingState = .resolved(
+            isEmpty: timeline.years.isEmpty
+                && story.collections.isEmpty
+                && story.drafts.isEmpty
+                && collections.isEmpty
+                && highlights.moments.isEmpty
+                && highlights.achievements.isEmpty
+        )
     }
 
     var hero: SearchHeroPreview {
