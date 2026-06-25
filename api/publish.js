@@ -57,6 +57,15 @@ async function readScoped(scopedKey, legacyName, teamId) {
   return null;
 }
 
+// Per-block whitelist: players see ONLY the schedule (time + what) — the coach's
+// private cues (keyFocus / per-block coach assignment / internal ids) are dropped.
+function sanitiseBlocks(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(b => ({ time: String(b?.time || ''), activity: String(b?.activity || '') }))
+    .filter(b => b.activity);
+}
+
 function sanitiseSessions(raw) {
   if (!Array.isArray(raw)) return [];
   return raw.map(s => ({
@@ -64,8 +73,13 @@ function sanitiseSessions(raw) {
     title:       String(s.title       || ''),
     type:        String(s.type        || 'Training'),
     date:        String(s.date        || ''),
-    focus:       String(s.focus       || ''),
+    startTime:   String(s.startTime   || ''),
+    endTime:     String(s.endTime     || ''),
+    location:    String(s.location    || ''),
+    coachName:   String(s.coachName   || ''),  // lead coach name (not private)
+    focus:       String(s.focus       || ''),  // objectives
     deadline:    String(s.deadline    || ''),
+    blocks:      sanitiseBlocks(s.blocks),       // drill schedule (time + activity only)
     published:   Boolean(s.published),
     publishedAt: s.publishedAt || null,
   })).filter(s => s.id);

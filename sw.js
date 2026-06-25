@@ -160,10 +160,12 @@ self.addEventListener('notificationclick', event => {
     }
     const target = new URL(data.url || APP_URL, self.location.origin);
     if ((data.type || '').startsWith('availability')) target.searchParams.set('to', 'availability');
+    if ((data.type || '').startsWith('training'))     target.searchParams.set('to', 'week');
     const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
     const existing = windows.find(windowClient => windowClient.url.startsWith(self.location.origin));
     if (existing) {
       if ((data.type || '').startsWith('availability')) existing.postMessage({ type: 'navigate', to: 'availability' });
+      if ((data.type || '').startsWith('training'))     existing.postMessage({ type: 'navigate', to: 'week' });
       return existing.focus();
     }
     return clients.openWindow(target.href);
