@@ -6617,7 +6617,7 @@
       const placed = new Set();
       document.querySelectorAll('#matchday-pitch .j12-name').forEach(i => { const v = (i.value || '').trim().toLowerCase(); if (v) placed.add(v); });
       document.querySelectorAll('#coach-matchday .mcx2-bjname').forEach(i => { const v = (i.value || '').trim().toLowerCase(); if (v) placed.add(v); });
-      return state.players.filter(p => p.game === 'available' && !placed.has(String(p.name || '').trim().toLowerCase()));
+      return state.players.filter(p => (p.lifecycleStatus || 'active') !== 'archived' && !placed.has(String(p.name || '').trim().toLowerCase()));
     }
     let _mcPickTarget = null;
     function mcEnsurePicker() {
@@ -7440,6 +7440,12 @@
       const roleLabel = { coach:'Coach', admin:'Admin', medical:'Medical', player:'Player' };
       const rlbl = roleLabel[user?.role] || 'Player';
       const switchAccounts = canonicalSwitchAccounts().filter(u => u.id !== state.currentUserId);
+      // Beta UI cleanup: once signed in, hide the dev/multi-account chrome
+      // (Login/Join/Switch/DEV + the account-email "Switch account" list) from the
+      // sidebar so it never shows on Messages or elsewhere. Auth logic is untouched;
+      // Sign out lives in Settings. Logged-out users still get Login/Join.
+      const _betaSimpleUI = (typeof BETA_SIMPLE_UI !== 'undefined') && BETA_SIMPLE_UI;
+      const _betaAuthed = _betaSimpleUI && !!(user && user.id && ['coach','admin','medical','player'].includes(user.role));
 
       document.getElementById("authPanel").innerHTML = authTab === 'login' ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -7473,7 +7479,7 @@
           <button id="joinSubmitBtn" class="btn primary" type="button" onclick="joinSquad()" style="width:100%;font-size:12px">Send join request</button>
           <p class="muted" style="font-size:11px;margin:0">A coach must approve before player access is enabled.</p>
         </div>
-      ` : authTab === 'switch' ? `
+      ` : (authTab === 'switch' && !_betaSimpleUI) ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <strong style="font-size:13px">Switch account</strong>
           <button class="auth-tab" type="button" onclick="setAuthTab('closed')" aria-label="Close" style="padding:4px 8px;font-size:11px">✕</button>
@@ -7545,10 +7551,13 @@
             <small>${rlbl}</small>
           </div>
           <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
+            ${_betaAuthed ? '' : _betaSimpleUI ? `
+            <button class="auth-tab" type="button" onclick="setAuthTab('login')" style="padding:3px 7px;font-size:11px;white-space:nowrap">Login</button>
+            <button class="auth-tab" type="button" onclick="setAuthTab('join')" style="padding:3px 7px;font-size:11px;white-space:nowrap">Join</button>` : `
             <button class="auth-tab" type="button" onclick="setAuthTab('login')" style="padding:3px 7px;font-size:11px;white-space:nowrap">Login</button>
             <button class="auth-tab" type="button" onclick="setAuthTab('join')" style="padding:3px 7px;font-size:11px;white-space:nowrap">Join</button>
             <button class="auth-tab" type="button" onclick="setAuthTab('switch')" style="padding:3px 7px;font-size:11px;white-space:nowrap">Switch</button>
-            ${window._devLoginEnabled ? '<button class="auth-tab" type="button" onclick="setAuthTab(\'dev\')" style="padding:3px 7px;font-size:11px;white-space:nowrap;background:rgba(255,160,0,0.2);border-color:rgba(255,160,0,0.5);color:#ffa040">DEV</button>' : ''}
+            ${window._devLoginEnabled ? '<button class="auth-tab" type="button" onclick="setAuthTab(\'dev\')" style="padding:3px 7px;font-size:11px;white-space:nowrap;background:rgba(255,160,0,0.2);border-color:rgba(255,160,0,0.5);color:#ffa040">DEV</button>' : ''}`}
           </div>
         </div>
       `;
@@ -10642,8 +10651,12 @@
         "Post-match": "Review performance, log any new injuries, and begin planning for next week.",
       };
 
-      // Team selection data (pitch + bench + sub plan + player pool)
-      const matchdayPlayers  = state.players.filter(p => p.game === "available");
+      // Team selection data (pitch + bench + sub plan + player pool).
+      // The coach selects from the WHOLE active squad — availability is shown as a
+      // per-player status in the table, NOT used to hide members. (Previously this
+      // filtered p.game === "available", so a just-added member who hadn't replied
+      // to a match request never appeared in the Match Centre.)
+      const matchdayPlayers  = state.players.filter(p => (p.lifecycleStatus || 'active') !== 'archived');
       const selected         = matchdayPlayers.slice(0, 15);
       const fnames           = state.formationNames || {};
       const fphoto           = state.fphotoIds      || {};
