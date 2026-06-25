@@ -3949,7 +3949,11 @@
       ["messages",     "Messages"],
       ["availability", "Availability"],
       ["week",         "Training"],
-      ["fixtures",     "Calendar"],
+      // Calendar hidden from the simple Beta nav — it duplicates Training.
+      // The fixtures section, renderPlayerFixtures() and all calendar logic
+      // remain intact (still reachable via existing deep-links); only the nav
+      // entry is removed to keep the player navigation simple.
+      // ["fixtures",  "Calendar"],
     ];
 
     // V14 — formation read from the approved reference image, then 3 requested edits:
@@ -10494,6 +10498,9 @@
                     <input class="gs-sm-input" value="${(b.coach||"").replace(/"/g,"&quot;")}"
                       oninput="updateTimeBlock('${sessId}','${b.id}','coach',this.value)"
                       placeholder="e.g. Simon"
+                      name="session-plan-coach" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                      data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore
+                      readonly onfocus="this.removeAttribute('readonly')" onpointerdown="this.removeAttribute('readonly')" ontouchstart="this.removeAttribute('readonly')" onkeydown="this.removeAttribute('readonly')"
                       style="font-size:13px;padding:7px 9px">
                   </td>
                   <td style="vertical-align:top">
@@ -20452,6 +20459,10 @@
         </div>
         <input type="search" placeholder="Search members..." value="${esc(_chatNewDmQuery)}"
           oninput="chatSetNewDmQuery(this.value)"
+          id="message-recipient-picker" name="message-recipient-picker" role="searchbox" inputmode="search"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore
+          readonly onfocus="this.removeAttribute('readonly')" onpointerdown="this.removeAttribute('readonly')" ontouchstart="this.removeAttribute('readonly')" onkeydown="this.removeAttribute('readonly')"
           style="width:calc(100% - 32px);height:38px;border-radius:7px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);padding:0 10px;font-size:13px;margin:12px 16px">
         <div id="chatNewDmResults" style="display:grid;gap:4px;overflow:auto;padding:0 10px 12px">
           ${chatNewDmPickerResultsHtml(players)}
