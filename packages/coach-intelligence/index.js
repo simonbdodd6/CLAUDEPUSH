@@ -42,3 +42,5 @@ export { summarizeSelectionExplanation } from './selection-explanation-presenter
 export { diffDecisions } from './decision-intelligence-diff.js'
 
 export { summarizeDecisionDiff } from './decision-intelligence-diff-presenter.js'
+
+export { classifyDecisionDiff } from './decision-intelligence-diff-severity.js'
