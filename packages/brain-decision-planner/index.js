@@ -36,3 +36,7 @@ export {
 export {
   runBrainDryRunMatrix,
 } from './brain-dry-run-matrix.js'
+
+export {
+  summarizeBrainDryRunMatrix,
+} from './brain-dry-run-matrix-presenter.js'
