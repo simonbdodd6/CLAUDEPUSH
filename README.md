@@ -33,3 +33,13 @@ That file contains the complete single-file prototype.
 ## Notes
 
 The app is linked to Vercel. Add the VAPID, Upstash and cron environment variables described in `PUSH_NOTIFICATIONS.md` before testing live push delivery.
+
+## AI Brain Documentation (dormant intelligence layer)
+
+The **Coach's Eye Intelligence / AI Brain** is a separate, optional, **dormant** layer that sits beside
+the Core MVP above. It is not imported by the app, changes no Core behaviour, and runs no AI in
+production — it is proven only by the test suite. Start here:
+
+- [`docs/BRAIN_ARCHITECTURE_ATLAS.md`](docs/BRAIN_ARCHITECTURE_ATLAS.md) — repo-level architecture map (the single source of truth for how the Brain is organised internally).
+- [`packages/coach-core-adapter/README.md`](packages/coach-core-adapter/README.md) — Core adapter and pipeline-bridge package guide.
+- [`packages/brain-decision-planner/README.md`](packages/brain-decision-planner/README.md) — read-only boundary package guide.
