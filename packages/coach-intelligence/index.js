@@ -40,3 +40,5 @@ export { buildSelectionExplanation } from './selection-explanation.js'
 export { summarizeSelectionExplanation } from './selection-explanation-presenter.js'
 
 export { diffDecisions } from './decision-intelligence-diff.js'
+
+export { summarizeDecisionDiff } from './decision-intelligence-diff-presenter.js'
