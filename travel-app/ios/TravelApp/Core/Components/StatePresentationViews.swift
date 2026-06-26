@@ -21,7 +21,7 @@ struct LoadingStateView: View {
                 ProgressView()
                     .progressViewStyle(.circular)
                     .tint(TravelTheme.current.tint)
-                    .frame(width: 88, height: 88)
+                    .frame(width: TravelIconSize.statusBadge, height: TravelIconSize.statusBadge)
                     .background(.thinMaterial, in: Circle())
                 Text(title)
                     .font(TravelTypography.section)
@@ -51,9 +51,9 @@ struct EmptyStateView: View {
         GlassCard(prominence: .hero) {
             VStack(spacing: TravelSpacing.md) {
                 Image(systemName: symbol)
-                    .font(.system(size: 44, weight: .semibold))
+                    .font(.system(size: TravelIconSize.statusGlyph, weight: .semibold))
                     .foregroundStyle(accent)
-                    .frame(width: 88, height: 88)
+                    .frame(width: TravelIconSize.statusBadge, height: TravelIconSize.statusBadge)
                     .background(.thinMaterial, in: Circle())
                 Text(presentation.title)
                     .font(TravelTypography.section)
@@ -80,15 +80,15 @@ struct EmptyStateView: View {
 struct ErrorStateView: View {
     let presentation: ErrorStatePresentation
     var symbol: String = "exclamationmark.triangle"
-    var accent: Color = TravelTheme.current.coral
+    var accent: Color = TravelTheme.current.danger
 
     var body: some View {
         GlassCard(prominence: .hero) {
             VStack(spacing: TravelSpacing.md) {
                 Image(systemName: symbol)
-                    .font(.system(size: 44, weight: .semibold))
+                    .font(.system(size: TravelIconSize.statusGlyph, weight: .semibold))
                     .foregroundStyle(accent)
-                    .frame(width: 88, height: 88)
+                    .frame(width: TravelIconSize.statusBadge, height: TravelIconSize.statusBadge)
                     .background(.thinMaterial, in: Circle())
                 Text(presentation.title)
                     .font(TravelTypography.section)

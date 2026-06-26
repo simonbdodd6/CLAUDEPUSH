@@ -32,7 +32,7 @@ struct GlassCard<Content: View>: View {
                 RoundedRectangle(cornerRadius: prominence == .hero ? TravelRadius.hero : TravelRadius.md, style: .continuous)
                     .stroke(.white.opacity(0.35), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.08), radius: 18, x: 0, y: 12)
+            .travelShadow(TravelElevation.card)
     }
 }
 
@@ -286,9 +286,9 @@ struct FeatureEmptyState: View {
         GlassCard(prominence: .hero) {
             VStack(spacing: TravelSpacing.md) {
                 Image(systemName: symbol)
-                    .font(.system(size: 44, weight: .semibold))
+                    .font(.system(size: TravelIconSize.statusGlyph, weight: .semibold))
                     .foregroundStyle(accent)
-                    .frame(width: 88, height: 88)
+                    .frame(width: TravelIconSize.statusBadge, height: TravelIconSize.statusBadge)
                     .background(.thinMaterial, in: Circle())
                 Text(title)
                     .font(TravelTypography.section)
