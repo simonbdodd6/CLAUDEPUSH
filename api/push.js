@@ -1,6 +1,6 @@
 // Immediate Web Push delivery for coach "Send now" actions.
 import webpush from 'web-push';
-import { load, save } from './_lib.js';
+import { load, save, clubMemberSubscriptions } from './_lib.js';
 import { recentResponders } from './_availabilityStore.js';
 import { kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key } from './_keys.js';
@@ -8,23 +8,6 @@ import { resolveVariables } from './_variables.js';
 import { setCors, vapidContact, vapidKeyStatus } from './_http.js';
 import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
 import { loadNotificationPreferenceMap, notificationAllowed, loadTeamMembers } from './_identityStore.js';
-
-// Club isolation. Push subscriptions live in ONE global list with no teamId,
-// while the roster / sessions / squad / club are namespaced per team. Return
-// only the subscriptions whose user is an ACTIVE member of `teamId`, so a send
-// never reaches devices outside the sender's club. A joined player's
-// subscription.userId equals their team_member.userId; playerId / legacyPlayerId
-// are also checked so legacy-id subscriptions still match their member.
-export function clubMemberSubscriptions(allSubscriptions = [], teamMembers = [], teamId = '') {
-  const memberIds = new Set(
-    (Array.isArray(teamMembers) ? teamMembers : [])
-      .filter(member => String(member.teamId) === String(teamId) && member.status === 'active')
-      .map(member => String(member.userId))
-  );
-  return (Array.isArray(allSubscriptions) ? allSubscriptions : []).filter(item =>
-    [item.userId, item.playerId, item.legacyPlayerId].some(value => value && memberIds.has(String(value)))
-  );
-}
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });

@@ -2,7 +2,7 @@
 import { kvGet, kvSet, kvConfigured } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { setCors } from './_http.js';
-import { requireTenantPermission, PERM } from './_tenant.js';
+import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -32,11 +32,13 @@ export default async function handler(req, res) {
   setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
+  let sessionContext;
   try {
-    await requireTenantPermission(req, PERM.MESSAGING);
+    sessionContext = await requireTenantPermission(req, PERM.MESSAGING);
   } catch (error) {
     return sendAuthError(res, error);
   }
+  const teamId = tenantTeamId(sessionContext);
 
   if (req.method === 'GET') {
     return res.status(200).json({ schedules: await readSchedules() });
@@ -56,6 +58,9 @@ export default async function handler(req, res) {
     const now = new Date().toISOString();
     const schedule = {
       id: String(id || `sch-${Date.now()}`),
+      // Club isolation: every schedule records the creating coach's team so the
+      // cron dispatcher can only deliver it to active members of that club.
+      teamId: existing?.teamId || teamId,
       name: String(name).trim().slice(0, 80),
       templateId: String(templateId),
       days: normalizedDays,
@@ -92,7 +97,7 @@ export default async function handler(req, res) {
       if (!safePatch.days.length) return res.status(400).json({ error: 'At least one valid day is required' });
       safePatch.day = safePatch.days[0].toLowerCase();
     }
-    schedules[index] = { ...schedules[index], ...safePatch, updatedAt: new Date().toISOString() };
+    schedules[index] = { ...schedules[index], ...safePatch, teamId: schedules[index].teamId || teamId, updatedAt: new Date().toISOString() };
     await kvSet(SCHEDULES_KEY, schedules);
     return res.status(200).json({ ok: true, schedule: schedules[index] });
   }

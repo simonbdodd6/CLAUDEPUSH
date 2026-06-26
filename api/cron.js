@@ -1,13 +1,13 @@
 // Scheduled Web Push dispatcher.
 // cron-job.org calls every 5 minutes; Vercel Cron supplies daily fallback runs.
 import webpush from 'web-push';
-import { load, save } from './_lib.js';
+import { load, save, activeMemberIdSet, subscriptionsForMembers } from './_lib.js';
 import { recentResponders } from './_availabilityStore.js';
 import { kvGet, kvSet, kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { resolveVariables } from './_variables.js';
 import { setCors, readSecret, vapidContact } from './_http.js';
-import { OBSOLETE_LEGACY_ACCOUNT_IDS, loadNotificationPreferenceMap, notificationAllowed } from './_identityStore.js';
+import { OBSOLETE_LEGACY_ACCOUNT_IDS, loadNotificationPreferenceMap, notificationAllowed, loadTeamMembers } from './_identityStore.js';
 import { OBSOLETE_DM_PARTICIPANT_IDS } from './chat.js';
 
 const DAY_MAP = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
@@ -114,9 +114,14 @@ export default async function handler(req, res) {
   // (vercel.json) so external schedulers keep working unchanged.
   if ((req.query?.job || req.body?.job) === 'reminder') {
     const subscribers = await load();
+    // Club isolation: the weekly reminder carries no club-specific content, but
+    // it must still reach ONLY active members of a club — never removed members,
+    // legacy / test / demo accounts, or devices with no current membership.
+    const reminderMembers = await loadTeamMembers();
+    const memberSubscribers = subscriptionsForMembers(subscribers, activeMemberIdSet(reminderMembers));
     const responded = await recentResponders(7);
     const reminderPrefs = await loadNotificationPreferenceMap();
-    const targets = subscribers.filter(item => !responded.has(item.label))
+    const targets = memberSubscribers.filter(item => !responded.has(item.label))
       .filter(item => notificationAllowed(reminderPrefs, item.userId, { type: 'availability', sessionId: 'game' }));
     const title = 'Availability reminder';
     const body = "Hi {{first_name}}! Please set your availability for this week's sessions and match in Coach's Eye. - {{coach_name}}";
@@ -156,6 +161,7 @@ export default async function handler(req, res) {
     readArray('schedules'), readArray('templates'), load(),
   ]);
   const due = schedules.filter(schedule => scheduleIsDue(schedule, now, fireWindow));
+  const automationMembers = await loadTeamMembers();
   const results = [];
   const expiredEndpoints = new Set();
 
@@ -165,10 +171,18 @@ export default async function handler(req, res) {
       results.push({ scheduleId: schedule.id, sent: 0, failed: 0, error: 'Template not found' });
       continue;
     }
-    let targetSubscribers = subscribers;
+    // Club isolation: a schedule's message is club-specific content, so it may
+    // only reach ACTIVE members of the team that created it. A schedule with no
+    // teamId predates club tagging — skip it (fail-closed) so it can never be
+    // delivered across clubs; it heals automatically when the coach re-saves it.
+    if (!schedule.teamId) {
+      results.push({ scheduleId: schedule.id, sent: 0, failed: 0, skipped: 'no teamId — re-save to attach club' });
+      continue;
+    }
+    let targetSubscribers = subscriptionsForMembers(subscribers, activeMemberIdSet(automationMembers, schedule.teamId));
     if (schedule.audience === 'no-reply') {
       const responded = await recentResponders(7);
-      targetSubscribers = subscribers.filter(item => !responded.has(item.label));
+      targetSubscribers = targetSubscribers.filter(item => !responded.has(item.label));
     }
     const notificationType = template.category === 'availability' ? 'availability' : 'message';
     const schedulePrefs = await loadNotificationPreferenceMap();

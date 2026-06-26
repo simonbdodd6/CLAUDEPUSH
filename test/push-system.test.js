@@ -78,7 +78,7 @@ test('schedule API preserves no-reply audience and multi-day selections', async 
 });
 
 test('push send is scoped to active members of the sender club only', async () => {
-  const { clubMemberSubscriptions } = await import('../api/push.js');
+  const { clubMemberSubscriptions } = await import('../api/_lib.js');
   const teamMembers = [
     { teamId: 'beta-test-club', userId: 'player-amy',  status: 'active' },   // member
     { teamId: 'beta-test-club', userId: 'coach-simon', status: 'active' },   // member (sender)
@@ -103,6 +103,68 @@ test('push send is scoped to active members of the sender club only', async () =
     [{ label: 'Aliased', playerId: 'player-amy', subscription: { endpoint: 'e2' } }],
     teamMembers, 'beta-test-club');
   assert.deepEqual(aliasScoped.map(s => s.label), ['Aliased']);
+});
+
+test('scheduled automation is scoped to its club — cross-club members excluded', async () => {
+  // Mirrors the api/cron.js automation path: targetSubscribers =
+  // subscriptionsForMembers(subscribers, activeMemberIdSet(members, schedule.teamId))
+  const { activeMemberIdSet, subscriptionsForMembers } = await import('../api/_lib.js');
+  const members = [
+    { teamId: 'beta-test-club', userId: 'amy',   status: 'active' },
+    { teamId: 'other-club',     userId: 'manon', status: 'active' },   // active, but a DIFFERENT club
+    { teamId: 'beta-test-club', userId: 'gone',  status: 'removed' },  // removed from this club
+  ];
+  const subs = [
+    { label: 'Amy',   userId: 'amy',   subscription: { endpoint: 'a' } },
+    { label: 'Manon', userId: 'manon', subscription: { endpoint: 'm' } },
+    { label: 'Gone',  userId: 'gone',  subscription: { endpoint: 'g' } },
+    { label: 'Ghost', userId: 'ghost', subscription: { endpoint: 'x' } },  // no membership at all
+  ];
+  const scoped = subscriptionsForMembers(subs, activeMemberIdSet(members, 'beta-test-club'));
+  assert.deepEqual(scoped.map(s => s.label), ['Amy'],
+    'a beta-test-club schedule reaches only active beta-test-club members; Manon (other club), Gone (removed) and Ghost (non-member) are excluded');
+});
+
+test('weekly reminder reaches active members only, never non-members', async () => {
+  const { activeMemberIdSet, subscriptionsForMembers } = await import('../api/_lib.js');
+  const members = [
+    { teamId: 'beta-test-club', userId: 'amy',  status: 'active' },
+    { teamId: 'other-club',     userId: 'bob',  status: 'active' },
+    { teamId: 'beta-test-club', userId: 'gone', status: 'removed' },
+  ];
+  const subs = [
+    { label: 'Amy',    userId: 'amy',      subscription: { endpoint: 'a' } },
+    { label: 'Bob',    userId: 'bob',      subscription: { endpoint: 'b' } },
+    { label: 'Gone',   userId: 'gone',     subscription: { endpoint: 'g' } },
+    { label: 'Legacy', userId: 'legacy-x', subscription: { endpoint: 'l' } },
+  ];
+  const scoped = subscriptionsForMembers(subs, activeMemberIdSet(members)); // union of active members
+  assert.deepEqual(scoped.map(s => s.label).sort(), ['Amy', 'Bob'],
+    'every active member receives the generic reminder; removed + legacy/non-member excluded');
+});
+
+test('cron weekly reminder handler targets only active members (end-to-end)', async () => {
+  store.clear();
+  const webpush = (await import('web-push')).default;
+  const vapid = webpush.generateVAPIDKeys();
+  process.env.VAPID_PUBLIC_KEY = vapid.publicKey;
+  process.env.VAPID_PRIVATE_KEY = vapid.privateKey;
+  process.env.CRON_SECRET = 'cron-secret';
+  store.set('app:identity:team_members', JSON.stringify([
+    { teamId: 'beta-test-club', userId: 'amy',  status: 'active' },   // member → targeted
+    { teamId: 'beta-test-club', userId: 'gone', status: 'removed' },  // removed → excluded
+  ]));
+  const sub = endpoint => ({ subscription: { endpoint, keys: { p256dh: vapid.publicKey, auth: 'AAAAAAAAAAAAAAAAAAAAAA' } } });
+  store.set('app:subscriptions', JSON.stringify([
+    { label: 'Amy',   userId: 'amy',   ...sub('https://example.invalid/amy') },
+    { label: 'Gone',  userId: 'gone',  ...sub('https://example.invalid/gone') },
+    { label: 'Manon', userId: 'manon', ...sub('https://example.invalid/manon') },  // no membership → excluded
+  ]));
+  const { default: cronHandler } = await import('../api/cron.js');
+  const res = response();
+  await cronHandler({ method: 'POST', query: { job: 'reminder' }, headers: { authorization: 'Bearer cron-secret' }, body: {} }, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.total, 1, 'only the active member (Amy) is targeted; removed + non-member subscriptions excluded');
 });
 
 test('availability saves registered player replies and rejects unknown endpoints', async () => {
