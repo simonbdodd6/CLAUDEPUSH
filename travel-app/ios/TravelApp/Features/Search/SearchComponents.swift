@@ -190,21 +190,13 @@ struct SearchStatisticCard: View {
     let preview: SearchStatisticPreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                Image(systemName: preview.symbol)
-                    .font(.title3)
-                    .foregroundStyle(preview.accent)
-                Text(preview.value)
-                    .font(TravelTypography.title)
-                Text(preview.label)
-                    .font(TravelTypography.cardTitle)
-                Text(preview.caption)
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        PremiumStatCard(
+            symbol: preview.symbol,
+            value: preview.value,
+            label: preview.label,
+            caption: preview.caption,
+            accent: preview.accent
+        )
     }
 }
 

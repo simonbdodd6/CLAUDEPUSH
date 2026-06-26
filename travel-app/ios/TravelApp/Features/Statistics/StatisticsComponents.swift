@@ -258,21 +258,13 @@ struct MilestoneStatisticCard: View {
     let preview: MilestoneStatisticPreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                Image(systemName: preview.symbol)
-                    .font(.title3)
-                    .foregroundStyle(preview.accent)
-                Text(preview.value)
-                    .font(TravelTypography.title)
-                Text(preview.title)
-                    .font(TravelTypography.cardTitle)
-                Text(preview.caption)
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        PremiumStatCard(
+            symbol: preview.symbol,
+            value: preview.value,
+            label: preview.title,
+            caption: preview.caption,
+            accent: preview.accent
+        )
     }
 }
 

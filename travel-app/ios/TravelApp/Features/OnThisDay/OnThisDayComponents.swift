@@ -238,21 +238,13 @@ struct OnThisDayStatisticCard: View {
     let statistic: OnThisDayStatisticPreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                Image(systemName: statistic.symbol)
-                    .font(.title3)
-                    .foregroundStyle(statistic.accent)
-                Text(statistic.value)
-                    .font(TravelTypography.title)
-                Text(statistic.label)
-                    .font(TravelTypography.cardTitle)
-                Text(statistic.caption)
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        PremiumStatCard(
+            symbol: statistic.symbol,
+            value: statistic.value,
+            label: statistic.label,
+            caption: statistic.caption,
+            accent: statistic.accent
+        )
     }
 }
 

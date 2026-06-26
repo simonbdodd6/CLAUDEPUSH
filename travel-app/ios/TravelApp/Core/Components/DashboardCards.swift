@@ -231,15 +231,6 @@ private struct MetricPill: View {
     let label: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-            Text(value)
-                .font(TravelTypography.cardTitle)
-            Text(label)
-                .font(TravelTypography.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(TravelSpacing.sm)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: TravelRadius.sm, style: .continuous))
+        PremiumMetricTile(value: value, label: label)
     }
 }
