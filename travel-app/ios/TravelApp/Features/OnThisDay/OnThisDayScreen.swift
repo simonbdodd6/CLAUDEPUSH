@@ -44,7 +44,7 @@ struct OnThisDayScreen: View {
         }
 
         PremiumSection(title: "Historical journey highlights", subtitle: "Standout scenes from this date across the years.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 180) {
                 ForEach(viewModel.historical) { memory in
                     HistoricalMemoryCard(memory: memory)
                 }
@@ -52,7 +52,7 @@ struct OnThisDayScreen: View {
         }
 
         PremiumSection(title: "Year in review", subtitle: "A compact look back at notable travel years.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 180) {
                 ForEach(viewModel.yearsInReview) { review in
                     YearInReviewCard(review: review)
                 }
@@ -60,7 +60,7 @@ struct OnThisDayScreen: View {
         }
 
         PremiumSection(title: "Travel statistics", subtitle: "A compact overview of this date's memories.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.statistics) { statistic in
                     OnThisDayStatisticCard(statistic: statistic)
                 }

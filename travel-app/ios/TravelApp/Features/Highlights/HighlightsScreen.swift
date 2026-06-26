@@ -28,7 +28,7 @@ struct HighlightsScreen: View {
     @ViewBuilder
     private var populatedContent: some View {
         PremiumSection(title: "Best moments", subtitle: "Static standout scenes from the traveller archive.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 180) {
                 ForEach(viewModel.moments) { moment in
                     HighlightMomentCard(moment: moment)
                 }
@@ -36,7 +36,7 @@ struct HighlightsScreen: View {
         }
 
         PremiumSection(title: "Achievements", subtitle: "Fixed milestone counts, not generated stats.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.achievements) { achievement in
                     AchievementHighlightCard(achievement: achievement)
                 }
@@ -52,7 +52,7 @@ struct HighlightsScreen: View {
         }
 
         PremiumSection(title: "Memorable events", subtitle: "Fixed reason-code memories without generated text.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 180) {
                 ForEach(viewModel.memories) { memory in
                     TravelMemoryCard(memory: memory)
                 }

@@ -32,7 +32,7 @@ struct SettingsScreen: View {
         }
 
         PremiumSection(title: "Preferences", subtitle: "Read-only presentation settings for this static milestone.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 180) {
                 ForEach(viewModel.preferences) { preference in
                     PreferenceCategoryCard(preview: preference)
                 }
@@ -52,7 +52,7 @@ struct SettingsScreen: View {
         }
 
         PremiumSection(title: "Statistics", subtitle: "A compact read-only summary of the local preview archive.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.statisticsCards) { statistic in
                     SettingsStatisticCard(preview: statistic)
                 }

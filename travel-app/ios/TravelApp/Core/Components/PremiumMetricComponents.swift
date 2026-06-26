@@ -65,11 +65,11 @@ struct PremiumMetricTile: View {
     }
 }
 
-/// An adaptive grid grouping for metric / stat cards.
+/// An adaptive grid grouping for cards and tiles.
 ///
 /// Encapsulates the `LazyVGrid(columns: [GridItem(.adaptive(minimum:), spacing:)])`
 /// layout repeated across feature screens, keeping spacing consistent.
-struct PremiumMetricGrid<Content: View>: View {
+struct PremiumAdaptiveGrid<Content: View>: View {
     var minimumWidth: CGFloat = 156
     @ViewBuilder var content: Content
 

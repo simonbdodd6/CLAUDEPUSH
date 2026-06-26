@@ -69,7 +69,7 @@ struct HomeScreen: View {
                 }
 
                 PremiumSection(title: "Highlights", subtitle: "Fixed-category cards ready for deterministic output.") {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+                    PremiumAdaptiveGrid(minimumWidth: 156) {
                         ForEach(viewModel.highlights) { highlight in
                             HighlightCard(highlight: highlight)
                         }
@@ -77,7 +77,7 @@ struct HomeScreen: View {
                 }
 
                 PremiumSection(title: "Insights", subtitle: "Reason-code first, prose-free backend alignment.") {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+                    PremiumAdaptiveGrid(minimumWidth: 156) {
                         ForEach(viewModel.insights) { insight in
                             InsightCard(insight: insight)
                         }

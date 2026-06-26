@@ -32,7 +32,7 @@ struct StoryScreen: View {
             subtitle: "Shelves for related travel memories.",
             accessory: { EmptyView() }
         ) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 180) {
                 ForEach(viewModel.collections) { collection in
                     StoryCollectionCard(collection: collection)
                 }
@@ -56,7 +56,7 @@ struct StoryScreen: View {
         }
 
         PremiumSection(title: "Story themes", subtitle: "Visual directions for the traveller archive.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.themes) { theme in
                     StoryThemeCard(theme: theme)
                 }
@@ -72,7 +72,7 @@ struct StoryScreen: View {
         }
 
         PremiumSection(title: "Story statistics", subtitle: "A compact overview of the story shelf.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.statistics) { statistic in
                     StoryStatisticCard(statistic: statistic)
                 }

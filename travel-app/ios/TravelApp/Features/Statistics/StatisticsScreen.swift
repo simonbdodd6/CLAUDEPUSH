@@ -40,7 +40,7 @@ struct StatisticsScreen: View {
         }
 
         PremiumSection(title: "Journey milestones", subtitle: "The markers that define the travel timeline.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.milestones) { milestone in
                     MilestoneStatisticCard(preview: milestone)
                 }
@@ -56,7 +56,7 @@ struct StatisticsScreen: View {
         }
 
         PremiumSection(title: "Travel patterns", subtitle: "Fixed observations from the current preview history.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 180) {
                 ForEach(viewModel.patterns) { pattern in
                     TravelPatternCard(pattern: pattern)
                 }
@@ -64,7 +64,7 @@ struct StatisticsScreen: View {
         }
 
         PremiumSection(title: "Statistics summary", subtitle: "Every metric supplied by StatisticsDTO.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.summaryMetrics) { metric in
                     StatisticsSummaryCard(metric: metric)
                 }

@@ -161,7 +161,7 @@ struct PassportStatGrid: View {
     let stats: [PassportStatPreview]
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+        PremiumAdaptiveGrid(minimumWidth: 156) {
             ForEach(stats) { stat in
                 PassportStatTile(stat: stat)
             }

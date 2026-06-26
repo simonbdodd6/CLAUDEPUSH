@@ -28,7 +28,7 @@ struct CinematicScreen: View {
     @ViewBuilder
     private var populatedContent: some View {
         PremiumSection(title: "Travel film reels", subtitle: "Visual reels grouped by atmosphere and journey shape.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 180) {
                 ForEach(viewModel.reels) { reel in
                     FilmReelCard(reel: reel)
                 }
@@ -44,7 +44,7 @@ struct CinematicScreen: View {
         }
 
         PremiumSection(title: "Destination moods", subtitle: "A visual mood board for the travel reel.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.moods) { mood in
                     DestinationMoodCard(mood: mood)
                 }
@@ -60,7 +60,7 @@ struct CinematicScreen: View {
         }
 
         PremiumSection(title: "Visual journey statistics", subtitle: "A compact overview of the cinematic surface.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.statistics) { statistic in
                     CinematicStatisticCard(statistic: statistic)
                 }

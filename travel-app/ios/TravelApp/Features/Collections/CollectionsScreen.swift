@@ -32,7 +32,7 @@ struct CollectionsScreen: View {
             subtitle: "Themed memory sets from the traveller archive.",
             accessory: { EmptyView() }
         ) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 180) {
                 ForEach(viewModel.collections) { collection in
                     CollectionGalleryCard(collection: collection)
                 }
@@ -44,7 +44,7 @@ struct CollectionsScreen: View {
         }
 
         PremiumSection(title: "Collection themes", subtitle: "Visual groupings across the archive.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.themes) { theme in
                     CollectionThemeCard(theme: theme)
                 }
@@ -52,7 +52,7 @@ struct CollectionsScreen: View {
         }
 
         PremiumSection(title: "Collection statistics", subtitle: "A compact overview of the collection shelf.") {
-            PremiumMetricGrid(minimumWidth: 156) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.statistics) { statistic in
                     CollectionStatisticCard(statistic: statistic)
                 }

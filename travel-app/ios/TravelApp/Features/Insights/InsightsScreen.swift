@@ -28,7 +28,7 @@ struct InsightsScreen: View {
     @ViewBuilder
     private var populatedContent: some View {
         PremiumSection(title: "Travel patterns", subtitle: "Static pattern cards from the traveller archive.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.patterns) { pattern in
                     TravelPatternCard(pattern: pattern)
                 }
@@ -36,7 +36,7 @@ struct InsightsScreen: View {
         }
 
         PremiumSection(title: "Destination trends", subtitle: "Places with repeated, recent or origin signals.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 180) {
                 ForEach(viewModel.trends) { trend in
                     DestinationTrendCard(trend: trend)
                 }
@@ -52,7 +52,7 @@ struct InsightsScreen: View {
         }
 
         PremiumSection(title: "Journey observations", subtitle: "Fixed reason-code insights without generated text.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 180) {
                 ForEach(viewModel.journeyInsights) { insight in
                     JourneyInsightCard(insight: insight)
                 }

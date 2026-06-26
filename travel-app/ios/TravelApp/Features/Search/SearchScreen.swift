@@ -48,7 +48,7 @@ struct SearchScreen: View {
         }
 
         PremiumSection(title: "Categories", subtitle: "Browse the archive by travel content type.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.categories) { category in
                     SearchCategoryCard(preview: category)
                 }
@@ -72,7 +72,7 @@ struct SearchScreen: View {
         }
 
         PremiumSection(title: "Search statistics", subtitle: "A compact view of the local preview index.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.statistics) { statistic in
                     SearchStatisticCard(preview: statistic)
                 }

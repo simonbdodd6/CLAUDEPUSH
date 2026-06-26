@@ -28,7 +28,7 @@ struct TimelineScreen: View {
     @ViewBuilder
     private var populatedContent: some View {
         PremiumSection(title: "Journey summary", subtitle: "Callouts from the traveller timeline.") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: TravelSpacing.md)], spacing: TravelSpacing.md) {
+            PremiumAdaptiveGrid(minimumWidth: 156) {
                 ForEach(viewModel.milestones) { milestone in
                     JourneyMilestoneCard(milestone: milestone)
                 }
