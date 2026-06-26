@@ -3750,8 +3750,10 @@
     /* search box */
     .mc7-search-wrap { position: relative; margin: 4px 0 9px; }
     .mc7-search { width: 100%; height: 36px; padding: 0 12px 0 32px; border-radius: 10px;
-      border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--ink); font-size: 13px; }
+      border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--ink); font-size: 13px;
+      box-sizing: border-box; line-height: 34px; white-space: nowrap; overflow: hidden; cursor: text; }
     .mc7-search::placeholder { color: var(--faint); }
+    .mc7-search:empty:before { content: attr(data-placeholder); color: var(--faint); pointer-events: none; }
     .mc7-search:focus { outline: none; border-color: var(--brand-line, rgba(52,211,153,.5)); box-shadow: 0 0 0 2px var(--ring, rgba(52,211,153,.18)); }
     .mc7-search-ic { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
 
@@ -3767,7 +3769,9 @@
     .mc-picker-x { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; }
     .mc-picker-x:hover { color: var(--ink); }
     .mc-picker-search { margin: 0 13px 9px; height: 36px; padding: 0 12px; border-radius: 10px;
-      border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--ink); font-size: 13px; }
+      border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--ink); font-size: 13px;
+      box-sizing: border-box; line-height: 34px; white-space: nowrap; overflow: hidden; cursor: text; }
+    .mc-picker-search:empty:before { content: attr(data-placeholder); color: var(--faint); pointer-events: none; }
     .mc-picker-search:focus { outline: none; border-color: var(--brand-line, rgba(52,211,153,.5)); }
     .mc-picker-list { overflow-y: auto; padding: 0 9px 9px; display: flex; flex-direction: column; gap: 2px; }
     .mc-picker-row { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
@@ -6672,15 +6676,6 @@
       document.querySelectorAll('#coach-matchday .mcx2-bjname').forEach(i => { const v = (i.value || '').trim().toLowerCase(); if (v) placed.add(v); });
       return state.players.filter(p => (p.lifecycleStatus || 'active') !== 'archived' && !placed.has(String(p.name || '').trim().toLowerCase()));
     }
-    // Off-screen decoy credential pair. Browsers bind their password manager to
-    // a username+password pair; placing inert decoys inside the search form makes
-    // Chrome/Safari attach autofill to THESE (hidden, non-tabbable, never
-    // submitted) rather than the player-search field.
-    function mcSearchDecoys() {
-      const s = 'position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
-      return '<input type="text" name="search-decoy-user" autocomplete="username" tabindex="-1" aria-hidden="true" style="' + s + '">' +
-             '<input type="password" name="search-decoy-pass" autocomplete="current-password" tabindex="-1" aria-hidden="true" style="' + s + '">';
-    }
     let _mcPickTarget = null;
     function mcEnsurePicker() {
       if (document.getElementById('mc-picker')) return;
@@ -6688,20 +6683,11 @@
       d.id = 'mc-picker'; d.className = 'hidden';
       d.innerHTML = '<div class="mc-picker-head"><span class="mc-picker-title"></span>' +
         '<button type="button" class="mc-picker-x" onclick="mcClosePicker()" aria-label="Close">✕</button></div>' +
-        '<form role="search" autocomplete="off" onsubmit="return false" style="display:contents">' + mcSearchDecoys() +
-        '<input type="search" class="mc-picker-search" id="mc-slot-filter" name="mc-slot-filter" placeholder="Search players…" oninput="mcRenderPickerList(this.value)" role="searchbox" inputmode="search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore readonly>' +
-        '</form>' +
+        // Contenteditable element — NOT an <input> — so no browser or password
+        // manager can attach saved login/email/password autofill to it.
+        '<div class="mc-picker-search" id="mc-slot-filter" role="searchbox" aria-label="Search players" data-placeholder="Search players…" contenteditable="true" inputmode="search" enterkeyhint="search" spellcheck="false" autocorrect="off" autocapitalize="off" oninput="mcRenderPickerList(this.textContent)" onkeydown="if(event.key===\'Enter\')event.preventDefault();"></div>' +
         '<div class="mc-picker-list"></div>';
       document.body.appendChild(d);
-      // readonly-on-load defeats Chrome/Safari/Edge autofill. Release ONLY when
-      // the user actually enters text — keydown (desktop) or touchstart (mobile,
-      // to raise the keyboard). NOT on pointerdown/focus: a desktop CLICK must
-      // leave the field readonly so the browser never shows the saved
-      // login/email dropdown when the field gains focus.
-      const ps = d.querySelector('.mc-picker-search');
-      const release = () => ps.removeAttribute('readonly');
-      ps.addEventListener('touchstart', release, { passive: true });
-      ps.addEventListener('keydown', release);
     }
     function mcOpenPicker(event) {
       event.stopPropagation();
@@ -6713,8 +6699,7 @@
         ? ('#' + _mcPickTarget.label + (RUGBY_POS[_mcPickTarget.label] ? ' · ' + RUGBY_POS[_mcPickTarget.label] : ''))
         : ('Bench ' + (_mcPickTarget.idx + 16));
       const _ps = pop.querySelector('.mc-picker-search');
-      _ps.value = '';
-      _ps.setAttribute('readonly', '');   // re-arm: never present as a credential field when the popup appears
+      _ps.textContent = '';
       mcRenderPickerList('');
       pop.classList.remove('hidden');
       const host = el.closest('.j3-slot, .mcx2-bjersey') || el;
@@ -10996,10 +10981,9 @@
             <div class="mcx2-card mc7-tools" ondragover="handleAvailDragOver(event)" ondragleave="handleAvailDragLeave(event)" ondrop="handleAvailDrop(event)">
               <div class="mcx2-card-head"><strong>Available Players</strong><span class="mcx2-chip">${available.length}</span></div>
               <div class="mc7-search-wrap">
-                <form role="search" autocomplete="off" onsubmit="return false" style="display:contents">${mcSearchDecoys()}
                 <svg class="mc7-search-ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
-                <input type="search" class="mc7-search" id="mc-player-filter" name="mc-player-filter" placeholder="Search players…" oninput="mcAvailSearch(this.value)" aria-label="Search players" role="searchbox" inputmode="search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore readonly ontouchstart="this.removeAttribute('readonly')" onkeydown="this.removeAttribute('readonly')">
-                </form>
+                <!-- Contenteditable element (NOT an <input>) so the browser/password manager cannot show saved login/email/password autofill. -->
+                <div class="mc7-search" id="mc-player-filter" role="searchbox" aria-label="Search players" data-placeholder="Search players…" contenteditable="true" inputmode="search" enterkeyhint="search" spellcheck="false" autocorrect="off" autocapitalize="off" oninput="mcAvailSearch(this.textContent)" onkeydown="if(event.key==='Enter')event.preventDefault();"></div>
               </div>
               <div class="mc7-sort">
                 <span class="mc7-sortlbl">Sort</span>
