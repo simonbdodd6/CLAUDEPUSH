@@ -13707,8 +13707,8 @@
             ${!canUseFeature('unlimited_push') ? `<div style="margin-top:12px">${renderUpgradePrompt('unlimited_push', { compact: true })}</div>` : ''}
           </div>
 
-          <!-- Device -->
-          <div class="card">
+          <!-- Device (hidden in the commercial Beta UI; functions retained) -->
+          <div class="card${_betaUI ? " beta-hidden" : ""}">
             <h2 style="margin-bottom:4px">Device</h2>
             <div style="${rowStyle}"><span style="font-size:13px">App version</span><strong style="font-size:13px;font-family:monospace">${esc(_settingsVersion || '…')}</strong></div>
             <div style="${rowStyle}"><span style="font-size:13px">Last sync</span><strong style="font-size:13px">${esc(lastSyncLabel())}</strong></div>
@@ -13744,16 +13744,20 @@
               </div>`).join('')}
           </div>
 
-          <!-- Danger zone -->
-          <div class="card" style="border-color:rgba(248,113,113,0.35)">
+          <!-- Danger zone (hidden in the commercial Beta UI; functions retained) -->
+          <div class="card${_betaUI ? " beta-hidden" : ""}" style="border-color:rgba(248,113,113,0.35)">
             <h2 style="margin-bottom:4px;color:#f87171">Danger zone</h2>
             <div style="display:grid;gap:8px;margin-top:10px">
               <button class="btn" type="button" onclick="settingsExportClub(this)" style="min-height:40px;font-size:13px">Export club data (JSON)</button>
               <button class="btn" type="button" onclick="settingsDeleteClub()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Delete club setup data…</button>
               ${canI('danger_zone') ? `<button class="btn" type="button" onclick="settingsCleanTestData()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Delete test data…</button>` : ''}
-              <button class="btn" type="button" onclick="settingsSignOut()" style="min-height:40px;font-size:13px">Sign out</button>
             </div>
             <p class="muted" style="font-size:11px;margin:10px 0 0">Deleting club data clears the club profile, published sessions, squad and roster for this club only. Player accounts and message history are kept.</p>
+          </div>
+
+          <!-- Sign out — kept available for normal operation -->
+          <div class="card">
+            <button class="btn" type="button" onclick="settingsSignOut()" style="width:100%;min-height:44px;font-size:13px">Sign out</button>
           </div>
         </div>`;
     }
