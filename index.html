@@ -17712,9 +17712,10 @@
             '</div>' +
           '</div>' +
         '</div>' +
-        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">' +
+        // "Active injuries" removed: it duplicated the hero "Injured" stat and is
+        // a strict subset of Medical alerts (every injury already appears there).
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">' +
           [
-            ['Active injuries', summ.injured.length,  '#f87171'],
             ['In rehabilitation', summ.rehab.length,  '#fbbf24'],
             ['Returning this week', summ.returning.length, '#60a5fa'],
             ['Medical alerts', summ.alerts.length,    '#f97316'],
@@ -17727,7 +17728,8 @@
         '</div>' +
         (summ.alerts.length > 0
           ? '<div class="card" style="margin-bottom:14px">' +
-              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Medical alerts (' + summ.alerts.length + ')</div>' +
+              '<div style="font-size:13px;font-weight:700">Medical alerts (' + summ.alerts.length + ')</div>' +
+              '<div style="font-size:11px;color:var(--muted);margin:2px 0 12px">Everyone needing medical attention — injuries, conditions and players to monitor.</div>' +
               summ.alerts.map(p => {
                 const mn  = medNotes[p.id] || {};
                 const rec = normalizeMedicalRecord(medRecs[p.id]);
@@ -17744,6 +17746,7 @@
                       (rec.bodyLocation ? ' · ' + esc(rec.bodyLocation) : '') +
                     '</div>' +
                   '</div>' +
+                  (p.game === 'injured' ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(248,113,113,0.14);color:#f87171">Injured</span>' : '') +
                   (ts ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + tsColor + '1a;color:' + tsColor + '">' + esc(medicalTrainingStatusLabel(ts)) + '</span>' : '') +
                   (rec.severity ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + sevColor + '1a;color:' + sevColor + '">' + MEDICAL_SEVERITY_LABELS[rec.severity] + '</span>' : '') +
                   (rec.expectedReturn ? '<span style="font-size:11px;color:var(--muted)">Return: ' + esc(rec.expectedReturn) + '</span>' : '') +
