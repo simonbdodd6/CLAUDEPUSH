@@ -65,7 +65,7 @@ struct FeatureDestinationView: View {
 
     var body: some View {
         switch route {
-        case .home: HomeScreen()
+        case .home: HomeScreen(container: container)
         case .passport: PassportScreen(container: container)
         case .timeline: TimelineScreen(container: container)
         case .story: StoryScreen(container: container)

@@ -56,6 +56,10 @@ struct AppContainer {
         )
     }
 
+    func makeHomeViewModel() -> HomeViewModel {
+        HomeViewModel()
+    }
+
     func makeTravellerViewModel() -> TravellerViewModel {
         TravellerViewModel(repository: travellerRepository)
     }
