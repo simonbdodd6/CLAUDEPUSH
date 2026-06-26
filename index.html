@@ -6672,6 +6672,15 @@
       document.querySelectorAll('#coach-matchday .mcx2-bjname').forEach(i => { const v = (i.value || '').trim().toLowerCase(); if (v) placed.add(v); });
       return state.players.filter(p => (p.lifecycleStatus || 'active') !== 'archived' && !placed.has(String(p.name || '').trim().toLowerCase()));
     }
+    // Off-screen decoy credential pair. Browsers bind their password manager to
+    // a username+password pair; placing inert decoys inside the search form makes
+    // Chrome/Safari attach autofill to THESE (hidden, non-tabbable, never
+    // submitted) rather than the player-search field.
+    function mcSearchDecoys() {
+      const s = 'position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
+      return '<input type="text" name="search-decoy-user" autocomplete="username" tabindex="-1" aria-hidden="true" style="' + s + '">' +
+             '<input type="password" name="search-decoy-pass" autocomplete="current-password" tabindex="-1" aria-hidden="true" style="' + s + '">';
+    }
     let _mcPickTarget = null;
     function mcEnsurePicker() {
       if (document.getElementById('mc-picker')) return;
@@ -6679,16 +6688,18 @@
       d.id = 'mc-picker'; d.className = 'hidden';
       d.innerHTML = '<div class="mc-picker-head"><span class="mc-picker-title"></span>' +
         '<button type="button" class="mc-picker-x" onclick="mcClosePicker()" aria-label="Close">✕</button></div>' +
-        '<input type="text" class="mc-picker-search" id="picker-search-v18" name="picker-search-v18" placeholder="Search players…" oninput="mcRenderPickerList(this.value)" role="searchbox" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore readonly>' +
+        '<form role="search" autocomplete="off" onsubmit="return false" style="display:contents">' + mcSearchDecoys() +
+        '<input type="search" class="mc-picker-search" id="mc-slot-filter" name="mc-slot-filter" placeholder="Search players…" oninput="mcRenderPickerList(this.value)" role="searchbox" inputmode="search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore readonly>' +
+        '</form>' +
         '<div class="mc-picker-list"></div>';
       document.body.appendChild(d);
-      // readonly-on-load defeats Chrome/Safari/Edge password-manager autofill.
-      // Release ONLY on a real user gesture (pointer/touch/keydown) — NOT on
-      // programmatic focus — so the auto-focused field stays readonly (and so
-      // autofill-proof) until the coach actually starts typing.
+      // readonly-on-load defeats Chrome/Safari/Edge autofill. Release ONLY when
+      // the user actually enters text — keydown (desktop) or touchstart (mobile,
+      // to raise the keyboard). NOT on pointerdown/focus: a desktop CLICK must
+      // leave the field readonly so the browser never shows the saved
+      // login/email dropdown when the field gains focus.
       const ps = d.querySelector('.mc-picker-search');
       const release = () => ps.removeAttribute('readonly');
-      ps.addEventListener('pointerdown', release);
       ps.addEventListener('touchstart', release, { passive: true });
       ps.addEventListener('keydown', release);
     }
@@ -10985,8 +10996,10 @@
             <div class="mcx2-card mc7-tools" ondragover="handleAvailDragOver(event)" ondragleave="handleAvailDragLeave(event)" ondrop="handleAvailDrop(event)">
               <div class="mcx2-card-head"><strong>Available Players</strong><span class="mcx2-chip">${available.length}</span></div>
               <div class="mc7-search-wrap">
+                <form role="search" autocomplete="off" onsubmit="return false" style="display:contents">${mcSearchDecoys()}
                 <svg class="mc7-search-ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
-                <input type="text" class="mc7-search" id="player-search-v18" name="player-search-v18" placeholder="Search players…" oninput="mcAvailSearch(this.value)" aria-label="Search players" role="searchbox" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore readonly onfocus="this.removeAttribute('readonly')" onpointerdown="this.removeAttribute('readonly')" ontouchstart="this.removeAttribute('readonly')">
+                <input type="search" class="mc7-search" id="mc-player-filter" name="mc-player-filter" placeholder="Search players…" oninput="mcAvailSearch(this.value)" aria-label="Search players" role="searchbox" inputmode="search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore readonly ontouchstart="this.removeAttribute('readonly')" onkeydown="this.removeAttribute('readonly')">
+                </form>
               </div>
               <div class="mc7-sort">
                 <span class="mc7-sortlbl">Sort</span>
