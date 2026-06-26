@@ -10450,9 +10450,24 @@
     }
 
     // ─── TRAINING ────────────────────────────────────────────────────────────
+    // Coach-facing display label for a training session card. The third session
+    // (the Match seed) reads as "Pre-game / Warm-up" to make its match-day prep
+    // purpose clear. Presentation only — the stored session.title and the
+    // player-facing views are unchanged.
+    function coachTrainingSessionLabel(session) {
+      if (session && (session.type === 'Match' || session.id === 'game')) return 'Pre-game / Warm-up';
+      return (session && (session.title || session.id)) || 'Session';
+    }
+    function isPreGameTrainingSession(session) {
+      return !!(session && (session.type === 'Match' || session.id === 'game'));
+    }
+
     function renderTraining() {
       // Phase 19 — tab delegation; planner falls through to existing render
-      const _tab = state.activeTrainingTab || 'planner';
+      let _tab = state.activeTrainingTab || 'planner';
+      // Beta: Dashboard / Attendance / History are hidden from the tab bar — route
+      // a saved/legacy selection to the Planner so the coach is never stranded.
+      if ((typeof BETA_SIMPLE_UI !== 'undefined' && BETA_SIMPLE_UI) && (_tab === 'dashboard' || _tab === 'attendance' || _tab === 'history')) _tab = 'planner';
       if (_tab === 'dashboard')  { _renderTrainingDashboard();  return; }
       if (_tab === 'attendance') { _renderTrainingAttendance(); return; }
       if (_tab === 'notes')      { _renderTrainingNotes();      return; }
@@ -10495,7 +10510,7 @@
             return `
               <button class="session-card-tab ${sessId===s.id?"active":""}" type="button" onclick="setTrainingSession('${s.id}')">
                 <span class="sc-time">${esc(s.date || s.type || s.id)}</span>
-                <strong>${esc(s.title || s.id)}</strong>
+                <strong>${esc(coachTrainingSessionLabel(s))}</strong>
                 <small style="color:var(--muted);font-size:11px;margin-top:3px;display:block">${sBlocks} block${sBlocks!==1?'s':''}${availBadge} · ${s.published ? '<span style="color:var(--green);font-weight:700">Published</span>' : 'Draft'}</small>
               </button>`;
           }).join("")}
@@ -10505,7 +10520,7 @@
         <div class="card" style="margin-bottom:14px">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
             <div>
-              <h2 style="margin:0;font-size:18px">${esc(sessObj?.title||"Session")}</h2>
+              <h2 style="margin:0;font-size:18px">${esc(coachTrainingSessionLabel(sessObj))}</h2>
               <p class="muted" style="margin-top:3px">Write your own start times, activities, lead coach and key focus for each block.</p>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -10576,7 +10591,9 @@
           </div>`}
         </div>
 
-        <!-- Coach sheet table (full width below 2 columns) -->
+        <!-- Printable coach summary — kept for Training session 1 & 2; hidden for the
+             Pre-game / Warm-up session, whose plan the main card above already shows. -->
+        ${!isPreGameTrainingSession(sessObj) ? `
         <div class="coach-sheet" style="margin-bottom:14px">
           <div class="coach-sheet-hdr">
             <div>
@@ -10607,7 +10624,7 @@
             <strong style="font-size:12px">Available (${available.length}/${state.players.length}):</strong>
             <span style="font-size:11px;color:var(--muted);margin-left:6px">${available.slice(0,10).map(p=>p.name.split(" ")[0]).join(", ")}${available.length>10?" …":""}</span>
           </div>
-        </div>
+        </div>` : ''}
 
         <!-- Past sessions archive — real data from lastWeekTrainingBlocks -->
         ${(() => {
@@ -18782,7 +18799,12 @@
 
     function _trainingTabBar() {
       const act = state.activeTrainingTab || 'planner';
-      const TABS = [['dashboard','Dashboard'],['planner','Planner'],['attendance','Attendance'],['notes','Notes'],['history','History']];
+      // Beta: Dashboard / Attendance / History are hidden — only Planner + Notes
+      // (the per-session notes feature) remain. The functions are retained.
+      const _betaUI = (typeof BETA_SIMPLE_UI !== 'undefined') && BETA_SIMPLE_UI;
+      const TABS = _betaUI
+        ? [['planner','Planner'],['notes','Notes']]
+        : [['dashboard','Dashboard'],['planner','Planner'],['attendance','Attendance'],['notes','Notes'],['history','History']];
       return '<div style="display:flex;gap:0;flex-wrap:wrap;margin-bottom:16px;border-bottom:2px solid var(--line)">' +
         TABS.map(([id, label]) => {
           const isAct = act === id;
