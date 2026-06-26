@@ -6,8 +6,25 @@ import { kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key } from './_keys.js';
 import { resolveVariables } from './_variables.js';
 import { setCors, vapidContact, vapidKeyStatus } from './_http.js';
-import { requireTenantPermission, PERM } from './_tenant.js';
-import { loadNotificationPreferenceMap, notificationAllowed } from './_identityStore.js';
+import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
+import { loadNotificationPreferenceMap, notificationAllowed, loadTeamMembers } from './_identityStore.js';
+
+// Club isolation. Push subscriptions live in ONE global list with no teamId,
+// while the roster / sessions / squad / club are namespaced per team. Return
+// only the subscriptions whose user is an ACTIVE member of `teamId`, so a send
+// never reaches devices outside the sender's club. A joined player's
+// subscription.userId equals their team_member.userId; playerId / legacyPlayerId
+// are also checked so legacy-id subscriptions still match their member.
+export function clubMemberSubscriptions(allSubscriptions = [], teamMembers = [], teamId = '') {
+  const memberIds = new Set(
+    (Array.isArray(teamMembers) ? teamMembers : [])
+      .filter(member => String(member.teamId) === String(teamId) && member.status === 'active')
+      .map(member => String(member.userId))
+  );
+  return (Array.isArray(allSubscriptions) ? allSubscriptions : []).filter(item =>
+    [item.userId, item.playerId, item.legacyPlayerId].some(value => value && memberIds.has(String(value)))
+  );
+}
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -79,8 +96,9 @@ export default async function handler(req, res) {
     }
   }
 
+  let sessionContext;
   try {
-    await requireTenantPermission(req, PERM.MESSAGING);
+    sessionContext = await requireTenantPermission(req, PERM.MESSAGING);
   } catch (error) {
     return sendAuthError(res, error);
   }
@@ -96,15 +114,27 @@ export default async function handler(req, res) {
   if (!['all', 'no-reply'].includes(audience)) return res.status(400).json({ error: 'audience must be all or no-reply' });
 
   const allSubscriptions = await load();
+
+  // ── Club isolation ────────────────────────────────────────────────────────
+  // Push subscriptions are stored in ONE global list with no teamId, while the
+  // roster / sessions / squad / club are all namespaced per team. Without this
+  // filter the send reaches every subscribed device — including users who are
+  // not members of the sender's club. Restrict delivery to ACTIVE members of the
+  // sender's team by intersecting subscriptions with identity:team_members for
+  // this teamId (subscription.userId === team_member.userId for joined players).
+  const teamId = tenantTeamId(sessionContext);
+  const teamMembers = await loadTeamMembers();
+  const clubSubscriptions = clubMemberSubscriptions(allSubscriptions, teamMembers, teamId);
+
   // Case-insensitive label match so "Nick Player" finds "nick player" sub
   const targetLower = targetLabel ? targetLabel.toLowerCase().trim() : null;
   const targetId = String(targetUserId || targetPlayerId || '').trim();
   let subscriptions = targetLower || targetId
-    ? allSubscriptions.filter(item => {
+    ? clubSubscriptions.filter(item => {
       if (targetId && [item.userId, item.playerId, item.legacyPlayerId].some(value => String(value || '') === targetId)) return true;
       return targetLower && (item.label || '').toLowerCase().trim() === targetLower;
     })
-    : allSubscriptions;
+    : clubSubscriptions;
   if (audience === 'no-reply') {
     const responded = await recentResponders(7);
     subscriptions = subscriptions.filter(item =>
@@ -121,7 +151,7 @@ export default async function handler(req, res) {
   }
 
   if (!subscriptions.length) {
-    const allLabels = allSubscriptions.map(s => s.label || s.userId || s.playerId);
+    const allLabels = clubSubscriptions.map(s => s.label || s.userId || s.playerId);
     return res.status(200).json({ ok: true, sent: 0, failed: 0, total: 0,
       note: targetLabel
         ? `No subscription found for "${targetLabel}". Subscribed players: ${allLabels.join(', ') || 'none'}`

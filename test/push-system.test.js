@@ -77,6 +77,34 @@ test('schedule API preserves no-reply audience and multi-day selections', async 
   assert.ok(store.has('app:schedules'));
 });
 
+test('push send is scoped to active members of the sender club only', async () => {
+  const { clubMemberSubscriptions } = await import('../api/push.js');
+  const teamMembers = [
+    { teamId: 'beta-test-club', userId: 'player-amy',  status: 'active' },   // member
+    { teamId: 'beta-test-club', userId: 'coach-simon', status: 'active' },   // member (sender)
+    { teamId: 'other-club',     userId: 'manon',       status: 'active' },   // member of a DIFFERENT club
+    { teamId: 'beta-test-club', userId: 'player-old',  status: 'removed' },  // former member, not active
+  ];
+  const subscriptions = [
+    { label: 'Amy',   userId: 'player-amy',  subscription: { endpoint: 'e-amy' } },
+    { label: 'Manon', userId: 'manon',       subscription: { endpoint: 'e-manon' } },  // not in beta-test-club
+    { label: 'Old',   userId: 'player-old',  subscription: { endpoint: 'e-old' } },    // removed member
+    { label: 'Ghost', userId: 'unknown-x',   subscription: { endpoint: 'e-ghost' } },  // no membership at all
+  ];
+  const scoped = clubMemberSubscriptions(subscriptions, teamMembers, 'beta-test-club');
+  const labels = scoped.map(s => s.label);
+  assert.deepEqual(labels, ['Amy'], 'only active beta-test-club members receive the notification');
+  assert.ok(!labels.includes('Manon'), 'a member of another club must NOT receive it');
+  assert.ok(!labels.includes('Old'),   'a removed member must NOT receive it');
+  assert.ok(!labels.includes('Ghost'), 'a subscription with no membership must NOT receive it');
+
+  // playerId / legacyPlayerId also resolve to the member id (joined-player aliases).
+  const aliasScoped = clubMemberSubscriptions(
+    [{ label: 'Aliased', playerId: 'player-amy', subscription: { endpoint: 'e2' } }],
+    teamMembers, 'beta-test-club');
+  assert.deepEqual(aliasScoped.map(s => s.label), ['Aliased']);
+});
+
 test('availability saves registered player replies and rejects unknown endpoints', async () => {
   store.clear();
   store.set('app:subscriptions', JSON.stringify([
