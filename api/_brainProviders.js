@@ -13,7 +13,7 @@ import { loadAvailability } from './_availabilityStore.js';
 import { kvGet } from './_kv.js';
 import { key } from './_keys.js';
 import { runBrainDryRun } from '../packages/brain-decision-planner/index.js';
-import { runCoachIntelligencePipeline, buildCoachRecommendation, runSelectionPipeline } from '../packages/coach-intelligence/index.js';
+import { runCoachIntelligencePipeline, buildCoachRecommendation, runSelectionPipeline, assessMatchReadiness } from '../packages/coach-intelligence/index.js';
 
 const DEFAULT_INTENT = Object.freeze({ category: 'selection-preference', confidence: 0.7, matchedSignals: [] });
 
@@ -95,12 +95,18 @@ export async function buildBrainDraft({ coachId, teamId, sessionId = 'game' }, d
     playerCount: providers.playerCount,
     fixtureId: providers.fixture ? providers.fixture.fixtureId : null,
   };
+  // the same availability the providers read — passed to the read-only readiness observer (M206)
+  const availability = providers.squadLoader.getAvailabilityResponses();
+
   if (!providers.fixture) {
-    return { draft: true, squad: null, explanation: null, verification: null, reason: 'no-fixture', meta };
+    const readiness = assessMatchReadiness({ squad: null, availability });
+    return { draft: true, squad: null, explanation: null, verification: null, readiness, reason: 'no-fixture', meta };
   }
   const result = deps.runBrainDryRun(
     { squadLoader: providers.squadLoader, decisionPlanSource: providers.decisionPlanSource },
     { pipelineServices: deps.engines },
   );
-  return { draft: true, squad: result.capstone.squad, explanation: result.explanation, verification: result.verification, meta };
+  // M206 — observes the already-built squad; selects/recommends nothing
+  const readiness = assessMatchReadiness({ squad: result.capstone.squad, explanation: result.explanation, availability });
+  return { draft: true, squad: result.capstone.squad, explanation: result.explanation, verification: result.verification, readiness, meta };
 }

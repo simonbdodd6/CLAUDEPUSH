@@ -50,6 +50,10 @@ test('produces a deterministic complete draft XV from Core-shaped data', () => {
     assert.equal(body.squad.startingXV.filter((s) => s.status === 'filled').length, 15);
     assert.equal(body.verification.startingCount, 15);
     assert.ok(body.explanation && body.explanation.starters.length === 15);
+    // M207 — readiness observer attached (everyone available, complete squad ⇒ READY)
+    assert.equal(body.readiness.status, 'READY');
+    assert.deepEqual(body.readiness.codes, []);
+    assert.equal(body.readiness.metrics.squadComplete, true);
     assert.deepEqual(body.meta, { readOnly: true, preview: true, dnaApplied: false, intent: 'selection-preference', playerCount: 24, fixtureId: 'fix_1' });
   });
 });
@@ -78,6 +82,7 @@ test('no fixtures → 200-shaped body with reason, no squad', async () => {
   assert.equal(body.squad, null);
   assert.equal(body.reason, 'no-fixture');
   assert.equal(body.meta.fixtureId, null);
+  assert.equal(body.readiness.status, 'NO_SELECTION');   // M207 — readiness present even with no squad
 });
 
 test('tenant isolation — only the coach\'s team players are used', async () => {

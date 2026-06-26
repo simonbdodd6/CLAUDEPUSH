@@ -18,7 +18,14 @@
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const sortStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
-const isFrontRow = (position) => /prop|hooker/i.test(String(position || ''))
+
+// Front-row positions across both the engine's short jersey codes (LH/TH/Hooker, M123 DEFAULT_FORMATION)
+// and Core's long forms (Loosehead/Tighthead Prop, Hooker).
+const FRONT_ROW_CODES = new Set(['LH', 'TH', 'HOOKER'])
+const isFrontRow = (position) => {
+  const p = String(position || '').trim().toUpperCase()
+  return FRONT_ROW_CODES.has(p) || /PROP|HOOKER|LOOSEHEAD|TIGHTHEAD/.test(p)
+}
 
 function deepFreeze(value) {
   if (value && typeof value === 'object') {

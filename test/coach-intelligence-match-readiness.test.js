@@ -126,6 +126,17 @@ test('UNAVAILABLE_STARTERS — selected starter dropped out', () => {
   assert.deepEqual(out.metrics.unavailableStarters, ['p10'])
 })
 
+test('front row detected via short jersey codes (LH/Hooker/TH) — the real pipeline formation', () => {
+  const shortXV = [
+    ['1', 'LH'], ['2', 'Hooker'], ['3', 'TH'], ['4', 'Lock'], ['5', 'Lock'],
+    ['6', 'Blindside'], ['7', 'Openside'], ['8', 'Number8'], ['9', 'ScrumHalf'], ['10', 'FlyHalf'],
+    ['11', 'LeftWing'], ['12', 'InsideCentre'], ['13', 'OutsideCentre'], ['14', 'RightWing'], ['15', 'Fullback'],
+  ].map(filledEntry)
+  const out = assessMatchReadiness({ squad: makeSquad({ startingXV: shortXV }), availability: allAvailable() })
+  assert.equal(out.metrics.frontRowFilled, 3)
+  assert.equal(out.status, 'READY')   // not falsely INSUFFICIENT_FRONT_ROW
+})
+
 // ── availability optional ──────────────────────────────────────────────────────────────
 
 test('availability omitted → no availability-driven codes, null tallies', () => {
