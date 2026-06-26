@@ -6221,17 +6221,32 @@
       const addMins = (t,m) => { const [h,mn]=t.split(":").map(Number),tot=h*60+mn+m; return `${String(Math.floor(tot/60)%24).padStart(2,"0")}:${String(tot%60).padStart(2,"0")}`; };
       blocks.push({ id:"tb"+Date.now(), time:last?addMins(last.time,30):"19:45", activity:"New session block", tag:"General" });
       notify("Time block added");
+      syncPublishedSessionEdit(sessionId);
     }
     function removeTimeBlock(sessionId, blockId) {
       if (!state.trainingBlocks?.[sessionId]) return;
       state.trainingBlocks[sessionId] = state.trainingBlocks[sessionId].filter(b=>b.id!==blockId);
       saveState('Block removed'); showToast('Block removed'); render();
+      syncPublishedSessionEdit(sessionId);
     }
     function updateTimeBlock(sessionId, blockId, field, val) {
       const blocks = state.trainingBlocks?.[sessionId];
       if (!blocks) return;
       const b = blocks.find(b => b.id === blockId);
-      if (b) { b[field] = val; saveState(); }
+      if (b) { b[field] = val; saveState(); syncPublishedSessionEdit(sessionId); }
+    }
+
+    // Keep an ALREADY-PUBLISHED session's plan live: when a coach edits its blocks
+    // (add / remove / update / duplicate) the sessions are re-pushed to the server
+    // so the published copy stays in sync without pressing Publish again. Debounced
+    // so a burst of keystrokes/edits coalesces into a single write. Draft
+    // (unpublished) sessions are never pushed here — they sync only on Publish.
+    let _publishedEditSyncTimer = null;
+    function syncPublishedSessionEdit(sessionId) {
+      const sess = (state.schedule || []).find(s => s.id === sessionId);
+      if (!sess || !sess.published || !isCoach()) return;
+      clearTimeout(_publishedEditSyncTimer);
+      _publishedEditSyncTimer = setTimeout(() => { syncSessionsToServer().catch(() => {}); }, 700);
     }
     function addClubVideo() {
       const t=document.getElementById("newVidTitle")?.value.trim(), d=document.getElementById("newVidDur")?.value.trim();
@@ -12168,6 +12183,7 @@
       saveState('Training duplicated');
       render();
       showToast(`Last week's plan restored ✓ Edit the differences and publish.`);
+      syncPublishedSessionEdit(sessionId);
     }
 
     // 3. Match Centre defaults — when the coach has fixtures and Match Centre
