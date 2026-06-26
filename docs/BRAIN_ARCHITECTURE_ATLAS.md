@@ -376,7 +376,27 @@ brain-decision-planner: diffBrainDryRuns (M194) reads a decision state out of ea
   (`NONE…CRITICAL`); **M200** surfaces per-pair severity + a `severityCounts` rollup in the M196 matrix
   and M197 presenter. Classification only — never advice.
 
+## 24. Match Readiness Intelligence (M206–M214)
+
+A dormant, observational `coach-intelligence` layer that helps a coach understand readiness before
+publishing a team. It selects/drops/ranks nothing, builds no XV, calls no AI, and uses no clock. Each
+stage reads the prior stage's output (no duplicated logic); all outputs are deterministic and frozen.
+
+```
+M206 assessMatchReadiness        squad + availability → status/codes/metrics
+M208 explainPlayerReadiness      one player → positive/limiting/missing factors + confidence (no advice)
+M209 assessSquadReadiness        per-player records → squad summary { level, confidence, counts, groups }
+M210 analyzeSquadReadinessTrend  history of M209 summaries → IMPROVING/STABLE/DECLINING (+ changes)
+M211 summarizeSquadReadiness     M209 (+ M210) → object | text | json
+M212 gateReadinessReport         M211 → evidence envelope with a PASS/WARN/FAIL gate (report verbatim)
+M213 buildReadinessEvidenceBundle  all outputs → one immutable bundle (manifest, validation, warnings)
+M214 summarizeReadinessBundle    M213 bundle → object | text | json
+```
+
+The first observational coach-facing track: it surfaces what to check (unavailable starters, a thin
+front row, low numbers, a declining trend) but never makes a selection. The coach decides.
+
 ---
 
 *This document is descriptive only. It adds no exports, changes no runtime behaviour, and describes the
-architecture exactly as it exists after M200.*
+architecture exactly as it exists after M214.*

@@ -240,6 +240,35 @@ supplied states.
 End-to-end composition lives in `brain-decision-planner` (M194 `diffBrainDryRuns` diffs two M186
 dry-run results by reading their decision states).
 
+## 15. Match Readiness Intelligence layer (M206–M214)
+
+A dormant, observational layer that helps a coach understand readiness **before they publish a team**.
+It **never selects, drops, ranks, or builds an XV**, calls no AI, and (apart from the M211/M214
+canonical-JSON serializer) imports nothing — each stage reads the prior stage's output, so there is no
+duplicated logic. All outputs are deterministic and deeply frozen.
+
+- **M206 — `assessMatchReadiness({ squad, explanation?, availability? })`** — observes an M130 squad +
+  availability and reports a squad readiness `status` (`READY`/`READY_WITH_WARNINGS`/`NO_SELECTION`),
+  warning `codes` (`VACANT_POSITIONS`, `INSUFFICIENT_FRONT_ROW`, `CAPTAIN_UNAVAILABLE`, …), and `metrics`.
+- **M208 — `explainPlayerReadiness(record)`** — explains ONE player's readiness as fixed-template
+  positive / limiting / missing-information factors + a confidence note. No advice, no scoring.
+- **M209 — `assessSquadReadiness(players)`** — aggregates per-player records (via M208) into a squad
+  `{ readinessLevel, confidence, counts, positionGroups, summary }`.
+- **M210 — `analyzeSquadReadinessTrend(history)`** — compares the latest two M209 summaries (no clock —
+  order is the array position) → `direction` (IMPROVING/STABLE/DECLINING) + per-metric changes.
+- **M211 — `summarizeSquadReadiness({ readiness, trend? }, format)`** — presents the M209 summary (+
+  optional M210 trend) as `object`/`text`/`json`.
+- **M212 — `gateReadinessReport(report)`** — wraps an M211 report in an evidence envelope with a
+  PASS/WARN/FAIL gate + warnings, embedding the report verbatim (never altered).
+- **M213 — `buildReadinessEvidenceBundle({ readiness?, explanations?, squadSummary?, trend?, report?,
+  envelope? })`** — packages all the above OUTPUTS into one immutable bundle (manifest, validation reused
+  from the M212 gate, confidence summary, merged warnings, sources preserved verbatim). Recomputes nothing.
+- **M214 — `summarizeReadinessBundle(bundle, format)`** — presents the M213 bundle's metadata as
+  `object`/`text`/`json`.
+
+Together: assess → explain → summarise → trend → present → gate → bundle → present-bundle. The coach
+makes every decision; the Brain only surfaces what to check.
+
 ---
 
 *This document is descriptive only. It adds no exports and changes no runtime behaviour; it describes
