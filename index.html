@@ -753,7 +753,7 @@
       border-bottom: 1px solid var(--line);
       flex-shrink: 0;
     }
-    .chat-search-bar input {
+    .chat-search-bar .chat-search-field {
       width: 100%;
       padding: 7px 11px 7px 32px;
       background: rgba(255,255,255,0.06);
@@ -761,10 +761,18 @@
       border-radius: 999px;
       color: var(--ink);
       font-size: 13px;
+      box-sizing: border-box;
+      line-height: 1.45;
+      white-space: nowrap;
+      overflow: hidden;
+      cursor: text;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
       background-repeat: no-repeat;
       background-position: 10px center;
     }
+    /* Contenteditable chat search fields — NOT <input>, so no browser/password-manager autofill can attach. */
+    .chat-ce-search:empty:before { content: attr(data-placeholder); color: var(--faint, #64748b); pointer-events: none; }
+    .chat-ce-search:focus { outline: none; border-color: rgba(52,211,153,.5); }
     .chat-contact-list {
       flex: 1 1 0px;
       min-height: 0;        /* allow list to shrink and scroll, not inflate parent */
@@ -20454,13 +20462,9 @@
           <strong style="font-size:15px;color:var(--ink)">New message</strong>
           <button class="chat-icon-btn" type="button" onclick="chatCloseNewDmPicker()" title="Close">✕</button>
         </div>
-        <input type="search" placeholder="Search members..." value="${esc(_chatNewDmQuery)}"
-          oninput="chatSetNewDmQuery(this.value)"
-          id="message-recipient-picker" name="message-recipient-picker" role="searchbox" inputmode="search"
-          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-          data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore
-          readonly onfocus="this.removeAttribute('readonly')" onpointerdown="this.removeAttribute('readonly')" ontouchstart="this.removeAttribute('readonly')" onkeydown="this.removeAttribute('readonly')"
-          style="width:calc(100% - 32px);height:38px;border-radius:7px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);padding:0 10px;font-size:13px;margin:12px 16px">
+        <div class="chat-ce-search" id="message-recipient-picker" role="searchbox" aria-label="Search members" data-placeholder="Search members..." contenteditable="true" spellcheck="false" autocorrect="off" autocapitalize="off"
+          oninput="chatSetNewDmQuery(this.textContent)" onkeydown="if(event.key==='Enter')event.preventDefault();"
+          style="box-sizing:border-box;width:calc(100% - 32px);height:38px;line-height:36px;border-radius:7px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);padding:0 10px;font-size:13px;margin:12px 16px;white-space:nowrap;overflow:hidden;cursor:text">${esc(_chatNewDmQuery)}</div>
         <div id="chatNewDmResults" style="display:grid;gap:4px;overflow:auto;padding:0 10px 12px">
           ${chatNewDmPickerResultsHtml(players)}
         </div>
@@ -21579,8 +21583,9 @@
           </div>
           ${mode==='coach'?`<div id="chatNewDmPicker">${chatNewDmPickerHtml()}</div>`:''}
           <div class="chat-search-bar">
-            <input type="search" placeholder="Search conversations…" value="${esc(_chatSearchQuery)}"
-              oninput="_chatSearchQuery=this.value;chatRenderContactList('${mode}')">
+            <!-- Contenteditable element (NOT an <input>) so the browser/password manager cannot show saved login/email/password autofill. -->
+            <div class="chat-search-field chat-ce-search" role="searchbox" aria-label="Search conversations" data-placeholder="Search conversations…" contenteditable="true" spellcheck="false" autocorrect="off" autocapitalize="off"
+              oninput="_chatSearchQuery=this.textContent;chatRenderContactList('${mode}')" onkeydown="if(event.key==='Enter')event.preventDefault();">${esc(_chatSearchQuery)}</div>
           </div>
           <div class="chat-contact-list" id="chatContactList"></div>
         </div>
