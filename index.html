@@ -2870,15 +2870,15 @@
     .slot-big:hover .slot-shirt { color: var(--brand-2); }
     .sess-ico { vertical-align: -2px; color: var(--brand-2); }
 
-    /* ── MESSAGES — full page area, not a widget ─────────────────────────────── */
+    /* ── MESSAGES — full-screen surface, not a card-in-a-page ────────────────── */
     #coach-messages.section.active, #player-messages.section.active { padding: 0; }
     .chat-shell {
       max-height: none !important;
-      height: calc(100vh - 150px) !important;
+      height: 100dvh !important;             /* topbar is hidden on Messages → fill the page */
       grid-template-columns: 360px minmax(0, 1fr) !important;
-      border-radius: var(--r-lg) !important;
-      border: 1px solid var(--hair) !important;
-      box-shadow: var(--sheen), var(--float) !important;
+      border-radius: 0 !important;           /* no card framing */
+      border: none !important;
+      box-shadow: none !important;
     }
     .chat-window-empty .wi, .chat-empty .ce-icon { color: var(--faint); opacity: .8; }
     @media (max-width: 980px) { .chat-shell { height: calc(100vh - 120px) !important; } }
@@ -3569,6 +3569,18 @@
     .workspace:has(#coach-matchday.active) > .topbar { display: none !important; }
     #coach-matchday.section { padding-top: 0; margin-top: 0; }
     #coach-matchday .mc10-head { margin-top: 0; }
+
+    /* Messages: full-screen messaging experience. Hide the shared topbar (removes
+       the duplicate "Messages" heading and the green Reset / save-pill cluster) and
+       remove the page padding so the chat shell fills the page edge-to-edge. The chat
+       shell's own card framing (border/radius/shadow) is dropped in the MESSAGES block
+       above. Mirrors the Match Centre full-screen treatment. */
+    .workspace:has(#coach-messages.active) > .topbar,
+    .workspace:has(#player-messages.active) > .topbar { display: none !important; }
+    .workspace:has(#coach-messages.active),
+    .workspace:has(#player-messages.active) { padding: 0 !important; }
+    #coach-messages.section.active,
+    #player-messages.section.active { gap: 0; }
 
     /* Fixture header */
     .mc10-head { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; margin: 0 0 12px; }
@@ -21578,7 +21590,6 @@
             <h2>Messages</h2>
             <div style="display:flex;gap:6px">
               ${mode==='coach'?`<button class="chat-new-msg-btn" type="button" onclick="chatOpenNewDmPicker()" title="New message"><span>+</span><span>New</span></button>`:''}
-              ${mode==='coach'?`<button class="chat-icon-btn" type="button" onclick="setSection('coach','message')" title="Automations" aria-label="Automations"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2l-.4-2.6h-4l-.4 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12Z"/></svg></button>`:''}
             </div>
           </div>
           ${mode==='coach'?`<div id="chatNewDmPicker">${chatNewDmPickerHtml()}</div>`:''}
