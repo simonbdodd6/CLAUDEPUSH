@@ -152,7 +152,7 @@ struct TravelMomentRow: View {
 
 struct TimelineEmptyState: View {
     var body: some View {
-        FeatureEmptyState(
+        PremiumEmptyState(
             symbol: "point.topleft.down.curvedto.point.bottomright.up",
             title: "Your timeline is ready",
             message: "Completed journeys will form a calm, year-by-year travel history here.",

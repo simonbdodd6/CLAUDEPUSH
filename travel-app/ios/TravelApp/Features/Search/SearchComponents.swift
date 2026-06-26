@@ -206,7 +206,7 @@ struct SearchEmptyState: View {
     let query: String
 
     var body: some View {
-        FeatureEmptyState(
+        PremiumEmptyState(
             symbol: "magnifyingglass",
             title: "No travel matches",
             message: query.isEmpty

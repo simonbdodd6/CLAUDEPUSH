@@ -259,7 +259,7 @@ struct SettingsStatisticCard: View {
 
 struct SettingsEmptyState: View {
     var body: some View {
-        FeatureEmptyState(
+        PremiumEmptyState(
             symbol: "person.crop.circle.badge.questionmark",
             title: "Traveller profile unavailable",
             message: "Profile, archive and preference summaries will appear when traveller display data is available.",

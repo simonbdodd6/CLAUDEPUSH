@@ -275,7 +275,7 @@ struct FeatureHeroScaffold<Texture: View>: View {
 /// Previously duplicated as `PassportEmptyState`, `TimelineEmptyState`,
 /// `StoryEmptyState`, `CinematicEmptyState`, `InsightsEmptyState` and
 /// `HighlightsEmptyState`, which now delegate here.
-struct FeatureEmptyState: View {
+struct PremiumEmptyState: View {
     let symbol: String
     var accent: Color = TravelTheme.current.tint
     let title: String

@@ -172,7 +172,7 @@ struct InsightRecommendationCard: View {
 
 struct InsightsEmptyState: View {
     var body: some View {
-        FeatureEmptyState(
+        PremiumEmptyState(
             symbol: "sparkles",
             title: "Your insights are ready",
             message: "Completed journeys can reveal travel patterns, trends and habits here.",

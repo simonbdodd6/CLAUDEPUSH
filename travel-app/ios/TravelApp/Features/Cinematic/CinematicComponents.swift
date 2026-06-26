@@ -166,7 +166,7 @@ struct CinematicStatisticCard: View {
 
 struct CinematicEmptyState: View {
     var body: some View {
-        FeatureEmptyState(
+        PremiumEmptyState(
             symbol: "film.stack.fill",
             title: "Your travel reel is ready",
             message: "Completed trips and memory scenes can become a cinematic travel reel here.",

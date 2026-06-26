@@ -187,7 +187,7 @@ struct StoryStatisticCard: View {
 
 struct StoryEmptyState: View {
     var body: some View {
-        FeatureEmptyState(
+        PremiumEmptyState(
             symbol: "book.closed.fill",
             title: "Your story shelf is ready",
             message: "Completed trips and memory clusters can become story cards here.",

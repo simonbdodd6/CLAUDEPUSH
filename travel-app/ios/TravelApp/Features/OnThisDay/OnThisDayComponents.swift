@@ -252,7 +252,7 @@ struct OnThisDayStatisticCard: View {
 
 struct OnThisDayEmptyState: View {
     var body: some View {
-        FeatureEmptyState(
+        PremiumEmptyState(
             symbol: "calendar.badge.clock",
             title: "No memories on this day yet",
             message: "As journeys are recorded, anniversaries and past moments from this date will appear here.",

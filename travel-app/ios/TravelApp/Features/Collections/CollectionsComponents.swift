@@ -210,7 +210,7 @@ struct CollectionStatisticCard: View {
 
 struct CollectionsEmptyState: View {
     var body: some View {
-        FeatureEmptyState(
+        PremiumEmptyState(
             symbol: "rectangle.stack.fill",
             title: "Your collections are ready",
             message: "Completed journeys can group into themed memory collections here.",

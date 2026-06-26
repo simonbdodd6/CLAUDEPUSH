@@ -292,7 +292,7 @@ struct StatisticsSummaryCard: View {
 
 struct StatisticsEmptyState: View {
     var body: some View {
-        FeatureEmptyState(
+        PremiumEmptyState(
             symbol: "chart.bar.xaxis",
             title: "Your statistics will grow here",
             message: "Completed journeys can build a clear picture of reach, rhythm and travel milestones.",

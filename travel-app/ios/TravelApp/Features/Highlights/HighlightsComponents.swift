@@ -154,7 +154,7 @@ struct TravelMemoryCard: View {
 
 struct HighlightsEmptyState: View {
     var body: some View {
-        FeatureEmptyState(
+        PremiumEmptyState(
             symbol: "star.fill",
             accent: TravelTheme.current.sun,
             title: "Your highlights are waiting",

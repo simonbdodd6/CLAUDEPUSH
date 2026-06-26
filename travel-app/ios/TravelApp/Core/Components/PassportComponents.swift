@@ -272,7 +272,7 @@ struct PassportMomentRow: View {
 /// Empty-state friendly layout for a new traveller with no trips yet.
 struct PassportEmptyState: View {
     var body: some View {
-        FeatureEmptyState(
+        PremiumEmptyState(
             symbol: "airplane.departure",
             title: "Your passport is ready",
             message: "No journeys are recorded yet. Once trips arrive, stamps, streaks and captured memories can fill this passport.",
