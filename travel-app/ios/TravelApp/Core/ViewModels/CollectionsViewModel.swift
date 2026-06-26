@@ -5,11 +5,20 @@ import Observation
 final class CollectionsViewModel {
     let collections: [CollectionDTO]
     private(set) var loadingState: ViewModelLoadingState
+    private let loader: AsyncStateLoader<Bool>
 
     init(repository: any CollectionsRepository) {
         let collections = repository.collections
         self.collections = collections
         self.loadingState = .resolved(isEmpty: collections.isEmpty)
+        self.loader = AsyncStateLoader(isEmpty: { $0 }, load: { try await repository.loadCollections().isEmpty })
+    }
+
+    /// Re-resolves `loadingState` through the async loading seam. Not invoked in
+    /// the current synchronous flow, so runtime behaviour is unchanged.
+    @MainActor func reload() async {
+        await loader.reload()
+        loadingState = loader.state
     }
 
     var hasCollections: Bool { loadingState == .loaded }

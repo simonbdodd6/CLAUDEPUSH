@@ -9,6 +9,7 @@ final class SearchViewModel {
     let collections: [CollectionDTO]
     let highlights: HighlightsDTO
     private(set) var loadingState: ViewModelLoadingState
+    private let loader: AsyncStateLoader<Bool>
 
     init(
         travellerRepository: any TravellerRepository,
@@ -36,6 +37,25 @@ final class SearchViewModel {
                 && highlights.moments.isEmpty
                 && highlights.achievements.isEmpty
         )
+        self.loader = AsyncStateLoader(isEmpty: { $0 }, load: {
+            let timeline = try await timelineRepository.loadTimeline()
+            let story = try await storyRepository.loadStory()
+            let collections = try await collectionsRepository.loadCollections()
+            let highlights = try await highlightsRepository.loadHighlights()
+            return timeline.years.isEmpty
+                && story.collections.isEmpty
+                && story.drafts.isEmpty
+                && collections.isEmpty
+                && highlights.moments.isEmpty
+                && highlights.achievements.isEmpty
+        })
+    }
+
+    /// Re-resolves `loadingState` through the async loading seam. Not invoked in
+    /// the current synchronous flow, so runtime behaviour is unchanged.
+    @MainActor func reload() async {
+        await loader.reload()
+        loadingState = loader.state
     }
 
     var statePresentation: ViewModelStatePresentation? {

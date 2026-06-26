@@ -6,11 +6,20 @@ final class OnThisDayViewModel {
     /// Source contract for this surface, from the Phase 12 DTO layer.
     let onThisDay: OnThisDayDTO
     private(set) var loadingState: ViewModelLoadingState
+    private let loader: AsyncStateLoader<Bool>
 
     init(repository: any OnThisDayRepository) {
         let onThisDay = repository.onThisDay
         self.onThisDay = onThisDay
         self.loadingState = .resolved(isEmpty: onThisDay.entries.isEmpty)
+        self.loader = AsyncStateLoader(isEmpty: { $0 }, load: { try await repository.loadOnThisDay().entries.isEmpty })
+    }
+
+    /// Re-resolves `loadingState` through the async loading seam. Not invoked in
+    /// the current synchronous flow, so runtime behaviour is unchanged.
+    @MainActor func reload() async {
+        await loader.reload()
+        loadingState = loader.state
     }
 
     /// Fixed reference year for deterministic "years ago" arithmetic. Kept in

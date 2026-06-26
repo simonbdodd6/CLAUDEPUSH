@@ -5,6 +5,7 @@ import Observation
 final class HighlightsViewModel {
     let highlights: HighlightsDTO
     private(set) var loadingState: ViewModelLoadingState
+    private let loader: AsyncStateLoader<Bool>
 
     init(repository: any HighlightsRepository) {
         let highlights = repository.highlights
@@ -12,6 +13,17 @@ final class HighlightsViewModel {
         self.loadingState = .resolved(
             isEmpty: highlights.moments.isEmpty && highlights.achievements.isEmpty
         )
+        self.loader = AsyncStateLoader(isEmpty: { $0 }, load: {
+            let highlights = try await repository.loadHighlights()
+            return highlights.moments.isEmpty && highlights.achievements.isEmpty
+        })
+    }
+
+    /// Re-resolves `loadingState` through the async loading seam. Not invoked in
+    /// the current synchronous flow, so runtime behaviour is unchanged.
+    @MainActor func reload() async {
+        await loader.reload()
+        loadingState = loader.state
     }
 
     var hasHighlights: Bool { loadingState == .loaded }

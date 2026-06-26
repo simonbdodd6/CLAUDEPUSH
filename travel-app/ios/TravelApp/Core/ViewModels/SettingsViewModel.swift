@@ -8,6 +8,7 @@ final class SettingsViewModel {
     let statistics: StatisticsDTO
     let collections: [CollectionDTO]
     private(set) var loadingState: ViewModelLoadingState
+    private let loader: AsyncStateLoader<Bool>
 
     init(
         travellerRepository: any TravellerRepository,
@@ -21,6 +22,14 @@ final class SettingsViewModel {
         self.statistics = statisticsRepository.statistics
         self.collections = collectionsRepository.collections
         self.loadingState = .resolved(isEmpty: traveller.displayName.isEmpty)
+        self.loader = AsyncStateLoader(isEmpty: { $0 }, load: { try await travellerRepository.loadTraveller().displayName.isEmpty })
+    }
+
+    /// Re-resolves `loadingState` through the async loading seam. Not invoked in
+    /// the current synchronous flow, so runtime behaviour is unchanged.
+    @MainActor func reload() async {
+        await loader.reload()
+        loadingState = loader.state
     }
 
     var hasProfile: Bool { loadingState == .loaded }

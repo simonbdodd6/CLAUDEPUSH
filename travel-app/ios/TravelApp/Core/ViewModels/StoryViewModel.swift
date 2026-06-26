@@ -6,6 +6,7 @@ final class StoryViewModel {
     let story: StoryDTO
     let traveller: TravellerDTO
     private(set) var loadingState: ViewModelLoadingState
+    private let loader: AsyncStateLoader<Bool>
 
     init(
         storyRepository: any StoryRepository,
@@ -15,6 +16,17 @@ final class StoryViewModel {
         self.story = story
         self.traveller = travellerRepository.traveller
         self.loadingState = .resolved(isEmpty: story.collections.isEmpty && story.drafts.isEmpty)
+        self.loader = AsyncStateLoader(isEmpty: { $0 }, load: {
+            let story = try await storyRepository.loadStory()
+            return story.collections.isEmpty && story.drafts.isEmpty
+        })
+    }
+
+    /// Re-resolves `loadingState` through the async loading seam. Not invoked in
+    /// the current synchronous flow, so runtime behaviour is unchanged.
+    @MainActor func reload() async {
+        await loader.reload()
+        loadingState = loader.state
     }
 
     var hasStories: Bool { loadingState == .loaded }

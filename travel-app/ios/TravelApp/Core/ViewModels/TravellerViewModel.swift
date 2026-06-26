@@ -6,11 +6,20 @@ import Observation
 final class TravellerViewModel {
     let traveller: TravellerDTO
     private(set) var loadingState: ViewModelLoadingState
+    private let loader: AsyncStateLoader<Bool>
 
     init(repository: any TravellerRepository) {
         let traveller = repository.traveller
         self.traveller = traveller
         self.loadingState = .resolved(isEmpty: traveller.displayName.isEmpty)
+        self.loader = AsyncStateLoader(isEmpty: { $0 }, load: { try await repository.loadTraveller().displayName.isEmpty })
+    }
+
+    /// Re-resolves `loadingState` through the async loading seam. Not invoked in
+    /// the current synchronous flow, so runtime behaviour is unchanged.
+    @MainActor func reload() async {
+        await loader.reload()
+        loadingState = loader.state
     }
 
     var displayName: String { traveller.displayName }

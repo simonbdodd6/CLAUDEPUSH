@@ -6,6 +6,7 @@ final class TimelineViewModel {
     let timeline: TimelineDTO
     let traveller: TravellerDTO
     private(set) var loadingState: ViewModelLoadingState
+    private let loader: AsyncStateLoader<Bool>
 
     init(
         timelineRepository: any TimelineRepository,
@@ -15,6 +16,17 @@ final class TimelineViewModel {
         self.timeline = timeline
         self.traveller = travellerRepository.traveller
         self.loadingState = .resolved(isEmpty: !timeline.years.contains { !$0.events.isEmpty })
+        self.loader = AsyncStateLoader(isEmpty: { $0 }, load: {
+            let timeline = try await timelineRepository.loadTimeline()
+            return !timeline.years.contains { !$0.events.isEmpty }
+        })
+    }
+
+    /// Re-resolves `loadingState` through the async loading seam. Not invoked in
+    /// the current synchronous flow, so runtime behaviour is unchanged.
+    @MainActor func reload() async {
+        await loader.reload()
+        loadingState = loader.state
     }
 
     var hasEvents: Bool { loadingState == .loaded }

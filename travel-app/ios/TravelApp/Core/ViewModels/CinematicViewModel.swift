@@ -5,11 +5,20 @@ import Observation
 final class CinematicViewModel {
     let cinematic: CinematicDTO
     private(set) var loadingState: ViewModelLoadingState
+    private let loader: AsyncStateLoader<Bool>
 
     init(repository: any CinematicRepository) {
         let cinematic = repository.cinematic
         self.cinematic = cinematic
         self.loadingState = .resolved(isEmpty: cinematic.scenes.isEmpty)
+        self.loader = AsyncStateLoader(isEmpty: { $0 }, load: { try await repository.loadCinematic().scenes.isEmpty })
+    }
+
+    /// Re-resolves `loadingState` through the async loading seam. Not invoked in
+    /// the current synchronous flow, so runtime behaviour is unchanged.
+    @MainActor func reload() async {
+        await loader.reload()
+        loadingState = loader.state
     }
 
     var hasScenes: Bool { loadingState == .loaded }

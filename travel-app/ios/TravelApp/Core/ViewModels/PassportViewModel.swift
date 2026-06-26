@@ -5,11 +5,23 @@ import Observation
 final class PassportViewModel {
     let passport: PassportDTO
     private(set) var loadingState: ViewModelLoadingState
+    private let loader: AsyncStateLoader<Bool>
 
     init(repository: any PassportRepository) {
         let passport = repository.passport
         self.passport = passport
         self.loadingState = .resolved(isEmpty: !passport.stamps.contains(where: \.isStamped))
+        self.loader = AsyncStateLoader(isEmpty: { $0 }, load: {
+            let passport = try await repository.loadPassport()
+            return !passport.stamps.contains(where: \.isStamped)
+        })
+    }
+
+    /// Re-resolves `loadingState` through the async loading seam. Not invoked in
+    /// the current synchronous flow, so runtime behaviour is unchanged.
+    @MainActor func reload() async {
+        await loader.reload()
+        loadingState = loader.state
     }
 
     var hasJourneys: Bool { loadingState == .loaded }
