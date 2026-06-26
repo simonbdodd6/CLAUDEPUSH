@@ -117,7 +117,7 @@ struct AnniversaryMomentCard: View {
                 Text(moment.year)
                     .font(TravelTypography.cardTitle)
                 Text(moment.yearsAgoLabel)
-                    .font(.system(.caption2, design: .rounded, weight: .semibold))
+                    .font(TravelTypography.eyebrow)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, TravelSpacing.sm)
                     .padding(.vertical, TravelSpacing.xxs)

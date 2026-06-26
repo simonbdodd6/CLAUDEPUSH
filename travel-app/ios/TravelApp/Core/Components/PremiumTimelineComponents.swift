@@ -102,7 +102,7 @@ struct PremiumTimelineItem: View {
                         VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
                             if let eyebrow {
                                 Text(eyebrow)
-                                    .font(.system(.caption2, design: .rounded, weight: .semibold))
+                                    .font(TravelTypography.eyebrow)
                                     .textCase(.uppercase)
                                     .foregroundStyle(.secondary)
                             }

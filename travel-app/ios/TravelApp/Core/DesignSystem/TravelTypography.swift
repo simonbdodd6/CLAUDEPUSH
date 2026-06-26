@@ -7,5 +7,7 @@ enum TravelTypography {
     static let cardTitle = Font.system(.headline, design: .rounded, weight: .semibold)
     static let body = Font.system(.body, design: .rounded)
     static let caption = Font.system(.caption, design: .rounded, weight: .medium)
+    /// The smallest label style, used for uppercase eyebrows, tags and badges.
+    static let eyebrow = Font.system(.caption2, design: .rounded, weight: .semibold)
 }
 

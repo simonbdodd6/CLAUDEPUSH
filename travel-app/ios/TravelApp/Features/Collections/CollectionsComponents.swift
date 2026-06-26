@@ -152,7 +152,7 @@ struct CollectionDetailPreviewCard: View {
                         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: TravelRadius.sm, style: .continuous))
                     VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
                         Text(detail.kindLabel)
-                            .font(.system(.caption2, design: .rounded, weight: .semibold))
+                            .font(TravelTypography.eyebrow)
                             .textCase(.uppercase)
                             .foregroundStyle(.secondary)
                         Text(detail.title)

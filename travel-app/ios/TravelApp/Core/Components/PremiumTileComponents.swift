@@ -74,7 +74,7 @@ struct PremiumCompactTile: View {
                     VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
                         if let badge {
                             Text(badge)
-                                .font(.system(.caption2, design: .rounded, weight: .semibold))
+                                .font(TravelTypography.eyebrow)
                                 .textCase(.uppercase)
                                 .foregroundStyle(.secondary)
                         }

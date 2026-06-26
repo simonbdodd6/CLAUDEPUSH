@@ -160,7 +160,7 @@ struct InsightRecommendationCard: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(recommendation.reasonCode)
-                        .font(.system(.caption2, design: .rounded, weight: .semibold))
+                        .font(TravelTypography.eyebrow)
                         .textCase(.uppercase)
                         .foregroundStyle(.secondary)
                 }

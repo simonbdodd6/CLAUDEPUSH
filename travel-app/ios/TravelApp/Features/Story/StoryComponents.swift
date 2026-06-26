@@ -106,7 +106,7 @@ struct StoryDraftCard: View {
                         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: TravelRadius.sm, style: .continuous))
                     VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
                         Text(draft.status)
-                            .font(.system(.caption2, design: .rounded, weight: .semibold))
+                            .font(TravelTypography.eyebrow)
                             .textCase(.uppercase)
                             .foregroundStyle(.secondary)
                         Text(draft.title)
