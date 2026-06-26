@@ -162,7 +162,10 @@ Phase 2 turns on Coach DNA (M113/M114 → per-player confidence influence, M152�
   smoke test. *Smallest real proof that the boundary runs on production-shaped data.*
 - **Phase 1 — Draft review UI.** A premium-only screen that calls the function and shows the draft XV +
   the M184 explanation codes, with a manual "use this as a starting point" that drops the coach into the
-  existing matchday flow (their edit, their save). Still read-only/draft-only.
+  existing matchday flow (their edit, their save). Still read-only/draft-only. *The endpoint already
+  exposes the readiness `coachView` (M218) as the stable, internals-free UI contract, and
+  `buildReadinessCoachViewSample()` (M219) gives a representative sample to build against before any live
+  call — so the Phase-1 UI can be built without further endpoint changes.*
 - **Phase 2 — Coach DNA.** Add the Brain-owned memory + tag stores and a lightweight capture flow; turn on
   DNA influence so drafts reflect the coach's style.
 - **Phase 3 — Intent & breadth.** Coach-specified decision intent, multiple fixtures, more teams.
@@ -185,23 +188,30 @@ Phase 2 turns on Coach DNA (M113/M114 → per-player confidence influence, M152�
 | Premium scope creep | Phase 0 is shadow-only; no UI until the draft is proven on real data. |
 | Brain bundling in serverless | Verify import paths in a preview build before wiring any UI. |
 
-## 14. Draft response shape (Phase 0)
+## 14. Draft response shape (Phase 0 → readiness wired, M205–M219)
 
-The function returns a read-only JSON envelope — a draft, explicitly labelled as such:
+The function returns a read-only JSON envelope — a draft, explicitly labelled as such. The squad fields
+landed in M205/M207; the **readiness** fields were wired read-only in M216 (`readinessBundle`) and M218
+(`coachView`):
 
 ```jsonc
 {
   "draft": true,                       // never a saved/published selection
-  "generatedFor": { "coachId": "coach-demo", "teamId": "boitsfort-rfc",
-                    "fixtureId": "fix_…", "sessionId": "game" },
   "squad": { /* M130 match-day squad: startingXV, captain, viceCaptain, bench, reserves, risk, signOff */ },
   "explanation": { /* M184: summary, starters[codes], bench[codes], risks, alternatives, confidenceNotes */ },
   "verification": { /* M178-style counts: startingCount, benchCount, reserveCount, warningCount */ },
-  "meta": { "deterministic": true, "dnaApplied": false, "intent": "selection-preference" }
+  "readiness": { /* M206: status, codes, metrics (the squad readiness observer) */ },
+  "readinessBundle": { /* M213: manifest, validation (M212 gate), confidence, warnings, sources (M206/M208/M209/M211/M212) */ },
+  "coachView": { /* M217: status, confidence, gate, headline, keyNumbers, warnings, playerReadiness, squad, trend */ },
+  "meta": { "readOnly": true, "preview": true, "dnaApplied": false, "intent": "selection-preference",
+            "playerCount": 24, "fixtureId": "fix_…" }
 }
 ```
 
-`dnaApplied: false` makes the v1 "neutral DNA" explicit. No field references any Core mutation.
+`dnaApplied: false` makes the v1 "neutral DNA" explicit; `coachView` is the **stable UI contract** (no raw
+internals leak — see M217). Because Core has only availability today, `coachView.confidence` reports
+honestly low. No field references any Core mutation. `buildReadinessCoachViewSample()` (M219) returns a
+representative `coachView` for UI development without a live call.
 
 ## 15. File layout (activation surface)
 
