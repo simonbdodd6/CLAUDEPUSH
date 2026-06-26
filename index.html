@@ -2009,11 +2009,8 @@
     .msg-two-col {
       grid-template-columns: repeat(2, minmax(0, 1fr)) !important;  /* symmetrical equal-width columns */
       gap: 24px;                                                    /* equal 24px spacing between columns */
-      align-items: stretch;                                         /* match outer heights, aligned top + bottom */
+      align-items: start;                                           /* each card hugs its content → even padding, no excess bottom gap under the last row */
     }
-    /* Right column (Live Response Board) fills its stretched track so both cards match height. */
-    .msg-two-col > .msg-side-stack { align-content: stretch; }
-    .msg-two-col > .msg-side-stack > .msg-card { height: 100%; }
     .msg-avatar {
       width:44px; height:44px; border-radius:50%;
       background:linear-gradient(135deg,var(--green) 0%,#0d9488 100%);
@@ -10007,14 +10004,8 @@
               <summary>Active automations</summary>
               <div id="live-schedules-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading...</p></div>
             </details>
-            <details class="srv-panel" open ontoggle="if(this.open) loadLiveTemplates()">
-              <summary>Message templates</summary>
-              <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading...</p></div>
-            </details>
-            <details class="srv-panel" open ontoggle="if(this.open) loadLiveLog()">
-              <summary>Delivery log</summary>
-              <div id="live-log-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading...</p></div>
-            </details>
+            <!-- Message templates and Delivery log hidden from the Beta Availability UI
+                 (loadLiveTemplates / loadLiveLog remain defined for the full build). -->
           </section>
         </div>`;
     }
