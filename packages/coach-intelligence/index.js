@@ -48,3 +48,5 @@ export { classifyDecisionDiff } from './decision-intelligence-diff-severity.js'
 export { assessMatchReadiness } from './match-readiness.js'
 
 export { explainPlayerReadiness } from './match-readiness-explanations.js'
+
+export { assessSquadReadiness } from './match-readiness-summary.js'
