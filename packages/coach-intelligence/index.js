@@ -60,3 +60,5 @@ export { gateReadinessReport } from './readiness-report-envelope.js'
 export { buildReadinessEvidenceBundle } from './readiness-evidence-bundle.js'
 
 export { summarizeReadinessBundle } from './readiness-evidence-bundle-presenter.js'
+
+export { buildReadinessCoachView } from './readiness-coach-view.js'
