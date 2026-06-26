@@ -71,6 +71,17 @@ extension CollectionDTO.Kind {
         case .transport: [TravelTheme.current.sun, TravelTheme.current.coral]
         }
     }
+
+    /// The cover SF Symbol for a collection, derived from its grouping kind so
+    /// the `CollectionDTO` contract stays free of iconography.
+    var coverSymbol: String {
+        switch self {
+        case .activity: "cup.and.saucer.fill"
+        case .place: "water.waves"
+        case .companion: "person.2.fill"
+        case .transport: "tram.fill"
+        }
+    }
 }
 
 // MARK: - Hero
@@ -115,7 +126,7 @@ struct CollectionGalleryCard: View {
             subtitle: collection.subtitle,
             badge: "\(collection.memoryCount) memories",
             metadata: collection.kind.displayName,
-            symbol: collection.coverSymbol
+            symbol: collection.kind.coverSymbol
         )
     }
 }

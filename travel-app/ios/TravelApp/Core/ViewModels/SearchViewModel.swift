@@ -152,7 +152,7 @@ final class SearchViewModel {
                 subtitle: $0.subtitle,
                 metadata: "\($0.memoryCount) memories",
                 category: "Collection",
-                symbol: $0.coverSymbol,
+                symbol: $0.kind.coverSymbol,
                 searchTerms: [$0.title, $0.subtitle, $0.kind.rawValue, "collection"]
             )
         }
