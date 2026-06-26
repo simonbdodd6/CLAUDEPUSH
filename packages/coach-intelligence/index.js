@@ -54,3 +54,5 @@ export { assessSquadReadiness } from './match-readiness-summary.js'
 export { analyzeSquadReadinessTrend } from './match-readiness-trend.js'
 
 export { summarizeSquadReadiness } from './match-readiness-presenter.js'
+
+export { gateReadinessReport } from './readiness-report-envelope.js'
