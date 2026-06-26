@@ -50,3 +50,5 @@ export { assessMatchReadiness } from './match-readiness.js'
 export { explainPlayerReadiness } from './match-readiness-explanations.js'
 
 export { assessSquadReadiness } from './match-readiness-summary.js'
+
+export { analyzeSquadReadinessTrend } from './match-readiness-trend.js'
