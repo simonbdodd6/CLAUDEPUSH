@@ -4,7 +4,7 @@ import Observation
 struct PassportScreen: View {
     @State private var viewModel: PassportViewModel
 
-    init(container: AppContainer = .mock()) {
+    init(container: AppContainer) {
         _viewModel = State(initialValue: container.makePassportViewModel())
     }
 

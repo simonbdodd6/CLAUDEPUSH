@@ -4,7 +4,7 @@ import Observation
 struct CollectionsScreen: View {
     @State private var viewModel: CollectionsViewModel
 
-    init(container: AppContainer = .mock()) {
+    init(container: AppContainer) {
         _viewModel = State(initialValue: container.makeCollectionsViewModel())
     }
 

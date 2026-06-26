@@ -4,7 +4,7 @@ import Observation
 struct SettingsScreen: View {
     @State private var viewModel: SettingsViewModel
 
-    init(container: AppContainer = .mock()) {
+    init(container: AppContainer) {
         _viewModel = State(initialValue: container.makeSettingsViewModel())
     }
 

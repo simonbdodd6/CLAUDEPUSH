@@ -4,7 +4,7 @@ import Observation
 struct CinematicScreen: View {
     @State private var viewModel: CinematicViewModel
 
-    init(container: AppContainer = .mock()) {
+    init(container: AppContainer) {
         _viewModel = State(initialValue: container.makeCinematicViewModel())
     }
 

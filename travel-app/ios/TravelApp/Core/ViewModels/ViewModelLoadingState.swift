@@ -18,8 +18,9 @@ enum ViewModelLoadingState: Equatable, Sendable {
 }
 
 /// Stable, presentation-safe failure metadata. It deliberately carries no
-/// platform error or generated text.
-struct ViewModelLoadingFailure: Equatable, Sendable {
+/// platform error or generated text. Conforms to `Error` so it can be thrown by
+/// asynchronous repository loads and resolved into `.failed`.
+struct ViewModelLoadingFailure: Error, Equatable, Sendable {
     let code: String
     let message: String
 }

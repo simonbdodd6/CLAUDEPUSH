@@ -9,6 +9,7 @@ struct TravelIntelligenceApp: App {
         WindowGroup {
             RootFlowView()
                 .environment(appState)
+                .environment(\.appContainer, appState.container)
                 .tint(TravelTheme.current.tint)
         }
     }
@@ -19,6 +20,9 @@ struct TravelIntelligenceApp: App {
 /// context and deep-link handling), keeping app-wide concerns composable.
 @Observable
 final class TravelAppState {
+    /// The single app-wide composition root, created once and injected into the
+    /// environment for the routing layer to resolve feature ViewModels.
+    let container = AppContainer.mock()
     let coordinator = NavigationCoordinator()
     var theme: TravelTheme = .current
 }

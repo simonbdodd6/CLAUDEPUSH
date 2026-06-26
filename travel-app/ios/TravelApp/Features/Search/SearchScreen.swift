@@ -5,7 +5,7 @@ struct SearchScreen: View {
     @State private var viewModel: SearchViewModel
     @State private var query = ""
 
-    init(container: AppContainer = .mock()) {
+    init(container: AppContainer) {
         _viewModel = State(initialValue: container.makeSearchViewModel())
     }
 

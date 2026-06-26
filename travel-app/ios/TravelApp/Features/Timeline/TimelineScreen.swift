@@ -4,7 +4,7 @@ import Observation
 struct TimelineScreen: View {
     @State private var viewModel: TimelineViewModel
 
-    init(container: AppContainer = .mock()) {
+    init(container: AppContainer) {
         _viewModel = State(initialValue: container.makeTimelineViewModel())
     }
 

@@ -52,6 +52,7 @@ struct FeatureShellView: View {
 }
 
 struct FeatureDestinationView: View {
+    @Environment(\.appContainer) private var container
     let route: TravelRoute
 
     init(tab: TravelTab) {
@@ -65,18 +66,18 @@ struct FeatureDestinationView: View {
     var body: some View {
         switch route {
         case .home: HomeScreen()
-        case .passport: PassportScreen()
-        case .timeline: TimelineScreen()
-        case .story: StoryScreen()
+        case .passport: PassportScreen(container: container)
+        case .timeline: TimelineScreen(container: container)
+        case .story: StoryScreen(container: container)
         case .explore: MoreScreensHub()
-        case .cinematic: CinematicScreen()
-        case .collections: CollectionsScreen()
-        case .statistics: StatisticsScreen()
-        case .insights: InsightsScreen()
-        case .highlights: HighlightsScreen()
-        case .onThisDay: OnThisDayScreen()
-        case .search: SearchScreen()
-        case .settings: SettingsScreen()
+        case .cinematic: CinematicScreen(container: container)
+        case .collections: CollectionsScreen(container: container)
+        case .statistics: StatisticsScreen(container: container)
+        case .insights: InsightsScreen(container: container)
+        case .highlights: HighlightsScreen(container: container)
+        case .onThisDay: OnThisDayScreen(container: container)
+        case .search: SearchScreen(container: container)
+        case .settings: SettingsScreen(container: container)
         case .comingSoon(let feature):
             ComingSoonScreen(feature: FeatureMetadata.placeholder(feature))
         }
