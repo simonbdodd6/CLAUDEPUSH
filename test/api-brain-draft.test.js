@@ -54,6 +54,11 @@ test('produces a deterministic complete draft XV from Core-shaped data', () => {
     assert.equal(body.readiness.status, 'READY');
     assert.deepEqual(body.readiness.codes, []);
     assert.equal(body.readiness.metrics.squadComplete, true);
+    // M216 — readiness evidence bundle attached (read-only, from the live player pool)
+    assert.equal(body.readinessBundle.type, 'readiness-evidence-bundle');
+    assert.deepEqual(body.readinessBundle.components, ['envelope', 'explanations', 'readiness', 'report', 'squadSummary']);
+    assert.equal(body.readinessBundle.sources.squadSummary.counts.total, 24);
+    assert.equal(body.readinessBundle.validation.status, body.readinessBundle.sources.envelope.gate.status);
     assert.deepEqual(body.meta, { readOnly: true, preview: true, dnaApplied: false, intent: 'selection-preference', playerCount: 24, fixtureId: 'fix_1' });
   });
 });
@@ -83,6 +88,9 @@ test('no fixtures → 200-shaped body with reason, no squad', async () => {
   assert.equal(body.reason, 'no-fixture');
   assert.equal(body.meta.fixtureId, null);
   assert.equal(body.readiness.status, 'NO_SELECTION');   // M207 — readiness present even with no squad
+  // M216 — bundle still built from the player pool even with no fixture
+  assert.equal(body.readinessBundle.type, 'readiness-evidence-bundle');
+  assert.equal(body.readinessBundle.sources.squadSummary.counts.total, 24);
 });
 
 test('tenant isolation — only the coach\'s team players are used', async () => {

@@ -13,7 +13,11 @@ import { loadAvailability } from './_availabilityStore.js';
 import { kvGet } from './_kv.js';
 import { key } from './_keys.js';
 import { runBrainDryRun } from '../packages/brain-decision-planner/index.js';
-import { runCoachIntelligencePipeline, buildCoachRecommendation, runSelectionPipeline, assessMatchReadiness } from '../packages/coach-intelligence/index.js';
+import {
+  runCoachIntelligencePipeline, buildCoachRecommendation, runSelectionPipeline,
+  assessMatchReadiness, assessSquadReadiness, explainPlayerReadiness, summarizeSquadReadiness,
+  gateReadinessReport, buildReadinessEvidenceBundle,
+} from '../packages/coach-intelligence/index.js';
 
 const DEFAULT_INTENT = Object.freeze({ category: 'selection-preference', confidence: 0.7, matchedSignals: [] });
 
@@ -95,12 +99,14 @@ export async function buildBrainDraft({ coachId, teamId, sessionId = 'game' }, d
     playerCount: providers.playerCount,
     fixtureId: providers.fixture ? providers.fixture.fixtureId : null,
   };
-  // the same availability the providers read — passed to the read-only readiness observer (M206)
+  // the same active players + availability the providers read — fed to the read-only readiness chain
+  const players = providers.squadLoader.getActivePlayers();
   const availability = providers.squadLoader.getAvailabilityResponses();
 
   if (!providers.fixture) {
     const readiness = assessMatchReadiness({ squad: null, availability });
-    return { draft: true, squad: null, explanation: null, verification: null, readiness, reason: 'no-fixture', meta };
+    const readinessBundle = buildReadinessBundleFor(players, availability, readiness, null);
+    return { draft: true, squad: null, explanation: null, verification: null, readiness, readinessBundle, reason: 'no-fixture', meta };
   }
   const result = deps.runBrainDryRun(
     { squadLoader: providers.squadLoader, decisionPlanSource: providers.decisionPlanSource },
@@ -108,5 +114,23 @@ export async function buildBrainDraft({ coachId, teamId, sessionId = 'game' }, d
   );
   // M206 — observes the already-built squad; selects/recommends nothing
   const readiness = assessMatchReadiness({ squad: result.capstone.squad, explanation: result.explanation, availability });
-  return { draft: true, squad: result.capstone.squad, explanation: result.explanation, verification: result.verification, readiness, meta };
+  const readinessBundle = buildReadinessBundleFor(players, availability, readiness, result.explanation);
+  return { draft: true, squad: result.capstone.squad, explanation: result.explanation, verification: result.verification, readiness, readinessBundle, meta };
+}
+
+/**
+ * Build the read-only M213 readiness evidence bundle from the live player pool (read-only chain:
+ * M208 → M209 → M211 → M212 → M213, plus the M206 match readiness). Phase 0 knows availability only;
+ * fitness/attendance/suspension are unknown, so the bundle honestly reports lower confidence.
+ */
+function buildReadinessBundleFor(players, availability, matchReadiness, explanation) {
+  const records = (Array.isArray(players) ? players : [])
+    .filter((p) => p && typeof p.userId === 'string' && p.userId)
+    .map((p) => ({ playerId: p.userId, position: p.position, availability: (availability[p.userId] && typeof availability[p.userId] === 'object') ? availability[p.userId].response : undefined }));
+
+  const squadSummary = assessSquadReadiness(records);                   // M209
+  const explanations = records.map(explainPlayerReadiness);             // M208
+  const report = summarizeSquadReadiness({ readiness: squadSummary });  // M211
+  const envelope = gateReadinessReport(report);                         // M212
+  return buildReadinessEvidenceBundle({ readiness: matchReadiness, explanations, squadSummary, report, envelope });  // M213
 }
