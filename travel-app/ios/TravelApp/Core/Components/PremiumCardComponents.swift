@@ -211,3 +211,38 @@ struct PremiumMediaCard: View {
         }
     }
 }
+
+/// A reason-code card: an accent symbol with a trailing reason code, above a
+/// title and a detail line.
+///
+/// Consolidates the repeated cards previously duplicated as `TravelMemoryCard`,
+/// `JourneyInsightCard` and `InsightCard`, which differed only by accent colour.
+struct PremiumReasonCard: View {
+    let symbol: String
+    let reasonCode: String
+    let title: String
+    let detail: String
+    var accent: Color = TravelTheme.current.tint
+
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: TravelSpacing.md) {
+                HStack {
+                    Image(systemName: symbol)
+                        .font(.title3)
+                        .foregroundStyle(accent)
+                    Spacer()
+                    Text(reasonCode)
+                        .font(TravelTypography.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text(title)
+                    .font(TravelTypography.cardTitle)
+                Text(detail)
+                    .font(TravelTypography.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}

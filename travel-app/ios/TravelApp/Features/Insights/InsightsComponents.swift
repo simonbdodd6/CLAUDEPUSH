@@ -118,29 +118,13 @@ struct SeasonalityCard: View {
     let seasonality: SeasonalityPreview
 
     var body: some View {
-        HStack(spacing: TravelSpacing.md) {
-            Image(systemName: seasonality.symbol)
-                .font(.headline)
-                .foregroundStyle(TravelTheme.current.sun)
-                .frame(width: 46, height: 46)
-                .background(.thinMaterial, in: Circle())
-            VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                Text(seasonality.season)
-                    .font(TravelTypography.cardTitle)
-                Text(seasonality.detail)
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: TravelSpacing.sm)
-            Text(seasonality.label)
-                .font(TravelTypography.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, TravelSpacing.sm)
-                .padding(.vertical, TravelSpacing.xs)
-                .background(.thinMaterial, in: Capsule())
-        }
-        .padding(TravelSpacing.md)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: TravelRadius.md, style: .continuous))
+        PremiumPillRow(
+            symbol: seasonality.symbol,
+            accent: TravelTheme.current.sun,
+            title: seasonality.season,
+            subtitle: seasonality.detail,
+            trailing: seasonality.label
+        )
     }
 }
 
@@ -148,25 +132,12 @@ struct JourneyInsightCard: View {
     let insight: JourneyInsightPreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                HStack {
-                    Image(systemName: insight.symbol)
-                        .font(.title3)
-                        .foregroundStyle(TravelTheme.current.tint)
-                    Spacer()
-                    Text(insight.reasonCode)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Text(insight.title)
-                    .font(TravelTypography.cardTitle)
-                Text(insight.detail)
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        PremiumReasonCard(
+            symbol: insight.symbol,
+            reasonCode: insight.reasonCode,
+            title: insight.title,
+            detail: insight.detail
+        )
     }
 }
 

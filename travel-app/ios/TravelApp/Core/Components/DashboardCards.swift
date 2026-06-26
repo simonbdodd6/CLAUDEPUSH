@@ -171,25 +171,13 @@ struct InsightCard: View {
     let insight: InsightPreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                HStack {
-                    Image(systemName: insight.symbol)
-                        .font(.title3)
-                        .foregroundStyle(TravelTheme.current.moss)
-                    Spacer()
-                    Text(insight.reasonCode)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Text(insight.title)
-                    .font(TravelTypography.cardTitle)
-                Text(insight.detail)
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        PremiumReasonCard(
+            symbol: insight.symbol,
+            reasonCode: insight.reasonCode,
+            title: insight.title,
+            detail: insight.detail,
+            accent: TravelTheme.current.moss
+        )
     }
 }
 

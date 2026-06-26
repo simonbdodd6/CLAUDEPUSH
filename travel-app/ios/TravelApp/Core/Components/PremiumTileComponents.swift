@@ -208,3 +208,42 @@ struct PremiumGradientTile: View {
         }
     }
 }
+
+/// A compact thin-material pill row: a circular accent symbol badge, a title and
+/// subtitle, and a trailing capsule value.
+///
+/// Consolidates the identical thin-material rows previously duplicated as
+/// `CinematicMomentRow` and `SeasonalityCard`, which differed only by accent.
+struct PremiumPillRow: View {
+    let symbol: String
+    var accent: Color = TravelTheme.current.tint
+    let title: String
+    let subtitle: String
+    let trailing: String
+
+    var body: some View {
+        HStack(spacing: TravelSpacing.md) {
+            Image(systemName: symbol)
+                .font(.headline)
+                .foregroundStyle(accent)
+                .frame(width: 46, height: 46)
+                .background(.thinMaterial, in: Circle())
+            VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
+                Text(title)
+                    .font(TravelTypography.cardTitle)
+                Text(subtitle)
+                    .font(TravelTypography.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: TravelSpacing.sm)
+            Text(trailing)
+                .font(TravelTypography.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, TravelSpacing.sm)
+                .padding(.vertical, TravelSpacing.xs)
+                .background(.thinMaterial, in: Capsule())
+        }
+        .padding(TravelSpacing.md)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: TravelRadius.md, style: .continuous))
+    }
+}

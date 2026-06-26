@@ -140,29 +140,13 @@ struct CinematicMomentRow: View {
     let moment: CinematicMomentPreview
 
     var body: some View {
-        HStack(spacing: TravelSpacing.md) {
-            Image(systemName: moment.symbol)
-                .font(.headline)
-                .foregroundStyle(TravelTheme.current.coral)
-                .frame(width: 46, height: 46)
-                .background(.thinMaterial, in: Circle())
-            VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                Text(moment.title)
-                    .font(TravelTypography.cardTitle)
-                Text(moment.subtitle)
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: TravelSpacing.sm)
-            Text(moment.marker)
-                .font(TravelTypography.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, TravelSpacing.sm)
-                .padding(.vertical, TravelSpacing.xs)
-                .background(.thinMaterial, in: Capsule())
-        }
-        .padding(TravelSpacing.md)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: TravelRadius.md, style: .continuous))
+        PremiumPillRow(
+            symbol: moment.symbol,
+            accent: TravelTheme.current.coral,
+            title: moment.title,
+            subtitle: moment.subtitle,
+            trailing: moment.marker
+        )
     }
 }
 

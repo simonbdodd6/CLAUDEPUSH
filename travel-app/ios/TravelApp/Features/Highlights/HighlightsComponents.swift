@@ -143,25 +143,12 @@ struct TravelMemoryCard: View {
     let memory: TravelMemoryPreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                HStack {
-                    Image(systemName: memory.symbol)
-                        .font(.title3)
-                        .foregroundStyle(TravelTheme.current.tint)
-                    Spacer()
-                    Text(memory.reasonCode)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Text(memory.title)
-                    .font(TravelTypography.cardTitle)
-                Text(memory.detail)
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        PremiumReasonCard(
+            symbol: memory.symbol,
+            reasonCode: memory.reasonCode,
+            title: memory.title,
+            detail: memory.detail
+        )
     }
 }
 

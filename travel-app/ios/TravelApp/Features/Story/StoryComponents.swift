@@ -131,19 +131,13 @@ struct StoryThemeCard: View {
     let theme: StoryThemePreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                Image(systemName: theme.symbol)
-                    .font(.title2)
-                    .foregroundStyle(theme.accent)
-                Text(theme.title)
-                    .font(TravelTypography.cardTitle)
-                Text(theme.caption)
-                    .font(TravelTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        PremiumCollectionTile(
+            title: theme.title,
+            subtitle: theme.caption,
+            badge: nil,
+            symbol: theme.symbol,
+            accent: theme.accent
+        )
     }
 }
 
