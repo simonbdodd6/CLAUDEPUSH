@@ -156,7 +156,7 @@ final class SettingsViewModel {
     }
 
     private func statisticValue(for key: String) -> String {
-        statistics.metrics.first { $0.key == key }?.value ?? "0"
+        statistics.metrics.first { $0.key.rawValue == key }?.value ?? "0"
     }
 
     private static func initials(for name: String) -> String {

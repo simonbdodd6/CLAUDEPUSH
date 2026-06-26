@@ -131,7 +131,7 @@ final class StatisticsViewModel {
     var summaryMetrics: [StatisticsDTO.Metric] { statistics.metrics }
 
     private func metric(for key: String) -> StatisticsDTO.Metric? {
-        statistics.metrics.first { $0.key == key }
+        statistics.metrics.first { $0.key.rawValue == key }
     }
 
     private func value(for key: String) -> String {

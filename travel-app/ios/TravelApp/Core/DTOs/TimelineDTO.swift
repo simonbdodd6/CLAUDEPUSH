@@ -19,7 +19,16 @@ struct TimelineDTO: TravelDTO, DTOPreviewProviding {
         let title: String
         let place: String
         let date: String
-        let category: String
+        let category: Category
+
+        /// The stable, typed kind of a timeline event.
+        enum Category: String, TravelDTO {
+            case countryVisit = "country_visit"
+            case achievement
+            case travelMemory = "travel_memory"
+            case milestone
+            case firstTrip = "first_trip"
+        }
     }
 
     static let preview = TimelineDTO(
@@ -30,7 +39,7 @@ struct TimelineDTO: TravelDTO, DTOPreviewProviding {
                 year: "2025",
                 summary: "Latest journey and new stamp",
                 events: [
-                    Event(id: "kyoto", title: "Latest journey", place: "Kyoto, Japan", date: "2025-04", category: "country_visit")
+                    Event(id: "kyoto", title: "Latest journey", place: "Kyoto, Japan", date: "2025-04", category: .countryVisit)
                 ]
             )
         ]
@@ -44,8 +53,8 @@ struct TimelineDTO: TravelDTO, DTOPreviewProviding {
                 year: "2025",
                 summary: "Latest journey and new stamp",
                 events: [
-                    Event(id: "kyoto", title: "Latest journey", place: "Kyoto, Japan", date: "2025-04", category: "country_visit"),
-                    Event(id: "stamp-jp", title: "New passport stamp", place: "Japan", date: "2025-04", category: "achievement")
+                    Event(id: "kyoto", title: "Latest journey", place: "Kyoto, Japan", date: "2025-04", category: .countryVisit),
+                    Event(id: "stamp-jp", title: "New passport stamp", place: "Japan", date: "2025-04", category: .achievement)
                 ]
             ),
             Year(
@@ -53,8 +62,8 @@ struct TimelineDTO: TravelDTO, DTOPreviewProviding {
                 year: "2024",
                 summary: "Most active travel year",
                 events: [
-                    Event(id: "amalfi", title: "Blue hour on the coast", place: "Positano, Italy", date: "2024-05", category: "travel_memory"),
-                    Event(id: "cape-town", title: "Fifth continent reached", place: "Cape Town, South Africa", date: "2024-11", category: "milestone")
+                    Event(id: "amalfi", title: "Blue hour on the coast", place: "Positano, Italy", date: "2024-05", category: .travelMemory),
+                    Event(id: "cape-town", title: "Fifth continent reached", place: "Cape Town, South Africa", date: "2024-11", category: .milestone)
                 ]
             ),
             Year(
@@ -62,7 +71,7 @@ struct TimelineDTO: TravelDTO, DTOPreviewProviding {
                 year: "2018",
                 summary: "The timeline begins",
                 events: [
-                    Event(id: "lisbon", title: "First recorded trip", place: "Lisbon, Portugal", date: "2018-09", category: "first_trip")
+                    Event(id: "lisbon", title: "First recorded trip", place: "Lisbon, Portugal", date: "2018-09", category: .firstTrip)
                 ]
             )
         ]

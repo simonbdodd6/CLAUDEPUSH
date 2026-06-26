@@ -19,7 +19,14 @@ struct StoryDTO: TravelDTO, DTOPreviewProviding {
         let id: String
         let title: String
         let trip: String
-        let status: String
+        let status: Status
+
+        /// The stable, typed state of a story draft.
+        enum Status: String, TravelDTO {
+            case featured
+            case tripStory = "trip_story"
+            case originStory = "origin_story"
+        }
     }
 
     static let preview = StoryDTO(
@@ -28,7 +35,7 @@ struct StoryDTO: TravelDTO, DTOPreviewProviding {
             Collection(id: "coast", title: "Coastal chapters", subtitle: "Sea views and harbours", memoryCount: 12)
         ],
         drafts: [
-            Draft(id: "amalfi", title: "Blue hour on the coast", trip: "Positano, Italy · May 2024", status: "featured")
+            Draft(id: "amalfi", title: "Blue hour on the coast", trip: "Positano, Italy · May 2024", status: .featured)
         ]
     )
 
@@ -40,9 +47,9 @@ struct StoryDTO: TravelDTO, DTOPreviewProviding {
             Collection(id: "city", title: "City notes", subtitle: "Walkable days and quiet streets", memoryCount: 15)
         ],
         drafts: [
-            Draft(id: "amalfi", title: "Blue hour on the coast", trip: "Positano, Italy · May 2024", status: "featured"),
-            Draft(id: "kyoto", title: "Rail days and temple evenings", trip: "Kyoto, Japan · Apr 2025", status: "trip_story"),
-            Draft(id: "lisbon", title: "The first recorded trip", trip: "Lisbon, Portugal · Sep 2018", status: "origin_story")
+            Draft(id: "amalfi", title: "Blue hour on the coast", trip: "Positano, Italy · May 2024", status: .featured),
+            Draft(id: "kyoto", title: "Rail days and temple evenings", trip: "Kyoto, Japan · Apr 2025", status: .tripStory),
+            Draft(id: "lisbon", title: "The first recorded trip", trip: "Lisbon, Portugal · Sep 2018", status: .originStory)
         ]
     )
 }

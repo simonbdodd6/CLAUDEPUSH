@@ -141,7 +141,7 @@ final class SearchViewModel {
                 metadata: "Story draft",
                 category: "Story",
                 symbol: "book.closed.fill",
-                searchTerms: [$0.title, $0.trip, $0.status, "story"]
+                searchTerms: [$0.title, $0.trip, $0.status.rawValue, "story"]
             )
         }
 
@@ -229,12 +229,12 @@ final class SearchViewModel {
         TravelTheme.current.ocean
     ]
 
-    private static func symbol(for category: String) -> String {
+    private static func symbol(for category: TimelineDTO.Event.Category) -> String {
         switch category {
-        case "achievement": "seal.fill"
-        case "travel_memory": "photo.fill"
-        case "milestone": "flag.checkered"
-        case "first_trip": "sparkles"
+        case .achievement: "seal.fill"
+        case .travelMemory: "photo.fill"
+        case .milestone: "flag.checkered"
+        case .firstTrip: "sparkles"
         default: "mappin.and.ellipse"
         }
     }

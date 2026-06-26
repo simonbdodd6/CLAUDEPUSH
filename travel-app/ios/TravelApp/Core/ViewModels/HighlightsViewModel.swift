@@ -34,7 +34,7 @@ final class HighlightsViewModel {
             subtitle: "A premium reel of standout moments, achievements and memorable journeys.",
             moments: "\(highlights.moments.count)",
             achievements: "\(highlights.achievements.count)",
-            countries: highlights.achievements.first { $0.reasonCode == "countries_explored" }?.value ?? "0"
+            countries: highlights.achievements.first { $0.reasonCode == .countriesExplored }?.value ?? "0"
         )
     }
 
