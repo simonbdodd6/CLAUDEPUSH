@@ -59,6 +59,12 @@ test('produces a deterministic complete draft XV from Core-shaped data', () => {
     assert.deepEqual(body.readinessBundle.components, ['envelope', 'explanations', 'readiness', 'report', 'squadSummary']);
     assert.equal(body.readinessBundle.sources.squadSummary.counts.total, 24);
     assert.equal(body.readinessBundle.validation.status, body.readinessBundle.sources.envelope.gate.status);
+    // M218 — UI-ready coachView derived from the bundle (no raw internals leaked)
+    assert.equal(body.coachView.status, body.readinessBundle.sources.squadSummary.readinessLevel);
+    assert.equal(body.coachView.keyNumbers.total, 24);
+    assert.equal(typeof body.coachView.headline, 'string');
+    assert.equal(body.coachView.sources, undefined);   // contract hides internals
+    assert.equal(body.coachView.gate.status, body.readinessBundle.validation.status);
     assert.deepEqual(body.meta, { readOnly: true, preview: true, dnaApplied: false, intent: 'selection-preference', playerCount: 24, fixtureId: 'fix_1' });
   });
 });

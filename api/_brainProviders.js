@@ -16,7 +16,7 @@ import { runBrainDryRun } from '../packages/brain-decision-planner/index.js';
 import {
   runCoachIntelligencePipeline, buildCoachRecommendation, runSelectionPipeline,
   assessMatchReadiness, assessSquadReadiness, explainPlayerReadiness, summarizeSquadReadiness,
-  gateReadinessReport, buildReadinessEvidenceBundle,
+  gateReadinessReport, buildReadinessEvidenceBundle, buildReadinessCoachView,
 } from '../packages/coach-intelligence/index.js';
 
 const DEFAULT_INTENT = Object.freeze({ category: 'selection-preference', confidence: 0.7, matchedSignals: [] });
@@ -106,7 +106,8 @@ export async function buildBrainDraft({ coachId, teamId, sessionId = 'game' }, d
   if (!providers.fixture) {
     const readiness = assessMatchReadiness({ squad: null, availability });
     const readinessBundle = buildReadinessBundleFor(players, availability, readiness, null);
-    return { draft: true, squad: null, explanation: null, verification: null, readiness, readinessBundle, reason: 'no-fixture', meta };
+    const coachView = buildReadinessCoachView(readinessBundle);   // M217 — UI-ready contract
+    return { draft: true, squad: null, explanation: null, verification: null, readiness, readinessBundle, coachView, reason: 'no-fixture', meta };
   }
   const result = deps.runBrainDryRun(
     { squadLoader: providers.squadLoader, decisionPlanSource: providers.decisionPlanSource },
@@ -115,7 +116,8 @@ export async function buildBrainDraft({ coachId, teamId, sessionId = 'game' }, d
   // M206 — observes the already-built squad; selects/recommends nothing
   const readiness = assessMatchReadiness({ squad: result.capstone.squad, explanation: result.explanation, availability });
   const readinessBundle = buildReadinessBundleFor(players, availability, readiness, result.explanation);
-  return { draft: true, squad: result.capstone.squad, explanation: result.explanation, verification: result.verification, readiness, readinessBundle, meta };
+  const coachView = buildReadinessCoachView(readinessBundle);     // M217 — UI-ready contract derived from the bundle
+  return { draft: true, squad: result.capstone.squad, explanation: result.explanation, verification: result.verification, readiness, readinessBundle, coachView, meta };
 }
 
 /**
