@@ -23924,6 +23924,23 @@
 
     // Pull published sessions + squad from Redis into the player's local state.
     // Debounced to avoid hammering the API on every render cycle.
+    // Merge published drill blocks into trainingBlocks so the Training page shows
+    // the full plan consistently. Players always adopt the published plan. A coach
+    // adopts only for sessions where they hold NO local blocks — so a reload, a new
+    // device or a force-sync never shows "No session plan yet" for an already
+    // published session, while a coach's richer in-progress local edits are kept.
+    function adoptPublishedBlocks(trainingBlocks, sessions, coach) {
+      const next = trainingBlocks || {};
+      (Array.isArray(sessions) ? sessions : []).forEach(s => {
+        if (!s || !Array.isArray(s.blocks) || !s.blocks.length) return;
+        const local = next[s.id];
+        if (!coach || !Array.isArray(local) || local.length === 0) {
+          next[s.id] = s.blocks;
+        }
+      });
+      return next;
+    }
+
     async function loadPublishedStateForPlayer() {
       const now = Date.now();
       if (now - _publishedStateLoadedAt < 30000) return;
@@ -23948,12 +23965,9 @@
           const localOnly = (state.schedule || []).filter(s =>
             !serverIds.has(s.id) && !serverTitles.has(canonTitle(s.title)));
           state.schedule = [...data.sessions, ...localOnly];
-          // Adopt the published drill blocks so the player Training view shows the
-          // full plan. Players only (never clobber a coach's richer local blocks).
-          if (!isCoach()) {
-            state.trainingBlocks = state.trainingBlocks || {};
-            data.sessions.forEach(s => { if (Array.isArray(s.blocks) && s.blocks.length) state.trainingBlocks[s.id] = s.blocks; });
-          }
+          // Adopt the published drill blocks so the Training page shows the full
+          // plan consistently for coaches and players (see adoptPublishedBlocks).
+          state.trainingBlocks = adoptPublishedBlocks(state.trainingBlocks, data.sessions, isCoach());
           changed = true;
         }
         if (data.squad && data.squad.published) {
