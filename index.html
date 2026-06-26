@@ -1864,8 +1864,8 @@
     .msg-session-card small { color: var(--muted); font-size: 12px; line-height: 1.35; }
     .msg-session-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
+      grid-template-columns: 1fr;   /* full-width stacked session rows (Live Response Board stays on the right) */
+      gap: 18px;                     /* premium whitespace between rows */
     }
     .msg-status-grid {
       display: grid;
@@ -2104,7 +2104,7 @@
       .msg-status-grid { grid-template-columns: 1fr; }
       .msg-status-grid.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .msg-roadmap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .msg-session-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .msg-session-grid { grid-template-columns: 1fr; }
       .msg-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .avail-manage-item-body strong { font-size: 12px; }
       .chat-shell { grid-template-columns: 1fr; }
