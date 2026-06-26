@@ -4720,6 +4720,27 @@
       });
     }
 
+    // Synthesise a player's canonical roster record from a restored server
+    // session. The roster API is coach-only, so a fresh PLAYER client (e.g. an
+    // iOS Home Screen PWA, which gets its own empty localStorage separate from
+    // Safari) otherwise has no record in state.players, getPlayer() resolves to
+    // empty, and the Availability / Training views bail out before their own
+    // server hydration runs — while Messages keep working because chat resolves
+    // the player server-side via the session cookie. Returns true only when a
+    // brand-new record was created (fresh client) so the caller can re-hydrate.
+    function hydrateSessionPlayerRecord(targetState, sessionUser) {
+      if (!targetState || !sessionUser || sessionUser.role !== 'player') return false;
+      const canonicalId = canonicalPlayerIdForUser(sessionUser);
+      if (!canonicalId) return false;
+      targetState.players = targetState.players || [];
+      const had = targetState.players.some(p =>
+        String(p.id) === String(canonicalId) || String(p.userId || '') === String(canonicalId));
+      ensureCanonicalPlayerRecord(targetState, sessionUser, canonicalId);
+      sessionUser.playerId = canonicalId;
+      if (!targetState.selectedPlayerId) targetState.selectedPlayerId = canonicalId;
+      return !had;
+    }
+
     function identityNameKey(value = '') {
       return String(value || '').trim().toLowerCase();
     }
@@ -23714,6 +23735,20 @@
               if (state.currentUserId !== sid) {
                 state.currentUserId = sid;
                 saveState('Server session restored');
+              }
+            }
+            // Fresh PLAYER client (e.g. an iOS Home Screen PWA with its own empty
+            // localStorage): synthesise the player's roster record from this server
+            // session and re-hydrate the server-backed views, so standalone shows the
+            // same availability / training state as Safari instead of "no squad".
+            if (state.currentUserId === sid) {
+              const restoredUser = state.users.find(u => u.id === sid);
+              if (hydrateSessionPlayerRecord(state, restoredUser)) {
+                saveState('Player identity hydrated');
+                _playerAvailFetched = false;       // re-fetch availability for the resolved player
+                _publishedStateLoadedAt = 0;       // re-hydrate published sessions / squad
+                loadPublishedStateForPlayer().catch(() => {});
+                render();
               }
             }
           }

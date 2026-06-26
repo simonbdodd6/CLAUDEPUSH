@@ -42,6 +42,11 @@ function clientScope({ users = [], currentUserId = '', sessionPayload = null } =
     ${extractFn('canonicalAccountForUserId')}
     ${extractFn('currentUser')}
     ${extractFn('canonicalPlayerIdForUser')}
+    ${extractFn('ensureCanonicalPlayerRecord')}
+    ${extractFn('hydrateSessionPlayerRecord')}
+    function loadPublishedStateForPlayer() { return Promise.resolve(); }
+    function render() {}
+    let _playerAvailFetched = false, _publishedStateLoadedAt = 0;
     ${extractFn('chatMe')}
     // console used by chatMe
     const console = { log() {} };
