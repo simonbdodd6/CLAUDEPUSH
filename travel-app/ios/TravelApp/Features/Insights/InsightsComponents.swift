@@ -103,32 +103,14 @@ struct DestinationTrendCard: View {
     let trend: DestinationTrendPreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                RoundedRectangle(cornerRadius: TravelRadius.md, style: .continuous)
-                    .fill(LinearGradient(colors: trend.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .overlay(alignment: .topTrailing) {
-                        Image(systemName: trend.symbol)
-                            .font(.title2)
-                            .foregroundStyle(.white.opacity(0.86))
-                            .padding(TravelSpacing.md)
-                    }
-                    .frame(height: 116)
-
-                VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                    Text(trend.destination)
-                        .font(TravelTypography.cardTitle)
-                    Text(trend.trend)
-                        .font(TravelTypography.caption)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-                    Text(trend.detail)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
+        PremiumGradientTile(
+            gradient: trend.gradient,
+            symbol: trend.symbol,
+            title: trend.destination,
+            metadata: trend.trend,
+            detail: trend.detail,
+            bannerHeight: 116
+        )
     }
 }
 

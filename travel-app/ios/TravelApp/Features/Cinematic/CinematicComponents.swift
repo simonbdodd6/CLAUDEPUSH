@@ -125,32 +125,14 @@ struct DestinationMoodCard: View {
     let mood: DestinationMoodPreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                RoundedRectangle(cornerRadius: TravelRadius.md, style: .continuous)
-                    .fill(LinearGradient(colors: mood.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .overlay(alignment: .topTrailing) {
-                        Image(systemName: mood.symbol)
-                            .font(.title2)
-                            .foregroundStyle(.white.opacity(0.86))
-                            .padding(TravelSpacing.md)
-                    }
-                    .frame(height: 118)
-
-                VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                    Text(mood.destination)
-                        .font(TravelTypography.cardTitle)
-                    Text(mood.mood)
-                        .font(TravelTypography.caption)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-                    Text(mood.caption)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
+        PremiumGradientTile(
+            gradient: mood.gradient,
+            symbol: mood.symbol,
+            title: mood.destination,
+            metadata: mood.mood,
+            detail: mood.caption,
+            bannerHeight: 118
+        )
     }
 }
 

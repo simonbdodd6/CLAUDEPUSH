@@ -165,3 +165,46 @@ struct PremiumThumbnailTile: View {
         }
     }
 }
+
+/// A gradient banner tile: a gradient header with a top-trailing symbol overlay,
+/// above a title, an uppercase metadata line and a detail line.
+///
+/// Consolidates the repeated overlay-style gradient cards previously duplicated
+/// as `DestinationTrendCard`, `HighlightMomentCard` and `DestinationMoodCard`.
+struct PremiumGradientTile: View {
+    let gradient: [Color]
+    let symbol: String
+    let title: String
+    let metadata: String
+    let detail: String
+    var bannerHeight: CGFloat = 132
+
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: TravelSpacing.md) {
+                RoundedRectangle(cornerRadius: TravelRadius.md, style: .continuous)
+                    .fill(LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .overlay(alignment: .topTrailing) {
+                        Image(systemName: symbol)
+                            .font(.title2)
+                            .foregroundStyle(.white.opacity(0.86))
+                            .padding(TravelSpacing.md)
+                    }
+                    .frame(height: bannerHeight)
+
+                VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
+                    Text(title)
+                        .font(TravelTypography.cardTitle)
+                    Text(metadata)
+                        .font(TravelTypography.caption)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+                    Text(detail)
+                        .font(TravelTypography.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+}

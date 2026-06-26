@@ -74,32 +74,14 @@ struct HighlightMomentCard: View {
     let moment: HighlightMomentPreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                RoundedRectangle(cornerRadius: TravelRadius.md, style: .continuous)
-                    .fill(LinearGradient(colors: moment.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .overlay(alignment: .topTrailing) {
-                        Image(systemName: moment.symbol)
-                            .font(.title2)
-                            .foregroundStyle(.white.opacity(0.86))
-                            .padding(TravelSpacing.md)
-                    }
-                    .frame(height: 132)
-
-                VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                    Text(moment.title)
-                        .font(TravelTypography.cardTitle)
-                    Text(moment.place)
-                        .font(TravelTypography.caption)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-                    Text(moment.detail)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
+        PremiumGradientTile(
+            gradient: moment.gradient,
+            symbol: moment.symbol,
+            title: moment.title,
+            metadata: moment.place,
+            detail: moment.detail,
+            bannerHeight: 132
+        )
     }
 }
 

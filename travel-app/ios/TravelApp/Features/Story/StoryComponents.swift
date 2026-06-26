@@ -81,33 +81,14 @@ struct StoryCollectionCard: View {
     let collection: StoryCollectionPreview
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: TravelSpacing.md) {
-                ZStack(alignment: .bottomLeading) {
-                    RoundedRectangle(cornerRadius: TravelRadius.md, style: .continuous)
-                        .fill(LinearGradient(colors: collection.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Image(systemName: collection.symbol)
-                        .font(.system(size: 38, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.86))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(TravelSpacing.md)
-                    Text(collection.count)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.white.opacity(0.78))
-                        .padding(TravelSpacing.md)
-                }
-                .frame(height: 132)
-
-                VStack(alignment: .leading, spacing: TravelSpacing.xxs) {
-                    Text(collection.title)
-                        .font(TravelTypography.cardTitle)
-                    Text(collection.subtitle)
-                        .font(TravelTypography.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
+        PremiumThumbnailTile(
+            gradient: collection.gradient,
+            title: collection.title,
+            subtitle: collection.subtitle,
+            badge: collection.count,
+            metadata: nil,
+            symbol: collection.symbol
+        )
     }
 }
 
