@@ -1,13 +1,26 @@
 import SwiftUI
 
+/// Stable `UserDefaults`-backed keys for app-wide persisted preferences.
+enum AppStorageKeys {
+    /// Whether the launch + onboarding flow has been completed at least once.
+    static let hasCompletedOnboarding = "hasCompletedOnboarding"
+}
+
 /// The top-level app flow gate: launch → onboarding → ready.
 ///
-/// Phase is held in in-memory `@State` only (no persistence), so the launch and
-/// onboarding experiences run each session and hand off to `RootShellView`.
-/// This keeps the launch/onboarding work visual-only while still driving the
-/// real app entry point.
+/// On the first launch the launch and onboarding experiences run, then the flow
+/// hands off to `RootShellView`. Completion is persisted via `@AppStorage`, so
+/// subsequent launches start directly in the ready app and onboarding is shown
+/// only once.
 struct RootFlowView: View {
-    @State private var phase: AppLaunchPhase = .launch
+    @AppStorage(AppStorageKeys.hasCompletedOnboarding) private var hasCompletedOnboarding = false
+    @State private var phase: AppLaunchPhase
+
+    init() {
+        // Skip the launch + onboarding flow once it has been completed.
+        let completed = UserDefaults.standard.bool(forKey: AppStorageKeys.hasCompletedOnboarding)
+        _phase = State(initialValue: completed ? .ready : .launch)
+    }
 
     var body: some View {
         ZStack {
@@ -19,6 +32,7 @@ struct RootFlowView: View {
                 .transition(.opacity)
             case .onboarding:
                 OnboardingView {
+                    hasCompletedOnboarding = true
                     withAnimation(.easeInOut) { phase = .ready }
                 }
                 .transition(.opacity)
