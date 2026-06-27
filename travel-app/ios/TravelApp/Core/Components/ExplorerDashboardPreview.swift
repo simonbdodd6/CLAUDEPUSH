@@ -27,9 +27,15 @@ import SwiftUI
 // Phase 74 adds a "World progress" section composing the existing
 // `ExplorerMapProgress` directly beneath the profile header — the world map is a
 // "where have I been" identity surface, so it pairs naturally with the profile —
-// shown in both the expanded map card and the compact recap. The preview now
-// reads top-to-bottom as a complete explorer overview:
-// Profile → World progress → Quests → Journey → Statistics.
+// shown in both the expanded map card and the compact recap.
+//
+// Phase 76 adds a "Travel score" hero summary composing the existing
+// `ExplorerTravelScoreCard` directly beneath the profile header — one headline
+// rating for the whole explorer experience — shown in both expanded and compact.
+// Its mock values are kept consistent with the profile and world-progress data
+// (Explorer rank, Level 7, 320/500 XP, 24 countries, 12-day streak). The preview
+// now reads top-to-bottom as a complete explorer overview:
+// Profile → Travel Score → World progress → Quests → Journey → Statistics.
 
 struct ExplorerDashboardPreview: View {
     var body: some View {
@@ -47,6 +53,41 @@ struct ExplorerDashboardPreview: View {
                 latestStampCountry: "Japan",
                 latestStampDate: "2025"
             )
+
+            PremiumSection(
+                title: "Travel score",
+                subtitle: "Your overall explorer rating, earned across every journey."
+            ) {
+                VStack(alignment: .leading, spacing: TravelSpacing.lg) {
+                    ExplorerTravelScoreCard(
+                        score: 540,
+                        rank: .explorer,
+                        level: 7,
+                        currentXP: 320,
+                        requiredXP: 500,
+                        countriesVisited: 24,
+                        xpEarned: 8_420,
+                        streakDays: 12,
+                        nextMilestone: "Reach Level 8",
+                        layout: .expanded,
+                        title: nil
+                    )
+
+                    ExplorerTravelScoreCard(
+                        score: 540,
+                        rank: .explorer,
+                        level: 7,
+                        currentXP: 320,
+                        requiredXP: 500,
+                        countriesVisited: 24,
+                        xpEarned: 8_420,
+                        streakDays: 12,
+                        nextMilestone: "Reach Level 8",
+                        layout: .compact,
+                        title: "At a glance"
+                    )
+                }
+            }
 
             PremiumSection(
                 title: "World progress",
