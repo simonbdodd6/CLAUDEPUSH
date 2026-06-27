@@ -38,9 +38,14 @@ import SwiftUI
 // Phase 78 adds an "Achievements" trophy shelf composing the existing
 // `ExplorerAchievementShelf` beneath the Travel score, curating the best unlocked
 // milestones (a subset of the profile's 19, including the Globe-trotter and
-// Frequent Flyer trophies shown elsewhere), in both expanded and compact. The
+// Frequent Flyer trophies shown elsewhere), in both expanded and compact.
+//
+// Phase 80 adds a "Dream destinations" section composing the existing
+// `ExplorerDestinationWishlist` between Achievements and World progress — the
+// forward-looking counterpart to the earned trophies — with Iceland as the
+// next-trip pick, consistent with the world-progress "next destination". The
 // preview now reads top-to-bottom as a complete explorer overview:
-// Profile → Travel Score → Achievements → World progress → Quests → Journey → Statistics.
+// Profile → Travel Score → Achievements → Dream Destinations → World progress → Quests → Journey → Statistics.
 
 struct ExplorerDashboardPreview: View {
     var body: some View {
@@ -107,6 +112,25 @@ struct ExplorerDashboardPreview: View {
 
                     ExplorerAchievementShelf(
                         achievements: shelfAchievements,
+                        layout: .compact,
+                        title: "At a glance"
+                    )
+                }
+            }
+
+            PremiumSection(
+                title: "Dream destinations",
+                subtitle: "Where you're headed next — and where you're dreaming of."
+            ) {
+                VStack(alignment: .leading, spacing: TravelSpacing.lg) {
+                    ExplorerDestinationWishlist(
+                        destinations: wishlistDestinations,
+                        layout: .expanded,
+                        title: nil
+                    )
+
+                    ExplorerDestinationWishlist(
+                        destinations: wishlistDestinations,
                         layout: .compact,
                         title: "At a glance"
                     )
@@ -414,6 +438,18 @@ struct ExplorerDashboardPreview: View {
                 title: "Reached Explorer Level 5",
                 dateLabel: "Oct 2024"
             )
+        ]
+    }
+
+    /// Deterministic dream-destination wishlist. Iceland is the next-trip pick,
+    /// matching the world-progress card's `nextDestination` so the dashboard stays
+    /// internally consistent.
+    private var wishlistDestinations: [WishlistDestination] {
+        [
+            WishlistDestination(name: "Reykjavík", country: "Iceland", status: .nextTrip, priority: .topPick, progress: 0.8, targetYear: "2025", symbol: "snowflake", gradient: [TravelTheme.current.ocean, TravelTheme.current.sky]),
+            WishlistDestination(name: "Patagonia", country: "Argentina", status: .planned, priority: .topPick, progress: 0.45, targetYear: "2026", symbol: "figure.hiking", gradient: [TravelTheme.current.moss, TravelTheme.current.ocean]),
+            WishlistDestination(name: "Santorini", country: "Greece", status: .dreaming, priority: .soon, progress: 0.2, symbol: "sun.max.fill", gradient: [TravelTheme.current.sun, TravelTheme.current.coral]),
+            WishlistDestination(name: "Serengeti", country: "Tanzania", status: .dreaming, priority: .someday, progress: 0.15, targetYear: "2027", symbol: "pawprint.fill", gradient: [TravelTheme.current.sun, TravelTheme.current.moss])
         ]
     }
 
