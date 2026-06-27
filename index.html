@@ -41,6 +41,12 @@
       --green:       #10b981;
       --green-soft:  rgba(16,185,129,0.12);
       --green-mid:   #059669;
+      /* Club-brandable accent — defaults to the Coach's Eye green; applyClubBranding
+         overrides these from the saved club primary colour. Status greens (available,
+         published, success) keep --green and are never re-skinned. */
+      --accent:      #10b981;
+      --accent-soft: rgba(16,185,129,0.12);
+      --accent-line: rgba(16,185,129,0.34);
       --amber:       #f59e0b;
       --amber-soft:  rgba(245,158,11,0.12);
       --red:         #ef4444;
@@ -544,7 +550,7 @@
       text-align: left;
       transition: border-color 0.12s;
     }
-    .training-player-list button.active { border-color: var(--green); background: rgba(16,185,129,0.07); }
+    .training-player-list button.active { border-color: var(--accent); background: var(--accent-soft); }
     .training-player-list span { display: block; color: #94a3b8; font-size: 12px; font-weight: 500; }
 
     .register-stack { display: grid; gap: 11px; margin-top: 14px; }
@@ -797,7 +803,7 @@
       transition: background .12s;
     }
     .chat-contact:hover { background: rgba(255,255,255,0.04); }
-    .chat-contact.active { background: rgba(16,185,129,0.1); border-left: 3px solid var(--green); }
+    .chat-contact.active { background: var(--accent-soft); border-left: 3px solid var(--accent); }
     .chat-contact-meta { min-width: 0; }
     .chat-contact-meta .name-row {
       display: flex;
@@ -1438,9 +1444,9 @@
     .session-card-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:18px; }
     .session-card-tab { border:2px solid var(--line); border-radius:10px; padding:14px 16px; cursor:pointer; background:var(--panel); text-align:left; transition:all 0.14s; color:var(--ink); }
     .session-card-tab:hover:not(.active) { border-color:#263d52; background:var(--panel-2); }
-    .session-card-tab.active { border-color:var(--green); background:rgba(16,185,129,0.07); }
+    .session-card-tab.active { border-color:var(--accent); background:var(--accent-soft); }
     .session-card-tab .sc-time { display:block; font-size:12px; color:var(--muted); font-weight:600; margin-bottom:5px; }
-    .session-card-tab.active .sc-time { color:var(--green); }
+    .session-card-tab.active .sc-time { color:var(--accent); }
     .session-card-tab strong { display:block; font-size:15px; font-weight:800; color:var(--ink); }
 
     /* ── INTENSITY BADGE & LOAD BAR ── */
@@ -1843,7 +1849,7 @@
       font-weight: 800;
       cursor: pointer;
     }
-    .msg-session-btn.active { border-color: var(--green); background: rgba(16,185,129,0.12); color: var(--green); }
+    .msg-session-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
     .msg-session-card {
       display: grid;
       gap: 8px;
@@ -1859,7 +1865,7 @@
       transition: border-color .14s, background .14s, transform .14s;
     }
     .msg-session-card:hover { border-color: rgba(16,185,129,0.45); transform: translateY(-1px); }
-    .msg-session-card.active { border-color: var(--green); background: rgba(16,185,129,0.10); }
+    .msg-session-card.active { border-color: var(--accent); background: var(--accent-soft); }
     .msg-session-card strong { font-size: 14px; }
     .msg-session-card small { color: var(--muted); font-size: 12px; line-height: 1.35; }
     .msg-session-grid {
@@ -1939,7 +1945,7 @@
       text-align: left;
       cursor: pointer;
     }
-    .msg-player-row:hover, .msg-player-row.active { border-color: var(--green); background: rgba(16,185,129,0.06); }
+    .msg-player-row:hover, .msg-player-row.active { border-color: var(--accent); background: var(--accent-soft); }
     .msg-player-main {
       display: flex;
       align-items: center;
@@ -2050,7 +2056,7 @@
     /* ── PLAYER DATABASE ── */
     .db-toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
     .filter-pill { min-height:30px; padding:0 13px; border:1px solid var(--line); border-radius:999px; background:var(--panel); color:var(--muted); font-size:12px; font-weight:600; cursor:pointer; transition:all 0.12s; }
-    .filter-pill.active { background:var(--green); color:#060b12; border-color:var(--green); }
+    .filter-pill.active { background:var(--accent); color:#060b12; border-color:var(--accent); }
 
     .consent-dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex-shrink:0; vertical-align:middle; margin-right:4px; }
     .c-yes { background:#10b981; } .c-no { background:#ef4444; } .c-pending { background:#f59e0b; }
@@ -2143,6 +2149,41 @@
       .card { padding: 14px; }
       /* Add-player form: single column on small phones */
       .add-player-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Training planner: premium mobile card view ───────────────────────────────
+       On phones the wide session-planner table (min-width:820px, horizontal scroll)
+       becomes a vertical stack of per-block cards with labelled fields, so a coach can
+       edit a plan one-handed without sideways scrolling. Inputs render at 16px so iOS
+       does not zoom on focus. Desktop / tablet keep the table. Presentation only —
+       no markup logic or handlers change (each <td> carries a data-label). */
+    @media (max-width: 640px) {
+      .training-gs-table { min-width: 0 !important; display: block; }
+      .training-gs-table thead { display: none; }
+      .training-gs-table tbody { display: block; }
+      .training-gs-table tr {
+        display: block;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px 12px 8px;
+        margin-bottom: 12px;
+      }
+      .training-gs-table td { display: block; width: auto !important; padding: 6px 0; }
+      .training-gs-table td[data-label]:not([data-label=""])::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 11px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .04em; color: var(--muted); margin-bottom: 5px;
+      }
+      .training-gs-table td input,
+      .training-gs-table td textarea {
+        width: 100% !important;
+        font-size: 16px !important;      /* >=16px stops iOS zooming on focus */
+        box-sizing: border-box;
+      }
+      .training-gs-table .gs-time-input { width: 150px !important; }
+      .training-gs-table td textarea { min-height: 92px !important; height: auto !important; }
+      .training-gs-table td[data-label=""] { text-align: right; padding-top: 2px; }
     }
 
     /* ═══════════════════════════════════════════════════════════════════════════
@@ -10532,25 +10573,25 @@
             <tbody>
               ${blocks.map(b=>`
                 <tr>
-                  <td style="vertical-align:middle">
+                  <td data-label="Time" style="vertical-align:middle">
                     <input class="gs-time-input" value="${b.time}"
                       oninput="updateTimeBlock('${sessId}','${b.id}','time',this.value)"
                       placeholder="19:45"
                       style="width:84px;font-size:15px;padding:8px 10px">
                   </td>
-                  <td style="vertical-align:top">
+                  <td data-label="Activity" style="vertical-align:top">
                     <textarea
                       oninput="updateTimeBlock('${sessId}','${b.id}','activity',this.value)"
                       placeholder="Short title (e.g. Ruck drill)"
                       style="font-size:14px;line-height:1.5;min-height:180px;height:100%;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${b.activity.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
                   </td>
-                  <td style="vertical-align:top">
+                  <td data-label="Key Focus" style="vertical-align:top">
                     <textarea
                       oninput="updateTimeBlock('${sessId}','${b.id}','keyFocus',this.value)"
                       placeholder="Key coaching points, cues and targets — write as much as you need…"
                       style="font-size:14px;line-height:1.5;min-height:180px;height:100%;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${(b.keyFocus||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
                   </td>
-                  <td style="vertical-align:top">
+                  <td data-label="Lead Coach" style="vertical-align:top">
                     <textarea
                       oninput="updateTimeBlock('${sessId}','${b.id}','coach',this.value)"
                       placeholder="Lead coach, assistants, responsibilities…"
@@ -10558,7 +10599,7 @@
                       data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore
                       style="font-size:13px;line-height:1.5;min-height:180px;height:100%;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${(b.coach||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
                   </td>
-                  <td style="vertical-align:middle">
+                  <td data-label="" style="vertical-align:middle">
                     <button class="btn ghost" type="button" style="padding:0 8px;min-height:28px;color:var(--muted)" onclick="removeTimeBlock('${sessId}','${b.id}')">✕</button>
                   </td>
                 </tr>`).join("")}
@@ -13918,6 +13959,12 @@
         '--brand-soft':  _hexToRgba(primary, 0.13),
         '--brand-line':  _hexToRgba(primary, 0.34),
         '--glow-brand':  `0 0 0 1px ${_hexToRgba(primary, 0.18)}, 0 8px 24px -6px ${_hexToRgba(primary, 0.4)}`,
+        // The brand gradient (club badge + view-switch toggle) blends secondary → primary.
+        '--brand-grad':  `linear-gradient(135deg, ${secondary} 0%, ${primary} 100%)`,
+        // Active-tab / selected highlights re-skin to the club primary too.
+        '--accent':      primary,
+        '--accent-soft': _hexToRgba(primary, 0.12),
+        '--accent-line': _hexToRgba(primary, 0.34),
       };
     }
 
@@ -13929,13 +13976,16 @@
       if (typeof document === 'undefined') return;
       const root = document.documentElement;
       const vars = clubBrandVars(state.clubColours);
-      ['--brand', '--brand-2', '--brand-soft', '--brand-line', '--glow-brand'].forEach(v => {
+      ['--brand', '--brand-2', '--brand-soft', '--brand-line', '--glow-brand', '--brand-grad',
+       '--accent', '--accent-soft', '--accent-line'].forEach(v => {
         if (vars[v]) root.style.setProperty(v, vars[v]); else root.style.removeProperty(v);
       });
+      // Club badge in the sidebar identity block (shows on every screen). The logo
+      // gets a subtle club-coloured ring; with no logo the default CE monogram shows.
       const badge = document.querySelector('.brand-mark');
       if (badge) {
         badge.style.cssText = state.clubLogo
-          ? `background-image:url(${state.clubLogo});background-size:cover;background-position:center;color:transparent`
+          ? `background-image:url(${state.clubLogo});background-size:cover;background-position:center;color:transparent;box-shadow:inset 0 0 0 1px var(--brand-line)`
           : '';
       }
     }
@@ -17759,8 +17809,8 @@
           const isAct = act === id;
           return '<button type="button" onclick="setMedicalTab(\'' + id + '\')"' +
             ' style="padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;border:none;' +
-            'background:none;color:' + (isAct ? 'var(--green)' : 'var(--muted)') + ';' +
-            'border-bottom:2.5px solid ' + (isAct ? 'var(--green)' : 'transparent') + ';' +
+            'background:none;color:' + (isAct ? 'var(--accent)' : 'var(--muted)') + ';' +
+            'border-bottom:2.5px solid ' + (isAct ? 'var(--accent)' : 'transparent') + ';' +
             'margin-bottom:-2px;border-radius:0;white-space:nowrap">' + label + '</button>';
         }).join('') + '</div>';
     }
@@ -18215,8 +18265,8 @@
           const isAct = act === id;
           return '<button type="button" onclick="setMatchTab(\'' + id + '\')"' +
             ' style="padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;border:none;' +
-            'background:none;color:' + (isAct ? 'var(--green)' : 'var(--muted)') + ';' +
-            'border-bottom:2.5px solid ' + (isAct ? 'var(--green)' : 'transparent') + ';' +
+            'background:none;color:' + (isAct ? 'var(--accent)' : 'var(--muted)') + ';' +
+            'border-bottom:2.5px solid ' + (isAct ? 'var(--accent)' : 'transparent') + ';' +
             'margin-bottom:-2px;border-radius:0;white-space:nowrap">' + label + '</button>';
         }).join('') + '</div>';
     }
@@ -18863,8 +18913,8 @@
           const isAct = act === id;
           return '<button type="button" onclick="setTrainingTab(\'' + id + '\')"' +
             ' style="padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;border:none;' +
-            'background:none;color:' + (isAct ? 'var(--green)' : 'var(--muted)') + ';' +
-            'border-bottom:2.5px solid ' + (isAct ? 'var(--green)' : 'transparent') + ';' +
+            'background:none;color:' + (isAct ? 'var(--accent)' : 'var(--muted)') + ';' +
+            'border-bottom:2.5px solid ' + (isAct ? 'var(--accent)' : 'transparent') + ';' +
             'margin-bottom:-2px;border-radius:0;white-space:nowrap">' + label + '</button>';
         }).join('') + '</div>';
     }

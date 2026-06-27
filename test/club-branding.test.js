@@ -33,16 +33,23 @@ test('_hexToRgba converts #rrggbb to rgba at the given alpha', () => {
   assert.equal(_hexToRgba('not-a-colour', 0.5), null);
 });
 
-test('club colours map to the brand accent CSS variables only', () => {
+test('club colours map to the brand + accent CSS variables', () => {
   const vars = clubBrandVars({ primary: '#ff5500', secondary: '#0044ff' });
   assert.equal(vars['--brand'], '#ff5500', 'primary drives --brand (buttons / active nav)');
   assert.equal(vars['--brand-2'], '#0044ff', 'secondary drives --brand-2');
   assert.equal(vars['--brand-soft'], 'rgba(255, 85, 0, 0.13)');
   assert.equal(vars['--brand-line'], 'rgba(255, 85, 0, 0.34)');
   assert.ok(vars['--glow-brand'].includes('rgba(255, 85, 0'));
-  // Only brand vars — status colours (--green/--red) are never touched.
+  // The brand gradient (club badge + view-switch) blends secondary → primary.
+  assert.equal(vars['--brand-grad'], 'linear-gradient(135deg, #0044ff 0%, #ff5500 100%)');
+  // Active-tab / selected highlights (session cards, filter pills, chat contacts,
+  // tab underlines) re-skin to the club primary via --accent.
+  assert.equal(vars['--accent'], '#ff5500', 'primary drives --accent (active tabs / highlights)');
+  assert.equal(vars['--accent-soft'], 'rgba(255, 85, 0, 0.12)');
+  assert.equal(vars['--accent-line'], 'rgba(255, 85, 0, 0.34)');
+  // Brand + accent vars only — status colours (--green/--red/--amber) are untouched.
   assert.deepEqual(Object.keys(vars).sort(),
-    ['--brand', '--brand-2', '--brand-line', '--brand-soft', '--glow-brand']);
+    ['--accent', '--accent-line', '--accent-soft', '--brand', '--brand-2', '--brand-grad', '--brand-line', '--brand-soft', '--glow-brand']);
 });
 
 test('secondary falls back to primary when absent', () => {
