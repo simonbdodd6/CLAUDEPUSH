@@ -10521,12 +10521,12 @@
           </div>
           ${blocks.length ? `
           <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:-4px -2px 0">
-          <table class="training-gs-table" style="min-width:760px">
+          <table class="training-gs-table" style="min-width:820px;table-layout:fixed;width:100%">
             <thead><tr>
               <th style="width:88px;font-size:12px">Time</th>
-              <th style="width:170px;font-size:12px">Activity</th>
-              <th style="width:220px;font-size:12px">Lead Coach</th>
+              <th style="font-size:12px">Activity</th>
               <th style="font-size:12px">Key Focus</th>
+              <th style="width:220px;font-size:12px">Lead Coach</th>
               <th style="width:36px"></th>
             </tr></thead>
             <tbody>
@@ -10538,28 +10538,25 @@
                       placeholder="19:45"
                       style="width:84px;font-size:15px;padding:8px 10px">
                   </td>
-                  <td>
+                  <td style="vertical-align:top">
                     <textarea
                       oninput="updateTimeBlock('${sessId}','${b.id}','activity',this.value)"
                       placeholder="Short title (e.g. Ruck drill)"
-                      rows="2"
-                      style="font-size:14px;line-height:1.4;min-height:44px">${b.activity.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
-                  </td>
-                  <td style="vertical-align:top">
-                    <textarea
-                      oninput="updateTimeBlock('${sessId}','${b.id}','coach',this.value)"
-                      placeholder="Lead coach, assistants, staff notes…"
-                      rows="3"
-                      name="session-plan-coach" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                      data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore
-                      style="font-size:13px;min-height:76px">${(b.coach||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
+                      style="font-size:14px;line-height:1.5;min-height:180px;height:100%;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${b.activity.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
                   </td>
                   <td style="vertical-align:top">
                     <textarea
                       oninput="updateTimeBlock('${sessId}','${b.id}','keyFocus',this.value)"
                       placeholder="Key coaching points, cues and targets — write as much as you need…"
-                      rows="4"
-                      style="font-size:14px;line-height:1.5;min-height:120px;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit">${(b.keyFocus||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
+                      style="font-size:14px;line-height:1.5;min-height:180px;height:100%;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${(b.keyFocus||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
+                  </td>
+                  <td style="vertical-align:top">
+                    <textarea
+                      oninput="updateTimeBlock('${sessId}','${b.id}','coach',this.value)"
+                      placeholder="Lead coach, assistants, responsibilities…"
+                      name="session-plan-coach" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                      data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore
+                      style="font-size:13px;line-height:1.5;min-height:180px;height:100%;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${(b.coach||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
                   </td>
                   <td style="vertical-align:middle">
                     <button class="btn ghost" type="button" style="padding:0 8px;min-height:28px;color:var(--muted)" onclick="removeTimeBlock('${sessId}','${b.id}')">✕</button>
