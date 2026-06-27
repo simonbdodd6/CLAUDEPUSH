@@ -33,9 +33,14 @@ import SwiftUI
 // `ExplorerTravelScoreCard` directly beneath the profile header — one headline
 // rating for the whole explorer experience — shown in both expanded and compact.
 // Its mock values are kept consistent with the profile and world-progress data
-// (Explorer rank, Level 7, 320/500 XP, 24 countries, 12-day streak). The preview
-// now reads top-to-bottom as a complete explorer overview:
-// Profile → Travel Score → World progress → Quests → Journey → Statistics.
+// (Explorer rank, Level 7, 320/500 XP, 24 countries, 12-day streak).
+//
+// Phase 78 adds an "Achievements" trophy shelf composing the existing
+// `ExplorerAchievementShelf` beneath the Travel score, curating the best unlocked
+// milestones (a subset of the profile's 19, including the Globe-trotter and
+// Frequent Flyer trophies shown elsewhere), in both expanded and compact. The
+// preview now reads top-to-bottom as a complete explorer overview:
+// Profile → Travel Score → Achievements → World progress → Quests → Journey → Statistics.
 
 struct ExplorerDashboardPreview: View {
     var body: some View {
@@ -83,6 +88,25 @@ struct ExplorerDashboardPreview: View {
                         xpEarned: 8_420,
                         streakDays: 12,
                         nextMilestone: "Reach Level 8",
+                        layout: .compact,
+                        title: "At a glance"
+                    )
+                }
+            }
+
+            PremiumSection(
+                title: "Achievements",
+                subtitle: "Your finest milestones, on the trophy shelf."
+            ) {
+                VStack(alignment: .leading, spacing: TravelSpacing.lg) {
+                    ExplorerAchievementShelf(
+                        achievements: shelfAchievements,
+                        layout: .expanded,
+                        title: nil
+                    )
+
+                    ExplorerAchievementShelf(
+                        achievements: shelfAchievements,
                         layout: .compact,
                         title: "At a glance"
                     )
@@ -390,6 +414,20 @@ struct ExplorerDashboardPreview: View {
                 title: "Reached Explorer Level 5",
                 dateLabel: "Oct 2024"
             )
+        ]
+    }
+
+    /// Curated best unlocked achievements for the trophy shelf — a deterministic
+    /// subset of the profile's 19, reusing the Globe-trotter and Frequent Flyer
+    /// trophies shown in the "Recent achievements" section so the dashboard stays
+    /// internally consistent.
+    private var shelfAchievements: [ShelfAchievement] {
+        [
+            ShelfAchievement(title: "Globe-trotter", icon: "globe.europe.africa.fill", rarity: .legendary, xp: 500, unlockedDate: "Feb 2025", category: "Exploration"),
+            ShelfAchievement(title: "Summit Seeker", icon: "mountain.2.fill", rarity: .platinum, xp: 300, unlockedDate: "Oct 2024", category: "Adventure"),
+            ShelfAchievement(title: "Frequent Flyer", icon: "airplane", rarity: .gold, xp: 200, unlockedDate: "Jan 2025", category: "Travel"),
+            ShelfAchievement(title: "Deep Diver", icon: "water.waves", rarity: .gold, xp: 180, unlockedDate: "Sep 2024", category: "Ocean"),
+            ShelfAchievement(title: "Night Owl", icon: "moon.stars.fill", rarity: .bronze, xp: 60, unlockedDate: "Nov 2024", category: "Culture")
         ]
     }
 
