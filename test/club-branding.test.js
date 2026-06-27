@@ -56,12 +56,13 @@ test('club colours map to the brand + accent CSS variables', () => {
   assert.equal(vars['--accent'], '#ff5500', 'primary drives --accent (active tabs / highlights)');
   assert.equal(vars['--accent-soft'], 'rgba(255, 85, 0, 0.12)');
   assert.equal(vars['--accent-line'], 'rgba(255, 85, 0, 0.34)');
-  // Soft page-header glow + readable club-tinted outgoing message bubble.
-  assert.equal(vars['--page-glow'], 'rgba(255, 85, 0, 0.13)');
+  // Soft page glow + a more present logged-in background wash + readable bubble.
+  assert.equal(vars['--page-glow'], 'rgba(255, 85, 0, 0.18)');
+  assert.equal(vars['--page-wash'], 'rgba(255, 85, 0, 0.2)', 'logged-in workspace shows more of the club primary');
   assert.match(vars['--bubble-mine'], /^rgb\(\d+, \d+, \d+\)$/, 'darkened primary, readable with light text');
   // Brand + accent + page vars only — status colours (--green/--red/--amber) are untouched.
   assert.deepEqual(Object.keys(vars).sort(),
-    ['--accent', '--accent-line', '--accent-soft', '--brand', '--brand-2', '--brand-grad', '--brand-line', '--brand-soft', '--bubble-mine', '--glow-brand', '--page-glow']);
+    ['--accent', '--accent-line', '--accent-soft', '--brand', '--brand-2', '--brand-grad', '--brand-line', '--brand-soft', '--bubble-mine', '--glow-brand', '--page-glow', '--page-wash']);
 });
 
 test('secondary falls back to primary when absent', () => {

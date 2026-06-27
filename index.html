@@ -3944,6 +3944,9 @@
       --hair:        rgba(22,28,45,0.05);
       --nav:         #ffffff;
       --nav-soft:    #eef1f7;
+      /* Background wash — subtle/neutral by default (logged-out login screen);
+         applyClubBranding raises it to the saved primary when a club is active. */
+      --page-wash:   rgba(110,116,240,0.09);
       --glass:       rgba(22,28,45,0.025);
       --glass-2:     rgba(22,28,45,0.04);
       --glass-line:  rgba(22,28,45,0.07);
@@ -3960,8 +3963,8 @@
        opacity, club-driven via --brand-soft). No dark texture. */
     body {
       background:
-        radial-gradient(1300px 880px at 88% -14%, var(--brand-soft), transparent 56%),
-        radial-gradient(1100px 760px at -8% 110%, var(--brand-soft), transparent 52%),
+        radial-gradient(1500px 980px at 86% -12%, var(--page-wash), transparent 62%),
+        radial-gradient(1250px 860px at -10% 108%, var(--page-wash), transparent 58%),
         linear-gradient(178deg, #fbfbfa 0%, #f1f2f5 62%, #eef0f4 100%) !important;
       background-attachment: fixed !important;
       color: var(--ink);
@@ -14242,7 +14245,9 @@
         '--accent-soft': _hexToRgba(primary, 0.12),
         '--accent-line': _hexToRgba(primary, 0.34),
         // Very soft page-header glow + readable club-tinted outgoing message bubble.
-        '--page-glow':   _hexToRgba(primary, 0.13),
+        '--page-glow':   _hexToRgba(primary, 0.18),
+        // Logged-in club workspace: a more present primary-colour background wash.
+        '--page-wash':   _hexToRgba(primary, 0.20),
         '--bubble-mine': _hexScale(primary, 0.42),
       };
     }
@@ -14256,7 +14261,7 @@
       const root = document.documentElement;
       const vars = clubBrandVars(state.clubColours);
       ['--brand', '--brand-2', '--brand-soft', '--brand-line', '--glow-brand', '--brand-grad',
-       '--accent', '--accent-soft', '--accent-line', '--page-glow', '--bubble-mine'].forEach(v => {
+       '--accent', '--accent-soft', '--accent-line', '--page-glow', '--page-wash', '--bubble-mine'].forEach(v => {
         if (vars[v]) root.style.setProperty(v, vars[v]); else root.style.removeProperty(v);
       });
       // Club badge in the sidebar identity block (shows on every screen). The logo
