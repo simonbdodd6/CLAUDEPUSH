@@ -45,8 +45,12 @@
          overrides these from the saved club primary colour. Status greens (available,
          published, success) keep --green and are never re-skinned. */
       --accent:      #10b981;
+      --accent-2:    #0ea5e9;
       --accent-soft: rgba(16,185,129,0.12);
       --accent-line: rgba(16,185,129,0.34);
+      /* Primary as an r,g,b triplet for rgba(var(--accent-rgb), α) tints.
+         Defaults to the Coach's Eye green; applyClubBranding sets the club primary. */
+      --accent-rgb:  16, 185, 129;
       /* Outgoing chat bubble — defaults to the current dark teal; club colours
          override it with a darkened, readable club tint. */
       --bubble-mine: #005c4b;
@@ -67,7 +71,7 @@
       --shadow:      0 1px 2px rgba(0,0,0,0.28), 0 16px 40px -14px rgba(0,0,0,0.6);
       --shadow-sm:   0 1px 2px rgba(0,0,0,0.30);
       --shadow-lift: 0 2px 4px rgba(0,0,0,0.30), 0 24px 48px -16px rgba(0,0,0,0.66);
-      --glow-green:  0 0 24px rgba(16,185,129,0.18);
+      --glow-green:  0 0 24px rgba(var(--accent-rgb), 0.18);
       --glow-brand:  0 0 0 1px rgba(99,102,241,0.18), 0 8px 24px -6px rgba(99,102,241,0.4);
 
       /* Typography — Inter throughout for a modern SaaS feel */
@@ -100,9 +104,9 @@
       color: #ecf5ef;
       overflow-y: auto;
       background:
-        radial-gradient(circle at 15% 8%, rgba(16,185,129,0.08), transparent 40%),
+        radial-gradient(circle at 15% 8%, rgba(var(--accent-rgb), 0.08), transparent 40%),
         linear-gradient(180deg, #0a1520 0%, #060b12 100%);
-      border-right: 1px solid rgba(16,185,129,0.07);
+      border-right: 1px solid rgba(var(--accent-rgb), 0.07);
     }
     .brand { display: flex; gap: 11px; align-items: center; padding: 0 4px; }
     .brand-mark {
@@ -110,7 +114,7 @@
       width: 40px;
       height: 40px;
       place-items: center;
-      background: var(--green);
+      background: var(--accent);
       border-radius: 10px;
       font-weight: 900;
       font-size: 13px;
@@ -145,7 +149,7 @@
     }
     .view-switch button.active {
       color: #060b12;
-      background: var(--green);
+      background: var(--accent);
       box-shadow: var(--glow-green);
     }
     .view-switch button:not(.active):hover {
@@ -175,11 +179,11 @@
     .auth-panel small { display: block; color: #4a7a5e; font-size: 12px; }
     .auth-tabs { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
     .auth-tab { background:rgba(255,255,255,0.04); border:none; border-radius:6px; color:rgba(255,255,255,0.35); font-size:12px; font-weight:600; padding:6px 4px; cursor:pointer; transition:background 0.15s; }
-    .auth-tab.active { background:rgba(16,185,129,0.18); color:#10b981; }
-    .join-code-banner { background:linear-gradient(135deg,#062a1c,#083d28); border-radius:12px; padding:16px 18px; margin-bottom:16px; color:#fff; border:1px solid rgba(16,185,129,0.18); }
+    .auth-tab.active { background:rgba(var(--accent-rgb), 0.18); color:#10b981; }
+    .join-code-banner { background:linear-gradient(135deg,#062a1c,#083d28); border-radius:12px; padding:16px 18px; margin-bottom:16px; color:#fff; border:1px solid rgba(var(--accent-rgb), 0.18); }
     .join-code-banner h3 { margin:0 0 4px; font-size:15px; }
     .join-code-banner p { margin:0 0 12px; font-size:13px; opacity:0.85; }
-    .join-code-value { font-size:28px; font-weight:800; letter-spacing:3px; background:rgba(16,185,129,0.14); border-radius:8px; padding:8px 14px; display:inline-block; margin-bottom:12px; font-family:var(--font-mono); color:#10b981; }
+    .join-code-value { font-size:28px; font-weight:800; letter-spacing:3px; background:rgba(var(--accent-rgb), 0.14); border-radius:8px; padding:8px 14px; display:inline-block; margin-bottom:12px; font-family:var(--font-mono); color:#10b981; }
     .join-code-url { font-size:12px; opacity:0.55; word-break:break-all; margin-bottom:10px; }
 
     /* Nav */
@@ -200,10 +204,10 @@
       transition: all 0.12s ease;
     }
     nav button.active {
-      background: rgba(16,185,129,0.13);
+      background: rgba(var(--accent-rgb), 0.13);
       color: #10b981;
       font-weight: 700;
-      border-left: 2px solid var(--green);
+      border-left: 2px solid var(--accent);
       padding-left: 8px;
     }
     nav button:not(.active):hover {
@@ -287,7 +291,7 @@
       margin-bottom: 24px;
     }
     .eyebrow {
-      color: var(--green);
+      color: var(--accent);
       font-size: 11px;
       font-weight: 800;
       text-transform: uppercase;
@@ -326,7 +330,7 @@
       font-weight: 700;
       white-space: nowrap;
     }
-    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(16,185,129,0.14); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.14); }
     .button-row { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
     .btn {
       min-height: 38px;
@@ -341,8 +345,8 @@
     }
     .btn:hover { background: var(--panel-2); border-color: #263d52; }
     .btn.primary {
-      border-color: var(--green);
-      background: var(--green);
+      border-color: var(--accent);
+      background: var(--accent);
       color: #060b12;
     }
     .btn.primary:hover { background: var(--green-mid); border-color: var(--green-mid); }
@@ -455,8 +459,8 @@
       100% { background-position: 200% 0; }
     }
     @keyframes pulseGlow {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
-      50%       { box-shadow: 0 0 0 6px rgba(16,185,129,0.14); }
+      0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0); }
+      50%       { box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0.14); }
     }
     @keyframes ripple {
       to { transform: scale(2.5); opacity: 0; }
@@ -491,8 +495,8 @@
     }
     input:focus, select:focus, textarea:focus {
       outline: none;
-      border-color: var(--green);
-      box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
     }
     input::placeholder, textarea::placeholder { color: #3a5065; }
     textarea { min-height: 100px; resize: vertical; }
@@ -523,8 +527,8 @@
       transition: all 0.12s;
     }
     .session-tabs button.active {
-      border-color: var(--green);
-      background: var(--green);
+      border-color: var(--accent);
+      background: var(--accent);
       color: #060b12;
     }
     .session-detail-header {
@@ -651,7 +655,7 @@
 
     /* ── Availability Centre: session cards, management, player view ── */
     .avail-progress { height:4px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:10px; }
-    .avail-progress-fill { height:100%;background:var(--green);border-radius:99px;transition:width .4s ease; }
+    .avail-progress-fill { height:100%;background:var(--accent);border-radius:99px;transition:width .4s ease; }
     .avail-session-icon { font-size:15px;margin-right:5px; }
     .avail-deadline-badge { display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:var(--amber);background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:999px;padding:2px 8px;margin-left:6px; }
     .avail-manage-list { display:grid;gap:8px;padding:0 16px 14px; }
@@ -662,9 +666,9 @@
     .avail-manage-item-body small { display:block;font-size:11px;color:var(--muted);margin-top:2px; }
     .avail-manage-actions { display:flex;gap:6px;flex-shrink:0; }
     .avail-manage-actions button { min-height:30px;padding:0 10px;font-size:11px;font-weight:700;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;transition:all .12s; }
-    .avail-manage-actions button:hover { border-color:var(--green);color:var(--green); }
+    .avail-manage-actions button:hover { border-color:var(--accent);color:var(--accent); }
     .avail-manage-actions button.del:hover { border-color:#ef4444;color:#f87171; }
-    .avail-session-form { padding:14px 16px;border-top:1px solid var(--line);background:rgba(16,185,129,0.04);border-radius:0 0 10px 10px; }
+    .avail-session-form { padding:14px 16px;border-top:1px solid var(--line);background:rgba(var(--accent-rgb), 0.04);border-radius:0 0 10px 10px; }
     .avail-session-form .sf-row { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px; }
     .avail-session-form .sf-label { display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em; }
     .avail-session-form input,.avail-session-form select { width:100%;min-height:36px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);padding:0 10px;font-size:13px;box-sizing:border-box; }
@@ -721,7 +725,7 @@
     .slot span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 
     .message-bubble { border: 1px solid var(--line); border-radius: 9px; padding: 13px; background: var(--panel); }
-    .message-bubble.unread { border-color: rgba(16,185,129,0.28); background: rgba(16,185,129,0.05); }
+    .message-bubble.unread { border-color: rgba(var(--accent-rgb), 0.28); background: rgba(var(--accent-rgb), 0.05); }
     .message-meta { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
     .thread-reply { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; margin-top: 9px; }
     /* ══════════════════════════════════════════════════════
@@ -861,7 +865,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, rgba(16,185,129,0.28), rgba(59,130,246,0.18));
+      background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.28), rgba(59,130,246,0.18));
       border: 1px solid rgba(255,255,255,0.08);
       color: #ecf5ef;
       font-size: 14px;
@@ -885,7 +889,7 @@
     /* Unread badge */
     .chat-unread {
       min-width: 20px; height: 20px; padding: 0 6px;
-      border-radius: 999px; background: var(--green); color: #06110d;
+      border-radius: 999px; background: var(--accent); color: #06110d;
       display: inline-flex; align-items: center; justify-content: center;
       font-size: 10px; font-weight: 900; flex-shrink: 0;
     }
@@ -978,7 +982,7 @@
     }
     .chat-unread-divider {
       align-self: center; margin: 10px 0;
-      background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.2);
+      background: rgba(var(--accent-rgb), 0.15); border: 1px solid rgba(var(--accent-rgb), 0.2);
       border-radius: 999px; padding: 3px 14px;
       color: #10b981; font-size: 11px; font-weight: 700;
     }
@@ -1049,7 +1053,7 @@
       border-radius: 999px; padding: 2px 7px; font-size: 12px; cursor: pointer;
       transition: background .12s; color: var(--ink);
     }
-    .chat-reaction:hover, .chat-reaction.mine { background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.3); }
+    .chat-reaction:hover, .chat-reaction.mine { background: rgba(var(--accent-rgb), 0.15); border-color: rgba(var(--accent-rgb), 0.3); }
     .chat-reaction .count { font-size: 10px; font-weight: 700; color: var(--muted); }
     /* Typing indicator */
     .chat-typing-bar {
@@ -1183,7 +1187,7 @@
     .automation-grid { display: grid; gap: 9px; margin-top: 14px; }
     .automation-card { display: grid; gap: 9px; border: 1px solid var(--line); border-radius: 9px; padding: 11px; background: var(--panel-2); }
     .history-bar { height: 9px; overflow: hidden; border-radius: 999px; background: var(--line); }
-    .history-bar span { display: block; height: 100%; background: var(--green); border-radius: 999px; }
+    .history-bar span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
 
     /* ── PUSH BANNER (player side) ── */
     .push-banner {
@@ -1192,14 +1196,14 @@
       justify-content: space-between;
       gap: 14px;
       padding: 14px 16px;
-      border: 1px solid rgba(16,185,129,0.2);
+      border: 1px solid rgba(var(--accent-rgb), 0.2);
       border-radius: 10px;
-      background: rgba(16,185,129,0.06);
+      background: rgba(var(--accent-rgb), 0.06);
     }
     .push-banner .push-icon { font-size: 22px; flex-shrink: 0; }
     .push-banner .push-text strong { display: block; font-size: 14px; color: var(--ink); }
     .push-banner .push-text small { color: var(--muted); font-size: 12px; }
-    .push-subscribed { border-color: rgba(16,185,129,0.24); background: rgba(16,185,129,0.06); }
+    .push-subscribed { border-color: rgba(var(--accent-rgb), 0.24); background: rgba(var(--accent-rgb), 0.06); }
     .push-denied { border-color: rgba(239,68,68,0.22); background: rgba(239,68,68,0.05); }
 
     /* ── TOAST ── */
@@ -1210,7 +1214,7 @@
       padding: 12px 20px;
       border-radius: 10px;
       background: #141e2e;
-      border: 1px solid rgba(16,185,129,0.18);
+      border: 1px solid rgba(var(--accent-rgb), 0.18);
       color: #e2e8f0;
       font-size: 14px;
       font-weight: 600;
@@ -1219,7 +1223,7 @@
       transform: translateY(8px) scale(0.97);
       transition: opacity 0.2s ease, transform 0.2s ease;
       pointer-events: none;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(16,185,129,0.08);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(var(--accent-rgb), 0.08);
     }
     .toast.visible {
       opacity: 1;
@@ -1255,7 +1259,7 @@
     /* Toast variants — errors look like errors, and never collide with the
        thumb zone on mobile. */
     .toast.toast-error { border-color: rgba(239,68,68,0.45); background: #1d1117; }
-    .toast.toast-success { border-color: rgba(16,185,129,0.4); }
+    .toast.toast-success { border-color: rgba(var(--accent-rgb), 0.4); }
     @media (max-width: 768px) {
       .toast { left: 12px; right: 12px; bottom: max(16px, env(safe-area-inset-bottom)); text-align: center; }
     }
@@ -1287,7 +1291,7 @@
       font-size: 13.5px; font-weight: 700; cursor: pointer; border: 1px solid var(--line);
       background: var(--panel-2); color: var(--ink);
     }
-    .ce-modal-actions .ce-confirm { background: var(--green); border-color: var(--green); color: #060b12; }
+    .ce-modal-actions .ce-confirm { background: var(--accent); border-color: var(--accent); color: #060b12; }
     .ce-modal-actions .ce-confirm.danger { background: var(--red); border-color: var(--red); color: #fff; }
     @media (max-width: 480px) {
       .ce-modal-overlay { align-items: flex-end; padding: 10px; }
@@ -1302,20 +1306,20 @@
       flex-wrap: wrap; padding: 2px 2px 0;
     }
     .mctl-date { font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
-    .mctl-context { font-size: 12.5px; font-weight: 600; color: var(--green); }
+    .mctl-context { font-size: 12.5px; font-weight: 600; color: var(--accent); }
     .mctl-section-label {
       font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em;
       color: var(--muted); margin: 4px 2px -6px;
     }
     .mctl-allclear {
       display: flex; align-items: center; gap: 12px;
-      border: 1px solid rgba(16,185,129,0.25); border-radius: 12px;
-      background: rgba(16,185,129,0.05); padding: 18px 20px;
+      border: 1px solid rgba(var(--accent-rgb), 0.25); border-radius: 12px;
+      background: rgba(var(--accent-rgb), 0.05); padding: 18px 20px;
       font-size: 14px; font-weight: 600; color: var(--ink);
     }
     .mctl-allclear-icon {
       width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
-      background: rgba(16,185,129,0.18); color: var(--green);
+      background: rgba(var(--accent-rgb), 0.18); color: var(--accent);
       font-size: 13px; font-weight: 900;
       display: flex; align-items: center; justify-content: center;
     }
@@ -1326,7 +1330,7 @@
       font-size: 13px; font-weight: 600; text-align: left;
     }
     .mctl-row:last-child { border-bottom: 0; }
-    .mctl-row:hover { color: var(--green); }
+    .mctl-row:hover { color: var(--accent); }
     .mctl-row-icon { flex-shrink: 0; font-size: 14px; width: 20px; text-align: center; }
     .mctl-row-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mctl-row-detail { color: var(--muted); font-weight: 500; }
@@ -1338,7 +1342,7 @@
     .mctl-done summary::before { content: '▸ '; }
     .mctl-done[open] summary::before { content: '▾ '; }
     .mctl-receipt { font-size: 12.5px; color: var(--muted); padding: 5px 2px 5px 6px; }
-    .mctl-tick { color: var(--green); font-weight: 800; margin-right: 8px; }
+    .mctl-tick { color: var(--accent); font-weight: 800; margin-right: 8px; }
 
     /* Unified empty state */
     .empty-state { text-align: center; padding: 32px 20px; color: var(--muted); }
@@ -1349,7 +1353,7 @@
     /* First-session checklist — minimal, calm, one tap per step */
     .ob-card { padding: 18px 20px 14px; }
     .ob-progress { height: 3px; background: var(--line-soft); border-radius: 2px; overflow: hidden; margin-top: 12px; }
-    .ob-progress > div { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.35s ease; }
+    .ob-progress > div { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.35s ease; }
     .ob-row {
       display: flex; align-items: flex-start; gap: 12px; width: 100%;
       background: none; border: none; border-bottom: 1px solid var(--line-soft);
@@ -1381,14 +1385,14 @@
     /* Welcome screen (logged out + empty device) */
     .ce-welcome {
       position: fixed; inset: 0; z-index: 9500;
-      background: radial-gradient(1100px 500px at 50% -10%, rgba(16,185,129,0.10), transparent), var(--page);
+      background: radial-gradient(1100px 500px at 50% -10%, rgba(var(--accent-rgb), 0.10), transparent), var(--page);
       display: flex; align-items: center; justify-content: center; padding: 24px;
       animation: fadeIn 0.25s ease both;
     }
     .ce-welcome-card { max-width: 380px; width: 100%; text-align: center; }
     .ce-welcome-card .ce-logo {
       width: 64px; height: 64px; border-radius: 16px; margin: 0 auto 18px;
-      background: var(--green-soft); border: 1px solid rgba(16,185,129,0.3);
+      background: var(--accent-soft); border: 1px solid rgba(var(--accent-rgb), 0.3);
       display: flex; align-items: center; justify-content: center;
     }
     .ce-welcome-card h1 {
@@ -1422,7 +1426,7 @@
       font-family: var(--font-body);
       letter-spacing: 0;
     }
-    .fixture-hero { border:1px solid rgba(16,185,129,0.18); border-radius:12px; padding:20px; background:linear-gradient(135deg,#0a1820 0%,#0d2232 100%); color:#ecf5ef; }
+    .fixture-hero { border:1px solid rgba(var(--accent-rgb), 0.18); border-radius:12px; padding:20px; background:linear-gradient(135deg,#0a1820 0%,#0d2232 100%); color:#ecf5ef; }
     .fixture-hero .eyebrow { color:#10b981; }
     .fixture-hero h3 { color:#fff; font-size:20px; margin:6px 0 4px; }
     .fixture-hero .pill { background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.1); color:#6b8a78; }
@@ -1431,12 +1435,12 @@
     .fixture-meta strong { color:#e2e8f0; }
     .pkg-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-top:14px; }
     .pkg-stat { padding:14px 12px; background:var(--panel); text-align:center; }
-    .pkg-stat strong { display:block; font-size:30px; font-weight:400; font-family:var(--font-display); color:var(--green); line-height:1; }
+    .pkg-stat strong { display:block; font-size:30px; font-weight:400; font-family:var(--font-display); color:var(--accent); line-height:1; }
     .pkg-stat small { color:var(--muted); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; display:block; margin-top:4px; }
     .auto-queue-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--line); font-size:13px; }
     .auto-queue-row:last-child { border-bottom:0; }
     .auto-badge { min-height:20px; padding:0 8px; border-radius:999px; font-size:11px; font-weight:700; display:inline-flex; align-items:center; }
-    .auto-active { background:rgba(16,185,129,0.14); color:#10b981; }
+    .auto-active { background:rgba(var(--accent-rgb), 0.14); color:#10b981; }
     .auto-paused { background:rgba(245,158,11,0.14); color:var(--amber); }
     .msgs-sent-stat { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:14px; }
     .msgs-sent-stat article { border:1px solid var(--line); border-radius:9px; padding:12px; text-align:center; background:var(--panel-2); }
@@ -1444,12 +1448,12 @@
     .msgs-sent-stat small { color:var(--muted); font-size:12px; }
 
     /* ── TRAINING HERO ── */
-    .training-hero { border:1px solid var(--line); border-radius:12px; padding:24px 28px; background:linear-gradient(135deg,rgba(16,185,129,0.05) 0%,var(--panel) 60%); margin-bottom:18px; display:grid; grid-template-columns:1fr auto; gap:24px; align-items:center; }
+    .training-hero { border:1px solid var(--line); border-radius:12px; padding:24px 28px; background:linear-gradient(135deg,rgba(var(--accent-rgb), 0.05) 0%,var(--panel) 60%); margin-bottom:18px; display:grid; grid-template-columns:1fr auto; gap:24px; align-items:center; }
     .training-hero h1 { font-size:clamp(20px,3vw,30px); margin:6px 0 10px; line-height:1.15; }
     .training-hero p { color:var(--muted); font-size:13px; max-width:580px; }
     .training-hero-stats { display:grid; grid-template-columns:repeat(3,110px); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden; flex-shrink:0; }
     .training-stat { background:var(--panel); padding:14px 12px; text-align:center; }
-    .training-stat .lbl { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.09em; color:var(--green); display:block; margin-bottom:4px; }
+    .training-stat .lbl { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.09em; color:var(--accent); display:block; margin-bottom:4px; }
     .training-stat strong { display:block; font-size:30px; font-weight:400; font-family:var(--font-display); line-height:1; color:var(--ink); }
     .training-stat small { color:var(--muted); font-size:11px; display:block; margin-top:4px; }
 
@@ -1465,19 +1469,19 @@
     /* ── INTENSITY BADGE & LOAD BAR ── */
     .intensity-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
     .intensity-badge { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.09em; color:var(--amber); }
-    .load-pct { font-size:14px; font-weight:800; color:var(--green); }
+    .load-pct { font-size:14px; font-weight:800; color:var(--accent); }
     .load-bar-wrap { height:6px; border-radius:999px; background:var(--line); overflow:hidden; margin:10px 0 16px; }
     .load-bar-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,var(--green) 0%,var(--amber) 100%); transition:width 0.3s; }
 
     /* ── EDITABLE TIME BLOCK FORMS ── */
     .block-form { border:1px solid var(--line); border-radius:10px; padding:14px 16px; background:var(--panel); margin-bottom:10px; }
     .block-time-row { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
-    .block-time-input { width:80px; border:1px solid var(--line); border-radius:7px; padding:7px 9px; font-size:13px; font-weight:700; color:var(--green); text-align:center; background:var(--panel-2); }
+    .block-time-input { width:80px; border:1px solid var(--line); border-radius:7px; padding:7px 9px; font-size:13px; font-weight:700; color:var(--accent); text-align:center; background:var(--panel-2); }
     .block-time-sep { color:var(--muted); font-weight:700; flex-shrink:0; }
     .block-form label { font-size:12px; font-weight:700; color:var(--ink); display:grid; gap:4px; }
     .block-form input, .block-form textarea, .block-form select { font-size:13px; }
     .block-form textarea { min-height:72px; }
-    .goal-tag { display:inline-flex; align-items:center; gap:5px; min-height:26px; padding:0 10px; border-radius:999px; background:rgba(16,185,129,0.12); color:#10b981; font-size:12px; font-weight:600; }
+    .goal-tag { display:inline-flex; align-items:center; gap:5px; min-height:26px; padding:0 10px; border-radius:999px; background:rgba(var(--accent-rgb), 0.12); color:#10b981; font-size:12px; font-weight:600; }
     .goal-tag::before { content:"✓"; font-weight:800; }
 
     /* ── DRILL BOARD ── */
@@ -1486,7 +1490,7 @@
     .active-drill-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
     .drill-tools-row { display:flex; gap:6px; flex-wrap:wrap; padding:10px 12px; border:1px solid var(--line); border-radius:9px; background:var(--panel-2); }
     .dtool { min-height:30px; padding:0 12px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); font-size:12px; font-weight:700; cursor:pointer; transition:all 0.1s; }
-    .dtool.active { background:var(--green); color:#060b12; border-color:var(--green); }
+    .dtool.active { background:var(--accent); color:#060b12; border-color:var(--accent); }
     .dtool.del { color:var(--red); border-color:rgba(239,68,68,0.25); }
     .dtool.del:hover { background:var(--red); color:#fff; }
     .tactic-color { width:22px; height:22px; border-radius:50%; border:2px solid rgba(255,255,255,0.12); cursor:pointer; flex-shrink:0; transition:transform 0.1s; }
@@ -1501,7 +1505,7 @@
     .cs-table th { padding:8px 12px; background:var(--panel-2); border-bottom:2px solid var(--line); color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.06em; text-align:left; }
     .cs-table td { padding:8px 12px; border-bottom:1px solid var(--line); vertical-align:top; color:var(--ink); }
     .cs-table tr:last-child td { border-bottom:0; }
-    .cs-time-cell { font-weight:800; color:var(--green); white-space:nowrap; font-size:11px; }
+    .cs-time-cell { font-weight:800; color:var(--accent); white-space:nowrap; font-size:11px; }
 
     /* ── TRAINING ARCHIVE ── */
     .archive-item { padding:12px 16px; border-bottom:1px solid var(--line); cursor:pointer; }
@@ -1515,21 +1519,21 @@
     .tactics-wrap { border:1px solid var(--line); border-radius:10px; overflow:hidden; }
     .tactics-toolbar { display:flex; gap:6px; flex-wrap:wrap; padding:10px 12px; border-bottom:1px solid var(--line); background:var(--panel-2); align-items:center; }
     .tactic-tool { min-height:30px; padding:0 11px; border:1px solid var(--line); border-radius:7px; background:var(--panel); font-size:12px; font-weight:700; color:var(--ink); cursor:pointer; transition:all 0.12s; }
-    .tactic-tool.active { background:var(--green); color:#060b12; border-color:var(--green); }
+    .tactic-tool.active { background:var(--accent); color:#060b12; border-color:var(--accent); }
 
     /* ── COACH SHEET (print) ── */
     .coach-sheet-blocks { display:grid; gap:6px; }
     .csblock { display:grid; grid-template-columns:52px minmax(0,1fr) 70px; gap:8px; align-items:start; padding:6px 0; border-bottom:1px solid var(--line); font-size:12px; color:var(--ink); }
     .csblock:last-child { border-bottom:0; }
-    .csblock .cs-time { font-weight:800; color:var(--green); }
-    .csblock .cs-tag { display:inline-flex; min-height:18px; padding:0 7px; border-radius:999px; background:rgba(16,185,129,0.12); color:#10b981; font-size:10px; font-weight:700; align-items:center; justify-self:end; }
+    .csblock .cs-time { font-weight:800; color:var(--accent); }
+    .csblock .cs-tag { display:inline-flex; min-height:18px; padding:0 7px; border-radius:999px; background:rgba(var(--accent-rgb), 0.12); color:#10b981; font-size:10px; font-weight:700; align-items:center; justify-self:end; }
 
     /* ── VIDEO LIBRARY ── */
     .video-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
     .video-card { border:1px solid var(--line); border-radius:9px; overflow:hidden; background:var(--panel); cursor:pointer; transition:box-shadow 0.12s, border-color 0.12s; }
     .video-card:hover { box-shadow:var(--shadow); border-color:#263d52; }
     .video-thumb { height:88px; background:linear-gradient(135deg,#0a1520 0%,#0d2232 100%); display:flex; align-items:center; justify-content:center; position:relative; }
-    .play-btn { width:34px; height:34px; border-radius:50%; background:rgba(16,185,129,0.88); display:flex; align-items:center; justify-content:center; font-size:13px; color:#060b12; }
+    .play-btn { width:34px; height:34px; border-radius:50%; background:rgba(var(--accent-rgb), 0.88); display:flex; align-items:center; justify-content:center; font-size:13px; color:#060b12; }
     .video-dur { position:absolute; bottom:5px; right:7px; background:rgba(0,0,0,0.75); color:#fff; font-size:10px; font-weight:700; padding:1px 5px; border-radius:4px; }
     .video-card-body { padding:8px 10px; }
     .video-card-body strong { display:block; font-size:12px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); }
@@ -1543,7 +1547,7 @@
     .period-row { display:grid; grid-template-columns:100px minmax(0,1fr) 110px auto; gap:10px; align-items:center; border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:var(--panel); font-size:13px; color:var(--ink); }
     .period-badge { display:inline-flex; min-height:22px; padding:0 10px; border-radius:999px; font-size:11px; font-weight:700; align-items:center; }
     .period-preseason { background:var(--blue-soft); color:var(--blue); }
-    .period-competition { background:var(--green-soft); color:#10b981; }
+    .period-competition { background:var(--accent-soft); color:#10b981; }
     .period-transition { background:var(--amber-soft); color:var(--amber); }
 
     /* ── MATCHDAY BIG PITCH ── */
@@ -1556,26 +1560,26 @@
     .slot-big { position:absolute; transform:translate(-50%,-50%); width:88px; text-align:center; cursor:pointer; }
     .slot-photo { width:52px; height:52px; border-radius:50%; margin:0 auto 3px; border:3px solid rgba(255,255,255,0.9); background:rgba(9,13,20,0.92); display:flex; align-items:center; justify-content:center; font-size:18px; overflow:hidden; box-shadow:0 3px 10px rgba(0,0,0,0.65); position:relative; }
     .slot-photo img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
-    .slot-num { position:absolute; top:-4px; right:-4px; width:18px; height:18px; border-radius:50%; background:var(--green); color:#060b12; font-size:10px; font-weight:900; display:flex; align-items:center; justify-content:center; border:2px solid #090d14; }
+    .slot-num { position:absolute; top:-4px; right:-4px; width:18px; height:18px; border-radius:50%; background:var(--accent); color:#060b12; font-size:10px; font-weight:900; display:flex; align-items:center; justify-content:center; border:2px solid #090d14; }
     .slot-name-lbl { font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,0.9); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .slot-name-input { display:block; width:100%; font-size:11px; font-weight:700; text-align:center; background:rgba(9,13,20,0.9); color:#e2e8f0; border:1px solid rgba(255,255,255,0.2); border-radius:5px; padding:4px 4px; margin-top:3px; outline:none; box-sizing:border-box; box-shadow:0 1px 4px rgba(0,0,0,0.6); }
-    .slot-name-input:focus { background:rgba(9,13,20,1); border-color:var(--green); box-shadow:0 0 0 2px rgba(16,185,129,0.22); }
+    .slot-name-input:focus { background:rgba(9,13,20,1); border-color:var(--accent); box-shadow:0 0 0 2px rgba(var(--accent-rgb), 0.22); }
     .slot-name-input::placeholder { color:#3a5065; font-weight:400; }
     .slot-big.drag-over { outline:3px dashed rgba(255,255,255,0.5); outline-offset:3px; border-radius:8px; }
-    .avail-template-card { border:2px solid var(--green); border-radius:12px; padding:20px 22px; background:linear-gradient(135deg,rgba(16,185,129,0.06) 0%,var(--panel) 80%); margin-bottom:18px; }
+    .avail-template-card { border:2px solid var(--accent); border-radius:12px; padding:20px 22px; background:linear-gradient(135deg,rgba(var(--accent-rgb), 0.06) 0%,var(--panel) 80%); margin-bottom:18px; }
     .training-gs-table { width:100%; border-collapse:collapse; font-size:14px; }
     .training-gs-table th { padding:10px 12px; background:var(--panel-2); border-bottom:2px solid var(--line); color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em; text-align:left; white-space:nowrap; }
     .training-gs-table td { padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; color:var(--ink); }
     .training-gs-table tr:last-child td { border-bottom:0; }
     .training-gs-table tr:hover td { background:var(--panel-2); }
     .training-gs-table textarea { width:100%; font-size:14px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; resize:vertical; min-height:76px; font-family:inherit; line-height:1.5; background:var(--panel-2); color:var(--ink); }
-    .training-gs-table textarea:focus { outline:none; border-color:var(--green); box-shadow:0 0 0 2px rgba(16,185,129,0.12); }
-    .gs-time-input { width:84px; border:2px solid var(--line); border-radius:7px; padding:8px 10px; font-size:15px; font-weight:800; color:var(--green); text-align:center; background:var(--panel-2); }
-    .gs-time-input:focus { outline:none; border-color:var(--green); background:var(--panel); }
+    .training-gs-table textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px rgba(var(--accent-rgb), 0.12); }
+    .gs-time-input { width:84px; border:2px solid var(--line); border-radius:7px; padding:8px 10px; font-size:15px; font-weight:800; color:var(--accent); text-align:center; background:var(--panel-2); }
+    .gs-time-input:focus { outline:none; border-color:var(--accent); background:var(--panel); }
     .gs-sm-input { width:100%; border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:13px; background:var(--panel-2); color:var(--ink); }
     .player-photo-wrap { position:relative; width:36px; height:36px; flex-shrink:0; }
     .player-photo-wrap img { width:36px; height:36px; border-radius:50%; object-fit:cover; }
-    .player-photo-wrap .photo-badge { position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; border-radius:50%; background:var(--green); border:2px solid var(--panel); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:9px; color:#060b12; }
+    .player-photo-wrap .photo-badge { position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; border-radius:50%; background:var(--accent); border:2px solid var(--panel); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:9px; color:#060b12; }
     .squad-player-drag { cursor:grab; padding:8px 10px; border:1px solid var(--line); border-radius:8px; display:flex; align-items:center; gap:8px; background:var(--panel); color:var(--ink); touch-action:none; }
     .squad-player-drag:hover { box-shadow:var(--shadow); border-color:#263d52; }
     .squad-player-drag:active { cursor:grabbing; }
@@ -1591,11 +1595,11 @@
 
     /* ── MATCH CENTRE ── */
     .mc-hero { border-radius:12px; background:linear-gradient(135deg,#0a2240 0%,#12324f 60%,#0f4a28 100%); border:1px solid rgba(255,255,255,0.08); padding:24px 26px; position:relative; overflow:hidden; }
-    .mc-hero::after { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at 80% 50%,rgba(16,185,129,0.10) 0%,transparent 70%); pointer-events:none; }
+    .mc-hero::after { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at 80% 50%,rgba(var(--accent-rgb), 0.10) 0%,transparent 70%); pointer-events:none; }
     .mc-phase-badge { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; padding:4px 12px; border-radius:999px; }
     .mc-phase-prepare { background:rgba(59,130,246,0.18); color:#60a5fa; }
     .mc-phase-refine  { background:rgba(245,158,11,0.18); color:#fbbf24; }
-    .mc-phase-confirm { background:rgba(16,185,129,0.18); color:#10b981; }
+    .mc-phase-confirm { background:rgba(var(--accent-rgb), 0.18); color:#10b981; }
     .mc-phase-live    { background:rgba(239,68,68,0.20); color:#f87171; animation:mc-pulse 1.5s infinite; }
     .mc-phase-post    { background:rgba(107,114,128,0.18); color:#9ca3af; }
     @keyframes mc-pulse { 0%,100%{opacity:1} 50%{opacity:0.65} }
@@ -1620,7 +1624,7 @@
     .mc-header-meta { font-size:13px; color:var(--muted); margin-top:2px; }
     .mc-header-stats { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding-top:11px; margin-top:11px; border-top:1px solid var(--line); }
     .mc-stat-pill { display:inline-flex; align-items:center; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
-    .mc-stat-pill.green  { background:var(--green-soft); color:#10b981; }
+    .mc-stat-pill.green  { background:var(--accent-soft); color:#10b981; }
     .mc-stat-pill.red    { background:rgba(239,68,68,0.10); color:#f87171; }
     .mc-stat-pill.amber  { background:var(--amber-soft); color:var(--amber); }
     .mc-stat-pill.blue   { background:var(--blue-soft); color:var(--blue); }
@@ -1639,7 +1643,7 @@
     .home-match-meta { font-size:13px; color:var(--muted); margin-top:2px; line-height:1.4; }
     .home-match-countdown { font-size:26px; font-weight:800; font-family:var(--font-display); color:var(--ink); text-align:right; white-space:nowrap; line-height:1.1; }
     .home-match-progress { height:3px; border-radius:999px; background:var(--line); margin-top:14px; overflow:hidden; }
-    .home-match-progress-bar { height:100%; border-radius:999px; background:var(--green); transition:width 0.5s ease; }
+    .home-match-progress-bar { height:100%; border-radius:999px; background:var(--accent); transition:width 0.5s ease; }
     .home-match-footer { display:flex; justify-content:space-between; align-items:center; margin-top:12px; }
     .home-section-label { font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:4px 0 6px; }
     .home-attn-list { display:grid; gap:8px; }
@@ -1661,7 +1665,7 @@
     .home-attn-info-done .home-attn-text { color:var(--green); }
     .home-attn-clear { text-align:center; padding:24px 16px; font-size:13px; color:var(--muted); border:1px dashed var(--line); border-radius:10px; }
     .home-attn-clear strong { display:block; font-size:15px; color:var(--ink); margin-bottom:4px; }
-    .home-squad-prompt { text-align:center; padding:24px 20px; border:1px dashed rgba(16,185,129,0.3); border-radius:10px; background:rgba(16,185,129,0.04); }
+    .home-squad-prompt { text-align:center; padding:24px 20px; border:1px dashed rgba(var(--accent-rgb), 0.3); border-radius:10px; background:rgba(var(--accent-rgb), 0.04); }
     .home-squad-prompt strong { display:block; font-size:15px; color:var(--ink); margin-bottom:6px; }
     .home-squad-prompt p { font-size:13px; color:var(--muted); margin:0 0 14px; }
     .home-match-squad-count { font-size:12px; color:var(--muted); }
@@ -1671,9 +1675,9 @@
     .home-briefing-pill.has-items { background:rgba(239,68,68,0.12); color:#f87171; }
     .home-briefing-pill.all-clear { background:rgba(16,185,129,0.12); color:var(--green); }
     .home-briefing-pill.setup-mode { background:rgba(96,165,250,0.12); color:var(--blue); }
-    .home-onboarding-banner { border:1px solid rgba(16,185,129,0.22); border-radius:12px; padding:14px 18px; background:rgba(16,185,129,0.04); }
+    .home-onboarding-banner { border:1px solid rgba(var(--accent-rgb), 0.22); border-radius:12px; padding:14px 18px; background:rgba(var(--accent-rgb), 0.04); }
     .home-onboarding-progress { height:3px; background:var(--line); border-radius:999px; margin-top:11px; overflow:hidden; }
-    .home-onboarding-progress-bar { height:100%; border-radius:999px; background:var(--green); transition:width 0.5s; }
+    .home-onboarding-progress-bar { height:100%; border-radius:999px; background:var(--accent); transition:width 0.5s; }
     .home-attn-step-num { width:22px; height:22px; border-radius:50%; border:2px solid var(--line); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:11px; font-weight:800; color:var(--muted); line-height:1; }
     .home-attn-step-num.done { background:var(--green); border-color:var(--green); color:#060b12; }
     .home-ai-slot { border:1px dashed rgba(96,165,250,0.18); border-radius:10px; padding:14px 16px; background:rgba(96,165,250,0.03); }
@@ -1769,7 +1773,7 @@
     .rehab-card { border:1px solid var(--line); border-radius:10px; padding:14px; background:var(--panel); }
     .rehab-header { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:10px; }
     .rehab-bar { height:6px; border-radius:999px; background:var(--line); overflow:hidden; margin-top:6px; }
-    .rehab-bar span { display:block; height:100%; border-radius:999px; background:var(--green); transition:width 0.3s; }
+    .rehab-bar span { display:block; height:100%; border-radius:999px; background:var(--accent); transition:width 0.3s; }
     .treatment-row { display:grid; grid-template-columns:85px minmax(0,1fr) 90px auto; gap:10px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line); font-size:13px; color:var(--ink); }
     .treatment-row:last-child { border-bottom:0; }
     .med-msg-card { border:1px solid var(--line); border-radius:9px; padding:12px; background:var(--panel); }
@@ -1782,7 +1786,7 @@
     .live-sched-dot.on  { background:#10b981; box-shadow:0 0 0 3px rgba(16,185,129,0.18); }
     .live-sched-dot.off { background:#1e3450; }
     .live-badge { display:inline-block; font-size:10px; font-weight:700; padding:2px 7px; border-radius:999px; background:var(--panel-2); color:var(--muted); letter-spacing:.02em; }
-    .live-badge.sched { background:rgba(16,185,129,0.12); color:#10b981; }
+    .live-badge.sched { background:rgba(var(--accent-rgb), 0.12); color:#10b981; }
     .live-badge.adhoc { background:var(--amber-soft); color:var(--amber); }
 
     /* ── MESSAGE CENTER V2 ── */
@@ -1795,11 +1799,11 @@
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 18px;
       align-items: end;
-      border: 1px solid rgba(16,185,129,0.2);
+      border: 1px solid rgba(var(--accent-rgb), 0.2);
       border-radius: 14px;
       padding: 20px;
       background:
-        linear-gradient(135deg, rgba(16,185,129,0.12), transparent 42%),
+        linear-gradient(135deg, rgba(var(--accent-rgb), 0.12), transparent 42%),
         var(--panel);
     }
     .msg-hero h2 {
@@ -1877,7 +1881,7 @@
       cursor: pointer;
       transition: border-color .14s, background .14s, transform .14s;
     }
-    .msg-session-card:hover { border-color: rgba(16,185,129,0.45); transform: translateY(-1px); }
+    .msg-session-card:hover { border-color: rgba(var(--accent-rgb), 0.45); transform: translateY(-1px); }
     .msg-session-card.active { border-color: var(--accent); background: var(--accent-soft); }
     .msg-session-card strong { font-size: 14px; }
     .msg-session-card small { color: var(--muted); font-size: 12px; line-height: 1.35; }
@@ -1970,10 +1974,10 @@
     .msg-player-row small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
     .msg-attendance-chip {
       flex-shrink: 0;
-      border: 1px solid rgba(16,185,129,0.26);
+      border: 1px solid rgba(var(--accent-rgb), 0.26);
       border-radius: 999px;
-      background: rgba(16,185,129,0.10);
-      color: var(--green);
+      background: rgba(var(--accent-rgb), 0.10);
+      color: var(--accent);
       padding: 2px 7px;
       font-size: 11px;
       font-weight: 900;
@@ -2009,7 +2013,7 @@
       font-weight: 800;
       cursor: pointer;
     }
-    .msg-day-picker button.active { border-color: var(--green); background: rgba(16,185,129,0.12); color: var(--green); }
+    .msg-day-picker button.active { border-color: var(--accent); background: rgba(var(--accent-rgb), 0.12); color: var(--accent); }
     .msg-segment-toggle { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .msg-segment-toggle button {
       min-height: 42px;
@@ -2020,7 +2024,7 @@
       font-weight: 800;
       cursor: pointer;
     }
-    .msg-segment-toggle button.active { border-color: var(--green); background: rgba(16,185,129,0.12); color: var(--green); }
+    .msg-segment-toggle button.active { border-color: var(--accent); background: rgba(var(--accent-rgb), 0.12); color: var(--accent); }
     .msg-send-card textarea, .msg-form-grid textarea { min-height: 120px; }
     .msg-template-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .msg-template-actions button { min-height: 38px; font-size: 12px; }
@@ -2032,7 +2036,7 @@
     }
     .msg-avatar {
       width:44px; height:44px; border-radius:50%;
-      background:linear-gradient(135deg,var(--green) 0%,#0d9488 100%);
+      background:linear-gradient(135deg,var(--accent) 0%,#0d9488 100%);
       display:flex; align-items:center; justify-content:center;
       font-size:18px; font-weight:800; color:#060b12; flex-shrink:0;
     }
@@ -2078,12 +2082,12 @@
     .player-db-table td { padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:middle; }
     .player-db-table tr:last-child td { border-bottom:0; }
     .player-db-table tbody tr:hover td { background:rgba(255,255,255,0.02); }
-    .add-player-panel { border:1px solid rgba(16,185,129,0.22); border-radius:10px; padding:16px; background:rgba(16,185,129,0.05); margin-bottom:14px; }
+    .add-player-panel { border:1px solid rgba(var(--accent-rgb), 0.22); border-radius:10px; padding:16px; background:rgba(var(--accent-rgb), 0.05); margin-bottom:14px; }
     .add-player-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
 
     /* ── INVITE SYSTEM ── */
     .inv-role-btn { padding:6px 14px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; border:1.5px solid var(--line); background:var(--panel-2); color:var(--muted); transition:all .14s; }
-    .inv-role-btn.active { border-color:var(--green) !important; background:rgba(16,185,129,0.1) !important; color:#10b981 !important; }
+    .inv-role-btn.active { border-color:var(--accent) !important; background:rgba(var(--accent-rgb), 0.1) !important; color:#10b981 !important; }
     .inv-role-btn:hover:not(.active) { border-color:#263d52; color:var(--ink); }
 
     /* ── SCROLLBAR ── */
@@ -2093,7 +2097,7 @@
     ::-webkit-scrollbar-thumb:hover { background: #263d52; }
 
     /* ── SELECTION ── */
-    ::selection { background: rgba(16,185,129,0.22); color: #e2e8f0; }
+    ::selection { background: rgba(var(--accent-rgb), 0.22); color: #e2e8f0; }
 
     /* ── FOCUS RINGS ── */
     :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -3908,7 +3912,7 @@
     @keyframes ptmIn { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
     .ptm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 16px 18px 10px; }
     .ptm-head strong { font-size: 17px; }
-    .ptm-badge { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 999px; background: var(--green); color: #fff; margin-left: 8px; vertical-align: middle; }
+    .ptm-badge { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 999px; background: var(--accent); color: #fff; margin-left: 8px; vertical-align: middle; }
     .ptm-x { background: none; border: 0; color: var(--faint); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 6px; flex-shrink: 0; }
     .ptm-x:hover { color: var(--ink, #fff); }
     .ptm-body { padding: 0 18px 8px; }
@@ -3916,7 +3920,7 @@
     .ptm-label { color: var(--muted); flex-shrink: 0; }
     .ptm-val { font-weight: 650; text-align: right; }
     .ptm-sec { margin-top: 14px; }
-    .ptm-sec-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; color: var(--green); margin-bottom: 8px; }
+    .ptm-sec-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; color: var(--accent); margin-bottom: 8px; }
     .ptm-obj { font-size: 14px; line-height: 1.5; margin: 0; }
     .ptm-block { display: flex; gap: 10px; font-size: 14px; padding: 5px 0; }
     .ptm-time { color: var(--muted); min-width: 46px; flex-shrink: 0; }
@@ -6061,7 +6065,7 @@
         const answered = rRows.filter(r => r.status !== 'no-reply').length;
         const pct = rRows.length ? Math.round(answered / rRows.length * 100) : 0;
         return `
-          <div class="avail-manage-item" style="${isThisEditing ? 'border-color:var(--green)' : ''}">
+          <div class="avail-manage-item" style="${isThisEditing ? 'border-color:var(--accent)' : ''}">
             <span class="avail-manage-item-icon">${sessionTypeIcon(s.type)}</span>
             <div class="avail-manage-item-body">
               <strong>${esc(s.title)}</strong>
@@ -6467,7 +6471,7 @@
             ${starting.map(s => `
               <div style="font-size:13px;display:flex;align-items:center;gap:5px;padding:3px 0">
                 <span style="font-size:10px;font-weight:700;color:var(--muted);min-width:18px;flex-shrink:0">#${s.slot}</span>
-                <span style="font-weight:${isMyStart(s.slot)?'800':'600'};color:${isMyStart(s.slot)?'var(--green)':'var(--ink)'}">${esc(s.name)}${isMyStart(s.slot)?' — you':''}</span>
+                <span style="font-weight:${isMyStart(s.slot)?'800':'600'};color:${isMyStart(s.slot)?'var(--accent)':'var(--ink)'}">${esc(s.name)}${isMyStart(s.slot)?' — you':''}</span>
               </div>`).join('')}
           </div>` : ''}
 
@@ -7868,7 +7872,7 @@
           <p class="muted" style="font-size:10px;margin:0">Use the exact email your account was created with — one wrong letter shows "invalid password".</p>
           <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:12px">Log in</button>
           <button class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:11px;padding:5px 8px">Forgot password?</button>
-          <button class="auth-tab" type="button" onclick="setAuthTab('closed');startClubWizard()" style="font-size:11px;padding:5px 8px;color:var(--green);border-color:rgba(16,185,129,0.35)">New here? Create a coach account</button>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed');startClubWizard()" style="font-size:11px;padding:5px 8px;color:var(--accent);border-color:rgba(var(--accent-rgb), 0.35)">New here? Create a coach account</button>
           <button class="auth-tab" type="button" onclick="clearDeviceState()" style="font-size:11px;padding:5px 8px;color:#f87171;border-color:rgba(248,113,113,0.3)">Trouble signing in? Log out &amp; clear this device</button>
           ${window._devLoginEnabled ? `<button class="auth-tab" type="button" onclick="devLogin('coach-demo')" style="font-size:11px;padding:5px 8px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">Quick login: Simon Coach</button>` : ''}
           <p class="muted" style="font-size:11px;margin:0">Approved players can log in after coach approval.</p>
@@ -9316,7 +9320,7 @@
       const totalPl     = activePlayers.length;
       const availPct    = totalPl ? Math.round(avail / totalPl * 100) : 0;
       const availLabel  = tonightSess ? (tonightSess.title || 'Training') : 'Next Match';
-      const availCol    = availPct >= 70 ? 'var(--green)' : availPct >= 40 ? '#fbbf24' : '#f87171';
+      const availCol    = availPct >= 70 ? 'var(--accent)' : availPct >= 40 ? '#fbbf24' : '#f87171';
 
       // ── Upcoming Training ─────────────────────────────────────────────────────
       const sessions     = state.schedule || [];
@@ -9349,7 +9353,7 @@
       const receipts    = getTodayReceipts();
       const recentFeed  = (state.masterFeed || []).slice(0, 3);
       const activityItems = receipts.slice(0, 3).map(function(r) {
-        return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink)"><span style="color:var(--green);flex-shrink:0">✓</span>${esc(r)}</div>`;
+        return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink)"><span style="color:var(--accent);flex-shrink:0">✓</span>${esc(r)}</div>`;
       }).concat(
         recentFeed.slice(0, Math.max(0, 3 - receipts.length)).map(function(f) {
           return `<div style="font-size:12px;color:var(--ink)">${esc(f.event || '')}${f.detail ? `<span class="muted"> · ${esc(f.detail)}</span>` : ''}</div>`;
@@ -9362,7 +9366,7 @@
       const onTrial   = isTrialActive();
       const daysLeft  = trialDaysRemaining();
       const planLabel = isPro ? 'Pro' : isEnt ? 'Enterprise' : onTrial ? 'Trial' : 'Core';
-      const planCol   = isPro ? 'var(--green)' : isEnt ? '#818cf8' : onTrial ? '#fbbf24' : 'var(--muted)';
+      const planCol   = isPro ? 'var(--accent)' : isEnt ? '#818cf8' : onTrial ? '#fbbf24' : 'var(--muted)';
       const canManage = canI('manage_subscriptions');
 
       // ── Card builder helpers ──────────────────────────────────────────────────
@@ -9378,11 +9382,11 @@
         </div>`;
       }
       function allClearLine(text) {
-        return `<div style="display:flex;align-items:center;gap:8px"><span style="color:var(--green)">✓</span><span class="muted" style="font-size:13px">${esc(text)}</span></div>`;
+        return `<div style="display:flex;align-items:center;gap:8px"><span style="color:var(--accent)">✓</span><span class="muted" style="font-size:13px">${esc(text)}</span></div>`;
       }
       function progressBar(pct, color) {
         return `<div style="height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin:6px 0 8px">
-          <div style="height:100%;width:${Math.min(100, Math.max(0, pct))}%;background:${color || 'var(--green)'};border-radius:2px;transition:width 0.3s"></div>
+          <div style="height:100%;width:${Math.min(100, Math.max(0, pct))}%;background:${color || 'var(--accent)'};border-radius:2px;transition:width 0.3s"></div>
         </div>`;
       }
 
@@ -9649,7 +9653,7 @@
                 </div>
                 ${fxCd ? `
                 <div style="text-align:right;flex-shrink:0">
-                  <div style="font-size:22px;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums;line-height:1">${fxCd}</div>
+                  <div style="font-size:22px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1">${fxCd}</div>
                   <div style="font-size:10px;color:var(--muted);margin-top:2px">until kick-off</div>
                 </div>` : ''}
               </div>
@@ -9814,7 +9818,7 @@
 
       // templateCardHTML: slim pill when collapsed, full card when expanded
       const templateCardHTML = templateCardCollapsed
-        ? `<div style="display:inline-flex;align-items:center;gap:8px;background:rgba(16,185,129,0.1);border:1.5px solid var(--green);border-radius:999px;padding:5px 12px 5px 10px">
+        ? `<div style="display:inline-flex;align-items:center;gap:8px;background:rgba(var(--accent-rgb), 0.1);border:1.5px solid var(--accent);border-radius:999px;padding:5px 12px 5px 10px">
             <span style="font-size:13px"></span>
             <strong style="font-size:13px;color:#10b981;white-space:nowrap">Template messages</strong>
             <button class="btn" type="button" onclick="toggleTemplateCard()" style="font-size:11px;padding:2px 10px;border-radius:999px;white-space:nowrap;margin-left:2px">＋ New schedule</button>
@@ -9836,7 +9840,7 @@
               ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => {
                 const active = (state.autoSendSchedule?.days||['Mon']).includes(d);
                 return `<button type="button" onclick="toggleScheduleDay('${d}')"
-                  style="padding:5px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid ${active?'var(--green)':'var(--line)'};background:${active?'rgba(16,185,129,0.1)':'var(--panel-2)'};color:${active?'var(--green)':'var(--muted)'}">
+                  style="padding:5px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid ${active?'var(--accent)':'var(--line)'};background:${active?'rgba(var(--accent-rgb), 0.1)':'var(--panel-2)'};color:${active?'var(--accent)':'var(--muted)'}">
                   ${d}</button>`;
               }).join('')}
               <span style="display:flex;align-items:center;gap:6px;margin-left:4px">
@@ -9851,7 +9855,7 @@
                 const label = a === 'all' ? 'Full squad' : 'No-reply only (chase up)';
                 return `<button type="button" onclick="setScheduleAudience('${a}')"
                   style="flex:1;padding:7px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;text-align:center;
-                  border:1.5px solid ${sel?'var(--green)':'var(--line)'};background:${sel?'rgba(16,185,129,0.1)':'var(--panel-2)'};color:${sel?'var(--green)':'var(--muted)'}">
+                  border:1.5px solid ${sel?'var(--accent)':'var(--line)'};background:${sel?'rgba(var(--accent-rgb), 0.1)':'var(--panel-2)'};color:${sel?'var(--accent)':'var(--muted)'}">
                   ${label}</button>`;
               }).join('')}
             </div>
@@ -10192,7 +10196,7 @@
                 <span id="avail-refresh-ts" class="msg-chip ${_availLastSync ? 'available' : 'no-reply'}">${_availLastSync ? 'Synced ' + new Date(_availLastSync).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : 'Live sync'}</span>
               </div>
               ${state.players.length > 0 ? `
-              <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(16,185,129,0.04);border-bottom:1px solid var(--line);font-size:12px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(var(--accent-rgb), 0.04);border-bottom:1px solid var(--line);font-size:12px;flex-wrap:wrap">
                 <span style="color:var(--muted)">This week:</span>
                 <span style="font-weight:700;color:var(--ink)">${repliedAll} / ${state.players.length} replied to all sessions</span>
                 ${chaseAny > 0 ? `<span class="msg-chip no-reply">${chaseAny} to chase</span>` : `<span class="msg-chip available">All replied</span>`}
@@ -10248,7 +10252,7 @@
                         <strong>${boardAvailable.length}</strong>
                         ${boardAvailable.length > 0 ? `<button type="button"
                           onclick="copyAvailablePlayers('${selected?.id || ''}')"
-                          style="font-size:10px;padding:1px 7px;min-height:0;border:1px solid rgba(16,185,129,0.35);color:#34d399;background:rgba(16,185,129,0.1);border-radius:999px;cursor:pointer"
+                          style="font-size:10px;padding:1px 7px;min-height:0;border:1px solid rgba(var(--accent-rgb), 0.35);color:#34d399;background:rgba(var(--accent-rgb), 0.1);border-radius:999px;cursor:pointer"
                           title="Copy available player names to clipboard">Copy</button>` : ''}
                       </div>
                     </header>
@@ -10793,7 +10797,7 @@
             const sKey    = sessionKey(s.id);
             const sAvail  = state.players.filter(p => (p[sKey]||'no-reply') === 'available').length;
             const sentForSession = (state.availabilityRequests||[]).some(r => r.sessionId === s.id && r.status === 'sent');
-            const availBadge = sentForSession ? ` · <span style="color:${sAvail>=10?'var(--green)':'var(--muted)'};">${sAvail} confirmed</span>` : '';
+            const availBadge = sentForSession ? ` · <span style="color:${sAvail>=10?'var(--accent)':'var(--muted)'};">${sAvail} confirmed</span>` : '';
             return `
               <button class="session-card-tab ${sessId===s.id?"active":""}" type="button" onclick="setTrainingSession('${s.id}')">
                 <span class="sc-time">${esc(s.date || s.type || s.id)}</span>
@@ -10881,11 +10885,11 @@
         <div class="coach-sheet" style="margin-bottom:14px">
           <div class="coach-sheet-hdr">
             <div>
-              <div class="eyebrow" style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--green);margin-bottom:3px">Coach sheet</div>
+              <div class="eyebrow" style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:3px">Coach sheet</div>
               <h3 style="margin:0">${esc(sessObj?.title||"Session")} — run sheet</h3>
             </div>
             <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
-              <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:${state.trainingAutoSend?"var(--green)":"var(--line)"};color:${state.trainingAutoSend?"#fff":"var(--muted)"}">${state.trainingAutoSend?"Auto-send: Tue 10am ✓":"Manual send"}</span>
+              <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:${state.trainingAutoSend?"var(--accent)":"var(--line)"};color:${state.trainingAutoSend?"#fff":"var(--muted)"}">${state.trainingAutoSend?"Auto-send: Tue 10am ✓":"Manual send"}</span>
               <button class="btn" type="button" style="font-size:12px" onclick="toggleTrainingAutoSend()">${state.trainingAutoSend?"Pause":"Auto Tue 10am"}</button>
               <button class="btn primary" type="button" style="font-size:12px" onclick="sendTrainingSheet()">Send to coaches</button>
               <button class="btn" type="button" style="font-size:12px" onclick="window.print()">Print</button>
@@ -10900,7 +10904,7 @@
                 <td class="cs-time-cell">${b.time}</td>
                 <td>${b.activity}</td>
                 <td style="color:var(--muted);font-size:12px">${b.coach||"—"}</td>
-                <td><span style="display:inline-block;padding:2px 9px;border-radius:999px;background:var(--green-soft);color:var(--green);font-size:11px;font-weight:700">${b.keyFocus||b.tag}</span></td>
+                <td><span style="display:inline-block;padding:2px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:700">${b.keyFocus||b.tag}</span></td>
               </tr>`).join("")}
             </tbody>
           </table></div>` : `<p class="muted" style="padding:14px 16px">Add time blocks above to build your coach sheet.</p>`}
@@ -10925,7 +10929,7 @@
               return `<div class="archive-item" onclick="autopilotDuplicateSession('${s.id}')">
                 <div class="archive-meta">${esc(s.date || s.title)}</div>
                 <strong>${esc(s.title)}</strong>
-                <p>${blks.length} block${blks.length !== 1 ? 's' : ''}${tags.length ? ' · ' + tags.join(', ') : ''}${currEmpty ? ' · <span style="color:var(--green)">Restore →</span>' : ''}</p>
+                <p>${blks.length} block${blks.length !== 1 ? 's' : ''}${tags.length ? ' · ' + tags.join(', ') : ''}${currEmpty ? ' · <span style="color:var(--accent)">Restore →</span>' : ''}</p>
               </div>`;
             }).join('')}
           </div>`;
@@ -10948,8 +10952,8 @@
                 </div>`).join("")}
               ${(state.clubVideos||[]).length < (canUseFeature('unlimited_videos') ? 100 : 10) ? `
               <div class="video-card" style="cursor:pointer;border:2px dashed var(--line)" onclick="document.getElementById('addVideoForm').classList.toggle('hidden')">
-                <div class="video-thumb" style="background:var(--panel-2)"><div class="play-btn" style="background:rgba(16,185,129,0.15);color:var(--green);font-size:18px">+</div></div>
-                <div class="video-card-body"><strong style="color:var(--green)">Add video</strong><small>Click to upload or link</small></div>
+                <div class="video-thumb" style="background:var(--panel-2)"><div class="play-btn" style="background:rgba(var(--accent-rgb), 0.15);color:var(--accent);font-size:18px">+</div></div>
+                <div class="video-card-body"><strong style="color:var(--accent)">Add video</strong><small>Click to upload or link</small></div>
               </div>` : ''}
             </div>
             <div id="addVideoForm" class="hidden" style="margin-top:14px;display:grid;grid-template-columns:1fr 80px auto;gap:8px;align-items:end">
@@ -11147,7 +11151,7 @@
           <div style="display:grid;gap:14px">
 
             <!-- Phase planning guide -->
-            <div class="card" style="border-left:3px solid var(--green)">
+            <div class="card" style="border-left:3px solid var(--accent)">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                 <span class="mc-phase-badge ${phase.color}">${phase.label} phase</span>
                 <span style="font-size:12px;color:var(--muted)">${daysDisplay} to kickoff</span>
@@ -11182,7 +11186,7 @@
                     </span>
                   </div>
                   <div style="display:flex;gap:8px;align-items:center">
-                    <span style="font-size:12px;color:var(--green);font-weight:700">${avail} ✓</span>
+                    <span style="font-size:12px;color:var(--accent);font-weight:700">${avail} ✓</span>
                     <span style="font-size:12px;color:var(--red);font-weight:700">${unavail} ✗</span>
                     ${pending > 0 ? `<span style="font-size:12px;color:var(--amber);font-weight:700">${pending} ?</span>` : ''}
                   </div>
@@ -11453,11 +11457,11 @@
                         <div style="color:var(--muted);font-size:12px;margin-top:3px">${mn.condition || p.medical || "Under review"}</div>
                       </div>
                       <div style="text-align:right">
-                        <strong id="rehabPct-${p.id}" style="font-size:18px;color:var(--green)">${prog}%</strong>
+                        <strong id="rehabPct-${p.id}" style="font-size:18px;color:var(--accent)">${prog}%</strong>
                         <div style="color:var(--muted);font-size:11px">recovery</div>
                       </div>
                     </div>
-                    <input type="range" min="0" max="100" value="${prog}" style="width:100%;accent-color:var(--green)" oninput="setRehabProgress('${p.id}',this.value)">
+                    <input type="range" min="0" max="100" value="${prog}" style="width:100%;accent-color:var(--accent)" oninput="setRehabProgress('${p.id}',this.value)">
                     <div class="rehab-bar"><span id="rehabBar-${p.id}" style="width:${prog}%"></span></div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
                       <label style="font-weight:600;font-size:12px;display:block">Return target<input type="date" id="medRet-${p.id}" value="${mn.returnTarget||""}" style="display:block;width:100%;font-size:12px;padding:6px 9px;margin-top:3px"></label>
@@ -11483,7 +11487,7 @@
                 <h2 style="margin:0">Treatment log</h2>
                 <button class="btn primary" type="button" onclick="document.getElementById('addTreatForm').classList.toggle('hidden')">+ Log treatment</button>
               </div>
-              <div id="addTreatForm" class="hidden" style="border:1px solid var(--green);border-radius:9px;padding:12px;background:rgba(16,185,129,0.05);margin-bottom:14px;display:grid;gap:9px">
+              <div id="addTreatForm" class="hidden" style="border:1px solid var(--accent);border-radius:9px;padding:12px;background:rgba(var(--accent-rgb), 0.05);margin-bottom:14px;display:grid;gap:9px">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
                   <label>Player<select id="treatPid">${state.players.map(p=>`<option value="${p.id}">${p.name}</option>`).join("")}</select></label>
                   <label>Therapist<input id="treatBy" placeholder="Dr. / Physio name"></label>
@@ -11615,7 +11619,7 @@
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:10px">
               <div style="font-size:13px;font-weight:700;color:var(--ink);flex:1;min-width:200px">
                 ${esc(state.clubName || 'Your club')}
-                <span class="muted" style="font-weight:500;font-size:11.5px;margin-left:6px">edit in <a href="#" onclick="setSection('coach','admin');return false" style="color:var(--green)">Club Admin</a></span>
+                <span class="muted" style="font-weight:500;font-size:11.5px;margin-left:6px">edit in <a href="#" onclick="setSection('coach','admin');return false" style="color:var(--accent)">Club Admin</a></span>
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <button class="btn" type="button" onclick="downloadSampleCSV()">Template CSV</button>
@@ -11672,7 +11676,7 @@
                   <summary style="font-size:12px;font-weight:700;color:#64748b;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
                     <span>▶</span> Also share a general team code (no-name signup)
                   </summary>
-                  <div style="margin-top:10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:10px;padding:14px 16px">
+                  <div style="margin-top:10px;background:rgba(var(--accent-rgb), 0.06);border:1px solid rgba(var(--accent-rgb), 0.15);border-radius:10px;padding:14px 16px">
                     <p style="font-size:13px;color:#94a3b8;margin-bottom:10px">For bulk invites — players enter this code and their own name.</p>
                     <div class="join-code-value" style="font-size:22px;letter-spacing:3px;display:inline-block;margin-bottom:10px">${esc(state.teamCode||'TEAM')}</div>
                     <div style="font-size:12px;color:#64748b;margin-bottom:10px">${window.location.hostname}</div>
@@ -11694,7 +11698,7 @@
           <!-- Pending account join requests -->
           <div class="card" style="padding:0;overflow:hidden">
             <details class="srv-panel" ${_identityPendingRequests.length > 0 ? 'open' : ''} ontoggle="if(this.open) loadIdentityRequests()">
-              <summary>Join requests${_identityPendingRequests.length > 0 ? ` <strong style="color:var(--green)">(${_identityPendingRequests.length})</strong>` : ''}</summary>
+              <summary>Join requests${_identityPendingRequests.length > 0 ? ` <strong style="color:var(--accent)">(${_identityPendingRequests.length})</strong>` : ''}</summary>
               <div class="srv-panel-body" style="padding-top:0">
                 <p class="muted" style="font-size:13px;margin-bottom:12px">Approve players who joined with the team code.</p>
                 <div id="identity-requests-panel">${identityRequestsHtml()}</div>
@@ -11781,7 +11785,7 @@
                     </div>
                   </td>
                   <td data-label="Media consent">
-                    <button type="button" onclick="event.stopPropagation();toggleMediaConsent('${p.id}')" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:${p.mediaConsent?"var(--green)":"var(--red)"}">
+                    <button type="button" onclick="event.stopPropagation();toggleMediaConsent('${p.id}')" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:${p.mediaConsent?"var(--accent)":"var(--red)"}">
                       <span class="consent-dot ${p.mediaConsent?"c-yes":"c-no"}"></span>
                       ${p.mediaConsent?"Granted":"Pending"}
                     </button>
@@ -11791,7 +11795,7 @@
                     <div style="display:flex;gap:5px">
                       <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px" onclick="event.stopPropagation();requestMedical('${p.id}')">Medical</button>
                       ${playerIsArchived(p)
-                        ? `<button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--green)" onclick="event.stopPropagation();restorePlayer('${p.id}')">Restore</button>`
+                        ? `<button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--accent)" onclick="event.stopPropagation();restorePlayer('${p.id}')">Restore</button>`
                         : `<button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--red)" onclick="event.stopPropagation();archivePlayer('${p.id}')">Archive</button>`}
                     </div>
                   </td>
@@ -12052,7 +12056,7 @@
           ${mc.published ? renderPublishedTeamSheetCard(player) : ''}
 
           <!-- Summary banner -->
-          <div style="border:1.5px solid ${allAvailable ? '#16a34a' : pendingCount > 0 ? 'var(--line)' : 'var(--green)'};border-radius:14px;padding:18px 20px;margin-bottom:16px;background:${allAvailable ? 'rgba(16,185,129,0.08)' : 'var(--panel)'}">
+          <div style="border:1.5px solid ${allAvailable ? '#16a34a' : pendingCount > 0 ? 'var(--line)' : 'var(--accent)'};border-radius:14px;padding:18px 20px;margin-bottom:16px;background:${allAvailable ? 'rgba(var(--accent-rgb), 0.08)' : 'var(--panel)'}">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
               <div>
                 <strong style="font-size:16px;display:block;margin-bottom:3px">${allAvailable ? '✓ All sessions confirmed' : pendingCount > 0 ? `${pendingCount} session${pendingCount > 1 ? 's' : ''} need${pendingCount === 1 ? 's' : ''} your answer` : 'All responses submitted'}</strong>
@@ -12368,7 +12372,7 @@
       const steps = [
         // 0 — Welcome
         `<div style="text-align:center">
-          <div class="ce-logo" style="width:60px;height:60px;border-radius:14px;margin:0 auto 16px;background:var(--green-soft);border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center">${icon('trophy', 28)}</div>
+          <div class="ce-logo" style="width:60px;height:60px;border-radius:14px;margin:0 auto 16px;background:var(--accent-soft);border:1px solid rgba(var(--accent-rgb), 0.3);display:flex;align-items:center;justify-content:center">${icon('trophy', 28)}</div>
           <h3 style="font-size:20px;margin:0 0 8px">Welcome to Coach's Eye</h3>
           <p style="color:var(--muted);font-size:13.5px;line-height:1.55;margin:0 0 20px">Set up your club in about two minutes.<br>You'll be inviting players right after.</p>
           <button class="btn primary" type="button" onclick="clubWizNext()" style="width:100%;min-height:48px;font-size:15px">Get started →</button>
@@ -12424,7 +12428,7 @@
         <div class="ce-modal" role="dialog" aria-modal="true" style="max-width:420px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
             <div style="display:flex;gap:5px">
-              ${steps.map((_, i) => `<span style="width:22px;height:4px;border-radius:2px;background:${i <= step ? 'var(--green)' : 'var(--line)'}"></span>`).join('')}
+              ${steps.map((_, i) => `<span style="width:22px;height:4px;border-radius:2px;background:${i <= step ? 'var(--accent)' : 'var(--line)'}"></span>`).join('')}
             </div>
             <button type="button" aria-label="Close" onclick="clubWizClose()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 8px">✕</button>
           </div>
@@ -12995,7 +12999,7 @@
           <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:6px">${label}</div>
         </div>`;
 
-      const pctColor = v => v >= 80 ? 'var(--green)' : v >= 60 ? '#d97706' : '#dc2626';
+      const pctColor = v => v >= 80 ? 'var(--accent)' : v >= 60 ? '#d97706' : '#dc2626';
 
       const photoBlock = m.photo
         ? `<img src="${esc(m.photo)}" alt="${esc(m.name)}" style="width:96px;height:96px;border-radius:20px;object-fit:cover;border:1px solid var(--line)">`
@@ -13044,7 +13048,7 @@
             ${metric(m.trainingPct + '%', 'Training', pctColor(m.trainingPct))}
             ${metric(m.matchPct + '%', 'Match', pctColor(m.matchPct))}
             ${metric(m.availabilityPct + '%', 'Availability', pctColor(m.availabilityPct))}
-            ${metric(m.sessionsAttended, 'Attended', 'var(--green)')}
+            ${metric(m.sessionsAttended, 'Attended', 'var(--accent)')}
             ${metric(m.sessionsMissed, 'Missed', m.sessionsMissed ? '#dc2626' : 'var(--fg)')}
           </div>
         </div>
@@ -13067,7 +13071,7 @@
             </div>
             <div>
               <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Return to play</div>
-              <div style="font-size:13px;color:${m.injuries.length ? '#fbbf24' : 'var(--green)'};font-weight:700">${esc(m.returnToPlay)}</div>
+              <div style="font-size:13px;color:${m.injuries.length ? '#fbbf24' : 'var(--accent)'};font-weight:700">${esc(m.returnToPlay)}</div>
             </div>
           </div>
           ${m.recentTreatment.length ? `<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
@@ -13893,7 +13897,7 @@
           </div>
           <button type="button" role="switch" aria-checked="${prefOn(key)}" aria-label="${label}"
             onclick="settingsTogglePref('${key}')"
-            style="flex-shrink:0;width:46px;height:26px;border-radius:13px;border:1px solid ${prefOn(key) ? 'var(--green)' : 'var(--line)'};background:${prefOn(key) ? 'var(--green)' : 'var(--panel-2)'};position:relative;cursor:pointer;transition:all .15s">
+            style="flex-shrink:0;width:46px;height:26px;border-radius:13px;border:1px solid ${prefOn(key) ? 'var(--accent)' : 'var(--line)'};background:${prefOn(key) ? 'var(--accent)' : 'var(--panel-2)'};position:relative;cursor:pointer;transition:all .15s">
             <span style="position:absolute;top:2px;${prefOn(key) ? 'right:2px' : 'left:2px'};width:20px;height:20px;border-radius:50%;background:${prefOn(key) ? '#060b12' : 'var(--muted)'};transition:all .15s"></span>
           </button>
         </div>`;
@@ -13902,7 +13906,7 @@
       const planStatus  = state.teamPlanStatus  || 'active';
       const daysLeft    = trialDaysRemaining();
       const planBadge   = (() => {
-        if (plan === 'pro' && planStatus === 'active')   return { label: 'Pro plan',            color: 'var(--green)',  text: 'You are on the Pro plan.' };
+        if (plan === 'pro' && planStatus === 'active')   return { label: 'Pro plan',            color: 'var(--accent)',  text: 'You are on the Pro plan.' };
         if (plan === 'pro' && planStatus === 'past_due') return { label: 'Pro · payment issue', color: '#fbbf24',       text: 'Your Pro subscription has a payment issue — update your billing details to avoid disruption.' };
         if (plan === 'pro' && planStatus === 'canceled') return { label: 'Pro canceled',         color: '#f87171',       text: 'Your Pro subscription has been canceled. You are now on the Core plan.' };
         if (plan === 'pro' && planStatus === 'paused')   return { label: 'Pro paused',           color: '#fbbf24',       text: 'Your Pro subscription is paused.' };
@@ -13968,7 +13972,7 @@
           <!-- Club settings -->
           <div class="card">
             <h2 style="margin-bottom:4px">Club settings</h2>
-            <p class="muted" style="font-size:12px;margin-bottom:14px">Names, season name and the training schedule are edited in <a href="#" onclick="setSection('coach','admin');return false" style="color:var(--green)">Club Admin</a>.</p>
+            <p class="muted" style="font-size:12px;margin-bottom:14px">Names, season name and the training schedule are edited in <a href="#" onclick="setSection('coach','admin');return false" style="color:var(--accent)">Club Admin</a>.</p>
             <div style="display:grid;gap:12px">
               <div style="display:flex;align-items:center;gap:14px">
                 <div id="set-logo-preview" style="width:54px;height:54px;border-radius:12px;border:1px solid var(--line);background:var(--panel-2) center/cover no-repeat;flex-shrink:0;${state.clubLogo ? `background-image:url(${state.clubLogo})` : ''}"></div>
@@ -14218,6 +14222,14 @@
       return `rgb(${Math.round(((n >> 16) & 255) * f)}, ${Math.round(((n >> 8) & 255) * f)}, ${Math.round((n & 255) * f)})`;
     }
 
+    // "#rrggbb" → "r, g, b" for use inside rgba(var(--accent-rgb), α). Null on bad input.
+    function _hexToRgbTriplet(hex) {
+      const m = /^#?([a-f0-9]{6})$/i.exec(String(hex || '').trim());
+      if (!m) return null;
+      const n = parseInt(m[1], 16);
+      return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+    }
+
     // Small premium club badge for page headers — empty string when no logo saved,
     // so headers fall back to the plain title (default Coach's Eye look).
     function clubLogoBadgeHtml(extraStyle) {
@@ -14242,8 +14254,12 @@
         '--brand-grad':  `linear-gradient(135deg, ${secondary} 0%, ${primary} 100%)`,
         // Active-tab / selected highlights re-skin to the club primary too.
         '--accent':      primary,
+        '--accent-2':    secondary,
         '--accent-soft': _hexToRgba(primary, 0.12),
         '--accent-line': _hexToRgba(primary, 0.34),
+        // Primary as an "r, g, b" triplet so any rgba(var(--accent-rgb), α) tint
+        // across the app follows the club colour at its own opacity.
+        '--accent-rgb':  _hexToRgbTriplet(primary),
         // Very soft page-header glow + readable club-tinted outgoing message bubble.
         '--page-glow':   _hexToRgba(primary, 0.18),
         // Logged-in club workspace: a more present primary-colour background wash.
@@ -14261,7 +14277,8 @@
       const root = document.documentElement;
       const vars = clubBrandVars(state.clubColours);
       ['--brand', '--brand-2', '--brand-soft', '--brand-line', '--glow-brand', '--brand-grad',
-       '--accent', '--accent-soft', '--accent-line', '--page-glow', '--page-wash', '--bubble-mine'].forEach(v => {
+       '--accent', '--accent-2', '--accent-soft', '--accent-line', '--accent-rgb',
+       '--page-glow', '--page-wash', '--bubble-mine'].forEach(v => {
         if (vars[v]) root.style.setProperty(v, vars[v]); else root.style.removeProperty(v);
       });
       // Club badge in the sidebar identity block (shows on every screen). The logo
@@ -14298,7 +14315,7 @@
       if (btn) {
         btn.disabled = false;
         btn.textContent   = saved ? 'Saved ✓' : '⚠ Saved on device only';
-        btn.style.borderColor = saved ? 'var(--green)' : '#f59e0b';
+        btn.style.borderColor = saved ? 'var(--accent)' : '#f59e0b';
         setTimeout(() => { btn.textContent = 'Save club settings'; btn.style.borderColor = ''; }, 2400);
       }
       showToast(saved ? 'Club settings saved ✓' : '⚠️ Saved on this device — server sync failed');
@@ -14583,7 +14600,7 @@
                 oninput="_adminSearch=this.value;renderClubAdmin();const i=document.getElementById('adm-search');i.focus();i.setSelectionRange(i.value.length,i.value.length)">
             </div>
             ${!_adminData.loaded ? `<p class="muted" style="font-size:12px">Loading members…</p>` : `
-            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--green);margin:6px 0">Active (${activePlayers.length})</div>
+            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--accent);margin:6px 0">Active (${activePlayers.length})</div>
             ${activePlayers.length ? activePlayers.map(({ member, user }) => {
               const profile = (_adminData.profiles || []).find(p => p.userId === member.userId);
               const pendingDetails = profile?.detailsUpdatedAt && !profile?.detailsApprovedAt;
@@ -14595,7 +14612,7 @@
                   <div class="muted" style="font-size:11px">${esc(user.email || '')}${profile?.details?.position ? ' · ' + esc(profile.details.position) : ''}</div>
                 </div>
                 <div style="display:flex;gap:6px;flex-shrink:0">
-                  ${pendingDetails ? `<button class="btn" style="${smallBtn};color:var(--green);border-color:rgba(16,185,129,0.4)" type="button"
+                  ${pendingDetails ? `<button class="btn" style="${smallBtn};color:var(--accent);border-color:rgba(var(--accent-rgb), 0.4)" type="button"
                     onclick="adminApproveDetails('${esc(profile.id)}','${esc(user.displayName || '')}')">✓ Approve details</button>` : ''}
                   <button class="btn" style="${smallBtn}" type="button" onclick="adminArchiveMember('${esc(member.id)}','${esc(user.displayName || '')}')">Archive</button>
                   <button class="btn" style="${smallBtn};color:#f87171;border-color:rgba(248,113,113,0.3)" type="button"
@@ -15076,7 +15093,7 @@
       const filterBtn = (id, label) => {
         const active = _fixtureCompFilter ? id === _fixtureCompFilter : _fixtureFilter === id;
         return `<button type="button" onclick="${_fixtureCompFilter && id === _fixtureCompFilter ? 'fixtureSetFilter(\'all\')' : id === 'all' || ['upcoming','past','home','away'].includes(id) ? `fixtureSetFilter('${id}')` : `fixtureSetCompFilter('${id}')`}"
-          style="padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid ${active?'var(--green)':'var(--line)'};background:${active?'rgba(16,185,129,0.12)':'var(--panel-2)'};color:${active?'var(--green)':'var(--muted)'};white-space:nowrap">
+          style="padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid ${active?'var(--accent)':'var(--line)'};background:${active?'rgba(var(--accent-rgb), 0.12)':'var(--panel-2)'};color:${active?'var(--accent)':'var(--muted)'};white-space:nowrap">
           ${esc(label)}</button>`;
       };
 
@@ -15111,8 +15128,8 @@
             ${fx.venue ? `<div style="font-size:12px;color:var(--muted);margin-bottom:0">${esc(fx.venue)}</div>` : ''}
             <!-- Countdown -->
             ${countdown ? `
-            <div style="margin-top:12px;padding:10px 14px;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);display:flex;align-items:baseline;gap:8px">
-              <span style="font-size:24px;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums">${countdown}</span>
+            <div style="margin-top:12px;padding:10px 14px;background:rgba(var(--accent-rgb), 0.08);border-radius:8px;border:1px solid rgba(var(--accent-rgb), 0.2);display:flex;align-items:baseline;gap:8px">
+              <span style="font-size:24px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums">${countdown}</span>
               <span style="font-size:11px;color:var(--muted)">until kick-off</span>
             </div>` : ''}
             ${fx.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:10px;padding:8px 12px;background:var(--panel);border-radius:6px">${esc(fx.notes)}</div>` : ''}
@@ -15590,7 +15607,7 @@
       const versionCard =
         '<div class="card" style="padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">' +
           '<div>' +
-            '<div style="font-size:22px;font-weight:900;color:var(--green)">' + esc(betaVersionLabel(BETA_APP_VERSION)) + '</div>' +
+            '<div style="font-size:22px;font-weight:900;color:var(--accent)">' + esc(betaVersionLabel(BETA_APP_VERSION)) + '</div>' +
             '<div style="font-size:11px;color:var(--muted);margin-top:2px">Coach\'s Eye Core · Beta</div>' +
           '</div>' +
           '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
@@ -15797,7 +15814,7 @@
           '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">' +
             (state.clubLogo
               ? '<img src="' + esc(state.clubLogo) + '" alt="club logo" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex-shrink:0">'
-              : '<div style="width:48px;height:48px;border-radius:10px;background:var(--green-soft);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0"></div>') +
+              : '<div style="width:48px;height:48px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0"></div>') +
             '<div>' +
               '<div style="font-size:17px;font-weight:900">' + esc(overview.clubName || 'Your Club') + '</div>' +
               '<div style="font-size:12px;color:var(--muted)">' +
@@ -16443,8 +16460,8 @@
             pBadge(avail.label, avail.color) +
           '</div>' +
           (blocks.length > 0
-            ? '<div style="margin-top:8px;padding:8px 10px;background:var(--panel);border-radius:8px;border-left:3px solid var(--green)">' +
-                '<div style="font-size:10px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Session plan</div>' +
+            ? '<div style="margin-top:8px;padding:8px 10px;background:var(--panel);border-radius:8px;border-left:3px solid var(--accent)">' +
+                '<div style="font-size:10px;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Session plan</div>' +
                 blocks.slice(0, 3).map(b =>
                   '<div style="font-size:11px;padding:2px 0">' + (b.time ? '<span style="color:var(--muted)">' + esc(b.time) + '</span> ' : '') + esc(b.activity || '') + '</div>'
                 ).join('') +
@@ -17118,8 +17135,8 @@
           }
           const eventsHere = byDate[date] || [];
           const isToday    = date === today;
-          return '<div style="min-height:60px;border-radius:8px;padding:4px;background:var(--panel-2);border:1.5px solid ' + (isToday ? 'var(--green)' : 'var(--line)') + ';cursor:' + (eventsHere.length ? 'pointer' : 'default') + '">' +
-            '<div style="font-size:11px;font-weight:' + (isToday ? '900' : '600') + ';color:' + (isToday ? 'var(--green)' : 'var(--text)') + ';margin-bottom:3px">' + Number(date.slice(8)) + '</div>' +
+          return '<div style="min-height:60px;border-radius:8px;padding:4px;background:var(--panel-2);border:1.5px solid ' + (isToday ? 'var(--accent)' : 'var(--line)') + ';cursor:' + (eventsHere.length ? 'pointer' : 'default') + '">' +
+            '<div style="font-size:11px;font-weight:' + (isToday ? '900' : '600') + ';color:' + (isToday ? 'var(--accent)' : 'var(--text)') + ';margin-bottom:3px">' + Number(date.slice(8)) + '</div>' +
             eventsHere.slice(0, 3).map(ev => {
               const cfg = CALENDAR_EVENT_TYPES[ev.type] || { color: '#94a3b8', icon: '•', label: ev.type };
               return '<div onclick="calendarSelectEvent(\'' + ev.id.replace(/'/g,"\\'") + '\')" style="font-size:9px;font-weight:700;padding:1px 4px;border-radius:4px;background:' + cfg.color + '1a;color:' + cfg.color + ';margin-bottom:1px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + cfg.icon + ' ' + esc(ev.title.slice(0,20)) + '</div>';
@@ -17149,7 +17166,7 @@
         const lbl = d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
         const isToday = date === today;
         return '<div style="margin-bottom:16px">' +
-          '<div style="font-size:11px;font-weight:700;color:' + (isToday ? 'var(--green)' : 'var(--muted)') + ';text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">' +
+          '<div style="font-size:11px;font-weight:700;color:' + (isToday ? 'var(--accent)' : 'var(--muted)') + ';text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">' +
             lbl + (isToday ? ' · Today' : '') +
           '</div>' +
           byDate[date].map(ev => {
@@ -17209,7 +17226,7 @@
         '</div>' +
         '<div style="display:flex;gap:6px">' +
           ['month','agenda'].map(v =>
-            '<button type="button" onclick="calendarSetView(\'' + v + '\')" style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:999px;cursor:pointer;border:1.5px solid ' + (view === v ? 'var(--green)' : 'var(--line)') + ';background:' + (view === v ? 'rgba(16,185,129,0.08)' : 'var(--panel-2)') + ';color:' + (view === v ? 'var(--green)' : 'var(--muted)') + '">' + (v === 'month' ? 'Month' : 'Agenda') + '</button>'
+            '<button type="button" onclick="calendarSetView(\'' + v + '\')" style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:999px;cursor:pointer;border:1.5px solid ' + (view === v ? 'var(--accent)' : 'var(--line)') + ';background:' + (view === v ? 'rgba(var(--accent-rgb), 0.08)' : 'var(--panel-2)') + ';color:' + (view === v ? 'var(--accent)' : 'var(--muted)') + '">' + (v === 'month' ? 'Month' : 'Agenda') + '</button>'
           ).join('') +
         '</div>' +
       '</div>';
@@ -17521,9 +17538,9 @@
           const isAct = _reportType === rc.id;
           return '<button type="button" onclick="setReportType(\'' + rc.id + '\')" style="' +
             'padding:14px 10px;border-radius:12px;cursor:pointer;text-align:center;' +
-            'border:2px solid ' + (isAct?'var(--green)':'var(--line)') + ';' +
-            'background:' + (isAct?'rgba(16,185,129,0.08)':'var(--panel-2)') + ';' +
-            'color:' + (isAct?'var(--green)':'var(--text)') + ';font-weight:700;' +
+            'border:2px solid ' + (isAct?'var(--accent)':'var(--line)') + ';' +
+            'background:' + (isAct?'rgba(var(--accent-rgb), 0.08)':'var(--panel-2)') + ';' +
+            'color:' + (isAct?'var(--accent)':'var(--text)') + ';font-weight:700;' +
             'transition:border-color .15s">' +
             '<div style="font-size:24px;margin-bottom:6px">' + rc.icon + '</div>' +
             '<div style="font-size:12px;font-weight:700">' + rc.label + '</div>' +
@@ -18605,7 +18622,7 @@
         _matchTabBar() +
         '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">' +
           '<div class="card" style="padding:12px 14px;text-align:center">' +
-            '<div style="font-size:28px;font-weight:900;color:var(--green)">' + score.us + '</div>' +
+            '<div style="font-size:28px;font-weight:900;color:var(--accent)">' + score.us + '</div>' +
             '<div style="font-size:11px;color:var(--muted);margin-top:2px">Our score</div>' +
           '</div>' +
           '<div class="card" style="padding:12px 14px;text-align:center">' +
@@ -18690,7 +18707,7 @@
         const isAct = _matchEventType === type;
         return '<button type="button" onclick="_matchEventType=\'' + type + '\';document.getElementById(\'mt-type-lbl\').textContent=\'' + esc(MATCH_EVENT_TYPES[type]) + '\';[...document.querySelectorAll(\'.mt-type-btn\')].forEach(b=>b.classList.remove(\'active\'))"' +
           ' class="btn mt-type-btn' + (isAct?' active':'') + '"' +
-          ' style="font-size:11px;padding:4px 8px;' + (isAct?'border-color:var(--green);color:var(--green)':'') + '">' +
+          ' style="font-size:11px;padding:4px 8px;' + (isAct?'border-color:var(--accent);color:var(--accent)':'') + '">' +
           MATCH_EVENT_ICONS[type] + ' ' + MATCH_EVENT_TYPES[type] + '</button>';
       };
 
@@ -18737,7 +18754,7 @@
         '<div class="card">' +
           '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
             '<div style="font-size:13px;font-weight:700">Timeline (' + events.length + ' events)</div>' +
-            (events.length>0 ? '<div style="font-size:12px;color:var(--green);font-weight:700">' + score.us + ' – ' + score.them + '</div>' : '') +
+            (events.length>0 ? '<div style="font-size:12px;color:var(--accent);font-weight:700">' + score.us + ' – ' + score.them + '</div>' : '') +
           '</div>' +
           (events.length===0
             ? '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No events recorded yet. Use the form above to log match events as they happen.</div>'
@@ -18749,7 +18766,7 @@
                   '<span style="font-size:18px;flex-shrink:0">' + (MATCH_EVENT_ICONS[ev.type]||'') + '</span>' +
                   '<div style="flex:1;min-width:0">' +
                     '<div style="font-size:13px;font-weight:700">' + MATCH_EVENT_TYPES[ev.type] +
-                      '<span style="font-size:11px;font-weight:400;margin-left:6px;color:' + (isUs?'var(--green)':'#f87171') + '">' + (isUs?'Us':'Opposition') + '</span>' +
+                      '<span style="font-size:11px;font-weight:400;margin-left:6px;color:' + (isUs?'var(--accent)':'#f87171') + '">' + (isUs?'Us':'Opposition') + '</span>' +
                     '</div>' +
                     (player ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + esc(player.name) + '</div>' : '') +
                     (ev.notes ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + esc(ev.notes) + '</div>' : '') +
@@ -18785,7 +18802,7 @@
           '<div style="flex:1;font-size:12px">' +
             '<span style="font-weight:700">' + MATCH_EVENT_TYPES[ev.type] + '</span>' +
             (player ? ' · ' + esc(player.name) : '') +
-            '<span style="color:' + (isUs?'var(--green)':'#f87171') + ';margin-left:6px;font-size:11px">' + (isUs?'Us':'Them') + '</span>' +
+            '<span style="color:' + (isUs?'var(--accent)':'#f87171') + ';margin-left:6px;font-size:11px">' + (isUs?'Us':'Them') + '</span>' +
           '</div>' +
           (MATCH_POINT_VALUES[ev.type] ? '<span style="font-size:11px;font-weight:700;color:' + (isUs?'#34d399':'#f87171') + '">' + (isUs?'+':'') + (isUs?1:-0)*0 + (isUs?'+'+MATCH_POINT_VALUES[ev.type]:'') + 'pts</span>' : '') +
         '</div>';
@@ -18805,7 +18822,7 @@
           '<div style="display:flex;align-items:center;justify-content:center;gap:24px;margin-bottom:12px">' +
             '<div>' +
               '<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px">US</div>' +
-              '<div style="font-size:72px;font-weight:900;color:var(--green);line-height:1">' + score.us + '</div>' +
+              '<div style="font-size:72px;font-weight:900;color:var(--accent);line-height:1">' + score.us + '</div>' +
             '</div>' +
             '<div style="font-size:32px;color:var(--muted);font-weight:300">–</div>' +
             '<div>' +
@@ -18990,7 +19007,7 @@
               '<span style="color:var(--muted);font-size:11px;min-width:28px">' + ev.minute + '\'</span>' +
               '<span>' + (MATCH_EVENT_ICONS[ev.type]||'') + '</span>' +
               (player?'<strong>'+esc(player.name)+'</strong>':'') +
-              '<span style="color:' + (isUs?'var(--green)':'#f87171') + ';font-size:11px">' + (isUs?'Us':'Them') + '</span>' +
+              '<span style="color:' + (isUs?'var(--accent)':'#f87171') + ';font-size:11px">' + (isUs?'Us':'Them') + '</span>' +
               (ev.notes?'<span style="color:var(--muted);font-size:11px">'+esc(ev.notes)+'</span>':'') +
             '</div>';
           }).join('') +
@@ -19020,7 +19037,7 @@
             esc(mc.competition||'Match') + (mc.homeAway ? ' · ' + (mc.homeAway==='home'?'Home':'Away') : '') + ' · ' + kickoffDisplay +
           '</div>' +
           '<div style="font-size:56px;font-weight:900;margin:4px 0">' +
-            '<span style="color:var(--green)">' + score.us + '</span>' +
+            '<span style="color:var(--accent)">' + score.us + '</span>' +
             '<span style="font-size:32px;color:var(--muted);margin:0 12px">–</span>' +
             '<span style="color:#f87171">' + score.them + '</span>' +
           '</div>' +
@@ -19055,7 +19072,7 @@
               ['Red cards',    summ.redCards.length,                              '—'],
             ].map(([lbl, us, them]) =>
               '<div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">' + lbl + '</div>' +
-              '<div style="font-size:16px;font-weight:800"><span style="color:var(--green)">' + us + '</span> – <span style="color:#f87171">' + them + '</span></div></div>'
+              '<div style="font-size:16px;font-weight:800"><span style="color:var(--accent)">' + us + '</span> – <span style="color:#f87171">' + them + '</span></div></div>'
             ).join('') +
           '</div>' +
         '</div>';
@@ -19506,9 +19523,9 @@
       const pill = (m, label, active) =>
         '<button type="button" onclick="_trainingHistoryMonth=\''+m+'\';render()"' +
         ' style="padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;' +
-        'border:1.5px solid '+(active?'var(--green)':'var(--line)')+';' +
-        'background:'+(active?'rgba(16,185,129,0.12)':'var(--panel-2)')+';' +
-        'color:'+(active?'var(--green)':'var(--muted)')+'">'+label+'</button>';
+        'border:1.5px solid '+(active?'var(--accent)':'var(--line)')+';' +
+        'background:'+(active?'rgba(var(--accent-rgb), 0.12)':'var(--panel-2)')+';' +
+        'color:'+(active?'var(--accent)':'var(--muted)')+'">'+label+'</button>';
 
       el.innerHTML =
         '<div class="training-hero">' +
@@ -19733,9 +19750,9 @@
         const filterArg = g === 'All' ? 'all' : g;
         return '<button type="button" onclick="fixtureAvailSetFilter(\'' + esc(filterArg) + '\')"' +
           ' style="padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;' +
-          'border:1.5px solid ' + (active ? 'var(--green)' : 'var(--line)') + ';' +
-          'background:' + (active ? 'rgba(16,185,129,0.12)' : 'var(--panel-2)') + ';' +
-          'color:' + (active ? 'var(--green)' : 'var(--muted)') + ';white-space:nowrap">' + esc(g) + '</button>';
+          'border:1.5px solid ' + (active ? 'var(--accent)' : 'var(--line)') + ';' +
+          'background:' + (active ? 'rgba(var(--accent-rgb), 0.12)' : 'var(--panel-2)') + ';' +
+          'color:' + (active ? 'var(--accent)' : 'var(--muted)') + ';white-space:nowrap">' + esc(g) + '</button>';
       };
 
       const statsBar =
@@ -19882,7 +19899,7 @@
 
     function selectionAnnouncementStatus(sel) {
       const st = sel && sel.announcementStatus || 'not_announced';
-      if (st === 'announced')   return { status: 'announced',    label: 'Announced',  color: '#34d399', bg: 'rgba(16,185,129,0.15)',   border: 'rgba(16,185,129,0.3)' };
+      if (st === 'announced')   return { status: 'announced',    label: 'Announced',  color: '#34d399', bg: 'rgba(var(--accent-rgb), 0.15)',   border: 'rgba(var(--accent-rgb), 0.3)' };
       if (st === 'draft_ready') return { status: 'draft_ready',  label: 'Draft ready',   color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',   border: 'rgba(245,158,11,0.3)' };
       return                          { status: 'not_announced', label: 'Not announced', color: '#64748b', bg: 'rgba(100,116,139,0.1)',   border: 'rgba(100,116,139,0.2)' };
     }
@@ -20303,7 +20320,7 @@
         const isDraft  = sel && sel.status === 'draft';
         const annSt   = isPub ? selectionAnnouncementStatus(sel) : null;
         const statusBadge = isPub
-          ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(16,185,129,0.15);color:#34d399;border:1px solid rgba(16,185,129,0.3)">✓ Published</span>`
+          ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(var(--accent-rgb), 0.15);color:#34d399;border:1px solid rgba(var(--accent-rgb), 0.3)">✓ Published</span>`
           : isDraft
           ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">Draft saved</span>`
           : `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--panel-2);color:var(--muted);border:1px solid var(--line)">No squad</span>`;
@@ -20393,14 +20410,14 @@
             return `<div draggable="true" ondragstart="handleSelDragStart(event,'${esc(p.id)}')"
               onclick="handleSelPoolClick('${esc(p.id)}')"
               style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;cursor:pointer;
-                     border:1px solid ${picking?'var(--green)':inSquad?'rgba(255,255,255,0.06)':'var(--line)'};
-                     background:${picking?'rgba(16,185,129,0.1)':'var(--panel)'};
+                     border:1px solid ${picking?'var(--accent)':inSquad?'rgba(255,255,255,0.06)':'var(--line)'};
+                     background:${picking?'rgba(var(--accent-rgb), 0.1)':'var(--panel)'};
                      opacity:${inSquad&&!picking?'0.55':'1'};transition:all .12s">
               <span style="width:7px;height:7px;border-radius:50%;background:${availClr};flex-shrink:0"></span>
-              <span style="flex:1;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${picking?'var(--green)':'var(--fg)'}">${esc(p.name)}</span>
+              <span style="flex:1;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${picking?'var(--accent)':'var(--fg)'}">${esc(p.name)}</span>
               ${isCap ? `<span style="font-size:9px;font-weight:800;color:#f59e0b;padding:1px 4px;border-radius:3px;background:rgba(245,158,11,0.15)">C</span>` : ''}
               ${isVC  ? `<span style="font-size:9px;font-weight:800;color:#94a3b8;padding:1px 4px;border-radius:3px;background:rgba(148,163,184,0.1)">VC</span>` : ''}
-              ${posLabel ? `<span style="font-size:10px;font-weight:700;color:var(--green);flex-shrink:0">${posLabel}</span>` : ''}
+              ${posLabel ? `<span style="font-size:10px;font-weight:700;color:var(--accent);flex-shrink:0">${posLabel}</span>` : ''}
             </div>`;
           }).join('')
         : `<div class="muted" style="text-align:center;padding:16px;font-size:12px">No players yet.<br>
@@ -20420,7 +20437,7 @@
           ondragleave="this.classList.remove('drag-over')"
           ondrop="this.classList.remove('drag-over');handleSelSlotDrop('${label}',event)"
           onclick="handleSelSlotClick('${label}')">
-          <div class="slot-photo" style="${p ? `border-color:${availClr}` : picking ? 'border-color:rgba(16,185,129,0.6);box-shadow:0 0 0 3px rgba(16,185,129,0.15)' : ''}">
+          <div class="slot-photo" style="${p ? `border-color:${availClr}` : picking ? 'border-color:rgba(var(--accent-rgb), 0.6);box-shadow:0 0 0 3px rgba(var(--accent-rgb), 0.15)' : ''}">
             ${p
               ? `<span style="font-size:11px;font-weight:800;color:#e2e8f0">${initials}</span>`
               : `<span style="font-size:14px;opacity:0.25">+</span>`}
@@ -20444,7 +20461,7 @@
           ondragover="event.preventDefault()"
           ondrop="handleSelBenchDrop(${i},event)"
           onclick="handleSelBenchClick(${i})"
-          style="cursor:pointer;${picking&&!p?'border-color:rgba(16,185,129,0.35)':''}">
+          style="cursor:pointer;${picking&&!p?'border-color:rgba(var(--accent-rgb), 0.35)':''}">
           <small>${i+16}</small>
           ${p
             ? `<span style="color:#e2e8f0">${esc(p.name.split(' ').slice(-1)[0] || p.name)}</span>
@@ -20497,7 +20514,7 @@
           <div style="flex:1;min-width:0">${fixtureHeader}</div>
           <div style="flex-shrink:0">
             ${isPub
-              ? `<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(16,185,129,0.15);color:#34d399;border:1px solid rgba(16,185,129,0.3)">✓ Published</span>`
+              ? `<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(var(--accent-rgb), 0.15);color:#34d399;border:1px solid rgba(var(--accent-rgb), 0.3)">✓ Published</span>`
               : `<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">Draft</span>`}
           </div>
         </div>
@@ -20505,8 +20522,8 @@
         <!-- Pick hint banner -->
         ${_selectionPickId ? (() => {
           const pp = players.find(p => p.id === _selectionPickId);
-          return `<div style="padding:8px 14px;border-radius:8px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:space-between;gap:10px">
-            <span style="font-size:13px;font-weight:600;color:var(--green)">Tap a slot or bench position to place ${esc(pp&&pp.name||'player')}</span>
+          return `<div style="padding:8px 14px;border-radius:8px;background:rgba(var(--accent-rgb), 0.1);border:1px solid rgba(var(--accent-rgb), 0.3);display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <span style="font-size:13px;font-weight:600;color:var(--accent)">Tap a slot or bench position to place ${esc(pp&&pp.name||'player')}</span>
             <button type="button" onclick="_selectionPickId=null;render()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0">Cancel ✕</button>
           </div>`;
         })() : ''}
@@ -20553,7 +20570,7 @@
               <div style="display:grid;gap:5px">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
                   <div style="padding:8px;background:var(--panel-2);border-radius:7px;text-align:center">
-                    <div style="font-size:18px;font-weight:800;color:var(--green)">${starters}</div>
+                    <div style="font-size:18px;font-weight:800;color:var(--accent)">${starters}</div>
                     <div style="font-size:9px;color:var(--muted)">/ 15 starters</div>
                   </div>
                   <div style="padding:8px;background:var(--panel-2);border-radius:7px;text-align:center">
@@ -20606,7 +20623,7 @@
 
           // Announced state: show summary + reset option
           if (annSt.status === 'announced') {
-            return `<div class="card" style="border-color:rgba(16,185,129,0.25)">
+            return `<div class="card" style="border-color:rgba(var(--accent-rgb), 0.25)">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
                 <div style="display:flex;align-items:center;gap:8px">
                   <span style="font-size:14px;font-weight:800;color:#34d399">Announced</span>
@@ -20686,8 +20703,8 @@
                 </span>
               </div>
               ${planBlocks.length ? `
-              <div style="margin-top:8px;padding:8px 12px;background:var(--panel);border-radius:8px;border-left:3px solid var(--green)">
-                <div style="font-size:10px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Training plan</div>
+              <div style="margin-top:8px;padding:8px 12px;background:var(--panel);border-radius:8px;border-left:3px solid var(--accent)">
+                <div style="font-size:10px;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Training plan</div>
                 ${planBlocks.map(b => `
                   <div style="display:flex;gap:8px;font-size:12px;padding:2px 0">
                     ${b.time ? `<span style="color:var(--muted);min-width:38px;flex-shrink:0">${esc(b.time)}</span>` : ''}
@@ -20712,7 +20729,7 @@
             if (pubSel && pId) {
               const pSt = selectionGetPlayerStatus(pubSel, pId);
               if (pSt.status === 'starter') {
-                squadBadge = `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:rgba(16,185,129,0.15);color:#34d399;border:1px solid rgba(16,185,129,0.3)">Starting #${pSt.slot}</span>`;
+                squadBadge = `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:rgba(var(--accent-rgb), 0.15);color:#34d399;border:1px solid rgba(var(--accent-rgb), 0.3)">Starting #${pSt.slot}</span>`;
               } else if (pSt.status === 'bench') {
                 squadBadge = `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">Bench #${pSt.slot}</span>`;
               } else {
@@ -20731,7 +20748,7 @@
                 const roleColor = pSt.status === 'starter' ? '#34d399' : pSt.status === 'bench' ? '#f59e0b' : 'var(--muted)';
                 announcedCard = `<div style="margin:8px 0 4px;padding:12px 14px;border-radius:10px;background:var(--panel-2);border:1px solid var(--line)">
                   <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-                    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(16,185,129,0.15);color:#34d399;border:1px solid rgba(16,185,129,0.25)">Announced</span>
+                    <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(var(--accent-rgb), 0.15);color:#34d399;border:1px solid rgba(var(--accent-rgb), 0.25)">Announced</span>
                   </div>
                   <div style="font-size:14px;font-weight:800;color:${roleColor};margin-bottom:2px">${esc(roleLabel)}</div>
                   ${[f.kickoffTime||f.time, f.venue, pubSel.notes ? ('Coach notes: ' + pubSel.notes) : ''].filter(Boolean).map(t => `<div class="muted" style="font-size:12px;margin-top:3px">${esc(t)}</div>`).join('')}
@@ -20747,7 +20764,7 @@
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                   ${squadBadge}
-                  ${haLabel ? `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:${f.homeAway==='home'?'rgba(16,185,129,0.12)':'rgba(255,255,255,0.06)'};color:${f.homeAway==='home'?'var(--green)':'var(--muted)'};border:1px solid ${f.homeAway==='home'?'rgba(16,185,129,0.3)':'var(--line)'}">${haLabel}</span>` : ''}
+                  ${haLabel ? `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:${f.homeAway==='home'?'rgba(var(--accent-rgb), 0.12)':'rgba(255,255,255,0.06)'};color:${f.homeAway==='home'?'var(--accent)':'var(--muted)'};border:1px solid ${f.homeAway==='home'?'rgba(var(--accent-rgb), 0.3)':'var(--line)'}">${haLabel}</span>` : ''}
                 </div>
               </div>
               ${announcedCard}
@@ -22007,7 +22024,7 @@
 
     function chatScrollToMsg(msgId) {
       const el = document.querySelector(`[data-msgid="${msgId}"]`);
-      if (el) { el.scrollIntoView({ behavior:'smooth', block:'center' }); el.style.boxShadow = '0 0 0 2px var(--green)'; setTimeout(() => el.style.boxShadow = '', 1500); }
+      if (el) { el.scrollIntoView({ behavior:'smooth', block:'center' }); el.style.boxShadow = '0 0 0 2px var(--accent)'; setTimeout(() => el.style.boxShadow = '', 1500); }
     }
 
     // Get local state.messages mapped to this convId for backwards compat
@@ -22589,7 +22606,7 @@
 
           <div style="display:grid;gap:5px;margin-top:10px">
             <button class="btn" type="button" onclick="pushDiagSendTest()"
-              style="font-size:11px;padding:6px 10px;background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.4);color:#6ee7b7">
+              style="font-size:11px;padding:6px 10px;background:rgba(var(--accent-rgb), 0.12);border-color:rgba(var(--accent-rgb), 0.4);color:#6ee7b7">
               1. Send Test Push  <span style="opacity:.6;font-size:10px">(server → SW → showNotification)</span>
             </button>
             <button class="btn" type="button" onclick="testSWNotification()"
@@ -23299,14 +23316,14 @@
       }
 
       if (pushSubscription) {
-        card.style.borderColor = 'rgba(16,185,129,0.35)';
-        card.style.background  = 'rgba(16,185,129,0.07)';
+        card.style.borderColor = 'rgba(var(--accent-rgb), 0.35)';
+        card.style.background  = 'rgba(var(--accent-rgb), 0.07)';
         card.innerHTML = `
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
             <div style="display:flex;align-items:center;gap:10px">
               <span style="font-size:22px"></span>
               <div>
-                <strong style="font-size:14px;color:var(--green)">This device is subscribed ✓</strong>
+                <strong style="font-size:14px;color:var(--accent)">This device is subscribed ✓</strong>
                 <p class="muted" style="font-size:12px;margin:2px 0 0">${subscriberCount} device${subscriberCount===1?'':'s'} total — messages go to all of them</p>
               </div>
             </div>
@@ -23316,8 +23333,8 @@
       }
 
       // Not subscribed yet
-      card.style.borderColor = 'rgba(16,185,129,0.25)';
-      card.style.background  = 'rgba(16,185,129,0.05)';
+      card.style.borderColor = 'rgba(var(--accent-rgb), 0.25)';
+      card.style.background  = 'rgba(var(--accent-rgb), 0.05)';
       card.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
           <div style="display:flex;align-items:center;gap:10px">
@@ -23362,9 +23379,9 @@
             ? `Last sent ${new Date(s.lastSentAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}`
             : 'Never sent yet';
           const statusDot = s.active
-            ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,0.18);margin-right:5px;flex-shrink:0"></span>`
+            ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 0 3px rgba(var(--accent-rgb), 0.18);margin-right:5px;flex-shrink:0"></span>`
             : `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#334155;margin-right:5px;flex-shrink:0"></span>`;
-          return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:8px;background:${s.active?'rgba(16,185,129,0.07)':'var(--panel-2)'};border:1px solid ${s.active?'rgba(16,185,129,0.25)':'var(--line)'};margin-bottom:6px">
+          return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:8px;background:${s.active?'rgba(var(--accent-rgb), 0.07)':'var(--panel-2)'};border:1px solid ${s.active?'rgba(var(--accent-rgb), 0.25)':'var(--line)'};margin-bottom:6px">
             <div style="min-width:0">
               <div style="display:flex;align-items:center;gap:4px">${statusDot}<strong style="font-size:13px">${esc(s.name)}</strong><span style="font-size:11px;color:var(--muted);margin-left:4px">${s.active?'Active':'Paused'}</span></div>
               <div style="font-size:12px;color:var(--muted);margin-top:2px">${days} &nbsp;·&nbsp; ${s.time} &nbsp;·&nbsp; <em>${lastSent}</em></div>
@@ -23406,12 +23423,12 @@
             ? new Date(s.lastSentAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})
             : 'Never fired';
           return `
-          <div style="border:1.5px solid ${s.active?'var(--green)':'var(--line)'};border-radius:10px;padding:11px 14px;margin-bottom:8px;background:${s.active?'rgba(16,185,129,0.07)':'var(--panel-2)'}">
+          <div style="border:1.5px solid ${s.active?'var(--accent)':'var(--line)'};border-radius:10px;padding:11px 14px;margin-bottom:8px;background:${s.active?'rgba(var(--accent-rgb), 0.07)':'var(--panel-2)'}">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
               <div style="display:flex;align-items:center;gap:6px;min-width:0">
                 <span style="width:8px;height:8px;border-radius:50%;background:${s.active?'#10b981':'#475569'};flex-shrink:0"></span>
                 <strong style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</strong>
-                <span style="font-size:11px;padding:2px 6px;border-radius:999px;background:${s.active?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.12)'};color:${s.active?'#34d399':'#94a3b8'};font-weight:700;white-space:nowrap;flex-shrink:0">${s.active?'Active':'Paused'}</span>
+                <span style="font-size:11px;padding:2px 6px;border-radius:999px;background:${s.active?'rgba(var(--accent-rgb), 0.15)':'rgba(100,116,139,0.12)'};color:${s.active?'#34d399':'#94a3b8'};font-weight:700;white-space:nowrap;flex-shrink:0">${s.active?'Active':'Paused'}</span>
               </div>
               <div style="display:flex;gap:5px;flex-shrink:0">
                 ${tpl ? `<button class="btn primary" type="button" style="font-size:11px;padding:3px 10px;white-space:nowrap"
@@ -24298,7 +24315,7 @@
       el.id = 'first-run-modal';
       el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:flex-start;justify-content:center;z-index:9998;padding:16px;backdrop-filter:blur(4px);overflow-y:auto';
       el.innerHTML = `
-        <div style="background:#0f1724;border:1px solid rgba(16,185,129,0.3);border-radius:16px;padding:26px 22px;max-width:440px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,0.7);margin:auto 0">
+        <div style="background:#0f1724;border:1px solid rgba(var(--accent-rgb), 0.3);border-radius:16px;padding:26px 22px;max-width:440px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,0.7);margin:auto 0">
           <div style="text-align:center;margin-bottom:18px">
             <div style="font-size:44px;margin-bottom:8px"></div>
             <h2 style="margin:0 0 4px;color:#e2e8f0;font-size:21px">Set up your team</h2>
@@ -24670,7 +24687,7 @@
       el.id = 'billing-success-modal';
       el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(4px)';
       el.innerHTML = `
-        <div style="background:#0f1724;border:1px solid rgba(16,185,129,0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
+        <div style="background:#0f1724;border:1px solid rgba(var(--accent-rgb), 0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
           <div style="font-size:46px;margin-bottom:12px">🎉</div>
           <h2 style="margin:0 0 6px;color:#e2e8f0;font-size:22px">You're on Pro!</h2>
           <p style="color:#64748b;font-size:14px;margin-bottom:22px">Your Coach's Eye Pro subscription is now active. Your plan status will update shortly.</p>
@@ -24689,7 +24706,7 @@
       el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(4px)';
       const greeting = name ? `Welcome, ${esc(name)}` : "You're all set";
       el.innerHTML = `
-        <div style="background:#0f1724;border:1px solid rgba(16,185,129,0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
+        <div style="background:#0f1724;border:1px solid rgba(var(--accent-rgb), 0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
           <div style="font-size:46px;margin-bottom:12px">✓</div>
           <h2 style="margin:0 0 6px;color:#e2e8f0;font-size:22px">Email verified</h2>
           <p style="color:#64748b;font-size:14px;margin-bottom:22px">${esc(greeting)} — your Coach's Eye account is confirmed.</p>
@@ -24723,7 +24740,7 @@
       el.id = 'reset-modal';
       el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(4px)';
       el.innerHTML = `
-        <div style="background:#0f1724;border:1px solid rgba(16,185,129,0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
+        <div style="background:#0f1724;border:1px solid rgba(var(--accent-rgb), 0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
           <div style="font-size:46px;margin-bottom:12px"></div>
           <h2 style="margin:0 0 6px;color:#e2e8f0;font-size:22px">Reset password</h2>
           <p style="color:#64748b;font-size:14px;margin-bottom:22px">Create a new Coach's Eye password.</p>
@@ -24777,12 +24794,12 @@
       el.id = 'invite-modal';
       el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(4px)';
       el.innerHTML = `
-        <div style="background:#0f1724;border:1px solid rgba(16,185,129,0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
+        <div style="background:#0f1724;border:1px solid rgba(var(--accent-rgb), 0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
           <div style="font-size:52px;margin-bottom:12px"></div>
           <h2 style="margin:0 0 6px;color:#e2e8f0;font-size:22px">Welcome to ${esc(state.clubName || 'the team')}</h2>
           <p style="color:#64748b;font-size:14px;margin-bottom:22px">You've been invited to join Coach's Eye</p>
 
-          <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:14px 16px;margin-bottom:22px;text-align:left">
+          <div style="background:rgba(var(--accent-rgb), 0.08);border:1px solid rgba(var(--accent-rgb), 0.2);border-radius:10px;padding:14px 16px;margin-bottom:22px;text-align:left">
             <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Joining as</div>
             <div style="font-size:18px;font-weight:700;color:#10b981">${roleLabel[invite.role] || invite.role}</div>
           </div>
@@ -24938,7 +24955,7 @@
         const resultEl = document.getElementById('inv-result');
         if (resultEl) {
           resultEl.innerHTML = `
-            <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);border-radius:10px;padding:14px 16px;margin-top:14px">
+            <div style="background:rgba(var(--accent-rgb), 0.07);border:1px solid rgba(var(--accent-rgb), 0.22);border-radius:10px;padding:14px 16px;margin-top:14px">
               <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:10px">✓ Invite ready for ${esc(name)}</div>
               <div style="display:flex;gap:8px;align-items:center">
                 <input value="${esc(data.url)}" readonly id="inv-link-field"

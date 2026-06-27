@@ -22,10 +22,17 @@ function extractFn(source, name) {
 }
 
 const scope = new Function(
-  extractFn(html, '_hexToRgba') + '\n' + extractFn(html, '_hexScale') + '\n' + extractFn(html, 'clubBrandVars') +
-  '\nreturn { _hexToRgba, _hexScale, clubBrandVars };'
+  extractFn(html, '_hexToRgba') + '\n' + extractFn(html, '_hexScale') + '\n' +
+  extractFn(html, '_hexToRgbTriplet') + '\n' + extractFn(html, 'clubBrandVars') +
+  '\nreturn { _hexToRgba, _hexScale, _hexToRgbTriplet, clubBrandVars };'
 )();
-const { _hexToRgba, _hexScale, clubBrandVars } = scope;
+const { _hexToRgba, _hexScale, _hexToRgbTriplet, clubBrandVars } = scope;
+
+test('_hexToRgbTriplet returns an "r, g, b" string for rgba(var(--accent-rgb), α)', () => {
+  assert.equal(_hexToRgbTriplet('#ff5500'), '255, 85, 0');
+  assert.equal(_hexToRgbTriplet('#10b981'), '16, 185, 129');
+  assert.equal(_hexToRgbTriplet('bad'), null);
+});
 
 test('_hexToRgba converts #rrggbb to rgba at the given alpha', () => {
   assert.equal(_hexToRgba('#10b981', 0.13), 'rgba(16, 185, 129, 0.13)');
@@ -54,15 +61,17 @@ test('club colours map to the brand + accent CSS variables', () => {
   // Active-tab / selected highlights (session cards, filter pills, chat contacts,
   // tab underlines) re-skin to the club primary via --accent.
   assert.equal(vars['--accent'], '#ff5500', 'primary drives --accent (active tabs / highlights)');
+  assert.equal(vars['--accent-2'], '#0044ff', 'secondary drives --accent-2');
   assert.equal(vars['--accent-soft'], 'rgba(255, 85, 0, 0.12)');
   assert.equal(vars['--accent-line'], 'rgba(255, 85, 0, 0.34)');
+  assert.equal(vars['--accent-rgb'], '255, 85, 0', 'primary triplet for rgba(var(--accent-rgb), α) tints');
   // Soft page glow + a more present logged-in background wash + readable bubble.
   assert.equal(vars['--page-glow'], 'rgba(255, 85, 0, 0.18)');
   assert.equal(vars['--page-wash'], 'rgba(255, 85, 0, 0.2)', 'logged-in workspace shows more of the club primary');
   assert.match(vars['--bubble-mine'], /^rgb\(\d+, \d+, \d+\)$/, 'darkened primary, readable with light text');
   // Brand + accent + page vars only — status colours (--green/--red/--amber) are untouched.
   assert.deepEqual(Object.keys(vars).sort(),
-    ['--accent', '--accent-line', '--accent-soft', '--brand', '--brand-2', '--brand-grad', '--brand-line', '--brand-soft', '--bubble-mine', '--glow-brand', '--page-glow', '--page-wash']);
+    ['--accent', '--accent-2', '--accent-line', '--accent-rgb', '--accent-soft', '--brand', '--brand-2', '--brand-grad', '--brand-line', '--brand-soft', '--bubble-mine', '--glow-brand', '--page-glow', '--page-wash']);
 });
 
 test('secondary falls back to primary when absent', () => {
