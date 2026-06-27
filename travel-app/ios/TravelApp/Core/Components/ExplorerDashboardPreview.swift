@@ -2,7 +2,7 @@ import SwiftUI
 
 #if DEBUG
 
-// MARK: - Explorer dashboard preview (Phase 66)
+// MARK: - Explorer dashboard preview (Phase 66, extended Phase 68)
 //
 // A DEBUG-only assembly screen that composes the reusable components built so far
 // into a premium travel dashboard, using mock data only. The entire screen lives
@@ -10,6 +10,10 @@ import SwiftUI
 // wired into navigation, and modifies no production screen. It references the
 // existing components exactly as built — no duplicated component UI, only layout
 // glue (`PremiumScrollView`, `PremiumSection`, `GlassCard`).
+//
+// Phase 68 adds a forward-looking "Current quests" section composed from the
+// existing `TravelQuestCard`, placed just below the profile header so the
+// "what next" surfaces sit above the earned achievements and rewards.
 
 struct ExplorerDashboardPreview: View {
     var body: some View {
@@ -27,6 +31,57 @@ struct ExplorerDashboardPreview: View {
                 latestStampCountry: "Japan",
                 latestStampDate: "2025"
             )
+
+            PremiumSection(
+                title: "Current quests",
+                subtitle: "Objectives in progress — earned, never nagged."
+            ) {
+                VStack(spacing: TravelSpacing.md) {
+                    TravelQuestCard(
+                        category: .explore,
+                        state: .active,
+                        layout: .hero,
+                        title: "Visit three new cities",
+                        detail: "Set foot somewhere you have never been this season.",
+                        current: 2,
+                        target: 3,
+                        xp: 150,
+                        rarity: .gold
+                    )
+                    TravelQuestCard(
+                        category: .seasonal,
+                        state: .expiring,
+                        layout: .hero,
+                        title: "Spring expedition",
+                        detail: "A limited-time challenge for this travel season.",
+                        current: 4,
+                        target: 6,
+                        xp: 350,
+                        rarity: .legendary,
+                        timeRemaining: "3 days left"
+                    )
+                    TravelQuestCard(
+                        category: .taste,
+                        state: .completed,
+                        layout: .compact,
+                        title: "Try five local dishes",
+                        current: 5,
+                        target: 5,
+                        xp: 90,
+                        rarity: .silver
+                    )
+                    TravelQuestCard(
+                        category: .wander,
+                        state: .locked,
+                        layout: .compact,
+                        title: "Reach Explorer Level 10",
+                        current: 0,
+                        target: 1,
+                        xp: 500,
+                        rarity: .platinum
+                    )
+                }
+            }
 
             PremiumSection(
                 title: "Season pass",
