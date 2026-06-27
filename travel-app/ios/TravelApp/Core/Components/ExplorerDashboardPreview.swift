@@ -2,7 +2,7 @@ import SwiftUI
 
 #if DEBUG
 
-// MARK: - Explorer dashboard preview (Phase 66, extended Phase 68)
+// MARK: - Explorer dashboard preview (Phase 66, extended Phases 68 & 70)
 //
 // A DEBUG-only assembly screen that composes the reusable components built so far
 // into a premium travel dashboard, using mock data only. The entire screen lives
@@ -14,6 +14,11 @@ import SwiftUI
 // Phase 68 adds a forward-looking "Current quests" section composed from the
 // existing `TravelQuestCard`, placed just below the profile header so the
 // "what next" surfaces sit above the earned achievements and rewards.
+//
+// Phase 70 adds a "Journey" section beneath the quests, composing the existing
+// `ExplorerJourneyTimeline` over rich mock travel history that covers every
+// milestone kind (countries, stamps, achievements, treasure, quests, level-ups),
+// shown in both the expanded rail and the condensed compact recap.
 
 struct ExplorerDashboardPreview: View {
     var body: some View {
@@ -79,6 +84,26 @@ struct ExplorerDashboardPreview: View {
                         target: 1,
                         xp: 500,
                         rarity: .platinum
+                    )
+                }
+            }
+
+            PremiumSection(
+                title: "Journey",
+                subtitle: "Your travels, threaded in order — the full story so far."
+            ) {
+                VStack(alignment: .leading, spacing: TravelSpacing.lg) {
+                    ExplorerJourneyTimeline(
+                        milestones: journeyMilestones,
+                        layout: .expanded,
+                        title: nil
+                    )
+
+                    ExplorerJourneyTimeline(
+                        milestones: Array(journeyMilestones.prefix(4)),
+                        layout: .compact,
+                        title: "At a glance",
+                        subtitle: "A condensed recap of recent progress."
                     )
                 }
             }
@@ -196,6 +221,69 @@ struct ExplorerDashboardPreview: View {
                 }
             }
         }
+    }
+
+    /// Rich, deterministic mock travel history (most recent first) covering every
+    /// `JourneyMilestoneKind`: countries visited, passport stamps, achievements,
+    /// treasure rewards, completed quests and level-ups.
+    private var journeyMilestones: [ExplorerJourneyMilestone] {
+        [
+            ExplorerJourneyMilestone(
+                kind: .levelUp,
+                title: "Reached Explorer Level 7",
+                dateLabel: "May 2025"
+            ),
+            ExplorerJourneyMilestone(
+                kind: .treasureCollected,
+                title: "Secret cliff cove",
+                place: "Algarve, Portugal",
+                dateLabel: "Apr 2025",
+                xp: 150,
+                rarity: .gold
+            ),
+            ExplorerJourneyMilestone(
+                kind: .countryVisited,
+                title: "First steps in Iceland",
+                place: "Reykjavík, Iceland",
+                dateLabel: "Apr 2025",
+                xp: 60
+            ),
+            ExplorerJourneyMilestone(
+                kind: .questCompleted,
+                title: "Tried five local dishes",
+                place: "Oaxaca, Mexico",
+                dateLabel: "Mar 2025",
+                xp: 90,
+                rarity: .silver
+            ),
+            ExplorerJourneyMilestone(
+                kind: .achievementUnlocked,
+                title: "Globe-trotter",
+                dateLabel: "Feb 2025",
+                xp: 500,
+                rarity: .legendary
+            ),
+            ExplorerJourneyMilestone(
+                kind: .stampEarned,
+                title: "Bhutan",
+                place: "Paro Taktsang",
+                dateLabel: "Jan 2025",
+                xp: 120,
+                rarity: .platinum
+            ),
+            ExplorerJourneyMilestone(
+                kind: .countryVisited,
+                title: "First steps in Japan",
+                place: "Kyoto, Japan",
+                dateLabel: "Nov 2024",
+                xp: 60
+            ),
+            ExplorerJourneyMilestone(
+                kind: .levelUp,
+                title: "Reached Explorer Level 5",
+                dateLabel: "Oct 2024"
+            )
+        ]
     }
 
     private func ratingRow(_ trip: String, rating: Double) -> some View {
