@@ -80,6 +80,7 @@ export default async function handler(req, res) {
       if (inviteExpired(invite)) {
         return res.status(410).json({ valid: false, error: 'This invite link has expired' });
       }
+      const clubConfig = (await kvGet(key(`club:${inviteTeamId(invite)}`))) || null;
       return res.status(200).json({
         valid:     true,
         token:     invite.token,
@@ -87,6 +88,8 @@ export default async function handler(req, res) {
         role:      invite.role,
         email:     invite.email || '',
         status:    invite.status,
+        group:     invite.kind === 'group',
+        teamName:  clubConfig?.clubName || '',
         createdAt: invite.createdAt,
         expiresAt: invite.expiresAt || null,
       });
@@ -114,6 +117,35 @@ export default async function handler(req, res) {
     } catch (error) {
       return sendAuthError(res, error);
     }
+
+    // ── Group invite: one permanent, reusable link per club ──────────────────
+    // Players self-register their own details (no coach-set name, no expiry, no
+    // single-use). Idempotent: returns the existing group link if one exists.
+    if (req.body?.group === true || String(req.body?.kind || '') === 'group') {
+      const invites = (await kvGet(INVITES_KEY)) || [];
+      let invite = invites.find(i => inviteTeamId(i) === session.teamId && i.kind === 'group' && i.status !== 'revoked');
+      if (!invite) {
+        invite = {
+          token:      makeToken(),
+          kind:       'group',
+          name:       '',
+          role:       'player',
+          email:      '',
+          status:     'open',
+          teamId:     session.teamId,
+          createdAt:  new Date().toISOString(),
+          expiresAt:  null,            // permanent
+          createdBy:  session.user.id,
+          acceptedAt: null,
+          acceptedCount: 0,
+        };
+        invites.unshift(invite);
+        await kvSet(INVITES_KEY, invites.slice(0, 200));
+        await auditLog('invite_group_created', { createdBy: session.user.id, teamId: session.teamId, ip: requestIp(req) });
+      }
+      return res.status(200).json({ ok: true, token: invite.token, url: inviteUrl(req, invite.token), group: true });
+    }
+
     const { name, role, email, sendEmail = true, staffLevel } = req.body || {};
     if (!name?.trim()) {
       return res.status(400).json({ error: 'name is required' });

@@ -11625,7 +11625,8 @@
                 <button class="btn" type="button" onclick="downloadSampleCSV()">Template CSV</button>
                 <button class="btn" type="button" onclick="exportMembersCSV()">Export CSV</button>
                 <button class="btn" type="button" onclick="triggerImportFile()">Import</button>
-                <button class="btn primary" type="button" onclick="showAddPlayerForm()">+ Add player</button>
+                <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add player</button>
+                <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Invite Players</button>
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
@@ -24788,74 +24789,128 @@
       }
     }
 
-    function showInviteModal(invite) {
-      const roleLabel = { player:'Player', coach:'Coach', admin:'Admin / Staff', medical:'Medical' };
+    // ── Coach: "Invite Players" — one permanent club link for the whole squad ──
+    async function openInvitePlayersModal() {
+      document.getElementById('invite-players-modal')?.remove();
       const el = document.createElement('div');
-      el.id = 'invite-modal';
-      el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(4px)';
+      el.id = 'invite-players-modal';
+      el.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(5px)';
+      el.addEventListener('click', e => { if (e.target === el) el.remove(); });
       el.innerHTML = `
-        <div style="background:#0f1724;border:1px solid rgba(var(--accent-rgb), 0.3);border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.7);animation:fadeUp 0.24s ease both">
-          <div style="font-size:52px;margin-bottom:12px"></div>
-          <h2 style="margin:0 0 6px;color:#e2e8f0;font-size:22px">Welcome to ${esc(state.clubName || 'the team')}</h2>
-          <p style="color:#64748b;font-size:14px;margin-bottom:22px">You've been invited to join Coach's Eye</p>
-
-          <div style="background:rgba(var(--accent-rgb), 0.08);border:1px solid rgba(var(--accent-rgb), 0.2);border-radius:10px;padding:14px 16px;margin-bottom:22px;text-align:left">
-            <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Joining as</div>
-            <div style="font-size:18px;font-weight:700;color:#10b981">${roleLabel[invite.role] || invite.role}</div>
-          </div>
-
-          <div style="text-align:left;margin-bottom:18px">
-            <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px">
-              Your name
-              <input id="invite-name-input" value="${esc(invite.name)}"
-                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
-            </label>
-            <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px;margin-top:10px">
-              Email
-              <input id="invite-email-input" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(invite.email || '')}" placeholder="player@example.com"
-                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
-            </label>
-            <label style="font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:6px;margin-top:10px">
-              Create password
-              <input id="invite-password-input" type="password" placeholder="At least 8 characters"
-                style="background:#141e2e;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;color:#e2e8f0;font-size:14px;width:100%">
-            </label>
-          </div>
-
-          <button class="btn primary" type="button" onclick="acceptInvite()"
-            style="width:100%;min-height:46px;font-size:15px;font-weight:700;margin-bottom:10px;letter-spacing:.01em">
-            Join team →
-          </button>
-          <button class="btn ghost" type="button" style="width:100%;font-size:13px"
-            onclick="document.getElementById('invite-modal')?.remove();window.history.replaceState({},'','/')">
-            Not me — close
-          </button>
+        <div style="background:#fff;border-radius:20px;padding:28px;max-width:440px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.45);animation:fadeUp 0.24s ease both;max-height:92vh;overflow-y:auto">
+          <div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">${esc(state.clubName || 'Your club')}</div>
+          <h2 style="margin:4px 0 4px;font-size:21px;color:var(--ink)">Invite your squad</h2>
+          <p style="color:var(--muted);font-size:13.5px;margin:0 0 18px">Share one link. Every player registers themselves and joins ${esc(state.clubName || 'your club')} automatically — no adding players one by one.</p>
+          <div id="invite-players-body" style="text-align:center;padding:26px 0;color:var(--muted);font-size:13px">Generating your invite link…</div>
+          <button class="btn" type="button" style="width:100%;margin-top:8px" onclick="document.getElementById('invite-players-modal')?.remove()">Close</button>
         </div>`;
       document.body.appendChild(el);
+      try {
+        await ensureServerSessionForCurrentUser();
+        const res = await fetch('/api/invite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ group: true }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.url) throw new Error(data.error || 'Could not create invite link');
+        renderInvitePlayersBody(data.url);
+      } catch(e) {
+        const body = document.getElementById('invite-players-body');
+        if (body) body.innerHTML = `<div style="color:#dc2626;font-size:13px;line-height:1.5">⚠️ ${esc(e.message || 'Could not create the invite link')}.<br><span style="color:var(--muted)">Save your club name in Club Settings, then try again.</span></div>`;
+      }
+    }
+
+    function renderInvitePlayersBody(url) {
+      const body = document.getElementById('invite-players-body'); if (!body) return;
+      const club = state.clubName || 'our club';
+      const msg  = `Join ${club} on Coach's Eye — register here: ${url}`;
+      const wa   = 'https://wa.me/?text=' + encodeURIComponent(msg);
+      const mail = 'mailto:?subject=' + encodeURIComponent(`Join ${club} on Coach's Eye`) + '&body=' + encodeURIComponent(msg + '\n\nOpen the link on your phone to set up your account.');
+      const qr   = 'https://api.qrserver.com/v1/create-qr-code/?size=190x190&margin=0&data=' + encodeURIComponent(url);
+      body.style.cssText = 'text-align:left;color:var(--ink)';
+      body.innerHTML = `
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+          <input value="${esc(url)}" readonly id="invite-players-link" onfocus="this.select()"
+            style="flex:1;min-width:0;font-size:12.5px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:11px 12px;color:var(--ink)">
+          <button class="btn primary" type="button" style="white-space:nowrap;padding:0 16px;min-height:42px"
+            onclick="navigator.clipboard.writeText(document.getElementById('invite-players-link').value).then(()=>showToast('Invite link copied ✓'))">Copy</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+          <a class="btn" href="${esc(wa)}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:7px;min-height:42px;text-decoration:none">💬 WhatsApp</a>
+          <a class="btn" href="${esc(mail)}" style="display:flex;align-items:center;justify-content:center;gap:7px;min-height:42px;text-decoration:none">✉️ Email</a>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:9px;padding:18px;background:var(--panel-2);border-radius:14px">
+          <img src="${esc(qr)}" alt="Invite QR code" width="170" height="170" style="border-radius:10px;background:#fff;padding:8px"
+            onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <div style="display:none;width:170px;height:170px;align-items:center;justify-content:center;border:2px dashed var(--line);border-radius:10px;color:var(--muted);font-size:12px;text-align:center;padding:12px;background:#fff">QR code<br>(scan the invite link)</div>
+          <div style="font-size:11.5px;color:var(--muted)">Players can scan this to join</div>
+        </div>`;
+    }
+
+    // ── Player: claim an invite (per-name or group/open club link) ─────────────
+    function showInviteModal(invite) {
+      const isGroup = !!invite.group;
+      const club = esc(invite.teamName || state.clubName || 'the team');
+      const fieldCss = 'background:#fff;border:1px solid var(--line-2);border-radius:9px;padding:11px 12px;color:var(--ink);font-size:14px;width:100%;box-sizing:border-box';
+      const labelCss = 'font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:6px;margin-top:12px';
+      const nameFields = isGroup
+        ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px">
+             <label style="${labelCss};margin-top:0">First name<input id="invite-first-input" autocomplete="given-name" style="${fieldCss}"></label>
+             <label style="${labelCss};margin-top:0">Last name<input id="invite-last-input" autocomplete="family-name" style="${fieldCss}"></label>
+           </div>`
+        : `<label style="${labelCss};margin-top:4px">Your name<input id="invite-name-input" value="${esc(invite.name)}" style="${fieldCss}"></label>`;
+      const optionalFields = isGroup
+        ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+             <label style="${labelCss}">Mobile <span style="font-weight:500;color:var(--faint)">(optional)</span><input id="invite-mobile-input" type="tel" autocomplete="tel" style="${fieldCss}"></label>
+             <label style="${labelCss}">Position <span style="font-weight:500;color:var(--faint)">(optional)</span><input id="invite-position-input" placeholder="e.g. Fly-half" style="${fieldCss}"></label>
+           </div>`
+        : '';
+      const el = document.createElement('div');
+      el.id = 'invite-modal';
+      el.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(5px)';
+      el.innerHTML = `
+        <div style="background:#fff;border-radius:20px;padding:30px;max-width:440px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.5);animation:fadeUp 0.24s ease both;max-height:92vh;overflow-y:auto">
+          <div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">${club}</div>
+          <h2 style="margin:4px 0 4px;font-size:22px;color:var(--ink)">${isGroup ? 'Join your squad' : 'Welcome to ' + club}</h2>
+          <p style="color:var(--muted);font-size:13.5px;margin:0 0 6px">Create your Coach's Eye account — you'll be logged in straight away.</p>
+          ${nameFields}
+          <label style="${labelCss}">Email<input id="invite-email-input" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(invite.email || '')}" placeholder="you@example.com" autocomplete="email" style="${fieldCss}"></label>
+          <label style="${labelCss}">Create password<input id="invite-password-input" type="password" placeholder="At least 8 characters" autocomplete="new-password" style="${fieldCss}"></label>
+          ${optionalFields}
+          <button class="btn primary" type="button" onclick="acceptInvite()" style="width:100%;min-height:48px;font-size:15px;font-weight:700;margin-top:18px">Create account &amp; join →</button>
+          <button class="btn" type="button" style="width:100%;font-size:13px;margin-top:8px"
+            onclick="document.getElementById('invite-modal')?.remove();window.history.replaceState({},'','/')">Cancel</button>
+        </div>`;
+      document.body.appendChild(el);
+      setTimeout(() => document.getElementById(isGroup ? 'invite-first-input' : 'invite-name-input')?.focus(), 80);
     }
 
     async function acceptInvite() {
       if (!_inviteData) return;
-      const nameInput = document.getElementById('invite-name-input');
-      const emailInput = document.getElementById('invite-email-input');
-      const passwordInput = document.getElementById('invite-password-input');
-      const name      = nameInput?.value.trim() || _inviteData.name;
-      const email     = emailInput?.value.trim() || _inviteData.email || '';
-      const password  = passwordInput?.value || '';
+      const isGroup = !!_inviteData.group;
+      let name;
+      if (isGroup) {
+        const first = document.getElementById('invite-first-input')?.value.trim() || '';
+        const last  = document.getElementById('invite-last-input')?.value.trim() || '';
+        name = `${first} ${last}`.trim();
+      } else {
+        name = document.getElementById('invite-name-input')?.value.trim() || _inviteData.name;
+      }
+      const email     = document.getElementById('invite-email-input')?.value.trim() || _inviteData.email || '';
+      const password  = document.getElementById('invite-password-input')?.value || '';
+      const mobile    = document.getElementById('invite-mobile-input')?.value.trim() || '';
+      const position  = document.getElementById('invite-position-input')?.value.trim() || '';
       const role      = _inviteData.role;
       if (!name) { showToast('Enter your name first'); return; }
       if (role === 'player' && !email) { showToast('Enter your email'); return; }
       if (role === 'player' && password.length < 8) { showToast('Password must be at least 8 characters'); return; }
 
       const btn = document.querySelector('#invite-modal .btn.primary');
-      if (btn) { btn.disabled = true; btn.textContent = 'Joining…'; }
+      if (btn) { btn.disabled = true; btn.textContent = 'Creating your account…'; }
 
       if (role === 'player') {
         try {
           const res = await fetch('/api/identity', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'claim_invite', token: _inviteToken, name, email, password }),
+            body: JSON.stringify({ action: 'claim_invite', token: _inviteToken, name, email, password, mobile, position }),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not claim invite');
@@ -24878,7 +24933,7 @@
           return;
         } catch(e) {
           showToast(e.message || 'Could not claim invite');
-          if (btn) { btn.disabled = false; btn.textContent = 'Join team →'; }
+          if (btn) { btn.disabled = false; btn.textContent = 'Create account & join →'; }
           return;
         }
       }

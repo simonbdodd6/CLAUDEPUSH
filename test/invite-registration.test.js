@@ -486,3 +486,82 @@ test('Simon Test Player baseline is unaffected after new player invite', async (
   assert.ok(profileUserIds.includes(claimed.user.id),     'new player must also appear');
   assert.equal(identity.payload.player_profiles.length, 2, 'exactly 2 players in the team');
 });
+
+// ─── Group invite (single permanent link for the whole squad) ──────────────────
+
+test('coach creates ONE permanent group invite link (idempotent, never expires)', async () => {
+  store.clear(); lists.clear();
+  const coach = await seedCoachSession();
+  const headers = { ...coach.headers, host: 'test.example.com', 'x-forwarded-proto': 'https' };
+
+  const first = await callApi(inviteHandler, 'POST', { headers, body: { group: true } });
+  assert.equal(first.statusCode, 200);
+  assert.equal(first.payload.ok, true);
+  assert.equal(first.payload.group, true);
+  assert.match(first.payload.url, /\/\?inv=/);
+  const token = first.payload.token;
+
+  // Idempotent — one permanent link per club
+  const second = await callApi(inviteHandler, 'POST', { headers, body: { group: true } });
+  assert.equal(second.payload.token, token, 'returns the same permanent group link');
+
+  const groupInvite = JSON.parse(store.get('ce:invites')).find(i => i.token === token);
+  assert.equal(groupInvite.kind, 'group');
+  assert.equal(groupInvite.expiresAt, null, 'group link never expires');
+});
+
+test('group link validates as reusable and stays open after a player registers', async () => {
+  store.clear(); lists.clear();
+  const coach = await seedCoachSession();
+  const headers = { ...coach.headers, host: 'test.example.com', 'x-forwarded-proto': 'https' };
+  const token = (await callApi(inviteHandler, 'POST', { headers, body: { group: true } })).payload.token;
+
+  const validated = await callApi(inviteHandler, 'GET', { query: { token } });
+  assert.equal(validated.payload.valid, true);
+  assert.equal(validated.payload.group, true);
+
+  // Player self-registers with their own details (name + optional position/mobile)
+  const p1 = await claimInvite({ token, name: 'Squad One', email: 'one@squad.test', password: 'password123', position: 'Prop', mobile: '0700000001' });
+  assert.equal(p1.teamMember.status, 'active', 'joined immediately — no approval');
+  assert.ok(p1.session?.token, 'logged in immediately');
+  assert.equal(p1.playerProfile.position, 'Prop');
+  assert.equal(p1.playerProfile.phone, '0700000001');
+
+  // Link is NOT consumed — still valid for the rest of the squad
+  const stillValid = await callApi(inviteHandler, 'GET', { query: { token } });
+  assert.equal(stillValid.payload.valid, true, 'group link remains open');
+});
+
+test('multiple players register with the SAME group link (no single-use 409)', async () => {
+  store.clear(); lists.clear();
+  const coach = await seedCoachSession();
+  const headers = { ...coach.headers, host: 'test.example.com', 'x-forwarded-proto': 'https' };
+  const token = (await callApi(inviteHandler, 'POST', { headers, body: { group: true } })).payload.token;
+
+  const a = await claimInvite({ token, name: 'Alpha Player', email: 'alpha@squad.test', password: 'password123' });
+  const b = await claimInvite({ token, name: 'Bravo Player', email: 'bravo@squad.test', password: 'password123' });
+
+  assert.notEqual(a.user.id, b.user.id, 'two distinct real accounts');
+  assert.match(a.user.id, /^user_/);
+  assert.match(b.user.id, /^user_/);
+  assert.equal(a.teamMember.status, 'active');
+  assert.equal(b.teamMember.status, 'active');
+  assert.equal(a.user.email, 'alpha@squad.test', 'uses the real email, not a fake one');
+
+  // Each can log in immediately with their own real email + password
+  const loginB = await loginUser({ email: 'bravo@squad.test', password: 'password123', teamId: 'boitsfort-rfc' });
+  assert.ok(loginB.session?.token);
+  assert.equal(loginB.user.role, 'player');
+});
+
+test('group claim requires the player to enter their own name', async () => {
+  store.clear(); lists.clear();
+  const coach = await seedCoachSession();
+  const headers = { ...coach.headers, host: 'test.example.com', 'x-forwarded-proto': 'https' };
+  const token = (await callApi(inviteHandler, 'POST', { headers, body: { group: true } })).payload.token;
+
+  await assert.rejects(
+    () => claimInvite({ token, name: '   ', email: 'noname@squad.test', password: 'password123' }),
+    /name is required/i,
+  );
+});

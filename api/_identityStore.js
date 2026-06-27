@@ -637,7 +637,7 @@ async function ensureTeamMember({ teamId = DEFAULT_TEAM.id, userId, role = 'play
   return member;
 }
 
-async function ensurePlayerProfile({ teamMember, user, invite = null }) {
+async function ensurePlayerProfile({ teamMember, user, invite = null, position = '', phone = '' }) {
   if (teamMember.role !== 'player') return null;
   const profiles = await loadPlayerProfiles();
   let profile = profiles.find(item => item.teamMemberId === teamMember.id) ||
@@ -649,13 +649,17 @@ async function ensurePlayerProfile({ teamMember, user, invite = null }) {
       teamId: teamMember.teamId,
       userId: user.id,
       displayName: user.displayName || displayName(user.firstName, user.lastName),
-      position: 'TBC',
-      phone: '',
+      position: position || 'TBC',
+      phone: phone || '',
       email: user.email,
       legacyPlayerId: invite?.token ? `inv-${String(invite.token).slice(-8)}` : user.id,
       createdAt: nowIso(),
     };
     profiles.push(profile);
+  } else {
+    // Self-registration may supply details an existing placeholder lacked.
+    if (position) profile.position = position;
+    if (phone) profile.phone = phone;
   }
   await savePlayerProfiles(profiles);
   return profile;
@@ -866,7 +870,10 @@ export async function claimInvite(input = {}) {
     error.status = 410;
     throw error;
   }
-  if (invite.status === 'accepted' && !input.allowExisting) {
+  // A group invite is a permanent, reusable club link: many players claim the
+  // same token, so it is never consumed / marked accepted, and never expires.
+  const isGroup = invite.kind === 'group';
+  if (invite.status === 'accepted' && !input.allowExisting && !isGroup) {
     const error = new Error('This invite has already been claimed');
     error.status = 409;
     throw error;
@@ -882,6 +889,7 @@ export async function claimInvite(input = {}) {
   if (!EMAIL_RE.test(email)) throw new Error('Valid email is required');
   assertPassword(input.password);
   const name = String(input.name || invite.name || '').trim();
+  if (isGroup && !name) throw new Error('Your name is required');
   const parts = splitDisplayName(name);
   const user = await upsertUserAccount({
     email,
@@ -898,12 +906,23 @@ export async function claimInvite(input = {}) {
     approvedBy: 'invite',
     staffLevel: STAFF_LEVELS.includes(invite.staffLevel) ? invite.staffLevel : null,
   });
-  const profile = await ensurePlayerProfile({ teamMember: member, user, invite });
-  invite.status = 'accepted';
-  invite.acceptedAt = invite.acceptedAt || nowIso();
-  invite.acceptedBy = user.id;
-  invite.email = email;
-  invite.name = name || invite.name;
+  const profile = await ensurePlayerProfile({
+    teamMember: member, user, invite,
+    position: String(input.position || '').trim(),
+    phone: String(input.phone || input.mobile || '').trim(),
+  });
+  if (isGroup) {
+    // Keep the link open; just track usage.
+    invite.acceptedCount = (invite.acceptedCount || 0) + 1;
+    invite.lastAcceptedAt = nowIso();
+    invite.lastAcceptedBy = user.id;
+  } else {
+    invite.status = 'accepted';
+    invite.acceptedAt = invite.acceptedAt || nowIso();
+    invite.acceptedBy = user.id;
+    invite.email = email;
+    invite.name = name || invite.name;
+  }
   await saveInvites(invites);
   const session = await createSession({ userId: user.id, teamId: member.teamId, role: member.role });
   return { user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, invite, session };
