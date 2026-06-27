@@ -4184,10 +4184,6 @@
         </div>
         <div class="button-row">
           <span class="save-pill" title="Auto-saved"><span class="dot" id="saveDot"></span><span id="saveStatus" style="display:none"></span></span>
-          <button class="btn" type="button" id="playerAccountBtn" onclick="openPlayerAccountMenu()" style="display:none;align-items:center;gap:7px" title="Account &amp; sign out">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.5 4-6.5 8-6.5s8 2 8 6.5"/></svg>
-            Account
-          </button>
           <button class="btn" type="button" id="resetBtn">Reset</button>
         </div>
       </header>
@@ -7843,19 +7839,18 @@
           ? ` <span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;font-size:9px;font-weight:800;border-radius:999px;background:#dc2626;color:#fff;line-height:1;vertical-align:middle;margin-left:3px">${_pendingCount}</span>`
           : '';
         return `<button type="button" class="${state.activeView==="player" && state.activePlayerSection===id ? "active" : ""}" onclick="setSection('player','${id}')">${icon(SECTION_ICONS[id] || 'calendar')}${label}${badge}</button>`;
-      }).join("");
+      }).join("") +
+        // Account is a main player nav item (opens the account menu, not a section)
+        `<button type="button" onclick="openPlayerAccountMenu()" aria-label="Account and sign out">${icon('user')}Account</button>`;
       document.getElementById("coachNav").classList.toggle("hidden",  state.activeView !== "coach");
       document.getElementById("playerNav").classList.toggle("hidden", state.activeView !== "player");
       // Hide the Coach|Player toggle entirely for players — they should never see it
       const viewSwitch = document.querySelector('.view-switch');
       if (viewSwitch) viewSwitch.style.display = isCoach() ? '' : 'none';
-      // Player header: show the Account button for a signed-in player, and hide the
-      // destructive Reset from the normal Beta player UI (Reset stays for coaches).
-      const _playerView = state.activeView === 'player';
-      const _accBtn = document.getElementById('playerAccountBtn');
-      if (_accBtn) _accBtn.style.display = (_playerView && state.currentUserId && !isCoach()) ? 'inline-flex' : 'none';
+      // Account now lives in the player nav (always visible). Keep the destructive
+      // Reset hidden from the normal Beta player UI (Reset stays for coaches).
       const _resetBtn = document.getElementById('resetBtn');
-      if (_resetBtn) _resetBtn.style.display = _playerView ? 'none' : '';
+      if (_resetBtn) _resetBtn.style.display = state.activeView === 'player' ? 'none' : '';
 
       document.getElementById("coachViewBtn").classList.toggle("active",  state.activeView === "coach");
       document.getElementById("playerViewBtn").classList.toggle("active", state.activeView === "player");
