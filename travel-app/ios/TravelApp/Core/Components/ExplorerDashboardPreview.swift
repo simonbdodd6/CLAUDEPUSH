@@ -22,9 +22,14 @@ import SwiftUI
 //
 // Phase 72 adds a "Statistics" section beneath the journey, composing the existing
 // `ExplorerStatisticsDashboard` over realistic lifetime travel metrics, shown in
-// both the expanded (featured + tile grid) and compact recap layouts. The preview
-// now reads top-to-bottom as a complete explorer overview:
-// Profile → Quests → Journey → Statistics.
+// both the expanded (featured + tile grid) and compact recap layouts.
+//
+// Phase 74 adds a "World progress" section composing the existing
+// `ExplorerMapProgress` directly beneath the profile header — the world map is a
+// "where have I been" identity surface, so it pairs naturally with the profile —
+// shown in both the expanded map card and the compact recap. The preview now
+// reads top-to-bottom as a complete explorer overview:
+// Profile → World progress → Quests → Journey → Statistics.
 
 struct ExplorerDashboardPreview: View {
     var body: some View {
@@ -42,6 +47,34 @@ struct ExplorerDashboardPreview: View {
                 latestStampCountry: "Japan",
                 latestStampDate: "2025"
             )
+
+            PremiumSection(
+                title: "World progress",
+                subtitle: "How much of the world you've seen — and where next."
+            ) {
+                VStack(alignment: .leading, spacing: TravelSpacing.lg) {
+                    ExplorerMapProgress(
+                        continents: worldContinents,
+                        countriesVisited: 24,
+                        countriesTarget: 50,
+                        nextDestination: "Iceland",
+                        streakDays: 12,
+                        layout: .expanded,
+                        title: nil,
+                        subtitle: "Five continents touched, more on the horizon."
+                    )
+
+                    ExplorerMapProgress(
+                        continents: worldContinents,
+                        countriesVisited: 24,
+                        countriesTarget: 50,
+                        nextDestination: "Iceland",
+                        streakDays: 12,
+                        layout: .compact,
+                        title: "At a glance"
+                    )
+                }
+            }
 
             PremiumSection(
                 title: "Current quests",
@@ -316,6 +349,20 @@ struct ExplorerDashboardPreview: View {
                 title: "Reached Explorer Level 5",
                 dateLabel: "Oct 2024"
             )
+        ]
+    }
+
+    /// Realistic, deterministic mock world progress. The per-continent visited
+    /// counts sum to 24 — matching the profile header's `countriesVisited` — so
+    /// the map, the progress summary and the profile all tell the same story.
+    private var worldContinents: [ExplorerContinent] {
+        [
+            ExplorerContinent(region: .northAmerica, visited: 3, total: 23),
+            ExplorerContinent(region: .southAmerica, visited: 4, total: 12),
+            ExplorerContinent(region: .europe, visited: 11, total: 44),
+            ExplorerContinent(region: .africa, visited: 2, total: 54),
+            ExplorerContinent(region: .asia, visited: 4, total: 48),
+            ExplorerContinent(region: .oceania, visited: 0, total: 14)
         ]
     }
 
