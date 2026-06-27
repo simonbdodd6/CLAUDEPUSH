@@ -4132,6 +4132,24 @@
 
     /* Toasts stay legible on light */
     .toast { background: #ffffff !important; color: var(--ink) !important; border: 1px solid var(--line-2) !important; box-shadow: var(--shadow-lift) !important; }
+
+    /* Weekly Availability card (Overview) */
+    .wa-card { display:grid; gap:14px; }
+    .wa-top { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; }
+    .wa-status { flex-shrink:0; font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; padding:5px 11px; border-radius:999px; white-space:nowrap; }
+    .wa-status.on  { color:#0f9d6b; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.28); }
+    .wa-status.off { color:var(--muted); background:rgba(22,28,45,0.05); border:1px solid var(--line); }
+    .wa-rows { display:grid; gap:8px; }
+    .wa-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:11px 13px; border:1px solid var(--line); border-radius:11px; background:var(--panel-2); }
+    .wa-row-label { font-size:13px; font-weight:700; color:var(--ink); }
+    .wa-row-when { font-size:12.5px; font-weight:700; color:var(--accent); white-space:nowrap; }
+    .wa-meta { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .wa-meta > div { display:grid; gap:3px; padding:11px 13px; border-radius:11px; background:var(--panel-2); border:1px solid var(--line); }
+    .wa-meta .muted { font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+    .wa-meta strong { font-size:13.5px; color:var(--ink); }
+    .wa-actions { display:grid; grid-template-columns:repeat(2,1fr); gap:9px; }
+    .wa-actions .btn { min-height:42px; }
+    @media (max-width: 560px) { .wa-meta { grid-template-columns:1fr; } .wa-actions { grid-template-columns:1fr; } }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -4707,6 +4725,15 @@
       seasonStart: "",
       seasonEnd: "",
       matchDayDefault: "",
+      // Weekly Availability automation — when to auto-send this week's availability
+      // requests for the two training sessions and the match. Managed from Overview.
+      weeklyAvailability: {
+        enabled: false,
+        training1: { day: "Mon", time: "09:00" },
+        training2: { day: "Wed", time: "09:00" },
+        match:     { day: "Thu", time: "18:00" },
+        lastSentAt: null,
+      },
       clubLogo: "",
       clubColours: null,
       teamCode: "TEAM",
@@ -5310,6 +5337,7 @@
       next.seasonStart = input.seasonStart ?? "";
       next.seasonEnd = input.seasonEnd ?? "";
       next.matchDayDefault = input.matchDayDefault ?? "";
+      next.weeklyAvailability = normalizeWeeklyAvailability(input.weeklyAvailability);
       next.clubLogo = input.clubLogo ?? "";
       next.clubColours = input.clubColours ?? null;
       next.autopilotReceipts = Array.isArray(input.autopilotReceipts) ? input.autopilotReceipts.slice(0, 20) : [];
@@ -9505,6 +9533,205 @@
       </div>`;
     }
 
+    // ═══ WEEKLY AVAILABILITY AUTOMATION ═══════════════════════════════════════
+    // Surfaced on Overview (coach only). Coaches set when this week's Training 1 /
+    // Training 2 / Match availability requests go out. Send-now reuses the
+    // club-scoped /api/push; the schedule is mirrored to club-isolated
+    // api/schedules so the existing cron dispatcher fires it.
+    const _WA_DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const _WA_SESSIONS = [['training1','Training session 1'],['training2','Training session 2'],['match','Match']];
+    function _waDayName(d) { return ({Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday',Sat:'Saturday',Sun:'Sunday'})[d] || d; }
+
+    function normalizeWeeklyAvailability(wa) {
+      // Days inlined (not _WA_DAYS) — this runs during initial normalizeState,
+      // before the _WA_DAYS const below is initialized (temporal dead zone).
+      const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      const d = defaultState.weeklyAvailability;
+      wa = (wa && typeof wa === 'object') ? wa : {};
+      const slot = (s, def) => ({
+        day:  DAYS.includes(s?.day) ? s.day : def.day,
+        time: /^([01]\d|2[0-3]):[0-5]\d$/.test(s?.time) ? s.time : def.time,
+      });
+      return {
+        enabled: !!wa.enabled,
+        training1: slot(wa.training1, d.training1),
+        training2: slot(wa.training2, d.training2),
+        match:     slot(wa.match,     d.match),
+        lastSentAt: wa.lastSentAt || null,
+      };
+    }
+
+    // Soonest upcoming send across the enabled sessions (Date, or null when off).
+    function weeklyNextSend(wa, now = new Date()) {
+      if (!wa || !wa.enabled) return null;
+      const idx = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+      let best = null;
+      ['training1','training2','match'].forEach(k => {
+        const s = wa[k]; if (!s) return;
+        const [h, m] = String(s.time).split(':').map(Number);
+        const t = new Date(now);
+        t.setDate(now.getDate() + ((idx[s.day] - now.getDay() + 7) % 7));
+        t.setHours(h, m, 0, 0);
+        if (t <= now) t.setDate(t.getDate() + 7);
+        if (!best || t < best) best = t;
+      });
+      return best;
+    }
+
+    function weeklyAvailabilityCardHtml() {
+      const wa = normalizeWeeklyAvailability(state.weeklyAvailability);
+      const on = !!wa.enabled;
+      const next = weeklyNextSend(wa);
+      const nextLabel = on
+        ? (next ? `${next.toLocaleDateString('en-GB', { weekday: 'long' })} at ${next.toTimeString().slice(0,5)}` : 'Not scheduled')
+        : 'Automation off';
+      const lastLabel = wa.lastSentAt
+        ? `${new Date(wa.lastSentAt).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' })} at ${new Date(wa.lastSentAt).toTimeString().slice(0,5)}`
+        : 'Not sent yet';
+      const row = (key, label) => {
+        const s = wa[key];
+        return `<div class="wa-row"><span class="wa-row-label">${label}</span><span class="wa-row-when">${_waDayName(s.day)} · ${esc(s.time)}</span></div>`;
+      };
+      return `
+        <div class="card wa-card">
+          <div class="wa-top">
+            <div style="min-width:0">
+              <div class="eyebrow" style="color:var(--accent)">Weekly Availability</div>
+              <h2 style="margin:3px 0 4px;font-size:19px;color:var(--ink)">Weekly Availability</h2>
+              <p class="muted" style="font-size:13px;margin:0;max-width:580px">Automatically send this week's Training 1, Training 2 and Match availability requests.</p>
+            </div>
+            <span class="wa-status ${on ? 'on' : 'off'}">${on ? 'Enabled' : 'Disabled'}</span>
+          </div>
+          <div class="wa-rows">${row('training1','Training session 1')}${row('training2','Training session 2')}${row('match','Match')}</div>
+          <div class="wa-meta">
+            <div><span class="muted">Next scheduled send</span><strong>${esc(nextLabel)}</strong></div>
+            <div><span class="muted">Last sent</span><strong>${esc(lastLabel)}</strong></div>
+          </div>
+          <div class="wa-actions">
+            <button class="btn ${on ? '' : 'primary'}" type="button" onclick="toggleWeeklyAutomation()">${on ? 'Turn automation off' : 'Turn automation on'}</button>
+            <button class="btn" type="button" onclick="openWeeklyScheduleEditor()">Edit schedule</button>
+            <button class="btn primary" type="button" onclick="sendWeeklyAvailabilityNow(this)">Send this week's requests now</button>
+            <button class="btn" type="button" onclick="setSection('coach','availability')">Open Availability</button>
+          </div>
+          <p class="muted" style="font-size:11.5px;margin:12px 0 0">Players reply in one tap from the notification. They need notifications on to receive the request — you can still set the schedule now.</p>
+        </div>`;
+    }
+
+    function toggleWeeklyAutomation() {
+      if (!isCoach()) return;
+      const wa = normalizeWeeklyAvailability(state.weeklyAvailability);
+      wa.enabled = !wa.enabled;
+      state.weeklyAvailability = wa;
+      saveState('Weekly availability automation');
+      _persistWeeklyAvailability();
+      render();
+      showToast(wa.enabled ? 'Weekly availability automation on ✓' : 'Weekly availability automation off');
+    }
+
+    function openWeeklyScheduleEditor() {
+      if (!isCoach()) return;
+      const wa = normalizeWeeklyAvailability(state.weeklyAvailability);
+      const dayOpts = sel => _WA_DAYS.map(d => `<option value="${d}" ${d===sel?'selected':''}>${_waDayName(d)}</option>`).join('');
+      const fieldRow = (key, label) => {
+        const s = wa[key];
+        return `<div style="display:grid;grid-template-columns:1fr 132px 108px;gap:10px;align-items:center;margin-top:11px">
+          <span style="font-size:13px;font-weight:700;color:var(--ink)">${label}</span>
+          <select id="wa-day-${key}" style="width:100%">${dayOpts(s.day)}</select>
+          <input id="wa-time-${key}" type="time" value="${esc(s.time)}" style="width:100%"></div>`;
+      };
+      const el = document.createElement('div');
+      el.id = 'wa-editor';
+      el.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(5px)';
+      el.addEventListener('click', e => { if (e.target === el) el.remove(); });
+      el.innerHTML = `
+        <div style="background:#fff;border-radius:20px;padding:26px;max-width:470px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.45);max-height:92vh;overflow-y:auto">
+          <div class="eyebrow" style="color:var(--accent)">Weekly Availability</div>
+          <h2 style="margin:3px 0 4px;font-size:20px;color:var(--ink)">Edit schedule</h2>
+          <p class="muted" style="font-size:13px;margin:0 0 4px">Pick the day and time each weekly availability request is sent.</p>
+          ${fieldRow('training1','Training session 1')}
+          ${fieldRow('training2','Training session 2')}
+          ${fieldRow('match','Match')}
+          <button class="btn primary" type="button" onclick="saveWeeklySchedule()" style="width:100%;min-height:46px;margin-top:18px;font-weight:700">Save schedule</button>
+          <button class="btn" type="button" onclick="document.getElementById('wa-editor')?.remove()" style="width:100%;margin-top:8px;font-size:13px">Cancel</button>
+        </div>`;
+      document.body.appendChild(el);
+    }
+
+    function saveWeeklySchedule() {
+      const wa = normalizeWeeklyAvailability(state.weeklyAvailability);
+      _WA_SESSIONS.forEach(([key]) => {
+        const day = document.getElementById(`wa-day-${key}`)?.value;
+        const time = document.getElementById(`wa-time-${key}`)?.value;
+        if (_WA_DAYS.includes(day)) wa[key].day = day;
+        if (/^\d{2}:\d{2}$/.test(time)) wa[key].time = time;
+      });
+      state.weeklyAvailability = wa;
+      saveState('Weekly availability schedule');
+      _persistWeeklyAvailability();
+      document.getElementById('wa-editor')?.remove();
+      render();
+      showToast('Schedule saved ✓');
+    }
+
+    async function sendWeeklyAvailabilityNow(btn) {
+      if (!isCoach()) return;
+      if (!(await ceConfirm("Send this week's availability requests?", 'Active players in your club get a one-tap availability request now.', { confirmLabel: 'Send now' }))) return;
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+      try {
+        await sendAvailabilityNow();
+        const wa = normalizeWeeklyAvailability(state.weeklyAvailability);
+        wa.lastSentAt = new Date().toISOString();
+        state.weeklyAvailability = wa;
+        saveState('Weekly availability sent');
+        _persistWeeklyAvailability();
+        render();
+      } catch (e) {
+        showToast('Could not send right now — try again');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "Send this week's requests now"; }
+      }
+    }
+
+    // Persist the schedule (club config) + mirror to club-isolated api/schedules so
+    // the existing cron fires it. Best-effort; the local config always saves first.
+    function _persistWeeklyAvailability() {
+      try { saveClubConfigToServer({ weeklyAvailability: state.weeklyAvailability }).catch(() => {}); } catch {}
+      try { syncWeeklyAvailabilitySchedules(); } catch {}
+    }
+
+    async function syncWeeklyAvailabilitySchedules() {
+      if (!isCoach()) return;
+      const teamId = state.teamId
+        || (typeof _myMemberships !== 'undefined' && (_myMemberships.find(m => m.current) || _myMemberships[0])?.teamId)
+        || '';
+      if (!teamId) return; // no reliable club id → skip (fail-safe: never risk cross-club)
+      const wa = normalizeWeeklyAvailability(state.weeklyAvailability);
+      const tplId = `tpl-wk-avail-${teamId}`;
+      try {
+        await ensureServerSessionForCurrentUser();
+        await fetch('/api/templates', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: tplId, name: 'Weekly availability', category: 'availability',
+            title: `${state.clubName || "Coach's Eye"} — Availability`,
+            body: "Hi {{first_name}}! Please set your availability for this week's sessions and match in Coach's Eye. — {{coach_name}}",
+          }),
+        });
+        for (const [key, label] of _WA_SESSIONS) {
+          const s = wa[key];
+          await fetch('/api/schedules', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: `sch-wk-${teamId}-${key}`, name: `Weekly availability — ${label}`,
+              templateId: tplId, days: [s.day], day: s.day.toLowerCase(), time: s.time,
+              audience: 'all', active: wa.enabled, coachName: currentUser()?.name || 'Coach',
+              sessionId: key === 'match' ? 'game' : key,
+            }),
+          });
+        }
+      } catch (e) { console.warn('[weeklyAvailability] schedule sync skipped:', e?.message || e); }
+    }
+
     function renderCoachOverview() {
       if (state.features?.coachTimeline      && isCoach()) { renderCoachTimeline();        return; }
       if (state.features?.executiveDashboard && isCoach()) { renderExecutiveDashboard();   return; }
@@ -9594,6 +9821,9 @@
               </button>`).join('')}
             </div>
           </div>` : ''}
+
+          <!-- ── Weekly Availability — coach manages WHEN requests are sent ──────── -->
+          ${weeklyAvailabilityCardHtml()}
 
           <!-- ── Club Command Dashboard ──────────────────────── -->
           <div class="mctl-section-label">Club overview</div>
@@ -24284,6 +24514,9 @@
       if (club.matchDay !== undefined && state.matchDayDefault !== club.matchDay) { state.matchDayDefault = club.matchDay; changed = true; }
       if (club.logoDataUrl !== undefined && state.clubLogo !== club.logoDataUrl) { state.clubLogo = club.logoDataUrl; changed = true; }
       if (club.colours && JSON.stringify(state.clubColours || {}) !== JSON.stringify(club.colours)) { state.clubColours = club.colours; changed = true; }
+      if (club.weeklyAvailability && JSON.stringify(state.weeklyAvailability || {}) !== JSON.stringify(normalizeWeeklyAvailability(club.weeklyAvailability))) {
+        state.weeklyAvailability = normalizeWeeklyAvailability(club.weeklyAvailability); changed = true;
+      }
       return changed;
     }
 
@@ -24333,6 +24566,7 @@
           matchDay: state.matchDayDefault || '',
           logoDataUrl: state.clubLogo || '',
           colours: state.clubColours || {},
+          weeklyAvailability: state.weeklyAvailability || null,
           ...extra,
         };
         const res = await fetch('/api/publish?resource=club', {
