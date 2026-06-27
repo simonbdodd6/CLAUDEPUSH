@@ -66,3 +66,5 @@ export { buildReadinessCoachView } from './readiness-coach-view.js'
 export { buildReadinessCoachViewSample } from './readiness-coach-view-sample.js'
 
 export { buildCoachDnaCoachView } from './coach-dna-coach-view.js'
+
+export { buildCoachDnaCoachViewSample } from './coach-dna-coach-view-sample.js'
