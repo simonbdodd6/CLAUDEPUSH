@@ -2,7 +2,7 @@ import SwiftUI
 
 #if DEBUG
 
-// MARK: - Explorer dashboard preview (Phase 66, extended Phases 68 & 70)
+// MARK: - Explorer dashboard preview (Phase 66, extended Phases 68, 70 & 72)
 //
 // A DEBUG-only assembly screen that composes the reusable components built so far
 // into a premium travel dashboard, using mock data only. The entire screen lives
@@ -19,6 +19,12 @@ import SwiftUI
 // `ExplorerJourneyTimeline` over rich mock travel history that covers every
 // milestone kind (countries, stamps, achievements, treasure, quests, level-ups),
 // shown in both the expanded rail and the condensed compact recap.
+//
+// Phase 72 adds a "Statistics" section beneath the journey, composing the existing
+// `ExplorerStatisticsDashboard` over realistic lifetime travel metrics, shown in
+// both the expanded (featured + tile grid) and compact recap layouts. The preview
+// now reads top-to-bottom as a complete explorer overview:
+// Profile → Quests → Journey → Statistics.
 
 struct ExplorerDashboardPreview: View {
     var body: some View {
@@ -104,6 +110,33 @@ struct ExplorerDashboardPreview: View {
                         layout: .compact,
                         title: "At a glance",
                         subtitle: "A condensed recap of recent progress."
+                    )
+                }
+            }
+
+            PremiumSection(
+                title: "Statistics",
+                subtitle: "A lifetime of travel, measured."
+            ) {
+                VStack(alignment: .leading, spacing: TravelSpacing.lg) {
+                    ExplorerStatisticsDashboard(
+                        title: nil,
+                        stats: explorerStats,
+                        rank: ExplorerStatRank(
+                            level: 7,
+                            rankTitle: "Seasoned Voyager",
+                            currentXP: 320,
+                            requiredXP: 500,
+                            accent: TravelTheme.current.tint
+                        ),
+                        layout: .expanded
+                    )
+
+                    ExplorerStatisticsDashboard(
+                        title: "At a glance",
+                        subtitle: "The headline numbers, condensed.",
+                        stats: explorerStats,
+                        layout: .compact
                     )
                 }
             }
@@ -283,6 +316,27 @@ struct ExplorerDashboardPreview: View {
                 title: "Reached Explorer Level 5",
                 dateLabel: "Oct 2024"
             )
+        ]
+    }
+
+    /// Realistic, deterministic mock lifetime travel statistics covering every
+    /// requested metric. The first three are promoted to featured cards by
+    /// `ExplorerStatisticsDashboard`'s expanded layout, so the headline reach
+    /// (countries, cities, continents) leads.
+    private var explorerStats: [ExplorerStat] {
+        [
+            ExplorerStat(symbol: "globe.europe.africa.fill", value: 24, label: "Countries", caption: "Lifetime", accent: TravelTheme.current.ocean),
+            ExplorerStat(symbol: "building.2.fill", value: 68, label: "Cities", caption: "Explored", accent: TravelTheme.current.sky),
+            ExplorerStat(symbol: "globe.americas.fill", value: 5, label: "Continents", caption: "Of seven", accent: TravelTheme.current.coral),
+            ExplorerStat(symbol: "airplane", value: 142, label: "Flights", accent: TravelTheme.current.tint),
+            ExplorerStat(symbol: "seal.fill", value: 31, label: "Stamps", accent: TravelTheme.current.sun),
+            ExplorerStat(symbol: "calendar", value: 410, label: "Days", accent: TravelTheme.current.moss),
+            ExplorerStat(symbol: "camera.fill", value: "12.4k", label: "Photos", accent: TravelTheme.current.sky),
+            ExplorerStat(symbol: "water.waves", value: 19, label: "Dive sites", accent: TravelTheme.current.ocean),
+            ExplorerStat(symbol: "figure.surfing", value: 8, label: "Surf breaks", accent: TravelTheme.current.tint),
+            ExplorerStat(symbol: "mappin.and.ellipse", value: 27, label: "Hidden places", accent: TravelTheme.current.coral),
+            ExplorerStat(symbol: "tree.fill", value: 14, label: "National parks", accent: TravelTheme.current.moss),
+            ExplorerStat(symbol: "building.columns.fill", value: 11, label: "UNESCO sites", accent: TravelTheme.current.ocean)
         ]
     }
 
