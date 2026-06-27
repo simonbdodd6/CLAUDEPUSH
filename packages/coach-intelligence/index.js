@@ -64,3 +64,5 @@ export { summarizeReadinessBundle } from './readiness-evidence-bundle-presenter.
 export { buildReadinessCoachView } from './readiness-coach-view.js'
 
 export { buildReadinessCoachViewSample } from './readiness-coach-view-sample.js'
+
+export { buildCoachDnaCoachView } from './coach-dna-coach-view.js'
