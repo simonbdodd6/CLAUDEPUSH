@@ -4184,6 +4184,10 @@
         </div>
         <div class="button-row">
           <span class="save-pill" title="Auto-saved"><span class="dot" id="saveDot"></span><span id="saveStatus" style="display:none"></span></span>
+          <button class="btn" type="button" id="playerAccountBtn" onclick="openPlayerAccountMenu()" style="display:none;align-items:center;gap:7px" title="Account &amp; sign out">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.5 4-6.5 8-6.5s8 2 8 6.5"/></svg>
+            Account
+          </button>
           <button class="btn" type="button" id="resetBtn">Reset</button>
         </div>
       </header>
@@ -7845,6 +7849,13 @@
       // Hide the Coach|Player toggle entirely for players — they should never see it
       const viewSwitch = document.querySelector('.view-switch');
       if (viewSwitch) viewSwitch.style.display = isCoach() ? '' : 'none';
+      // Player header: show the Account button for a signed-in player, and hide the
+      // destructive Reset from the normal Beta player UI (Reset stays for coaches).
+      const _playerView = state.activeView === 'player';
+      const _accBtn = document.getElementById('playerAccountBtn');
+      if (_accBtn) _accBtn.style.display = (_playerView && state.currentUserId && !isCoach()) ? 'inline-flex' : 'none';
+      const _resetBtn = document.getElementById('resetBtn');
+      if (_resetBtn) _resetBtn.style.display = _playerView ? 'none' : '';
 
       document.getElementById("coachViewBtn").classList.toggle("active",  state.activeView === "coach");
       document.getElementById("playerViewBtn").classList.toggle("active", state.activeView === "player");
@@ -11626,7 +11637,7 @@
                 <button class="btn" type="button" onclick="exportMembersCSV()">Export CSV</button>
                 <button class="btn" type="button" onclick="triggerImportFile()">Import</button>
                 <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add player</button>
-                <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Invite Players</button>
+                <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Invite Squad</button>
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
@@ -14456,6 +14467,43 @@
       render();
       renderAuthBanner();
       showToast('Signed out');
+    }
+
+    // Player account menu — header button on the player portal. Shows the signed-in
+    // email + club, and a SAFE Sign out (reuses settingsSignOut: clears the session
+    // and currentUser only; availability, training, club membership, invite state,
+    // the local player record and all server data are untouched). Unlike Reset.
+    function openPlayerAccountMenu() {
+      document.getElementById('player-account-menu')?.remove();
+      const u = currentUser() || {};
+      const name = u.name || u.displayName || 'Player';
+      const email = u.email || '';
+      const club = state.clubName || '—';
+      const initials = name.split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'P';
+      const rowCss = 'display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--line);font-size:13.5px';
+      const el = document.createElement('div');
+      el.id = 'player-account-menu';
+      el.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(5px)';
+      el.addEventListener('click', e => { if (e.target === el) el.remove(); });
+      el.innerHTML = `
+        <div style="background:#fff;border-radius:20px;padding:26px;max-width:380px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.45);animation:fadeUp 0.22s ease both">
+          <div style="display:flex;align-items:center;gap:13px;margin-bottom:18px">
+            <div style="width:48px;height:48px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;flex-shrink:0">${esc(initials)}</div>
+            <div style="min-width:0">
+              <div style="font-weight:800;color:var(--ink);font-size:16px">${esc(name)}</div>
+              <div style="font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(email || 'Player account')}</div>
+            </div>
+          </div>
+          <div style="margin-bottom:18px">
+            <div style="${rowCss}"><span style="color:var(--muted)">Account</span><strong style="color:var(--ink);text-align:right;word-break:break-all">${esc(email || '—')}</strong></div>
+            <div style="${rowCss};border-bottom:none"><span style="color:var(--muted)">Club</span><strong style="color:var(--ink);text-align:right">${esc(club)}</strong></div>
+          </div>
+          <button class="btn" type="button" onclick="document.getElementById('player-account-menu')?.remove();settingsSignOut()"
+            style="width:100%;min-height:46px;font-weight:700;color:#dc2626;border-color:rgba(220,38,38,0.32)">Sign out</button>
+          <button class="btn" type="button" onclick="document.getElementById('player-account-menu')?.remove()"
+            style="width:100%;min-height:42px;margin-top:8px;font-size:13px">Close</button>
+        </div>`;
+      document.body.appendChild(el);
     }
 
     // ─── CLUB ADMINISTRATION ─────────────────────────────────────────────────
@@ -24789,7 +24837,10 @@
       }
     }
 
-    // ── Coach: "Invite Players" — one permanent club link for the whole squad ──
+    // ── Coach: "Invite Squad" — one permanent club link for the whole squad ──
+    // Future role invites (not built yet) reuse this flow: api/invite.js already
+    // accepts a role, so Invite Coaches / Medical / Admin can pass { group:true,
+    // role:'coach'|'medical'|'admin' } and branch the modal copy here.
     async function openInvitePlayersModal() {
       document.getElementById('invite-players-modal')?.remove();
       const el = document.createElement('div');
