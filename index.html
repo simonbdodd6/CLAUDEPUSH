@@ -3921,6 +3921,210 @@
     .ptm-block { display: flex; gap: 10px; font-size: 14px; padding: 5px 0; }
     .ptm-time { color: var(--muted); min-width: 46px; flex-shrink: 0; }
     .ptm-close { margin: 12px 18px 18px; }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       LIGHT THEME (Beta) — Apple / Linear / Notion light aesthetic.
+       Appended last so it wins the cascade over the dark redesign layers.
+       Presentation only: keeps the premium brand-gradient buttons, the club
+       logo and all accent colours; flips the canvas/surfaces/text to light.
+       ══════════════════════════════════════════════════════════════════════ */
+    :root {
+      /* Warm, soft light palette — paper-white surfaces on a warm light-grey canvas */
+      --page:        #f3f4f6;
+      --panel:       #ffffff;
+      --panel-2:     #f4f5f8;
+      --elev:        #ffffff;
+      --ink:         #1b2230;
+      --muted:       #5b6675;
+      --faint:       #9aa3b2;
+      /* Lines are barely-there — elevation does the work, not borders */
+      --line:        rgba(22,28,45,0.06);
+      --line-2:      rgba(22,28,45,0.09);
+      --line-soft:   rgba(22,28,45,0.045);
+      --hair:        rgba(22,28,45,0.05);
+      --nav:         #ffffff;
+      --nav-soft:    #eef1f7;
+      --glass:       rgba(22,28,45,0.025);
+      --glass-2:     rgba(22,28,45,0.04);
+      --glass-line:  rgba(22,28,45,0.07);
+      --sheen:       inset 0 1px 0 rgba(255,255,255,0.85);
+      /* Soft, diffuse elevation (Apple/Stripe), not hard borders */
+      --shadow-sm:   0 1px 2px rgba(22,28,45,0.05);
+      --shadow:      0 1px 3px rgba(22,28,45,0.05), 0 16px 34px -20px rgba(22,28,45,0.16);
+      --shadow-lift: 0 6px 16px rgba(22,28,45,0.08), 0 32px 60px -28px rgba(22,28,45,0.22);
+      --float:       0 1px 2px rgba(22,28,45,0.05), 0 16px 36px -22px rgba(22,28,45,0.18);
+      --float-hi:    0 4px 12px rgba(22,28,45,0.08), 0 34px 64px -26px rgba(22,28,45,0.24);
+    }
+
+    /* Canvas — warm white → light grey, with a subtle club-colour wash (very low
+       opacity, club-driven via --brand-soft). No dark texture. */
+    body {
+      background:
+        radial-gradient(1300px 880px at 88% -14%, var(--brand-soft), transparent 56%),
+        radial-gradient(1100px 760px at -8% 110%, var(--brand-soft), transparent 52%),
+        linear-gradient(178deg, #fbfbfa 0%, #f1f2f5 62%, #eef0f4 100%) !important;
+      background-attachment: fixed !important;
+      color: var(--ink);
+    }
+    body::before { display: none !important; }
+    .app-shell { background: transparent !important; }
+
+    /* Surfaces — white, elevation-not-borders. Soft shadow, generous radius. */
+    .card, .msg-card, .home-attn-item, .rehab-card, .stat-card, .training-stat,
+    .mc-kpi, .med-stat, .pkg-card, .ptm-card, .glass-card, .srv-panel, .mc-header,
+    .msg-hero, .training-hero {
+      background: #ffffff !important;
+      border: 1px solid var(--line) !important;
+      border-radius: 18px !important;
+      box-shadow: var(--sheen), 0 1px 2px rgba(22,28,45,0.04), 0 20px 44px -26px rgba(22,28,45,0.20) !important;
+      color: var(--ink) !important;
+    }
+    .card:hover, .msg-card:hover, .home-attn-item:hover, .rehab-card:hover,
+    .stat-card:hover, .training-stat:hover, .med-stat:hover {
+      box-shadow: var(--sheen), 0 2px 6px rgba(22,28,45,0.06), 0 30px 60px -28px rgba(22,28,45,0.26) !important;
+      border-color: var(--line-2) !important;
+    }
+    /* Hero panels: white with a faint club-colour wash, no dark gradient */
+    .msg-hero, .training-hero {
+      background: radial-gradient(150% 130% at 100% -25%, var(--brand-soft), transparent 60%), #ffffff !important;
+    }
+    .msg-hero::after, .training-hero::after { opacity: .35; }
+    /* Inner separators / quiet rows → faint, not dark */
+    .row { border: 0 !important; background: var(--panel-2) !important; border-radius: 12px !important; }
+    .row:hover { background: rgba(22,28,45,0.05) !important; }
+    hr, .divider { border-color: var(--line) !important; }
+    /* Text → dark on light (headings, labels, body, list/table cells) */
+    .workspace, .section, .card { color: var(--ink); }
+    .card h1, .card h2, .card h3, .card h4, .card h5, .card h6, .card strong, .card label,
+    .card p, .card li, .card dt, .card dd, .card td, .card th,
+    .workspace > h1, .workspace > h2, .workspace h1, .workspace h2, .workspace h3, .workspace h4,
+    .msg-hero h1, .msg-hero h2, .training-hero h1, .training-hero h2 { color: var(--ink); }
+    .card .muted, .muted { color: var(--muted) !important; }
+
+    /* Inputs — white fields, dark text */
+    input, select, textarea {
+      background: #ffffff !important;
+      border: 1px solid rgba(20,30,55,0.16) !important;
+      color: var(--ink) !important;
+    }
+    input::placeholder, textarea::placeholder { color: var(--faint) !important; }
+    select option { background: #ffffff; color: var(--ink); }
+
+    /* Sidebar — light */
+    .sidebar {
+      background: linear-gradient(180deg, #ffffff 0%, #edf2fb 100%) !important;
+      border-right: 1px solid rgba(20,30,55,0.09) !important;
+      color: var(--ink) !important;
+    }
+    .brand strong { color: var(--ink) !important; }
+    .brand p, .sidebar-card p { color: var(--muted) !important; }
+    .sidebar-card { background: #f2f6fc !important; border: 1px solid rgba(20,30,55,0.08) !important; color: var(--ink) !important; }
+    .sidebar-card strong { color: var(--ink) !important; }
+    nav button { color: var(--muted) !important; }
+    nav button:not(.active):hover { background: rgba(20,30,55,0.05) !important; color: var(--ink) !important; }
+    nav button.active { background: var(--brand-soft) !important; color: var(--brand) !important; border-left-color: var(--brand) !important; }
+    nav button.active svg { color: var(--brand) !important; }
+    .view-switch { background: rgba(20,30,55,0.05) !important; border: 1px solid rgba(20,30,55,0.08) !important; }
+    .view-switch button { color: var(--muted) !important; }
+    .view-switch button.active { color: #ffffff !important; }
+    .auth-panel { background: #f2f6fc !important; border-color: rgba(20,30,55,0.08) !important; }
+    .auth-panel input { background: #ffffff !important; border-color: rgba(20,30,55,0.14) !important; color: var(--ink) !important; }
+    .auth-panel label, .auth-panel small { color: var(--muted) !important; }
+    .auth-panel strong { color: var(--ink) !important; }
+
+    /* Topbar */
+    .topbar h1, #pageTitle { color: var(--ink) !important; }
+
+    /* Secondary buttons readable on light; the premium brand-gradient .primary is kept */
+    .btn:not(.primary) { background: #ffffff !important; border: 1px solid rgba(20,30,55,0.14) !important; color: var(--ink) !important; }
+    .btn:not(.primary):hover { background: #f2f5fb !important; border-color: rgba(20,30,55,0.22) !important; }
+    .btn.primary { background: var(--brand-grad) !important; color: #ffffff !important; border: 1px solid transparent !important; box-shadow: var(--glow-brand) !important; }
+    .btn.primary:hover { filter: brightness(1.06); }
+
+    /* Chat / Messages — light shell, WhatsApp-light bubbles */
+    .chat-shell, .chat-list, .chat-window { background: #ffffff !important; }
+    .chat-list { border-right: 1px solid rgba(20,30,55,0.08) !important; }
+    .chat-list-head, .chat-search-bar, .chat-header, .chat-composer { border-color: rgba(20,30,55,0.08) !important; }
+    .chat-list-head h2, .chat-header h2 { color: var(--ink) !important; }
+    .chat-feed { background: #eef2f9 !important; }
+    .chat-bubble { background: #ffffff !important; color: var(--ink) !important; box-shadow: 0 1px 2px rgba(20,30,55,0.12) !important; }
+    .chat-bubble-wrap.mine .chat-bubble { background: var(--bubble-mine) !important; color: #ffffff !important; }
+    .chat-composer { background: #ffffff !important; }
+    .chat-contact:hover { background: rgba(20,30,55,0.04) !important; }
+
+    /* Data tables / rows — light cells, dark text */
+    .member-row td, .member-row:hover td { background: #ffffff !important; color: var(--ink) !important; border-color: rgba(20,30,55,0.07) !important; }
+    .member-row:hover td { background: #f6f8fc !important; }
+    thead th, table th { color: var(--muted) !important; }
+    tbody td { color: var(--ink); border-color: rgba(20,30,55,0.07) !important; }
+
+    /* Dropdown menus / popovers / sheets that hardcode dark backgrounds */
+    .menu, .dropdown, .popover, .ctx-menu, .sheet, .modal-card, .ptm-card,
+    .chat-new-msg-dialog, .picker-menu, .dd-menu {
+      background: #ffffff !important;
+      border: 1px solid rgba(20,30,55,0.10) !important;
+      color: var(--ink) !important;
+      box-shadow: var(--shadow-lift) !important;
+    }
+
+    /* Members — light row cards (overrides the dark player-db-table gradient) */
+    .player-db-table tbody td, .member-row td, .member-row:hover td { background: #ffffff !important; color: var(--ink) !important; border-color: var(--line) !important; }
+    .member-row:hover td, .player-db-table tbody tr:hover td { background: #f7f8fb !important; }
+    thead th, table th, .player-db-table thead th { color: var(--muted) !important; }
+    tbody td { color: var(--ink); border-color: var(--line) !important; }
+
+    /* Dropdown menus / popovers / sheets that hardcode dark backgrounds */
+    .menu, .dropdown, .popover, .ctx-menu, .sheet, .modal-card, .ptm-card,
+    .chat-new-msg-dialog, .picker-menu, .dd-menu, .chat-ctx-menu, .srv-panel {
+      background: #ffffff !important;
+      border: 1px solid var(--line-2) !important;
+      color: var(--ink) !important;
+      box-shadow: var(--shadow-lift) !important;
+    }
+    .chat-ctx-menu button:hover, .ed-hcell:hover, .tl-row:hover, .mctl-row:hover { background: rgba(22,28,45,0.05) !important; }
+    .ed-hcell { background: rgba(22,28,45,0.025) !important; border-color: var(--line) !important; }
+    select option { background: #ffffff !important; color: var(--ink) !important; }
+
+    /* ── MATCH CENTRE — light dashboard panels; the GREEN PITCH + its magnets stay ── */
+    .mcx2-card, .mcx2-pool, .mcx2-benchrow, .mc7-benchrow, .mcx2-board > .mcx2-card,
+    .mc-header, .mc-detail-row, .mc-kpi, .mc-hero, .fixture-hero,
+    .mc-team-grid > .card:first-child,
+    .mc-team-grid > :nth-child(3) .card, .mc-team-grid > :nth-child(2) > .card:last-child {
+      background: #ffffff !important;
+      border: 1px solid var(--line) !important;
+      color: var(--ink) !important;
+      box-shadow: var(--sheen), 0 1px 2px rgba(22,28,45,0.04), 0 18px 38px -24px rgba(22,28,45,0.20) !important;
+    }
+    .mcx2-card-head, .mcx2-card-head strong, .mcx2-card strong, .mcx2-bjname,
+    .mcx2-rowname, .fixture-hero h1, .mc-hero h1 { color: var(--ink) !important; }
+    .mcx2-chip-player, .squad-player-drag, .mcx2-brow.set { background: var(--panel-2) !important; border: 1px solid var(--line) !important; color: var(--ink) !important; }
+    .mcx2-chip-player:hover, .squad-player-drag:hover { background: rgba(22,28,45,0.05) !important; }
+    .mcx2-row:hover { background: rgba(22,28,45,0.04) !important; }
+    .mcx2-rownum { background: rgba(22,28,45,0.06) !important; color: var(--ink) !important; }
+    .mcx2-binput { background: #ffffff !important; border: 1px solid var(--line-2) !important; color: var(--ink) !important; }
+    .mc-detail-label, .mcx2-rowpos, .mcx2-ppos { color: var(--muted) !important; }
+    /* bench tiles in the side rail → light (jersey magnets ON the pitch keep their look) */
+    .bench-slot { background: var(--panel-2) !important; border: 1px solid var(--line) !important; }
+    .bench-slot input { background: #ffffff !important; border: 1px solid var(--line-2) !important; color: var(--ink) !important; }
+    .fixture-hero .pill { background: rgba(22,28,45,0.05) !important; border-color: var(--line) !important; color: var(--muted) !important; }
+    /* UNTOUCHED (intentionally): .pitch-big / #matchday-pitch (green turf), .pitch-line,
+       .pitch-inner, .slot-photo / .slot-num / .slot-name-input, .jrsy-* (player magnets
+       on the green pitch), status dots, and the brand-gradient buttons. */
+
+    /* Match Centre status chips → light cards (status colours kept on the value) */
+    .mc10-chip { background: #ffffff !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-sm) !important; }
+    .mc10-chip-val { color: var(--ink) !important; }
+    .mc10-chip-val.v-ready  { color: #0f9d6b !important; }
+    .mc10-chip-val.v-almost { color: #c77d10 !important; }
+    .mc10-chip-val.v-build  { color: #dc2626 !important; }
+
+    /* Chat window header → light, dark title */
+    .chat-header { background: #ffffff !important; border-bottom: 1px solid var(--line) !important; }
+    .chat-header h2, .chat-header strong, .chat-header-main strong, .chat-header-main h2 { color: var(--ink) !important; }
+    .chat-header small, .chat-header .muted { color: var(--muted) !important; }
+
+    /* Toasts stay legible on light */
+    .toast { background: #ffffff !important; color: var(--ink) !important; border: 1px solid var(--line-2) !important; box-shadow: var(--shadow-lift) !important; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
