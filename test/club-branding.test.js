@@ -22,15 +22,24 @@ function extractFn(source, name) {
 }
 
 const scope = new Function(
-  extractFn(html, '_hexToRgba') + '\n' + extractFn(html, 'clubBrandVars') +
-  '\nreturn { _hexToRgba, clubBrandVars };'
+  extractFn(html, '_hexToRgba') + '\n' + extractFn(html, '_hexScale') + '\n' + extractFn(html, 'clubBrandVars') +
+  '\nreturn { _hexToRgba, _hexScale, clubBrandVars };'
 )();
-const { _hexToRgba, clubBrandVars } = scope;
+const { _hexToRgba, _hexScale, clubBrandVars } = scope;
 
 test('_hexToRgba converts #rrggbb to rgba at the given alpha', () => {
   assert.equal(_hexToRgba('#10b981', 0.13), 'rgba(16, 185, 129, 0.13)');
   assert.equal(_hexToRgba('0ea5e9', 0.34), 'rgba(14, 165, 233, 0.34)');
   assert.equal(_hexToRgba('not-a-colour', 0.5), null);
+});
+
+test('_hexScale darkens a colour toward black (readable outgoing bubble)', () => {
+  assert.equal(_hexScale('#ffffff', 0.5), 'rgb(128, 128, 128)');  // exactly-representable factor
+  assert.equal(_hexScale('#000000', 0.42), 'rgb(0, 0, 0)');
+  assert.equal(_hexScale('nope', 0.42), null);
+  // darkening keeps every channel <= the original
+  const m = /rgb\((\d+), (\d+), (\d+)\)/.exec(_hexScale('#e11d48', 0.42));
+  assert.ok(+m[1] <= 0xe1 && +m[2] <= 0x1d && +m[3] <= 0x48);
 });
 
 test('club colours map to the brand + accent CSS variables', () => {
@@ -47,9 +56,12 @@ test('club colours map to the brand + accent CSS variables', () => {
   assert.equal(vars['--accent'], '#ff5500', 'primary drives --accent (active tabs / highlights)');
   assert.equal(vars['--accent-soft'], 'rgba(255, 85, 0, 0.12)');
   assert.equal(vars['--accent-line'], 'rgba(255, 85, 0, 0.34)');
-  // Brand + accent vars only — status colours (--green/--red/--amber) are untouched.
+  // Soft page-header glow + readable club-tinted outgoing message bubble.
+  assert.equal(vars['--page-glow'], 'rgba(255, 85, 0, 0.13)');
+  assert.match(vars['--bubble-mine'], /^rgb\(\d+, \d+, \d+\)$/, 'darkened primary, readable with light text');
+  // Brand + accent + page vars only — status colours (--green/--red/--amber) are untouched.
   assert.deepEqual(Object.keys(vars).sort(),
-    ['--accent', '--accent-line', '--accent-soft', '--brand', '--brand-2', '--brand-grad', '--brand-line', '--brand-soft', '--glow-brand']);
+    ['--accent', '--accent-line', '--accent-soft', '--brand', '--brand-2', '--brand-grad', '--brand-line', '--brand-soft', '--bubble-mine', '--glow-brand', '--page-glow']);
 });
 
 test('secondary falls back to primary when absent', () => {

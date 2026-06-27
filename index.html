@@ -47,6 +47,9 @@
       --accent:      #10b981;
       --accent-soft: rgba(16,185,129,0.12);
       --accent-line: rgba(16,185,129,0.34);
+      /* Outgoing chat bubble — defaults to the current dark teal; club colours
+         override it with a darkened, readable club tint. */
+      --bubble-mine: #005c4b;
       --amber:       #f59e0b;
       --amber-soft:  rgba(245,158,11,0.12);
       --red:         #ef4444;
@@ -265,7 +268,17 @@
     .sidebar-card strong { color: #b0c8b8; font-size: 13px; }
 
     /* ── WORKSPACE ── */
-    .workspace { min-width: 0; padding: 28px; background: var(--page); }
+    .workspace { min-width: 0; padding: 28px;
+      /* Dark base + a very soft club-colour glow behind the upper page area.
+         --page-glow is unset (transparent) until club colours are saved. */
+      background: radial-gradient(125% 80% at 50% -10%, var(--page-glow, transparent), transparent 58%), var(--page); }
+    /* Small premium club badge beside a page title (topbar, Match Centre, Messages). */
+    .page-logo {
+      width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+      background: var(--panel-2) center/cover no-repeat;
+      box-shadow: inset 0 0 0 1px var(--brand-line), 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .page-logo[hidden] { display: none; }
     .topbar {
       display: flex;
       justify-content: space-between;
@@ -919,9 +932,9 @@
       min-height: 32px;
       padding: 0 10px;
       border-radius: 999px;
-      border: 1px solid rgba(16,185,129,0.45);
-      background: rgba(16,185,129,0.12);
-      color: var(--green);
+      border: 1px solid var(--accent-line);
+      background: var(--accent-soft);
+      color: var(--accent);
       display: inline-flex;
       align-items: center;
       gap: 5px;
@@ -929,7 +942,7 @@
       font-weight: 800;
       cursor: pointer;
     }
-    .chat-new-msg-btn:hover { background: rgba(16,185,129,0.18); color: #7ee7b8; }
+    .chat-new-msg-btn:hover { background: var(--accent-soft); filter: brightness(1.25); }
     .chat-new-msg-modal {
       position: fixed;
       inset: 0;
@@ -980,7 +993,7 @@
     .chat-bubble-wrap.theirs { align-self: flex-start; align-items: flex-start; }
     .chat-bubble-wrap .sender-name {
       font-size: 11px; font-weight: 700; padding: 0 4px;
-      color: #34d399;
+      color: var(--accent);
     }
     .chat-bubble-wrap.theirs .sender-name { color: #60a5fa; }
     .chat-bubble {
@@ -993,7 +1006,7 @@
       word-break: break-word;
     }
     .chat-bubble-wrap.mine .chat-bubble {
-      background: #005c4b;
+      background: var(--bubble-mine);
       color: #e9fef7;
       border-radius: 10px 10px 3px 10px;
     }
@@ -1002,11 +1015,11 @@
     }
     .chat-bubble .reply-quote {
       background: rgba(0,0,0,0.2);
-      border-left: 3px solid var(--green);
+      border-left: 3px solid var(--accent);
       border-radius: 4px; padding: 5px 8px; margin-bottom: 6px;
       font-size: 11px;
     }
-    .chat-bubble .reply-quote .rq-name { font-weight: 700; color: var(--green); margin-bottom: 2px; }
+    .chat-bubble .reply-quote .rq-name { font-weight: 700; color: var(--accent); margin-bottom: 2px; }
     .chat-bubble .reply-quote .rq-text { color: rgba(255,255,255,0.7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
     .chat-bubble .bubble-text {
       margin: 0; white-space: pre-wrap; overflow-wrap: anywhere;
@@ -1067,7 +1080,7 @@
       background: rgba(0,0,0,0.2);
     }
     .chat-reply-preview .rp-text { font-size: 11px; color: rgba(255,255,255,0.6); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .chat-reply-preview .rp-name { font-size: 11px; font-weight: 700; color: var(--green); }
+    .chat-reply-preview .rp-name { font-size: 11px; font-weight: 700; color: var(--accent); }
     .chat-reply-preview button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 0 2px; }
     .chat-composer textarea {
       width: 100%; padding: 10px 14px; background: transparent; border: none;
@@ -1076,12 +1089,12 @@
     }
     .chat-send-btn {
       width: 44px; height: 44px; border-radius: 50%; border: none;
-      background: var(--green); color: #060b12; cursor: pointer;
+      background: var(--accent); color: #060b12; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       font-size: 18px; flex-shrink: 0; transition: transform .1s, background .12s;
     }
-    .chat-send-btn:hover { background: #34d399; transform: scale(1.06); }
-    .chat-send-btn:disabled { background: rgba(16,185,129,0.3); color: rgba(6,11,18,0.5); transform: none; }
+    .chat-send-btn:hover { background: var(--accent); filter: brightness(1.12); transform: scale(1.06); }
+    .chat-send-btn:disabled { background: var(--accent-soft); color: rgba(6,11,18,0.5); transform: none; }
     /* Emoji picker */
     .chat-emoji-btn {
       width: 36px; height: 36px; border-radius: 50%; border: none;
@@ -1227,7 +1240,7 @@
     button:active:not(:disabled) { transform: scale(0.97); }
 
     /* Keyboard users can always see where they are. */
-    :focus-visible { outline: 2px solid var(--green); outline-offset: 2px; border-radius: 6px; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 
     /* iOS: inputs under 16px zoom-jump the viewport on focus.
        Also enforce 44px touch targets for interactive elements per Apple HIG. */
@@ -2083,7 +2096,7 @@
     ::selection { background: rgba(16,185,129,0.22); color: #e2e8f0; }
 
     /* ── FOCUS RINGS ── */
-    :focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     /* ── SHIMMER SKELETON ── */
     .skeleton {
@@ -2184,6 +2197,43 @@
       .training-gs-table .gs-time-input { width: 150px !important; }
       .training-gs-table td textarea { min-height: 92px !important; height: auto !important; }
       .training-gs-table td[data-label=""] { text-align: right; padding-top: 2px; }
+    }
+
+    /* ── Players roster: premium mobile card view ─────────────────────────────────
+       On phones the 9-column roster table (min-width:720px, horizontal scroll) becomes
+       one card per player: name/photo as the header, the three availability badges in a
+       labelled row, then attendance / consent / contract / actions stacked. Desktop and
+       tablet keep the table. Presentation only — row click + handlers are unchanged
+       (labelled <td>s drive the field captions via ::before). */
+    @media (max-width: 640px) {
+      .player-db-table { min-width: 0 !important; display: block; }
+      .player-db-table thead { display: none; }
+      .player-db-table tbody { display: block; }
+      .player-db-table tbody tr {
+        display: block;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+        margin: 0 12px 12px;
+      }
+      .player-db-table td { display: block; padding: 7px 0 !important; border: none !important; }
+      .player-db-table td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 10px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .04em; color: var(--muted); margin-bottom: 4px;
+      }
+      .player-db-table td:first-child {
+        padding: 0 0 10px !important;
+        border-bottom: 1px solid var(--line) !important;
+        margin-bottom: 4px;
+      }
+      .player-db-table td:nth-child(3),
+      .player-db-table td:nth-child(4),
+      .player-db-table td:nth-child(5) {
+        display: inline-block; width: 32%; vertical-align: top; padding-right: 4px !important;
+      }
+      .player-db-table td:last-child > div { justify-content: flex-start; }
     }
 
     /* ═══════════════════════════════════════════════════════════════════════════
@@ -3914,9 +3964,12 @@
 
     <main class="workspace">
       <header class="topbar">
-        <div>
-          <div class="eyebrow" id="eyebrow">Coach dashboard</div>
-          <h1 id="pageTitle">Overview</h1>
+        <div style="display:flex;align-items:center;gap:13px;min-width:0">
+          <div id="topbarLogo" class="page-logo" hidden></div>
+          <div>
+            <div class="eyebrow" id="eyebrow">Coach dashboard</div>
+            <h1 id="pageTitle">Overview</h1>
+          </div>
         </div>
         <div class="button-row">
           <span class="save-pill" title="Auto-saved"><span class="dot" id="saveDot"></span><span id="saveStatus" style="display:none"></span></span>
@@ -10864,9 +10917,12 @@
 
         <!-- ── V10 · fixture header — fixture is the title, status as 3 chips ──── -->
         <header class="mc10-head">
+          <div style="display:flex;align-items:center;gap:14px;min-width:0">
+          ${clubLogoBadgeHtml('width:46px;height:46px;border-radius:12px')}
           <div class="mc10-fixture">
             <h1>${esc(state.clubName || 'Your club')} <em>vs</em> ${esc(mc.opposition || 'Opponent TBC')}</h1>
             <p>${[esc(phase.label), esc(mc.competition||''), kickoffDisplay, mc.kickoffTime?esc(mc.kickoffTime):'', esc(mc.venue||'')].filter(Boolean).join(' · ') || 'Set the fixture in match details'}</p>
+          </div>
           </div>
           <div class="mc10-chips" role="group" aria-label="Matchday status">
             <div class="mc10-chip"><span class="mc10-chip-lbl">Kickoff</span><strong class="mc10-chip-val">${esc(countdown).replace(/\s*to\s+kick[\s-]?off\.?$/i, '')}</strong></div>
@@ -11507,23 +11563,23 @@
                       <div><strong style="font-size:13px">${p.name}</strong><div style="font-size:11px;color:var(--muted)">${p.email||""}</div></div>
                     </div>
                   </td>
-                  <td><span class="pill" style="font-size:11px">${p.position}</span></td>
-                  <td><span class="status ${p.game}">${statusLabel(p.game)}</span></td>
-                  <td><span class="status ${p.trainingTuesday}">${statusLabel(p.trainingTuesday)}</span></td>
-                  <td><span class="status ${p.trainingThursday}">${statusLabel(p.trainingThursday)}</span></td>
-                  <td>
+                  <td data-label="Position"><span class="pill" style="font-size:11px">${p.position}</span></td>
+                  <td data-label="Match"><span class="status ${p.game}">${statusLabel(p.game)}</span></td>
+                  <td data-label="Training 1"><span class="status ${p.trainingTuesday}">${statusLabel(p.trainingTuesday)}</span></td>
+                  <td data-label="Training 2"><span class="status ${p.trainingThursday}">${statusLabel(p.trainingThursday)}</span></td>
+                  <td data-label="Attendance">
                     <div style="display:flex;align-items:center;gap:8px">
                       <div class="history-bar" style="width:60px"><span style="width:${p.attendance}%;background:${p.attendance>=80?'var(--green)':p.attendance>=60?'#d97706':'#dc2626'}"></span></div>
                       <span style="font-size:12px;font-weight:700;color:${p.attendance>=80?'var(--ink)':p.attendance>=60?'#d97706':'#f87171'}">${p.attendance}%</span>
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Media consent">
                     <button type="button" onclick="event.stopPropagation();toggleMediaConsent('${p.id}')" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:${p.mediaConsent?"var(--green)":"var(--red)"}">
                       <span class="consent-dot ${p.mediaConsent?"c-yes":"c-no"}"></span>
                       ${p.mediaConsent?"Granted":"Pending"}
                     </button>
                   </td>
-                  <td>${playerLifecycleBadge(p)}${playerHasMedicalFlag(p)?'<span style="margin-left:4px;font-size:11px" title="Medical flag"></span>':''}</td>
+                  <td data-label="Contract">${playerLifecycleBadge(p)}${playerHasMedicalFlag(p)?'<span style="margin-left:4px;font-size:11px" title="Medical flag"></span>':''}</td>
                   <td style="padding-right:14px">
                     <div style="display:flex;gap:5px">
                       <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px" onclick="event.stopPropagation();requestMedical('${p.id}')">Medical</button>
@@ -13946,6 +14002,22 @@
       return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
     }
 
+    // Darken a #rrggbb toward black by a factor (0–1). Used for the readable
+    // club-tinted outgoing message bubble. Null on bad input.
+    function _hexScale(hex, f) {
+      const m = /^#?([a-f0-9]{6})$/i.exec(String(hex || '').trim());
+      if (!m) return null;
+      const n = parseInt(m[1], 16);
+      return `rgb(${Math.round(((n >> 16) & 255) * f)}, ${Math.round(((n >> 8) & 255) * f)}, ${Math.round((n & 255) * f)})`;
+    }
+
+    // Small premium club badge for page headers — empty string when no logo saved,
+    // so headers fall back to the plain title (default Coach's Eye look).
+    function clubLogoBadgeHtml(extraStyle) {
+      if (!state.clubLogo) return '';
+      return `<div class="page-logo" style="background-image:url(${state.clubLogo});${extraStyle || ''}"></div>`;
+    }
+
     // Pure: the CSS custom properties a set of club colours should override.
     // Returns {} when there is no valid primary colour, so the defaults restore.
     function clubBrandVars(colours) {
@@ -13965,6 +14037,9 @@
         '--accent':      primary,
         '--accent-soft': _hexToRgba(primary, 0.12),
         '--accent-line': _hexToRgba(primary, 0.34),
+        // Very soft page-header glow + readable club-tinted outgoing message bubble.
+        '--page-glow':   _hexToRgba(primary, 0.13),
+        '--bubble-mine': _hexScale(primary, 0.42),
       };
     }
 
@@ -13977,7 +14052,7 @@
       const root = document.documentElement;
       const vars = clubBrandVars(state.clubColours);
       ['--brand', '--brand-2', '--brand-soft', '--brand-line', '--glow-brand', '--brand-grad',
-       '--accent', '--accent-soft', '--accent-line'].forEach(v => {
+       '--accent', '--accent-soft', '--accent-line', '--page-glow', '--bubble-mine'].forEach(v => {
         if (vars[v]) root.style.setProperty(v, vars[v]); else root.style.removeProperty(v);
       });
       // Club badge in the sidebar identity block (shows on every screen). The logo
@@ -13987,6 +14062,14 @@
         badge.style.cssText = state.clubLogo
           ? `background-image:url(${state.clubLogo});background-size:cover;background-position:center;color:transparent;box-shadow:inset 0 0 0 1px var(--brand-line)`
           : '';
+      }
+      // Logo beside the shared page title (Overview, Availability, Training, Members,
+      // Medical, Settings — every page that uses the topbar). Match Centre & Messages
+      // render their own badge inline. Hidden when no logo → plain title fallback.
+      const topLogo = document.getElementById('topbarLogo');
+      if (topLogo) {
+        topLogo.style.backgroundImage = state.clubLogo ? `url(${state.clubLogo})` : '';
+        topLogo.hidden = !state.clubLogo;
       }
     }
 
@@ -21754,7 +21837,7 @@
         <!-- LEFT: Contact list -->
         <div class="chat-list">
           <div class="chat-list-head">
-            <h2>Messages</h2>
+            <div style="display:flex;align-items:center;gap:9px;min-width:0">${clubLogoBadgeHtml('width:26px;height:26px;border-radius:7px')}<h2>Messages</h2></div>
             <div style="display:flex;gap:6px">
               ${mode==='coach'?`<button class="chat-new-msg-btn" type="button" onclick="chatOpenNewDmPicker()" title="New message"><span>+</span><span>New</span></button>`:''}
             </div>
