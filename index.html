@@ -13693,6 +13693,8 @@
                 <label style="${labelStyle}">Season end
                   <input id="set-season-end" type="date" value="${esc(state.seasonEnd || '')}" style="${inputStyle}" onchange="settingsSaveSeason()"></label>
               </div>
+              <button class="btn primary" type="button" onclick="settingsSaveClubBranding(this)" style="width:100%;min-height:44px;margin-top:4px;transition:border-color .15s">Save club settings</button>
+              <p class="muted" style="font-size:11px;margin:0">Saves your club name, colours and logo, and applies the branding across the app.</p>
             </div>
           </div>
 
@@ -13878,6 +13880,7 @@
         if (dataUrl.length > 200000) { showToast('Logo too complex — try a simpler image'); return; }
         state.clubLogo = dataUrl;
         saveState('Logo saved');
+        applyClubBranding();
         saveClubConfigToServer({ logoDataUrl: dataUrl }).then(saved =>
           showToast(saved ? 'Club logo saved ✓' : '⚠️ Logo saved on this device — server sync failed'));
         renderSettings();
@@ -13889,8 +13892,74 @@
     function settingsRemoveLogo() {
       state.clubLogo = '';
       saveState('Logo removed');
+      applyClubBranding();
       saveClubConfigToServer({ logoDataUrl: '' }).catch(() => {});
       renderSettings();
+    }
+
+    // Convert #rrggbb → rgba() at a given alpha (null on bad input).
+    function _hexToRgba(hex, alpha) {
+      const m = /^#?([a-f0-9]{6})$/i.exec(String(hex || '').trim());
+      if (!m) return null;
+      const n = parseInt(m[1], 16);
+      return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+    }
+
+    // Pure: the CSS custom properties a set of club colours should override.
+    // Returns {} when there is no valid primary colour, so the defaults restore.
+    function clubBrandVars(colours) {
+      const isHex = v => /^#[0-9a-f]{6}$/i.test(String(v || ''));
+      const primary = isHex(colours?.primary) ? colours.primary : '';
+      if (!primary) return {};
+      const secondary = isHex(colours?.secondary) ? colours.secondary : primary;
+      return {
+        '--brand':       primary,
+        '--brand-2':     secondary,
+        '--brand-soft':  _hexToRgba(primary, 0.13),
+        '--brand-line':  _hexToRgba(primary, 0.34),
+        '--glow-brand':  `0 0 0 1px ${_hexToRgba(primary, 0.18)}, 0 8px 24px -6px ${_hexToRgba(primary, 0.4)}`,
+      };
+    }
+
+    // Apply saved club colours + logo as a SUBTLE re-skin: only the brand accent
+    // (primary buttons, brand gradients, active-nav highlight) and the club badge
+    // change. Status colours (green / red / amber) and the dark premium theme are
+    // untouched. No club colours → defaults restore. Safe to call repeatedly.
+    function applyClubBranding() {
+      if (typeof document === 'undefined') return;
+      const root = document.documentElement;
+      const vars = clubBrandVars(state.clubColours);
+      ['--brand', '--brand-2', '--brand-soft', '--brand-line', '--glow-brand'].forEach(v => {
+        if (vars[v]) root.style.setProperty(v, vars[v]); else root.style.removeProperty(v);
+      });
+      const badge = document.querySelector('.brand-mark');
+      if (badge) {
+        badge.style.cssText = state.clubLogo
+          ? `background-image:url(${state.clubLogo});background-size:cover;background-position:center;color:transparent`
+          : '';
+      }
+    }
+
+    async function settingsSaveClubBranding(btn) {
+      const c1 = document.getElementById('set-colour1')?.value;
+      const c2 = document.getElementById('set-colour2')?.value;
+      if (c1 || c2) {
+        state.clubColours = {
+          primary:   c1 || state.clubColours?.primary   || '#10b981',
+          secondary: c2 || state.clubColours?.secondary || '#0ea5e9',
+        };
+      }
+      saveState('Club settings');
+      applyClubBranding();                       // live preview immediately
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      const saved = await saveClubConfigToServer();
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent   = saved ? 'Saved ✓' : '⚠ Saved on device only';
+        btn.style.borderColor = saved ? 'var(--green)' : '#f59e0b';
+        setTimeout(() => { btn.textContent = 'Save club settings'; btn.style.borderColor = ''; }, 2400);
+      }
+      showToast(saved ? 'Club settings saved ✓' : '⚠️ Saved on this device — server sync failed');
     }
 
     function settingsSaveColours() {
@@ -13899,6 +13968,7 @@
         secondary: document.getElementById('set-colour2')?.value || '#0ea5e9',
       };
       saveState('Colours saved');
+      applyClubBranding();
       saveClubConfigToServer({ colours: state.clubColours }).then(saved =>
         showToast(saved ? 'Club colours saved ✓' : '⚠️ Saved on this device — server sync failed'));
     }
@@ -23825,6 +23895,7 @@
         const data = await res.json();
         if (data.club) {
           if (applyClubConfigLocally(data.club)) { saveState('Club settings loaded'); renderNav(); }
+          applyClubBranding();
           return;
         }
         if (!isCoach()) return;
@@ -24701,6 +24772,7 @@
     }
 
     render();
+    applyClubBranding();   // re-skin brand accents + club badge from saved colours/logo
     renderBuildDomainBanner();
     initServiceWorker();
     // Check for invite link AFTER render (so modal overlays on top)

@@ -1,0 +1,57 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const html = await readFile(join(__dirname, '..', 'index.html'), 'utf8');
+
+function extractFn(source, name) {
+  const start = source.indexOf('    function ' + name + '(');
+  if (start === -1) throw new Error('function ' + name + ' not found');
+  let i = start;
+  while (i < source.length && source[i] !== '{') i++;
+  let depth = 0;
+  while (i < source.length) {
+    if (source[i] === '{') depth++;
+    if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1); }
+    i++;
+  }
+  throw new Error('function ' + name + ' — no closing brace');
+}
+
+const scope = new Function(
+  extractFn(html, '_hexToRgba') + '\n' + extractFn(html, 'clubBrandVars') +
+  '\nreturn { _hexToRgba, clubBrandVars };'
+)();
+const { _hexToRgba, clubBrandVars } = scope;
+
+test('_hexToRgba converts #rrggbb to rgba at the given alpha', () => {
+  assert.equal(_hexToRgba('#10b981', 0.13), 'rgba(16, 185, 129, 0.13)');
+  assert.equal(_hexToRgba('0ea5e9', 0.34), 'rgba(14, 165, 233, 0.34)');
+  assert.equal(_hexToRgba('not-a-colour', 0.5), null);
+});
+
+test('club colours map to the brand accent CSS variables only', () => {
+  const vars = clubBrandVars({ primary: '#ff5500', secondary: '#0044ff' });
+  assert.equal(vars['--brand'], '#ff5500', 'primary drives --brand (buttons / active nav)');
+  assert.equal(vars['--brand-2'], '#0044ff', 'secondary drives --brand-2');
+  assert.equal(vars['--brand-soft'], 'rgba(255, 85, 0, 0.13)');
+  assert.equal(vars['--brand-line'], 'rgba(255, 85, 0, 0.34)');
+  assert.ok(vars['--glow-brand'].includes('rgba(255, 85, 0'));
+  // Only brand vars — status colours (--green/--red) are never touched.
+  assert.deepEqual(Object.keys(vars).sort(),
+    ['--brand', '--brand-2', '--brand-line', '--brand-soft', '--glow-brand']);
+});
+
+test('secondary falls back to primary when absent', () => {
+  assert.equal(clubBrandVars({ primary: '#10b981' })['--brand-2'], '#10b981');
+});
+
+test('no / invalid colours → empty map so the default Coach\'s Eye theme restores', () => {
+  assert.deepEqual(clubBrandVars(null), {});
+  assert.deepEqual(clubBrandVars({}), {});
+  assert.deepEqual(clubBrandVars({ primary: 'green' }), {}, 'non-hex primary is ignored');
+  assert.deepEqual(clubBrandVars({ secondary: '#0ea5e9' }), {}, 'secondary alone does not re-skin');
+});
