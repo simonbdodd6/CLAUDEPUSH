@@ -10483,20 +10483,6 @@
       const weekBlocks = schedSessions.reduce((n,s) => n + ((state.trainingBlocks||{})[s.id]?.length||0), 0);
 
       document.getElementById("coach-training").innerHTML = `
-        <!-- Hero header -->
-        <div class="training-hero">
-          <div>
-            <div class="eyebrow">Training Centre</div>
-            <h1>Session Planner</h1>
-            <p>Write your own session times, build the tactics board and print the coach sheet.</p>
-          </div>
-          <div class="training-hero-stats">
-            <div class="training-stat"><span class="lbl">Week Load</span><strong>${weekBlocks}</strong><small>blocks</small></div>
-            <div class="training-stat"><span class="lbl">Videos</span><strong>${(state.clubVideos||[]).length}</strong><small>saved</small></div>
-            <div class="training-stat"><span class="lbl">Available</span><strong>${available.length}</strong><small>players</small></div>
-          </div>
-        </div>
-
         ${_trainingTabBar()}
 
         <!-- Session card tabs — driven by state.schedule -->
@@ -10535,12 +10521,12 @@
           </div>
           ${blocks.length ? `
           <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:-4px -2px 0">
-          <table class="training-gs-table" style="min-width:560px">
+          <table class="training-gs-table" style="min-width:760px">
             <thead><tr>
               <th style="width:88px;font-size:12px">Time</th>
-              <th style="font-size:12px">Activity</th>
-              <th style="width:140px;font-size:12px">Lead Coach</th>
-              <th style="width:220px;font-size:12px">Key Focus</th>
+              <th style="width:170px;font-size:12px">Activity</th>
+              <th style="width:220px;font-size:12px">Lead Coach</th>
+              <th style="font-size:12px">Key Focus</th>
               <th style="width:36px"></th>
             </tr></thead>
             <tbody>
@@ -10555,25 +10541,25 @@
                   <td>
                     <textarea
                       oninput="updateTimeBlock('${sessId}','${b.id}','activity',this.value)"
-                      placeholder="Describe this drill or block in detail…"
-                      rows="3"
-                      style="font-size:14px;line-height:1.5;min-height:76px">${b.activity.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
+                      placeholder="Short title (e.g. Ruck drill)"
+                      rows="2"
+                      style="font-size:14px;line-height:1.4;min-height:44px">${b.activity.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
                   </td>
-                  <td style="vertical-align:top;padding-top:8px">
-                    <input class="gs-sm-input" value="${(b.coach||"").replace(/"/g,"&quot;")}"
+                  <td style="vertical-align:top">
+                    <textarea
                       oninput="updateTimeBlock('${sessId}','${b.id}','coach',this.value)"
-                      placeholder="e.g. Simon"
+                      placeholder="Lead coach, assistants, staff notes…"
+                      rows="3"
                       name="session-plan-coach" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                       data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore
-                      readonly onfocus="this.removeAttribute('readonly')" onpointerdown="this.removeAttribute('readonly')" ontouchstart="this.removeAttribute('readonly')" onkeydown="this.removeAttribute('readonly')"
-                      style="font-size:13px;padding:7px 9px">
+                      style="font-size:13px;min-height:76px">${(b.coach||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
                   </td>
                   <td style="vertical-align:top">
                     <textarea
                       oninput="updateTimeBlock('${sessId}','${b.id}','keyFocus',this.value)"
-                      placeholder="Key coaching points, cues, targets…"
-                      rows="3"
-                      style="font-size:14px;line-height:1.5;min-height:76px;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit">${(b.keyFocus||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
+                      placeholder="Key coaching points, cues and targets — write as much as you need…"
+                      rows="4"
+                      style="font-size:14px;line-height:1.5;min-height:120px;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit">${(b.keyFocus||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
                   </td>
                   <td style="vertical-align:middle">
                     <button class="btn ghost" type="button" style="padding:0 8px;min-height:28px;color:var(--muted)" onclick="removeTimeBlock('${sessId}','${b.id}')">✕</button>
