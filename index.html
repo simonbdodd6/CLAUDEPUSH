@@ -11498,38 +11498,31 @@
       const bench            = state.benchPlayers   || Array(8).fill("");
       const subs             = state.subPlan        || [];
       const playerNameOptions = [...new Set(matchdayPlayers.map(p => p.name).filter(Boolean))];
-      // Enforce ONE person per slot/bench (ID-based), with EXPLICIT picks taking
-      // priority over the index-default fill. Pass 1 reserves explicitly-placed
-      // members and clears explicit duplicates (incl. a stale/duplicate record);
-      // pass 2 builds the display, filling unset slots only with a member who is
-      // not already placed — so a person is never auto-duplicated.
+      // Enforce ONE person per slot/bench (ID-based). EXPLICIT assignments ONLY —
+      // there is NO index-default auto-fill, so an empty slot stays empty and a
+      // moved/removed player never snaps back to an old position (regression fix).
+      // Duplicate persons are cleared (first placement kept), persisted once.
       let _squadDeduped = false;
       const _seenPersons = new Set();
-      rugbySlots.forEach(([label]) => {            // pass 1a — explicit pitch slots
-        const nm = fnames[label];
-        if (!nm || !String(nm).trim()) return;
-        const k = mcPersonKey(nm);
-        if (k && _seenPersons.has(k)) { state.formationNames = state.formationNames || {}; state.formationNames[label] = ""; delete (state.fphotoIds || {})[label]; _squadDeduped = true; }
-        else if (k) _seenPersons.add(k);
+      const slotNames = rugbySlots.map(([label]) => {
+        const nm = String(fnames[label] || "").trim() ? fnames[label] : "";
+        const k = nm ? mcPersonKey(nm) : "";
+        if (nm && k && _seenPersons.has(k)) {              // duplicate person → clear this slot
+          state.formationNames = state.formationNames || {}; state.formationNames[label] = ""; delete (state.fphotoIds || {})[label]; _squadDeduped = true;
+          return "";
+        }
+        if (k) _seenPersons.add(k);
+        return nm;
       });
-      bench.slice(0, 8).forEach((nm, i) => {       // pass 1b — bench
+      bench.slice(0, 8).forEach((nm, i) => {
         if (!nm || !String(nm).trim()) return;
         const k = mcPersonKey(nm);
         if (k && _seenPersons.has(k)) { state.benchPlayers = state.benchPlayers || Array(8).fill(""); state.benchPlayers[i] = ""; _squadDeduped = true; }
         else if (k) _seenPersons.add(k);
       });
       if (_squadDeduped) saveState("Removed duplicate squad selection");
-      const _seenForDisplay = new Set(_seenPersons);
-      const slotNames = rugbySlots.map(([label], i) => {   // pass 2 — explicit wins
-        if (Object.prototype.hasOwnProperty.call(fnames, label) && String(fnames[label] || "").trim()) return fnames[label];
-        const def = selected[i]?.name || "";
-        const k = mcPersonKey(def);
-        if (def && k && _seenForDisplay.has(k)) return "";  // would duplicate → leave empty
-        if (def && k) _seenForDisplay.add(k);
-        return def;
-      });
       // Available list excludes by PERSON (every record of a placed member is hidden).
-      const available = matchdayPlayers.filter(p => !_seenForDisplay.has(mcPersonKey(p.name)));
+      const available = matchdayPlayers.filter(p => !_seenPersons.has(mcPersonKey(p.name)));
 
       // Available Players table — Match (this fixture) + Training attendance % (season). Read-only.
       const _schedAll = state.schedule || [];
@@ -11754,8 +11747,7 @@
                     ${slotName ? `<span class="j12-tick ${inj?'inj':'ok'}" aria-hidden="true">${inj?'!':'✓'}</span>` : ''}
                   </div>
                   <input class="slot-name-input j12-name" value="${inputVal}" placeholder="Add player" title="${inputVal}"
-                    list="squad-names" name="mc-slot-${label}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                    data-lpignore="true" data-1p-ignore data-form-type="other" oninput="setFormationName('${label}',this.value)">
+                    readonly data-pslot="${label}" onclick="mcOpenPicker(event)" aria-label="Pick player for ${esc(RUGBY_POS[label] || label)}">
                   <span class="j12-pos">${esc(RUGBY_POS[label] || '')}</span>
                   ${slotName ? `<button class="jrsy-clear" type="button" title="Clear" onclick="clearFormationSlot('${label}')">×</button>` : ''}
                 </div>`;
@@ -11780,8 +11772,7 @@
                       ${bn?`<span class="j3-tick ${binj?'inj':'ok'}" aria-hidden="true">${binj?'!':'✓'}</span>`:''}
                     </div>
                     <input class="slot-name-input mcx2-bjname" value="${(name||"").replace(/"/g,"&quot;")}" placeholder="—" title="${(name||"").replace(/"/g,"&quot;")}"
-                      list="squad-names" name="mc-bench-${i}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                      data-lpignore="true" data-1p-ignore data-form-type="other" oninput="setBenchPlayer(${i},this.value)">
+                      readonly data-bench="${i}" onclick="mcOpenPicker(event)" aria-label="Pick bench player ${i+16}">
                     ${bn?`<button class="jrsy-clear sm" type="button" title="Clear" onclick="clearBenchSlot(${i})">×</button>`:''}
                   </div>`;
                 }).join("")}

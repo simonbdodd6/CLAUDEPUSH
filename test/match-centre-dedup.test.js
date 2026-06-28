@@ -104,7 +104,7 @@ test('two members with different display names can both be selected', () => {
 // ── Structural: pool dedup + ID-based exclusion (no duplicate records offered) ─
 test('the Match Centre pool + picker are canonical (deduped) and exclude by person', () => {
   assert.ok(html.includes('canonicalVisiblePlayers().filter(p => (p.lifecycleStatus'), 'render uses the deduped pool');
-  assert.ok(html.includes('matchdayPlayers.filter(p => !_seenForDisplay.has(mcPersonKey(p.name)))'), 'available excludes by person key');
+  assert.ok(html.includes('matchdayPlayers.filter(p => !_seenPersons.has(mcPersonKey(p.name)))'), 'available excludes by person key');
   const picker = extractFn(html, 'mcComputeAvailable');
   assert.ok(picker.includes('canonicalVisiblePlayers()') && picker.includes('mcPersonKey'), 'picker pool deduped + excluded by person');
 });
@@ -117,11 +117,53 @@ test('clicking a bench player opens the squad picker (never login)', () => {
   assert.ok(!/welcomeLogin|loginWithForm|loginAs\(|loginIdentityAccount|devLogin/.test(open), 'it never triggers any login flow');
 });
 
-// ── Structural: name inputs suppress browser credential/login autofill ───────
-test('pitch + bench name inputs suppress saved-login/email autofill', () => {
-  assert.ok(html.includes('name="mc-slot-${label}" autocomplete="off"'), 'slot input: non-credential name + autocomplete off');
-  assert.ok(html.includes('name="mc-bench-${i}" autocomplete="off"'), 'bench input: non-credential name + autocomplete off');
-  assert.ok((html.match(/data-lpignore="true" data-1p-ignore data-form-type="other"/g) || []).length >= 2, 'password-manager ignore hints on both inputs');
-  // the searches were already contenteditable (no input element to autofill)
-  assert.ok(html.includes('class="mc7-search"') && html.includes('contenteditable="true"'), 'available search stays contenteditable');
+// ── Structural: name inputs are READONLY → browser shows no login/email autofill
+test('pitch + bench name inputs are readonly (no credential autofill) + open the picker', () => {
+  assert.ok(html.includes('readonly data-pslot="${label}" onclick="mcOpenPicker(event)"'), 'slot input readonly + click-to-pick');
+  assert.ok(html.includes('readonly data-bench="${i}" onclick="mcOpenPicker(event)"'), 'bench input readonly + click-to-pick');
+  // readonly fields are never editable, so the password manager cannot offer
+  // saved login/email/password — and there is no oninput typing path to trigger it.
+  assert.ok(!/class="slot-name-input j12-name"[^>]*oninput=/.test(html), 'slot name input has no typing handler');
+  assert.ok(!/class="slot-name-input mcx2-bjname"[^>]*oninput=/.test(html), 'bench name input has no typing handler');
+});
+
+// ── Regression: a moved/removed player must NOT snap back (no index-default) ──
+test('regression: NO index-default auto-fill — empty slots stay empty', () => {
+  assert.ok(html.includes('const slotName   = slotNames[i] || "";'), 'markup shows the deduped explicit value, not players[i]');
+  assert.ok(html.includes('const nm = String(fnames[label] || "").trim() ? fnames[label] : "";'), 'slot display = explicit assignment only');
+  assert.ok(!/slotNames = rugbySlots[\s\S]{0,500}selected\[i\]\?\.name/.test(html), 'slotNames derivation has no selected[i] index-default');
+});
+
+test('regression: move slot 3 → slot 5 → remove leaves BOTH empty (no snapback)', () => {
+  const s = buildScope([{ id: 'p-cy', name: 'Cy Three' }, { id: 'p-ed', name: 'Ed Five' }]);
+  s._mcSetTarget({ type: 'slot', label: '3' }, 'Cy Three');
+  assert.equal(s.state.formationNames['3'], 'Cy Three');
+  s._mcSetTarget({ type: 'slot', label: '5' }, 'Cy Three');   // move 3 → 5
+  assert.equal(s.state.formationNames['5'], 'Cy Three', 'now at slot 5');
+  assert.equal(s.state.formationNames['3'], '', 'slot 3 cleared on move');
+  s._mcSetTarget({ type: 'slot', label: '5' }, '');           // remove from 5
+  assert.equal(s.state.formationNames['5'], '', 'slot 5 empty after remove');
+  assert.equal(s.state.formationNames['3'], '', 'slot 3 STAYS empty — no snapback');
+});
+
+test('regression: move slot 1 → slot 4 → remove leaves BOTH empty (no snapback)', () => {
+  const s = buildScope([{ id: 'p-dan', name: 'Dan Four' }]);
+  s._mcSetTarget({ type: 'slot', label: '1' }, 'Dan Four');
+  s._mcSetTarget({ type: 'slot', label: '4' }, 'Dan Four');   // move 1 → 4
+  assert.equal(s.state.formationNames['1'], '', 'slot 1 cleared on move');
+  assert.equal(s.state.formationNames['4'], 'Dan Four');
+  s._mcSetTarget({ type: 'slot', label: '4' }, '');           // remove
+  assert.equal(s.state.formationNames['4'], '', 'slot 4 empty');
+  assert.equal(s.state.formationNames['1'], '', 'slot 1 STAYS empty — no snapback');
+});
+
+test('regression: pitch → bench moves the player and does not snap back', () => {
+  const s = buildScope([{ id: 'p-ann', name: 'Ann One' }]);
+  s._mcSetTarget({ type: 'slot', label: '2' }, 'Ann One');
+  s._mcSetTarget({ type: 'bench', idx: 0 }, 'Ann One');       // pitch → bench
+  assert.equal(s.state.benchPlayers[0], 'Ann One', 'now on the bench');
+  assert.equal(s.state.formationNames['2'], '', 'pitch slot empty (no snapback)');
+  s._mcSetTarget({ type: 'bench', idx: 0 }, '');              // remove from bench
+  assert.equal(s.state.benchPlayers[0], '', 'bench empty after remove');
+  assert.equal(s.state.formationNames['2'], '', 'pitch slot still empty');
 });
