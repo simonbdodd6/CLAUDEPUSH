@@ -3864,6 +3864,50 @@
     .mc-dragging { opacity: .4 !important; transform: scale(.94); }
     .mc7-trow.mc-dragging { opacity: .4 !important; transform: none; }
 
+    /* ═══════════════════════════════════════════════════════════════════════════
+       MATCH CENTRE V19 — Simplification V1 (presentation only)
+       Larger, clearer team selection · clearer position labels · more scannable
+       team sheet + bench · bigger and easier on mobile. CSS only — no markup,
+       handlers, data, layout structure, the rugby pitch, the slot order
+       (rugbySlots) or the position names (RUGBY_POS) are changed.
+       ═══════════════════════════════════════════════════════════════════════════ */
+
+    /* Team selection canvas a little larger + clearer name plates */
+    .mc12-pitch.mcx2-pitch, #matchday-pitch.mc12-pitch { min-height: 810px !important; }
+    .j12-name { font-size: 12.5px !important; padding: 4px 7px !important; }
+
+    /* Position labels on the (always-dark) pitch — bigger + brighter to read */
+    .mc12-pitch .j12-pos { font-size: 10.5px; letter-spacing: .03em; color: #cdf4dd; margin-top: 3px; }
+
+    /* Available Players — scannable team sheet: taller rows, row separators,
+       larger avatar + name, clearer position + status (theme-safe colours) */
+    .mc7-thead, .mc7-trow { grid-template-columns: minmax(0,1fr) 58px 64px 42px !important; gap: 8px !important; }
+    .mc7-tbody { gap: 0 !important; }
+    .mc7-trow { padding: 9px 9px !important; border-bottom: 1px solid var(--line); border-radius: 8px; }
+    .mc7-trow:last-child { border-bottom: 0; }
+    .mc7-av { width: 30px !important; height: 30px !important; font-size: 10px !important; }
+    .mc7-nm { font-size: 13.5px !important; font-weight: 700 !important; }
+    .mc7-pos { font-size: 11px !important; font-weight: 700 !important; color: var(--ink) !important; }
+    .mc7-match { font-size: 11px !important; font-weight: 800; }
+    .mc7-train { font-size: 12.5px !important; }
+    .mc7-thead span { font-size: 10px !important; }
+
+    /* Bench — easier to scan */
+    .mc7-benchrow-list { gap: 10px !important; }
+    .mc7-benchrow-head span:first-child { font-size: 12.5px; }
+    .mcx2-bjname { font-size: 12px !important; font-weight: 800 !important; }
+
+    /* Mobile — bigger touch targets + readable labels */
+    @media (max-width: 600px) {
+      .mc12-pitch.mcx2-pitch, #matchday-pitch.mc12-pitch { min-height: 660px !important; }
+      .j12-name { font-size: 10px !important; padding: 3px 5px !important; }
+      .mc12-pitch .j12-pos { font-size: 9px; }
+      .mc7-trow { padding: 12px 9px !important; }
+      .mc7-nm { font-size: 14px !important; }
+      .mc7-av { width: 32px !important; height: 32px !important; }
+      .mcx2-bjname { font-size: 12.5px !important; }
+    }
+
     /* destination jersey glows on hover-over */
     .mc12-pitch .j3-slot.drag-over { outline: none; }
     .mc12-pitch .j3-slot.drag-over .j12-shirt { transform: scale(1.12); filter: drop-shadow(0 0 14px rgba(52,211,153,.85)); }
