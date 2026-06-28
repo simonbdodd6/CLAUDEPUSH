@@ -1,5 +1,32 @@
 # Project Status
 
+## 2026-06-28 — End-of-day checkpoint (Beta)
+
+**Production build: `ffe4f65`** (feature/core-beta-simplification).
+
+- **Weekly Availability scheduler — COMPLETED & VERIFIED.** Fires unattended on
+  production via the GitHub Actions pinger (5-min, on `main`) → `/api/cron` →
+  shared `runWeeklyAvailabilityCheck()`. Per-session dedup, manual Send Now
+  independent, Automation Status diagnostics on Overview. A scheduled 17:20 send
+  delivered the push with no coach action. See entry below.
+- **Match Centre duplicate / snapback / bench-login regression — FIXED (`ffe4f65`).**
+  Root causes: selection keyed by display-name over a non-deduped pool (duplicates);
+  an index-default auto-fill re-derived `players[i]` into empty slots (moved/removed
+  players snapped back); editable name inputs let the browser password manager show
+  saved-login/email autofill. Fixes: stable ID-based person key + single-placement
+  enforcement + deduped pool; removed the index-default (explicit assignments only,
+  empty slots stay empty); name inputs made `readonly` + click-to-pick (no autofill).
+  Tests: `test/match-centre-dedup.test.js` (12, incl. snapback regressions); suite 1731/0.
+- **Match Centre visual polish — INTENTIONALLY DEFERRED.** V19 presentation pass
+  (clearer labels/team-sheet/mobile) shipped earlier; further visual polish is
+  parked behind correctness.
+- **Next priority:** Match Centre UX polish + extended manual QA (selection flows,
+  publish/save/export, mobile, long names, edge cases around stale roster records).
+- **Known data-hygiene caveat:** a stale roster record with a *different* display
+  name that is actually the same person (e.g. "Simon B. Dodd" vs "Simon Dodd") is
+  treated as a distinct member — the fix prevents it duplicating a placed player
+  but cannot auto-merge it; archiving old records is the clean-up.
+
 ## 2026-06-28 — Weekly Availability automation — CONFIRMED WORKING END-TO-END ON PRODUCTION
 
 **Weekly Availability automation confirmed working end-to-end on production.** A
