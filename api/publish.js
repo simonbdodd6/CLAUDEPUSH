@@ -209,11 +209,30 @@ function sanitiseClubConfig(raw) {
     },
     logoDataUrl,
     trainingDays,
+    weeklyAvailability: sanitiseWeeklyAvailability(raw.weeklyAvailability),
     firstFixture: sanitiseFixture(fx),
     fixtures: (Array.isArray(raw.fixtures) ? raw.fixtures : [])
       .map(sanitiseFixture)
       .filter(f => f.opposition)
       .slice(0, 50),
+  };
+}
+
+// Weekly Availability automation schedule (Overview card). Persisted in the club
+// config so the cron can read it; null when the coach hasn't configured it.
+function sanitiseWeeklyAvailability(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const DAYS3 = new Set(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+  const slot = (s, defDay, defTime) => ({
+    day:  DAYS3.has(String(s?.day)) ? String(s.day) : defDay,
+    time: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(s?.time || '')) ? String(s.time) : defTime,
+  });
+  return {
+    enabled: Boolean(raw.enabled),
+    training1: slot(raw.training1, 'Mon', '09:00'),
+    training2: slot(raw.training2, 'Wed', '09:00'),
+    match:     slot(raw.match,     'Thu', '18:00'),
+    lastSentAt: typeof raw.lastSentAt === 'string' ? raw.lastSentAt.slice(0, 40) : null,
   };
 }
 
@@ -327,6 +346,8 @@ async function clubHandler(req, res) {
     const existing = (await kvGet(clubKey(session.teamId))) || null;
     const record = {
       ...club,
+      // Keep an existing weekly schedule if a save doesn't carry one.
+      weeklyAvailability: club.weeklyAvailability ?? existing?.weeklyAvailability ?? null,
       setupCompletedAt: existing?.setupCompletedAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       updatedBy: session.user.id,

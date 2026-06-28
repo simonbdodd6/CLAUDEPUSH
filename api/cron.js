@@ -7,7 +7,7 @@ import { kvGet, kvSet, kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { resolveVariables } from './_variables.js';
 import { setCors, readSecret, vapidContact } from './_http.js';
-import { OBSOLETE_LEGACY_ACCOUNT_IDS, loadNotificationPreferenceMap, notificationAllowed, loadTeamMembers } from './_identityStore.js';
+import { OBSOLETE_LEGACY_ACCOUNT_IDS, loadNotificationPreferenceMap, notificationAllowed, loadTeamMembers, loadTeams } from './_identityStore.js';
 import { OBSOLETE_DM_PARTICIPANT_IDS } from './chat.js';
 
 const DAY_MAP = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
@@ -59,6 +59,23 @@ export function scheduleIsDue(schedule, now, fireWindowMinutes, offsetHours = lo
     return (now.getTime() - new Date(schedule.createdAt).getTime()) / 60000 <= 30;
   }
   return false;
+}
+
+// Weekly Availability fires once per scheduled local day, at the first cron run
+// at/after the scheduled time. Unlike the ±window dispatcher this still delivers
+// on Vercel's daily crons alone (just sooner when a 5-minute scheduler runs).
+// Deduped per day via lastSentAt.
+export function weeklyAvailabilityDue(slot, now, lastSentAt, offsetHours = localUTCOffset()) {
+  if (!slot || !slot.day || !slot.time) return false;
+  const localNow = localDate(now, offsetHours);
+  const localToday = localNow.toISOString().slice(0, 10);
+  if (lastSentAt) {
+    const localLast = localDate(new Date(lastSentAt), offsetHours).toISOString().slice(0, 10);
+    if (localLast === localToday) return false;            // already sent today
+  }
+  if (localNow.getUTCDay() !== DAY_MAP[String(slot.day).toLowerCase()]) return false;
+  const [h, m] = String(slot.time).split(':').map(Number);
+  return (localNow.getUTCHours() * 60 + localNow.getUTCMinutes()) >= ((h || 0) * 60 + (m || 0));
 }
 
 function availabilityActions(type) {
@@ -166,6 +183,9 @@ export default async function handler(req, res) {
   const expiredEndpoints = new Set();
 
   for (const schedule of due) {
+    // Weekly Availability is fired from the club config (below); skip any legacy
+    // client-synced sch-wk-* entries so they can never double-send.
+    if (String(schedule.id || '').startsWith('sch-wk-')) continue;
     const template = templates.find(item => item.id === schedule.templateId);
     if (!template) {
       results.push({ scheduleId: schedule.id, sent: 0, failed: 0, error: 'Template not found' });
@@ -231,6 +251,62 @@ export default async function handler(req, res) {
     const sentTimes = new Map(due.filter(item => item.lastSentAt).map(item => [item.id, item.lastSentAt]));
     await kvSet(key('schedules'), freshest.map(item => sentTimes.has(item.id)
       ? { ...item, lastSentAt: sentTimes.get(item.id) } : item));
+  }
+
+  // ── Weekly Availability automation (Overview card) ─────────────────────────
+  // Fire each club's saved schedule straight from its club config — the same
+  // place the coach's save reliably persists. Club isolation is enforced exactly
+  // like the schedule dispatcher above: delivery is restricted to ACTIVE members
+  // of that club only (subscriptionsForMembers ∩ activeMemberIdSet(teamId)).
+  // Dedup is one send per club+session per day via the weekly_avail_fired map.
+  try {
+    const teams = await loadTeams();
+    const firedMap = (await kvGet(key('weekly_avail_fired'))) || {};
+    let firedChanged = false;
+    const WA_SESSIONS = [['training1', 'Training session 1'], ['training2', 'Training session 2'], ['match', 'Match']];
+    for (const team of (Array.isArray(teams) ? teams : [])) {
+      const club = await kvGet(key(`club:${team.id}`));
+      const wa = club?.weeklyAvailability;
+      if (!wa || !wa.enabled) continue;
+      for (const [sessionKey, label] of WA_SESSIONS) {
+        const slot = wa[sessionKey];
+        if (!slot || !slot.day || !slot.time) continue;
+        const firedKey = `${team.id}:${sessionKey}`;
+        const sessionId = sessionKey === 'match' ? 'game' : sessionKey;
+        if (!weeklyAvailabilityDue(slot, now, firedMap[firedKey] || null)) continue;
+        let targets = subscriptionsForMembers(subscribers, activeMemberIdSet(automationMembers, team.id));
+        const waPrefs = await loadNotificationPreferenceMap();
+        if (Object.keys(waPrefs).length) {
+          targets = targets.filter(item => notificationAllowed(waPrefs, item.userId, { type: 'availability', sessionId }));
+        }
+        const title = `${club?.clubName || "Coach's Eye"} — Availability`;
+        const body = `Hi {{first_name}}! Please set your availability for this week's ${label} in Coach's Eye.`;
+        const delivery = await Promise.allSettled(targets.map(({ subscription, label: lbl }) =>
+          webpush.sendNotification(subscription, JSON.stringify({
+            title, body: resolveVariables(body, { label: lbl, coachName: 'Coach' }),
+            from: 'Coach', tag: `wa-${team.id}-${sessionKey}-${now.toISOString().slice(0, 10)}`,
+            url: '/?to=availability', type: 'availability', sessionId,
+            actions: availabilityActions('availability'),
+          }))));
+        const sent = delivery.filter(result => result.status === 'fulfilled').length;
+        const failed = delivery.length - sent;
+        delivery.forEach((result, index) => {
+          if (result.status === 'rejected' && [404, 410].includes(result.reason?.statusCode)) {
+            expiredEndpoints.add(targets[index].subscription.endpoint);
+          }
+        });
+        firedMap[firedKey] = now.toISOString();
+        firedChanged = true;
+        try {
+          if (club?.weeklyAvailability) { club.weeklyAvailability.lastSentAt = now.toISOString(); await kvSet(key(`club:${team.id}`), club); }
+        } catch { /* display-only update */ }
+        await kvLpush(key('message_log'), { type: 'weekly-availability', teamId: team.id, session: sessionKey, title, sentAt: now.toISOString(), sent, failed, total: targets.length });
+        results.push({ weeklyAvailability: firedKey, sent, failed, total: targets.length });
+      }
+    }
+    if (firedChanged) { await kvSet(key('weekly_avail_fired'), firedMap); await kvLtrim(key('message_log'), 500); }
+  } catch (error) {
+    results.push({ weeklyAvailability: 'error', error: String(error?.message || error) });
   }
   if (expiredEndpoints.size) {
     await save(subscribers.filter(item => !expiredEndpoints.has(item.subscription.endpoint)));

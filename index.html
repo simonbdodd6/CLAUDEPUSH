@@ -9703,44 +9703,10 @@
       }
     }
 
-    // Persist the schedule (club config) + mirror to club-isolated api/schedules so
-    // the existing cron fires it. Best-effort; the local config always saves first.
+    // Persist the schedule in the club config (server-side, club-scoped). The cron
+    // reads it straight from there — no fragile client→/api/schedules mirroring.
     function _persistWeeklyAvailability() {
       try { saveClubConfigToServer({ weeklyAvailability: state.weeklyAvailability }).catch(() => {}); } catch {}
-      try { syncWeeklyAvailabilitySchedules(); } catch {}
-    }
-
-    async function syncWeeklyAvailabilitySchedules() {
-      if (!isCoach()) return;
-      const teamId = state.teamId
-        || (typeof _myMemberships !== 'undefined' && (_myMemberships.find(m => m.current) || _myMemberships[0])?.teamId)
-        || '';
-      if (!teamId) return; // no reliable club id → skip (fail-safe: never risk cross-club)
-      const wa = normalizeWeeklyAvailability(state.weeklyAvailability);
-      const tplId = `tpl-wk-avail-${teamId}`;
-      try {
-        await ensureServerSessionForCurrentUser();
-        await fetch('/api/templates', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: tplId, name: 'Weekly availability', category: 'availability',
-            title: `${state.clubName || "Coach's Eye"} — Availability`,
-            body: "Hi {{first_name}}! Please set your availability for this week's sessions and match in Coach's Eye. — {{coach_name}}",
-          }),
-        });
-        for (const [key, label] of _WA_SESSIONS) {
-          const s = wa[key];
-          await fetch('/api/schedules', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: `sch-wk-${teamId}-${key}`, name: `Weekly availability — ${label}`,
-              templateId: tplId, days: [s.day], day: s.day.toLowerCase(), time: s.time,
-              audience: 'all', active: wa.enabled, coachName: currentUser()?.name || 'Coach',
-              sessionId: key === 'match' ? 'game' : key,
-            }),
-          });
-        }
-      } catch (e) { console.warn('[weeklyAvailability] schedule sync skipped:', e?.message || e); }
     }
 
     function renderCoachOverview() {
