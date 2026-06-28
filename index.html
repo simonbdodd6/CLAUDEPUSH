@@ -4150,6 +4150,17 @@
     .wa-actions { display:grid; grid-template-columns:repeat(2,1fr); gap:9px; }
     .wa-actions .btn { min-height:42px; }
     @media (max-width: 560px) { .wa-meta { grid-template-columns:1fr; } .wa-actions { grid-template-columns:1fr; } }
+
+    /* Availability page — compact header (replaces the removed hero box) */
+    .avail-head { display:flex; justify-content:space-between; align-items:center; gap:12px 18px; flex-wrap:wrap; }
+    .avail-head h2 { margin:0; font-size:21px; letter-spacing:-0.02em; color:var(--ink); }
+    .avail-head-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; min-width:0; }
+    .avail-head-actions .btn { min-height:38px; }
+    @media (max-width: 760px) {
+      .avail-head { flex-direction:column; align-items:stretch; }
+      .avail-head-actions { justify-content:flex-start; }
+      .avail-head-actions .btn { flex:1 1 auto; }
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -10400,20 +10411,18 @@
 
       document.getElementById("coach-message").innerHTML = `
         <div class="msg-hub">
-          <section class="msg-hero">
-            <div>
-              <div class="eyebrow">Coach communications</div>
-              <h2>Availability Centre</h2>
-              <p>${state.schedule.length > 0 ? `Track ${state.schedule.map(s => s.title).join(', ')} replies in one place. Each player is grouped by their latest answer.` : 'Add sessions below to start tracking availability.'}</p>
-            </div>
-            <div class="msg-hero-actions">
+          <!-- Compact header: the large "Availability Centre" hero is removed; its
+               actions live beside the page title so Sessions + the board sit higher. -->
+          <header class="avail-head">
+            <h2>Availability</h2>
+            <div class="avail-head-actions">
               <button class="btn" type="button" onclick="setSection('coach','messages')">Open messages</button>
               <button class="btn" id="avail-refresh-btn" type="button" onclick="refreshLiveAvailability()">Refresh replies</button>
               <button class="btn" type="button" onclick="clearWeekAvailability()" title="Clear all responses for this week — session templates are kept">New week</button>
               ${state.schedule.length > 1 ? `<button class="btn" type="button" onclick="sendAllAvailabilityRequests()" title="Send one combined push to all players covering every session this week">Send all sessions</button>` : ''}
               <button class="btn primary" type="button" onclick="sendAvailabilityRequest('${selected?.id || "game"}')">Send ${esc(selected?.title || "session")} request</button>
             </div>
-          </section>
+          </header>
 
           <section class="msg-kpi-grid">
             <article class="msg-kpi available"><span>Available</span><strong>${available.length}/${rows.length}</strong></article>
@@ -11426,7 +11435,7 @@
                     <span style="font-size:12px;color:var(--red);font-weight:700">${unavail} ✗</span>
                     ${pending > 0 ? `<span style="font-size:12px;color:var(--amber);font-weight:700">${pending} ?</span>` : ''}
                   </div>
-                </div>`).join('') : `<p class="muted">No sessions scheduled — add sessions in the Availability Centre.</p>`}
+                </div>`).join('') : `<p class="muted">No sessions scheduled — add sessions in Club Admin.</p>`}
             </div>
 
           </div>
