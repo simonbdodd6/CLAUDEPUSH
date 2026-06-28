@@ -1792,7 +1792,7 @@
     /* ── MESSAGE CENTER V2 ── */
     .msg-hub {
       display: grid;
-      gap: 18px;
+      gap: 12px;
     }
     .msg-hero {
       display: grid;
@@ -3678,6 +3678,11 @@
     .workspace:has(#player-messages.active) > .topbar { display: none !important; }
     .workspace:has(#coach-messages.active),
     .workspace:has(#player-messages.active) { padding: 0 !important; }
+    /* Availability: hide the shared topbar so its title isn't duplicated by the
+       page's own header — the compact .avail-head becomes the single titled header
+       (title left, actions right) and the board pulls up. Keep normal padding. */
+    .workspace:has(#coach-message.active) > .topbar { display: none !important; }
+    .workspace:has(#coach-message.active) { padding-top: 22px; }
     #coach-messages.section.active,
     #player-messages.section.active { gap: 0; }
 
@@ -4151,13 +4156,15 @@
     .wa-actions .btn { min-height:42px; }
     @media (max-width: 560px) { .wa-meta { grid-template-columns:1fr; } .wa-actions { grid-template-columns:1fr; } }
 
-    /* Availability page — compact header (replaces the removed hero box) */
-    .avail-head { display:flex; justify-content:space-between; align-items:center; gap:12px 18px; flex-wrap:wrap; }
-    .avail-head h2 { margin:0; font-size:21px; letter-spacing:-0.02em; color:var(--ink); }
+    /* Availability page header (the topbar is hidden for this section) — the
+       single page title on the left, actions on the right, board pulled up. */
+    .avail-head { display:flex; justify-content:space-between; align-items:flex-end; gap:10px 18px; flex-wrap:wrap; margin:2px 0 2px; }
+    .avail-head h2 { margin:0; font-size:26px; font-weight:820; letter-spacing:-0.025em; color:var(--ink); line-height:1.1; }
     .avail-head-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; min-width:0; }
     .avail-head-actions .btn { min-height:38px; }
     @media (max-width: 760px) {
-      .avail-head { flex-direction:column; align-items:stretch; }
+      .avail-head { flex-direction:column; align-items:stretch; gap:12px; }
+      .avail-head h2 { font-size:23px; }
       .avail-head-actions { justify-content:flex-start; }
       .avail-head-actions .btn { flex:1 1 auto; }
     }

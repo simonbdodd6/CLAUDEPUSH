@@ -51,6 +51,11 @@ test('the header sits above the Sessions section (content moves up)', () => {
   assert.ok(headIdx < sessionsIdx, 'compact header renders before the Sessions card');
 });
 
+test('the shared topbar is hidden for Availability (no duplicate title, board pulls up)', () => {
+  assert.ok(/\.workspace:has\(#coach-message\.active\) > \.topbar \{ display: none/.test(html),
+    'topbar hidden for the availability section so its title is not duplicated');
+});
+
 test('a compact, mobile-safe header style exists', () => {
   assert.ok(html.includes('.avail-head {'), 'avail-head style present');
   assert.ok(html.includes('flex-wrap:wrap'), 'actions wrap (no overflow)');
