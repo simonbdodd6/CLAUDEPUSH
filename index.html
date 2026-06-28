@@ -4177,6 +4177,18 @@
       .awk-arrow { padding:0 12px; }
       .awk-arrow .awk-word { display:none; }   /* small screens: chevrons + centre label only — no overflow */
     }
+
+    /* Availability V2 — status summary bar + single sortable squad list */
+    .avail-summary .msg-kpi { border-top:3px solid var(--line); }
+    .avail-summary .msg-kpi.available    { border-top-color:var(--green); }
+    .avail-summary .msg-kpi.maybe        { border-top-color:var(--amber); }
+    .avail-summary .msg-kpi.unavailable  { border-top-color:#dc2626; }
+    .avail-summary .msg-kpi.chase        { border-top-color:var(--muted); }
+    .avail-summary .msg-kpi.available strong   { color:var(--green); }
+    .avail-summary .msg-kpi.maybe strong       { color:var(--amber); }
+    .avail-summary .msg-kpi.unavailable strong { color:#dc2626; }
+    .avail-summary .msg-kpi.chase strong       { color:var(--muted); }
+    .msg-board-list { max-height:560px; overflow-y:auto; padding:8px; display:grid; gap:6px; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -10245,7 +10257,7 @@
     }
 
     let availabilityBoardFilter = "all";
-    let availabilityBoardSort = "highest";
+    let availabilityBoardSort = "attendance";
 
     function availabilityGroupForPlayer(player = {}) {
       const raw = `${player.position || ""} ${player.role || ""}`.toLowerCase();
@@ -10258,40 +10270,49 @@
       return "";
     }
 
+    // V2 quick filters: by reply status (Available / Maybe / Unavailable / No Reply).
     function availabilityRowMatchesFilter(row) {
-      const player = row?.player || {};
-      if (availabilityBoardFilter === "all") return true;
-      if (availabilityBoardFilter === "injured") {
-        return row?.reason === 'injury' || player[sessionReasonKey(state.messageDetail || 'game')] === 'injury' || player.game === "injured" || player.status === "injured" || Boolean(player.medical);
-      }
-      return availabilityGroupForPlayer(player) === availabilityBoardFilter;
+      const f = availabilityBoardFilter;
+      if (f === "all") return true;
+      const status = row?.status || 'no-reply';
+      if (f === "unavailable") return status === "unavailable" || status === "injured";
+      return status === f;   // available | maybe | no-reply
+    }
+
+    // Sort order from a player's position: jersey number if present, else forwards
+    // before backs, unknown last. Future-ready when positions are filled in.
+    function availabilityPositionOrder(player = {}) {
+      const raw = `${player.position || ''} ${player.role || ''}`.toLowerCase();
+      const num = raw.match(/\b(1[0-5]|[1-9])\b/);
+      if (num) return Number(num[1]);
+      const grp = availabilityGroupForPlayer(player);
+      if (grp === 'forwards') return 50;
+      if (grp === 'backs') return 60;
+      return 99;
     }
 
     function sortAvailabilityRows(list) {
+      const byName = (a, b) => String(a.player?.name || '').localeCompare(String(b.player?.name || ''));
+      const STATUS_ORDER = { available: 0, maybe: 1, 'no-reply': 2, unavailable: 3, injured: 3 };
       return list.slice().sort((a, b) => {
-        if (availabilityBoardSort === 'alpha') {
-          return String(a.player?.name || '').localeCompare(String(b.player?.name || ''));
+        if (availabilityBoardSort === 'position') {
+          return (availabilityPositionOrder(a.player) - availabilityPositionOrder(b.player)) || byName(a, b);
         }
-        if (availabilityBoardSort === 'recent') {
-          const ta = a.respondedAt ? new Date(a.respondedAt).getTime() : 0;
-          const tb = b.respondedAt ? new Date(b.respondedAt).getTime() : 0;
-          if (ta !== tb) return tb - ta;
-          return String(a.player?.name || '').localeCompare(String(b.player?.name || ''));
+        if (availabilityBoardSort === 'status') {
+          return ((STATUS_ORDER[a.status] ?? 4) - (STATUS_ORDER[b.status] ?? 4)) || byName(a, b);
         }
-        const direction = availabilityBoardSort === 'lowest' ? 1 : -1;
-        const diff = (Number(a.attendanceRate || 0) - Number(b.attendanceRate || 0)) * direction;
-        if (diff) return diff;
-        return String(a.player?.name || '').localeCompare(String(b.player?.name || ''));
+        // attendance — highest first
+        return (Number(b.attendanceRate || 0) - Number(a.attendanceRate || 0)) || byName(a, b);
       });
     }
 
     function setAvailabilityBoardFilter(filter) {
-      availabilityBoardFilter = ["all", "forwards", "backs", "injured"].includes(filter) ? filter : "all";
+      availabilityBoardFilter = ["all", "available", "maybe", "unavailable", "no-reply"].includes(filter) ? filter : "all";
       renderMessageCenter();
     }
 
     function setAvailabilityBoardSort(sort) {
-      availabilityBoardSort = ['lowest', 'highest', 'recent', 'alpha'].includes(sort) ? sort : 'highest';
+      availabilityBoardSort = ['position', 'attendance', 'status'].includes(sort) ? sort : 'attendance';
       renderMessageCenter();
     }
 
@@ -10403,11 +10424,12 @@
       }).join("");
 
       const filterButtons = [
-        ["all", "All"],
-        ["forwards", "Forwards"],
-        ["backs", "Backs"],
-        ["injured", "Injured"]
-      ].map(([id, label]) => `<button class="filter-pill ${availabilityBoardFilter === id ? "active" : ""}" type="button" onclick="setAvailabilityBoardFilter('${id}')">${label}</button>`).join("");
+        ["all", "All", rows.length],
+        ["available", "Available", available.length],
+        ["maybe", "Maybe", maybe.length],
+        ["unavailable", "Unavailable", unavailable.length],
+        ["no-reply", "No Reply", noReply.length],
+      ].map(([id, label, count]) => `<button class="filter-pill ${availabilityBoardFilter === id ? "active" : ""}" type="button" onclick="setAvailabilityBoardFilter('${id}')">${label} <strong>${count}</strong></button>`).join("");
 
       const quickTemplates = [
         `Hi {{firstName}}, can you confirm your availability for ${selected?.title || "this session"}?`,
@@ -10442,10 +10464,11 @@
           </header>
 
           ${weekOffset !== 0 ? weekPlaceholder : `
-          <section class="msg-kpi-grid">
-            <article class="msg-kpi available"><span>Available</span><strong>${available.length}/${rows.length}</strong></article>
-            <article class="msg-kpi chase"><span>No reply</span><strong>${noReply.length}</strong></article>
-            <article class="msg-kpi"><span>Response rate</span><strong>${responseRate}%</strong></article>
+          <section class="msg-kpi-grid avail-summary">
+            <article class="msg-kpi available"><span>Available</span><strong>${available.length}</strong></article>
+            <article class="msg-kpi maybe"><span>Maybe</span><strong>${maybe.length}</strong></article>
+            <article class="msg-kpi unavailable"><span>Unavailable</span><strong>${unavailable.length}</strong></article>
+            <article class="msg-kpi chase"><span>No Reply</span><strong>${noReply.length}</strong></article>
           </section>
 
           <!-- ROW 1: Session picker (left) + live response board (right) -->
@@ -10495,11 +10518,10 @@
                 <div class="availability-board-tools">
                   <div class="availability-filter-group">${filterButtons}</div>
                   <div style="display:flex;gap:8px;align-items:center">
-                    <select class="availability-sort-select" onchange="setAvailabilityBoardSort(this.value)" aria-label="Sort order">
-                      <option value="highest" ${availabilityBoardSort === "highest" ? "selected" : ""}>Highest attendance first</option>
-                      <option value="lowest"  ${availabilityBoardSort === "lowest"  ? "selected" : ""}>Lowest attendance first</option>
-                      <option value="recent"  ${availabilityBoardSort === "recent"  ? "selected" : ""}>Responded most recently</option>
-                      <option value="alpha"   ${availabilityBoardSort === "alpha"   ? "selected" : ""}>A – Z</option>
+                    <select class="availability-sort-select" onchange="setAvailabilityBoardSort(this.value)" aria-label="Sort by">
+                      <option value="attendance" ${availabilityBoardSort === "attendance" ? "selected" : ""}>Sort: Attendance</option>
+                      <option value="position"   ${availabilityBoardSort === "position"   ? "selected" : ""}>Sort: Position</option>
+                      <option value="status"     ${availabilityBoardSort === "status"     ? "selected" : ""}>Sort: Response</option>
                     </select>
                     <button class="btn" type="button" onclick="exportAvailabilityCSV('${selected?.id || ''}')"
                       style="font-size:11px;padding:0 10px;min-height:34px;white-space:nowrap" title="Export this session to CSV">
@@ -10507,51 +10529,9 @@
                     </button>
                   </div>
                 </div>
-                <div class="msg-status-grid compact">
-                  <section class="msg-status-column available">
-                    <header>
-                      <span>Available</span>
-                      <div style="display:flex;align-items:center;gap:6px">
-                        <strong>${boardAvailable.length}</strong>
-                        ${boardAvailable.length > 0 ? `<button type="button"
-                          onclick="copyAvailablePlayers('${selected?.id || ''}')"
-                          style="font-size:10px;padding:1px 7px;min-height:0;border:1px solid rgba(var(--accent-rgb), 0.35);color:#34d399;background:rgba(var(--accent-rgb), 0.1);border-radius:999px;cursor:pointer"
-                          title="Copy available player names to clipboard">Copy</button>` : ''}
-                      </div>
-                    </header>
-                    <div class="msg-player-list">${playerRows(boardAvailable)}</div>
-                  </section>
-                  <section class="msg-status-column unavailable">
-                    <header>
-                      <span>Unavailable</span>
-                      <div style="display:flex;align-items:center;gap:8px">
-                        <strong>${boardUnavailable.length}</strong>
-                        ${(() => { const inj = boardUnavailable.filter(r => r.reason === 'injury').length; return inj > 0 ? `<span style="font-size:10px;color:#f87171;font-weight:700;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:999px;padding:1px 6px">⚠ ${inj} injured</span>` : ''; })()}
-                      </div>
-                    </header>
-                    <div class="msg-player-list">${playerRows(boardUnavailable)}</div>
-                  </section>
-                  <section class="msg-status-column chase">
-                    <header><span>Maybe</span><strong>${boardMaybe.length}</strong></header>
-                    <div class="msg-player-list">${playerRows(boardMaybe)}</div>
-                  </section>
-                  <section class="msg-status-column chase">
-                    <header>
-                      <span>No Reply</span>
-                      <div style="display:flex;align-items:center;gap:8px">
-                        <strong>${boardNoReply.length}</strong>
-                        ${boardNoReply.length > 0 && selected ? `
-                          <button class="btn" type="button"
-                            onclick="remindNonResponders('${esc(selected.id)}')"
-                            style="font-size:10px;padding:2px 8px;min-height:0;border-color:rgba(245,158,11,0.4);color:#fbbf24;background:rgba(245,158,11,0.1)"
-                            title="Send a push reminder to all players who haven't replied for ${esc(sessionDisplayTitle(selected))}">
-                            Remind
-                          </button>` : ''}
-                      </div>
-                    </header>
-                    <div class="msg-player-list">${playerRows(boardNoReply)}</div>
-                  </section>
-                </div>
+                <!-- V2: one sortable, filterable squad list (status quick-filters +
+                     Position/Attendance/Response sort). Each row → player panel. -->
+                <div class="msg-player-list msg-board-list">${playerRows(boardRows)}</div>
               </article>
             </div>
           </section>`}
