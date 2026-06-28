@@ -4156,17 +4156,26 @@
     .wa-actions .btn { min-height:42px; }
     @media (max-width: 560px) { .wa-meta { grid-template-columns:1fr; } .wa-actions { grid-template-columns:1fr; } }
 
-    /* Availability page header (the topbar is hidden for this section) — the
-       single page title on the left, actions on the right, board pulled up. */
-    .avail-head { display:flex; justify-content:space-between; align-items:flex-end; gap:10px 18px; flex-wrap:wrap; margin:2px 0 2px; }
-    .avail-head h2 { margin:0; font-size:26px; font-weight:820; letter-spacing:-0.025em; color:var(--ink); line-height:1.1; }
-    .avail-head-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; min-width:0; }
-    .avail-head-actions .btn { min-height:38px; }
+    /* Availability page header (the topbar is hidden for this section) — page
+       title with a simple week navigator beneath it; the board pulls up. */
+    .avail-head { margin:2px 0 4px; }
+    .avail-head h2 { margin:0 0 12px; font-size:26px; font-weight:820; letter-spacing:-0.025em; color:var(--ink); line-height:1.1; }
+    .avail-weeknav { display:flex; align-items:stretch; gap:8px; max-width:560px; }
+    .avail-weeknav button { font-family:inherit; cursor:pointer; border:1px solid var(--line-2); background:#fff; color:var(--ink); border-radius:11px; font-weight:700; transition:background .12s, border-color .12s; }
+    .avail-weeknav button:hover { background:var(--panel-2); border-color:var(--line); }
+    .awk-arrow { display:flex; align-items:center; gap:6px; padding:0 14px; min-height:46px; font-size:13px; color:var(--muted); }
+    .awk-arrow:hover { color:var(--ink); }
+    .awk-chev { font-size:18px; line-height:1; }
+    .awk-now { flex:1 1 auto; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:6px 14px; min-height:46px; text-align:center; }
+    .awk-now.is-now { border-color:var(--accent); background:var(--accent-soft); }
+    .awk-now .awk-week { font-size:13.5px; font-weight:800; color:var(--ink); }
+    .awk-now.is-now .awk-week { color:var(--accent); }
+    .awk-now .awk-range { font-size:11px; font-weight:600; color:var(--muted); }
     @media (max-width: 760px) {
-      .avail-head { flex-direction:column; align-items:stretch; gap:12px; }
-      .avail-head h2 { font-size:23px; }
-      .avail-head-actions { justify-content:flex-start; }
-      .avail-head-actions .btn { flex:1 1 auto; }
+      .avail-head h2 { font-size:23px; margin-bottom:10px; }
+      .avail-weeknav { max-width:none; }
+      .awk-arrow { padding:0 12px; }
+      .awk-arrow .awk-word { display:none; }   /* small screens: chevrons + centre label only — no overflow */
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
@@ -10286,6 +10295,30 @@
       renderMessageCenter();
     }
 
+    // Availability week navigator (presentation only). Availability is tracked for
+    // the CURRENT week; navigating shows other weeks with their label + a placeholder.
+    // No change to how availability is stored or read.
+    let _availWeekOffset = 0;
+    function availWeekLabel(offset) {
+      if (offset === 0) return 'This week';
+      if (offset === -1) return 'Last week';
+      if (offset === 1) return 'Next week';
+      return offset < 0 ? `${-offset} weeks ago` : `In ${offset} weeks`;
+    }
+    function availWeekRange(offset) {
+      const now = new Date();
+      const mon = new Date(now);
+      mon.setDate(now.getDate() - ((now.getDay() + 6) % 7) + offset * 7);
+      mon.setHours(0, 0, 0, 0);
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+      const fmt = d => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      return `${fmt(mon)} – ${fmt(sun)}`;
+    }
+    function availWeekShift(delta) {
+      _availWeekOffset = delta === 0 ? 0 : _availWeekOffset + delta;
+      render();
+    }
+
     function renderMessageCenterV2() {
       const selected       = state.schedule.find(s => s.id === (state.messageDetail || "tue")) || state.schedule[0];
       const key            = selected ? sessionKey(selected.id) : "game";
@@ -10382,21 +10415,33 @@
         `Team update for ${selected?.title || "this week"}: please check the app and reply when you can.`
       ];
 
+      const weekOffset = _availWeekOffset;
+      const weekPlaceholder = `
+        <section class="msg-card" style="padding:44px 24px;text-align:center;margin-top:2px">
+          <div style="font-size:30px;margin-bottom:8px">🗓️</div>
+          <p style="font-size:16px;font-weight:800;color:var(--ink);margin:0 0 4px">${esc(availWeekLabel(weekOffset))} · ${esc(availWeekRange(weekOffset))}</p>
+          <p class="muted" style="font-size:13px;max-width:440px;margin:0 auto 18px">Coach's Eye tracks live availability for the current week. Go back to <strong>This week</strong> to see and manage replies.</p>
+          <button class="btn primary" type="button" onclick="availWeekShift(0)">Back to this week</button>
+        </section>`;
+
       document.getElementById("coach-message").innerHTML = `
         <div class="msg-hub">
-          <!-- Compact header: the large "Availability Centre" hero is removed; its
-               actions live beside the page title so Sessions + the board sit higher. -->
+          <!-- Coach-first header: page title + a simple week navigator. The setup/admin
+               action buttons were removed (Messages is in the left nav, replies refresh
+               automatically, requests are sent by automation). -->
           <header class="avail-head">
             <h2>Availability</h2>
-            <div class="avail-head-actions">
-              <button class="btn" type="button" onclick="setSection('coach','messages')">Open messages</button>
-              <button class="btn" id="avail-refresh-btn" type="button" onclick="refreshLiveAvailability()">Refresh replies</button>
-              <button class="btn" type="button" onclick="clearWeekAvailability()" title="Clear all responses for this week — session templates are kept">New week</button>
-              ${state.schedule.length > 1 ? `<button class="btn" type="button" onclick="sendAllAvailabilityRequests()" title="Send one combined push to all players covering every session this week">Send all sessions</button>` : ''}
-              <button class="btn primary" type="button" onclick="sendAvailabilityRequest('${selected?.id || "game"}')">Send ${esc(selected?.title || "session")} request</button>
-            </div>
+            <nav class="avail-weeknav" aria-label="Week">
+              <button class="awk-arrow" type="button" onclick="availWeekShift(-1)" aria-label="Previous week"><span class="awk-chev">‹</span><span class="awk-word">Previous Week</span></button>
+              <button class="awk-now${weekOffset === 0 ? ' is-now' : ''}" type="button" onclick="availWeekShift(0)" title="Back to this week">
+                <span class="awk-week">${esc(availWeekLabel(weekOffset))}</span>
+                <span class="awk-range">${esc(availWeekRange(weekOffset))}</span>
+              </button>
+              <button class="awk-arrow" type="button" onclick="availWeekShift(1)" aria-label="Next week"><span class="awk-word">Next Week</span><span class="awk-chev">›</span></button>
+            </nav>
           </header>
 
+          ${weekOffset !== 0 ? weekPlaceholder : `
           <section class="msg-kpi-grid">
             <article class="msg-kpi available"><span>Available</span><strong>${available.length}/${rows.length}</strong></article>
             <article class="msg-kpi chase"><span>No reply</span><strong>${noReply.length}</strong></article>
@@ -10509,7 +10554,7 @@
                 </div>
               </article>
             </div>
-          </section>
+          </section>`}
 
           <!-- ROW 2: Player detail — appears only when a player is clicked -->
           <div id="player-detail-panel" class="msg-player-detail-panel" style="${state.selectedMessagePlayerId ? "margin-top:14px" : "display:none"}">
@@ -10558,7 +10603,7 @@
             </article>
           </section>
 
-          <section class="msg-card" style="padding:0;overflow:hidden">
+          <section class="msg-card${BETA_SIMPLE_UI ? ' beta-hidden' : ''}" style="padding:0;overflow:hidden">
             <details class="srv-panel" open ontoggle="if(this.open) loadLiveSchedules()">
               <summary>Active automations</summary>
               <div id="live-schedules-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading...</p></div>
