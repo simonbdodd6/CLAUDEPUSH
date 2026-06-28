@@ -1,0 +1,127 @@
+/**
+ * Match Centre — duplicate-player + bench-login bug fixes.
+ *
+ * A single real member must not be selectable in more than one pitch slot or
+ * bench slot. Selection de-duplicates by a STABLE person key (linked account id
+ * or, for guests, the normalised name) — not by raw display string — so two
+ * records of the same person collapse to one. Clicking a bench jersey opens the
+ * squad picker, never a login box; the name inputs suppress credential autofill.
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const html = await readFile(join(__dirname, '..', 'index.html'), 'utf8');
+
+// Param-aware extractor (skips the param list before brace-matching the body).
+function extractFn(source, name) {
+  const start = source.indexOf('    function ' + name + '(');
+  if (start === -1) throw new Error('function ' + name + ' not found');
+  let i = start;
+  while (source[i] !== '(') i++;
+  let pd = 0;
+  for (; i < source.length; i++) { if (source[i] === '(') pd++; else if (source[i] === ')') { pd--; if (pd === 0) { i++; break; } } }
+  while (source[i] !== '{') i++;
+  let depth = 0;
+  for (; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1); }
+  }
+  throw new Error('function ' + name + ' — no closing brace');
+}
+
+// Build a live scope with the real selection helpers over a mock state.
+function buildScope(players) {
+  const rugbySlots = JSON.stringify(Array.from({ length: 15 }, (_, i) => [String(i + 1)]));
+  return new Function(
+    'const rugbySlots = ' + rugbySlots + ';\n' +
+    'const state = { players: ' + JSON.stringify(players) + ', formationNames: {}, benchPlayers: Array(8).fill(""), fphotoIds: {} };\n' +
+    extractFn(html, 'findPlayerByName') + '\n' +
+    extractFn(html, 'mcPersonKey') + '\n' +
+    extractFn(html, '_mcRemovePersonElsewhere') + '\n' +
+    extractFn(html, '_mcSetTarget') + '\n' +
+    'return { state, mcPersonKey, _mcSetTarget };'
+  )();
+}
+
+const SIMON_DUP = [
+  { id: 'p-a', userId: 'acc-simon', name: 'Simon Dodd', position: 'Tighthead' },
+  { id: 'p-b', userId: 'acc-simon', name: 'Simon Dodd', position: 'Fullback' }, // linked duplicate
+  { id: 'p-old', name: 'Simon B. Dodd', position: 'Lock' },                     // separate stale record
+  { id: 'p2', name: 'Ben Stokes', position: 'Lock' },
+];
+
+// ── Identity: stable person key, not display string ──────────────────────────
+test('duplicate display names collapse to ONE stable person key (ID-based)', () => {
+  const { mcPersonKey } = buildScope(SIMON_DUP);
+  assert.equal(mcPersonKey('Simon Dodd'), 'id:acc-simon', 'uses the linked account id');
+  assert.equal(mcPersonKey('simon dodd'), 'id:acc-simon', 'case-insensitive → same key');
+  assert.equal(mcPersonKey('Simon B. Dodd'), 'id:p-old', 'distinct record → distinct key (uses id)');
+  assert.notEqual(mcPersonKey('Simon B. Dodd'), mcPersonKey('Simon Dodd'), 'different members stay distinct');
+  assert.equal(mcPersonKey(''), '', 'empty is empty');
+});
+
+// ── One player cannot appear in two pitch positions ──────────────────────────
+test('placing a member already on the pitch MOVES them (no second pitch slot)', () => {
+  const s = buildScope(SIMON_DUP);
+  s.state.formationNames = { '3': 'Simon Dodd' };
+  s._mcSetTarget({ type: 'slot', label: '15' }, 'Simon Dodd');
+  assert.equal(s.state.formationNames['15'], 'Simon Dodd', 'now at slot 15');
+  assert.equal(s.state.formationNames['3'], '', 'removed from slot 3 — not duplicated');
+});
+
+// ── One player cannot appear on both pitch and bench ─────────────────────────
+test('placing a pitch member on the bench removes them from the pitch', () => {
+  const s = buildScope(SIMON_DUP);
+  s.state.formationNames = { '3': 'Simon Dodd' };
+  s._mcSetTarget({ type: 'bench', idx: 0 }, 'Simon Dodd');
+  assert.equal(s.state.benchPlayers[0], 'Simon Dodd', 'now on the bench');
+  assert.equal(s.state.formationNames['3'], '', 'removed from the pitch — one place only');
+});
+
+// ── Same person via a DUPLICATE record is still de-duplicated ─────────────────
+test('a linked-duplicate record of the same person cannot double up', () => {
+  const s = buildScope(SIMON_DUP);
+  // p-a and p-b are the same account; both render as "Simon Dodd" → same key.
+  s.state.formationNames = { '3': 'Simon Dodd' };
+  s._mcSetTarget({ type: 'bench', idx: 1 }, 'Simon Dodd'); // the p-b record
+  assert.equal(s.state.formationNames['3'], '', 'the earlier placement is cleared');
+  assert.equal(s.state.benchPlayers[1], 'Simon Dodd', 'only one placement remains');
+});
+
+// ── Genuinely different members are NOT merged ───────────────────────────────
+test('two members with different display names can both be selected', () => {
+  const s = buildScope(SIMON_DUP);
+  s.state.formationNames = { '3': 'Simon Dodd' };
+  s._mcSetTarget({ type: 'slot', label: '15' }, 'Simon B. Dodd');
+  assert.equal(s.state.formationNames['3'], 'Simon Dodd', 'Simon Dodd untouched');
+  assert.equal(s.state.formationNames['15'], 'Simon B. Dodd', 'Simon B. Dodd placed separately');
+});
+
+// ── Structural: pool dedup + ID-based exclusion (no duplicate records offered) ─
+test('the Match Centre pool + picker are canonical (deduped) and exclude by person', () => {
+  assert.ok(html.includes('canonicalVisiblePlayers().filter(p => (p.lifecycleStatus'), 'render uses the deduped pool');
+  assert.ok(html.includes('matchdayPlayers.filter(p => !_seenForDisplay.has(mcPersonKey(p.name)))'), 'available excludes by person key');
+  const picker = extractFn(html, 'mcComputeAvailable');
+  assert.ok(picker.includes('canonicalVisiblePlayers()') && picker.includes('mcPersonKey'), 'picker pool deduped + excluded by person');
+});
+
+// ── Structural: clicking a bench player opens the picker, NOT a login box ─────
+test('clicking a bench player opens the squad picker (never login)', () => {
+  assert.ok(html.includes('onclick="mcOpenPicker(event)"'), 'bench/slot jerseys open the picker');
+  const open = extractFn(html, 'mcOpenPicker');
+  assert.ok(open.includes("getElementById('mc-picker')"), 'it opens the squad picker popup');
+  assert.ok(!/welcomeLogin|loginWithForm|loginAs\(|loginIdentityAccount|devLogin/.test(open), 'it never triggers any login flow');
+});
+
+// ── Structural: name inputs suppress browser credential/login autofill ───────
+test('pitch + bench name inputs suppress saved-login/email autofill', () => {
+  assert.ok(html.includes('name="mc-slot-${label}" autocomplete="off"'), 'slot input: non-credential name + autocomplete off');
+  assert.ok(html.includes('name="mc-bench-${i}" autocomplete="off"'), 'bench input: non-credential name + autocomplete off');
+  assert.ok((html.match(/data-lpignore="true" data-1p-ignore data-form-type="other"/g) || []).length >= 2, 'password-manager ignore hints on both inputs');
+  // the searches were already contenteditable (no input element to autofill)
+  assert.ok(html.includes('class="mc7-search"') && html.includes('contenteditable="true"'), 'available search stays contenteditable');
+});
