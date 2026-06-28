@@ -43,9 +43,14 @@ import SwiftUI
 // Phase 80 adds a "Dream destinations" section composing the existing
 // `ExplorerDestinationWishlist` between Achievements and World progress — the
 // forward-looking counterpart to the earned trophies — with Iceland as the
-// next-trip pick, consistent with the world-progress "next destination". The
-// preview now reads top-to-bottom as a complete explorer overview:
-// Profile → Travel Score → Achievements → Dream Destinations → World progress → Quests → Journey → Statistics.
+// next-trip pick, consistent with the world-progress "next destination".
+//
+// Phase 82 adds a "Travel goals" section composing the existing
+// `ExplorerTravelGoals` between Dream Destinations and World progress, with goal
+// progress kept consistent with the rest of the dashboard (24/50 countries, 5/7
+// continents, 11/25 UNESCO sites). The preview now reads top-to-bottom as a
+// complete explorer overview:
+// Profile → Travel Score → Achievements → Dream Destinations → Travel Goals → World progress → Quests → Journey → Statistics.
 
 struct ExplorerDashboardPreview: View {
     var body: some View {
@@ -131,6 +136,25 @@ struct ExplorerDashboardPreview: View {
 
                     ExplorerDestinationWishlist(
                         destinations: wishlistDestinations,
+                        layout: .compact,
+                        title: "At a glance"
+                    )
+                }
+            }
+
+            PremiumSection(
+                title: "Travel goals",
+                subtitle: "The long-term ambitions you're working toward."
+            ) {
+                VStack(alignment: .leading, spacing: TravelSpacing.lg) {
+                    ExplorerTravelGoals(
+                        goals: travelGoals,
+                        layout: .expanded,
+                        title: nil
+                    )
+
+                    ExplorerTravelGoals(
+                        goals: travelGoals,
                         layout: .compact,
                         title: "At a glance"
                     )
@@ -438,6 +462,19 @@ struct ExplorerDashboardPreview: View {
                 title: "Reached Explorer Level 5",
                 dateLabel: "Oct 2024"
             )
+        ]
+    }
+
+    /// Deterministic long-term travel goals. Progress mirrors the rest of the
+    /// dashboard — 24/50 countries, 5/7 continents and 11/25 UNESCO sites match the
+    /// profile header, world-progress card and statistics dashboard respectively.
+    private var travelGoals: [TravelGoal] {
+        [
+            TravelGoal(title: "Visit 50 countries", icon: "globe.europe.africa.fill", current: 24, target: 50, targetYear: "2030", accent: TravelTheme.current.ocean),
+            TravelGoal(title: "Visit every continent", icon: "globe.americas.fill", current: 5, target: 7, accent: TravelTheme.current.coral),
+            TravelGoal(title: "Dive with manta rays", icon: "water.waves", current: 1, target: 1, targetYear: "2024", accent: TravelTheme.current.sky),
+            TravelGoal(title: "Surf 100 waves", icon: "figure.surfing", current: 8, target: 100, accent: TravelTheme.current.tint),
+            TravelGoal(title: "Visit 25 UNESCO sites", icon: "building.columns.fill", current: 11, target: 25, targetYear: "2032", accent: TravelTheme.current.sun)
         ]
     }
 
