@@ -225,13 +225,16 @@ test('weeklyAvailabilityDecision explains why a session did/did not fire', () =>
 });
 
 // ── A frequent trigger is configured so an arbitrary time actually fires ──────
-test('a frequent trigger is configured (Vercel sub-daily cron + external pinger)', () => {
-  const vj = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
-  assert.ok(vj.crons.some(c => c.path === '/api/cron' && /^\*\//.test(c.schedule)),
-    'a sub-daily Vercel cron pings /api/cron');
+// Vercel Hobby only allows DAILY cron frequency, so minute-level precision comes
+// from an external pinger; the Vercel crons are a same-day fallback.
+test('a frequent external trigger pings /api/cron, with a daily Vercel fallback', () => {
   const wf = readFileSync(new URL('../.github/workflows/availability-cron.yml', import.meta.url), 'utf8');
   assert.ok(wf.includes('/api/cron') && /cron: '\*\//.test(wf), 'external scheduler pings /api/cron frequently');
   assert.ok(wf.includes('Authorization: Bearer ${CRON_SECRET}'), 'authenticates with the cron secret');
+  const vj = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  const daily = vj.crons.filter(c => c.path === '/api/cron');
+  assert.ok(daily.length >= 4, 'multiple daily Vercel cron runs as a same-day fallback');
+  assert.ok(daily.every(c => /^0 \d+ \* \* \*$/.test(c.schedule)), 'Vercel crons stay daily-frequency (Hobby-compatible)');
 });
 
 // ── Diagnostics survive a coach schedule edit (publish.js carries debug fwd) ──
