@@ -1,5 +1,32 @@
 # Project Status
 
+## 2026-06-28 — Weekly Availability automation — CONFIRMED WORKING END-TO-END ON PRODUCTION
+
+**Weekly Availability automation confirmed working end-to-end on production.** A
+scheduled send set for 17:20 delivered the push notification with no coach action
+(no "Run scheduler check now", no manual Send Now).
+
+- **Scheduler path.** `runWeeklyAvailabilityCheck()` (api/cron.js) is the single
+  due-check + club-scoped send path used by BOTH the cron and the coach's "Run
+  scheduler check now" button. Per-session dedup via `weekly_avail_fired`
+  (`<teamId>:<session>`) — Training 1 / Training 2 / Match track independently and
+  a session never sends twice in a day. Manual Send Now (`/api/push`) is a separate
+  path and never blocks a scheduled send.
+- **Active trigger.** GitHub Actions workflow `.github/workflows/availability-cron.yml`
+  on the **default branch (main)** pings `POST /api/cron?source=github-actions`
+  every 5 min with `Authorization: Bearer ${CRON_SECRET}`. Verified firing on
+  schedule (Vercel logs: `POST /api/cron 200`; GitHub `event=schedule` runs
+  succeeding). Endpoint rejects unauthenticated requests (401). Note: Vercel Hobby
+  crons are registered but unreliable; the GitHub Actions pinger is the dependable
+  trigger.
+- **Observability.** Overview → "Automation status" (coach-only, collapsed) shows
+  last check + source, last attempt/result, last auto-send, skip reason, manual-
+  today, dedupe-blocked, next window, and per-session status.
+- **Production build:** `0833101` (commit `0833101c`, feature/core-beta-simplification).
+  Workflow on main at commit `625835e6`. Tests 1719/0.
+
+**Date completed:** 2026-06-28. Issue CLOSED.
+
 ## 2026-06-16 — Availability V2 (player availability rewrite) — CLOSED
 
 **Root cause.** The player Availability page used a single shared pending/reason
