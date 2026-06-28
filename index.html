@@ -4166,6 +4166,7 @@
     .wa-diag-name { font-weight:700; color:var(--ink); white-space:nowrap; }
     .wa-diag-val { color:var(--muted); text-align:right; }
     .wa-diag-sub { font-size:10.5px; color:var(--muted); opacity:.8; }
+    .wa-diag-sep { height:1px; background:var(--line); margin:9px 0 2px; }
 
     /* Availability page header (the topbar is hidden for this section) — page
        title with a simple week navigator beneath it; the board pulls up. */
@@ -9608,7 +9609,9 @@
         training2: slot(wa.training2, d.training2),
         match:     slot(wa.match,     d.match),
         lastSentAt: wa.lastSentAt || null,
-        // Read-only automation diagnostics written by the cron (see api/cron.js).
+        // Read-only fields the scheduler writes (see api/cron.js) — kept so the
+        // Beta diagnostics survive normalise + reload.
+        lastAutoSentAt: wa.lastAutoSentAt || null,
         debug: (wa.debug && typeof wa.debug === 'object') ? wa.debug : null,
       };
     }
@@ -9671,31 +9674,82 @@
     }
 
     // Beta automation diagnostics — surfaces the server-side scheduler state the
-    // cron records (api/cron.js). Collapsed by default; presentation only.
+    // cron / "Run scheduler check now" records (api/cron.js runWeeklyAvailabilityCheck).
+    // Collapsed by default; coach-only (the whole card is coach Overview).
+    let _waDiagOpen = false;
     function weeklyAutomationDiagnosticsHtml(wa) {
-      const dbg = wa && wa.debug;
+      const dbg = (wa && wa.debug) || {};
       const fmt = iso => {
         if (!iso) return '—';
         const dt = new Date(iso);
         return `${dt.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' })} ${dt.toTimeString().slice(0,5)}`;
       };
-      const checked = dbg && dbg.lastCheck ? `checked ${fmt(dbg.lastCheck)}` : 'not checked yet';
+      const yn = v => (v ? 'Yes' : 'No');
+      const sessions = [['training1', 'Training 1'], ['training2', 'Training 2'], ['match', 'Match']];
+      const attempts = sessions.map(([k]) => dbg[k] && dbg[k].lastAttempt).filter(Boolean).sort();
+      const lastAttempt = attempts.length ? attempts[attempts.length - 1] : dbg.lastCheck;
+      const sentSession = sessions.map(([k]) => dbg[k]).find(s => s && /^sent/.test(s.lastResult || ''));
+      const skippedSession = sessions.map(([k]) => dbg[k]).find(s => s && s.skipReason);
+      const lastResult = sentSession ? sentSession.lastResult : (skippedSession ? 'skipped' : '—');
+      const lastSkip = skippedSession ? skippedSession.skipReason : '—';
+      const anyBlocked = sessions.some(([k]) => dbg[k] && dbg[k].blockedByDedup);
+      const checked = dbg.lastCheck ? `checked ${fmt(dbg.lastCheck)}` : 'not checked yet';
+      const kv = (label, val) => `<div class="wa-diag-row"><span class="wa-diag-name">${label}</span><span class="wa-diag-val">${esc(val)}</span></div>`;
       const sessionRow = (key, label) => {
-        const s = (dbg && dbg[key]) || {};
+        const s = dbg[key] || {};
         const result = s.lastResult || (s.lastAttempt ? 'checked' : '—');
         const reason = s.skipReason ? ` — ${esc(s.skipReason)}` : '';
-        return `<div class="wa-diag-row"><span class="wa-diag-name">${label}</span><span class="wa-diag-val">${esc(result)}${reason}</span></div>
-          <div class="wa-diag-sub">last attempt ${esc(fmt(s.lastAttempt))} · last send ${esc(fmt(s.lastSend))}</div>`;
+        const blocked = s.blockedByDedup ? ' · dedup-blocked' : '';
+        return `<div class="wa-diag-row"><span class="wa-diag-name">${label}</span><span class="wa-diag-val">${esc(result)}${reason}${blocked}</span></div>
+          <div class="wa-diag-sub">attempt ${esc(fmt(s.lastAttempt))} · sent ${esc(fmt(s.lastSend))}</div>`;
       };
-      return `<details class="wa-diag">
+      return `<details class="wa-diag" ${_waDiagOpen ? 'open' : ''} ontoggle="_waDiagOpen=this.open">
         <summary>Automation status · ${esc(checked)}</summary>
         <div class="wa-diag-body">
+          <button class="btn" type="button" onclick="runSchedulerCheckNow(this)" style="min-height:38px;font-size:12.5px;margin-bottom:6px">Run scheduler check now</button>
+          ${kv('Last automation check', fmt(dbg.lastCheck))}
+          ${kv('Last check source', dbg.lastCheckSource || '—')}
+          ${kv('Last scheduled attempt', fmt(lastAttempt))}
+          ${kv('Last scheduled result', lastResult)}
+          ${kv('Last sent by automation', fmt(wa && wa.lastAutoSentAt))}
+          ${kv('Last skipped reason', lastSkip)}
+          ${kv('Manual Send Now today', yn(dbg.manualSentToday))}
+          ${kv('Blocked by dedupe today', anyBlocked ? 'Yes (already sent today)' : 'No')}
+          ${kv('Next expected cron window', fmt(dbg.nextWindow))}
+          <div class="wa-diag-sep"></div>
           ${sessionRow('training1', 'Training 1')}
           ${sessionRow('training2', 'Training 2')}
           ${sessionRow('match', 'Match')}
-          <p class="muted" style="font-size:11px;margin:8px 0 0">“Checked” is when the automation last ran on the server. A scheduled send fires at the first check at/after its time on the right day; manual “Send now” never affects it.</p>
+          <p class="muted" style="font-size:11px;margin:8px 0 0">“Run scheduler check now” runs the real automation path (not manual Send Now): a session sends only if it’s due, and never twice the same day. Set a time a minute ahead, then press it.</p>
         </div>
       </details>`;
+    }
+
+    // Trigger the REAL scheduler due-check on the server (coach-only). This is the
+    // cron path, NOT manual Send Now — a session only sends if genuinely due.
+    async function runSchedulerCheckNow(btn) {
+      if (!isCoach()) return;
+      const label = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Running scheduler check…';
+      try {
+        const res = await fetch('/api/publish?resource=availability-check', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'include', body: '{}',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+        if (data.weeklyAvailability) {
+          state.weeklyAvailability = normalizeWeeklyAvailability(data.weeklyAvailability);
+          saveState('Automation diagnostics');
+        }
+        _waDiagOpen = true;
+        render();
+        const fired = (data.report?.results || []).reduce((sum, r) => sum + (r.sent || 0), 0);
+        showToast(fired ? `Scheduler ran — ${fired} notification${fired === 1 ? '' : 's'} sent ✓` : 'Scheduler ran — nothing due right now');
+      } catch (err) {
+        showToast('Scheduler check failed: ' + (err.message || err));
+        btn.disabled = false; btn.textContent = label;
+      }
     }
 
     function toggleWeeklyAutomation() {

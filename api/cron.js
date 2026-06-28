@@ -102,6 +102,120 @@ function availabilityActions(type) {
   ];
 }
 
+// Daily UTC hours the Vercel crons run (keep in sync with vercel.json). Used only
+// to report the next expected automatic check window in the Beta diagnostics.
+const CRON_UTC_HOURS = [6, 8, 10, 12, 14, 16, 18, 20];
+function nextCronWindow(now) {
+  const d = new Date(now);
+  let next = CRON_UTC_HOURS.find(h => h > now.getUTCHours());
+  if (next === undefined) { next = CRON_UTC_HOURS[0]; d.setUTCDate(d.getUTCDate() + 1); }
+  d.setUTCHours(next, 0, 0, 0);
+  return d.toISOString();
+}
+
+// Shared weekly-availability scheduler — the ONE due-check + send path used by
+// BOTH the cron (Vercel/pinger) and the coach's "Run scheduler check now" button,
+// so on-demand testing exercises the real automation path (never manual Send Now).
+// Per-session dedup via weekly_avail_fired; records rich per-club/session
+// diagnostics on the club config. Caller supplies the already-loaded subscribers
+// + automationMembers and prunes any returned expired endpoints.
+export async function runWeeklyAvailabilityCheck({
+  now = new Date(), source = 'cron', onlyTeamId = null,
+  subscribers = [], automationMembers = [], offsetHours = localUTCOffset(),
+} = {}) {
+  // Self-sufficient: the coach "Run check now" path reaches here without the
+  // handler's setVapidDetails, so configure web-push here too (idempotent).
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    webpush.setVapidDetails(vapidContact(), process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
+  }
+  const WA_SESSIONS = [['training1', 'Training session 1'], ['training2', 'Training session 2'], ['match', 'Match']];
+  const teams = await loadTeams();
+  const firedMap = (await kvGet(key('weekly_avail_fired'))) || {};
+  const today = localDate(now, offsetHours).toISOString().slice(0, 10);
+  const nextWindow = nextCronWindow(now);
+  let firedChanged = false;
+  const expired = new Set();
+  const results = [];
+  const report = { source, checkedAt: now.toISOString(), nextWindow, teams: [] };
+
+  for (const team of (Array.isArray(teams) ? teams : [])) {
+    if (onlyTeamId && team.id !== onlyTeamId) continue;
+    const club = await kvGet(key(`club:${team.id}`));
+    const wa = club?.weeklyAvailability;
+    if (!wa || !wa.enabled) { report.teams.push({ teamId: team.id, enabled: false }); continue; }
+
+    const debug = (wa.debug && typeof wa.debug === 'object') ? wa.debug : {};
+    debug.lastCheck = now.toISOString();
+    debug.lastCheckSource = source;
+    debug.nextWindow = nextWindow;
+    // Best-effort: a manual Send Now writes wa.lastSentAt only; the scheduler
+    // writes both lastSentAt and lastAutoSentAt — so a same-day lastSentAt that
+    // differs from lastAutoSentAt indicates a manual send happened today.
+    const sentDay = wa.lastSentAt ? localDate(new Date(wa.lastSentAt), offsetHours).toISOString().slice(0, 10) : null;
+    debug.manualSentToday = sentDay === today && wa.lastSentAt !== wa.lastAutoSentAt;
+
+    const teamReport = { teamId: team.id, enabled: true, sessions: {} };
+    for (const [sessionKey, label] of WA_SESSIONS) {
+      const slot = wa[sessionKey];
+      const d = (debug[sessionKey] && typeof debug[sessionKey] === 'object') ? debug[sessionKey] : {};
+      d.lastAttempt = now.toISOString();
+      const firedKey = `${team.id}:${sessionKey}`;
+      const firedMarker = firedMap[firedKey] || null;
+      const sessionId = sessionKey === 'match' ? 'game' : sessionKey;
+      const decision = weeklyAvailabilityDecision(slot, now, firedMarker, offsetHours);
+      d.blockedByDedup = Boolean(firedMarker && decision.reason === 'already sent today');
+      if (!decision.due) {
+        d.lastResult = 'skipped';
+        d.skipReason = decision.reason;
+        debug[sessionKey] = d;
+        teamReport.sessions[sessionKey] = { result: 'skipped', reason: decision.reason };
+        continue;
+      }
+      // ── due → send via the SAME club-scoped targeting as manual Send Now ──
+      let targets = subscriptionsForMembers(subscribers, activeMemberIdSet(automationMembers, team.id));
+      const waPrefs = await loadNotificationPreferenceMap();
+      if (Object.keys(waPrefs).length) {
+        targets = targets.filter(item => notificationAllowed(waPrefs, item.userId, { type: 'availability', sessionId }));
+      }
+      const title = `${club?.clubName || "Coach's Eye"} — Availability`;
+      const body = `Hi {{first_name}}! Please set your availability for this week's ${label} in Coach's Eye.`;
+      const delivery = await Promise.allSettled(targets.map(({ subscription, label: lbl }) =>
+        webpush.sendNotification(subscription, JSON.stringify({
+          title, body: resolveVariables(body, { label: lbl, coachName: 'Coach' }),
+          from: 'Coach', tag: `wa-${team.id}-${sessionKey}-${now.toISOString().slice(0, 10)}`,
+          url: '/?to=availability', type: 'availability', sessionId,
+          actions: availabilityActions('availability'),
+        }))));
+      const sent = delivery.filter(result => result.status === 'fulfilled').length;
+      const failed = delivery.length - sent;
+      delivery.forEach((result, index) => {
+        if (result.status === 'rejected' && [404, 410].includes(result.reason?.statusCode)) {
+          expired.add(targets[index].subscription.endpoint);
+        }
+      });
+      firedMap[firedKey] = now.toISOString();
+      firedChanged = true;
+      d.lastResult = `sent ${sent}/${targets.length}${failed ? ` (${failed} failed)` : ''}`;
+      d.lastSend = now.toISOString();
+      d.skipReason = '';
+      d.blockedByDedup = false;
+      debug[sessionKey] = d;
+      wa.lastSentAt = now.toISOString();
+      wa.lastAutoSentAt = now.toISOString();
+      await kvLpush(key('message_log'), { type: 'weekly-availability', teamId: team.id, session: sessionKey, title, sentAt: now.toISOString(), sent, failed, total: targets.length, source });
+      results.push({ weeklyAvailability: firedKey, sent, failed, total: targets.length });
+      teamReport.sessions[sessionKey] = { result: d.lastResult, sentAt: now.toISOString(), total: targets.length };
+    }
+    // Persist diagnostics (+ any lastSentAt) every run — even when nothing fired.
+    try { wa.debug = debug; await kvSet(key(`club:${team.id}`), club); } catch { /* diagnostics best-effort */ }
+    report.teams.push(teamReport);
+  }
+  if (firedChanged) { await kvSet(key('weekly_avail_fired'), firedMap); await kvLtrim(key('message_log'), 500); }
+  report.results = results;
+  report.expired = [...expired];
+  return report;
+}
+
 export default async function handler(req, res) {
   setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -269,76 +383,15 @@ export default async function handler(req, res) {
   }
 
   // ── Weekly Availability automation (Overview card) ─────────────────────────
-  // Fire each club's saved schedule straight from its club config — the same
-  // place the coach's save reliably persists. Club isolation is enforced exactly
-  // like the schedule dispatcher above: delivery is restricted to ACTIVE members
-  // of that club only (subscriptionsForMembers ∩ activeMemberIdSet(teamId)).
-  // Dedup is one send per club+session per day via the weekly_avail_fired map.
+  // Delegated to the shared scheduler so the cron and the coach's "Run scheduler
+  // check now" button run the identical due-check + club-scoped send path.
   try {
-    const teams = await loadTeams();
-    const firedMap = (await kvGet(key('weekly_avail_fired'))) || {};
-    let firedChanged = false;
-    const WA_SESSIONS = [['training1', 'Training session 1'], ['training2', 'Training session 2'], ['match', 'Match']];
-    for (const team of (Array.isArray(teams) ? teams : [])) {
-      const club = await kvGet(key(`club:${team.id}`));
-      const wa = club?.weeklyAvailability;
-      if (!wa || !wa.enabled) continue;
-      // Beta diagnostics — record every automation check + each session's outcome
-      // so the coach can see exactly what the scheduler did, and why a session was
-      // skipped. Persisted on the club config (survives coach schedule edits).
-      const debug = (wa.debug && typeof wa.debug === 'object') ? wa.debug : {};
-      debug.lastCheck = now.toISOString();
-      for (const [sessionKey, label] of WA_SESSIONS) {
-        const slot = wa[sessionKey];
-        const d = (debug[sessionKey] && typeof debug[sessionKey] === 'object') ? debug[sessionKey] : {};
-        d.lastAttempt = now.toISOString();
-        const firedKey = `${team.id}:${sessionKey}`;
-        const sessionId = sessionKey === 'match' ? 'game' : sessionKey;
-        // Per-session dedup marker — NOT the club's manual lastSentAt.
-        const decision = weeklyAvailabilityDecision(slot, now, firedMap[firedKey] || null);
-        if (!decision.due) {
-          d.lastResult = 'skipped';
-          d.skipReason = decision.reason;
-          debug[sessionKey] = d;
-          continue;
-        }
-        // ── due → send via the SAME club-scoped targeting as manual Send Now ──
-        let targets = subscriptionsForMembers(subscribers, activeMemberIdSet(automationMembers, team.id));
-        const waPrefs = await loadNotificationPreferenceMap();
-        if (Object.keys(waPrefs).length) {
-          targets = targets.filter(item => notificationAllowed(waPrefs, item.userId, { type: 'availability', sessionId }));
-        }
-        const title = `${club?.clubName || "Coach's Eye"} — Availability`;
-        const body = `Hi {{first_name}}! Please set your availability for this week's ${label} in Coach's Eye.`;
-        const delivery = await Promise.allSettled(targets.map(({ subscription, label: lbl }) =>
-          webpush.sendNotification(subscription, JSON.stringify({
-            title, body: resolveVariables(body, { label: lbl, coachName: 'Coach' }),
-            from: 'Coach', tag: `wa-${team.id}-${sessionKey}-${now.toISOString().slice(0, 10)}`,
-            url: '/?to=availability', type: 'availability', sessionId,
-            actions: availabilityActions('availability'),
-          }))));
-        const sent = delivery.filter(result => result.status === 'fulfilled').length;
-        const failed = delivery.length - sent;
-        delivery.forEach((result, index) => {
-          if (result.status === 'rejected' && [404, 410].includes(result.reason?.statusCode)) {
-            expiredEndpoints.add(targets[index].subscription.endpoint);
-          }
-        });
-        firedMap[firedKey] = now.toISOString();
-        firedChanged = true;
-        d.lastResult = `sent ${sent}/${targets.length}${failed ? ` (${failed} failed)` : ''}`;
-        d.lastSend = now.toISOString();
-        d.skipReason = '';
-        debug[sessionKey] = d;
-        wa.lastSentAt = now.toISOString();
-        await kvLpush(key('message_log'), { type: 'weekly-availability', teamId: team.id, session: sessionKey, title, sentAt: now.toISOString(), sent, failed, total: targets.length });
-        results.push({ weeklyAvailability: firedKey, sent, failed, total: targets.length });
-      }
-      // Persist diagnostics (+ any lastSentAt) for this club every run — even when
-      // nothing fired — so "Last automation check" always reflects the latest run.
-      try { wa.debug = debug; await kvSet(key(`club:${team.id}`), club); } catch { /* diagnostics best-effort */ }
-    }
-    if (firedChanged) { await kvSet(key('weekly_avail_fired'), firedMap); await kvLtrim(key('message_log'), 500); }
+    const waRun = await runWeeklyAvailabilityCheck({
+      now, subscribers, automationMembers,
+      source: req.headers?.['x-vercel-cron'] === '1' ? 'vercel-cron' : 'cron/pinger',
+    });
+    waRun.results.forEach(result => results.push(result));
+    waRun.expired.forEach(endpoint => expiredEndpoints.add(endpoint));
   } catch (error) {
     results.push({ weeklyAvailability: 'error', error: String(error?.message || error) });
   }

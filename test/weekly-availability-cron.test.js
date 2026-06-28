@@ -32,7 +32,7 @@ globalThis.fetch = async (url, options = {}) => {
 
 const { createSession } = await import('../api/_identityStore.js');
 const { default: publishHandler } = await import('../api/publish.js');
-const { weeklyAvailabilityDue, weeklyAvailabilityDecision } = await import('../api/cron.js');
+const { weeklyAvailabilityDue, weeklyAvailabilityDecision, runWeeklyAvailabilityCheck } = await import('../api/cron.js');
 const { activeMemberIdSet, subscriptionsForMembers, clubMemberSubscriptions } = await import('../api/_lib.js');
 
 const cronSrc = readFileSync(new URL('../api/cron.js', import.meta.url), 'utf8');
@@ -142,9 +142,11 @@ test('a manual Send Now earlier the same day does NOT block a scheduled send', (
   // The scheduler only ever consults the PER-SESSION fired marker (null here);
   // the club's manual lastSentAt is never passed in, so it cannot suppress this.
   assert.equal(weeklyAvailabilityDue(slot, now, null), true, 'due regardless of any manual send today');
-  // Structural proof: the cron dedups on firedMap[firedKey], not wa.lastSentAt.
-  assert.ok(cronSrc.includes('weeklyAvailabilityDecision(slot, now, firedMap[firedKey] || null)'),
-    'dedup uses the per-session fired marker');
+  // Structural proof: the scheduler dedups on firedMap[firedKey], not wa.lastSentAt.
+  assert.ok(cronSrc.includes('const firedMarker = firedMap[firedKey] || null'),
+    'per-session fired marker is read from the dedup map');
+  assert.ok(cronSrc.includes('weeklyAvailabilityDecision(slot, now, firedMarker'),
+    'the due check is fed the per-session fired marker');
   assert.ok(!/weeklyAvailabilityD(ue|ecision)\([^)]*wa\.lastSentAt/.test(cronSrc),
     'the club/manual lastSentAt is never passed into the due check');
 });
@@ -259,4 +261,86 @@ test('a coach schedule save does not wipe the cron diagnostics', async () => {
   assert.equal(saved.payload.club.weeklyAvailability.training1.time, '12:30', 'edit applied');
   assert.ok(saved.payload.club.weeklyAvailability.debug, 'diagnostics preserved');
   assert.equal(saved.payload.club.weeklyAvailability.debug.training1.lastResult, 'sent 4/4', 'prior result carried forward');
+});
+
+// ── Shared scheduler path (used by both cron and "Run scheduler check now") ───
+// subscribers:[] → no real web-push calls; the due-check + dedup + diagnostics
+// path runs end-to-end. DEFAULT_TEAM (boitsfort-rfc) is always in loadTeams().
+function seedClub(teamId, wa) {
+  store.set(`app:club:${teamId}`, JSON.stringify({ clubName: teamId, weeklyAvailability: wa }));
+}
+const DUE_SCHEDULE = { enabled: true, training1: { day: 'Sun', time: '09:00' }, training2: { day: 'Wed', time: '09:00' }, match: { day: 'Thu', time: '18:00' } };
+
+test('runWeeklyAvailabilityCheck fires a due session and records rich diagnostics', async () => {
+  store.clear(); lists.clear();
+  const now = sundayLocalAfternoonUTC();
+  seedClub('boitsfort-rfc', { ...DUE_SCHEDULE });
+  const report = await runWeeklyAvailabilityCheck({ now, source: 'test', onlyTeamId: 'boitsfort-rfc', subscribers: [], automationMembers: [] });
+  assert.ok(report.results.some(r => r.weeklyAvailability === 'boitsfort-rfc:training1'), 'training1 (Sun, passed) fired via the scheduler');
+  assert.ok('nextWindow' in report, 'reports the next expected cron window');
+  const wa = JSON.parse(store.get('app:club:boitsfort-rfc')).weeklyAvailability;
+  assert.ok(/^sent/.test(wa.debug.training1.lastResult), 'training1 result recorded');
+  assert.ok(wa.debug.training1.lastSend, 'training1 last send recorded');
+  assert.equal(wa.debug.lastCheckSource, 'test', 'records the check source');
+  assert.ok(wa.lastAutoSentAt, 'last sent BY AUTOMATION recorded separately from manual');
+  assert.match(wa.debug.training2.skipReason, /not scheduled today/, 'Wed session skipped on Sunday, with reason');
+});
+
+test('runWeeklyAvailabilityCheck does not re-send the same session the same day (dedup)', async () => {
+  store.clear(); lists.clear();
+  const now = sundayLocalAfternoonUTC();
+  seedClub('boitsfort-rfc', { ...DUE_SCHEDULE });
+  const first = await runWeeklyAvailabilityCheck({ now, source: 'test', onlyTeamId: 'boitsfort-rfc', subscribers: [], automationMembers: [] });
+  assert.ok(first.results.some(r => r.weeklyAvailability === 'boitsfort-rfc:training1'), 'fired the first time');
+  const second = await runWeeklyAvailabilityCheck({ now, source: 'test', onlyTeamId: 'boitsfort-rfc', subscribers: [], automationMembers: [] });
+  assert.ok(!second.results.some(r => r.weeklyAvailability === 'boitsfort-rfc:training1'), 'not fired again the same day');
+  const dbg = JSON.parse(store.get('app:club:boitsfort-rfc')).weeklyAvailability.debug;
+  assert.equal(dbg.training1.blockedByDedup, true, 'dedup-blocked flag surfaced');
+  assert.match(dbg.training1.skipReason, /already sent today/);
+  assert.equal(dbg.manualSentToday, false, 'an automatic send is NOT counted as a manual send');
+});
+
+test('a manual Send Now the same day is reported and does not block the scheduled send', async () => {
+  store.clear(); lists.clear();
+  const now = sundayLocalAfternoonUTC();
+  // Manual send earlier today writes lastSentAt only (no lastAutoSentAt).
+  seedClub('boitsfort-rfc', { ...DUE_SCHEDULE, lastSentAt: now.toISOString() });
+  const report = await runWeeklyAvailabilityCheck({ now, source: 'test', onlyTeamId: 'boitsfort-rfc', subscribers: [], automationMembers: [] });
+  assert.ok(report.results.some(r => r.weeklyAvailability === 'boitsfort-rfc:training1'), 'scheduled send still fires despite the manual send');
+  assert.equal(JSON.parse(store.get('app:club:boitsfort-rfc')).weeklyAvailability.debug.manualSentToday, true, 'manual send today is detected + reported');
+});
+
+test('runWeeklyAvailabilityCheck only touches the requested club (onlyTeamId)', async () => {
+  store.clear(); lists.clear();
+  const now = sundayLocalAfternoonUTC();
+  store.set('app:identity:teams', JSON.stringify([{ id: 'other-club', name: 'Other' }]));
+  seedClub('boitsfort-rfc', { ...DUE_SCHEDULE });
+  seedClub('other-club', { ...DUE_SCHEDULE });
+  await runWeeklyAvailabilityCheck({ now, source: 'test', onlyTeamId: 'boitsfort-rfc', subscribers: [], automationMembers: [] });
+  assert.ok(JSON.parse(store.get('app:club:boitsfort-rfc')).weeklyAvailability.debug, 'requested club checked');
+  assert.ok(!JSON.parse(store.get('app:club:other-club')).weeklyAvailability.debug, 'other club untouched');
+});
+
+// ── Coach-only "Run scheduler check now" endpoint ────────────────────────────
+test('POST resource=availability-check is coach-gated and runs the scheduler path', async () => {
+  store.clear(); lists.clear();
+  const noauth = await callApi(publishHandler, 'POST', { query: { resource: 'availability-check' }, body: {} });
+  assert.ok([401, 403].includes(noauth.statusCode), 'rejects unauthenticated callers');
+
+  const coach = await seedCoach();
+  seedClub('boitsfort-rfc', { enabled: true, training1: { day: 'Mon', time: '09:00' }, training2: { day: 'Wed', time: '09:00' }, match: { day: 'Thu', time: '18:00' } });
+  const res = await callApi(publishHandler, 'POST', { headers: coach.headers, query: { resource: 'availability-check' }, body: {} });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.payload));
+  assert.ok(res.payload.report && res.payload.report.checkedAt, 'returns a scheduler report');
+  assert.ok('nextWindow' in res.payload.report, 'report includes the next expected cron window');
+  assert.ok(res.payload.weeklyAvailability?.debug?.lastCheck, 'the automation check is recorded on the club config');
+  assert.equal(res.payload.weeklyAvailability.debug.lastCheckSource, 'coach: Run check now', 'source attributed to the coach action');
+});
+
+test('the on-demand check uses the scheduler path, not manual Send Now', () => {
+  const pub = readFileSync(new URL('../api/publish.js', import.meta.url), 'utf8');
+  assert.ok(pub.includes('runWeeklyAvailabilityCheck('), 'endpoint calls the shared scheduler');
+  assert.ok(pub.includes('requireTenantPermission(req, PERM.MANAGE_TEAMS)'), 'coach-gated');
+  assert.ok(!pub.includes('/api/push'), 'never routes through the manual Send Now endpoint');
+  assert.ok(cronSrc.includes('runWeeklyAvailabilityCheck({'), 'the cron delegates to the same shared scheduler');
 });

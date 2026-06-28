@@ -20,8 +20,10 @@ import { kvGet, kvSet, kvDel, kvLpush, kvLrange, kvScanKeys } from './_kv.js';
 import { key, APP_PREFIX, LEGACY_PREFIX } from './_keys.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
-import { DEFAULT_TEAM } from './_identityStore.js';
+import { DEFAULT_TEAM, loadTeamMembers } from './_identityStore.js';
 import { requireTenantPermission, requireTenantSession, can, PERM } from './_tenant.js';
+import { load, save } from './_lib.js';
+import { runWeeklyAvailabilityCheck } from './cron.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -352,7 +354,13 @@ async function clubHandler(req, res) {
       weeklyAvailability: (() => {
         const wa = club.weeklyAvailability ?? existing?.weeklyAvailability ?? null;
         if (!wa) return null;
-        return { ...wa, debug: wa.debug ?? existing?.weeklyAvailability?.debug ?? null };
+        // Carry the scheduler-managed runtime fields forward (a coach schedule
+        // edit must not wipe the automation diagnostics or last-auto-send time).
+        return {
+          ...wa,
+          lastAutoSentAt: wa.lastAutoSentAt ?? existing?.weeklyAvailability?.lastAutoSentAt ?? null,
+          debug: wa.debug ?? existing?.weeklyAvailability?.debug ?? null,
+        };
       })(),
       setupCompletedAt: existing?.setupCompletedAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -365,6 +373,31 @@ async function clubHandler(req, res) {
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
+// POST /api/publish?resource=availability-check  (coach/admin only)
+// Runs the REAL weekly-availability scheduler due-check for this coach's club —
+// the exact path the cron uses — so automation can be tested on demand without
+// waiting for Vercel/pinger timing. It does NOT call manual Send Now: a session
+// only sends if it is genuinely due (and dedups per session/day like the cron).
+async function availabilityCheckHandler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  let session;
+  try {
+    session = await requireTenantPermission(req, PERM.MANAGE_TEAMS);
+  } catch (error) {
+    return sendAuthError(res, error);
+  }
+  const [subscribers, automationMembers] = await Promise.all([load(), loadTeamMembers()]);
+  const report = await runWeeklyAvailabilityCheck({
+    now: new Date(), source: 'coach: Run check now',
+    onlyTeamId: session.teamId, subscribers, automationMembers,
+  });
+  if (report.expired?.length) {
+    await save(subscribers.filter(item => !report.expired.includes(item.subscription.endpoint)));
+  }
+  const club = (await kvGet(clubKey(session.teamId))) || null;
+  return res.status(200).json({ ok: true, report, weeklyAvailability: club?.weeklyAvailability || null });
+}
+
 export default async function handler(req, res) {
   setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -372,6 +405,7 @@ export default async function handler(req, res) {
 
   if (String(req.query?.resource || '') === 'roster') return rosterHandler(req, res);
   if (String(req.query?.resource || '') === 'club')   return clubHandler(req, res);
+  if (String(req.query?.resource || '') === 'availability-check') return availabilityCheckHandler(req, res);
 
   // ── GET: any authenticated user reads published player-facing state ────────
   if (req.method === 'GET') {
