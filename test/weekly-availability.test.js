@@ -29,7 +29,7 @@ function extractFn(source, name) {
   throw new Error('function ' + name + ' — no closing brace');
 }
 
-const DEFAULT_WA = { enabled:false, training1:{day:'Mon',time:'09:00'}, training2:{day:'Wed',time:'09:00'}, match:{day:'Thu',time:'18:00'}, lastSentAt:null };
+const DEFAULT_WA = { enabled:false, training1:{day:'Mon',time:'09:00'}, training2:{day:'Wed',time:'09:00'}, match:{day:'Thu',time:'18:00'}, lastSentAt:null, debug:null };
 const scope = new Function(
   `const _WA_DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
    const defaultState = { weeklyAvailability: ${JSON.stringify(DEFAULT_WA)} };` +

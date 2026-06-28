@@ -1,0 +1,46 @@
+name: Availability automation cron
+
+# Why this exists
+# ----------------
+# Weekly Availability sends fire from /api/cron when a session's scheduled time
+# has passed on its day. Vercel's own crons only run a few times a day (and on
+# Hobby a sub-daily schedule is downgraded to once/day), so a schedule like
+# "Sunday 11:50" would not actually fire until the next daily run — appearing
+# broken. This workflow pings the SAME /api/cron endpoint every ~10 minutes so
+# scheduled sends go out within minutes of their time. Per-session de-dup in the
+# cron means hitting it often never double-sends.
+#
+# One-time setup (required for this to authenticate):
+#   GitHub → repo Settings → Secrets and variables → Actions → New repository secret
+#     Name:  CRON_SECRET
+#     Value: the same value as the Vercel project's CRON_SECRET env var
+# Note: GitHub-hosted minutes apply on private repos. If that is a concern, use a
+# free external pinger (e.g. cron-job.org) against the same URL instead.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: availability-cron
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Trigger /api/cron
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET repo secret is not set — see this workflow's header for setup."
+            exit 1
+          fi
+          curl -fsS --max-time 60 -X POST \
+            "https://boitsfort-coachseye.vercel.app/api/cron" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '{}'

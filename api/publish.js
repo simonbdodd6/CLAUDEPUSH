@@ -346,8 +346,14 @@ async function clubHandler(req, res) {
     const existing = (await kvGet(clubKey(session.teamId))) || null;
     const record = {
       ...club,
-      // Keep an existing weekly schedule if a save doesn't carry one.
-      weeklyAvailability: club.weeklyAvailability ?? existing?.weeklyAvailability ?? null,
+      // Keep an existing weekly schedule if a save doesn't carry one, and always
+      // carry the cron-managed automation diagnostics (debug) forward so a coach
+      // schedule edit can't wipe the "last automation check / result" fields.
+      weeklyAvailability: (() => {
+        const wa = club.weeklyAvailability ?? existing?.weeklyAvailability ?? null;
+        if (!wa) return null;
+        return { ...wa, debug: wa.debug ?? existing?.weeklyAvailability?.debug ?? null };
+      })(),
       setupCompletedAt: existing?.setupCompletedAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       updatedBy: session.user.id,

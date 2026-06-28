@@ -32,8 +32,18 @@ globalThis.fetch = async (url, options = {}) => {
 
 const { createSession } = await import('../api/_identityStore.js');
 const { default: publishHandler } = await import('../api/publish.js');
-const { weeklyAvailabilityDue } = await import('../api/cron.js');
+const { weeklyAvailabilityDue, weeklyAvailabilityDecision } = await import('../api/cron.js');
 const { activeMemberIdSet, subscriptionsForMembers, clubMemberSubscriptions } = await import('../api/_lib.js');
+
+const cronSrc = readFileSync(new URL('../api/cron.js', import.meta.url), 'utf8');
+const pushSrc = readFileSync(new URL('../api/push.js', import.meta.url), 'utf8');
+// Test env has no LOCAL_TZ_OFFSET → the cron's default offset is +1h. A date whose
+// local (UTC+1) clock reads Sunday ~13:00, so 09:00/11:50 slots have already passed.
+function sundayLocalAfternoonUTC() {
+  let d = new Date('2026-07-01T12:00:00.000Z');
+  while (new Date(d.getTime() + 3600000).getUTCDay() !== 0) d = new Date(d.getTime() + 24 * 3600000);
+  return d;
+}
 
 function apiReq(method, { query = {}, body = {}, headers = {} } = {}) { return { method, query, body, headers }; }
 function apiRes() { return { statusCode: 0, payload: null, headers: {}, setHeader(n, v) { this.headers[n] = v; }, status(c) { this.statusCode = c; return this; }, json(p) { this.payload = p; return this; }, end() { return this; } }; }
@@ -123,4 +133,127 @@ test('cron fires Weekly Availability from the club config, club-scoped, deduped'
   assert.ok(cron.includes('activeMemberIdSet(automationMembers, team.id)'), 'delivery scoped to the firing team only');
   assert.ok(cron.includes('weekly_avail_fired'), 'per-day dedup map');
   assert.ok(cron.includes("startsWith('sch-wk-')"), 'legacy client-synced schedules skipped (no double-send)');
+});
+
+// ── The reported bug: a manual Send Now must not block a later scheduled send ──
+test('a manual Send Now earlier the same day does NOT block a scheduled send', () => {
+  const now = sundayLocalAfternoonUTC();                // local Sunday ~13:00
+  const slot = { day: 'Sun', time: '11:50' };           // passed, not yet fired by the scheduler
+  // The scheduler only ever consults the PER-SESSION fired marker (null here);
+  // the club's manual lastSentAt is never passed in, so it cannot suppress this.
+  assert.equal(weeklyAvailabilityDue(slot, now, null), true, 'due regardless of any manual send today');
+  // Structural proof: the cron dedups on firedMap[firedKey], not wa.lastSentAt.
+  assert.ok(cronSrc.includes('weeklyAvailabilityDecision(slot, now, firedMap[firedKey] || null)'),
+    'dedup uses the per-session fired marker');
+  assert.ok(!/weeklyAvailabilityD(ue|ecision)\([^)]*wa\.lastSentAt/.test(cronSrc),
+    'the club/manual lastSentAt is never passed into the due check');
+});
+
+// ── T1 / T2 / Match track their last send independently ───────────────────────
+test('Training 1, Training 2 and Match dedup independently (per team+session)', () => {
+  const now = sundayLocalAfternoonUTC();
+  const slot = { day: 'Sun', time: '09:00' };
+  // One session already fired today (marker set) → skipped; another not fired → still due.
+  assert.equal(weeklyAvailabilityDue(slot, now, now.toISOString()), false, 'a session that fired today is skipped');
+  assert.equal(weeklyAvailabilityDue(slot, now, null), true, 'a sibling session that has not fired is still due');
+  assert.ok(cronSrc.includes('const firedKey = `${team.id}:${sessionKey}`'),
+    'the fired marker is keyed per team AND session, so the three sessions are independent');
+});
+
+// ── Sunday local time ─────────────────────────────────────────────────────────
+test('a Sunday schedule fires on Sunday (local time)', () => {
+  const now = sundayLocalAfternoonUTC();
+  assert.equal(new Date(now.getTime() + 3600000).getUTCDay(), 0, 'fixture really is local Sunday');
+  assert.equal(weeklyAvailabilityDue({ day: 'Sun', time: '11:50' }, now, null), true, 'Sunday 11:50 → due Sunday afternoon');
+  assert.equal(weeklyAvailabilityDue({ day: 'Mon', time: '11:50' }, now, null), false, 'a Monday slot is not due on Sunday');
+  assert.equal(weeklyAvailabilityDue({ day: 'Sat', time: '11:50' }, now, null), false, 'a Saturday slot is not due on Sunday');
+});
+
+// ── Timezone conversion drives the local day + time ───────────────────────────
+test('timezone offset decides the local day and whether the time has passed', () => {
+  const now = new Date('2026-07-05T23:30:00.000Z');     // crosses midnight under a +1h offset
+  const dayAt = off => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(now.getTime() + off * 3600000).getUTCDay()];
+  const utcDay = dayAt(0), nextDay = dayAt(1);
+  assert.notEqual(utcDay, nextDay, 'the +1h offset rolls into the next local day');
+  assert.equal(weeklyAvailabilityDue({ day: utcDay, time: '12:00' }, now, null, 0), true, 'offset 0 → still that day, time passed → due');
+  assert.equal(weeklyAvailabilityDue({ day: utcDay, time: '12:00' }, now, null, 1), false, 'offset +1 → now the next day → that slot is not due');
+  assert.equal(weeklyAvailabilityDue({ day: nextDay, time: '00:00' }, now, null, 1), true, 'offset +1 → next day 00:00 has passed → due');
+});
+
+// ── No duplicate send for the same scheduled item on the same day ─────────────
+test('no duplicate send for the same scheduled item on the same day', () => {
+  const now = sundayLocalAfternoonUTC();
+  const slot = { day: 'Sun', time: '09:00' };
+  assert.equal(weeklyAvailabilityDue(slot, now, null), true, 'first check fires');
+  assert.equal(weeklyAvailabilityDue(slot, now, now.toISOString()), false, 'a later check the same day does not re-send');
+  assert.equal(weeklyAvailabilityDecision(slot, now, now.toISOString()).reason, 'already sent today');
+});
+
+// ── Scheduled path uses the SAME club-scoped targeting as manual Send Now ─────
+test('scheduled send targets the same club-scoped recipient set as manual Send Now', () => {
+  assert.ok(cronSrc.includes('subscriptionsForMembers(subscribers, activeMemberIdSet(automationMembers, team.id))'),
+    'cron restricts delivery to active members of the firing club');
+  assert.ok(pushSrc.includes('clubMemberSubscriptions('), 'manual /api/push uses the club-scoped chokepoint');
+  // clubMemberSubscriptions IS subscriptionsForMembers ∘ activeMemberIdSet — prove identical output.
+  const members = [
+    { userId: 'A', teamId: 't', status: 'active' },
+    { userId: 'B', teamId: 't', status: 'removed' },
+    { userId: 'C', teamId: 'other', status: 'active' },
+  ];
+  const subs = members.map(m => ({ userId: m.userId, subscription: { endpoint: m.userId } }));
+  const viaCron   = subscriptionsForMembers(subs, activeMemberIdSet(members, 't')).map(s => s.subscription.endpoint).sort();
+  const viaManual = clubMemberSubscriptions(subs, members, 't').map(s => s.subscription.endpoint).sort();
+  assert.deepEqual(viaCron, viaManual, 'scheduled and manual resolve the identical recipients');
+  assert.deepEqual(viaCron, ['A'], 'only active members of the firing club');
+});
+
+// ── Beta diagnostics — observable scheduler state ─────────────────────────────
+test('the cron records automation diagnostics (debug fields) every run', () => {
+  assert.ok(cronSrc.includes('debug.lastCheck = now.toISOString()'), 'last automation check');
+  assert.ok(cronSrc.includes('d.lastAttempt = now.toISOString()'), 'per-session last scheduled attempt');
+  assert.ok(cronSrc.includes("d.lastResult = 'skipped'") && cronSrc.includes('d.skipReason = decision.reason'), 'last result + skip reason');
+  assert.ok(cronSrc.includes('d.lastSend = now.toISOString()'), 'last scheduled send time');
+  assert.ok(cronSrc.includes('wa.debug = debug; await kvSet(key(`club:${team.id}`), club)'), 'diagnostics persisted to the club config every run');
+});
+
+test('weeklyAvailabilityDecision explains why a session did/did not fire', () => {
+  const now = sundayLocalAfternoonUTC();
+  assert.match(weeklyAvailabilityDecision({ day: 'Mon', time: '09:00' }, now, null).reason, /not scheduled today/);
+  assert.match(weeklyAvailabilityDecision({ day: 'Sun', time: '23:30' }, now, null).reason, /before send time/);
+  assert.equal(weeklyAvailabilityDecision({}, now, null).reason, 'no schedule set');
+  assert.match(weeklyAvailabilityDecision({ day: 'Sun', time: '09:00' }, now, null).reason, /^due/);
+});
+
+// ── A frequent trigger is configured so an arbitrary time actually fires ──────
+test('a frequent trigger is configured (Vercel sub-daily cron + external pinger)', () => {
+  const vj = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  assert.ok(vj.crons.some(c => c.path === '/api/cron' && /^\*\//.test(c.schedule)),
+    'a sub-daily Vercel cron pings /api/cron');
+  const wf = readFileSync(new URL('../.github/workflows/availability-cron.yml', import.meta.url), 'utf8');
+  assert.ok(wf.includes('/api/cron') && /cron: '\*\//.test(wf), 'external scheduler pings /api/cron frequently');
+  assert.ok(wf.includes('Authorization: Bearer ${CRON_SECRET}'), 'authenticates with the cron secret');
+});
+
+// ── Diagnostics survive a coach schedule edit (publish.js carries debug fwd) ──
+test('a coach schedule save does not wipe the cron diagnostics', async () => {
+  store.clear(); lists.clear();
+  const coach = await seedCoach();
+  // Seed a club whose stored config already has cron-written diagnostics.
+  store.set('app:club:boitsfort-rfc', JSON.stringify({
+    clubName: 'Boitsfort RFC',
+    weeklyAvailability: {
+      enabled: true, training1: { day: 'Sun', time: '11:50' }, training2: { day: 'Wed', time: '09:00' }, match: { day: 'Thu', time: '18:00' },
+      lastSentAt: '2026-07-05T10:00:00.000Z',
+      debug: { lastCheck: '2026-07-05T12:00:00.000Z', training1: { lastResult: 'sent 4/4', lastSend: '2026-07-05T12:00:00.000Z' } },
+    },
+  }));
+  // Coach edits the schedule (no debug in the payload).
+  const saved = await callApi(publishHandler, 'POST', { headers: coach.headers, query: { resource: 'club' }, body: { club: {
+    clubName: 'Boitsfort RFC',
+    weeklyAvailability: { enabled: true, training1: { day: 'Sun', time: '12:30' }, training2: { day: 'Wed', time: '09:00' }, match: { day: 'Thu', time: '18:00' } },
+  } } });
+  assert.equal(saved.statusCode, 200, JSON.stringify(saved.payload));
+  assert.equal(saved.payload.club.weeklyAvailability.training1.time, '12:30', 'edit applied');
+  assert.ok(saved.payload.club.weeklyAvailability.debug, 'diagnostics preserved');
+  assert.equal(saved.payload.club.weeklyAvailability.debug.training1.lastResult, 'sent 4/4', 'prior result carried forward');
 });

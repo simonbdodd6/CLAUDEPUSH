@@ -4155,6 +4155,17 @@
     .wa-actions { display:grid; grid-template-columns:repeat(2,1fr); gap:9px; }
     .wa-actions .btn { min-height:42px; }
     @media (max-width: 560px) { .wa-meta { grid-template-columns:1fr; } .wa-actions { grid-template-columns:1fr; } }
+    /* Beta automation diagnostics (collapsed by default) */
+    .wa-diag { border:1px solid var(--line); border-radius:11px; background:var(--panel-2); padding:4px 12px; }
+    .wa-diag > summary { cursor:pointer; font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); padding:7px 0; list-style:none; }
+    .wa-diag > summary::-webkit-details-marker { display:none; }
+    .wa-diag > summary::before { content:'▸ '; }
+    .wa-diag[open] > summary::before { content:'▾ '; }
+    .wa-diag-body { padding:4px 0 10px; display:grid; gap:2px; }
+    .wa-diag-row { display:flex; justify-content:space-between; gap:12px; font-size:12.5px; margin-top:8px; }
+    .wa-diag-name { font-weight:700; color:var(--ink); white-space:nowrap; }
+    .wa-diag-val { color:var(--muted); text-align:right; }
+    .wa-diag-sub { font-size:10.5px; color:var(--muted); opacity:.8; }
 
     /* Availability page header (the topbar is hidden for this section) — page
        title with a simple week navigator beneath it; the board pulls up. */
@@ -9597,6 +9608,8 @@
         training2: slot(wa.training2, d.training2),
         match:     slot(wa.match,     d.match),
         lastSentAt: wa.lastSentAt || null,
+        // Read-only automation diagnostics written by the cron (see api/cron.js).
+        debug: (wa.debug && typeof wa.debug === 'object') ? wa.debug : null,
       };
     }
 
@@ -9646,6 +9659,7 @@
             <div><span class="muted">Next scheduled send</span><strong>${esc(nextLabel)}</strong></div>
             <div><span class="muted">Last sent</span><strong>${esc(lastLabel)}</strong></div>
           </div>
+          ${weeklyAutomationDiagnosticsHtml(wa)}
           <div class="wa-actions">
             <button class="btn ${on ? '' : 'primary'}" type="button" onclick="toggleWeeklyAutomation()">${on ? 'Turn automation off' : 'Turn automation on'}</button>
             <button class="btn" type="button" onclick="openWeeklyScheduleEditor()">Edit schedule</button>
@@ -9654,6 +9668,34 @@
           </div>
           <p class="muted" style="font-size:11.5px;margin:12px 0 0">Players reply in one tap from the notification. They need notifications on to receive the request — you can still set the schedule now.</p>
         </div>`;
+    }
+
+    // Beta automation diagnostics — surfaces the server-side scheduler state the
+    // cron records (api/cron.js). Collapsed by default; presentation only.
+    function weeklyAutomationDiagnosticsHtml(wa) {
+      const dbg = wa && wa.debug;
+      const fmt = iso => {
+        if (!iso) return '—';
+        const dt = new Date(iso);
+        return `${dt.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' })} ${dt.toTimeString().slice(0,5)}`;
+      };
+      const checked = dbg && dbg.lastCheck ? `checked ${fmt(dbg.lastCheck)}` : 'not checked yet';
+      const sessionRow = (key, label) => {
+        const s = (dbg && dbg[key]) || {};
+        const result = s.lastResult || (s.lastAttempt ? 'checked' : '—');
+        const reason = s.skipReason ? ` — ${esc(s.skipReason)}` : '';
+        return `<div class="wa-diag-row"><span class="wa-diag-name">${label}</span><span class="wa-diag-val">${esc(result)}${reason}</span></div>
+          <div class="wa-diag-sub">last attempt ${esc(fmt(s.lastAttempt))} · last send ${esc(fmt(s.lastSend))}</div>`;
+      };
+      return `<details class="wa-diag">
+        <summary>Automation status · ${esc(checked)}</summary>
+        <div class="wa-diag-body">
+          ${sessionRow('training1', 'Training 1')}
+          ${sessionRow('training2', 'Training 2')}
+          ${sessionRow('match', 'Match')}
+          <p class="muted" style="font-size:11px;margin:8px 0 0">“Checked” is when the automation last ran on the server. A scheduled send fires at the first check at/after its time on the right day; manual “Send now” never affects it.</p>
+        </div>
+      </details>`;
     }
 
     function toggleWeeklyAutomation() {

@@ -64,18 +64,33 @@ export function scheduleIsDue(schedule, now, fireWindowMinutes, offsetHours = lo
 // Weekly Availability fires once per scheduled local day, at the first cron run
 // at/after the scheduled time. Unlike the ±window dispatcher this still delivers
 // on Vercel's daily crons alone (just sooner when a 5-minute scheduler runs).
-// Deduped per day via lastSentAt.
-export function weeklyAvailabilityDue(slot, now, lastSentAt, offsetHours = localUTCOffset()) {
-  if (!slot || !slot.day || !slot.time) return false;
+//
+// `lastSentAt` here is the PER-SESSION fired marker
+// (weekly_avail_fired[`${team}:${session}`]) — never the club's manual
+// lastSentAt — so a manual "Send now" can NEVER block a scheduled send, and
+// Training 1 / Training 2 / Match each dedup independently. Returns a reason so
+// the Beta diagnostics can show exactly why a session did / didn't fire.
+export function weeklyAvailabilityDecision(slot, now, lastSentAt, offsetHours = localUTCOffset()) {
+  if (!slot || !slot.day || !slot.time) return { due: false, reason: 'no schedule set' };
   const localNow = localDate(now, offsetHours);
   const localToday = localNow.toISOString().slice(0, 10);
   if (lastSentAt) {
     const localLast = localDate(new Date(lastSentAt), offsetHours).toISOString().slice(0, 10);
-    if (localLast === localToday) return false;            // already sent today
+    if (localLast === localToday) return { due: false, reason: 'already sent today' };
   }
-  if (localNow.getUTCDay() !== DAY_MAP[String(slot.day).toLowerCase()]) return false;
+  if (localNow.getUTCDay() !== DAY_MAP[String(slot.day).toLowerCase()]) {
+    return { due: false, reason: `not scheduled today (waits for ${slot.day})` };
+  }
   const [h, m] = String(slot.time).split(':').map(Number);
-  return (localNow.getUTCHours() * 60 + localNow.getUTCMinutes()) >= ((h || 0) * 60 + (m || 0));
+  const nowMin = localNow.getUTCHours() * 60 + localNow.getUTCMinutes();
+  const schedMin = (h || 0) * 60 + (m || 0);
+  const hhmm = `${String(localNow.getUTCHours()).padStart(2, '0')}:${String(localNow.getUTCMinutes()).padStart(2, '0')}`;
+  if (nowMin < schedMin) return { due: false, reason: `before send time (now ${hhmm} local < ${slot.time})` };
+  return { due: true, reason: `due (now ${hhmm} local ≥ ${slot.time})` };
+}
+
+export function weeklyAvailabilityDue(slot, now, lastSentAt, offsetHours = localUTCOffset()) {
+  return weeklyAvailabilityDecision(slot, now, lastSentAt, offsetHours).due;
 }
 
 function availabilityActions(type) {
@@ -268,12 +283,26 @@ export default async function handler(req, res) {
       const club = await kvGet(key(`club:${team.id}`));
       const wa = club?.weeklyAvailability;
       if (!wa || !wa.enabled) continue;
+      // Beta diagnostics — record every automation check + each session's outcome
+      // so the coach can see exactly what the scheduler did, and why a session was
+      // skipped. Persisted on the club config (survives coach schedule edits).
+      const debug = (wa.debug && typeof wa.debug === 'object') ? wa.debug : {};
+      debug.lastCheck = now.toISOString();
       for (const [sessionKey, label] of WA_SESSIONS) {
         const slot = wa[sessionKey];
-        if (!slot || !slot.day || !slot.time) continue;
+        const d = (debug[sessionKey] && typeof debug[sessionKey] === 'object') ? debug[sessionKey] : {};
+        d.lastAttempt = now.toISOString();
         const firedKey = `${team.id}:${sessionKey}`;
         const sessionId = sessionKey === 'match' ? 'game' : sessionKey;
-        if (!weeklyAvailabilityDue(slot, now, firedMap[firedKey] || null)) continue;
+        // Per-session dedup marker — NOT the club's manual lastSentAt.
+        const decision = weeklyAvailabilityDecision(slot, now, firedMap[firedKey] || null);
+        if (!decision.due) {
+          d.lastResult = 'skipped';
+          d.skipReason = decision.reason;
+          debug[sessionKey] = d;
+          continue;
+        }
+        // ── due → send via the SAME club-scoped targeting as manual Send Now ──
         let targets = subscriptionsForMembers(subscribers, activeMemberIdSet(automationMembers, team.id));
         const waPrefs = await loadNotificationPreferenceMap();
         if (Object.keys(waPrefs).length) {
@@ -297,12 +326,17 @@ export default async function handler(req, res) {
         });
         firedMap[firedKey] = now.toISOString();
         firedChanged = true;
-        try {
-          if (club?.weeklyAvailability) { club.weeklyAvailability.lastSentAt = now.toISOString(); await kvSet(key(`club:${team.id}`), club); }
-        } catch { /* display-only update */ }
+        d.lastResult = `sent ${sent}/${targets.length}${failed ? ` (${failed} failed)` : ''}`;
+        d.lastSend = now.toISOString();
+        d.skipReason = '';
+        debug[sessionKey] = d;
+        wa.lastSentAt = now.toISOString();
         await kvLpush(key('message_log'), { type: 'weekly-availability', teamId: team.id, session: sessionKey, title, sentAt: now.toISOString(), sent, failed, total: targets.length });
         results.push({ weeklyAvailability: firedKey, sent, failed, total: targets.length });
       }
+      // Persist diagnostics (+ any lastSentAt) for this club every run — even when
+      // nothing fired — so "Last automation check" always reflects the latest run.
+      try { wa.debug = debug; await kvSet(key(`club:${team.id}`), club); } catch { /* diagnostics best-effort */ }
     }
     if (firedChanged) { await kvSet(key('weekly_avail_fired'), firedMap); await kvLtrim(key('message_log'), 500); }
   } catch (error) {
