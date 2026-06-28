@@ -33,6 +33,7 @@ globalThis.fetch = async (url, options = {}) => {
 const { createSession } = await import('../api/_identityStore.js');
 const { default: publishHandler } = await import('../api/publish.js');
 const { weeklyAvailabilityDue, weeklyAvailabilityDecision, runWeeklyAvailabilityCheck } = await import('../api/cron.js');
+const { default: cronHandler } = await import('../api/cron.js');
 const { activeMemberIdSet, subscriptionsForMembers, clubMemberSubscriptions } = await import('../api/_lib.js');
 
 const cronSrc = readFileSync(new URL('../api/cron.js', import.meta.url), 'utf8');
@@ -343,4 +344,28 @@ test('the on-demand check uses the scheduler path, not manual Send Now', () => {
   assert.ok(pub.includes('requireTenantPermission(req, PERM.MANAGE_TEAMS)'), 'coach-gated');
   assert.ok(!pub.includes('/api/push'), 'never routes through the manual Send Now endpoint');
   assert.ok(cronSrc.includes('runWeeklyAvailabilityCheck({'), 'the cron delegates to the same shared scheduler');
+});
+
+// ── Unattended path: /api/cron auth (what the GitHub Actions pinger calls) ────
+test('/api/cron rejects unauthenticated requests and accepts the CRON_SECRET', async () => {
+  const prev = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'unit-test-secret';
+  try {
+    assert.equal((await callApi(cronHandler, 'POST', {})).statusCode, 401, 'missing secret → 401');
+    assert.equal((await callApi(cronHandler, 'POST', { headers: { authorization: 'Bearer nope' } })).statusCode, 401, 'wrong secret → 401');
+    const ok = await callApi(cronHandler, 'POST', { headers: { authorization: 'Bearer unit-test-secret' } });
+    assert.notEqual(ok.statusCode, 401, 'correct CRON_SECRET → past auth (runs with no coach/UI)');
+  } finally {
+    if (prev === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = prev;
+  }
+});
+
+test('the unattended pinger is wired: 5-minute GitHub Actions cron that tags its source', () => {
+  const wf = readFileSync(new URL('../.github/workflows/availability-cron.yml', import.meta.url), 'utf8');
+  assert.ok(/cron: '\*\/5 /.test(wf), 'runs every 5 minutes');
+  assert.ok(wf.includes('/api/cron?source=github-actions'), 'pings the scheduler endpoint, tagged github-actions');
+  assert.ok(wf.includes('Authorization: Bearer ${CRON_SECRET}'), 'authenticates with the CRON_SECRET repo secret');
+  assert.ok(/default branch \(main\)/i.test(wf), 'documents the GitHub default-branch requirement');
+  // the cron records "Last check source" from the request hint
+  assert.ok(/req\.query\?\.source/.test(cronSrc), 'cron labels the diagnostics source from the request');
 });

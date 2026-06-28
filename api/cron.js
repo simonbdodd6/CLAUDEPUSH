@@ -388,7 +388,11 @@ export default async function handler(req, res) {
   try {
     const waRun = await runWeeklyAvailabilityCheck({
       now, subscribers, automationMembers,
-      source: req.headers?.['x-vercel-cron'] === '1' ? 'vercel-cron' : 'cron/pinger',
+      // Source for the Beta diagnostics: Vercel's own cron sets x-vercel-cron;
+      // the GitHub Actions pinger passes ?source=github-actions; else generic.
+      source: req.headers?.['x-vercel-cron'] === '1'
+        ? 'vercel-cron'
+        : (String(req.query?.source || '').slice(0, 40) || 'external pinger'),
     });
     waRun.results.forEach(result => results.push(result));
     waRun.expired.forEach(endpoint => expiredEndpoints.add(endpoint));
