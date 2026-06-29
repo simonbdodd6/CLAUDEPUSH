@@ -149,9 +149,13 @@ struct TripTimeline {
     var dayOfTrip: Int
     var totalDays: Int
     var daysToReturn: Int
+    var daysToDeparture: Int
     var departureLabel: String
     var alerts: [String]
     var events: [TimelineEvent]
+
+    /// True once the journey is underway (departure day reached or passed).
+    var hasDeparted: Bool { daysToDeparture <= 0 }
 
     var progress: Double {
         guard !events.isEmpty else { return 0 }
@@ -196,11 +200,14 @@ struct TravelTripTimelineDashboard: View {
             )
             .modifier(TripTimelineAppear(appeared: appeared, reduceMotion: reduceMotion, index: 0))
 
-            progressCard
+            departureCountdownCard
                 .modifier(TripTimelineAppear(appeared: appeared, reduceMotion: reduceMotion, index: 1))
 
+            progressCard
+                .modifier(TripTimelineAppear(appeared: appeared, reduceMotion: reduceMotion, index: 2))
+
             if !trip.todayEvents.isEmpty {
-                section("Today", "What’s happening now.", 2) {
+                section("Today", "What’s happening now.", 3) {
                     VStack(spacing: TravelSpacing.sm) {
                         ForEach(trip.todayEvents) { event in
                             eventCard(event)
@@ -210,18 +217,18 @@ struct TravelTripTimelineDashboard: View {
             }
 
             if let next = trip.nextUp {
-                section("Next up", "Coming up next.", 3) {
+                section("Next up", "Coming up next.", 4) {
                     eventCard(next)
                 }
             }
 
             if !trip.alerts.isEmpty {
-                section("Upcoming alerts", "Don’t miss these.", 4) {
+                section("Upcoming alerts", "Don’t miss these.", 5) {
                     bulletCard(trip.alerts, icon: "bell.badge.fill", tint: theme.coral)
                 }
             }
 
-            section("Filter", "Show just what you need.", 5) {
+            section("Filter", "Show just what you need.", 6) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: TravelSpacing.xs) {
                         ForEach(filters, id: \.self) { filter in
@@ -232,7 +239,7 @@ struct TravelTripTimelineDashboard: View {
                 }
             }
 
-            section("Trip timeline", "Your whole journey, in order.", 6) {
+            section("Trip timeline", "Your whole journey, in order.", 7) {
                 if filteredEvents.isEmpty {
                     GlassCard {
                         Text("No \(selectedFilter.lowercased()) on this trip.")
@@ -249,12 +256,12 @@ struct TravelTripTimelineDashboard: View {
             }
 
             if let home = trip.returnHome {
-                section("Return home", "The journey back.", 7) {
+                section("Return home", "The journey back.", 8) {
                     eventCard(home)
                 }
             }
 
-            section("Calendar", "Keep it in sync.", 8) {
+            section("Calendar", "Keep it in sync.", 9) {
                 calendarPlaceholder
             }
         }
@@ -275,6 +282,47 @@ struct TravelTripTimelineDashboard: View {
             content()
         }
         .modifier(TripTimelineAppear(appeared: appeared, reduceMotion: reduceMotion, index: index))
+    }
+
+    // MARK: Departure countdown card
+
+    private var departureCountdownCard: some View {
+        GlassCard(prominence: .hero) {
+            VStack(alignment: .leading, spacing: TravelSpacing.sm) {
+                Text(trip.hasDeparted ? "Trip underway" : "Departure countdown")
+                    .font(TravelTypography.eyebrow)
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: TravelSpacing.sm) {
+                    if trip.hasDeparted {
+                        Text("You’re on your way")
+                            .font(TravelTypography.cardTitle)
+                    } else {
+                        Text("\(trip.daysToDeparture)")
+                            .font(TravelTypography.display)
+                            .foregroundStyle(theme.tint)
+                        Text(trip.daysToDeparture == 1 ? "day to go" : "days to go")
+                            .font(TravelTypography.cardTitle)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    medallion(trip.hasDeparted ? "airplane.departure" : "hourglass", theme.tint)
+                }
+                Label(trip.departureLabel, systemImage: "calendar")
+                    .font(TravelTypography.caption)
+                    .foregroundStyle(.secondary)
+                Text(trip.hasDeparted
+                     ? "Bon voyage — enjoy every moment. Home in \(trip.daysToReturn) days."
+                     : "Bags packed? Your adventure across Indonesia begins soon.")
+                    .font(TravelTypography.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(trip.hasDeparted
+            ? "Trip underway. Departure \(trip.departureLabel). Home in \(trip.daysToReturn) days."
+            : "Departure countdown. \(trip.daysToDeparture) days to go. Departure \(trip.departureLabel).")
     }
 
     // MARK: Progress card
@@ -570,6 +618,7 @@ extension TripTimeline {
             dayOfTrip: 6,
             totalDays: 14,
             daysToReturn: 8,
+            daysToDeparture: 0,
             departureLabel: "12–26 Aug 2025",
             alerts: [
                 "Confirm tomorrow’s 09:00 fast boat to Lombok.",
@@ -597,6 +646,24 @@ extension TripTimeline {
             ]
         )
     }
+
+    /// The same journey seen 12 days before departure — everything still upcoming,
+    /// so the departure countdown shows numerically.
+    static var samplePreDeparture: TripTimeline {
+        var trip = sampleIndonesia
+        trip.heroTitle = "Almost There"
+        trip.heroSubtitle = "12 days until you fly — Bali, the Nusas, the Gilis, Lombok, Komodo and Raja Ampat."
+        trip.dayOfTrip = 0
+        trip.daysToReturn = trip.totalDays
+        trip.daysToDeparture = 12
+        trip.events = sampleIndonesia.events.map { event in
+            var copy = event
+            copy.isPast = false
+            copy.isToday = false
+            return copy
+        }
+        return trip
+    }
 }
 
 struct TravelTripTimelineDashboard_Previews: PreviewProvider {
@@ -604,6 +671,9 @@ struct TravelTripTimelineDashboard_Previews: PreviewProvider {
         Group {
             TravelTripTimelineDashboard(trip: .sampleIndonesia)
                 .previewDisplayName("Trip timeline · Indonesia")
+
+            TravelTripTimelineDashboard(trip: .samplePreDeparture)
+                .previewDisplayName("Trip timeline · Countdown")
 
             TravelTripTimelineDashboard(trip: .sampleIndonesia)
                 .environment(\.sizeCategory, .accessibilityLarge)
