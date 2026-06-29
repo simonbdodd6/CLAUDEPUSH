@@ -6678,14 +6678,17 @@
     }
     function removeTimeBlock(sessionId, blockId) {
       if (!state.trainingBlocks?.[sessionId]) return;
-      state.trainingBlocks[sessionId] = state.trainingBlocks[sessionId].filter(b=>b.id!==blockId);
+      // Compare ids as strings: the onclick passes a string, but a block's stored
+      // id may be a number (legacy/server-shaped data). A strict !== would never
+      // match a numeric id, so the block could not be removed (or edited) below.
+      state.trainingBlocks[sessionId] = state.trainingBlocks[sessionId].filter(b=>String(b.id)!==String(blockId));
       saveState('Block removed'); showToast('Block removed'); render();
       syncPublishedSessionEdit(sessionId);
     }
     function updateTimeBlock(sessionId, blockId, field, val) {
       const blocks = state.trainingBlocks?.[sessionId];
       if (!blocks) return;
-      const b = blocks.find(b => b.id === blockId);
+      const b = blocks.find(b => String(b.id) === String(blockId));
       if (b) { b[field] = val; saveState(); syncPublishedSessionEdit(sessionId); }
     }
 
