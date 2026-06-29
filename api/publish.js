@@ -229,11 +229,14 @@ function sanitiseWeeklyAvailability(raw) {
     day:  DAYS3.has(String(s?.day)) ? String(s.day) : defDay,
     time: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(s?.time || '')) ? String(s.time) : defTime,
   });
+  // Beta: the weekly reminder is HOUR-based only — snap any minutes to :00.
+  const hourSlot = (s, defDay, defTime) => { const r = slot(s, defDay, defTime); return { day: r.day, time: `${r.time.slice(0, 2)}:00` }; };
   return {
     enabled: Boolean(raw.enabled),
-    // Beta: ONE weekly reminder slot. Older configs migrate from training1 so the
-    // coach's existing day/time carries over. training1/2/match kept for back-compat.
-    reminder:  slot(raw.reminder || raw.training1, 'Mon', '09:00'),
+    // Beta: ONE weekly reminder slot, day + hour only. Older configs migrate from
+    // training1 so the coach's existing day/hour carries over. training1/2/match
+    // kept for back-compat.
+    reminder:  hourSlot(raw.reminder || raw.training1, 'Mon', '09:00'),
     training1: slot(raw.training1, 'Mon', '09:00'),
     training2: slot(raw.training2, 'Wed', '09:00'),
     match:     slot(raw.match,     'Thu', '18:00'),

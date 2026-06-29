@@ -53,13 +53,20 @@ test('schedule values persist (valid day/time kept), invalid coerced to defaults
     lastSentAt: '2026-07-01T09:00:00.000Z',
   });
   assert.equal(wa.enabled, true);
-  assert.deepEqual(wa.reminder, { day: 'Fri', time: '07:30' }, 'reminder migrates from training1');
+  assert.deepEqual(wa.reminder, { day: 'Fri', time: '07:00' }, 'reminder migrates from training1, snapped to the hour');
   assert.deepEqual(wa.training1, { day: 'Fri', time: '07:30' });
   assert.deepEqual(wa.training2, { day: 'Sun', time: '20:00' });
   assert.deepEqual(wa.match, { day: 'Thu', time: '18:00' }, 'invalid match falls back to default');
   assert.equal(wa.lastSentAt, '2026-07-01T09:00:00.000Z');
   // round-trips stably (what persists reloads identically)
   assert.deepEqual(normalizeWeeklyAvailability(wa), wa);
+});
+
+test('the weekly reminder is hour-based: any minutes are snapped to :00', () => {
+  for (const [given, expected] of [['07:30', '07:00'], ['14:59', '14:00'], ['00:01', '00:00'], ['23:45', '23:00']]) {
+    const wa = normalizeWeeklyAvailability({ enabled: true, reminder: { day: 'Mon', time: given } });
+    assert.equal(wa.reminder.time, expected, `${given} → ${expected}`);
+  }
 });
 
 test('enabled flag toggles independently of the times', () => {

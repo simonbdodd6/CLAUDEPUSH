@@ -9691,11 +9691,13 @@
         day:  DAYS.includes(s?.day) ? s.day : def.day,
         time: /^([01]\d|2[0-3]):[0-5]\d$/.test(s?.time) ? s.time : def.time,
       });
+      // Beta: the weekly reminder is HOUR-based only — snap any minutes to :00.
+      const hourSlot = (s, def) => { const r = slot(s, def); return { day: r.day, time: r.time.slice(0, 2) + ':00' }; };
       return {
         enabled: !!wa.enabled,
-        // Beta: ONE weekly reminder. Migrates from training1 so an existing
-        // schedule's day/time carries over; training1/2/match kept for back-compat.
-        reminder:  slot(wa.reminder || wa.training1, { day: 'Mon', time: '09:00' }),
+        // Beta: ONE weekly reminder, day + hour only. Migrates from training1 so an
+        // existing schedule's day/hour carries over; training1/2/match kept for back-compat.
+        reminder:  hourSlot(wa.reminder || wa.training1, { day: 'Mon', time: '09:00' }),
         training1: slot(wa.training1, d.training1),
         training2: slot(wa.training2, d.training2),
         match:     slot(wa.match,     d.match),
@@ -9732,7 +9734,8 @@
         : 'Not sent yet';
       const row = (key, label) => {
         const s = wa[key];
-        return `<div class="wa-row"><span class="wa-row-label">${label}</span><span class="wa-row-when">${_waDayName(s.day)} · ${esc(s.time)}</span></div>`;
+        // Hour-based reminder — show the day + the on-the-hour time clearly.
+        return `<div class="wa-row"><span class="wa-row-label">${label}</span><span class="wa-row-when">${_waDayName(s.day)}s at ${esc(s.time)}</span></div>`;
       };
       return `
         <div class="card wa-card">
@@ -9837,12 +9840,14 @@
       if (!isCoach()) return;
       const wa = normalizeWeeklyAvailability(state.weeklyAvailability);
       const dayOpts = sel => _WA_DAYS.map(d => `<option value="${d}" ${d===sel?'selected':''}>${_waDayName(d)}</option>`).join('');
+      // Hour-based only: a 00:00–23:00 dropdown, no minute picker.
+      const hourOpts = sel => Array.from({ length: 24 }, (_, h) => { const v = `${String(h).padStart(2,'0')}:00`; return `<option value="${v}" ${v===sel?'selected':''}>${v}</option>`; }).join('');
       const fieldRow = (key, label) => {
         const s = wa[key];
         return `<div style="display:grid;grid-template-columns:1fr 132px 108px;gap:10px;align-items:center;margin-top:11px">
           <span style="font-size:13px;font-weight:700;color:var(--ink)">${label}</span>
           <select id="wa-day-${key}" style="width:100%">${dayOpts(s.day)}</select>
-          <input id="wa-time-${key}" type="time" value="${esc(s.time)}" style="width:100%"></div>`;
+          <select id="wa-hour-${key}" style="width:100%">${hourOpts(s.time)}</select></div>`;
       };
       const el = document.createElement('div');
       el.id = 'wa-editor';
@@ -9852,7 +9857,7 @@
         <div style="background:#fff;border-radius:20px;padding:26px;max-width:470px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.45);max-height:92vh;overflow-y:auto">
           <div class="eyebrow" style="color:var(--accent)">Weekly Availability</div>
           <h2 style="margin:3px 0 4px;font-size:20px;color:var(--ink)">Edit schedule</h2>
-          <p class="muted" style="font-size:13px;margin:0 0 4px">Pick the day and time the weekly availability reminder is sent.</p>
+          <p class="muted" style="font-size:13px;margin:0 0 4px">Pick the day and hour the weekly availability reminder is sent. It goes out once during that hour.</p>
           ${fieldRow('reminder','Weekly reminder')}
           <button class="btn primary" type="button" onclick="saveWeeklySchedule()" style="width:100%;min-height:46px;margin-top:18px;font-weight:700">Save schedule</button>
           <button class="btn" type="button" onclick="document.getElementById('wa-editor')?.remove()" style="width:100%;margin-top:8px;font-size:13px">Cancel</button>
@@ -9863,10 +9868,12 @@
     function saveWeeklySchedule() {
       const wa = normalizeWeeklyAvailability(state.weeklyAvailability);
       const rDay = document.getElementById('wa-day-reminder')?.value;
-      const rTime = document.getElementById('wa-time-reminder')?.value;
+      const rHour = document.getElementById('wa-hour-reminder')?.value;
       wa.reminder = wa.reminder || { day: 'Mon', time: '09:00' };
       if (_WA_DAYS.includes(rDay)) wa.reminder.day = rDay;
-      if (/^\d{2}:\d{2}$/.test(rTime)) wa.reminder.time = rTime;
+      // Hour-based only — store on the hour (HH:00).
+      const hm = /^([01]\d|2[0-3]):[0-5]\d$/.test(rHour) ? `${rHour.slice(0,2)}:00` : null;
+      if (hm) wa.reminder.time = hm;
       state.weeklyAvailability = wa;
       saveState('Weekly availability schedule');
       _persistWeeklyAvailability();

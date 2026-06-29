@@ -157,8 +157,10 @@ export async function runWeeklyAvailabilityCheck({
     // Beta simplification: ONE weekly availability reminder per club (was three
     // per-session sends). The reminder schedule is wa.reminder; older configs fall
     // back to their first training slot so nothing breaks before they re-save.
-    const reminder = (wa.reminder && wa.reminder.day && wa.reminder.time) ? wa.reminder
+    // Hour-based only — snap to the top of the hour so an hourly cron catches it.
+    const reminderRaw = (wa.reminder && wa.reminder.day && wa.reminder.time) ? wa.reminder
       : (wa.training1 && wa.training1.day ? wa.training1 : { day: 'Mon', time: '09:00' });
+    const reminder = { day: reminderRaw.day, time: `${String(reminderRaw.time || '09:00').slice(0, 2)}:00` };
     const d = (debug.reminder && typeof debug.reminder === 'object') ? debug.reminder : {};
     d.lastAttempt = now.toISOString();
     const firedKey = `${team.id}:reminder`;
