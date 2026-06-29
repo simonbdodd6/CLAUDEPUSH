@@ -1,5 +1,20 @@
 # Project Status
 
+## 2026-06-29 — Match Centre QA pass + V2 proposal
+
+- **Match Centre QA (build `ffe4f65`): PASS — no genuine bugs.** Drove a realistic
+  23-player squad (full XV by position + bench 16–23, incl. a 40-char name) through:
+  every position, drag move/swap/remove, pitch↔bench, duplicate prevention,
+  readonly/no-autofill, long names, click-to-pick picker, 25 rapid edits, no JS
+  errors, 0 horizontal overflow (desktop + mobile). The `ffe4f65` dedup/snapback/
+  bench-login fixes hold. (An initial automated pass flagged 4 drag "fails" that
+  were wrong assertions — a full squad makes every drop a *swap*; re-tested correct.)
+- **Remaining manual-only checks (not bugs):** refresh persistence, Publish (network)
+  + Export (PNG) need a real backend/device; mobile long-name has no hover tooltip.
+- **Match Centre V2 product proposal recorded** → `MATCH_CENTRE_V2.md` (workflow,
+  architecture, interactions, premium UX, stay/change/don't-touch, phasing).
+  Awaiting approval before any build. No code changed during QA.
+
 ## 2026-06-28 — End-of-day checkpoint (Beta)
 
 **Production build: `ffe4f65`** (feature/core-beta-simplification).
