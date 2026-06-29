@@ -61,13 +61,14 @@ test('loadRosterFromServer guards against clobbering an unsynced local edit', ()
   assert.ok(/_rosterSyncPending\)\s*\{\s*queueRosterSync\(\);\s*return;/.test(fn), 'on pending: keep local + ensure the push, then bail');
 });
 
-test('Members list and counts read from ONE source of truth (deduped roster)', () => {
-  // The visible list (filtered) and every count derive from `members`, which is
-  // canonicalVisiblePlayers() — so they can never disagree within a render.
+test('Members list reads from ONE source of truth (deduped roster)', () => {
+  // Beta simplification: availability-style filter pills + their counts were
+  // removed. The visible list now derives directly from `members`, which is
+  // filtered from canonicalVisiblePlayers() — so list + count never disagree.
   assert.ok(html.includes('const allMembers = canonicalVisiblePlayers();'), 'roster from canonicalVisiblePlayers');
-  assert.ok(html.includes('const filtered   = members.filter('), 'visible list derives from members');
-  assert.ok(html.includes('available: members.filter(p => p.game === "available").length'), 'Available count from members');
-  assert.ok(html.includes('consent: members.filter(p=>!p.mediaConsent).length'), 'Consent-pending count from members');
+  assert.ok(html.includes('const members    = _showArchivedPlayers ? allMembers : allMembers.filter(p => !playerIsArchived(p));'), 'members filtered from allMembers');
+  assert.ok(html.includes('${members.map(p =>'), 'the visible list derives from members');
+  assert.ok(html.includes('${members.length} member'), 'the member count derives from members');
 });
 
 test('coach-added players carry pending/consent/unregistered status', () => {

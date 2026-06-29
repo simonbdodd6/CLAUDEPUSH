@@ -2217,10 +2217,10 @@
         display: block;
         border: 1px solid var(--line);
         border-radius: 12px;
-        padding: 12px;
-        margin: 0 12px 12px;
+        padding: 10px 12px;
+        margin: 0 12px 8px;
       }
-      .player-db-table td { display: block; padding: 7px 0 !important; border: none !important; }
+      .player-db-table td { display: block; padding: 5px 0 !important; border: none !important; }
       .player-db-table td[data-label]::before {
         content: attr(data-label);
         display: block;
@@ -2764,7 +2764,7 @@
     input:focus, select:focus, textarea:focus { border-color: var(--brand) !important; box-shadow: 0 0 0 3px var(--ring) !important; }
 
     /* ── MEMBERS — people, not a spreadsheet ─────────────────────────────────── */
-    .player-db-table { border-collapse: separate !important; border-spacing: 0 10px !important; }
+    .player-db-table { border-collapse: separate !important; border-spacing: 0 7px !important; }
     .player-db-table thead th {
       border: 0 !important; background: transparent !important;
       color: var(--faint); font-size: 10.5px; letter-spacing: .12em; font-weight: 700;
@@ -2772,14 +2772,14 @@
     }
     .player-db-table tbody td {
       border: 0 !important; background: linear-gradient(180deg, #181922, #0f1016);
-      padding: 14px 12px !important; vertical-align: middle;
+      padding: 9px 12px !important; vertical-align: middle;
     }
     .player-db-table tbody td:first-child { border-radius: 16px 0 0 16px; padding-left: 16px !important; }
     .player-db-table tbody td:last-child  { border-radius: 0 16px 16px 0; padding-right: 16px !important; }
     .member-row { box-shadow: var(--sheen), var(--float); transition: transform .18s cubic-bezier(.22,.61,.36,1), box-shadow .18s ease; }
     .member-row:hover { transform: translateY(-3px); box-shadow: var(--sheen), var(--float-hi); }
     .member-row:hover td { background: linear-gradient(180deg, #1d1e29, #131421); }
-    .player-photo-wrap { width: 48px !important; height: 48px !important; font-size: 17px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    .player-photo-wrap { width: 40px !important; height: 40px !important; font-size: 17px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 
     @media (prefers-reduced-motion: reduce) {
       .brand-mark, .msg-hero::after, .training-hero::after { animation: none !important; }
@@ -12037,16 +12037,6 @@
       // Phase 17 — separate active from archived
       const members    = _showArchivedPlayers ? allMembers : allMembers.filter(p => !playerIsArchived(p));
       const archivedCount = allMembers.filter(playerIsArchived).length;
-      const filter     = state.playerFilter || "all";
-      const filterMap  = { all: ()=>true, available: p=>p.game==="available", injured: p=>p.game==="injured", "no-reply": p=>p.game==="no-reply", consent: p=>!p.mediaConsent };
-      const filtered   = members.filter(filterMap[filter] || (()=>true));
-      const counts     = {
-        available: members.filter(p => p.game === "available").length,
-        injured: members.filter(p => p.game === "injured").length,
-        "no-reply": members.filter(p => p.game === "no-reply").length,
-        consent: members.filter(p=>!p.mediaConsent).length
-      };
-
       document.getElementById("coach-players").innerHTML = `
         <div style="display:grid;gap:14px">
 
@@ -12058,20 +12048,12 @@
                 <span class="muted" style="font-weight:500;font-size:11.5px;margin-left:6px">edit in <a href="#" onclick="setSection('coach','admin');return false" style="color:var(--accent)">Club Admin</a></span>
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                <button class="btn" type="button" onclick="downloadSampleCSV()">Template CSV</button>
-                <button class="btn" type="button" onclick="exportMembersCSV()">Export CSV</button>
-                <button class="btn" type="button" onclick="triggerImportFile()">Import</button>
                 <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add player</button>
-                <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Invite Squad</button>
+                <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Group Invite</button>
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
               <span style="font-size:13px;color:var(--muted)">${members.length} member${members.length !== 1 ? 's' : ''}</span>
-            </div>
-            <div class="db-toolbar" style="margin-top:12px;margin-bottom:0">
-              ${[["all","All members",members.length],["available","Available",counts.available],["injured","Injured",counts.injured],["no-reply","No reply",counts["no-reply"]],["consent","Consent pending",counts.consent]].map(([f,lbl,cnt])=>
-                `<button class="filter-pill ${filter===f?"active":""}" type="button" onclick="setPlayerFilter('${f}')">${lbl} <strong>${cnt}</strong></button>`
-              ).join("")}
             </div>
           </div>
 
@@ -12172,13 +12154,11 @@
             <div style="font-size:48px;margin-bottom:14px"></div>
             <h2 style="margin:0 0 8px;font-size:18px">Add your players</h2>
             <p style="font-size:14px;color:var(--muted);margin:0 auto 22px;max-width:420px">
-              Import from a spreadsheet to add 25 players in under a minute.
-              Download the template, fill it in, then import.
+              Invite players with a group invite link or your team code, or add them manually.
             </p>
             <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-              <button class="btn" type="button" onclick="downloadSampleCSV()">Download template CSV</button>
-              <button class="btn primary" type="button" onclick="triggerImportFile()">Import CSV / Excel</button>
-              <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add manually</button>
+              <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Group Invite</button>
+              <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add player</button>
             </div>
           </div>` : `
           <div class="card" style="padding:0;overflow:hidden">
@@ -12198,7 +12178,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${filtered.map(p => `<tr class="member-row" onclick="playerOpenDetail('${p.id}')" style="cursor:pointer">
+                ${members.map(p => `<tr class="member-row" onclick="playerOpenDetail('${p.id}')" style="cursor:pointer">
                   <td style="padding-left:18px">
                     <div style="display:flex;align-items:center;gap:9px">
                       <div class="player-photo-wrap">
@@ -12239,13 +12219,6 @@
                 </tr>`).join("")}
               </tbody>
             </table></div>
-            ${filtered.length === 0 ? (members.length === 0
-              ? `<div class="empty-state">
-                  <div class="empty-icon"></div>
-                  <strong>No players yet</strong>
-                  <p>Use <strong>Invite &amp; team access</strong> above to generate your first invite link — players join with one tap.</p>
-                </div>`
-              : `<div style="padding:28px;text-align:center;color:var(--muted)">No players match this filter.</div>`) : ""}
             ${archivedCount > 0 ? `<div style="padding:10px 18px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
               <span class="muted" style="font-size:12px">${archivedCount} archived player${archivedCount !== 1 ? 's' : ''}</span>
               <button class="btn ghost" type="button" style="font-size:12px;padding:3px 10px" onclick="_showArchivedPlayers=!_showArchivedPlayers;renderPlayers()">
