@@ -128,7 +128,6 @@ export async function runWeeklyAvailabilityCheck({
   if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     webpush.setVapidDetails(vapidContact(), process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
   }
-  const WA_SESSIONS = [['training1', 'Training session 1'], ['training2', 'Training session 2'], ['match', 'Match']];
   const teams = await loadTeams();
   const firedMap = (await kvGet(key('weekly_avail_fired'))) || {};
   const today = localDate(now, offsetHours).toISOString().slice(0, 10);
@@ -155,36 +154,37 @@ export async function runWeeklyAvailabilityCheck({
     debug.manualSentToday = sentDay === today && wa.lastSentAt !== wa.lastAutoSentAt;
 
     const teamReport = { teamId: team.id, enabled: true, sessions: {} };
-    for (const [sessionKey, label] of WA_SESSIONS) {
-      const slot = wa[sessionKey];
-      const d = (debug[sessionKey] && typeof debug[sessionKey] === 'object') ? debug[sessionKey] : {};
-      d.lastAttempt = now.toISOString();
-      const firedKey = `${team.id}:${sessionKey}`;
-      const firedMarker = firedMap[firedKey] || null;
-      const sessionId = sessionKey === 'match' ? 'game' : sessionKey;
-      const decision = weeklyAvailabilityDecision(slot, now, firedMarker, offsetHours);
-      d.blockedByDedup = Boolean(firedMarker && decision.reason === 'already sent today');
-      if (!decision.due) {
-        d.lastResult = 'skipped';
-        d.skipReason = decision.reason;
-        debug[sessionKey] = d;
-        teamReport.sessions[sessionKey] = { result: 'skipped', reason: decision.reason };
-        continue;
-      }
-      // ── due → send via the SAME club-scoped targeting as manual Send Now ──
+    // Beta simplification: ONE weekly availability reminder per club (was three
+    // per-session sends). The reminder schedule is wa.reminder; older configs fall
+    // back to their first training slot so nothing breaks before they re-save.
+    const reminder = (wa.reminder && wa.reminder.day && wa.reminder.time) ? wa.reminder
+      : (wa.training1 && wa.training1.day ? wa.training1 : { day: 'Mon', time: '09:00' });
+    const d = (debug.reminder && typeof debug.reminder === 'object') ? debug.reminder : {};
+    d.lastAttempt = now.toISOString();
+    const firedKey = `${team.id}:reminder`;
+    const firedMarker = firedMap[firedKey] || null;
+    const decision = weeklyAvailabilityDecision(reminder, now, firedMarker, offsetHours);
+    d.blockedByDedup = Boolean(firedMarker && decision.reason === 'already sent today');
+    if (!decision.due) {
+      d.lastResult = 'skipped';
+      d.skipReason = decision.reason;
+      debug.reminder = d;
+      teamReport.sessions.reminder = { result: 'skipped', reason: decision.reason };
+    } else {
+      // One reminder → all active members (club-scoped). Gated only by the master
+      // push toggle; tapping it opens the Availability page to set the whole week.
       let targets = subscriptionsForMembers(subscribers, activeMemberIdSet(automationMembers, team.id));
       const waPrefs = await loadNotificationPreferenceMap();
       if (Object.keys(waPrefs).length) {
-        targets = targets.filter(item => notificationAllowed(waPrefs, item.userId, { type: 'availability', sessionId }));
+        targets = targets.filter(item => waPrefs[item.userId]?.pushEnabled !== false);
       }
       const title = `${club?.clubName || "Coach's Eye"} — Availability`;
-      const body = `Hi {{first_name}}! Please set your availability for this week's ${label} in Coach's Eye.`;
+      const body = 'Hi {{first_name}}! Please set your availability for this week in Coach\'s Eye.';
       const delivery = await Promise.allSettled(targets.map(({ subscription, label: lbl }) =>
         webpush.sendNotification(subscription, JSON.stringify({
           title, body: resolveVariables(body, { label: lbl, coachName: 'Coach' }),
-          from: 'Coach', tag: `wa-${team.id}-${sessionKey}-${now.toISOString().slice(0, 10)}`,
-          url: '/?to=availability', type: 'availability', sessionId,
-          actions: availabilityActions('availability'),
+          from: 'Coach', tag: `wa-${team.id}-reminder-${now.toISOString().slice(0, 10)}`,
+          url: '/?to=availability', type: 'availability', sessionId: 'week',
         }))));
       const sent = delivery.filter(result => result.status === 'fulfilled').length;
       const failed = delivery.length - sent;
@@ -199,12 +199,12 @@ export async function runWeeklyAvailabilityCheck({
       d.lastSend = now.toISOString();
       d.skipReason = '';
       d.blockedByDedup = false;
-      debug[sessionKey] = d;
+      debug.reminder = d;
       wa.lastSentAt = now.toISOString();
       wa.lastAutoSentAt = now.toISOString();
-      await kvLpush(key('message_log'), { type: 'weekly-availability', teamId: team.id, session: sessionKey, title, sentAt: now.toISOString(), sent, failed, total: targets.length, source });
+      await kvLpush(key('message_log'), { type: 'weekly-availability', teamId: team.id, session: 'reminder', title, sentAt: now.toISOString(), sent, failed, total: targets.length, source });
       results.push({ weeklyAvailability: firedKey, sent, failed, total: targets.length });
-      teamReport.sessions[sessionKey] = { result: d.lastResult, sentAt: now.toISOString(), total: targets.length };
+      teamReport.sessions.reminder = { result: d.lastResult, sentAt: now.toISOString(), total: targets.length };
     }
     // Persist diagnostics (+ any lastSentAt) every run — even when nothing fired.
     try { wa.debug = debug; await kvSet(key(`club:${team.id}`), club); } catch { /* diagnostics best-effort */ }

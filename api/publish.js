@@ -231,6 +231,9 @@ function sanitiseWeeklyAvailability(raw) {
   });
   return {
     enabled: Boolean(raw.enabled),
+    // Beta: ONE weekly reminder slot. Older configs migrate from training1 so the
+    // coach's existing day/time carries over. training1/2/match kept for back-compat.
+    reminder:  slot(raw.reminder || raw.training1, 'Mon', '09:00'),
     training1: slot(raw.training1, 'Mon', '09:00'),
     training2: slot(raw.training2, 'Wed', '09:00'),
     match:     slot(raw.match,     'Thu', '18:00'),

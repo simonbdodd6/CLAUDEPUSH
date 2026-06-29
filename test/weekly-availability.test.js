@@ -29,7 +29,7 @@ function extractFn(source, name) {
   throw new Error('function ' + name + ' — no closing brace');
 }
 
-const DEFAULT_WA = { enabled:false, training1:{day:'Mon',time:'09:00'}, training2:{day:'Wed',time:'09:00'}, match:{day:'Thu',time:'18:00'}, lastSentAt:null, lastAutoSentAt:null, debug:null };
+const DEFAULT_WA = { enabled:false, reminder:{day:'Mon',time:'09:00'}, training1:{day:'Mon',time:'09:00'}, training2:{day:'Wed',time:'09:00'}, match:{day:'Thu',time:'18:00'}, lastSentAt:null, lastAutoSentAt:null, debug:null };
 const scope = new Function(
   `const _WA_DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
    const defaultState = { weeklyAvailability: ${JSON.stringify(DEFAULT_WA)} };` +
@@ -53,6 +53,7 @@ test('schedule values persist (valid day/time kept), invalid coerced to defaults
     lastSentAt: '2026-07-01T09:00:00.000Z',
   });
   assert.equal(wa.enabled, true);
+  assert.deepEqual(wa.reminder, { day: 'Fri', time: '07:30' }, 'reminder migrates from training1');
   assert.deepEqual(wa.training1, { day: 'Fri', time: '07:30' });
   assert.deepEqual(wa.training2, { day: 'Sun', time: '20:00' });
   assert.deepEqual(wa.match, { day: 'Thu', time: '18:00' }, 'invalid match falls back to default');
@@ -72,25 +73,20 @@ test('next send is null when automation is off', () => {
   assert.equal(weeklyNextSend(null), null);
 });
 
-test('next send is the soonest upcoming configured slot', () => {
+test('next send is the upcoming weekly reminder', () => {
   const now = new Date(2026, 6, 1, 8, 0, 0); // 08:00 on some weekday
   const today = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()];
-  // all three on "today": 09:00 is +1h, 23:00 is later today, 07:00 already passed → next week
-  const wa = normalizeWeeklyAvailability({ enabled: true,
-    training1: { day: today, time: '09:00' },
-    training2: { day: today, time: '07:00' },
-    match:     { day: today, time: '23:00' } });
+  const wa = normalizeWeeklyAvailability({ enabled: true, reminder: { day: today, time: '09:00' } });
   const next = weeklyNextSend(wa, now);
   assert.ok(next instanceof Date && next > now);
-  assert.equal(next.toTimeString().slice(0, 5), '09:00', 'soonest future slot wins');
+  assert.equal(next.toTimeString().slice(0, 5), '09:00', 'the reminder time');
   assert.equal(next.getDate(), now.getDate(), 'and it is today');
 });
 
-test('next send rolls to next week when the slot already passed today', () => {
+test('next send rolls to next week when the reminder already passed today', () => {
   const now = new Date(2026, 6, 1, 12, 0, 0);
   const today = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()];
-  const wa = normalizeWeeklyAvailability({ enabled: true,
-    training1: { day: today, time: '09:00' }, training2: { day: today, time: '10:00' }, match: { day: today, time: '11:00' } });
+  const wa = normalizeWeeklyAvailability({ enabled: true, reminder: { day: today, time: '09:00' } });
   const next = weeklyNextSend(wa, now);
   assert.ok(next - now >= 6 * 24 * 3600 * 1000, 'next occurrence is ~a week away');
 });

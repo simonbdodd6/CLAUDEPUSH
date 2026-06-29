@@ -146,21 +146,22 @@ test('a manual Send Now earlier the same day does NOT block a scheduled send', (
   // Structural proof: the scheduler dedups on firedMap[firedKey], not wa.lastSentAt.
   assert.ok(cronSrc.includes('const firedMarker = firedMap[firedKey] || null'),
     'per-session fired marker is read from the dedup map');
-  assert.ok(cronSrc.includes('weeklyAvailabilityDecision(slot, now, firedMarker'),
-    'the due check is fed the per-session fired marker');
+  assert.ok(cronSrc.includes('weeklyAvailabilityDecision(reminder, now, firedMarker'),
+    'the due check is fed the reminder fired marker');
   assert.ok(!/weeklyAvailabilityD(ue|ecision)\([^)]*wa\.lastSentAt/.test(cronSrc),
     'the club/manual lastSentAt is never passed into the due check');
 });
 
-// ── T1 / T2 / Match track their last send independently ───────────────────────
-test('Training 1, Training 2 and Match dedup independently (per team+session)', () => {
+// ── Beta: ONE weekly reminder per club, single fired-key, once per week ────────
+test('the weekly reminder uses a single per-team fired key and dedups once per week', () => {
   const now = sundayLocalAfternoonUTC();
   const slot = { day: 'Sun', time: '09:00' };
-  // One session already fired today (marker set) → skipped; another not fired → still due.
-  assert.equal(weeklyAvailabilityDue(slot, now, now.toISOString()), false, 'a session that fired today is skipped');
-  assert.equal(weeklyAvailabilityDue(slot, now, null), true, 'a sibling session that has not fired is still due');
-  assert.ok(cronSrc.includes('const firedKey = `${team.id}:${sessionKey}`'),
-    'the fired marker is keyed per team AND session, so the three sessions are independent');
+  assert.equal(weeklyAvailabilityDue(slot, now, now.toISOString()), false, 'already fired this week → skipped (no duplicate)');
+  assert.equal(weeklyAvailabilityDue(slot, now, null), true, 'not yet fired → due');
+  assert.ok(cronSrc.includes('const firedKey = `${team.id}:reminder`'),
+    'one reminder fired-key per team — no per-session keys');
+  assert.ok(!/WA_SESSIONS|for \(const \[sessionKey/.test(cronSrc),
+    'the three-session send loop is gone (single reminder only)');
 });
 
 // ── Sunday local time ─────────────────────────────────────────────────────────
@@ -270,44 +271,43 @@ test('a coach schedule save does not wipe the cron diagnostics', async () => {
 function seedClub(teamId, wa) {
   store.set(`app:club:${teamId}`, JSON.stringify({ clubName: teamId, weeklyAvailability: wa }));
 }
-const DUE_SCHEDULE = { enabled: true, training1: { day: 'Sun', time: '09:00' }, training2: { day: 'Wed', time: '09:00' }, match: { day: 'Thu', time: '18:00' } };
+// Beta: ONE weekly reminder per club (was three per-session sends).
+const DUE_SCHEDULE = { enabled: true, reminder: { day: 'Sun', time: '09:00' } };
 
-test('runWeeklyAvailabilityCheck fires a due session and records rich diagnostics', async () => {
+test('runWeeklyAvailabilityCheck fires ONE weekly reminder and records diagnostics', async () => {
   store.clear(); lists.clear();
   const now = sundayLocalAfternoonUTC();
   seedClub('boitsfort-rfc', { ...DUE_SCHEDULE });
   const report = await runWeeklyAvailabilityCheck({ now, source: 'test', onlyTeamId: 'boitsfort-rfc', subscribers: [], automationMembers: [] });
-  assert.ok(report.results.some(r => r.weeklyAvailability === 'boitsfort-rfc:training1'), 'training1 (Sun, passed) fired via the scheduler');
+  assert.deepEqual(report.results.map(r => r.weeklyAvailability), ['boitsfort-rfc:reminder'], 'exactly ONE reminder request fired (not three)');
   assert.ok('nextWindow' in report, 'reports the next expected cron window');
   const wa = JSON.parse(store.get('app:club:boitsfort-rfc')).weeklyAvailability;
-  assert.ok(/^sent/.test(wa.debug.training1.lastResult), 'training1 result recorded');
-  assert.ok(wa.debug.training1.lastSend, 'training1 last send recorded');
+  assert.ok(/^sent/.test(wa.debug.reminder.lastResult), 'reminder result recorded');
+  assert.ok(wa.debug.reminder.lastSend, 'reminder last send recorded');
   assert.equal(wa.debug.lastCheckSource, 'test', 'records the check source');
   assert.ok(wa.lastAutoSentAt, 'last sent BY AUTOMATION recorded separately from manual');
-  assert.match(wa.debug.training2.skipReason, /not scheduled today/, 'Wed session skipped on Sunday, with reason');
 });
 
-test('runWeeklyAvailabilityCheck does not re-send the same session the same day (dedup)', async () => {
+test('the weekly reminder does not re-send the same week (dedup)', async () => {
   store.clear(); lists.clear();
   const now = sundayLocalAfternoonUTC();
   seedClub('boitsfort-rfc', { ...DUE_SCHEDULE });
   const first = await runWeeklyAvailabilityCheck({ now, source: 'test', onlyTeamId: 'boitsfort-rfc', subscribers: [], automationMembers: [] });
-  assert.ok(first.results.some(r => r.weeklyAvailability === 'boitsfort-rfc:training1'), 'fired the first time');
+  assert.ok(first.results.some(r => r.weeklyAvailability === 'boitsfort-rfc:reminder'), 'fired the first time');
   const second = await runWeeklyAvailabilityCheck({ now, source: 'test', onlyTeamId: 'boitsfort-rfc', subscribers: [], automationMembers: [] });
-  assert.ok(!second.results.some(r => r.weeklyAvailability === 'boitsfort-rfc:training1'), 'not fired again the same day');
+  assert.equal(second.results.length, 0, 'not fired again (already sent — no duplicate)');
   const dbg = JSON.parse(store.get('app:club:boitsfort-rfc')).weeklyAvailability.debug;
-  assert.equal(dbg.training1.blockedByDedup, true, 'dedup-blocked flag surfaced');
-  assert.match(dbg.training1.skipReason, /already sent today/);
+  assert.equal(dbg.reminder.blockedByDedup, true, 'dedup-blocked flag surfaced');
+  assert.match(dbg.reminder.skipReason, /already sent today/);
   assert.equal(dbg.manualSentToday, false, 'an automatic send is NOT counted as a manual send');
 });
 
-test('a manual Send Now the same day is reported and does not block the scheduled send', async () => {
+test('a manual Send Now the same day is reported and does not block the scheduled reminder', async () => {
   store.clear(); lists.clear();
   const now = sundayLocalAfternoonUTC();
-  // Manual send earlier today writes lastSentAt only (no lastAutoSentAt).
   seedClub('boitsfort-rfc', { ...DUE_SCHEDULE, lastSentAt: now.toISOString() });
   const report = await runWeeklyAvailabilityCheck({ now, source: 'test', onlyTeamId: 'boitsfort-rfc', subscribers: [], automationMembers: [] });
-  assert.ok(report.results.some(r => r.weeklyAvailability === 'boitsfort-rfc:training1'), 'scheduled send still fires despite the manual send');
+  assert.ok(report.results.some(r => r.weeklyAvailability === 'boitsfort-rfc:reminder'), 'scheduled reminder still fires despite the manual send');
   assert.equal(JSON.parse(store.get('app:club:boitsfort-rfc')).weeklyAvailability.debug.manualSentToday, true, 'manual send today is detected + reported');
 });
 
