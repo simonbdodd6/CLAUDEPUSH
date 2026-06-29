@@ -24020,6 +24020,10 @@
 
     let _rosterLastSyncedFp = null;
     let _rosterSyncTimer = null;
+    // True while a local roster edit (e.g. a just-added player) is waiting for its
+    // debounced push to the server. Guards loadRosterFromServer from adopting a
+    // stale server copy mid-edit and making the new player vanish ~1s later.
+    let _rosterSyncPending = false;
 
     function rosterFingerprint() {
       return JSON.stringify((state.players || []).map(({ photo, ...p }) => p));
@@ -24030,8 +24034,10 @@
       if (!isCoach()) return;
       const fp = rosterFingerprint();
       if (fp === _rosterLastSyncedFp) return;
+      _rosterSyncPending = true;
       clearTimeout(_rosterSyncTimer);
       _rosterSyncTimer = setTimeout(async () => {
+        _rosterSyncPending = false;   // the push is now in progress
         const sending = rosterFingerprint();
         try {
           const res = await fetch('/api/roster', {
@@ -24051,6 +24057,12 @@
         const res = await fetch('/api/roster');
         if (!res.ok) return;
         const data = await res.json();
+        // Race guard: if a coach added/edited a player while this fetch was in
+        // flight (a debounced roster sync is still pending), the LOCAL roster is
+        // newer than the server. Adopting the stale copy here is exactly what made
+        // a just-added player appear for ~1s and then vanish — keep local instead
+        // and let the pending sync push it to the server.
+        if (_rosterSyncPending) { queueRosterSync(); return; }
         const serverPlayers = Array.isArray(data.players) ? data.players : [];
         if (!serverPlayers.length) {
           // Server roster empty — seed it from this device if we have players.
