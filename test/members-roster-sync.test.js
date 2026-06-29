@@ -76,3 +76,23 @@ test('coach-added players carry pending/consent/unregistered status', () => {
   assert.ok(fn.includes('mediaConsent: false'), 'added player is consent-pending');
   assert.ok(fn.includes('upsertCanonicalPlayerRecord(player)'), 'persisted via the canonical roster upsert (deduped)');
 });
+
+// ── The real root cause: the identity prune deleted coach-added members ───────
+test('identity prune KEEPS coach-added roster members (no userId/legacyPlayerId)', () => {
+  const fn = extractFn(html, 'syncIdentityStateToLocalRoster');
+  assert.ok(fn.includes('if (!uid && !lid) return true;'),
+    'roster-only records (no identity link) are kept — not pruned');
+  assert.ok(!fn.includes('if (!uid && !pid && !lid) return true;'),
+    'the old escape-hatch keyed on the always-present player.id (never fired) is gone');
+  // identity-LINKED records the server no longer returns are still pruned
+  assert.ok(fn.includes('serverProfileUserIds.has(uid)') && fn.includes('serverProfileLegacyIds.has(lid)'),
+    'identity-linked records are still reconciled against the server profiles');
+});
+
+test('a manual add persists to the server immediately (flush, not only the 2s debounce)', () => {
+  assert.ok(extractFn(html, 'addPlayer').includes('flushRosterSync()'), 'addPlayer flushes the roster sync');
+  const flush = extractFn(html, 'flushRosterSync');
+  assert.ok(flush.includes("fetch('/api/roster'") && flush.includes("method: 'POST'"), 'flush POSTs the roster now');
+  assert.ok(!/setTimeout/.test(flush), 'flush is immediate (no debounce)');
+  assert.ok(flush.includes('if (!isCoach()) return;'), 'coach-only, like the debounced sync');
+});

@@ -7430,6 +7430,7 @@
       };
       upsertCanonicalPlayerRecord(player);
       state.showAddPlayer=false; notify(`${name} added to squad`);
+      flushRosterSync();   // persist to the server immediately so a quick refresh keeps the new member
     }
     function exportMembersCSV() {
       if (!state.players.length) return showToast('No players to export');
@@ -8476,9 +8477,13 @@
         }
       });
 
-      // Server-driven prune: only keep players whose userId or legacyPlayerId
-      // appears in the server's profile list. Allows new invited players while
-      // removing anyone the server did not return.
+      // Server-driven prune: reconcile only IDENTITY-LINKED records (those tied to
+      // a server account/invite via userId or legacyPlayerId) against the server's
+      // profile list — removing members the server no longer returns. A coach-added
+      // roster member has NO userId/legacyPlayerId; it is managed via the roster
+      // store (/api/roster), not the identity profiles, so it must NOT be pruned
+      // here. (The old escape-hatch keyed on player.id, which is always set, so it
+      // never fired and every coach-added member was deleted ~1s after adding.)
       const serverProfileUserIds = new Set(profiles.map(p => String(p.userId || '')).filter(Boolean));
       const serverProfileLegacyIds = new Set(profiles.map(p => String(p.legacyPlayerId || '')).filter(Boolean));
       const beforePrune = state.players.length;
@@ -8486,7 +8491,7 @@
         const uid = String(player.userId || '');
         const pid = String(player.id || '');
         const lid = String(player.legacyPlayerId || '');
-        if (!uid && !pid && !lid) return true;
+        if (!uid && !lid) return true;   // coach-added roster member (no identity link) — keep
         return serverProfileUserIds.has(uid) || serverProfileUserIds.has(pid) ||
                serverProfileLegacyIds.has(pid) || serverProfileLegacyIds.has(uid) ||
                serverProfileLegacyIds.has(lid);
@@ -24048,6 +24053,26 @@
           if (res.ok) _rosterLastSyncedFp = sending;
         } catch(e) { console.warn('[queueRosterSync]', e); }
       }, 2000);
+    }
+
+    // Push the roster to the server NOW (no debounce) — used right after a coach
+    // adds a member so it persists immediately and survives an instant refresh.
+    async function flushRosterSync() {
+      if (typeof window !== "undefined" && window.__DEMO_SQUAD__) return;
+      if (!isCoach()) return;
+      clearTimeout(_rosterSyncTimer);
+      _rosterSyncPending = false;
+      const sending = rosterFingerprint();
+      if (sending === _rosterLastSyncedFp) return;
+      try {
+        const res = await fetch('/api/roster', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ players: state.players || [] }),
+        });
+        if (res.ok) _rosterLastSyncedFp = sending;
+        else queueRosterSync();
+      } catch(e) { console.warn('[flushRosterSync]', e); queueRosterSync(); }
     }
 
     async function loadRosterFromServer() {
