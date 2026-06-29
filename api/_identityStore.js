@@ -477,7 +477,12 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
   // Ensure staff accounts exist with their canonical roles — enforces correct role even
   // if Redis was previously corrupted (e.g. applyApprovedIdentityLocally wrote role:'player').
   LEGACY_STAFF_ACCOUNTS.forEach(account => {
-    let user = users.find(item => item.id === account.id);
+    // Match by id OR email. A real coach account created under its own id with
+    // COACH_DEMO_EMAIL must be ADOPTED — not shadowed by a second 'coach-demo'
+    // record. Two users sharing an email split login (matches by email) from
+    // password change (matches by id) and break auth.
+    let user = users.find(item =>
+      item.id === account.id || normalizeEmail(item.email) === normalizeEmail(account.email));
     if (!user) {
       user = {
         id: account.id,
@@ -498,12 +503,15 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
       Object.assign(user, hashPassword(account.password), { passwordSet: true });
       usersChanged = true;
     }
-    let member = members.find(item => item.teamId === teamId && item.userId === account.id);
+    // Tie the active staff membership to whichever record we matched, so an
+    // adopted same-email account keeps its coach access.
+    const uid = user.id;
+    let member = members.find(item => item.teamId === teamId && item.userId === uid);
     if (!member) {
       member = {
-        id: `tm_${account.id}`,
+        id: `tm_${uid}`,
         teamId,
-        userId: account.id,
+        userId: uid,
         role: account.role,
         status: 'active',
         joinedAt: nowIso(),
@@ -514,8 +522,9 @@ async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
       };
       members.push(member);
       membersChanged = true;
-    } else if (member.role !== account.role) {
+    } else if (member.role !== account.role || member.status !== 'active') {
       member.role = account.role;
+      member.status = 'active';
       membersChanged = true;
     }
   });
@@ -570,7 +579,9 @@ function splitDisplayName(name = '') {
 
 function ensurePassword(user, password) {
   if (!String(password || '').trim()) return user;
-  Object.assign(user, hashPassword(password), { passwordSet: true, authProvider: user.authProvider || 'password' });
+  // passwordChangedAt marks a real, user-established credential. Once set, the
+  // legacy/demo env-password fallback will never override this account's password.
+  Object.assign(user, hashPassword(password), { passwordSet: true, authProvider: user.authProvider || 'password', passwordChangedAt: nowIso() });
   return user;
 }
 
@@ -670,6 +681,13 @@ async function ensureLegacyStaffAccountForLogin(email, password) {
   if (!legacy || String(password || '') !== legacy.password) return null;
   const users = await loadUsers();
   let user = users.find(item => item.id === legacy.id || normalizeEmail(item.email) === normalizeEmail(legacy.email));
+  // Once a staff account has set its OWN password, the bootstrap/demo password
+  // must NEVER override it. Submitting the original env password on a changed
+  // account previously silently RESET the hash back to the env value — wiping the
+  // coach's new password ("worked once, then both stop"). Bail so login simply
+  // re-verifies against the stored hash and correctly rejects the old password.
+  // Recovery for a genuinely locked-out coach is admin_reset_coach (CRON-gated).
+  if (user && user.passwordChangedAt) return null;
   if (!user) {
     user = {
       id: legacy.id,
@@ -686,6 +704,9 @@ async function ensureLegacyStaffAccountForLogin(email, password) {
     };
     users.push(user);
   } else {
+    // Account never set its own password (env seed or corrupted credential
+    // drift) — safe to (re)apply the bootstrap password so a known-good
+    // credential still recovers the account.
     Object.assign(user, hashPassword(legacy.password), {
       authProvider: user.authProvider || 'legacy-password',
       passwordSet: true,
@@ -805,13 +826,19 @@ export async function loginUser(input = {}) {
   assertLoginInput(input);
   let users = await loadUsers();
   const email = normalizeEmail(input.email);
-  let user = users.find(item => normalizeEmail(item.email) === email);
+  // Among any records sharing this email (e.g. a real account plus a legacy
+  // 'coach-demo' shadow left by older data), prefer the one whose password
+  // verifies — so a password change written to one record is honoured at login
+  // even before the duplicates are reconciled.
+  let sameEmail = users.filter(item => normalizeEmail(item.email) === email);
+  let user = sameEmail.find(item => verifyPassword(input.password, item).ok) || sameEmail[0] || null;
   let legacyMember = null;
   if (!user) {
     const legacy = await ensureLegacyStaffAccountForLogin(email, input.password);
     user = legacy?.user || null;
     legacyMember = legacy?.member || null;
     users = await loadUsers();
+    sameEmail = users.filter(item => normalizeEmail(item.email) === email);
   }
   let passwordCheck = user ? verifyPassword(input.password, user) : { ok: false, needsUpgrade: false };
   if (!passwordCheck.ok && !legacyMember) {
@@ -834,10 +861,16 @@ export async function loginUser(input = {}) {
   const members = await loadTeamMembers();
   // Default-team behaviour unchanged; users whose only membership is a
   // self-created club (Start a New Club) fall back to their active
-  // membership in any team.
+  // membership in any team. Same-email duplicates are the same person, so an
+  // active membership held by any sibling record still grants access (heals
+  // older data where the membership and the changed password split apart).
+  const memberIds = new Set(sameEmail.map(item => item.id).concat(user.id));
   const member = legacyMember ||
-    members.find(item => item.userId === user.id && item.teamId === (input.teamId || DEFAULT_TEAM.id)) ||
-    members.find(item => item.userId === user.id && item.status === 'active');
+    members.find(item => memberIds.has(item.userId) && item.teamId === (input.teamId || DEFAULT_TEAM.id) && item.status === 'active') ||
+    members.find(item => memberIds.has(item.userId) && item.status === 'active') ||
+    // No active membership — surface the requested-team membership of any status
+    // so a pending player still gets "Waiting for coach approval", not a generic error.
+    members.find(item => memberIds.has(item.userId) && item.teamId === (input.teamId || DEFAULT_TEAM.id));
   if (!member || member.status !== 'active') {
     const error = new Error(member?.status === 'pending' ? 'Waiting for coach approval' : 'Account is not active for this team');
     error.status = 403;
@@ -1419,7 +1452,7 @@ export async function adminResetStaffPassword({ email, newPassword } = {}) {
     error.status = 403;
     throw error;
   }
-  Object.assign(user, hashPassword(newPassword), { passwordSet: true, passwordResetByAdminAt: nowIso() });
+  Object.assign(user, hashPassword(newPassword), { passwordSet: true, passwordResetByAdminAt: nowIso(), passwordChangedAt: nowIso() });
   await saveUsers(users);
   // Revoke every live session for this user — stale devices must log in fresh.
   const sessions = await loadSessions();

@@ -31,12 +31,16 @@ const {
   createPasswordResetRequest,
   createSession,
   createJoinRequest,
+  changePassword,
   destroySession,
+  listIdentityState,
   listPendingJoinRequests,
+  loadUsers,
   loginUser,
   rejectJoinRequest,
   resetPasswordWithToken,
   resolveSession,
+  saveUsers,
   sessionCookie,
 } = await import('../api/_identityStore.js');
 const { default: identityHandler } = await import('../api/identity.js');
@@ -862,4 +866,58 @@ test('near-miss coach email fails with exactly the reported error', async () => 
     loginUser({ email: 'simonbdodd1@gmail.com', password: '1111' }),
     /Invalid email or password/,
   );
+});
+
+// ── Release blocker: coach password change must not be undone by the demo/legacy
+//    bootstrap machinery (see api/_identityStore ensureLegacyStaffAccountForLogin
+//    + ensureLegacyCompatibilityTeamRecords). Reproduced the original failures,
+//    these guard the fix. ──────────────────────────────────────────────────────
+test('a changed coach password is NOT reverted by a later env-password login', async () => {
+  store.clear();
+  // Coach logs in with the original env/bootstrap password (seeds coach-demo)
+  const first = await loginUser({ email: 'simonbdodd@gmail.com', password: '1111' });
+  assert.equal(first.user.role, 'coach');
+  // Changes the password in Settings
+  await changePassword(first.user.id, { currentPassword: '1111', newPassword: 'BrandNewPass99' });
+  // New password works (the "logged in once" step)
+  assert.equal((await loginUser({ email: 'simonbdodd@gmail.com', password: 'BrandNewPass99' })).user.role, 'coach');
+  // A later login with the ORIGINAL env password must FAIL — and must not silently
+  // reset the stored hash back to the env value (the root cause).
+  await assert.rejects(loginUser({ email: 'simonbdodd@gmail.com', password: '1111' }), /Invalid email or password/);
+  // The new password STILL works (previously it was wiped here → both passwords failed)
+  assert.equal((await loginUser({ email: 'simonbdodd@gmail.com', password: 'BrandNewPass99' })).user.role, 'coach');
+});
+
+test('listIdentityState adopts a same-email coach account instead of seeding a duplicate', async () => {
+  store.clear();
+  const { scryptSync, randomBytes } = await import('node:crypto');
+  const salt = randomBytes(16).toString('hex');
+  await saveUsers([{ id: 'usr_real_coach', email: 'simonbdodd@gmail.com', firstName: 'Real', lastName: 'Coach',
+    displayName: 'Real Coach', authProvider: 'password', passwordSet: true,
+    passwordAlgo: 'scrypt', passwordSalt: salt, passwordHash: scryptSync('RealOld123', salt, 64).toString('hex') }]);
+  // The Members/identity load that previously created a SECOND coach-demo record
+  await listIdentityState('boitsfort-rfc');
+  const sameEmail = (await loadUsers()).filter(u => u.email === 'simonbdodd@gmail.com');
+  assert.equal(sameEmail.length, 1, 'no duplicate same-email coach record created');
+  assert.equal(sameEmail[0].id, 'usr_real_coach', 'the real account is adopted, not shadowed by coach-demo');
+  // It can change password and log in consistently (change writes the record login reads)
+  await changePassword('usr_real_coach', { currentPassword: 'RealOld123', newPassword: 'RealNew456' });
+  assert.equal((await loginUser({ email: 'simonbdodd@gmail.com', password: 'RealNew456' })).user.id, 'usr_real_coach');
+  await assert.rejects(loginUser({ email: 'simonbdodd@gmail.com', password: '1111' }), /Invalid email or password/);
+});
+
+test('login picks the password-matching record when a stale duplicate already exists (self-heal)', async () => {
+  store.clear();
+  const { scryptSync, randomBytes } = await import('node:crypto');
+  const mk = pw => { const s = randomBytes(16).toString('hex'); return { passwordAlgo: 'scrypt', passwordSalt: s, passwordHash: scryptSync(pw, s, 64).toString('hex') }; };
+  // Already-corrupted data: a stale coach-demo shadow (env hash, no active member)
+  // sitting alongside the real, password-changed account.
+  await saveUsers([
+    { id: 'coach-demo', email: 'simonbdodd@gmail.com', displayName: 'Simon Coach', authProvider: 'legacy-password', passwordSet: true, ...mk('1111') },
+    { id: 'usr_real_coach', email: 'simonbdodd@gmail.com', displayName: 'Real Coach', authProvider: 'password', passwordSet: true, passwordChangedAt: new Date(0).toISOString(), ...mk('RealNew456') },
+  ]);
+  store.set('app:identity:team_members', JSON.stringify([{ id: 'tm_real', teamId: 'boitsfort-rfc', userId: 'usr_real_coach', role: 'coach', status: 'active' }]));
+  const login = await loginUser({ email: 'simonbdodd@gmail.com', password: 'RealNew456' });
+  assert.equal(login.user.id, 'usr_real_coach', 'login resolves the record whose password verifies');
+  assert.equal(login.user.role, 'coach');
 });
