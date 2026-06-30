@@ -301,12 +301,26 @@ export function dedupeRosterPlayers(players = [], context = {}) {
   list.forEach(player => {
     if (!player?.id || !player?.name) return;
     const keys = rosterPlayerKeys(player, context);
-    const existingIndex = keys.map(key => keyToIndex.get(key)).find(index => index !== undefined);
+    const incomingPid = resolveMessagingParticipantId(player, context);
+    const incomingPerm = isPermanentUserId(incomingPid) ? incomingPid : '';
+    let existingIndex = keys.map(key => keyToIndex.get(key)).find(index => index !== undefined);
+    // Never merge two DIFFERENT permanent identities. Players who joined via a shared
+    // (group) invite link share a legacyPlayerId, and corrupted rows can cross-collide
+    // id↔userId — but a permanent user_ id uniquely identifies one person, so distinct
+    // permanent ids must each keep their own roster row (otherwise one person silently
+    // absorbs another and the absorbed player vanishes from the squad list).
+    if (existingIndex !== undefined && incomingPerm) {
+      const existingPid = resolveMessagingParticipantId(result[existingIndex], context);
+      const existingPerm = isPermanentUserId(existingPid) ? existingPid : '';
+      if (existingPerm && existingPerm !== incomingPerm) existingIndex = undefined;
+    }
     if (existingIndex === undefined) {
       const index = result.length;
       const copy = { ...player };
       result.push(copy);
-      keys.forEach(key => keyToIndex.set(key, index));
+      // Don't steal a shared key (e.g. a group invite id) from an existing distinct
+      // person — keep the first owner so a third sharer also splits cleanly.
+      keys.forEach(key => { if (!keyToIndex.has(key)) keyToIndex.set(key, index); });
       return;
     }
 

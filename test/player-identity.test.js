@@ -321,3 +321,35 @@ test('canonical account switcher shows valid accounts only and selects correct p
   assert.equal(accounts.some(account => account.id === 'player-dodsy-compat'), false);
   assert.equal(accounts.some(account => account.id === 'user_dodsy_approved'), true);
 });
+
+// ── Group-invite collision: two different people who share a legacyPlayerId (the
+//    same group invite link) must NOT be merged into one roster row. Production bug:
+//    "Nick Test" and "Simon Dodd" both joined via inv-85OWG7OJ, so Nick was absorbed
+//    into Simon's row and only 3 of 4 players showed in Members. ───────────────────
+test('two people sharing a group-invite legacyPlayerId stay as distinct roster rows', () => {
+  const users = [
+    { id: 'user_simon', role: 'player', name: 'Simon Dodd', playerId: 'user_simon' },
+    { id: 'user_nick',  role: 'player', name: 'Nick Test',  playerId: 'user_nick' },
+  ];
+  const players = [
+    { id: 'user_simon', userId: 'user_simon', legacyPlayerId: 'inv-85OWG7OJ', name: 'Simon Dodd', email: 'simon@x.com' },
+    { id: 'user_nick',  userId: 'user_nick',  legacyPlayerId: 'inv-85OWG7OJ', name: 'Nick Test',  email: 'nick@x.com' },
+  ];
+  const deduped = dedupeRosterPlayers(players, { users });
+  const names = deduped.map(p => p.name).sort();
+  assert.deepEqual(names, ['Nick Test', 'Simon Dodd'], 'both distinct people survive the shared invite id');
+});
+
+test('a corrupted row whose id equals another person userId does not absorb them', () => {
+  // Simon's row.id collides with Nick's userId (real production corruption shape).
+  const users = [
+    { id: 'user_simon', role: 'player', name: 'Simon Dodd', playerId: 'user_simon' },
+    { id: 'user_nick',  role: 'player', name: 'Nick Test',  playerId: 'user_nick' },
+  ];
+  const players = [
+    { id: 'user_nick', userId: 'user_simon', legacyPlayerId: 'inv-85OWG7OJ', name: 'Simon Dodd' }, // id == Nick's userId
+    { id: 'user_nick', userId: 'user_nick',  legacyPlayerId: 'inv-85OWG7OJ', name: 'Nick Test'  },
+  ];
+  const deduped = dedupeRosterPlayers(players, { users });
+  assert.equal(deduped.length, 2, 'two distinct permanent identities are not conflated');
+});

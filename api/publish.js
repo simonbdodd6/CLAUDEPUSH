@@ -413,24 +413,6 @@ export default async function handler(req, res) {
   if (String(req.query?.resource || '') === 'club')   return clubHandler(req, res);
   if (String(req.query?.resource || '') === 'availability-check') return availabilityCheckHandler(req, res);
 
-  // TEMP read-only diagnostic (CRON-gated): inspect the live roster store + identity
-  // shapes for a team to trace the Members ↔ Match Centre visibility mismatch.
-  if (String(req.query?.resource || '') === 'roster-diag') {
-    const provided = (req.headers.authorization || '').replace(/^Bearer\s+/i, '') || String(req.query?.secret || '');
-    if (!process.env.CRON_SECRET || provided !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-    const teamId = String(req.query?.teamId || DEFAULT_TEAM.id);
-    const roster   = (await kvGet(rosterKey(teamId))) || { players: [] };
-    const profiles = (await kvGet(key('identity:player_profiles'))) || [];
-    const members  = (await kvGet(key('identity:team_members'))) || [];
-    const shape = p => ({ id: p.id, name: p.name, userId: p.userId || null, legacyPlayerId: p.legacyPlayerId || null, lifecycleStatus: p.lifecycleStatus || null, _archived: p._archived || false, email: p.email || null });
-    return res.status(200).json({ ok: true, teamId,
-      rosterCount: (roster.players || []).length,
-      rosterPlayers: (roster.players || []).map(shape),
-      teamProfiles: profiles.filter(p => p.teamId === teamId).map(p => ({ userId: p.userId, displayName: p.displayName, legacyPlayerId: p.legacyPlayerId || null })),
-      teamMemberPlayers: members.filter(m => m.teamId === teamId && m.role === 'player').map(m => ({ userId: m.userId, status: m.status })),
-    });
-  }
-
   // ── GET: any authenticated user reads published player-facing state ────────
   if (req.method === 'GET') {
     let session;

@@ -5322,14 +5322,30 @@
     function dedupeRosterMembers(players = [], users = []) {
       const result = [];
       const keyToIndex = new Map();
+      // A permanent user_ id uniquely identifies one person.
+      const permId = p => {
+        const u = String(p.userId || ''); if (isPermanentPlayerUserId(u)) return u;
+        const i = String(p.id || '');     if (isPermanentPlayerUserId(i)) return i;
+        return '';
+      };
       (Array.isArray(players) ? players : []).forEach(player => {
         if (!player?.id || !player?.name) return;
         const keys = rosterIdentityKeys(player, users);
-        const existingIndex = keys.map(key => keyToIndex.get(key)).find(index => index !== undefined);
+        const incomingPerm = permId(player);
+        let existingIndex = keys.map(key => keyToIndex.get(key)).find(index => index !== undefined);
+        // Never merge two DIFFERENT permanent identities. A GROUP invite link is shared
+        // by many players (same legacyPlayerId) and corrupted rows can have an id equal to
+        // another person's userId — without this guard a second player is absorbed into the
+        // first's row here and vanishes from the squad list (Members showed only 3 of 4).
+        if (existingIndex !== undefined && incomingPerm) {
+          const existingPerm = permId(result[existingIndex]);
+          if (existingPerm && existingPerm !== incomingPerm) existingIndex = undefined;
+        }
         if (existingIndex === undefined) {
           const index = result.length;
           result.push({ ...player });
-          keys.forEach(key => keyToIndex.set(key, index));
+          // Don't steal a shared key (e.g. a group invite id) from an existing distinct person.
+          keys.forEach(key => { if (!keyToIndex.has(key)) keyToIndex.set(key, index); });
           return;
         }
         result[existingIndex] = mergeRosterMember(result[existingIndex], player, users);
@@ -8392,21 +8408,23 @@
         const email = profile.email || profileUser.email || '';
         const emailKey = String(email || '').toLowerCase();
         const nameKey = canonicalIdentityNameKey(name);
-        // Also bridge by the invite id (legacyPlayerId). A coach roster row is
-        // often keyed by the invite id while the player later registered under a
-        // permanent user_ id with a DIFFERENT display name — so id/userId/name all
-        // differ and only the invite id is shared. Without this bridge the row
-        // never links to its profile, stays orphaned, and shows "No Reply" even
-        // though the availability reply exists. Invite ids are unique, so this can
-        // never merge two different people.
+        // Bridge by invite id (legacyPlayerId) for orphaned rows, BUT a permanent
+        // user_ id uniquely identifies a person, so never attach a profile to a row
+        // that already belongs to a DIFFERENT permanent user. GROUP invite links are
+        // shared by many players (same legacyPlayerId), and corrupted rows can have an
+        // id equal to another person's userId — without this guard a second player is
+        // absorbed into the first's row and vanishes from the squad list.
         const profLegacyId = String(profile.legacyPlayerId || '');
-        let player = state.players.find(item =>
-          String(item.id || '') === playerId ||
-          String(item.userId || '') === profile.userId ||
-          (profLegacyId && (String(item.legacyPlayerId || '') === profLegacyId || String(item.id || '') === profLegacyId)) ||
-          (emailKey && String(item.email || '').toLowerCase() === emailKey) ||
-          (nameKey && canonicalIdentityNameKey(item.name) === nameKey)
-        );
+        const profUid = String(profile.userId || '');
+        let player = state.players.find(item => {
+          const iUid = String(item.userId || '');
+          if (iUid && iUid === profUid) return true;                                        // same permanent person
+          if (iUid && isPermanentPlayerUserId(iUid) && iUid !== profUid) return false;      // different permanent person — never conflate
+          return String(item.id || '') === playerId ||
+            (profLegacyId && (String(item.legacyPlayerId || '') === profLegacyId || String(item.id || '') === profLegacyId)) ||
+            (emailKey && String(item.email || '').toLowerCase() === emailKey) ||
+            (nameKey && canonicalIdentityNameKey(item.name) === nameKey);
+        });
         if (!player) {
           player = {
             id: playerId,
