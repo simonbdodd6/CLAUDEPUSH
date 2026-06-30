@@ -10035,11 +10035,8 @@
             </div>
           </div>` : ''}
 
-          <!-- ── Weekly Availability — coach manages WHEN requests are sent ──────── -->
-          ${weeklyAvailabilityCardHtml()}
-
-          <!-- ── Club Command Dashboard ──────────────────────── -->
-          <div class="mctl-section-label">Club overview</div>
+          <!-- ── Club Command Dashboard — leads the page (Today at a glance) ──────── -->
+          <div class="mctl-section-label">Today at a glance</div>
           ${renderClubCommandDashboard()}
 
           <!-- ── NOW ───────────────────────────────────────────── -->
@@ -10228,6 +10225,13 @@
           <!-- Lower Phase-24 dashboard removed from the Beta overview: the page
                ends after the Match Centre area. _renderCommandDashboard() is
                retained for the full build. -->
+
+          <!-- ── Weekly Availability — automation card, moved below the command
+               sections so Overview leads as a coach command page. Unchanged card +
+               controls; no automation/scheduler logic touched. ──────────────────── -->
+          <div class="mctl-section-label">Weekly availability</div>
+          ${weeklyAvailabilityCardHtml()}
+
           ${aiHTML}
 
         </div>`;
