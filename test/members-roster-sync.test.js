@@ -70,7 +70,6 @@ test('Members list reads from ONE source of truth (deduped roster)', () => {
   // Members uses the SAME archived test as Match Centre (lifecycleStatus only) — no _archived divergence
   assert.ok(html.includes("const _isArchivedMember = p => (p.lifecycleStatus || 'active') === 'archived';"), 'archived test matches Match Centre');
   assert.ok(html.includes('${members.map(p =>'), 'the visible list derives from members');
-  assert.ok(html.includes('${members.length} member'), 'the member count derives from members');
 });
 
 test('coach-added players carry pending/consent/unregistered status', () => {

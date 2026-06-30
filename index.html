@@ -12110,53 +12110,20 @@
       const members    = _showArchivedPlayers ? allMembers : allMembers.filter(p => !_isArchivedMember(p));
       const archivedCount = allMembers.filter(_isArchivedMember).length;
 
-      // ── Beta roster diagnostic (safe, read-only): Members ↔ Match Centre parity ──
-      const _linkedCount = allMembers.filter(p => p.userId || p.legacyPlayerId).length;
-      const _mcPoolCount = allMembers.filter(p => !_isArchivedMember(p)).length;   // == Match Centre matchdayPlayers
-      const _shownKeys   = new Set(members.map(p => mcPersonKey(p.name)));
-      const _missingFromMembers = (state.players || [])
-        .filter(p => p && p.name && !_shownKeys.has(mcPersonKey(p.name)))
-        .map(p => `${p.name}${(p.userId || p.legacyPlayerId) ? ' [linked]' : ' [roster-only]'}${_isArchivedMember(p) ? ' [archived]' : ''}`);
-      const _rosterDiag = {
-        rosterTotal: (state.players || []).length, canonicalVisible: allMembers.length,
-        identityLinked: _linkedCount, rosterOnlyManual: allMembers.length - _linkedCount,
-        membersShown: members.length, matchCentrePool: _mcPoolCount,
-        hiddenArchived: allMembers.length - members.length, inRosterButNotShown: _missingFromMembers,
-      };
-      try { console.log('[MEMBERS DIAG]', JSON.stringify(_rosterDiag)); } catch {}
-
       document.getElementById("coach-players").innerHTML = `
         <div style="display:grid;gap:14px">
 
-          <!-- Team name + toolbar -->
-          <div class="card" style="padding:14px 18px">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:10px">
-              <div style="font-size:13px;font-weight:700;color:var(--ink);flex:1;min-width:200px">
-                ${esc(state.clubName || 'Your club')}
-                <span class="muted" style="font-weight:500;font-size:11.5px;margin-left:6px">edit in <a href="#" onclick="setSection('coach','admin');return false" style="color:var(--accent)">Club Admin</a></span>
-              </div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add player</button>
-                <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Group Invite</button>
-              </div>
+          <!-- Header: title + primary actions (Add Player / Group Invite) -->
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+            <h2 style="margin:0;font-size:19px;color:var(--ink)">Members</h2>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add player</button>
+              <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Group Invite</button>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-              <span style="font-size:13px;color:var(--muted)">${members.length} member${members.length !== 1 ? 's' : ''}</span>
-            </div>
-            <details style="margin-top:2px">
-              <summary style="font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);cursor:pointer;list-style:none">▸ Roster diagnostics</summary>
-              <div style="font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.7">
-                Roster total <strong>${_rosterDiag.rosterTotal}</strong> · Canonical visible <strong>${_rosterDiag.canonicalVisible}</strong> · Linked <strong>${_rosterDiag.identityLinked}</strong> · Roster-only <strong>${_rosterDiag.rosterOnlyManual}</strong><br>
-                Members shown <strong>${_rosterDiag.membersShown}</strong> · Match Centre pool <strong>${_rosterDiag.matchCentrePool}</strong> · Hidden (archived) <strong>${_rosterDiag.hiddenArchived}</strong>
-                ${_missingFromMembers.length
-                  ? `<br><span style="color:var(--red)">In roster but NOT shown (${_missingFromMembers.length}): ${esc(_missingFromMembers.join(', '))}</span>`
-                  : `<br><span style="color:var(--green)">✓ Every roster player is shown</span>`}
-              </div>
-            </details>
           </div>
 
-          <!-- ── Invite & Access panel ── -->
-          <div class="card" style="padding:0;overflow:hidden">
+          <!-- ── Invite & Access panel (ordered below the squad list) ── -->
+          <div class="card" style="order:5;padding:0;overflow:hidden">
             <details class="srv-panel" ontoggle="if(this.open) loadInviteList()">
               <summary>Invite & team access</summary>
               <div class="srv-panel-body" style="padding-top:4px">
@@ -12325,8 +12292,8 @@
             </div>` : ''}
           </div>`}
 
-          <!-- Sent invites — collapsed by default -->
-          <details style="margin-top:4px" ontoggle="if(this.open) loadInviteList()">
+          <!-- Sent invites — collapsed by default (ordered last) -->
+          <details style="order:6;margin-top:4px" ontoggle="if(this.open) loadInviteList()">
             <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);list-style:none;display:flex;align-items:center;gap:6px;padding:10px 4px;user-select:none">
               <span style="font-size:10px">▶</span> Sent invites
             </summary>
