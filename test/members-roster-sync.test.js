@@ -90,6 +90,22 @@ test('identity prune KEEPS coach-added roster members (no userId/legacyPlayerId)
     'identity-linked records are still reconciled against the server profiles');
 });
 
+// ── Members ↔ Match Centre parity: the prune must not silently drop linked players ──
+test('identity prune never wipes the roster on an empty/partial server response', () => {
+  const fn = extractFn(html, 'syncIdentityStateToLocalRoster');
+  // An empty profiles+members response (transient/session/team-scope) must skip the
+  // destructive prune entirely — otherwise identity-linked players vanished from
+  // Members while Match Centre (which never prunes) still showed them.
+  assert.ok(fn.includes('const haveTrustworthyServerSet = profiles.length > 0 || activePlayerMemberIds.size > 0;'),
+    'prune only runs when the server returned a trustworthy reconciliation set');
+  assert.ok(/if \(haveTrustworthyServerSet\)\s*\{[\s\S]*?state\.players = state\.players\.filter/.test(fn),
+    'the destructive filter is guarded by haveTrustworthyServerSet');
+  // A still-active team member is kept even when their player_profile is momentarily
+  // absent (e.g. a just-invited/joined player) — reconcile against members too.
+  assert.ok(fn.includes('activePlayerMemberIds.has(uid)'),
+    'identity-linked players with an active team membership are kept even without a profile');
+});
+
 test('a manual add persists to the server immediately (flush, not only the 2s debounce)', () => {
   assert.ok(extractFn(html, 'addPlayer').includes('flushRosterSync()'), 'addPlayer flushes the roster sync');
   const flush = extractFn(html, 'flushRosterSync');

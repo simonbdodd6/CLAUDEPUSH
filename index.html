@@ -8486,16 +8486,30 @@
       // never fired and every coach-added member was deleted ~1s after adding.)
       const serverProfileUserIds = new Set(profiles.map(p => String(p.userId || '')).filter(Boolean));
       const serverProfileLegacyIds = new Set(profiles.map(p => String(p.legacyPlayerId || '')).filter(Boolean));
+      // Active team membership is ALSO an authoritative "this person is on my team"
+      // signal: a newly invited/registered player can have an active team_member
+      // BEFORE a player_profile exists, so reconcile against BOTH profiles and members.
+      const activePlayerMemberIds = new Set(
+        teamMembers.filter(m => m && m.status === 'active').map(m => String(m.userId || '')).filter(Boolean)
+      );
+      // Only prune when the server actually returned a reconciliation set. An empty
+      // profiles+members response (transient error / session / team-scope) must NEVER
+      // wipe the roster — that silently dropped identity-linked players from Members
+      // while Match Centre (which never runs this prune) still showed them.
+      const haveTrustworthyServerSet = profiles.length > 0 || activePlayerMemberIds.size > 0;
       const beforePrune = state.players.length;
-      state.players = state.players.filter(player => {
-        const uid = String(player.userId || '');
-        const pid = String(player.id || '');
-        const lid = String(player.legacyPlayerId || '');
-        if (!uid && !lid) return true;   // coach-added roster member (no identity link) — keep
-        return serverProfileUserIds.has(uid) || serverProfileUserIds.has(pid) ||
-               serverProfileLegacyIds.has(pid) || serverProfileLegacyIds.has(uid) ||
-               serverProfileLegacyIds.has(lid);
-      });
+      if (haveTrustworthyServerSet) {
+        state.players = state.players.filter(player => {
+          const uid = String(player.userId || '');
+          const pid = String(player.id || '');
+          const lid = String(player.legacyPlayerId || '');
+          if (!uid && !lid) return true;   // coach-added roster member (no identity link) — keep
+          return serverProfileUserIds.has(uid) || serverProfileUserIds.has(pid) ||
+                 serverProfileLegacyIds.has(pid) || serverProfileLegacyIds.has(uid) ||
+                 serverProfileLegacyIds.has(lid) ||
+                 activePlayerMemberIds.has(uid) || activePlayerMemberIds.has(pid) || activePlayerMemberIds.has(lid);
+        });
+      }
       if (state.players.length !== beforePrune) {
         console.log('[CLEANUP] Pruned', beforePrune - state.players.length, 'non-canonical players from local roster');
       }
