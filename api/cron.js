@@ -3,7 +3,7 @@
 import webpush from 'web-push';
 import { load, save, activeMemberIdSet, subscriptionsForMembers } from './_lib.js';
 import { recentResponders } from './_availabilityStore.js';
-import { kvGet, kvSet, kvLpush, kvLtrim, kvConfigured } from './_kv.js';
+import { kvGet, kvSet, kvSetNX, kvDel, kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { resolveVariables } from './_variables.js';
 import { setCors, readSecret, vapidContact } from './_http.js';
@@ -257,6 +257,20 @@ export default async function handler(req, res) {
   }
   webpush.setVapidDetails(vapidContact(), process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
 
+  // Single-flight guard: when QStash (primary) and the Vercel hourly cron (fallback)
+  // fire within the same execution window, only ONE run proceeds — the other no-ops —
+  // so a reminder can never be double-sent even if both trigger simultaneously. The
+  // per-week dedup already prevents repeats ACROSS runs; this closes the rare
+  // concurrent-overlap window. Fail-OPEN: any Redis hiccup acquiring the lock must
+  // never block the scheduler, so we proceed (a possible duplicate beats a missed
+  // reminder). Released in the finally below; a 50s TTL is the crash backstop.
+  const _cronLockKey = key('cron_lock');
+  let _cronLock = 'acquired';
+  try { _cronLock = (await kvSetNX(_cronLockKey, Date.now(), 50)) ? 'acquired' : 'held'; }
+  catch { _cronLock = 'error'; }
+  if (_cronLock === 'held') return res.status(200).json({ ok: true, skipped: 'cron run already in progress' });
+  try {
+
   // Weekly no-reply reminder — formerly /api/reminder, folded in to stay
   // under the Vercel Hobby 12-function limit. /api/reminder rewrites here
   // (vercel.json) so external schedulers keep working unchanged.
@@ -406,4 +420,10 @@ export default async function handler(req, res) {
   }
   const totalSent = results.reduce((count, result) => count + (result.sent || 0), 0);
   return res.status(200).json({ ok: true, fired: results.length, totalSent, results });
+  } finally {
+    // Release the single-flight lock on every exit path (including the early returns
+    // above). Only the run that actually acquired it deletes the key; a fail-open
+    // ('error') run never held it, and the 50s TTL covers a crash before release.
+    if (_cronLock === 'acquired') { try { await kvDel(_cronLockKey); } catch { /* TTL will reap it */ } }
+  }
 }

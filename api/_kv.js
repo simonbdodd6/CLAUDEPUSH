@@ -49,6 +49,15 @@ export async function kvSet(key, value, ttlSeconds) {
   return redis('SET', key, serialised);
 }
 
+/**
+ * Atomic single-flight lock: SET key only if it does NOT already exist (NX), with a
+ * TTL (EX, seconds) so a crashed holder can never wedge it forever. Returns true if
+ * this caller acquired the lock, false if another holder already has it.
+ */
+export async function kvSetNX(key, value, ttlSeconds) {
+  return (await redis('SET', key, JSON.stringify(value), 'NX', 'EX', String(ttlSeconds))) === 'OK';
+}
+
 /** Delete a key */
 export async function kvDel(key) {
   return redis('DEL', key);
