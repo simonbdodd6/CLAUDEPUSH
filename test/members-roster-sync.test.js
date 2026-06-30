@@ -66,7 +66,9 @@ test('Members list reads from ONE source of truth (deduped roster)', () => {
   // removed. The visible list now derives directly from `members`, which is
   // filtered from canonicalVisiblePlayers() — so list + count never disagree.
   assert.ok(html.includes('const allMembers = canonicalVisiblePlayers();'), 'roster from canonicalVisiblePlayers');
-  assert.ok(html.includes('const members    = _showArchivedPlayers ? allMembers : allMembers.filter(p => !playerIsArchived(p));'), 'members filtered from allMembers');
+  assert.ok(html.includes('const members    = _showArchivedPlayers ? allMembers : allMembers.filter(p => !_isArchivedMember(p));'), 'members filtered from allMembers');
+  // Members uses the SAME archived test as Match Centre (lifecycleStatus only) — no _archived divergence
+  assert.ok(html.includes("const _isArchivedMember = p => (p.lifecycleStatus || 'active') === 'archived';"), 'archived test matches Match Centre');
   assert.ok(html.includes('${members.map(p =>'), 'the visible list derives from members');
   assert.ok(html.includes('${members.length} member'), 'the member count derives from members');
 });

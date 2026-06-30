@@ -12048,9 +12048,29 @@
 
       const schedSessions = state.schedule || [];
       const allMembers = canonicalVisiblePlayers();
-      // Phase 17 — separate active from archived
-      const members    = _showArchivedPlayers ? allMembers : allMembers.filter(p => !playerIsArchived(p));
-      const archivedCount = allMembers.filter(playerIsArchived).length;
+      // Use the SAME "archived" test as Match Centre (lifecycleStatus only). The old
+      // playerIsArchived ALSO hid any record with a stale _archived:true flag even when
+      // lifecycleStatus was 'active' — Match Centre never checks _archived, so such a
+      // player showed there but was hidden here. Aligning the test keeps the two in sync.
+      const _isArchivedMember = p => (p.lifecycleStatus || 'active') === 'archived';
+      const members    = _showArchivedPlayers ? allMembers : allMembers.filter(p => !_isArchivedMember(p));
+      const archivedCount = allMembers.filter(_isArchivedMember).length;
+
+      // ── Beta roster diagnostic (safe, read-only): Members ↔ Match Centre parity ──
+      const _linkedCount = allMembers.filter(p => p.userId || p.legacyPlayerId).length;
+      const _mcPoolCount = allMembers.filter(p => !_isArchivedMember(p)).length;   // == Match Centre matchdayPlayers
+      const _shownKeys   = new Set(members.map(p => mcPersonKey(p.name)));
+      const _missingFromMembers = (state.players || [])
+        .filter(p => p && p.name && !_shownKeys.has(mcPersonKey(p.name)))
+        .map(p => `${p.name}${(p.userId || p.legacyPlayerId) ? ' [linked]' : ' [roster-only]'}${_isArchivedMember(p) ? ' [archived]' : ''}`);
+      const _rosterDiag = {
+        rosterTotal: (state.players || []).length, canonicalVisible: allMembers.length,
+        identityLinked: _linkedCount, rosterOnlyManual: allMembers.length - _linkedCount,
+        membersShown: members.length, matchCentrePool: _mcPoolCount,
+        hiddenArchived: allMembers.length - members.length, inRosterButNotShown: _missingFromMembers,
+      };
+      try { console.log('[MEMBERS DIAG]', JSON.stringify(_rosterDiag)); } catch {}
+
       document.getElementById("coach-players").innerHTML = `
         <div style="display:grid;gap:14px">
 
@@ -12069,6 +12089,16 @@
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
               <span style="font-size:13px;color:var(--muted)">${members.length} member${members.length !== 1 ? 's' : ''}</span>
             </div>
+            <details style="margin-top:2px">
+              <summary style="font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);cursor:pointer;list-style:none">▸ Roster diagnostics</summary>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.7">
+                Roster total <strong>${_rosterDiag.rosterTotal}</strong> · Canonical visible <strong>${_rosterDiag.canonicalVisible}</strong> · Linked <strong>${_rosterDiag.identityLinked}</strong> · Roster-only <strong>${_rosterDiag.rosterOnlyManual}</strong><br>
+                Members shown <strong>${_rosterDiag.membersShown}</strong> · Match Centre pool <strong>${_rosterDiag.matchCentrePool}</strong> · Hidden (archived) <strong>${_rosterDiag.hiddenArchived}</strong>
+                ${_missingFromMembers.length
+                  ? `<br><span style="color:var(--red)">In roster but NOT shown (${_missingFromMembers.length}): ${esc(_missingFromMembers.join(', '))}</span>`
+                  : `<br><span style="color:var(--green)">✓ Every roster player is shown</span>`}
+              </div>
+            </details>
           </div>
 
           <!-- ── Invite & Access panel ── -->
