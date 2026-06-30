@@ -3555,7 +3555,7 @@
     .mc7-sort button { flex: 1; min-height: 28px; border: 1px solid var(--hair); background: rgba(255,255,255,0.02); color: var(--muted); font-size: 11px; font-weight: 700; border-radius: 8px; cursor: pointer; }
     .mc7-sort button.on { background: var(--brand-soft); color: var(--brand-2); border-color: var(--brand-line); }
     .mc7-table { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-    .mc7-thead, .mc7-trow { display: grid; grid-template-columns: minmax(0,1fr) 44px 64px 38px; align-items: center; gap: 6px; }
+    .mc7-thead, .mc7-trow { display: grid; grid-template-columns: minmax(0,1fr) 16px; align-items: center; gap: 8px; }
     .mc7-thead { padding: 0 8px 6px; border-bottom: 1px solid var(--line); }
     .mc7-thead span { font-size: 9.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--faint); }
     .mc7-thead span:nth-child(n+2), .mc7-trow > span:nth-child(n+3) { text-align: center; }
@@ -3571,6 +3571,9 @@
     .mc7-match { font-size: 10.5px; font-weight: 700; }
     .mc7-match.available { color: #34d399; } .mc7-match.unavailable { color: #f2718c; } .mc7-match.noreply { color: var(--faint); }
     .mc7-train { font-size: 12px; font-weight: 800; color: var(--ink); }
+    /* Compact selector: availability shown as a small status dot (green/red/grey). */
+    .mc7-dot { width: 11px; height: 11px; border-radius: 50%; justify-self: end; flex-shrink: 0; }
+    .mc7-dot.available { background: #34d399; } .mc7-dot.unavailable { background: #f2718c; } .mc7-dot.noreply { background: var(--faint); }
 
     @media (max-width: 1040px) {
       .mcx2-board { grid-template-columns: 1fr; grid-template-areas: "pitch" "avail" "subs"; }
@@ -3881,7 +3884,7 @@
 
     /* Available Players — scannable team sheet: taller rows, row separators,
        larger avatar + name, clearer position + status (theme-safe colours) */
-    .mc7-thead, .mc7-trow { grid-template-columns: minmax(0,1fr) 58px 64px 42px !important; gap: 8px !important; }
+    .mc7-thead, .mc7-trow { grid-template-columns: minmax(0,1fr) 16px !important; gap: 8px !important; }
     .mc7-tbody { gap: 0 !important; }
     .mc7-trow { padding: 9px 9px !important; border-bottom: 1px solid var(--line); border-radius: 8px; }
     .mc7-trow:last-child { border-bottom: 0; }
@@ -11857,7 +11860,7 @@
                 <button type="button" class="${_availSortKey==='training'?'on':''}" onclick="mcSetAvailSort('training')">Training</button>
               </div>
               <div class="mc7-table">
-                <div class="mc7-thead"><span>Player</span><span>Pos</span><span>Match</span><span>Training</span></div>
+                <div class="mc7-thead"><span>Player</span><span></span></div>
                 <div class="mc7-tbody">
                   ${_availStats.map(({p, match, attPct}) => {
                     const initials = p.name.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
@@ -11865,10 +11868,8 @@
                     return `<div class="mc7-trow squad-player-drag" draggable="true"
                       data-player-name="${esc(p.name)}" data-player-id="${esc(p.id)}"
                       ondragstart="handlePlayerDragStart(event)" ondragend="mcDragEnd(event)">
-                      <span class="mc7-pl"><span class="mc7-av" style="background:${playerAvatarColor(p.id||p.name)}">${esc(initials)}</span><span class="mc7-nm">${esc(p.name)}</span></span>
-                      <span class="mc7-pos">${esc(p.position||'—')}</span>
-                      <span class="mc7-match ${match}">${mLbl}</span>
-                      <span class="mc7-train">${attPct==null?'—':attPct+'%'}</span>
+                      <span class="mc7-pl"><span class="mc7-av" style="background:${playerAvatarColor(p.id||p.name)}">${esc(initials)}</span><span class="mc7-nm" title="${esc(p.name)}">${esc(p.name)}</span></span>
+                      <span class="mc7-dot ${match}" title="${esc(mLbl)}" aria-label="${esc(mLbl)}"></span>
                     </div>`;
                   }).join("") || `<p class="muted" style="padding:18px 8px;font-size:12px;text-align:center">Full squad selected — every available player is on the pitch or bench.</p>`}
                 </div>
