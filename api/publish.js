@@ -413,28 +413,6 @@ export default async function handler(req, res) {
   if (String(req.query?.resource || '') === 'club')   return clubHandler(req, res);
   if (String(req.query?.resource || '') === 'availability-check') return availabilityCheckHandler(req, res);
 
-  // TEMP read-only diagnostic (CRON-gated): roster vs published squad sheet, to find
-  // pitch/bench names that exist only in Match Centre (orphans). To be removed.
-  if (String(req.query?.resource || '') === 'squad-diag') {
-    const provided = (req.headers.authorization || '').replace(/^Bearer\s+/i, '') || String(req.query?.secret || '');
-    if (!process.env.CRON_SECRET || provided !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-    const teamId = String(req.query?.teamId || DEFAULT_TEAM.id);
-    const roster = (await kvGet(rosterKey(teamId))) || { players: [] };
-    const squad  = (await kvGet(squadKey(teamId))) || null;
-    const norm = s => String(s || '').trim().toLowerCase();
-    const rosterNames = new Set((roster.players || []).map(p => norm(p.name)));
-    const pitchNames = squad && squad.formationNames ? Object.values(squad.formationNames).map(String).filter(Boolean) : [];
-    const benchNames = squad && Array.isArray(squad.benchPlayers) ? squad.benchPlayers.map(String).filter(Boolean) : [];
-    const allSheet = [...new Set([...pitchNames, ...benchNames])];
-    return res.status(200).json({ ok: true, teamId,
-      rosterCount: (roster.players || []).length,
-      rosterPlayers: (roster.players || []).map(p => p.name),
-      squadPublished: squad ? (squad.published !== false) : false,
-      pitchNames, benchNames,
-      onSheetButNotInRoster: allSheet.filter(n => !rosterNames.has(norm(n))),
-    });
-  }
-
   // ── GET: any authenticated user reads published player-facing state ────────
   if (req.method === 'GET') {
     let session;

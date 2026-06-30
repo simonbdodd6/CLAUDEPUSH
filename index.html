@@ -11454,6 +11454,37 @@
       saveState('Match details toggled');
     }
 
+    // The match sheet (formationNames / benchPlayers) holds player NAMES that reference
+    // the canonical roster. If a name is on the sheet without a roster record (e.g. an
+    // older orphan), the sheet becomes the ONLY place that player exists — and removing
+    // them from the sheet loses them. This promotes any such sheet name into the roster
+    // so the roster stays the single source of truth. Idempotent; coach-only.
+    function mcReconcileSheetToRoster() {
+      if (!isCoach()) return false;
+      const have = new Set(canonicalVisiblePlayers().map(p => mcPersonKey(p.name)));
+      const sheetNames = [
+        ...Object.values(state.formationNames || {}),
+        ...(state.benchPlayers || []),
+      ].map(n => String(n || '').trim()).filter(Boolean);
+      let added = false;
+      sheetNames.forEach(name => {
+        if (name.includes('@')) return;                 // skip email/non-player artifacts
+        const k = mcPersonKey(name);
+        if (!k || have.has(k)) return;
+        upsertCanonicalPlayerRecord({
+          id: 'p' + Date.now() + Math.floor(Math.random() * 1e4),
+          name, position: 'SUB', game: 'no-reply',
+          trainingTuesday: 'no-reply', trainingThursday: 'no-reply',
+          attendance: 0, history: [], blockedDates: [], medical: '', mediaConsent: false,
+          contractStatus: 'active', lifecycleStatus: 'active', registrationStatus: 'unregistered',
+        });
+        have.add(k);
+        added = true;
+      });
+      if (added) { saveState('Match sheet players added to roster'); try { flushRosterSync(); } catch {} }
+      return added;
+    }
+
     function renderMatchday() {
       // Phase 20 — tab delegation; planner falls through to existing render
       const _mTab = state.activeMatchTab || 'planner';
@@ -11515,6 +11546,11 @@
       // per-player status in the table, NOT used to hide members. (Previously this
       // filtered p.game === "available", so a just-added member who hadn't replied
       // to a match request never appeared in the Match Centre.)
+      // Safety: the match sheet stores NAMES, not roster ids. Make sure every name on
+      // the pitch/bench has a canonical roster record, so a player can never exist ONLY
+      // in Match Centre — and dragging them off the sheet only clears the slot, never
+      // loses the player from the team. (See mcReconcileSheetToRoster.)
+      mcReconcileSheetToRoster();
       // Canonical, de-duplicated squad pool — collapses linked + identical-name
       // records so one real member can't appear twice (duplicate-player fix).
       const matchdayPlayers  = canonicalVisiblePlayers().filter(p => (p.lifecycleStatus || 'active') !== 'archived');

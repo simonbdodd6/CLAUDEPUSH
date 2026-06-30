@@ -167,3 +167,16 @@ test('regression: pitch → bench moves the player and does not snap back', () =
   assert.equal(s.state.benchPlayers[0], '', 'bench empty after remove');
   assert.equal(s.state.formationNames['2'], '', 'pitch slot still empty');
 });
+
+// ── Match Centre can never be the only place a player exists ──────────────────
+// The sheet stores NAMES; an orphan name (no roster record) used to be lost when
+// dragged off. renderMatchday now reconciles sheet names into the canonical roster.
+test('match-sheet names are reconciled into the canonical roster (no MC-only orphans)', () => {
+  const fn = extractFn(html, 'mcReconcileSheetToRoster');
+  assert.ok(fn.includes('state.formationNames'), 'reads pitch names');
+  assert.ok(fn.includes('state.benchPlayers'), 'reads bench names');
+  assert.ok(fn.includes("name.includes('@')"), 'skips email / non-player artifacts');
+  assert.ok(fn.includes('upsertCanonicalPlayerRecord('), 'promotes an orphan sheet name into the canonical roster');
+  assert.ok(fn.includes('if (!isCoach()) return'), 'coach-only');
+  assert.ok(html.includes('mcReconcileSheetToRoster();'), 'renderMatchday invokes the safeguard before reading the squad pool');
+});
