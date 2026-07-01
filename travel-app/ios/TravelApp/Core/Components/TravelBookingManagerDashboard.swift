@@ -182,6 +182,26 @@ struct TravelBookingManagerDashboard: View {
             immersiveHero
                 .modifier(BookingMgrAppear(appeared: appeared, reduceMotion: reduceMotion, index: 0))
 
+            overviewSections
+            bookingSections
+            walletSections
+
+            continuePlanningButton
+                .modifier(BookingMgrAppear(appeared: appeared, reduceMotion: reduceMotion, index: 12))
+        }
+        .onAppear {
+            if reduceMotion {
+                appeared = true
+            } else {
+                withAnimation(TravelMotion.gentle) { appeared = true }
+            }
+        }
+    }
+
+    // MARK: Scroll sections (grouped to stay within the ViewBuilder arity limit)
+
+    private var overviewSections: some View {
+        Group {
             section("Trip at a glance", "Your bookings in numbers.", 1) {
                 PremiumAdaptiveGrid(minimumWidth: 120) {
                     ForEach(plan.stats) { stat in
@@ -199,7 +219,11 @@ struct TravelBookingManagerDashboard: View {
                     }
                 }
             }
+        }
+    }
 
+    private var bookingSections: some View {
+        Group {
             bookingSection("Flights", "airplane", plan.flights, 3)
             bookingSection("Ferries", "ferry.fill", plan.ferries, 4)
             bookingSection("Accommodation", "bed.double.fill", plan.accommodation, 5)
@@ -213,7 +237,11 @@ struct TravelBookingManagerDashboard: View {
                     }
                 }
             }
+        }
+    }
 
+    private var walletSections: some View {
+        Group {
             section("Document wallet", "Your tickets and confirmations.", 9) {
                 PremiumAdaptiveGrid(minimumWidth: 200) {
                     ForEach(plan.documents) { document in
@@ -236,16 +264,6 @@ struct TravelBookingManagerDashboard: View {
                 section("Trip plan", "Your full planning dashboard.", 11) {
                     tripPlanEmbed(tripPlan)
                 }
-            }
-
-            continuePlanningButton
-                .modifier(BookingMgrAppear(appeared: appeared, reduceMotion: reduceMotion, index: 12))
-        }
-        .onAppear {
-            if reduceMotion {
-                appeared = true
-            } else {
-                withAnimation(TravelMotion.gentle) { appeared = true }
             }
         }
     }
