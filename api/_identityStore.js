@@ -254,6 +254,46 @@ export async function savePlayerProfiles(profiles) {
   await kvSet(PLAYER_PROFILES_KEY, Array.isArray(profiles) ? profiles : []);
 }
 
+// Self-healing repair for the group-invite identity collision. Every player who
+// claimed the SAME reusable group invite was assigned legacyPlayerId =
+// inv-<groupToken8> — so distinct people shared ONE id, which collides roster
+// dedup, DM addressing and alias expansion (a coach DM could route to the wrong
+// person; the intended player never gets a conversation). Any legacyPlayerId held
+// by 2+ profiles with DIFFERENT userIds is not identifying: reset each such
+// profile's legacyPlayerId to its own unique userId. Pure + idempotent; profiles
+// with a UNIQUE legacyPlayerId (team-code / personal-invite players like Beta
+// Test 4) are left untouched → no regression for working players.
+export function healSharedLegacyPlayerIds(profiles = []) {
+  const list = Array.isArray(profiles) ? profiles : [];
+  const usersByLegacy = new Map(); // legacyPlayerId -> Set(userId)
+  for (const p of list) {
+    const lid = String(p?.legacyPlayerId || '');
+    const uid = String(p?.userId || '');
+    if (!lid || !uid) continue;
+    if (!usersByLegacy.has(lid)) usersByLegacy.set(lid, new Set());
+    usersByLegacy.get(lid).add(uid);
+  }
+  const shared = new Set([...usersByLegacy.entries()].filter(([, uids]) => uids.size > 1).map(([lid]) => lid));
+  let changed = false;
+  const healed = list.map(p => {
+    const lid = String(p?.legacyPlayerId || '');
+    const uid = String(p?.userId || '');
+    if (lid && uid && shared.has(lid) && lid !== uid) { changed = true; return { ...p, legacyPlayerId: uid }; }
+    return p;
+  });
+  return { profiles: healed, changed };
+}
+
+// Load profiles, repairing shared group-invite legacyPlayerIds and persisting the
+// fix once (idempotent). Runs automatically from identity/messaging entry points
+// so existing invited players are healed with no manual data fix or coach action.
+export async function loadHealedPlayerProfiles() {
+  const raw = await loadPlayerProfiles();
+  const { profiles, changed } = healSharedLegacyPlayerIds(raw);
+  if (changed) await savePlayerProfiles(profiles);
+  return profiles;
+}
+
 export async function loadSessions() {
   const now = Date.now();
   const sessions = (await kvGet(SESSIONS_KEY)) || [];
@@ -663,7 +703,12 @@ async function ensurePlayerProfile({ teamMember, user, invite = null, position =
       position: position || 'TBC',
       phone: phone || '',
       email: user.email,
-      legacyPlayerId: invite?.token ? `inv-${String(invite.token).slice(-8)}` : user.id,
+      // A GROUP invite is one reusable link claimed by MANY players, so deriving the
+      // legacyPlayerId from its shared token gives every claimer the SAME id — which
+      // collides their identity (roster dedup, DM addressing, alias expansion) and can
+      // route a coach DM to the wrong person. Only a PERSONAL invite's token is unique
+      // per player; for group invites (and team-code joins) use the unique user.id.
+      legacyPlayerId: (invite?.token && invite?.kind !== 'group') ? `inv-${String(invite.token).slice(-8)}` : user.id,
       createdAt: nowIso(),
     };
     profiles.push(profile);
@@ -1613,7 +1658,7 @@ export async function listIdentityState(teamId = DEFAULT_TEAM.id) {
     loadUsers(),
     loadTeams(),
     loadTeamMembers(),
-    loadPlayerProfiles(),
+    loadHealedPlayerProfiles(), // auto-repair shared group-invite legacyPlayerIds, persisted once
   ]);
   const teamMembers = members.filter(member => member.teamId === teamId);
   const teamUserIds = new Set(teamMembers.map(member => member.userId));

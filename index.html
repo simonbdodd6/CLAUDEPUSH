@@ -21464,11 +21464,23 @@
     async function chatResolveCoachDirectChatId(chatId) {
       const id = String(chatId || '');
       if (!id.startsWith('dm:')) return chatId;
+      // If this conversation already exists on the server, send to its EXACT id and
+      // never recompute it. The participant can resolve to a different alias between
+      // create and send (e.g. a roster sync links the player to a permanent user id),
+      // which would target a conversation that was never created → the server returns
+      // 404 "Conversation not found" and the message is lost. The stored server
+      // conversation id is canonical — prefer it over re-resolution.
+      if (Array.isArray(_chatConversations) && _chatConversations.some(c => String(c?.id) === id)) return id;
       await chatLoadStateModule();
       const me = chatMe();
       const participant = id.split(':').slice(1).find(part => String(part) !== String(me.id)) || '';
       const resolvedParticipant = chatResolveDirectParticipantId(participant);
-      return resolvedParticipant ? dmConvId(me.id, resolvedParticipant) : chatId;
+      const resolvedId = resolvedParticipant ? dmConvId(me.id, resolvedParticipant) : chatId;
+      // If re-resolution produced an id that ALSO isn't a known server conversation
+      // but the original was, keep the original (guarded above). Otherwise, if the
+      // resolved id exists on the server, use it; else fall back to the resolved id.
+      if (Array.isArray(_chatConversations) && _chatConversations.some(c => String(c?.id) === resolvedId)) return resolvedId;
+      return resolvedId;
     }
 
     function chatCoachDmPickerPlayers() {
@@ -21964,7 +21976,7 @@
       return ids;
     }
     let _allowedDmParticipantIds = _buildInitialAllowedDmIds();
-    function _filterCanonicalConversations(convs) {
+    function _filterCanonicalConversations(convs, trustServer = false) {
       const meId = String(chatMe()?.id || '');
       return (Array.isArray(convs) ? convs : []).filter(c => {
         const id = String(c?.id || '');
@@ -21975,6 +21987,10 @@
         // state.users. Otherwise a valid server DM is discarded and _chatConversations
         // can never populate (circular with playerCoachDmId, which reads it back).
         if (meId && parts.some(p => String(p) === meId)) return true;
+        // The /api/chat conversations list is already access-filtered server-side, so
+        // trust it: a DM stored under the player's secondary alias (e.g. their
+        // legacyPlayerId) must not be dropped here just because it isn't chatMe().id.
+        if (trustServer) return true;
         return parts.every(p => _allowedDmParticipantIds.has(p));
       });
     }
@@ -21989,7 +22005,7 @@
           // the player list through playerAllowedConversationIds(): that allow-list derives
           // from playerCoachDmId(), which derives from _chatConversations — a circular
           // dependency that previously discarded the valid server DM, leaving it [].
-          _chatConversations = _filterCanonicalConversations(data.conversations || []);
+          _chatConversations = _filterCanonicalConversations(data.conversations || [], true);
           // Update nav badge for the current user's unread total
           chatSetUnreadTotal(chatUnreadTotal());
         }
@@ -22116,8 +22132,17 @@
           chatRenderMessages(convId, mode);
           // Mark read since I just sent
           _chatLastPoll[convId + ':read'] = Date.now();
+        } else {
+          // Server rejected the send (e.g. access/identity mismatch). Do NOT let the
+          // optimistic bubble hide a non-delivery — drop it and tell the sender so a
+          // message that never persisted can't look like it was delivered.
+          const arr = _chatMessages[convId] || [];
+          const i = arr.findIndex(m => m.id === optimistic.id);
+          if (i >= 0) arr.splice(i, 1);
+          chatRenderMessages(convId, mode);
+          showToast(data.error ? `Message not delivered — ${data.error}` : 'Message not delivered — please retry');
         }
-      } catch(e) { /* optimistic stays */ }
+      } catch(e) { /* offline — optimistic stays for retry */ }
       saveState('Chat message sent');
     }
 

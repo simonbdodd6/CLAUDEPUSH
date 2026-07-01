@@ -12,7 +12,7 @@ import webpush from 'web-push';
 import { kvGet, kvSet, kvLpush, kvLrange, kvLtrim } from './_kv.js';
 import { key } from './_keys.js';
 import { unreadCountForUser } from '../src/chat-notifications.js';
-import { DEFAULT_TEAM, resolveSessionFromRequest } from './_identityStore.js';
+import { DEFAULT_TEAM, resolveSessionFromRequest, loadHealedPlayerProfiles } from './_identityStore.js';
 import { tenantTeamId } from './_tenant.js';
 import { load as loadSubs, save as saveSubs } from './_lib.js';
 import { setCors, vapidContact } from './_http.js';
@@ -168,7 +168,7 @@ function sessionMatchesConversationTeam(sessionContext = {}, conversation = {}) 
   return tenantTeamId(sessionContext) === conversationTeamId(conversation);
 }
 
-function participantIdsForSession(sessionContext = {}) {
+export function participantIdsForSession(sessionContext = {}) {
   return [
     sessionContext?.user?.id,
     sessionContext?.playerProfile?.userId,
@@ -182,7 +182,53 @@ function conversationParticipants(conversation = {}) {
     .map(String);
 }
 
-function sessionCanReadConversation(sessionContext, conversation = {}) {
+// Expand participant ids to every alias that resolves to the same person by
+// following userId <-> legacyPlayerId links across player profiles (to a fixed
+// point). Mirrors the sender/recipient expansion in sendDmPush so the DM READ
+// gate is exactly as tolerant as push targeting. Pure and additive-only.
+export function expandParticipantAliases(seedIds = [], profiles = []) {
+  const ids = new Set((Array.isArray(seedIds) ? seedIds : []).map(String).filter(Boolean));
+  const list = Array.isArray(profiles) ? profiles : [];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const p of list) {
+      const pL = String(p?.legacyPlayerId || '');
+      const pU = String(p?.userId || '');
+      if ((pL && ids.has(pL)) || (pU && ids.has(pU))) {
+        if (pL && !ids.has(pL)) { ids.add(pL); changed = true; }
+        if (pU && !ids.has(pU)) { ids.add(pU); changed = true; }
+      }
+    }
+  }
+  return [...ids];
+}
+
+// The player's full read-access id set: their session ids, plus every alias on
+// a player profile that belongs to them (matched by userId or email), expanded
+// via id-chains. Loaded once per request; fail-safe to the raw session ids so a
+// profiles read error never grants MORE access than before.
+async function actorIdsForSession(sessionContext) {
+  const seed = participantIdsForSession(sessionContext);
+  try {
+    const profiles = await loadHealedPlayerProfiles(); // repairs shared group-invite ids, persisted once
+    const uid   = String(sessionContext?.user?.id || '');
+    const email = String(sessionContext?.user?.email || '').trim().toLowerCase();
+    const seedSet = new Set(seed.map(String));
+    for (const p of profiles) {
+      const pEmail = String(p?.email || '').trim().toLowerCase();
+      if ((uid && String(p?.userId || '') === uid) || (email && pEmail && pEmail === email)) {
+        if (p?.userId)         seedSet.add(String(p.userId));
+        if (p?.legacyPlayerId) seedSet.add(String(p.legacyPlayerId));
+      }
+    }
+    return expandParticipantAliases([...seedSet], profiles);
+  } catch {
+    return seed;
+  }
+}
+
+export function sessionCanReadConversation(sessionContext, conversation = {}, actorIds = null) {
   if (!sessionContext?.user?.id) return true;
   if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
   if (isStaffSession(sessionContext)) return true;
@@ -192,11 +238,11 @@ function sessionCanReadConversation(sessionContext, conversation = {}) {
   if (['squad', 'announce'].includes(conversation?.id)) return true;
   if (conversation?.id === 'coaching' || type === 'COACHING') return false;
   const participants = conversationParticipants(conversation);
-  const actorIds = participantIdsForSession(sessionContext);
-  return participants.some(id => actorIds.includes(id));
+  const ids = Array.isArray(actorIds) ? actorIds : participantIdsForSession(sessionContext);
+  return participants.some(id => ids.includes(id));
 }
 
-function sessionCanWriteConversation(sessionContext, conversation = {}) {
+function sessionCanWriteConversation(sessionContext, conversation = {}, actorIds = null) {
   if (!sessionContext?.user?.id) return true;
   if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
   if (isStaffSession(sessionContext)) return true;
@@ -206,7 +252,7 @@ function sessionCanWriteConversation(sessionContext, conversation = {}) {
   if (conversation?.id === 'announce' || type === 'ANNOUNCEMENT') return false;
   if (conversation?.id === 'coaching' || type === 'COACHING') return false;
   if (conversation?.id === 'squad' || type === 'GROUP') return true;
-  return sessionCanReadConversation(sessionContext, conversation);
+  return sessionCanReadConversation(sessionContext, conversation, actorIds);
 }
 
 async function findConversation(convId) {
@@ -224,9 +270,10 @@ async function requireConversationAccess(res, sessionContext, convId, mode = 're
     err(res, 404, 'Conversation not found');
     return false;
   }
+  const actorIds = await actorIdsForSession(sessionContext);
   const allowed = mode === 'write'
-    ? sessionCanWriteConversation(sessionContext, conversation)
-    : sessionCanReadConversation(sessionContext, conversation);
+    ? sessionCanWriteConversation(sessionContext, conversation, actorIds)
+    : sessionCanReadConversation(sessionContext, conversation, actorIds);
   if (!allowed) {
     err(res, 403, 'Not authorized for this conversation');
     return false;
@@ -264,7 +311,8 @@ async function handleGet(req, res) {
   if (action === 'conversations') {
     if (!sessionContext?.user?.id) return err(res, 401, 'Authentication required');
     const convs = await ensureDefaults();
-    const visibleConvs = convs.filter(c => sessionCanReadConversation(sessionContext, c));
+    const actorIds = await actorIdsForSession(sessionContext);
+    const visibleConvs = convs.filter(c => sessionCanReadConversation(sessionContext, c, actorIds));
     // Enrich with last message + unread count per user
     const enriched = await Promise.all(visibleConvs.map(async c => {
       const msgs = await kvLrange(MSGS_KEY(c.id), 0, 0); // last message only
