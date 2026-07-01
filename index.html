@@ -12330,46 +12330,81 @@
     function renderPlayerWeek() {
       const player = getPlayer();
       if (!player.id) { document.getElementById("player-week").innerHTML = noSquadMsg(); return; }
-      const mc = state.matchCentre || {};
-      document.getElementById("player-week").innerHTML = `
-        <div class="card" style="max-width:560px;margin:0 auto">
-          <h2>Training</h2>
-          <p class="muted" style="margin-bottom:18px">Your sessions at ${esc(state.clubName || 'your team')} — tap a card to set your availability.</p>
-          ${state.schedule.map(item => {
-            const key       = sessionKey(item.id);
-            const status    = player[key] || 'no-reply';
-            // Optional fields are shown only when the coach has published them.
-            const _t    = item.startTime || item.time || '';
-            const meta  = [item.date, _t, item.location].filter(Boolean).join(' · ');
-            const leadCoach  = item.coachName || item.leadCoach || '';
-            const titleHtml = item.published
-              ? `<button type="button" onclick="openTrainingDetails('${esc(item.id)}')" style="background:none;border:0;padding:0;font-size:15px;font-weight:700;color:inherit;cursor:pointer;text-align:left">${esc(item.title)}</button>`
-              : `<strong style="font-size:15px">${esc(item.title)}</strong>`;
-            return `<div style="padding:14px 0;border-bottom:1px solid var(--line)">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-                <div style="min-width:0">
-                  <div style="display:flex;align-items:center;gap:7px">
-                    ${titleHtml}
-                    ${item.published ? `<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:999px;background:var(--green);color:#fff">PUBLISHED</span>` : ''}
-                  </div>
-                  ${meta ? `<div class="muted" style="font-size:13px;margin-top:2px">${esc(meta)}</div>` : ''}
-                  ${leadCoach ? `<div class="muted" style="font-size:12px;margin-top:1px">Lead coach · ${esc(leadCoach)}</div>` : ''}
-                </div>
-                <button class="btn" type="button" onclick="setSection('player','availability')"
-                  style="min-width:110px;font-size:13px;flex-shrink:0;
-                    background:${status==='available'?'rgba(16,185,129,0.14)':status==='unavailable'||status==='injured'?'rgba(239,68,68,0.14)':status==='maybe'?'rgba(245,158,11,0.12)':'var(--panel)'};
-                    border-color:${status==='available'?'#10b981':status==='unavailable'||status==='injured'?'#ef4444':status==='maybe'?'#f59e0b':'var(--line)'};
-                    color:${status==='available'?'#34d399':status==='unavailable'||status==='injured'?'#f87171':status==='maybe'?'#fbbf24':'var(--muted)'}">
-                  ${status==='available'?'✓ Available':status==='unavailable'||status==='injured'?'✗ Not available':status==='maybe'?'? Maybe':'Set availability →'}
-                </button>
+      // Beta redesign: the Training page is a READ-ONLY session viewer — "what are we
+      // doing tonight" — NOT an availability page. Players answer "am I coming?" only on
+      // the Availability tab. No availability controls here. Presentation only: built
+      // entirely from existing published session data (schedule fields + trainingBlocks);
+      // no API / availability / storage / business-logic changes.
+      const tonightId = getTonightSessionId();
+      const sessions  = (state.schedule || []).filter(s => String(s.type || '').toLowerCase() === 'training');
+      const secH      = 'font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:18px 0 8px';
+
+      const sessionCard = (item) => {
+        const isTonight  = tonightId && String(item.id) === String(tonightId);
+        const start      = item.startTime || item.time || '';
+        const end        = item.endTime || '';
+        const timeStr    = [start, end].filter(Boolean).join('–');
+        const leadCoach  = item.coachName || item.leadCoach || '';
+        const objectives = String(item.focus || item.objectives || '').trim();
+        const blocks     = item.published ? ((state.trainingBlocks || {})[item.id] || []) : [];
+
+        const plan = blocks.length ? `
+          <div style="${secH}">Session plan</div>
+          ${blocks.map((b, i) => `
+            ${i ? '<div style="height:1px;background:var(--line);margin:0"></div>' : ''}
+            <div style="display:flex;gap:11px;padding:11px 0">
+              <span style="font-variant-numeric:tabular-nums;font-weight:800;font-size:13px;color:var(--accent);min-width:46px">${esc(b.time || '')}</span>
+              <div style="min-width:0">
+                <div style="font-size:14px;font-weight:650;color:var(--ink)">${esc(b.activity || 'Session block')}</div>
+                ${b.keyFocus ? `<div class="muted" style="font-size:12.5px;margin-top:2px;white-space:pre-wrap">${esc(b.keyFocus)}</div>` : ''}
+                ${b.coach ? `<div class="muted" style="font-size:11.5px;margin-top:2px">${esc(b.coach)}</div>` : ''}
               </div>
-              ${item.published ? `<button class="btn" type="button" onclick="openTrainingDetails('${esc(item.id)}')" style="margin-top:10px;width:100%;justify-content:center;font-size:13px">View session details →</button>` : ''}
-            </div>`;
-          }).join("")}
-          <div style="margin-top:20px">
-            <div class="history-bar"><span style="width:${player.attendance}%"></span></div>
-            <p style="margin-top:7px;font-size:13px"><strong>${player.attendance}%</strong> season training attendance</p>
+            </div>`).join('')}` : '';
+
+        const notes = objectives ? `
+          <div style="${secH}">Coach notes</div>
+          <p style="font-size:13.5px;line-height:1.6;margin:0;color:var(--ink);white-space:pre-wrap">${esc(objectives)}</p>` : '';
+
+        const body = item.published
+          ? `${plan}${notes}
+             ${(!blocks.length && !objectives) ? `<p class="muted" style="font-size:13px;margin:14px 0 0">Session published — the plan details haven't been added yet.</p>` : ''}
+             <div style="display:flex;align-items:center;gap:8px;margin-top:18px;font-size:12.5px;font-weight:700;color:var(--green)"><span>✓</span><span>Published by coach</span></div>`
+          : `<div style="margin-top:16px;padding:20px 16px;text-align:center;border:1px dashed var(--line);border-radius:13px">
+               <div style="font-size:13.5px;font-weight:600;color:var(--ink)">No training session has been published yet.</div>
+               <div class="muted" style="font-size:12.5px;margin-top:5px">Your coach will publish the plan before the session.</div>
+             </div>`;
+
+        return `
+          <div class="card" style="max-width:560px;margin:0 auto 14px;padding:20px 22px">
+            <div class="eyebrow" style="color:var(--accent)">${isTonight ? "Tonight's training" : 'Upcoming training'}</div>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-top:3px">
+              <div style="min-width:0">
+                <h2 style="margin:0;font-size:19px;color:var(--ink)">${esc(item.title)}</h2>
+                ${(item.date || timeStr) ? `<div style="margin-top:5px;display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                  ${item.date ? `<span style="font-size:15px;font-weight:700;color:var(--ink)">${esc(item.date)}</span>` : ''}
+                  ${timeStr ? `<span class="muted" style="font-size:14px">${esc(timeStr)}</span>` : ''}
+                </div>` : ''}
+              </div>
+              <span style="flex-shrink:0;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:4px 9px;border-radius:999px;${item.published ? 'color:#0f9d6b;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.28)' : 'color:var(--muted);background:var(--panel-2);border:1px solid var(--line)'}">${item.published ? 'Published' : 'Draft'}</span>
+            </div>
+            ${item.location ? `<div style="margin-top:12px"><div style="font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);margin-bottom:2px">Location</div><div style="font-size:14px;color:var(--ink)">${esc(item.location)}</div></div>` : ''}
+            ${leadCoach ? `<div class="muted" style="font-size:12.5px;margin-top:8px">Lead coach · ${esc(leadCoach)}</div>` : ''}
+            ${body}
+          </div>`;
+      };
+
+      document.getElementById("player-week").innerHTML = `
+        <div style="padding-bottom:8px">
+          <div style="max-width:560px;margin:0 auto 14px;text-align:center">
+            <h1 style="font-size:22px;margin:0;color:var(--ink)">Training</h1>
+            <p class="muted" style="font-size:13px;margin:5px 0 0">What's on at ${esc(state.clubName || 'your club')} — the session plan, not availability.</p>
+            <p class="muted" style="font-size:12px;margin:3px 0 0">To say if you're coming, use the <strong>Availability</strong> tab.</p>
           </div>
+          ${sessions.length ? sessions.map(sessionCard).join('') : `
+          <div class="card" style="max-width:560px;margin:0 auto;padding:22px;text-align:center">
+            <div style="font-size:13.5px;font-weight:600;color:var(--ink)">No training sessions yet.</div>
+            <div class="muted" style="font-size:12.5px;margin-top:5px">Your coach will add the week's sessions.</div>
+          </div>`}
         </div>`;
     }
 
