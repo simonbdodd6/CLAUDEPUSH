@@ -182,6 +182,24 @@ struct TravelDiveSurfGuide: View {
             )
             .modifier(DiveSurfAppear(appeared: appeared, reduceMotion: reduceMotion, index: 0))
 
+            seasonsGroup
+            spotsGroup
+            gearGroup
+            safetyGroup
+        }
+        .onAppear {
+            if reduceMotion {
+                appeared = true
+            } else {
+                withAnimation(TravelMotion.gentle) { appeared = true }
+            }
+        }
+    }
+
+    // MARK: Scroll sections (grouped to stay within the ViewBuilder arity limit)
+
+    private var seasonsGroup: some View {
+        Group {
             section("Seasons", "When the conditions are best.", 1) {
                 GlassCard {
                     PremiumAdaptiveGrid(minimumWidth: 120) {
@@ -202,7 +220,11 @@ struct TravelDiveSurfGuide: View {
                     }
                 }
             }
+        }
+    }
 
+    private var spotsGroup: some View {
+        Group {
             section("Surf spots", "Where and how to surf.", 3) {
                 PremiumAdaptiveGrid(minimumWidth: 240) {
                     ForEach(guide.surfSpots) { spot in
@@ -234,7 +256,11 @@ struct TravelDiveSurfGuide: View {
             section("Coral reef health", "Protect what you came to see.", 7) {
                 bulletCard(guide.coralReefHealth, icon: "leaf.fill", tint: theme.moss)
             }
+        }
+    }
 
+    private var gearGroup: some View {
+        Group {
             section("Surf equipment & boards", "What to ride and bring.", 8) {
                 bulletCard(guide.surfEquipment, icon: "figure.surfing", tint: theme.sky)
             }
@@ -252,20 +278,17 @@ struct TravelDiveSurfGuide: View {
             section("Surf etiquette", "Respect the lineup.", 12) {
                 bulletCard(guide.surfEtiquette, icon: "hand.raised.fill", tint: theme.sun)
             }
+        }
+    }
 
+    private var safetyGroup: some View {
+        Group {
             section("Safety advice", "Dive and surf within limits.", 13) {
                 bulletCard(guide.safetyAdvice, icon: "checkmark.shield.fill", tint: theme.moss)
             }
 
             section("Emergency procedures", "If something goes wrong.", 14) {
                 numberedCard(guide.emergencyProcedures, tint: theme.coral)
-            }
-        }
-        .onAppear {
-            if reduceMotion {
-                appeared = true
-            } else {
-                withAnimation(TravelMotion.gentle) { appeared = true }
             }
         }
     }

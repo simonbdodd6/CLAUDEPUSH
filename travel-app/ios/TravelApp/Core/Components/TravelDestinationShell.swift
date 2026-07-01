@@ -164,6 +164,23 @@ struct TravelDestinationShell: View {
             countdownCard
                 .modifier(ShellAppear(appeared: appeared, reduceMotion: reduceMotion, index: 2))
 
+            overviewGroup
+            exploreGroup
+            planGroup
+        }
+        .onAppear {
+            if reduceMotion {
+                appeared = true
+            } else {
+                withAnimation(TravelMotion.gentle) { appeared = true }
+            }
+        }
+    }
+
+    // MARK: Scroll sections (grouped to stay within the ViewBuilder arity limit)
+
+    private var overviewGroup: some View {
+        Group {
             section("Weather", "Conditions right now.", 3) {
                 weatherCard
             }
@@ -193,7 +210,11 @@ struct TravelDestinationShell: View {
 
             travelEssentialsShortcut
                 .modifier(ShellAppear(appeared: appeared, reduceMotion: reduceMotion, index: 7))
+        }
+    }
 
+    private var exploreGroup: some View {
+        Group {
             section("Experiences", "The best of \(destination.name).", 8) {
                 PremiumAdaptiveGrid(minimumWidth: 220) {
                     ForEach(destination.experiences) { experience in
@@ -207,7 +228,11 @@ struct TravelDestinationShell: View {
             listSection("Getting around", "Transport on the ground.", destination.transport, tag: "Travel", 11)
             listSection("Ferries", "Crossings to and from the island.", destination.ferries, tag: "Ferry", 12)
             listSection("Safety", "Stay safe and prepared.", destination.safety, tag: "Safety", 13)
+        }
+    }
 
+    private var planGroup: some View {
+        Group {
             section("Packing reminders", "Don’t leave these behind.", 14) {
                 packingCard
             }
@@ -230,13 +255,6 @@ struct TravelDestinationShell: View {
 
             continuePlanningButton
                 .modifier(ShellAppear(appeared: appeared, reduceMotion: reduceMotion, index: 17))
-        }
-        .onAppear {
-            if reduceMotion {
-                appeared = true
-            } else {
-                withAnimation(TravelMotion.gentle) { appeared = true }
-            }
         }
     }
 
@@ -335,7 +353,7 @@ struct TravelDestinationShell: View {
                     height: TravelSpacing.sm
                 )
                 .animation(reduceMotion ? nil : TravelMotion.gentle, value: appeared)
-                Text("Planning \(Int((min(max(destination.planningProgress, 0), 1)) * 100).rounded())% complete")
+                Text("Planning \(Int((min(max(destination.planningProgress, 0), 1) * 100).rounded()))% complete")
                     .font(TravelTypography.caption)
                     .foregroundStyle(.secondary)
             }
