@@ -75,6 +75,23 @@ struct TravelTripPlannerDashboard: View {
             planningProgressCard
                 .modifier(PlannerAppear(appeared: appeared, reduceMotion: reduceMotion, index: 1))
 
+            overviewGroup
+            planGroup
+            footerGroup
+        }
+        .onAppear {
+            if reduceMotion {
+                appeared = true
+            } else {
+                withAnimation(TravelMotion.gentle) { appeared = true }
+            }
+        }
+    }
+
+    // MARK: Scroll sections (grouped to stay within the ViewBuilder arity limit)
+
+    private var overviewGroup: some View {
+        Group {
             section("Upcoming bookings", "What’s confirmed and what’s next.", 2) {
                 VStack(spacing: TravelSpacing.sm) {
                     ForEach(plan.bookings) { booking in
@@ -99,7 +116,11 @@ struct TravelTripPlannerDashboard: View {
 
             travelEssentialsShortcut
                 .modifier(PlannerAppear(appeared: appeared, reduceMotion: reduceMotion, index: 6))
+        }
+    }
 
+    private var planGroup: some View {
+        Group {
             section("Today’s recommendations", "What to sort out next.", 7) {
                 VStack(spacing: TravelSpacing.sm) {
                     ForEach(plan.recommendations) { item in
@@ -144,7 +165,11 @@ struct TravelTripPlannerDashboard: View {
                     }
                 }
             }
+        }
+    }
 
+    private var footerGroup: some View {
+        Group {
             if let destination = plan.destination {
                 section("Destination", "Your full destination guide.", 12) {
                     destinationEmbed(destination)
@@ -153,13 +178,6 @@ struct TravelTripPlannerDashboard: View {
 
             continuePlanningButton
                 .modifier(PlannerAppear(appeared: appeared, reduceMotion: reduceMotion, index: 13))
-        }
-        .onAppear {
-            if reduceMotion {
-                appeared = true
-            } else {
-                withAnimation(TravelMotion.gentle) { appeared = true }
-            }
         }
     }
 
@@ -198,7 +216,7 @@ struct TravelTripPlannerDashboard: View {
                     Text("Planning progress")
                         .font(TravelTypography.cardTitle)
                     Spacer(minLength: TravelSpacing.sm)
-                    Text("\(Int((min(max(plan.planningProgress, 0), 1)) * 100).rounded())%")
+                    Text("\(Int((min(max(plan.planningProgress, 0), 1) * 100).rounded()))%")
                         .font(TravelTypography.cardTitle)
                         .foregroundStyle(theme.tint)
                         .monospacedDigit()
