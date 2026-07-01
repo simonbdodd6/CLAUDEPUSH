@@ -12123,18 +12123,19 @@
             <h2 style="margin:0;font-size:19px;color:var(--ink)">Members</h2>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add player</button>
-              <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Group Invite</button>
+              <button class="btn" type="button" onclick="openInvitePlayersModal()">Group Invite</button>
+              <button class="btn primary" type="button" onclick="openInvitePanel()">Invite player or coach</button>
             </div>
           </div>
 
           <!-- ── Invite & Access panel (ordered below the squad list) ── -->
           <div class="card" style="order:5;padding:0;overflow:hidden">
-            <details class="srv-panel" ontoggle="if(this.open) loadInviteList()">
-              <summary>Invite & team access</summary>
+            <details class="srv-panel" id="invite-access-panel" ontoggle="if(this.open) loadInviteList()">
+              <summary>Invite players &amp; coaches</summary>
               <div class="srv-panel-body" style="padding-top:4px">
 
                 <!-- Role tabs + name field -->
-                <p class="muted" style="font-size:13px;margin-bottom:14px">Generate a personal invite link. Players claim the link with email and password so they get a permanent account.</p>
+                <p class="muted" id="inv-role-hint" style="font-size:13px;margin-bottom:14px">Choose <strong>Player</strong> or <strong>Coach</strong>, then generate a personal invite link. They claim it with an email and password to get a permanent account.</p>
 
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
                   ${[['player','Player'],['coach','Coach'],['admin','Admin'],['medical','Medical']].map(([role,lbl],i) => `
@@ -12152,6 +12153,14 @@
                   <label style="flex:1;min-width:210px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
                     Email
                     <input id="inv-email" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="player@example.com" style="padding:9px 11px">
+                  </label>
+                  <label id="inv-stafflevel-wrap" style="display:none;flex:1;min-width:150px;font-size:12px;font-weight:700;color:#94a3b8;gap:5px">
+                    Coach level
+                    <select id="inv-stafflevel" style="padding:9px 11px">
+                      <option value="assistant">Assistant coach</option>
+                      <option value="manager">Team manager</option>
+                      <option value="head">Head coach</option>
+                    </select>
                   </label>
                   <button id="inv-create-btn" class="btn primary" type="button" onclick="createInvite()"
                     style="white-space:nowrap;min-height:40px;padding:0 16px">
@@ -25584,6 +25593,10 @@
       const name     = nameEl?.value.trim();
       const email    = emailEl?.value.trim();
       const role     = activeBtn?.dataset.role || 'player';
+      // Coach/Admin invites carry a staff level so the joiner gets the intended
+      // permission (default Assistant) rather than silently defaulting to Head.
+      const staffLevel = (role === 'coach' || role === 'admin')
+        ? (document.getElementById('inv-stafflevel')?.value || 'assistant') : '';
       if (!name) { showToast('Enter the person\'s name first'); return; }
 
       const btn = document.getElementById('inv-create-btn');
@@ -25592,7 +25605,7 @@
         await ensureServerSessionForCurrentUser();
         const res  = await fetch('/api/invite', {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ name, role, email }),
+          body: JSON.stringify({ name, role, email, ...(staffLevel ? { staffLevel } : {}) }),
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
@@ -25623,9 +25636,27 @@
       }
     }
 
+    // Members header → jump straight to the personal Player/Coach invite panel:
+    // expand it and scroll it into view so the role selector is immediately usable.
+    function openInvitePanel() {
+      const panel = document.getElementById('invite-access-panel');
+      if (!panel) { openInvitePlayersModal(); return; }
+      panel.open = true;
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => document.getElementById('inv-name')?.focus(), 320);
+    }
+
     function setInviteRole(role, el) {
       document.querySelectorAll('.inv-role-btn').forEach(b => b.classList.remove('active'));
       el.classList.add('active');
+      // Coach/Admin invites carry a staff permission level; players do not.
+      const isStaff = role === 'coach' || role === 'admin';
+      const wrap = document.getElementById('inv-stafflevel-wrap');
+      if (wrap) wrap.style.display = isStaff ? 'grid' : 'none';
+      const hint = document.getElementById('inv-role-hint');
+      if (hint) hint.innerHTML = isStaff
+        ? 'Coaches get <strong>staff access</strong> — they can manage players and see the whole squad. Only a head coach can invite staff.'
+        : 'Players claim the link with an email and password to get a permanent account.';
     }
 
     async function loadInviteList() {
