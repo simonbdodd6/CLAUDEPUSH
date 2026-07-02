@@ -1169,7 +1169,11 @@
       .chat-header { padding: 9px 12px; }
       .chat-feed { padding: 12px 10px; }
       .chat-bubble-wrap { max-width: 88%; }
-      .chat-composer { padding: 8px 9px; gap: 6px; }
+      /* Lift the input above the iOS home indicator / gesture bar so it is never
+         hidden behind the safe area. calc() keeps normal spacing on devices with
+         no inset (env resolves to 0). */
+      .chat-composer { padding: 8px 9px calc(8px + env(safe-area-inset-bottom)); gap: 6px; }
+      .chat-no-send  { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
       .chat-composer textarea { font-size: 16px; min-height: 42px; }
       .chat-send-btn { width: 42px; height: 42px; }
       .chat-new-msg-modal { align-items: flex-end; padding: 10px; }
@@ -1184,6 +1188,16 @@
       border: none; background: transparent; color: var(--ink); cursor: pointer;
       font-size: 13px; padding: 4px 8px; border-radius: 6px;
     }
+    /* Exit button in the Messages list header — only on mobile, where Messages is a
+       fixed full-screen overlay that covers the sidebar nav, so the player/coach
+       needs a way back to the rest of the app. */
+    .chat-exit-btn {
+      display: none; align-items: center; justify-content: center;
+      width: 34px; height: 34px; border-radius: 50%;
+      border: none; background: transparent; color: var(--ink);
+      cursor: pointer; flex-shrink: 0;
+    }
+    @media (max-width: 980px) { .chat-exit-btn { display: inline-flex; } }
     .automation-grid { display: grid; gap: 9px; margin-top: 14px; }
     .automation-card { display: grid; gap: 9px; border: 1px solid var(--line); border-radius: 9px; padding: 11px; background: var(--panel-2); }
     .history-bar { height: 9px; overflow: hidden; border-radius: 999px; background: var(--line); }
@@ -2971,16 +2985,47 @@
 
     /* ── MESSAGES — full-screen surface, not a card-in-a-page ────────────────── */
     #coach-messages.section.active, #player-messages.section.active { padding: 0; }
+    /* MOBILE: the vertical sidebar nav stacks ABOVE the page, which pushed the tall
+       Messages surface (and its bottom composer) below the viewport → composer cut
+       off. On phones/tablets, promote the active Messages screen to a fixed, full
+       dynamic-viewport overlay so the composer is always pinned and visible. A Home
+       button in the Messages header returns to the app (the nav sits behind this). */
+    @media (max-width: 980px) {
+      #coach-messages.section.active, #player-messages.section.active {
+        position: fixed; inset: 0; z-index: 60; margin: 0;
+        height: 100vh;            /* fallback for browsers without dvh */
+        height: 100dvh;           /* dynamic viewport excludes mobile toolbars */
+        background: var(--page);
+        /* The section entrance animation applies a transform; a transform on a
+           position:fixed element re-anchors it (offsetting the overlay and pushing
+           the composer below the viewport). Disable it for the fixed overlay. */
+        animation: none !important;
+      }
+      #coach-messages.section.active .chat-shell,
+      #player-messages.section.active .chat-shell {
+        height: 100% !important; max-height: 100% !important;
+        display: flex !important; flex-direction: column !important; overflow: hidden;
+      }
+      /* the visible pane (contact list OR open conversation) fills the shell exactly
+         so the flex column bounds its children and the composer sits at the bottom */
+      #coach-messages.section.active .chat-window,
+      #player-messages.section.active .chat-window,
+      #coach-messages.section.active .chat-list,
+      #player-messages.section.active .chat-list {
+        flex: 1 1 0 !important; min-height: 0 !important; height: auto !important;
+      }
+    }
     .chat-shell {
       max-height: none !important;
-      height: 100dvh !important;             /* topbar is hidden on Messages → fill the page */
+      height: 100vh !important;              /* fallback for browsers without dvh */
+      height: 100dvh !important;             /* dynamic viewport — excludes mobile toolbars so the composer is never cut off */
       grid-template-columns: 360px minmax(0, 1fr) !important;
       border-radius: 0 !important;           /* no card framing */
       border: none !important;
       box-shadow: none !important;
     }
     .chat-window-empty .wi, .chat-empty .ce-icon { color: var(--faint); opacity: .8; }
-    @media (max-width: 980px) { .chat-shell { height: calc(100vh - 120px) !important; } }
+    @media (max-width: 980px) { .chat-shell { height: calc(100vh - 120px) !important; height: calc(100dvh - 120px) !important; } }
 
     /* ═══════════════════════════════════════════════════════════════════════════
        CORE BETA v6 — MOBILE / iPHONE  (presentation only · loaded last)
@@ -3037,7 +3082,7 @@
       /* Two-up stat grids stay 2 columns (not 4) */
       .stats-grid, .med-overview-grid, .training-hero-stats, .mc-kpi-grid { grid-template-columns: 1fr 1fr !important; }
       /* Messages full-screen on phone */
-      .chat-shell { grid-template-columns: 1fr !important; height: calc(100dvh - 96px) !important; }
+      .chat-shell { grid-template-columns: 1fr !important; height: calc(100vh - 96px) !important; height: calc(100dvh - 96px) !important; }
       /* Buttons that were inline rows wrap */
       .button-row, .export-bar, .msg-actions { flex-wrap: wrap !important; }
       .btn { font-size: 12px; }
@@ -22453,6 +22498,14 @@
       chatStopPolling();
     }
 
+    // Leave the Messages screen back to the app. On mobile Messages is a fixed
+    // full-screen overlay that covers the sidebar nav, so this is the way out.
+    function chatExitMessages() {
+      chatGoBack();
+      if (state.activeView === 'coach') setSection('coach', 'overview');
+      else setSection('player', 'home');
+    }
+
     // ── Polling ──────────────────────────────────────────
     function chatStartPolling(convId) {
       chatStopPolling();
@@ -22649,7 +22702,7 @@
         <!-- LEFT: Contact list -->
         <div class="chat-list">
           <div class="chat-list-head">
-            <div style="display:flex;align-items:center;gap:9px;min-width:0">${clubLogoBadgeHtml('width:26px;height:26px;border-radius:7px')}<h2>Messages</h2></div>
+            <div style="display:flex;align-items:center;gap:9px;min-width:0"><button class="chat-exit-btn" type="button" onclick="chatExitMessages()" aria-label="Back to app" title="Back"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>${clubLogoBadgeHtml('width:26px;height:26px;border-radius:7px')}<h2>Messages</h2></div>
             <div style="display:flex;gap:6px">
               ${mode==='coach'?`<button class="chat-new-msg-btn" type="button" onclick="chatOpenNewDmPicker()" title="New message"><span>+</span><span>New</span></button>`:''}
             </div>
