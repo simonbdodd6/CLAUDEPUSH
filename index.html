@@ -8185,10 +8185,6 @@
           style="width:100%;margin-top:6px;font-size:11px;color:#94a3b8;border-color:rgba(148,163,184,0.2)">
           Push Diagnostics ↗
         </button>
-        <button class="btn ghost" type="button" onclick="devResetAvailabilityDemo()"
-          style="width:100%;margin-top:6px;font-size:11px;color:#fb923c;border-color:rgba(251,146,60,0.3)">
-          Reset Availability Demo
-        </button>
         <button class="btn ghost" type="button" onclick="devRunAvailabilitySelfTest()"
           style="width:100%;margin-top:4px;font-size:11px;color:#34d399;border-color:rgba(52,211,153,0.3)">
           Run Availability Self Test
@@ -25864,15 +25860,44 @@
     }
 
     // ─── BOOT ─────────────────────────────────────────────────────────────────
-    // Deep-link routing — notifications can open straight into availability
-    // or the new app-native messages page.
+    // Notification deep-link routing. The server encodes a view-agnostic `to`
+    // token in the notification URL (see api/_http.js notificationTarget); this
+    // resolver maps that token to the concrete { view, section } to open,
+    // respecting whether the signed-in user is a coach or a player. Keep the
+    // token list in sync with the server-side map.
+    function notificationDestination(token) {
+      const coach = isCoach();
+      switch (token) {
+        case 'messages':
+          return { view: coach ? 'coach' : 'player', section: 'messages' };
+        case 'availability':
+          return coach ? { view: 'coach', section: 'message' }        // coach "Availability" tab
+                       : { view: 'player', section: 'availability' };
+        case 'training':
+        case 'week':                                                   // legacy token from older notifications
+          return coach ? { view: 'coach', section: 'training' }
+                       : { view: 'player', section: 'week' };          // 'week' = the player Training tab
+        case 'matchcentre':
+          // Match Centre is a coach surface; players have no equivalent page
+          // yet, so route them to Home until a player match view exists.
+          return coach ? { view: 'coach', section: 'matchday' }
+                       : { view: 'player', section: 'home' };
+        default:
+          return null;
+      }
+    }
+
+    // Deep-link routing — a tapped notification can open straight into the
+    // relevant page instead of the dashboard.
     (function handleDeepLink() {
       const params = new URLSearchParams(window.location.search);
-      const to = params.get('to');
-      if (to === 'availability' || to === 'messages' || to === 'week' || to === 'training') {
-        state.activeView = 'player';
-        state.activePlayerSection = (to === 'training') ? 'week' : to;  // 'week' = the player Training tab
-        if (to === 'messages') state.selectedChatId = 'coach';
+      const dest = notificationDestination(params.get('to'));
+      if (dest) {
+        state.activeView = dest.view;
+        if (dest.view === 'coach') state.activeCoachSection = dest.section;
+        else state.activePlayerSection = dest.section;
+        // Player opening Messages lands in their DM with the coach.
+        if (dest.view === 'player' && dest.section === 'messages') state.selectedChatId = 'coach';
         saveState();
         history.replaceState({}, '', '/');
       }
@@ -25888,8 +25913,12 @@
 
     navigator.serviceWorker?.addEventListener('message', event => {
       const d = event.data || {};
-      if (d.type === 'navigate' && ['availability', 'messages', 'week'].includes(d.to)) {
-        setSection('player', d.to);
+      if (d.type === 'navigate') {
+        const dest = notificationDestination(d.to);
+        if (dest) {
+          if (dest.view === 'player' && dest.section === 'messages') state.selectedChatId = 'coach';
+          setSection(dest.view, dest.section);
+        }
       }
       if (d.type === 'push_received') {
         localStorage.setItem('_pushLastReceived', String(d.timestamp || Date.now()));

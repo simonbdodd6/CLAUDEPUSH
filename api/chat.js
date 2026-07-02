@@ -15,7 +15,7 @@ import { unreadCountForUser } from '../src/chat-notifications.js';
 import { DEFAULT_TEAM, resolveSessionFromRequest, loadHealedPlayerProfiles } from './_identityStore.js';
 import { tenantTeamId } from './_tenant.js';
 import { load as loadSubs, save as saveSubs } from './_lib.js';
-import { setCors, vapidContact } from './_http.js';
+import { setCors, vapidContact, notificationUrl } from './_http.js';
 
 function configurePush() {
   const publicKey  = process.env.VAPID_PUBLIC_KEY;
@@ -80,7 +80,7 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
     title: senderDisplayName,
     body:  String(text || '').slice(0, 200),
     tag:   `dm-${recipientId}`,
-    url:   '/',
+    url:   notificationUrl('dm'),
     type:  'dm',
   });
 

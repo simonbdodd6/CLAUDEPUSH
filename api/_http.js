@@ -20,6 +20,37 @@ export function readSecret(req) {
   return authorization.replace(/^Bearer\s+/i, '').trim() || req.query?.secret || '';
 }
 
+// ── Notification deep-link routing ─────────────────────────────────────────
+// Single source of truth mapping a push notification `type` to the in-app
+// destination it should open. The server encodes the destination as a
+// view-agnostic `to` token in the notification URL (`/?to=<token>`); the app
+// (index.html handleDeepLink + the service-worker navigate message) resolves
+// that token to the concrete coach/player section it maps to.
+//
+// Adding a new notification type here — and nowhere else — is enough to route
+// it straight to the right page instead of dumping the user on the dashboard.
+const NOTIFICATION_TARGETS = {
+  dm:                      'messages',
+  message:                 'messages',
+  availability:            'availability',
+  'availability-reminder': 'availability',
+  training:                'training',
+  selection:               'matchcentre',
+  squad:                   'matchcentre',
+};
+
+// The `to` token for a notification type, or '' when the type has no specific
+// destination (the notification opens the app home/dashboard).
+export function notificationTarget(type) {
+  return NOTIFICATION_TARGETS[String(type || '').toLowerCase()] || '';
+}
+
+// Full in-app URL for a notification of the given type. Falls back to '/'.
+export function notificationUrl(type) {
+  const to = notificationTarget(type);
+  return to ? `/?to=${to}` : '/';
+}
+
 export function vapidContact() {
   const configured = String(process.env.VAPID_CONTACT || 'mailto:coach@example.com');
   return configured.startsWith('mailto:') ? configured : `mailto:${configured}`;

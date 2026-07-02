@@ -1,6 +1,6 @@
 // coacheseyeGPT service worker: receive push messages and record player replies.
 // SW_VERSION is queried by the diagnostics panel to confirm the running build.
-const SW_VERSION = '20260609.4';
+const SW_VERSION = '20260702.1';
 const APP_URL = '/';
 
 // Cache used to persist the push event log across page reloads and app restarts.
@@ -158,14 +158,16 @@ self.addEventListener('notificationclick', event => {
         tag: 'availability-confirmation',
       });
     }
+    // The server encodes the destination as a `to` token in the notification URL
+    // (see api/_http.js notificationUrl). The service worker stays generic: it
+    // forwards whatever token the server set, so new notification types route
+    // themselves without any change here.
     const target = new URL(data.url || APP_URL, self.location.origin);
-    if ((data.type || '').startsWith('availability')) target.searchParams.set('to', 'availability');
-    if ((data.type || '').startsWith('training'))     target.searchParams.set('to', 'week');
+    const to = target.searchParams.get('to');
     const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
     const existing = windows.find(windowClient => windowClient.url.startsWith(self.location.origin));
     if (existing) {
-      if ((data.type || '').startsWith('availability')) existing.postMessage({ type: 'navigate', to: 'availability' });
-      if ((data.type || '').startsWith('training'))     existing.postMessage({ type: 'navigate', to: 'week' });
+      if (to) existing.postMessage({ type: 'navigate', to });
       return existing.focus();
     }
     return clients.openWindow(target.href);

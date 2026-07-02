@@ -5,7 +5,7 @@ import { recentResponders } from './_availabilityStore.js';
 import { kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key } from './_keys.js';
 import { resolveVariables } from './_variables.js';
-import { setCors, vapidContact, vapidKeyStatus } from './_http.js';
+import { setCors, vapidContact, vapidKeyStatus, notificationUrl } from './_http.js';
 import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
 import { loadNotificationPreferenceMap, notificationAllowed, loadTeamMembers } from './_identityStore.js';
 
@@ -148,7 +148,7 @@ export default async function handler(req, res) {
       body: resolveVariables(body, context),
       from: from || 'Coach',
       tag: tag || `msg-${Date.now()}`,
-      url: '/?to=availability',
+      url: notificationUrl(type),
       type,
       sessionId,
       actions: actionsFor(type),

@@ -6,7 +6,7 @@ import { recentResponders } from './_availabilityStore.js';
 import { kvGet, kvSet, kvSetNX, kvDel, kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { resolveVariables } from './_variables.js';
-import { setCors, readSecret, vapidContact } from './_http.js';
+import { setCors, readSecret, vapidContact, notificationUrl } from './_http.js';
 import { OBSOLETE_LEGACY_ACCOUNT_IDS, loadNotificationPreferenceMap, notificationAllowed, loadTeamMembers, loadTeams } from './_identityStore.js';
 import { OBSOLETE_DM_PARTICIPANT_IDS } from './chat.js';
 
@@ -186,7 +186,7 @@ export async function runWeeklyAvailabilityCheck({
         webpush.sendNotification(subscription, JSON.stringify({
           title, body: resolveVariables(body, { label: lbl, coachName: 'Coach' }),
           from: 'Coach', tag: `wa-${team.id}-reminder-${now.toISOString().slice(0, 10)}`,
-          url: '/?to=availability', type: 'availability', sessionId: 'week',
+          url: notificationUrl('availability'), type: 'availability', sessionId: 'week',
         }))));
       const sent = delivery.filter(result => result.status === 'fulfilled').length;
       const failed = delivery.length - sent;
@@ -291,7 +291,7 @@ export default async function handler(req, res) {
       webpush.sendNotification(subscription, JSON.stringify({
         title, body: resolveVariables(body, { label }), from: 'Coach',
         tag: `weekly-reminder-${new Date().toISOString().slice(0, 10)}`,
-        type: 'availability', sessionId: 'game', url: '/?to=availability',
+        type: 'availability', sessionId: 'game', url: notificationUrl('availability'),
         actions: [
           { action: 'available', title: 'Available' },
           { action: 'unavailable', title: 'Not available' },
@@ -362,7 +362,7 @@ export default async function handler(req, res) {
         body: resolveVariables(template.body, context),
         from: schedule.coachName || 'Coach',
         tag: `sched-${schedule.id}-${now.toISOString().slice(0, 10)}`,
-        url: '/?to=availability',
+        url: notificationUrl(notificationType),
         type: notificationType,
         sessionId: schedule.sessionId || 'game',
         actions: availabilityActions(notificationType),
