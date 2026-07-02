@@ -90,6 +90,23 @@ struct TravelFoodDiningGuide: View {
             )
             .modifier(FoodDashAppear(appeared: appeared, reduceMotion: reduceMotion, index: 0))
 
+            menuGroup
+            specialsGroup
+            safetyGroup
+        }
+        .onAppear {
+            if reduceMotion {
+                appeared = true
+            } else {
+                withAnimation(TravelMotion.gentle) { appeared = true }
+            }
+        }
+    }
+
+    // MARK: Scroll sections (grouped to stay within the ViewBuilder arity limit)
+
+    private var menuGroup: some View {
+        Group {
             section("Favourite foods", "Tick what you want to try.", 1) {
                 GlassCard {
                     VStack(spacing: TravelSpacing.xs) {
@@ -110,7 +127,11 @@ struct TravelFoodDiningGuide: View {
             listSection("Healthy options", "Light and fresh choices.", guide.healthy, tag: "Healthy", 6)
             listSection("Vegetarian & vegan", "Plant-based, made easy.", guide.vegetarianVegan, tag: "Veg", 7)
             listSection("Seafood", "Fresh from the sea.", guide.seafood, tag: "Sea", 8)
+        }
+    }
 
+    private var specialsGroup: some View {
+        Group {
             section("Local drinks", "What to sip.", 9) {
                 dishGrid(guide.localDrinks)
             }
@@ -128,7 +149,11 @@ struct TravelFoodDiningGuide: View {
                     }
                 }
             }
+        }
+    }
 
+    private var safetyGroup: some View {
+        Group {
             section("Food safety tips", "Eat well, stay well.", 12) {
                 bulletCard(guide.foodSafety, icon: "checkmark.shield.fill", tint: theme.moss)
             }
@@ -139,13 +164,6 @@ struct TravelFoodDiningGuide: View {
 
             section("Tipping customs", "What’s expected.", 14) {
                 bulletCard(guide.tipping, icon: "banknote.fill", tint: theme.sun)
-            }
-        }
-        .onAppear {
-            if reduceMotion {
-                appeared = true
-            } else {
-                withAnimation(TravelMotion.gentle) { appeared = true }
             }
         }
     }

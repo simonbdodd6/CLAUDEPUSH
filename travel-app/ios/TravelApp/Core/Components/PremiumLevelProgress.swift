@@ -151,25 +151,31 @@ struct PremiumLevelProgress_Previews: PreviewProvider {
     static var previews: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: TravelSpacing.lg) {
-                Text("Hero")
-                    .font(TravelTypography.section)
-                PremiumLevelProgress(level: 7, currentXP: 320, requiredXP: 500, rankTitle: "Seasoned Voyager")
-                PremiumLevelProgress(level: 1, currentXP: 0, requiredXP: 100, rankTitle: "New Explorer", accent: TravelTheme.current.moss)
-                PremiumLevelProgress(level: 24, currentXP: 980, requiredXP: 1000, rankTitle: "Globetrotter", accent: TravelTheme.current.coral)
+                Group {
+                    Text("Hero")
+                        .font(TravelTypography.section)
+                    PremiumLevelProgress(level: 7, currentXP: 320, requiredXP: 500, rankTitle: "Seasoned Voyager")
+                    PremiumLevelProgress(level: 1, currentXP: 0, requiredXP: 100, rankTitle: "New Explorer", accent: TravelTheme.current.moss)
+                    PremiumLevelProgress(level: 24, currentXP: 980, requiredXP: 1000, rankTitle: "Globetrotter", accent: TravelTheme.current.coral)
+                }
 
-                Divider()
+                Group {
+                    Divider()
 
-                Text("Compact")
-                    .font(TravelTypography.section)
-                PremiumLevelProgress(level: 7, currentXP: 320, requiredXP: 500, rankTitle: "Seasoned Voyager", layout: .compact)
-                PremiumLevelProgress(level: 12, currentXP: 150, requiredXP: 600, accent: TravelTheme.current.sun, layout: .compact)
+                    Text("Compact")
+                        .font(TravelTypography.section)
+                    PremiumLevelProgress(level: 7, currentXP: 320, requiredXP: 500, rankTitle: "Seasoned Voyager", layout: .compact)
+                    PremiumLevelProgress(level: 12, currentXP: 150, requiredXP: 600, accent: TravelTheme.current.sun, layout: .compact)
+                }
 
-                Divider()
+                Group {
+                    Divider()
 
-                Text("Edge cases")
-                    .font(TravelTypography.section)
-                PremiumLevelProgress(level: 99, currentXP: 1000, requiredXP: 1000, rankTitle: "Legend")
-                PremiumLevelProgress(level: 3, currentXP: 0, requiredXP: 0, rankTitle: "Zero required (guards divide-by-zero)")
+                    Text("Edge cases")
+                        .font(TravelTypography.section)
+                    PremiumLevelProgress(level: 99, currentXP: 1000, requiredXP: 1000, rankTitle: "Legend")
+                    PremiumLevelProgress(level: 3, currentXP: 0, requiredXP: 0, rankTitle: "Zero required (guards divide-by-zero)")
+                }
             }
             .padding(TravelSpacing.lg)
         }

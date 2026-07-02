@@ -7,10 +7,22 @@ struct TravelIntelligenceApp: App {
 
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            // M49 — First Xcode Launch Integration.
+            // DEBUG builds launch the runnable six-tab Travel Intelligence spine
+            // (Home · Trips · Destinations · Journey · Explore · Profile). The spine
+            // is itself `#if DEBUG`-gated because it renders the DEBUG-only demo data,
+            // so it is only referenced here under the same compile-time flag.
+            TravelIntelligenceAppSpine()
+                .tint(TravelTheme.current.tint)
+            #else
+            // Release builds keep the production launch → onboarding → shell flow
+            // and its architecture (app state, coordinator and mock container) intact.
             RootFlowView()
                 .environment(appState)
                 .environment(\.appContainer, appState.container)
                 .tint(TravelTheme.current.tint)
+            #endif
         }
     }
 }

@@ -52,6 +52,22 @@ struct DestinationGuidePreview: View {
             heroImage
                 .modifier(SectionAppear(appeared: appeared, reduceMotion: reduceMotion, index: 1))
 
+            overviewGroup
+            detailGroup
+        }
+        .onAppear {
+            if reduceMotion {
+                appeared = true
+            } else {
+                withAnimation(TravelMotion.gentle) { appeared = true }
+            }
+        }
+    }
+
+    // MARK: Scroll sections (grouped to stay within the ViewBuilder arity limit)
+
+    private var overviewGroup: some View {
+        Group {
             section("Quick facts", "A snapshot before you arrive.", 2) {
                 PremiumAdaptiveGrid(minimumWidth: 140) {
                     factTile("Car-free", "No cars or motorbikes")
@@ -121,7 +137,11 @@ struct DestinationGuidePreview: View {
                     "Bring reef-safe sunscreen and mosquito repellent (daytime dengue risk)."
                 ])
             }
+        }
+    }
 
+    private var detailGroup: some View {
+        Group {
             section("Culture & etiquette", "Be a respectful guest.", 9) {
                 summaryCard(icon: "hands.sparkles.fill", accent: theme.ocean, points: [
                     "Lombok is predominantly Muslim — dress modestly away from the beach.",
@@ -175,13 +195,6 @@ struct DestinationGuidePreview: View {
                     ExplorerEmergencyGuide(items: emergencyPreview, layout: .compact, title: "Emergency contacts")
                 }
                 .modifier(SectionAppear(appeared: appeared, reduceMotion: reduceMotion, index: 14))
-            }
-        }
-        .onAppear {
-            if reduceMotion {
-                appeared = true
-            } else {
-                withAnimation(TravelMotion.gentle) { appeared = true }
             }
         }
     }

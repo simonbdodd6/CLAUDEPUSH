@@ -108,6 +108,22 @@ struct TravelBudgetExpenseDashboard: View {
             budgetOverviewCard
                 .modifier(BudgetAppear(appeared: appeared, reduceMotion: reduceMotion, index: 1))
 
+            overviewGroup
+            detailGroup
+        }
+        .onAppear {
+            if reduceMotion {
+                appeared = true
+            } else {
+                withAnimation(TravelMotion.gentle) { appeared = true }
+            }
+        }
+    }
+
+    // MARK: Scroll sections (grouped to stay within the ViewBuilder arity limit)
+
+    private var overviewGroup: some View {
+        Group {
             section("Currency", "Know what your money’s worth.", 2) {
                 currencyCard
             }
@@ -133,7 +149,11 @@ struct TravelBudgetExpenseDashboard: View {
             section("Money-saving tips", "Stretch every rupiah.", 6) {
                 bulletCard(plan.moneySavingTips, icon: "lightbulb.fill", tint: theme.sun)
             }
+        }
+    }
 
+    private var detailGroup: some View {
+        Group {
             section("ATM & cash", "Get cash the smart way.", 7) {
                 bulletCard(plan.atmCash, icon: "banknote.fill", tint: theme.moss)
             }
@@ -160,13 +180,6 @@ struct TravelBudgetExpenseDashboard: View {
                         }
                     }
                 }
-            }
-        }
-        .onAppear {
-            if reduceMotion {
-                appeared = true
-            } else {
-                withAnimation(TravelMotion.gentle) { appeared = true }
             }
         }
     }

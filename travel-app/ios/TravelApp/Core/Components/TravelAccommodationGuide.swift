@@ -93,6 +93,25 @@ struct TravelAccommodationGuide: View {
             )
             .modifier(AccomAppear(appeared: appeared, reduceMotion: reduceMotion, index: 0))
 
+            stayGroup
+            bookingGroup
+            audienceGroup
+        }
+        .onAppear {
+            if reduceMotion {
+                appeared = true
+            } else {
+                withAnimation(TravelMotion.gentle) { appeared = true }
+            }
+        }
+    }
+
+    // MARK: Section helpers
+
+    // MARK: Scroll sections (grouped to stay within the ViewBuilder arity limit)
+
+    private var stayGroup: some View {
+        Group {
             section("Favourite stay types", "Tick what you’re after.", 1) {
                 GlassCard {
                     VStack(spacing: TravelSpacing.xs) {
@@ -113,7 +132,11 @@ struct TravelAccommodationGuide: View {
 
             listSection("Budget vs luxury", "What each tier gets you.", guide.budgetVsLuxury, tag: "Tier", 3)
             listSection("Best areas to stay", "Pick the right base.", guide.bestAreas, tag: "Area", 4)
+        }
+    }
 
+    private var bookingGroup: some View {
+        Group {
             section("Booking tips", "Book smart.", 5) {
                 bulletCard(guide.bookingTips, icon: "checkmark.circle.fill", tint: theme.moss)
             }
@@ -137,7 +160,11 @@ struct TravelAccommodationGuide: View {
             section("Laundry", "Pack light, wash often.", 10) {
                 bulletCard(guide.laundry, icon: "washer.fill", tint: theme.tint)
             }
+        }
+    }
 
+    private var audienceGroup: some View {
+        Group {
             listSection("Coworking-friendly", "For working travellers.", guide.coworking, tag: "Work", 11)
 
             section("Family-friendly", "Travelling with kids.", 12) {
@@ -152,16 +179,7 @@ struct TravelAccommodationGuide: View {
                 bulletCard(guide.accessibility, icon: "figure.roll", tint: theme.tint)
             }
         }
-        .onAppear {
-            if reduceMotion {
-                appeared = true
-            } else {
-                withAnimation(TravelMotion.gentle) { appeared = true }
-            }
-        }
     }
-
-    // MARK: Section helpers
 
     @ViewBuilder
     private func section<Content: View>(_ title: String, _ subtitle: String, _ index: Int, @ViewBuilder content: () -> Content) -> some View {

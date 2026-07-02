@@ -109,29 +109,35 @@ struct PremiumRatingView_Previews: PreviewProvider {
     static var previews: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: TravelSpacing.lg) {
-                Text("Sizes")
-                    .font(TravelTypography.section)
-                PremiumRatingView(rating: 4.5, size: .small, label: "4.5")
-                PremiumRatingView(rating: 4.5, size: .medium, label: "4.5")
-                PremiumRatingView(rating: 4.5, size: .large, label: "4.5")
+                Group {
+                    Text("Sizes")
+                        .font(TravelTypography.section)
+                    PremiumRatingView(rating: 4.5, size: .small, label: "4.5")
+                    PremiumRatingView(rating: 4.5, size: .medium, label: "4.5")
+                    PremiumRatingView(rating: 4.5, size: .large, label: "4.5")
+                }
 
-                Divider()
+                Group {
+                    Divider()
 
-                Text("Fractional values")
-                    .font(TravelTypography.section)
-                PremiumRatingView(rating: 0.0, label: "0.0")
-                PremiumRatingView(rating: 2.5, label: "2.5")
-                PremiumRatingView(rating: 3.0, label: "3.0")
-                PremiumRatingView(rating: 5.0, label: "5.0")
+                    Text("Fractional values")
+                        .font(TravelTypography.section)
+                    PremiumRatingView(rating: 0.0, label: "0.0")
+                    PremiumRatingView(rating: 2.5, label: "2.5")
+                    PremiumRatingView(rating: 3.0, label: "3.0")
+                    PremiumRatingView(rating: 5.0, label: "5.0")
+                }
 
-                Divider()
+                Group {
+                    Divider()
 
-                Text("Variations")
-                    .font(TravelTypography.section)
-                PremiumRatingView(rating: 4.0)
-                PremiumRatingView(rating: 8.0, maxRating: 10, label: "8 / 10")
-                PremiumRatingView(rating: 3.0, accent: TravelTheme.current.coral, label: "Custom accent")
-                PremiumRatingView(rating: 3.0, label: "Tappable", onRate: { _ in })
+                    Text("Variations")
+                        .font(TravelTypography.section)
+                    PremiumRatingView(rating: 4.0)
+                    PremiumRatingView(rating: 8.0, maxRating: 10, label: "8 / 10")
+                    PremiumRatingView(rating: 3.0, accent: TravelTheme.current.coral, label: "Custom accent")
+                    PremiumRatingView(rating: 3.0, label: "Tappable", onRate: { _ in })
+                }
             }
             .padding(TravelSpacing.lg)
         }

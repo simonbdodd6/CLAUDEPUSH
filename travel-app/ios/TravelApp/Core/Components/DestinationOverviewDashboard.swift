@@ -45,6 +45,22 @@ struct DestinationOverviewDashboard: View {
             countdownCard
                 .modifier(DashAppear(appeared: appeared, reduceMotion: reduceMotion, index: 1))
 
+            planGroup
+            detailGroup
+        }
+        .onAppear {
+            if reduceMotion {
+                appeared = true
+            } else {
+                withAnimation(TravelMotion.gentle) { appeared = true }
+            }
+        }
+    }
+
+    // MARK: Scroll sections (grouped to stay within the ViewBuilder arity limit)
+
+    private var planGroup: some View {
+        Group {
             section("Trip at a glance", "Your plan in numbers.", 2) {
                 PremiumAdaptiveGrid(minimumWidth: 120) {
                     statTile("10", "Nights")
@@ -87,7 +103,11 @@ struct DestinationOverviewDashboard: View {
                     }
                 }
             }
+        }
+    }
 
+    private var detailGroup: some View {
+        Group {
             section("Top experiences", "The best of Gili Air.", 7) {
                 PremiumAdaptiveGrid(minimumWidth: 220) {
                     ForEach(experiences) { experience in
@@ -143,13 +163,6 @@ struct DestinationOverviewDashboard: View {
                     previewTile("Travel Essentials hub", TravelEssentialsHubPreview())
                     continuePlanningButton
                 }
-            }
-        }
-        .onAppear {
-            if reduceMotion {
-                appeared = true
-            } else {
-                withAnimation(TravelMotion.gentle) { appeared = true }
             }
         }
     }

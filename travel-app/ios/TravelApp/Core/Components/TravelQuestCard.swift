@@ -388,6 +388,7 @@ struct TravelQuestCard_Previews: PreviewProvider {
     static var previews: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: TravelSpacing.lg) {
+                Group {
                 Text("Hero · every category")
                     .font(TravelTypography.section)
                 LazyVGrid(columns: heroColumns, spacing: TravelSpacing.md) {
@@ -406,6 +407,9 @@ struct TravelQuestCard_Previews: PreviewProvider {
                     }
                 }
 
+                }
+
+                Group {
                 Divider()
 
                 Text("States")
@@ -445,6 +449,9 @@ struct TravelQuestCard_Previews: PreviewProvider {
                     rarity: .platinum
                 )
 
+                }
+
+                Group {
                 Divider()
 
                 Text("Compact")
@@ -456,12 +463,16 @@ struct TravelQuestCard_Previews: PreviewProvider {
                     TravelQuestCard(category: .wander, state: .locked, layout: .compact, title: "Reach Level 10", current: 0, target: 1, xp: 500)
                 }
 
+                }
+
+                Group {
                 Divider()
 
                 Text("Edge cases")
                     .font(TravelTypography.section)
                 TravelQuestCard(category: .explore, state: .active, layout: .hero, title: "No reward, no detail", current: 7, target: 10)
                 TravelQuestCard(category: .seasonal, state: .active, layout: .hero, title: "Zero target (guards divide-by-zero)", current: 0, target: 0, xp: 50)
+                }
             }
             .padding(TravelSpacing.lg)
         }

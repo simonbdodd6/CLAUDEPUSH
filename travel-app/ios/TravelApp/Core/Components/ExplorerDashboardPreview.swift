@@ -69,6 +69,7 @@ struct ExplorerDashboardPreview: View {
                 latestStampDate: "2025"
             )
 
+            Group {
             PremiumSection(
                 title: "Travel score",
                 subtitle: "Your overall explorer rating, earned across every journey."
@@ -260,6 +261,9 @@ struct ExplorerDashboardPreview: View {
                 }
             }
 
+            }
+
+            Group {
             PremiumSection(
                 title: "Statistics",
                 subtitle: "A lifetime of travel, measured."
@@ -398,6 +402,7 @@ struct ExplorerDashboardPreview: View {
                         ratingRow("Lisbon, Portugal", rating: 4.0)
                     }
                 }
+            }
             }
         }
     }

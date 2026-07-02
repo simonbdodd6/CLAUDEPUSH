@@ -51,9 +51,9 @@ enum PremiumProgressSize {
 
     var controlSize: ControlSize {
         switch self {
-        case .small: .small
-        case .medium: .regular
-        case .large: .large
+        case .small: ControlSize.small
+        case .medium: ControlSize.regular
+        case .large: ControlSize.large
         }
     }
 }
@@ -128,21 +128,25 @@ struct PremiumProgressView_Previews: PreviewProvider {
     static var previews: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: TravelSpacing.lg) {
-                Text("Indeterminate")
-                    .font(TravelTypography.section)
-                PremiumProgressView(title: "Loading", subtitle: "Small", size: .small)
-                PremiumProgressView(title: "Loading", subtitle: "Medium", size: .medium)
-                PremiumProgressView(title: "Loading", subtitle: "Large", size: .large)
-                PremiumProgressView(size: .medium)
+                Group {
+                    Text("Indeterminate")
+                        .font(TravelTypography.section)
+                    PremiumProgressView(title: "Loading", subtitle: "Small", size: .small)
+                    PremiumProgressView(title: "Loading", subtitle: "Medium", size: .medium)
+                    PremiumProgressView(title: "Loading", subtitle: "Large", size: .large)
+                    PremiumProgressView(size: .medium)
+                }
 
-                Divider()
+                Group {
+                    Divider()
 
-                Text("Determinate")
-                    .font(TravelTypography.section)
-                PremiumProgressView(value: 0.0, title: "Passport", subtitle: "0% · small", size: .small)
-                PremiumProgressView(value: 0.64, title: "Passport", subtitle: "64% · medium", size: .medium)
-                PremiumProgressView(value: 1.0, title: "Complete", subtitle: "100% · large", size: .large, accent: TravelTheme.current.success)
-                PremiumProgressView(value: 0.4)
+                    Text("Determinate")
+                        .font(TravelTypography.section)
+                    PremiumProgressView(value: 0.0, title: "Passport", subtitle: "0% · small", size: .small)
+                    PremiumProgressView(value: 0.64, title: "Passport", subtitle: "64% · medium", size: .medium)
+                    PremiumProgressView(value: 1.0, title: "Complete", subtitle: "100% · large", size: .large, accent: TravelTheme.current.success)
+                    PremiumProgressView(value: 0.4)
+                }
             }
             .padding(TravelSpacing.lg)
         }

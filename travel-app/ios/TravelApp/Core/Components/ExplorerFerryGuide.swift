@@ -342,31 +342,35 @@ private struct FerryRouteCard: View {
 
     private var detail: some View {
         VStack(alignment: .leading, spacing: TravelSpacing.md) {
-            detailRow(icon: "clock", label: "Duration", value: route.duration)
-            detailRow(icon: "calendar", label: "Frequency", value: route.frequency)
-            detailRow(icon: "checkmark.seal.fill", label: "Official booking", value: route.officialBooking)
+            Group {
+                detailRow(icon: "clock", label: "Duration", value: route.duration)
+                detailRow(icon: "calendar", label: "Frequency", value: route.frequency)
+                detailRow(icon: "checkmark.seal.fill", label: "Official booking", value: route.officialBooking)
 
-            labeledChips("Trusted websites", route.bookingWebsites, accent: route.accent)
+                labeledChips("Trusted websites", route.bookingWebsites, accent: route.accent)
 
-            detailRow(icon: "suitcase.fill", label: "Luggage", value: route.luggageAllowance)
-            detailRow(icon: "clock.arrow.circlepath", label: "Check-in", value: route.checkIn)
+                detailRow(icon: "suitcase.fill", label: "Luggage", value: route.luggageAllowance)
+                detailRow(icon: "clock.arrow.circlepath", label: "Check-in", value: route.checkIn)
 
-            labeledChips("Payment", route.paymentMethods, accent: nil)
-
-            HStack(spacing: TravelSpacing.md) {
-                cancellationChip(route.cancellation)
-                familyBadge(route.familyFriendliness)
-                Spacer(minLength: 0)
+                labeledChips("Payment", route.paymentMethods, accent: nil)
             }
 
-            detailRow(icon: "figure.roll", label: "Accessibility", value: route.accessibilityNote)
+            Group {
+                HStack(spacing: TravelSpacing.md) {
+                    cancellationChip(route.cancellation)
+                    familyBadge(route.familyFriendliness)
+                    Spacer(minLength: 0)
+                }
 
-            calloutRow(icon: "water.waves", tint: TravelTheme.current.sky, text: route.seaConditions)
-            calloutRow(icon: "cloud.rain.fill", tint: TravelTheme.current.ocean, text: route.rainySeasonNote)
-            if let scam = route.commonScam {
-                calloutRow(icon: "exclamationmark.triangle.fill", tint: TravelTheme.current.coral, text: scam)
+                detailRow(icon: "figure.roll", label: "Accessibility", value: route.accessibilityNote)
+
+                calloutRow(icon: "water.waves", tint: TravelTheme.current.sky, text: route.seaConditions)
+                calloutRow(icon: "cloud.rain.fill", tint: TravelTheme.current.ocean, text: route.rainySeasonNote)
+                if let scam = route.commonScam {
+                    calloutRow(icon: "exclamationmark.triangle.fill", tint: TravelTheme.current.coral, text: scam)
+                }
+                calloutRow(icon: "lightbulb.fill", tint: TravelTheme.current.sun, text: route.expertTip)
             }
-            calloutRow(icon: "lightbulb.fill", tint: TravelTheme.current.sun, text: route.expertTip)
         }
     }
 

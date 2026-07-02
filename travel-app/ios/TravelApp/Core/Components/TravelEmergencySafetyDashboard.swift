@@ -73,6 +73,22 @@ struct TravelEmergencySafetyDashboard: View {
             )
             .modifier(EmergencySafetyAppear(appeared: appeared, reduceMotion: reduceMotion, index: 0))
 
+            contactsGroup
+            safetyGroup
+        }
+        .onAppear {
+            if reduceMotion {
+                appeared = true
+            } else {
+                withAnimation(TravelMotion.gentle) { appeared = true }
+            }
+        }
+    }
+
+    // MARK: Scroll sections (grouped to stay within the ViewBuilder arity limit)
+
+    private var contactsGroup: some View {
+        Group {
             section("Emergency numbers", "Save these before you travel.", 1) {
                 PremiumAdaptiveGrid(minimumWidth: 160) {
                     ForEach(plan.emergencyNumbers) { item in
@@ -112,7 +128,11 @@ struct TravelEmergencySafetyDashboard: View {
                 }
                 .accessibilityElement(children: .combine)
             }
+        }
+    }
 
+    private var safetyGroup: some View {
+        Group {
             section("Ocean & beach safety", "Respect the sea.", 8) {
                 bulletCard(plan.oceanBeach, icon: "water.waves", tint: theme.ocean)
             }
@@ -149,13 +169,6 @@ struct TravelEmergencySafetyDashboard: View {
                         }
                     }
                 }
-            }
-        }
-        .onAppear {
-            if reduceMotion {
-                appeared = true
-            } else {
-                withAnimation(TravelMotion.gentle) { appeared = true }
             }
         }
     }

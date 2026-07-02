@@ -325,26 +325,30 @@ private struct ExpandableTransportCard: View {
 
     private var detail: some View {
         VStack(alignment: .leading, spacing: TravelSpacing.md) {
-            detailRow(icon: "clock", label: "Journey times", value: option.journeyTimes)
-            detailRow(icon: "clock.arrow.circlepath", label: "Operating hours", value: option.operatingHours)
-            detailRow(icon: "ticket.fill", label: "Booking", value: option.bookingMethod)
-            detailRow(icon: "checkmark.seal.fill", label: "Official booking", value: option.officialBooking)
+            Group {
+                detailRow(icon: "clock", label: "Journey times", value: option.journeyTimes)
+                detailRow(icon: "clock.arrow.circlepath", label: "Operating hours", value: option.operatingHours)
+                detailRow(icon: "ticket.fill", label: "Booking", value: option.bookingMethod)
+                detailRow(icon: "checkmark.seal.fill", label: "Official booking", value: option.officialBooking)
 
-            labeledChips("Trusted providers", option.providers, accent: option.accent)
-            labeledChips("Payment", option.paymentMethods, accent: nil)
-
-            HStack(spacing: TravelSpacing.md) {
-                luggageBadge(option.luggage)
-                Spacer(minLength: 0)
+                labeledChips("Trusted providers", option.providers, accent: option.accent)
+                labeledChips("Payment", option.paymentMethods, accent: nil)
             }
 
-            detailRow(icon: "figure.roll", label: "Accessibility", value: option.accessibilityNote)
+            Group {
+                HStack(spacing: TravelSpacing.md) {
+                    luggageBadge(option.luggage)
+                    Spacer(minLength: 0)
+                }
 
-            calloutRow(icon: "shield.lefthalf.filled", tint: TravelTheme.current.moss, text: option.safetyTip)
-            if let scam = option.commonScam {
-                calloutRow(icon: "exclamationmark.triangle.fill", tint: TravelTheme.current.coral, text: scam)
+                detailRow(icon: "figure.roll", label: "Accessibility", value: option.accessibilityNote)
+
+                calloutRow(icon: "shield.lefthalf.filled", tint: TravelTheme.current.moss, text: option.safetyTip)
+                if let scam = option.commonScam {
+                    calloutRow(icon: "exclamationmark.triangle.fill", tint: TravelTheme.current.coral, text: scam)
+                }
+                calloutRow(icon: "lightbulb.fill", tint: TravelTheme.current.sun, text: option.expertTip)
             }
-            calloutRow(icon: "lightbulb.fill", tint: TravelTheme.current.sun, text: option.expertTip)
         }
     }
 

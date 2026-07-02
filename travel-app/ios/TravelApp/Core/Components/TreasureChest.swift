@@ -289,12 +289,14 @@ struct TreasureChest_Previews: PreviewProvider {
 
                 Divider()
 
-                Text("Variations")
-                    .font(TravelTypography.section)
-                TreasureChest(state: .legendary, layout: .hero, title: "Max glow override", reward: demoReward, glow: 1.0)
-                TreasureChest(state: .closed, layout: .hero, title: "Sparkles forced on", showsSparkles: true)
-                TreasureChest(state: .rare, layout: .compact, title: "No reward")
-                TreasureChest(state: .opened, layout: .hero, title: "Custom reward", reward: TreasureReward(icon: "airplane", label: "Free upgrade"))
+                Group {
+                    Text("Variations")
+                        .font(TravelTypography.section)
+                    TreasureChest(state: .legendary, layout: .hero, title: "Max glow override", reward: demoReward, glow: 1.0)
+                    TreasureChest(state: .closed, layout: .hero, title: "Sparkles forced on", showsSparkles: true)
+                    TreasureChest(state: .rare, layout: .compact, title: "No reward")
+                    TreasureChest(state: .opened, layout: .hero, title: "Custom reward", reward: TreasureReward(icon: "airplane", label: "Free upgrade"))
+                }
             }
             .padding(TravelSpacing.lg)
         }

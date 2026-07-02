@@ -229,21 +229,27 @@ struct AchievementCard_Previews: PreviewProvider {
     static var previews: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: TravelSpacing.lg) {
-                Text("Expanded · Unlocked")
-                    .font(TravelTypography.section)
-                expandedGrid(state: .unlocked)
+                Group {
+                    Text("Expanded · Unlocked")
+                        .font(TravelTypography.section)
+                    expandedGrid(state: .unlocked)
+                }
 
-                Divider()
+                Group {
+                    Divider()
 
-                Text("Expanded · Locked")
-                    .font(TravelTypography.section)
-                expandedGrid(state: .locked)
+                    Text("Expanded · Locked")
+                        .font(TravelTypography.section)
+                    expandedGrid(state: .locked)
+                }
 
-                Divider()
+                Group {
+                    Divider()
 
-                Text("Expanded · Newly unlocked (NEW ribbon)")
-                    .font(TravelTypography.section)
-                expandedGrid(state: .newlyUnlocked)
+                    Text("Expanded · Newly unlocked (NEW ribbon)")
+                        .font(TravelTypography.section)
+                    expandedGrid(state: .newlyUnlocked)
+                }
 
                 Divider()
 
