@@ -7265,7 +7265,9 @@
       document.querySelectorAll('#coach-matchday .mcx2-bjname').forEach(i => { const v = (i.value || '').trim(); if (v) placed.add(mcPersonKey(v)); });
       // Canonical pool (deduped) excluded by PERSON, so every record of an
       // already-selected member is hidden — not just the exact name string.
-      return canonicalVisiblePlayers().filter(p => (p.lifecycleStatus || 'active') !== 'archived' && !placed.has(mcPersonKey(p.name)));
+      // Staff (Coach/Admin/Medical) live in state.players for the Members page
+      // but are never selectable as match-day players.
+      return canonicalVisiblePlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus || 'active') !== 'archived' && !placed.has(mcPersonKey(p.name)));
     }
     let _mcPickTarget = null;
     function mcEnsurePicker() {
@@ -11605,7 +11607,9 @@
       mcReconcileSheetToRoster();
       // Canonical, de-duplicated squad pool — collapses linked + identical-name
       // records so one real member can't appear twice (duplicate-player fix).
-      const matchdayPlayers  = canonicalVisiblePlayers().filter(p => (p.lifecycleStatus || 'active') !== 'archived');
+      // Staff (Coach/Admin/Medical) stay visible in Members but are excluded
+      // here so a coach can never be picked as a match-day player.
+      const matchdayPlayers  = canonicalVisiblePlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus || 'active') !== 'archived');
       const selected         = matchdayPlayers.slice(0, 15);
       const fnames           = state.formationNames || {};
       const fphoto           = state.fphotoIds      || {};
@@ -24850,6 +24854,11 @@
       state.clubName = ''; state.teamName = ''; state.seasonName = '';
       state.clubLogo = ''; state.clubColours = null;
       state.matchCentre = structuredClone(defaultState.matchCentre);
+      // The team sheet is team-scoped too — a leftover draft would both leak
+      // across clubs and (as a "draft in progress") block adoption of the new
+      // team's published squad in loadPublishedStateForPlayer.
+      state.formationNames = {}; state.fphotoIds = {};
+      state.benchPlayers = Array(8).fill('');
       state.schedule = structuredClone(defaultState.schedule);
       state.trainingBlocks = structuredClone(defaultState.trainingBlocks);
       state.availabilityRequests = [];
@@ -25182,11 +25191,24 @@
           changed = true;
         }
         if (data.squad && data.squad.published) {
-          const { formationNames, benchPlayers, ...mc } = data.squad;
-          state.matchCentre = { ...(state.matchCentre || {}), ...mc };
-          if (formationNames && typeof formationNames === 'object') state.formationNames = formationNames;
-          if (Array.isArray(benchPlayers)) state.benchPlayers = benchPlayers;
-          changed = true;
+          // Coach draft isolation: Force sync and team switch reach here for
+          // staff sessions too, and adopting the shared published sheet would
+          // silently replace this coach's in-progress selection with another
+          // coach's publish. A coach device adopts the published squad only
+          // when it has no draft in progress (empty sheet, or its own sheet is
+          // already published). Players always hydrate — that is what this
+          // endpoint is for. Publish itself stays shared/last-writer-wins.
+          const coachDraftInProgress = isCoach() && !state.matchCentre?.published && (
+            Object.values(state.formationNames || {}).some(n => String(n || '').trim()) ||
+            (state.benchPlayers || []).some(n => String(n || '').trim())
+          );
+          if (!coachDraftInProgress) {
+            const { formationNames, benchPlayers, ...mc } = data.squad;
+            state.matchCentre = { ...(state.matchCentre || {}), ...mc };
+            if (formationNames && typeof formationNames === 'object') state.formationNames = formationNames;
+            if (Array.isArray(benchPlayers)) state.benchPlayers = benchPlayers;
+            changed = true;
+          }
         } else if (data.squad === null && state.matchCentre?.published) {
           state.matchCentre = { ...(state.matchCentre || {}), published: false };
           changed = true;

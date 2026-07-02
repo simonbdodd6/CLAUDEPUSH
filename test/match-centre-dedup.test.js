@@ -103,10 +103,11 @@ test('two members with different display names can both be selected', () => {
 
 // ── Structural: pool dedup + ID-based exclusion (no duplicate records offered) ─
 test('the Match Centre pool + picker are canonical (deduped) and exclude by person', () => {
-  assert.ok(html.includes('canonicalVisiblePlayers().filter(p => (p.lifecycleStatus'), 'render uses the deduped pool');
+  assert.ok(html.includes('canonicalVisiblePlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus'), 'render uses the deduped pool and excludes staff');
   assert.ok(html.includes('matchdayPlayers.filter(p => !_seenPersons.has(mcPersonKey(p.name)))'), 'available excludes by person key');
   const picker = extractFn(html, 'mcComputeAvailable');
   assert.ok(picker.includes('canonicalVisiblePlayers()') && picker.includes('mcPersonKey'), 'picker pool deduped + excluded by person');
+  assert.ok(picker.includes('isRosterPlayerRecord(p)'), 'picker pool excludes staff (coach/admin/medical) records');
 });
 
 // ── Structural: clicking a bench player opens the picker, NOT a login box ─────
