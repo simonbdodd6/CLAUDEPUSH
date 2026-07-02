@@ -22119,6 +22119,46 @@
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatSendMessage(); }
     }
 
+    // Coach contact-list DMs are synthesized for EVERY roster player with a
+    // computed dm: id (chatBuildContacts), but the server-side conversation is
+    // only persisted via the New-DM picker (chatStartCoachDm → create_conv).
+    // Opening a contact-list DM with a player whose conversation was never
+    // created and sending targets a dm: id that isn't in chat:convs → the server
+    // returns 404 "Conversation not found" and the optimistic bubble is dropped
+    // (message appears then disappears). Ensure the conversation exists before
+    // sending. create_conv is idempotent server-side, so this is safe to call on
+    // every coach DM send. Returns true if the conversation exists or was created.
+    async function chatEnsureCoachDmConversationExists(convId) {
+      const id = String(convId || '');
+      if (!id.startsWith('dm:')) return true;
+      if (Array.isArray(_chatConversations) && _chatConversations.some(c => String(c?.id) === id)) return true;
+      const me = chatMe();
+      const otherId = id.split(':').slice(1).find(part => String(part) !== String(me.id)) || '';
+      const player = canonicalVisiblePlayers().find(p =>
+        String(chatResolvePlayerParticipantId(p)) === otherId ||
+        String(p.userId || '') === otherId ||
+        String(p.id || '') === otherId
+      );
+      const name = player?.name || 'Direct message';
+      const participants = [String(me.id), otherId].filter(Boolean);
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'create_conv', id, name, type: 'DIRECT', participants }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) return false;
+        // Reflect locally so subsequent sends and contact rendering skip the create.
+        if (Array.isArray(_chatConversations) && !_chatConversations.some(c => String(c?.id) === id)) {
+          _chatConversations.push({ id, name, type: 'DIRECT', participants });
+        }
+        return true;
+      } catch (e) {
+        console.warn('[chatEnsureCoachDmConversationExists]', e);
+        return false;
+      }
+    }
+
     // ── Send message ─────────────────────────────────────
     async function chatSendMessage() {
       const ta = document.getElementById('chatComposer');
@@ -22131,6 +22171,9 @@
       if (chatIsCoachDirectConversation(convId, mode)) {
         convId = await chatResolveCoachDirectChatId(convId);
         state.selectedChatId = convId;
+        // Guarantee the DM conversation exists server-side before sending, so a
+        // send to a newly added player can't 404 and silently drop the message.
+        await chatEnsureCoachDmConversationExists(convId);
       }
 
       // Optimistic UI — add immediately
