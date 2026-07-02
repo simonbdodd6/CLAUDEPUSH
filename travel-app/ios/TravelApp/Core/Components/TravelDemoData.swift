@@ -645,7 +645,8 @@ enum TravelDemoData {
                 IslandRow(title: "Lombok ↔ Raja Ampat", subtitle: "Flights via Sorong", icon: "airplane", detail: "Half a day via Makassar/Sorong, then a ferry.", accent: theme.coral)
             ],
             region: "Indonesia",
-            disclaimer: "Island ratings here are a subjective, illustrative guide to help you compare — not absolute scores. Check current information before you commit to a route."
+            disclaimer: "Island ratings here are a subjective, illustrative guide to help you compare — not absolute scores. Check current information before you commit to a route.",
+            transportEssentials: TravelTransportEssentialsDemoData().transportEssentials()
         )
     }
 }

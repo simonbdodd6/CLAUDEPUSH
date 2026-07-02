@@ -124,6 +124,10 @@ struct IslandGuide {
     var travelTimes: [IslandRow]
     var region: String
     var disclaimer: String
+    /// Practical, deterministic transport guidance per island (M51). Defaulted so
+    /// existing constructors remain source-compatible; the section is only shown
+    /// when populated.
+    var transportEssentials: [TravelTransportEssential] = []
 }
 
 /// A premium, presentation-only island guide dashboard rendered from an `IslandGuide`.
@@ -153,6 +157,7 @@ struct TravelIslandGuideDashboard: View {
             islandsGroup
             matrixGroup
             planGroup
+            transportGroup
             footerGroup
         }
         .onAppear {
@@ -252,6 +257,16 @@ struct TravelIslandGuideDashboard: View {
                     ForEach(guide.itineraries) { itinerary in
                         itineraryCard(itinerary)
                     }
+                }
+            }
+        }
+    }
+
+    private var transportGroup: some View {
+        Group {
+            if !guide.transportEssentials.isEmpty {
+                section("Getting around", "Ferries, taxis and island hops — with expected prices and scam warnings.", 7) {
+                    TravelTransportEssentialsSection(essentials: guide.transportEssentials)
                 }
             }
         }
@@ -823,7 +838,8 @@ extension IslandGuide {
                 IslandRow(title: "Bali ↔ Raja Ampat", subtitle: "Flights via Sorong", icon: "airplane", detail: "Half a day or more via Makassar/Sorong, then a ferry.", accent: theme.coral)
             ],
             region: "Indonesia",
-            disclaimer: "Island ratings here are a subjective, illustrative guide to help you compare — not absolute scores. Conditions, crowds and prices change with the season, so check current information before you commit to a route."
+            disclaimer: "Island ratings here are a subjective, illustrative guide to help you compare — not absolute scores. Conditions, crowds and prices change with the season, so check current information before you commit to a route.",
+            transportEssentials: TravelTransportEssentialsDemoData().transportEssentials()
         )
     }
 }
