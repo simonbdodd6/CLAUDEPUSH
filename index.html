@@ -2255,11 +2255,6 @@
         border-bottom: 1px solid var(--line) !important;
         margin-bottom: 4px;
       }
-      .player-db-table td:nth-child(3),
-      .player-db-table td:nth-child(4),
-      .player-db-table td:nth-child(5) {
-        display: inline-block; width: 32%; vertical-align: top; padding-right: 4px !important;
-      }
       .player-db-table td:last-child > div { justify-content: flex-start; }
     }
 
@@ -12321,15 +12316,15 @@
                 </div>
 
                 <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-                  <label style="flex:1;min-width:180px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
+                  <label style="flex:1;min-width:180px;font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:5px">
                     Full name
                     <input id="inv-name" placeholder="e.g. Thomas Dupont" style="padding:9px 11px">
                   </label>
-                  <label style="flex:1;min-width:210px;font-size:12px;font-weight:700;color:#94a3b8;display:grid;gap:5px">
+                  <label style="flex:1;min-width:210px;font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:5px">
                     Email
                     <input id="inv-email" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="player@example.com" style="padding:9px 11px">
                   </label>
-                  <label id="inv-stafflevel-wrap" style="display:none;flex:1;min-width:150px;font-size:12px;font-weight:700;color:#94a3b8;gap:5px">
+                  <label id="inv-stafflevel-wrap" style="display:none;flex:1;min-width:150px;font-size:12px;font-weight:700;color:var(--muted);gap:5px">
                     Coach level
                     <select id="inv-stafflevel" style="padding:9px 11px">
                       <option value="assistant">Assistant coach</option>
@@ -12346,13 +12341,13 @@
 
                 <!-- Fallback: team code for bulk sharing -->
                 <details style="margin-top:18px">
-                  <summary style="font-size:12px;font-weight:700;color:#64748b;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
+                  <summary style="font-size:12px;font-weight:700;color:var(--faint);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
                     <span>▶</span> Also share a general team code (no-name signup)
                   </summary>
                   <div style="margin-top:10px;background:rgba(var(--accent-rgb), 0.06);border:1px solid rgba(var(--accent-rgb), 0.15);border-radius:10px;padding:14px 16px">
-                    <p style="font-size:13px;color:#94a3b8;margin-bottom:10px">For bulk invites — players enter this code and their own name.</p>
+                    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">For bulk invites — players enter this code and their own name.</p>
                     <div class="join-code-value" style="font-size:22px;letter-spacing:3px;display:inline-block;margin-bottom:10px">${esc(state.teamCode||'TEAM')}</div>
-                    <div style="font-size:12px;color:#64748b;margin-bottom:10px">${window.location.hostname}</div>
+                    <div style="font-size:12px;color:var(--faint);margin-bottom:10px">${window.location.hostname}</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
                       <button class="btn" type="button" style="font-size:12px" onclick="copyTeamInviteMessage()">
                         Copy message
@@ -12405,7 +12400,7 @@
           <!-- Player database table (or empty state) -->
           ${members.length === 0 ? `
           <div class="card" style="padding:36px 24px;text-align:center">
-            <div style="font-size:48px;margin-bottom:14px"></div>
+            <div style="font-size:40px;margin-bottom:14px;opacity:.55">👥</div>
             <h2 style="margin:0 0 8px;font-size:18px">Add your players</h2>
             <p style="font-size:14px;color:var(--muted);margin:0 auto 22px;max-width:420px">
               Invite players with a group invite link or your team code, or add them manually.
@@ -12422,9 +12417,7 @@
                 <tr>
                   <th style="padding-left:18px">Player</th>
                   <th>Position</th>
-                  <th>${esc(schedSessions.find(s=>s.id==='game')?.title || 'Match')}</th>
-                  <th>${esc(schedSessions.find(s=>s.id==='tue')?.title || 'Training 1')}</th>
-                  <th>${esc(schedSessions.find(s=>s.id==='thu')?.title || 'Training 2')}</th>
+                  <th>Availability</th>
                   <th>Attendance</th>
                   <th>Media consent</th>
                   <th>Contract</th>
@@ -12442,17 +12435,23 @@
                           <input type="file" accept="image/*" style="display:none" onclick="event.stopPropagation()" onchange="savePlayerPhoto('${p.id}',this)">
                         </label>
                       </div>
-                      <div><strong style="font-size:13px">${p.name}</strong><div style="font-size:11px;color:var(--muted)">${p.email||""}</div></div>
+                      <div><strong style="font-size:13px">${p.name}</strong><div style="font-size:12px;color:var(--muted)">${p.email||""}</div></div>
                     </div>
                   </td>
                   <td data-label="Position"><span class="pill" style="font-size:11px">${p.position}</span></td>
-                  <td data-label="Match"><span class="status ${p.game}">${statusLabel(p.game)}</span></td>
-                  <td data-label="Training 1"><span class="status ${p.trainingTuesday}">${statusLabel(p.trainingTuesday)}</span></td>
-                  <td data-label="Training 2"><span class="status ${p.trainingThursday}">${statusLabel(p.trainingThursday)}</span></td>
+                  <td data-label="Availability">
+                    ${(() => {
+                      const cells = [['game', 'M'], ['trainingTuesday', 'T1'], ['trainingThursday', 'T2']];
+                      const dotColor = st => st === 'available' ? 'var(--green)' : st === 'maybe' ? 'var(--amber)' : (st === 'unavailable' || st === 'injured') ? 'var(--red)' : 'var(--line)';
+                      const replied = cells.filter(([k]) => p[k] && p[k] !== 'no-reply').length;
+                      const dots = cells.map(([k, lbl]) => `<span title="${lbl}: ${statusLabel(p[k] || 'no-reply')}" style="width:10px;height:10px;border-radius:50%;background:${dotColor(p[k])};display:inline-block"></span>`).join('');
+                      return `<div style="display:flex;align-items:center;gap:7px"><span style="display:inline-flex;gap:5px">${dots}</span><span style="font-size:11px;color:var(--muted);font-weight:700">${replied}/3</span></div>`;
+                    })()}
+                  </td>
                   <td data-label="Attendance">
                     <div style="display:flex;align-items:center;gap:8px">
-                      <div class="history-bar" style="width:60px"><span style="width:${p.attendance}%;background:${p.attendance>=80?'var(--green)':p.attendance>=60?'#d97706':'#dc2626'}"></span></div>
-                      <span style="font-size:12px;font-weight:700;color:${p.attendance>=80?'var(--ink)':p.attendance>=60?'#d97706':'#f87171'}">${p.attendance}%</span>
+                      <div class="history-bar" style="width:60px"><span style="width:${p.attendance}%;background:${p.attendance>=80?'var(--green)':p.attendance>=60?'var(--amber)':'var(--red)'}"></span></div>
+                      <span style="font-size:12px;font-weight:700;color:${p.attendance>=80?'var(--ink)':p.attendance>=60?'var(--amber)':'var(--red)'}">${p.attendance}%</span>
                     </div>
                   </td>
                   <td data-label="Media consent">
@@ -12463,11 +12462,11 @@
                   </td>
                   <td data-label="Contract">${playerLifecycleBadge(p)}${playerHasMedicalFlag(p)?'<span style="margin-left:4px;font-size:11px" title="Medical flag"></span>':''}</td>
                   <td style="padding-right:14px">
-                    <div style="display:flex;gap:5px">
-                      <button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px" onclick="event.stopPropagation();requestMedical('${p.id}')">Medical</button>
+                    <div style="display:flex;gap:6px">
+                      <button class="btn ghost" type="button" style="padding:0 11px;min-height:36px;font-size:12px" onclick="event.stopPropagation();requestMedical('${p.id}')">Medical</button>
                       ${playerIsArchived(p)
-                        ? `<button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--accent)" onclick="event.stopPropagation();restorePlayer('${p.id}')">Restore</button>`
-                        : `<button class="btn ghost" type="button" style="padding:0 8px;min-height:30px;font-size:12px;color:var(--red)" onclick="event.stopPropagation();archivePlayer('${p.id}')">Archive</button>`}
+                        ? `<button class="btn ghost" type="button" style="padding:0 11px;min-height:36px;font-size:12px;color:var(--accent)" onclick="event.stopPropagation();restorePlayer('${p.id}')">Restore</button>`
+                        : `<button class="btn ghost" type="button" style="padding:0 11px;min-height:36px;font-size:12px;color:var(--red)" onclick="event.stopPropagation();archivePlayer('${p.id}')">Archive</button>`}
                     </div>
                   </td>
                 </tr>`).join("")}
