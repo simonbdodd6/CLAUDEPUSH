@@ -8822,7 +8822,7 @@
         items.push({ score:45, level:'warning', icon:'',
           text:'Availability not requested this week',
           detail:'Players haven\'t been asked to confirm yet.',
-          cta:'Send request', action:`setSection('coach','message')` });
+          cta:'Ask availability', action:`setSection('coach','message')` });
       }
       // Training session with blocks but not published (not tonight)
       const readyToPublish = sessions.filter(s => {
@@ -10750,6 +10750,19 @@
                 <div class="msg-session-grid">
                   ${sessionCardsHTML || `<p class="muted">No availability sessions configured yet.</p>`}
                 </div>
+                ${selected ? `
+                <div class="avail-request-cta" style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+                  ${state.players.length > 0
+                    ? `<button class="btn primary" type="button" onclick="sendAvailabilityRequest('${selected.id}')" style="width:100%;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;line-height:1.2;font-weight:800">
+                        <span style="font-size:15px">Request Availability</span>
+                        <span style="font-size:11px;font-weight:600;opacity:.85">${esc(selected.title || selected.id)} • ${esc(selected.date || 'Date to be confirmed')}</span>
+                      </button>`
+                    : `<button class="btn primary" type="button" disabled style="width:100%;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;line-height:1.2;font-weight:800;opacity:.55;cursor:not-allowed">
+                        <span style="font-size:15px">Request Availability</span>
+                        <span style="font-size:11px;font-weight:600;opacity:.85">No active players available</span>
+                      </button>`}
+                  <button class="btn ghost" type="button" onclick="sendAllAvailabilityRequests()" style="width:100%;min-height:44px;font-size:13px;font-weight:700">Ask All Sessions</button>
+                </div>` : ''}
               </div>
             </article>
 
@@ -10990,9 +11003,15 @@
       const session = state.schedule.find(s => s.id === sessionId);
       if (!session) return;
       if (!(state.players || []).length) return showToast('No players yet — invite players from the Members page first');
+      const playerCount = state.players.length;
+      const whenText = session.date ? `on ${session.date}` : '— date to be confirmed';
+      if (!(await ceConfirm('Send availability request?',
+        `This will send a notification and message to all ${playerCount} players asking for their availability for ${session.title} ${whenText}.`,
+        { confirmLabel: 'Send Request' }))) return;
       const _sendBtn = document.querySelector(`button[onclick*="sendAvailabilityRequest('${sessionId}')"]`);
       if (_sendBtn) { _sendBtn.disabled = true; _sendBtn.textContent = 'Sending…'; }
-      const body = `Please confirm your availability for ${session.title} (${session.date}) in Coach's Eye.`;
+      const dateText = session.date || 'date to be confirmed';
+      const body = `Please confirm your availability for ${session.title} (${dateText}) in Coach's Eye.`;
       const created = createCoachMessage({ recipients: state.players, type: "Availability request", body, sessionId });
       state.availabilityRequests.unshift({
         id: `req-${Date.now()}`,
@@ -11009,7 +11028,7 @@
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'send', convId: 'squad',
             senderId: me.id, senderName: me.name, senderRole: 'coach',
-            text: `Availability request — ${session.title} (${session.date}): ${body}`,
+            text: `Availability request — ${session.title} (${dateText}): ${body}`,
             type: 'TEXT', isAutomated: false })
         });
       } catch(e) { console.warn('Chat write failed:', e); }
