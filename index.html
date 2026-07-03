@@ -3213,7 +3213,7 @@
        ═══════════════════════════════════════════════════════════════════════════ */
     .mcx2-board {
       display: grid;
-      grid-template-columns: minmax(0, 3fr) minmax(300px, 1fr);
+      grid-template-columns: minmax(0, 3.6fr) minmax(256px, 1fr);
       grid-template-areas: "pitch avail" "subs subs";
       gap: 16px; align-items: stretch;
     }
@@ -3225,7 +3225,7 @@
 
     /* ── Dark, premium broadcast pitch ───────────────────────────────────────── */
     .mcx2-pitch, #matchday-pitch.mcx2-pitch {
-      min-height: 660px !important; border-radius: var(--r-lg) !important;
+      min-height: 720px !important; border-radius: var(--r-lg) !important;
       border: 1px solid rgba(0,0,0,0.6) !important;
       background:
         linear-gradient(180deg, rgba(0,0,0,0.30) 0 6.5%, transparent 6.5% 93.5%, rgba(0,0,0,0.30) 93.5% 100%),
@@ -3883,6 +3883,10 @@
     .j12-name::placeholder { color: rgba(255,255,255,0.42); font-weight: 600; }
     .j12-name:focus { outline: none; border-color: #34d399 !important; box-shadow: 0 0 0 2px rgba(52,211,153,0.35) !important; }
     .mc12-slot:not(.filled) .j12-name { background: rgba(6,12,9,0.5) !important; border-style: dashed !important; }
+    /* Beta: SELECTED (filled) players read instantly vs empty slots — presentation only. */
+    .mc12-slot.filled .j12-name { background: rgba(52,211,153,0.16) !important; border-color: rgba(52,211,153,0.5) !important; box-shadow: 0 4px 14px rgba(0,0,0,0.45), 0 0 0 1px rgba(52,211,153,0.14) !important; }
+    .mc12-slot.filled .j12-shirt { filter: drop-shadow(0 11px 13px rgba(0,0,0,0.55)) drop-shadow(0 0 12px rgba(52,211,153,0.22)); }
+    .mc12-slot.filled.inj .j12-name { background: rgba(242,113,140,0.16) !important; border-color: rgba(242,113,140,0.5) !important; }
     .j12-pos { display: block; margin-top: 2px; font-size: 8.5px; font-weight: 800; letter-spacing: .08em;
       text-transform: uppercase; color: rgba(190,235,208,0.82); text-shadow: 0 1px 3px rgba(0,0,0,0.8); white-space: nowrap; }
     .mc12-slot.inj .j12-pos { color: #f2a3b4; }
@@ -11952,6 +11956,14 @@
         </div>
 
         <!-- ── TEAM SELECTION — V2 · pitch-dominant board ────────────────────── -->
+        ${squadSelected === 0 ? `
+        <div class="mc-empty-hint" style="display:flex;align-items:center;gap:12px;padding:14px 16px;margin-bottom:14px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,rgba(52,211,153,0.07),transparent)">
+          <div style="font-size:26px;line-height:1">🏉</div>
+          <div style="min-width:0">
+            <strong style="display:block;font-size:14px;color:var(--ink)">Pick your matchday squad</strong>
+            <span style="font-size:12.5px;color:var(--muted)">Tap any position on the pitch to add a player, or choose from the Available list — 15 starters and up to 8 on the bench.</span>
+          </div>
+        </div>` : ''}
         <div class="mcx2-board">
 
           <!-- LEFT — the pitch (dominant) -->
