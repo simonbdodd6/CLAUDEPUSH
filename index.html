@@ -1314,6 +1314,15 @@
       .ce-modal-actions button { width: 100%; min-height: 48px; }
     }
 
+    /* Availability — player details popup (reuses .ce-modal-overlay backdrop) */
+    .ce-modal.ceap-card { max-width: 420px; max-height: 85vh; overflow-y: auto; padding: 20px; }
+    .ceap-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 8px; }
+    .ceap-reply-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); margin-bottom: 6px; }
+    .ceap-reply-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ceap-reply-when { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+    .ceap-contact-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); padding: 4px 0; }
+    .ceap-contact-row a { color: var(--accent); text-decoration: none; }
+
     /* Mission Control (Overview) */
     .mctl-strip {
       display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -10628,7 +10637,7 @@
         const isInjury   = reason === 'injury';
         const reasonText = reason && reason !== 'injury' ? REASON_LABELS[reason] || reason : '';
         const repliedTs  = fmtRespondedAt(respondedAt);
-        return `<button class="msg-player-row ${selectedPlayer.id===player.id ? "active" : ""}" type="button" onclick="setMessagePlayer('${player.id}')">
+        return `<button class="msg-player-row ${selectedPlayer.id===player.id ? "active" : ""}" type="button" onclick="openPlayerAvailabilityPopup('${player.id}')">
           <span class="msg-player-main">
             <span style="min-width:0">
               <strong>${esc(player.name)}</strong>
@@ -10963,6 +10972,108 @@
       const panel = document.getElementById('player-detail-panel');
       if (panel) panel.style.display = 'none';
       document.querySelectorAll('.msg-player-row.active').forEach(b => b.classList.remove('active'));
+    }
+
+    // ─── Availability — player details popup ──────────────────────────────────
+    // Premium modal shown when a coach taps a player in the Availability board.
+    // Presentation only: reads EXISTING player/session data already in state —
+    // no API calls, no new storage, no fabricated data. Missing fields fall back
+    // to clean copy. Close on ✕ / backdrop / Escape.
+    let _ceapKeyHandler = null;
+    function closePlayerAvailabilityPopup() {
+      document.getElementById('ceap-overlay')?.remove();
+      if (_ceapKeyHandler) { document.removeEventListener('keydown', _ceapKeyHandler); _ceapKeyHandler = null; }
+    }
+    function openPlayerAvailabilityPopup(playerId) {
+      if (!isCoach()) return showToast("Players can only view their own profile");
+      const player = state.players.find(p => p.id === playerId);
+      if (!player) return;
+
+      const initials = (player.name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?';
+      const position = player.position || player.primaryPosition || '';
+      const jersey   = player.jerseyNumber || player.jersey || '';
+
+      // Current selected session response
+      const selected  = state.schedule.find(s => s.id === (state.messageDetail || 'tue')) || state.schedule[0];
+      const selKey    = selected ? sessionKey(selected.id) : 'game';
+      const status    = player[selKey] || 'no-reply';
+      const selWhen   = fmtRespondedAt(player[selKey + 'RespondedAt']);
+      const selReason = player[selKey + 'Reason'];
+      const selReasonText = selReason && selReason !== 'injury' ? (REASON_LABELS[selReason] || selReason) : (selReason === 'injury' ? 'Injury' : '');
+
+      // Recent replies across all sessions (existing data only)
+      const replies = state.schedule.map(s => {
+        const k  = sessionKey(s.id);
+        const st = player[k];
+        if (!st || st === 'no-reply') return null;
+        return { title: s.title || s.id, status: st, when: fmtRespondedAt(player[k + 'RespondedAt']) };
+      }).filter(Boolean);
+      const totalSessions = state.schedule.length;
+
+      // Season attendance (only if real numeric data)
+      const attendanceText = (typeof player.attendance === 'number' && player.attendance > 0) ? `${player.attendance}%` : 'No data yet';
+
+      // Contact (skip the auto-generated @player.test placeholder emails)
+      const realEmail = player.email && !/@player\.test$/i.test(player.email) ? player.email : '';
+      const realPhone = (player.phone || '').trim();
+      const contactHtml = (realPhone || realEmail)
+        ? `${realPhone ? `<div class="ceap-contact-row">📞 <a href="tel:${esc(realPhone)}">${esc(realPhone)}</a></div>` : ''}
+           ${realEmail ? `<div class="ceap-contact-row">✉️ <a href="mailto:${esc(realEmail)}">${esc(realEmail)}</a></div>` : ''}`
+        : `<p class="muted" style="font-size:12px;margin:0">No contact details on file.</p>`;
+
+      const repliesHtml = replies.length
+        ? replies.map(r => `<div class="ceap-reply-row">
+            <span class="ceap-reply-title">${esc(r.title)}</span>
+            <span class="msg-chip ${r.status}">${statusLabel(r.status)}</span>
+            ${r.when ? `<span class="ceap-reply-when">${esc(r.when)}</span>` : ''}
+          </div>`).join('')
+        : `<p class="muted" style="font-size:12px;margin:0">No recent replies yet.</p>`;
+
+      closePlayerAvailabilityPopup();
+      const overlay = document.createElement('div');
+      overlay.id = 'ceap-overlay';
+      overlay.className = 'ce-modal-overlay';
+      overlay.innerHTML = `
+        <div class="ce-modal ceap-card" role="dialog" aria-modal="true" aria-labelledby="ceap-title">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">
+            <div style="display:flex;align-items:center;gap:12px;min-width:0">
+              <div class="msg-avatar">${esc(initials)}</div>
+              <div style="min-width:0">
+                <strong id="ceap-title" style="font-size:17px;display:block;line-height:1.2">${esc(player.name || '—')}</strong>
+                <span style="color:var(--muted);font-size:12px">${esc(position || 'Player')}${jersey ? ' · #' + esc(String(jersey)) : ''}</span>
+              </div>
+            </div>
+            <button class="btn" type="button" onclick="closePlayerAvailabilityPopup()" aria-label="Close" style="min-height:36px;min-width:36px;padding:0 11px;font-size:14px;flex-shrink:0">✕</button>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+            <span style="color:var(--muted);font-size:12px">${esc((selected && (selected.title || selected.id)) || 'This session')}:</span>
+            <span class="msg-chip ${status}">${statusLabel(status)}</span>
+            ${selReasonText ? `<span style="color:var(--muted);font-size:11px">· ${esc(selReasonText)}</span>` : ''}
+            ${selWhen ? `<span style="color:var(--muted);font-size:11px">· ${esc(selWhen)}</span>` : ''}
+          </div>
+
+          <div class="training-metrics" style="gap:10px;margin-bottom:16px">
+            <article><span>Season attendance</span><strong>${esc(attendanceText)}</strong></article>
+            <article><span>Replies</span><strong>${replies.length}/${totalSessions}</strong></article>
+            <article><span>Position</span><strong>${esc(position || '—')}</strong></article>
+          </div>
+
+          <div style="margin-bottom:16px">
+            <p class="ceap-section-label">Recent replies</p>
+            ${repliesHtml}
+          </div>
+
+          <div>
+            <p class="ceap-section-label">Contact</p>
+            ${contactHtml}
+          </div>
+        </div>`;
+
+      _ceapKeyHandler = e => { if (e.key === 'Escape') closePlayerAvailabilityPopup(); };
+      overlay.addEventListener('click', e => { if (e.target === overlay) closePlayerAvailabilityPopup(); });
+      document.addEventListener('keydown', _ceapKeyHandler);
+      document.body.appendChild(overlay);
     }
 
     function getMessageRecipients(audience, playerId) {
