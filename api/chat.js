@@ -251,7 +251,11 @@ function sessionCanWriteConversation(sessionContext, conversation = {}, actorIds
   const type = String(conversation?.type || '').toUpperCase();
   if (conversation?.id === 'announce' || type === 'ANNOUNCEMENT') return false;
   if (conversation?.id === 'coaching' || type === 'COACHING') return false;
-  if (conversation?.id === 'squad' || type === 'GROUP') return true;
+  // A player may post to the open 'squad' channel. For ANY other group (or DM),
+  // write access must be no broader than READ access — the player must be a
+  // participant. Previously any type==='GROUP' was unconditionally writable, which
+  // let a player post into a coach-created group they could not even read.
+  if (conversation?.id === 'squad') return true;
   return sessionCanReadConversation(sessionContext, conversation, actorIds);
 }
 
@@ -524,6 +528,14 @@ async function handlePost(req, res) {
       const isSelfParticipant = (Array.isArray(participants) ? participants : [])
         .some(p => actorIds.includes(String(p || '')));
       if (!isSelfParticipant) return err(res, 403, 'Players can only create conversations they participate in');
+      // Prevent DM id spoofing: a player-created DIRECT conversation's id must embed
+      // the creator, so a player cannot pre-create/hijack a dm:X:Y conversation
+      // between two OTHER members (which they could then read as a listed
+      // participant). Every legitimate client id is dm:sorted(me, other).
+      const dmParts = String(id || '').split(':').slice(1);
+      if (String(id || '').startsWith('dm:') && !dmParts.some(p => actorIds.includes(String(p)))) {
+        return err(res, 403, 'Conversation id must include the creator');
+      }
     }
 
     const teamId = tenantTeamId(sessionContext);
@@ -539,33 +551,41 @@ async function handlePost(req, res) {
   return err(res, 400, 'Unknown action');
 }
 
-// Rebuild the Redis list (needed for edits/deletes — newest first)
+// Rebuild the Redis message list after an in-place edit / react / delete.
+//
+// ORDERING: callers pass `msgs` NEWEST-first (exactly as kvLrange 0..N returns it).
+// The stored list must stay newest-first (index 0 = newest, matching the send-path
+// LPUSH and the `messages` GET which reverses for display). LPUSH prepends, so to end
+// up newest-at-index-0 we must LPUSH oldest→newest — i.e. iterate the array REVERSED.
+// (Previously it iterated newest→oldest, silently inverting the whole conversation on
+// every edit/react/delete.)
+//
+// ATOMICITY: build the new list under a unique TEMP key, then swap it onto the live
+// key with a single atomic RENAME. A failure mid-build leaves the ORIGINAL list
+// untouched (RENAME never runs) — eliminating the previous DEL-then-partial-repush
+// window that could truncate or wipe a conversation on a mid-loop crash. (Upstash REST
+// exposes no MULTI here, so temp-key + RENAME is the smallest safe primitive.)
 async function rebuildConvMsgs(convId, msgs) {
   const k = MSGS_KEY(convId);
-  // Delete and re-push in reverse (oldest first so LPUSH makes newest first)
-  // Using pipelining isn't available, so we do sequential operations
-  // For simplicity, store as a single JSON value for small-ish convs
-  // Then switch to list when > threshold
-  // Actually: just re-write the entire list using a temp key approach
-  // Simplest: iterate and lpush in reverse order (oldest → newest via lpush = newest on top)
-  // First delete the key
+  const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
+  const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!REDIS_URL || !REDIS_TOKEN) return;
+  // Unique per call so two concurrent rebuilds can't clobber each other's temp list.
+  const tmp = `${k}:rebuild:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  const rawCmd = (cmd) => fetch(REDIS_URL, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(cmd),
+  }).then(r => { if (!r.ok) throw new Error(`redis ${cmd[0]} → ${r.status}`); return r; });
   try {
-    const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
-    const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-    if (REDIS_URL && REDIS_TOKEN) {
-      // Delete and repopulate
-      await fetch(REDIS_URL, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(['DEL', k]),
-      });
-      // lpush all in order from oldest to newest (so newest ends up at index 0)
-      for (const m of msgs) {
-        await kvLpush(k, m);
-      }
-    }
+    if (!msgs.length) { await rawCmd(['DEL', k]); return; }  // nothing left → clear the live list
+    // kvLpush serialises with JSON.stringify, matching kvLrange's parse on read.
+    for (const m of [...msgs].reverse()) await kvLpush(tmp, m);
+    await rawCmd(['RENAME', tmp, k]);  // atomic swap onto the live key
   } catch(e) {
     console.error('[rebuildConvMsgs] failed for', convId, ':', e?.message);
+    // Best-effort cleanup of the orphaned temp key; never mask the original error.
+    await rawCmd(['DEL', tmp]).catch(() => {});
     throw e;
   }
 }
