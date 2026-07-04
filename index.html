@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>Coach's Eye</title>
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#090d14">
@@ -1166,7 +1166,7 @@
       .chat-back-btn { display: flex !important; }
       .chat-list-head { padding: 12px 14px 9px; }
       .chat-contact { padding: 12px 14px; }
-      .chat-header { padding: 9px 12px; }
+      .chat-header { padding: calc(9px + env(safe-area-inset-top)) 12px 9px; }
       .chat-feed { padding: 12px 10px; }
       .chat-bubble-wrap { max-width: 88%; }
       /* Lift the input above the iOS home indicator / gesture bar so it is never
@@ -1174,8 +1174,8 @@
          no inset (env resolves to 0). */
       .chat-composer { padding: 8px 9px calc(8px + env(safe-area-inset-bottom)); gap: 6px; }
       .chat-no-send  { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
-      .chat-composer textarea { font-size: 16px; min-height: 42px; }
-      .chat-send-btn { width: 42px; height: 42px; }
+      .chat-composer textarea { font-size: 16px; min-height: 44px; }
+      .chat-send-btn { width: 44px; height: 44px; }
       .chat-new-msg-modal { align-items: flex-end; padding: 10px; }
       .chat-new-msg-dialog {
         width: 100%;
@@ -1264,10 +1264,19 @@
        Also enforce 44px touch targets for interactive elements per Apple HIG. */
     @media (max-width: 768px) {
       input, select, textarea { font-size: 16px !important; }
-      .btn { min-height: 44px; }
+      /* Enforce the 44px HIG touch target. !important so inline min-heights and
+         higher-specificity overrides (.auth-panel .btn, .mc10-actions .btn, a later
+         .filter-pill rule, …) cannot shrink primary controls on phones. Mobile-only —
+         no effect on desktop. */
+      .btn { min-height: 44px !important; }
       .ob-row, .mctl-row { min-height: 44px; }
-      .filter-pill { min-height: 40px; }
-      .mctl-done summary { min-height: 40px; display: flex; align-items: center; }
+      .filter-pill { min-height: 44px !important; }
+      .mctl-done summary { min-height: 44px; display: flex; align-items: center; }
+      /* Bare (non-.btn) controls that escape the rule above. */
+      .inv-role-btn, .auth-tab { min-height: 44px; }
+      .auth-panel input, .auth-panel .btn { min-height: 44px !important; }
+      .chat-icon-btn, .chat-emoji-btn, .chat-exit-btn, .chat-back-btn, .chat-scroll-btn,
+      .chat-new-msg-btn, .mc7-sort button { min-height: 44px; min-width: 44px; }
     }
 
     /* Toast variants — errors look like errors, and never collide with the
@@ -1309,7 +1318,9 @@
     .ce-modal-actions .ce-confirm.danger { background: var(--red); border-color: var(--red); color: #fff; }
     @media (max-width: 480px) {
       .ce-modal-overlay { align-items: flex-end; padding: 10px; }
-      .ce-modal { max-width: none; border-radius: 14px; }
+      /* Bottom-sheet: keep the sheet (and its action buttons) clear of the iOS home
+         indicator. env resolves to 0 on devices without an inset. */
+      .ce-modal { max-width: none; border-radius: 14px; padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
       .ce-modal-actions { flex-direction: column-reverse; }
       .ce-modal-actions button { width: 100%; min-height: 48px; }
     }
@@ -3445,7 +3456,13 @@
     .mc5-fixture strong { display: block; font-size: 21px; font-weight: 780; letter-spacing: -0.025em; color: #fff; }
     .mc5-fixture span { font-size: 12.5px; color: var(--muted); }
     .mc5-headact { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .mc5-publish { min-height: 40px; padding: 0 22px; border-radius: 11px; font-weight: 720; font-size: 13.5px; border: 0; color: #06210f; background: #34d399; cursor: pointer; box-shadow: 0 8px 20px -8px rgba(52,211,153,.5); transition: filter .15s, transform .14s; }
+    .mc5-publish { min-height: 44px; padding: 0 22px; border-radius: 11px; font-weight: 720; font-size: 13.5px; border: 0; color: #06210f; background: #34d399; cursor: pointer; box-shadow: 0 8px 20px -8px rgba(52,211,153,.5); transition: filter .15s, transform .14s; }
+    /* Touch devices have no hover: the jersey clear (×) is otherwise invisible, so a
+       coach can never remove a player from a slot/bench on a phone. Reveal + enlarge it
+       on hover-less pointers. Desktop (hover) keeps the reveal-on-hover behaviour. */
+    @media (hover: none) {
+      .jrsy-clear, .jrsy-clear.sm { opacity: 0.92 !important; width: 24px; height: 24px; font-size: 15px; }
+    }
     .mc5-publish:hover { filter: brightness(1.07); transform: translateY(-1px); }
     .mc5-publish.published { background: rgba(52,211,153,.16); color: #34d399; box-shadow: none; border: 1px solid rgba(52,211,153,.3); }
 
