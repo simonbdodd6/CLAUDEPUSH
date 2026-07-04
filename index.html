@@ -8671,11 +8671,27 @@
           body: JSON.stringify({ action: 'approve', memberId, approvedBy: currentUser()?.id || state.currentUserId || 'system' }),
         }).then(r => r.json());
         if (!data.ok) throw new Error(data.error || 'Could not approve request');
-        applyApprovedIdentityLocally(data);
+        // Role guard: never inject a coach/admin/medical identity into the player
+        // roster (applyApprovedIdentityLocally pushes a state.players record). Approved
+        // STAFF go into state.users with their role, like the login path; only players
+        // get the roster row.
+        const approvedRole = data.user?.role || data.teamMember?.role || 'player';
+        const approvedIsStaff = ['coach','admin','medical'].includes(approvedRole);
+        if (approvedIsStaff && data.user?.id) {
+          const staffName = data.user.displayName || data.user.email || data.user.id;
+          const existingUser = state.users.find(u => u.id === data.user.id);
+          if (!existingUser) {
+            state.users.push({ id: data.user.id, role: approvedRole, name: staffName, email: data.user.email || '', phone: '', pin: '' });
+          } else {
+            existingUser.role = approvedRole;
+          }
+        } else {
+          applyApprovedIdentityLocally(data);
+        }
         _identityPendingRequests = _identityPendingRequests.filter(request => request.id !== memberId);
         saveState('Join request approved');
         render();
-        showToast('Player approved and added to roster');
+        showToast(approvedIsStaff ? 'Staff member approved' : 'Player approved and added to roster');
       } catch(e) {
         showToast(e.message || 'Could not approve request');
       }
@@ -25812,85 +25828,72 @@
       const position  = document.getElementById('invite-position-input')?.value.trim() || '';
       const role      = _inviteData.role;
       if (!name) { showToast('Enter your name first'); return; }
-      if (role === 'player' && !email) { showToast('Enter your email'); return; }
-      if (role === 'player' && password.length < 8) { showToast('Password must be at least 8 characters'); return; }
+      // Every role now creates a REAL server account via claim_invite (staff no longer
+      // take a local-only path), so email + a valid password are required for all roles.
+      if (!email) { showToast('Enter your email'); return; }
+      if (password.length < 8) { showToast('Password must be at least 8 characters'); return; }
 
       const btn = document.querySelector('#invite-modal .btn.primary');
       if (btn) { btn.disabled = true; btn.textContent = 'Creating your account…'; }
 
-      if (role === 'player') {
-        try {
-          const res = await fetch('/api/identity', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'claim_invite', token: _inviteToken, name, email, password, mobile, position }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not claim invite');
+      try {
+        // ALL roles (player + coach/admin/medical) claim through the same server flow.
+        // The backend assigns the invite's role to the team member, issues a session,
+        // consumes the invite, and creates a roster player profile ONLY for players —
+        // so a coach gets a real, persistent account and is never added to the roster.
+        const res = await fetch('/api/identity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'claim_invite', token: _inviteToken, name, email, password, mobile, position }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not claim invite');
+
+        // Apply the SERVER identity. Staff go into state.users with their role and are
+        // NEVER injected into state.players; players use applyApprovedIdentityLocally
+        // (which adds the roster row). Mirrors the login path.
+        const claimedRole = data.user?.role || data.teamMember?.role || role;
+        const isStaffRole = ['coach','admin','medical'].includes(claimedRole);
+        if (isStaffRole) {
+          const staffName = data.user.displayName || data.user.email || name;
+          const existingUser = state.users.find(u => u.id === data.user.id);
+          if (!existingUser) {
+            state.users.push({ id: data.user.id, role: claimedRole, name: staffName, email: data.user.email || email, phone: '', pin: '' });
+          } else {
+            existingUser.role = claimedRole;
+            existingUser.name = existingUser.name || staffName;
+            existingUser.email = existingUser.email || (data.user.email || email);
+          }
+        } else {
           applyApprovedIdentityLocally(data);
-          state.currentUserId = data.user.id;
-          state.activeView = 'player';
+        }
+
+        state.currentUserId = data.user.id;
+        state.activeView = isStaffRole ? 'coach' : 'player';
+        if (isStaffRole) {
+          state.activeCoachSection = state.activeCoachSection || 'overview';
+          state.selectedChatId = state.selectedChatId || 'squad';
+        } else {
           state.activePlayerSection = 'messages';
           state.selectedPlayerId = data.user.id;
           state.selectedMessagePlayerId = data.user.id;
           state.selectedChatId = 'coach';
-          saveState('Invite claimed');
-          document.getElementById('invite-modal')?.remove();
-          window.history.replaceState({}, '', '/');
-          _inviteToken = null; _inviteData = null;
-          render();
-          loadPublishedStateForPlayer().catch(() => {});
-          loadClubConfigFromServer().catch(() => {});
-          refreshPushSubscriptionMetadata(name).catch(() => {});
-          showToast(`Welcome ${name.split(' ')[0]}! Your account is ready.`);
-          return;
-        } catch(e) {
-          showToast(e.message || 'Could not claim invite');
-          if (btn) { btn.disabled = false; btn.textContent = 'Create account & join →'; }
-          return;
         }
+        saveState('Invite claimed');
+        document.getElementById('invite-modal')?.remove();
+        window.history.replaceState({}, '', '/');
+        _inviteToken = null; _inviteData = null;
+        render();
+        if (isStaffRole) loadRosterFromServer().catch(() => {});
+        else loadPublishedStateForPlayer().catch(() => {});
+        loadClubConfigFromServer().catch(() => {});
+        refreshPushSubscriptionMetadata(name).catch(() => {});
+        showToast(`Welcome ${name.split(' ')[0]}! Your account is ready.`);
+      } catch(e) {
+        showToast(e.message || 'Could not claim invite');
+        if (btn) { btn.disabled = false; btn.textContent = 'Create account & join →'; }
+        return;
       }
-
-      // Create member record for all roles (coaches appear in Members page too)
-      const isStaffRole = ['coach','admin','medical'].includes(role);
-      const defaultPosition = role === 'coach' ? 'Coach' : role === 'admin' ? 'Admin' : role === 'medical' ? 'Medical Staff' : 'TBC';
-      let playerId = !isStaffRole ? canonicalInvitePlayerId(_inviteData) : null;
-      let player = state.players.find(p => p.name.toLowerCase() === name.toLowerCase());
-      if (!player) {
-        playerId = playerId || 'p' + Date.now();
-        player = { id: playerId, name, position: defaultPosition, status: isStaffRole ? 'available' : 'no-reply', game: isStaffRole ? 'available' : 'no-reply',
-          phone: '', email: _inviteData.email || '', trainingTuesday: 'no-reply', trainingThursday: 'no-reply',
-          attendance: 0, history: [], blockedDates: [], medical: '', mediaConsent: false, contractStatus: 'active' };
-        state.players.push(player);
-      } else {
-        if (playerId && player.id !== playerId) player.id = playerId;
-        playerId = player.id;
-      }
-
-      // Create/find user account
-      let userAcc = state.users.find(u => u.name.toLowerCase() === name.toLowerCase());
-      if (!userAcc) {
-        userAcc = { id: (isStaffRole ? 'staff-' : 'player-') + Date.now(), role, name,
-          email: _inviteData.email || '', phone: '', pin: '', playerId: playerId || null };
-        state.users.push(userAcc);
-      } else {
-        // Ensure existing account is linked to the member record
-        userAcc.playerId = userAcc.playerId || playerId;
-      }
-
-      state.currentUserId = userAcc.id;
-      state.activeView    = isStaffRole ? 'coach' : 'player';
-      if (!isStaffRole) state.selectedPlayerId = playerId;
-      saveState('Joined via invite');
-
-      // Mark accepted on server
-      try { await fetch('/api/invite', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: _inviteToken }) }); } catch(e) {}
-
-      document.getElementById('invite-modal')?.remove();
-      window.history.replaceState({}, '', '/');
-      _inviteToken = null; _inviteData = null;
-      render();
-      showToast(`Welcome ${name.split(' ')[0]}! You're in.`);
       // Prompt for push after a short delay (must be triggered by user gesture for mobile)
       setTimeout(() => {
         if (Notification.permission === 'default') {
