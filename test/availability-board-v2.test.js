@@ -47,7 +47,9 @@ test('rows show name, position, attendance %, reply, last response time and a me
   assert.ok(render.includes('statusLabel(status)'), 'current reply');
   assert.ok(render.includes('fmtRespondedAt(respondedAt)'), 'last response time');
   assert.ok(render.includes('⚠ Injury'), 'medical / injury flag');
-  assert.ok(render.includes('setMessagePlayer('), 'row opens the existing player panel');
+  // A tapped player row now opens the premium Availability player-details popup
+  // (openPlayerAvailabilityPopup), which replaced the old inline setMessagePlayer panel.
+  assert.ok(render.includes('openPlayerAvailabilityPopup('), 'row opens the player details popup');
 });
 
 test('status quick-filters: Available, Maybe, Unavailable, No Reply (with counts)', () => {
