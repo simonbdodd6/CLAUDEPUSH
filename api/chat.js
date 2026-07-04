@@ -165,7 +165,15 @@ function conversationTeamId(conversation = {}) {
 
 function sessionMatchesConversationTeam(sessionContext = {}, conversation = {}) {
   if (!sessionContext?.user?.id) return true;
-  return tenantTeamId(sessionContext) === conversationTeamId(conversation);
+  // Built-in global conversations (squad / coaching / announce) carry NO teamId and
+  // are shared app-wide — they must be reachable by any authenticated session, not
+  // locked to DEFAULT_TEAM. Only conversations with an EXPLICIT teamId (DMs and
+  // custom groups, set at create_conv) stay club-scoped.
+  // Fix: conversationTeamId() previously defaulted the built-ins to DEFAULT_TEAM.id
+  // ('boitsfort-rfc'), which 403'd the squad channel for EVERY coach/player whose
+  // team wasn't the default — even before the staff bypass ran.
+  if (!conversation?.teamId) return true;
+  return tenantTeamId(sessionContext) === String(conversation.teamId);
 }
 
 export function participantIdsForSession(sessionContext = {}) {
