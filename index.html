@@ -12316,6 +12316,20 @@
       const members    = _showArchivedPlayers ? allMembers : allMembers.filter(p => !_isArchivedMember(p));
       const archivedCount = allMembers.filter(_isArchivedMember).length;
 
+      // ── Coaches & staff — sourced from user identity (state.users), NEVER the player
+      // roster. Load staff on the Members render too (not just Messages) so they always
+      // appear regardless of navigation order.
+      if (isCoach()) chatEnsureStaffDirectory();
+      const _STAFF_LABEL = { coach: 'Coach', admin: 'Admin', medical: 'Medical' };
+      const _staffSeen = new Set();
+      const staffMembers = (state.users || [])
+        .filter(u => ['coach', 'admin', 'medical'].includes(u.role) && u.name)
+        .filter(u => { const k = String(u.id); if (_staffSeen.has(k)) return false; _staffSeen.add(k); return true; })
+        .map(u => ({
+          id: u.id, name: u.name, role: u.role, label: _STAFF_LABEL[u.role] || 'Staff',
+          email: (u.email && !/@player\.test$/i.test(u.email)) ? u.email : '',
+        }));
+
       document.getElementById("coach-players").innerHTML = `
         <div style="display:grid;gap:14px">
 
@@ -12510,6 +12524,25 @@
               </button>
             </div>` : ''}
           </div>`}
+
+          <!-- Coaches & staff — read-only; sourced from user identity, not the roster.
+               No attendance / availability / archive controls (staff are not players). -->
+          <div class="card" style="padding:0;overflow:hidden">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)">
+              <strong style="font-size:14px;color:var(--ink)">Coaches &amp; staff</strong>
+              <span class="pill" style="font-size:11px">${staffMembers.length}</span>
+            </div>
+            ${staffMembers.length ? `<div style="padding:8px 10px;display:grid;gap:4px">
+              ${staffMembers.map(s => `<div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:10px">
+                <div style="width:36px;height:36px;border-radius:50%;background:${playerAvatarColor(String(s.id||s.name))};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;flex-shrink:0">${esc(s.name.split(' ').map(w=>w[0]).slice(0,2).join(''))}</div>
+                <div style="min-width:0;flex:1">
+                  <strong style="font-size:13px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name)}</strong>
+                  ${s.email ? `<div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.email)}</div>` : ''}
+                </div>
+                <span class="pill" style="font-size:11px;background:var(--accent-soft);color:var(--accent);border-color:transparent;flex-shrink:0">${esc(s.label)}</span>
+              </div>`).join('')}
+            </div>` : `<p class="muted" style="font-size:12.5px;padding:16px 18px;margin:0">No coaches or staff have joined yet. Invite them with a <strong>Coach</strong> invite link above.</p>`}
+          </div>
 
           <!-- Sent invites — collapsed by default (ordered last) -->
           <details style="order:6;margin-top:4px" ontoggle="if(this.open) loadInviteList()">
