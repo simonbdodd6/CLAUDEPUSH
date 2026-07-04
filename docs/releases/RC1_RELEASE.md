@@ -1,27 +1,30 @@
-# Coach's Eye Core Beta — RC1
+# Coach's Eye Core Beta RC1
 
-## Release date
-2026-07-04
+## Date / time
+2026-07-04 (promoted to production ~19:45 CEST / 17:45 UTC)
 
-## Production commit
-- **Code serving production:** commit **`2279a9c9`** (`feature/core-beta-simplification`) — verified live on the production alias (Members "Coaches & staff" section, coach‑to‑coach messaging, and Request Availability all present; identical to the committed `2279a9c9` tree).
-- **Build stamp:** `_BUILD_INFO.sha = ef0fd61`, `env = production`. The stamp reads `ef0fd61` rather than `2279a9c9` because production was promoted from the **already‑tested** deployment, which was built when `HEAD = ef0fd617` with the approved "Coaches & staff" change still in the working tree. That change was then committed unchanged as `2279a9c9`, so the served bytes equal `2279a9c9` while the build tag is `ef0fd617` (`gitDirty`).
-- **Previous production:** `4fb123e` (Availability request action only).
+## Production
+- **Production URL:** https://boitsfort-coachseye.vercel.app
+- **Production deployment ID:** `dpl_F2SUzLDicheYKyxVyjHRVHTuXphK` (direct URL: `boitsfort-coachseye-f44g28xu9-simonbdodd-9233s-projects.vercel.app`, `target: production`)
+- **Production code commit:** **`2279a9c9`** (`feature/core-beta-simplification`) — verified live: Members "Coaches & staff" section, coach‑to‑coach messaging, and Request Availability are all present and match the committed `2279a9c9` tree.
+
+### Build-label note
+The production build label (`_BUILD_INFO.sha`) shows **`ef0fd61`**, not `2279a9c9`, because the **already‑tested preview build was promoted** rather than rebuilt. That preview was built when `HEAD = ef0fd617` with the approved "Coaches & staff" change still in the working tree (`gitDirty`); the same change was then committed unchanged as `2279a9c9`. **The served code therefore matches `2279a9c9`** even though the build tag reads `ef0fd61`. (Previous production: `4fb123e`.)
 
 ## Summary
-RC1 is a Beta polish and messaging/invite hardening release: 11 commits on `feature/core-beta-simplification` ahead of the prior production `4fb123e`. It restores the core availability workflow, simplifies the primary coach screens for a premium Beta, fixes the messaging backend integrity issues, and makes coach/staff invites and coach‑to‑coach messaging work end‑to‑end without polluting player‑only lists.
+RC1 is a Beta polish and messaging/invite hardening release — 11 commits on `feature/core-beta-simplification` ahead of the prior production `4fb123e`. It restores the core availability workflow, simplifies the primary coach screens for a premium Beta, fixes messaging backend integrity, and makes coach/staff invites and coach‑to‑coach messaging work end‑to‑end without polluting player‑only lists.
 
-## Features delivered
-- **Availability** — restored a visible **Request Availability** action (session‑scoped, with confirmation and "date to be confirmed" fallbacks) and added a premium **player‑details popup** on the availability board.
-- **Members** — simplified the roster table (3 per‑session columns merged into one compact "Availability" summary, design‑token colours, larger touch targets) and added a read‑only **"Coaches & staff"** section sourced from user identity (never the player roster).
+## Features included
+- **Availability** — visible **Request Availability** action (session‑scoped, with confirmation and "date to be confirmed" fallbacks) and a premium **player‑details popup** on the availability board.
+- **Members** — simplified roster table (three per‑session columns merged into one compact "Availability" summary, tokenised colours, larger touch targets) and a read‑only **"Coaches & staff"** section sourced from user identity (never the player roster).
 - **Training** — Beta simplification to **Planner + History**; advanced tools (coach‑sheet auto‑send, video libraries, analytics) hidden behind the Beta flag; empty‑state and touch‑target fixes.
 - **Match Centre** — bigger, more‑dominant pitch; selected players read instantly vs empty slots; premium empty state when no squad is picked.
 - **Messages** — safe frontend polish (composer anti‑autofill, picker autofocus, sidebar search by name/position/email, clean empty states, honest send‑failure feedback, team‑switch cleanup) and **coach‑to‑coach DM visibility** (staff surfaced from identity data with role labels).
-- **Coach/staff invites** — invited coaches now create **real server accounts** via the same `claim_invite` flow as players.
+- **Coach/staff invites** — invited coaches create **real server accounts** via the same `claim_invite` flow as players.
 - **Notifications & mobile** — per‑type notification deep‑link routing and dark‑theme/mobile fixes (delivered earlier in the branch).
 
 ## Bugs fixed
-- **Squad chat "Not authorized"** for any club other than the default — built‑in `squad`/`coaching`/`announce` conversations are now team‑agnostic; DMs and custom groups remain club‑scoped.
+- **Squad chat "Not authorized"** for any club other than the default — built‑in `squad`/`coaching`/`announce` conversations are now team‑agnostic; DMs and custom groups stay club‑scoped.
 - **Coach invite created only a local (browser‑only) account** — now a real server account + session, invite consumed, cross‑device login works; staff are never injected into `state.players`.
 - **Backend message‑order corruption** on edit/react/delete (`rebuildConvMsgs` inverted order) and **non‑atomic rebuild** (DEL‑then‑repush data‑loss window) — fixed with correct ordering and a temp‑key + atomic RENAME swap.
 - **Players could post into a group they could not read** — write access is now no broader than read (participant‑gated) for non‑squad groups.
@@ -30,7 +33,7 @@ RC1 is a Beta polish and messaging/invite hardening release: 11 commits on `feat
 - **Availability request had no reachable button** (restored; shipped in the prior production build).
 - **Staff leaking into player lists** — coaches now live in `state.users` only; Members shows them in a dedicated section; Match Centre selection continues to exclude staff.
 
-## Manual testing completed
+## Manual tests completed
 Verified by the product owner on preview builds before promotion:
 - Availability request: button visible, confirm dialog, cancel sends nothing, send delivers.
 - Coach↔player DM round‑trip; squad chat send/receive; message order preserved after delete.
@@ -51,9 +54,8 @@ Verified by the product owner on preview builds before promotion:
 - **Test hygiene** — flaky `chat-unread` test and a date‑brittle Travel‑module test; chat `console.log` diagnostics are noise (not errors).
 
 ## Promotion details
-- **Method:** `vercel promote` of the tested deployment — **no rebuild of different code, not deployed from another commit**.
+- **Method:** `vercel promote` of the tested preview build — no rebuild of different code, not deployed from another commit.
 - **Promoted from (tested):** `dpl_8vzv4TcBTZVjs2yEtaqWpzU8XUKT` (the approved "Coaches & staff" preview; content = `2279a9c9`).
-- **Production deployment:** `dpl_DzT5w4jYrPTBnF92d9pM9ztDPxTh` — `target: production`, `meta.action: promote`.
-- **Production URL:** https://boitsfort-coachseye.vercel.app
-- **Git ref of the promoted build:** `ef0fd617` (`gitDirty`) — content equals committed `2279a9c9`.
-- **Branch:** `feature/core-beta-simplification` unchanged (HEAD `2279a9c9`). **`main` untouched** (`625835e6`). No application code changed during promotion.
+- **Production deployment:** `dpl_F2SUzLDicheYKyxVyjHRVHTuXphK` — `target: production`, `meta.action: promote`, aliased to `boitsfort-coachseye.vercel.app`.
+- **Git ref of the promoted build:** `ef0fd617` (`gitDirty`) — served content equals committed `2279a9c9`.
+- **Branch:** `feature/core-beta-simplification` unchanged. **`main` untouched** (`625835e6`). No application code changed during promotion.
