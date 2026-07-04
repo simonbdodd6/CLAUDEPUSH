@@ -21750,7 +21750,9 @@
       _chatNewDmOpen = true;
       chatLoadStateModule().then(() => {
         chatRenderNewDmPicker();
-        setTimeout(() => document.querySelector('#chatNewDmPicker input')?.focus(), 30);
+        // The picker search is a contenteditable div (id="message-recipient-picker"),
+        // not an <input> — focus it directly so the modal opens ready to type.
+        setTimeout(() => document.getElementById('message-recipient-picker')?.focus(), 30);
       });
       chatRenderNewDmPicker();
     }
@@ -22377,7 +22379,16 @@
           chatRenderMessages(convId, mode);
           showToast(data.error ? `Message not delivered — ${data.error}` : 'Message not delivered — please retry');
         }
-      } catch(e) { /* offline — optimistic stays for retry */ }
+      } catch(e) {
+        // Network error — never let the optimistic bubble look delivered. Drop it,
+        // restore the draft so nothing is lost, and tell the sender honestly.
+        const arr = _chatMessages[convId] || [];
+        const i = arr.findIndex(m => m.id === optimistic.id);
+        if (i >= 0) arr.splice(i, 1);
+        chatRenderMessages(convId, mode);
+        if (ta && !ta.value.trim()) { ta.value = text; ta.style.height = 'auto'; }
+        showToast('Message not sent — check your connection and try again');
+      }
       saveState('Chat message sent');
     }
 
@@ -22653,7 +22664,9 @@
       // Update header in-place (name + subtitle + avatar)
       const mode2 = state.activeView === 'coach' ? 'coach' : 'player';
       const contacts = chatBuildContacts(mode2);
-      const contact = contacts.find(c => c.id === chatId) || { name: chatId, type: 'DIRECT' };
+      // Never show a raw conversation id as the title. An unmatched id means the
+      // conversation hasn't resolved yet (DM id race) — show a friendly placeholder.
+      const contact = contacts.find(c => c.id === chatId) || { name: 'Loading conversation…', type: 'DIRECT' };
       const h2  = document.getElementById('chatHeaderName');
       const sub = document.getElementById('chatHeaderSub');
       const av  = document.getElementById('chatHeaderAvatar');
@@ -22748,8 +22761,18 @@
       const el = document.getElementById('chatContactList');
       if (!el) return;
       const contacts = chatBuildContacts(mode);
-      const q = _chatSearchQuery.toLowerCase();
-      const filtered = q ? contacts.filter(c => c.name.toLowerCase().includes(q)) : contacts;
+      const q = _chatSearchQuery.toLowerCase().trim();
+      // Search by name, position (contact.sub / roster position) and real email —
+      // not name only. Auto-generated @player.test placeholders are excluded.
+      const filtered = q ? contacts.filter(c => {
+        const rp = c.rosterPlayerId ? state.players.find(p => String(p.id) === String(c.rosterPlayerId)) : null;
+        const email = rp && rp.email && !/@player\.test$/i.test(rp.email) ? rp.email : '';
+        return [c.name, c.sub, rp && rp.position, email].filter(Boolean).join(' ').toLowerCase().includes(q);
+      }) : contacts;
+      if (!filtered.length) {
+        el.innerHTML = `<div class="chat-empty-contacts" style="padding:24px 16px;text-align:center;color:var(--muted);font-size:13px">${q ? 'No conversations found.' : 'No conversations yet.'}</div>`;
+        return;
+      }
       el.innerHTML = filtered.map(c => {
         const lastText = c.lastMsg ? (c.lastMsg.isDeleted ? 'Deleted' : (c.lastMsg.senderName === chatMe().name ? 'You: ' : '') + c.lastMsg.text) : c.sub || '';
         const time = c.lastMsg ? chatFormatTime(c.lastMsg.ts) : '';
@@ -22931,7 +22954,9 @@
           <div class="chat-composer" id="chatComposerWrap" style="${canSend ? '' : 'display:none'}">
             <div class="chat-composer-inner">
               <div class="chat-reply-preview" id="chatReplyPreview" style="display:none"></div>
-              <textarea id="chatComposer" placeholder="Message…" rows="1"
+              <textarea id="chatComposer" name="chat-message-body" placeholder="Message…" rows="1"
+                autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true"
+                data-1p-ignore="true" data-lpignore="true" data-form-type="other" data-bwignore
                 onkeydown="chatOnKeyInput(event)" oninput="chatOnKeyInput(event)"></textarea>
             </div>
             <button class="chat-send-btn" type="button" id="chatSendBtn" onclick="chatSendMessage()" title="Send">➤</button>
@@ -25007,6 +25032,9 @@
       state.availabilityRequests = [];
       state.autopilotReceipts = [];
       state.lastWeekTrainingBlocks = null;
+      // Legacy local message model is team-scoped in effect — clear it so one club's
+      // messages can't linger in legacy display state (registers/badges) after switching.
+      state.messages = [];
       saveState('Team switched');
     }
 
