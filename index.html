@@ -21691,6 +21691,60 @@
       return resolvedId;
     }
 
+    // ── Coach-to-coach messaging: staff directory ──────────────────────────────
+    // Coaches/staff live in state.users (role coach/admin/medical), NOT the player
+    // roster, so they must be surfaced separately in the coach Messages surfaces.
+    // Staff are loaded from the EXISTING /api/identity payload (users + team_members)
+    // and merged into state.users ONLY — never state.players (no roster pollution;
+    // dedupeRosterMembers ignores user-only entries, so player lists are unaffected).
+    let _staffDirLoadedAt = 0;
+    async function loadStaffDirectory() {
+      if (!isCoach()) return;
+      try {
+        const res = await fetch('/api/identity');
+        if (!res.ok) return;
+        const d = await res.json().catch(() => ({}));
+        const members = Array.isArray(d.team_members) ? d.team_members : [];
+        const users   = Array.isArray(d.users) ? d.users : [];
+        const STAFF   = ['coach', 'admin', 'medical'];
+        members.forEach(m => {
+          if (!STAFF.includes(m.role) || (m.status && m.status !== 'active')) return;
+          const u  = users.find(x => String(x.id) === String(m.userId));
+          const id = String(m.userId || (u && u.id) || '');
+          if (!id) return;
+          const name  = (u && (u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email)) || 'Staff';
+          const email = (u && u.email) || '';
+          const existing = state.users.find(su => String(su.id) === id);
+          if (!existing) {
+            state.users.push({ id, role: m.role, name, email, phone: '', pin: '', _staff: true });
+          } else {
+            if (!existing.role)  existing.role  = m.role;
+            if (!existing.name)  existing.name  = name;
+            if (!existing.email) existing.email = email;
+          }
+        });
+      } catch (e) { /* best-effort — never block Messages on the staff directory */ }
+    }
+    // Debounced refresh when the coach opens Messages; re-render if staff changed.
+    async function chatEnsureStaffDirectory() {
+      if (!isCoach()) return;
+      const now = Date.now();
+      if (now - _staffDirLoadedAt < 30000) return;
+      _staffDirLoadedAt = now;
+      const before = (state.users || []).length;
+      await loadStaffDirectory();
+      if ((state.users || []).length !== before && state.activeView === 'coach') render();
+    }
+    // Other staff (not me) as DM candidates, shaped like roster player rows.
+    function chatStaffDmCandidates(meId) {
+      const LABEL = { coach: 'Coach', admin: 'Admin', medical: 'Medical' };
+      const seen = new Set();
+      return (state.users || [])
+        .filter(u => ['coach', 'admin', 'medical'].includes(u.role) && u.name && String(u.id) !== String(meId))
+        .filter(u => { const k = String(u.id); if (seen.has(k)) return false; seen.add(k); return true; })
+        .map(u => ({ id: String(u.id), name: u.name, position: LABEL[u.role] || 'Staff', email: u.email || '', photo: '', _staff: true }));
+    }
+
     function chatCoachDmPickerPlayers() {
       const me = chatMe();
       const players = canonicalVisiblePlayers();
@@ -21703,14 +21757,21 @@
         return [player.name, player.position, player.email]
           .some(value => String(value || '').toLowerCase().includes(q));
       });
+      let base;
       if (_chatStateModule?.filterCoachDmPlayers) {
         const fromModule = _chatStateModule.filterCoachDmPlayers(players, _chatNewDmQuery, me.id, { users: state.users, players });
         // If module re-deduplication resolves any player ID to match the coach's ID (stale
         // test-account data), fromModule will be shorter than expected. Fall back to the
         // inline result so the picker always shows available members.
-        return fromModule.length > 0 ? fromModule : inline;
+        base = fromModule.length > 0 ? fromModule : inline;
+      } else {
+        base = inline;
       }
-      return inline;
+      // Coaches can also DM other STAFF (sourced from state.users, not the roster).
+      const staff = chatStaffDmCandidates(me.id).filter(s =>
+        !q || [s.name, s.position, s.email].some(v => String(v || '').toLowerCase().includes(q)));
+      const seen = new Set(base.map(p => String(p.id)));
+      return [...staff.filter(s => !seen.has(String(s.id))), ...base];
     }
 
     function chatNewDmPickerResultsHtml(players) {
@@ -21796,6 +21857,30 @@
       }, 30);
     }
 
+    // Open/create a coach ↔ staff direct message, keyed on the staff user id.
+    // Backend supports this: staff sessions bypass the conversation team/participant
+    // gates, and create_conv is unrestricted for staff.
+    async function chatStartStaffDm(staff) {
+      const me = chatMe();
+      if (!staff?.id || String(staff.id) === String(me.id)) return;
+      const convId = dmConvId(me.id, staff.id);
+      _chatNewDmOpen = false;
+      _chatNewDmQuery = '';
+      chatRenderNewDmPicker();
+      await selectChat(convId);
+      chatFocusComposerSoon();
+      if (!_chatConversations.some(c => String(c.id) === String(convId))) {
+        try {
+          const res = await fetch('/api/chat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'create_conv', id: convId, name: staff.name || 'Direct message', type: 'DIRECT', participants: [String(me.id), String(staff.id)] }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.ok !== false) await chatFetchConversations();
+        } catch (e) { console.warn('[chatStartStaffDm]', e); }
+      }
+    }
+
     async function chatStartCoachDm(playerId) {
       if (!isCoach()) return;
       const visiblePlayers = canonicalVisiblePlayers();
@@ -21804,7 +21889,14 @@
         String(p.userId || '') === String(playerId) ||
         String(chatResolvePlayerParticipantId(p)) === String(playerId)
       );
-      if (!player) return showToast('Member not found');
+      if (!player) {
+        // Staff fallback: the target is another coach/admin/medical who lives in
+        // state.users (not the roster). Open/create a DM keyed on their user id.
+        const staff = (state.users || []).find(u =>
+          ['coach', 'admin', 'medical'].includes(u.role) && String(u.id) === String(playerId));
+        if (staff) return chatStartStaffDm(staff);
+        return showToast('Member not found');
+      }
       const me = chatMe();
       await chatLoadStateModule();
       const participantId = chatResolvePlayerParticipantId(player);
@@ -22073,6 +22165,14 @@
         members.filter(p => p.id !== me.id).forEach(p => {
           const participantId = chatResolvePlayerParticipantId(p);
           contacts.push({ id: dmConvId(me.id, participantId), name: p.name, sub: p.position || 'Player', type: 'DIRECT', photo: p.photo, playerId: participantId, rosterPlayerId: p.id });
+        });
+        // Add 1-to-1 with each other STAFF member (coach ↔ coach/admin/medical DMs).
+        // Sourced from state.users, keyed on the staff user id — never the roster.
+        chatStaffDmCandidates(me.id).forEach(s => {
+          const cid = dmConvId(me.id, s.id);
+          if (!contacts.some(c => c.id === cid)) {
+            contacts.push({ id: cid, name: s.name, sub: s.position, type: 'DIRECT', playerId: s.id, _staff: true });
+          }
         });
       } else {
         // Player sees only team channels plus their own coach DM.
@@ -22986,6 +23086,8 @@
     function renderCoachMessages() {
       const el = document.getElementById('coach-messages');
       if (!el) return;
+      // Ensure other staff are loaded so coach ↔ coach DMs are discoverable.
+      chatEnsureStaffDirectory();
       chatLoadStateModule().then(() => {
         if (state.activeView === 'coach' && state.activeCoachSection === 'messages') {
           chatRenderContactList('coach');
