@@ -4415,7 +4415,7 @@
     // ─── BUILD INFO ───────────────────────────────────────────────────────────
     // Injected at deploy time by build-inject.js via Vercel buildCommand.
     // Shows "DEV" / "local" when running from the working tree without a build.
-    const _BUILD_INFO = {"sha":"DEV","env":"local","branch":"local","time":"2026-07-05T11:01:33.593Z"};
+    const _BUILD_INFO = {"sha":"DEV","env":"local","branch":"local","time":"n/a"};
 
     // ─── PUSH CONFIG ──────────────────────────────────────────────────────────
     // Loaded from /api/config so each deployed club can use its own VAPID key.
@@ -12357,6 +12357,7 @@
               <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add player</button>
               <button class="btn" type="button" onclick="openInvitePlayersModal()">Group Invite</button>
               <button class="btn primary" type="button" onclick="openInvitePanel()">Invite player or coach</button>
+              <button class="btn" type="button" onclick="openCoachGroupInviteModal()">Coach invite link</button>
             </div>
           </div>
 
@@ -25871,6 +25872,95 @@
     // Future role invites (not built yet) reuse this flow: api/invite.js already
     // accepts a role, so Invite Coaches / Medical / Admin can pass { group:true,
     // role:'coach'|'medical'|'admin' } and branch the modal copy here.
+    // ── Reusable coach/staff group invite link ──────────────────────────────
+    // Mirrors the player group link, but role-aware: one permanent link PER staff
+    // role (Coach/Admin/Medical). Reuses /api/invite {group,role} (backend) and the
+    // existing claim flow (a group invite's role flows through to a real staff
+    // account — no player profile). No player-invite or claim changes.
+    let _coachGroupRole = 'coach';
+    function _coachRoleWord(r) { return r === 'admin' ? 'admin' : r === 'medical' ? 'medical staff' : 'coach'; }
+    async function openCoachGroupInviteModal() {
+      if (!isCoach()) return showToast('Only coaches can invite staff');
+      _coachGroupRole = 'coach';
+      document.getElementById('coach-group-invite-modal')?.remove();
+      const roleBtn = (r, label) => {
+        const a = _coachGroupRole === r;
+        return `<button type="button" class="cgi-role" data-role="${r}" onclick="setCoachGroupRole('${r}')"
+          style="flex:1;min-height:44px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid ${a?'var(--accent)':'var(--line)'};background:${a?'var(--accent-soft)':'var(--panel-2)'};color:${a?'var(--accent)':'var(--muted)'}">${label}</button>`;
+      };
+      const el = document.createElement('div');
+      el.id = 'coach-group-invite-modal';
+      el.className = 'ce-modal-overlay';
+      el.innerHTML = `
+        <div class="ce-modal" role="dialog" aria-modal="true" aria-labelledby="cgi-title" style="max-width:460px">
+          <h3 id="cgi-title">Coach &amp; staff invite link</h3>
+          <p style="margin-bottom:12px">Share one reusable link. Anyone who opens it creates a <strong id="cgi-role-word">coach</strong> account for ${esc(state.clubName || 'your club')} — no adding staff one by one.</p>
+          <div id="cgi-roles" style="display:flex;gap:6px;margin-bottom:14px">
+            ${roleBtn('coach','Coach')}${roleBtn('admin','Admin')}${roleBtn('medical','Medical')}
+          </div>
+          <div id="cgi-body" style="text-align:center;padding:22px 0;color:var(--muted);font-size:13px">Generating link…</div>
+          <div class="ce-modal-actions">
+            <button type="button" id="cgi-close">Close</button>
+          </div>
+        </div>`;
+      const close = () => el.remove();
+      el.addEventListener('click', e => { if (e.target === el) close(); });
+      const onKey = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+      document.addEventListener('keydown', onKey);
+      document.body.appendChild(el);
+      el.querySelector('#cgi-close').onclick = () => { close(); document.removeEventListener('keydown', onKey); };
+      _loadCoachGroupInviteLink('coach');
+    }
+    function setCoachGroupRole(role) {
+      _coachGroupRole = role;
+      document.querySelectorAll('#cgi-roles .cgi-role').forEach(b => {
+        const a = b.dataset.role === role;
+        b.style.borderColor = a ? 'var(--accent)' : 'var(--line)';
+        b.style.background  = a ? 'var(--accent-soft)' : 'var(--panel-2)';
+        b.style.color       = a ? 'var(--accent)' : 'var(--muted)';
+      });
+      const word = document.getElementById('cgi-role-word');
+      if (word) word.textContent = _coachRoleWord(role);
+      _loadCoachGroupInviteLink(role);
+    }
+    async function _loadCoachGroupInviteLink(role) {
+      const body = document.getElementById('cgi-body');
+      if (body) { body.style.cssText = 'text-align:center;padding:22px 0;color:var(--muted);font-size:13px'; body.textContent = 'Generating link…'; }
+      try {
+        await ensureServerSessionForCurrentUser();
+        // Give coach/admin a proper 'assistant' staff level (same default as the single
+        // coach invite) instead of falling back to head_coach.
+        const staffLevel = (role === 'coach' || role === 'admin') ? 'assistant' : '';
+        const res  = await fetch('/api/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ group: true, role, ...(staffLevel ? { staffLevel } : {}) }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.url) throw new Error(data.error || 'Could not create link');
+        if (role !== _coachGroupRole) return;  // user switched role mid-request — ignore stale response
+        _renderCoachGroupInviteBody(data.url, role);
+      } catch (e) {
+        if (body && role === _coachGroupRole) body.innerHTML = `<div style="color:var(--red);font-size:13px;line-height:1.5">⚠️ ${esc(e.message || 'Could not create the link')}</div>`;
+      }
+    }
+    function _renderCoachGroupInviteBody(url, role) {
+      const body = document.getElementById('cgi-body'); if (!body) return;
+      const club = state.clubName || 'our club';
+      const msg  = `Join ${club} coaching staff on Coach's Eye — set up your account here: ${url}`;
+      const wa   = 'https://wa.me/?text=' + encodeURIComponent(msg);
+      const mail = 'mailto:?subject=' + encodeURIComponent(`Join ${club} staff on Coach's Eye`) + '&body=' + encodeURIComponent(msg);
+      body.style.cssText = 'text-align:left;color:var(--ink)';
+      body.innerHTML = `
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+          <input value="${esc(url)}" readonly id="cgi-link" onfocus="this.select()"
+            style="flex:1;min-width:0;font-size:12.5px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:11px 12px;color:var(--ink)">
+          <button class="btn primary" type="button" style="white-space:nowrap;padding:0 16px;min-height:44px"
+            onclick="navigator.clipboard.writeText(document.getElementById('cgi-link').value).then(()=>showToast('Link copied'))">Copy</button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <a class="btn" href="${wa}" target="_blank" rel="noopener" style="flex:1;text-align:center;min-height:44px;display:flex;align-items:center;justify-content:center">WhatsApp</a>
+          <a class="btn" href="${mail}" style="flex:1;text-align:center;min-height:44px;display:flex;align-items:center;justify-content:center">Email</a>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:10px">Reusable — everyone who opens it joins as ${esc(_coachRoleWord(role))}. Only a head coach can share staff links.</div>`;
+    }
+
     async function openInvitePlayersModal() {
       document.getElementById('invite-players-modal')?.remove();
       const el = document.createElement('div');

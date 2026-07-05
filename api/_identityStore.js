@@ -976,19 +976,37 @@ export async function claimInvite(input = {}) {
     displayName: name,
     password: input.password,
   });
+  const inviteRole = String(invite.role || 'player');
+  const inviteIsStaff = ['coach', 'admin', 'medical'].includes(inviteRole);
   const member = await ensureTeamMember({
     teamId: invite.teamId || DEFAULT_TEAM.id,
     userId: user.id,
     role: invite.role || 'player',
     status: 'active',
     approvedBy: 'invite',
+    // Staff invites (coach/admin/medical) FORCE the role, so a person who already
+    // has a membership — e.g. previously joined as a player — is UPGRADED to staff
+    // rather than keeping their old role. (ensureTeamMember otherwise keeps the
+    // existing role, which left reusable-coach-link claimers stuck as players.)
+    // Player invites never force, so a coach who opens a player link is not downgraded.
+    forceRole: inviteIsStaff,
     staffLevel: STAFF_LEVELS.includes(invite.staffLevel) ? invite.staffLevel : null,
   });
-  const profile = await ensurePlayerProfile({
-    teamMember: member, user, invite,
-    position: String(input.position || '').trim(),
-    phone: String(input.phone || input.mobile || '').trim(),
-  });
+  let profile = null;
+  if (member.role === 'player') {
+    profile = await ensurePlayerProfile({
+      teamMember: member, user, invite,
+      position: String(input.position || '').trim(),
+      phone: String(input.phone || input.mobile || '').trim(),
+    });
+  } else {
+    // Staff must never sit in the roster. If this person was previously a player,
+    // drop their roster profile so they can't appear in player-only lists.
+    const profiles = await loadPlayerProfiles();
+    const kept = profiles.filter(p => !(p.teamMemberId === member.id ||
+      (String(p.teamId) === String(member.teamId) && String(p.userId) === String(user.id))));
+    if (kept.length !== profiles.length) await savePlayerProfiles(kept);
+  }
   if (isGroup) {
     // Keep the link open; just track usage.
     invite.acceptedCount = (invite.acceptedCount || 0) + 1;

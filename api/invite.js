@@ -122,14 +122,30 @@ export default async function handler(req, res) {
     // Players self-register their own details (no coach-set name, no expiry, no
     // single-use). Idempotent: returns the existing group link if one exists.
     if (req.body?.group === true || String(req.body?.kind || '') === 'group') {
+      // Role-aware reusable link: ONE permanent group link PER ROLE per club. The
+      // default player link is unchanged (role 'player'); coach/admin/medical links
+      // are separate records and require the staff-invite permission, exactly like a
+      // single staff invite. The claim flow is untouched — it already reads the
+      // invite's role and creates the right team_member (no player profile for staff).
+      const groupRole = String(req.body?.role || 'player').toLowerCase();
+      if (!VALID_ROLES.includes(groupRole)) {
+        return res.status(400).json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` });
+      }
+      if (['coach', 'admin', 'medical'].includes(groupRole) && !can(session, PERM.MANAGE_COACHES)) {
+        return res.status(403).json({ error: 'You are not allowed to invite staff' });
+      }
+      const groupStaffLevel = ['head', 'assistant', 'manager'].includes(String(req.body?.staffLevel || '').toLowerCase())
+        ? String(req.body.staffLevel).toLowerCase() : null;
       const invites = (await kvGet(INVITES_KEY)) || [];
-      let invite = invites.find(i => inviteTeamId(i) === session.teamId && i.kind === 'group' && i.status !== 'revoked');
+      let invite = invites.find(i => inviteTeamId(i) === session.teamId && i.kind === 'group'
+        && (i.role || 'player') === groupRole && i.status !== 'revoked');
       if (!invite) {
         invite = {
           token:      makeToken(),
           kind:       'group',
           name:       '',
-          role:       'player',
+          role:       groupRole,
+          ...(groupStaffLevel ? { staffLevel: groupStaffLevel } : {}),
           email:      '',
           status:     'open',
           teamId:     session.teamId,
@@ -141,9 +157,9 @@ export default async function handler(req, res) {
         };
         invites.unshift(invite);
         await kvSet(INVITES_KEY, invites.slice(0, 200));
-        await auditLog('invite_group_created', { createdBy: session.user.id, teamId: session.teamId, ip: requestIp(req) });
+        await auditLog('invite_group_created', { createdBy: session.user.id, teamId: session.teamId, role: groupRole, ip: requestIp(req) });
       }
-      return res.status(200).json({ ok: true, token: invite.token, url: inviteUrl(req, invite.token), group: true });
+      return res.status(200).json({ ok: true, token: invite.token, url: inviteUrl(req, invite.token), group: true, role: invite.role });
     }
 
     const { name, role, email, sendEmail = true, staffLevel } = req.body || {};
