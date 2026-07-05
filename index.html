@@ -6908,14 +6908,12 @@
       _mcSaveTimer = setTimeout(() => showToast('Auto-saved ✓'), 600);
     }
 
-    // Re-sync the published squad after coach edits, debounced because
-    // formation/bench inputs fire on every keystroke. Drafts never sync.
-    let _squadSyncTimer = null;
-    function syncSquadIfPublished() {
-      if (!state.matchCentre?.published) return;
-      clearTimeout(_squadSyncTimer);
-      _squadSyncTimer = setTimeout(() => syncSquadToServer().catch(() => {}), 1500);
-    }
+    // Intentionally a no-op. Editing a squad — even after it is published —
+    // must NOT auto-overwrite the shared official squad, or two coaches editing
+    // the same match would clobber each other (last keystroke wins). Only an
+    // explicit Publish (publishSquad / publish-from-selection) writes the shared
+    // sheet via a direct syncSquadToServer call. Coach drafts stay device-local.
+    function syncSquadIfPublished() {}
     async function publishSquad() {
       state.matchCentre = state.matchCentre || {};
       const isPublishing = !state.matchCentre.published;
@@ -25531,25 +25529,20 @@
           changed = true;
         }
         if (data.squad && data.squad.published) {
-          // Coach draft isolation: Force sync and team switch reach here for
-          // staff sessions too, and adopting the shared published sheet would
-          // silently replace this coach's in-progress selection with another
-          // coach's publish. A coach device adopts the published squad only
-          // when it has no draft in progress (empty sheet, or its own sheet is
-          // already published). Players always hydrate — that is what this
-          // endpoint is for. Publish itself stays shared/last-writer-wins.
-          const coachDraftInProgress = isCoach() && !state.matchCentre?.published && (
-            Object.values(state.formationNames || {}).some(n => String(n || '').trim()) ||
-            (state.benchPlayers || []).some(n => String(n || '').trim())
-          );
-          if (!coachDraftInProgress) {
+          // Coach draft isolation: every coach keeps their OWN private match-day
+          // draft, so a coach device never auto-adopts the shared published
+          // squad — otherwise loading another coach's publish would replace this
+          // coach's in-progress selection, and any later edit would re-sync and
+          // clobber the shared sheet. Players always hydrate — that is what this
+          // endpoint is for. Publishing stays the single explicit shared write.
+          if (!isCoach()) {
             const { formationNames, benchPlayers, ...mc } = data.squad;
             state.matchCentre = { ...(state.matchCentre || {}), ...mc };
             if (formationNames && typeof formationNames === 'object') state.formationNames = formationNames;
             if (Array.isArray(benchPlayers)) state.benchPlayers = benchPlayers;
             changed = true;
           }
-        } else if (data.squad === null && state.matchCentre?.published) {
+        } else if (data.squad === null && !isCoach() && state.matchCentre?.published) {
           state.matchCentre = { ...(state.matchCentre || {}), published: false };
           changed = true;
         }
