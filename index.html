@@ -1282,12 +1282,18 @@
       .auth-panel input, .auth-panel .btn { min-height: 44px !important; }
       .chat-icon-btn, .chat-emoji-btn, .chat-exit-btn, .chat-back-btn, .chat-scroll-btn,
       .chat-new-msg-btn, .mc7-sort button { min-height: 44px; min-width: 44px; }
+      /* RC3 Batch A: more bare/non-.btn controls that escape the rule above —
+         the Available-Players drag rows, the availability sort <select>, and the
+         on/off toggle switches (role="switch") are all sub-44px on touch. */
+      .mc7-trow { min-height: 44px; }
+      .availability-sort-select { min-height: 44px; }
+      [role="switch"] { min-height: 44px; }
     }
 
     /* Toast variants — errors look like errors, and never collide with the
        thumb zone on mobile. */
-    .toast.toast-error { border-color: rgba(239,68,68,0.45); background: #1d1117; }
-    .toast.toast-success { border-color: rgba(var(--accent-rgb), 0.4); }
+    .toast.toast-error   { border-color: rgba(239,68,68,0.55); border-left: 4px solid #ef4444; background: #1d1117; }
+    .toast.toast-success { border-color: rgba(16,185,129,0.5); border-left: 4px solid #10b981; }
     @media (max-width: 768px) {
       .toast { left: 12px; right: 12px; bottom: max(16px, env(safe-area-inset-bottom)); text-align: center; }
     }
@@ -4229,10 +4235,16 @@
     .chat-bubble-wrap.mine .chat-bubble { background: var(--bubble-mine) !important; color: #ffffff !important; }
     .chat-composer { background: #ffffff !important; }
     .chat-contact:hover { background: rgba(20,30,55,0.04) !important; }
+    /* RC3 Batch A: touch press feedback for non-<button> clickables. Real
+       <button>s already scale on :active globally; conversation rows (div variant)
+       and member <tr>s do not, and a transform on a table row is unsafe, so these
+       acknowledge the tap with a background press instead. */
+    .chat-contact:active { background: rgba(20,30,55,0.09) !important; }
 
     /* Data tables / rows — light cells, dark text */
     .member-row td, .member-row:hover td { background: #ffffff !important; color: var(--ink) !important; border-color: rgba(20,30,55,0.07) !important; }
     .member-row:hover td { background: #f6f8fc !important; }
+    .member-row:active td { background: #e9eef7 !important; }
     thead th, table th { color: var(--muted) !important; }
     tbody td { color: var(--ink); border-color: rgba(20,30,55,0.07) !important; }
 
@@ -4303,6 +4315,12 @@
 
     /* Toasts stay legible on light */
     .toast { background: #ffffff !important; color: var(--ink) !important; border: 1px solid var(--line-2) !important; box-shadow: var(--shadow-lift) !important; }
+    /* RC3 Batch A: the generic light-toast border above erases the success/error
+       tint, so on the shipped (light) theme a success and a failure looked
+       identical. Restore an unmistakable read — coloured left accent + tint —
+       and win the cascade over the !important border above. */
+    .toast.toast-success { border: 1px solid rgba(16,163,74,0.45) !important; border-left: 4px solid #16a34a !important; }
+    .toast.toast-error   { border: 1px solid rgba(220,38,38,0.45) !important; border-left: 4px solid #dc2626 !important; background: #fef4f4 !important; color: #7f1d1d !important; }
 
     /* Weekly Availability card (Overview) */
     .wa-card { display:grid; gap:14px; }
@@ -13138,7 +13156,7 @@
           <div class="avail-btns">
             ${selBtn('available',   'Available',     '#16a34a')}
             ${selBtn('maybe',       'Maybe',         '#d97706')}
-            ${selBtn('unavailable', 'Can\'t make it', '#dc2626')}
+            ${selBtn('unavailable', 'Unavailable',   '#dc2626')}
           </div>
           ${reasonBadge}
           ${reasonPicker}
