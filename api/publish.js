@@ -49,6 +49,10 @@ export function isTestRosterPlayer(p)  { return TEST_USER_IDS.has(p?.id) || TEST
 
 function sessionsKey(teamId) { return key(`publish:${teamId}:sessions`); }
 function squadKey(teamId)    { return key(`publish:${teamId}:squad`); }
+// Per-coach PRIVATE match-day draft — scoped to teamId + the owning userId, so
+// each coach has their own working squad that no other coach can overwrite. This
+// is NOT player-facing; only the explicit `squad` key is the official squad.
+function draftKey(teamId, userId) { return key(`publish:${teamId}:draft:${userId}`); }
 function rosterKey(teamId)   { return key(`roster:${teamId}`); }
 function clubKey(teamId)     { return key(`club:${teamId}`); }
 
@@ -415,6 +419,21 @@ export default async function handler(req, res) {
 
   // ── GET: any authenticated user reads published player-facing state ────────
   if (req.method === 'GET') {
+    const type = String(req.query?.type || 'all');
+
+    // Private per-coach draft — coach/admin only, and a coach only ever reads
+    // THEIR OWN draft (keyed by the session user id). Players never reach this.
+    if (type === 'draft') {
+      let session;
+      try {
+        session = await requireTenantPermission(req, PERM.PUBLISH_SQUADS);
+      } catch (error) {
+        return sendAuthError(res, error);
+      }
+      const draft = (await kvGet(draftKey(session.teamId, session.user.id))) || null;
+      return res.status(200).json({ ok: true, draft });
+    }
+
     let session;
     try {
       session = await requireTenantSession(req);
@@ -422,7 +441,6 @@ export default async function handler(req, res) {
       return sendAuthError(res, error);
     }
 
-    const type = String(req.query?.type || 'all');
     const result = { ok: true };
 
     if (type === 'all' || type === 'sessions') {
@@ -439,9 +457,21 @@ export default async function handler(req, res) {
     const { type, data } = req.body || {};
     let session;
     try {
-      session = await requireTenantPermission(req, type === 'squad' ? PERM.PUBLISH_SQUADS : PERM.PUBLISH_TRAINING);
+      session = await requireTenantPermission(req, (type === 'squad' || type === 'draft') ? PERM.PUBLISH_SQUADS : PERM.PUBLISH_TRAINING);
     } catch (error) {
       return sendAuthError(res, error);
+    }
+
+    // Save THIS coach's private draft. Owner is taken from the session — never
+    // the body — so a coach can only ever write their own draft, and doing so
+    // never touches the official published squad (that needs `type: 'squad'`).
+    if (type === 'draft') {
+      const draft = sanitiseSquad(data);
+      if (!draft) return res.status(400).json({ error: 'data must be an object' });
+      draft.userId = session.user.id;
+      draft.updatedAt = new Date().toISOString();
+      await kvSet(draftKey(session.teamId, session.user.id), draft);
+      return res.status(200).json({ ok: true, draft });
     }
 
     if (type === 'sessions') {

@@ -45,6 +45,8 @@ function clientScope({ users = [], currentUserId = '', sessionPayload = null } =
     ${extractFn('ensureCanonicalPlayerRecord')}
     ${extractFn('hydrateSessionPlayerRecord')}
     function loadPublishedStateForPlayer() { return Promise.resolve(); }
+    function loadCoachDraft() { return Promise.resolve(); }
+    function isCoach() { return true; }
     function render() {}
     let _playerAvailFetched = false, _publishedStateLoadedAt = 0;
     ${extractFn('chatMe')}

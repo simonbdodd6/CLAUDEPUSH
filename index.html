@@ -6828,13 +6828,13 @@
       if (player) { state.fphotoIds[slot] = player.id; _mcRemovePersonElsewhere(mcPersonKey(val), { type:'slot', label:slot }); }
       else if (!String(val || "").trim()) delete state.fphotoIds[slot];
       saveState("Formation updated");
-      syncSquadIfPublished();
+      saveCoachDraftDebounced();
     }
     function setBenchPlayer(idx, val) {
       state.benchPlayers=state.benchPlayers||Array(8).fill(""); state.benchPlayers[idx]=val;
       if (findPlayerByName(val)) _mcRemovePersonElsewhere(mcPersonKey(val), { type:'bench', idx });
       saveState("Bench updated");
-      syncSquadIfPublished();
+      saveCoachDraftDebounced();
     }
     function clearFormationSlot(slot) {
       state.formationNames=state.formationNames||{};
@@ -6842,14 +6842,14 @@
       state.formationNames[slot]="";
       delete state.fphotoIds[slot];
       saveState("Formation updated");
-      syncSquadIfPublished();
+      saveCoachDraftDebounced();
       render();
     }
     function clearBenchSlot(idx) {
       state.benchPlayers=state.benchPlayers||Array(8).fill("");
       state.benchPlayers[idx]="";
       saveState("Bench updated");
-      syncSquadIfPublished();
+      saveCoachDraftDebounced();
       render();
     }
     function addSubPlan() {
@@ -6908,17 +6908,61 @@
       state.matchCentre = state.matchCentre || {};
       state.matchCentre[field] = value;
       saveState();
-      syncSquadIfPublished();
+      saveCoachDraftDebounced();
       clearTimeout(_mcSaveTimer);
       _mcSaveTimer = setTimeout(() => showToast('Auto-saved ✓'), 600);
     }
 
-    // Intentionally a no-op. Editing a squad — even after it is published —
-    // must NOT auto-overwrite the shared official squad, or two coaches editing
-    // the same match would clobber each other (last keystroke wins). Only an
-    // explicit Publish (publishSquad / publish-from-selection) writes the shared
-    // sheet via a direct syncSquadToServer call. Coach drafts stay device-local.
-    function syncSquadIfPublished() {}
+    // A coach's Match Centre selection is their OWN private draft. Every edit
+    // saves that draft to the backend — scoped to teamId + this coach's userId —
+    // so it survives a refresh / new device and no other coach can overwrite it.
+    // This NEVER touches the shared official squad: only an explicit Publish
+    // (publishSquad / publish-from-selection) writes that, via syncSquadToServer.
+    // Saving is debounced (formation/bench inputs fire per keystroke) and always
+    // best-effort — a failed save must never block the coach from selecting.
+    let _coachDraftSaveTimer = null;
+    function saveCoachDraftDebounced() {
+      if (!isCoach()) return;
+      clearTimeout(_coachDraftSaveTimer);
+      _coachDraftSaveTimer = setTimeout(() => saveCoachDraft().catch(() => {}), 1200);
+    }
+    async function saveCoachDraft() {
+      if (!isCoach()) return;
+      const mc = state.matchCentre || {};
+      try {
+        await fetch('/api/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'draft',
+            data: { ...mc, formationNames: state.formationNames || {}, benchPlayers: state.benchPlayers || [] },
+          }),
+        });
+      } catch (e) { console.warn('[saveCoachDraft]', e); }
+    }
+    // Hydrate THIS coach's saved draft (teamId+userId scoped) on load. Fills only
+    // an EMPTY local sheet, so it restores a draft on a fresh device / after a
+    // team switch but never clobbers edits already in progress on this device.
+    // Players never call this — the endpoint is coach-only. Best-effort.
+    async function loadCoachDraft() {
+      if (!isCoach()) return;
+      try {
+        const res = await fetch('/api/publish?type=draft');
+        if (!res.ok) return;
+        const { draft } = await res.json();
+        if (!draft) return;
+        const localHasDraft =
+          Object.values(state.formationNames || {}).some(n => String(n || '').trim()) ||
+          (state.benchPlayers || []).some(n => String(n || '').trim());
+        if (localHasDraft) return;
+        const { formationNames, benchPlayers, published, publishedAt, ...mc } = draft;
+        state.matchCentre = { ...(state.matchCentre || {}), ...mc };
+        if (formationNames && typeof formationNames === 'object') state.formationNames = formationNames;
+        if (Array.isArray(benchPlayers)) state.benchPlayers = benchPlayers;
+        saveState('Coach draft loaded');
+        render();
+      } catch (e) { console.warn('[loadCoachDraft]', e); }
+    }
     async function publishSquad() {
       state.matchCentre = state.matchCentre || {};
       const isPublishing = !state.matchCentre.published;
@@ -7228,7 +7272,7 @@
       _mcSetTarget(dest, name);
       if (srcTarget && !_mcSame(srcTarget, dest)) _mcSetTarget(srcTarget, destOld); // swap back
       saveState("Squad updated");
-      syncSquadIfPublished();
+      saveCoachDraftDebounced();
       render();
     }
     function handleSlotDrop(label, event) { _mcDrop({ type: 'slot',  label }, event); }
@@ -7243,7 +7287,7 @@
       if (!srcTarget) return;
       _mcSetTarget(srcTarget, "");
       saveState("Squad updated");
-      syncSquadIfPublished();
+      saveCoachDraftDebounced();
       render();
     }
     function handleAvailDragOver(event) {
@@ -7352,7 +7396,7 @@
       if (!_mcPickTarget) return;
       _mcSetTarget(_mcPickTarget, name);
       saveState("Squad updated");
-      syncSquadIfPublished();
+      saveCoachDraftDebounced();
       mcClosePicker();
       render();
     }
@@ -7975,6 +8019,7 @@
         renderAuthBanner();
         if (!isStaffLogin) loadPublishedStateForPlayer().catch(() => {});
         if (isStaffLogin) loadRosterFromServer().catch(() => {});
+        if (isStaffLogin) loadCoachDraft().catch(() => {});
         loadClubConfigFromServer().catch(() => {});
         refreshPushSubscriptionMetadata(data.user.displayName || data.user.email).catch(() => {});
         showToast(`Welcome ${data.user.displayName || data.user.email}`);
@@ -8323,6 +8368,7 @@
         saveState('Dev login');
         render();
         if (isStaff) loadRosterFromServer().catch(() => {});
+        if (isStaff) loadCoachDraft().catch(() => {});
         loadClubConfigFromServer().catch(() => {});
         refreshPushSubscriptionMetadata(data.user?.displayName || '').catch(() => {});
         showToast('Logged in as ' + (data.user?.displayName || userId));
@@ -12140,9 +12186,9 @@
 
         <!-- ── V5 · matchday footer status bar ────────────────────────────────── -->
         <footer class="mc5-foot">
-          <span class="mc5-foot-item"><span class="mc5-foot-dot"></span>All changes saved in this browser</span>
+          <span class="mc5-foot-item"><span class="mc5-foot-dot"></span>Private draft — auto-saved to your account</span>
           <span class="mc5-foot-item">${slotNames.filter(n=>n).length}/15 starting · ${bench.filter(n=>(n||'').trim()).length}/8 bench</span>
-          <span class="mc5-foot-item ${_ready?'ready':''}">${mc.published?'✓ Squad published':(_ready?'✓ Ready to publish':'Squad in progress')}</span>
+          <span class="mc5-foot-item ${_ready?'ready':''}">${mc.published?'✓ Squad published':(_ready?'✓ Ready to publish · players see it only after Publish':'Squad in progress')}</span>
         </footer>`;
     }
 
@@ -15139,6 +15185,7 @@
           loadRosterFromServer(),
           loadClubConfigFromServer(),
           loadPublishedStateForPlayer(),
+          loadCoachDraft().catch(() => {}),
           chatFetchConversations().catch(() => {}),
         ]);
         markSynced();
@@ -25181,6 +25228,7 @@
           loadClubConfigFromServer().catch(() => {}),
           loadRosterFromServer().catch(() => {}),
           loadPublishedStateForPlayer().catch(() => {}),
+          loadCoachDraft().catch(() => {}),
         ]);
         markSynced();
         render();
@@ -25255,6 +25303,9 @@
                 render();
               }
             }
+            // Coach session confirmed by the server (covers a fresh device whose
+            // localStorage had no coach role at boot): restore their private draft.
+            loadCoachDraft().catch(() => {});
           }
         } else {
           _serverAuthState = 'anon';
@@ -26124,8 +26175,12 @@
         window.history.replaceState({}, '', '/');
         _inviteToken = null; _inviteData = null;
         render();
-        if (isStaffRole) loadRosterFromServer().catch(() => {});
-        else loadPublishedStateForPlayer().catch(() => {});
+        if (isStaffRole) {
+          loadRosterFromServer().catch(() => {});
+          loadCoachDraft().catch(() => {});
+        } else {
+          loadPublishedStateForPlayer().catch(() => {});
+        }
         loadClubConfigFromServer().catch(() => {});
         refreshPushSubscriptionMetadata(name).catch(() => {});
         showToast(`Welcome ${name.split(' ')[0]}! Your account is ready.`);
@@ -26408,6 +26463,11 @@
     // Coach devices adopt the server roster on startup (no-op without a
     // coach session — the API rejects with 401/403 and we keep local state).
     loadRosterFromServer().catch(() => {});
+    // Restore this coach's private Match Centre draft (no-op for players — the
+    // endpoint is coach-only; only fills an empty local sheet so it never clobbers
+    // work already in localStorage). Runs again after checkServerSession confirms
+    // identity, for a fresh device whose localStorage has no coach role yet.
+    loadCoachDraft().catch(() => {});
     // TEMPORARY DEMO SQUAD FOR LOCAL V18 TESTING ONLY — auto-install on ?demo
     // (localhost only). Runs after the initial roster load so the demo wins.
     try {
