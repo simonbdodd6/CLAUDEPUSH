@@ -3778,6 +3778,42 @@
     .mc10-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hair, rgba(255,255,255,.07)); }
     .mc10-actions .btn { min-height: 38px; }
 
+    /* ── Coach Draft Compare (Phase 2) ─────────────────────────────────────── */
+    .mc-cmp-panel { margin-top: 16px; padding: 16px; display: grid; gap: 12px; }
+    .mc-cmp-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .mc-cmp-panel-head h3 { margin: 0; font-size: 15px; color: var(--ink); }
+    .mc-cmp-hint { font-size: 12px; color: var(--muted); }
+    .mc-cmp-list { display: grid; gap: 8px; }
+    .mc-cmp-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line, rgba(0,0,0,.08)); border-radius: 10px; background: var(--panel-2, rgba(0,0,0,.02)); }
+    .mc-cmp-item.mine { border-color: var(--brand-2, #10b981); background: color-mix(in srgb, var(--brand-2, #10b981) 8%, transparent); }
+    .mc-cmp-item.reference { border-style: dashed; }
+    .mc-cmp-item-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .mc-cmp-item-name { font-weight: 700; font-size: 14px; color: var(--ink); }
+    .mc-cmp-item-role { font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: rgba(120,120,120,.15); color: var(--muted); }
+    .mc-cmp-item-role.me { background: color-mix(in srgb, var(--brand-2, #10b981) 22%, transparent); color: var(--brand-2, #059669); }
+    .mc-cmp-item-role.official { background: rgba(59,130,246,.16); color: #2563eb; }
+    .mc-cmp-item-right { display: flex; align-items: center; gap: 10px; }
+    .mc-cmp-item-meta { font-size: 12px; color: var(--ink); white-space: nowrap; }
+    .mc-cmp-item-meta.muted, .mc-cmp-item .muted { color: var(--muted); }
+    .mc-cmp-panel > .mc5-publish { justify-self: end; }
+    /* Read-only viewer overlay */
+    .mc-cmp-overlay { position: fixed; inset: 0; z-index: 10000; background: rgba(2,6,23,.62); display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .mc-cmp-sheet { width: min(680px, 96vw); max-height: 92vh; overflow: auto; background: var(--panel, #fff); border: 1px solid var(--line, rgba(0,0,0,.1)); border-radius: 16px; padding: 18px; box-shadow: 0 24px 60px rgba(0,0,0,.35); }
+    .mc-cmp-sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+    .mc-cmp-sheet-title { font-size: 18px; font-weight: 800; color: var(--ink); }
+    .mc-cmp-sheet-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .mc-cmp-readonly-badge { font-size: 12px; font-weight: 700; color: #b45309; background: rgba(245,158,11,.14); border: 1px solid rgba(245,158,11,.3); border-radius: 8px; padding: 7px 11px; margin-bottom: 12px; }
+    .mc-cmp-sheet-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .mc-cmp-colh { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    .mc-cmp-row { display: grid; grid-template-columns: 26px 1fr; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--hair, rgba(0,0,0,.05)); }
+    .mc-cmp-row .mc-cmp-pos { display: none; }
+    .mc-cmp-jersey { font-family: ui-monospace, monospace; font-weight: 800; font-size: 12px; color: var(--brand-2, #10b981); text-align: center; }
+    .mc-cmp-jersey.sub { color: var(--muted); }
+    .mc-cmp-name { font-size: 14px; color: var(--ink); }
+    .mc-cmp-name.empty { color: var(--muted); }
+    .mc-cmp-empty { font-size: 13px; color: var(--muted); padding: 6px 0; }
+    @media (max-width: 560px) { .mc-cmp-sheet-cols { grid-template-columns: 1fr; } }
+
     /* ── Pitch — obvious premium upgrade (bold mow + distinct in-goal + bold lines) ── */
     .mcx2-pitch, #matchday-pitch.mcx2-pitch {
       min-height: 760px !important; overflow: hidden; border-radius: 20px !important;
@@ -3844,6 +3880,7 @@
       .mc10-chips { width: 100%; } .mc10-chip { flex: 1; min-width: 0; padding: 7px 10px; }
       .mc10-chip-val { font-size: 15px; }
       .mc10-actions { justify-content: stretch; } .mc10-actions .btn, .mc10-actions .mc5-publish { flex: 1; }
+      .mc-cmp-item { flex-wrap: wrap; }
 
       /* Smaller player markers on mobile so the pitch reads clearly (desktop untouched) */
       .mcx2-pitch .j3-slot { width: 58px !important; }
@@ -6962,6 +6999,134 @@
         saveState('Coach draft loaded');
         render();
       } catch (e) { console.warn('[loadCoachDraft]', e); }
+    }
+
+    // ─── COACH DRAFT COMPARE (Phase 2) ───────────────────────────────────────
+    // Read-only view of every OTHER coach's private draft. Purely additive: it
+    // fetches the coach-gated `?type=drafts` list and renders it. It never writes
+    // another coach's draft (no such API path exists) and the read-only viewer is
+    // a PURE function of the passed-in squad — it must never touch state.* so that
+    // opening another coach's draft can never mutate the viewer's own draft.
+    let _coachDraftsList = null;      // [{ userId, coachName, role, updatedAt, squad }]
+    let _coachDraftsFetchedAt = 0;
+    async function loadCoachDraftsList() {
+      if (!isCoach()) return;
+      const now = Date.now();
+      if (now - _coachDraftsFetchedAt < 12000) return;   // self-throttle (avoid refetch per render)
+      _coachDraftsFetchedAt = now;
+      try {
+        const res = await fetch('/api/publish?type=drafts');
+        if (!res.ok) return;
+        const { drafts } = await res.json();
+        _coachDraftsList = Array.isArray(drafts) ? drafts : [];
+        render();
+      } catch (e) { console.warn('[loadCoachDraftsList]', e); }
+    }
+    function _draftTimeAgo(iso) {
+      if (!iso) return '';
+      const t = Date.parse(iso); if (isNaN(t)) return '';
+      const s = Math.max(0, (Date.now() - t) / 1000);
+      if (s < 60) return 'just now';
+      const m = Math.floor(s / 60); if (m < 60) return `${m} min ago`;
+      const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
+      const d = Math.floor(h / 24); if (d === 1) return 'Yesterday';
+      if (d < 7) return `${d} days ago`;
+      return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    }
+    const _MC_STAFF_ROLE_LABEL = { coach: 'Coach', admin: 'Admin', medical: 'Medical' };
+
+    // The compare list: Published Squad (reference) · My Draft (editable) · each
+    // other coach's draft (read-only) or "No draft yet". Name + role only (no
+    // bespoke titles). Rendered inside renderMatchday; coach-only.
+    function mcComparePanelHTML() {
+      if (!isCoach()) return '';
+      const meId = String(state.currentUserId || '');
+      const drafts = _coachDraftsList || [];
+      const draftByUser = new Map(drafts.map(d => [String(d.userId), d]));
+      const mine = draftByUser.get(meId);
+      // Every coach/staff identity on this team (name + role), de-duplicated.
+      const seen = new Set();
+      const staff = (state.users || [])
+        .filter(u => ['coach', 'admin', 'medical'].includes(u.role) && u.name)
+        .filter(u => { const k = String(u.id); if (seen.has(k)) return false; seen.add(k); return true; });
+      const others = staff.filter(u => String(u.id) !== meId);
+      const mineUpdated = mine?.updatedAt ? `Updated ${_draftTimeAgo(mine.updatedAt)}` : 'Not saved yet';
+
+      const otherRows = others.map(u => {
+        const d = draftByUser.get(String(u.id));
+        const label = _MC_STAFF_ROLE_LABEL[u.role] || 'Staff';
+        if (!d) {
+          return `<div class="mc-cmp-item"><div class="mc-cmp-item-main"><span class="mc-cmp-item-name">${esc(u.name)}</span><span class="mc-cmp-item-role">${label}</span></div><span class="mc-cmp-item-meta muted">No draft yet</span></div>`;
+        }
+        return `<div class="mc-cmp-item"><div class="mc-cmp-item-main"><span class="mc-cmp-item-name">${esc(u.name)}</span><span class="mc-cmp-item-role">${label}</span></div>
+          <div class="mc-cmp-item-right"><span class="mc-cmp-item-meta">Updated ${esc(_draftTimeAgo(d.updatedAt))}</span>
+          <button class="btn" type="button" onclick="mcViewCoachDraft('${esc(String(u.id)).replace(/'/g, "\\'")}')">View</button></div></div>`;
+      }).join('');
+
+      return `<section class="card mc-cmp-panel" aria-label="Coach draft compare">
+        <div class="mc-cmp-panel-head"><h3>Coach drafts</h3><span class="mc-cmp-hint">Each coach keeps their own draft · read-only</span></div>
+        <div class="mc-cmp-list">
+          <div class="mc-cmp-item reference"><div class="mc-cmp-item-main"><span class="mc-cmp-item-name">Published Squad</span><span class="mc-cmp-item-role official">Official</span></div>
+            <div class="mc-cmp-item-right"><span class="mc-cmp-item-meta muted">What players see</span><button class="btn" type="button" onclick="mcViewPublishedSquad()">View</button></div></div>
+          <div class="mc-cmp-item mine"><div class="mc-cmp-item-main"><span class="mc-cmp-item-name">My Draft</span><span class="mc-cmp-item-role me">Editable</span></div>
+            <span class="mc-cmp-item-meta">${esc(mineUpdated)}</span></div>
+          ${otherRows}
+        </div>
+        <button class="mc5-publish ${state.matchCentre?.published ? 'published' : ''}" type="button" onclick="publishSquad()">${state.matchCentre?.published ? 'Squad Published' : 'Publish My Draft'}</button>
+      </section>`;
+    }
+
+    // Open the read-only viewer for another coach's draft (from the cached list).
+    function mcViewCoachDraft(userId) {
+      const d = (_coachDraftsList || []).find(x => String(x.userId) === String(userId));
+      if (!d) { showToast('That draft is no longer available'); return; }
+      _mcOpenCompareViewer(`${d.coachName} · ${_MC_STAFF_ROLE_LABEL[d.role] || 'Staff'}`, `Updated ${_draftTimeAgo(d.updatedAt)} · Read-only`, d.squad);
+    }
+    // Open the read-only viewer for the official published squad (fetched fresh).
+    async function mcViewPublishedSquad() {
+      try {
+        const res = await fetch('/api/publish?type=squad');
+        if (!res.ok) { showToast('Could not load published squad'); return; }
+        const { squad } = await res.json();
+        if (!squad) { showToast('No squad published yet'); return; }
+        _mcOpenCompareViewer('Published Squad', 'Official — this is what players see', squad);
+      } catch { showToast('Could not load published squad'); }
+    }
+    function _mcOpenCompareViewer(title, subtitle, squad) {
+      let overlay = document.getElementById('mc-compare-viewer');
+      if (!overlay) { overlay = document.createElement('div'); overlay.id = 'mc-compare-viewer'; document.body.appendChild(overlay); }
+      overlay.className = 'mc-cmp-overlay';
+      overlay.onclick = (e) => { if (e.target === overlay) mcCloseCompareViewer(); };
+      overlay.innerHTML = mcReadOnlySquadHTML(title, subtitle, squad);
+    }
+    function mcCloseCompareViewer() { document.getElementById('mc-compare-viewer')?.remove(); }
+
+    // PURE render of a squad object → read-only team sheet HTML. Reads ONLY its
+    // argument plus the static rugbySlots/RUGBY_POS tables. It must never read or
+    // write state.formationNames / state.benchPlayers / state.matchCentre, so
+    // viewing another coach's draft can never alter the viewer's own draft.
+    function mcReadOnlySquadHTML(title, subtitle, squad) {
+      const fnames = (squad && typeof squad.formationNames === 'object' && squad.formationNames) || {};
+      const bench  = Array.isArray(squad && squad.benchPlayers) ? squad.benchPlayers : [];
+      const opp    = squad && squad.opposition ? esc(String(squad.opposition)) : '';
+      const xv = rugbySlots.map(([label]) => {
+        const nm = String(fnames[label] || '').trim();
+        return `<div class="mc-cmp-row"><span class="mc-cmp-jersey">${esc(label)}</span><span class="mc-cmp-pos">${esc(RUGBY_POS[label] || '')}</span><span class="mc-cmp-name ${nm ? '' : 'empty'}">${nm ? esc(nm) : '—'}</span></div>`;
+      }).join('');
+      const benchRows = bench.filter(n => String(n || '').trim()).map((n, i) =>
+        `<div class="mc-cmp-row"><span class="mc-cmp-jersey sub">S${i + 1}</span><span class="mc-cmp-pos">Bench</span><span class="mc-cmp-name">${esc(String(n))}</span></div>`
+      ).join('') || '<div class="mc-cmp-empty">No bench named</div>';
+      return `<div class="mc-cmp-sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+        <div class="mc-cmp-sheet-head">
+          <div class="mc-cmp-sheet-titles"><div class="mc-cmp-sheet-title">${esc(title)}</div><div class="mc-cmp-sheet-sub">${esc(subtitle)}${opp ? ` · vs ${opp}` : ''}</div></div>
+          <button class="btn primary" type="button" onclick="mcCloseCompareViewer()">← Back to my draft</button>
+        </div>
+        <div class="mc-cmp-readonly-badge">🔒 Read-only — you cannot edit another coach's draft</div>
+        <div class="mc-cmp-sheet-cols">
+          <div class="mc-cmp-col"><div class="mc-cmp-colh">Starting XV</div>${xv}</div>
+          <div class="mc-cmp-col"><div class="mc-cmp-colh">Bench</div>${benchRows}</div>
+        </div>
+      </div>`;
     }
     async function publishSquad() {
       state.matchCentre = state.matchCentre || {};
@@ -11760,6 +11925,9 @@
       if (_mTab === 'summary')    { _renderMatchSummary();    return; }
 
       if (autopilotOn() && isCoach()) autopilotFillMatchFromFixture();
+      // Coach Draft Compare (Phase 2): keep the other-coaches' draft list fresh
+      // (self-throttled; re-renders when new data arrives). Coach-only.
+      if (isCoach()) loadCoachDraftsList();
       const mc      = state.matchCentre || {};
       const phase   = matchCentrePhase();
       const countdown = matchCountdownStr();
@@ -12189,7 +12357,8 @@
           <span class="mc5-foot-item"><span class="mc5-foot-dot"></span>Private draft — auto-saved to your account</span>
           <span class="mc5-foot-item">${slotNames.filter(n=>n).length}/15 starting · ${bench.filter(n=>(n||'').trim()).length}/8 bench</span>
           <span class="mc5-foot-item ${_ready?'ready':''}">${mc.published?'✓ Squad published':(_ready?'✓ Ready to publish · players see it only after Publish':'Squad in progress')}</span>
-        </footer>`;
+        </footer>
+        ${mcComparePanelHTML()}`;
     }
 
     // ─── MEDICAL ─────────────────────────────────────────────────────────────

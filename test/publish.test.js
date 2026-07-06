@@ -30,6 +30,14 @@ globalThis.fetch = async (_url, options = {}) => {
   if (command === 'GET')  result = kv.has(args[0]) ? kv.get(args[0]) : null;
   if (command === 'SET') { kv.set(args[0], args[1]); result = 'OK'; }
   if (command === 'DEL') { kv.delete(args[0]); lists.delete(args[0]); result = 1; }
+  if (command === 'SCAN') {
+    // args: cursor, 'MATCH', pattern, 'COUNT', n — return every key matching the
+    // glob in one page (cursor '0'), which is what kvScanKeys iterates over.
+    const mi = args.indexOf('MATCH');
+    const pattern = mi >= 0 ? String(args[mi + 1]) : '*';
+    const re = new RegExp('^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+    result = ['0', [...kv.keys()].filter(k => re.test(k))];
+  }
   return { ok: true, json: async () => ({ result }) };
 };
 
@@ -335,4 +343,80 @@ test('coach DELETE squad clears it — player sees null squad after DELETE', asy
 
   const after = await callPublish('GET', '/api/publish?type=squad', null, { cookie: player.cookie });
   assert.equal(after.body.squad, null);
+});
+
+// ─── 12. Coach Draft Compare (Phase 2) — per-coach draft save/read ─────────────
+
+test('coach saves a private draft and reads back only their OWN (type=draft)', async () => {
+  kv.clear(); lists.clear();
+  const a = await seedUser('coach-a', 'coach');
+  const b = await seedUser('coach-b', 'coach');
+
+  await callPublish('POST', '/api/publish', { type: 'draft', data: { opposition: 'OppA', formationNames: { '1': 'ALPHA_A' }, benchPlayers: ['BenchA'] } }, { cookie: a.cookie });
+  await callPublish('POST', '/api/publish', { type: 'draft', data: { opposition: 'OppB', formationNames: { '1': 'BRAVO_B' }, benchPlayers: ['BenchB'] } }, { cookie: b.cookie });
+
+  const getA = await callPublish('GET', '/api/publish?type=draft', null, { cookie: a.cookie });
+  const getB = await callPublish('GET', '/api/publish?type=draft', null, { cookie: b.cookie });
+  assert.equal(getA.body.draft.formationNames['1'], 'ALPHA_A', 'A reads own draft');
+  assert.equal(getA.body.draft.userId, 'coach-a', 'draft owner is the session user');
+  assert.equal(getB.body.draft.formationNames['1'], 'BRAVO_B', 'B reads own draft — not overwritten by A');
+});
+
+// ─── 13. type=drafts lists EVERY coach's draft (read-only compare) ────────────
+
+test('type=drafts returns all coaches\' drafts joined with name + role', async () => {
+  kv.clear(); lists.clear();
+  const a = await seedUser('coach-a', 'coach');
+  const b = await seedUser('coach-b', 'coach');
+  await seedUser('coach-c', 'coach');  // a coach who has NOT saved a draft
+
+  await callPublish('POST', '/api/publish', { type: 'draft', data: { opposition: 'OppA', formationNames: { '1': 'ALPHA_A' }, benchPlayers: [] } }, { cookie: a.cookie });
+  await callPublish('POST', '/api/publish', { type: 'draft', data: { opposition: 'OppB', formationNames: { '1': 'BRAVO_B' }, benchPlayers: [] } }, { cookie: b.cookie });
+
+  const res = await callPublish('GET', '/api/publish?type=drafts', null, { cookie: a.cookie });
+  assert.equal(res.statusCode, 200);
+  const byUser = Object.fromEntries(res.body.drafts.map(d => [d.userId, d]));
+  assert.equal(res.body.drafts.length, 2, 'only coaches WITH a saved draft are listed (C has none)');
+  assert.equal(byUser['coach-a'].squad.formationNames['1'], 'ALPHA_A');
+  assert.equal(byUser['coach-a'].coachName, 'coach-a', 'joined with the user displayName');
+  assert.equal(byUser['coach-a'].role, 'coach', 'joined with the team-member role');
+  assert.ok(byUser['coach-a'].updatedAt, 'carries updatedAt for "Updated X ago"');
+  assert.equal(byUser['coach-b'].squad.formationNames['1'], 'BRAVO_B');
+  assert.equal(byUser['coach-c'], undefined, 'a coach with no draft is absent (frontend shows "No draft yet")');
+});
+
+// ─── 14. Players cannot access the drafts list ───────────────────────────────
+
+test('player cannot GET type=drafts — 403', async () => {
+  kv.clear(); lists.clear();
+  await seedUser('coach-a', 'coach');
+  const player = await seedUser('player-x', 'player');
+  const res = await callPublish('GET', '/api/publish?type=drafts', null, { cookie: player.cookie });
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.body.ok, false);
+});
+
+test('unauthenticated cannot GET type=drafts — 401', async () => {
+  kv.clear(); lists.clear();
+  const res = await callPublish('GET', '/api/publish?type=drafts', null, {});
+  assert.equal(res.statusCode, 401);
+});
+
+// ─── 15. drafts list excludes a former coach (userId no longer a team member) ──
+
+test('type=drafts excludes a draft whose owner is no longer a staff member', async () => {
+  kv.clear(); lists.clear();
+  const a = await seedUser('coach-a', 'coach');
+  const ghost = await seedUser('coach-ghost', 'coach');
+  await callPublish('POST', '/api/publish', { type: 'draft', data: { formationNames: { '1': 'GHOST' }, benchPlayers: [] } }, { cookie: ghost.cookie });
+  await callPublish('POST', '/api/publish', { type: 'draft', data: { formationNames: { '1': 'ALPHA_A' }, benchPlayers: [] } }, { cookie: a.cookie });
+
+  // Remove the ghost coach from the team_members store (their draft key lingers)
+  const members = JSON.parse(kv.get('app:identity:team_members')).filter(m => m.userId !== 'coach-ghost');
+  kv.set('app:identity:team_members', JSON.stringify(members));
+
+  const res = await callPublish('GET', '/api/publish?type=drafts', null, { cookie: a.cookie });
+  const ids = res.body.drafts.map(d => d.userId);
+  assert.ok(ids.includes('coach-a'), 'current coach listed');
+  assert.ok(!ids.includes('coach-ghost'), 'former coach excluded gracefully');
 });

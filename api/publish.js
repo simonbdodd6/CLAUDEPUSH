@@ -20,7 +20,7 @@ import { kvGet, kvSet, kvDel, kvLpush, kvLrange, kvScanKeys } from './_kv.js';
 import { key, APP_PREFIX, LEGACY_PREFIX } from './_keys.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
-import { DEFAULT_TEAM, loadTeamMembers } from './_identityStore.js';
+import { DEFAULT_TEAM, loadTeamMembers, loadUsers } from './_identityStore.js';
 import { requireTenantPermission, requireTenantSession, can, PERM } from './_tenant.js';
 import { load, save } from './_lib.js';
 import { runWeeklyAvailabilityCheck } from './cron.js';
@@ -432,6 +432,47 @@ export default async function handler(req, res) {
       }
       const draft = (await kvGet(draftKey(session.teamId, session.user.id))) || null;
       return res.status(200).json({ ok: true, draft });
+    }
+
+    // Coach Draft Compare (Phase 2): list EVERY coach's draft for this team,
+    // read-only. Coach/admin only — players never see other coaches' drafts.
+    // Each entry is joined with the team member (role) and user (name); only
+    // current staff of THIS team are included. This is a read path only — it
+    // never writes, and the owner-scoped save/publish paths are untouched.
+    if (type === 'drafts') {
+      let session;
+      try {
+        session = await requireTenantPermission(req, PERM.PUBLISH_SQUADS);
+      } catch (error) {
+        return sendAuthError(res, error);
+      }
+      const teamId = session.teamId;
+      const [keys, members, users] = await Promise.all([
+        kvScanKeys(key(`publish:${teamId}:draft:*`)),
+        loadTeamMembers(),
+        loadUsers(),
+      ]);
+      const userById = new Map(users.map(u => [String(u.id), u]));
+      const memberByUser = new Map(
+        members.filter(m => String(m.teamId) === String(teamId)).map(m => [String(m.userId), m])
+      );
+      const drafts = [];
+      for (const k of keys) {
+        const rec = await kvGet(k);
+        if (!rec || typeof rec !== 'object') continue;
+        const userId = String(rec.userId || k.split(':draft:')[1] || '');
+        const member = memberByUser.get(userId);
+        if (!member || !['coach', 'admin', 'medical'].includes(member.role)) continue; // current staff only
+        const user = userById.get(userId);
+        drafts.push({
+          userId,
+          coachName: String(user?.displayName || user?.email || 'Coach'),
+          role: member.role,
+          updatedAt: rec.updatedAt || null,
+          squad: sanitiseSquad(rec),
+        });
+      }
+      return res.status(200).json({ ok: true, drafts });
     }
 
     let session;
