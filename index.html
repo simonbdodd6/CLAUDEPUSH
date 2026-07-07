@@ -1164,7 +1164,11 @@
       .chat-shell.chat-open .chat-list { display: none; }
       .chat-shell.chat-open .chat-window { display: flex; }
       .chat-back-btn { display: flex !important; }
-      .chat-list-head { padding: 12px 14px 9px; }
+      /* iPhone/PWA: Messages fills the screen from top:0 (topbar hidden), so the
+         list header — which holds the "Back to app" control — must clear the iOS
+         status bar / notch. Without this inset the button sits under the notch and
+         is not pressable. Matches the conversation header below. */
+      .chat-list-head { padding: calc(12px + env(safe-area-inset-top)) 14px 9px; }
       .chat-contact { padding: 12px 14px; }
       .chat-header { padding: calc(9px + env(safe-area-inset-top)) 12px 9px; }
       .chat-feed { padding: 12px 10px; }
@@ -1197,11 +1201,12 @@
        fixed full-screen overlay that covers the sidebar nav, so the player/coach
        needs a way back to the rest of the app. */
     .chat-exit-btn {
-      display: none; align-items: center; justify-content: center;
-      width: 34px; height: 34px; border-radius: 50%;
-      border: none; background: transparent; color: var(--ink);
-      cursor: pointer; flex-shrink: 0;
+      display: none; align-items: center; justify-content: center; gap: 4px;
+      height: 34px; padding: 0 12px 0 8px; border-radius: 999px;
+      border: 1px solid var(--line); background: var(--panel-2); color: var(--ink);
+      cursor: pointer; flex-shrink: 0; font-size: 13px; font-weight: 600;
     }
+    .chat-exit-label { display: inline; }
     @media (max-width: 980px) { .chat-exit-btn { display: inline-flex; } }
     .automation-grid { display: grid; gap: 9px; margin-top: 14px; }
     .automation-card { display: grid; gap: 9px; border: 1px solid var(--line); border-radius: 9px; padding: 11px; background: var(--panel-2); }
@@ -22596,12 +22601,66 @@
         const serverUnread = server?.unread || 0;
         const localUnread = msgs.filter(m => !isMsgMine(m) && !m.isDeleted &&
           m.ts > (_chatLastPoll[c.id + ':read'] || 0)).length;
-        const unread = serverUnread || localUnread;
+        let unread = serverUnread || localUnread;
+        // If this device has opened the thread at/after its latest activity, it is
+        // read here — force 0 so a lagging server unread count can't keep the badge
+        // lit after the coach has actually read the thread.
+        const localRead = _chatLastPoll[c.id + ':read'] || 0;
+        const lastTs = (last && last.ts) || server?.lastActivity || 0;
+        if (localRead && lastTs && localRead >= lastTs) unread = 0;
         // Presentation: suppress server-supplied emoji channel icons so avatars
         // render clean initials (no markup/API/storage change — render glyph only).
         return { ...c, ...(server || {}), icon: '', lastMsg: last, unread };
       });
-      return chatDedupeContacts(enriched, me.id);
+      // Beta: hide the Squad and Coaching Team group channels from the COACH
+      // Messages list for now — only Announcements stays pinned, with real DMs
+      // directly beneath it. (Players keep their team channels untouched.)
+      const deduped = chatDedupeContacts(enriched, me.id)
+        .filter(c => !(isCoachMode && (c.id === 'squad' || c.id === 'coaching')));
+      // Thread order: pinned team channels (Squad / Coaching / Announcements) first,
+      // then every other thread by MOST-RECENT activity (newest at top).
+      //
+      // Activity is resolved ALIAS-SAFE. A DM is stored under a participant id that
+      // can differ from the roster contact's id (a player has both a userId and a
+      // legacyPlayerId), so the kept contact's own id often does NOT match the
+      // server conversation that carries `lastActivity`. We therefore map every
+      // server conv's lastActivity onto ALL known aliases of its participants, and
+      // look each contact up by all of ITS aliases. Without this the newest DM
+      // keeps an activity of 0 and never rises to the top.
+      const aliasesOf = (idish) => {
+        const set = new Set([String(idish || '')]);
+        try {
+          const pl = members.find(p => [p.id, p.userId, p.legacyPlayerId].some(x => String(x) === String(idish))
+            || String(chatResolvePlayerParticipantId(p)) === String(idish));
+          if (pl) [pl.id, pl.userId, pl.legacyPlayerId, chatResolvePlayerParticipantId(pl)].forEach(x => x && set.add(String(x)));
+        } catch (e) { /* roster resolve is best-effort */ }
+        return set;
+      };
+      const tsByAlias = {};   // aliasId -> max lastActivity
+      const tsByConvId = {};  // conv id -> max lastActivity
+      (_chatConversations || []).forEach(sc => {
+        const ts = Number(sc.lastActivity || sc.lastMessage?.ts || 0);
+        if (!ts) return;
+        tsByConvId[sc.id] = Math.max(tsByConvId[sc.id] || 0, ts);
+        const parts = (Array.isArray(sc.participants) && sc.participants.length)
+          ? sc.participants.map(String)
+          : String(sc.id).split(':').slice(1);
+        parts.filter(p => String(p) !== String(me.id)).forEach(p =>
+          aliasesOf(p).forEach(a => { tsByAlias[a] = Math.max(tsByAlias[a] || 0, ts); }));
+      });
+      const activityTs = (c) => {
+        let ts = 0;
+        const local = _chatMessages[c.id];
+        if (local && local.length) ts = Number(local[local.length - 1]?.ts || 0);
+        if (tsByConvId[c.id]) ts = Math.max(ts, tsByConvId[c.id]);
+        aliasesOf(chatDirectParticipantId(c, me.id) || c.playerId || '').forEach(a => {
+          if (tsByAlias[a]) ts = Math.max(ts, tsByAlias[a]);
+        });
+        return ts;
+      };
+      const withTs = deduped.map(c => ({ c, _ts: activityTs(c) }));
+      withTs.sort((a, b) => ((b.c.pinned ? 1 : 0) - (a.c.pinned ? 1 : 0)) || (b._ts - a._ts));
+      return withTs.map(x => x.c);
     }
 
     // ── Fetch from Redis ─────────────────────────────────
@@ -22642,6 +22701,18 @@
       return (conversations || []).reduce((n, c) => n + Number(c?.unread || 0), 0);
     }
 
+    // Nav-badge total: sum unread over the DEDUPED, user-visible thread list rather
+    // than the raw server conversation list. The raw list can hold duplicate/aliased
+    // DM ids for the same partner (e.g. dm:X and dm:coach-demo:X) which would each be
+    // counted — inflating the badge — and it also ignores this device's opened-thread
+    // reads. chatBuildContacts already dedupes and zeroes read threads.
+    function chatVisibleUnreadTotal() {
+      try {
+        const mode = state.activeView === 'coach' ? 'coach' : 'player';
+        return chatBuildContacts(mode).reduce((n, c) => n + Number(c?.unread || 0), 0);
+      } catch (e) { return chatUnreadTotal(); }
+    }
+
     function chatSetUnreadTotal(total) {
       _chatNavUnread = Math.max(0, Number(total || 0));
       updateNavBadge();
@@ -22653,7 +22724,7 @@
       _chatConversations = (_chatConversations || []).map(c =>
         String(c?.id || '') === id ? { ...c, unread: 0 } : c
       );
-      chatSetUnreadTotal(chatUnreadTotal());
+      chatSetUnreadTotal(chatVisibleUnreadTotal());
     }
 
     // DM participant allowlist — starts with legacy Boitsfort IDs and all coach/admin
@@ -22701,7 +22772,7 @@
           // dependency that previously discarded the valid server DM, leaving it [].
           _chatConversations = _filterCanonicalConversations(data.conversations || [], true);
           // Update nav badge for the current user's unread total
-          chatSetUnreadTotal(chatUnreadTotal());
+          chatSetUnreadTotal(chatVisibleUnreadTotal());
         }
       } catch(e) { /* offline */ }
     }
@@ -23415,7 +23486,7 @@
         <!-- LEFT: Contact list -->
         <div class="chat-list">
           <div class="chat-list-head">
-            <div style="display:flex;align-items:center;gap:9px;min-width:0"><button class="chat-exit-btn" type="button" onclick="chatExitMessages()" aria-label="Back to app" title="Back"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>${clubLogoBadgeHtml('width:26px;height:26px;border-radius:7px')}<h2>Messages</h2></div>
+            <div style="display:flex;align-items:center;gap:9px;min-width:0"><button class="chat-exit-btn" type="button" onclick="chatExitMessages()" aria-label="Back to app" title="Back to app"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span class="chat-exit-label">Back</span></button>${clubLogoBadgeHtml('width:26px;height:26px;border-radius:7px')}<h2>Messages</h2></div>
             <div style="display:flex;gap:6px">
               ${mode==='coach'?`<button class="chat-new-msg-btn" type="button" onclick="chatOpenNewDmPicker()" title="New message"><span>+</span><span>New</span></button>`:''}
             </div>
@@ -23507,6 +23578,11 @@
         if (state.activeCoachSection === 'messages' && state.selectedChatId) chatMarkRead(state.selectedChatId);
         chatFetchConversations().then(() => chatRenderContactList('coach'));
       }
+      // Keep the DOM's .chat-open class in sync with _chatMobileOpen even when the
+      // shell isn't rebuilt (else-branch). Otherwise a deep-link that set
+      // _chatMobileOpen = false (land on the list) leaves a stale .chat-open class
+      // in the DOM and the user stays trapped inside the last-open conversation.
+      document.querySelector('.chat-shell')?.classList.toggle('chat-open', _chatMobileOpen);
     }
 
     function renderPlayerMessages() {
@@ -23570,6 +23646,10 @@
           chatRenderContactList('player');
         });
       }
+      // Keep the DOM's .chat-open class in sync with _chatMobileOpen even when the
+      // shell isn't rebuilt (else-branch), so a notification deep-link that lands on
+      // the list can't leave the player trapped inside the last-open conversation.
+      document.querySelector('.chat-shell')?.classList.toggle('chat-open', _chatMobileOpen);
     }
 
     // Legacy stubs (keep backwards compat with other code that calls these)
@@ -26654,6 +26734,9 @@
         else state.activePlayerSection = dest.section;
         // Player opening Messages lands in their DM with the coach.
         if (dest.view === 'player' && dest.section === 'messages') state.selectedChatId = 'coach';
+        // Land on the Messages LIST (not trapped inside a conversation), so the
+        // normal thread list + "Back to app" control are always reachable on phone.
+        if (dest.section === 'messages') _chatMobileOpen = false;
         saveState();
         history.replaceState({}, '', '/');
       }
@@ -26673,6 +26756,8 @@
         const dest = notificationDestination(d.to);
         if (dest) {
           if (dest.view === 'player' && dest.section === 'messages') state.selectedChatId = 'coach';
+          // Land on the Messages LIST, never trapped inside a conversation on phone.
+          if (dest.section === 'messages') _chatMobileOpen = false;
           setSection(dest.view, dest.section);
         }
       }
@@ -26769,7 +26854,14 @@
     // Fetch conversation counts frequently when the app is visible.
     // Updates the nav badge even when the user isn't on the Messages page.
     function bgPollUnread() {
-      chatFetchConversations().catch(() => {});
+      chatFetchConversations().then(() => {
+        // If the user is on the Messages list, re-render so a freshly-arrived (or
+        // freshly-sent) message re-sorts the threads — newest to the top — live,
+        // instead of the list staying frozen in its last-rendered order.
+        const inMessages = (state.activeView === 'coach' && state.activeCoachSection === 'messages') ||
+          (state.activeView === 'player' && state.activePlayerSection === 'messages');
+        if (inMessages) chatRenderContactList(state.activeView === 'coach' ? 'coach' : 'player');
+      }).catch(() => {});
     }
     setTimeout(bgPollUnread, 0);
     setInterval(() => { if (!document.hidden) bgPollUnread(); }, 5000);
