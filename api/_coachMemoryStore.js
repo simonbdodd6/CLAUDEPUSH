@@ -149,7 +149,7 @@ export async function createCoachMemory({ teamId, coachId }, entry) {
  */
 export async function listCoachMemories({ teamId, coachId }) {
   const collection = await loadCollection(teamId, coachId);
-  return sortEntries(Object.values(collection).map(e => ({ ...e, tags: [...e.tags], ontologyLinks: e.ontologyLinks.map(l => ({ ...l })), evidenceRefs: [...e.evidenceRefs] })));
+  return sortEntries(Object.values(collection).map(copyEntry));
 }
 
 /** Read one coach memory entry by id, or null when absent. The entry is a copy. */
@@ -157,5 +157,18 @@ export async function getCoachMemory({ teamId, coachId }, entryId) {
   if (!isNonEmptyString(entryId)) return null;
   const collection = await loadCollection(teamId, coachId);
   const entry = collection[entryId.trim()];
-  return entry ? { ...entry, tags: [...entry.tags], ontologyLinks: entry.ontologyLinks.map(l => ({ ...l })), evidenceRefs: [...entry.evidenceRefs] } : null;
+  return entry ? copyEntry(entry) : null;
+}
+
+// Detached copy of one stored record. Shape-tolerant on purpose: a corrupted record (e.g. a bad
+// manual write around create's validation) is passed through as-is for the downstream adapter to
+// reject with a reason — the read path must never throw and blank a whole collection.
+function copyEntry(e) {
+  if (!e || typeof e !== 'object') return e;
+  return {
+    ...e,
+    tags: Array.isArray(e.tags) ? [...e.tags] : e.tags,
+    ontologyLinks: Array.isArray(e.ontologyLinks) ? e.ontologyLinks.map(l => (l && typeof l === 'object' ? { ...l } : l)) : e.ontologyLinks,
+    evidenceRefs: Array.isArray(e.evidenceRefs) ? [...e.evidenceRefs] : e.evidenceRefs,
+  };
 }
