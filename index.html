@@ -4187,6 +4187,51 @@
     nav button:not(.active):hover { background: rgba(20,30,55,0.05) !important; color: var(--ink) !important; }
     nav button.active { background: var(--brand-soft) !important; color: var(--brand) !important; border-left-color: var(--brand) !important; }
     nav button.active svg { color: var(--brand) !important; }
+
+    /* ═══ RC3 mobile navigation polish (≤980px) ══════════════════════════════════
+       On phones/tablets the sidebar nav collapses to a grid. The layered desktop
+       styles above left it uneven — buttons used justify-content:space-between
+       (icon pinned left, label shoved to the right edge), a sidebar accent bar
+       (::before) that protrudes into the grid gaps, no borders, and a stale 40px
+       height. This block makes every nav item ONE consistent pill: same height,
+       padding, border, left-aligned icon+label, and an obvious active state.
+       Placed last + !important so it wins the cascade. Desktop (>980px) untouched. */
+    @media (max-width: 980px) {
+      nav { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
+      nav button {
+        display: flex !important;
+        justify-content: flex-start !important;
+        align-items: center !important;
+        gap: 9px !important;
+        min-height: 46px !important;
+        padding: 0 13px !important;
+        border: 1px solid var(--line) !important;
+        border-radius: 12px !important;
+        background: var(--panel, #fff) !important;
+        color: var(--ink) !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.01em !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        box-shadow: none !important;
+        transform: none !important;
+      }
+      nav button svg { width: 18px !important; height: 18px !important; opacity: .75 !important; flex-shrink: 0 !important; }
+      nav button:not(.active):active { transform: scale(0.98) !important; }
+      nav button.active {
+        background: var(--brand-soft) !important;
+        color: var(--brand) !important;
+        border-color: var(--brand) !important;
+        box-shadow: inset 0 0 0 1px var(--brand) !important;
+        font-weight: 700 !important;
+        padding-left: 13px !important;
+      }
+      nav button.active svg { opacity: 1 !important; color: var(--brand) !important; }
+      /* Kill the sidebar-only left accent bar — it protrudes into grid gaps. */
+      nav button.active::before { display: none !important; }
+    }
+
     .view-switch { background: rgba(20,30,55,0.05) !important; border: 1px solid rgba(20,30,55,0.08) !important; }
     .view-switch button { color: var(--muted) !important; }
     .view-switch button.active { color: #ffffff !important; }
