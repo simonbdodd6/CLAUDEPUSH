@@ -169,7 +169,9 @@ test('invite token validates via GET /api/invite?token=...', async () => {
   const validated = await callApi(inviteHandler, 'GET', { query: { token } });
   assert.equal(validated.statusCode, 200);
   assert.equal(validated.payload.valid, true);
-  assert.equal(validated.payload.name, 'Ben Player');
+  // Security hotfix: the invitee's name/email are no longer disclosed to an
+  // unauthenticated token holder; role/team remain for the claim UI.
+  assert.equal(validated.payload.name, undefined, 'invitee name is not disclosed');
   assert.equal(validated.payload.role, 'player');
 });
 

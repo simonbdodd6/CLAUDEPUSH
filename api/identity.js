@@ -248,6 +248,9 @@ export default async function handler(req, res) {
         return res.status(201).json({ ok: true, ...publicAuthResult(result) });
       }
       if (action === 'claim_invite') {
+        // SECURITY: throttle claims (mirrors login) so the invite-claim path can't
+        // be scripted for account-takeover / enumeration attempts.
+        await enforceRateLimit('claim_invite', rateIdentity(req, req.body?.email || req.body?.token), { limit: 5, windowMs: 15 * 60 * 1000 });
         const result = await claimInvite(req.body || {});
         await auditLog('invite_claimed', {
           email: result.user?.email || null,

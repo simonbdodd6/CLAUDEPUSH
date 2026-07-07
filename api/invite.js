@@ -84,14 +84,14 @@ export default async function handler(req, res) {
       return res.status(200).json({
         valid:     true,
         token:     invite.token,
-        name:      invite.name,
         role:      invite.role,
-        email:     invite.email || '',
         status:    invite.status,
         group:     invite.kind === 'group',
         teamName:  clubConfig?.clubName || '',
-        createdAt: invite.createdAt,
         expiresAt: invite.expiresAt || null,
+        // SECURITY: the invitee's name + email are intentionally NOT returned to an
+        // unauthenticated token holder (PII disclosure). Claiming still binds to the
+        // invite's stored email server-side, so functionality is unaffected.
       });
     }
 

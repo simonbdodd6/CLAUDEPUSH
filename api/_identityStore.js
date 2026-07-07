@@ -649,7 +649,11 @@ async function upsertUserAccount({ email, firstName, lastName, displayName: name
     user.firstName = user.firstName || String(firstName || '').trim();
     user.lastName = user.lastName || String(lastName || '').trim();
     user.displayName = user.displayName || name || displayName(firstName, lastName) || normalized;
-    if (password) ensurePassword(user, password);
+    // SECURITY: never overwrite an account's ESTABLISHED password. A password is
+    // only set here for an account that has none yet (first credential). Proving
+    // ownership of an existing password is enforced in claimInvite before we get
+    // here — so an invite claim can never reset a stranger's account password.
+    if (password && !user.passwordSet) ensurePassword(user, password);
   }
   await saveUsers(users);
   return user;
@@ -951,7 +955,10 @@ export async function claimInvite(input = {}) {
   // A group invite is a permanent, reusable club link: many players claim the
   // same token, so it is never consumed / marked accepted, and never expires.
   const isGroup = invite.kind === 'group';
-  if (invite.status === 'accepted' && !input.allowExisting && !isGroup) {
+  // SECURITY: a single-use invite that has been accepted cannot be re-claimed.
+  // The previous `!input.allowExisting` escape hatch trusted the request body, so
+  // a leaked/observed token could be replayed — dropped. Group links stay reusable.
+  if (invite.status === 'accepted' && !isGroup) {
     const error = new Error('This invite has already been claimed');
     error.status = 409;
     throw error;
@@ -966,6 +973,21 @@ export async function claimInvite(input = {}) {
   const email = normalizeEmail(input.email || invite.email);
   if (!EMAIL_RE.test(email)) throw new Error('Valid email is required');
   assertPassword(input.password);
+  // SECURITY (account-takeover guard): if an account already exists for this email
+  // AND it has an established password, the claimer must PROVE ownership by
+  // supplying the current password. An invite link must never let a bearer reset
+  // or hijack a pre-existing account. New emails fall through and create a fresh
+  // account as before; legitimate existing owners (e.g. a player upgrading via the
+  // reusable coach link) pass here with their real password, and the password is
+  // never overwritten (see upsertUserAccount).
+  const existingUser = (await loadUsers()).find(u => normalizeEmail(u.email) === email);
+  if (existingUser && existingUser.passwordSet) {
+    if (!verifyPassword(input.password, existingUser).ok) {
+      const error = new Error('An account already exists for this email. Please log in to accept this invite.');
+      error.status = 403;
+      throw error;
+    }
+  }
   const name = String(input.name || invite.name || '').trim();
   if (isGroup && !name) throw new Error('Your name is required');
   const parts = splitDisplayName(name);
