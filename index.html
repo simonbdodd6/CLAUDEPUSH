@@ -893,6 +893,17 @@
       display: inline-flex; align-items: center; justify-content: center;
       font-size: 10px; font-weight: 900; flex-shrink: 0;
     }
+    /* Unread conversation row — make it visually obvious in the list:
+       a leading blue dot, a bolder title, and a darker (non-muted) preview.
+       The count badge (.chat-unread) already renders on the right. Cleared
+       automatically once the thread is opened (c.unread → 0, class removed). */
+    .chat-contact.unread .name-row strong { font-weight: 800; }
+    .chat-contact.unread .name-row strong::before {
+      content: ''; display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; background: var(--accent); margin-right: 7px;
+      vertical-align: middle; flex-shrink: 0;
+    }
+    .chat-contact.unread .preview { color: var(--ink); font-weight: 600; }
     /* Right panel — chat window */
     .chat-window {
       display: flex;
@@ -22541,12 +22552,10 @@
     function chatMe() {
       const u = currentUser();
       const player = u?.role === 'player' ? getPlayer() : null;
-      const canonicalPlayerId = canonicalPlayerIdForUser(u);
-      const resolvedPlayerId = _chatStateModule?.resolvePlayerPortalMessagingId
-        ? _chatStateModule.resolvePlayerPortalMessagingId(u, { players: state.players, users: state.users })
-        : null;
-      const id = canonicalPlayerId || resolvedPlayerId || player?.id || u?.id || 'anon';
-      console.log(`[chatMe] userId=${u?.id} canonicalPlayerId=${canonicalPlayerId} resolvedPlayerId=${resolvedPlayerId} → id=${id}`);
+      // Beta identity normalization (Option A): the messaging id is ALWAYS the
+      // authenticated userId — no canonicalPlayerIdForUser name/legacy branches,
+      // no legacyPlayerId. One userId = one messaging identity on every device.
+      const id = String(u?.id || 'anon');
       return { id, name: u?.name || player?.name || 'Me', role: u?.role || 'player', userId: u?.id || 'anon' };
     }
 
@@ -22580,6 +22589,57 @@
         seen.add(participantId);
         return true;
       });
+    }
+
+    // Resolve a DM's OTHER participant id to a human display name from local identity
+    // (account users first, then the roster by any known alias). Returns '' when the
+    // partner isn't locally known, so callers can fall back to a neutral label rather
+    // than the wrong conversation.name.
+    function chatResolveDmPartnerName(partnerId, members) {
+      const pid = String(partnerId || '');
+      if (!pid) return '';
+      const u = (state.users || []).find(x => String(x.id) === pid);
+      if (u && (u.name || u.displayName || u.email)) return u.name || u.displayName || u.email;
+      const roster = members || canonicalVisiblePlayers();
+      const p = (roster || []).find(m =>
+        [m.id, m.userId, m.legacyPlayerId].some(x => String(x || '') === pid) ||
+        String(chatResolvePlayerParticipantId(m)) === pid);
+      return (p && p.name) ? p.name : '';
+    }
+
+    // Pick the FRESHER of the per-thread local cache vs the server's last message.
+    // localLast (_chatMessages) is only refreshed while THAT thread is open, so it goes
+    // stale for a background thread; serverLast comes fresh from the 5s conversations
+    // poll. Preferring localLast unconditionally (old code) left a background row showing
+    // an old preview + no unread dot when a DM arrived while another thread was selected.
+    // Ties/optimistic sends (local lands before the poll) still keep localLast.
+    function chatFresherLastMessage(localLast, serverLast) {
+      if (serverLast && (!localLast || Number(serverLast.ts || 0) > Number(localLast.ts || 0))) return serverLast;
+      return localLast || null;
+    }
+
+    // Resolve a contact row's { lastMsg, unread } from local + server signals. Server
+    // unread wins; a device-local read only clears the row when it is at/after the row's
+    // freshest activity — so a NEWER server message re-lights the unread dot even on a
+    // previously-read, currently-unselected thread.
+    function chatRowPreviewUnread({ localLast, serverLast, serverUnread, localUnread, localRead, serverLastActivity }) {
+      const lastMsg = chatFresherLastMessage(localLast, serverLast);
+      let unread = Number(serverUnread || 0) || Number(localUnread || 0);
+      const lastTs = (lastMsg && lastMsg.ts) || serverLastActivity || 0;
+      if (localRead && lastTs && localRead >= lastTs) unread = 0;
+      return { lastMsg, unread };
+    }
+
+    // The visible label for a DM row/header. ALWAYS the other participant, resolved
+    // from identity. Falls back to a caller-supplied stored name only when it is not
+    // the current user's own name (guards the "showed myself" bug), else a neutral
+    // label — never the raw conversation.name that caused Simon2Coach to see itself.
+    function chatDmDisplayName(conv, meId, meName, members, fallbackName) {
+      const partnerId = chatDirectParticipantId(conv, meId);
+      const partnerName = chatResolveDmPartnerName(partnerId, members);
+      if (partnerName) return partnerName;
+      if (fallbackName && String(fallbackName) !== String(meName || '')) return String(fallbackName);
+      return 'Direct message';
     }
 
     // ── Conversations list ────────────────────────────────
@@ -22639,29 +22699,66 @@
 
       // Enrich with data from _chatConversations (Redis) + local messages
       const enriched = contacts.map(c => {
-        const server = _chatConversations.find(sc => sc.id === c.id);
         const msgs = _chatMessages[c.id] || [];
-        const last = msgs[msgs.length - 1] || null;
-        // Prefer server-side unread count; fall back to local calculation
-        const serverUnread = server?.unread || 0;
+        const localLast = msgs[msgs.length - 1] || null;
+        // Resolve this contact's server conversation ALIAS-SAFE: a DM's server id can
+        // differ from the roster-built contact id (userId vs legacyPlayerId). Match by
+        // exact id OR the same DM participant, and keep the newest-activity one — so
+        // the row picks up the DM's real unread AND its last message from the poll.
+        const cpid = chatDirectParticipantId(c, me.id);
+        let server = _chatConversations.find(sc => sc.id === c.id) || null;
+        let serverUnread = Number(server?.unread || 0);
+        if (String(c.id).startsWith('dm:') && cpid) {
+          (_chatConversations || []).forEach(sc => {
+            if (String(sc.id).startsWith('dm:') && chatDirectParticipantId(sc, me.id) === cpid) {
+              serverUnread = Math.max(serverUnread, Number(sc.unread || 0));
+              if (!server || Number(sc.lastActivity || 0) >= Number(server.lastActivity || 0)) server = sc;
+            }
+          });
+        }
+        // Row preview / time / unread — resolved by chatRowPreviewUnread so that a DM
+        // which arrives while ANOTHER thread is selected still updates this row from the
+        // 5s conversations poll, WITHOUT opening it. The per-thread _chatMessages cache
+        // (localLast) is only refreshed while THAT thread is open, so for a background
+        // thread it is stale; the server's last message + unread come fresh from the poll.
         const localUnread = msgs.filter(m => !isMsgMine(m) && !m.isDeleted &&
           m.ts > (_chatLastPoll[c.id + ':read'] || 0)).length;
-        let unread = serverUnread || localUnread;
-        // If this device has opened the thread at/after its latest activity, it is
-        // read here — force 0 so a lagging server unread count can't keep the badge
-        // lit after the coach has actually read the thread.
-        const localRead = _chatLastPoll[c.id + ':read'] || 0;
-        const lastTs = (last && last.ts) || server?.lastActivity || 0;
-        if (localRead && lastTs && localRead >= lastTs) unread = 0;
-        // Presentation: suppress server-supplied emoji channel icons so avatars
-        // render clean initials (no markup/API/storage change — render glyph only).
-        return { ...c, ...(server || {}), icon: '', lastMsg: last, unread };
+        const { lastMsg, unread } = chatRowPreviewUnread({
+          localLast,
+          serverLast: server?.lastMessage || null,
+          serverUnread,
+          localUnread,
+          localRead: _chatLastPoll[c.id + ':read'] || 0,
+          serverLastActivity: server?.lastActivity || 0,
+        });
+        // Keep the contact's own id (server may be an alias-matched conv with a
+        // different id); suppress server emoji icons so avatars render clean initials.
+        const merged = { ...c, ...(server || {}), id: c.id, icon: '', lastMsg, unread };
+        // DM LABEL: always the OTHER participant, resolved from identity — never the
+        // conversation's stored `name`. That stored name is the label the CREATOR gave
+        // (their own counterpart), so the `...(server)` spread showed "Simon2Coach" to
+        // Simon2Coach. Resolve the partner from the participant id instead; fall back to
+        // the pre-resolved roster/staff name only when it isn't the current user's own.
+        if (c.type === 'DIRECT' || String(c.id || '').startsWith('dm:')) {
+          merged.name = chatDmDisplayName(merged, me.id, String(me.name || ''), members, c._fromRedis ? '' : c.name);
+        }
+        return merged;
       });
       // Beta: hide the Squad and Coaching Team group channels from the COACH
       // Messages list for now — only Announcements stays pinned, with real DMs
       // directly beneath it. (Players keep their team channels untouched.)
       const deduped = chatDedupeContacts(enriched, me.id)
-        .filter(c => !(isCoachMode && (c.id === 'squad' || c.id === 'coaching')));
+        .filter(c => !(isCoachMode && (c.id === 'squad' || c.id === 'coaching')))
+        // Never render a SELF-DM: a direct thread whose other participant resolves
+        // to me (the old alias confusion made "Simon2Coach" appear as their own
+        // contact). With userId-normalized identity there is exactly one non-me
+        // participant; a DM with none is self/aliased and is dropped.
+        .filter(c => {
+          const isDm = c.type === 'DIRECT' || String(c.id || '').startsWith('dm:');
+          if (!isDm) return true;
+          const partner = chatDirectParticipantId(c, me.id);
+          return partner && partner !== me.id;
+        });
       // Thread order: pinned team channels (Squad / Coaching / Announcements) first,
       // then every other thread by MOST-RECENT activity (newest at top).
       //
@@ -22712,7 +22809,6 @@
     async function chatFetchMessages(convId, since = 0) {
       try {
         const me = chatMe();
-        console.log(`[chatFetchMessages] convId=${convId} since=${since} me.id=${me.id}`);
         const url = `/api/chat?action=messages&convId=${encodeURIComponent(convId)}&since=${since}&userId=${encodeURIComponent(me.id)}`;
         const data = await fetch(url).then(r => r.json());
         if (data.ok) {
@@ -22746,15 +22842,42 @@
       return (conversations || []).reduce((n, c) => n + Number(c?.unread || 0), 0);
     }
 
-    // Nav-badge total: sum unread over the DEDUPED, user-visible thread list rather
-    // than the raw server conversation list. The raw list can hold duplicate/aliased
-    // DM ids for the same partner (e.g. dm:X and dm:coach-demo:X) which would each be
-    // counted — inflating the badge — and it also ignores this device's opened-thread
-    // reads. chatBuildContacts already dedupes and zeroes read threads.
+    // Nav-badge total: read the AUTHORITATIVE per-conversation unread straight from
+    // _chatConversations (what the 5s background poll refreshes), NOT from the
+    // rendered contact list. Deriving it from chatBuildContacts made the badge
+    // depend on roster/base-contact matching + dedupe: a freshly-arrived DM whose
+    // server id didn't match the roster-built base contact was dropped by dedupe and
+    // never counted, so the desktop badge stayed 0 until Messages was opened.
+    // Here instead we:
+    //   · exclude Squad/Coaching for coaches (they're hidden from the coach list),
+    //   · dedupe DMs by participant and take the MAX unread (kills the old duplicate
+    //     dm:X / dm:coach-demo:X double-count inflation),
+    //   · honour this device's opened-thread reads so a read thread doesn't re-badge.
     function chatVisibleUnreadTotal() {
       try {
-        const mode = state.activeView === 'coach' ? 'coach' : 'player';
-        return chatBuildContacts(mode).reduce((n, c) => n + Number(c?.unread || 0), 0);
+        const me = chatMe();
+        const isCoachMode = state.activeView === 'coach';
+        const byPerson = new Map();   // DM participant → max unread (dedupe aliases)
+        let total = 0;
+        (_chatConversations || []).forEach(sc => {
+          const id = String(sc?.id || '');
+          if (!id) return;
+          if (isCoachMode && (id === 'squad' || id === 'coaching')) return; // hidden from coach list
+          let unread = Number(sc.unread || 0);
+          if (unread <= 0) return;
+          // Opened/read on THIS device at or after the thread's latest activity → clear.
+          const localRead = _chatLastPoll[id + ':read'] || 0;
+          const lastTs = Number(sc.lastActivity || sc.lastMessage?.ts || 0);
+          if (localRead && lastTs && localRead >= lastTs) return;
+          if (id.startsWith('dm:')) {
+            const pid = 'p:' + (chatDirectParticipantId(sc, me.id) || id);
+            byPerson.set(pid, Math.max(byPerson.get(pid) || 0, unread));
+          } else {
+            total += unread; // a group channel the coach still sees (e.g. announce)
+          }
+        });
+        byPerson.forEach(v => { total += v; });
+        return total;
       } catch (e) { return chatUnreadTotal(); }
     }
 
@@ -22806,8 +22929,8 @@
     }
 
     async function chatFetchConversations() {
+      const me = chatMe();
       try {
-        const me = chatMe();
         const data = await fetch(`/api/chat?action=conversations&userId=${encodeURIComponent(me.id)}`).then(r => r.json());
         if (data.ok) {
           // Server-returned conversations are authoritative. _filterCanonicalConversations
@@ -22818,8 +22941,19 @@
           _chatConversations = _filterCanonicalConversations(data.conversations || [], true);
           // Update nav badge for the current user's unread total
           chatSetUnreadTotal(chatVisibleUnreadTotal());
+        } else {
+          // Defense-in-depth: on a non-ok response (e.g. 401 after the session lapses)
+          // never keep rendering a stale unread badge. bgPollUnread recomputes the badge
+          // from _chatConversations, so drop the cached per-conversation unread — not just
+          // the badge — or the next recompute re-inflates it. Rows themselves are kept.
+          _chatConversations = (_chatConversations || []).map(c => ({ ...c, unread: 0 }));
+          chatSetUnreadTotal(0);
         }
-      } catch(e) { /* offline */ }
+      } catch (e) {
+        // Network failure / offline: same guarantee — do not leave a frozen stale badge.
+        _chatConversations = (_chatConversations || []).map(c => ({ ...c, unread: 0 }));
+        chatSetUnreadTotal(0);
+      }
     }
 
     function updateNavBadge() {
@@ -23393,7 +23527,7 @@
         const lastText = c.lastMsg ? (c.lastMsg.isDeleted ? 'Deleted' : (c.lastMsg.senderName === chatMe().name ? 'You: ' : '') + c.lastMsg.text) : c.sub || '';
         const time = c.lastMsg ? chatFormatTime(c.lastMsg.ts) : '';
         const online = _chatOnline[c.playerId] || _chatOnline[c.id];
-        return `<button class="chat-contact${state.selectedChatId === c.id ? ' active' : ''}" type="button" onclick="selectChat('${c.id}')">
+        return `<button class="chat-contact${state.selectedChatId === c.id ? ' active' : ''}${c.unread ? ' unread' : ''}" type="button" onclick="selectChat('${c.id}')">
           ${chatAvatarEl(c.name, c.photo, c.icon, 46, online)}
           <div class="chat-contact-meta">
             <div class="name-row">
@@ -26898,14 +27032,44 @@
     // ── Background unread poll ──────────────────────────────────────────────
     // Fetch conversation counts frequently when the app is visible.
     // Updates the nav badge even when the user isn't on the Messages page.
+    // Refresh the CURRENTLY-OPEN thread's messages so a new DM appears live in-place
+    // without the user clicking the conversation. This runs off the reliable always-on
+    // 5s bgPollUnread, independent of the 2500ms per-thread poll (chatStartPolling),
+    // whose lifecycle is tied to render()/section transitions and can lapse. No-op
+    // unless a conversation is selected, the user is in Messages, and the thread is
+    // actually mounted (chatFeed present). Returns a Promise<bool> (did it render new).
+    function chatRefreshOpenThread() {
+      const convId = state.selectedChatId;
+      const inMessages = (state.activeView === 'coach' && state.activeCoachSection === 'messages') ||
+        (state.activeView === 'player' && state.activePlayerSection === 'messages');
+      if (!convId || !inMessages || !document.getElementById('chatFeed')) return Promise.resolve(false);
+      const since = _chatLastPoll[convId] || 0;
+      return chatFetchMessages(convId, since).then(msgs => {
+        if (!msgs || !msgs.length) return false;
+        _chatLastPoll[convId] = Date.now();
+        const mode = state.activeView === 'coach' ? 'coach' : 'player';
+        chatRenderMessages(convId, mode);
+        if (state.selectedChatId === convId) chatMarkRead(convId);
+        const feed = document.getElementById('chatFeed');
+        if (feed) { const atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80; if (atBottom) chatScrollToBottom(); }
+        return true;
+      }).catch(() => false);
+    }
+
     function bgPollUnread() {
       chatFetchConversations().then(() => {
-        // If the user is on the Messages list, re-render so a freshly-arrived (or
-        // freshly-sent) message re-sorts the threads — newest to the top — live,
-        // instead of the list staying frozen in its last-rendered order.
-        const inMessages = (state.activeView === 'coach' && state.activeCoachSection === 'messages') ||
-          (state.activeView === 'player' && state.activePlayerSection === 'messages');
-        if (inMessages) chatRenderContactList(state.activeView === 'coach' ? 'coach' : 'player');
+        // Keep the nav badge current from the freshly-fetched conversations.
+        chatSetUnreadTotal(chatVisibleUnreadTotal());
+        // FORCED re-render of the visible Messages list — gated purely on the DOM
+        // (the contact-list element existing), NOT on the section-state flag or the
+        // normal render path. Rebuild the rows directly from chatBuildContacts so a
+        // freshly-polled conversation (new preview/time/unread, re-sorted to top)
+        // appears immediately, without opening the thread or touching _chatMessages.
+        const listEl = document.getElementById('chatContactList');
+        if (listEl) chatRenderContactList(state.activeView === 'coach' ? 'coach' : 'player');
+        // ALSO pull new messages for the OPEN thread so they render live in-place —
+        // the reliable path that makes a received DM appear without clicking it.
+        chatRefreshOpenThread();
       }).catch(() => {});
     }
     setTimeout(bgPollUnread, 0);

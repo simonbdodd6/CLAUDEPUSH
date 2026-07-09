@@ -120,27 +120,26 @@ test('diagnostic: direct-message IDs diverge when a roster player is not linked 
   assert.equal(simon.portalConversationId, 'dm:coach-demo:inv-YxnjxnQa');
   assert.equal(simon.diverges, false);
 
+  // Beta Option A: the coach targets an UNLINKED roster record (no userId). Rather
+  // than inventing a legacy id and mis-targeting a dead conversation, the request is
+  // now BLOCKED — no conversation is created, so there is nothing to diverge into.
   const dodsyMixed = traces[2];
   assert.equal(dodsyMixed.userId, 'user_dodsy_approved');
   assert.equal(dodsyMixed.playerId, 'user_dodsy_approved');
   assert.equal(dodsyMixed.portalIdentityId, 'user_dodsy_approved');
-  assert.equal(dodsyMixed.coachDmTargetId, 'p-dodsy-001');
-  assert.equal(dodsyMixed.coachConversationId, 'dm:coach-demo:p-dodsy-001');
-  assert.equal(dodsyMixed.portalConversationId, 'dm:coach-demo:user_dodsy_approved');
-  assert.equal(dodsyMixed.createdConversationId, 'dm:coach-demo:p-dodsy-001');
-  assert.equal(dodsyMixed.storedMessagesKey, 'app:chat:conv:dm:coach-demo:p-dodsy-001:msgs');
-  assert.equal(dodsyMixed.diverges, true);
+  assert.equal(dodsyMixed.createdConversationId, '', 'unlinked roster player DM is blocked, not mis-targeted');
+  assert.equal(dodsyMixed.storedMessagesKey, '');
 
+  // Beta Option A: the old "shared resolver" healed an unlinked manual record onto
+  // the approved account by matching email/name. That heuristic is removed — linking
+  // is now strictly by a userId on the record (or a user whose playerId points at it).
+  // Here the coach still targets the UNLINKED manual record, so it stays blocked;
+  // aligning onto the account's own roster record (trace[4]) is what resolves.
   const dodsyResolved = traces[3];
   assert.equal(dodsyResolved.userId, 'user_dodsy_approved');
   assert.equal(dodsyResolved.playerId, 'user_dodsy_approved');
-  assert.equal(dodsyResolved.portalIdentityId, 'user_dodsy_approved');
-  assert.equal(dodsyResolved.coachDmTargetId, 'user_dodsy_approved');
-  assert.equal(dodsyResolved.coachConversationId, 'dm:coach-demo:user_dodsy_approved');
-  assert.equal(dodsyResolved.portalConversationId, 'dm:coach-demo:user_dodsy_approved');
-  assert.equal(dodsyResolved.createdConversationId, 'dm:coach-demo:user_dodsy_approved');
-  assert.equal(dodsyResolved.storedMessagesKey, 'app:chat:conv:dm:coach-demo:user_dodsy_approved:msgs');
-  assert.equal(dodsyResolved.diverges, false);
+  assert.equal(dodsyResolved.createdConversationId, '', 'unlinked manual record is not auto-healed by email/name');
+  assert.equal(dodsyResolved.storedMessagesKey, '');
 
   const dodsyApproved = traces[4];
   assert.equal(dodsyApproved.coachConversationId, 'dm:coach-demo:user_dodsy_approved');

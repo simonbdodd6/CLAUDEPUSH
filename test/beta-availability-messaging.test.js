@@ -120,19 +120,16 @@ test('Bug 2: coach board canonical dedup surfaces latest per-session responses a
 
 // ── Bug 3: coach and player resolve the same canonical DM conversation ────────
 
-test('Bug 3: newly invited player (pre-registration) — coach and portal DM ids match', () => {
-  // Coach roster has the invite record; player logs into the portal with a
-  // not-yet-permanent account linked by playerId. Both sides must agree.
-  const invitePlayer = { id: 'inv-aa', name: 'Jo Reid', email: 'jo@club.com', position: 'TBC' };
+test('Bug 3 (Option A): a pre-registration invite player has NO messaging id until they register', () => {
+  // A manual/invite roster record with no linked userId is not messageable — the
+  // coach cannot invent a legacy id for it. Once registered (userId on the profile)
+  // the DM resolves to that userId on both sides.
+  const invitePlayer = { id: 'inv-aa', name: 'Jo Reid', email: 'jo@club.com', position: 'TBC' }; // no userId
   const portalUser   = { id: 'player-jo', role: 'player', name: 'Jo Reid', playerId: 'inv-aa', email: 'jo@club.com' };
   const users = [portalUser];
 
-  const coachTargetId = resolveMessagingParticipantId(invitePlayer, { users });
-  const portalId      = resolvePlayerPortalMessagingId(portalUser, { players: [invitePlayer], users });
-
-  assert.equal(coachTargetId, 'inv-aa');
-  assert.equal(portalId, 'inv-aa');
-  assert.equal(dmConvId(COACH, coachTargetId), dmConvId(COACH, portalId));
+  assert.equal(resolveMessagingParticipantId(invitePlayer, { users }), '', 'no userId → blocked');
+  assert.equal(resolvePlayerPortalMessagingId(portalUser, { players: [invitePlayer], users }), 'player-jo', 'own id = account id');
 });
 
 test('Bug 3: registered player with both records present — coach DM target equals portal id', () => {
@@ -162,5 +159,6 @@ test('Simon Test Player canonical DM identity is unchanged by the merge fix', ()
   const simonUser   = { id: 'player-simon-test', role: 'player', name: 'Simon Test Player', playerId: 'inv-YxnjxnQa' };
 
   const portalId = resolvePlayerPortalMessagingId(simonUser, { players: [simonPlayer], users: [simonUser] });
-  assert.equal(portalId, 'inv-YxnjxnQa');
+  // Beta Option A: the messaging id is the account id, not the old inv- alias.
+  assert.equal(portalId, 'player-simon-test');
 });

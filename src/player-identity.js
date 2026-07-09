@@ -149,17 +149,17 @@ export function findPermanentUserForRosterPlayer(player = {}, users = []) {
 }
 
 export function resolveMessagingParticipantId(player = {}, { users = [] } = {}) {
-  const legacyPlayerId = String(player?.id || '').trim();
+  // Beta identity normalization (Option A): a messaging participant is ONLY the
+  // authenticated userId. Prefer the profile's linked userId; if it isn't present,
+  // fall back to the userId of a permanent user account linked by userId (NOT by
+  // email or name). Never legacyPlayerId / inv- / p- / name-based ids. If no linked
+  // userId exists (e.g. a coach-added roster entry with no account), return '' so
+  // the caller BLOCKS the DM rather than inventing a legacy identity.
   const explicitUserId = String(player?.userId || '').trim();
-  if (explicitUserId) {
-    const explicitUser = (Array.isArray(users) ? users : [])
-      .find(user => String(user?.id || '') === explicitUserId);
-    if (explicitUser && isPermanentUserIdentity(explicitUser)) return explicitUserId;
-    if (!explicitUser && isPermanentUserId(explicitUserId)) return explicitUserId;
-  }
-  const permanentUser = findPermanentUserForRosterPlayer(player, users);
-  if (permanentUser?.id) return String(permanentUser.id);
-  return String(player?.legacyPlayerId || player?.playerId || legacyPlayerId || '').trim();
+  if (explicitUserId) return explicitUserId;
+  const list = (Array.isArray(users) ? users : []).filter(isPermanentUserIdentity);
+  const linked = list.find(user => String(user?.playerId || '') === String(player?.id || '').trim());
+  return linked?.id ? String(linked.id) : '';
 }
 
 function rosterPlayerKeys(player = {}, context = {}) {
@@ -406,18 +406,10 @@ export function canonicalAccountOptions({ users = [], players = [] } = {}) {
 }
 
 export function resolvePlayerPortalMessagingId(user = {}, { players = [], users = [] } = {}) {
-  if (!user || user.role !== 'player') return String(user?.id || 'anon');
-  const nameKey = canonicalIdentityNameKey(user.name || user.displayName);
-  if (nameKey === 'simontestplayer') return 'inv-YxnjxnQa';
-
-  if (isPermanentUserIdentity(user)) return String(user.id);
-
-  const linkedPlayerId = String(user.playerId || '').trim();
-  const linkedPlayer = (Array.isArray(players) ? players : []).find(player =>
-    String(player?.id || '') === linkedPlayerId || String(player?.userId || '') === String(user.id || '')
-  );
-  if (linkedPlayer) return resolveMessagingParticipantId(linkedPlayer, { users });
-  return linkedPlayerId || String(user.id || 'anon');
+  // Beta identity normalization (Option A): the current user's messaging id is ALWAYS
+  // their authenticated userId — no name-based aliases (e.g. the old
+  // "simontestplayer" → inv-YxnjxnQa mapping), no legacyPlayerId, no role split.
+  return String(user?.id || 'anon');
 }
 
 export function playerCoachConversationIdForPlayer(player = {}, coachId = 'coach-demo', dmIdFn, identityContext = {}) {

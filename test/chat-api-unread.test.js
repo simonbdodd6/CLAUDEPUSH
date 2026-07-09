@@ -201,8 +201,9 @@ test('chat API unread logic preserves Simon Test Player legacy conversation id',
   });
   const coachHeaders = await coachSetup();
 
-  const playerId = 'inv-YxnjxnQa';
-  const expectedConvId = 'dm:coach-demo:inv-YxnjxnQa';
+  // Beta Option A: DMs + access key on the authenticated userId, not legacyPlayerId.
+  const playerId = 'player-simon-test';
+  const expectedConvId = 'dm:coach-demo:player-simon-test';
   const convId = dmConvId('coach-demo', playerId);
   assert.equal(convId, expectedConvId);
 
@@ -294,7 +295,8 @@ test('authenticated player can read only their own legacy direct-message convers
     legacyPlayerId: 'inv-YxnjxnQa',
   });
   const coachHeaders = await coachSetup();
-  const simonConvId = dmConvId('coach-demo', 'inv-YxnjxnQa');
+  // Beta Option A: access is granted by the authenticated userId only.
+  const simonConvId = dmConvId('coach-demo', 'user_simon_session');
   // Use a non-obsolete player ID to avoid the cleanup migration wiping the conversation
   const otherConvId = dmConvId('coach-demo', 'inv-other-player-1');
 
@@ -303,7 +305,7 @@ test('authenticated player can read only their own legacy direct-message convers
     id: simonConvId,
     name: 'Simon Test Player',
     type: 'DIRECT',
-    participants: ['coach-demo', 'inv-YxnjxnQa'],
+    participants: ['coach-demo', 'user_simon_session'],
   }, coachHeaders);
   await call('POST', '/api/chat', {
     action: 'create_conv',

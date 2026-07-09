@@ -53,9 +53,12 @@ test('BUG REPRO: with the shared id (unlinked roster) the coach DM mis-targets /
   const brokenRoster = rawProfiles.filter(p => p.legacyPlayerId === GROUP)
     .map(p => ({ id: GROUP, legacyPlayerId: GROUP, name: 'Beta ' + p.userId, email: p.email }));
   const req = createCoachDmConversationRequestForPlayerId(brokenRoster, GROUP, 'coach', { users: usersFor([]), players: brokenRoster });
-  // The request does NOT address Beta Test 5's own id — that's the bug.
-  const targetsBT5 = req && (req.participants || []).includes('user_BT5');
+  // Beta Option A: an unlinked roster row (shared legacy id, no userId) is not a
+  // valid messaging target, so the request is blocked entirely — it can neither
+  // address Beta Test 5 nor mis-target another sharer.
+  const targetsBT5 = Boolean(req && (req.participants || []).includes('user_BT5'));
   assert.equal(targetsBT5, false, 'pre-heal: BT5 is not correctly addressable');
+  assert.equal(req, null, 'unlinked shared-id DM is blocked rather than mis-routed');
 });
 
 test('FIX: after heal, coach DM to Beta Test 5 targets Beta Test 5', () => {

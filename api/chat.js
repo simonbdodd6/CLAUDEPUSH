@@ -212,48 +212,64 @@ export function expandParticipantAliases(seedIds = [], profiles = []) {
   return [...ids];
 }
 
-// The player's full read-access id set: their session ids, plus every alias on
-// a player profile that belongs to them (matched by userId or email), expanded
-// via id-chains. Loaded once per request; fail-safe to the raw session ids so a
-// profiles read error never grants MORE access than before.
+// Beta identity normalization (Option A): a session's chat read-access / unread id
+// set is EXACTLY its authenticated userId. Previously this expanded by email match
+// and by the userId↔legacyPlayerId profile alias graph, which let accounts sharing
+// an email (or a shared/aliased legacy id) inherit each other's DM threads and
+// unread — the cross-account bleed behind the "Simon Coach / Simon2Coach" confusion
+// and the phantom 9+ counts. Now one account = one messaging identity, full stop.
 async function actorIdsForSession(sessionContext) {
-  const seed = participantIdsForSession(sessionContext);
-  try {
-    const profiles = await loadHealedPlayerProfiles(); // repairs shared group-invite ids, persisted once
-    const uid   = String(sessionContext?.user?.id || '');
-    const email = String(sessionContext?.user?.email || '').trim().toLowerCase();
-    const seedSet = new Set(seed.map(String));
-    for (const p of profiles) {
-      const pEmail = String(p?.email || '').trim().toLowerCase();
-      if ((uid && String(p?.userId || '') === uid) || (email && pEmail && pEmail === email)) {
-        if (p?.userId)         seedSet.add(String(p.userId));
-        if (p?.legacyPlayerId) seedSet.add(String(p.legacyPlayerId));
-      }
-    }
-    return expandParticipantAliases([...seedSet], profiles);
-  } catch {
-    return seed;
-  }
+  const uid = String(sessionContext?.user?.id || '').trim();
+  return uid ? [uid] : [];
 }
 
-export function sessionCanReadConversation(sessionContext, conversation = {}, actorIds = null) {
-  if (!sessionContext?.user?.id) return true;
-  if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
-  if (isStaffSession(sessionContext)) return true;
-  const role = sessionRole(sessionContext);
+// A conversation is a DIRECT message when it is typed DIRECT or keyed under the
+// dm: namespace. DMs are PRIVATE to their participants; group/team/system channels
+// (squad, coaching, announce, custom groups) are not.
+function conversationIsDirect(conversation = {}) {
   const type = String(conversation?.type || '').toUpperCase();
-  if (role !== 'player') return false;
-  if (['squad', 'announce'].includes(conversation?.id)) return true;
-  if (conversation?.id === 'coaching' || type === 'COACHING') return false;
+  return type === 'DIRECT' || String(conversation?.id || '').startsWith('dm:');
+}
+
+function sessionIsConversationParticipant(sessionContext, conversation = {}, actorIds = null) {
   const participants = conversationParticipants(conversation);
   const ids = Array.isArray(actorIds) ? actorIds : participantIdsForSession(sessionContext);
   return participants.some(id => ids.includes(id));
 }
 
+export function sessionCanReadConversation(sessionContext, conversation = {}, actorIds = null) {
+  if (!sessionContext?.user?.id) return true;
+  if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
+  if (isStaffSession(sessionContext)) {
+    // Staff may access all GROUP / TEAM / SYSTEM channels (squad, coaching, announce,
+    // custom groups). Direct messages stay PRIVATE: a coach only sees a DM they are
+    // actually a participant of — never another coach's DM or a player-to-player DM.
+    // Previously staff returned true unconditionally, which leaked every DM in the club
+    // into a coach's conversation list and counted the whole backlog as that coach's own
+    // unread (the "Simon2Coach 9+" phantom + wrong row previews).
+    return conversationIsDirect(conversation)
+      ? sessionIsConversationParticipant(sessionContext, conversation, actorIds)
+      : true;
+  }
+  const role = sessionRole(sessionContext);
+  const type = String(conversation?.type || '').toUpperCase();
+  if (role !== 'player') return false;
+  if (['squad', 'announce'].includes(conversation?.id)) return true;
+  if (conversation?.id === 'coaching' || type === 'COACHING') return false;
+  return sessionIsConversationParticipant(sessionContext, conversation, actorIds);
+}
+
 function sessionCanWriteConversation(sessionContext, conversation = {}, actorIds = null) {
   if (!sessionContext?.user?.id) return true;
   if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
-  if (isStaffSession(sessionContext)) return true;
+  if (isStaffSession(sessionContext)) {
+    // Mirror the read rule: staff can post to any group/team/system channel, but a DM
+    // is writable only by its participants — a coach cannot post into another coach's
+    // or two players' private thread.
+    return conversationIsDirect(conversation)
+      ? sessionIsConversationParticipant(sessionContext, conversation, actorIds)
+      : true;
+  }
   const role = sessionRole(sessionContext);
   if (role !== 'player') return false;
   const type = String(conversation?.type || '').toUpperCase();

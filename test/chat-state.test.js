@@ -37,6 +37,7 @@ test('dmConvId creates one stable sorted direct-message id', () => {
 test('start-DM helper creates a direct conversation request without sending a message', () => {
   const request = createCoachDmConversationRequest({
     id: 'inv-YxnjxnQa',
+    userId: 'inv-YxnjxnQa', // Beta Option A: a messageable player carries a userId
     name: 'Simon Test Player',
   }, 'coach-demo');
 
@@ -52,8 +53,8 @@ test('start-DM helper creates a direct conversation request without sending a me
 });
 
 test('start-DM helper returns the same conversation id for an existing player conversation', () => {
-  const first = createCoachDmConversationRequest({ id: 'inv-nick1234', name: 'Nick Player' }, 'coach-demo');
-  const second = createCoachDmConversationRequest({ id: 'inv-nick1234', name: 'Nick Player' }, 'coach-demo');
+  const first = createCoachDmConversationRequest({ id: 'inv-nick1234', userId: 'inv-nick1234', name: 'Nick Player' }, 'coach-demo');
+  const second = createCoachDmConversationRequest({ id: 'inv-nick1234', userId: 'inv-nick1234', name: 'Nick Player' }, 'coach-demo');
 
   assert.equal(first.id, nickConvId);
   assert.equal(second.id, nickConvId);
@@ -86,8 +87,8 @@ test('coach player picker supports full multi-letter name searches', () => {
 
 test('selecting a player from the new-message picker opens a DM request without sending', () => {
   const players = [
-    { id: 'inv-YxnjxnQa', name: 'Simon Test Player', position: 'TBC' },
-    { id: 'inv-nick1234', name: 'Nick Player', position: 'Wing' },
+    { id: 'inv-YxnjxnQa', userId: 'inv-YxnjxnQa', name: 'Simon Test Player', position: 'TBC' },
+    { id: 'inv-nick1234', userId: 'inv-nick1234', name: 'Nick Player', position: 'Wing' },
   ];
 
   const request = createCoachDmConversationRequestForPlayerId(players, 'inv-nick1234', 'coach-demo');
@@ -104,7 +105,8 @@ test('selecting a player from the new-message picker opens a DM request without 
 
 test('new-message picker resolves approved account users to permanent userId conversation ids', () => {
   const players = [
-    { id: 'p-dodsy-001', name: 'DodsyPlayer', position: 'TBC', email: 'dodsyplayer@test.com' },
+    // Beta Option A: the roster entry is linked to the account via userId (no email/name merge).
+    { id: 'p-dodsy-001', userId: 'user_dodsy_approved', name: 'DodsyPlayer', position: 'TBC', email: 'dodsyplayer@test.com' },
   ];
   const users = [
     { id: 'user_dodsy_approved', role: 'player', name: 'Dodsy Player', email: 'dodsyplayer@test.com', playerId: 'user_dodsy_approved' },
@@ -136,7 +138,7 @@ test('new-message picker shows one canonical target per real player', () => {
 
   assert.deepEqual(
     filterCoachDmPlayers(players, 'simon', 'coach-demo', { users }).map(player => player.id),
-    ['inv-YxnjxnQa']
+    ['player-simon-test'] // Beta Option A: canonical target is the userId-bearing row
   );
   assert.deepEqual(
     filterCoachDmPlayers(players, 'dodsy', 'coach-demo', { users }).map(player => player.id),
@@ -201,7 +203,8 @@ test('conversation list dedupes duplicate DMs for canonical participant pairs', 
   const deduped = dedupeDirectConversations(conversations, 'coach-demo', { users, players });
 
   assert.deepEqual(deduped.map(c => c.id), [
-    'dm:coach-demo:inv-YxnjxnQa',
+    // Beta Option A: dedup keeps the userId-keyed Simon conversation.
+    'dm:coach-demo:player-simon-test',
     'dm:coach-demo:user_dodsy_approved',
   ]);
 });
@@ -223,7 +226,7 @@ test('displayed Dodsy and Simon targets resolve to the same DMs their portals re
   const simonRequest = createCoachDmConversationRequestForPlayerId(players, simon.id, 'coach-demo', { users });
   const dodsyRequest = createCoachDmConversationRequestForPlayerId(players, dodsy.id, 'coach-demo', { users });
 
-  assert.equal(simonRequest.id, 'dm:coach-demo:inv-YxnjxnQa');
+  assert.equal(simonRequest.id, 'dm:coach-demo:player-simon-test'); // Beta Option A: userId key
   assert.equal(dodsyRequest.id, 'dm:coach-demo:user_dodsy_approved');
 });
 

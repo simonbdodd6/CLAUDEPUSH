@@ -15,36 +15,30 @@ import {
   playerCoachConversationIdForPlayer,
 } from '../src/player-identity.js';
 
-test('existing player identities keep their message conversation ids', () => {
+// Beta Option A — messaging identity is normalized to the authenticated userId.
+// Legacy inv-… / player-… ids no longer produce a messaging identity (intentional
+// reset). A roster entry with a real userId resolves to that userId.
+test('messaging identity resolves to the linked authenticated userId', () => {
   const users = [
     { id: 'coach-demo', role: 'coach', name: 'Simon Dodd' },
-    { id: 'player-nick', role: 'player', name: 'Nick Player', playerId: 'inv-nick1234' },
+    { id: 'user_nick_123', role: 'player', name: 'Nick Player', playerId: 'user_nick_123' },
   ];
-  const player = { id: 'inv-nick1234', name: 'Nick Player', position: 'Wing' };
+  const registeredPlayer = { id: 'user_nick_123', userId: 'user_nick_123', name: 'Nick Player', position: 'Wing' };
 
-  const linkedUsers = ensurePlayerUserForRosterPlayer(users, player);
-  const nickUser = linkedUsers.find(user => user.name === 'Nick Player');
-
-  assert.equal(nickUser.playerId, 'inv-nick1234');
-  assert.equal(playerCoachConversationIdForPlayer(player, 'coach-demo', dmConvId), 'dm:coach-demo:inv-nick1234');
-  assert.equal(dmConvId('coach-demo', nickUser.playerId), 'dm:coach-demo:inv-nick1234');
+  assert.equal(resolveMessagingParticipantId(registeredPlayer, { users }), 'user_nick_123');
+  assert.equal(playerCoachConversationIdForPlayer(registeredPlayer, 'coach-demo', dmConvId), 'dm:coach-demo:user_nick_123');
 });
 
-test('existing seeded legacy users keep Simon and Nick Redis conversation ids', () => {
+test('legacy seeded inv-/name identities NO LONGER resolve to a legacy messaging id (reset)', () => {
   const users = [
     { id: 'player-simon-test', role: 'player', name: 'Simon Test Player', playerId: 'inv-YxnjxnQa' },
-    { id: 'player-nick', role: 'player', name: 'Nick Player', playerId: 'inv-nick1234' },
   ];
-  const simonPlayer = { id: 'inv-YxnjxnQa', name: 'Simon Test Player', position: 'TBC' };
-  const nickPlayer = { id: 'inv-nick1234', name: 'Nick Player', position: 'Wing' };
+  const simonPlayer = { id: 'inv-YxnjxnQa', name: 'Simon Test Player', position: 'TBC' }; // no userId link
 
-  assert.equal(resolveMessagingParticipantId(simonPlayer, { users }), 'inv-YxnjxnQa');
-  assert.equal(resolvePlayerPortalMessagingId(users[0], { players: [simonPlayer, nickPlayer], users }), 'inv-YxnjxnQa');
-  assert.equal(dmConvId('coach-demo', resolveMessagingParticipantId(simonPlayer, { users })), 'dm:coach-demo:inv-YxnjxnQa');
-
-  assert.equal(resolveMessagingParticipantId(nickPlayer, { users }), 'inv-nick1234');
-  assert.equal(resolvePlayerPortalMessagingId(users[1], { players: [simonPlayer, nickPlayer], users }), 'inv-nick1234');
-  assert.equal(dmConvId('coach-demo', resolveMessagingParticipantId(nickPlayer, { users })), 'dm:coach-demo:inv-nick1234');
+  // No linked userId → blocked (''), not the old hardcoded inv-YxnjxnQa.
+  assert.equal(resolveMessagingParticipantId(simonPlayer, { users }), '');
+  // A user's own messaging id is ALWAYS their account id — no name-based alias.
+  assert.equal(resolvePlayerPortalMessagingId(users[0], { players: [simonPlayer], users }), 'player-simon-test');
 });
 
 test('newly created roster players get a matching player user identity', () => {
@@ -66,43 +60,29 @@ test('newly created roster players get a matching player user identity', () => {
   assert.equal(dodsyUser.email, 'dodsyplayer@player.test');
 });
 
-test('approved permanent users are preferred over manual roster ids for coach DMs', () => {
+test('a registered account resolves to its userId; a manual roster entry with no userId is blocked (no email/name merge)', () => {
   const manualDodsyPlayer = {
-    id: 'p-dodsy-001',
-    name: 'DodsyPlayer',
-    position: 'TBC',
-    email: 'dodsyplayer@test.com',
+    id: 'p-dodsy-001', name: 'DodsyPlayer', position: 'TBC', email: 'dodsyplayer@test.com', // NO userId
   };
   const approvedDodsyPlayer = {
-    id: 'user_dodsy_approved',
-    userId: 'user_dodsy_approved',
-    name: 'Dodsy Player',
-    position: 'TBC',
-    email: 'dodsyplayer@test.com',
+    id: 'user_dodsy_approved', userId: 'user_dodsy_approved', name: 'Dodsy Player', position: 'TBC', email: 'dodsyplayer@test.com',
   };
   const approvedDodsyUser = {
-    id: 'user_dodsy_approved',
-    role: 'player',
-    name: 'Dodsy Player',
-    email: 'dodsyplayer@test.com',
-    playerId: 'user_dodsy_approved',
+    id: 'user_dodsy_approved', role: 'player', name: 'Dodsy Player', email: 'dodsyplayer@test.com', playerId: 'user_dodsy_approved',
   };
   const context = { users: [approvedDodsyUser], players: [manualDodsyPlayer, approvedDodsyPlayer] };
 
-  assert.equal(resolveMessagingParticipantId(manualDodsyPlayer, context), 'user_dodsy_approved');
+  // Beta Option A: no email/name inference. The manual entry has no userId → blocked.
+  assert.equal(resolveMessagingParticipantId(manualDodsyPlayer, context), '');
   assert.equal(resolveMessagingParticipantId(approvedDodsyPlayer, context), 'user_dodsy_approved');
   assert.equal(resolvePlayerPortalMessagingId(approvedDodsyUser, context), 'user_dodsy_approved');
-  assert.equal(
-    dmConvId('coach-demo', resolveMessagingParticipantId(manualDodsyPlayer, context)),
-    dmConvId('coach-demo', resolvePlayerPortalMessagingId(approvedDodsyUser, context))
-  );
 });
 
-test('legacy players without permanent userId still fall back to roster player id', () => {
-  const legacyPlayer = { id: 'p-legacy-001', name: 'Legacy Player', position: 'Prop' };
+test('a player without a linked userId returns NO messaging id (blocked, not a legacy roster id)', () => {
+  const legacyPlayer = { id: 'p-legacy-001', name: 'Legacy Player', position: 'Prop' }; // no userId
 
-  assert.equal(resolveMessagingParticipantId(legacyPlayer, { users: [] }), 'p-legacy-001');
-  assert.equal(playerCoachConversationIdForPlayer(legacyPlayer, 'coach-demo', dmConvId), 'dm:coach-demo:p-legacy-001');
+  assert.equal(resolveMessagingParticipantId(legacyPlayer, { users: [] }), '');
+  assert.equal(playerCoachConversationIdForPlayer(legacyPlayer, 'coach-demo', dmConvId), '');
 });
 
 test('coach and newly created player resolve the same direct-message conversation id', () => {
@@ -117,34 +97,22 @@ test('coach and newly created player resolve the same direct-message conversatio
   assert.equal(playerPortalConvId, coachConvId);
 });
 
-test('refresh logout login keeps approved player on the same direct-message Redis key', () => {
+test('a coach DM to a REGISTERED player uses the userId key and persists across login', () => {
   const approvedUser = {
-    id: 'user_dodsy_approved',
-    role: 'player',
-    name: 'Dodsy Player',
-    email: 'dodsyplayer@test.com',
-    playerId: 'user_dodsy_approved',
+    id: 'user_dodsy_approved', role: 'player', name: 'Dodsy Player',
+    email: 'dodsyplayer@test.com', playerId: 'user_dodsy_approved',
   };
-  const rosterBeforeRefresh = [
-    { id: 'p-dodsy-001', name: 'DodsyPlayer', email: 'dodsyplayer@test.com', position: 'TBC' },
+  // Beta Option A: DMs address the registered account (has a userId). A manual
+  // no-userId roster entry is not messageable, so the coach messages the account.
+  const roster = [
+    { id: 'user_dodsy_approved', userId: 'user_dodsy_approved', name: 'Dodsy Player', email: approvedUser.email, position: 'TBC' },
   ];
-  const rosterAfterLogin = [
-    ...rosterBeforeRefresh,
-    { id: approvedUser.id, userId: approvedUser.id, name: 'Dodsy Player', email: approvedUser.email, position: 'TBC' },
-  ];
-  const contextBefore = { users: [approvedUser], players: rosterBeforeRefresh };
-  const contextAfter = { users: [approvedUser], players: rosterAfterLogin };
-  const coachConvId = dmConvId('coach-demo', resolveMessagingParticipantId(rosterBeforeRefresh[0], contextBefore));
-  const storedMessages = {
-    [coachConvId]: [
-      { id: 'm1', convId: coachConvId, senderId: 'coach-demo', text: 'hello Dodsy', ts: 1 },
-    ],
-  };
-  const playerConvIdAfterLogin = dmConvId('coach-demo', resolvePlayerPortalMessagingId(approvedUser, contextAfter));
+  const context = { users: [approvedUser], players: roster };
+  const coachConvId = dmConvId('coach-demo', resolveMessagingParticipantId(roster[0], context));
+  const playerConvIdAfterLogin = dmConvId('coach-demo', resolvePlayerPortalMessagingId(approvedUser, context));
 
   assert.equal(coachConvId, 'dm:coach-demo:user_dodsy_approved');
-  assert.equal(playerConvIdAfterLogin, coachConvId);
-  assert.equal(storedMessages[playerConvIdAfterLogin][0].text, 'hello Dodsy');
+  assert.equal(playerConvIdAfterLogin, coachConvId, 'same userId key on both sides, across login');
 });
 
 test('availability player records are preserved while identity users are added', () => {
@@ -189,10 +157,11 @@ test('canonical member list removes duplicate Simon Test Player compatibility ro
 
   const deduped = dedupeRosterPlayers(players, { users });
 
+  // Beta Option A: dedup keeps the row carrying a real userId; messaging id = that userId.
   assert.equal(deduped.length, 1);
-  assert.equal(deduped[0].id, 'inv-YxnjxnQa');
-  assert.equal(resolveMessagingParticipantId(deduped[0], { users }), 'inv-YxnjxnQa');
-  assert.equal(dmConvId('coach-demo', resolveMessagingParticipantId(deduped[0], { users })), 'dm:coach-demo:inv-YxnjxnQa');
+  assert.equal(deduped[0].userId || deduped[0].id, 'player-simon-test');
+  assert.equal(resolveMessagingParticipantId(deduped[0], { users }), 'player-simon-test');
+  assert.equal(dmConvId('coach-demo', resolveMessagingParticipantId(deduped[0], { users })), 'dm:coach-demo:player-simon-test');
   assert.equal(deduped[0].trainingTuesday, 'available');
 });
 
@@ -290,7 +259,7 @@ test('identity audit reports duplicate source mappings without rewriting history
   });
 
   assert.equal(audit.canonicalPlayers.length, 2);
-  assert.equal(audit.canonicalPlayers.some(player => player.id === 'inv-YxnjxnQa'), true);
+  assert.equal(audit.canonicalPlayers.some(player => player.id === 'player-simon-test'), true);
   assert.equal(audit.canonicalPlayers.some(player => player.id === 'user_dodsy_approved'), true);
   assert.equal(audit.duplicates.some(group => group.canonicalKey === 'simontestplayer'), true);
   assert.equal(audit.duplicates.some(group => group.canonicalKey === 'dodsyplayer'), true);
@@ -315,7 +284,7 @@ test('canonical account switcher shows valid accounts only and selects correct p
   const playerAccounts = accounts.filter(account => account.role === 'player');
 
   assert.deepEqual(playerAccounts.map(account => [account.name, account.playerId]), [
-    ['Simon Test Player', 'inv-YxnjxnQa'],
+    ['Simon Test Player', 'player-simon-test'],
     ['Dodsy Player', 'user_dodsy_approved'],
   ]);
   assert.equal(accounts.some(account => account.id === 'player-dodsy-compat'), false);

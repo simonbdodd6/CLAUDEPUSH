@@ -81,9 +81,10 @@ test('dmConvId is commutative and stable across multiple calls', () => {
   assert.equal(id1, id3, 'stable across calls');
 });
 
-test('coach-side and player-side conversation IDs match for legacy invite player', () => {
+test('coach-side and player-side conversation IDs match for a registered player (userId)', () => {
   const coachId = 'coach-demo';
-  const player = { id: 'inv-YxnjxnQa', name: 'Simon Test Player', position: 'TBC' };
+  // Beta Option A: a messageable player carries the account userId on their roster record.
+  const player = { id: 'inv-YxnjxnQa', userId: 'player-simon-test', name: 'Simon Test Player', position: 'TBC' };
   const user   = { id: 'player-simon-test', role: 'player', name: 'Simon Test Player', playerId: 'inv-YxnjxnQa' };
   const context = { users: [user], players: [player] };
 
@@ -119,9 +120,9 @@ test('coach-side and player-side conversation IDs match for approved permanent u
 
 test('coach send and new player read resolve the same conversation ID (invite-only record)', () => {
   const coachId = 'coach-demo';
-  // Brand-new roster member created by the coach — invite id, no permanent user yet.
-  const newPlayer = { id: 'inv-Newb1234', name: 'New Beta Player', position: 'Centre' };
-  // The player signs in; their portal user is linked to the roster record by playerId.
+  // Beta Option A: a registered roster member carries their account userId.
+  const newPlayer = { id: 'inv-Newb1234', userId: 'player-newb', name: 'New Beta Player', position: 'Centre' };
+  // The player signs in; their portal user is linked to the roster record.
   const newUser   = { id: 'player-newb', role: 'player', name: 'New Beta Player', playerId: 'inv-Newb1234' };
   const context   = { users: [newUser], players: [newPlayer] };
 
@@ -155,7 +156,7 @@ test('coach send and new player read align when the new player has a permanent u
 
 test('coach DM request is stable across repeated builds for a new player', () => {
   const coachId = 'coach-demo';
-  const newPlayer = { id: 'inv-Stable99', name: 'Stable Player' };
+  const newPlayer = { id: 'inv-Stable99', userId: 'player-stable', name: 'Stable Player' };
   const newUser   = { id: 'player-stable', role: 'player', name: 'Stable Player', playerId: 'inv-Stable99' };
   const context   = { users: [newUser], players: [newPlayer] };
 
@@ -247,16 +248,17 @@ test('group channels are never deduplicated against direct messages', () => {
 
 test('player switching to a different account does not corrupt existing DM key', () => {
   const coachId  = 'coach-demo';
-  const simonPlayer = { id: 'inv-YxnjxnQa', name: 'Simon Test Player', position: 'TBC' };
-  const nickPlayer  = { id: 'inv-nick1234',  name: 'Nick Player', position: 'Wing' };
+  // Beta Option A: registered players carry their account userId.
+  const simonPlayer = { id: 'inv-YxnjxnQa', userId: 'player-simon-test', name: 'Simon Test Player', position: 'TBC' };
+  const nickPlayer  = { id: 'inv-nick1234',  userId: 'player-nick', name: 'Nick Player', position: 'Wing' };
   const players = [simonPlayer, nickPlayer];
 
   // Simulate coach switching between Simon and Nick
   const simonRequest = createCoachDmConversationRequestForPlayerId(players, 'inv-YxnjxnQa', coachId);
   const nickRequest  = createCoachDmConversationRequestForPlayerId(players, 'inv-nick1234', coachId);
 
-  assert.equal(simonRequest.id, 'dm:coach-demo:inv-YxnjxnQa');
-  assert.equal(nickRequest.id,  'dm:coach-demo:inv-nick1234');
+  assert.equal(simonRequest.id, 'dm:coach-demo:player-simon-test');
+  assert.equal(nickRequest.id,  'dm:coach-demo:player-nick');
   assert.notEqual(simonRequest.id, nickRequest.id, 'switching players must give different conv IDs');
 
   // Switching back to Simon must return the original key
@@ -267,7 +269,7 @@ test('player switching to a different account does not corrupt existing DM key',
 test('player portal DM ID is stable when player logs in then switches back', () => {
   const coachId = 'coach-demo';
   const user = { id: 'player-simon-test', role: 'player', name: 'Simon Test Player', playerId: 'inv-YxnjxnQa' };
-  const player = { id: 'inv-YxnjxnQa', name: 'Simon Test Player' };
+  const player = { id: 'inv-YxnjxnQa', userId: 'player-simon-test', name: 'Simon Test Player' };
   const context = { users: [user], players: [player] };
 
   // First session
@@ -276,7 +278,8 @@ test('player portal DM ID is stable when player logs in then switches back', () 
   const id2 = resolvePlayerPortalMessagingId(user, context);
 
   assert.equal(id1, id2, 'portal ID must not change between calls');
-  assert.equal(dmConvId(coachId, id1), 'dm:coach-demo:inv-YxnjxnQa');
+  // Beta Option A: portal id is the account userId.
+  assert.equal(dmConvId(coachId, id1), 'dm:coach-demo:player-simon-test');
 });
 
 // ─── Message delivery ──────────────────────────────────────────────────────
@@ -326,9 +329,10 @@ test('optimistic message is replaced by server confirmation without duplicates',
 
 test('coach message is visible from player perspective with correct convId', () => {
   const coachId = 'coach-demo';
+  // Beta Option A: registered players carry their account userId.
   const players = [
-    { id: 'inv-YxnjxnQa', name: 'Simon Test Player' },
-    { id: 'inv-nick1234',  name: 'Nick Player' },
+    { id: 'inv-YxnjxnQa', userId: 'player-simon-test', name: 'Simon Test Player' },
+    { id: 'inv-nick1234',  userId: 'player-nick', name: 'Nick Player' },
   ];
   const users = [
     { id: 'player-simon-test', role: 'player', name: 'Simon Test Player', playerId: 'inv-YxnjxnQa' },

@@ -400,7 +400,8 @@ test('invited player can reply to coach DM', async () => {
 
   const coach = await seedCoachSession();
   const playerHeaders = { cookie: `ce_session=${encodeURIComponent(claimed.session.token)}` };
-  const convId = dmConvId('coach-demo', claimed.playerProfile.legacyPlayerId);
+  // Beta Option A: DMs are keyed on the authenticated userId, not legacyPlayerId.
+  const convId = dmConvId('coach-demo', claimed.user.id);
 
   // Create conv and have coach send first
   await callChat('POST', '/api/chat', {
@@ -408,7 +409,7 @@ test('invited player can reply to coach DM', async () => {
     id: convId,
     name: 'Reply Player',
     type: 'DIRECT',
-    participants: ['coach-demo', claimed.playerProfile.legacyPlayerId],
+    participants: ['coach-demo', claimed.user.id],
   }, coach.headers);
   await callChat('POST', '/api/chat', {
     action: 'send',
@@ -419,11 +420,11 @@ test('invited player can reply to coach DM', async () => {
     text: 'Hi there',
   }, coach.headers);
 
-  // Player replies
+  // Player replies (authenticated as the player; access is granted by userId)
   const replyRes = await callChat('POST', '/api/chat', {
     action: 'send',
     convId,
-    senderId: claimed.playerProfile.legacyPlayerId,
+    senderId: claimed.user.id,
     senderName: 'Reply Player',
     senderRole: 'player',
     text: 'Hi coach!',
