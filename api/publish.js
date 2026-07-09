@@ -24,6 +24,7 @@ import { DEFAULT_TEAM, loadTeamMembers, loadUsers } from './_identityStore.js';
 import { requireTenantPermission, requireTenantSession, can, PERM } from './_tenant.js';
 import { load, save } from './_lib.js';
 import { runWeeklyAvailabilityCheck } from './cron.js';
+import { produceTrainingPublishMemory } from './_coachMemoryProducers.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -518,6 +519,10 @@ export default async function handler(req, res) {
     if (type === 'sessions') {
       const sessions = sanitiseSessions(data);
       await kvSet(sessionsKey(session.teamId), sessions);
+      // Best-effort Coach Memory producer (Core Memory M6). Dormant Brain feed: a memory-write
+      // failure must never affect the publish result, so this never throws and is not awaited into
+      // the response contract.
+      await produceTrainingPublishMemory({ teamId: session.teamId, coachId: session.user.id, sessionCount: sessions.length }).catch(() => {});
       return res.status(200).json({ ok: true, sessions });
     }
 
