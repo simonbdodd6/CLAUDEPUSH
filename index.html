@@ -61,6 +61,27 @@
       --blue:        #60a5fa;
       --blue-soft:   rgba(96,165,250,0.12);
 
+      /* ── Shared status palette (RC4.2) — ONE source of truth for status colour.
+         Used by the high-visibility surfaces (Availability, Overview, Medical,
+         Members status indicators). "No reply" is neutral (not amber) everywhere. */
+      --status-available:        #10b981;   /* available / success */
+      --status-available-soft:   rgba(16,185,129,0.12);
+      --status-maybe:            #fbbf24;   /* maybe / warning */
+      --status-maybe-soft:       rgba(251,191,36,0.12);
+      --status-unavailable:      #f87171;   /* unavailable / danger */
+      --status-unavailable-soft: rgba(248,113,113,0.12);
+      --status-noreply:          #64748b;   /* no reply / neutral */
+      --status-noreply-soft:     rgba(100,116,139,0.12);
+      --status-info:             #60a5fa;   /* info */
+      --status-info-soft:        rgba(96,165,250,0.12);
+      /* Back-compat aliases so var(--available|--maybe|--unavailable|--no-reply|--injured)
+         resolve — the player-details "This session" colour referenced non-existent vars. */
+      --available:   var(--status-available);
+      --maybe:       var(--status-maybe);
+      --unavailable: var(--status-unavailable);
+      --no-reply:    var(--status-noreply);
+      --injured:     var(--status-unavailable);
+
       /* Radius scale */
       --r-sm:        8px;
       --r:           12px;
@@ -423,14 +444,14 @@
       border-radius: 50%;
       flex-shrink: 0;
     }
-    .available { color: #34d399; background: rgba(52,211,153,0.1); }
-    .available::before { background: #34d399; }
-    .unavailable, .injured { color: #f87171; background: rgba(248,113,113,0.1); }
-    .unavailable::before, .injured::before { background: #f87171; }
-    .maybe { color: #fbbf24; background: rgba(251,191,36,0.1); }
-    .maybe::before { background: #fbbf24; }
-    .no-reply { color: #64748b; background: rgba(100,116,139,0.1); }
-    .no-reply::before { background: #64748b; }
+    .available { color: var(--status-available); background: var(--status-available-soft); }
+    .available::before { background: var(--status-available); }
+    .unavailable, .injured { color: var(--status-unavailable); background: var(--status-unavailable-soft); }
+    .unavailable::before, .injured::before { background: var(--status-unavailable); }
+    .maybe { color: var(--status-maybe); background: var(--status-maybe-soft); }
+    .maybe::before { background: var(--status-maybe); }
+    .no-reply { color: var(--status-noreply); background: var(--status-noreply-soft); }
+    .no-reply::before { background: var(--status-noreply); }
 
     /* ── SECTION ANIMATION ── */
     .section { display: none; }
@@ -2055,10 +2076,10 @@
       white-space: nowrap;
       border: 1px solid transparent;
     }
-    .msg-chip.available { color: #10b981; background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.22); }
-    .msg-chip.unavailable, .msg-chip.injured { color: #f87171; background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.22); }
-    .msg-chip.maybe { color: #fbbf24; background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.24); }
-    .msg-chip.no-reply { color: var(--amber); background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.2); }
+    .msg-chip.available { color: var(--status-available); background: var(--status-available-soft); border-color: rgba(16,185,129,0.22); }
+    .msg-chip.unavailable, .msg-chip.injured { color: var(--status-unavailable); background: var(--status-unavailable-soft); border-color: rgba(248,113,113,0.22); }
+    .msg-chip.maybe { color: var(--status-maybe); background: var(--status-maybe-soft); border-color: rgba(251,191,36,0.24); }
+    .msg-chip.no-reply { color: var(--status-noreply); background: var(--status-noreply-soft); border-color: rgba(100,116,139,0.2); }
     .msg-form-grid { display: grid; gap: 12px; padding: 16px; }
     .msg-form-row { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 10px; }
     .msg-form-grid label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 800; }
@@ -4516,10 +4537,10 @@
       <div id="pushSidebar" class="push-status-pill hidden">
         <span class="push-dot" id="pushDot"></span>
         <div style="flex:1;min-width:0">
-          <div id="pushSidebarLabel" style="font-weight:700;color:#ecf5ef;font-size:12px">Notifications</div>
+          <div id="pushSidebarLabel" style="font-weight:700;color:var(--ink);font-size:12px">Notifications</div>
           <div id="pushSidebarSub" style="font-size:11px;margin-top:1px">Off</div>
         </div>
-        <button id="pushSidebarBtn" class="btn" type="button" style="margin-top:0;width:auto;min-height:28px;padding:0 9px;font-size:11px;background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#ecf5ef"></button>
+        <button id="pushSidebarBtn" class="btn" type="button" style="margin-top:0;width:auto;min-height:28px;padding:0 9px;font-size:11px"></button>
       </div>
 
       <div class="sidebar-card">
@@ -6103,7 +6124,7 @@
           <span class="push-dot on" style="flex-shrink:0"></span>
           <span style="font-size:11px;font-weight:600;color:var(--muted);flex:1">Notifications on</span>
           <button class="btn" type="button" onclick="unsubscribePush()"
-            style="margin:0;min-height:22px;padding:0 7px;font-size:10px;background:transparent;border-color:rgba(255,255,255,0.12);color:var(--muted)">Off</button>`;
+            style="margin:0;min-height:22px;padding:0 7px;font-size:10px;background:transparent;border-color:var(--line);color:var(--muted)">Turn off</button>`;
       } else if (permission === 'denied') {
         // Blocked — show small warning
         sidebar.innerHTML = `
@@ -6117,8 +6138,8 @@
         sidebar.innerHTML = `
           <div style="width:100%">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-              <span class="push-dot" style="flex-shrink:0;background:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,0.18)"></span>
-              <strong style="font-size:13px;color:#ecf5ef">Enable notifications</strong>
+              <span class="push-dot" style="flex-shrink:0;background:var(--amber);box-shadow:0 0 0 3px rgba(245,158,11,0.18)"></span>
+              <strong style="font-size:13px;color:var(--ink)">Enable notifications</strong>
             </div>
             <p style="font-size:11px;color:var(--muted);margin:0 0 10px;line-height:1.4">
               Get instant alerts when the coach sends availability requests, team news or direct messages.
@@ -6156,7 +6177,7 @@
     }
     function currentUser()  { return canonicalAccountForUserId(state.currentUserId) || state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
     function isCoach()      { const r = currentUser()?.role; return r === "coach" || r === "admin" || r === "medical"; }
-    function statusLabel(s) { return (s||"no-reply").replaceAll("-", " ").replace(/\b\w/g, l => l.toUpperCase()); }
+    function statusLabel(s) { const t = (s||"no-reply").replaceAll("-", " "); return t.charAt(0).toUpperCase() + t.slice(1); }
     const _AVATAR_COLORS = ['#4f46e5','#7c3aed','#db2777','#dc2626','#d97706','#16a34a','#0891b2','#4338ca','#b45309','#7e22ce'];
     function playerAvatarColor(key) { let h=0; for(let i=0;i<key.length;i++) h=(h*31+key.charCodeAt(i))&0x7fffffff; return _AVATAR_COLORS[h%_AVATAR_COLORS.length]; }
     function noSquadMsg() {
@@ -6164,7 +6185,7 @@
         <p style="font-size:36px;margin:0"></p>
         <p style="font-weight:800;margin:10px 0 6px;font-size:16px;color:var(--ink)">No players added yet</p>
         <p style="font-size:13px;color:var(--muted);margin-bottom:18px">Import your squad to get started. Takes less than a minute.</p>
-        <button class="btn primary" type="button" onclick="setSection('coach','players')">Go to Player DB →</button>
+        <button class="btn primary" type="button" onclick="setSection('coach','players')">Go to Members →</button>
       </div>`;
     }
     function sessionKey(id) {
@@ -7194,7 +7215,6 @@
             <span class="mc-cmp-item-meta">${esc(mineUpdated)}</span></div>
           ${otherRows}
         </div>
-        <button class="mc5-publish ${state.matchCentre?.published ? 'published' : ''}" type="button" onclick="publishSquad()">${state.matchCentre?.published ? 'Squad Published' : 'Publish My Draft'}</button>
       </section>`;
     }
 
@@ -10428,7 +10448,7 @@
             <span class="mctl-date">${esc(todayStr)}</span>
             <span style="display:flex;align-items:center;gap:10px">
               ${contextRight ? `<span class="mctl-context">${contextRight}</span>` : ''}
-              ${mc.published ? `<button class="btn" type="button" onclick="startNewWeek()" style="font-size:11px;min-height:30px;padding:0 10px">New Week</button>` : ''}
+              ${mc.published ? `<button class="btn" type="button" onclick="startNewWeek()" style="font-size:11px;min-height:30px;padding:0 10px">New week</button>` : ''}
             </span>
           </div>
 
@@ -11060,7 +11080,7 @@
         ["available", "Available", available.length],
         ["maybe", "Maybe", maybe.length],
         ["unavailable", "Unavailable", unavailable.length],
-        ["no-reply", "No Reply", noReply.length],
+        ["no-reply", "No reply", noReply.length],
       ].map(([id, label, count]) => `<button class="filter-pill ${availabilityBoardFilter === id ? "active" : ""}" type="button" onclick="setAvailabilityBoardFilter('${id}')">${label} <strong>${count}</strong></button>`).join("");
 
       const quickTemplates = [
@@ -11100,7 +11120,7 @@
             <article class="msg-kpi available"><span>Available</span><strong>${available.length}</strong></article>
             <article class="msg-kpi maybe"><span>Maybe</span><strong>${maybe.length}</strong></article>
             <article class="msg-kpi unavailable"><span>Unavailable</span><strong>${unavailable.length}</strong></article>
-            <article class="msg-kpi chase"><span>No Reply</span><strong>${noReply.length}</strong></article>
+            <article class="msg-kpi chase"><span>No reply</span><strong>${noReply.length}</strong></article>
           </section>
 
           <!-- ROW 1: Session picker (left) + live response board (right) -->
@@ -11297,7 +11317,7 @@
             <article><span>Year attendance</span><strong>${player.attendance || 0}%</strong></article>
             <article><span>Session replies</span><strong>${repliedCount}/${totalCount}</strong></article>
             <article><span>Position</span><strong>${esc(player.position || '—')}</strong></article>
-            <article><span>This session</span><strong style="color:var(--${statusClass === 'available' ? 'green' : statusClass === 'no-reply' ? 'amber' : statusClass})">${statusLabel(statusClass)}</strong></article>
+            <article><span>This session</span><strong style="color:var(--${statusClass})">${statusLabel(statusClass)}</strong></article>
           </div>
           ${(player.medical || player.notes) ? `
             <div style="padding:0 16px 16px">
@@ -12469,9 +12489,9 @@
         <!-- ── V10 · secondary actions (below the pitch — must not compete with it) ── -->
         <div class="mc10-actions">
           ${pendingCount>0?`<button class="btn" type="button" onclick="chaseAllNonResponders()">Remind ${pendingCount} player${pendingCount>1?'s':''}</button>`:''}
-          ${mc.published?`<button class="btn" type="button" onclick="startNewWeek()">Next week</button>`:''}
+          ${mc.published?`<button class="btn" type="button" onclick="startNewWeek()">New week</button>`:''}
           <button class="btn" type="button" onclick="exportFormation()">Export</button>
-          <button class="mc5-publish ${mc.published?'published':''}" type="button" onclick="publishSquad()">${mc.published?'Squad Published':'Publish Squad'}</button>
+          <button class="mc5-publish ${mc.published?'published':''}" type="button" onclick="publishSquad()">${mc.published?'Squad published':'Publish squad'}</button>
         </div>
 
         <!-- ── V5 · matchday footer status bar ────────────────────────────────── -->
@@ -12817,7 +12837,7 @@
           <!-- Pending account join requests -->
           <div class="card" style="padding:0;overflow:hidden">
             <details class="srv-panel" ${_identityPendingRequests.length > 0 ? 'open' : ''} ontoggle="if(this.open) loadIdentityRequests()">
-              <summary>Join requests${_identityPendingRequests.length > 0 ? ` <strong style="color:var(--accent)">(${_identityPendingRequests.length})</strong>` : ''}</summary>
+              <summary>Pending joins${_identityPendingRequests.length > 0 ? ` <strong style="color:var(--accent)">(${_identityPendingRequests.length})</strong>` : ''}</summary>
               <div class="srv-panel-body" style="padding-top:0">
                 <p class="muted" style="font-size:13px;margin-bottom:12px">Approve players who joined with the team code.</p>
                 <div id="identity-requests-panel">${identityRequestsHtml()}</div>

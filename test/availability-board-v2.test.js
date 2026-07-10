@@ -54,7 +54,7 @@ test('rows show name, position, attendance %, reply, last response time and a me
 
 test('status quick-filters: Available, Maybe, Unavailable, No Reply (with counts)', () => {
   assert.ok(render.includes("setAvailabilityBoardFilter('${id}')"), 'status filter pills wired');
-  ['"available", "Available"', '"maybe", "Maybe"', '"unavailable", "Unavailable"', '"no-reply", "No Reply"'].forEach(pair =>
+  ['"available", "Available"', '"maybe", "Maybe"', '"unavailable", "Unavailable"', '"no-reply", "No reply"'].forEach(pair =>
     assert.ok(render.includes(pair), `pill ${pair}`));
   assert.ok(render.includes('available.length]') && render.includes('noReply.length]'), 'pill counts wired');
   assert.ok(!render.includes('"Forwards"') && !render.includes('"Backs"'), 'old position filters gone');
@@ -71,7 +71,7 @@ test('compact summary bar shows Available / Maybe / Unavailable / No Reply', () 
   assert.ok(render.includes('<span>Available</span><strong>${available.length}</strong>'));
   assert.ok(render.includes('<span>Maybe</span><strong>${maybe.length}</strong>'));
   assert.ok(render.includes('<span>Unavailable</span><strong>${unavailable.length}</strong>'));
-  assert.ok(render.includes('<span>No Reply</span><strong>${noReply.length}</strong>'));
+  assert.ok(render.includes('<span>No reply</span><strong>${noReply.length}</strong>'));
 });
 
 // ── Filter + sort logic ───────────────────────────────────────────────────────
