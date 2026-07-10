@@ -4539,7 +4539,6 @@
         </div>
         <div class="button-row">
           <span class="save-pill" title="Auto-saved"><span class="dot" id="saveDot"></span><span id="saveStatus" style="display:none"></span></span>
-          <button class="btn" type="button" id="resetBtn">Reset</button>
         </div>
       </header>
 
@@ -12194,7 +12193,7 @@
           ${clubLogoBadgeHtml('width:46px;height:46px;border-radius:12px')}
           <div class="mc10-fixture">
             <h1>${esc(state.clubName || 'Your club')} <em>vs</em> ${esc(mc.opposition || 'Opponent TBC')}</h1>
-            <p>${[esc(phase.label), esc(mc.competition||''), kickoffDisplay, mc.kickoffTime?esc(mc.kickoffTime):'', esc(mc.venue||'')].filter(Boolean).join(' · ') || 'Set the fixture in match details'}</p>
+            <p>${[esc(phase.label), esc(mc.competition||''), kickoffDisplay, mc.kickoffTime?esc(mc.kickoffTime):'', esc(mc.venue||'')].filter(Boolean).join(' · ') || 'Fixture to be confirmed'}</p>
           </div>
           </div>
           <div class="mc10-chips" role="group" aria-label="Matchday status">
@@ -12744,7 +12743,7 @@
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add player</button>
               <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Player invite link</button>
-              <button class="btn" type="button" onclick="openCoachGroupInviteModal()">Coach / staff invite link</button>
+              <button class="btn" type="button" onclick="openCoachGroupInviteModal()">Coach / Staff invite link</button>
             </div>
           </div>
           <p class="muted" style="font-size:12.5px;margin:2px 0 0">Share a link — players and staff register themselves and join automatically. Or add a player manually.</p>
@@ -12755,7 +12754,7 @@
               <summary>More options</summary>
               <div class="srv-panel-body" style="padding-top:4px">
 
-                <h4 style="margin:6px 0 10px;font-size:14px;color:var(--ink)">Advanced: invite a specific person</h4>
+                <h4 style="margin:6px 0 10px;font-size:14px;color:var(--ink)">Advanced: Invite a specific person</h4>
                 <!-- Role tabs + name field -->
                 <p class="muted" id="inv-role-hint" style="font-size:13px;margin-bottom:14px">Choose <strong>Player</strong> or <strong>Coach</strong>, then generate a personal invite link. They claim it with an email and password to get a permanent account.</p>
 
@@ -12786,7 +12785,7 @@
                   </label>
                   <button id="inv-create-btn" class="btn primary" type="button" onclick="createInvite()"
                     style="white-space:nowrap;min-height:40px;padding:0 16px">
-                    Generate invite link
+                    Create invite link
                   </button>
                 </div>
                 <div id="inv-result"></div>
@@ -15175,8 +15174,7 @@
                 <label style="${labelStyle}">Season end
                   <input id="set-season-end" type="date" value="${esc(state.seasonEnd || '')}" style="${inputStyle}" onchange="settingsSaveSeason()"></label>
               </div>
-              <button class="btn primary" type="button" onclick="settingsSaveClubBranding(this)" style="width:100%;min-height:44px;margin-top:4px;transition:border-color .15s">Save club settings</button>
-              <p class="muted" style="font-size:11px;margin:0">Saves your club name, colours and logo, and applies the branding across the app.</p>
+              <p class="muted" style="font-size:11px;margin:4px 0 0">Changes here save automatically and apply your branding across the app.</p>
             </div>
           </div>
 
@@ -15237,6 +15235,20 @@
               ${canI('danger_zone') ? `<button class="btn" type="button" onclick="settingsCleanTestData()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Delete test data…</button>` : ''}
             </div>
             <p class="muted" style="font-size:11px;margin:10px 0 0">Deleting club data clears the club profile, published sessions, squad and roster for this club only. Player accounts and message history are kept.</p>
+          </div>
+
+          <!-- Advanced → Danger zone (relocated from the global header) -->
+          <div class="card" style="padding:0;overflow:hidden">
+            <details class="srv-panel">
+              <summary>Advanced</summary>
+              <div class="srv-panel-body" style="padding-top:4px">
+                <div style="border:1px solid rgba(248,113,113,0.35);border-radius:12px;padding:14px 16px">
+                  <div style="font-size:13px;font-weight:700;color:#f87171;margin-bottom:4px">Danger zone</div>
+                  <p class="muted" style="font-size:12px;margin:0 0 12px">Resets this device — clears all players, sessions and push subscriptions stored here. This cannot be undone.</p>
+                  <button class="btn" type="button" onclick="doFullReset()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Reset app on this device…</button>
+                </div>
+              </div>
+            </details>
           </div>
 
           <!-- Sign out — kept available for normal operation -->
@@ -23557,7 +23569,7 @@
           : allMsgs)
         : (allMsgs.length ? allMsgs : chatGetLocalMsgs(convId, mode));
       if (!msgs.length) {
-        feed.innerHTML = `<div class="chat-empty"><div class="ce-icon"></div><strong>No messages yet</strong><p style="margin-top:6px;font-size:13px">Send the first message below.</p></div>`;
+        feed.innerHTML = `<div class="chat-empty"><div class="ce-icon"><svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.2 7.6L3 21l1.9-5.8A8.5 8.5 0 1 1 21 11.5Z"/></svg></div><strong>No messages yet</strong><p style="margin-top:6px;font-size:13px">Send the first message below.</p></div>`;
         return;
       }
       let html = '';
@@ -23691,9 +23703,7 @@
                 <small id="chatHeaderSub">${selected ? esc(selected.sub || (selected.type==='DIRECT'?'Direct message':'Group chat')) : ''}</small>
               </div>
             </div>
-            <div class="chat-header-actions">
-              ${mode==='player'?`<button class="chat-icon-btn" type="button" onclick="setSection('player','availability')" title="Availability" aria-label="Availability"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg></button>`:''}
-            </div>
+            ${mode==='player'?`<div class="chat-header-actions"><button class="chat-icon-btn" type="button" onclick="setSection('player','availability')" title="Availability" aria-label="Availability"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg></button></div>`:''}
           </header>
           <div class="chat-feed" id="chatFeed" onscroll="chatOnFeedScroll(this)">
             ${selected
@@ -26249,7 +26259,9 @@
     // ─── EVENT LISTENERS ──────────────────────────────────────────────────────
     document.getElementById("coachViewBtn").addEventListener("click", () => setView("coach"));
     document.getElementById("playerViewBtn").addEventListener("click", () => setView("player"));
-    document.getElementById("resetBtn").addEventListener("click", async () => {
+    // Full device reset. Moved out of the global header into Settings → Advanced →
+    // Danger zone; still guarded by an explicit confirmation.
+    async function doFullReset() {
       if (!(await ceConfirm('Reset everything?', 'Clears all players, sessions and push subscriptions on this device. Cannot be undone.', { confirmLabel: 'Reset everything', danger: true }))) return;
       state = normalizeState(structuredClone(defaultState));
       saveState("Full reset");
@@ -26263,7 +26275,8 @@
         }
       } catch { /* offline */ }
       render();
-    });
+    }
+    window.doFullReset = doFullReset;
 
     window.addEventListener("storage", event => {
       if (event.key !== STORAGE_KEY || !event.newValue) return;
@@ -26485,12 +26498,12 @@
       el.className = 'ce-modal-overlay';
       el.innerHTML = `
         <div class="ce-modal" role="dialog" aria-modal="true" aria-labelledby="cgi-title" style="max-width:460px">
-          <h3 id="cgi-title">Coach &amp; staff invite link</h3>
+          <h3 id="cgi-title">Coach / Staff invite link</h3>
           <p style="margin-bottom:12px">Share one reusable link. Anyone who opens it creates a <strong id="cgi-role-word">coach</strong> account for ${esc(state.clubName || 'your club')} — no adding staff one by one.</p>
           <div id="cgi-roles" style="display:flex;gap:6px;margin-bottom:14px">
             ${roleBtn('coach','Coach')}${roleBtn('admin','Admin')}${roleBtn('medical','Medical')}
           </div>
-          <div id="cgi-body" style="text-align:center;padding:22px 0;color:var(--muted);font-size:13px">Generating link…</div>
+          <div id="cgi-body" style="text-align:center;padding:22px 0;color:var(--muted);font-size:13px">Creating link…</div>
           <div class="ce-modal-actions">
             <button type="button" id="cgi-close">Close</button>
           </div>
@@ -26517,7 +26530,7 @@
     }
     async function _loadCoachGroupInviteLink(role) {
       const body = document.getElementById('cgi-body');
-      if (body) { body.style.cssText = 'text-align:center;padding:22px 0;color:var(--muted);font-size:13px'; body.textContent = 'Generating link…'; }
+      if (body) { body.style.cssText = 'text-align:center;padding:22px 0;color:var(--muted);font-size:13px'; body.textContent = 'Creating link…'; }
       try {
         await ensureServerSessionForCurrentUser();
         // Give coach/admin a proper 'assistant' staff level (same default as the single
@@ -26564,7 +26577,7 @@
           <div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">${esc(state.clubName || 'Your club')}</div>
           <h2 style="margin:4px 0 4px;font-size:21px;color:var(--ink)">Invite your squad</h2>
           <p style="color:var(--muted);font-size:13.5px;margin:0 0 18px">Share one link. Every player registers themselves and joins ${esc(state.clubName || 'your club')} automatically — no adding players one by one.</p>
-          <div id="invite-players-body" style="text-align:center;padding:26px 0;color:var(--muted);font-size:13px">Generating your invite link…</div>
+          <div id="invite-players-body" style="text-align:center;padding:26px 0;color:var(--muted);font-size:13px">Creating your invite link…</div>
           <button class="btn" type="button" style="width:100%;margin-top:8px" onclick="document.getElementById('invite-players-modal')?.remove()">Close</button>
         </div>`;
       document.body.appendChild(el);
@@ -26787,7 +26800,7 @@
       } catch(e) {
         showToast('Could not create invite — ' + e.message);
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = 'Generate invite link'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Create invite link'; }
       }
     }
 
@@ -26989,7 +27002,9 @@
             + '<a href="https://boitsfort-coachseye.vercel.app" style="color:#fff;text-decoration:underline;font-weight:800">boitsfort-coachseye.vercel.app</a>.';
           document.body.appendChild(el);
           document.body.style.paddingTop = '44px'; // keep content below the fixed warning
-        } else {
+        } else if (env !== 'production') {
+          // Build/debug pill is shown only in non-production (preview/local) builds —
+          // never in the live app, where it reads as leftover development chrome.
           el.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:9998;background:rgba(15,23,42,.82);'
             + 'color:#94a3b8;padding:4px 9px;border-radius:999px;border:1px solid rgba(148,163,184,.25);'
             + 'font:500 10px/1.2 ui-monospace,SFMono-Regular,monospace;pointer-events:none;letter-spacing:.02em';
