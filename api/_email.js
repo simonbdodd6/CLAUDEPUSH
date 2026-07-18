@@ -13,7 +13,13 @@ export async function sendTransactionalEmail({ to, subject, html, text } = {}) {
   const recipient = String(to || '').trim();
   if (!recipient) return { ok: true, sent: false, skipped: true, reason: 'missing_recipient' };
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return { ok: true, sent: false, skipped: true, reason: 'email_not_configured' };
+  if (!apiKey) {
+    // Observability only: make a misconfigured environment visible in server logs.
+    // Never logs the key, the recipient, or any payload; return shape is unchanged so
+    // callers and anti-enumeration responses behave exactly as before.
+    console.warn('[email] delivery skipped — RESEND_API_KEY is not configured for this environment');
+    return { ok: true, sent: false, skipped: true, reason: 'email_not_configured' };
+  }
 
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -31,6 +37,9 @@ export async function sendTransactionalEmail({ to, subject, html, text } = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    // Log only the provider HTTP status (no key, no recipient, no payload body) so a
+    // rejected send (e.g. unverified sender domain) is diagnosable from logs.
+    console.warn('[email] provider rejected delivery', { status: response.status });
     const error = new Error(payload?.message || payload?.error || 'Email delivery failed');
     error.status = 502;
     throw error;
