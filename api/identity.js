@@ -271,13 +271,28 @@ export default async function handler(req, res) {
           knownAccount: Boolean(result.user?.id),
           ip: requestIp(req),
         });
-        let emailDelivery = { ok: true, sent: false, skipped: true, reason: 'account_not_found' };
+        // Deliver internally only. A token exists solely for a real account
+        // (createPasswordResetRequest returns a null token for unknown emails). The
+        // provider outcome and the token expiry stay SERVER-SIDE — never in the public
+        // response — so a direct caller cannot infer whether the email belongs to an
+        // account, whether delivery is configured, or whether it succeeded.
         if (result.token && result.user?.email) {
-          const resetUrl = `${appBaseUrl(req)}/?reset=${encodeURIComponent(result.token)}`;
-          const message = passwordResetEmail({ name: result.user.displayName || result.user.email, url: resetUrl });
-          emailDelivery = await sendTransactionalEmail({ to: result.user.email, ...message });
+          try {
+            const resetUrl = `${appBaseUrl(req)}/?reset=${encodeURIComponent(result.token)}`;
+            const message = passwordResetEmail({ name: result.user.displayName || result.user.email, url: resetUrl });
+            const delivery = await sendTransactionalEmail({ to: result.user.email, ...message });
+            if (!delivery.sent) console.warn('[reset] email not delivered', { reason: delivery.reason || 'unknown' });
+          } catch {
+            // A provider rejection must NOT become an enumeration oracle via HTTP status
+            // or a thrown error — swallow to the constant response below.
+            // sendTransactionalEmail already logs the provider status (no PII/secret).
+            console.warn('[reset] delivery error suppressed for anti-enumeration');
+          }
         }
-        return res.status(200).json({ ok: true, emailDelivery, expiresAt: result.expiresAt });
+        // Constant public contract — identical status, keys and values for EVERY accepted
+        // request, regardless of account existence / delivery config / delivery outcome.
+        // UI copy ("If that email has an account…") is unchanged and reads only { ok }.
+        return res.status(200).json({ ok: true });
       }
       if (action === 'reset_password') {
         await enforceRateLimit('password_reset_submit', rateIdentity(req, String(req.body?.token || '').slice(0, 12)), { limit: 5, windowMs: 60 * 60 * 1000 });
