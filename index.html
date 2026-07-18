@@ -8247,6 +8247,55 @@
       renderNav();
     }
 
+    // Shared first-contact error copy. Maps an HTTP status (or a thrown error that
+    // carries one) to calm, human wording — never a raw server string, status code or
+    // browser exception. Detailed errors stay in the console. `context` tunes a few
+    // messages ('login' | 'join' | 'invite' | 'reset').
+    function friendlyAuthError(e, context = 'auth') {
+      const status = typeof e === 'number' ? e : (e && e.status);
+      if (status) {
+        switch (Number(status)) {
+          case 401: return 'The email or password is incorrect.';
+          case 403: return context === 'join'
+            ? "This account isn't active for this team yet — your coach needs to approve it."
+            : "You don't have access yet — check with your coach.";
+          case 404: return context === 'invite'
+            ? "We couldn't find this invite. Check the link or ask your coach for a new one."
+            : "We couldn't find an account for that email.";
+          case 409: return context === 'invite'
+            ? 'This invite has already been used. Sign in with the account created from it.'
+            : 'An account with that email already exists — try signing in.';
+          case 410: return context === 'invite'
+            ? 'This invite has expired. Ask your coach for a new link.'
+            : 'This link has expired. Please request a new one.';
+          case 429: return 'Too many attempts. Please wait a few minutes and try again.';
+          default: return 'Something went wrong. Please try again.';
+        }
+      }
+      // No status → a fetch/network failure (TypeError "Failed to fetch") or an
+      // offline throw. Anything else falls back to a generic, non-technical message.
+      const msg = String((e && e.message) || e || '');
+      if ((e && e.name === 'TypeError') || /network|fetch|load failed|connection|offline/i.test(msg)) {
+        return "We couldn't connect. Check your internet connection and try again.";
+      }
+      return 'Something went wrong. Please try again.';
+    }
+
+    // Distinct, human-readable copy for an invalid invite link, from the existing
+    // /api/invite?token= response (404 not-found · 410 revoked/expired · valid-but-used).
+    function inviteLinkMessage(status, data) {
+      if (Number(status) === 404) return "We couldn't find this invite. Check the link or ask your coach for a new one.";
+      if (Number(status) === 410) {
+        return /revok|cancel/i.test((data && data.error) || '')
+          ? 'This invite was cancelled by your coach.'
+          : 'This invite has expired. Ask your coach for a new link.';
+      }
+      if (data && data.valid && data.status === 'accepted' && !data.group) {
+        return 'This invite has already been used. Sign in with the account created from it.';
+      }
+      return "We couldn't find this invite. Check the link or ask your coach for a new one.";
+    }
+
     async function joinSquad() {
       const code = (document.getElementById('joinCode')?.value || '').trim().toUpperCase();
       const firstName = (document.getElementById('joinFirstName')?.value || '').trim();
@@ -8266,12 +8315,14 @@
           body: JSON.stringify({ action: 'join', teamCode: code, firstName, lastName, email, password }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not join team');
-        authTab = 'closed';
+        if (!res.ok || data.ok === false) { const err = new Error(data.error || 'join failed'); err.status = res.status; throw err; }
+        // Persistent confirmation state (not a fleeting toast) so a player never thinks
+        // the request failed and submits again. No session is issued here.
+        authTab = 'joined';
         renderNav();
-        showToast('Join request sent — wait for coach approval');
       } catch(e) {
-        showToast(e.message || 'Could not join team');
+        console.warn('[join] request failed', e);
+        showToast(friendlyAuthError(e, 'join'));
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Send join request'; }
       }
@@ -8291,7 +8342,7 @@
           body: JSON.stringify({ action: 'login', email, password }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || data.ok === false) throw new Error(data.error || 'Login failed');
+        if (!res.ok || data.ok === false) { const err = new Error(data.error || 'login failed'); err.status = res.status; throw err; }
         const isStaffLogin = ['coach','admin','medical'].includes(data.user.role);
         if (!isStaffLogin) {
           applyApprovedIdentityLocally(data);
@@ -8331,7 +8382,8 @@
         refreshPushSubscriptionMetadata(data.user.displayName || data.user.email).catch(() => {});
         showToast(`Welcome ${data.user.displayName || data.user.email}`);
       } catch(e) {
-        showToast(e.message || 'Login failed');
+        console.warn('[login] failed', e);
+        showToast(friendlyAuthError(e, 'login'));
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Log in'; }
       }
@@ -8358,9 +8410,17 @@
     }
 
     async function requestPasswordReset() {
-      const email = (document.getElementById('identityLoginEmail')?.value || '').trim() ||
-        prompt('Enter your account email:');
-      if (!email) return;
+      // Use the email already typed in the login panel; if it's empty, guide the user
+      // to it inline — never a native browser prompt().
+      const field = document.getElementById('identityLoginEmail');
+      const email = (field?.value || '').trim();
+      if (!email) {
+        field?.focus();
+        showToast('Enter your email above, then tap Forgot password.');
+        return;
+      }
+      const btn = document.getElementById('identityResetBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
       try {
         const res = await fetch('/api/identity', {
           method: 'POST',
@@ -8368,10 +8428,13 @@
           body: JSON.stringify({ action: 'request_password_reset', email }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not start password reset');
+        if (!res.ok || data.ok === false) { const err = new Error(data.error || 'reset failed'); err.status = res.status; throw err; }
         showToast('If that email has an account, a reset link has been sent.');
       } catch(e) {
-        showToast(e.message || 'Could not start password reset');
+        console.warn('[reset] request failed', e);
+        showToast(friendlyAuthError(e, 'reset'));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Forgot password?'; }
       }
     }
 
@@ -8477,20 +8540,36 @@
       const _betaAuthed = _betaSimpleUI && !!(user && user.id && ['coach','admin','medical','player'].includes(user.role));
 
       document.getElementById("authPanel").innerHTML = authTab === 'login' ? `
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <strong style="font-size:13px">Log in</strong>
-          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" aria-label="Close" style="padding:4px 8px;font-size:11px">✕</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <strong style="font-size:15px">Log in</strong>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed')" aria-label="Close" style="padding:4px 8px;font-size:12px">✕</button>
         </div>
-        <div style="display:grid;gap:7px">
-          <input id="identityLoginEmail" type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Email" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
-          <input id="identityLoginPassword" type="password" name="password" autocomplete="current-password" placeholder="Password" style="font-size:12px;padding:7px 9px" onkeydown="if(event.key==='Enter')loginIdentityAccount()">
-          <p class="muted" style="font-size:10px;margin:0">Use the exact email your account was created with — one wrong letter shows "invalid password".</p>
-          <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:12px">Log in</button>
-          <button class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:11px;padding:5px 8px">Forgot password?</button>
-          <button class="auth-tab" type="button" onclick="setAuthTab('closed');startClubWizard()" style="font-size:11px;padding:5px 8px;color:var(--accent);border-color:rgba(var(--accent-rgb), 0.35)">New here? Create a coach account</button>
-          <button class="auth-tab" type="button" onclick="clearDeviceState()" style="font-size:11px;padding:5px 8px;color:#f87171;border-color:rgba(248,113,113,0.3)">Trouble signing in? Log out &amp; clear this device</button>
+        <div style="display:grid;gap:10px">
+          <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Email
+            <input id="identityLoginEmail" type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="you@club.com" style="font-size:14px;padding:9px 11px;font-weight:400" onkeydown="if(event.key==='Enter')loginIdentityAccount()"></label>
+          <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Password
+            <input id="identityLoginPassword" type="password" name="password" autocomplete="current-password" placeholder="Your password" style="font-size:14px;padding:9px 11px;font-weight:400" onkeydown="if(event.key==='Enter')loginIdentityAccount()"></label>
+          <button id="identityLoginBtn" class="btn primary" type="button" onclick="loginIdentityAccount()" style="width:100%;font-size:14px;min-height:42px">Log in</button>
+          <button id="identityResetBtn" class="auth-tab" type="button" onclick="requestPasswordReset()" style="font-size:12px;padding:6px 8px">Forgot password?</button>
+          <button class="auth-tab" type="button" onclick="setAuthTab('closed');startClubWizard()" style="font-size:12px;padding:6px 8px;color:var(--accent);border-color:rgba(var(--accent-rgb), 0.35)">New here? Create a coach account</button>
+          <p class="muted" style="font-size:12px;margin:2px 0 0">Players can sign in once their coach approves the account.</p>
           ${window._devLoginEnabled ? `<button class="auth-tab" type="button" onclick="devLogin('coach-demo')" style="font-size:11px;padding:5px 8px;background:rgba(255,160,0,0.1);border-color:rgba(255,160,0,0.4);color:#ffa040">Quick login: Simon Coach</button>` : ''}
-          <p class="muted" style="font-size:11px;margin:0">Approved players can log in after coach approval.</p>
+          <details style="margin-top:6px">
+            <summary style="font-size:12px;color:var(--muted);cursor:pointer">Trouble signing in?</summary>
+            <div style="margin-top:8px">
+              <button class="auth-tab" type="button" onclick="clearDeviceState()" style="font-size:11px;padding:5px 8px;color:#f87171;border-color:rgba(248,113,113,0.3)">Log out &amp; clear this device</button>
+              <p class="muted" style="font-size:11px;margin:6px 0 0">Removes Coach's Eye data from this device only. Your account and team data are safe.</p>
+            </div>
+          </details>
+        </div>
+      ` : authTab === 'joined' ? `
+        <div style="text-align:center;padding:8px 6px 4px">
+          <div style="width:46px;height:46px;border-radius:50%;background:var(--status-available-soft);display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--status-available)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <strong style="display:block;font-size:16px;margin-bottom:6px">You're on the list</strong>
+          <p class="muted" style="font-size:12.5px;line-height:1.5;margin:0 0 16px">Your request has been sent to your coach. You'll be able to sign in once they approve your account.</p>
+          <button class="btn primary" type="button" onclick="setAuthTab('login')" style="width:100%;font-size:14px;min-height:42px">Back to sign in</button>
         </div>
       ` : authTab === 'join' ? `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -8513,7 +8592,7 @@
           <strong style="font-size:13px">Switch account</strong>
           <button class="auth-tab" type="button" onclick="setAuthTab('closed')" aria-label="Close" style="padding:4px 8px;font-size:11px">✕</button>
         </div>
-        <p class="muted" style="font-size:11px;margin:0 0 8px">Canonical accounts only. Duplicate local identities are hidden.</p>
+        <p class="muted" style="font-size:11px;margin:0 0 8px">Choose an account saved on this device.</p>
         ${switchAccounts.map(u =>
           `<button class="btn" type="button" onclick="switchToUser('${u.id}')"
             style="width:100%;text-align:left;margin-bottom:6px;display:flex;align-items:center;gap:8px;padding:8px 10px">
@@ -8581,7 +8660,6 @@
             <button class="auth-tab" type="button" onclick="setAuthTab('join')" style="padding:3px 7px;font-size:11px;white-space:nowrap">Join</button>` : `
             <button class="auth-tab" type="button" onclick="setAuthTab('login')" style="padding:3px 7px;font-size:11px;white-space:nowrap">Login</button>
             <button class="auth-tab" type="button" onclick="setAuthTab('join')" style="padding:3px 7px;font-size:11px;white-space:nowrap">Join</button>
-            <button class="auth-tab" type="button" onclick="setAuthTab('switch')" style="padding:3px 7px;font-size:11px;white-space:nowrap">Switch</button>
             ${window._devLoginEnabled ? '<button class="auth-tab" type="button" onclick="setAuthTab(\'dev\')" style="padding:3px 7px;font-size:11px;white-space:nowrap;background:rgba(255,160,0,0.2);border-color:rgba(255,160,0,0.5);color:#ffa040">DEV</button>' : ''}`}
           </div>
         </div>
@@ -8685,6 +8763,8 @@
     }
 
     async function devRunAvailabilitySelfTest() {
+      // Dev/QA only — never surfaces its PASS/FAIL toasts to a normal production user.
+      if (!window._devLoginEnabled) return;
       const results = [];
       const check = (label, cond, detail) => {
         results.push({ label, pass: !!cond, detail: detail || '' });
@@ -26323,20 +26403,25 @@
       if (!token) return false;
       try {
         const res  = await fetch(`/api/invite?token=${encodeURIComponent(token)}`);
-        const data = await res.json();
-        if (data.valid) {
+        const data = await res.json().catch(() => ({}));
+        // A single-use invite that's already been claimed still returns valid:true with
+        // status 'accepted' — treat that as "already used", not claimable.
+        const alreadyUsed = data.valid && data.status === 'accepted' && !data.group;
+        if (data.valid && !alreadyUsed) {
           _inviteToken = token;
           _inviteData  = data;
           showInviteModal(data);
           return true;
-        } else {
-          window.history.replaceState({}, '', '/');
-          showToast('⚠️ This invite link has expired or is no longer valid.');
         }
+        // Distinct human-readable states from the API status/body (expired · cancelled
+        // · already used · not found). Not-claimable → clear the token and guide them.
+        window.history.replaceState({}, '', '/');
+        showToast(inviteLinkMessage(res.status, data));
+        if (alreadyUsed || res.status === 409) setAuthTab('login');
       } catch(e) {
         window.history.replaceState({}, '', '/');
-        showToast('Could not check your invite link — check your connection and try again.');
         console.warn('[invite] Could not validate token:', e);
+        showToast(friendlyAuthError(e, 'invite'));
       }
       return false;
     }
@@ -26714,7 +26799,7 @@
           body: JSON.stringify({ action: 'claim_invite', token: _inviteToken, name, email, password, mobile, position }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not claim invite');
+        if (!res.ok || data.ok === false) { const err = new Error(data.error || 'claim failed'); err.status = res.status; throw err; }
 
         // Apply the SERVER identity. Staff go into state.users with their role and are
         // NEVER injected into state.players; players use applyApprovedIdentityLocally
@@ -26761,7 +26846,8 @@
         refreshPushSubscriptionMetadata(name).catch(() => {});
         showToast(`Welcome ${name.split(' ')[0]}! Your account is ready.`);
       } catch(e) {
-        showToast(e.message || 'Could not claim invite');
+        console.warn('[invite] claim failed', e);
+        showToast(friendlyAuthError(e, 'invite'));
         if (btn) { btn.disabled = false; btn.textContent = 'Create account & join →'; }
         return;
       }
