@@ -51,6 +51,10 @@
       /* Primary as an r,g,b triplet for rgba(var(--accent-rgb), α) tints.
          Defaults to the Coach's Eye green; applyClubBranding sets the club primary. */
       --accent-rgb:  16, 185, 129;
+      /* Readable text drawn ON the solid club primary (crest monogram etc.).
+         Dark by default (good on the CE green); clubBrandVars flips it to white for
+         dark club colours so identity marks never lose contrast. */
+      --accent-ink:  #06110d;
       /* Outgoing chat bubble — defaults to the current dark teal; club colours
          override it with a darkened, readable club tint. */
       --bubble-mine: #005c4b;
@@ -132,17 +136,17 @@
     .brand { display: flex; gap: 11px; align-items: center; padding: 0 4px; }
     .brand-mark {
       display: grid;
-      width: 40px;
-      height: 40px;
+      width: 44px;
+      height: 44px;
       place-items: center;
       background: var(--accent);
-      border-radius: 10px;
+      border-radius: 11px;
       font-weight: 900;
-      font-size: 13px;
-      color: #060b12;
+      font-size: 14px;
+      color: var(--accent-ink, #060b12);
       flex-shrink: 0;
       letter-spacing: -0.5px;
-      box-shadow: var(--glow-green);
+      box-shadow: var(--glow-green), 0 0 0 3px rgba(var(--accent-rgb), 0.14);
     }
     .brand strong { display: block; font-size: 16px; font-weight: 800; color: #fff; }
     .brand p { margin: 2px 0 0; color: #4a7a5e; font-size: 12px; }
@@ -4205,16 +4209,32 @@
     input::placeholder, textarea::placeholder { color: var(--faint) !important; }
     select option { background: #ffffff; color: var(--ink); }
 
-    /* Sidebar — light */
+    /* Sidebar — light, but club-owned: a soft wash of the club primary over white so
+       the persistent left rail reads as THE club on every screen. Low alpha over white
+       keeps nav text fully legible whatever the club colour. */
     .sidebar {
-      background: linear-gradient(180deg, #ffffff 0%, #edf2fb 100%) !important;
-      border-right: 1px solid rgba(20,30,55,0.09) !important;
+      background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.05) 0%, rgba(var(--accent-rgb), 0.13) 100%), #ffffff !important;
+      border-right: 1px solid var(--accent-line) !important;
       color: var(--ink) !important;
+    }
+    /* RC4.6A — the identity block (crest + club name) becomes a small club header card. */
+    .brand {
+      background: rgba(var(--accent-rgb), 0.09) !important;
+      border: 1px solid var(--accent-line) !important;
+      border-radius: 13px !important;
+      padding: 11px 12px !important;
     }
     .brand strong { color: var(--ink) !important; }
     .brand p, .sidebar-card p { color: var(--muted) !important; }
+    /* The club name is the identity — make it read clearly, not as a faint subtitle. */
+    #sidebarClubName { color: var(--ink) !important; font-weight: 700 !important; font-size: 12.5px !important; margin-top: 3px !important; }
     .sidebar-card { background: #f2f6fc !important; border: 1px solid rgba(20,30,55,0.08) !important; color: var(--ink) !important; }
     .sidebar-card strong { color: var(--ink) !important; }
+    /* Top of every content page (Overview, Availability, Training, Members, Medical,
+       Settings) gains a restrained club band — the club owns the page header. */
+    .topbar { background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.06), transparent) !important; border-bottom: 1px solid var(--accent-line) !important; }
+    /* One primary card carries the club — the Overview "Set up your club" hero card. */
+    .ob-card { border-top: 2px solid var(--accent) !important; }
     nav button { color: var(--muted) !important; }
     nav button:not(.active):hover { background: rgba(20,30,55,0.05) !important; color: var(--ink) !important; }
     nav button.active { background: var(--brand-soft) !important; color: var(--brand) !important; border-left-color: var(--brand) !important; }
@@ -15530,7 +15550,16 @@
       const primary = isHex(colours?.primary) ? colours.primary : '';
       if (!primary) return {};
       const secondary = isHex(colours?.secondary) ? colours.secondary : primary;
+      // Perceived brightness of the primary → pick readable text for anything drawn
+      // ON the solid club colour (crest monogram, etc.). Dark clubs get white; light
+      // clubs get near-black. This is what keeps very dark club colours legible.
+      const _perceived = (hex) => {
+        const m = String(hex).replace('#', '');
+        const r = parseInt(m.slice(0, 2), 16) || 0, g = parseInt(m.slice(2, 4), 16) || 0, b = parseInt(m.slice(4, 6), 16) || 0;
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      };
       return {
+        '--accent-ink':  _perceived(primary) < 0.5 ? '#ffffff' : '#0b141a',
         '--brand':       primary,
         '--brand-2':     secondary,
         '--brand-soft':  _hexToRgba(primary, 0.13),
@@ -15563,7 +15592,7 @@
       const root = document.documentElement;
       const vars = clubBrandVars(state.clubColours);
       ['--brand', '--brand-2', '--brand-soft', '--brand-line', '--glow-brand', '--brand-grad',
-       '--accent', '--accent-2', '--accent-soft', '--accent-line', '--accent-rgb',
+       '--accent', '--accent-2', '--accent-soft', '--accent-line', '--accent-rgb', '--accent-ink',
        '--page-glow', '--page-wash', '--bubble-mine'].forEach(v => {
         if (vars[v]) root.style.setProperty(v, vars[v]); else root.style.removeProperty(v);
       });

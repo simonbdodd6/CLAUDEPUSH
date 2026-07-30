@@ -71,7 +71,13 @@ test('club colours map to the brand + accent CSS variables', () => {
   assert.match(vars['--bubble-mine'], /^rgb\(\d+, \d+, \d+\)$/, 'darkened primary, readable with light text');
   // Brand + accent + page vars only — status colours (--green/--red/--amber) are untouched.
   assert.deepEqual(Object.keys(vars).sort(),
-    ['--accent', '--accent-2', '--accent-line', '--accent-rgb', '--accent-soft', '--brand', '--brand-2', '--brand-grad', '--brand-line', '--brand-soft', '--bubble-mine', '--glow-brand', '--page-glow', '--page-wash']);
+    ['--accent', '--accent-2', '--accent-ink', '--accent-line', '--accent-rgb', '--accent-soft', '--brand', '--brand-2', '--brand-grad', '--brand-line', '--brand-soft', '--bubble-mine', '--glow-brand', '--page-glow', '--page-wash']);
+});
+
+test('--accent-ink stays readable on the club primary (white on dark, near-black on light)', () => {
+  assert.equal(clubBrandVars({ primary: '#0b1f3a' })['--accent-ink'], '#ffffff', 'dark navy → white text');
+  assert.equal(clubBrandVars({ primary: '#7a1020' })['--accent-ink'], '#ffffff', 'dark maroon → white text');
+  assert.equal(clubBrandVars({ primary: '#ffd60a' })['--accent-ink'], '#0b141a', 'bright yellow → near-black text');
 });
 
 test('secondary falls back to primary when absent', () => {
