@@ -180,8 +180,8 @@ export async function runWeeklyAvailabilityCheck({
       if (Object.keys(waPrefs).length) {
         targets = targets.filter(item => waPrefs[item.userId]?.pushEnabled !== false);
       }
-      const title = `${club?.clubName || "Coach's Eye"} — Availability`;
-      const body = 'Hi {{first_name}}! Please set your availability for this week in Coach\'s Eye.';
+      const title = `${club?.clubName || "CoachEasier"} — Availability`;
+      const body = 'Hi {{first_name}}! Please set your availability for this week in CoachEasier.';
       const delivery = await Promise.allSettled(targets.map(({ subscription, label: lbl }) =>
         webpush.sendNotification(subscription, JSON.stringify({
           title, body: resolveVariables(body, { label: lbl, coachName: 'Coach' }),
@@ -286,7 +286,7 @@ export default async function handler(req, res) {
     const targets = memberSubscribers.filter(item => !responded.has(item.label))
       .filter(item => notificationAllowed(reminderPrefs, item.userId, { type: 'availability', sessionId: 'game' }));
     const title = 'Availability reminder';
-    const body = "Hi {{first_name}}! Please set your availability for this week's sessions and match in Coach's Eye. - {{coach_name}}";
+    const body = "Hi {{first_name}}! Please set your availability for this week's sessions and match in CoachEasier. - {{coach_name}}";
     const outcomes = await Promise.allSettled(targets.map(({ subscription, label }) =>
       webpush.sendNotification(subscription, JSON.stringify({
         title, body: resolveVariables(body, { label }), from: 'Coach',

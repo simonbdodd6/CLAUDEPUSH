@@ -144,7 +144,7 @@ export default async function handler(req, res) {
   const sendResults = await Promise.allSettled(subscriptions.map(({ subscription, label }) => {
     const context = { label, coachName: from || 'Coach' };
     const payload = JSON.stringify({
-      title: resolveVariables(title || "Coach's Eye", context),
+      title: resolveVariables(title || "CoachEasier", context),
       body: resolveVariables(body, context),
       from: from || 'Coach',
       tag: tag || `msg-${Date.now()}`,
@@ -172,7 +172,7 @@ export default async function handler(req, res) {
 
   await kvLpush(key('message_log'), {
     type: 'adhoc',
-    title: String(title || "Coach's Eye").slice(0, 120),
+    title: String(title || "CoachEasier").slice(0, 120),
     body: String(body).slice(0, 200),
     sentAt: new Date().toISOString(),
     audience,

@@ -1,7 +1,7 @@
 // Exact origins allowed for cross-origin requests.
 // APP_ORIGIN must be set in production env vars. VERCEL_URL covers preview deployments.
 const ALLOWED_ORIGINS = new Set([
-  process.env.APP_ORIGIN || 'https://boitsfort-coachseye.vercel.app',
+  process.env.APP_ORIGIN || 'https://www.coacheasier.com',
   'http://localhost:3000',
   ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
 ]);

@@ -47,11 +47,11 @@ self.addEventListener('push', event => {
     let payload;
     try { payload = event.data.json(); }
     catch (e) {
-      payload = { title: 'coacheseyeGPT', body: event.data.text() };
+      payload = { title: 'CoachEasier', body: event.data.text() };
       await logToCache({ stage: 'parse_error', error: e.message, raw: event.data.text().slice(0, 100) });
     }
 
-    const title = String(payload.title || 'coacheseyeGPT').trim() || 'coacheseyeGPT';
+    const title = String(payload.title || 'CoachEasier').trim() || 'CoachEasier';
     // iOS suppresses notifications with an empty body — use a non-breaking space as minimum.
     const body  = String(payload.body  || '').trim() || ' ';
 

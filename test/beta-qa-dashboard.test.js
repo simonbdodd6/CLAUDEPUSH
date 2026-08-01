@@ -520,7 +520,7 @@ test('qaBuildSections: populated state produces non-trivial statuses', () => {
 test('qaBetaSummaryText: empty sections produces valid text', () => {
   const { qaBetaSummaryText } = buildScope();
   const text = qaBetaSummaryText([], 'Test Club', '2026-07-01');
-  assert.ok(text.includes("Coach's Eye"));
+  assert.ok(text.includes("CoachEasier"));
   assert.ok(text.includes('Test Club'));
   assert.ok(text.includes('2026-07-01'));
   assert.ok(text.includes('0/0 sections ready'));

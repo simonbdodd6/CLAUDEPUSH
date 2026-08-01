@@ -1,4 +1,4 @@
-const DEFAULT_FROM = 'Coach\'s Eye <noreply@coachseye.app>';
+const DEFAULT_FROM = 'CoachEasier <noreply@coacheasier.com>';
 
 export function appBaseUrl(req = {}) {
   const host = req.headers?.['x-forwarded-host'] || req.headers?.host;
@@ -6,7 +6,7 @@ export function appBaseUrl(req = {}) {
     const proto = req.headers?.['x-forwarded-proto'] || 'https';
     return `${proto}://${host}`;
   }
-  return process.env.APP_URL || 'https://boitsfort-coachseye-gpt.vercel.app';
+  return process.env.APP_URL || 'https://www.coacheasier.com';
 }
 
 export async function sendTransactionalEmail({ to, subject, html, text } = {}) {
@@ -50,13 +50,13 @@ export async function sendTransactionalEmail({ to, subject, html, text } = {}) {
 export function inviteEmail({ name, teamName = 'Boitsfort RFC', url } = {}) {
   const safeName = String(name || 'Player');
   return {
-    subject: `You're invited to join ${teamName} on Coach's Eye`,
-    text: `Hi ${safeName},\n\nYou've been invited to join ${teamName} on Coach's Eye.\n\nClaim your account here:\n${url}\n\nThis link expires soon and can only be used once.`,
+    subject: `You're invited to join ${teamName} on CoachEasier`,
+    text: `Hi ${safeName},\n\nYou've been invited to join ${teamName} on CoachEasier.\n\nClaim your account here:\n${url}\n\nThis link expires soon and can only be used once.`,
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a">
         <h2>You're invited to join ${teamName}</h2>
         <p>Hi ${safeName},</p>
-        <p>Your coach has invited you to create your Coach's Eye account.</p>
+        <p>Your coach has invited you to create your CoachEasier account.</p>
         <p><a href="${url}" style="display:inline-block;background:#10b981;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700">Claim account</a></p>
         <p style="color:#64748b;font-size:13px">This link expires soon and can only be used once.</p>
       </div>`,
@@ -66,13 +66,13 @@ export function inviteEmail({ name, teamName = 'Boitsfort RFC', url } = {}) {
 export function emailVerificationEmail({ name, url } = {}) {
   const safeName = String(name || 'there');
   return {
-    subject: "Verify your Coach's Eye email address",
-    text: `Hi ${safeName},\n\nVerify your email to complete your Coach's Eye account setup:\n${url}\n\nThis link expires in 24 hours. If you did not create an account, you can ignore this email.`,
+    subject: "Verify your CoachEasier email address",
+    text: `Hi ${safeName},\n\nVerify your email to complete your CoachEasier account setup:\n${url}\n\nThis link expires in 24 hours. If you did not create an account, you can ignore this email.`,
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a">
         <h2>Verify your email address</h2>
         <p>Hi ${safeName},</p>
-        <p>Click below to verify your email and complete your Coach's Eye account setup.</p>
+        <p>Click below to verify your email and complete your CoachEasier account setup.</p>
         <p><a href="${url}" style="display:inline-block;background:#10b981;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700">Verify email</a></p>
         <p style="color:#64748b;font-size:13px">This link expires in 24 hours. If you did not create an account, you can ignore this email.</p>
       </div>`,
@@ -82,11 +82,11 @@ export function emailVerificationEmail({ name, url } = {}) {
 export function passwordResetEmail({ name, url } = {}) {
   const safeName = String(name || 'there');
   return {
-    subject: 'Reset your Coach\'s Eye password',
-    text: `Hi ${safeName},\n\nReset your Coach's Eye password here:\n${url}\n\nThis link expires soon. If you did not request this, ignore this email.`,
+    subject: 'Reset your CoachEasier password',
+    text: `Hi ${safeName},\n\nReset your CoachEasier password here:\n${url}\n\nThis link expires soon. If you did not request this, ignore this email.`,
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a">
-        <h2>Reset your Coach's Eye password</h2>
+        <h2>Reset your CoachEasier password</h2>
         <p>Hi ${safeName},</p>
         <p>Use the secure link below to set a new password.</p>
         <p><a href="${url}" style="display:inline-block;background:#10b981;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700">Reset password</a></p>

@@ -1,6 +1,6 @@
 {
-  "name": "Coach's Eye",
-  "short_name": "Coach's Eye",
+  "name": "CoachEasier",
+  "short_name": "CoachEasier",
   "description": "Rugby team management, squad planning and player communication for coaches",
   "start_url": "/",
   "display": "standalone",

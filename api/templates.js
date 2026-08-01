@@ -13,13 +13,13 @@ const LEGACY_TEMPLATES_KEY = legacyKey('templates');
 const DEFAULT_TEMPLATES = [
   {
     id: 'tpl-availability', name: 'Weekly Availability', category: 'availability',
-    title: "Coach's Eye - Availability Check",
+    title: "CoachEasier - Availability Check",
     body: 'Hi {{first_name}}! Please confirm your availability for {{session_day}} and {{match_day}}. Tap a response below. Thanks - {{coach_name}}',
   },
   {
     id: 'tpl-training-reminder', name: 'Training Reminder', category: 'training',
     title: 'Training Reminder - {{session_day}}',
-    body: 'Hi {{first_name}}! Training is at {{session_time}}. Open Coach\'s Eye for the plan. - {{coach_name}}',
+    body: 'Hi {{first_name}}! Training is at {{session_time}}. Open CoachEasier for the plan. - {{coach_name}}',
   },
 ];
 

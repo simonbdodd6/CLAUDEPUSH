@@ -26,7 +26,7 @@ import { assertSameTenant, requireTenantPermission, can, PERM } from './_tenant.
 import { randomBytes } from 'node:crypto';
 
 const INVITES_KEY = 'ce:invites';
-const APP_URL     = process.env.APP_URL || 'https://boitsfort-coachseye-gpt.vercel.app';
+const APP_URL     = process.env.APP_URL || 'https://www.coacheasier.com';
 const INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 
 

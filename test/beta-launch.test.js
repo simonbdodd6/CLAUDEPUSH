@@ -93,7 +93,7 @@ test('betaVersionLabel: output is deterministic for same input', () => {
 test('betaPhaseSummaryText: includes app title', () => {
   const { betaPhaseSummaryText } = buildScope();
   const text = betaPhaseSummaryText([], '1.0.0', '2026-07-01');
-  assert.ok(text.includes("Coach's Eye"));
+  assert.ok(text.includes("CoachEasier"));
 });
 
 test('betaPhaseSummaryText: includes version label', () => {
@@ -154,7 +154,7 @@ test('betaPhaseSummaryText: null phases treated as empty', () => {
 test('betaDiagnosticsText: includes app title', () => {
   const { betaDiagnosticsText } = buildScope();
   const text = betaDiagnosticsText({});
-  assert.ok(text.includes("Coach's Eye"));
+  assert.ok(text.includes("CoachEasier"));
 });
 
 test('betaDiagnosticsText: includes all required fields', () => {
@@ -337,5 +337,5 @@ test('integration: betaDiagnosticsText with populated opts produces structured o
   });
   const lines = text.split('\n');
   assert.ok(lines.length >= 10, 'diagnostics block must have at least 10 lines');
-  assert.ok(lines[0].includes("Coach's Eye"), 'first line must be the app title');
+  assert.ok(lines[0].includes("CoachEasier"), 'first line must be the app title');
 });
