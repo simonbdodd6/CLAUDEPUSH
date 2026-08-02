@@ -1,4 +1,8 @@
 const DEFAULT_FROM = 'CoachEasier <noreply@coacheasier.com>';
+// Replies to a transactional (noreply) send should reach a monitored human inbox.
+// Env-configurable via EMAIL_REPLY_TO; falls back to the verified support address so
+// a coach who hits "reply" is never silently dropped even before the env var is set.
+const DEFAULT_REPLY_TO = 'support@coacheasier.com';
 
 export function appBaseUrl(req = {}) {
   const host = req.headers?.['x-forwarded-host'] || req.headers?.host;
@@ -29,6 +33,8 @@ export async function sendTransactionalEmail({ to, subject, html, text } = {}) {
     },
     body: JSON.stringify({
       from: process.env.EMAIL_FROM || DEFAULT_FROM,
+      // Resend's REST field is snake_case `reply_to`. Points replies at the human inbox.
+      reply_to: process.env.EMAIL_REPLY_TO || DEFAULT_REPLY_TO,
       to: recipient,
       subject,
       html,

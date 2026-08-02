@@ -42,6 +42,11 @@ export default async function handler(req, res) {
     // instead of a silent failure. Key *values* are never exposed.
     pushConfigError: vapidStatus.ok ? (storageConfigured ? null : 'Message storage not configured') : vapidStatus.error,
     storageConfigured,
+    // Non-secret email-readiness signal for the diagnostics surface. Reports ONLY
+    // whether transactional delivery is configured for this deployment — the presence
+    // of RESEND_API_KEY, never its value. Per-send outcomes (attempted / failed) stay
+    // in the sendTransactionalEmail return contract and server logs, not here.
+    emailConfigured: Boolean((process.env.RESEND_API_KEY || '').trim()),
     devLogin: process.env.DEV_LOGIN === 'true',
     // Dev-only convenience for the local credentials panel. Values come from
     // env and are NEVER included unless DEV_LOGIN is explicitly enabled, so
