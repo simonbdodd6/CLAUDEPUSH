@@ -4540,6 +4540,183 @@
     .avail-summary .msg-kpi.unavailable strong { color:#dc2626; }
     .avail-summary .msg-kpi.chase strong       { color:var(--muted); }
     .msg-board-list { max-height:560px; overflow-y:auto; padding:8px; display:grid; gap:6px; }
+
+    /* ═══ COACHEASIER PERFORMANCE (SC1) — premium S&C module ═════════════════
+       Module chrome uses the product brand (--brand*); club identity (--accent*)
+       is reserved for club-owned surfaces, per the brand system rules. */
+    .perf-hero { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+    .perf-hero h1 { margin:6px 0 8px; }
+    .perf-hero p { margin:0; color:var(--muted); font-size:13.5px; }
+    .perf-pro-pill {
+      flex-shrink:0; display:inline-flex; align-items:center; min-height:24px; padding:0 11px;
+      border-radius:999px; font-size:11px; font-weight:800; letter-spacing:.08em;
+      color:var(--brand-2); background:var(--brand-soft); border:1px solid var(--brand-line);
+    }
+
+    /* Tab bar — pill rail, scrolls horizontally on small screens */
+    .perf-tabs {
+      display:flex; gap:4px; padding:4px; margin-bottom:18px; border-radius:13px;
+      background:var(--panel); border:1px solid var(--line);
+      overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;
+    }
+    .perf-tabs::-webkit-scrollbar { display:none; }
+    .perf-tab {
+      font-family:inherit; flex-shrink:0; border:0; background:transparent; color:var(--muted);
+      font-size:13px; font-weight:700; padding:8px 14px; border-radius:10px; cursor:pointer;
+      min-height:38px; transition:background .14s ease, color .14s ease;
+    }
+    .perf-tab:hover { color:var(--ink); background:var(--panel-2); }
+    .perf-tab.active { color:var(--brand-ink, #fff); background:var(--brand-grad, var(--brand)); box-shadow:var(--shadow-sm); }
+
+    /* Page headers inside the module */
+    .perf-page-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; margin:2px 0 16px; }
+    .perf-page-head h2 { margin:0 0 4px; font-size:22px; font-weight:800; letter-spacing:-0.02em; color:var(--ink); }
+    .perf-page-head p { margin:0; font-size:13px; }
+
+    /* Cards & grids */
+    .perf-grid-2 { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; }
+    .perf-grid-3 { grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:16px; }
+    .perf-card { display:flex; flex-direction:column; }
+    .perf-card-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+    .perf-card-head small { font-size:11px; text-transform:uppercase; letter-spacing:.06em; font-weight:700; color:var(--muted); }
+    .perf-card-title { font-size:16.5px; font-weight:750; color:var(--ink); letter-spacing:-0.01em; line-height:1.3; }
+    .perf-big { font-size:30px; font-weight:800; color:var(--ink); letter-spacing:-0.02em; line-height:1.05; }
+    .perf-stack { display:grid; gap:12px; }
+    .perf-locked-tile strong { font-size:14.5px; color:var(--ink); }
+
+    /* Progress meter */
+    .perf-meter { height:8px; border-radius:999px; background:var(--panel-2); border:1px solid var(--line); overflow:hidden; }
+    .perf-meter i { display:block; height:100%; border-radius:999px; background:var(--brand-grad, var(--brand)); transition:width .3s ease; }
+    .perf-meter.slim { height:6px; }
+
+    /* Dashboard internals */
+    .perf-prog-row { display:grid; gap:6px; }
+    .perf-prog-meta { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+    .perf-prog-meta strong { font-size:13.5px; color:var(--ink); }
+    .perf-prog-meta small { font-size:11.5px; }
+    .perf-stat-row { display:flex; gap:22px; margin:2px 0 14px; }
+    .perf-stat-row small { display:block; margin-top:3px; font-size:11px; }
+    .perf-flag-row { display:flex; align-items:center; gap:9px; padding:8px 0; border-top:1px solid var(--line); }
+    .perf-flag-name { font-size:13px; font-weight:700; color:var(--ink); }
+    .perf-mini-metric { display:flex; align-items:center; gap:12px; }
+    .perf-mini-meta { flex:1 1 auto; min-width:0; display:grid; gap:1px; }
+    .perf-mini-meta strong { font-size:12.5px; color:var(--ink); }
+    .perf-mini-headline { font-size:12px; color:var(--muted); font-weight:600; }
+    .perf-spark { flex-shrink:0; opacity:.9; }
+    .perf-activity-row { display:flex; align-items:flex-start; gap:10px; }
+    .perf-activity-dot { flex-shrink:0; width:8px; height:8px; border-radius:50%; margin-top:5px; background:var(--muted); }
+    .perf-activity-dot.workout   { background:var(--status-available); }
+    .perf-activity-dot.pb        { background:var(--brand-2); }
+    .perf-activity-dot.readiness { background:var(--status-info, var(--brand)); }
+    .perf-activity-dot.programme { background:var(--status-maybe); }
+    .perf-activity-dot.note      { background:var(--status-unavailable); }
+    .perf-activity-body { flex:1 1 auto; min-width:0; display:grid; gap:1px; }
+    .perf-activity-body strong { font-size:13px; color:var(--ink); }
+    .perf-activity-body small { font-size:12px; line-height:1.35; }
+    .perf-activity-when { flex-shrink:0; font-size:11px; white-space:nowrap; margin-top:2px; }
+
+    /* Athletes */
+    .perf-athlete-row { grid-template-columns:minmax(0,1fr) auto; }
+    .perf-athlete-main { display:flex; align-items:center; gap:12px; min-width:0; }
+    .perf-jersey {
+      flex-shrink:0; width:34px; height:34px; display:inline-flex; align-items:center; justify-content:center;
+      border-radius:10px; font-size:13px; font-weight:800; color:var(--brand-2);
+      background:var(--brand-soft); border:1px solid var(--brand-line);
+    }
+    .perf-athlete-id { min-width:0; }
+    .perf-athlete-id strong { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .perf-athlete-id small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
+    .perf-athlete-metrics { display:flex; align-items:center; gap:14px; }
+    .perf-adherence { display:grid; gap:3px; justify-items:end; width:76px; }
+    .perf-adherence .perf-meter { width:76px; }
+
+    /* Workouts */
+    .perf-block-list { display:grid; gap:10px; margin-top:16px; }
+    .perf-block {
+      display:flex; align-items:center; gap:13px; padding:13px 14px;
+      border:1px solid var(--line); border-radius:12px; background:var(--panel-2);
+    }
+    .perf-block-num {
+      flex-shrink:0; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center;
+      border-radius:50%; font-size:12.5px; font-weight:800; color:var(--brand-2);
+      background:var(--brand-soft); border:1px solid var(--brand-line);
+    }
+    .perf-block-body { flex:1 1 auto; min-width:0; display:grid; gap:1px; }
+    .perf-block-body strong { font-size:13.5px; color:var(--ink); }
+    .perf-block-body small { font-size:12px; line-height:1.35; }
+
+    /* Exercise Library */
+    .perf-search {
+      width:100%; min-height:44px; padding:0 14px; margin-bottom:12px;
+      border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--ink);
+      font-family:inherit; font-size:14px;
+    }
+    .perf-search:focus { outline:none; border-color:var(--brand-line); box-shadow:var(--ring, 0 0 0 3px rgba(110,116,240,.18)); }
+    .perf-chip-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+    .perf-tool-chip {
+      font-family:inherit; display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+      border:1px solid var(--line); border-radius:999px; background:var(--panel); color:var(--muted);
+      font-size:12.5px; font-weight:700; padding:7px 13px; min-height:34px;
+      transition:color .14s ease, border-color .14s ease, background .14s ease;
+    }
+    .perf-tool-chip:hover { color:var(--ink); border-color:var(--line-2); background:var(--panel-2); }
+    .perf-tool-chip.active { color:var(--brand-2); border-color:var(--brand-line); background:var(--brand-soft); }
+    .perf-ex-row small { display:block; }
+    .perf-star {
+      font-family:inherit; flex-shrink:0; width:36px; height:36px; cursor:pointer; font-size:17px; line-height:1;
+      border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--faint, var(--muted));
+      transition:color .14s ease, border-color .14s ease;
+    }
+    .perf-star:hover { border-color:var(--line-2); }
+    .perf-star.on { color:#C79A47; border-color:rgba(199,154,71,.4); background:rgba(199,154,71,.10); }
+
+    /* Analytics */
+    .perf-metric-card .perf-spark { margin-top:auto; width:100%; }
+
+    /* Coach Tools */
+    .perf-tool-tile { font-family:inherit; align-items:flex-start; text-align:left; cursor:pointer; gap:2px; }
+    .perf-tool-tile:hover { border-color:var(--brand-line); }
+    .perf-tool-tile strong { font-size:15px; color:var(--ink); }
+    .perf-tool-tile small { font-size:12.5px; line-height:1.45; }
+    .perf-tool-icon {
+      display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px;
+      margin-bottom:10px; border-radius:11px; color:var(--brand-2);
+      background:var(--brand-soft); border:1px solid var(--brand-line);
+    }
+
+    /* Settings */
+    .perf-setting-row { min-height:56px; }
+    .perf-setting-row small { display:block; }
+    .perf-seg { display:inline-flex; gap:3px; padding:3px; border-radius:10px; background:var(--panel-2); border:1px solid var(--line); }
+    .perf-seg button {
+      font-family:inherit; border:0; background:transparent; color:var(--muted); cursor:pointer;
+      font-size:12.5px; font-weight:700; padding:6px 13px; border-radius:8px; min-height:32px;
+      transition:background .14s ease, color .14s ease;
+    }
+    .perf-seg button.active { color:var(--brand-ink, #fff); background:var(--brand-grad, var(--brand)); }
+    .perf-switch {
+      flex-shrink:0; width:46px; height:27px; padding:3px; cursor:pointer; border-radius:999px;
+      border:1px solid var(--line-2); background:var(--panel-2); transition:background .16s ease, border-color .16s ease;
+    }
+    .perf-switch i { display:block; width:19px; height:19px; border-radius:50%; background:var(--muted); transition:transform .16s ease, background .16s ease; }
+    .perf-switch.on { background:var(--brand); border-color:var(--brand); }
+    .perf-switch.on i { transform:translateX(19px); background:#fff; }
+
+    /* Responsive */
+    @media (max-width: 980px) {
+      .perf-grid-2 { grid-template-columns:1fr; }
+      .perf-hero { flex-direction:column; }
+    }
+    @media (max-width: 640px) {
+      .perf-page-head { flex-direction:column; align-items:stretch; }
+      .perf-athlete-row { grid-template-columns:1fr; }
+      .perf-athlete-metrics { justify-content:space-between; }
+      .perf-adherence { justify-items:start; }
+      .perf-stat-row { justify-content:space-between; gap:12px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .perf-meter i, .perf-switch, .perf-switch i, .perf-tab { transition:none; }
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -4612,6 +4789,7 @@
       <section id="coach-qa"          class="section"></section>
       <section id="coach-beta"        class="section"></section>
       <section id="coach-search"      class="section"></section>
+      <section id="coach-performance" class="section"></section>
 
       <section id="player-home"         class="section"></section>
       <section id="player-availability" class="section"></section>
@@ -4651,6 +4829,7 @@
       ["message",   "Availability"],
       ["messages",  "Messages"],
       ["training",  "Training"],
+      ["performance", "Performance"],
       ["fixtures",  "Fixtures"],
       ["selection", "Selection"],
       ["matchday",  "Match Centre"],
@@ -4675,7 +4854,7 @@
     // Workflow order: Overview → Availability → Training → Match Centre →
     // Messages → Members → Medical → Settings. In beta mode the sidebar renders
     // in THIS order (not coachSections order); labels are looked up from coachSections.
-    const BETA_NAV_IDS = ["overview", "message", "training", "matchday", "messages", "players", "medical", "settings"];
+    const BETA_NAV_IDS = ["overview", "message", "training", "performance", "matchday", "messages", "players", "medical", "settings"];
 
     // ── Core Beta — commercial UX simplification (Phase 3) ────────────────────
     // Hides advanced/admin clutter from key coach pages (Availability, Training,
@@ -4683,6 +4862,21 @@
     // deleted: the markup stays in the DOM (hidden via the .beta-hidden class) so
     // every id, handler, API call and data path is intact. Flip to false to restore.
     const BETA_SIMPLE_UI = true;
+
+    // ── CoachEasier Performance — sub-screen registry (SC1) ───────────────────
+    // The Performance section is one nav entry with an internal tab bar, same
+    // pattern as Club (renderClubSection). Declared before loadState() because
+    // normalizeState validates the persisted tab against this list.
+    const PERF_TABS = [
+      { id: "dashboard",  label: "Dashboard" },
+      { id: "athletes",   label: "Athletes" },
+      { id: "programmes", label: "Programmes" },
+      { id: "workouts",   label: "Workouts" },
+      { id: "library",    label: "Exercise Library" },
+      { id: "analytics",  label: "Analytics" },
+      { id: "tools",      label: "Coach Tools" },
+      { id: "settings",   label: "Settings" },
+    ];
 
     const playerSections = [
       ["home",         "Home"],
@@ -5103,6 +5297,16 @@
       activeView: "coach",
       activeCoachSection: "overview",
       activePlayerSection: "home",
+      // CoachEasier Performance (premium S&C module) — active sub-screen +
+      // module preferences. UI shells only in SC1; engine logic comes later.
+      activePerformanceTab: "dashboard",
+      performanceSettings: {
+        units: "kg",            // kg | lb
+        weekStart: "Mon",       // Mon | Sun
+        readinessCheckins: true,
+        pbCelebrations: true,
+        showBodyweight: true,
+      },
       selectedPlayerId: "",
       selectedMessagePlayerId: "",
       selectedChatId: "coach",
@@ -5278,6 +5482,7 @@
       settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3m0 13v3m9.5-9.5h-3m-13 0h-3m15.6-6.1-2.1 2.1M7 17l-2.1 2.1m14.2 0L17 17M7 7 4.9 4.9"/>',
       calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/>',
       week:     '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/><path d="M8 15h2m2 0h2m2 0h0.5"/>',
+      dumbbell: '<path d="M9.5 7.5v9M14.5 7.5v9"/><path d="M6.5 9.5v5M17.5 9.5v5"/><path d="M9.5 12h5"/><path d="M4 10.75v2.5M20 10.75v2.5"/>',
     };
     function icon(name, size = 17) {
       const path = ICONS[name];
@@ -5287,7 +5492,7 @@
     const SECTION_ICONS = {
       overview: 'home', message: 'calcheck', messages: 'chat', training: 'clipboard',
       matchday: 'trophy', medical: 'medical', players: 'users', admin: 'shield',
-      club: 'shield', settings: 'settings',
+      club: 'shield', settings: 'settings', performance: 'dumbbell',
       availability: 'calcheck', week: 'week', fixtures: 'calendar', selection: 'users',
     };
 
@@ -5744,6 +5949,10 @@
       next.seasonEnd = input.seasonEnd ?? "";
       next.matchDayDefault = input.matchDayDefault ?? "";
       next.weeklyAvailability = normalizeWeeklyAvailability(input.weeklyAvailability);
+      // CoachEasier Performance — merge saved prefs over defaults so new keys
+      // added in later releases pick up their default without a migration.
+      next.performanceSettings = { ...structuredClone(defaultState.performanceSettings), ...(input.performanceSettings || {}) };
+      next.activePerformanceTab = PERF_TABS.some(t => t.id === input.activePerformanceTab) ? input.activePerformanceTab : "dashboard";
       next.clubLogo = input.clubLogo ?? "";
       next.clubColours = input.clubColours ?? null;
       next.autopilotReceipts = Array.isArray(input.autopilotReceipts) ? input.autopilotReceipts.slice(0, 20) : [];
@@ -8511,7 +8720,7 @@
       if (_nameEl) _nameEl.textContent = _clubName;
       if (_cardEl) _cardEl.textContent = _clubName + ' · CoachEasier';
       document.title = 'CoachEasier · ' + _clubName;
-      const SECTION_PERMS = { medical: 'medical_access', admin: 'manage_teams', club: 'manage_teams', fixtures: 'manage_teams', selection: 'publish_squads', message: 'reports', messages: 'messaging', training: 'publish_training', matchday: 'publish_squads', players: 'manage_players' };
+      const SECTION_PERMS = { medical: 'medical_access', admin: 'manage_teams', club: 'manage_teams', fixtures: 'manage_teams', selection: 'publish_squads', message: 'reports', messages: 'messaging', training: 'publish_training', performance: 'publish_training', matchday: 'publish_squads', players: 'manage_players' };
       // In beta mode render in BETA_NAV_IDS order (workflow order); otherwise the
       // full coachSections order. Labels are always sourced from coachSections.
       const _sectionLabels = Object.fromEntries(coachSections);
@@ -24704,6 +24913,613 @@
       ].join('   ');
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // COACHEASIER PERFORMANCE — premium S&C module (SC1: navigation shells)
+    // ═══════════════════════════════════════════════════════════════════════
+    // One nav section ("Performance") with an internal tab bar, following the
+    // renderClubSection pattern. Gated as a Pro feature through the standard
+    // capability layer (FEATURE_REGISTRY id 'performance' → canUseFeature).
+    // Pure domain rules, data shapes and the sample dataset live in
+    // /performance (unit-tested with node --test); the inline copies below are
+    // kept in lockstep with performance/services/performance-data.js, same
+    // convention as mergeRosterPlayer ↔ src/player-identity.js.
+    // SC1 ships structure only — no workout engine logic.
+
+    // Sample data — lockstep with performance/services/performance-data.js.
+    const PERF_SAMPLE_ATHLETES = [
+      { id: 'ath-01', name: 'Tom Bradshaw',    position: 'Loosehead Prop',    jersey: 1,  programme: 'Pre-Season Strength', adherence: 92, readiness: 84, trainingStatus: 'full',        lastSession: '2026-08-02' },
+      { id: 'ath-02', name: 'Callum Reid',     position: 'Hooker',            jersey: 2,  programme: 'Pre-Season Strength', adherence: 88, readiness: 78, trainingStatus: 'full',        lastSession: '2026-08-02' },
+      { id: 'ath-03', name: 'Owen Whitfield',  position: 'Tighthead Prop',    jersey: 3,  programme: 'Pre-Season Strength', adherence: 74, readiness: 66, trainingStatus: 'modified',    lastSession: '2026-07-31' },
+      { id: 'ath-04', name: 'Jack Morrison',   position: 'Lock',              jersey: 4,  programme: 'Pre-Season Strength', adherence: 95, readiness: 90, trainingStatus: 'full',        lastSession: '2026-08-03' },
+      { id: 'ath-05', name: 'Ethan Kavanagh',  position: 'Lock',              jersey: 5,  programme: 'Return to Play',      adherence: 61, readiness: 52, trainingStatus: 'modified',    lastSession: '2026-08-01' },
+      { id: 'ath-06', name: 'Sam Okafor',      position: 'Blindside Flanker', jersey: 6,  programme: 'Pre-Season Strength', adherence: 90, readiness: 88, trainingStatus: 'full',        lastSession: '2026-08-03' },
+      { id: 'ath-07', name: 'Luke Devereux',   position: 'Openside Flanker',  jersey: 7,  programme: 'Speed & Power Block', adherence: 97, readiness: 93, trainingStatus: 'full',        lastSession: '2026-08-03' },
+      { id: 'ath-08', name: 'Danny Hughes',    position: 'Number 8',          jersey: 8,  programme: 'Pre-Season Strength', adherence: 82, readiness: 75, trainingStatus: 'full',        lastSession: '2026-08-02' },
+      { id: 'ath-09', name: 'Rhys Llewellyn',  position: 'Scrum-half',        jersey: 9,  programme: 'Speed & Power Block', adherence: 89, readiness: 81, trainingStatus: 'full',        lastSession: '2026-08-02' },
+      { id: 'ath-10', name: 'Finn Gallagher',  position: 'Fly-half',          jersey: 10, programme: 'Speed & Power Block', adherence: 93, readiness: 86, trainingStatus: 'full',        lastSession: '2026-08-03' },
+      { id: 'ath-11', name: 'Marcus Ashworth', position: 'Winger',            jersey: 11, programme: 'Speed & Power Block', adherence: 70, readiness: 58, trainingStatus: 'unavailable', lastSession: '2026-07-28' },
+      { id: 'ath-12', name: 'Josh Tuilagi',    position: 'Inside Centre',     jersey: 12, programme: 'Pre-Season Strength', adherence: 86, readiness: 79, trainingStatus: 'full',        lastSession: '2026-08-02' },
+    ];
+    const PERF_SAMPLE_PROGRAMMES = [
+      { id: 'prog-01', name: 'Pre-Season Strength',   focus: 'Max Strength',         weeks: 8,  currentWeek: 3,  athleteCount: 18, sessionsPerWeek: 3, status: 'active' },
+      { id: 'prog-02', name: 'Return to Play',        focus: 'Rehabilitation',       weeks: 6,  currentWeek: 4,  athleteCount: 3,  sessionsPerWeek: 4, status: 'active' },
+      { id: 'prog-03', name: 'Speed & Power Block',   focus: 'Power Development',    weeks: 6,  currentWeek: 3,  athleteCount: 9,  sessionsPerWeek: 2, status: 'active' },
+      { id: 'prog-04', name: 'In-Season Maintenance', focus: 'Strength Maintenance', weeks: 12, currentWeek: 0,  athleteCount: 0,  sessionsPerWeek: 2, status: 'draft' },
+      { id: 'prog-05', name: 'Off-Season Foundation', focus: 'Hypertrophy',          weeks: 10, currentWeek: 10, athleteCount: 22, sessionsPerWeek: 3, status: 'completed' },
+    ];
+    const PERF_SAMPLE_TODAY = {
+      title: 'Lower Body Strength — Week 3, Day 1', programme: 'Pre-Season Strength',
+      time: '17:30', estimatedMinutes: 65, assignedCount: 18, completedCount: 5,
+      blocks: [
+        { name: 'Warm-up & Activation', minutes: 10, detail: 'RAMP protocol — raise, activate, mobilise, potentiate' },
+        { name: 'Main Lift',            minutes: 25, detail: 'Primary strength block — lower body focus' },
+        { name: 'Accessory Work',       minutes: 20, detail: 'Posterior chain, unilateral and trunk support' },
+        { name: 'Conditioning Finisher', minutes: 10, detail: 'Short alactic capacity piece' },
+      ],
+    };
+    const PERF_SAMPLE_EXERCISES = [
+      { id: 'ex-01', name: 'Back Squat',                category: 'strength',     equipment: 'Barbell',       favourite: true  },
+      { id: 'ex-02', name: 'Trap Bar Deadlift',         category: 'strength',     equipment: 'Trap Bar',      favourite: true  },
+      { id: 'ex-03', name: 'Bench Press',               category: 'strength',     equipment: 'Barbell',       favourite: true  },
+      { id: 'ex-04', name: 'Weighted Chin-up',          category: 'strength',     equipment: 'Bodyweight',    favourite: false },
+      { id: 'ex-05', name: 'Power Clean',               category: 'power',        equipment: 'Barbell',       favourite: true  },
+      { id: 'ex-06', name: 'Box Jump',                  category: 'power',        equipment: 'Plyo Box',      favourite: false },
+      { id: 'ex-07', name: 'Med Ball Rotational Throw', category: 'power',        equipment: 'Medicine Ball', favourite: false },
+      { id: 'ex-08', name: 'Flying 10s',                category: 'speed',        equipment: 'Track',         favourite: false },
+      { id: 'ex-09', name: 'Resisted Sled Sprint',      category: 'speed',        equipment: 'Sled',          favourite: true  },
+      { id: 'ex-10', name: 'Bike Erg Intervals',        category: 'conditioning', equipment: 'Bike Erg',      favourite: false },
+      { id: 'ex-11', name: 'Bronco Test',               category: 'conditioning', equipment: 'Pitch',         favourite: false },
+      { id: 'ex-12', name: '90/90 Hip Switch',          category: 'mobility',     equipment: 'Bodyweight',    favourite: false },
+      { id: 'ex-13', name: 'Copenhagen Plank',          category: 'prehab',       equipment: 'Bench',         favourite: false },
+      { id: 'ex-14', name: 'Nordic Hamstring Curl',     category: 'prehab',       equipment: 'Partner',       favourite: true  },
+      { id: 'ex-15', name: 'Pallof Press',              category: 'core',         equipment: 'Cable',         favourite: false },
+      { id: 'ex-16', name: 'Dead Bug',                  category: 'core',         equipment: 'Bodyweight',    favourite: false },
+    ];
+    const PERF_EXERCISE_CATEGORIES = [
+      { id: 'strength',     label: 'Strength' },
+      { id: 'power',        label: 'Power' },
+      { id: 'speed',        label: 'Speed & Agility' },
+      { id: 'conditioning', label: 'Conditioning' },
+      { id: 'mobility',     label: 'Mobility' },
+      { id: 'prehab',       label: 'Prehab' },
+      { id: 'core',         label: 'Core' },
+    ];
+    const PERF_SAMPLE_METRICS = [
+      { id: 'strength',     label: 'Strength',     headline: '142 kg',  detail: 'Squad avg back squat 1RM',         trend: 4.2,  goodWhenDown: false, spark: [128, 131, 133, 135, 138, 140, 142] },
+      { id: 'power',        label: 'Power',        headline: '48.5 cm', detail: 'Squad avg countermovement jump',   trend: 2.8,  goodWhenDown: false, spark: [45.1, 45.8, 46.2, 47, 47.6, 48.1, 48.5] },
+      { id: 'speed',        label: 'Speed',        headline: '1.72 s',  detail: 'Squad avg 10 m sprint',            trend: -1.7, goodWhenDown: true,  spark: [1.78, 1.77, 1.76, 1.75, 1.74, 1.73, 1.72] },
+      { id: 'conditioning', label: 'Conditioning', headline: '4:52',    detail: 'Squad avg Bronco time',            trend: -2.4, goodWhenDown: true,  spark: [312, 308, 305, 301, 298, 295, 292] },
+      { id: 'adherence',    label: 'Adherence',    headline: '86%',     detail: 'Sessions completed, last 4 weeks', trend: 3.1,  goodWhenDown: false, spark: [79, 81, 80, 83, 84, 85, 86] },
+      { id: 'bodyweight',   label: 'Bodyweight',   headline: '96.4 kg', detail: 'Squad avg, forwards + backs',      trend: 0.6,  goodWhenDown: false, spark: [95.8, 95.9, 96, 96.1, 96.2, 96.3, 96.4] },
+      { id: 'readiness',    label: 'Readiness',    headline: '78',      detail: 'Squad avg wellness score today',   trend: -3.2, goodWhenDown: false, spark: [84, 83, 81, 82, 80, 79, 78] },
+    ];
+    const PERF_SAMPLE_ACTIVITY = [
+      { when: '2026-08-03T09:12:00', athlete: 'Luke Devereux',   summary: 'Completed Upper Body Power — Week 3, Day 1', kind: 'workout'   },
+      { when: '2026-08-03T08:47:00', athlete: 'Jack Morrison',   summary: 'New PB — Trap Bar Deadlift 210 kg',          kind: 'pb'        },
+      { when: '2026-08-03T07:30:00', athlete: 'Squad',           summary: '14 of 18 readiness check-ins submitted',     kind: 'readiness' },
+      { when: '2026-08-02T18:05:00', athlete: 'Finn Gallagher',  summary: 'Completed Speed Session — Flying 10s',       kind: 'workout'   },
+      { when: '2026-08-02T17:40:00', athlete: 'Ethan Kavanagh',  summary: 'Return to Play — advanced to Phase 3',       kind: 'programme' },
+      { when: '2026-08-01T19:22:00', athlete: 'Marcus Ashworth', summary: 'Flagged low readiness — hamstring tightness', kind: 'note'     },
+    ];
+    const PERF_COACH_TOOLS = [
+      { id: 'assignments',     label: 'Assignments',     iconKey: 'calcheck',  blurb: 'Assign programmes and one-off sessions to athletes or units.' },
+      { id: 'templates',       label: 'Templates',       iconKey: 'clipboard', blurb: 'Reusable session and block templates for faster planning.' },
+      { id: 'compliance',      label: 'Compliance',      iconKey: 'shield',    blurb: 'Who has trained, who is behind, and who needs a nudge.' },
+      { id: 'reports',         label: 'Reports',         iconKey: 'week',      blurb: 'Exportable squad and athlete performance reports.' },
+      { id: 'team_monitoring', label: 'Team Monitoring', iconKey: 'users',     blurb: 'Live squad load, readiness and flag overview.' },
+    ];
+
+    // ── Small pure helpers (display rules mirror performance/domain) ─────────
+    // Lockstep with sparklinePoints in performance/components/sparkline.js.
+    function perfSparklinePoints(values, w = 120, h = 32, pad = 3) {
+      const vals = (values || []).map(Number).filter(n => Number.isFinite(n));
+      if (vals.length < 2) return '';
+      const min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1;
+      const innerW = w - pad * 2, innerH = h - pad * 2;
+      return vals.map((v, i) => {
+        const x = pad + (i / (vals.length - 1)) * innerW;
+        const y = pad + (1 - (v - min) / span) * innerH;
+        return `${Math.round(x * 10) / 10},${Math.round(y * 10) / 10}`;
+      }).join(' ');
+    }
+    function perfSparkline(values, { w = 120, h = 32, good = true } = {}) {
+      const pts = perfSparklinePoints(values, w, h);
+      if (!pts) return '';
+      const col = good ? 'var(--status-available)' : 'var(--status-maybe)';
+      return `<svg class="perf-spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none" aria-hidden="true">
+        <polyline points="${pts}" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
+    }
+    function perfMeter(pct, cls = '') {
+      const p = Math.min(Math.max(Math.round(Number(pct) || 0), 0), 100);
+      return `<div class="perf-meter ${cls}" role="progressbar" aria-valuenow="${p}" aria-valuemin="0" aria-valuemax="100"><i style="width:${p}%"></i></div>`;
+    }
+    function perfTrendChip(trend, goodWhenDown) {
+      const n = Number(trend) || 0;
+      const good = n === 0 ? true : (goodWhenDown ? n < 0 : n > 0);
+      const label = n === 0 ? '0%' : `${n > 0 ? '+' : '−'}${Math.abs(n).toFixed(1).replace(/\.0$/, '')}%`;
+      return `<span class="status ${good ? 'available' : 'maybe'}" style="font-size:11px">${label}</span>`;
+    }
+    function perfReadinessStatus(score) {
+      const s = Number(score) || 0;
+      if (s >= 80) return `<span class="status available">${s} ready</span>`;
+      if (s >= 60) return `<span class="status maybe">${s} monitor</span>`;
+      return `<span class="status unavailable">${s} low</span>`;
+    }
+    function perfTrainingStatus(ts) {
+      if (ts === 'full')     return '<span class="status available">Full training</span>';
+      if (ts === 'modified') return '<span class="status maybe">Modified</span>';
+      return '<span class="status unavailable">Unavailable</span>';
+    }
+    function perfRelativeDay(iso) {
+      const then = new Date(iso);
+      if (Number.isNaN(then.getTime())) return '';
+      const startOf = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const days = Math.round((startOf(new Date()) - startOf(then)) / 86400000);
+      if (days <= 0) return 'Today';
+      if (days === 1) return 'Yesterday';
+      return `${days} d ago`;
+    }
+    function perfComingSoon(label) {
+      showToast(`${label} is coming to CoachEasier Performance`);
+    }
+
+    // ── Navigation ────────────────────────────────────────────────────────────
+    function setPerfTab(tab) {
+      if (!PERF_TABS.some(t => t.id === tab)) return;
+      state.activePerformanceTab = tab;
+      saveState("Tab saved");
+      render();
+    }
+
+    // ── Exercise Library — ephemeral view state (module-local, not persisted) ─
+    let _perfLibQuery = '';
+    let _perfLibCat = 'all';
+    let _perfLibFav = false;
+    const _perfLibFavourites = new Set(PERF_SAMPLE_EXERCISES.filter(e => e.favourite).map(e => e.id));
+
+    function perfLibFiltered() {
+      const q = _perfLibQuery.trim().toLowerCase();
+      return PERF_SAMPLE_EXERCISES.filter(ex => {
+        if (_perfLibFav && !_perfLibFavourites.has(ex.id)) return false;
+        if (_perfLibCat !== 'all' && ex.category !== _perfLibCat) return false;
+        if (q && !`${ex.name} ${ex.equipment}`.toLowerCase().includes(q)) return false;
+        return true;
+      });
+    }
+    function perfLibSearch(value) {
+      _perfLibQuery = value || '';
+      perfLibRefreshList();
+    }
+    function perfLibSetCat(cat) {
+      _perfLibCat = cat;
+      renderPerformance();
+    }
+    function perfLibToggleFav() {
+      _perfLibFav = !_perfLibFav;
+      renderPerformance();
+    }
+    function perfLibToggleStar(id) {
+      if (_perfLibFavourites.has(id)) _perfLibFavourites.delete(id); else _perfLibFavourites.add(id);
+      perfLibRefreshList();
+    }
+    function perfLibRefreshList() {
+      const list = document.getElementById('perfLibList');
+      const count = document.getElementById('perfLibCount');
+      if (list) list.innerHTML = perfLibListHtml();
+      if (count) count.textContent = `${perfLibFiltered().length} of ${PERF_SAMPLE_EXERCISES.length} exercises`;
+    }
+
+    // ── Settings handlers ─────────────────────────────────────────────────────
+    function perfSetPref(key, value) {
+      state.performanceSettings = { ...(state.performanceSettings || {}), [key]: value };
+      saveState("Saved");
+      render();
+    }
+    function perfTogglePref(key) {
+      perfSetPref(key, !(state.performanceSettings || {})[key]);
+    }
+
+    // ── Section renderer ──────────────────────────────────────────────────────
+    function renderPerformance() {
+      const el = document.getElementById('coach-performance');
+      if (!el) return;
+
+      // Premium gate — standard capability layer. Locked teams see the branded
+      // upsell plus an honest preview of what the module contains.
+      if (!canUseFeature('performance')) {
+        el.innerHTML = `<div class="section-inner">
+          <div class="training-hero perf-hero">
+            <div>
+              <div class="eyebrow">CoachEasier Performance</div>
+              <h1>Strength &amp; Conditioning</h1>
+              <p>Programmes, workouts, athlete monitoring and performance analytics — built into CoachEasier.</p>
+            </div>
+          </div>
+          ${renderUpgradePrompt('performance')}
+          <div class="grid perf-grid-3" style="margin-top:4px">
+            ${PERF_TABS.filter(t => t.id !== 'settings').map(t => `
+              <div class="card perf-locked-tile">
+                <strong>${esc(t.label)}</strong>
+                <p class="muted" style="font-size:12px;margin:6px 0 0">${esc(perfTabBlurb(t.id))}</p>
+              </div>`).join('')}
+          </div>
+        </div>`;
+        return;
+      }
+
+      const tab = PERF_TABS.some(t => t.id === state.activePerformanceTab) ? state.activePerformanceTab : 'dashboard';
+      const tabNav = `<div class="perf-tabs" role="tablist" aria-label="Performance sections">
+        ${PERF_TABS.map(t => `<button type="button" role="tab" aria-selected="${t.id === tab}" class="perf-tab ${t.id === tab ? 'active' : ''}" onclick="setPerfTab('${t.id}')">${esc(t.label)}</button>`).join('')}
+      </div>`;
+
+      let body = '';
+      if (tab === 'dashboard')  body = perfDashboardHtml();
+      if (tab === 'athletes')   body = perfAthletesHtml();
+      if (tab === 'programmes') body = perfProgrammesHtml();
+      if (tab === 'workouts')   body = perfWorkoutsHtml();
+      if (tab === 'library')    body = perfLibraryHtml();
+      if (tab === 'analytics')  body = perfAnalyticsHtml();
+      if (tab === 'tools')      body = perfCoachToolsHtml();
+      if (tab === 'settings')   body = perfSettingsHtml();
+
+      el.innerHTML = `<div class="section-inner">${tabNav}${body}</div>`;
+    }
+
+    function perfTabBlurb(id) {
+      return {
+        dashboard:  'Your daily S&C command centre — sessions, progress and flags at a glance.',
+        athletes:   'Every athlete’s programme, adherence and readiness in one list.',
+        programmes: 'Structured training blocks across the season.',
+        workouts:   'Today’s session, block by block.',
+        library:    'A searchable exercise library with categories and favourites.',
+        analytics:  'Strength, power, speed, conditioning and wellness trends.',
+        tools:      'Assignments, templates, compliance and reporting.',
+        settings:   'Module preferences.',
+      }[id] || '';
+    }
+
+    // ── Dashboard ─────────────────────────────────────────────────────────────
+    function perfDashboardHtml() {
+      const today = PERF_SAMPLE_TODAY;
+      const donePct = Math.round((today.completedCount / today.assignedCount) * 100);
+      const active = PERF_SAMPLE_PROGRAMMES.filter(p => p.status === 'active');
+      const avgReadiness = Math.round(PERF_SAMPLE_ATHLETES.reduce((s, a) => s + a.readiness, 0) / PERF_SAMPLE_ATHLETES.length);
+      const flagged = PERF_SAMPLE_ATHLETES.filter(a => a.readiness < 60 || a.trainingStatus !== 'full');
+      const headline = PERF_SAMPLE_METRICS.filter(m => ['strength', 'readiness', 'adherence'].includes(m.id));
+
+      return `
+        <div class="training-hero perf-hero">
+          <div>
+            <div class="eyebrow">CoachEasier Performance</div>
+            <h1>Performance Hub</h1>
+            <p>Monday 3 August — ${active.length} active programmes · ${PERF_SAMPLE_ATHLETES.length} athletes training · squad readiness ${avgReadiness}</p>
+          </div>
+          <span class="perf-pro-pill">PRO</span>
+        </div>
+
+        <div class="grid perf-grid-2">
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <small>Today's Workout</small>
+              <span class="status maybe">${today.completedCount} of ${today.assignedCount} done</span>
+            </div>
+            <strong class="perf-card-title">${esc(today.title)}</strong>
+            <p class="muted" style="font-size:12.5px;margin:4px 0 12px">${esc(today.programme)} · ${today.time} · ${today.blocks.length} blocks · ~${today.estimatedMinutes} min</p>
+            ${perfMeter(donePct)}
+            <div class="button-row" style="margin-top:auto;padding-top:14px">
+              <button class="btn primary" type="button" onclick="setPerfTab('workouts')">Open today's workout</button>
+            </div>
+          </div>
+
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <small>Programme Progress</small>
+              <span class="pill">${active.length} active</span>
+            </div>
+            <div class="perf-stack">
+              ${active.map(p => `
+                <div class="perf-prog-row">
+                  <div class="perf-prog-meta">
+                    <strong>${esc(p.name)}</strong>
+                    <small class="muted">Week ${p.currentWeek} of ${p.weeks} · ${p.athleteCount} athletes</small>
+                  </div>
+                  ${perfMeter(((p.currentWeek - 1) / p.weeks) * 100, 'slim')}
+                </div>`).join('')}
+            </div>
+            <div class="button-row" style="margin-top:auto;padding-top:14px">
+              <button class="btn ghost" type="button" onclick="setPerfTab('programmes')">All programmes</button>
+            </div>
+          </div>
+
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <small>Athletes</small>
+              ${flagged.length ? `<span class="status maybe">${flagged.length} flagged</span>` : '<span class="status available">All clear</span>'}
+            </div>
+            <div class="perf-stat-row">
+              <div><strong class="perf-big">${PERF_SAMPLE_ATHLETES.length}</strong><small class="muted">in training</small></div>
+              <div><strong class="perf-big">${avgReadiness}</strong><small class="muted">avg readiness</small></div>
+              <div><strong class="perf-big">${Math.round(PERF_SAMPLE_ATHLETES.reduce((s, a) => s + a.adherence, 0) / PERF_SAMPLE_ATHLETES.length)}%</strong><small class="muted">adherence</small></div>
+            </div>
+            ${flagged.slice(0, 2).map(a => `
+              <div class="perf-flag-row">
+                ${perfTrainingStatus(a.trainingStatus)}
+                <span class="perf-flag-name">${esc(a.name)}</span>
+                <small class="muted">${esc(a.position)}</small>
+              </div>`).join('')}
+            <div class="button-row" style="margin-top:auto;padding-top:14px">
+              <button class="btn ghost" type="button" onclick="setPerfTab('athletes')">View athletes</button>
+            </div>
+          </div>
+
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <small>Analytics</small>
+              <span class="pill">Last 6 weeks</span>
+            </div>
+            <div class="perf-stack">
+              ${headline.map(m => `
+                <div class="perf-mini-metric">
+                  <div class="perf-mini-meta">
+                    <strong>${esc(m.label)}</strong>
+                    <span class="perf-mini-headline">${esc(m.headline)}</span>
+                  </div>
+                  ${perfSparkline(m.spark, { good: m.goodWhenDown ? m.trend <= 0 : m.trend >= 0 })}
+                  ${perfTrendChip(m.trend, m.goodWhenDown)}
+                </div>`).join('')}
+            </div>
+            <div class="button-row" style="margin-top:auto;padding-top:14px">
+              <button class="btn ghost" type="button" onclick="setPerfTab('analytics')">Full analytics</button>
+            </div>
+          </div>
+
+          <div class="card perf-card">
+            <div class="perf-card-head"><small>Coach Tools</small></div>
+            <div class="perf-chip-row">
+              ${PERF_COACH_TOOLS.map(t => `<button type="button" class="perf-tool-chip" onclick="setPerfTab('tools')">${icon(t.iconKey, 14)}${esc(t.label)}</button>`).join('')}
+            </div>
+          </div>
+
+          <div class="card perf-card">
+            <div class="perf-card-head"><small>Recent Activity</small></div>
+            <div class="perf-stack">
+              ${PERF_SAMPLE_ACTIVITY.slice(0, 5).map(a => `
+                <div class="perf-activity-row">
+                  <span class="perf-activity-dot ${a.kind}"></span>
+                  <div class="perf-activity-body">
+                    <strong>${esc(a.athlete)}</strong>
+                    <small class="muted">${esc(a.summary)}</small>
+                  </div>
+                  <small class="muted perf-activity-when">${perfRelativeDay(a.when)}</small>
+                </div>`).join('')}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ── Athletes ──────────────────────────────────────────────────────────────
+    function perfAthletesHtml() {
+      const full = PERF_SAMPLE_ATHLETES.filter(a => a.trainingStatus === 'full').length;
+      const modified = PERF_SAMPLE_ATHLETES.filter(a => a.trainingStatus === 'modified').length;
+      const out = PERF_SAMPLE_ATHLETES.filter(a => a.trainingStatus === 'unavailable').length;
+      return `
+        <div class="perf-page-head">
+          <div>
+            <h2>Athletes</h2>
+            <p class="muted">Programme, adherence and readiness for every athlete in training.</p>
+          </div>
+          <div class="pill-row">
+            <span class="status available">${full} full</span>
+            <span class="status maybe">${modified} modified</span>
+            <span class="status unavailable">${out} out</span>
+          </div>
+        </div>
+        <div class="list">
+          ${PERF_SAMPLE_ATHLETES.map(a => `
+            <div class="row perf-athlete-row">
+              <div class="perf-athlete-main">
+                <span class="perf-jersey">${a.jersey}</span>
+                <div class="perf-athlete-id">
+                  <strong>${esc(a.name)}</strong>
+                  <small>${esc(a.position)} · ${esc(a.programme)}</small>
+                </div>
+              </div>
+              <div class="perf-athlete-metrics">
+                <div class="perf-adherence" title="4-week adherence">
+                  <small class="muted">${a.adherence}%</small>
+                  ${perfMeter(a.adherence, 'slim')}
+                </div>
+                ${perfReadinessStatus(a.readiness)}
+              </div>
+            </div>`).join('')}
+        </div>`;
+    }
+
+    // ── Programmes ────────────────────────────────────────────────────────────
+    function perfProgrammesHtml() {
+      const statusPill = s => ({
+        active:    '<span class="status available">Active</span>',
+        draft:     '<span class="status no-reply">Draft</span>',
+        completed: '<span class="pill">Completed</span>',
+        archived:  '<span class="pill">Archived</span>',
+      }[s] || '');
+      return `
+        <div class="perf-page-head">
+          <div>
+            <h2>Programmes</h2>
+            <p class="muted">Structured training blocks across the season.</p>
+          </div>
+          <button class="btn primary" type="button" onclick="perfComingSoon('The programme builder')">New programme</button>
+        </div>
+        <div class="grid perf-grid-3">
+          ${PERF_SAMPLE_PROGRAMMES.map(p => `
+            <div class="card perf-card perf-programme-card">
+              <div class="perf-card-head">
+                <small>${esc(p.focus)}</small>
+                ${statusPill(p.status)}
+              </div>
+              <strong class="perf-card-title">${esc(p.name)}</strong>
+              <p class="muted" style="font-size:12px;margin:4px 0 12px">${p.athleteCount} athletes · ${p.sessionsPerWeek}×/week · ${p.weeks} weeks</p>
+              ${p.status === 'active' ? `
+                <small class="muted" style="display:block;margin-bottom:6px">Week ${p.currentWeek} of ${p.weeks}</small>
+                ${perfMeter(((p.currentWeek - 1) / p.weeks) * 100)}`
+              : p.status === 'draft' ? '<small class="muted">Not started — awaiting first assignment</small>'
+              : `<small class="muted">Finished — full block completed</small>${perfMeter(100)}`}
+            </div>`).join('')}
+        </div>`;
+    }
+
+    // ── Workouts (today's session shell) ──────────────────────────────────────
+    function perfWorkoutsHtml() {
+      const t = PERF_SAMPLE_TODAY;
+      const donePct = Math.round((t.completedCount / t.assignedCount) * 100);
+      return `
+        <div class="perf-page-head">
+          <div>
+            <h2>Today's Workout</h2>
+            <p class="muted">Monday 3 August · ${esc(t.programme)}</p>
+          </div>
+          <span class="status maybe">${t.completedCount} of ${t.assignedCount} completed</span>
+        </div>
+        <div class="card perf-card perf-session-card">
+          <div class="perf-card-head">
+            <small>${t.time} · ~${t.estimatedMinutes} min</small>
+            <span class="pill">${t.blocks.length} blocks</span>
+          </div>
+          <strong class="perf-card-title">${esc(t.title)}</strong>
+          <div style="margin-top:12px">${perfMeter(donePct)}</div>
+          <div class="perf-block-list">
+            ${t.blocks.map((b, i) => `
+              <div class="perf-block">
+                <span class="perf-block-num">${i + 1}</span>
+                <div class="perf-block-body">
+                  <strong>${esc(b.name)}</strong>
+                  <small class="muted">${esc(b.detail)}</small>
+                </div>
+                <span class="pill">${b.minutes} min</span>
+              </div>`).join('')}
+          </div>
+          <p class="muted" style="font-size:12px;margin:14px 0 0">Exercise prescription arrives with the Performance engine — blocks above define today's session structure.</p>
+        </div>`;
+    }
+
+    // ── Exercise Library ──────────────────────────────────────────────────────
+    function perfLibListHtml() {
+      const rows = perfLibFiltered();
+      if (!rows.length) {
+        return `<div class="card" style="text-align:center;padding:28px 16px">
+          <p style="font-weight:700;margin:0 0 4px">No exercises match</p>
+          <p class="muted" style="font-size:12px;margin:0">Try a different search, category or clear the favourites filter.</p>
+        </div>`;
+      }
+      const catLabel = Object.fromEntries(PERF_EXERCISE_CATEGORIES.map(c => [c.id, c.label]));
+      return rows.map(ex => `
+        <div class="row perf-ex-row">
+          <div>
+            <strong>${esc(ex.name)}</strong>
+            <small>${esc(catLabel[ex.category] || ex.category)} · ${esc(ex.equipment)}</small>
+          </div>
+          <button type="button" class="perf-star ${_perfLibFavourites.has(ex.id) ? 'on' : ''}" onclick="perfLibToggleStar('${ex.id}')" aria-label="${_perfLibFavourites.has(ex.id) ? 'Remove from' : 'Add to'} favourites" aria-pressed="${_perfLibFavourites.has(ex.id)}">★</button>
+        </div>`).join('');
+    }
+    function perfLibraryHtml() {
+      const cats = [{ id: 'all', label: 'All' }, ...PERF_EXERCISE_CATEGORIES];
+      return `
+        <div class="perf-page-head">
+          <div>
+            <h2>Exercise Library</h2>
+            <p class="muted" id="perfLibCount">${perfLibFiltered().length} of ${PERF_SAMPLE_EXERCISES.length} exercises</p>
+          </div>
+          <button type="button" class="btn ${_perfLibFav ? 'primary' : 'ghost'}" onclick="perfLibToggleFav()">★ Favourites</button>
+        </div>
+        <input type="search" class="perf-search" placeholder="Search exercises or equipment…" value="${esc(_perfLibQuery)}" oninput="perfLibSearch(this.value)" aria-label="Search exercises">
+        <div class="perf-chip-row" role="group" aria-label="Filter by category">
+          ${cats.map(c => `<button type="button" class="perf-tool-chip ${_perfLibCat === c.id ? 'active' : ''}" onclick="perfLibSetCat('${c.id}')">${esc(c.label)}</button>`).join('')}
+        </div>
+        <div class="list" id="perfLibList">${perfLibListHtml()}</div>`;
+    }
+
+    // ── Analytics ─────────────────────────────────────────────────────────────
+    function perfAnalyticsHtml() {
+      return `
+        <div class="perf-page-head">
+          <div>
+            <h2>Analytics</h2>
+            <p class="muted">Squad performance trends across the block.</p>
+          </div>
+          <span class="pill">Preview — sample data</span>
+        </div>
+        <div class="grid perf-grid-3">
+          ${PERF_SAMPLE_METRICS.map(m => `
+            <div class="card perf-card perf-metric-card">
+              <div class="perf-card-head">
+                <small>${esc(m.label)}</small>
+                ${perfTrendChip(m.trend, m.goodWhenDown)}
+              </div>
+              <strong class="perf-big">${esc(m.headline)}</strong>
+              <small class="muted" style="display:block;margin:2px 0 10px">${esc(m.detail)}</small>
+              ${perfSparkline(m.spark, { w: 220, h: 40, good: m.goodWhenDown ? m.trend <= 0 : m.trend >= 0 })}
+            </div>`).join('')}
+        </div>`;
+    }
+
+    // ── Coach Tools ───────────────────────────────────────────────────────────
+    function perfCoachToolsHtml() {
+      return `
+        <div class="perf-page-head">
+          <div>
+            <h2>Coach Tools</h2>
+            <p class="muted">Squad management for strength &amp; conditioning.</p>
+          </div>
+        </div>
+        <div class="grid perf-grid-3">
+          ${PERF_COACH_TOOLS.map(t => `
+            <button type="button" class="card perf-card perf-tool-tile" onclick="perfComingSoon('${esc(t.label)}')">
+              <span class="perf-tool-icon">${icon(t.iconKey, 20)}</span>
+              <strong>${esc(t.label)}</strong>
+              <small class="muted">${esc(t.blurb)}</small>
+              <span class="pill" style="margin-top:10px">Coming soon</span>
+            </button>`).join('')}
+        </div>`;
+    }
+
+    // ── Settings ──────────────────────────────────────────────────────────────
+    function perfSettingsHtml() {
+      const prefs = state.performanceSettings || {};
+      const seg = (key, options) => `<div class="perf-seg" role="group">
+        ${options.map(o => `<button type="button" class="${prefs[key] === o.value ? 'active' : ''}" onclick="perfSetPref('${key}','${o.value}')">${esc(o.label)}</button>`).join('')}
+      </div>`;
+      const toggle = key => `<button type="button" class="perf-switch ${prefs[key] ? 'on' : ''}" onclick="perfTogglePref('${key}')" role="switch" aria-checked="${!!prefs[key]}"><i></i></button>`;
+      const rowHtml = (title, sub, control) => `
+        <div class="row perf-setting-row">
+          <div><strong>${title}</strong><small>${sub}</small></div>
+          ${control}
+        </div>`;
+      return `
+        <div class="perf-page-head">
+          <div>
+            <h2>Performance Settings</h2>
+            <p class="muted">Preferences for the Performance module only — club-wide settings stay in Settings.</p>
+          </div>
+        </div>
+        <div class="card perf-card">
+          <div class="perf-card-head"><small>Units &amp; Calendar</small></div>
+          <div class="list" style="margin-top:6px">
+            ${rowHtml('Load units', 'Used for all prescriptions and analytics', seg('units', [{ value: 'kg', label: 'kg' }, { value: 'lb', label: 'lb' }]))}
+            ${rowHtml('Training week starts', 'First day shown on programme calendars', seg('weekStart', [{ value: 'Mon', label: 'Monday' }, { value: 'Sun', label: 'Sunday' }]))}
+          </div>
+        </div>
+        <div class="card perf-card">
+          <div class="perf-card-head"><small>Athlete Experience</small></div>
+          <div class="list" style="margin-top:6px">
+            ${rowHtml('Readiness check-ins', 'Ask athletes for a daily wellness score', toggle('readinessCheckins'))}
+            ${rowHtml('PB celebrations', 'Notify the squad feed when an athlete sets a personal best', toggle('pbCelebrations'))}
+            ${rowHtml('Bodyweight tracking', 'Show bodyweight trends in athlete profiles and analytics', toggle('showBodyweight'))}
+          </div>
+        </div>`;
+    }
+
     function render() {
       // Wrap each section so one failing helper can't leave the page blank.
       // If a section element is empty after a throw, insert a minimal error card.
@@ -24747,6 +25563,7 @@
         safeRender('player-messages',   () => renderPlayerMessages());
       }
       safeRender('coach-training',      () => renderTraining());
+      safeRender('coach-performance',   () => renderPerformance());
       safeRender('coach-matchday',      () => renderMatchday());
       safeRender('coach-medical',       () => renderMedical());
       safeRender('coach-players',       () => renderPlayers());
@@ -25559,6 +26376,15 @@
         minimumPlan: 'pro',
         category: 'analytics',
         upgradeMessage: 'Unlock detailed performance data, squad trends and season analytics.',
+      },
+      {
+        id: 'performance',
+        displayName: 'CoachEasier Performance',
+        description: 'Premium strength & conditioning: programmes, workouts, athlete monitoring and performance analytics.',
+        minimumPlan: 'pro',
+        category: 'player_development',
+        upgradeMessage: 'Unlock programmes, workouts, the exercise library and squad performance analytics.',
+        section: 'performance',
       },
       {
         id: 'unlimited_push',
