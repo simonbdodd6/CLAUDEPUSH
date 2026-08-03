@@ -23,6 +23,7 @@ import { kvConfigured } from './_kv.js';
 import { DEFAULT_TEAM, loadTeamMembers, loadUsers } from './_identityStore.js';
 import { requireTenantPermission, requireTenantSession, can, PERM } from './_tenant.js';
 import { load, save } from './_lib.js';
+import { auditLog, requestIp } from './_security.js';
 import { runWeeklyAvailabilityCheck } from './cron.js';
 
 function sendAuthError(res, error) {
@@ -163,6 +164,89 @@ async function rosterHandler(req, res) {
     };
     await kvSet(rosterKey(session.teamId), record);
     return res.status(200).json({ ok: true, count: players.length, updatedAt: record.updatedAt });
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+// ── Appearance adjustments sub-resource (RC4.8A admin corrections) ────────
+// The source of truth for appearances remains completed Match Centre
+// selections, calculated client-side. Authorised club admins may record
+// AUDITED historical adjustments (pre-CoachEasier matches, imported legacy
+// records, approved corrections). Adjustments are separate, append-only
+// records — the calculated total is never overwritten; a mistaken adjustment
+// is corrected by a counter-adjustment so the audit trail stays complete.
+
+function adjustmentsKey(teamId) { return key(`appearance_adj:${teamId}`); }
+
+const MAX_ADJUSTMENTS = 500;
+const ADJ_ID_RE = /^[a-z0-9_-]{1,80}$/i;
+
+function sanitiseAdjustment(body, session) {
+  const playerId = String(body?.playerId || '').trim();
+  const seasonId = String(body?.seasonId || '').trim();
+  const reason   = String(body?.reason || '').trim().slice(0, 240);
+  const source   = String(body?.source || '').trim().slice(0, 160);
+  const amount   = Number(body?.amount);
+  if (!ADJ_ID_RE.test(playerId)) return { error: 'playerId is required' };
+  if (!seasonId || seasonId.length > 40) return { error: 'seasonId is required (max 40 chars)' };
+  if (!reason) return { error: 'reason is required — every correction must say why' };
+  if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > 200) {
+    return { error: 'amount must be a non-zero whole number between -200 and 200' };
+  }
+  return {
+    record: {
+      id:        `adj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+      playerId,
+      teamId:    session.teamId,
+      seasonId,
+      amount,
+      reason,
+      ...(source ? { source } : {}),
+      createdBy: session.user.id,
+      createdAt: new Date().toISOString(),
+    },
+  };
+}
+
+async function appearanceAdjustmentsHandler(req, res) {
+  // Reads: anyone who can see reports (coach board / audit trail).
+  // Writes: club admins only (MANAGE_TEAMS — the club-config permission).
+  if (req.method === 'GET') {
+    let session;
+    try {
+      session = await requireTenantPermission(req, PERM.REPORTS);
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
+    const all = (await kvGet(adjustmentsKey(session.teamId))) || [];
+    const playerId = String(req.query?.playerId || '').trim();
+    const seasonId = String(req.query?.seasonId || '').trim();
+    const adjustments = all
+      .filter(a => (!playerId || a.playerId === playerId) && (!seasonId || a.seasonId === seasonId));
+    return res.status(200).json({ ok: true, adjustments, count: adjustments.length });
+  }
+
+  if (req.method === 'POST') {
+    let session;
+    try {
+      session = await requireTenantPermission(req, PERM.MANAGE_TEAMS);
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
+    const { record, error } = sanitiseAdjustment(req.body, session);
+    if (error) return res.status(400).json({ error });
+    const all = (await kvGet(adjustmentsKey(session.teamId))) || [];
+    if (all.length >= MAX_ADJUSTMENTS) {
+      return res.status(409).json({ error: `Adjustment limit reached (${MAX_ADJUSTMENTS}) — contact support` });
+    }
+    all.unshift(record);
+    await kvSet(adjustmentsKey(session.teamId), all);
+    await auditLog('appearance_adjustment_created', {
+      teamId: session.teamId, playerId: record.playerId, seasonId: record.seasonId,
+      amount: record.amount, by: session.user.id, ip: requestIp(req),
+    });
+    return res.status(201).json({ ok: true, adjustment: record });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
@@ -424,6 +508,7 @@ export default async function handler(req, res) {
   if (String(req.query?.resource || '') === 'roster') return rosterHandler(req, res);
   if (String(req.query?.resource || '') === 'club')   return clubHandler(req, res);
   if (String(req.query?.resource || '') === 'availability-check') return availabilityCheckHandler(req, res);
+  if (String(req.query?.resource || '') === 'appearance-adjustments') return appearanceAdjustmentsHandler(req, res);
 
   // ── GET: any authenticated user reads published player-facing state ────────
   if (req.method === 'GET') {

@@ -14312,9 +14312,102 @@
       };
     }
 
+    // ─── APPEARANCES (RC4.8A) ────────────────────────────────────────────────
+    // Source of truth: completed Match Centre selections (published squads on
+    // fixtures marked completed). Authorised club admins may record separate,
+    // audited historical adjustments (pre-CoachEasier matches, imported legacy
+    // records, approved corrections) via /api/publish?resource=appearance-adjustments.
+    // The calculated total is NEVER overwritten: verified total = calculated +
+    // sum(adjustments), and the audit trail shows both parts separately.
+
+    function appearanceSeasonId(dateStr, seasonStart, seasonEnd) {
+      const d = String(dateStr || '').slice(0, 10);
+      if (!d) return 'unknown';
+      if (seasonStart && seasonEnd && d >= seasonStart && d <= seasonEnd) {
+        const y1 = String(seasonStart).slice(0, 4);
+        const y2 = String(seasonEnd).slice(0, 4);
+        return y1 === y2 ? y1 : `${y1}-${y2.slice(2)}`;
+      }
+      return d.slice(0, 4);
+    }
+
+    /** Pure: appearance counts from completed Match Centre selections.
+     *  Returns { byPlayer: {playerId: count}, matches: [{fixtureId, date,
+     *  opposition, seasonId, playerIds}] }. A player counts once per completed
+     *  fixture when they appear in the published selection (starters or bench). */
+    function appearancesCalculated(fixtures, squadSelections, seasonStart, seasonEnd) {
+      const byPlayer = {};
+      const matches = [];
+      const fxById = {};
+      (fixtures || []).forEach(f => { if (f && f.id) fxById[f.id] = f; });
+      const seenFixtures = new Set();
+      (squadSelections || []).forEach(sel => {
+        if (!sel || sel.status !== 'published') return;
+        const fx = fxById[sel.fixtureId];
+        if (!fx || fx.status !== 'completed') return;
+        if (seenFixtures.has(fx.id)) return; // one selection counts per fixture
+        seenFixtures.add(fx.id);
+        const ids = new Set([
+          ...Object.values(sel.starters || {}).filter(Boolean),
+          ...(Array.isArray(sel.bench) ? sel.bench.filter(Boolean) : []),
+        ]);
+        if (!ids.size) return;
+        ids.forEach(pid => { byPlayer[pid] = (byPlayer[pid] || 0) + 1; });
+        matches.push({
+          fixtureId: fx.id, date: fx.date || '', opposition: fx.opposition || '',
+          seasonId: appearanceSeasonId(fx.date, seasonStart, seasonEnd),
+          playerIds: [...ids],
+        });
+      });
+      return { byPlayer, matches };
+    }
+
+    /** Pure: verified total = calculated count + sum of adjustment amounts. */
+    function appearanceVerifiedTotal(calculatedCount, adjustments) {
+      const adj = (adjustments || []).reduce((sum, a) => sum + (Number.isInteger(a?.amount) ? a.amount : 0), 0);
+      return Math.max(0, (calculatedCount || 0) + adj);
+    }
+
+    let _appearanceAdjustments = null;   // null = not loaded | [] = loaded
+    let _appearanceAdjLoading = false;
+
+    async function loadAppearanceAdjustments(force) {
+      if (_appearanceAdjLoading || (_appearanceAdjustments !== null && !force)) return;
+      _appearanceAdjLoading = true;
+      try {
+        const res = await fetch('/api/publish?resource=appearance-adjustments');
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data.adjustments)) _appearanceAdjustments = data.adjustments;
+        else if (_appearanceAdjustments === null) _appearanceAdjustments = [];
+      } catch { if (_appearanceAdjustments === null) _appearanceAdjustments = []; }
+      _appearanceAdjLoading = false;
+      render();
+    }
+
+    async function appearanceAdjustmentSubmit(playerId) {
+      const amount  = parseInt(document.getElementById('adj-amount')?.value, 10);
+      const seasonId = (document.getElementById('adj-season')?.value || '').trim();
+      const reason  = (document.getElementById('adj-reason')?.value || '').trim();
+      const source  = (document.getElementById('adj-source')?.value || '').trim();
+      if (!Number.isInteger(amount) || amount === 0) return showToast('Enter a non-zero whole number of appearances');
+      if (!seasonId) return showToast('Season is required');
+      if (!reason) return showToast('A reason is required — corrections are audited');
+      try {
+        const res = await fetch('/api/publish?resource=appearance-adjustments', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ playerId, seasonId, amount, reason, ...(source ? { source } : {}) }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return showToast(data.error || 'Could not save the correction');
+        showToast('Correction recorded ✓');
+        await loadAppearanceAdjustments(true);
+      } catch { showToast("We couldn't connect. Check your internet connection and try again."); }
+    }
+
     function renderMemberCentre(id) {
       const p = canonicalVisiblePlayers().find(pl => pl.id === id) || state.players.find(pl => pl.id === id);
       if (!p) return `<div class="card"><p class="muted">Player not found.</p></div>`;
+      if (_appearanceAdjustments === null) loadAppearanceAdjustments();
 
       const m  = memberCentreModel(p, {
         schedule:      state.schedule,
@@ -14403,6 +14496,57 @@
             ${metric(m.sessionsMissed, 'Missed', m.sessionsMissed ? '#dc2626' : 'var(--fg)')}
           </div>
         </div>
+
+        <!-- APPEARANCES CARD (RC4.8A) -->
+        ${(() => {
+          const calc = appearancesCalculated(state.fixtures, state.squadSelections, state.seasonStart, state.seasonEnd);
+          const calcCount = calc.byPlayer[p.id] || 0;
+          const playerMatches = calc.matches.filter(mt => mt.playerIds.includes(p.id));
+          const adjs = (_appearanceAdjustments || []).filter(a => a.playerId === p.id);
+          const verified = appearanceVerifiedTotal(calcCount, adjs);
+          const adjSum = adjs.reduce((s, a) => s + (Number.isInteger(a?.amount) ? a.amount : 0), 0);
+          const seasonDefault = appearanceSeasonId(new Date().toISOString(), state.seasonStart, state.seasonEnd);
+          const adjRow = a => `
+            <div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12px;flex-wrap:wrap">
+              <span style="font-weight:800;color:${a.amount > 0 ? 'var(--accent)' : '#dc2626'};min-width:34px">${a.amount > 0 ? '+' : ''}${a.amount}</span>
+              <span style="flex:1;min-width:140px">${esc(a.reason)}${a.source ? ` <span class="muted">· ${esc(a.source)}</span>` : ''}</span>
+              <span class="muted" style="white-space:nowrap">${esc(a.seasonId)} · ${esc(String(a.createdAt || '').slice(0, 10))}</span>
+            </div>`;
+          return `
+        <div class="card" style="margin-bottom:14px">
+          ${sectionTitle('Appearances')}
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+            ${metric(verified, 'Verified total', 'var(--accent)')}
+            ${metric(calcCount, 'From Match Centre', 'var(--fg)')}
+            ${metric((adjSum > 0 ? '+' : '') + adjSum, 'Adjustments', adjSum ? (adjSum > 0 ? 'var(--accent)' : '#dc2626') : 'var(--muted)')}
+          </div>
+          <details>
+            <summary style="font-size:12px;font-weight:700;cursor:pointer;color:var(--muted);padding:4px 0">Audit trail</summary>
+            <div style="margin-top:8px">
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Calculated — completed Match Centre selections (${playerMatches.length})</div>
+              ${playerMatches.length
+                ? playerMatches.map(mt => `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px"><span>vs ${esc(mt.opposition || 'TBC')}</span><span class="muted">${esc(mt.seasonId)} · ${esc(mt.date || '')}</span></div>`).join('')
+                : '<p class="muted" style="font-size:12px;margin:2px 0 8px">No completed Match Centre selections yet.</p>'}
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:12px 0 4px">Historical adjustments (${adjs.length})</div>
+              ${_appearanceAdjustments === null
+                ? '<p class="muted" style="font-size:12px;margin:2px 0">Loading adjustments…</p>'
+                : adjs.length ? adjs.map(adjRow).join('') : '<p class="muted" style="font-size:12px;margin:2px 0">No adjustments recorded.</p>'}
+            </div>
+          </details>
+          ${canI('manage_teams') ? `
+          <details style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">
+            <summary style="font-size:12px;font-weight:700;cursor:pointer;padding:4px 0">Add correction (admin · audited)</summary>
+            <div style="display:grid;gap:8px;margin-top:8px;max-width:420px">
+              <p class="muted" style="font-size:11.5px;margin:0">For matches before CoachEasier, imported records, or approved corrections. The Match Centre total is never overwritten — corrections are stored as separate audited records.</p>
+              <input id="adj-amount" type="number" step="1" placeholder="Appearances to add (or negative to subtract)" style="min-height:40px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:13px">
+              <input id="adj-season" value="${esc(seasonDefault)}" placeholder="Season (e.g. ${esc(seasonDefault)})" style="min-height:40px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:13px">
+              <input id="adj-reason" placeholder="Reason (required — shown in the audit trail)" maxlength="240" style="min-height:40px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:13px">
+              <input id="adj-source" placeholder="Source / reference (optional)" maxlength="160" style="min-height:40px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:13px">
+              <button class="btn primary" type="button" onclick="appearanceAdjustmentSubmit('${esc(p.id)}')" style="min-height:42px;font-size:13px">Record correction</button>
+            </div>
+          </details>` : ''}
+        </div>`;
+        })()}
 
         <!-- MEDICAL CARD -->
         <div class="card" style="margin-bottom:14px">
@@ -25970,6 +26114,7 @@
         if (!res.ok) throw new Error(data.error || 'Could not switch team');
         // Team-scoped local state must not bleed between clubs.
         resetTeamScopedState();
+        _appearanceAdjustments = null; // adjustments are per-club — refetch after switch
         _clubConfigChecked = false; _publishedStateLoadedAt = 0;
         if (typeof _adminData === 'object') _adminData.loaded = false;
         _autopilotEnsured = false; _autopilotLogAt = 0; _autopilotLog = [];
