@@ -62,7 +62,7 @@ self.addEventListener('push', event => {
       body,
       // icon: iOS ignores this field (uses the app icon from the manifest instead).
       // badge: omitted — SVG badges cause silent failures on some iOS versions.
-      icon:  '/icon.svg',
+      icon:  '/brand/png/coacheasier-appicon-192.png',
       tag:   payload.tag || 'coachseye-message',
       renotify: true,
       // requireInteraction is not supported on iOS; omit rather than pass false
@@ -122,7 +122,7 @@ self.addEventListener('message', event => {
     const body  = event.data.body  || 'Service worker showNotification() test';
     self.registration.showNotification(title, {
       body,
-      icon: '/icon.svg',
+      icon: '/brand/png/coacheasier-appicon-192.png',
       tag: 'sw-direct-test-' + Date.now(),
     }).then(() => {
       if (event.source) event.source.postMessage({ type: 'sw_notification_shown', timestamp: Date.now() });
@@ -154,7 +154,7 @@ self.addEventListener('notificationclick', event => {
       const saved = await recordAvailability(action, data.sessionId || 'game').catch(() => false);
       await self.registration.showNotification(saved ? 'Response recorded' : 'Open the app to respond', {
         body: saved ? 'Your coach can now see your availability.' : 'We could not save the response from this device.',
-        icon: '/icon.svg',
+        icon: '/brand/png/coacheasier-appicon-192.png',
         tag: 'availability-confirmation',
       });
     }

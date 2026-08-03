@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>CoachEasier</title>
+  <link rel="icon" type="image/svg+xml" href="/brand/svg/coacheasier-favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/brand/png/coacheasier-favicon.ico" sizes="16x16 32x32 48x48">
+  <link rel="apple-touch-icon" href="/brand/png/coacheasier-apple-touch-180.png">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#090d14">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1477,15 +1480,22 @@
     }
     .ce-welcome-card { max-width: 380px; width: 100%; text-align: center; }
     .ce-welcome-card .ce-logo {
-      width: 64px; height: 64px; border-radius: 16px; margin: 0 auto 18px;
-      background: var(--accent-soft); border: 1px solid rgba(var(--accent-rgb), 0.3);
+      width: 88px; height: 88px; margin: 0 auto 18px;
       display: flex; align-items: center; justify-content: center;
     }
+    .ce-welcome-card .ce-logo img { width: 100%; height: 100%; object-fit: contain; }
     .ce-welcome-card h1 {
-      font-family: var(--font-display); font-size: 38px; letter-spacing: 0.03em;
+      font-family: var(--font-display); font-size: 42px; letter-spacing: 0.03em;
       margin: 0 0 6px; color: var(--ink);
     }
-    .ce-welcome-card .ce-tagline { color: var(--muted); font-size: 14px; margin: 0 0 28px; line-height: 1.5; }
+    /* Brand tagline — small, letterspaced, champagne-gold OUR. Product surfaces only
+       where there is room; never in cramped navigation. */
+    .ce-welcome-card .ce-brand-tag {
+      font-size: 12px; font-weight: 700; letter-spacing: 0.32em;
+      color: #4a5261; margin: 0 0 14px;
+    }
+    .ce-welcome-card .ce-brand-tag span { color: #8F6B2A; }
+    .ce-welcome-card .ce-tagline { color: var(--muted); font-size: 15px; margin: 0 0 28px; line-height: 1.5; }
     .ce-welcome-card .btn { width: 100%; min-height: 48px; font-size: 15px; margin-bottom: 10px; }
 
 
@@ -2425,9 +2435,9 @@
 
     /* ── Welcome / first-run hero — harmonise to brand ───────────────────────── */
     .ce-welcome { background: radial-gradient(1100px 520px at 50% -10%, rgba(99,102,241,0.12), transparent), var(--page); }
-    .ce-welcome-card .ce-logo { background: var(--brand-soft); border-color: var(--brand-line); border-radius: var(--r-lg); }
-    .ce-welcome-card .ce-logo svg { color: var(--brand-2); stroke: var(--brand-2); }
-    .ce-welcome-card h1 { letter-spacing: -0.03em; font-weight: 780; }
+    /* CE brand mark stands alone on the light welcome — no tile behind it */
+    .ce-welcome-card .ce-logo { background: transparent; border: none; }
+    .ce-welcome-card h1 { letter-spacing: -0.03em; font-weight: 830; }
 
     /* ── Empty states — intentional & calm ───────────────────────────────────── */
     .empty-state { padding: 40px 24px; }
@@ -2511,12 +2521,16 @@
     }
     .brand { padding: 2px 6px 4px; gap: 10px; }
     .brand-mark {
-      width: 34px; height: 34px; border-radius: 11px;
-      background: var(--brand-grad);
-      box-shadow: var(--glow-brand);
-      font-size: 12px;
+      width: 38px; height: 38px; border-radius: 11px;
+      /* CoachEasier product mark: metallic CE on the brand ink tile. The ring keeps
+         the club accent present; a club logo replaces the tile entirely. */
+      background: #0A0D12;
+      box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.22);
+      font-size: 13px;
+      color: #DDE1E5; /* 'CE' text fallback if the mark image fails to load */
     }
-    .brand strong { font-size: 14.5px; letter-spacing: -0.02em; }
+    .brand-mark img { width: 82%; height: 82%; object-fit: contain; display: block; }
+    .brand strong { font-size: 15px; letter-spacing: -0.02em; }
     .brand p, .sidebar-card p { color: var(--faint); font-size: 11.5px; }
 
     nav { gap: 2px; }
@@ -2764,11 +2778,9 @@
       box-shadow: 0 0 0 1px rgba(110,116,240,0.3), 0 10px 26px -8px rgba(110,116,240,0.55);
     }
     .btn.primary:hover { filter: brightness(1.08) saturate(1.05); transform: translateY(-2px); }
-    .brand-mark { animation: v3breathe 5.5s ease-in-out infinite; }
-    @keyframes v3breathe {
-      0%,100% { box-shadow: 0 0 0 1px rgba(110,116,240,0.25), 0 8px 22px -8px rgba(110,116,240,0.4); }
-      50%     { box-shadow: 0 0 0 1px rgba(110,116,240,0.45), 0 12px 32px -6px rgba(110,116,240,0.7); }
-    }
+    /* RC4.6D2: the breathing glow is retired from the product mark — brand rules say
+       no animated logo effects, and its hardcoded indigo shadow fought the
+       club-accent ring. The static ring in the sidebar block is the identity now. */
 
     /* ══ MATCH CENTRE — the hero. Stadium pitch + magnet selection ════════════ */
     .pitch-big, #matchday-pitch {
@@ -4535,7 +4547,7 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <span class="brand-mark">CE</span>
+        <span class="brand-mark"><img src="/brand/svg/coacheasier-mark.svg" alt="" width="38" height="38" onerror="this.parentNode.textContent='CE'"></span>
         <div>
           <strong>CoachEasier</strong>
           <p id="sidebarClubName"></p>
@@ -5336,8 +5348,9 @@
       el.className = 'ce-welcome';
       el.innerHTML = `
         <div class="ce-welcome-card">
-          <div class="ce-logo">${icon('trophy', 30).replace('currentColor', '#10b981')}</div>
+          <div class="ce-logo"><img src="/brand/svg/coacheasier-mark-on-light.svg" alt="" width="84" height="84" onerror="this.parentNode.remove()"></div>
           <h1>CoachEasier</h1>
+          <p class="ce-brand-tag">IT&rsquo;S IN <span>OUR</span> GAME.</p>
           <p class="ce-tagline">Selection, availability and team communication —<br>everything your club needs for match week.</p>
           <button class="btn primary" type="button" onclick="welcomeLogin()">Log in</button>
           <button class="btn" type="button" onclick="welcomeJoin()">Join a team</button>
@@ -13665,7 +13678,7 @@
       const steps = [
         // 0 — Welcome
         `<div style="text-align:center">
-          <div class="ce-logo" style="width:60px;height:60px;border-radius:14px;margin:0 auto 16px;background:var(--accent-soft);border:1px solid rgba(var(--accent-rgb), 0.3);display:flex;align-items:center;justify-content:center">${icon('trophy', 28)}</div>
+          <div style="width:64px;height:64px;margin:0 auto 14px"><img src="/brand/svg/coacheasier-mark-on-light.svg" alt="" width="64" height="64" style="width:100%;height:100%;object-fit:contain" onerror="this.parentNode.remove()"></div>
           <h3 style="font-size:20px;margin:0 0 8px">Welcome to CoachEasier</h3>
           <p style="color:var(--muted);font-size:13.5px;line-height:1.55;margin:0 0 20px">Set up your club in about two minutes.<br>You'll be inviting players right after.</p>
           <button class="btn primary" type="button" onclick="clubWizNext()" style="width:100%;min-height:48px;font-size:15px">Get started →</button>
@@ -15309,6 +15322,13 @@
             ${!canUseFeature('unlimited_push') ? `<div style="margin-top:12px">${renderUpgradePrompt('unlimited_push', { compact: true })}</div>` : ''}
           </div>
 
+          <!-- Support — always visible so beta coaches can reach a human -->
+          <div class="card">
+            <h2 style="margin-bottom:4px">Support</h2>
+            <p class="muted" style="font-size:12px;margin-bottom:10px">Contact CoachEasier support — include your club name so we can help faster.</p>
+            <a href="mailto:support@coacheasier.com" class="btn" style="display:flex;align-items:center;justify-content:center;min-height:44px;font-size:13px;text-decoration:none">support@coacheasier.com</a>
+          </div>
+
           <!-- Device (hidden in the commercial Beta UI; functions retained) -->
           <div class="card${_betaUI ? " beta-hidden" : ""}">
             <h2 style="margin-bottom:4px">Device</h2>
@@ -15596,13 +15616,16 @@
        '--page-glow', '--page-wash', '--bubble-mine'].forEach(v => {
         if (vars[v]) root.style.setProperty(v, vars[v]); else root.style.removeProperty(v);
       });
-      // Club badge in the sidebar identity block (shows on every screen). The logo
-      // gets a subtle club-coloured ring; with no logo the default CE monogram shows.
+      // Club badge in the sidebar identity block (shows on every screen). A club
+      // logo replaces the tile entirely (multi-tenant identity wins); with no club
+      // logo the CoachEasier metallic CE mark shows on the brand ink tile.
       const badge = document.querySelector('.brand-mark');
       if (badge) {
         badge.style.cssText = state.clubLogo
           ? `background-image:url(${state.clubLogo});background-size:cover;background-position:center;color:transparent;box-shadow:inset 0 0 0 1px var(--brand-line)`
           : '';
+        const markImg = badge.querySelector('img');
+        if (markImg) markImg.style.display = state.clubLogo ? 'none' : '';
       }
       // Logo beside the shared page title (Overview, Availability, Training, Members,
       // Medical, Settings — every page that uses the topbar). Match Centre & Messages
@@ -24447,7 +24470,7 @@
       try {
         const n = new Notification('Local Notification Test', {
           body: 'Sent from page context (new Notification) — ' + new Date(ts).toLocaleTimeString(),
-          icon: '/icon.svg',
+          icon: '/brand/png/coacheasier-appicon-192.png',
           tag: 'local-diag-' + ts,
         });
         n.addEventListener('show',  () => { _localNotifResult = { ok: true,  method: 'local', ts: Date.now() }; renderPushDiagOverlay(); });
