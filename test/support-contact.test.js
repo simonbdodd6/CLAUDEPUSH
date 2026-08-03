@@ -32,13 +32,13 @@ function settingsSource() {
 test('Settings renders a Support card with the support mailto link', () => {
   const src = settingsSource();
   assert.ok(src.includes('mailto:support@coacheasier.com'), 'mailto link present in Settings');
-  assert.match(src, /<h2[^>]*>Support<\/h2>/, 'Support heading present in Settings');
+  assert.match(src, /<h2[^>]*>(?:<img[^>]*>)?CoachEasier Support<\/h2>/, 'CoachEasier Support heading present in Settings');
   assert.ok(/Contact CoachEasier support/i.test(src), 'helper line present');
 });
 
 test('Support card is not gated behind the Beta UI flag', () => {
   const src = settingsSource();
-  const cardStart = src.indexOf('<h2 style="margin-bottom:4px">Support</h2>');
+  const cardStart = src.search(/<h2[^>]*>(?:<img[^>]*>)?CoachEasier Support<\/h2>/);
   assert.ok(cardStart !== -1, 'Support heading found');
   // The card opening tag immediately before the heading must be a plain card,
   // not the `${_betaUI ? " beta-hidden" : ""}` conditional used by hidden cards.

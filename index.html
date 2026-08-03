@@ -4540,6 +4540,46 @@
     .avail-summary .msg-kpi.unavailable strong { color:#dc2626; }
     .avail-summary .msg-kpi.chase strong       { color:var(--muted); }
     .msg-board-list { max-height:560px; overflow-y:auto; padding:8px; display:grid; gap:6px; }
+    /* ══════════════════════════════════════════════════════════════════════
+       RC4.6G — COACHEASIER PRODUCT PRESENCE (presentation only · loaded last)
+       Two quiet signature details frame the product; club colours remain the
+       action/navigation authority everywhere. No gold on buttons or cards.
+       ══════════════════════════════════════════════════════════════════════ */
+
+    /* 1 · Workspace frame — one fine silver→champagne keyline across the very
+       top of the app. Product-owned chrome, never content. */
+    body::after {
+      content: '';
+      position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 10000;
+      pointer-events: none;
+      background: linear-gradient(90deg,
+        rgba(176,181,192,0.85) 0%, #A37E38 38%, #DCC685 50%, #A37E38 62%,
+        rgba(176,181,192,0.85) 100%);
+    }
+
+    /* 2 · Sidebar product lockup — clearer wordmark, champagne hairline under
+       the product block. The club name keeps its own line beneath. */
+    .brand strong { font-size: 16px !important; letter-spacing: -0.025em !important; }
+    .brand {
+      border-bottom: 2px solid rgba(163,126,56,0.32) !important;
+      border-bottom-left-radius: 4px !important;
+      border-bottom-right-radius: 4px !important;
+    }
+
+    /* 3 · Product attribution — quiet "Powered by CoachEasier" signature. */
+    .ce-powered {
+      margin: 3px 0 0 !important;
+      font-size: 11px !important;
+      color: var(--faint, #9aa3b2) !important;
+      letter-spacing: 0.01em;
+    }
+    .ce-powered span { font-weight: 750; color: #8F6B2A; }
+
+    /* 4 · Support card — small product mark beside the CoachEasier Support title. */
+    .ce-support-mark {
+      width: 18px; height: 18px; display: inline-block; vertical-align: -3px;
+      margin-right: 7px;
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -4577,6 +4617,7 @@
 
       <div class="sidebar-card">
         <strong id="sidebarClubCard"></strong>
+        <p class="ce-powered">Powered by <span>CoachEasier</span></p>
         <p>Data saved locally in this browser.</p>
       </div>
     </aside>
@@ -8513,7 +8554,7 @@
       const _nameEl   = document.getElementById('sidebarClubName');
       const _cardEl   = document.getElementById('sidebarClubCard');
       if (_nameEl) _nameEl.textContent = _clubName;
-      if (_cardEl) _cardEl.textContent = _clubName + ' · CoachEasier';
+      if (_cardEl) _cardEl.textContent = _clubName;
       document.title = 'CoachEasier · ' + _clubName;
       const SECTION_PERMS = { medical: 'medical_access', admin: 'manage_teams', club: 'manage_teams', fixtures: 'manage_teams', selection: 'publish_squads', message: 'reports', messages: 'messaging', training: 'publish_training', matchday: 'publish_squads', players: 'manage_players' };
       // In beta mode render in BETA_NAV_IDS order (workflow order); otherwise the
@@ -15328,7 +15369,7 @@
 
           <!-- Support — always visible so beta coaches can reach a human -->
           <div class="card">
-            <h2 style="margin-bottom:4px">Support</h2>
+            <h2 style="margin-bottom:4px"><img src="/brand/svg/coacheasier-mark-on-light.svg" alt="" class="ce-support-mark" onerror="this.remove()">CoachEasier Support</h2>
             <p class="muted" style="font-size:12px;margin-bottom:10px">Contact CoachEasier support — include your club name so we can help faster.</p>
             <a href="mailto:support@coacheasier.com" class="btn" style="display:flex;align-items:center;justify-content:center;min-height:44px;font-size:13px;text-decoration:none">support@coacheasier.com</a>
           </div>
