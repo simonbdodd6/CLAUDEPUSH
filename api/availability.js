@@ -6,7 +6,7 @@ import { setCors } from './_http.js';
 import { kvConfigured, kvGet } from './_kv.js';
 import { key } from './_keys.js';
 import { DEFAULT_TEAM, resolveSessionFromRequest, listIdentityState } from './_identityStore.js';
-import { requireTenantPermission, PERM } from './_tenant.js';
+import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -83,16 +83,19 @@ export default async function handler(req, res) {
     if (action === 'reset_availability' || action === 'seed_availability') {
       const sessions = Array.isArray(rawSessions) && rawSessions.length ? rawSessions : DEMO_SESSIONS;
       const players  = Array.isArray(rawPlayers) && rawPlayers.length ? rawPlayers : DEMO_PLAYERS;
+      // Dev tooling operates on the caller's own club (default club when anonymous).
+      const devSession = await resolveSessionFromRequest(req).catch(() => null);
+      const devTeamId = tenantTeamId(devSession) || DEFAULT_TEAM.id;
 
       if (action === 'reset_availability') {
-        await Promise.all(sessions.map(sid => saveAvailability(sid, {})));
+        await Promise.all(sessions.map(sid => saveAvailability(devTeamId, sid, {})));
         return res.status(200).json({ ok: true, action: 'reset_availability', cleared: sessions });
       }
 
       if (action === 'seed_availability') {
         const counts = {};
         for (const sid of sessions) {
-          const existing = await loadAvailability(sid);
+          const existing = await loadAvailability(devTeamId, sid);
           for (const p of players) {
             if (p.response === 'no-reply') continue;
             const k = p.userId || p.name;
@@ -107,7 +110,7 @@ export default async function handler(req, res) {
               legacyPlayerId: p.legacyPlayerId  || '',
             };
           }
-          await saveAvailability(sid, existing);
+          await saveAvailability(devTeamId, sid, existing);
           counts[sid] = Object.keys(existing).length;
         }
         return res.status(200).json({ ok: true, action: 'seed_availability', sessions: counts });
@@ -118,9 +121,11 @@ export default async function handler(req, res) {
   // ── Dev-only seed GET status ────────────────────────────────────────────────
   if (req.method === 'GET' && req.query?._dev === 'status' && process.env.DEV_LOGIN === 'true') {
     const sessions = String(req.query.sessions || DEMO_SESSIONS.join(',')).split(',').filter(Boolean);
+    const devSession = await resolveSessionFromRequest(req).catch(() => null);
+    const devTeamId = tenantTeamId(devSession) || DEFAULT_TEAM.id;
     const data = {};
     await Promise.all(sessions.map(async sid => {
-      const entries = await loadAvailability(sid);
+      const entries = await loadAvailability(devTeamId, sid);
       data[sid] = Object.entries(entries).map(([k, val]) => ({
         key: k,
         label:       typeof val === 'string' ? k : (val.label || k),
@@ -144,7 +149,7 @@ export default async function handler(req, res) {
       // the read to that list made this self-read return {} even though the answer
       // was persisted. Scanning by identity finds the latest saved answer wherever
       // it lives. Write path and storage format are unchanged.
-      const found = await loadAvailabilityForIdentity(identity);
+      const found = await loadAvailabilityForIdentity(tenantTeamId(sessionContext), identity);
       const result = {};
       for (const [sid, v] of Object.entries(found)) result[sid] = { response: v.response, reason: v.reason || '' };
       return res.status(200).json({ responses: result });
@@ -164,7 +169,7 @@ export default async function handler(req, res) {
       const identities = (roster.player_profiles || []).map(p => ({
         userId: p.userId, playerId: p.userId, legacyPlayerId: p.legacyPlayerId || '',
       }));
-      const resolvedList = await resolveAvailabilityForIdentities(identities);
+      const resolvedList = await resolveAvailabilityForIdentities(tenant.teamId, identities);
       const resolved = {};
       resolvedList.forEach(({ identity, answers }) => {
         if (!answers || !Object.keys(answers).length) return;
@@ -175,14 +180,17 @@ export default async function handler(req, res) {
       return res.status(200).json({ resolved });
     }
 
+    let rawTenant;
     try {
-      await requireTenantPermission(req, PERM.REPORTS);
+      rawTenant = await requireTenantPermission(req, PERM.REPORTS);
     } catch (error) {
       return sendAuthError(res, error);
     }
     const sessionId = req.query?.sessionId || 'game';
     if (!validSessionId(sessionId)) return res.status(400).json({ error: 'Invalid sessionId' });
-    const responses = await loadAvailability(sessionId);
+    // Tenant-scoped read: only the caller's own club records (plus the default
+    // club's legacy flat keys when the caller IS the default club).
+    const responses = await loadAvailability(rawTenant.teamId, sessionId);
     const list = Object.entries(responses).map(([k, value]) => ({
       key:            k,
       label:          typeof value === 'string' ? k     : value?.label          || k,
@@ -212,7 +220,10 @@ export default async function handler(req, res) {
       catch (error) { return sendAuthError(res, error); }
       const ids = Array.isArray(clearSessions) && clearSessions.length ? clearSessions : await activeSessionIds(coachSession.teamId);
       const validIds = ids.filter(id => validSessionId(id));
-      await Promise.all(validIds.map(sid => saveAvailability(sid, {})));
+      // Writes an empty scoped store per session. The scoped key then masks any
+      // legacy flat data on reads, so this clears ONLY the caller's club — it
+      // can never blank another club's records for a shared session id.
+      await Promise.all(validIds.map(sid => saveAvailability(coachSession.teamId, sid, {})));
       return res.status(200).json({ ok: true, action: 'clear_week', cleared: validIds });
     }
 
@@ -229,7 +240,10 @@ export default async function handler(req, res) {
       identity = availabilityIdentityFromSubscription(subscription);
     }
 
-    const responses = await loadAvailability(sessionId);
+    // A signed-in player writes into their OWN club's keyspace; the legacy
+    // subscription path (no session) belongs to the default club by definition.
+    const writeTeamId = tenantTeamId(sessionContext) || DEFAULT_TEAM.id;
+    const responses = await loadAvailability(writeTeamId, sessionId);
     responses[identity.key] = {
       response,
       reason: safeReason,
@@ -239,7 +253,7 @@ export default async function handler(req, res) {
       playerId: identity.playerId,
       legacyPlayerId: identity.legacyPlayerId,
     };
-    await saveAvailability(sessionId, responses);
+    await saveAvailability(writeTeamId, sessionId, responses);
     return res.status(200).json({ ok: true, label: identity.label, userId: identity.userId, playerId: identity.playerId, response, reason: safeReason, sessionId });
   }
 

@@ -1,15 +1,44 @@
 import { kvGet, kvSet, kvScanKeys } from './_kv.js';
-import { APP_PREFIX, LEGACY_PREFIX, availabilityKey, legacyAvailabilityKey } from './_keys.js';
+import { APP_PREFIX, LEGACY_PREFIX, availabilityKey, legacyAvailabilityKey, teamAvailabilityKey } from './_keys.js';
+import { DEFAULT_TEAM } from './_identityStore.js';
 
-export async function loadAvailability(sessionId) {
-  const current = await kvGet(availabilityKey(sessionId));
-  if (current && typeof current === 'object') return current;
+// ───────────────────────────────────────────────────────────────────────────
+// RC4.7A — TENANT-SCOPED AVAILABILITY
+//
+// Records live at  app:availability:<teamId>:<sessionId>.  The flat pre-scoping
+// keys (app:availability:<sessionId> and ce:availability:<sessionId>) hold the
+// existing beta data, ALL of which belongs to the default club — so the legacy
+// fallback is readable ONLY for DEFAULT_TEAM. Any other club reads and writes
+// exclusively inside its own keyspace; the old global bucket is unreachable
+// from their context, which is what closes the cross-club leak.
+//
+// Writes always land on the team-scoped key. Because reads merge legacy data
+// in (default team only) and writes persist the merged store, legacy records
+// migrate lazily on first write with no migration job.
+// ───────────────────────────────────────────────────────────────────────────
+
+function normalizeTeamId(teamId) {
+  const id = String(teamId || '').trim();
+  return id || DEFAULT_TEAM.id;
+}
+
+function canReadLegacy(teamId) {
+  return normalizeTeamId(teamId) === DEFAULT_TEAM.id;
+}
+
+export async function loadAvailability(teamId, sessionId) {
+  const scopedTeam = normalizeTeamId(teamId);
+  const scoped = await kvGet(teamAvailabilityKey(scopedTeam, sessionId));
+  if (scoped && typeof scoped === 'object') return scoped;
+  if (!canReadLegacy(scopedTeam)) return {};
+  const flat = await kvGet(availabilityKey(sessionId));
+  if (flat && typeof flat === 'object') return flat;
   const legacy = await kvGet(legacyAvailabilityKey(sessionId));
   return legacy && typeof legacy === 'object' ? legacy : {};
 }
 
-export async function saveAvailability(sessionId, value) {
-  await kvSet(availabilityKey(sessionId), value);
+export async function saveAvailability(teamId, sessionId, value) {
+  await kvSet(teamAvailabilityKey(normalizeTeamId(teamId), sessionId), value);
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -19,19 +48,34 @@ export async function saveAvailability(sessionId, value) {
 // exists once here. BOTH the player self-read (myResponse) and the coach board
 // consume this layer, so neither side interprets the records differently.
 //
-// loadAllAvailability()             — read every availability record ONCE.
-// resolveAvailabilityForIdentity()  — pure: one identity's answers by sessionId.
-// loadAvailabilityForIdentity()     — convenience (player self-read): load + resolve.
-// resolveAvailabilityForIdentities()— resolve many identities from one read (coach).
+// loadAllAvailability(teamId)        — read the team's records ONCE.
+// resolveAvailabilityForIdentity()   — pure: one identity's answers by sessionId.
+// loadAvailabilityForIdentity()      — convenience (player self-read): load + resolve.
+// resolveAvailabilityForIdentities() — resolve many identities from one read (coach).
 //
 // Reads are NOT constrained to a published session-id list — that constraint is
 // what made answers saved under a stale/custom/republished sessionId disappear.
 // Matching is by userId / playerId / legacyPlayerId only (identical on both sides).
 // ───────────────────────────────────────────────────────────────────────────
 
-/** Read every availability record once, keyed by sessionId (app prefix wins). */
-export async function loadAllAvailability() {
+/** Read every availability record for ONE team, keyed by sessionId.
+ *  Team-scoped keys win; flat legacy keys fill gaps for the default team only. */
+export async function loadAllAvailability(teamId) {
+  const scopedTeam = normalizeTeamId(teamId);
   const bySession = {};
+
+  const scopedMarker = `${APP_PREFIX}:availability:${scopedTeam}:`;
+  const scopedKeys = await kvScanKeys(`${scopedMarker}*`);
+  const scopedStores = await Promise.all(scopedKeys.map(k => kvGet(k)));
+  scopedKeys.forEach((k, i) => {
+    const store = scopedStores[i];
+    if (!store || typeof store !== 'object') return;
+    const sessionId = k.slice(scopedMarker.length);
+    if (sessionId) bySession[sessionId] = store;
+  });
+
+  if (!canReadLegacy(scopedTeam)) return bySession;
+
   const prefixes = [...new Set([APP_PREFIX, LEGACY_PREFIX])];
   for (const prefix of prefixes) {
     const marker = `${prefix}:availability:`;
@@ -41,7 +85,10 @@ export async function loadAllAvailability() {
       const store = stores[i];
       if (!store || typeof store !== 'object') return;
       const sessionId = k.slice(marker.length);
-      if (!sessionId || bySession[sessionId]) return; // app prefix wins over legacy
+      // A ':' in the suffix means this is some team's SCOPED key (session IDs
+      // cannot contain ':'), never flat legacy data — skip it here.
+      if (!sessionId || sessionId.includes(':')) return;
+      if (bySession[sessionId]) return; // scoped (then app-prefix) wins
       bySession[sessionId] = store;
     });
   }
@@ -69,21 +116,25 @@ export function resolveAvailabilityForIdentity(bySession = {}, identity = {}) {
   return out;
 }
 
-/** Player self-read: one identity's answers across every stored session. */
-export async function loadAvailabilityForIdentity(identity = {}) {
-  return resolveAvailabilityForIdentity(await loadAllAvailability(), identity);
+/** Player self-read: one identity's answers across their team's sessions. */
+export async function loadAvailabilityForIdentity(teamId, identity = {}) {
+  return resolveAvailabilityForIdentity(await loadAllAvailability(teamId), identity);
 }
 
-/** Coach read: resolve many identities from a SINGLE read of the records. */
-export async function resolveAvailabilityForIdentities(identities = []) {
-  const bySession = await loadAllAvailability();
+/** Coach read: resolve many identities from a SINGLE read of the team's records. */
+export async function resolveAvailabilityForIdentities(teamId, identities = []) {
+  const bySession = await loadAllAvailability(teamId);
   return (Array.isArray(identities) ? identities : []).map(identity => ({
     identity,
     answers: resolveAvailabilityForIdentity(bySession, identity),
   }));
 }
 
-/** Labels with an availability reply during the chase-up lookback period. */
+/** Labels with an availability reply during the chase-up lookback period.
+ *  Deliberately a global union (all clubs + legacy): its consumers (weekly
+ *  reminder cron, no-reply push audiences) already scope their RECIPIENTS by
+ *  club membership; this set only suppresses double-chasing responders. The
+ *  `app:availability:*` pattern matches team-scoped keys too. */
 export async function recentResponders(withinDays = 7) {
   const cutoff = Date.now() - withinDays * 24 * 60 * 60 * 1000;
   const patterns = [...new Set([`${APP_PREFIX}:availability:*`, `${LEGACY_PREFIX}:availability:*`])];

@@ -178,7 +178,9 @@ test('availability saves registered player replies and rejects unknown endpoints
     body: { endpoint: 'endpoint-1', response: 'available', sessionId: 'tue' },
   }, good);
   assert.equal(good.statusCode, 200);
-  assert.equal(JSON.parse(store.get('app:availability:tue'))['Simon Dodd'].response, 'available');
+  // RC4.7A: the unauthenticated subscription reply path belongs to the default
+  // club, so it writes into the default club's tenant-scoped key.
+  assert.equal(JSON.parse(store.get('app:availability:boitsfort-rfc:tue'))['Simon Dodd'].response, 'available');
 
   const bad = response();
   await availabilityHandler({

@@ -104,7 +104,8 @@ test('a single stored entry per session+user — POST overwrites, never appends'
     await call('POST', {}, { sessionId: 'tue', response: resp }, ck(player.session));
   }
   // The raw store for session 'tue' must hold exactly ONE entry for this player.
-  const raw = JSON.parse(kv.get('app:availability:tue') || '{}');
+  // RC4.7A: storage is tenant-scoped at app:availability:<teamId>:<sessionId>.
+  const raw = JSON.parse(kv.get(`app:availability:${club.team.id}:tue`) || '{}');
   const mine = Object.values(raw).filter(v => v && (v.userId === userId));
   assert.equal(mine.length, 1, 'exactly one entry for the player (overwrite, not append)');
   assert.equal(mine[0].response, 'unavailable', 'and it is the latest value');

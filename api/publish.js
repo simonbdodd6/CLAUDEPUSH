@@ -303,10 +303,18 @@ async function clubHandler(req, res) {
         await kvSet(sessionsKey(session.teamId), cleanSessions);
       }
 
-      // 2. Availability records — strip per-player entries that match test markers
+      // 2. Availability records — strip per-player entries that match test markers.
+      // RC4.7A: sweep ONLY the caller's club keyspace. The flat legacy keys hold
+      // default-club beta data, so they are included only for the default club —
+      // this action can never touch another club's records.
+      const isDefaultTeam = session.teamId === DEFAULT_TEAM.id;
       const availKeys = [...new Set([
-        ...(await kvScanKeys(`${APP_PREFIX}:availability:*`)),
-        ...(await kvScanKeys(`${LEGACY_PREFIX}:availability:*`)),
+        ...(await kvScanKeys(`${APP_PREFIX}:availability:${session.teamId}:*`)),
+        ...(isDefaultTeam ? (await kvScanKeys(`${APP_PREFIX}:availability:*`)).filter(k => {
+          const suffix = k.slice(`${APP_PREFIX}:availability:`.length);
+          return suffix && !suffix.includes(':'); // flat legacy only, never other teams' scoped keys
+        }) : []),
+        ...(isDefaultTeam ? await kvScanKeys(`${LEGACY_PREFIX}:availability:*`) : []),
       ])];
       for (const k of availKeys) {
         const rec = await kvGet(k);
