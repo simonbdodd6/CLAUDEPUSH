@@ -402,11 +402,25 @@ async function handleGet(req, res) {
 
 // ─── POST handler ────────────────────────────────────────────────────
 async function handlePost(req, res) {
-  const chunks = [];
-  for await (const c of req) chunks.push(c);
+  // Vercel's Node runtime parses JSON bodies eagerly into req.body and consumes
+  // the request stream, so reading the raw stream here yields '' and every send
+  // failed with "Invalid JSON" in deployed environments. Prefer the pre-parsed
+  // body; fall back to the raw stream for plain-Node harnesses that provide one.
   let body;
-  try { body = JSON.parse(Buffer.concat(chunks).toString()); }
-  catch { return err(res, 400, 'Invalid JSON'); }
+  if (req.body !== undefined && req.body !== null && req.body !== '') {
+    if (typeof req.body === 'string') {
+      try { body = JSON.parse(req.body); }
+      catch { return err(res, 400, 'Invalid JSON'); }
+    } else {
+      body = req.body;
+    }
+  } else {
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    try { body = JSON.parse(Buffer.concat(chunks).toString()); }
+    catch { return err(res, 400, 'Invalid JSON'); }
+  }
+  if (!body || typeof body !== 'object') return err(res, 400, 'Invalid JSON');
 
   const { action } = body;
   const sessionContext = await resolveSessionFromRequest(req).catch(() => null);

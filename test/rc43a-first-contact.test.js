@@ -76,6 +76,25 @@ test('invite link: a valid open group invite is not mislabelled as used', () => 
   assert.notEqual(inviteLinkMessage(200, { valid: true, status: 'open', group: true }), 'This invite has already been used. Sign in with the account created from it.');
 });
 
+// ── RC4.6F: server trouble is NOT "invite not found" ─────────────────────────
+// A storage-less/failing server returns 5xx; blaming the link sends the player
+// to their coach for a new invite that will fail identically. The copy must say
+// retry, and the token must stay in the URL so refresh retries it.
+test('invite link: 5xx → temporary-server copy, not "not found"', () => {
+  for (const status of [500, 502, 503]) {
+    const msg = inviteLinkMessage(status, {});
+    assert.match(msg, /server had a problem|try again/i, `status ${status} says retry`);
+    assert.doesNotMatch(msg, /couldn't find this invite/i, `status ${status} does not blame the link`);
+  }
+});
+test('invite link: 429 → wait-and-retry copy', () => {
+  assert.equal(inviteLinkMessage(429, {}), 'Too many attempts. Please wait a few minutes and try again.');
+});
+test('invite claim keeps the token in the URL on 5xx/429 (source-scan)', () => {
+  assert.match(src, /if \(!\(res\.status >= 500 \|\| res\.status === 429\)\) window\.history\.replaceState/,
+    'checkInviteParam only clears the invite token for definitive (non-5xx/429) outcomes');
+});
+
 // ── Item 1: persistent join success state (source-scan) ───────────────────────
 test('join success sets the persistent "joined" state, not a fleeting toast', () => {
   const fn = extractFn('joinSquad');

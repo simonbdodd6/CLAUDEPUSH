@@ -8315,8 +8315,12 @@
     }
 
     // Distinct, human-readable copy for an invalid invite link, from the existing
-    // /api/invite?token= response (404 not-found · 410 revoked/expired · valid-but-used).
+    // /api/invite?token= response (404 not-found · 410 revoked/expired · valid-but-used
+    // · 5xx server trouble). A server error is NOT "invite not found" — the link may be
+    // fine, so the copy says retry instead of blaming the link.
     function inviteLinkMessage(status, data) {
+      if (Number(status) >= 500) return "We couldn't load this invite right now — the server had a problem. Try again in a minute; the link is still valid.";
+      if (Number(status) === 429) return 'Too many attempts. Please wait a few minutes and try again.';
       if (Number(status) === 404) return "We couldn't find this invite. Check the link or ask your coach for a new one.";
       if (Number(status) === 410) {
         return /revok|cancel/i.test((data && data.error) || '')
@@ -26467,7 +26471,9 @@
         }
         // Distinct human-readable states from the API status/body (expired · cancelled
         // · already used · not found). Not-claimable → clear the token and guide them.
-        window.history.replaceState({}, '', '/');
+        // A 5xx/429 is temporary: KEEP the token in the URL so a refresh retries the
+        // same (possibly valid) invite instead of silently discarding it.
+        if (!(res.status >= 500 || res.status === 429)) window.history.replaceState({}, '', '/');
         showToast(inviteLinkMessage(res.status, data));
         if (alreadyUsed || res.status === 409) setAuthTab('login');
       } catch(e) {

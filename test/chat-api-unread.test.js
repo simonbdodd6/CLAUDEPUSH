@@ -175,6 +175,11 @@ test('chat API unread count increments on coach DM and survives refresh and logi
   assert.equal(await unreadFor(playerId, convId, playerHeaders), 0);
   assert.equal(await unreadFor(playerId, convId, playerHeaders), 0, 'logout/login refetch keeps cleared read state');
 
+  // Unread is "msg.ts > read ts" with millisecond stamps: a send in the SAME
+  // millisecond as the read above counts as already-read and the final assert
+  // flakes. Step past that boundary before sending the next ping.
+  await new Promise(resolve => setTimeout(resolve, 2));
+
   await call('POST', '/api/chat', {
     action: 'send',
     convId,
@@ -445,4 +450,36 @@ test('tenant isolation blocks players and coaches from reading another team mess
   const coachList = await call('GET', '/api/chat?action=conversations', null, coachHeaders);
   assert.equal(coachList.conversations.some(conversation => conversation.id === ownConvId), true);
   assert.equal(coachList.conversations.some(conversation => conversation.id === otherConvId), false);
+});
+
+// ── RC4.6F regression: Vercel-style pre-parsed body ───────────────────────────
+// Vercel's Node runtime parses JSON into req.body and consumes the stream; the
+// old handler re-read the (empty) stream and rejected EVERY deployed send with
+// 400 "Invalid JSON". The handler must accept a pre-parsed body object.
+test('chat API POST accepts a Vercel-style pre-parsed req.body with a consumed stream', async () => {
+  kv.clear();
+  lists.clear();
+  const coachHeaders = await coachSetup();
+  const request = {
+    method: 'POST',
+    url: '/api/chat',
+    headers: coachHeaders,
+    body: { action: 'create_conv', id: 'squad', name: 'Squad', type: 'GROUP', participants: ['coach-demo'] },
+    async *[Symbol.asyncIterator]() {}, // stream already consumed by the runtime
+  };
+  const response = res();
+  await chatHandler(request, response);
+  assert.equal(response.statusCode, 200, response.body);
+
+  const sendReq = {
+    method: 'POST',
+    url: '/api/chat',
+    headers: coachHeaders,
+    body: { action: 'send', convId: 'squad', text: 'vercel-runtime send works' },
+    async *[Symbol.asyncIterator]() {},
+  };
+  const sendRes = res();
+  await chatHandler(sendReq, sendRes);
+  assert.equal(sendRes.statusCode, 200, sendRes.body);
+  assert.equal(JSON.parse(sendRes.body).message.text, 'vercel-runtime send works');
 });
