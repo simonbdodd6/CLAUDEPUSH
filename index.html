@@ -4822,6 +4822,96 @@
     @media (prefers-reduced-motion: reduce) {
       .perf-choice, .perf-scale-btn { transition:none; }
     }
+
+    /* ═══ COACHEASIER PERFORMANCE (SC3) — exercise library ═══════════════════
+       Library cards, tier badges, detail view, media placeholder. Validated
+       content reads calm; unverified content is visibly distinct. */
+
+    .perf-ex-card {
+      display:flex; align-items:stretch; gap:8px; padding:12px;
+      border:1px solid var(--line); border-radius:14px; background:var(--panel);
+      transition:border-color .14s ease, background .14s ease;
+    }
+    .perf-ex-card:hover { border-color:var(--brand-line); }
+    .perf-ex-card.unverified { border-style:dashed; background:var(--panel-2); }
+    .perf-ex-main {
+      font-family:inherit; flex:1 1 auto; min-width:0; display:flex; gap:12px; align-items:flex-start;
+      background:transparent; border:0; padding:0; text-align:left; cursor:pointer; color:inherit;
+    }
+    .perf-ex-thumb {
+      flex-shrink:0; width:44px; height:44px; display:inline-flex; align-items:center; justify-content:center;
+      border-radius:11px; color:var(--muted); background:var(--panel-2); border:1px dashed var(--line-2);
+    }
+    .perf-ex-body { min-width:0; display:grid; gap:3px; }
+    .perf-ex-body strong { font-size:14.5px; color:var(--ink); }
+    .perf-ex-body small { font-size:12.5px; color:var(--muted); line-height:1.4; }
+    .perf-ex-chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:5px; align-items:center; }
+    .perf-ex-chips .pill { font-size:10.5px; }
+    .perf-ex-chips .pill.warn { color:var(--status-maybe); background:var(--status-maybe-soft); }
+    .perf-ex-chips .pill.core { color:var(--brand-2); background:var(--brand-soft); border:1px solid var(--brand-line); }
+
+    /* Tier + review badges — validated calm, everything else clearly marked */
+    .perf-tier-badge {
+      display:inline-flex; align-items:center; min-height:20px; padding:0 8px; border-radius:999px;
+      font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase;
+    }
+    .perf-tier-badge.validated { color:var(--status-available); background:var(--status-available-soft); }
+    .perf-tier-badge.club     { color:var(--status-maybe); background:var(--status-maybe-soft); }
+    .perf-tier-badge.private  { color:var(--brand-2); background:var(--brand-soft); border:1px solid var(--brand-line); }
+    .perf-tier-badge.draft    { color:var(--muted); background:var(--panel-2); border:1px dashed var(--line-2); }
+    .perf-tier-badge.archived { color:var(--status-unavailable); background:var(--status-unavailable-soft); }
+    .perf-review-badge {
+      display:inline-flex; align-items:center; min-height:20px; padding:0 8px; border-radius:999px;
+      font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase;
+      color:var(--status-maybe); background:var(--status-maybe-soft); border:1px solid transparent;
+    }
+
+    /* Filter row */
+    .perf-lib-filter-row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:14px; }
+    .perf-lib-select { display:inline-flex; align-items:center; gap:8px; font-size:12.5px; font-weight:700; color:var(--muted); }
+    .perf-lib-select select {
+      font-family:inherit; font-size:13px; font-weight:650; color:var(--ink);
+      background:var(--panel); border:1px solid var(--line); border-radius:10px;
+      min-height:38px; padding:0 10px; max-width:210px;
+    }
+    .perf-recent-row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:14px; }
+    .perf-recent-label { flex-basis:100%; font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+
+    /* Detail view */
+    .perf-provenance {
+      display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 14px; margin-bottom:14px;
+      border-radius:12px; border:1px solid var(--line); background:var(--panel);
+    }
+    .perf-provenance.validated { border-color:var(--status-available); background:var(--status-available-soft); }
+    .perf-provenance.unverified { border-style:dashed; border-color:var(--status-maybe); background:var(--status-maybe-soft); }
+    .perf-provenance small { font-size:12px; color:var(--ink); font-weight:600; }
+    .perf-media-placeholder {
+      align-items:center; text-align:center; gap:6px; padding:30px 16px;
+      border-style:dashed; color:var(--muted);
+    }
+    .perf-media-placeholder strong { font-size:14px; color:var(--ink); }
+    .perf-detail-block { margin:0 0 14px; }
+    .perf-detail-block:last-child { margin-bottom:0; }
+    .perf-detail-block strong { display:block; font-size:12px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); margin-bottom:5px; }
+    .perf-detail-block p { margin:0; font-size:13.5px; color:var(--ink); line-height:1.55; }
+    .perf-detail-block ul { margin:0; padding-left:18px; }
+    .perf-detail-block li { font-size:13px; color:var(--ink); line-height:1.55; margin:3px 0; }
+    .perf-safety-card { border-color:var(--status-maybe); }
+    .perf-safety-list { margin:0 0 10px; padding-left:18px; }
+    .perf-safety-list li { font-size:13px; line-height:1.55; margin:3px 0; color:var(--ink); }
+    .perf-pain-stop {
+      margin:0 0 10px; padding:10px 12px; border-radius:10px; font-size:12.5px; line-height:1.5;
+      color:var(--ink); background:var(--status-maybe-soft); border:1px solid var(--status-maybe);
+      font-weight:600;
+    }
+
+    @media (max-width: 640px) {
+      .perf-lib-filter-row { flex-direction:column; align-items:stretch; }
+      .perf-lib-select select { max-width:none; flex:1 1 auto; }
+      .perf-lib-select { justify-content:space-between; }
+      .perf-ex-card { flex-direction:row; }
+      .perf-ex-thumb { width:38px; height:38px; }
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -5128,6 +5218,20 @@
         wellnessLog: [],
       };
     }
+    // ── SC3 — library preferences mirror (exercise-prefs-store.js) ───────────
+    // Favourites + recently-viewed ids only. Fail-safe like everything else.
+    function perfNormalizeLibraryState(raw) {
+      const empty = { stateVersion: 1, favourites: [], recent: [] };
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return empty;
+      if (typeof raw.stateVersion !== "number" || raw.stateVersion > 1) return empty;
+      const idList = v => Array.isArray(v) && v.every(x => typeof x === "string" && x.length > 0 && x.length < 80);
+      return {
+        stateVersion: 1,
+        favourites: idList(raw.favourites) ? [...new Set(raw.favourites)].slice(0, 200) : [],
+        recent: idList(raw.recent) ? raw.recent.slice(-12) : [],
+      };
+    }
+
     // Migration seam — mirror of PROFILE_MIGRATIONS in the module; empty at v1.
     const PERF_PROFILE_MIGRATIONS = {};
     function perfNormalizeProfileState(raw) {
@@ -5590,6 +5694,12 @@
       // athlete-profile-store.js and normalized by the inline mirror
       // perfNormalizeProfileState() on every load. null until first visit.
       performanceProfile: null,
+      // SC3 — exercise-library preferences (favourites + recently viewed).
+      // References by exercise id only; definitions live in the versioned
+      // catalogue module, never in user state. Shape owned by
+      // performance/services/exercise-prefs-store.js (inline mirror
+      // perfNormalizeLibraryState).
+      performanceLibrary: null,
       selectedPlayerId: "",
       selectedMessagePlayerId: "",
       selectedChatId: "coach",
@@ -6238,6 +6348,8 @@
       next.activePerformanceTab = PERF_TABS.some(t => t.id === input.activePerformanceTab) ? input.activePerformanceTab : "dashboard";
       // SC2 — malformed/outdated profile data must never break app load.
       next.performanceProfile = input.performanceProfile == null ? null : perfNormalizeProfileState(input.performanceProfile);
+      // SC3 — same guarantee for library preferences.
+      next.performanceLibrary = input.performanceLibrary == null ? null : perfNormalizeLibraryState(input.performanceLibrary);
       next.clubLogo = input.clubLogo ?? "";
       next.clubColours = input.clubColours ?? null;
       next.autopilotReceipts = Array.isArray(input.autopilotReceipts) ? input.autopilotReceipts.slice(0, 20) : [];
@@ -25242,33 +25354,10 @@
         { name: 'Conditioning Finisher', minutes: 10, detail: 'Short alactic capacity piece' },
       ],
     };
-    const PERF_SAMPLE_EXERCISES = [
-      { id: 'ex-01', name: 'Back Squat',                category: 'strength',     equipment: 'Barbell',       favourite: true  },
-      { id: 'ex-02', name: 'Trap Bar Deadlift',         category: 'strength',     equipment: 'Trap Bar',      favourite: true  },
-      { id: 'ex-03', name: 'Bench Press',               category: 'strength',     equipment: 'Barbell',       favourite: true  },
-      { id: 'ex-04', name: 'Weighted Chin-up',          category: 'strength',     equipment: 'Bodyweight',    favourite: false },
-      { id: 'ex-05', name: 'Power Clean',               category: 'power',        equipment: 'Barbell',       favourite: true  },
-      { id: 'ex-06', name: 'Box Jump',                  category: 'power',        equipment: 'Plyo Box',      favourite: false },
-      { id: 'ex-07', name: 'Med Ball Rotational Throw', category: 'power',        equipment: 'Medicine Ball', favourite: false },
-      { id: 'ex-08', name: 'Flying 10s',                category: 'speed',        equipment: 'Track',         favourite: false },
-      { id: 'ex-09', name: 'Resisted Sled Sprint',      category: 'speed',        equipment: 'Sled',          favourite: true  },
-      { id: 'ex-10', name: 'Bike Erg Intervals',        category: 'conditioning', equipment: 'Bike Erg',      favourite: false },
-      { id: 'ex-11', name: 'Bronco Test',               category: 'conditioning', equipment: 'Pitch',         favourite: false },
-      { id: 'ex-12', name: '90/90 Hip Switch',          category: 'mobility',     equipment: 'Bodyweight',    favourite: false },
-      { id: 'ex-13', name: 'Copenhagen Plank',          category: 'prehab',       equipment: 'Bench',         favourite: false },
-      { id: 'ex-14', name: 'Nordic Hamstring Curl',     category: 'prehab',       equipment: 'Partner',       favourite: true  },
-      { id: 'ex-15', name: 'Pallof Press',              category: 'core',         equipment: 'Cable',         favourite: false },
-      { id: 'ex-16', name: 'Dead Bug',                  category: 'core',         equipment: 'Bodyweight',    favourite: false },
-    ];
-    const PERF_EXERCISE_CATEGORIES = [
-      { id: 'strength',     label: 'Strength' },
-      { id: 'power',        label: 'Power' },
-      { id: 'speed',        label: 'Speed & Agility' },
-      { id: 'conditioning', label: 'Conditioning' },
-      { id: 'mobility',     label: 'Mobility' },
-      { id: 'prehab',       label: 'Prehab' },
-      { id: 'core',         label: 'Core' },
-    ];
+    // SC3 — the exercise catalogue now lives in the versioned ES module
+    // performance/services/exercise-catalogue.js and is loaded at runtime
+    // via dynamic import() (same convention as src/chat-state.js). No inline
+    // exercise data: definitions are never duplicated into app state.
     const PERF_SAMPLE_METRICS = [
       { id: 'strength',     label: 'Strength',     headline: '142 kg',  detail: 'Squad avg back squat 1RM',         trend: 4.2,  goodWhenDown: false, spark: [128, 131, 133, 135, 138, 140, 142] },
       { id: 'power',        label: 'Power',        headline: '48.5 cm', detail: 'Squad avg countermovement jump',   trend: 2.8,  goodWhenDown: false, spark: [45.1, 45.8, 46.2, 47, 47.6, 48.1, 48.5] },
@@ -25351,42 +25440,116 @@
       render();
     }
 
-    // ── Exercise Library — ephemeral view state (module-local, not persisted) ─
+    // ── Exercise Library (SC3) — catalogue module + view state ──────────────
+    // The validated catalogue loads once via dynamic import(); view filters
+    // are module-local (ephemeral); favourites/recent persist in the
+    // namespaced state.performanceLibrary (mirror: perfNormalizeLibraryState).
+    let _perfCatMod = null;        // loaded module (records + pure helpers)
+    let _perfCatError = false;
+    let _perfCatPromise = null;
     let _perfLibQuery = '';
     let _perfLibCat = 'all';
+    let _perfLibPattern = 'all';
+    let _perfLibDiff = 'all';
+    let _perfLibKit = 'all';       // all | limited | bodyweight
     let _perfLibFav = false;
-    const _perfLibFavourites = new Set(PERF_SAMPLE_EXERCISES.filter(e => e.favourite).map(e => e.id));
+    let _perfLibTier = 'all';      // coach view: all | validated | club | private | draft
+    let _perfLibDetailId = null;
+
+    function perfLoadCatalogue() {
+      if (_perfCatMod || _perfCatError) return;
+      if (!_perfCatPromise) {
+        _perfCatPromise = import('./performance/services/exercise-catalogue.js')
+          .then(mod => { _perfCatMod = mod; renderPerformance(); })
+          .catch(e => { console.error('[performance] catalogue load failed', e); _perfCatError = true; renderPerformance(); });
+      }
+    }
+
+    // Sample viewer context. Real club/coach identity wiring arrives with the
+    // API adapter; the demo club id matches the sample club-tier content.
+    function perfLibViewer() {
+      return {
+        role: isCoach() ? 'snc_coach' : 'player',
+        userId: state.currentUserId || null,
+        clubId: 'demo-club',
+      };
+    }
+
+    function perfLibPrefs() {
+      return perfNormalizeLibraryState(state.performanceLibrary);
+    }
+    function perfLibToggleStar(id) {
+      const prefs = perfLibPrefs();
+      const has = prefs.favourites.includes(id);
+      state.performanceLibrary = {
+        ...prefs,
+        favourites: has ? prefs.favourites.filter(x => x !== id) : [...prefs.favourites, id],
+      };
+      saveState("Saved");
+      renderPerformance();
+    }
+    function perfLibRecordView(id) {
+      const prefs = perfLibPrefs();
+      state.performanceLibrary = { ...prefs, recent: [...prefs.recent.filter(x => x !== id), id].slice(-12) };
+      saveState("Saved");
+    }
+
+    // Kit shortcuts map to available-equipment lists for filterCatalogue.
+    const PERF_LIB_KIT_SETS = {
+      all: null,
+      limited: ['dumbbells', 'kettlebells', 'bands', 'bench', 'med_balls', 'plyo_box', 'pullup_bar', 'wall', 'partner'],
+      bodyweight: ['wall', 'partner'],
+    };
 
     function perfLibFiltered() {
-      const q = _perfLibQuery.trim().toLowerCase();
-      return PERF_SAMPLE_EXERCISES.filter(ex => {
-        if (_perfLibFav && !_perfLibFavourites.has(ex.id)) return false;
-        if (_perfLibCat !== 'all' && ex.category !== _perfLibCat) return false;
-        if (q && !`${ex.name} ${ex.equipment}`.toLowerCase().includes(q)) return false;
-        return true;
+      if (!_perfCatMod) return [];
+      const viewer = perfLibViewer();
+      let visible = _perfCatMod.visibleExercises(_perfCatMod.getCatalogue(), viewer);
+      const showArchived = viewer.role === 'snc_coach' && _perfLibTier !== 'all';
+      if (_perfLibTier !== 'all') visible = visible.filter(ex => ex.tier === _perfLibTier);
+      const prefs = perfLibPrefs();
+      return _perfCatMod.filterCatalogue(visible, {
+        query: _perfLibQuery,
+        category: _perfLibCat,
+        pattern: _perfLibPattern,
+        difficulty: _perfLibDiff,
+        equipment: PERF_LIB_KIT_SETS[_perfLibKit],
+        favouritesOnly: _perfLibFav,
+        favourites: prefs.favourites,
+        includeArchived: showArchived,
       });
     }
+
     function perfLibSearch(value) {
       _perfLibQuery = value || '';
       perfLibRefreshList();
     }
-    function perfLibSetCat(cat) {
-      _perfLibCat = cat;
+    function perfLibSet(which, value) {
+      if (which === 'cat') _perfLibCat = value;
+      if (which === 'pattern') _perfLibPattern = value;
+      if (which === 'diff') _perfLibDiff = value;
+      if (which === 'kit') _perfLibKit = value;
+      if (which === 'tier') _perfLibTier = value;
       renderPerformance();
     }
     function perfLibToggleFav() {
       _perfLibFav = !_perfLibFav;
       renderPerformance();
     }
-    function perfLibToggleStar(id) {
-      if (_perfLibFavourites.has(id)) _perfLibFavourites.delete(id); else _perfLibFavourites.add(id);
-      perfLibRefreshList();
+    function perfLibOpen(id) {
+      _perfLibDetailId = id;
+      perfLibRecordView(id);
+      renderPerformance();
+    }
+    function perfLibClose() {
+      _perfLibDetailId = null;
+      renderPerformance();
     }
     function perfLibRefreshList() {
       const list = document.getElementById('perfLibList');
       const count = document.getElementById('perfLibCount');
       if (list) list.innerHTML = perfLibListHtml();
-      if (count) count.textContent = `${perfLibFiltered().length} of ${PERF_SAMPLE_EXERCISES.length} exercises`;
+      if (count && _perfCatMod) count.textContent = `${perfLibFiltered().length} of ${_perfCatMod.getCatalogueMeta().count} exercises · catalogue ${_perfCatMod.getCatalogueMeta().version}`;
     }
 
     // ── Settings handlers ─────────────────────────────────────────────────────
@@ -26330,39 +26493,247 @@
     }
 
     // ── Exercise Library ──────────────────────────────────────────────────────
+    // ── Exercise Library rendering (SC3) ─────────────────────────────────────
+    function perfLibLabel(list, id) {
+      const hit = (list || []).find(x => x.id === id);
+      return hit ? hit.label : id;
+    }
+    function perfLibTierBadge(ex) {
+      if (ex.status === 'archived') return '<span class="perf-tier-badge archived">Archived</span>';
+      if (ex.tier === 'validated') {
+        return ex.status === 'approved'
+          ? '<span class="perf-tier-badge validated">✓ CoachEasier Validated</span>'
+          : '<span class="perf-tier-badge draft">Draft — in review</span>';
+      }
+      if (ex.tier === 'club') return '<span class="perf-tier-badge club">Club content</span>';
+      if (ex.tier === 'private') return '<span class="perf-tier-badge private">Private</span>';
+      return '<span class="perf-tier-badge draft">Draft — in review</span>';
+    }
+    function perfLibReviewBadge(ex, { cardMode = false } = {}) {
+      if (!_perfCatMod) return '';
+      const pending = _perfCatMod.pendingReviewGates(ex);
+      // In beta every record awaits baseline S&C review — the list disclaimer
+      // covers that. Cards only flag ELEVATED chains (medical/safeguarding);
+      // the detail view shows the full pending state.
+      if (cardMode && !pending.some(g => g === 'medical' || g === 'safeguarding')) return '';
+      return pending.length ? `<span class="perf-review-badge" title="Awaiting: ${esc(pending.join(', '))}">Review required</span>` : '';
+    }
+
     function perfLibListHtml() {
+      if (!_perfCatMod) return '';
       const rows = perfLibFiltered();
       if (!rows.length) {
         return `<div class="card" style="text-align:center;padding:28px 16px">
           <p style="font-weight:700;margin:0 0 4px">No exercises match</p>
-          <p class="muted" style="font-size:12px;margin:0">Try a different search, category or clear the favourites filter.</p>
+          <p class="muted" style="font-size:12px;margin:0">Try a different search or clear some filters — bodyweight and limited-kit options exist for most patterns.</p>
         </div>`;
       }
-      const catLabel = Object.fromEntries(PERF_EXERCISE_CATEGORIES.map(c => [c.id, c.label]));
+      const M = _perfCatMod;
+      const favs = new Set(perfLibPrefs().favourites);
       return rows.map(ex => `
-        <div class="row perf-ex-row">
-          <div>
-            <strong>${esc(ex.name)}</strong>
-            <small>${esc(catLabel[ex.category] || ex.category)} · ${esc(ex.equipment)}</small>
-          </div>
-          <button type="button" class="perf-star ${_perfLibFavourites.has(ex.id) ? 'on' : ''}" onclick="perfLibToggleStar('${ex.id}')" aria-label="${_perfLibFavourites.has(ex.id) ? 'Remove from' : 'Add to'} favourites" aria-pressed="${_perfLibFavourites.has(ex.id)}">★</button>
+        <div class="perf-ex-card ${ex.tier !== 'validated' || ex.status !== 'approved' ? 'unverified' : ''}">
+          <button type="button" class="perf-ex-main" onclick="perfLibOpen('${ex.id}')">
+            <span class="perf-ex-thumb" aria-hidden="true">${icon('dumbbell', 18)}</span>
+            <span class="perf-ex-body">
+              <strong>${esc(ex.name)}</strong>
+              <small>${esc(ex.shortDescription)}</small>
+              <span class="perf-ex-chips">
+                <span class="pill">${esc(perfLibLabel(M.EXERCISE_CATEGORIES, ex.classification.category))}</span>
+                <span class="pill">${esc(perfLibLabel(M.MOVEMENT_PATTERNS, ex.classification.pattern))}</span>
+                <span class="pill">${esc(ex.classification.difficulty)}</span>
+                ${ex.equipment.bodyweightOnly ? '<span class="pill">bodyweight</span>' : ''}
+                ${perfLibTierBadge(ex)}${perfLibReviewBadge(ex, { cardMode: true })}
+              </span>
+            </span>
+          </button>
+          <button type="button" class="perf-star ${favs.has(ex.id) ? 'on' : ''}" onclick="perfLibToggleStar('${ex.id}')" aria-label="${favs.has(ex.id) ? 'Remove from' : 'Add to'} favourites" aria-pressed="${favs.has(ex.id)}">★</button>
         </div>`).join('');
     }
+
+    function perfLibRecentHtml() {
+      if (!_perfCatMod) return '';
+      const viewer = perfLibViewer();
+      const recent = perfLibPrefs().recent.slice().reverse()
+        .map(id => _perfCatMod.getExerciseById(id))
+        .filter(ex => ex && ex.id !== _perfLibDetailId && _perfCatMod.canViewExercise(ex, viewer))
+        .slice(0, 6);
+      if (!recent.length) return '';
+      return `<div class="perf-recent-row">
+        <small class="perf-recent-label">Recently viewed</small>
+        ${recent.map(ex => `<button type="button" class="perf-tool-chip" onclick="perfLibOpen('${ex.id}')">${esc(ex.name)}</button>`).join('')}
+      </div>`;
+    }
+
     function perfLibraryHtml() {
-      const cats = [{ id: 'all', label: 'All' }, ...PERF_EXERCISE_CATEGORIES];
+      if (_perfCatError) {
+        return `<div class="perf-page-head"><div><h2>Exercise Library</h2></div></div>
+          <div class="card" style="text-align:center;padding:28px 16px">
+            <p style="font-weight:700;margin:0 0 4px">The library couldn't load</p>
+            <p class="muted" style="font-size:12px;margin:0">Check your connection and reload the page.</p>
+          </div>`;
+      }
+      if (!_perfCatMod) {
+        perfLoadCatalogue();
+        return `<div class="perf-page-head"><div><h2>Exercise Library</h2><p class="muted">Loading the validated catalogue…</p></div></div>
+          <div class="card" style="padding:28px 16px;text-align:center"><p class="muted" style="margin:0">Loading…</p></div>`;
+      }
+      if (_perfLibDetailId) {
+        const ex = _perfCatMod.getExerciseById(_perfLibDetailId);
+        if (ex && _perfCatMod.canViewExercise(ex, perfLibViewer())) return perfExerciseDetailHtml(ex);
+        _perfLibDetailId = null;
+      }
+      const M = _perfCatMod;
+      const meta = M.getCatalogueMeta();
+      const coach = perfLibViewer().role === 'snc_coach';
+      const cats = [{ id: 'all', label: 'All' }, ...M.EXERCISE_CATEGORIES];
+      const tierTabs = [
+        { id: 'all', label: 'All content' }, { id: 'validated', label: 'Validated' },
+        { id: 'club', label: 'Club' }, { id: 'private', label: 'Private' }, { id: 'draft', label: 'Drafts' },
+      ];
       return `
         <div class="perf-page-head">
           <div>
             <h2>Exercise Library</h2>
-            <p class="muted" id="perfLibCount">${perfLibFiltered().length} of ${PERF_SAMPLE_EXERCISES.length} exercises</p>
+            <p class="muted" id="perfLibCount">${perfLibFiltered().length} of ${meta.count} exercises · catalogue ${esc(meta.version)}</p>
           </div>
-          <button type="button" class="btn ${_perfLibFav ? 'primary' : 'ghost'}" onclick="perfLibToggleFav()">★ Favourites</button>
+          <div class="pill-row">
+            <button type="button" class="btn ${_perfLibFav ? 'primary' : 'ghost'}" onclick="perfLibToggleFav()">★ Favourites</button>
+            ${coach ? `<button type="button" class="btn ghost" onclick="perfComingSoon('Exercise authoring')">+ Create exercise</button>` : ''}
+          </div>
         </div>
-        <input type="search" class="perf-search" placeholder="Search exercises or equipment…" value="${esc(_perfLibQuery)}" oninput="perfLibSearch(this.value)" aria-label="Search exercises">
+        ${coach ? `<div class="perf-chip-row" role="group" aria-label="Content tier">
+          ${tierTabs.map(t => `<button type="button" class="perf-tool-chip ${_perfLibTier === t.id ? 'active' : ''}" onclick="perfLibSet('tier','${t.id}')">${t.label}</button>`).join('')}
+        </div>` : ''}
+        <input type="search" class="perf-search" placeholder="Search by name or alias…" value="${esc(_perfLibQuery)}" oninput="perfLibSearch(this.value)" aria-label="Search exercises">
         <div class="perf-chip-row" role="group" aria-label="Filter by category">
-          ${cats.map(c => `<button type="button" class="perf-tool-chip ${_perfLibCat === c.id ? 'active' : ''}" onclick="perfLibSetCat('${c.id}')">${esc(c.label)}</button>`).join('')}
+          ${cats.map(c => `<button type="button" class="perf-tool-chip ${_perfLibCat === c.id ? 'active' : ''}" onclick="perfLibSet('cat','${c.id}')">${esc(c.label)}</button>`).join('')}
         </div>
-        <div class="list" id="perfLibList">${perfLibListHtml()}</div>`;
+        <div class="perf-lib-filter-row">
+          <label class="perf-lib-select">
+            <span>Pattern</span>
+            <select onchange="perfLibSet('pattern', this.value)" aria-label="Filter by movement pattern">
+              <option value="all">All patterns</option>
+              ${M.MOVEMENT_PATTERNS.map(p => `<option value="${p.id}" ${_perfLibPattern === p.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}
+            </select>
+          </label>
+          <div class="perf-seg" role="group" aria-label="Difficulty">
+            ${['all', 'beginner', 'intermediate', 'advanced'].map(d => `<button type="button" class="${_perfLibDiff === d ? 'active' : ''}" onclick="perfLibSet('diff','${d}')">${d === 'all' ? 'Any level' : d}</button>`).join('')}
+          </div>
+          <div class="perf-seg" role="group" aria-label="Equipment">
+            ${[['all', 'Any kit'], ['limited', 'Limited kit'], ['bodyweight', 'Bodyweight']].map(([k, l]) => `<button type="button" class="${_perfLibKit === k ? 'active' : ''}" onclick="perfLibSet('kit','${k}')">${l}</button>`).join('')}
+          </div>
+        </div>
+        ${perfLibRecentHtml()}
+        <div class="list" id="perfLibList">${perfLibListHtml()}</div>
+        <p class="muted" style="font-size:12px;margin-top:14px">Beta catalogue — a curated starting set, not a complete library. Beta content is not medically approved; items marked “Review required” await qualified review before production.</p>`;
+    }
+
+    // ── Exercise detail (SC3) ────────────────────────────────────────────────
+    function perfExerciseDetailHtml(ex) {
+      const M = _perfCatMod;
+      const cat = M.getCatalogue();
+      const viewer = perfLibViewer();
+      const regressions = M.relatedExercises(ex, cat, 'regression').filter(e => M.canViewExercise(e, viewer));
+      const progressions = M.relatedExercises(ex, cat, 'progression').filter(e => M.canViewExercise(e, viewer));
+      const alternatives = ['equipment_alternative', 'pattern_alternative', 'lower_impact_alternative', 'time_saving_alternative']
+        .flatMap(k => M.relatedExercises(ex, cat, k).map(e => ({ e, k })))
+        .filter(({ e }) => M.canViewExercise(e, viewer));
+      const relChip = (e) => `<button type="button" class="perf-tool-chip" onclick="perfLibOpen('${e.id}')">${esc(e.name)}</button>`;
+      const positions = Object.entries(ex.relevance.positions || {}).filter(([, lvl]) => lvl === 'core' || lvl === 'high');
+      const favs = new Set(perfLibPrefs().favourites);
+      const pendingGates = M.pendingReviewGates(ex);
+      const provenance = ex.tier === 'validated' && ex.status === 'approved'
+        ? (pendingGates.length
+            ? 'CoachEasier curated (beta) — awaiting qualified review before production publication'
+            : `Validated by CoachEasier · last reviewed ${esc((ex.ownership.lastReviewedAt || '').slice(0, 10) || '—')}`)
+        : ex.tier === 'club' ? 'Club-created content — validated by your club\'s coaches, not by CoachEasier'
+        : ex.tier === 'private' ? 'Private coach content — not reviewed by CoachEasier'
+        : 'CoachEasier draft — awaiting review; not available for programmes';
+
+      return `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="btn ghost" type="button" onclick="perfLibClose()" style="font-size:13px;padding:5px 12px">← Library</button>
+        </div>
+        <div class="perf-page-head">
+          <div>
+            <h2>${esc(ex.name)}</h2>
+            <p class="muted">${esc(ex.shortDescription)}${ex.aliases.length ? ` · also known as ${esc(ex.aliases.join(', '))}` : ''}</p>
+          </div>
+          <button type="button" class="perf-star ${favs.has(ex.id) ? 'on' : ''}" onclick="perfLibToggleStar('${ex.id}')" aria-pressed="${favs.has(ex.id)}" aria-label="Favourite">★</button>
+        </div>
+
+        <div class="perf-provenance ${ex.tier === 'validated' && ex.status === 'approved' ? 'validated' : 'unverified'}">
+          ${perfLibTierBadge(ex)}${perfLibReviewBadge(ex)}
+          <small>${provenance}</small>
+        </div>
+
+        <div class="card perf-card perf-media-placeholder" aria-label="Demonstration media placeholder">
+          ${icon('dumbbell', 26)}
+          <strong>Demonstration coming soon</strong>
+          <small class="muted">${esc(ex.media.altText)}</small>
+        </div>
+
+        <div class="perf-ex-chips" style="margin:14px 0 4px">
+          <span class="pill">${esc(perfLibLabel(M.EXERCISE_CATEGORIES, ex.classification.category))}</span>
+          <span class="pill">${esc(perfLibLabel(M.MOVEMENT_PATTERNS, ex.classification.pattern))}</span>
+          <span class="pill">${esc(perfLibLabel(M.PHYSICAL_QUALITIES, ex.classification.primaryQuality))}</span>
+          <span class="pill">${esc(ex.classification.difficulty)}</span>
+          <span class="pill">${esc(ex.classification.impact)} impact</span>
+        </div>
+
+        <div class="grid perf-grid-2" style="margin-top:12px">
+          <div class="card perf-card">
+            <div class="perf-card-head"><small>Coaching guidance</small></div>
+            <div class="perf-detail-block"><strong>Setup</strong><p>${esc(ex.coaching.setup)}</p></div>
+            <div class="perf-detail-block"><strong>Execution</strong><p>${esc(ex.coaching.execution)}</p></div>
+            <div class="perf-detail-block"><strong>Key cues</strong><ul>${ex.coaching.cues.map(c => `<li>${esc(c)}</li>`).join('')}</ul></div>
+            <div class="perf-detail-block"><strong>Common mistakes</strong><ul>${ex.coaching.mistakes.map(m => `<li>${esc(m)}</li>`).join('')}</ul></div>
+            ${ex.coaching.breathing ? `<div class="perf-detail-block"><strong>Breathing</strong><p>${esc(ex.coaching.breathing)}</p></div>` : ''}
+            ${ex.coaching.spotting ? `<div class="perf-detail-block"><strong>Spotting</strong><p>${esc(ex.coaching.spotting)}</p></div>` : ''}
+          </div>
+
+          <div class="card perf-card perf-safety-card">
+            <div class="perf-card-head"><small>Safety</small></div>
+            <ul class="perf-safety-list">${ex.safety.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>
+            <p class="perf-pain-stop">${esc(ex.safety.painStop)}</p>
+            <div class="perf-ex-chips">
+              ${ex.safety.highSkill ? '<span class="pill warn">High skill</span>' : ''}
+              ${ex.safety.highLoad ? '<span class="pill warn">High load</span>' : ''}
+              ${ex.safety.highImpact ? '<span class="pill warn">High impact</span>' : ''}
+              ${ex.safety.youth !== 'suitable' ? `<span class="pill warn">Youth: ${esc(ex.safety.youth.replace(/_/g, ' '))}</span>` : ''}
+              ${ex.equipment.partner ? '<span class="pill">Partner required</span>' : ''}
+            </div>
+            ${ex.safety.medicalReviewReminder ? `<small class="muted" style="display:block;margin-top:10px">${esc(ex.safety.medicalReviewReminder)}</small>` : ''}
+          </div>
+
+          <div class="card perf-card">
+            <div class="perf-card-head"><small>Equipment &amp; prescription</small></div>
+            <div class="perf-detail-block"><strong>Equipment</strong>
+              <div class="perf-ex-chips">${ex.equipment.required.map(e => `<span class="pill">${esc(perfLibLabel(M.EQUIPMENT_CATALOGUE, e))}</span>`).join('')}
+              ${ex.equipment.optional.length ? ex.equipment.optional.map(e => `<span class="pill" style="opacity:.65">${esc(perfLibLabel(M.EQUIPMENT_CATALOGUE, e))} (optional)</span>`).join('') : ''}</div>
+            </div>
+            <div class="perf-detail-block"><strong>Can be prescribed as</strong>
+              <div class="perf-ex-chips">${ex.prescription.map(p => `<span class="pill">${esc(perfLibLabel(M.PRESCRIPTION_TYPES, p))}</span>`).join('')}</div>
+            </div>
+          </div>
+
+          <div class="card perf-card">
+            <div class="perf-card-head"><small>Related exercises</small></div>
+            ${regressions.length ? `<div class="perf-detail-block"><strong>Easier (regressions)</strong><div class="perf-ex-chips">${regressions.map(relChip).join('')}</div></div>` : ''}
+            ${progressions.length ? `<div class="perf-detail-block"><strong>Harder (progressions)</strong><div class="perf-ex-chips">${progressions.map(relChip).join('')}</div></div>` : ''}
+            ${alternatives.length ? `<div class="perf-detail-block"><strong>Alternatives</strong><div class="perf-ex-chips">${alternatives.map(({ e }) => relChip(e)).join('')}</div></div>` : ''}
+            ${!regressions.length && !progressions.length && !alternatives.length ? '<small class="muted">No related exercises declared yet.</small>' : ''}
+          </div>
+
+          <div class="card perf-card">
+            <div class="perf-card-head"><small>Rugby relevance</small></div>
+            <div class="perf-detail-block"><strong>Positions</strong>
+              <div class="perf-ex-chips">${positions.length ? positions.map(([p, lvl]) => `<span class="pill ${lvl === 'core' ? 'core' : ''}">${esc(p.replace(/_/g, ' '))}</span>`).join('') : '<span class="pill">All positions</span>'}</div>
+              <small class="muted" style="display:block;margin-top:6px">Position relevance is a default signal, never a restriction.</small>
+            </div>
+            ${ex.relevance.goals.length ? `<div class="perf-detail-block"><strong>Goals</strong><div class="perf-ex-chips">${ex.relevance.goals.map(g => `<span class="pill">${esc(g.replace(/_/g, ' '))}</span>`).join('')}</div></div>` : ''}
+          </div>
+        </div>`;
     }
 
     // ── Analytics ─────────────────────────────────────────────────────────────

@@ -4,9 +4,17 @@ Premium strength & conditioning module.
 
 - **SC1** — module architecture, navigation shells, premium gating.
 - **SC2** — athlete profile model, intelligent onboarding, privacy &
-  visibility boundaries, versioned persistence. Programme generation is
-  **not** part of SC2 — nothing prescribes workouts or makes medical
-  judgements.
+  visibility boundaries, versioned persistence.
+- **SC3** — validated exercise library: canonical schema + controlled
+  taxonomies, four content tiers with approval rules, a ~60-exercise curated
+  beta catalogue (loaded via dynamic import, never inlined), substitution
+  rules, ordered exercise collections (reusable non-prescriptive building
+  blocks), and the player/coach library experience. See performance/docs/
+  exercise-*.md.
+
+Programme generation is **not** part of SC1–SC3 — nothing prescribes
+workouts, recommends loads, or makes medical judgements. The future engine
+may select only approved CoachEasier-validated exercises.
 
 This directory is the **module home** for everything Performance-specific that
 is not UI chrome. It follows the same architectural split the rest of
