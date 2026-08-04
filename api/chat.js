@@ -122,6 +122,20 @@ const MSGS_KEY      = (id) => key(`chat:conv:${id}:msgs`); // Redis list
 const TYPING_KEY    = (id) => key(`chat:conv:${id}:typing`);
 const PRESENCE_KEY  = (u)  => key(`chat:presence:${u}`);
 
+// RC4.9A — the built-in channels (squad / coaching / announce) are PER-CLUB.
+// The client protocol keeps the plain ids; STORAGE (messages, read markers,
+// typing) is scoped to the session's club via `<id>@<teamId>`. The default
+// club keeps the legacy flat keys so existing beta messages survive unchanged.
+// Before this, the built-ins were one global room: any club's members could
+// read and write every other club's squad messages.
+const BUILTIN_CONV_IDS = new Set(['squad', 'coaching', 'announce']);
+function storageConvId(sessionContext, convId) {
+  const id = String(convId || '');
+  if (!BUILTIN_CONV_IDS.has(id)) return id;
+  const teamId = tenantTeamId(sessionContext) || DEFAULT_TEAM.id;
+  return teamId === DEFAULT_TEAM.id ? id : `${id}@${teamId}`;
+}
+
 // DM participant IDs for removed test accounts (user IDs and legacy player IDs).
 export const OBSOLETE_DM_PARTICIPANT_IDS = new Set([
   'player-nick',        'inv-nick1234',
@@ -343,14 +357,15 @@ async function handleGet(req, res) {
     const visibleConvs = convs.filter(c => sessionCanReadConversation(sessionContext, c, actorIds));
     // Enrich with last message + unread count per user
     const enriched = await Promise.all(visibleConvs.map(async c => {
-      const msgs = await kvLrange(MSGS_KEY(c.id), 0, 0); // last message only
+      const sid = storageConvId(sessionContext, c.id);
+      const msgs = await kvLrange(MSGS_KEY(sid), 0, 0); // last message only
       const last = msgs[0] || null;
       // Unread: messages after this user's last read timestamp
-      const readKey = key(`chat:read:${c.id}:${userId}`);
+      const readKey = key(`chat:read:${sid}:${userId}`);
       const lastRead = (await kvGet(readKey)) || 0;
       // Count unread from the retained message window so refresh/login badge
       // state remains consistent even after long gaps between visits.
-      const recent = await kvLrange(MSGS_KEY(c.id), 0, 499);
+      const recent = await kvLrange(MSGS_KEY(sid), 0, 499);
       const unread = unreadCountForUser(recent, userId, lastRead);
       return { ...c, lastMessage: last, unread, lastActivity: last?.ts || c.createdAt };
     }));
@@ -370,7 +385,7 @@ async function handleGet(req, res) {
     if (!convId) return err(res, 400, 'convId required');
     if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
     // LRANGE returns newest-first; we reverse for chronological
-    const raw   = await kvLrange(MSGS_KEY(convId), 0, limit - 1);
+    const raw   = await kvLrange(MSGS_KEY(storageConvId(sessionContext, convId)), 0, limit - 1);
     const msgs  = raw.reverse(); // oldest first
     const filtered = since > 0 ? msgs.filter(m => m.ts > since) : msgs;
     return ok(res, { messages: filtered, ts: Date.now() });
@@ -380,7 +395,7 @@ async function handleGet(req, res) {
     const convId = url.searchParams.get('convId');
     if (!convId) return err(res, 400, 'convId required');
     if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
-    const raw = await kvGet(TYPING_KEY(convId));
+    const raw = await kvGet(TYPING_KEY(storageConvId(sessionContext, convId)));
     const now = Date.now();
     const active = (raw || []).filter(t => now - t.ts < 5000); // 5s window
     return ok(res, { typing: active.filter(t => t.userId !== userId) });
@@ -449,14 +464,15 @@ async function handlePost(req, res) {
       isDeleted:   false,
       ts:          Date.now(),
     };
-    await kvLpush(MSGS_KEY(convId), msg);
-    await kvLtrim(MSGS_KEY(convId), 500); // keep last 500 messages
+    const sendSid = storageConvId(sessionContext, convId);
+    await kvLpush(MSGS_KEY(sendSid), msg);
+    await kvLtrim(MSGS_KEY(sendSid), 500); // keep last 500 messages
     // Update conv last activity
     const convs = await getConvs();
     const idx = convs.findIndex(c => c.id === convId);
     if (idx >= 0) { convs[idx].lastActivity = msg.ts; await saveConvs(convs); }
     // Mark sender as read
-    await kvSet(key(`chat:read:${convId}:${senderId}`), msg.ts);
+    await kvSet(key(`chat:read:${sendSid}:${senderId}`), msg.ts);
     // Await push before responding — serverless functions terminate after res.end()
     // so fire-and-forget does not work; the async operation is abandoned.
     if (convId.startsWith('dm:') && !isAutomated) {
@@ -476,7 +492,8 @@ async function handlePost(req, res) {
     userId = userId || 'anon';
     if (!msgId || !convId || !userId || !emoji) return err(res, 400, 'msgId, convId, userId, emoji required');
     if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
-    const msgs = await kvLrange(MSGS_KEY(convId), 0, 499);
+    const reactSid = storageConvId(sessionContext, convId);
+    const msgs = await kvLrange(MSGS_KEY(reactSid), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
     if (idx < 0) return err(res, 404, 'Message not found');
     const msg = msgs[idx];
@@ -494,7 +511,7 @@ async function handlePost(req, res) {
     // Use a SET approach via kvSet on a dedicated msg key
     await kvSet(key(`chat:msg:${msgId}`), msg);
     // Also update in the list
-    await rebuildConvMsgs(convId, msgs);
+    await rebuildConvMsgs(reactSid, msgs);
     return ok(res, { message: msg });
   }
 
@@ -504,7 +521,7 @@ async function handlePost(req, res) {
     userId = userId || 'anon';
     if (!convId || !userId) return err(res, 400, 'convId, userId required');
     if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
-    await kvSet(key(`chat:read:${convId}:${userId}`), Date.now());
+    await kvSet(key(`chat:read:${storageConvId(sessionContext, convId)}:${userId}`), Date.now());
     return ok(res, {});
   }
 
@@ -517,10 +534,11 @@ async function handlePost(req, res) {
     userId = userId || 'anon';
     if (!convId || !userId) return err(res, 400, 'convId, userId required');
     if (!(await requireConversationAccess(res, sessionContext, convId, 'read'))) return;
-    const current = (await kvGet(TYPING_KEY(convId))) || [];
+    const typingSid = storageConvId(sessionContext, convId);
+    const current = (await kvGet(TYPING_KEY(typingSid))) || [];
     const filtered = current.filter(t => t.userId !== userId);
     if (active !== false) filtered.push({ userId, userName: userName || userId, ts: Date.now() });
-    await kvSet(TYPING_KEY(convId), filtered, 10); // TTL 10s
+    await kvSet(TYPING_KEY(typingSid), filtered, 10); // TTL 10s
     return ok(res, {});
   }
 
@@ -530,12 +548,13 @@ async function handlePost(req, res) {
     editorId = editorId || 'anon';
     if (!msgId || !convId || !text?.trim()) return err(res, 400, 'msgId, convId, text required');
     if (!(await requireConversationAccess(res, sessionContext, convId, 'write'))) return;
-    const msgs = await kvLrange(MSGS_KEY(convId), 0, 499);
+    const editSid = storageConvId(sessionContext, convId);
+    const msgs = await kvLrange(MSGS_KEY(editSid), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
     if (idx < 0) return err(res, 404, 'Message not found');
     if (msgs[idx].senderId !== editorId) return err(res, 403, 'Can only edit your own messages');
     msgs[idx] = { ...msgs[idx], text: text.trim(), isEdited: true, editedAt: Date.now() };
-    await rebuildConvMsgs(convId, msgs);
+    await rebuildConvMsgs(editSid, msgs);
     return ok(res, { message: msgs[idx] });
   }
 
@@ -545,12 +564,13 @@ async function handlePost(req, res) {
     deleterId = deleterId || 'anon';
     if (!msgId || !convId) return err(res, 400, 'msgId, convId required');
     if (!(await requireConversationAccess(res, sessionContext, convId, 'write'))) return;
-    const msgs = await kvLrange(MSGS_KEY(convId), 0, 499);
+    const delSid = storageConvId(sessionContext, convId);
+    const msgs = await kvLrange(MSGS_KEY(delSid), 0, 499);
     const idx = msgs.findIndex(m => m.id === msgId);
     if (idx < 0) return err(res, 404, 'Message not found');
     if (msgs[idx].senderId !== deleterId) return err(res, 403, 'Can only delete your own messages');
     msgs[idx] = { ...msgs[idx], isDeleted: true, deletedAt: Date.now(), text: '' };
-    await rebuildConvMsgs(convId, msgs);
+    await rebuildConvMsgs(delSid, msgs);
     return ok(res, {});
   }
 
@@ -558,6 +578,9 @@ async function handlePost(req, res) {
     if (!sessionContext?.user?.id) return err(res, 401, 'Authentication required');
     const { id, name, type = 'DIRECT', icon = '💬', description = '', participants = [] } = body;
     const convType = String(type || 'DIRECT').toUpperCase();
+    // '@' is reserved for the per-club storage scoping of built-in channels —
+    // a forged id like 'squad@<otherTeamId>' must never become a conversation.
+    if (String(id || '').includes('@')) return err(res, 400, "Conversation id cannot contain '@'");
 
     if (!isStaffSession(sessionContext)) {
       // Players may only create DIRECT conversations that include themselves.
