@@ -83,9 +83,14 @@ export default async function handler(req, res) {
     if (action === 'reset_availability' || action === 'seed_availability') {
       const sessions = Array.isArray(rawSessions) && rawSessions.length ? rawSessions : DEMO_SESSIONS;
       const players  = Array.isArray(rawPlayers) && rawPlayers.length ? rawPlayers : DEMO_PLAYERS;
-      // Dev tooling operates on the caller's own club (default club when anonymous).
-      const devSession = await resolveSessionFromRequest(req).catch(() => null);
-      const devTeamId = tenantTeamId(devSession) || DEFAULT_TEAM.id;
+      // RC4.9B: DEV_LOGIN alone is NOT authorisation. These actions seed and wipe a
+      // whole club's availability, so they also require the danger-zone permission —
+      // a player (or anonymous caller) could otherwise clear their club's board on
+      // any environment where DEV_LOGIN was left enabled.
+      let devTenant;
+      try { devTenant = await requireTenantPermission(req, PERM.DANGER_ZONE); }
+      catch (error) { return sendAuthError(res, error); }
+      const devTeamId = devTenant.teamId || DEFAULT_TEAM.id;
 
       if (action === 'reset_availability') {
         await Promise.all(sessions.map(sid => saveAvailability(devTeamId, sid, {})));
@@ -121,8 +126,11 @@ export default async function handler(req, res) {
   // ── Dev-only seed GET status ────────────────────────────────────────────────
   if (req.method === 'GET' && req.query?._dev === 'status' && process.env.DEV_LOGIN === 'true') {
     const sessions = String(req.query.sessions || DEMO_SESSIONS.join(',')).split(',').filter(Boolean);
-    const devSession = await resolveSessionFromRequest(req).catch(() => null);
-    const devTeamId = tenantTeamId(devSession) || DEFAULT_TEAM.id;
+    // Diagnostic read of a whole club's board — coach-level (REPORTS), never a player.
+    let devTenant;
+    try { devTenant = await requireTenantPermission(req, PERM.REPORTS); }
+    catch (error) { return sendAuthError(res, error); }
+    const devTeamId = devTenant.teamId || DEFAULT_TEAM.id;
     const data = {};
     await Promise.all(sessions.map(async sid => {
       const entries = await loadAvailability(devTeamId, sid);

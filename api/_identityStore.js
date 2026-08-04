@@ -1,5 +1,8 @@
 import { kvGet, kvSet } from './_kv.js';
-import { permissionsFor, canonicalRole } from './_permissions.js';
+import {
+  permissionsFor, canonicalRole, accessProfileOf, isClubOwner,
+  accessProfileRank, ACCESS_PROFILES, PERM,
+} from './_permissions.js';
 import { key } from './_keys.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
@@ -1332,6 +1335,9 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
     userId: user.id,
     role: 'coach',
     staffLevel: 'head',
+    // The founder owns the club and holds Full Access from the outset.
+    isOwner: true,
+    accessProfile: 'full',
     status: 'active',
     joinedAt: nowIso(),
     approvedAt: nowIso(),
@@ -1611,6 +1617,185 @@ export async function removeTeamMember(memberId, removedBy, expectedTeamId, { ar
   const remaining = sessions.filter(s => !(s.userId === member.userId && s.teamId === member.teamId));
   if (remaining.length !== sessions.length) await saveSessions(remaining);
   return { teamMember: member };
+}
+
+// ── RC4.9C — ACCESS PROFILES ────────────────────────────────────────────────
+// The access profile is the authorisation; the club role is a job title. Only
+// the club owner or a Full Access holder with ASSIGN_ACCESS may change one.
+
+/** Active members of a team that currently hold Full Access. */
+export function fullAccessMembers(members = [], teamId) {
+  return members.filter(m =>
+    m.teamId === teamId && m.status === 'active' && accessProfileOf(m) === 'full');
+}
+
+/** Teams where this user holds an ACTIVE membership — their assigned teams. */
+export async function assignedTeamsForUser(userId) {
+  const members = await loadTeamMembers();
+  return members
+    .filter(m => m.userId === userId && m.status === 'active')
+    .map(m => m.teamId);
+}
+
+export async function setAccessProfile(memberId, profile, changedBy, expectedTeamId) {
+  const next = String(profile || '').toLowerCase();
+  if (!ACCESS_PROFILES.includes(next)) {
+    const error = new Error(`accessProfile must be one of: ${ACCESS_PROFILES.join(', ')}`);
+    error.status = 400;
+    throw error;
+  }
+  const members = await loadTeamMembers();
+  const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+  const actor = members.find(m =>
+    m.userId === changedBy && m.teamId === member.teamId && m.status === 'active');
+  const previous = accessProfileOf(member);
+
+  // Self-elevation is reserved to the club owner.
+  if (member.userId === changedBy && accessProfileRank(next) > accessProfileRank(previous) && !isClubOwner(member)) {
+    const error = new Error('You cannot raise your own access level — ask the club owner');
+    error.status = 403;
+    throw error;
+  }
+  // The club owner's own access can never be reduced by anyone.
+  if (isClubOwner(member) && accessProfileRank(next) < accessProfileRank(previous)) {
+    const error = new Error("The club owner's access cannot be reduced");
+    error.status = 400;
+    throw error;
+  }
+  // A club must always retain at least one Full Access administrator.
+  if (previous === 'full' && next !== 'full' && fullAccessMembers(members, member.teamId).length <= 1) {
+    const error = new Error('Cannot downgrade the last full-access administrator');
+    error.status = 400;
+    throw error;
+  }
+  // Only the owner, or a Full Access holder, may hand out access at all.
+  if (actor && !isClubOwner(actor) && accessProfileOf(actor) !== 'full') {
+    const error = new Error('You are not allowed to change access profiles');
+    error.status = 403;
+    throw error;
+  }
+
+  member.accessProfile = next;
+  member.accessChangedBy = changedBy;
+  member.accessChangedAt = nowIso();
+  await saveTeamMembers(members);
+
+  // Take effect immediately for anyone already signed in: sessions carry only a
+  // token, and permissions are recomputed from the membership on every request,
+  // so no session surgery is needed — but a downgrade must not leave a stale
+  // elevated session cached anywhere, so stamp the change for observability.
+  return {
+    teamMember: member,
+    previousProfile: previous,
+    newProfile: next,
+    assignedTeams: await assignedTeamsForUser(member.userId),
+    changedAt: member.accessChangedAt,
+  };
+}
+
+// ── RC4.9B — PERMANENT member deletion (irreversible) ──────────────────────
+// Archive/remove stay the normal reversible actions. This is the GDPR-style
+// erasure path for a club admin who must genuinely delete a person.
+//
+// DATA POLICY — deliberately NOT a cascade delete:
+//   KEPT  · completed fixture selections and appearance history (club records
+//           must stay accurate), appearance adjustments, past messages (shown
+//           under a historical "Removed member" label), historical availability
+//           for reporting, and every audit-log entry.
+//   GONE  · current membership and all future access; the login account
+//           (users record) and its credentials; the player profile's personal
+//           data — the profile row is anonymised in place rather than dropped
+//           so historical rows that reference it never become orphaned.
+//   Medical notes live in the coach's device state keyed by the profile id;
+//   anonymising the profile (not deleting the row) keeps them attached to a
+//   non-identifying record rather than orphaning or exposing them.
+export async function permanentlyDeleteTeamMember(memberId, deletedBy, expectedTeamId) {
+  const members = await loadTeamMembers();
+  const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+
+  if (member.userId === deletedBy) {
+    const error = new Error('You cannot permanently delete your own membership');
+    error.status = 400;
+    throw error;
+  }
+  // The club owner can never be deleted.
+  if (isClubOwner(member)) {
+    const error = new Error('The club owner cannot be deleted');
+    error.status = 400;
+    throw error;
+  }
+  // Never strand a club without a full-access administrator. Keyed on the ACCESS
+  // PROFILE, not a job title, so renaming someone's role cannot bypass it.
+  if (accessProfileOf(member) === 'full' && fullAccessMembers(members, member.teamId).length <= 1) {
+    const error = new Error('Cannot delete the last full-access administrator');
+    error.status = 400;
+    throw error;
+  }
+  if (staffLevelOf(member) === 'head' && await countActiveHeadCoaches(members, member.teamId) <= 1) {
+    const error = new Error('Cannot delete the last head coach or club administrator');
+    error.status = 400;
+    throw error;
+  }
+
+  const userId = member.userId;
+  const teamId = member.teamId;
+
+  // 1. Membership row → terminal state. Retained (not spliced) so historical
+  //    rows referencing this membership id still resolve to a safe record.
+  member.status = 'deleted';
+  member.deletedAt = nowIso();
+  member.deletedBy = deletedBy;
+  member.role = 'player';
+  delete member.staffLevel;
+  await saveTeamMembers(members);
+
+  // 2. Player profile → anonymised in place (keeps historical joins intact).
+  const profiles = await loadPlayerProfiles();
+  let profileAnonymised = false;
+  profiles.forEach(profile => {
+    if (profile.userId !== userId) return;
+    profile.displayName = 'Removed member';
+    profile.email = '';
+    profile.phone = '';
+    profile.anonymisedAt = nowIso();
+    profileAnonymised = true;
+  });
+  if (profileAnonymised) await savePlayerProfiles(profiles);
+
+  // 3. Login account → deleted outright unless the user still belongs to
+  //    another club, in which case that membership must keep working.
+  const stillElsewhere = members.some(m =>
+    m.userId === userId && m.teamId !== teamId && m.status === 'active');
+  const users = await loadUsers();
+  let accountDeleted = false;
+  if (!stillElsewhere) {
+    const remainingUsers = users.filter(u => u.id !== userId);
+    if (remainingUsers.length !== users.length) { await saveUsers(remainingUsers); accountDeleted = true; }
+  }
+
+  // 4. Every live session for this membership is revoked immediately (all of
+  //    the user's sessions when the account itself is gone).
+  const sessions = await loadSessions();
+  const keptSessions = sessions.filter(s =>
+    !(s.userId === userId && (accountDeleted || s.teamId === teamId)));
+  const sessionsRevoked = sessions.length - keptSessions.length;
+  if (sessionsRevoked) await saveSessions(keptSessions);
+
+  // 5. Outstanding password-reset / verification tokens are useless now — drop them.
+  if (accountDeleted) {
+    const resets = await loadPasswordResets();
+    const keptResets = resets.filter(r => r.userId !== userId);
+    if (keptResets.length !== resets.length) await savePasswordResets(keptResets);
+    const verifications = await loadEmailVerifications();
+    const keptVer = verifications.filter(v => v.userId !== userId);
+    if (keptVer.length !== verifications.length) await saveEmailVerifications(keptVer);
+  }
+
+  return {
+    memberId, userId, teamId,
+    accountDeleted, profileAnonymised, sessionsRevoked,
+    deletedAt: member.deletedAt,
+  };
 }
 
 export async function restoreTeamMember(memberId, restoredBy, expectedTeamId) {

@@ -20,16 +20,20 @@ import {
   devLoginUser,
   isHeadCoach,
   listIdentityState,
+  loadPlayerProfiles,
+  loadUsers,
   loadTeamMembers,
   loadTeams,
   loginUser,
   rejectJoinRequest,
   removeTeamMember,
+  permanentlyDeleteTeamMember,
   resetPasswordWithToken,
   resolveSessionFromRequest,
   restoreTeamMember,
   sessionCookie,
   sessionTokenFromRequest,
+  setAccessProfile,
   setStaffLevel,
   switchTeam,
   updateTeamBilling,
@@ -38,7 +42,7 @@ import {
 import { appBaseUrl, emailVerificationEmail, passwordResetEmail, sendTransactionalEmail } from './_email.js';
 import { setCors, readSecret } from './_http.js';
 import { randomBytes } from 'node:crypto';
-import { kvConfigured } from './_kv.js';
+import { kvConfigured, kvGet, kvSet } from './_kv.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
 import { assertSameTenant, requireTenantRole, requireTenantPermission, can, PERM } from './_tenant.js';
 import { makeStripe } from './_stripe.js';
@@ -168,6 +172,31 @@ async function handleStripeWebhook(req, res) {
 function sendError(res, error, fallbackStatus = 400) {
   const status = error?.status || fallbackStatus;
   return res.status(status).json({ ok: false, error: error?.message || 'Identity request failed' });
+}
+
+// RC4.9B — after a permanent deletion, any still-unclaimed invitation for that
+// person must stop working, or the deleted member could simply re-join through
+// an old link. Claimed invites keep their record (audit history) untouched.
+const IDENTITY_INVITES_KEY = 'ce:invites';
+async function revokeInvitesForDeletedMember(member = {}, displayName = '', memberEmail = '') {
+  const invites = (await kvGet(IDENTITY_INVITES_KEY)) || [];
+  if (!Array.isArray(invites) || !invites.length) return 0;
+  const name = String(displayName || '').trim().toLowerCase();
+  const email = String(memberEmail || '').trim().toLowerCase();
+  let revoked = 0;
+  invites.forEach(invite => {
+    if (!invite || invite.teamId !== member.teamId) return;
+    if (invite.status !== 'pending') return;               // never touch claimed/group history
+    const matchesEmail = invite.email && email && String(invite.email).toLowerCase() === email;
+    const matchesName  = name && String(invite.name || '').trim().toLowerCase() === name;
+    if (!matchesEmail && !matchesName) return;
+    invite.status = 'revoked';
+    invite.revokedAt = new Date().toISOString();
+    invite.revokedReason = 'member_deleted';
+    revoked++;
+  });
+  if (revoked) await kvSet(IDENTITY_INVITES_KEY, invites);
+  return revoked;
 }
 
 function publicAuthResult(result = {}) {
@@ -354,6 +383,78 @@ export default async function handler(req, res) {
         });
         await auditLog(action, { memberId: req.body?.memberId, by: session.user.id, ip: requestIp(req) });
         return res.status(200).json({ ok: true, ...result });
+      }
+      // RC4.9B — irreversible member deletion. Archive stays the normal action;
+      // this needs the highest member-management permission AND the danger-zone
+      // permission, plus a typed confirmation that matches the member's name (or
+      // the word DELETE) so it can never fire from a stray click or replayed call.
+      if (action === 'delete_member_permanently') {
+        // RC4.9C — gated ONLY on the PLAYER_DELETE permission, which every access
+        // profile (full / coach / manager) grants for its assigned teams. The
+        // session is already scoped to one team, so "assigned team" is enforced
+        // by the membership lookup itself: no membership → no permissions there.
+        const session = await requireTenantPermission(req, PERM.PLAYER_DELETE);
+        if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
+        const memberId = String(req.body?.memberId || '');
+        const members = await loadTeamMembers();
+        const target = members.find(m => m.id === memberId && m.teamId === session.teamId);
+        if (!target) return res.status(404).json({ ok: false, error: 'Team member not found' });
+        const profiles = await loadPlayerProfiles();
+        const targetUser = (await loadUsers()).find(u => u.id === target.userId) || {};
+        const targetName = profiles.find(p => p.userId === target.userId)?.displayName
+          || targetUser.displayName || '';
+        const targetEmail = targetUser.email || '';
+        const confirm = String(req.body?.confirm || '').trim();
+        const confirmOk = confirm === 'DELETE' ||
+          (targetName && confirm.toLowerCase() === targetName.toLowerCase());
+        if (!confirmOk) {
+          return res.status(400).json({ ok: false, error: 'Type DELETE or the member\'s name to confirm this permanent deletion' });
+        }
+        const result = await permanentlyDeleteTeamMember(memberId, session.user.id, session.teamId);
+        // Any unused invitation tied to this person can no longer be claimed.
+        const invitesRevoked = await revokeInvitesForDeletedMember(target, targetName, targetEmail);
+        await auditLog('member_deleted_permanently', {
+          memberId, deletedMemberId: memberId, userId: result.userId, teamId: session.teamId,
+          performedBy: session.user.id, timestamp: result.deletedAt,
+          sessionsRevoked: result.sessionsRevoked, invitesRevoked, ip: requestIp(req),
+        });
+        return res.status(200).json({ ok: true, ...result, invitesRevoked });
+      }
+      // RC4.9C — assign or change a member's ACCESS PROFILE (full/coach/manager).
+      // Requires ASSIGN_ACCESS, which only Full Access holders and the club owner
+      // have. Granting Full Access additionally requires an explicit confirmation.
+      if (action === 'set_access_profile') {
+        const session = await requireTenantPermission(req, PERM.ASSIGN_ACCESS);
+        if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
+        const memberId = String(req.body?.memberId || '');
+        const nextProfile = String(req.body?.accessProfile || '').toLowerCase();
+        if (nextProfile === 'full' && req.body?.confirmFullAccess !== true) {
+          return res.status(400).json({
+            ok: false,
+            error: 'Granting Full Access needs explicit confirmation (confirmFullAccess)',
+          });
+        }
+        const result = await setAccessProfile(memberId, nextProfile, session.user.id, session.teamId);
+        await auditLog('access_profile_changed', {
+          affectedUserId: result.teamMember.userId,
+          memberId,
+          previousProfile: result.previousProfile,
+          newProfile: result.newProfile,
+          assignedTeams: result.assignedTeams,
+          changedBy: session.user.id,
+          changedAt: result.changedAt,
+          teamId: session.teamId,
+          clubId: session.teamId,
+          ip: requestIp(req),
+        });
+        return res.status(200).json({
+          ok: true,
+          teamMember: result.teamMember,
+          previousProfile: result.previousProfile,
+          newProfile: result.newProfile,
+          assignedTeams: result.assignedTeams,
+          changedAt: result.changedAt,
+        });
       }
       if (action === 'restore_member') {
         const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);

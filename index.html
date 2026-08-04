@@ -15367,6 +15367,24 @@
 
     // ─── END PHASE 16 ─────────────────────────────────────────────────────────
 
+    // RC4.9B — authorised-admin diagnostics mode. Destructive/diagnostic controls
+    // (device reset, test-data cleanup) are NOT part of normal production use: they
+    // require BOTH the danger_zone permission AND an explicit ?diagnostics=1 opt-in,
+    // so no ordinary coach, player or medical user can reach them by browsing.
+    // Server-side authorisation is unchanged and remains the real enforcement.
+    function diagnosticsMode() {
+      try {
+        if (!canI('danger_zone')) return false;
+        return new URLSearchParams(location.search).get('diagnostics') === '1';
+      } catch { return false; }
+    }
+    // typeof-guarded call site, so the isolated test harness (which extracts
+    // renderSettings without the surrounding scope) does not throw — and any
+    // failure to resolve the gate falls CLOSED, hiding the control.
+    function _diagnosticsOn() {
+      return typeof diagnosticsMode === 'function' ? diagnosticsMode() : false;
+    }
+
     function renderSettings() {
       const el = document.getElementById('coach-settings');
       if (!el) return;
@@ -15561,15 +15579,19 @@
             <div style="display:grid;gap:8px;margin-top:10px">
               <button class="btn" type="button" onclick="settingsExportClub(this)" style="min-height:40px;font-size:13px">Export club data (JSON)</button>
               <button class="btn" type="button" onclick="settingsDeleteClub()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Delete club setup data…</button>
-              ${canI('danger_zone') ? `<button class="btn" type="button" onclick="settingsCleanTestData()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Delete test data…</button>` : ''}
+              ${(typeof _diagnosticsOn === 'function' && _diagnosticsOn()) ? `<button class="btn" type="button" onclick="settingsCleanTestData()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Delete test data…</button>` : ''}
             </div>
             <p class="muted" style="font-size:11px;margin:10px 0 0">Deleting club data clears the club profile, published sessions, squad and roster for this club only. Player accounts and message history are kept.</p>
           </div>
 
-          <!-- Advanced → Danger zone (relocated from the global header) -->
+          <!-- Advanced → device reset. RC4.9B: this wipes ALL local club state on the
+               device, so it is no longer part of normal production use. It appears only
+               in the authorised-admin diagnostics mode (?diagnostics=1 + danger_zone),
+               which support can talk a club admin into when a device needs clearing. -->
+          ${(typeof _diagnosticsOn === 'function' && _diagnosticsOn()) ? `
           <div class="card" style="padding:0;overflow:hidden">
             <details class="srv-panel">
-              <summary>Advanced</summary>
+              <summary>Advanced (diagnostics)</summary>
               <div class="srv-panel-body" style="padding-top:4px">
                 <div style="border:1px solid rgba(248,113,113,0.35);border-radius:12px;padding:14px 16px">
                   <div style="font-size:13px;font-weight:700;color:#f87171;margin-bottom:4px">Danger zone</div>
@@ -15578,7 +15600,7 @@
                 </div>
               </div>
             </details>
-          </div>
+          </div>` : ''}
 
           <!-- Sign out — kept available for normal operation -->
           <div class="card">
@@ -16182,6 +16204,8 @@
                   <button class="btn" style="${smallBtn}" type="button" onclick="adminArchiveMember('${esc(member.id)}','${esc(user.displayName || '')}')">Archive</button>
                   <button class="btn" style="${smallBtn};color:#f87171;border-color:rgba(248,113,113,0.3)" type="button"
                     onclick="adminRemoveMember('${esc(member.id)}','${esc(user.displayName || '')}')">Remove</button>
+                  ${canI('player_delete') ? `<button class="btn" style="${smallBtn};color:#dc2626;border-color:rgba(220,38,38,0.45)" type="button"
+                    onclick="adminDeleteMemberPermanently('${esc(member.id)}','${esc(user.displayName || '')}','${esc(user.email || '')}')">Delete permanently…</button>` : ''}
                 </div>
               </div>`; }).join('') : `<p class="muted" style="font-size:12px;padding:4px 0">${q ? 'No players match your search.' : 'No active players yet — send an invite below.'}</p>`}
 
@@ -16233,7 +16257,8 @@
                   <button class="btn" style="${smallBtn};color:#f87171;border-color:rgba(248,113,113,0.3)" type="button"
                     onclick="adminRemoveMember('${esc(member.id)}','${esc(user.displayName || '')}')">Remove</button>` : ''}
                 </div>
-              </div>`).join('')}
+              </div>
+              ${renderAccessSection(member, user)}`).join('')}
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:14px">
               <input id="adm-staff-name" placeholder="Name" style="${inputStyle}">
               <input id="adm-staff-email" placeholder="Email" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" style="${inputStyle}">
@@ -16314,6 +16339,34 @@
       }
     }
 
+    // RC4.9B — irreversible deletion. Archive stays the normal action; this is the
+    // erasure path. Two guards before anything is sent: an explicit warning naming
+    // the person, then a typed confirmation the server re-checks independently.
+    async function adminDeleteMemberPermanently(memberId, name, email) {
+      const who = name || 'this member';
+      const ok = await ceConfirm(
+        `Permanently delete ${who}?`,
+        `${who}${email ? ` (${email})` : ''} will be erased: their account, login and personal details are deleted and they lose access to this club immediately. `
+        + 'Match records, appearances and past messages are kept as club history. This CANNOT be undone — use Archive if you may want them back.',
+        { confirmLabel: 'Continue', danger: true });
+      if (!ok) return;
+      const typed = await cePrompt(
+        `Type DELETE to confirm`,
+        `To permanently delete ${who}, type DELETE (or their exact name) below.`);
+      if (typed === null) return;
+      const answer = String(typed).trim();
+      if (answer !== 'DELETE' && answer.toLowerCase() !== String(name || '').trim().toLowerCase()) {
+        return showToast('Confirmation did not match — nothing was deleted');
+      }
+      const result = await adminAction(
+        { action: 'delete_member_permanently', memberId, confirm: answer },
+        `${who} permanently deleted`);
+      if (result?.userId) {
+        state.players = (state.players || []).filter(p => String(p.userId || '') !== String(result.userId));
+        saveState('Roster updated');
+      }
+    }
+
     async function adminArchiveMember(memberId, name) {
       if (!(await ceConfirm(`Archive ${name || 'this player'}?`, 'They lose app access but stay in your records and can be restored any time.', { confirmLabel: 'Archive' }))) return;
       await adminAction({ action: 'archive_member', memberId }, 'Player archived');
@@ -16335,6 +16388,79 @@
 
     async function adminRestoreMember(memberId) {
       await adminAction({ action: 'restore_member', memberId }, 'Member restored');
+    }
+
+    // ─── ACCESS PROFILES (RC4.9C) ───────────────────────────────────────────
+    // The access profile is what someone may DO; the staff level above is their
+    // job title. Only the club owner and Full Access holders (assign_access) can
+    // change one, and the server re-checks every rule independently.
+    const ACCESS_PROFILE_LABELS = { full: 'Full access', coach: 'Coach access', manager: 'Manager access' };
+    const ACCESS_PROFILE_SUMMARY = {
+      full:    'Manage staff, access profiles, invitations, club settings, all teams, reports and player deletion.',
+      coach:   'Assigned teams: player profiles, availability, training, selections, Match Centre, team messages, reports and player deletion. No access assignment, club-wide settings or medical.',
+      manager: 'Assigned teams: membership and invitations, availability, fixtures and logistics, operational messages and reports, player deletion. No access assignment, coaching notes or medical.',
+    };
+    const DEFAULT_PROFILE_BY_LEVEL = { head: 'full', assistant: 'coach', manager: 'manager' };
+
+    function accessProfileFor(member) {
+      const explicit = String(member?.accessProfile || '').toLowerCase();
+      if (ACCESS_PROFILE_LABELS[explicit]) return explicit;
+      if (member?.isOwner) return 'full';
+      return DEFAULT_PROFILE_BY_LEVEL[String(member?.staffLevel || 'head').toLowerCase()] || 'coach';
+    }
+
+    function renderAccessSection(member, user) {
+      const inputStyle = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
+      const profile = accessProfileFor(member);
+      const canAssign = canI('assign_access');
+      const isSelf = member.userId === state.currentUserId;
+      const assigned = (_adminData?.members || [])
+        .filter(m => m.userId === member.userId && m.status === 'active')
+        .map(m => m.teamId);
+      const changedBy = member.accessChangedBy
+        ? ((_adminData?.users || []).find(u => u.id === member.accessChangedBy)?.displayName || member.accessChangedBy)
+        : null;
+      return `
+        <div style="margin:-4px 0 12px;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Access</div>
+            ${canAssign ? `
+              <select style="${inputStyle};min-height:30px;font-size:11px;width:auto"
+                onchange="adminSetAccessProfile('${esc(member.id)}',this.value,'${esc(user.displayName || '')}','${esc(profile)}')">
+                ${Object.entries(ACCESS_PROFILE_LABELS).map(([id, label]) =>
+                  `<option value="${id}" ${profile === id ? 'selected' : ''}>${label}</option>`).join('')}
+              </select>`
+            : `<span style="font-size:12px;font-weight:700">${esc(ACCESS_PROFILE_LABELS[profile])}</span>`}
+          </div>
+          <p class="muted" style="font-size:11.5px;line-height:1.5;margin:8px 0 0">${esc(ACCESS_PROFILE_SUMMARY[profile] || '')}</p>
+          <div class="muted" style="font-size:11px;margin-top:6px">
+            Assigned teams: <strong>${assigned.length ? esc(assigned.join(', ')) : '—'}</strong>
+            ${member.isOwner ? ' · <strong>Club owner</strong>' : ''}
+            ${isSelf ? ' · <strong>You</strong>' : ''}
+          </div>
+          <div class="muted" style="font-size:11px;margin-top:2px">
+            ${changedBy
+              ? `Last changed by ${esc(changedBy)}${member.accessChangedAt ? ` · ${esc(String(member.accessChangedAt).slice(0, 10))}` : ''}`
+              : 'Default access for this role — not yet changed.'}
+          </div>
+        </div>`;
+    }
+
+    async function adminSetAccessProfile(memberId, nextProfile, name, currentProfile) {
+      if (nextProfile === currentProfile) return;
+      const who = name || 'this member';
+      const label = ACCESS_PROFILE_LABELS[nextProfile] || nextProfile;
+      if (nextProfile === 'full') {
+        const ok = await ceConfirm(
+          `Grant Full Access to ${who}?`,
+          'Full Access can manage staff, change other people\'s access profiles, manage club settings and permanently delete players. Only grant this to people you trust with the whole club.',
+          { confirmLabel: 'Grant Full Access', danger: true });
+        if (!ok) { render(); return; }
+      }
+      await adminAction(
+        { action: 'set_access_profile', memberId, accessProfile: nextProfile, ...(nextProfile === 'full' ? { confirmFullAccess: true } : {}) },
+        `${who} now has ${label}`);
+      render();
     }
 
     async function adminSetStaffLevel(memberId, staffLevel) {
