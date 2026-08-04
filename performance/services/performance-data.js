@@ -8,18 +8,18 @@
 /** @returns {import('../types/index.js').PerfAthlete[]} */
 export function getSampleAthletes() {
   return [
-    { id: 'ath-01', name: 'Tom Bradshaw',    position: 'Loosehead Prop',   jersey: 1,  programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 92, readiness: 84, trainingStatus: 'full',        lastSession: '2026-08-02' },
-    { id: 'ath-02', name: 'Callum Reid',     position: 'Hooker',           jersey: 2,  programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 88, readiness: 78, trainingStatus: 'full',        lastSession: '2026-08-02' },
-    { id: 'ath-03', name: 'Owen Whitfield',  position: 'Tighthead Prop',   jersey: 3,  programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 74, readiness: 66, trainingStatus: 'modified',    lastSession: '2026-07-31' },
-    { id: 'ath-04', name: 'Jack Morrison',   position: 'Lock',             jersey: 4,  programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 95, readiness: 90, trainingStatus: 'full',        lastSession: '2026-08-03' },
-    { id: 'ath-05', name: 'Ethan Kavanagh',  position: 'Lock',             jersey: 5,  programmeId: 'prog-02', programme: 'Return to Play',      adherence: 61, readiness: 52, trainingStatus: 'modified',    lastSession: '2026-08-01' },
-    { id: 'ath-06', name: 'Sam Okafor',      position: 'Blindside Flanker',jersey: 6,  programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 90, readiness: 88, trainingStatus: 'full',        lastSession: '2026-08-03' },
-    { id: 'ath-07', name: 'Luke Devereux',   position: 'Openside Flanker', jersey: 7,  programmeId: 'prog-03', programme: 'Speed & Power Block', adherence: 97, readiness: 93, trainingStatus: 'full',        lastSession: '2026-08-03' },
-    { id: 'ath-08', name: 'Danny Hughes',    position: 'Number 8',         jersey: 8,  programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 82, readiness: 75, trainingStatus: 'full',        lastSession: '2026-08-02' },
-    { id: 'ath-09', name: 'Rhys Llewellyn',  position: 'Scrum-half',       jersey: 9,  programmeId: 'prog-03', programme: 'Speed & Power Block', adherence: 89, readiness: 81, trainingStatus: 'full',        lastSession: '2026-08-02' },
-    { id: 'ath-10', name: 'Finn Gallagher',  position: 'Fly-half',         jersey: 10, programmeId: 'prog-03', programme: 'Speed & Power Block', adherence: 93, readiness: 86, trainingStatus: 'full',        lastSession: '2026-08-03' },
-    { id: 'ath-11', name: 'Marcus Ashworth', position: 'Winger',           jersey: 11, programmeId: 'prog-03', programme: 'Speed & Power Block', adherence: 70, readiness: 58, trainingStatus: 'unavailable', lastSession: '2026-07-28' },
-    { id: 'ath-12', name: 'Josh Tuilagi',    position: 'Inside Centre',    jersey: 12, programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 86, readiness: 79, trainingStatus: 'full',        lastSession: '2026-08-02' },
+    { id: 'ath-01', completion: 100, name: 'Tom Bradshaw',    position: 'Loosehead Prop',   jersey: 1,  programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 92, readiness: 84, trainingStatus: 'full',        lastSession: '2026-08-02' },
+    { id: 'ath-02', completion: 85, name: 'Callum Reid',     position: 'Hooker',           jersey: 2,  programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 88, readiness: 78, trainingStatus: 'full',        lastSession: '2026-08-02' },
+    { id: 'ath-03', completion: 70, name: 'Owen Whitfield',  position: 'Tighthead Prop',   jersey: 3,  programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 74, readiness: 66, trainingStatus: 'modified',    lastSession: '2026-07-31' },
+    { id: 'ath-04', completion: 100, name: 'Jack Morrison',   position: 'Lock',             jersey: 4,  programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 95, readiness: 90, trainingStatus: 'full',        lastSession: '2026-08-03' },
+    { id: 'ath-05', completion: 90, name: 'Ethan Kavanagh',  position: 'Lock',             jersey: 5,  programmeId: 'prog-02', programme: 'Return to Play',      adherence: 61, readiness: 52, trainingStatus: 'modified',    lastSession: '2026-08-01' },
+    { id: 'ath-06', completion: 95, name: 'Sam Okafor',      position: 'Blindside Flanker',jersey: 6,  programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 90, readiness: 88, trainingStatus: 'full',        lastSession: '2026-08-03' },
+    { id: 'ath-07', completion: 100, name: 'Luke Devereux',   position: 'Openside Flanker', jersey: 7,  programmeId: 'prog-03', programme: 'Speed & Power Block', adherence: 97, readiness: 93, trainingStatus: 'full',        lastSession: '2026-08-03' },
+    { id: 'ath-08', completion: 60, name: 'Danny Hughes',    position: 'Number 8',         jersey: 8,  programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 82, readiness: 75, trainingStatus: 'full',        lastSession: '2026-08-02' },
+    { id: 'ath-09', completion: 85, name: 'Rhys Llewellyn',  position: 'Scrum-half',       jersey: 9,  programmeId: 'prog-03', programme: 'Speed & Power Block', adherence: 89, readiness: 81, trainingStatus: 'full',        lastSession: '2026-08-02' },
+    { id: 'ath-10', completion: 100, name: 'Finn Gallagher',  position: 'Fly-half',         jersey: 10, programmeId: 'prog-03', programme: 'Speed & Power Block', adherence: 93, readiness: 86, trainingStatus: 'full',        lastSession: '2026-08-03' },
+    { id: 'ath-11', completion: 75, name: 'Marcus Ashworth', position: 'Winger',           jersey: 11, programmeId: 'prog-03', programme: 'Speed & Power Block', adherence: 70, readiness: 58, trainingStatus: 'unavailable', lastSession: '2026-07-28' },
+    { id: 'ath-12', completion: 55, name: 'Josh Tuilagi',    position: 'Inside Centre',    jersey: 12, programmeId: 'prog-01', programme: 'Pre-Season Strength', adherence: 86, readiness: 79, trainingStatus: 'full',        lastSession: '2026-08-02' },
   ];
 }
 

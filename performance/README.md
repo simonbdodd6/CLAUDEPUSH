@@ -1,6 +1,12 @@
 # CoachEasier Performance
 
-Premium strength & conditioning module — SC1 foundation.
+Premium strength & conditioning module.
+
+- **SC1** — module architecture, navigation shells, premium gating.
+- **SC2** — athlete profile model, intelligent onboarding, privacy &
+  visibility boundaries, versioned persistence. Programme generation is
+  **not** part of SC2 — nothing prescribes workouts or makes medical
+  judgements.
 
 This directory is the **module home** for everything Performance-specific that
 is not UI chrome. It follows the same architectural split the rest of
@@ -20,21 +26,25 @@ CoachEasier uses:
 performance/
 ├── components/   Pure HTML-string builders shared by Performance screens
 │                 (mirrors the render-helper convention in index.html).
+├── docs/         SC2 documentation: athlete-profile.md, onboarding-flow.md,
+│                 privacy-and-visibility.md, persistence-and-versioning.md.
 ├── hooks/        State/lifecycle seams (subscribe/select helpers) that the
 │                 inline app script will adopt when engine logic arrives.
-├── services/     Data-access seams. SC1 ships sample-data providers only;
-│                 real Redis/API adapters replace the sample layer later
-│                 without touching screens.
-├── domain/       Entities and pure business rules (progress, readiness,
-│                 workout status). No engine logic yet — SC1 keeps only the
-│                 display-level rules the shells need.
-├── types/        JSDoc typedef modules — the single source of truth for
-│                 Performance data shapes.
+├── services/     Data-access seams. Sample-data provider (SC1) and the
+│                 versioned athlete-profile store (SC2); real Redis/API
+│                 adapters replace these later without touching screens.
+├── domain/       Entities and pure business rules: SC1 display rules plus
+│                 the SC2 athlete-profile rules (completion, onboarding
+│                 steps, units, goals, schedule conflicts, equipment
+│                 capability, strength confidence, restrictions, staleness,
+│                 review-request routing) and the visibility model.
+├── types/        JSDoc typedef + enum modules — the single source of truth
+│                 for Performance data shapes (index.js, athlete-profile.js).
 ├── utils/        Formatting and small pure helpers.
 └── tests/        node --test unit tests for this tree. Run directly:
                   node --test performance/tests/*.test.js
                   (the root `npm test` glob covers test/*.test.js, which
-                  holds the index.html integration test for this module).
+                  holds the index.html integration tests for this module).
 ```
 
 ## Screen map (SC1 shells)
@@ -42,7 +52,8 @@ performance/
 | Screen | index.html renderer | Purpose |
 |---|---|---|
 | Dashboard | `renderPerfDashboard` | Premium landing — today's workout, programme progress, athletes, analytics, coach tools, recent activity |
-| Athletes | `renderPerfAthletes` | Athlete list, ready for player profiles |
+| My Profile (SC2) | `perfProfileHtml` / `perfOnboardingHtml` | Athlete profile + progressive onboarding wizard |
+| Athletes | `renderPerfAthletes` | Coach list: completion, programme, adherence, readiness category, attention flag; summary shell per athlete |
 | Programmes | `renderPerfProgrammes` | Programme overview, ready for programme management |
 | Workouts | `renderPerfWorkouts` | Today's workout shell — structure only |
 | Exercise Library | `renderPerfLibrary` | Search / filters / categories / favourites shell |

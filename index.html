@@ -4717,6 +4717,111 @@
     @media (prefers-reduced-motion: reduce) {
       .perf-meter i, .perf-switch, .perf-switch i, .perf-tab { transition:none; }
     }
+
+    /* ═══ COACHEASIER PERFORMANCE (SC2) — athlete profile & onboarding ═══════
+       Mobile-first wizard + profile experience. Same token rules as SC1:
+       module chrome uses --brand*, club identity stays with --accent*. */
+
+    /* Onboarding card & progress */
+    .perf-ob-card { max-width:720px; padding:24px; }
+    .perf-ob-progress { display:grid; gap:7px; margin-bottom:18px; }
+    .perf-ob-progress small { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+    .perf-ob-title { margin:0 0 14px; font-size:20px; font-weight:800; letter-spacing:-0.02em; color:var(--ink); }
+    .perf-ob-q { margin:0 0 20px; }
+    .perf-ob-q-title { font-size:14px; font-weight:750; color:var(--ink); margin-bottom:9px; display:flex; align-items:center; gap:8px; }
+    .perf-optional { font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--faint, var(--muted)); border:1px solid var(--line); border-radius:999px; padding:2px 8px; }
+    .perf-ob-help { font-size:12.5px; color:var(--muted); margin:6px 0 8px; line-height:1.5; }
+    .perf-ob-conflict { display:flex; align-items:flex-start; gap:7px; padding:10px 12px; border:1px solid var(--brand-line); border-radius:10px; background:var(--brand-soft); color:var(--ink); }
+    .perf-ob-error { font-size:13px; font-weight:600; color:var(--status-unavailable); background:var(--status-unavailable-soft); border-radius:10px; padding:10px 13px; margin:12px 0 0; }
+    .perf-ob-facts { display:grid; gap:9px; margin:16px 0 4px; }
+    .perf-ob-facts div { display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--muted); }
+
+    /* Choice chips — 44px+ touch targets */
+    .perf-choice-grid { display:flex; flex-wrap:wrap; gap:7px; }
+    .perf-choice-grid.cols-7 { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); }
+    .perf-choice-grid.cols-3 { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); }
+    .perf-choice {
+      font-family:inherit; cursor:pointer; min-height:44px; padding:9px 15px;
+      border:1px solid var(--line); border-radius:12px; background:var(--panel);
+      color:var(--ink); font-size:13.5px; font-weight:650; text-align:center;
+      transition:border-color .13s ease, background .13s ease, color .13s ease;
+    }
+    .perf-choice:hover { border-color:var(--line-2); background:var(--panel-2); }
+    .perf-choice.on { border-color:var(--brand); background:var(--brand-soft); color:var(--brand-2); box-shadow:0 0 0 1px var(--brand-line) inset; }
+    .perf-choice.consent { width:100%; min-height:48px; font-weight:750; margin-top:12px; }
+    .perf-choice.consent.on { background:var(--brand-grad, var(--brand)); color:var(--brand-ink, #fff); border-color:transparent; }
+
+    /* 1–5 scales */
+    .perf-scale { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:7px; max-width:340px; }
+    .perf-scale-btn {
+      font-family:inherit; cursor:pointer; min-height:44px; border-radius:12px;
+      border:1px solid var(--line); background:var(--panel); color:var(--muted);
+      font-size:15px; font-weight:750; transition:border-color .13s ease, background .13s ease, color .13s ease;
+    }
+    .perf-scale-btn:hover { border-color:var(--line-2); }
+    .perf-scale-btn.on { border-color:var(--brand); background:var(--brand-soft); color:var(--brand-2); }
+
+    /* Numeric inline inputs */
+    .perf-ob-inline { display:flex; align-items:center; gap:9px; margin-top:9px; }
+    .perf-num {
+      width:120px; min-height:44px; padding:0 13px; font-family:inherit; font-size:15px; font-weight:650;
+      border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--ink);
+    }
+    .perf-num:focus { outline:none; border-color:var(--brand-line); box-shadow:var(--ring, 0 0 0 3px rgba(110,116,240,.18)); }
+    .perf-unit { font-size:13px; font-weight:700; color:var(--muted); }
+
+    /* Wizard nav */
+    .perf-ob-nav { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:22px; }
+    .perf-ob-nav-right { display:flex; align-items:center; gap:8px; }
+    .perf-ob-done { text-align:center; padding:18px 6px; }
+    .perf-ob-done h2 { margin:14px 0 8px; font-size:22px; font-weight:800; color:var(--ink); }
+    .perf-ob-done p { max-width:420px; margin:0 auto; }
+    .perf-ob-done-mark {
+      width:56px; height:56px; margin:0 auto; display:flex; align-items:center; justify-content:center;
+      border-radius:50%; font-size:26px; font-weight:800; color:var(--brand-ink, #fff);
+      background:var(--brand-grad, var(--brand)); box-shadow:var(--glow-brand, var(--shadow));
+    }
+
+    /* Review rows */
+    .perf-review-row small { display:block; margin-top:2px; }
+    .perf-review-missing { color:var(--status-maybe); font-weight:650; }
+
+    /* Profile screen */
+    .perf-group-title { font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:26px 0 12px; }
+    .perf-group-title:first-of-type { margin-top:8px; }
+    .perf-bench-row { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:13px; color:var(--ink); }
+    .perf-bench-row strong { font-size:13.5px; }
+    .perf-review-flag { border-color:var(--status-maybe); background:linear-gradient(180deg, var(--status-maybe-soft), var(--panel)); }
+
+    /* Athlete list (SC2) */
+    .perf-athlete-row.clickable { font-family:inherit; text-align:left; cursor:pointer; width:100%; }
+    .perf-athlete-row.clickable:hover { border-color:var(--brand-line); }
+    .perf-flag { color:var(--status-maybe); font-size:13px; }
+
+    /* Grant rows reuse .perf-grant-row from settings-style rows */
+    .perf-grant-row { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:11px 0; border-top:1px solid var(--line); }
+    .perf-grant-row:first-child { border-top:0; }
+    .perf-grant-row small { display:block; margin-top:2px; }
+
+    /* Consent card */
+    .perf-consent { border:1px solid var(--brand-line); border-radius:14px; background:var(--brand-soft); padding:16px 18px; margin-bottom:18px; }
+    .perf-consent strong { font-size:14.5px; color:var(--ink); }
+    .perf-consent p { font-size:13px; color:var(--muted); margin:8px 0; line-height:1.55; }
+    .perf-consent ul { margin:0 0 4px; padding-left:18px; }
+    .perf-consent li { font-size:12.5px; color:var(--muted); margin:5px 0; line-height:1.5; }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .perf-ob-card { padding:18px 15px; }
+      .perf-choice-grid.cols-7 { grid-template-columns:repeat(4, minmax(0,1fr)); }
+      .perf-ob-nav { flex-wrap:wrap; }
+      .perf-ob-nav .btn, .perf-ob-nav-right { flex:1 1 auto; }
+      .perf-ob-nav-right .btn { flex:1 1 auto; }
+      .perf-scale { max-width:none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .perf-choice, .perf-scale-btn { transition:none; }
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -4869,6 +4974,7 @@
     // normalizeState validates the persisted tab against this list.
     const PERF_TABS = [
       { id: "dashboard",  label: "Dashboard" },
+      { id: "profile",    label: "My Profile" },
       { id: "athletes",   label: "Athletes" },
       { id: "programmes", label: "Programmes" },
       { id: "workouts",   label: "Workouts" },
@@ -4877,6 +4983,178 @@
       { id: "tools",      label: "Coach Tools" },
       { id: "settings",   label: "Settings" },
     ];
+
+    // ── CoachEasier Performance — athlete profile model (SC2, inline mirror) ──
+    // Kept in lockstep with performance/types/athlete-profile.js,
+    // performance/domain/athlete-profile.js and performance/services/
+    // athlete-profile-store.js (same convention as src/player-identity.js).
+    // Declared before loadState() because normalizeState() calls
+    // perfNormalizeProfileState(). Nothing here diagnoses or prescribes.
+    const PERF_PROFILE_VERSION = 1;
+    const PERF_PROFILE_STATE_VERSION = 1;
+    const PERF_ONBOARDING_VERSION = 1;
+    const PERF_WELLNESS_LOG_MAX = 30;
+
+    const PERF_OB_STEPS = [
+      { id: "welcome",   label: "Welcome",                 required: true  },
+      { id: "rugby",     label: "Rugby profile",           required: true  },
+      { id: "training",  label: "Training experience",     required: true  },
+      { id: "schedule",  label: "Schedule & availability", required: true  },
+      { id: "equipment", label: "Equipment access",        required: true  },
+      { id: "goals",     label: "Goals",                   required: true  },
+      { id: "strength",  label: "Strength baseline",       required: false },
+      { id: "readiness", label: "Readiness & limitations", required: false },
+      { id: "privacy",   label: "Privacy & sharing",       required: true  },
+      { id: "review",    label: "Review & confirm",        required: true  },
+      { id: "done",      label: "All set",                 required: true  },
+    ];
+
+    // Minimum-viable onboarding. "unknown" always counts as answered; true
+    // 1RM data and health information are never required.
+    const PERF_REQUIRED_PATHS = [
+      "personal.ageBand", "rugby.primaryPosition", "rugby.playingLevel",
+      "rugby.seasonPhase", "training.experience", "training.preferredSessionMinutes",
+      "schedule.availableDays", "equipment.locations", "goals", "sharing.consentAcceptedAt",
+    ];
+    const PERF_STEP_REQUIRED = {
+      welcome: [], review: [], done: [], strength: [], readiness: [],
+      rugby:     ["rugby.primaryPosition", "rugby.playingLevel", "rugby.seasonPhase", "personal.ageBand"],
+      training:  ["training.experience", "training.preferredSessionMinutes"],
+      schedule:  ["schedule.availableDays"],
+      equipment: ["equipment.locations"],
+      goals:     ["goals"],
+      privacy:   ["sharing.consentAcceptedAt"],
+    };
+
+    function perfIsAnswered(v) {
+      if (v === null || v === undefined) return false;
+      if (typeof v === "string") return v.trim() !== "";
+      if (Array.isArray(v)) return v.length > 0;
+      return true;
+    }
+    function perfGetPath(obj, path) {
+      return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
+    }
+    function perfSetPath(obj, path, value) {
+      const keys = path.split(".");
+      let cur = obj;
+      for (let i = 0; i < keys.length - 1; i++) {
+        if (cur[keys[i]] == null || typeof cur[keys[i]] !== "object") cur[keys[i]] = {};
+        cur = cur[keys[i]];
+      }
+      cur[keys[keys.length - 1]] = value;
+    }
+    function perfMissingRequired(profile) {
+      return PERF_REQUIRED_PATHS.filter(p => !perfIsAnswered(perfGetPath(profile, p)));
+    }
+    function perfStepComplete(profile, stepId) {
+      return (PERF_STEP_REQUIRED[stepId] || []).every(p => perfIsAnswered(perfGetPath(profile, p)));
+    }
+    // Completion: required minimum 70%, optional richness 30% — lockstep with
+    // profileCompletion() in performance/domain/athlete-profile.js.
+    function perfProfileCompletionPct(profile) {
+      if (!profile) return 0;
+      const missing = perfMissingRequired(profile);
+      const requiredDone = PERF_REQUIRED_PATHS.length - missing.length;
+      const optional = [
+        p => perfIsAnswered(p.body?.heightCm) && perfIsAnswered(p.body?.weightKg),
+        p => (p.strength?.results || []).some(r => r.status !== "unknown"),
+        p => p.pain?.present !== null && p.pain?.present !== undefined,
+        p => perfIsAnswered(p.rugby?.secondaryPosition),
+        p => (p.schedule?.rugbyDays || []).length > 0,
+        p => (p.goals || []).some(g => perfIsAnswered(g.targetDate) || perfIsAnswered(g.targetValue)),
+      ];
+      let optionalDone = 0;
+      for (const fn of optional) { try { if (fn(profile)) optionalDone++; } catch (e) {} }
+      return Math.min(Math.round((requiredDone / PERF_REQUIRED_PATHS.length) * 70 + (optionalDone / optional.length) * 30), 100);
+    }
+
+    function perfEmptyProfile(userId, now) {
+      return {
+        version: PERF_PROFILE_VERSION,
+        onboardingVersion: PERF_ONBOARDING_VERSION,
+        id: userId ? `perf-profile-${userId}` : null,
+        userRef: userId || null,
+        teamRef: null,
+        clubRef: null,
+        sport: "rugby_union",
+        status: "draft",
+        createdAt: now || null,
+        updatedAt: now || null,
+        // NOTE: no `state` access here — this runs during loadState() when
+        // `state` is not yet initialised. Refs are filled in by perfObStart().
+        personal: { dateOfBirth: null, ageBand: null, sex: null, dominantSide: null, units: { weight: "kg", height: "cm" }, language: null, timezone: null },
+        rugby: { primaryPosition: null, secondaryPosition: null, playingLevel: null, yearsPlaying: null, typicalMatchMinutes: null, matchDay: null, rugbySessionsPerWeek: null, otherSports: [], seasonPhase: null },
+        body: { heightCm: null, weightKg: null, targetWeightKg: null, bodyComposition: null, weightTrend: null, measurementSource: null, measuredAt: null },
+        training: { experience: null, yearsResistanceTraining: null, consistency: null, currentProgramme: null, preferredStyles: [], techConfidence: null, preferredSessionMinutes: null },
+        strength: { results: [] },
+        equipment: { locations: [], items: [], notes: "" },
+        schedule: { availableDays: [], preferredDays: [], maxSessionMinutes: null, rugbyDays: [], matchDay: null, workRestrictions: "", travelRestrictions: "", temporaryChanges: [] },
+        goals: [],
+        pain: { present: null, area: null, movementAffected: null, severity: null, trainingRestricted: null, note: "", reportedAt: null },
+        health: { injuryHistory: [], medicalRestrictions: "", movementsToAvoid: [], physioInstructions: "", medicalClearanceRequired: null, returnToTrainingStatus: null },
+        coachRestrictions: [],
+        sharing: { consentVersion: null, consentAcceptedAt: null, consentAcceptedBy: null, grants: [], audit: [] },
+      };
+    }
+
+    // Template-merge a stored profile against the canonical shape: unknown
+    // keys are dropped, missing keys pick up defaults, bad data → null so
+    // onboarding restarts instead of trusting a corrupt profile.
+    function perfMergeTemplate(template, source) {
+      if (Array.isArray(template)) return Array.isArray(source) ? source : template;
+      if (template === null || typeof template !== "object") return source === undefined ? template : source;
+      const out = {};
+      for (const key of Object.keys(template)) {
+        const t = template[key], s = source ? source[key] : undefined;
+        if (t !== null && typeof t === "object" && !Array.isArray(t)) out[key] = perfMergeTemplate(t, s && typeof s === "object" ? s : {});
+        else if (Array.isArray(t)) out[key] = Array.isArray(s) ? s : [];
+        else out[key] = s === undefined ? t : s;
+      }
+      return out;
+    }
+    function perfNormalizeProfile(raw) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+      if (typeof raw.version !== "number" || raw.version > PERF_PROFILE_VERSION) return null;
+      const merged = perfMergeTemplate(perfEmptyProfile(null, null), raw);
+      merged.version = PERF_PROFILE_VERSION;
+      return merged;
+    }
+    function perfInitialProfileState() {
+      return {
+        stateVersion: PERF_PROFILE_STATE_VERSION,
+        profile: null,
+        onboarding: { step: "welcome", startedAt: null, completedAt: null, skippedSteps: [] },
+        wellnessLog: [],
+      };
+    }
+    // Migration seam — mirror of PROFILE_MIGRATIONS in the module; empty at v1.
+    const PERF_PROFILE_MIGRATIONS = {};
+    function perfNormalizeProfileState(raw) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return perfInitialProfileState();
+      let st = raw;
+      if (typeof st.stateVersion !== "number" || st.stateVersion > PERF_PROFILE_STATE_VERSION) return perfInitialProfileState();
+      let guard = 0;
+      while (st.stateVersion < PERF_PROFILE_STATE_VERSION && guard++ < 10) {
+        const migrate = PERF_PROFILE_MIGRATIONS[st.stateVersion];
+        if (!migrate) return perfInitialProfileState();
+        st = migrate(st);
+        if (!st || typeof st.stateVersion !== "number") return perfInitialProfileState();
+      }
+      const valid = new Set(PERF_OB_STEPS.map(s => s.id));
+      const ob = st.onboarding && typeof st.onboarding === "object" ? st.onboarding : {};
+      return {
+        stateVersion: PERF_PROFILE_STATE_VERSION,
+        profile: perfNormalizeProfile(st.profile),
+        onboarding: {
+          step: valid.has(ob.step) ? ob.step : "welcome",
+          startedAt: typeof ob.startedAt === "string" ? ob.startedAt : null,
+          completedAt: typeof ob.completedAt === "string" ? ob.completedAt : null,
+          skippedSteps: Array.isArray(ob.skippedSteps) ? ob.skippedSteps.filter(s => valid.has(s)) : [],
+        },
+        wellnessLog: Array.isArray(st.wellnessLog) ? st.wellnessLog.filter(e => e && typeof e === "object").slice(-PERF_WELLNESS_LOG_MAX) : [],
+      };
+    }
 
     const playerSections = [
       ["home",         "Home"],
@@ -5307,6 +5585,11 @@
         pbCelebrations: true,
         showBodyweight: true,
       },
+      // SC2 — versioned athlete profile + onboarding state for THIS device's
+      // athlete. Namespaced; shape owned by performance/services/
+      // athlete-profile-store.js and normalized by the inline mirror
+      // perfNormalizeProfileState() on every load. null until first visit.
+      performanceProfile: null,
       selectedPlayerId: "",
       selectedMessagePlayerId: "",
       selectedChatId: "coach",
@@ -5953,6 +6236,8 @@
       // added in later releases pick up their default without a migration.
       next.performanceSettings = { ...structuredClone(defaultState.performanceSettings), ...(input.performanceSettings || {}) };
       next.activePerformanceTab = PERF_TABS.some(t => t.id === input.activePerformanceTab) ? input.activePerformanceTab : "dashboard";
+      // SC2 — malformed/outdated profile data must never break app load.
+      next.performanceProfile = input.performanceProfile == null ? null : perfNormalizeProfileState(input.performanceProfile);
       next.clubLogo = input.clubLogo ?? "";
       next.clubColours = input.clubColours ?? null;
       next.autopilotReceipts = Array.isArray(input.autopilotReceipts) ? input.autopilotReceipts.slice(0, 20) : [];
@@ -24927,18 +25212,18 @@
 
     // Sample data — lockstep with performance/services/performance-data.js.
     const PERF_SAMPLE_ATHLETES = [
-      { id: 'ath-01', name: 'Tom Bradshaw',    position: 'Loosehead Prop',    jersey: 1,  programme: 'Pre-Season Strength', adherence: 92, readiness: 84, trainingStatus: 'full',        lastSession: '2026-08-02' },
-      { id: 'ath-02', name: 'Callum Reid',     position: 'Hooker',            jersey: 2,  programme: 'Pre-Season Strength', adherence: 88, readiness: 78, trainingStatus: 'full',        lastSession: '2026-08-02' },
-      { id: 'ath-03', name: 'Owen Whitfield',  position: 'Tighthead Prop',    jersey: 3,  programme: 'Pre-Season Strength', adherence: 74, readiness: 66, trainingStatus: 'modified',    lastSession: '2026-07-31' },
-      { id: 'ath-04', name: 'Jack Morrison',   position: 'Lock',              jersey: 4,  programme: 'Pre-Season Strength', adherence: 95, readiness: 90, trainingStatus: 'full',        lastSession: '2026-08-03' },
-      { id: 'ath-05', name: 'Ethan Kavanagh',  position: 'Lock',              jersey: 5,  programme: 'Return to Play',      adherence: 61, readiness: 52, trainingStatus: 'modified',    lastSession: '2026-08-01' },
-      { id: 'ath-06', name: 'Sam Okafor',      position: 'Blindside Flanker', jersey: 6,  programme: 'Pre-Season Strength', adherence: 90, readiness: 88, trainingStatus: 'full',        lastSession: '2026-08-03' },
-      { id: 'ath-07', name: 'Luke Devereux',   position: 'Openside Flanker',  jersey: 7,  programme: 'Speed & Power Block', adherence: 97, readiness: 93, trainingStatus: 'full',        lastSession: '2026-08-03' },
-      { id: 'ath-08', name: 'Danny Hughes',    position: 'Number 8',          jersey: 8,  programme: 'Pre-Season Strength', adherence: 82, readiness: 75, trainingStatus: 'full',        lastSession: '2026-08-02' },
-      { id: 'ath-09', name: 'Rhys Llewellyn',  position: 'Scrum-half',        jersey: 9,  programme: 'Speed & Power Block', adherence: 89, readiness: 81, trainingStatus: 'full',        lastSession: '2026-08-02' },
-      { id: 'ath-10', name: 'Finn Gallagher',  position: 'Fly-half',          jersey: 10, programme: 'Speed & Power Block', adherence: 93, readiness: 86, trainingStatus: 'full',        lastSession: '2026-08-03' },
-      { id: 'ath-11', name: 'Marcus Ashworth', position: 'Winger',            jersey: 11, programme: 'Speed & Power Block', adherence: 70, readiness: 58, trainingStatus: 'unavailable', lastSession: '2026-07-28' },
-      { id: 'ath-12', name: 'Josh Tuilagi',    position: 'Inside Centre',     jersey: 12, programme: 'Pre-Season Strength', adherence: 86, readiness: 79, trainingStatus: 'full',        lastSession: '2026-08-02' },
+      { id: 'ath-01', completion: 100, name: 'Tom Bradshaw',    position: 'Loosehead Prop',    jersey: 1,  programme: 'Pre-Season Strength', adherence: 92, readiness: 84, trainingStatus: 'full',        lastSession: '2026-08-02' },
+      { id: 'ath-02', completion: 85, name: 'Callum Reid',     position: 'Hooker',            jersey: 2,  programme: 'Pre-Season Strength', adherence: 88, readiness: 78, trainingStatus: 'full',        lastSession: '2026-08-02' },
+      { id: 'ath-03', completion: 70, name: 'Owen Whitfield',  position: 'Tighthead Prop',    jersey: 3,  programme: 'Pre-Season Strength', adherence: 74, readiness: 66, trainingStatus: 'modified',    lastSession: '2026-07-31' },
+      { id: 'ath-04', completion: 100, name: 'Jack Morrison',   position: 'Lock',              jersey: 4,  programme: 'Pre-Season Strength', adherence: 95, readiness: 90, trainingStatus: 'full',        lastSession: '2026-08-03' },
+      { id: 'ath-05', completion: 90, name: 'Ethan Kavanagh',  position: 'Lock',              jersey: 5,  programme: 'Return to Play',      adherence: 61, readiness: 52, trainingStatus: 'modified',    lastSession: '2026-08-01' },
+      { id: 'ath-06', completion: 95, name: 'Sam Okafor',      position: 'Blindside Flanker', jersey: 6,  programme: 'Pre-Season Strength', adherence: 90, readiness: 88, trainingStatus: 'full',        lastSession: '2026-08-03' },
+      { id: 'ath-07', completion: 100, name: 'Luke Devereux',   position: 'Openside Flanker',  jersey: 7,  programme: 'Speed & Power Block', adherence: 97, readiness: 93, trainingStatus: 'full',        lastSession: '2026-08-03' },
+      { id: 'ath-08', completion: 60, name: 'Danny Hughes',    position: 'Number 8',          jersey: 8,  programme: 'Pre-Season Strength', adherence: 82, readiness: 75, trainingStatus: 'full',        lastSession: '2026-08-02' },
+      { id: 'ath-09', completion: 85, name: 'Rhys Llewellyn',  position: 'Scrum-half',        jersey: 9,  programme: 'Speed & Power Block', adherence: 89, readiness: 81, trainingStatus: 'full',        lastSession: '2026-08-02' },
+      { id: 'ath-10', completion: 100, name: 'Finn Gallagher',  position: 'Fly-half',          jersey: 10, programme: 'Speed & Power Block', adherence: 93, readiness: 86, trainingStatus: 'full',        lastSession: '2026-08-03' },
+      { id: 'ath-11', completion: 75, name: 'Marcus Ashworth', position: 'Winger',            jersey: 11, programme: 'Speed & Power Block', adherence: 70, readiness: 58, trainingStatus: 'unavailable', lastSession: '2026-07-28' },
+      { id: 'ath-12', completion: 55, name: 'Josh Tuilagi',    position: 'Inside Centre',     jersey: 12, programme: 'Pre-Season Strength', adherence: 86, readiness: 79, trainingStatus: 'full',        lastSession: '2026-08-02' },
     ];
     const PERF_SAMPLE_PROGRAMMES = [
       { id: 'prog-01', name: 'Pre-Season Strength',   focus: 'Max Strength',         weeks: 8,  currentWeek: 3,  athleteCount: 18, sessionsPerWeek: 3, status: 'active' },
@@ -25040,12 +25325,6 @@
       const label = n === 0 ? '0%' : `${n > 0 ? '+' : '−'}${Math.abs(n).toFixed(1).replace(/\.0$/, '')}%`;
       return `<span class="status ${good ? 'available' : 'maybe'}" style="font-size:11px">${label}</span>`;
     }
-    function perfReadinessStatus(score) {
-      const s = Number(score) || 0;
-      if (s >= 80) return `<span class="status available">${s} ready</span>`;
-      if (s >= 60) return `<span class="status maybe">${s} monitor</span>`;
-      return `<span class="status unavailable">${s} low</span>`;
-    }
     function perfTrainingStatus(ts) {
       if (ts === 'full')     return '<span class="status available">Full training</span>';
       if (ts === 'modified') return '<span class="status maybe">Modified</span>';
@@ -25120,6 +25399,637 @@
       perfSetPref(key, !(state.performanceSettings || {})[key]);
     }
 
+    // ═══ SC2 — ATHLETE PROFILE & ONBOARDING (UI layer) ═══════════════════════
+    // Option lists mirror performance/types/athlete-profile.js. Wellness and
+    // pain wording is deliberately non-clinical: self-reports, never diagnoses.
+
+    const PERF_OPT = {
+      positions: [
+        ["loosehead_prop","Loosehead Prop"],["hooker","Hooker"],["tighthead_prop","Tighthead Prop"],
+        ["lock","Lock"],["blindside_flanker","Blindside Flanker"],["openside_flanker","Openside Flanker"],
+        ["number_8","Number 8"],["scrum_half","Scrum-half"],["fly_half","Fly-half"],
+        ["inside_centre","Inside Centre"],["outside_centre","Outside Centre"],["wing","Wing"],
+        ["full_back","Full-back"],["utility_forward","Utility Forward"],["utility_back","Utility Back"],
+      ],
+      playingLevels: [["youth","Youth / Age grade"],["school","School"],["amateur_club","Amateur club"],["semi_pro","Semi-professional"],["professional","Professional"],["representative","Representative / Academy"]],
+      seasonPhases: [["off_season","Off-season"],["pre_season","Pre-season"],["in_season","In-season"],["post_season","Post-season break"]],
+      ageBands: [["under_16","Under 16"],["16_17","16–17"],["18_20","18–20"],["21_29","21–29"],["30_34","30–34"],["35_plus","35+"],["unknown","Prefer not to say"]],
+      experience: [["new","New to gym training"],["beginner","Beginner — under a year"],["intermediate","Intermediate — 1–3 years"],["advanced","Advanced — 3+ years"]],
+      consistency: [["consistent","Training regularly now"],["intermittent","On and off recently"],["returning","Returning after a break"],["not_training","Not currently training"]],
+      durations: [[30,"30 min"],[45,"45 min"],[60,"60 min"],[75,"75 min"],[90,"90 min"]],
+      days: [["Mon","Mon"],["Tue","Tue"],["Wed","Wed"],["Thu","Thu"],["Fri","Fri"],["Sat","Sat"],["Sun","Sun"]],
+      equipmentLocations: [["commercial_gym","Full commercial gym"],["team_gym","Club / team gym"],["home_gym","Home gym"],["bodyweight_only","Bodyweight only"]],
+      equipmentItems: [["barbell","Barbell & plates"],["rack","Squat rack"],["bench","Bench"],["dumbbells","Dumbbells"],["kettlebells","Kettlebells"],["machines","Machines / cables"],["bands","Bands"],["med_balls","Medicine balls"],["sled","Sled"],["turf","Turf / open floor"],["sprint_space","Sprint space"],["cardio","Cardio equipment"]],
+      goalTypes: [["max_strength","Maximal strength"],["power","Power / explosiveness"],["body_mass_gain","Body-mass gain"],["body_fat_reduction","Body-fat reduction"],["acceleration","Acceleration"],["max_speed","Maximum speed"],["conditioning","Conditioning / engine"],["preseason_prep","Pre-season preparation"],["inseason_maintenance","In-season maintenance"],["return_to_training","Return to training"],["position_development","Position-specific development"]],
+      wellnessKeys: [["sleep","Sleep quality"],["fatigue","Energy"],["soreness","Muscle soreness"],["stress","Stress"],["motivation","Motivation"],["readiness","Ready to train"]],
+      bodyAreas: [["neck","Neck"],["shoulder","Shoulder"],["back","Back"],["hip_groin","Hip / groin"],["hamstring","Hamstring"],["quad","Quad"],["knee","Knee"],["calf_ankle","Calf / ankle"],["foot","Foot"],["arm_hand","Arm / hand"],["other","Other"]],
+      strengthTests: [
+        ["squat","Squat","kg"],["deadlift","Deadlift","kg"],["bench_press","Bench Press","kg"],["jump_cmj","Countermovement Jump","cm"],
+      ],
+    };
+    const PERF_OPT_LABEL = {};
+    for (const list of Object.values(PERF_OPT)) for (const [id, label] of list) PERF_OPT_LABEL[id] = label;
+
+    // ── Wizard state & handlers ───────────────────────────────────────────────
+    let _perfObError = "";          // validation message for the current step
+    let _perfObReturn = null;       // 'review' | 'profile' — where an edit jump returns to
+    let _perfObWellness = null;     // draft wellness scores for this visit
+    let _perfObShowDone = false;    // show the completion card once after submit
+
+    function perfObEnsure() {
+      if (!state.performanceProfile) state.performanceProfile = perfInitialProfileState();
+      return state.performanceProfile;
+    }
+    function perfObProfile() { return state.performanceProfile?.profile || null; }
+
+    function perfObStart() {
+      const ps = perfObEnsure();
+      if (!ps.profile) {
+        ps.profile = perfEmptyProfile(state.currentUserId || null, new Date().toISOString());
+        ps.profile.teamRef = state.teamId || null;
+      }
+      if (!ps.onboarding.startedAt) ps.onboarding.startedAt = new Date().toISOString();
+      ps.onboarding.step = "rugby";
+      _perfObError = "";
+      saveState("Profile started");
+      render();
+    }
+    function perfObGoto(stepId, returnTo) {
+      const ps = perfObEnsure();
+      if (!PERF_OB_STEPS.some(s => s.id === stepId)) return;
+      _perfObReturn = returnTo || null;
+      _perfObError = "";
+      ps.onboarding.step = stepId;
+      saveState("Tab saved");
+      render();
+    }
+    function perfObStepIndex(stepId) { return PERF_OB_STEPS.findIndex(s => s.id === stepId); }
+    // When an edit jump (_perfObReturn) is active, Continue/Back/Skip return
+    // to where the jump came from instead of walking the step sequence.
+    function perfObResolveReturn(ps) {
+      const dest = _perfObReturn;
+      _perfObReturn = null;
+      ps.onboarding.step = dest === "review" ? "review" : "done";
+    }
+    function perfObBack() {
+      const ps = perfObEnsure();
+      const i = perfObStepIndex(ps.onboarding.step);
+      if (_perfObReturn) perfObResolveReturn(ps);
+      else if (i > 0) ps.onboarding.step = PERF_OB_STEPS[i - 1].id;
+      _perfObError = "";
+      saveState("Tab saved");
+      render();
+    }
+    function perfObNext() {
+      const ps = perfObEnsure();
+      const step = ps.onboarding.step;
+      const profile = ps.profile;
+      if (!perfStepComplete(profile, step)) {
+        _perfObError = "Please answer the highlighted questions — “not sure” is always an option.";
+        renderPerformance();
+        return;
+      }
+      _perfObError = "";
+      if (step === "readiness") perfObCommitWellness();
+      if (_perfObReturn) perfObResolveReturn(ps);
+      else {
+        const i = perfObStepIndex(step);
+        if (i < PERF_OB_STEPS.length - 1) ps.onboarding.step = PERF_OB_STEPS[i + 1].id;
+      }
+      profile.updatedAt = new Date().toISOString();
+      saveState("Saved");
+      render();
+    }
+    function perfObSkip() {
+      const ps = perfObEnsure();
+      const step = ps.onboarding.step;
+      const def = PERF_OB_STEPS.find(s => s.id === step);
+      if (def && !def.required && !ps.onboarding.skippedSteps.includes(step)) ps.onboarding.skippedSteps.push(step);
+      _perfObError = "";
+      if (_perfObReturn) perfObResolveReturn(ps);
+      else ps.onboarding.step = PERF_OB_STEPS[Math.min(perfObStepIndex(step) + 1, PERF_OB_STEPS.length - 1)].id;
+      saveState("Saved");
+      render();
+    }
+    function perfObSubmit() {
+      const ps = perfObEnsure();
+      if (perfMissingRequired(ps.profile).length) {
+        _perfObError = "A few required answers are missing — use the edit links above.";
+        renderPerformance();
+        return;
+      }
+      ps.profile.status = "active";
+      ps.profile.updatedAt = new Date().toISOString();
+      ps.onboarding.completedAt = new Date().toISOString();
+      ps.onboarding.step = "done";
+      _perfObError = "";
+      _perfObShowDone = true;
+      saveState("Profile complete");
+      render();
+    }
+    function perfDoneDismiss() {
+      _perfObShowDone = false;
+      renderPerformance();
+    }
+
+    // Field writers. Pick/toggle re-render (chips show selection); free-text
+    // and numeric fields save without re-render so typing keeps focus.
+    function perfObPick(path, value) {
+      const p = perfObProfile(); if (!p) return;
+      perfSetPath(p, path, value);
+      if (path.startsWith("pain.")) p.pain.reportedAt = new Date().toISOString();
+      p.updatedAt = new Date().toISOString();
+      saveState("Saved");
+      renderPerformance();
+    }
+    function perfObToggle(path, value) {
+      const p = perfObProfile(); if (!p) return;
+      const arr = perfGetPath(p, path) || [];
+      const next = arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value];
+      perfSetPath(p, path, next);
+      p.updatedAt = new Date().toISOString();
+      saveState("Saved");
+      renderPerformance();
+    }
+    function perfObInput(path, raw, kind) {
+      const p = perfObProfile(); if (!p) return;
+      let value = raw;
+      if (kind === "num") { const n = Number(raw); value = Number.isFinite(n) && n > 0 ? n : null; }
+      if (kind === "text") value = String(raw || "").slice(0, 240);
+      perfSetPath(p, path, value);
+      p.updatedAt = new Date().toISOString();
+      saveState("Saved");
+    }
+    function perfObRugbyDay(day) {
+      const p = perfObProfile(); if (!p) return;
+      const cur = p.schedule.rugbyDays || [];
+      p.schedule.rugbyDays = cur.some(r => r.day === day)
+        ? cur.filter(r => r.day !== day)
+        : [...cur, { day, kind: "training" }];
+      p.updatedAt = new Date().toISOString();
+      saveState("Saved");
+      renderPerformance();
+    }
+    function perfObGoalToggle(type) {
+      const p = perfObProfile(); if (!p) return;
+      const existing = (p.goals || []).find(g => g.type === type);
+      if (existing) p.goals = p.goals.filter(g => g.type !== type);
+      else if ((p.goals || []).length < 3) {
+        p.goals = [...(p.goals || []), { id: `goal-${type}`, type, importance: p.goals.length ? 3 : 5, targetDate: null, targetValue: null, targetUnit: null, outcome: "", reason: "", status: "active", createdAt: new Date().toISOString() }];
+      } else { showToast("Pick up to three goals — you can change them any time"); return; }
+      p.updatedAt = new Date().toISOString();
+      saveState("Saved");
+      renderPerformance();
+    }
+    function perfObStrengthStatus(testId, status) {
+      const p = perfObProfile(); if (!p) return;
+      const results = p.strength.results || [];
+      const unit = (PERF_OPT.strengthTests.find(t => t[0] === testId) || [])[2] || "kg";
+      const existing = results.find(r => r.testId === testId);
+      if (existing) { existing.status = status; if (status === "unknown") existing.value = null; }
+      else results.push({ testId, variation: null, measurementType: status === "actual" ? "actual_1rm" : "estimated_1rm", value: null, unit, status, source: "self_reported", date: new Date().toISOString().slice(0, 10), notes: "" });
+      p.strength.results = results;
+      saveState("Saved");
+      renderPerformance();
+    }
+    function perfObStrengthValue(testId, raw) {
+      const p = perfObProfile(); if (!p) return;
+      const r = (p.strength.results || []).find(x => x.testId === testId);
+      if (!r) return;
+      const n = Number(raw);
+      r.value = Number.isFinite(n) && n > 0 ? n : null;
+      r.date = new Date().toISOString().slice(0, 10);
+      saveState("Saved");
+    }
+    function perfObScale(key, v) {
+      _perfObWellness = _perfObWellness || { scores: {} };
+      _perfObWellness.scores[key] = v;
+      renderPerformance();
+    }
+    function perfObCommitWellness() {
+      if (!_perfObWellness || !Object.keys(_perfObWellness.scores).length) return;
+      const ps = perfObEnsure();
+      const entry = { date: new Date().toISOString(), scores: { ..._perfObWellness.scores }, note: "" };
+      ps.wellnessLog = [...(ps.wellnessLog || []), entry].slice(-PERF_WELLNESS_LOG_MAX);
+      _perfObWellness = null;
+    }
+    function perfObConsent() {
+      const p = perfObProfile(); if (!p) return;
+      const now = new Date().toISOString();
+      if (p.sharing.consentAcceptedAt) {
+        p.sharing.consentAcceptedAt = null;
+        p.sharing.audit = perfAudit(p.sharing.audit, { action: "consent_withdrawn", actor: state.currentUserId, at: now });
+      } else {
+        p.sharing.consentVersion = PERF_ONBOARDING_VERSION;
+        p.sharing.consentAcceptedAt = now;
+        p.sharing.consentAcceptedBy = state.currentUserId || null;
+        p.sharing.audit = perfAudit(p.sharing.audit, { action: "consent_accepted", actor: state.currentUserId, at: now });
+      }
+      saveState("Saved");
+      renderPerformance();
+    }
+    function perfObGrant(role, category, level) {
+      const p = perfObProfile(); if (!p) return;
+      const now = new Date().toISOString();
+      const active = (p.sharing.grants || []).find(g => g.role === role && g.category === category && !g.revokedAt);
+      if (active) {
+        active.revokedAt = now;
+        p.sharing.audit = perfAudit(p.sharing.audit, { action: "grant_revoked", actor: state.currentUserId, role, category, at: now });
+      } else {
+        p.sharing.grants = [...(p.sharing.grants || []), { role, category, level, grantedBy: state.currentUserId || null, grantedAt: now, revokedAt: null }];
+        p.sharing.audit = perfAudit(p.sharing.audit, { action: "grant_added", actor: state.currentUserId, role, category, level, at: now });
+      }
+      saveState("Saved");
+      renderPerformance();
+    }
+    function perfAudit(log, entry) {
+      return [...(log || []), entry].slice(-100);
+    }
+    function perfGrantActive(profile, role, category) {
+      return !!(profile?.sharing?.grants || []).find(g => g.role === role && g.category === category && !g.revokedAt);
+    }
+
+    // ── Wizard rendering ──────────────────────────────────────────────────────
+    function perfObChips(path, options, { multi = false, cols = 0 } = {}) {
+      const p = perfObProfile();
+      const current = perfGetPath(p, path);
+      const isOn = id => multi ? (current || []).includes(id) : current === id;
+      return `<div class="perf-choice-grid${cols ? " cols-" + cols : ""}">
+        ${options.map(([id, label]) => `<button type="button" class="perf-choice ${isOn(id) ? "on" : ""}" aria-pressed="${isOn(id)}" onclick="${multi ? "perfObToggle" : "perfObPick"}('${path}','${id}')">${esc(label)}</button>`).join("")}
+      </div>`;
+    }
+    function perfObNumChips(path, options) {
+      const p = perfObProfile();
+      const current = perfGetPath(p, path);
+      return `<div class="perf-choice-grid">
+        ${options.map(([v, label]) => `<button type="button" class="perf-choice ${current === v ? "on" : ""}" aria-pressed="${current === v}" onclick="perfObPick('${path}',${v})">${esc(label)}</button>`).join("")}
+      </div>`;
+    }
+    // Boolean questions need raw true/false in the handler, not the string form.
+    function perfObBoolChips(path, options) {
+      const p = perfObProfile();
+      const current = perfGetPath(p, path);
+      return `<div class="perf-choice-grid cols-3">
+        ${options.map(([v, label]) => `<button type="button" class="perf-choice ${current === v ? "on" : ""}" aria-pressed="${current === v}" onclick="perfObPick('${path}',${v})">${esc(label)}</button>`).join("")}
+      </div>`;
+    }
+    function perfObQ(title, body, { optional = false, help = "" } = {}) {
+      return `<div class="perf-ob-q">
+        <div class="perf-ob-q-title">${esc(title)}${optional ? '<span class="perf-optional">Optional</span>' : ""}</div>
+        ${help ? `<p class="perf-ob-help">${esc(help)}</p>` : ""}
+        ${body}
+      </div>`;
+    }
+
+    function perfObStepBody(step) {
+      const p = perfObProfile();
+      const ps = state.performanceProfile;
+      if (step === "welcome") {
+        return `
+          <h2>Set up your Performance profile</h2>
+          <p class="muted">Six quick sections — about 5–8 minutes. Your answers shape how future programmes are built for you. Nothing here is a medical assessment, "not sure" is always fine, and you can change anything later.</p>
+          <div class="perf-ob-facts">
+            <div>${icon("clipboard", 16)} Rugby, training and schedule basics</div>
+            <div>${icon("shield", 16)} You control who sees what</div>
+            <div>${icon("settings", 16)} Advanced details can wait until later</div>
+          </div>
+          <div class="perf-ob-nav">
+            <span></span>
+            <button class="btn primary" type="button" onclick="perfObStart()">Let's go</button>
+          </div>`;
+      }
+      if (step === "rugby") {
+        return [
+          perfObQ("What's your main position?", perfObChips("rugby.primaryPosition", PERF_OPT.positions)),
+          perfObQ("Second position?", perfObChips("rugby.secondaryPosition", PERF_OPT.positions), { optional: true }),
+          perfObQ("What level do you play at?", perfObChips("rugby.playingLevel", PERF_OPT.playingLevels)),
+          perfObQ("Where is your season right now?", perfObChips("rugby.seasonPhase", PERF_OPT.seasonPhases)),
+          perfObQ("Your age group", perfObChips("personal.ageBand", PERF_OPT.ageBands), { help: "Used to keep training age-appropriate. That's all." }),
+        ].join("");
+      }
+      if (step === "training") {
+        return [
+          perfObQ("How experienced are you in the gym?", perfObChips("training.experience", PERF_OPT.experience)),
+          perfObQ("How consistent has training been lately?", perfObChips("training.consistency", PERF_OPT.consistency), { optional: true }),
+          perfObQ("How long do you want sessions to be?", perfObNumChips("training.preferredSessionMinutes", PERF_OPT.durations)),
+        ].join("");
+      }
+      if (step === "schedule") {
+        const rugbyDaysSel = (p?.schedule?.rugbyDays || []).map(r => r.day);
+        return [
+          perfObQ("Which days could you train in the gym?", perfObChips("schedule.availableDays", PERF_OPT.days, { multi: true, cols: 7 })),
+          perfObQ("Which days are rugby training days?", `<div class="perf-choice-grid cols-7">
+            ${PERF_OPT.days.map(([d, l]) => `<button type="button" class="perf-choice ${rugbyDaysSel.includes(d) ? "on" : ""}" aria-pressed="${rugbyDaysSel.includes(d)}" onclick="perfObRugbyDay('${d}')">${l}</button>`).join("")}
+          </div>`, { optional: true, help: "So gym work can fit around rugby." }),
+          perfObQ("Match day", perfObChips("schedule.matchDay", PERF_OPT.days, { cols: 7 }), { optional: true }),
+          perfScheduleConflictNote(),
+        ].join("");
+      }
+      if (step === "equipment") {
+        return [
+          perfObQ("Where will you train?", perfObChips("equipment.locations", PERF_OPT.equipmentLocations, { multi: true })),
+          perfObQ("What do you have access to?", perfObChips("equipment.items", PERF_OPT.equipmentItems, { multi: true }), { optional: true, help: "Gym locations already include the standard kit." }),
+          perfObQ("Anything unusual worth knowing about?", `<input type="text" class="perf-search" maxlength="240" placeholder="e.g. tyre, hill nearby, only 2×20 kg dumbbells" value="${esc(p?.equipment?.notes || "")}" onchange="perfObInput('equipment.notes', this.value, 'text')">`, { optional: true }),
+        ].join("");
+      }
+      if (step === "goals") {
+        return [
+          perfObQ("What do you want to get out of training? Pick up to three.", `<div class="perf-choice-grid">
+            ${PERF_OPT.goalTypes.map(([id, label]) => {
+              const on = (p?.goals || []).some(g => g.type === id);
+              return `<button type="button" class="perf-choice ${on ? "on" : ""}" aria-pressed="${on}" onclick="perfObGoalToggle('${id}')">${esc(label)}</button>`;
+            }).join("")}
+          </div>`, { help: "Your first pick becomes the priority goal." }),
+        ].join("");
+      }
+      if (step === "strength") {
+        return `
+          <p class="muted" style="margin:0 0 6px">Rough numbers help set safe starting points. Estimates are perfect — <strong>you never need to test a true max</strong>, and "don't know" is completely fine.</p>
+          ${PERF_OPT.strengthTests.map(([id, label, unit]) => {
+            const r = (p?.strength?.results || []).find(x => x.testId === id);
+            const status = r?.status || null;
+            return perfObQ(label, `
+              <div class="perf-choice-grid cols-3">
+                ${[["unknown", "Don't know"], ["estimated", "Rough estimate"], ["actual", "Tested"]].map(([s, sl]) =>
+                  `<button type="button" class="perf-choice ${status === s ? "on" : ""}" aria-pressed="${status === s}" onclick="perfObStrengthStatus('${id}','${s}')">${sl}</button>`).join("")}
+              </div>
+              ${status && status !== "unknown" ? `<div class="perf-ob-inline"><input type="number" class="perf-num" inputmode="decimal" min="0" step="0.5" placeholder="0" value="${r?.value ?? ""}" onchange="perfObStrengthValue('${id}', this.value)" aria-label="${esc(label)} value"><span class="perf-unit">${unit}</span></div>` : ""}`, { optional: true });
+          }).join("")}`;
+      }
+      if (step === "readiness") {
+        const w = _perfObWellness?.scores || {};
+        return `
+          <p class="muted" style="margin:0 0 6px">A quick self check-in. This is how you feel today — it is <strong>not a medical assessment or diagnosis</strong>, and one rough day never defines your profile.</p>
+          ${PERF_OPT.wellnessKeys.map(([id, label]) => perfObQ(label, `
+            <div class="perf-scale" role="group" aria-label="${esc(label)}">
+              ${[1,2,3,4,5].map(v => `<button type="button" class="perf-scale-btn ${w[id] === v ? "on" : ""}" aria-pressed="${w[id] === v}" onclick="perfObScale('${id}',${v})">${v}</button>`).join("")}
+            </div>`, { optional: true })).join("")}
+          ${perfObQ("Any pain or movement limitation right now?", perfObBoolChips("pain.present", [[true, "Yes"], [false, "No"]]), { optional: true })}
+          ${p?.pain?.present === true ? `
+            ${perfObQ("Where?", perfObChips("pain.area", PERF_OPT.bodyAreas), { optional: true })}
+            ${perfObQ("How much is it affecting you? (1 = barely, 5 = a lot)", `<div class="perf-scale">${[1,2,3,4,5].map(v => `<button type="button" class="perf-scale-btn ${p?.pain?.severity === v ? "on" : ""}" onclick="perfObPick('pain.severity',${v})">${v}</button>`).join("")}</div>`, { optional: true })}
+            ${perfObQ("Is it stopping you training at the moment?", perfObBoolChips("pain.trainingRestricted", [[true, "Yes"], [false, "No"]]), { optional: true })}
+            ${perfObQ("Anything you'd like to add?", `<input type="text" class="perf-search" maxlength="240" placeholder="In your own words" value="${esc(p?.pain?.note || "")}" onchange="perfObInput('pain.note', this.value, 'text')">`, { optional: true })}
+            <p class="perf-ob-help">Sharing this helps sessions fit around how you feel. If something needs looking at, the right person to assess it is a qualified professional.</p>` : ""}`;
+      }
+      if (step === "privacy") {
+        return `
+          <div class="perf-consent">
+            <strong>Your data, your call</strong>
+            <p>Your Performance profile is stored for building your training. You can see and edit everything, and you decide who else sees what:</p>
+            <ul>
+              <li><strong>Your S&C coach</strong> sees your rugby, training, schedule and strength details, plus wellness <em>summaries</em> — never your private notes.</li>
+              <li><strong>Rugby coaches</strong> see rugby and schedule basics only.</li>
+              <li><strong>Club admins</strong> never automatically see health-related information.</li>
+              <li><strong>Medical staff</strong> see nothing unless you switch it on below.</li>
+            </ul>
+            <button type="button" class="perf-choice consent ${p?.sharing?.consentAcceptedAt ? "on" : ""}" aria-pressed="${!!p?.sharing?.consentAcceptedAt}" onclick="perfObConsent()">${p?.sharing?.consentAcceptedAt ? "✓ I understand and agree" : "I understand and agree"}</button>
+          </div>
+          ${perfObQ("Optional sharing", `
+            <div class="perf-grant-row">
+              <div><strong>Medical staff</strong><small class="muted">Allow authorised medical staff to view your restricted health records</small></div>
+              <button type="button" class="perf-switch ${perfGrantActive(p, "medical", "health") ? "on" : ""}" role="switch" aria-checked="${perfGrantActive(p, "medical", "health")}" onclick="perfObGrant('medical','health','full')"><i></i></button>
+            </div>
+            <div class="perf-grant-row">
+              <div><strong>Parent / guardian</strong><small class="muted">Share rugby-profile summaries with a parent or guardian</small></div>
+              <button type="button" class="perf-switch ${perfGrantActive(p, "parent", "rugby") ? "on" : ""}" role="switch" aria-checked="${perfGrantActive(p, "parent", "rugby")}" onclick="perfObGrant('parent','rugby','summary')"><i></i></button>
+            </div>`, { optional: true, help: "Both can be changed or switched off at any time from your profile." })}`;
+      }
+      if (step === "review") {
+        const rows = [
+          ["rugby", "Rugby profile", [PERF_OPT_LABEL[p?.rugby?.primaryPosition], PERF_OPT_LABEL[p?.rugby?.playingLevel], PERF_OPT_LABEL[p?.rugby?.seasonPhase]]],
+          ["training", "Training", [PERF_OPT_LABEL[p?.training?.experience], p?.training?.preferredSessionMinutes ? p.training.preferredSessionMinutes + " min sessions" : null]],
+          ["schedule", "Schedule", [(p?.schedule?.availableDays || []).join(" · ") || null]],
+          ["equipment", "Equipment", [(p?.equipment?.locations || []).map(l => PERF_OPT_LABEL[l]).join(", ") || null]],
+          ["goals", "Goals", [(p?.goals || []).map(g => PERF_OPT_LABEL[g.type]).join(", ") || null]],
+          ["strength", "Strength baseline", [(p?.strength?.results || []).filter(r => r.status !== "unknown" && r.value).length + " of " + PERF_OPT.strengthTests.length + " provided"]],
+          ["readiness", "Readiness", [p?.pain?.present === true ? "Limitation reported" : p?.pain?.present === false ? "No limitations reported" : "Not answered (optional)"]],
+          ["privacy", "Privacy", [p?.sharing?.consentAcceptedAt ? "Consent given" : "Consent needed"]],
+        ];
+        const missing = perfMissingRequired(p || {});
+        return `
+          <p class="muted" style="margin:0 0 14px">Check everything over — you can edit any section now or later from your profile.</p>
+          <div class="list">
+            ${rows.map(([stepId, label, vals]) => `
+              <div class="row perf-review-row">
+                <div><strong>${label}</strong><small>${vals.filter(Boolean).map(esc).join(" · ") || '<span class="perf-review-missing">Not filled in yet</span>'}</small></div>
+                <button class="btn ghost" type="button" style="font-size:12px;padding:5px 12px" onclick="perfObGoto('${stepId}','review')">Edit</button>
+              </div>`).join("")}
+          </div>
+          ${missing.length ? `<p class="perf-ob-error" style="margin-top:12px">Still needed before finishing: ${missing.length} required answer${missing.length > 1 ? "s" : ""}.</p>` : ""}
+          <div class="perf-ob-nav">
+            <button class="btn ghost" type="button" onclick="perfObBack()">Back</button>
+            <button class="btn primary" type="button" onclick="perfObSubmit()">Finish setup</button>
+          </div>`;
+      }
+      if (step === "done") {
+        return `
+          <div class="perf-ob-done">
+            <div class="perf-ob-done-mark">✓</div>
+            <h2>Profile saved</h2>
+            <p class="muted">Your Performance profile is ready and you can update it any time. When programme building arrives, it will use exactly what you've shared — <strong>no programme has been generated yet</strong>.</p>
+            <div class="perf-ob-nav" style="justify-content:center">
+              <button class="btn primary" type="button" onclick="perfDoneDismiss()">View my profile</button>
+            </div>
+          </div>`;
+      }
+      return "";
+    }
+
+    // Mirror of detectScheduleConflicts() in performance/domain — advisory only.
+    function perfScheduleConflictNote() {
+      const p = perfObProfile();
+      if (!p) return "";
+      const rugbyDays = (p.schedule?.rugbyDays || []).map(r => r.day);
+      const conflicts = [];
+      for (const day of p.schedule?.availableDays || []) {
+        if (p.schedule?.matchDay === day) conflicts.push(`${day} is match day`);
+        else if (rugbyDays.includes(day)) conflicts.push(`${day} doubles with rugby training`);
+      }
+      if (!conflicts.length) return "";
+      return `<p class="perf-ob-help perf-ob-conflict">${icon("calcheck", 14)} Worth knowing: ${esc(conflicts.join("; "))}. That's allowed — future programmes will plan around it.</p>`;
+    }
+
+    function perfOnboardingHtml() {
+      const ps = state.performanceProfile;
+      const step = ps?.onboarding?.step || "welcome";
+      const idx = perfObStepIndex(step);
+      const total = PERF_OB_STEPS.length - 2; // progress counts data steps up to review
+      const showProgress = step !== "welcome" && step !== "done";
+      const isNavStep = !["welcome", "review", "done"].includes(step);
+      return `
+        <div class="card perf-card perf-ob-card">
+          ${showProgress ? `
+            <div class="perf-ob-progress">
+              <small>Step ${Math.min(idx, total)} of ${total} — ${esc(PERF_OB_STEPS[idx].label)}</small>
+              <div class="perf-meter slim"><i style="width:${Math.round((Math.min(idx, total) / total) * 100)}%"></i></div>
+            </div>` : ""}
+          ${isNavStep ? `<h2 class="perf-ob-title">${esc(PERF_OB_STEPS[idx].label)}</h2>` : ""}
+          ${perfObStepBody(step)}
+          ${_perfObError ? `<p class="perf-ob-error">${esc(_perfObError)}</p>` : ""}
+          ${isNavStep ? `
+            <div class="perf-ob-nav">
+              <button class="btn ghost" type="button" onclick="perfObBack()">Back</button>
+              <div class="perf-ob-nav-right">
+                ${!PERF_OB_STEPS[idx].required ? `<button class="btn ghost" type="button" onclick="perfObSkip()">Skip for now</button>` : ""}
+                <button class="btn primary" type="button" onclick="perfObNext()">Continue</button>
+              </div>
+            </div>` : ""}
+        </div>`;
+    }
+
+    // ── Profile screen ────────────────────────────────────────────────────────
+    function perfProfileHtml() {
+      const ps = state.performanceProfile;
+      const p = ps?.profile;
+      const completed = !!ps?.onboarding?.completedAt;
+
+      if (!p) {
+        return `
+          <div class="perf-page-head">
+            <div><h2>My Performance Profile</h2><p class="muted">Tell CoachEasier how you train so future programmes fit you exactly.</p></div>
+          </div>
+          ${perfOnboardingHtml()}`;
+      }
+      if (!completed || _perfObReturn) {
+        return `
+          <div class="perf-page-head">
+            <div><h2>My Performance Profile</h2><p class="muted">${completed ? "Editing — changes save as you go." : "Picking up where you left off — everything so far is saved."}</p></div>
+          </div>
+          ${perfOnboardingHtml()}`;
+      }
+      if (_perfObShowDone) {
+        return `<div class="card perf-card perf-ob-card">${perfObStepBody("done")}</div>`;
+      }
+
+      const pct = perfProfileCompletionPct(p);
+      const latestW = (ps.wellnessLog || [])[ps.wellnessLog.length - 1] || null;
+      const wFresh = latestW && (Date.now() - new Date(latestW.date).getTime() < 48 * 3600000);
+      const activeGrants = (p.sharing.grants || []).filter(g => !g.revokedAt);
+      const activeRestr = (p.coachRestrictions || []).filter(r => !r.overriddenAt && (!r.effectiveTo || new Date(r.effectiveTo) >= new Date()));
+      const needsReview = (p.health.medicalClearanceRequired === true && p.health.returnToTrainingStatus !== "full") ||
+        (p.pain.present === true && p.pain.trainingRestricted === true);
+      const card = (title, body, editStep) => `
+        <div class="card perf-card">
+          <div class="perf-card-head"><small>${title}</small>
+            ${editStep ? `<button class="btn ghost" type="button" style="font-size:12px;padding:4px 10px" onclick="perfObGoto('${editStep}','profile')">Edit</button>` : ""}
+          </div>${body}
+        </div>`;
+
+      return `
+        <div class="perf-page-head">
+          <div>
+            <h2>My Performance Profile</h2>
+            <p class="muted">Updated ${perfRelativeDay(p.updatedAt) || "recently"} · ${pct}% complete</p>
+          </div>
+          <div style="min-width:160px">${perfMeter(pct)}</div>
+        </div>
+
+        <div class="perf-group-title">My Performance Profile</div>
+        <div class="grid perf-grid-3">
+          ${card("Rugby identity", `
+            <strong class="perf-card-title">${esc(PERF_OPT_LABEL[p.rugby.primaryPosition] || "Position not set")}</strong>
+            <small class="muted" style="display:block;margin-top:4px">${[PERF_OPT_LABEL[p.rugby.playingLevel], PERF_OPT_LABEL[p.rugby.seasonPhase], PERF_OPT_LABEL[p.personal.ageBand]].filter(Boolean).map(esc).join(" · ")}</small>`, "rugby")}
+          ${card("Goals", (p.goals || []).length ? `<div class="pill-row">${p.goals.map(g => `<span class="pill">${esc(PERF_OPT_LABEL[g.type] || g.type)}</span>`).join("")}</div>` : '<small class="muted">No goals picked yet</small>', "goals")}
+          ${card("Schedule", `
+            <strong class="perf-card-title">${(p.schedule.availableDays || []).length} gym day${(p.schedule.availableDays || []).length === 1 ? "" : "s"} a week</strong>
+            <small class="muted" style="display:block;margin-top:4px">${esc((p.schedule.availableDays || []).join(" · ") || "Not set")}${p.schedule.matchDay ? " · Match " + esc(p.schedule.matchDay) : ""}</small>`, "schedule")}
+          ${card("Equipment", `
+            <strong class="perf-card-title">${esc((p.equipment.locations || []).map(l => PERF_OPT_LABEL[l]).join(", ") || "Not set")}</strong>
+            ${(p.equipment.items || []).length ? `<small class="muted" style="display:block;margin-top:4px">${p.equipment.items.length} item${p.equipment.items.length === 1 ? "" : "s"} listed</small>` : ""}`, "equipment")}
+          ${card("Training experience", `
+            <strong class="perf-card-title">${esc(PERF_OPT_LABEL[p.training.experience] || "Not set")}</strong>
+            <small class="muted" style="display:block;margin-top:4px">${p.training.preferredSessionMinutes ? "Prefers ~" + p.training.preferredSessionMinutes + " min sessions" : ""}</small>`, "training")}
+          ${card("Benchmarks", (p.strength.results || []).filter(r => r.status !== "unknown" && r.value).length ? `
+            <div class="perf-stack" style="gap:7px">
+              ${p.strength.results.filter(r => r.status !== "unknown" && r.value).map(r => {
+                const t = PERF_OPT.strengthTests.find(x => x[0] === r.testId);
+                return `<div class="perf-bench-row"><span>${esc(t ? t[1] : r.testId)}</span><strong>${r.value} ${esc(r.unit || "")}</strong><span class="pill" style="font-size:10px">${r.status === "actual" ? "tested" : "estimate"}</span></div>`;
+              }).join("")}
+            </div>` : '<small class="muted">No numbers yet — estimates are welcome any time.</small>', "strength")}
+        </div>
+
+        <div class="perf-group-title">Wellness</div>
+        <div class="grid perf-grid-3">
+          ${card("Today's check-in", wFresh ? `
+            <div class="pill-row">${Object.entries(latestW.scores).filter(([, v]) => v).map(([k, v]) => `<span class="pill">${esc(PERF_OPT_LABEL[k] || k)} ${v}/5</span>`).join("")}</div>
+            <small class="muted" style="display:block;margin-top:8px">Snapshots of how you felt — they never permanently change your profile.</small>`
+            : `<strong class="perf-card-title">No recent check-in</strong><small class="muted" style="display:block;margin:4px 0 10px">Wellness check-ins are quick, optional and only ever a snapshot.</small><button class="btn ghost" type="button" onclick="perfObGoto('readiness','profile')">Check in now</button>`, null)}
+        </div>
+
+        <div class="perf-group-title">Limitations &amp; Restrictions</div>
+        <div class="grid perf-grid-3">
+          ${card("Your report", p.pain.present === true ? `
+            <span class="status maybe">Limitation reported</span>
+            <small class="muted" style="display:block;margin-top:8px">${esc(PERF_OPT_LABEL[p.pain.area] || "Area not specified")}${p.pain.severity ? " · " + p.pain.severity + "/5" : ""}${p.pain.trainingRestricted === true ? " · currently limiting training" : ""}</small>
+            <small class="muted" style="display:block;margin-top:6px">Self-reported context only — not a diagnosis. A qualified professional is the right person to assess it.</small>`
+            : p.pain.present === false ? '<span class="status available">No limitations reported</span>'
+            : '<small class="muted">Not answered — optional.</small>', "readiness")}
+          ${card("Coach restrictions", activeRestr.length ? `
+            <div class="perf-stack" style="gap:7px">${activeRestr.map(r => `<div class="perf-bench-row"><span>${esc(r.restriction)}</span><span class="pill" style="font-size:10px">${r.effectiveTo ? "until " + esc(r.effectiveTo) : "open"}</span></div>`).join("")}</div>`
+            : '<small class="muted">None active. Anything a coach adds appears here with dates and a reason.</small>', null)}
+          ${needsReview ? `
+            <div class="card perf-card perf-review-flag">
+              <div class="perf-card-head"><small>Review suggested</small></div>
+              <small class="muted">Based on what's recorded, it may be worth checking in with an appropriate member of staff before loading up. This is a routing suggestion, not a medical opinion.</small>
+            </div>` : ""}
+        </div>
+
+        <div class="perf-group-title">Sharing &amp; Permissions</div>
+        <div class="grid perf-grid-3">
+          ${card("Consent", p.sharing.consentAcceptedAt ? `
+            <span class="status available">Consent given</span>
+            <small class="muted" style="display:block;margin-top:8px">You can review or withdraw this from the privacy step at any time.</small>`
+            : '<span class="status maybe">Consent not recorded</span>', "privacy")}
+          ${card("Active sharing", activeGrants.length ? `
+            <div class="perf-stack" style="gap:7px">${activeGrants.map(g => `<div class="perf-bench-row"><span>${esc(g.role === "medical" ? "Medical staff" : g.role === "parent" ? "Parent / guardian" : g.role)} — ${esc(g.category)}</span><span class="pill" style="font-size:10px">${esc(g.level)}</span></div>`).join("")}
+            </div><small class="muted" style="display:block;margin-top:8px">${(p.sharing.audit || []).length} change${(p.sharing.audit || []).length === 1 ? "" : "s"} on record</small>`
+            : '<small class="muted">Only the defaults: you, and performance data for your assigned S&amp;C coach. Nothing extra is shared.</small>', "privacy")}
+        </div>`;
+    }
+
+    // ── Coach: athlete summary shell ──────────────────────────────────────────
+    let _perfAthleteId = null;
+    function perfAthleteOpen(id) { _perfAthleteId = id; renderPerformance(); }
+    function perfAthleteClose() { _perfAthleteId = null; renderPerformance(); }
+    function perfReadinessCat(score) {
+      const s = Number(score) || 0;
+      if (s >= 80) return '<span class="status available">Ready</span>';
+      if (s >= 60) return '<span class="status maybe">Monitor</span>';
+      return '<span class="status unavailable">Low</span>';
+    }
+    function perfAthleteDetailHtml(a) {
+      return `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="btn ghost" type="button" onclick="perfAthleteClose()" style="font-size:13px;padding:5px 12px">← Athletes</button>
+        </div>
+        <div class="perf-page-head">
+          <div>
+            <h2>${esc(a.name)}</h2>
+            <p class="muted">${esc(a.position)} · #${a.jersey} · sample athlete</p>
+          </div>
+          ${perfReadinessCat(a.readiness)}
+        </div>
+        <div class="grid perf-grid-3">
+          <div class="card perf-card">
+            <div class="perf-card-head"><small>Profile</small></div>
+            <small class="muted" style="display:block;margin-bottom:6px">${a.completion}% complete</small>
+            ${perfMeter(a.completion)}
+          </div>
+          <div class="card perf-card">
+            <div class="perf-card-head"><small>Programme</small></div>
+            <strong class="perf-card-title">${esc(a.programme)}</strong>
+            <small class="muted" style="display:block;margin-top:4px">Adherence ${a.adherence}% over the last 4 weeks</small>
+          </div>
+          <div class="card perf-card">
+            <div class="perf-card-head"><small>Status</small></div>
+            ${perfTrainingStatus(a.trainingStatus)}
+            <small class="muted" style="display:block;margin-top:8px">Last activity ${perfRelativeDay(a.lastSession)}</small>
+          </div>
+        </div>
+        <p class="muted" style="font-size:12px;margin-top:16px">Detailed wellness and health information is not shown here — it stays with the athlete and explicitly authorised staff. Coach programming tools arrive with the Performance engine.</p>`;
+    }
+
     // ── Section renderer ──────────────────────────────────────────────────────
     function renderPerformance() {
       const el = document.getElementById('coach-performance');
@@ -25155,6 +26065,7 @@
 
       let body = '';
       if (tab === 'dashboard')  body = perfDashboardHtml();
+      if (tab === 'profile')    body = perfProfileHtml();
       if (tab === 'athletes')   body = perfAthletesHtml();
       if (tab === 'programmes') body = perfProgrammesHtml();
       if (tab === 'workouts')   body = perfWorkoutsHtml();
@@ -25169,6 +26080,7 @@
     function perfTabBlurb(id) {
       return {
         dashboard:  'Your daily S&C command centre — sessions, progress and flags at a glance.',
+        profile:    'Your athlete profile — rugby identity, goals, schedule and sharing controls.',
         athletes:   'Every athlete’s programme, adherence and readiness in one list.',
         programmes: 'Structured training blocks across the season.',
         workouts:   'Today’s session, block by block.',
@@ -25298,42 +26210,55 @@
         </div>`;
     }
 
-    // ── Athletes ──────────────────────────────────────────────────────────────
+    // ── Athletes (SC2: coach-authorised summary list) ─────────────────────────
+    // The list shows performance context only — readiness as a CATEGORY, an
+    // attention flag, profile completion. Detailed wellness, pain and health
+    // information never appears here.
+    function perfAthleteFlag(a) {
+      return a.readiness < 60 || a.trainingStatus !== 'full';
+    }
     function perfAthletesHtml() {
-      const full = PERF_SAMPLE_ATHLETES.filter(a => a.trainingStatus === 'full').length;
-      const modified = PERF_SAMPLE_ATHLETES.filter(a => a.trainingStatus === 'modified').length;
-      const out = PERF_SAMPLE_ATHLETES.filter(a => a.trainingStatus === 'unavailable').length;
+      if (_perfAthleteId) {
+        const open = PERF_SAMPLE_ATHLETES.find(a => a.id === _perfAthleteId);
+        if (open) return perfAthleteDetailHtml(open);
+        _perfAthleteId = null;
+      }
+      const flagged = PERF_SAMPLE_ATHLETES.filter(perfAthleteFlag).length;
       return `
         <div class="perf-page-head">
           <div>
             <h2>Athletes</h2>
-            <p class="muted">Programme, adherence and readiness for every athlete in training.</p>
+            <p class="muted">Profiles, programmes and training status for your assigned athletes.</p>
           </div>
           <div class="pill-row">
-            <span class="status available">${full} full</span>
-            <span class="status maybe">${modified} modified</span>
-            <span class="status unavailable">${out} out</span>
+            <span class="pill">${PERF_SAMPLE_ATHLETES.length} athletes</span>
+            ${flagged ? `<span class="status maybe">${flagged} need attention</span>` : '<span class="status available">All clear</span>'}
           </div>
         </div>
         <div class="list">
           ${PERF_SAMPLE_ATHLETES.map(a => `
-            <div class="row perf-athlete-row">
+            <button type="button" class="row perf-athlete-row clickable" onclick="perfAthleteOpen('${a.id}')">
               <div class="perf-athlete-main">
                 <span class="perf-jersey">${a.jersey}</span>
                 <div class="perf-athlete-id">
-                  <strong>${esc(a.name)}</strong>
-                  <small>${esc(a.position)} · ${esc(a.programme)}</small>
+                  <strong>${esc(a.name)}${perfAthleteFlag(a) ? ' <span class="perf-flag" title="Needs attention">⚑</span>' : ''}</strong>
+                  <small>${esc(a.position)} · ${esc(a.programme)} · active ${perfRelativeDay(a.lastSession).toLowerCase()}</small>
                 </div>
               </div>
               <div class="perf-athlete-metrics">
+                <div class="perf-adherence" title="Profile completion">
+                  <small class="muted">Profile ${a.completion}%</small>
+                  ${perfMeter(a.completion, 'slim')}
+                </div>
                 <div class="perf-adherence" title="4-week adherence">
-                  <small class="muted">${a.adherence}%</small>
+                  <small class="muted">Adherence ${a.adherence}%</small>
                   ${perfMeter(a.adherence, 'slim')}
                 </div>
-                ${perfReadinessStatus(a.readiness)}
+                ${perfReadinessCat(a.readiness)}
               </div>
-            </div>`).join('')}
-        </div>`;
+            </button>`).join('')}
+        </div>
+        <p class="muted" style="font-size:12px;margin-top:14px">Sample data. Wellness and health details are never shown in this list — they stay with each athlete and explicitly authorised staff.</p>`;
     }
 
     // ── Programmes ────────────────────────────────────────────────────────────

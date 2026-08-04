@@ -98,11 +98,13 @@ test('8. render() wires renderPerformance through safeRender', () => {
   assert.match(html, /safeRender\('coach-performance',\s*\(\) => renderPerformance\(\)\);/);
 });
 
-test('9. PERF_TABS declares the 8 SC1 screens in order', () => {
+// SC2 adds the "My Profile" tab (athlete profile + onboarding) after
+// Dashboard — the exact-list assertion moves from 8 to 9 tabs.
+test('9. PERF_TABS declares the 9 screens in order (8 SC1 + profile from SC2)', () => {
   const m = html.match(/const PERF_TABS = \[([\s\S]*?)\];/);
   assert.ok(m, 'PERF_TABS found');
   const ids = [...m[1].matchAll(/id: "([a-z]+)"/g)].map(x => x[1]);
-  assert.deepEqual(ids, ['dashboard', 'athletes', 'programmes', 'workouts', 'library', 'analytics', 'tools', 'settings']);
+  assert.deepEqual(ids, ['dashboard', 'profile', 'athletes', 'programmes', 'workouts', 'library', 'analytics', 'tools', 'settings']);
 });
 
 test('10. renderPerformance gates on canUseFeature', () => {
