@@ -15962,6 +15962,115 @@
       return typeof diagnosticsMode === 'function' ? diagnosticsMode() : false;
     }
 
+    // ─── TEAMS → TRAINING SCHEDULE (RC4.10C) ─────────────────────────────────
+    // The club's recurring training nights, editable from Settings — which is in
+    // the beta sidebar, unlike the old Club Admin editor. This milestone is the
+    // schedule record only: it never generates sessions, never touches
+    // availability keying, and never creates a new availability session.
+    const SCHEDULE_DAY_LABEL = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
+    let _trainingSchedule = null;      // { slots, updatedAt, updatedBy, canEdit }
+    let _trainingScheduleBusy = false;
+
+    async function loadTrainingSchedule(force) {
+      if (_trainingSchedule && !force) return _trainingSchedule;
+      try {
+        const res = await fetch('/api/publish?resource=training-schedule');
+        if (!res.ok) return null;
+        _trainingSchedule = await res.json();
+        render();
+        return _trainingSchedule;
+      } catch { return null; }
+    }
+
+    async function trainingScheduleSave(body) {
+      if (_trainingScheduleBusy) return;                  // duplicate-click guard
+      _trainingScheduleBusy = true;
+      try {
+        const res = await fetch('/api/publish?resource=training-schedule', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || 'Could not save the training schedule'); return null; }
+        _trainingSchedule = data;
+        render();
+        return data;
+      } catch {
+        showToast("We couldn't connect. Check your internet connection and try again.");
+        return null;
+      } finally { _trainingScheduleBusy = false; }
+    }
+
+    function trainingScheduleUpdateField(slotId, field, value) {
+      trainingScheduleSave({ action: 'update', slotId, slot: { [field]: value } });
+    }
+    function trainingScheduleAdd() {
+      trainingScheduleSave({ action: 'add', slot: { day: 'Wed', startTime: '19:00' } })
+        .then(r => { if (r) showToast('Training night added ✓'); });
+    }
+    function trainingScheduleToggle(slotId, active) {
+      trainingScheduleSave({ action: active ? 'activate' : 'deactivate', slotId });
+    }
+    async function trainingScheduleDelete(slotId) {
+      const slot = (_trainingSchedule?.slots || []).find(s => s.id === slotId);
+      const ok = await ceConfirm('Remove this training night?',
+        `${SCHEDULE_DAY_LABEL[slot?.day] || slot?.day || 'This night'} will be removed from the schedule. Past availability and published plans are not affected.`,
+        { confirmLabel: 'Remove', danger: true });
+      if (!ok) return;
+      const r = await trainingScheduleSave({ action: 'delete', slotId });
+      if (r) showToast('Training night removed');
+    }
+
+    function renderTrainingScheduleCard() {
+      if (_trainingSchedule === null) { loadTrainingSchedule(); return `
+        <div class="card"><h2 style="margin-bottom:4px">Training schedule</h2>
+        <p class="muted" style="font-size:12px;margin:0">Loading…</p></div>`; }
+
+      const canEdit = canI('manage_fixtures') && _trainingSchedule.canEdit !== false;
+      const slots = _trainingSchedule.slots || [];
+      const inp = 'min-height:38px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);padding:0 9px;font-size:12.5px;width:100%;box-sizing:border-box';
+      const lbl = 'display:grid;gap:4px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em';
+      const ro = v => `<span style="font-size:12.5px">${esc(v || '—')}</span>`;
+
+      const slotCard = s => `
+        <div style="border:1px solid var(--line);border-radius:11px;padding:11px 12px;margin-bottom:9px;${s.active ? '' : 'opacity:.62'}">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px">
+            <strong style="font-size:13px">${esc(SCHEDULE_DAY_LABEL[s.day] || s.day)}${s.active ? '' : ' · inactive'}</strong>
+            ${s.sessionId ? `<span class="muted" style="font-size:10.5px">Linked to availability</span>` : ''}
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:9px">
+            <label style="${lbl}">Day${canEdit ? `
+              <select style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','day',this.value)">
+                ${Object.entries(SCHEDULE_DAY_LABEL).map(([d, label]) => `<option value="${d}" ${s.day === d ? 'selected' : ''}>${label}</option>`).join('')}
+              </select>` : ro(SCHEDULE_DAY_LABEL[s.day])}</label>
+            <label style="${lbl}">Start${canEdit ? `<input type="time" value="${esc(s.startTime)}" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','startTime',this.value)">` : ro(s.startTime)}</label>
+            <label style="${lbl}">End${canEdit ? `<input type="time" value="${esc(s.endTime)}" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','endTime',this.value)">` : ro(s.endTime)}</label>
+            <label style="${lbl}">Arrival${canEdit ? `<input type="time" value="${esc(s.arrivalTime)}" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','arrivalTime',this.value)">` : ro(s.arrivalTime)}</label>
+            <label style="${lbl}">Venue${canEdit ? `<input value="${esc(s.venue)}" placeholder="e.g. Main pitch" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','venue',this.value)">` : ro(s.venue)}</label>
+            <label style="${lbl}">From${canEdit ? `<input type="date" value="${esc(s.effectiveFrom)}" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','effectiveFrom',this.value)">` : ro(s.effectiveFrom)}</label>
+            <label style="${lbl}">Until${canEdit ? `<input type="date" value="${esc(s.effectiveTo)}" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','effectiveTo',this.value)">` : ro(s.effectiveTo)}</label>
+          </div>
+          ${canEdit ? `
+          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button class="btn ghost" type="button" style="font-size:11.5px;padding:3px 10px" onclick="trainingScheduleToggle('${esc(s.id)}',${!s.active})">${s.active ? 'Deactivate' : 'Activate'}</button>
+            ${s.sessionId ? '' : `<button class="btn ghost" type="button" style="font-size:11.5px;padding:3px 10px;color:#f87171" onclick="trainingScheduleDelete('${esc(s.id)}')">Remove</button>`}
+          </div>` : ''}
+        </div>`;
+
+      const extra = slots.filter(s => !s.sessionId).length;
+      return `
+        <div class="card">
+          <h2 style="margin-bottom:4px">Teams · Training schedule</h2>
+          <p class="muted" style="font-size:12px;margin:0 0 12px">Your club's recurring training nights — day, time, venue, arrival and the dates each night runs between.</p>
+          ${slots.length ? slots.map(slotCard).join('') : `<p class="muted" style="font-size:12.5px">No training nights configured yet.</p>`}
+          ${canEdit ? `<button class="btn" type="button" style="min-height:38px;font-size:12.5px" onclick="trainingScheduleAdd()">+ Add training night</button>` : ''}
+          ${extra ? `<p class="muted" style="font-size:11.5px;margin:10px 0 0;line-height:1.5">
+            Your first two nights drive availability. Any additional night is <strong>schedule information only</strong> in this beta —
+            it is not yet connected to availability or to generated sessions.</p>` : ''}
+          ${_trainingSchedule.updatedAt ? `<p class="muted" style="font-size:11px;margin:8px 0 0">Last updated ${esc(String(_trainingSchedule.updatedAt).slice(0, 10))}</p>` : ''}
+        </div>`;
+    }
+
     function renderSettings() {
       const el = document.getElementById('coach-settings');
       if (!el) return;
@@ -16105,6 +16214,9 @@
             ${toggle('trainingReminders', 'Training reminders', 'Availability chasers for training sessions')}
             ${!canUseFeature('unlimited_push') ? `<div style="margin-top:12px">${renderUpgradePrompt('unlimited_push', { compact: true })}</div>` : ''}
           </div>
+
+          <!-- Teams → Training schedule (RC4.10C) -->
+          ${(typeof renderTrainingScheduleCard === 'function' ? renderTrainingScheduleCard() : '')}
 
           <!-- Support — always visible so beta coaches can reach a human -->
           <div class="card">
@@ -26821,6 +26933,7 @@
         resetTeamScopedState();
         _appearanceAdjustments = null; // adjustments are per-club — refetch after switch
         _trainingPubState = {}; _trainingPubLoadedAt = 0; // training publication is per-club too
+        _trainingSchedule = null;      // the training schedule is per-club too
         _clubConfigChecked = false; _publishedStateLoadedAt = 0;
         if (typeof _adminData === 'object') _adminData.loaded = false;
         _autopilotEnsured = false; _autopilotLogAt = 0; _autopilotLog = [];

@@ -217,6 +217,156 @@ export function fixtureHasDownstreamData(fx = {}, context = {}) {
   return reasons;
 }
 
+// ── Training schedule sub-resource (RC4.10C) ──────────────────────────────
+// The club's RECURRING training nights, as a first-class tenant-scoped record.
+// Previously this existed only as `club.trainingDays`, derived by regex-scraping
+// a session title for a weekday and its free-text date for a time — write-only,
+// never read back, and carrying no venue, end time, arrival time or date range.
+//
+// SCOPE: this milestone stores and edits the schedule. It does NOT generate
+// recurring sessions, does NOT touch availability keying, and never creates a
+// new availability session — the fixed tue/thu/game ids are left exactly alone.
+
+function trainingScheduleKey(teamId) { return key(`publish:${teamId}:training_schedule`); }
+
+const MAX_SCHEDULE_SLOTS = 14;
+const SCHEDULE_DAYS = new Set(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+// The two slots that still back the legacy availability sessions. Everything
+// else is schedule information only until a later milestone connects it.
+const LEGACY_SLOT_SESSION = { tue: 'tue', thu: 'thu' };
+
+function sanitiseScheduleSlot(raw, index = 0) {
+  const s = (v, max) => String(v ?? '').trim().slice(0, max);
+  const hhmm = v => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '')) ? String(v) : '';
+  const isoDate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '';
+  const day = s(raw?.day, 3);
+  return {
+    id:            s(raw?.id || `slot_${Date.now().toString(36)}_${index}`, 40),
+    day:           SCHEDULE_DAYS.has(day) ? day : 'Tue',
+    startTime:     hhmm(raw?.startTime) || '19:00',
+    endTime:       hhmm(raw?.endTime),
+    venue:         s(raw?.venue, 120),
+    arrivalTime:   hhmm(raw?.arrivalTime),
+    effectiveFrom: isoDate(raw?.effectiveFrom),
+    effectiveTo:   isoDate(raw?.effectiveTo),
+    active:        raw?.active === false ? false : true,
+    // Set only for the two legacy slots, so the client knows which slot still
+    // drives an existing availability session. Never invented for new slots.
+    sessionId:     LEGACY_SLOT_SESSION[String(raw?.sessionId || '')] || '',
+  };
+}
+
+/**
+ * Read the schedule, seeding it once from existing club data if absent.
+ * Idempotent: the seed only runs when no record exists, and it derives from the
+ * live tue/thu sessions and club.trainingDays without modifying either.
+ */
+async function readTrainingSchedule(teamId) {
+  const stored = await kvGet(trainingScheduleKey(teamId));
+  if (stored && Array.isArray(stored.slots)) {
+    return { record: { ...stored, slots: stored.slots.map(sanitiseScheduleSlot) }, seeded: false };
+  }
+  const club = (await kvGet(clubKey(teamId))) || {};
+  const sessions = (await readScoped(sessionsKey(teamId), 'publish:sessions', teamId)) || [];
+  const trainingDays = Array.isArray(club.trainingDays) ? club.trainingDays : [];
+
+  const DAY_FROM_TEXT = text => {
+    const m = String(text || '').match(/Mon|Tue|Wed|Thu|Fri|Sat|Sun/i);
+    return m ? m[0].slice(0, 1).toUpperCase() + m[0].slice(1, 3).toLowerCase() : '';
+  };
+  const TIME_FROM_TEXT = text => (String(text || '').match(/([01]\d|2[0-3]):[0-5]\d/) || [''])[0];
+
+  const slots = [];
+  ['tue', 'thu'].forEach((sessionId, i) => {
+    const session = sessions.find(s => s.id === sessionId);
+    const configured = trainingDays[i] || {};
+    const day = DAY_FROM_TEXT(session?.title) || DAY_FROM_TEXT(session?.date)
+      || (SCHEDULE_DAYS.has(String(configured.day)) ? configured.day : '')
+      || (sessionId === 'tue' ? 'Tue' : 'Thu');
+    const startTime = TIME_FROM_TEXT(session?.date) || TIME_FROM_TEXT(configured.time) || '19:00';
+    slots.push(sanitiseScheduleSlot({
+      id: `slot_${sessionId}`, day, startTime,
+      venue: session?.location || '', active: true, sessionId,
+    }, i));
+  });
+  return { record: { slots, updatedAt: null, updatedBy: null, seededFrom: 'club-config' }, seeded: true };
+}
+
+async function trainingScheduleHandler(req, res) {
+  if (req.method === 'GET') {
+    // Any active member may VIEW the schedule — players need training times.
+    let session;
+    try { session = await requireTenantSession(req); }
+    catch (error) { return sendAuthError(res, error); }
+    const { record, seeded } = await readTrainingSchedule(session.teamId);
+    return res.status(200).json({ ok: true, ...record, seeded, canEdit: can(session, PERM.MANAGE_FIXTURES) });
+  }
+
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Writes need MANAGE_FIXTURES — Full, Coach and Manager access, for the team
+  // the session is scoped to. A caller cannot name another club's team.
+  let session;
+  try { session = await requireTenantPermission(req, PERM.MANAGE_FIXTURES); }
+  catch (error) { return sendAuthError(res, error); }
+  if (req.body?.teamId) {
+    try { assertSameTenant(session, req.body.teamId); }
+    catch (error) { return sendAuthError(res, error); }
+  }
+
+  const { record } = await readTrainingSchedule(session.teamId);
+  const slots = record.slots;
+  const action = String(req.body?.action || 'save');
+  const slotId = String(req.body?.slotId || '');
+  const index = slots.findIndex(s => s.id === slotId);
+  let auditEvent = 'training_schedule_updated';
+
+  if (action === 'add') {
+    if (slots.length >= MAX_SCHEDULE_SLOTS) {
+      return res.status(409).json({ error: `Schedule limit reached (${MAX_SCHEDULE_SLOTS} slots)` });
+    }
+    slots.push(sanitiseScheduleSlot({ ...(req.body?.slot || {}), id: '', sessionId: '' }, slots.length));
+    auditEvent = 'training_schedule_slot_added';
+  } else if (action === 'update') {
+    if (index < 0) return res.status(404).json({ error: 'Schedule slot not found' });
+    // sessionId is server-owned: an update can never attach a slot to an
+    // availability session, so no new availability rows can appear.
+    slots[index] = sanitiseScheduleSlot({ ...slots[index], ...(req.body?.slot || {}), id: slots[index].id, sessionId: slots[index].sessionId }, index);
+    auditEvent = 'training_schedule_slot_updated';
+  } else if (action === 'deactivate' || action === 'activate') {
+    if (index < 0) return res.status(404).json({ error: 'Schedule slot not found' });
+    slots[index] = { ...slots[index], active: action === 'activate' };
+    auditEvent = action === 'activate' ? 'training_schedule_slot_activated' : 'training_schedule_slot_deactivated';
+  } else if (action === 'delete') {
+    if (index < 0) return res.status(404).json({ error: 'Schedule slot not found' });
+    // Deleting is only safe for slots that do NOT back an availability session.
+    // The tue/thu slots can be deactivated, never removed, so existing responses
+    // and their session ids always keep a schedule record to point at.
+    if (slots[index].sessionId) {
+      return res.status(409).json({
+        error: 'This night is linked to existing availability — deactivate it instead of deleting',
+        sessionId: slots[index].sessionId,
+      });
+    }
+    slots.splice(index, 1);
+    auditEvent = 'training_schedule_slot_deleted';
+  } else if (action !== 'save') {
+    return res.status(400).json({ error: "action must be add, update, activate, deactivate, delete or save" });
+  }
+
+  const next = {
+    slots: slots.slice(0, MAX_SCHEDULE_SLOTS).map(sanitiseScheduleSlot),
+    updatedAt: new Date().toISOString(),
+    updatedBy: session.user.id,
+  };
+  await kvSet(trainingScheduleKey(session.teamId), next);
+  await auditLog(auditEvent, {
+    teamId: session.teamId, slotId: slotId || next.slots[next.slots.length - 1]?.id || '',
+    by: session.user.id, slotCount: next.slots.length, ip: requestIp(req),
+  });
+  return res.status(200).json({ ok: true, ...next, canEdit: true });
+}
+
 // ── Fixtures sub-resource (RC4.10B manual entry + bulk import) ────────────
 // Fixtures live in the club record, which is already tenant-scoped, so a club
 // can only ever read or write its OWN fixtures — a caller cannot name another
@@ -964,6 +1114,7 @@ export default async function handler(req, res) {
   if (String(req.query?.resource || '') === 'appearance-adjustments') return appearanceAdjustmentsHandler(req, res);
   if (String(req.query?.resource || '') === 'training') return trainingHandler(req, res);
   if (String(req.query?.resource || '') === 'fixtures') return fixturesHandler(req, res);
+  if (String(req.query?.resource || '') === 'training-schedule') return trainingScheduleHandler(req, res);
 
   // ── GET: any authenticated user reads published player-facing state ────────
   if (req.method === 'GET') {
