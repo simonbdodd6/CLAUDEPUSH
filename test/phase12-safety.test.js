@@ -119,6 +119,7 @@ function buildNavScope({ users = [], currentUserId = '' } = {}) {
     // RC4.10D: build/session diagnostics now require the authorised diagnostics
     // mode. These tests exercise that diagnostic content, so enable it here.
     function _diagnosticsOn() { return true; }
+    const CE_DEFAULT_COLOURS = { primary: '#8F6B2A', secondary: '#8E959D' };
     function icon() { return ''; }
     function esc(s) { return String(s||''); }
     function canonicalSwitchAccounts() { return []; }
@@ -167,6 +168,7 @@ function buildSettingsScope({ buildInfo = { sha: 'abc1234', env: 'production', b
     // RC4.10D: build/session diagnostics now require the authorised diagnostics
     // mode. These tests exercise that diagnostic content, so enable it here.
     function _diagnosticsOn() { return true; }
+    const CE_DEFAULT_COLOURS = { primary: '#8F6B2A', secondary: '#8E959D' };
     function canUseFeature() { return false; }
     function esc(s) { return String(s||''); }
     function trialDaysRemaining() { return null; }

@@ -63,7 +63,7 @@ export function inviteEmail({ name, teamName = 'Boitsfort RFC', url } = {}) {
         <h2>You're invited to join ${teamName}</h2>
         <p>Hi ${safeName},</p>
         <p>Your coach has invited you to create your CoachEasier account.</p>
-        <p><a href="${url}" style="display:inline-block;background:#10b981;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700">Claim account</a></p>
+        <p><a href="${url}" style="display:inline-block;background:#8F6B2A;color:#ffffff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700">Claim account</a></p>
         <p style="color:#64748b;font-size:13px">This link expires soon and can only be used once.</p>
       </div>`,
   };
@@ -79,7 +79,7 @@ export function emailVerificationEmail({ name, url } = {}) {
         <h2>Verify your email address</h2>
         <p>Hi ${safeName},</p>
         <p>Click below to verify your email and complete your CoachEasier account setup.</p>
-        <p><a href="${url}" style="display:inline-block;background:#10b981;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700">Verify email</a></p>
+        <p><a href="${url}" style="display:inline-block;background:#8F6B2A;color:#ffffff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700">Verify email</a></p>
         <p style="color:#64748b;font-size:13px">This link expires in 24 hours. If you did not create an account, you can ignore this email.</p>
       </div>`,
   };
@@ -95,7 +95,7 @@ export function passwordResetEmail({ name, url } = {}) {
         <h2>Reset your CoachEasier password</h2>
         <p>Hi ${safeName},</p>
         <p>Use the secure link below to set a new password.</p>
-        <p><a href="${url}" style="display:inline-block;background:#10b981;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700">Reset password</a></p>
+        <p><a href="${url}" style="display:inline-block;background:#8F6B2A;color:#ffffff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700">Reset password</a></p>
         <p style="color:#64748b;font-size:13px">This link expires soon. If you did not request this, ignore this email.</p>
       </div>`,
   };
