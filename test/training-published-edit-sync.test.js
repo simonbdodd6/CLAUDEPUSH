@@ -30,7 +30,7 @@ function buildHarness({ coach = true } = {}) {
   const fns = names.map(n => extractFn(html, n)).join('\n\n');
   const body = `
     let _publishedEditSyncTimer = null;
-    const _spy = { sync: 0 };
+    const _spy = { sync: 0, markEdited: 0 };
     const state = {
       schedule: [
         { id: 'tue', title: 'Training session 1', published: true },
@@ -49,6 +49,11 @@ function buildHarness({ coach = true } = {}) {
     function showToast() {}
     function autopilotReceipt() {}
     async function syncSessionsToServer() { _spy.sync++; }
+    // RC4.10A: every planner edit refreshes the session revision so published
+    // audiences flip to "changes not republished" — without touching either
+    // published snapshot. (The schedule push above no longer carries blocks.)
+    function trainingMarkEdited() { _spy.markEdited++; }
+    function canI() { return ${coach}; }
     const setTimeout = (fn) => { fn(); return 1; };   // run debounced sync synchronously
     const clearTimeout = () => {};
     ${fns}
@@ -97,4 +102,21 @@ test('a non-coach editing never triggers a server push', () => {
   h.addTimeBlock('tue');
   h.updateTimeBlock('tue', 'b1', 'activity', 'y');
   assert.equal(h.spy.sync, 0);
+});
+
+// ── RC4.10A — edits mark audiences stale instead of republishing them ────────
+test('every planner edit refreshes the session revision (marks audiences stale)', () => {
+  const h = buildHarness();
+  h.addTimeBlock('tue');
+  h.updateTimeBlock('tue', 'b1', 'activity', 'Updated');
+  h.removeTimeBlock('tue', 'b1');
+  assert.equal(h.spy.markEdited, 3, 'each edit refreshes the revision');
+});
+
+test('the schedule push no longer carries block content (no leak into a publication)', async () => {
+  const html2 = await readFile(join(__dirname, '..', 'index.html'), 'utf8');
+  const fn = html2.slice(html2.indexOf('async function syncSessionsToServer'),
+                         html2.indexOf('async function syncSquadToServer'));
+  assert.match(fn, /blocks: \[\]/, 'sessions sync sends empty blocks');
+  assert.doesNotMatch(fn, /trainingBlocks/, 'planner blocks are never embedded in the schedule sync');
 });

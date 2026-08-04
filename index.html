@@ -6835,6 +6835,162 @@
       showToast(`${title} published to squad ✓`);
     }
 
+    // ─── TRAINING PUBLICATION AUDIENCES (RC4.10A) ───────────────────────────
+    // Training publishes to two INDEPENDENT audiences. Coaches receive the full
+    // operational plan; players receive a player-safe subset assembled by the
+    // server from an explicit allow-list. Publishing one never touches the other,
+    // and edits after publication stay in the draft until that audience is
+    // republished — the published snapshot is what each audience keeps seeing.
+    let _trainingPubState = {};      // { [sessionId]: { coach:{status,...}, player:{...} } }
+    let _trainingPubBusy  = {};      // duplicate-click guard, per session+audience
+
+    /** The full operational session the server snapshots (and fingerprints). */
+    function trainingSessionPayload(sessionId) {
+      const s = (state.schedule || []).find(x => x.id === sessionId);
+      if (!s) return null;
+      return { ...s, blocks: (state.trainingBlocks || {})[sessionId] || [] };
+    }
+
+    function trainingAudienceStatus(sessionId, audience) {
+      return _trainingPubState[sessionId]?.[audience]?.status || 'draft';
+    }
+
+    function trainingAudienceStatusLabel(status) {
+      if (status === 'published') return { text: 'Published', bg: 'var(--green)', fg: '#fff' };
+      if (status === 'stale')     return { text: 'Changes not republished', bg: 'var(--amber-soft, #fef3c7)', fg: 'var(--amber, #b45309)' };
+      return { text: 'Draft', bg: 'var(--line)', fg: 'var(--muted)' };
+    }
+
+    function trainingAudienceBadge(sessionId, audience) {
+      const label = trainingAudienceStatusLabel(trainingAudienceStatus(sessionId, audience));
+      const who = audience === 'coach' ? 'Coaches' : 'Players';
+      const meta = _trainingPubState[sessionId]?.[audience];
+      const when = meta?.publishedAt ? ` · ${String(meta.publishedAt).slice(0, 10)}` : '';
+      return `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:${label.bg};color:${label.fg}">${who}: ${esc(label.text)}${esc(when)}</span>`;
+    }
+
+    async function loadTrainingPublicationState() {
+      if (!canI('publish_training')) return;
+      try {
+        const res = await fetch('/api/publish?resource=training&audience=coach');
+        if (!res.ok) return;
+        const data = await res.json();
+        (data.sessions || []).forEach(s => {
+          _trainingPubState[s.id] = _trainingPubState[s.id] || {};
+          _trainingPubState[s.id].coach = { status: s.status, publishedAt: s.publishedAt, publishedBy: s.publishedBy };
+        });
+        const pres = await fetch('/api/publish?resource=training&audience=player');
+        if (pres.ok) {
+          const pdata = await pres.json();
+          (pdata.sessions || []).forEach(s => {
+            _trainingPubState[s.id] = _trainingPubState[s.id] || {};
+            _trainingPubState[s.id].player = { status: s.status, publishedAt: s.publishedAt, publishedBy: s.publishedBy };
+          });
+        }
+        render();
+      } catch { /* offline — badges simply stay as they were */ }
+    }
+
+    async function trainingPublishTo(sessionId, audience) {
+      if (!canI('publish_training')) return showToast('You do not have permission to publish training');
+      const busyKey = `${sessionId}:${audience}`;
+      if (_trainingPubBusy[busyKey]) return;                  // duplicate-click protection
+      const payload = trainingSessionPayload(sessionId);
+      if (!payload) return showToast('Session not found');
+      const title = payload.title || 'Training session';
+      const who = audience === 'coach' ? 'coaches' : 'players';
+
+      // Publishing to players before coaches is allowed, but never silently.
+      if (audience === 'player' && trainingAudienceStatus(sessionId, 'coach') === 'draft') {
+        const proceed = await ceConfirm(
+          'Publish to players before coaches?',
+          'Your coaching staff have not received this plan yet. Players will see the session first. You can publish to coaches afterwards.',
+          { confirmLabel: 'Publish to players anyway' });
+        if (!proceed) return;
+      } else {
+        const proceed = await ceConfirm(
+          `Publish "${title}" to ${who}?`,
+          audience === 'coach'
+            ? 'Your coaching staff will see the complete plan, including block leaders and key coaching notes.'
+            : 'Players will see the simplified session — times, venue, block names and their own instructions. Staff notes are never included.',
+          { confirmLabel: `Publish to ${who}` });
+        if (!proceed) return;
+      }
+
+      _trainingPubBusy[busyKey] = true;
+      const btn = document.getElementById(`pub-${audience}-${sessionId}`);
+      if (btn) { btn.disabled = true; btn.textContent = 'Publishing…'; }
+      try {
+        const res = await fetch(`/api/publish?resource=training&audience=${audience}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session: payload }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || `Could not publish to ${who}`); return; }
+        _trainingPubState[sessionId] = { coach: data.coach, player: data.player };
+
+        // Notification via the EXISTING push infrastructure. Player-safe wording
+        // only — no key notes, cues, staff notes or block leaders are ever sent.
+        const when = [payload.date, payload.startTime].filter(Boolean).join(' ');
+        if (audience === 'coach') {
+          // The existing per-club "coaching" channel is staff-only by design, so
+          // it is the right coaching group. The message announces availability
+          // only — the plan itself stays behind the authorised coach view.
+          notifyCoachingGroup(`${title} — the full staff plan is available${when ? ` for ${when}` : ''}.`);
+        } else {
+          sendPushToPlayers(
+            `${state.clubName || 'CoachEasier'} — ${title}`,
+            `Training details are ready${when ? ` for ${when}` : ''}. Check the app.`,
+            { type: 'training', sessionId });
+        }
+        showToast(`${title} published to ${who} ✓`);
+      } catch {
+        showToast("We couldn't connect. Check your internet connection and try again.");
+      } finally {
+        _trainingPubBusy[busyKey] = false;
+        if (btn) { btn.disabled = false; btn.textContent = audience === 'coach' ? 'Publish to coaches' : 'Publish to players'; }
+        render();
+      }
+    }
+
+    /** Post to the existing staff-only "coaching" channel. Announcement only —
+     *  never carries plan detail. */
+    async function notifyCoachingGroup(text) {
+      try {
+        await fetch('/api/chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'send', convId: 'coaching', text }),
+        });
+      } catch { /* announcement is best-effort; publication already succeeded */ }
+    }
+
+    /** Tell the server the draft moved on, so published audiences show
+     *  "Changes not republished" without their snapshots being altered. */
+    let _trainingRevisionTimer = null;
+    function trainingMarkEdited(sessionId) {
+      if (!canI('publish_training')) return;
+      if (!_trainingPubState[sessionId]) return;   // nothing published yet — nothing to go stale
+      clearTimeout(_trainingRevisionTimer);
+      _trainingRevisionTimer = setTimeout(async () => {
+        const payload = trainingSessionPayload(sessionId);
+        if (!payload) return;
+        try {
+          const res = await fetch('/api/publish?resource=training', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session: payload }),
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          const prev = _trainingPubState[sessionId] || {};
+          _trainingPubState[sessionId] = {
+            coach:  { ...(prev.coach  || {}), status: data.coach?.status  || 'draft' },
+            player: { ...(prev.player || {}), status: data.player?.status || 'draft' },
+          };
+          render();
+        } catch { /* offline — status refreshes on next load */ }
+      }, 700);
+    }
+
     function unpublishSession(id) {
       if (!isCoach()) return showToast("Only coaches can manage sessions");
       const sess = (state.schedule || []).find(s => s.id === id);
@@ -7047,6 +7203,10 @@
     // (unpublished) sessions are never pushed here — they sync only on Publish.
     let _publishedEditSyncTimer = null;
     function syncPublishedSessionEdit(sessionId) {
+      // RC4.10A: any planner edit refreshes the session's revision so published
+      // audiences flip to "changes not republished". Their snapshots are NOT
+      // touched — an unpublished edit can never leak into a published view.
+      trainingMarkEdited(sessionId);
       const sess = (state.schedule || []).find(s => s.id === sessionId);
       if (!sess || !sess.published || !isCoach()) return;
       clearTimeout(_publishedEditSyncTimer);
@@ -11941,7 +12101,14 @@
       return !!(session && (session.type === 'Match' || session.id === 'game'));
     }
 
+    let _trainingPubLoadedAt = 0;
     function renderTraining() {
+      // Refresh each audience's publication status when the planner is opened,
+      // so a colleague's publish shows up without a page reload.
+      if (canI('publish_training') && Date.now() - _trainingPubLoadedAt > 20000) {
+        _trainingPubLoadedAt = Date.now();
+        loadTrainingPublicationState();
+      }
       // Phase 19 — tab delegation; planner falls through to existing render
       let _tab = state.activeTrainingTab || 'planner';
       // Beta: Dashboard / Attendance / Notes are hidden from the tab bar — route
@@ -11989,13 +12156,16 @@
               <h2 style="margin:0;font-size:18px">${esc(coachTrainingSessionLabel(sessObj))}</h2>
               <p class="muted" style="margin-top:3px">Write your own start times, activities, lead coach and key focus for each block.</p>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              ${sessObj?.published
-                ? `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--green);color:#fff">✓ Published</span>
-                   <button class="btn" type="button" onclick="unpublishSession('${sessId}')">Unpublish</button>
-                   <button class="btn" type="button" onclick="publishSession('${sessId}')">Republish</button>`
-                : `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--line);color:var(--muted)">Draft</span>
-                   <button class="btn primary" type="button" onclick="publishSession('${sessId}')">Publish to squad</button>`}
+            <div style="display:grid;gap:8px;justify-items:end">
+              ${canI('publish_training') ? `
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                ${trainingAudienceBadge(sessId, 'coach')}
+                <button class="btn" type="button" id="pub-coach-${esc(sessId)}" onclick="trainingPublishTo('${sessId}','coach')">Publish to coaches</button>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                ${trainingAudienceBadge(sessId, 'player')}
+                <button class="btn primary" type="button" id="pub-player-${esc(sessId)}" onclick="trainingPublishTo('${sessId}','player')">Publish to players</button>
+              </div>` : ''}
               <button class="btn" type="button" onclick="addTimeBlock('${sessId}')">+ Add block</button>
             </div>
           </div>
@@ -25602,11 +25772,13 @@
         await fetch('/api/publish', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          // Embed each PUBLISHED session's drill blocks so players receive the
-          // full plan. The server sanitises blocks to time+activity only.
+          // RC4.10A: this path carries the SCHEDULE only (title, date, time,
+          // venue). Block content is no longer embedded here — it would have
+          // re-synced on every keystroke and leaked unpublished edits into an
+          // already published view. Blocks now reach each audience solely
+          // through an explicit publish (?resource=training&audience=…).
           body: JSON.stringify({ type: 'sessions', data: (state.schedule || []).map(s => ({
-            ...s,
-            blocks: s.published ? ((state.trainingBlocks || {})[s.id] || []) : [],
+            ...s, blocks: [],
           })) }),
         });
       } catch(e) { console.warn('[syncSessionsToServer]', e); }
@@ -26241,6 +26413,7 @@
         // Team-scoped local state must not bleed between clubs.
         resetTeamScopedState();
         _appearanceAdjustments = null; // adjustments are per-club — refetch after switch
+        _trainingPubState = {}; _trainingPubLoadedAt = 0; // training publication is per-club too
         _clubConfigChecked = false; _publishedStateLoadedAt = 0;
         if (typeof _adminData === 'object') _adminData.loaded = false;
         _autopilotEnsured = false; _autopilotLogAt = 0; _autopilotLog = [];
@@ -26605,6 +26778,32 @@
           state.trainingBlocks = adoptPublishedBlocks(state.trainingBlocks, data.sessions, isCoach());
           changed = true;
         }
+        // RC4.10A — the player-safe training publication. This is the ONLY
+        // source of block content for a player: an explicit snapshot the coach
+        // published, never the live draft.
+        if (!isCoach()) {
+          try {
+            const tres = await fetch('/api/publish?resource=training&audience=player');
+            if (tres.ok) {
+              const tdata = await tres.json();
+              (tdata.sessions || []).forEach(ps => {
+                const local = (state.schedule || []).find(s => s.id === ps.id);
+                if (local) {
+                  local.arrivalInstructions = ps.arrivalInstructions || '';
+                  local.preparation         = ps.preparation || '';
+                  local.playerEquipment     = ps.playerEquipment || '';
+                  local.playerNotes         = ps.playerNotes || '';
+                }
+                if (Array.isArray(ps.blocks) && ps.blocks.length) {
+                  state.trainingBlocks = state.trainingBlocks || {};
+                  state.trainingBlocks[ps.id] = ps.blocks;
+                  changed = true;
+                }
+              });
+            }
+          } catch { /* offline — keep whatever was already published locally */ }
+        }
+
         if (data.squad && data.squad.published) {
           // Coach draft isolation: every coach keeps their OWN private match-day
           // draft, so a coach device never auto-adopts the shared published

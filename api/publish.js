@@ -169,6 +169,261 @@ async function rosterHandler(req, res) {
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
+// ── Training publication sub-resource (RC4.10A two audiences) ─────────────
+// Training publishes to TWO independent audiences:
+//   coach  — the complete operational plan (block leaders, key notes, staff
+//            notes, setup, cues, progressions…). Staff only, both in the UI and
+//            over the API.
+//   player — a player-safe subset. Never carries staff-only content.
+//
+// Each audience keeps its OWN snapshot, timestamp, publisher and revision, so
+// publishing to one never touches the other. A snapshot is a point-in-time copy:
+// editing the planner afterwards cannot leak into an already published view —
+// the audience simply reports "changes not republished" until it is republished.
+
+function trainingKey(teamId) { return key(`publish:${teamId}:training`); }
+
+const MAX_TRAINING_BLOCKS = 40;
+
+// Deterministic content fingerprint — the session's current revision. Derived
+// from content rather than an incrementing counter so a missed bump can never
+// leave a stale publication looking current.
+function trainingRevision(value) {
+  const json = JSON.stringify(value ?? null);
+  let h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (let i = 0; i < json.length; i++) {
+    const c = json.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 + c + i, 0x85ebca6b) >>> 0;
+  }
+  return `${h1.toString(36)}${h2.toString(36)}`;
+}
+
+const str = (v, max = 400) => String(v ?? '').slice(0, max);
+
+// COACH audience — every operational field the planner stores.
+function coachBlock(b = {}) {
+  return {
+    id:            str(b.id, 60),
+    time:          str(b.time, 20),
+    activity:      str(b.activity, 200),
+    durationMins:  Number.isFinite(Number(b.durationMins)) ? Number(b.durationMins) : null,
+    tag:           str(b.tag, 60),
+    coach:         str(b.coach, 120),          // block leader / responsible coach
+    keyFocus:      str(b.keyFocus, 2000),      // key coaching notes
+    organisation:  str(b.organisation, 2000),  // organisation and setup
+    equipment:     str(b.equipment, 1000),
+    groups:        str(b.groups, 1000),        // group allocations
+    cues:          str(b.cues, 2000),          // coaching cues
+    progressions:  str(b.progressions, 2000),
+    regressions:   str(b.regressions, 2000),
+    staffNotes:    str(b.staffNotes, 2000),    // staff-only
+    playerNotes:   str(b.playerNotes, 1000),   // player-safe, also sent to players
+    playerEquipment: str(b.playerEquipment, 500),
+  };
+}
+
+// PLAYER audience — an explicit allow-list. Anything not named here can never
+// reach a player, so a new planner field is private by default.
+function playerBlock(b = {}) {
+  return {
+    time:            str(b.time, 20),
+    activity:        str(b.activity, 200),
+    durationMins:    Number.isFinite(Number(b.durationMins)) ? Number(b.durationMins) : null,
+    playerNotes:     str(b.playerNotes, 1000),
+    playerEquipment: str(b.playerEquipment, 500),
+  };
+}
+
+function coachSessionSnapshot(s = {}) {
+  return {
+    id:         str(s.id, 60),
+    title:      str(s.title, 200),
+    theme:      str(s.theme || s.focus, 500),
+    type:       str(s.type, 60) || 'Training',
+    date:       str(s.date, 20),
+    startTime:  str(s.startTime, 20),
+    endTime:    str(s.endTime, 20),
+    location:   str(s.location, 200),
+    coachName:  str(s.coachName || s.leadCoach, 120),
+    focus:      str(s.focus, 1000),
+    arrivalInstructions: str(s.arrivalInstructions, 1000),
+    preparation:         str(s.preparation, 1000),
+    playerEquipment:     str(s.playerEquipment, 500),
+    playerNotes:         str(s.playerNotes, 2000),
+    staffNotes:          str(s.staffNotes, 2000),   // staff-only
+    blocks: (Array.isArray(s.blocks) ? s.blocks : []).slice(0, MAX_TRAINING_BLOCKS).map(coachBlock),
+  };
+}
+
+function playerSessionSnapshot(s = {}) {
+  return {
+    id:        str(s.id, 60),
+    title:     str(s.title, 200),
+    theme:     str(s.theme || s.focus, 500),
+    type:      str(s.type, 60) || 'Training',
+    date:      str(s.date, 20),
+    startTime: str(s.startTime, 20),
+    endTime:   str(s.endTime, 20),
+    location:  str(s.location, 200),
+    arrivalInstructions: str(s.arrivalInstructions, 1000),
+    preparation:         str(s.preparation, 1000),
+    playerEquipment:     str(s.playerEquipment, 500),
+    playerNotes:         str(s.playerNotes, 2000),
+    blocks: (Array.isArray(s.blocks) ? s.blocks : []).slice(0, MAX_TRAINING_BLOCKS).map(playerBlock),
+  };
+}
+
+/** Publication status for one audience, given the session's current revision. */
+function audienceStatus(entry, currentRevision) {
+  if (!entry || !entry.publishedAt) return 'draft';
+  if (currentRevision && entry.revision && entry.revision !== currentRevision) return 'stale';
+  return 'published';
+}
+
+async function trainingHandler(req, res) {
+  const audienceParam = String(req.query?.audience || req.body?.audience || '').toLowerCase();
+
+  if (req.method === 'GET') {
+    const audience = audienceParam === 'coach' ? 'coach' : 'player';
+    let session;
+    try {
+      // The full staff plan requires publish-training rights; the player-safe
+      // view is readable by any active member of the club.
+      session = audience === 'coach'
+        ? await requireTenantPermission(req, PERM.PUBLISH_TRAINING)
+        : await requireTenantSession(req);
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
+    const store = (await kvGet(trainingKey(session.teamId))) || {};
+    const sessions = [];
+    for (const [id, rec] of Object.entries(store)) {
+      const entry = rec?.[audience];
+      if (!entry || !entry.publishedAt) continue;
+      sessions.push({
+        id,
+        ...entry.snapshot,
+        publishedAt: entry.publishedAt,
+        publishedBy: entry.publishedBy,
+        publishedRevision: entry.revision,
+        status: audienceStatus(entry, rec.currentRevision),
+      });
+    }
+    return res.status(200).json({ ok: true, audience, sessions, count: sessions.length });
+  }
+
+  // ── POST: publish one session to ONE audience ───────────────────────────
+  if (req.method === 'POST') {
+    let session;
+    try {
+      session = await requireTenantPermission(req, PERM.PUBLISH_TRAINING);
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
+    const audience = audienceParam;
+    if (!['coach', 'player'].includes(audience)) {
+      return res.status(400).json({ error: "audience must be 'coach' or 'player'" });
+    }
+    const incoming = req.body?.session;
+    if (!incoming || typeof incoming !== 'object' || !String(incoming.id || '')) {
+      return res.status(400).json({ error: 'session object with an id is required' });
+    }
+
+    const store = (await kvGet(trainingKey(session.teamId))) || {};
+    const id = String(incoming.id);
+    const record = store[id] || {};
+
+    // The revision is computed from the FULL operational content, so an edit to
+    // a staff-only field correctly marks BOTH audiences stale.
+    const full = coachSessionSnapshot(incoming);
+    const currentRevision = trainingRevision(full);
+    const snapshot = audience === 'coach' ? full : playerSessionSnapshot(incoming);
+
+    const previous = record[audience] || null;
+    record.currentRevision = currentRevision;
+    record[audience] = {
+      snapshot,
+      revision: currentRevision,
+      publishedAt: new Date().toISOString(),
+      publishedBy: session.user.id,
+    };
+    // Publishing to one audience must never disturb the other's snapshot.
+    store[id] = record;
+    await kvSet(trainingKey(session.teamId), store);
+
+    await auditLog('training_published', {
+      audience, sessionId: id, teamId: session.teamId,
+      publishedBy: session.user.id, revision: currentRevision,
+      republished: Boolean(previous), ip: requestIp(req),
+    });
+
+    return res.status(200).json({
+      ok: true,
+      audience,
+      sessionId: id,
+      currentRevision,
+      publishedAt: record[audience].publishedAt,
+      publishedBy: record[audience].publishedBy,
+      coach:  { status: audienceStatus(record.coach, currentRevision),  publishedAt: record.coach?.publishedAt || null,  publishedBy: record.coach?.publishedBy || null,  revision: record.coach?.revision || null },
+      player: { status: audienceStatus(record.player, currentRevision), publishedAt: record.player?.publishedAt || null, publishedBy: record.player?.publishedBy || null, revision: record.player?.revision || null },
+    });
+  }
+
+  // ── PUT: refresh the current revision (called as the planner is edited) ──
+  // Records that the draft moved on WITHOUT touching either published snapshot,
+  // which is what turns an audience's status into "changes not republished".
+  if (req.method === 'PUT') {
+    let session;
+    try {
+      session = await requireTenantPermission(req, PERM.PUBLISH_TRAINING);
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
+    const incoming = req.body?.session;
+    if (!incoming || !String(incoming.id || '')) {
+      return res.status(400).json({ error: 'session object with an id is required' });
+    }
+    const store = (await kvGet(trainingKey(session.teamId))) || {};
+    const id = String(incoming.id);
+    const record = store[id] || {};
+    record.currentRevision = trainingRevision(coachSessionSnapshot(incoming));
+    store[id] = record;
+    await kvSet(trainingKey(session.teamId), store);
+    return res.status(200).json({
+      ok: true,
+      sessionId: id,
+      currentRevision: record.currentRevision,
+      coach:  { status: audienceStatus(record.coach, record.currentRevision) },
+      player: { status: audienceStatus(record.player, record.currentRevision) },
+    });
+  }
+
+  // ── DELETE: withdraw one audience's publication ─────────────────────────
+  if (req.method === 'DELETE') {
+    let session;
+    try {
+      session = await requireTenantPermission(req, PERM.PUBLISH_TRAINING);
+    } catch (error) {
+      return sendAuthError(res, error);
+    }
+    const audience = audienceParam;
+    if (!['coach', 'player'].includes(audience)) {
+      return res.status(400).json({ error: "audience must be 'coach' or 'player'" });
+    }
+    const id = String(req.body?.sessionId || '');
+    const store = (await kvGet(trainingKey(session.teamId))) || {};
+    if (store[id]) {
+      delete store[id][audience];
+      await kvSet(trainingKey(session.teamId), store);
+      await auditLog('training_unpublished', { audience, sessionId: id, teamId: session.teamId, by: session.user.id, ip: requestIp(req) });
+    }
+    return res.status(200).json({ ok: true, audience, sessionId: id });
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
 // ── Appearance adjustments sub-resource (RC4.8A admin corrections) ────────
 // The source of truth for appearances remains completed Match Centre
 // selections, calculated client-side. Authorised club admins may record
@@ -509,6 +764,7 @@ export default async function handler(req, res) {
   if (String(req.query?.resource || '') === 'club')   return clubHandler(req, res);
   if (String(req.query?.resource || '') === 'availability-check') return availabilityCheckHandler(req, res);
   if (String(req.query?.resource || '') === 'appearance-adjustments') return appearanceAdjustmentsHandler(req, res);
+  if (String(req.query?.resource || '') === 'training') return trainingHandler(req, res);
 
   // ── GET: any authenticated user reads published player-facing state ────────
   if (req.method === 'GET') {
