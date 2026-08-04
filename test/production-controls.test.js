@@ -36,8 +36,13 @@ test('diagnostics mode requires danger_zone AND an explicit opt-in', () => {
   assert.match(m[0], /diagnostics'\) === '1'/, 'explicit opt-in gate');
 });
 
-test('build/environment badge never renders in production', () => {
-  assert.match(src, /else if \(env !== 'production'\)/, 'build pill is gated to non-production');
+test('build/environment badge never renders outside authorised diagnostics', () => {
+  // RC4.10D tightened this: the pill used to appear in any non-production build,
+  // where players and coaches also use the app. It now requires the same
+  // authorised diagnostics mode as the destructive controls.
+  const fn = src.slice(src.indexOf('function renderBuildDomainBanner'), src.indexOf('render();\n    applyClubBranding'));
+  assert.match(fn, /_diagnosticsOn\(\)/, 'build pill is gated on diagnostics mode');
+  assert.doesNotMatch(fn, /else if \(env !== 'production'\)/, 'the weaker environment-only gate is gone');
 });
 
 test('developer debug overlay requires the dev-login flag', () => {

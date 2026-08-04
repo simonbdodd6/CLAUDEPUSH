@@ -116,6 +116,9 @@ function buildNavScope({ users = [], currentUserId = '' } = {}) {
     function currentUser() { return state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
     function isCoach() { return currentUser()?.role === 'coach'; }
     function canI(perm) { return isCoach(); }
+    // RC4.10D: build/session diagnostics now require the authorised diagnostics
+    // mode. These tests exercise that diagnostic content, so enable it here.
+    function _diagnosticsOn() { return true; }
     function icon() { return ''; }
     function esc(s) { return String(s||''); }
     function canonicalSwitchAccounts() { return []; }
@@ -161,6 +164,9 @@ function buildSettingsScope({ buildInfo = { sha: 'abc1234', env: 'production', b
     function currentUser() { return state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
     function isCoach() { return currentUser()?.role === 'coach'; }
     function canI(perm) { return isCoach(); }
+    // RC4.10D: build/session diagnostics now require the authorised diagnostics
+    // mode. These tests exercise that diagnostic content, so enable it here.
+    function _diagnosticsOn() { return true; }
     function canUseFeature() { return false; }
     function esc(s) { return String(s||''); }
     function trialDaysRemaining() { return null; }
