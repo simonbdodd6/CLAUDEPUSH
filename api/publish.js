@@ -21,9 +21,10 @@ import { key, APP_PREFIX, LEGACY_PREFIX } from './_keys.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
 import { DEFAULT_TEAM, loadTeamMembers, loadUsers } from './_identityStore.js';
-import { requireTenantPermission, requireTenantSession, can, PERM } from './_tenant.js';
+import { requireTenantPermission, requireTenantSession, assertSameTenant, can, PERM } from './_tenant.js';
 import { load, save } from './_lib.js';
 import { auditLog, requestIp } from './_security.js';
+import { findDuplicate } from '../src/fixture-import.js';
 import { runWeeklyAvailabilityCheck } from './cron.js';
 
 function sendAuthError(res, error) {
@@ -167,6 +168,211 @@ async function rosterHandler(req, res) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
+}
+
+// ── Fixture record (RC4.10B) ──────────────────────────────────────────────
+// The canonical whitelist for a stored fixture. Previously this dropped
+// `status`, so marking a fixture completed was silently lost on the next club
+// sync — taking its appearance history with it. Every field the product writes
+// is now preserved, and 'neutral' joins home/away.
+const MAX_FIXTURES = 200;
+const FIXTURE_STATUSES = new Set(['scheduled', 'completed', 'cancelled', 'postponed']);
+const HOME_AWAY = new Set(['home', 'away', 'neutral']);
+
+export function sanitiseFixtureRecord(fx) {
+  const s = (v, max) => String(v ?? '').trim().slice(0, max);
+  const hhmm = v => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '')) ? String(v) : '';
+  const homeAway = String(fx?.homeAway || '').toLowerCase();
+  const status = String(fx?.status || '').toLowerCase();
+  return {
+    id:            s(fx?.id || `fx_${Math.random().toString(36).slice(2, 9)}`, 40),
+    team:          s(fx?.team, 80),
+    opposition:    s(fx?.opposition, 80),
+    date:          s(fx?.date, 20),
+    time:          hhmm(fx?.time),
+    venue:         s(fx?.venue, 120),
+    competition:   s(fx?.competition, 80),
+    homeAway:      HOME_AWAY.has(homeAway) ? homeAway : '',
+    status:        FIXTURE_STATUSES.has(status) ? status : 'scheduled',
+    arrivalTime:   hhmm(fx?.arrivalTime),
+    meetingPoint:  s(fx?.meetingPoint, 160),
+    notes:         s(fx?.notes, 1000),
+    externalId:    s(fx?.externalId, 80),
+    referee:       s(fx?.referee, 80),
+    transportNotes: s(fx?.transportNotes, 500),
+    createdAt:     s(fx?.createdAt, 40),
+    updatedAt:     s(fx?.updatedAt, 40),
+  };
+}
+
+/** Fixtures that already carry downstream data must never be silently replaced. */
+export function fixtureHasDownstreamData(fx = {}, context = {}) {
+  const reasons = [];
+  if (String(fx.status || '').toLowerCase() === 'completed') reasons.push('completed status');
+  if (String(fx.notes || '').trim()) reasons.push('notes');
+  if (context.availabilityIds?.has?.(fx.id)) reasons.push('availability responses');
+  if (context.selectionIds?.has?.(fx.id)) reasons.push('squad selection');
+  if (context.appearanceIds?.has?.(fx.id)) reasons.push('appearance history');
+  if (context.messageIds?.has?.(fx.id)) reasons.push('messages');
+  return reasons;
+}
+
+// ── Fixtures sub-resource (RC4.10B manual entry + bulk import) ────────────
+// Fixtures live in the club record, which is already tenant-scoped, so a club
+// can only ever read or write its OWN fixtures — a caller cannot name another
+// club's team. Writes require MANAGE_FIXTURES (Full / Coach / Manager).
+
+async function readClubFixtures(teamId) {
+  const club = (await kvGet(clubKey(teamId))) || {};
+  return { club, fixtures: Array.isArray(club.fixtures) ? club.fixtures.map(sanitiseFixtureRecord) : [] };
+}
+
+async function writeClubFixtures(teamId, club, fixtures) {
+  await kvSet(clubKey(teamId), { ...club, fixtures: fixtures.slice(0, MAX_FIXTURES) });
+}
+
+/** Everything downstream that would make replacing a fixture destructive. */
+async function downstreamContext(teamId) {
+  const squad = (await kvGet(squadKey(teamId))) || null;
+  const selectionIds = new Set();
+  if (squad?.fixtureId) selectionIds.add(String(squad.fixtureId));
+  const adjustments = (await kvGet(key(`appearance_adj:${teamId}`))) || [];
+  const appearanceIds = new Set(
+    (Array.isArray(adjustments) ? adjustments : []).map(a => String(a.fixtureId || '')).filter(Boolean));
+  return { selectionIds, appearanceIds };
+}
+
+const nowIso = () => new Date().toISOString();
+
+async function fixturesHandler(req, res) {
+  if (req.method === 'GET') {
+    // Any active member may VIEW the fixture list; only staff may change it.
+    let session;
+    try { session = await requireTenantSession(req); }
+    catch (error) { return sendAuthError(res, error); }
+    const { fixtures } = await readClubFixtures(session.teamId);
+    return res.status(200).json({ ok: true, fixtures, count: fixtures.length });
+  }
+
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  let session;
+  try { session = await requireTenantPermission(req, PERM.MANAGE_FIXTURES); }
+  catch (error) { return sendAuthError(res, error); }
+  if (req.body?.teamId) {
+    try { assertSameTenant(session, req.body.teamId); }
+    catch (error) { return sendAuthError(res, error); }
+  }
+
+  const action = String(req.body?.action || 'create');
+  const { club, fixtures } = await readClubFixtures(session.teamId);
+
+  // ── Single manual fixture ───────────────────────────────────────────────
+  if (action === 'create') {
+    const incoming = sanitiseFixtureRecord(req.body?.fixture || {});
+    if (!incoming.opposition) return res.status(400).json({ error: 'Opponent is required' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(incoming.date)) return res.status(400).json({ error: 'A valid date is required' });
+    if (req.body?.fixture?.time && !incoming.time) return res.status(400).json({ error: 'Kick-off time must be HH:MM' });
+
+    // Repeated submits must not create duplicates.
+    const dupe = findDuplicate(incoming, fixtures);
+    if (dupe && !req.body?.allowDuplicate) {
+      return res.status(409).json({
+        ok: false, error: 'A matching fixture already exists', duplicateOf: dupe.match.id, reason: dupe.reason,
+      });
+    }
+    incoming.createdAt = nowIso();
+    incoming.updatedAt = incoming.createdAt;
+    if (fixtures.length >= MAX_FIXTURES) {
+      return res.status(409).json({ error: `Fixture limit reached (${MAX_FIXTURES})` });
+    }
+    const next = [...fixtures, incoming];
+    await writeClubFixtures(session.teamId, club, next);
+    await auditLog('fixture_created', {
+      fixtureId: incoming.id, teamId: session.teamId, opposition: incoming.opposition,
+      date: incoming.date, createdBy: session.user.id, ip: requestIp(req),
+    });
+    return res.status(201).json({ ok: true, fixture: incoming, count: next.length });
+  }
+
+  // ── Bulk import commit (only ever called AFTER review + confirmation) ───
+  if (action === 'import') {
+    if (req.body?.confirmed !== true) {
+      return res.status(400).json({ error: 'Import must be confirmed after review' });
+    }
+    const rows = Array.isArray(req.body?.fixtures) ? req.body.fixtures : [];
+    if (!rows.length) return res.status(400).json({ error: 'No fixtures to import' });
+    if (rows.length > MAX_FIXTURES) {
+      return res.status(413).json({ error: `Too many rows — import at most ${MAX_FIXTURES} fixtures at a time` });
+    }
+    // An import runs against a single snapshot and is written once, so a
+    // partial failure can never leave a half-import behind.
+    const context = await downstreamContext(session.teamId);
+    const working = [...fixtures];
+    const summary = { imported: 0, updated: 0, skipped: 0, blocked: 0, errors: 0 };
+    const details = [];
+
+    for (const raw of rows) {
+      const decision = String(raw?.decision || 'new').toLowerCase();  // new | update | skip
+      const fixture = sanitiseFixtureRecord(raw?.fixture || raw || {});
+      if (!fixture.opposition || !/^\d{4}-\d{2}-\d{2}$/.test(fixture.date)) {
+        summary.errors++;
+        details.push({ opposition: fixture.opposition || '(none)', outcome: 'error', reason: 'missing opponent or date' });
+        continue;
+      }
+      if (decision === 'skip') {
+        summary.skipped++;
+        details.push({ opposition: fixture.opposition, outcome: 'skipped' });
+        continue;
+      }
+      const dupe = findDuplicate(fixture, working);
+      if (decision === 'update') {
+        if (!dupe) {
+          summary.errors++;
+          details.push({ opposition: fixture.opposition, outcome: 'error', reason: 'no existing fixture to update' });
+          continue;
+        }
+        const blockers = fixtureHasDownstreamData(dupe.match, context);
+        if (blockers.length) {
+          // Never silently overwrite real match history.
+          summary.blocked++;
+          details.push({ opposition: fixture.opposition, outcome: 'blocked', reason: blockers.join(', ') });
+          continue;
+        }
+        const idx = working.findIndex(f => f.id === dupe.match.id);
+        working[idx] = { ...dupe.match, ...fixture, id: dupe.match.id, createdAt: dupe.match.createdAt || nowIso(), updatedAt: nowIso() };
+        summary.updated++;
+        details.push({ opposition: fixture.opposition, outcome: 'updated' });
+        continue;
+      }
+      // decision === 'new'
+      if (dupe && !raw?.allowDuplicate) {
+        summary.skipped++;
+        details.push({ opposition: fixture.opposition, outcome: 'skipped', reason: `duplicate (${dupe.reason})` });
+        continue;
+      }
+      if (working.length >= MAX_FIXTURES) {
+        summary.errors++;
+        details.push({ opposition: fixture.opposition, outcome: 'error', reason: 'fixture limit reached' });
+        continue;
+      }
+      fixture.createdAt = nowIso();
+      fixture.updatedAt = fixture.createdAt;
+      working.push(fixture);
+      summary.imported++;
+      details.push({ opposition: fixture.opposition, outcome: 'imported' });
+    }
+
+    await writeClubFixtures(session.teamId, club, working);
+    await auditLog('fixtures_imported', {
+      teamId: session.teamId, importedBy: session.user.id,
+      imported: summary.imported, updated: summary.updated, skipped: summary.skipped,
+      blocked: summary.blocked, errors: summary.errors, ip: requestIp(req),
+    });
+    return res.status(200).json({ ok: true, summary, details, count: working.length });
+  }
+
+  return res.status(400).json({ error: "action must be 'create' or 'import'" });
 }
 
 // ── Training publication sub-resource (RC4.10A two audiences) ─────────────
@@ -525,15 +731,7 @@ function sanitiseClubConfig(raw) {
     }))
     .filter(d => VALID_DAYS.has(d.day))
     .slice(0, 7);
-  const sanitiseFixture = fx => ({
-    id:          String(fx?.id || `fx_${Math.random().toString(36).slice(2, 9)}`).slice(0, 40),
-    opposition: String(fx?.opposition || '').trim().slice(0, 80),
-    date:       String(fx?.date       || '').trim().slice(0, 20),
-    time:       /^\d{2}:\d{2}$/.test(String(fx?.time || '')) ? String(fx.time) : '',
-    venue:      String(fx?.venue      || '').trim().slice(0, 120),
-    competition: String(fx?.competition || '').trim().slice(0, 80),
-    homeAway:   ['home', 'away'].includes(String(fx?.homeAway || '').toLowerCase()) ? String(fx.homeAway).toLowerCase() : '',
-  });
+  const sanitiseFixture = sanitiseFixtureRecord;
   const fx = raw.firstFixture && typeof raw.firstFixture === 'object' ? raw.firstFixture : {};
   const hexColour = v => /^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? String(v).toLowerCase() : '';
   // Logos are client-resized data-URLs; cap well under Upstash value limits.
@@ -559,7 +757,7 @@ function sanitiseClubConfig(raw) {
     fixtures: (Array.isArray(raw.fixtures) ? raw.fixtures : [])
       .map(sanitiseFixture)
       .filter(f => f.opposition)
-      .slice(0, 50),
+      .slice(0, MAX_FIXTURES),
   };
 }
 
@@ -765,6 +963,7 @@ export default async function handler(req, res) {
   if (String(req.query?.resource || '') === 'availability-check') return availabilityCheckHandler(req, res);
   if (String(req.query?.resource || '') === 'appearance-adjustments') return appearanceAdjustmentsHandler(req, res);
   if (String(req.query?.resource || '') === 'training') return trainingHandler(req, res);
+  if (String(req.query?.resource || '') === 'fixtures') return fixturesHandler(req, res);
 
   // ── GET: any authenticated user reads published player-facing state ────────
   if (req.method === 'GET') {

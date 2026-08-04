@@ -10703,6 +10703,410 @@
       try { saveClubConfigToServer({ weeklyAvailability: state.weeklyAvailability }).catch(() => {}); } catch {}
     }
 
+    // ─── OVERVIEW FIXTURES CARD (RC4.10B) ────────────────────────────────────
+    // Fixture entry used to live only in Club Admin, several taps away. This
+    // surfaces creation and bulk import directly on Overview. All actions are
+    // gated on manage_fixtures — the SAME permission the API enforces, so a
+    // hidden button is never the only thing standing between a user and a write.
+    const HOME_AWAY_LABEL = { home: 'Home', away: 'Away', neutral: 'Neutral' };
+
+    function upcomingFixtures(limit = 3) {
+      const today = new Date().toISOString().slice(0, 10);
+      return (state.fixtures || [])
+        .filter(f => f && f.opposition && f.status !== 'cancelled')
+        .filter(f => !f.date || f.date >= today)
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+        .slice(0, limit);
+    }
+
+    function renderOverviewFixturesCard() {
+      const canManage = canI('manage_fixtures');
+      const next = upcomingFixtures(3);
+      const row = f => `
+        <div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+          <div style="min-width:0">
+            <strong style="font-size:13px">${esc(f.opposition)}</strong>
+            <span class="muted" style="font-size:11px;margin-left:6px">${esc(HOME_AWAY_LABEL[f.homeAway] || '—')}</span>
+            <div class="muted" style="font-size:11.5px">${esc([f.venue, f.competition].filter(Boolean).join(' · ') || '—')}</div>
+          </div>
+          <div style="text-align:right;white-space:nowrap">
+            <strong style="font-size:12.5px">${esc(f.date || 'Date TBC')}</strong>
+            <div class="muted" style="font-size:11.5px">${esc(f.time || 'KO TBC')}</div>
+          </div>
+        </div>`;
+      return `
+        <div class="card" style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <h2 style="margin:0;font-size:16px">Fixtures</h2>
+            <button class="btn ghost" type="button" style="font-size:12px;padding:3px 10px" onclick="setSection('coach','matchday')">View all in Match Centre →</button>
+          </div>
+          ${next.length ? next.map(row).join('')
+            : `<p class="muted" style="font-size:12.5px;margin:6px 0 10px">No fixtures yet — add your first match or import a season list.</p>`}
+          ${canManage ? `
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+            <button class="btn primary" type="button" onclick="fixtureAddOpen()" style="min-height:38px;font-size:12.5px">+ Add fixture</button>
+            <button class="btn" type="button" onclick="fixtureImportOpen('csv')" style="min-height:38px;font-size:12.5px">Import CSV</button>
+            <button class="btn" type="button" onclick="fixtureImportOpen('xlsx')" style="min-height:38px;font-size:12.5px">Import Excel</button>
+          </div>` : ''}
+        </div>`;
+    }
+
+    // ── Manual fixture entry ────────────────────────────────────────────────
+    let _fixtureAddBusy = false;
+    function fixtureAddOpen() {
+      if (!canI('manage_fixtures')) return showToast('You do not have permission to add fixtures');
+      document.getElementById('fixture-add-modal')?.remove();
+      const inp = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
+      const lbl = 'display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)';
+      const el = document.createElement('div');
+      el.id = 'fixture-add-modal';
+      el.style.cssText = 'position:fixed;inset:0;z-index:9600;background:rgba(4,7,14,0.55);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+      el.innerHTML = `
+        <div class="card" style="max-width:520px;width:100%;margin:auto">
+          <h2 style="margin:0 0 4px;font-size:17px">Add fixture</h2>
+          <p class="muted" style="font-size:12px;margin:0 0 14px">Opponent and date are required. Everything else can be filled in later.</p>
+          <div style="display:grid;gap:10px">
+            <label style="${lbl}">Opponent *<input id="fx-opp" style="${inp}" placeholder="e.g. Riverside Rovers"></label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <label style="${lbl}">Date *<input id="fx-date" type="date" style="${inp}"></label>
+              <label style="${lbl}">Kick-off<input id="fx-time" type="time" style="${inp}"></label>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <label style="${lbl}">Home / Away
+                <select id="fx-ha" style="${inp}">
+                  <option value="">Not set</option><option value="home">Home</option>
+                  <option value="away">Away</option><option value="neutral">Neutral</option>
+                </select></label>
+              <label style="${lbl}">Team<input id="fx-team" style="${inp}" placeholder="e.g. 1st XV"></label>
+            </div>
+            <label style="${lbl}">Venue<input id="fx-venue" style="${inp}"></label>
+            <label style="${lbl}">Competition<input id="fx-comp" style="${inp}"></label>
+            <details><summary style="font-size:12.5px;font-weight:700;cursor:pointer;padding:4px 0">More detail</summary>
+              <div style="display:grid;gap:10px;margin-top:8px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                  <label style="${lbl}">Arrival time<input id="fx-arrive" type="time" style="${inp}"></label>
+                  <label style="${lbl}">Referee<input id="fx-ref" style="${inp}"></label>
+                </div>
+                <label style="${lbl}">Meeting point<input id="fx-meet" style="${inp}"></label>
+                <label style="${lbl}">Transport notes<input id="fx-transport" style="${inp}"></label>
+                <label style="${lbl}">Notes<input id="fx-notes" style="${inp}"></label>
+                <label style="${lbl}">External reference<input id="fx-ext" style="${inp}"></label>
+              </div>
+            </details>
+            <div id="fx-add-msg" class="muted" style="font-size:12px;min-height:16px"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+              <button class="btn" type="button" onclick="document.getElementById('fixture-add-modal').remove()">Cancel</button>
+              <button class="btn primary" id="fx-add-save" type="button" onclick="fixtureAddSave()">Add fixture</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(el);
+      setTimeout(() => document.getElementById('fx-opp')?.focus(), 50);
+    }
+
+    async function fixtureAddSave(allowDuplicate) {
+      if (_fixtureAddBusy) return;                       // duplicate-click protection
+      const v = id => document.getElementById(id)?.value?.trim() || '';
+      const msg = document.getElementById('fx-add-msg');
+      const fixture = {
+        opposition: v('fx-opp'), date: v('fx-date'), time: v('fx-time'),
+        homeAway: v('fx-ha'), team: v('fx-team'), venue: v('fx-venue'),
+        competition: v('fx-comp'), arrivalTime: v('fx-arrive'), referee: v('fx-ref'),
+        meetingPoint: v('fx-meet'), transportNotes: v('fx-transport'),
+        notes: v('fx-notes'), externalId: v('fx-ext'),
+      };
+      if (!fixture.opposition) { if (msg) msg.textContent = 'Opponent is required.'; return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fixture.date)) { if (msg) msg.textContent = 'A valid date is required.'; return; }
+      _fixtureAddBusy = true;
+      const btn = document.getElementById('fx-add-save');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      try {
+        const res = await fetch('/api/publish?resource=fixtures', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'create', fixture, ...(allowDuplicate ? { allowDuplicate: true } : {}) }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 409 && data.duplicateOf && !allowDuplicate) {
+          _fixtureAddBusy = false;
+          if (btn) { btn.disabled = false; btn.textContent = 'Add fixture'; }
+          const proceed = await ceConfirm('This fixture looks like a duplicate',
+            `A fixture against ${fixture.opposition} on ${fixture.date} already exists (${data.reason}). Add it anyway?`,
+            { confirmLabel: 'Add anyway' });
+          if (proceed) return fixtureAddSave(true);
+          return;
+        }
+        if (!res.ok) { if (msg) msg.textContent = data.error || 'Could not add the fixture.'; return; }
+        await loadFixturesFromServer(true);
+        document.getElementById('fixture-add-modal')?.remove();
+        showToast(`Fixture vs ${fixture.opposition} added ✓`);
+        render();
+      } catch {
+        if (msg) msg.textContent = "We couldn't connect. Check your internet connection and try again.";
+      } finally {
+        _fixtureAddBusy = false;
+        if (btn) { btn.disabled = false; btn.textContent = 'Add fixture'; }
+      }
+    }
+
+    // ── Bulk import wizard (RC4.10B) ────────────────────────────────────────
+    // Choose file → map columns → validate + review → confirm → summary.
+    // The file is parsed ENTIRELY in the browser and never uploaded, so no
+    // spreadsheet is ever stored server-side or exposed by a URL. Nothing is
+    // written until the coach confirms the reviewed rows.
+    const FIXTURE_IMPORT_MAX_BYTES = 2 * 1024 * 1024;   // 2 MB
+    let _fxImport = null;      // { rows, headers, mapping, built, busy }
+    // Parsing lives in shared modules so the browser and the server interpret a
+    // spreadsheet identically; loaded on demand so normal use pays nothing.
+    let FixtureImport = null, XlsxRead = null, FIXTURE_CSV_TEMPLATE = '';
+    async function fixtureImportEnsureModules() {
+      if (!FixtureImport) {
+        FixtureImport = await import('./src/fixture-import.js');
+        FIXTURE_CSV_TEMPLATE = FixtureImport.CSV_TEMPLATE;
+      }
+      if (!XlsxRead) XlsxRead = await import('./src/xlsx-read.js');
+    }
+
+    async function fixtureImportOpen(kind) {
+      if (!canI('manage_fixtures')) return showToast('You do not have permission to import fixtures');
+      _fxImport = { kind, stage: 'loading', rows: [], mapping: {}, built: [], busy: false };
+      fixtureImportRender();
+      try { await fixtureImportEnsureModules(); }
+      catch { _fxImport = null; return showToast('Import tools could not be loaded — check your connection'); }
+      _fxImport.stage = 'choose';
+      fixtureImportRender();
+    }
+
+    function fixtureImportClose() {
+      _fxImport = null;
+      document.getElementById('fixture-import-modal')?.remove();
+    }
+
+    function fixtureImportDownloadTemplate() {
+      const blob = new Blob([FIXTURE_CSV_TEMPLATE], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'coacheasier-fixtures-template.csv';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    async function fixtureImportFileChosen(input) {
+      const file = input?.files?.[0];
+      if (!file || !_fxImport) return;
+      const setErr = m => { const e = document.getElementById('fx-imp-error'); if (e) e.textContent = m; };
+      if (file.size > FIXTURE_IMPORT_MAX_BYTES) {
+        return setErr(`That file is ${(file.size / 1048576).toFixed(1)} MB — the limit is 2 MB. Split it into smaller files.`);
+      }
+      try {
+        let rows;
+        if (/\.csv$/i.test(file.name)) {
+          rows = FixtureImport.parseCsv(await file.text());
+        } else if (/\.xlsx$/i.test(file.name)) {
+          rows = await XlsxRead.parseXlsx(new Uint8Array(await file.arrayBuffer()));
+        } else {
+          return setErr('Choose a .csv or .xlsx file.');
+        }
+        if (!rows.length || rows.length < 2) return setErr('That file has no fixture rows under its header.');
+        _fxImport.rows = rows;
+        _fxImport.headers = rows[0];
+        _fxImport.mapping = FixtureImport.autoMapColumns(rows[0]);
+        _fxImport.stage = 'map';
+        fixtureImportRender();
+      } catch (e) {
+        setErr(String(e?.message || 'That file could not be read.'));
+      }
+    }
+
+    function fixtureImportSetMapping(index, field) {
+      if (!_fxImport) return;
+      Object.keys(_fxImport.mapping).forEach(k => { if (_fxImport.mapping[k] === field && String(k) !== String(index)) delete _fxImport.mapping[k]; });
+      if (field) _fxImport.mapping[index] = field; else delete _fxImport.mapping[index];
+    }
+
+    function fixtureImportBuild() {
+      if (!_fxImport) return;
+      _fxImport.built = FixtureImport.buildImportRows(_fxImport.rows, _fxImport.mapping, {
+        dayFirst: true, defaultTeam: state.teamName || '',
+      });
+      const existing = state.fixtures || [];
+      _fxImport.built.forEach(r => {
+        const dup = FixtureImport.findDuplicate(r.fixture, existing);
+        r.duplicate = dup ? { reason: dup.reason, id: dup.match.id } : null;
+        r.decision = dup ? 'skip' : 'new';
+      });
+      FixtureImport.findInternalDuplicates(_fxImport.built).forEach(d => {
+        _fxImport.built[d.index].duplicate = { reason: 'duplicated inside this file' };
+        _fxImport.built[d.index].decision = 'skip';
+      });
+      _fxImport.stage = 'review';
+      fixtureImportRender();
+    }
+
+    function fixtureImportSetDecision(i, decision) { if (_fxImport?.built[i]) _fxImport.built[i].decision = decision; }
+    function fixtureImportConfirmDate(i, checked) {
+      if (!_fxImport?.built[i]) return;
+      _fxImport.built[i].confirmed = !!checked;
+      fixtureImportRender();
+    }
+    function fixtureImportUseAlternative(i) {
+      const r = _fxImport?.built[i];
+      if (!r || !r.dateAlternative) return;
+      const swap = r.fixture.date;
+      r.fixture.date = r.dateAlternative;
+      r.dateAlternative = swap;
+      r.confirmed = true;
+      fixtureImportRender();
+    }
+
+    async function fixtureImportCommit() {
+      if (!_fxImport || _fxImport.busy) return;            // duplicate-submit guard
+      const usable = _fxImport.built.filter(r => !r.errors.length && r.decision !== 'skip');
+      const unconfirmed = usable.filter(r => r.ambiguousDate && !r.confirmed);
+      if (unconfirmed.length) {
+        return showToast(`${unconfirmed.length} ambiguous date${unconfirmed.length > 1 ? 's' : ''} still need confirming`);
+      }
+      if (!usable.length) return showToast('Nothing to import — every row is skipped or invalid');
+      _fxImport.busy = true;
+      fixtureImportRender();
+      try {
+        const res = await fetch('/api/publish?resource=fixtures', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'import', confirmed: true,
+            fixtures: usable.map(r => ({ fixture: r.fixture, decision: r.decision, allowDuplicate: r.decision === 'new' && !!r.duplicate })),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { _fxImport.busy = false; _fxImport.error = data.error || 'Import failed'; return fixtureImportRender(); }
+        _fxImport.summary = data.summary;
+        _fxImport.details = data.details || [];
+        _fxImport.stage = 'done';
+        _fxImport.busy = false;
+        await loadFixturesFromServer(true);
+        fixtureImportRender();
+        render();                                          // Overview refreshes immediately
+      } catch {
+        _fxImport.busy = false;
+        _fxImport.error = "We couldn't connect. Check your internet connection and try again.";
+        fixtureImportRender();
+      }
+    }
+
+    function fixtureImportRender() {
+      if (!_fxImport) return;
+      document.getElementById('fixture-import-modal')?.remove();
+      const inp = 'min-height:36px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);padding:0 8px;font-size:12.5px';
+      const s = _fxImport;
+      let body = '';
+
+      if (s.stage === 'loading') body = `<p class="muted" style="font-size:12.5px">Loading import tools…</p>`;
+
+      if (s.stage === 'choose') {
+        body = `
+          <p class="muted" style="font-size:12.5px;margin:0 0 12px">
+            Choose a ${s.kind === 'xlsx' ? '.xlsx spreadsheet' : '.csv file'}. It is read on this device and never uploaded.
+            Nothing is saved until you review and confirm.</p>
+          <input type="file" accept="${s.kind === 'xlsx' ? '.xlsx' : '.csv'}" onchange="fixtureImportFileChosen(this)" style="${inp};padding:8px;width:100%">
+          <div id="fx-imp-error" style="color:#dc2626;font-size:12.5px;margin-top:10px;min-height:16px"></div>
+          <button class="btn ghost" type="button" style="font-size:12px;margin-top:8px" onclick="fixtureImportDownloadTemplate()">↓ Download CSV template</button>`;
+      }
+
+      if (s.stage === 'map') {
+        body = `
+          <p class="muted" style="font-size:12.5px;margin:0 0 10px">Check how your columns map. We matched what we recognised.</p>
+          <div style="display:grid;gap:7px;max-height:46vh;overflow-y:auto">
+            ${s.headers.map((h, i) => `
+              <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
+                <span style="font-size:12.5px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(String(h || `Column ${i + 1}`))}</span>
+                <select style="${inp}" onchange="fixtureImportSetMapping(${i}, this.value)">
+                  <option value="">— ignore —</option>
+                  ${FixtureImport.FIXTURE_TARGET_FIELDS.map(f =>
+                    `<option value="${f}" ${s.mapping[i] === f ? 'selected' : ''}>${f}</option>`).join('')}
+                </select>
+              </div>`).join('')}
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+            <button class="btn" type="button" onclick="fixtureImportClose()">Cancel</button>
+            <button class="btn primary" type="button" onclick="fixtureImportBuild()">Review ${s.rows.length - 1} rows →</button>
+          </div>`;
+      }
+
+      if (s.stage === 'review') {
+        const ok = s.built.filter(r => !r.errors.length).length;
+        const bad = s.built.length - ok;
+        const ambiguous = s.built.filter(r => r.ambiguousDate && !r.confirmed).length;
+        body = `
+          <p style="font-size:12.5px;margin:0 0 10px">
+            <strong>${ok}</strong> ready${bad ? ` · <span style="color:#dc2626">${bad} with errors</span>` : ''}${ambiguous ? ` · <span style="color:var(--amber,#b45309)">${ambiguous} ambiguous date${ambiguous > 1 ? 's' : ''} to confirm</span>` : ''}
+          </p>
+          <div style="display:grid;gap:8px;max-height:46vh;overflow-y:auto">
+            ${s.built.map((r, i) => `
+              <div style="border:1px solid ${r.errors.length ? 'rgba(220,38,38,0.4)' : 'var(--line)'};border-radius:9px;padding:9px 10px">
+                <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                  <strong style="font-size:12.5px">${esc(r.fixture.opposition || '(no opponent)')}</strong>
+                  <span class="muted" style="font-size:11.5px">row ${r.rowNumber} · ${esc(r.fixture.date || 'no date')} ${esc(r.fixture.time || '')} ${esc(HOME_AWAY_LABEL[r.fixture.homeAway] || '')}</span>
+                </div>
+                ${r.errors.length ? `<div style="color:#dc2626;font-size:11.5px;margin-top:4px">${esc(r.errors.join('; '))}</div>` : ''}
+                ${r.ambiguousDate ? `
+                  <div style="font-size:11.5px;margin-top:6px;color:var(--amber,#b45309)">
+                    Ambiguous date — read as <strong>${esc(r.fixture.date)}</strong>.
+                    <label style="margin-left:6px"><input type="checkbox" ${r.confirmed ? 'checked' : ''} onchange="fixtureImportConfirmDate(${i}, this.checked)"> correct</label>
+                    <button class="btn ghost" type="button" style="font-size:11px;padding:1px 7px;margin-left:6px" onclick="fixtureImportUseAlternative(${i})">use ${esc(r.dateAlternative)}</button>
+                  </div>` : ''}
+                ${r.duplicate ? `
+                  <div style="font-size:11.5px;margin-top:6px">
+                    Possible duplicate (${esc(r.duplicate.reason)}) —
+                    <select style="${inp};min-height:28px" onchange="fixtureImportSetDecision(${i}, this.value)">
+                      <option value="skip" ${r.decision === 'skip' ? 'selected' : ''}>Skip</option>
+                      <option value="update" ${r.decision === 'update' ? 'selected' : ''}>Update existing</option>
+                      <option value="new" ${r.decision === 'new' ? 'selected' : ''}>Import as new</option>
+                    </select>
+                  </div>` : ''}
+              </div>`).join('')}
+          </div>
+          ${s.error ? `<div style="color:#dc2626;font-size:12.5px;margin-top:8px">${esc(s.error)}</div>` : ''}
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap">
+            <button class="btn" type="button" onclick="fixtureImportClose()">Cancel</button>
+            <button class="btn primary" type="button" ${s.busy ? 'disabled' : ''} onclick="fixtureImportCommit()">${s.busy ? 'Importing…' : 'Confirm import'}</button>
+          </div>`;
+      }
+
+      if (s.stage === 'done') {
+        const sum = s.summary || {};
+        body = `
+          <p style="font-size:13px;margin:0 0 10px"><strong>Import complete.</strong></p>
+          <div style="display:grid;gap:4px;font-size:12.5px;margin-bottom:12px">
+            <div>Imported: <strong>${sum.imported || 0}</strong></div>
+            <div>Updated: <strong>${sum.updated || 0}</strong></div>
+            <div>Skipped: <strong>${sum.skipped || 0}</strong></div>
+            ${sum.blocked ? `<div style="color:var(--amber,#b45309)">Blocked (existing match data): <strong>${sum.blocked}</strong></div>` : ''}
+            ${sum.errors ? `<div style="color:#dc2626">Errors: <strong>${sum.errors}</strong></div>` : ''}
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn primary" type="button" onclick="fixtureImportClose()">Done</button>
+          </div>`;
+      }
+
+      const el = document.createElement('div');
+      el.id = 'fixture-import-modal';
+      el.style.cssText = 'position:fixed;inset:0;z-index:9600;background:rgba(4,7,14,0.55);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+      el.innerHTML = `<div class="card" style="max-width:600px;width:100%;margin:auto">
+        <h2 style="margin:0 0 4px;font-size:17px">Import fixtures${s.kind === 'xlsx' ? ' (Excel)' : ' (CSV)'}</h2>
+        ${body}
+      </div>`;
+      document.body.appendChild(el);
+    }
+
+    /** Fixtures are server-owned; refresh local state after any change. */
+    async function loadFixturesFromServer(force) {
+      try {
+        const res = await fetch('/api/publish?resource=fixtures');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.fixtures)) { state.fixtures = data.fixtures; saveState('Fixtures synced'); }
+      } catch { /* offline — keep local view */ }
+    }
+
     function renderCoachOverview() {
       if (state.features?.coachTimeline      && isCoach()) { renderCoachTimeline();        return; }
       if (state.features?.executiveDashboard && isCoach()) { renderExecutiveDashboard();   return; }
@@ -10792,6 +11196,9 @@
               </button>`).join('')}
             </div>
           </div>` : ''}
+
+          <!-- ── Fixtures (RC4.10B) — entry and import are reachable from Overview ── -->
+          ${renderOverviewFixturesCard()}
 
           <!-- ── Club Command Dashboard — leads the page (Today at a glance) ──────── -->
           <div class="mctl-section-label">Today at a glance</div>

@@ -35,6 +35,10 @@ export const PERM = {
   // player deletion; no route may key that action off a job title again.
   PLAYER_DELETE:   'player_delete',    // irreversible player erasure, assigned team only
   ASSIGN_ACCESS:   'assign_access',    // grant/change another member's access profile
+  // RC4.10B — fixture creation and bulk import. Deliberately separate from
+  // MANAGE_TEAMS (club-wide settings): Coach Access runs fixtures for its
+  // assigned teams without gaining unrestricted club configuration.
+  MANAGE_FIXTURES: 'manage_fixtures',
 };
 
 export const ALL_PERMISSIONS = Object.values(PERM);
@@ -57,7 +61,7 @@ export const ROLES = [
 ];
 
 const P = PERM;
-const STAFF_CORE = [P.MANAGE_PLAYERS, P.PUBLISH_TRAINING, P.PUBLISH_SQUADS, P.MESSAGING, P.REPORTS, P.CLUB_EXPORTS, P.MANAGE_TEAMS];
+const STAFF_CORE = [P.MANAGE_PLAYERS, P.PUBLISH_TRAINING, P.PUBLISH_SQUADS, P.MESSAGING, P.REPORTS, P.CLUB_EXPORTS, P.MANAGE_TEAMS, P.MANAGE_FIXTURES];
 
 export const ROLE_PERMISSIONS = {
   owner:      [...ALL_PERMISSIONS],
@@ -65,7 +69,7 @@ export const ROLE_PERMISSIONS = {
   admin:      [...STAFF_CORE, P.MANAGE_COACHES, P.MEDICAL_ACCESS, P.MANAGE_SUBSCRIPTIONS, P.FINANCIAL, P.AI_INTELLIGENCE, P.DANGER_ZONE],
   head_coach: [...STAFF_CORE, P.MANAGE_COACHES, P.MEDICAL_ACCESS, P.MANAGE_SUBSCRIPTIONS, P.AI_INTELLIGENCE, P.DANGER_ZONE],
   assistant:  [...STAFF_CORE, P.MEDICAL_ACCESS, P.AI_INTELLIGENCE],
-  manager:    [P.MANAGE_PLAYERS, P.MESSAGING, P.REPORTS, P.CLUB_EXPORTS, P.MANAGE_TEAMS],
+  manager:    [P.MANAGE_PLAYERS, P.MESSAGING, P.REPORTS, P.CLUB_EXPORTS, P.MANAGE_TEAMS, P.MANAGE_FIXTURES],
   medical:    [P.MEDICAL_ACCESS, P.MESSAGING, P.REPORTS],
   snc:        [P.PUBLISH_TRAINING, P.MESSAGING, P.REPORTS],
   analyst:    [P.REPORTS, P.AI_INTELLIGENCE],
@@ -102,13 +106,13 @@ export const ACCESS_PROFILE_PERMISSIONS = {
   // assignment, NOT medical (separately granted), NOT diagnostics.
   coach: [
     P.MANAGE_PLAYERS, P.PLAYER_DELETE, P.PUBLISH_TRAINING, P.PUBLISH_SQUADS,
-    P.MESSAGING, P.REPORTS, P.CLUB_EXPORTS, P.AI_INTELLIGENCE,
+    P.MESSAGING, P.REPORTS, P.CLUB_EXPORTS, P.AI_INTELLIGENCE, P.MANAGE_FIXTURES,
   ],
   // Assigned teams: membership + invitations, availability, fixtures and
   // logistics, operational messaging and reports. NOT coaching publication,
   // NOT access assignment, NOT medical, NOT diagnostics.
   manager: [
-    P.MANAGE_PLAYERS, P.PLAYER_DELETE, P.MANAGE_TEAMS,
+    P.MANAGE_PLAYERS, P.PLAYER_DELETE, P.MANAGE_TEAMS, P.MANAGE_FIXTURES,
     P.MESSAGING, P.REPORTS, P.CLUB_EXPORTS,
   ],
 };
