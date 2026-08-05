@@ -170,7 +170,21 @@ async function handleStripeWebhook(req, res) {
 }
 
 function sendError(res, error, fallbackStatus = 400) {
-  const status = error?.status || fallbackStatus;
+  // Three classes (launch blocker, 2026-08-05):
+  //  1. Errors with an explicit .status — thrown intentionally with messages we
+  //     wrote for users (validation, auth, storage's fixed 503 text). Pass through.
+  //  2. Native engine errors (TypeError & co) — crashes, not messages. Their text
+  //     is internals and once leaked an env value to unauthenticated callers.
+  //     Generic 500; detail server-side only.
+  //  3. Plain Errors without .status — our own domain validation ("Club name is
+  //     required"). Client fault, author-written text: fallback status + message.
+  const intentional = Number.isInteger(error?.status);
+  const native = error instanceof TypeError || error instanceof RangeError || error instanceof SyntaxError;
+  if (!intentional && native) {
+    console.error('identity handler error:', error);
+    return res.status(500).json({ ok: false, error: 'Something went wrong on our side — please try again.' });
+  }
+  const status = intentional ? error.status : fallbackStatus;
   return res.status(status).json({ ok: false, error: error?.message || 'Identity request failed' });
 }
 

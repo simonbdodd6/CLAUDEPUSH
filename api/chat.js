@@ -663,6 +663,10 @@ export default async function handler(req, res) {
     return err(res, 405, 'Method not allowed');
   } catch(e) {
     console.error('chat handler error:', e);
-    return err(res, 500, e.message);
+    // Same policy as identity: only intentionally-statused errors carry their
+    // message to the client. Storage failures arrive as 503 with a fixed safe
+    // message; anything else is internals and must not be echoed.
+    if (Number.isInteger(e?.status)) return err(res, e.status, e.message);
+    return err(res, 500, 'Chat is temporarily unavailable — please try again shortly.');
   }
 }

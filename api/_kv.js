@@ -1,12 +1,39 @@
 // api/_kv.js — Upstash Redis REST client
 // Zero extra dependencies — uses native fetch (Node 18+ / Vercel edge runtime).
 // Docs: https://upstash.com/docs/redis/overall/restapi
+//
+// Failure policy (launch blocker, 2026-08-05): storage errors thrown from here
+// carry status 503 and a FIXED, client-safe message. Handlers echo error
+// messages to browsers, and the raw upstream text once carried a mispasted env
+// value — a token — to every unauthenticated caller. No env value, upstream
+// response body or URL may ever appear in a thrown message. Sanitised detail
+// goes to the server log only.
 
-const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+// Read at call time, not module load, so tests can vary configuration and a
+// misconfigured value is re-checked on every request.
+function redisUrl()   { return String(process.env.UPSTASH_REDIS_REST_URL || '').trim(); }
+function redisToken() { return String(process.env.UPSTASH_REDIS_REST_TOKEN || '').trim(); }
 
+function urlValid(value) {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'https:' || u.protocol === 'http:';
+  } catch { return false; }
+}
+
+/** True only when the URL parses as a real http(s) URL AND a token is present.
+ *  A pasted token line in the URL field must read as NOT configured. */
 export function kvConfigured() {
-  return Boolean(REDIS_URL && REDIS_TOKEN);
+  return Boolean(redisToken()) && urlValid(redisUrl());
+}
+
+/** The one storage error clients may ever see. */
+function storageError(logDetail) {
+  if (logDetail) console.error(`[kv] storage unavailable: ${logDetail}`);
+  const error = new Error('Storage temporarily unavailable');
+  error.status = 503;
+  error.code = 'STORAGE_UNAVAILABLE';
+  return error;
 }
 
 /**
@@ -14,24 +41,54 @@ export function kvConfigured() {
  * Uses POST / with JSON body — handles complex values safely.
  */
 async function redis(command, ...args) {
-  if (!REDIS_URL || !REDIS_TOKEN) {
-    throw new Error('Upstash Redis not configured. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.');
+  const url = redisUrl();
+  const token = redisToken();
+  if (!token) throw storageError('UPSTASH_REDIS_REST_TOKEN is not set');
+  if (!urlValid(url)) throw storageError('UPSTASH_REDIS_REST_URL is not a valid http(s) URL');
+  let res;
+  try {
+    res = await fetch(url, {
+      method:  'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify([command.toUpperCase(), ...args]),
+    });
+  } catch (cause) {
+    // Network/DNS/parse failure — the cause can embed the URL; log the class only.
+    throw storageError(`request failed (${cause?.name || 'FetchError'})`);
   }
-  const res = await fetch(REDIS_URL, {
-    method:  'POST',
-    headers: {
-      'Authorization': `Bearer ${REDIS_TOKEN}`,
-      'Content-Type':  'application/json',
-    },
-    body: JSON.stringify([command.toUpperCase(), ...args]),
-  });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Upstash HTTP ${res.status}: ${text}`);
+    // 401/403 = bad token; anything else = Upstash-side trouble. Status only —
+    // never the response body, which is upstream-controlled text.
+    throw storageError(`Upstash responded HTTP ${res.status}`);
   }
   const { result, error } = await res.json();
-  if (error) throw new Error(`Redis error: ${error}`);
+  if (error) throw storageError(`Redis command error (${String(command).toUpperCase()})`);
   return result;
+}
+
+/**
+ * Read-only reachability probe: GETs a nonexistent key. Success proves URL and
+ * token are both good. `code` is a fixed enum — safe for client display.
+ */
+export async function kvHealthCheck() {
+  if (!redisToken() || !urlValid(redisUrl())) {
+    return { ok: false, code: !redisToken() ? 'unconfigured' : 'bad-url' };
+  }
+  try {
+    const res = await fetch(redisUrl(), {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${redisToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['GET', '__healthcheck__']),
+    });
+    if (res.status === 401 || res.status === 403) return { ok: false, code: 'unauthorized' };
+    if (!res.ok) return { ok: false, code: 'error' };
+    return { ok: true, code: 'ok' };
+  } catch {
+    return { ok: false, code: 'unreachable' };
+  }
 }
 
 /** Get a JSON value, or null if missing */

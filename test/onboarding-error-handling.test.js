@@ -48,22 +48,29 @@ test('clubWizErrorMessage: 429 returns rate-limit message', () => {
   assert.equal(msg, 'Too many attempts. Please wait a few minutes before trying again.');
 });
 
-test('clubWizErrorMessage: 500 uses server message when present', () => {
+// CONTRACT CHANGE (2026-08-05 launch blocker): 5xx no longer surfaces the
+// server message. During the first real onboarding, a 400/500 body carried raw
+// internals (including an env value) into the UI. Server text is for 4xx
+// validation only — 5xx always maps to the fixed "temporarily unavailable"
+// message, which also tells the coach their wizard input is preserved.
+test('clubWizErrorMessage: 500 NEVER uses the server message', () => {
   const { clubWizErrorMessage } = buildScope();
   const msg = clubWizErrorMessage(500, 'Database connection failed');
-  assert.equal(msg, 'Database connection failed');
+  assert.equal(msg.includes('Database connection failed'), false, 'internals must not surface');
+  assert.match(msg, /temporarily unavailable/i);
 });
 
-test('clubWizErrorMessage: 503 falls back to generic when no server message', () => {
+test('clubWizErrorMessage: 503 returns the actionable unavailable message', () => {
   const { clubWizErrorMessage } = buildScope();
   const msg = clubWizErrorMessage(503, '');
-  assert.equal(msg, "We couldn't create your club. Please try again.");
+  assert.match(msg, /temporarily unavailable/i);
+  assert.match(msg, /details are saved|try again/i, 'coach is told their input is kept');
 });
 
-test('clubWizErrorMessage: undefined server message falls back to generic', () => {
+test('clubWizErrorMessage: undefined server message on 5xx still maps to the fixed text', () => {
   const { clubWizErrorMessage } = buildScope();
   const msg = clubWizErrorMessage(500, undefined);
-  assert.equal(msg, "We couldn't create your club. Please try again.");
+  assert.match(msg, /temporarily unavailable/i);
 });
 
 test('clubWizErrorMessage: 0 (network failure) falls back to generic', () => {

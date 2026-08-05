@@ -1,7 +1,7 @@
 // Browser-safe public configuration. Never send private VAPID or Redis values.
 // Also handles ?log=1 for authenticated coach activity log reads.
 import { setCors, vapidKeyStatus } from './_http.js';
-import { kvConfigured, kvLrange } from './_kv.js';
+import { kvConfigured, kvHealthCheck, kvLrange } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { requireTenantPermission, PERM } from './_tenant.js';
 
@@ -32,7 +32,16 @@ export default async function handler(req, res) {
   const vapidPublicKey = (process.env.VAPID_PUBLIC_KEY || '').trim();
   const storageConfigured = kvConfigured();
   const vapidStatus = vapidKeyStatus();
+  // ?health=1 — live storage probe (2026-08-05 blocker). storageConfigured only
+  // checks the env vars LOOK right; this proves the URL+token actually
+  // authenticate, via a read of a nonexistent key. `code` is a fixed enum
+  // ('ok' | 'unconfigured' | 'bad-url' | 'unauthorized' | 'unreachable' |
+  // 'error') — no env value or upstream text can appear here. Lets a deploy be
+  // verified before anyone retries onboarding, instead of discovering a bad
+  // credential through a failing wizard.
+  const storageHealth = req.query?.health === '1' ? await kvHealthCheck() : null;
   return res.status(200).json({
+    ...(storageHealth ? { storageHealth } : {}),
     // Deployment identity for the Settings → Device card. Provided by Vercel
     // at build time; never hardcoded.
     version: (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || 'local',
