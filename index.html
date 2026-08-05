@@ -4582,6 +4582,52 @@
        repeated on every card. */
     .ce-powered-mark { width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; opacity: 0.9; }
 
+    /* RC4.10F — persistent product mark, top-right of the shared header.
+       Colours are LITERAL CoachEasier values, never var(--accent)/var(--brand),
+       so a club's custom palette can never recolour or wash out the platform
+       signature. Lighter than the page title: this is a signature, not a heading. */
+    .ce-topmark {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 5px 10px; border-radius: 999px;
+      background: rgba(143,107,42,0.07);
+      border: 1px solid rgba(143,107,42,0.22);
+      color: #6E5320;                       /* champagne ink — AA on light surfaces */
+      font-size: 12.5px; font-weight: 700; letter-spacing: 0.01em;
+      text-decoration: none; white-space: nowrap; flex-shrink: 0;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .ce-topmark:hover { background: rgba(143,107,42,0.12); border-color: rgba(143,107,42,0.36); }
+    .ce-topmark:focus-visible { outline: 2px solid #8F6B2A; outline-offset: 2px; }
+    .ce-topmark img { width: 24px; height: 24px; display: block; flex-shrink: 0; }
+
+    /* Mobile: the mark alone. The wordmark is dropped rather than wrapped, so it
+       can never collide with the page title or a screen's own controls. */
+    @media (max-width: 560px) {
+      .ce-topmark { padding: 5px; gap: 0; border-radius: 50%; }
+      .ce-topmark .ce-topmark-word { display: none; }
+      .ce-topmark img { width: 22px; height: 22px; }
+      /* The narrow layout stacks .topbar into a single grid column, which would
+         leave the signature floating on the LEFT under the title. Keep the
+         header's action row right-aligned so the mark stays top-right. */
+      .topbar > .button-row { justify-content: flex-end; }
+    }
+
+    /* Availability — title row so the mark sits opposite the heading and stays
+       clear of the week navigator and response filters beneath it. */
+    .avail-head-row {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 12px; flex-wrap: nowrap;
+    }
+    .avail-head-row h2 { min-width: 0; }
+    /* Match Centre — the header is a wrapping flex row (fixture · chips · mark).
+       Ordering keeps the mark on the far right of the FIRST line on desktop and
+       drops it beside the fixture on mobile, where the chips take a full row. */
+    .mc10-head > .ce-topmark { order: 3; margin-left: auto; align-self: flex-start; }
+    @media (max-width: 900px) { .mc10-head > .ce-topmark { order: 2; } }
+    /* Match Centre keeps the SAME champagne ink as every other screen. An earlier
+       lighter variant assumed a near-black header; the light theme overrides that
+       surface, which dropped the contrast to 1.6:1. One treatment, 6.5:1. */
+
     /* 4 · Support card — small product mark beside the CoachEasier Support title. */
     .ce-support-mark {
       width: 18px; height: 18px; display: inline-block; vertical-align: -3px;
@@ -4640,6 +4686,15 @@
         </div>
         <div class="button-row">
           <span class="save-pill" title="Auto-saved"><span class="dot" id="saveDot"></span><span id="saveStatus" style="display:none"></span></span>
+          <!-- RC4.10F — persistent platform signature. Lives in the ONE shared
+               signed-in header, so every coach and player screen inherits it and
+               no screen can render a second copy. Deliberately never re-skinned
+               by club colours: the club owns the page, CoachEasier owns this mark. -->
+          <a class="ce-topmark" href="#" aria-label="CoachEasier — platform information"
+             title="CoachEasier" onclick="ceOpenProductInfo(event)">
+            <img src="/brand/svg/coacheasier-mark-on-light.svg" alt="" onerror="this.remove()">
+            <span class="ce-topmark-word">CoachEasier</span>
+          </a>
         </div>
       </header>
 
@@ -11840,7 +11895,12 @@
                action buttons were removed (Messages is in the left nav, replies refresh
                automatically, requests are sent by automation). -->
           <header class="avail-head">
-            <h2>Availability</h2>
+            <!-- Title row: the product mark sits opposite the heading, above and
+                 clear of the week navigator and response filters below. -->
+            <div class="avail-head-row">
+              <h2>Availability</h2>
+              ${ceProductMarkHtml()}
+            </div>
             <nav class="avail-weeknav" aria-label="Week">
               <button class="awk-arrow" type="button" onclick="availWeekShift(-1)" aria-label="Previous week"><span class="awk-chev">‹</span><span class="awk-word">Previous Week</span></button>
               <button class="awk-now${weekOffset === 0 ? ' is-now' : ''}" type="button" onclick="availWeekShift(0)" title="Back to this week">
@@ -12967,6 +13027,9 @@
             <div class="mc10-chip"><span class="mc10-chip-lbl">Available</span><strong class="mc10-chip-val ${pendingCount?'v-almost':'v-ready'}">${availCount}/${_availTotal||availCount}</strong></div>
             <div class="mc10-chip"><span class="mc10-chip-lbl">Medical</span><strong class="mc10-chip-val ${_medClear?'v-ready':'v-build'}">${_medClear?'All Clear':medAlerts.length+' Flagged'}</strong></div>
           </div>
+          <!-- Sits beside the fixture title, deliberately BEFORE the status chips in
+               the flex row so it can never collide with AVAILABLE / MEDICAL. -->
+          ${ceProductMarkHtml()}
         </header>
 
         ${_matchTabBar()}
@@ -16489,6 +16552,31 @@
     const CE_DEFAULT_COLOURS = { primary: '#8F6B2A', secondary: '#8E959D' };
 
     /** Clear a club's custom colours and fall back to the CoachEasier defaults. */
+    /** RC4.10F — the product lockup markup, defined ONCE and reused by the three
+     *  screens that suppress the shared header (Availability, Match Centre and
+     *  Messages render their own full-bleed layouts). Every other screen inherits
+     *  the copy in the shared header, so exactly one mark is ever visible. */
+    function ceProductMarkHtml(extraStyle = '') {
+      return `<a class="ce-topmark ce-topmark-local" href="#" aria-label="CoachEasier — platform information"
+        title="CoachEasier" onclick="ceOpenProductInfo(event)"${extraStyle ? ` style="${extraStyle}"` : ''}
+        ><img src="/brand/svg/coacheasier-mark-on-light.svg" alt="" onerror="this.remove()"
+        ><span class="ce-topmark-word">CoachEasier</span></a>`;
+    }
+
+    /** The top-right product mark opens the existing CoachEasier Support/About
+     *  section in Settings. It never navigates away from the app, and never
+     *  surfaces build, environment, hostname or diagnostic information. */
+    function ceOpenProductInfo(event) {
+      if (event) event.preventDefault();
+      try {
+        if (isCoach()) setSection('coach', 'settings');
+        else setSection('player', 'account');
+        const card = [...document.querySelectorAll('.card')]
+          .find(el => /CoachEasier Support/.test(el.innerText || ''));
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch { /* a signature must never break navigation */ }
+    }
+
     async function settingsResetClubColours() {
       const ok = await ceConfirm('Reset to CoachEasier colours?',
         'Your club\u2019s custom colours will be removed and the app returns to the CoachEasier black, silver and champagne-gold identity. Your club name and logo are not affected.',
@@ -24874,7 +24962,10 @@
         <div class="chat-list">
           <div class="chat-list-head">
             <div style="display:flex;align-items:center;gap:9px;min-width:0"><button class="chat-exit-btn" type="button" onclick="chatExitMessages()" aria-label="Back to app" title="Back to app"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span class="chat-exit-label">Back</span></button>${clubLogoBadgeHtml('width:26px;height:26px;border-radius:7px')}<h2>Messages</h2></div>
-            <div style="display:flex;gap:6px">
+            <div style="display:flex;gap:6px;align-items:center">
+              <!-- Ahead of the conversation controls; the mobile composer is a
+                   separate element at the foot of the thread and is unaffected. -->
+              ${ceProductMarkHtml()}
               ${mode==='coach'?`<button class="chat-new-msg-btn" type="button" onclick="chatOpenNewDmPicker()" title="New message"><span>+</span><span>New</span></button>`:''}
             </div>
           </div>
