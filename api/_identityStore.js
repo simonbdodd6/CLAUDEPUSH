@@ -29,6 +29,28 @@ export const DEFAULT_TEAM = {
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 
+/** Same runtime signal cookieSecureFlag() uses: Vercel (any environment) or NODE_ENV=production. */
+function isProductionRuntime() {
+  return process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
+}
+
+/**
+ * DEFAULT_TEAM and the legacy compatibility accounts are development and test
+ * scaffolding only.
+ *
+ * In production they must never be synthesised and never be written back: an
+ * empty production store has to stay empty so the first real user onboards a
+ * genuine club through the normal create-club flow. Seeding them was what
+ * recreated boitsfort-rfc — on every identity read, and on every club creation
+ * (createClub persists whatever loadTeams() returned).
+ *
+ * There is deliberately no environment-variable override. Production cannot
+ * re-enable this by configuration.
+ */
+export function legacySeedEnabled() {
+  return !isProductionRuntime();
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const LEGACY_STAFF_ACCOUNTS = process.env.COACH_DEMO_EMAIL && process.env.COACH_DEMO_PASSWORD
@@ -218,10 +240,11 @@ export async function saveUsers(users) {
 
 export async function loadTeams() {
   const teams = (await kvGet(TEAMS_KEY)) || [];
+  // Production: exactly what is stored. No synthesis, no write-on-read.
+  if (!legacySeedEnabled()) return teams;
   if (teams.some(team => team.id === DEFAULT_TEAM.id)) return teams;
-  const merged = [DEFAULT_TEAM, ...teams];
-  await kvSet(TEAMS_KEY, merged);
-  return merged;
+  // Dev/test convenience only, and in memory only — never persisted here.
+  return [DEFAULT_TEAM, ...teams];
 }
 
 export async function saveTeams(teams) {
@@ -410,6 +433,10 @@ async function saveInvites(invites) {
 }
 
 async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
+  // Production must never recreate the legacy coach/player scaffolding. This
+  // ran on every listIdentityState() call and rebuilt users, memberships and
+  // player profiles for boitsfort-rfc after any cleanup.
+  if (!legacySeedEnabled()) return;
   if (teamId !== DEFAULT_TEAM.id) return;
   let [users, members, profiles] = await Promise.all([
     loadUsers(),
