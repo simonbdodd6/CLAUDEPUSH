@@ -1,6 +1,7 @@
 import { kvGet, kvSet, kvScanKeys } from './_kv.js';
-import { APP_PREFIX, LEGACY_PREFIX, availabilityKey, legacyAvailabilityKey, teamAvailabilityKey } from './_keys.js';
+import { APP_PREFIX, LEGACY_PREFIX, availabilityKey, legacyAvailabilityKey, teamAvailabilityKey, groupAvailabilityKey } from './_keys.js';
 import { DEFAULT_TEAM } from './_identityStore.js';
+import { INITIAL_GROUP_ID } from './_structureStore.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // RC4.7A — TENANT-SCOPED AVAILABILITY
@@ -42,6 +43,66 @@ export async function saveAvailability(teamId, sessionId, value) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// RC4.7 Phase B — GROUP-SCOPED AVAILABILITY
+//
+// Availability is a GROUP resource: one shared pool answers once per session,
+// and every team in the group selects from those answers. Records live at
+// app:availability:<clubId>:group:<groupId>:<sessionId>.
+//
+// Fallback chain, INITIAL MIGRATED GROUP ONLY: pre-RC4.7 records live on the
+// club-scoped key (RC4.7A format), and for the original default club on the
+// flat keys below that. Any other group reads exclusively its own keyspace —
+// a U18 group can never see Senior data through a fallback. Writes always
+// land on the group-scoped key.
+// ───────────────────────────────────────────────────────────────────────────
+
+function canReadClubLegacy(groupId) {
+  return String(groupId || '') === INITIAL_GROUP_ID;
+}
+
+export async function loadGroupAvailability(clubId, groupId, sessionId) {
+  const scoped = await kvGet(groupAvailabilityKey(normalizeTeamId(clubId), String(groupId || ''), sessionId));
+  if (scoped && typeof scoped === 'object') return scoped;
+  if (!canReadClubLegacy(groupId)) return {};
+  // The initial group IS the club's pre-structure data — reuse the full
+  // RC4.7A chain (club-scoped key, then flat legacy for the default club).
+  return loadAvailability(clubId, sessionId);
+}
+
+export async function saveGroupAvailability(clubId, groupId, sessionId, value) {
+  await kvSet(groupAvailabilityKey(normalizeTeamId(clubId), String(groupId || ''), sessionId), value);
+}
+
+/** Read every availability record for ONE group, keyed by sessionId. */
+export async function loadAllGroupAvailability(clubId, groupId) {
+  const club = normalizeTeamId(clubId);
+  const group = String(groupId || '');
+  const bySession = {};
+
+  const marker = `${APP_PREFIX}:availability:${club}:group:${group}:`;
+  const keys = await kvScanKeys(`${marker}*`);
+  const stores = await Promise.all(keys.map(k => kvGet(k)));
+  keys.forEach((k, i) => {
+    const store = stores[i];
+    if (!store || typeof store !== 'object') return;
+    const sessionId = k.slice(marker.length);
+    if (sessionId) bySession[sessionId] = store;
+  });
+
+  if (!canReadClubLegacy(group)) return bySession;
+
+  // Initial group: fill gaps from the club-scoped (and, transitively for the
+  // default club, flat legacy) records. Group-scoped answers always win.
+  const legacy = await loadAllAvailability(club);
+  for (const [sessionId, store] of Object.entries(legacy)) {
+    // Skip our own group-scoped suffixes surfacing through the club scan.
+    if (sessionId.startsWith('group:')) continue;
+    if (!bySession[sessionId]) bySession[sessionId] = store;
+  }
+  return bySession;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // SHARED AVAILABILITY RESOLUTION LAYER
 //
 // Availability records exist once (the Redis availability:* keys). Resolution
@@ -71,7 +132,12 @@ export async function loadAllAvailability(teamId) {
     const store = scopedStores[i];
     if (!store || typeof store !== 'object') return;
     const sessionId = k.slice(scopedMarker.length);
-    if (sessionId) bySession[sessionId] = store;
+    // Session IDs cannot contain ':' — a colon here means an RC4.7
+    // group-scoped key (availability:<club>:group:<groupId>:<session>)
+    // surfacing through the club-level scan. Those belong to the group
+    // reader, never to this club-level view.
+    if (!sessionId || sessionId.includes(':')) return;
+    bySession[sessionId] = store;
   });
 
   if (!canReadLegacy(scopedTeam)) return bySession;

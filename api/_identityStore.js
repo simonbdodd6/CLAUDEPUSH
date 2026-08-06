@@ -3,6 +3,7 @@ import {
   permissionsFor, canonicalRole, accessProfileOf, isClubOwner,
   accessProfileRank, ACCESS_PROFILES, PERM,
 } from './_permissions.js';
+import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope } from './_accessScope.js';
 import { key } from './_keys.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
@@ -1718,6 +1719,57 @@ export async function setAccessProfile(memberId, profile, changedBy, expectedTea
     assignedTeams: await assignedTeamsForUser(member.userId),
     changedAt: member.accessChangedAt,
   };
+}
+
+// ── RC4.7 Phase B — scoped access grants + player eligibility ───────────────
+// Store-level setters only: the actor checks (who may edit access) ride the
+// existing setAccessProfile-style route gates in Phase C. Both fields are
+// normalized on write through _accessScope, so malformed input can never be
+// PERSISTED, and normalization at read time keeps even hand-edited data
+// failing closed.
+
+/** Replace a member's scoped access grants. Identity and history untouched. */
+export async function setMemberAccessScope(memberId, accessScope, changedBy, expectedTeamId) {
+  const members = await loadTeamMembers();
+  const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+  member.accessScope = normalizeAccessScope(accessScope);
+  member.accessChangedBy = changedBy || member.accessChangedBy || null;
+  member.accessChangedAt = nowIso();
+  await saveTeamMembers(members);
+  return { teamMember: member };
+}
+
+/**
+ * Soft-remove ONE scoped grant (status → 'removed'). The membership, the
+ * identity, and every other grant survive. Removing a grant a member does not
+ * hold is a no-op, not an error — the end state is identical.
+ */
+export async function removeScopedGrant(memberId, { groupId = null, teamId = null } = {}, changedBy, expectedTeamId) {
+  const members = await loadTeamMembers();
+  const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+  const scope = effectiveAccessScope(member);   // materialise derived scope before editing
+  if (groupId !== null) {
+    scope.groups = scope.groups.map(g => g.groupId === String(groupId) ? { ...g, status: 'removed' } : g);
+  }
+  if (teamId !== null) {
+    scope.teams = scope.teams.map(t => t.teamId === String(teamId) ? { ...t, status: 'removed' } : t);
+  }
+  member.accessScope = normalizeAccessScope(scope);
+  member.accessChangedBy = changedBy || member.accessChangedBy || null;
+  member.accessChangedAt = nowIso();
+  await saveTeamMembers(members);
+  return { teamMember: member };
+}
+
+/** Set which teams a player may be SELECTED for. Never grants capabilities. */
+export async function setPlayerEligibility(memberId, eligibility, changedBy, expectedTeamId) {
+  const members = await loadTeamMembers();
+  const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+  member.playerEligibility = normalizeEligibility(eligibility);
+  member.accessChangedBy = changedBy || member.accessChangedBy || null;
+  member.accessChangedAt = nowIso();
+  await saveTeamMembers(members);
+  return { teamMember: member };
 }
 
 // ── RC4.9B — PERMANENT member deletion (irreversible) ──────────────────────
