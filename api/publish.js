@@ -21,7 +21,13 @@ import { key, APP_PREFIX, LEGACY_PREFIX } from './_keys.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
 import { DEFAULT_TEAM, loadTeamMembers, loadUsers } from './_identityStore.js';
-import { requireTenantPermission, requireTenantSession, assertSameTenant, can, PERM } from './_tenant.js';
+import { requireTenantPermission, requireTenantSession, requireClubManage, assertSameTenant, can, PERM } from './_tenant.js';
+import {
+  loadClubStructure, createGroup, createTeam, renameGroup, renameTeam,
+  setGroupStatus, setTeamStatus,
+} from './_structureStore.js';
+import { effectiveAccessScope, effectiveEligibility } from './_accessScope.js';
+import { canonicalRole } from './_permissions.js';
 import { load, save } from './_lib.js';
 import { auditLog, requestIp } from './_security.js';
 import { findDuplicate } from '../src/fixture-import.js';
@@ -1103,11 +1109,92 @@ async function availabilityCheckHandler(req, res) {
   return res.status(200).json({ ok: true, report, weeklyAvailability: club?.weeklyAvailability || null });
 }
 
+// ── Club structure sub-resource (RC4.7 Phase C) ───────────────────────────
+// GET  ?resource=structure — hierarchy + member/staff counts (staff only).
+// POST ?resource=structure — administration ops, club-wide admins only.
+async function structureHandler(req, res) {
+  if (req.method === 'GET') {
+    let session;
+    try {
+      session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
+    } catch (error) { return sendAuthError(res, error); }
+    const structure = await loadClubStructure(session.teamId);
+    const [members, users] = await Promise.all([loadTeamMembers(), loadUsers()]);
+    const active = members.filter(m => m.teamId === session.teamId && m.status === 'active');
+    const nameOf = userId => {
+      const u = users.find(x => x.id === userId);
+      return u?.displayName || u?.firstName || 'Member';
+    };
+
+    const clubWideStaff = [];
+    const groups = {};
+    const teams = {};
+    for (const g of structure.groups) groups[g.id] = { members: 0, staff: [] };
+    for (const t of structure.teams) teams[t.id] = { members: 0, coaches: [] };
+
+    for (const m of active) {
+      const scope = effectiveAccessScope(m);
+      const staffish = canonicalRole(m) !== 'player';
+      if (scope.clubWide) {
+        if (staffish) clubWideStaff.push(nameOf(m.userId));
+        continue;   // club-wide members are listed once, not in every group
+      }
+      for (const grant of scope.groups.filter(x => x.status === 'active')) {
+        if (!groups[grant.groupId]) continue;
+        groups[grant.groupId].members += 1;
+        if (staffish) groups[grant.groupId].staff.push(nameOf(m.userId));
+      }
+      for (const grant of scope.teams.filter(x => x.status === 'active')) {
+        if (!teams[grant.teamId]) continue;
+        if (staffish) teams[grant.teamId].coaches.push(nameOf(m.userId));
+      }
+      if (canonicalRole(m) === 'player') {
+        for (const teamId of effectiveEligibility(m).teamIds) {
+          if (teams[teamId]) teams[teamId].members += 1;
+        }
+      }
+    }
+    return res.status(200).json({ ok: true, structure, counts: { groups, teams }, clubWideStaff });
+  }
+
+  if (req.method === 'POST') {
+    let session;
+    try {
+      session = await requireClubManage(req, PERM.MANAGE_TEAMS);
+    } catch (error) { return sendAuthError(res, error); }
+    const op = String(req.body?.op || '');
+    const b = req.body || {};
+    try {
+      let result;
+      if (op === 'create_group')      result = await createGroup(session.teamId, { name: b.name, type: b.type });
+      else if (op === 'create_team')  result = await createTeam(session.teamId, { groupId: b.groupId, name: b.name, ageGrade: b.ageGrade, genderCategory: b.genderCategory });
+      else if (op === 'rename_group') result = await renameGroup(session.teamId, b.groupId, b.name);
+      else if (op === 'rename_team')  result = await renameTeam(session.teamId, b.teamId, b.name);
+      else if (op === 'archive_group')  result = await setGroupStatus(session.teamId, b.groupId, 'archived');
+      else if (op === 'restore_group')  result = await setGroupStatus(session.teamId, b.groupId, 'active');
+      else if (op === 'archive_team')   result = await setTeamStatus(session.teamId, b.teamId, 'archived');
+      else if (op === 'restore_team')   result = await setTeamStatus(session.teamId, b.teamId, 'active');
+      else return res.status(400).json({ ok: false, error: 'Unknown structure operation' });
+
+      await auditLog('club_structure_changed', {
+        op, groupId: b.groupId || result.group?.id || null, teamId: b.teamId || result.team?.id || null,
+        changedBy: session.user.id, teamId_club: session.teamId, ip: requestIp(req),
+      });
+      return res.status(200).json({ ok: true, structure: result.structure, group: result.group || null, team: result.team || null });
+    } catch (error) {
+      return res.status(error?.status || 400).json({ ok: false, error: error?.message || 'Structure change failed' });
+    }
+  }
+
+  return res.status(405).json({ ok: false, error: 'Method not allowed' });
+}
+
 export default async function handler(req, res) {
   setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!kvConfigured()) return res.status(503).json({ error: 'Storage not configured' });
 
+  if (String(req.query?.resource || '') === 'structure') return structureHandler(req, res);
   if (String(req.query?.resource || '') === 'roster') return rosterHandler(req, res);
   if (String(req.query?.resource || '') === 'club')   return clubHandler(req, res);
   if (String(req.query?.resource || '') === 'availability-check') return availabilityCheckHandler(req, res);

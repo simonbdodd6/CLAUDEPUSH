@@ -34,6 +34,10 @@ import {
   sessionCookie,
   sessionTokenFromRequest,
   setAccessProfile,
+  setMemberAccessScope,
+  setMemberRole,
+  setPlayerEligibility,
+  removeScopedGrant,
   setStaffLevel,
   switchTeam,
   updateTeamBilling,
@@ -44,7 +48,10 @@ import { setCors, readSecret } from './_http.js';
 import { randomBytes } from 'node:crypto';
 import { kvConfigured, kvGet, kvSet } from './_kv.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
-import { assertSameTenant, requireTenantRole, requireTenantPermission, can, PERM } from './_tenant.js';
+import { assertSameTenant, requireTenantRole, requireTenantPermission, requireClubManage, can, PERM } from './_tenant.js';
+import { loadClubStructure, groupById, teamById } from './_structureStore.js';
+import { normalizeAccessScope, effectiveAccessScope } from './_accessScope.js';
+import { isClubOwner } from './_permissions.js';
 import { makeStripe } from './_stripe.js';
 
 // Stripe client initialised once at module load.
@@ -469,6 +476,93 @@ export default async function handler(req, res) {
           assignedTeams: result.assignedTeams,
           changedAt: result.changedAt,
         });
+      }
+      // ── RC4.7 Phase C — scoped access administration ────────────────────
+      // All three actions are club-wide-administrator only (requireClubManage),
+      // validate every group/team id against THIS club's structure, and reject
+      // archived targets. Nothing from the client is trusted: role, scope and
+      // eligibility are re-validated server-side on every call.
+      if (action === 'set_member_access') {
+        const session = await requireClubManage(req, PERM.ASSIGN_ACCESS);
+        const memberId = String(req.body?.memberId || '');
+        const structure = await loadClubStructure(session.teamId);
+
+        // Owner protection is enforced by the store (role) and the post-save
+        // club-wide check below (scope).
+        let result = { teamMember: null };
+
+        if (req.body?.role !== undefined) {
+          result = await setMemberRole(memberId,
+            { role: req.body.role, staffLevel: req.body.staffLevel }, session.user.id, session.teamId);
+        }
+
+        if (req.body?.accessScope !== undefined) {
+          const scope = normalizeAccessScope(req.body.accessScope);
+          // Every referenced id must be a REAL, ACTIVE scope in this club.
+          for (const grant of scope.groups) {
+            const group = groupById(structure, grant.groupId);
+            if (!group) return res.status(404).json({ ok: false, error: 'Unknown group for this club' });
+            if (group.status === 'archived') return res.status(400).json({ ok: false, error: `"${group.name}" is archived — restore it before granting access` });
+          }
+          for (const grant of scope.teams) {
+            const team = teamById(structure, grant.teamId);
+            if (!team) return res.status(404).json({ ok: false, error: 'Unknown team for this club' });
+            if (team.status === 'archived') return res.status(400).json({ ok: false, error: `"${team.name}" is archived — restore it before granting access` });
+            const group = groupById(structure, team.groupId);
+            if (!group || group.status === 'archived') return res.status(400).json({ ok: false, error: 'That team\'s group is archived' });
+          }
+          result = await setMemberAccessScope(memberId, scope, session.user.id, session.teamId);
+          // The owner must remain club-wide — reject a save that would demote them.
+          if (isClubOwner(result.teamMember) && !effectiveAccessScope(result.teamMember).clubWide) {
+            await setMemberAccessScope(memberId, { clubWide: true, groups: [], teams: [] }, session.user.id, session.teamId);
+            return res.status(400).json({ ok: false, error: "The club owner always has whole-club access" });
+          }
+        }
+
+        await auditLog('member_access_changed', {
+          memberId, changedBy: session.user.id, teamId: session.teamId,
+          role: req.body?.role ?? null,
+          scoped: req.body?.accessScope !== undefined,
+          ip: requestIp(req),
+        });
+        return res.status(200).json({ ok: true, teamMember: result.teamMember });
+      }
+      if (action === 'set_member_eligibility') {
+        const session = await requireClubManage(req, PERM.MANAGE_PLAYERS);
+        const memberId = String(req.body?.memberId || '');
+        const structure = await loadClubStructure(session.teamId);
+        const teamIds = Array.isArray(req.body?.teamIds) ? req.body.teamIds.map(String) : [];
+        for (const id of teamIds) {
+          const team = teamById(structure, id);
+          if (!team) return res.status(404).json({ ok: false, error: 'Unknown team for this club' });
+          if (team.status === 'archived') return res.status(400).json({ ok: false, error: `"${team.name}" is archived — players cannot be eligible for it` });
+        }
+        const result = await setPlayerEligibility(memberId,
+          { teamIds, primaryTeamId: req.body?.primaryTeamId }, session.user.id, session.teamId);
+        await auditLog('player_eligibility_changed', {
+          memberId, changedBy: session.user.id, teamId: session.teamId,
+          teams: teamIds.length, ip: requestIp(req),
+        });
+        return res.status(200).json({ ok: true, teamMember: result.teamMember });
+      }
+      if (action === 'remove_member_scope') {
+        const session = await requireClubManage(req, PERM.ASSIGN_ACCESS);
+        const memberId = String(req.body?.memberId || '');
+        const groupId = req.body?.groupId ? String(req.body.groupId) : null;
+        const teamId = req.body?.teamId ? String(req.body.teamId) : null;
+        if (!groupId && !teamId) {
+          return res.status(400).json({ ok: false, error: 'Choose the group or team access to remove' });
+        }
+        const result = await removeScopedGrant(memberId, { groupId, teamId }, session.user.id, session.teamId);
+        if (isClubOwner(result.teamMember) && !effectiveAccessScope(result.teamMember).clubWide) {
+          await setMemberAccessScope(memberId, { clubWide: true, groups: [], teams: [] }, session.user.id, session.teamId);
+          return res.status(400).json({ ok: false, error: "The club owner always has whole-club access" });
+        }
+        await auditLog('member_scope_removed', {
+          memberId, groupId, teamId, changedBy: session.user.id,
+          teamId_club: session.teamId, ip: requestIp(req),
+        });
+        return res.status(200).json({ ok: true, teamMember: result.teamMember });
       }
       if (action === 'restore_member') {
         const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);

@@ -5411,7 +5411,7 @@
           <div class="ce-modal" role="dialog" aria-modal="true" aria-labelledby="ce-modal-title">
             <h3 id="ce-modal-title">${esc(title)}</h3>
             ${body ? `<p>${esc(body)}</p>` : ''}
-            ${input ? `<input id="ce-modal-input" type="text" placeholder="${esc(input.placeholder || '')}" autocomplete="off">` : ''}
+            ${input ? `<input id="ce-modal-input" type="text" placeholder="${esc(input.placeholder || '')}" value="${esc(input.value || '')}" autocomplete="off">` : ''}
             <div class="ce-modal-actions">
               <button type="button" id="ce-modal-cancel">${esc(cancelLabel)}</button>
               <button type="button" id="ce-modal-ok" class="ce-confirm ${danger ? 'danger' : ''}">${esc(confirmLabel)}</button>
@@ -5428,14 +5428,18 @@
         overlay.querySelector('#ce-modal-cancel').onclick = () => done(input ? null : false);
         overlay.querySelector('#ce-modal-ok').onclick = () =>
           done(input ? (document.getElementById('ce-modal-input')?.value ?? null) : true);
-        setTimeout(() => (input ? document.getElementById('ce-modal-input') : overlay.querySelector('#ce-modal-ok'))?.focus(), 30);
+        setTimeout(() => {
+          const el = input ? document.getElementById('ce-modal-input') : overlay.querySelector('#ce-modal-ok');
+          el?.focus();
+          if (input && input.value) el?.select?.();
+        }, 30);
       });
     }
     function ceConfirm(title, body, { confirmLabel = 'Confirm', danger = false } = {}) {
       return ceDialog({ title, body, confirmLabel, danger });
     }
-    function cePrompt(title, body, { placeholder = '', confirmLabel = 'Confirm', danger = false } = {}) {
-      return ceDialog({ title, body, confirmLabel, danger, input: { placeholder } });
+    function cePrompt(title, body, { placeholder = '', value = '', confirmLabel = 'Confirm', danger = false } = {}) {
+      return ceDialog({ title, body, confirmLabel, danger, input: { placeholder, value } });
     }
 
     // ─── WELCOME SCREEN ──────────────────────────────────────────────────────
@@ -16311,6 +16315,9 @@
           <!-- Teams → Training schedule (RC4.10C) -->
           ${(typeof renderTrainingScheduleCard === 'function' ? renderTrainingScheduleCard() : '')}
 
+          <!-- Club structure: groups and teams (RC4.7 Phase C) -->
+          ${(typeof renderClubStructureCard === 'function' ? renderClubStructureCard() : '')}
+
           <!-- Support — always visible so beta coaches can reach a human -->
           <div class="card">
             <h2 style="margin-bottom:4px"><img src="/brand/svg/coacheasier-mark-on-light.svg" alt="" class="ce-support-mark" onerror="this.remove()">CoachEasier Support</h2>
@@ -16884,17 +16891,20 @@
 
     const STAFF_LEVEL_LABELS = { head: 'Head Coach', assistant: 'Assistant Coach', manager: 'Team Manager' };
 
-    let _adminData = { invites: [], members: [], users: [], profiles: [], loaded: false, loading: false };
+    let _adminData = { invites: [], members: [], users: [], profiles: [], structure: null, counts: null, clubWideStaff: [], loaded: false, loading: false };
     let _adminSearch = '';
 
     async function loadAdminData(force = false) {
       if (_adminData.loading || (_adminData.loaded && !force)) return;
       _adminData.loading = true;
       try {
-        const [identityRes, inviteRes, clubRes] = await Promise.all([
+        const [identityRes, inviteRes, clubRes, structureRes] = await Promise.all([
           fetch('/api/identity'),
           fetch('/api/invite'),
           fetch('/api/publish?resource=club'),
+          // RC4.7 Phase C — club structure. Staff-only; a 403 simply leaves the
+          // structure card hidden for members who cannot administer it.
+          fetch('/api/publish?resource=structure').catch(() => null),
         ]);
         if (identityRes.ok) {
           const d = await identityRes.json();
@@ -16903,6 +16913,12 @@
           _adminData.profiles = d.player_profiles || [];
         }
         if (inviteRes.ok) _adminData.invites = (await inviteRes.json()).invites || [];
+        if (structureRes && structureRes.ok) {
+          const d = await structureRes.json();
+          _adminData.structure = d.structure || null;
+          _adminData.counts = d.counts || null;
+          _adminData.clubWideStaff = d.clubWideStaff || [];
+        }
         if (clubRes.ok) {
           const club = (await clubRes.json()).club;
           if (club) {
@@ -17099,6 +17115,7 @@
                 <option value="manager">Team Manager</option>
                 <option value="head">Head Coach</option>
               </select>
+              ${inviteScopeSelect('adm-staff-scope')}
               <button class="btn primary" type="button" style="min-height:38px;font-size:12px" onclick="adminInviteStaff()">+ Invite staff</button>
             </div>
           </div>
@@ -17234,6 +17251,144 @@
     };
     const DEFAULT_PROFILE_BY_LEVEL = { head: 'full', assistant: 'coach', manager: 'manager' };
 
+    // ─── RC4.7 Phase C — Club Structure administration ──────────────────────
+    // Club → Group → Team, in plain language. No raw ids are ever shown; every
+    // control passes ids invisibly and the server re-validates all of them.
+
+    function structureGroupsSorted() {
+      const st = _adminData.structure;
+      if (!st) return [];
+      return [...(st.groups || [])].sort((a, b) =>
+        (a.status === b.status ? 0 : a.status === 'active' ? -1 : 1) || a.name.localeCompare(b.name));
+    }
+
+    function structureTeamsFor(groupId) {
+      const st = _adminData.structure;
+      if (!st) return [];
+      return (st.teams || []).filter(t => t.groupId === groupId).sort((a, b) =>
+        (a.status === b.status ? 0 : a.status === 'active' ? -1 : 1) || a.name.localeCompare(b.name));
+    }
+
+    /** Every active team a player could be made eligible for, grouped. */
+    function structureActiveTeamOptions() {
+      const st = _adminData.structure;
+      if (!st) return [];
+      return (st.teams || [])
+        .filter(t => t.status === 'active')
+        .map(t => ({ ...t, groupName: (st.groups || []).find(g => g.id === t.groupId)?.name || '' }))
+        .filter(t => (st.groups || []).find(g => g.id === t.groupId)?.status === 'active');
+    }
+
+    function renderClubStructureCard() {
+      if (!_adminData.structure || !canI('manage_teams')) return '';
+      const counts = _adminData.counts || { groups: {}, teams: {} };
+      const groups = structureGroupsSorted();
+      const pill = (text, tone) => `<span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:999px;background:${tone};color:#fff">${esc(text)}</span>`;
+
+      const groupRows = groups.map(g => {
+        const teams = structureTeamsFor(g.id);
+        const gc = counts.groups?.[g.id] || { members: 0, staff: [] };
+        const archived = g.status === 'archived';
+        return `
+          <div style="border:1px solid var(--line);border-radius:11px;padding:11px 12px;margin-bottom:9px;${archived ? 'opacity:.62' : ''}">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap">
+              <div style="min-width:0">
+                <div style="font-weight:800;font-size:14px;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                  ${esc(g.name)} ${archived ? pill('Archived', 'var(--muted)') : ''}
+                </div>
+                <div class="muted" style="font-size:11.5px;margin-top:3px">
+                  ${gc.members} ${gc.members === 1 ? 'member' : 'members'} · ${teams.filter(t => t.status === 'active').length} ${teams.filter(t => t.status === 'active').length === 1 ? 'team' : 'teams'}
+                  ${gc.staff?.length ? ` · Staff: ${esc(gc.staff.join(', '))}` : ' · No staff assigned'}
+                </div>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                ${archived
+                  ? `<button class="btn ghost" style="font-size:11px;padding:5px 9px" onclick="structureOp('restore_group',{groupId:'${esc(g.id)}'},'${esc(g.name)} restored')">Restore</button>`
+                  : `<button class="btn ghost" style="font-size:11px;padding:5px 9px" onclick="structureRename('group','${esc(g.id)}','${esc(g.name)}')">Rename</button>
+                     <button class="btn ghost" style="font-size:11px;padding:5px 9px" onclick="structureAddTeam('${esc(g.id)}','${esc(g.name)}')">Add team</button>
+                     <button class="btn ghost" style="font-size:11px;padding:5px 9px;color:#f87171" onclick="structureArchive('group','${esc(g.id)}','${esc(g.name)}')">Archive</button>`}
+              </div>
+            </div>
+            ${teams.length ? `<div style="margin-top:9px;display:grid;gap:6px">${teams.map(t => {
+              const tc = counts.teams?.[t.id] || { members: 0, coaches: [] };
+              const tArch = t.status === 'archived';
+              return `
+                <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 10px;background:var(--panel-2);border-radius:9px;${tArch ? 'opacity:.6' : ''}">
+                  <div style="min-width:0">
+                    <div style="font-weight:700;font-size:12.5px">${esc(t.name)} ${tArch ? pill('Archived', 'var(--muted)') : ''}</div>
+                    <div class="muted" style="font-size:11px;margin-top:2px">
+                      ${tc.members} eligible ${tc.members === 1 ? 'player' : 'players'}${tc.coaches?.length ? ` · ${esc(tc.coaches.join(', '))}` : ''}
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    ${tArch
+                      ? `<button class="btn ghost" style="font-size:11px;padding:4px 8px" onclick="structureOp('restore_team',{teamId:'${esc(t.id)}'},'${esc(t.name)} restored')">Restore</button>`
+                      : `<button class="btn ghost" style="font-size:11px;padding:4px 8px" onclick="structureRename('team','${esc(t.id)}','${esc(t.name)}')">Rename</button>
+                         <button class="btn ghost" style="font-size:11px;padding:4px 8px;color:#f87171" onclick="structureArchive('team','${esc(t.id)}','${esc(t.name)}')">Archive</button>`}
+                  </div>
+                </div>`;
+            }).join('')}</div>` : `<div class="muted" style="font-size:11.5px;margin-top:8px">No teams yet — add one so this group can pick a match-day squad.</div>`}
+          </div>`;
+      }).join('');
+
+      return `
+        <div class="card">
+          <h2 style="margin-bottom:4px">Club structure</h2>
+          <p class="muted" style="font-size:12.5px;margin:0 0 12px">
+            Your club is organised into groups (like Senior Men or U18), and each group has one or more teams that pick their own match-day squad.
+            ${_adminData.clubWideStaff?.length ? `<br>Whole-club access: <strong>${esc(_adminData.clubWideStaff.join(', '))}</strong>.` : ''}
+          </p>
+          ${groupRows || '<p class="muted" style="font-size:12.5px">No groups yet.</p>'}
+          <button class="btn primary" style="margin-top:6px;font-size:13px" onclick="structureAddGroup()">Add a group</button>
+        </div>`;
+    }
+
+    async function structureOp(op, payload, successMsg) {
+      try {
+        const res = await fetch('/api/publish?resource=structure', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ op, ...payload }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'That change could not be saved');
+        if (successMsg) showToast(successMsg);
+        await loadAdminData(true);
+        render();
+        return data;
+      } catch (e) { showToast(e.message || 'That change could not be saved'); return null; }
+    }
+
+    async function structureAddGroup() {
+      const name = await cePrompt('Add a group', 'Groups hold a shared player pool — for example Senior Men, U18 or Ladies.', { placeholder: 'Group name', confirmLabel: 'Create group' });
+      if (!name) return;
+      await structureOp('create_group', { name }, `${name} created`);
+    }
+
+    async function structureAddTeam(groupId, groupName) {
+      const name = await cePrompt(`Add a team to ${groupName}`, 'Teams pick their own match-day squad from the group\'s players — for example Senior 1 and Senior 2.', { placeholder: 'Team name', confirmLabel: 'Create team' });
+      if (!name) return;
+      await structureOp('create_team', { groupId, name }, `${name} added to ${groupName}`);
+    }
+
+    async function structureRename(kind, id, currentName) {
+      const name = await cePrompt(`Rename ${currentName}`, '', { placeholder: 'New name', value: currentName, confirmLabel: 'Save name' });
+      if (!name || name === currentName) return;
+      await structureOp(kind === 'group' ? 'rename_group' : 'rename_team',
+        kind === 'group' ? { groupId: id, name } : { teamId: id, name }, `Renamed to ${name}`);
+    }
+
+    async function structureArchive(kind, id, name) {
+      const ok = await ceConfirm(
+        `Archive ${name}?`,
+        kind === 'group'
+          ? `${name} and its teams will be hidden from everyday use. Nothing is deleted — all history, availability and match records are kept, and you can restore it at any time.`
+          : `${name} will be hidden from everyday use. Its match history is kept and you can restore it at any time.`,
+        { confirmLabel: 'Archive', danger: true });
+      if (!ok) return;
+      await structureOp(kind === 'group' ? 'archive_group' : 'archive_team',
+        kind === 'group' ? { groupId: id } : { teamId: id }, `${name} archived`);
+    }
+
     function accessProfileFor(member) {
       const explicit = String(member?.accessProfile || '').toLowerCase();
       if (ACCESS_PROFILE_LABELS[explicit]) return explicit;
@@ -17275,7 +17430,211 @@
               ? `Last changed by ${esc(changedBy)}${member.accessChangedAt ? ` · ${esc(String(member.accessChangedAt).slice(0, 10))}` : ''}`
               : 'Default access for this role — not yet changed.'}
           </div>
+          ${renderScopeSection(member, user)}
+          ${renderEligibilitySection(member, user)}
         </div>`;
+    }
+
+    // ─── RC4.7 Phase C — WHAT this member can reach, and (separately) which
+    // teams they can be PICKED for. The two are deliberately different blocks:
+    // changing eligibility never changes permissions, and vice versa.
+
+    /** The member's live scope, mirroring the server's effectiveAccessScope. */
+    function memberScope(member) {
+      const raw = member?.accessScope;
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        return {
+          clubWide: raw.clubWide === true,
+          groups: (Array.isArray(raw.groups) ? raw.groups : []).filter(g => g && g.groupId && g.status !== 'removed'),
+          teams: (Array.isArray(raw.teams) ? raw.teams : []).filter(t => t && t.teamId && t.status !== 'removed'),
+        };
+      }
+      // No stored scope — show the same derivation the server applies.
+      const derivedClubWide = member?.isOwner === true ||
+        String(member?.accessProfile || '').toLowerCase() === 'full' ||
+        ['admin', 'dor', 'owner'].includes(String(member?.role || '').toLowerCase());
+      return { clubWide: derivedClubWide, groups: [], teams: [], derived: true };
+    }
+
+    function renderScopeSection(member, user) {
+      const st = _adminData.structure;
+      if (!st || !canI('assign_access')) return '';
+      const scope = memberScope(member);
+      const activeGroups = (st.groups || []).filter(g => g.status === 'active');
+      const name = user.displayName || 'this member';
+
+      if (member.isOwner) {
+        return `
+          <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line)">
+            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:5px">Can access</div>
+            <div style="font-size:12.5px;font-weight:700">Can manage entire club</div>
+            <p class="muted" style="font-size:11px;margin:4px 0 0">As club owner this cannot be reduced.</p>
+          </div>`;
+      }
+
+      const rows = activeGroups.map(g => {
+        const teams = (st.teams || []).filter(t => t.groupId === g.id && t.status === 'active');
+        const hasGroup = scope.groups.some(x => x.groupId === g.id);
+        const teamIds = new Set(scope.teams.map(x => x.teamId));
+        return `
+          <div style="padding:7px 0;border-top:1px solid var(--line)">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;cursor:pointer">
+              <input type="checkbox" ${scope.clubWide ? 'checked disabled' : hasGroup ? 'checked' : ''}
+                onchange="adminToggleGroupAccess('${esc(member.id)}','${esc(g.id)}',this.checked)">
+              Can coach ${esc(g.name)}<span class="muted" style="font-weight:600"> — whole group</span>
+            </label>
+            ${teams.length && !scope.clubWide && !hasGroup ? `
+              <div style="margin:5px 0 0 26px;display:grid;gap:3px">
+                ${teams.map(t => `
+                  <label style="display:flex;align-items:center;gap:7px;font-size:11.5px;cursor:pointer">
+                    <input type="checkbox" ${teamIds.has(t.id) ? 'checked' : ''}
+                      onchange="adminToggleTeamAccess('${esc(member.id)}','${esc(t.id)}',this.checked)">
+                    ${esc(t.name)} only
+                  </label>`).join('')}
+              </div>` : ''}
+          </div>`;
+      }).join('');
+
+      return `
+        <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line)">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:5px">Can access</div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;cursor:pointer">
+            <input type="checkbox" ${scope.clubWide ? 'checked' : ''}
+              onchange="adminToggleClubWide('${esc(member.id)}',this.checked,'${esc(name)}')">
+            Can manage entire club
+          </label>
+          ${scope.clubWide ? '' : rows}
+          ${scope.derived ? `<p class="muted" style="font-size:11px;margin:7px 0 0">Currently using the default access for their role. Ticking a box above sets it explicitly.</p>` : ''}
+        </div>`;
+    }
+
+    function renderEligibilitySection(member, user) {
+      const st = _adminData.structure;
+      if (!st || !canI('manage_players')) return '';
+      if (String(member.role || '').toLowerCase() !== 'player') return '';
+      const options = structureActiveTeamOptions();
+      if (!options.length) return '';
+      const elig = member.playerEligibility && typeof member.playerEligibility === 'object'
+        ? member.playerEligibility : null;
+      const teamIds = new Set(Array.isArray(elig?.teamIds) ? elig.teamIds : []);
+      const primary = elig?.primaryTeamId || null;
+
+      return `
+        <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line)">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">Can be picked for</div>
+          <p class="muted" style="font-size:11px;margin:0 0 6px">Which squads this player can be selected for. This does not change what they can see or manage.</p>
+          <div style="display:grid;gap:4px">
+            ${options.map(t => `
+              <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+                <input type="checkbox" ${teamIds.has(t.id) ? 'checked' : ''}
+                  onchange="adminToggleEligibility('${esc(member.id)}','${esc(t.id)}',this.checked)">
+                Eligible for ${esc(t.groupName)} · ${esc(t.name)}
+              </label>`).join('')}
+          </div>
+          ${teamIds.size > 1 ? `
+            <div style="margin-top:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span class="muted" style="font-size:11px;font-weight:700">Primary squad</span>
+              <select style="min-height:30px;font-size:11.5px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);padding:0 8px"
+                onchange="adminSetPrimaryTeam('${esc(member.id)}',this.value)">
+                ${options.filter(t => teamIds.has(t.id)).map(t =>
+                  `<option value="${esc(t.id)}" ${primary === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+              </select>
+            </div>` : ''}
+        </div>`;
+    }
+
+    /** Send the member's FULL scope — the server replaces it wholesale. */
+    async function adminSaveScope(memberId, scope, successMsg) {
+      await adminAction({ action: 'set_member_access', memberId, accessScope: scope }, successMsg);
+      render();
+    }
+
+    async function adminToggleClubWide(memberId, on, name) {
+      const member = (_adminData.members || []).find(m => m.id === memberId);
+      if (!member) return;
+      if (on) {
+        const ok = await ceConfirm(`Give ${name} access to the entire club?`,
+          'They will be able to see and manage every group and team, including members and permissions.',
+          { confirmLabel: 'Give whole-club access', danger: true });
+        if (!ok) { render(); return; }
+        await adminSaveScope(memberId, { clubWide: true, groups: [], teams: [] }, `${name} can now manage the entire club`);
+      } else {
+        const ok = await ceConfirm(`Remove whole-club access from ${name}?`,
+          'They will keep their account and history, but will only see the groups or teams you tick next.',
+          { confirmLabel: 'Remove whole-club access', danger: true });
+        if (!ok) { render(); return; }
+        await adminSaveScope(memberId, { clubWide: false, groups: [], teams: [] }, `Whole-club access removed`);
+      }
+    }
+
+    async function adminToggleGroupAccess(memberId, groupId, on) {
+      const member = (_adminData.members || []).find(m => m.id === memberId);
+      if (!member) return;
+      const scope = memberScope(member);
+      const groupName = (_adminData.structure?.groups || []).find(g => g.id === groupId)?.name || 'that group';
+      if (!on) {
+        const ok = await ceConfirm(`Remove access to ${groupName}?`,
+          'Their account, history and any other access stay exactly as they are.',
+          { confirmLabel: 'Remove access', danger: true });
+        if (!ok) { render(); return; }
+        await adminAction({ action: 'remove_member_scope', memberId, groupId }, `Access to ${groupName} removed`);
+        render();
+        return;
+      }
+      // Adding a whole-group grant supersedes any single-team grants inside it.
+      const teamIdsInGroup = new Set((_adminData.structure?.teams || [])
+        .filter(t => t.groupId === groupId).map(t => t.id));
+      await adminSaveScope(memberId, {
+        clubWide: false,
+        groups: [...scope.groups.filter(g => g.groupId !== groupId), { groupId, status: 'active' }],
+        teams: scope.teams.filter(t => !teamIdsInGroup.has(t.teamId)),
+      }, `Can now coach ${groupName}`);
+    }
+
+    async function adminToggleTeamAccess(memberId, teamId, on) {
+      const member = (_adminData.members || []).find(m => m.id === memberId);
+      if (!member) return;
+      const scope = memberScope(member);
+      const teamName = (_adminData.structure?.teams || []).find(t => t.id === teamId)?.name || 'that team';
+      if (!on) {
+        const ok = await ceConfirm(`Remove access to ${teamName}?`,
+          'Their account, history and any other access stay exactly as they are.',
+          { confirmLabel: 'Remove access', danger: true });
+        if (!ok) { render(); return; }
+        await adminAction({ action: 'remove_member_scope', memberId, teamId }, `Access to ${teamName} removed`);
+        render();
+        return;
+      }
+      await adminSaveScope(memberId, {
+        clubWide: false,
+        groups: scope.groups,
+        teams: [...scope.teams.filter(t => t.teamId !== teamId), { teamId, status: 'active' }],
+      }, `Can now coach ${teamName}`);
+    }
+
+    async function adminToggleEligibility(memberId, teamId, on) {
+      const member = (_adminData.members || []).find(m => m.id === memberId);
+      if (!member) return;
+      const elig = member.playerEligibility && typeof member.playerEligibility === 'object'
+        ? member.playerEligibility : { teamIds: [], primaryTeamId: null };
+      const current = new Set(Array.isArray(elig.teamIds) ? elig.teamIds : []);
+      if (on) current.add(teamId); else current.delete(teamId);
+      const teamIds = [...current];
+      const primary = teamIds.includes(elig.primaryTeamId) ? elig.primaryTeamId : (teamIds[0] || null);
+      const teamName = (_adminData.structure?.teams || []).find(t => t.id === teamId)?.name || 'that squad';
+      await adminAction({ action: 'set_member_eligibility', memberId, teamIds, primaryTeamId: primary },
+        on ? `Now eligible for ${teamName}` : `No longer eligible for ${teamName}`);
+      render();
+    }
+
+    async function adminSetPrimaryTeam(memberId, teamId) {
+      const member = (_adminData.members || []).find(m => m.id === memberId);
+      if (!member) return;
+      const elig = member.playerEligibility || { teamIds: [] };
+      await adminAction({ action: 'set_member_eligibility', memberId,
+        teamIds: Array.isArray(elig.teamIds) ? elig.teamIds : [], primaryTeamId: teamId },
+        'Primary squad updated');
+      render();
     }
 
     async function adminSetAccessProfile(memberId, nextProfile, name, currentProfile) {
@@ -17326,16 +17685,48 @@
       } catch(e) { showToast(e.message || 'Could not revoke'); }
     }
 
+    // ─── RC4.7 Phase C — scoped invites ─────────────────────────────────────
+    // One dropdown, plain language: whole club, a group, or a single team.
+    // The value encodes the level+id; the server re-validates both and refuses
+    // any scope the inviter could not assign themselves.
+    function inviteScopeSelect(id) {
+      const st = _adminData.structure;
+      if (!st) return '';
+      const inputStyle = 'width:100%;min-height:38px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 10px;font-size:12px;box-sizing:border-box';
+      const groups = (st.groups || []).filter(g => g.status === 'active');
+      const options = groups.map(g => {
+        const teams = (st.teams || []).filter(t => t.groupId === g.id && t.status === 'active');
+        return `<option value="group:${esc(g.id)}">${esc(g.name)} — whole group</option>` +
+          teams.map(t => `<option value="team:${esc(t.id)}">${esc(g.name)} · ${esc(t.name)} only</option>`).join('');
+      }).join('');
+      return `<select id="${esc(id)}" style="${inputStyle}">
+          <option value="club">Whole club</option>
+          ${options}
+        </select>`;
+    }
+
+    /** Turn the dropdown value into the API's scope object. */
+    function inviteScopeValue(id) {
+      const raw = document.getElementById(id)?.value || '';
+      if (!raw) return null;
+      if (raw === 'club') return { level: 'club' };
+      const [level, scopeId] = raw.split(':');
+      if (level === 'group') return { level: 'group', groupId: scopeId };
+      if (level === 'team') return { level: 'team', teamId: scopeId };
+      return null;
+    }
+
     async function adminInviteStaff() {
       const v = id => document.getElementById(id)?.value?.trim() || '';
       const name = v('adm-staff-name');
       const email = v('adm-staff-email');
       const staffLevel = v('adm-staff-level') || 'assistant';
+      const scope = inviteScopeValue('adm-staff-scope');
       if (!name) { showToast('Enter the staff member\'s name first'); return; }
       try {
         const res = await fetch('/api/invite', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, role: 'coach', staffLevel }),
+          body: JSON.stringify({ name, email, role: 'coach', staffLevel, ...(scope ? { scope } : {}) }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Could not create invite');

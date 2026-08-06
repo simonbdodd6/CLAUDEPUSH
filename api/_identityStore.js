@@ -3,7 +3,8 @@ import {
   permissionsFor, canonicalRole, accessProfileOf, isClubOwner,
   accessProfileRank, ACCESS_PROFILES, PERM,
 } from './_permissions.js';
-import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope } from './_accessScope.js';
+import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope, effectiveEligibility } from './_accessScope.js';
+import { loadClubStructure, groupById, teamById, activeTeams } from './_structureStore.js';
 import { key } from './_keys.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
@@ -1029,6 +1030,10 @@ export async function claimInvite(input = {}) {
     displayName: name,
     password: input.password,
   });
+  // Whether this person already held a membership BEFORE this claim — decides
+  // how a scoped invite merges (see applyInviteScope).
+  const membershipExisted = (await loadTeamMembers())
+    .some(m => m.teamId === (invite.teamId || DEFAULT_TEAM.id) && m.userId === user.id);
   const inviteRole = String(invite.role || 'player');
   const inviteIsStaff = ['coach', 'admin', 'medical'].includes(inviteRole);
   const member = await ensureTeamMember({
@@ -1060,6 +1065,14 @@ export async function claimInvite(input = {}) {
       (String(p.teamId) === String(member.teamId) && String(p.userId) === String(user.id))));
     if (kept.length !== profiles.length) await savePlayerProfiles(kept);
   }
+  // RC4.7 Phase C — a SCOPED invite stamps exactly the scope it was created
+  // with; the claimer can never widen it (nothing in the request is read).
+  // Existing members MERGE the new grant into their scope — claiming a scoped
+  // link never removes access they already hold, and never elevates beyond
+  // the stored scope. Unscoped legacy invites change nothing here.
+  if (invite.scope && typeof invite.scope === 'object') {
+    await applyInviteScope(member, invite, { membershipExisted });
+  }
   if (isGroup) {
     // Keep the link open; just track usage.
     invite.acceptedCount = (invite.acceptedCount || 0) + 1;
@@ -1075,6 +1088,77 @@ export async function claimInvite(input = {}) {
   await saveInvites(invites);
   const session = await createSession({ userId: user.id, teamId: member.teamId, role: member.role });
   return { user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, invite, session };
+}
+
+/**
+ * Stamp a scoped invite's grant onto the freshly-claimed membership.
+ * clubWide only when the invite itself was created club-wide (creation-side
+ * gates guarantee only club-wide admins can mint those). Players invited to a
+ * team become eligible for that team; players invited to a group default to
+ * eligibility for the group's active teams at claim time (an admin can trim
+ * afterwards — documented Phase C behaviour).
+ */
+async function applyInviteScope(member, invite, { membershipExisted = false } = {}) {
+  const scope = invite.scope || {};
+  const members = await loadTeamMembers();
+  const live = members.find(m => m.id === member.id);
+  if (!live) return;
+
+  // Merge base: an EXISTING member keeps everything they already hold
+  // (stored scope, or the legacy derivation materialised) — a scoped claim
+  // never reduces access. A BRAND-NEW membership starts from nothing: its
+  // scope is exactly what the invite grants, never the legacy derivation.
+  const current = (membershipExisted || live.accessScope != null)
+    ? effectiveAccessScope(live)
+    : { clubWide: false, groups: [], teams: [] };
+  const freshMember = !membershipExisted;
+  const structure = await loadClubStructure(live.teamId);
+  let changed = false;
+
+  if (scope.clubWide === true) {
+    if (!current.clubWide) { live.accessScope = { clubWide: true, groups: [], teams: [] }; changed = true; }
+  } else if (scope.teamId) {
+    const team = teamById(structure, scope.teamId);
+    if (team && team.status === 'active' && !current.teams.some(t => t.teamId === team.id && t.status === 'active')) {
+      current.teams = [...current.teams.filter(t => t.teamId !== team.id), { teamId: team.id, role: null, status: 'active' }];
+      live.accessScope = normalizeAccessScope(current);
+      changed = true;
+    }
+    if (team && live.role === 'player') {
+      // Same base rule as access: a fresh member's eligibility starts empty,
+      // never at the legacy derivation (team_initial).
+      const elig = (freshMember && live.playerEligibility == null)
+        ? { teamIds: [], primaryTeamId: null }
+        : effectiveEligibility(live);
+      if (!elig.teamIds.includes(team.id)) {
+        live.playerEligibility = normalizeEligibility({
+          teamIds: [...elig.teamIds, team.id],
+          primaryTeamId: elig.primaryTeamId || team.id,
+        });
+        changed = true;
+      }
+    }
+  } else if (scope.groupId) {
+    const group = groupById(structure, scope.groupId);
+    if (group && group.status === 'active' && !current.clubWide &&
+        !current.groups.some(g => g.groupId === group.id && g.status === 'active')) {
+      current.groups = [...current.groups.filter(g => g.groupId !== group.id), { groupId: group.id, role: null, status: 'active' }];
+      live.accessScope = normalizeAccessScope(current);
+      changed = true;
+    }
+    if (group && live.role === 'player' && (live.playerEligibility === undefined || live.playerEligibility === null)) {
+      const teams = activeTeams(structure, group.id).map(t => t.id);
+      live.playerEligibility = normalizeEligibility({ teamIds: teams, primaryTeamId: teams[0] || null });
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    live.accessChangedBy = 'invite';
+    live.accessChangedAt = nowIso();
+    await saveTeamMembers(members);
+    Object.assign(member, live);
+  }
 }
 
 export async function createPasswordResetRequest({ email } = {}) {
@@ -1756,6 +1840,51 @@ export async function removeScopedGrant(memberId, { groupId = null, teamId = nul
   }
   member.accessScope = normalizeAccessScope(scope);
   member.accessChangedBy = changedBy || member.accessChangedBy || null;
+  member.accessChangedAt = nowIso();
+  await saveTeamMembers(members);
+  return { teamMember: member };
+}
+
+// Club roles an administrator may assign through the editor. Ownership is NOT
+// assignable here — transferring a club is a deliberate future flow, and the
+// owner's own record is protected below.
+const ASSIGNABLE_ROLES = new Set(['admin', 'coach', 'medical', 'snc', 'player']);
+
+/**
+ * Change a member's club role (and staff level for coaches). Guards:
+ * the owner's record is untouchable, and the club must always retain at least
+ * one full-access administrator — matching setAccessProfile's invariants.
+ */
+export async function setMemberRole(memberId, { role, staffLevel = null } = {}, changedBy, expectedTeamId) {
+  const nextRole = String(role || '').toLowerCase();
+  if (!ASSIGNABLE_ROLES.has(nextRole)) {
+    const error = new Error('That role cannot be assigned here');
+    error.status = 400;
+    throw error;
+  }
+  const nextLevel = STAFF_LEVELS.includes(String(staffLevel || '').toLowerCase())
+    ? String(staffLevel).toLowerCase() : null;
+  const members = await loadTeamMembers();
+  const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+  if (isClubOwner(member)) {
+    const error = new Error("The club owner's role cannot be changed");
+    error.status = 400;
+    throw error;
+  }
+  // Dropping the last full-access administrator would lock the club. An
+  // explicit stored accessProfile survives a role change (accessProfileOf
+  // prefers it), so this can only trip for role-derived profiles.
+  const probe = { ...member, role: nextRole, staffLevel: nextRole === 'coach' ? (nextLevel || 'head') : null };
+  const losesFull = accessProfileOf(member) === 'full' && accessProfileOf(probe) !== 'full';
+  if (losesFull && fullAccessMembers(members, member.teamId).length <= 1) {
+    const error = new Error('Cannot change the last full-access administrator — assign another first');
+    error.status = 400;
+    throw error;
+  }
+  member.role = nextRole;
+  if (nextRole === 'coach') member.staffLevel = nextLevel || member.staffLevel || 'head';
+  else delete member.staffLevel;
+  member.accessChangedBy = changedBy || null;
   member.accessChangedAt = nowIso();
   await saveTeamMembers(members);
   return { teamMember: member };

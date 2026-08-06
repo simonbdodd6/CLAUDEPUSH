@@ -18,6 +18,7 @@
 
 import { kvGet, kvSet } from './_kv.js';
 import { key, groupPublishKey, teamPublishKey } from './_keys.js';
+import { randomBytes } from 'node:crypto';
 
 // Deterministic ids for the migrated initial scope. Every club's first group
 // and team use these ids, so legacy-key fallback rules can name them without
@@ -156,6 +157,138 @@ export function assertTeamBelongsToClub(structure, teamId) {
     throw error;
   }
   return team;
+}
+
+// ─── RC4.7 Phase C — structure administration ───────────────────────────────
+// Every operation materialises the synthesized initial structure first
+// (persistClubStructure is idempotent), so the first admin action a club takes
+// is what converts its computed structure into a stored one. Duplicate names
+// are rejected within the same parent among NON-ARCHIVED entries, case-
+// insensitively; restoring checks the name is still free.
+
+function adminError(message, status = 400) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+const nameKey = value => String(value || '').trim().toLowerCase();
+
+function assertValidName(name, what) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) throw adminError(`A ${what} name is required`);
+  if (trimmed.length > 80) throw adminError(`That ${what} name is too long (80 characters max)`);
+  return trimmed;
+}
+
+function freshId(prefix, taken) {
+  let id;
+  do { id = `${prefix}_${randomBytes(4).toString('hex')}`; } while (taken.has(id));
+  return id;
+}
+
+export async function createGroup(clubId, { name, type = 'general' } = {}) {
+  const groupName = assertValidName(name, 'group');
+  const structure = await persistClubStructure(clubId);
+  if (structure.groups.some(g => g.status !== 'archived' && nameKey(g.name) === nameKey(groupName))) {
+    throw adminError('A group with that name already exists');
+  }
+  const group = {
+    id: freshId('grp', new Set(structure.groups.map(g => g.id))),
+    name: groupName,
+    type: String(type || 'general').slice(0, 40),
+    status: 'active',
+  };
+  structure.groups.push(group);
+  await saveClubStructure(clubId, structure);
+  return { structure, group };
+}
+
+export async function createTeam(clubId, { groupId, name, ageGrade = '', genderCategory = '' } = {}) {
+  const teamName = assertValidName(name, 'team');
+  const structure = await persistClubStructure(clubId);
+  const group = groupById(structure, groupId);
+  if (!group) throw adminError('Unknown group for this club', 404);
+  if (group.status === 'archived') throw adminError('That group is archived — restore it before adding teams');
+  if (structure.teams.some(t => t.groupId === group.id && t.status !== 'archived' && nameKey(t.name) === nameKey(teamName))) {
+    throw adminError('A team with that name already exists in this group');
+  }
+  const team = {
+    id: freshId('team', new Set(structure.teams.map(t => t.id))),
+    groupId: group.id,
+    name: teamName,
+    ageGrade: String(ageGrade || '').slice(0, 20),
+    genderCategory: String(genderCategory || '').slice(0, 20),
+    status: 'active',
+  };
+  structure.teams.push(team);
+  await saveClubStructure(clubId, structure);
+  return { structure, team };
+}
+
+export async function renameGroup(clubId, groupId, name) {
+  const groupName = assertValidName(name, 'group');
+  const structure = await persistClubStructure(clubId);
+  const group = groupById(structure, groupId);
+  if (!group) throw adminError('Unknown group for this club', 404);
+  if (structure.groups.some(g => g.id !== group.id && g.status !== 'archived' && nameKey(g.name) === nameKey(groupName))) {
+    throw adminError('A group with that name already exists');
+  }
+  group.name = groupName;
+  await saveClubStructure(clubId, structure);
+  return { structure, group };
+}
+
+export async function renameTeam(clubId, teamId, name) {
+  const teamName = assertValidName(name, 'team');
+  const structure = await persistClubStructure(clubId);
+  const team = teamById(structure, teamId);
+  if (!team) throw adminError('Unknown team for this club', 404);
+  if (structure.teams.some(t => t.id !== team.id && t.groupId === team.groupId &&
+      t.status !== 'archived' && nameKey(t.name) === nameKey(teamName))) {
+    throw adminError('A team with that name already exists in this group');
+  }
+  team.name = teamName;
+  await saveClubStructure(clubId, structure);
+  return { structure, team };
+}
+
+export async function setGroupStatus(clubId, groupId, status) {
+  if (!SCOPE_STATUSES.includes(status)) throw adminError('Status must be active or archived');
+  const structure = await persistClubStructure(clubId);
+  const group = groupById(structure, groupId);
+  if (!group) throw adminError('Unknown group for this club', 404);
+  if (status === 'archived' &&
+      structure.groups.filter(g => g.status === 'active').length <= 1 && group.status === 'active') {
+    throw adminError('A club needs at least one active group — create another before archiving this one');
+  }
+  if (status === 'active' &&
+      structure.groups.some(g => g.id !== group.id && g.status !== 'archived' && nameKey(g.name) === nameKey(group.name))) {
+    throw adminError('Another group now uses that name — rename one of them first');
+  }
+  group.status = status;
+  await saveClubStructure(clubId, structure);
+  return { structure, group };
+}
+
+export async function setTeamStatus(clubId, teamId, status) {
+  if (!SCOPE_STATUSES.includes(status)) throw adminError('Status must be active or archived');
+  const structure = await persistClubStructure(clubId);
+  const team = teamById(structure, teamId);
+  if (!team) throw adminError('Unknown team for this club', 404);
+  if (status === 'active') {
+    const group = groupById(structure, team.groupId);
+    if (!group || group.status === 'archived') {
+      throw adminError('Restore the group before restoring its teams');
+    }
+    if (structure.teams.some(t => t.id !== team.id && t.groupId === team.groupId &&
+        t.status !== 'archived' && nameKey(t.name) === nameKey(team.name))) {
+      throw adminError('Another team in this group now uses that name — rename one of them first');
+    }
+  }
+  team.status = status;
+  await saveClubStructure(clubId, structure);
+  return { structure, team };
 }
 
 // ─── Scoped publication blocks (Phase B foundation) ─────────────────────────

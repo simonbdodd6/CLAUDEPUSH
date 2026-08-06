@@ -3,7 +3,7 @@ import { can, PERM } from './_permissions.js';
 import { loadClubStructure, assertGroupBelongsToClub, assertTeamBelongsToClub } from './_structureStore.js';
 import {
   assertScopedPermission, canViewGroup, canViewTeam, canViewGroupRoster,
-  getAccessibleGroups, getAccessibleTeams,
+  getAccessibleGroups, getAccessibleTeams, effectiveAccessScope,
 } from './_accessScope.js';
 
 export { can, PERM };
@@ -50,6 +50,21 @@ export async function requireScopedView(req, { groupId = null, teamId = null, ro
     throw error;
   }
   return { ...sessionContext, teamId: clubId, role: tenantRole(sessionContext), structure };
+}
+
+/**
+ * Club-wide administration gate (RC4.7 Phase C): the capability AND club-wide
+ * scope. A group-scoped head coach holds MANAGE_TEAMS within their group but
+ * must never pass this — structure and access administration are club-level.
+ */
+export async function requireClubManage(req, permission = PERM.MANAGE_TEAMS) {
+  const sessionContext = await requireTenantPermission(req, permission);
+  if (!effectiveAccessScope(sessionContext.teamMember).clubWide) {
+    const error = new Error('Only club-wide administrators can do this');
+    error.status = 403;
+    throw error;
+  }
+  return sessionContext;
 }
 
 /** The scopes this session may see — for switchers and scoped listings. */
