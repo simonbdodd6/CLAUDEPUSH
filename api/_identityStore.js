@@ -1030,10 +1030,16 @@ export async function claimInvite(input = {}) {
     displayName: name,
     password: input.password,
   });
-  // Whether this person already held a membership BEFORE this claim — decides
-  // how a scoped invite merges (see applyInviteScope).
-  const membershipExisted = (await loadTeamMembers())
-    .some(m => m.teamId === (invite.teamId || DEFAULT_TEAM.id) && m.userId === user.id);
+  // The membership as it stood BEFORE this claim. `membershipExisted` decides
+  // how a scoped invite merges (see applyInviteScope); `priorEligibility` is
+  // captured here because ensureTeamMember may change the role below, and a
+  // dual-role member's squad eligibility must survive that change (Phase C.1).
+  const priorMember = (await loadTeamMembers())
+    .find(m => m.teamId === (invite.teamId || DEFAULT_TEAM.id) && m.userId === user.id) || null;
+  const membershipExisted = Boolean(priorMember);
+  const priorEligibility = priorMember
+    ? effectiveEligibility(priorMember)
+    : { teamIds: [], primaryTeamId: null };
   const inviteRole = String(invite.role || 'player');
   const inviteIsStaff = ['coach', 'admin', 'medical'].includes(inviteRole);
   const member = await ensureTeamMember({
@@ -1058,12 +1064,19 @@ export async function claimInvite(input = {}) {
       phone: String(input.phone || input.mobile || '').trim(),
     });
   } else {
-    // Staff must never sit in the roster. If this person was previously a player,
-    // drop their roster profile so they can't appear in player-only lists.
-    const profiles = await loadPlayerProfiles();
-    const kept = profiles.filter(p => !(p.teamMemberId === member.id ||
-      (String(p.teamId) === String(member.teamId) && String(p.userId) === String(user.id))));
-    if (kept.length !== profiles.length) await savePlayerProfiles(kept);
+    // RC4.7 Phase C.1 — DUAL-ROLE MEMBER INTEGRITY.
+    //
+    // This branch previously HARD-DELETED the claimer's player profile so staff
+    // "never sit in the roster". For a genuine dual-role member — a player who
+    // also becomes a coach, medic or admin — that destroyed real data: the
+    // profile row carries legacyPlayerId, the key that links their availability
+    // history, and it cannot be reconstructed.
+    //
+    // A person is now one identity with one membership that may hold BOTH a
+    // player profile and staff access. Claiming a staff invite therefore
+    // preserves whatever player state already exists, and creates none where
+    // there was none (a brand-new staff-only invitee still gets no profile).
+    profile = await preserveDualRolePlayerState(member, user, priorEligibility);
   }
   // RC4.7 Phase C — a SCOPED invite stamps exactly the scope it was created
   // with; the claimer can never widen it (nothing in the request is read).
@@ -1088,6 +1101,40 @@ export async function claimInvite(input = {}) {
   await saveInvites(invites);
   const session = await createSession({ userId: user.id, teamId: member.teamId, role: member.role });
   return { user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, invite, session };
+}
+
+/**
+ * RC4.7 Phase C.1 — keep an existing player's state intact when they claim a
+ * staff invitation.
+ *
+ * Returns their existing player profile (so the claim response still reports
+ * it) or null when there is none. Nothing is created here: a staff-only
+ * invitee has no profile and gains none.
+ *
+ * The membership's role has just changed to a staff role. Any eligibility they
+ * held AS a player was, before this fix, derived from that role — so it is
+ * materialised onto the record now, making it explicit and immune to the role
+ * change. Eligibility already stored explicitly is left exactly as it is.
+ */
+async function preserveDualRolePlayerState(member, user, priorEligibility) {
+  const profiles = await loadPlayerProfiles();
+  const existing = profiles.find(p => p.teamMemberId === member.id ||
+    (String(p.teamId) === String(member.teamId) && String(p.userId) === String(user.id))) || null;
+  if (!existing) return null;
+
+  if (member.playerEligibility === undefined || member.playerEligibility === null) {
+    const teamIds = Array.isArray(priorEligibility?.teamIds) ? priorEligibility.teamIds : [];
+    if (teamIds.length) {
+      const members = await loadTeamMembers();
+      const live = members.find(m => m.id === member.id);
+      if (live && (live.playerEligibility === undefined || live.playerEligibility === null)) {
+        live.playerEligibility = normalizeEligibility(priorEligibility);
+        await saveTeamMembers(members);
+        Object.assign(member, live);
+      }
+    }
+  }
+  return existing;
 }
 
 /**

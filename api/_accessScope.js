@@ -150,12 +150,17 @@ export function normalizeEligibility(raw) {
  * the initial migrated team. Non-players have no eligibility.
  */
 export function effectiveEligibility(member = {}) {
-  if (!member || member.status !== 'active' || canonicalRole(member) !== 'player') {
-    return { teamIds: [], primaryTeamId: null };
-  }
+  if (!member || member.status !== 'active') return { teamIds: [], primaryTeamId: null };
+  // RC4.7 Phase C.1 — DUAL ROLE. Stored eligibility is authoritative for ANY
+  // role. A player who also gains staff access (coach / medical / admin) keeps
+  // the squads they can be picked for; gating this on role === 'player' silently
+  // suppressed a dual-role member's eligibility the moment their role changed.
   if (member.playerEligibility !== undefined && member.playerEligibility !== null) {
     return normalizeEligibility(member.playerEligibility);
   }
+  // No stored eligibility: only an actual player derives the initial team.
+  // Staff-only members never derive eligibility.
+  if (canonicalRole(member) !== 'player') return { teamIds: [], primaryTeamId: null };
   return { teamIds: [INITIAL_TEAM_ID], primaryTeamId: INITIAL_TEAM_ID };
 }
 
