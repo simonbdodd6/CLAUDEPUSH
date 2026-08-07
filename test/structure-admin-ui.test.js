@@ -189,3 +189,79 @@ test('memberScope mirrors the server derivation and drops removed grants', () =>
     assert.equal(Array.isArray(scope.groups) && Array.isArray(scope.teams), true);
   }
 });
+
+// ── RC4.7 UI wiring fix — data loading, shared block, discoverability ───────
+
+test('any admin screen can request the data it needs, with a loop guard', () => {
+  const ensure = fn('ensureAdminData');
+  assert.match(ensure, /canI\('manage_players'\)|canI\('manage_teams'\)/, 'permission gated');
+  assert.match(ensure, /_adminData\.loaded \|\| _adminData\.loading \|\| _adminData\.attempted/,
+    'guards against duplicate AND repeated-failure fetches');
+  assert.match(ensure, /loadAdminData\(\)/);
+  // `attempted` is what stops a failed fetch looping forever, because
+  // loadAdminData re-renders the very screens that call ensureAdminData.
+  assert.ok(src.includes('_adminData.attempted = true'), 'attempt recorded in finally');
+  assert.ok(src.includes('if (force) _adminData.attempted = false'), 'a forced reload clears the guard');
+});
+
+test('Settings requests admin data so a fresh owner sees Club structure first', () => {
+  const settings = fn('renderSettings');
+  assert.match(settings, /ensureAdminData\(\)/, 'Settings asks for the structure itself');
+});
+
+test('loadAdminData re-renders the screen that is actually showing', () => {
+  const load = fn('loadAdminData');
+  assert.match(load, /activeCoachSection === 'settings'[\s\S]*renderSettings\(\)/,
+    'Settings refreshed when it is active');
+  assert.match(load, /activeCoachSection === 'players'[\s\S]*renderPlayers\(\)/,
+    'Members refreshed when it is active');
+  assert.match(load, /renderClubAdmin\(\)/, 'Club Admin still refreshed');
+});
+
+test('Members exposes the access + eligibility editor via the SHARED block', () => {
+  const players = fn('renderPlayers');
+  assert.match(players, /ensureAdminData\(\)/, 'Members requests admin data');
+  assert.ok(src.includes('renderMemberAccessCard(_playerDetailId)'), 'member detail renders the card');
+
+  const card = fn('renderMemberAccessCard');
+  // The card must DELEGATE to the one implementation — never reimplement it.
+  assert.match(card, /renderAccessSection\(member, user\)/, 'reuses the shared section');
+  assert.doesNotMatch(card, /set_member_access|set_member_eligibility|remove_member_scope/,
+    'no access logic duplicated in the Members wrapper');
+  assert.match(card, /canI\('assign_access'\)/, 'permission gated');
+  assert.match(card, /_adminData\.loaded/, 'waits for data rather than rendering empty controls');
+  assert.match(card, /m\.status === 'active'/, 'resolves an ACTIVE membership only');
+});
+
+test('exactly one implementation of the access editor serves both screens', () => {
+  // renderAccessSection is defined once and called from Club Admin and from
+  // the Members wrapper — so owner protection, final-admin protection and the
+  // confirmation prompts cannot diverge between the two screens.
+  assert.equal((src.match(/function renderAccessSection\(/g) || []).length, 1, 'defined once');
+  // Exclude the definition line itself, which also matches the call pattern.
+  const calls = (src.match(/(?<!function )renderAccessSection\(member, user\)/g) || []).length;
+  assert.equal(calls, 2, `called from both screens, got ${calls}`);
+  assert.ok(fn('renderClubAdmin').includes('renderAccessSection(member, user)'), 'Club Admin call site');
+  assert.ok(fn('renderMemberAccessCard').includes('renderAccessSection(member, user)'), 'Members call site');
+  assert.equal((src.match(/function renderScopeSection\(/g) || []).length, 1, 'scope editor defined once');
+  assert.equal((src.match(/function renderEligibilitySection\(/g) || []).length, 1, 'eligibility editor defined once');
+});
+
+test('Club Admin is discoverable from Members and Settings, gated on administration', () => {
+  // The Core Beta sidebar is contractually exactly 8 sections with `admin`
+  // deliberately hidden (test/core-beta-nav.test.js), so discoverability is
+  // delivered through in-page entry points rather than a 9th nav item.
+  const players = fn('renderPlayers');
+  assert.match(players, /canI\('manage_teams'\) \? `<button[^`]*setSection\('coach','admin'\)/,
+    'Members header offers Club Admin to authorised staff only');
+  assert.match(src, /canI\('manage_teams'\) \? `<button[^`]*setSection\('coach','admin'\)[^`]*Open Club Admin/,
+    'Settings offers an explicit Club Admin button');
+  assert.match(src, /SECTION_PERMS = \{[^}]*admin: 'manage_teams'/,
+    'the section itself stays gated on manage_teams');
+});
+
+test('the beta navigation contract is untouched — admin stays out of the sidebar', () => {
+  const ids = new Function(`const BETA_NAV_IDS = ${src.match(/const BETA_NAV_IDS = (\[[^\]]*\])/)[1]}; return BETA_NAV_IDS;`)();
+  assert.equal(ids.length, 8, 'still exactly 8 beta sections');
+  assert.equal(ids.includes('admin'), false, 'admin remains hidden from the beta sidebar');
+});

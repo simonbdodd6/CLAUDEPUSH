@@ -13521,6 +13521,8 @@
       // Kick off a background sync of accepted invites each time this page renders
       if (isCoach()) loadInviteList().catch(()=>{});
       if (isCoach()) setTimeout(() => loadIdentityRequests().catch(()=>{}), 0);
+      // RC4.7 — the member access + eligibility editor needs _adminData.
+      if (isCoach() && typeof ensureAdminData === 'function') ensureAdminData();
 
       // Phase 17 — show player detail panel if one is open
       // Phase 31 — premium Member Centre (overview) is the default view; the
@@ -13540,7 +13542,8 @@
               ${tabBtn('edit','Edit profile')}
             </div>
           </div>`;
-        const body = tab === 'edit' ? renderPlayerDetail(_playerDetailId) : renderMemberCentre(_playerDetailId);
+        const body = (tab === 'edit' ? renderPlayerDetail(_playerDetailId) : renderMemberCentre(_playerDetailId))
+          + renderMemberAccessCard(_playerDetailId);
         document.getElementById("coach-players").innerHTML =
           `<div class="section-inner">${tabBar}${body}</div>`;
         return;
@@ -13580,6 +13583,8 @@
               <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add player</button>
               <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Player invite link</button>
               <button class="btn" type="button" onclick="openCoachGroupInviteModal()">Coach / Staff invite link</button>
+              ${canI('manage_teams') ? `<button class="btn" type="button" onclick="setSection('coach','admin')"
+                title="Club structure, staff access and member permissions">Club Admin →</button>` : ''}
             </div>
           </div>
           <p class="muted" style="font-size:12.5px;margin:2px 0 0">Share a link — players and staff register themselves and join automatically. Or add a player manually.</p>
@@ -16177,6 +16182,11 @@
       if (active && _settingsVersion === null) { _settingsVersion = '…'; loadSettingsData(); }
 
       const user = currentUser() || {};
+      // RC4.7 — the Club structure card needs _adminData.structure. Request it
+      // here so an owner landing on Settings first sees the card immediately.
+      // typeof-guarded like the other cross-module helpers, so the isolated
+      // render harnesses in the test suite can evaluate renderSettings alone.
+      if (typeof ensureAdminData === 'function') ensureAdminData();
       const prefs = _settingsPrefs || {};
       const prefOn = k => prefs[k] !== false;
       const inputStyle = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
@@ -16265,7 +16275,9 @@
           <!-- Club settings -->
           <div class="card">
             <h2 style="margin-bottom:4px">Club settings</h2>
-            <p class="muted" style="font-size:12px;margin-bottom:14px">Names, season name and the training schedule are edited in <a href="#" onclick="setSection('coach','admin');return false" style="color:var(--accent)">Club Admin</a>.</p>
+            <p class="muted" style="font-size:12px;margin-bottom:10px">Names, season name and the training schedule are edited in Club Admin.</p>
+            ${canI('manage_teams') ? `<button class="btn" type="button" style="margin-bottom:14px;font-size:12.5px"
+              onclick="setSection('coach','admin')">Open Club Admin →</button>` : ''}
             <div style="display:grid;gap:12px">
               <div style="display:flex;align-items:center;gap:14px">
                 <div id="set-logo-preview" style="width:54px;height:54px;border-radius:12px;border:1px solid var(--line);background:var(--panel-2) center/cover no-repeat;flex-shrink:0;${state.clubLogo ? `background-image:url(${state.clubLogo})` : ''}"></div>
@@ -16891,12 +16903,30 @@
 
     const STAFF_LEVEL_LABELS = { head: 'Head Coach', assistant: 'Assistant Coach', manager: 'Team Manager' };
 
-    let _adminData = { invites: [], members: [], users: [], profiles: [], structure: null, counts: null, clubWideStaff: [], loaded: false, loading: false };
+    let _adminData = { invites: [], members: [], users: [], profiles: [], structure: null, counts: null, clubWideStaff: [], loaded: false, loading: false, attempted: false };
+
+    /**
+     * RC4.7 — admin/structure data on demand.
+     *
+     * Settings (Club structure) and Members (access + eligibility) both need
+     * _adminData, but only Club Admin used to fetch it — so an owner who went
+     * straight to Settings saw nothing at all. Any screen may now request it.
+     *
+     * `attempted` is the loop guard: renderSettings/renderPlayers run on every
+     * render, and loadAdminData re-renders them on completion, so a FAILED
+     * fetch (which leaves `loaded` false) would otherwise retry forever.
+     */
+    function ensureAdminData() {
+      if (!canI('manage_players') && !canI('manage_teams')) return;
+      if (_adminData.loaded || _adminData.loading || _adminData.attempted) return;
+      loadAdminData();
+    }
     let _adminSearch = '';
 
     async function loadAdminData(force = false) {
       if (_adminData.loading || (_adminData.loaded && !force)) return;
       _adminData.loading = true;
+      if (force) _adminData.attempted = false;
       try {
         const [identityRes, inviteRes, clubRes, structureRes] = await Promise.all([
           fetch('/api/identity'),
@@ -16928,7 +16958,17 @@
         }
         _adminData.loaded = true;
       } catch(e) { console.warn('[loadAdminData]', e); }
-      finally { _adminData.loading = false; renderClubAdmin(); }
+      finally {
+        _adminData.loading = false;
+        _adminData.attempted = true;
+        renderClubAdmin();
+        // Re-render the screen that asked for this data so the newly available
+        // structure appears immediately, with no navigation dance.
+        if (state.activeView === 'coach') {
+          if (state.activeCoachSection === 'settings' && typeof renderSettings === 'function') renderSettings();
+          if (state.activeCoachSection === 'players' && typeof renderPlayers === 'function') renderPlayers();
+        }
+      }
     }
 
     function adminUserFor(member) {
@@ -17394,6 +17434,38 @@
       if (ACCESS_PROFILE_LABELS[explicit]) return explicit;
       if (member?.isOwner) return 'full';
       return DEFAULT_PROFILE_BY_LEVEL[String(member?.staffLevel || 'head').toLowerCase()] || 'coach';
+    }
+
+    /**
+     * RC4.7 — the member access + eligibility editor as it appears on the
+     * MEMBERS screen. It resolves the roster player to their club membership
+     * and then renders the SAME renderAccessSection used by Club Admin, so the
+     * two screens can never diverge: owner protection, final-admin protection,
+     * confirmation prompts and the access/eligibility separation all come from
+     * that single implementation.
+     *
+     * Returns '' when the viewer may not assign access, when admin data has not
+     * loaded yet, or when the roster entry has no linked club membership.
+     */
+    function renderMemberAccessCard(playerId) {
+      if (!isCoach() || !canI('assign_access')) return '';
+      if (!_adminData.loaded || !_adminData.structure) return '';
+      const player = (state.players || []).find(p => p.id === playerId);
+      if (!player) return '';
+      const member = (_adminData.members || []).find(m =>
+        m.status === 'active' &&
+        (String(m.userId) === String(player.userId || '') ||
+         String(m.id) === String(player.memberId || '')));
+      if (!member) return '';
+      const user = (_adminData.users || []).find(u => u.id === member.userId) || {};
+      return `
+        <div class="card" style="margin-top:14px">
+          <h2 style="margin-bottom:4px">Access &amp; squads</h2>
+          <p class="muted" style="font-size:12.5px;margin:0 0 10px">
+            What ${esc(user.displayName || player.name || 'this member')} can see and manage, and which squads they can be picked for.
+          </p>
+          ${renderAccessSection(member, user)}
+        </div>`;
     }
 
     function renderAccessSection(member, user) {
