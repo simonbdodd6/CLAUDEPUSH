@@ -164,7 +164,15 @@ export function permissionsFor(member = {}) {
 
   // Non-staff (player / medical / snc / analyst / parent / guest) have no access
   // profile — their abilities stay exactly as the legacy matrix defines them.
-  if (!profile) return new Set(ROLE_PERMISSIONS[canonicalRole(member)] || []);
+  if (!profile) {
+    const base = new Set(ROLE_PERMISSIONS[canonicalRole(member)] || []);
+    // RC4.7 — medicalAccess is an ADDITIVE grant and must apply here too. This
+    // branch previously returned before the flag was read, so a player who is
+    // also the club physio could never be given medical access on their single
+    // membership — the dual-role case the grant exists for.
+    if (member.medicalAccess === true) base.add(PERM.MEDICAL_ACCESS);
+    return base;
+  }
 
   const granted = new Set(ACCESS_PROFILE_PERMISSIONS[profile] || []);
 

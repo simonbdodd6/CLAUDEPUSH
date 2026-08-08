@@ -1937,6 +1937,24 @@ export async function setMemberRole(memberId, { role, staffLevel = null } = {}, 
   return { teamMember: member };
 }
 
+/**
+ * RC4.7 — grant or revoke MEDICAL access as an additive permission.
+ *
+ * Medical is deliberately independent of the access profile (RC4.9C): a person
+ * may be a player AND medical staff on ONE membership, keeping their player
+ * profile, roster place and eligibility untouched. It grants PERM.MEDICAL_ACCESS
+ * only — never club administration, access assignment or structure management.
+ */
+export async function setMedicalAccess(memberId, enabled, changedBy, expectedTeamId) {
+  const members = await loadTeamMembers();
+  const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+  member.medicalAccess = enabled === true;
+  member.accessChangedBy = changedBy || null;
+  member.accessChangedAt = nowIso();
+  await saveTeamMembers(members);
+  return { teamMember: member };
+}
+
 /** Set which teams a player may be SELECTED for. Never grants capabilities. */
 export async function setPlayerEligibility(memberId, eligibility, changedBy, expectedTeamId) {
   const members = await loadTeamMembers();

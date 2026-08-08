@@ -35,6 +35,7 @@ import {
   sessionTokenFromRequest,
   setAccessProfile,
   setMemberAccessScope,
+  setMedicalAccess,
   setMemberRole,
   setPlayerEligibility,
   removeScopedGrant,
@@ -524,6 +525,17 @@ export default async function handler(req, res) {
           role: req.body?.role ?? null,
           scoped: req.body?.accessScope !== undefined,
           ip: requestIp(req),
+        });
+        return res.status(200).json({ ok: true, teamMember: result.teamMember });
+      }
+      if (action === 'set_medical_access') {
+        const session = await requireClubManage(req, PERM.ASSIGN_ACCESS);
+        const memberId = String(req.body?.memberId || '');
+        const result = await setMedicalAccess(memberId, req.body?.medicalAccess === true,
+          session.user.id, session.teamId);
+        await auditLog('medical_access_changed', {
+          memberId, enabled: req.body?.medicalAccess === true,
+          changedBy: session.user.id, teamId: session.teamId, ip: requestIp(req),
         });
         return res.status(200).json({ ok: true, teamMember: result.teamMember });
       }

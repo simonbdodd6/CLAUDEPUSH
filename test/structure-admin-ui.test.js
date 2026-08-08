@@ -79,7 +79,11 @@ test('access and eligibility are rendered as SEPARATE sections', () => {
 
 test('permission controls use plain language, never developer terminology', () => {
   const ui = fn('renderScopeSection') + fn('renderEligibilitySection') + fn('renderClubStructureCard');
-  for (const phrase of ['Can manage entire club', 'Can coach ', 'Eligible for ', 'Primary squad']) {
+  // RC4.7 mobile cleanup replaced the single run-on label ("Eligible for
+  // Seniors · Premier") with a two-line row: the team name as the primary
+  // label and its group as subdued secondary text.
+  for (const phrase of ['Can manage entire club', 'Can coach ', 'Can be picked for', 'Primary squad',
+                        'Whole group', 'Team only', 'Medical access']) {
     assert.ok(ui.includes(phrase), `uses plain phrase: ${phrase}`);
   }
 
@@ -264,4 +268,154 @@ test('the beta navigation contract is untouched — admin stays out of the sideb
   const ids = new Function(`const BETA_NAV_IDS = ${src.match(/const BETA_NAV_IDS = (\[[^\]]*\])/)[1]}; return BETA_NAV_IDS;`)();
   assert.equal(ids.length, 8, 'still exactly 8 beta sections');
   assert.equal(ids.includes('admin'), false, 'admin remains hidden from the beta sidebar');
+});
+
+// ── RC4.7 mobile Access & squads cleanup ───────────────────────────────────
+
+test('access and eligibility render as paired row controls, not loose flex labels', () => {
+  const scope = fn('renderScopeSection');
+  const elig = fn('renderEligibilitySection');
+  for (const [name, body] of [['scope', scope], ['eligibility', elig]]) {
+    assert.match(body, /class="ce-arow/, `${name} uses the shared row component`);
+    assert.match(body, /ce-arow-main/, `${name} has a primary label`);
+    // The control sits INSIDE the row label, immediately before its text — the
+    // old markup let long copy wrap and float the checkbox away from it.
+    assert.match(body, /<input type="checkbox"[\s\S]{0,200}?ce-arow-main/,
+      `${name} keeps the checkbox beside its label`);
+  }
+  assert.match(scope, /ce-arow-nested/, 'team options use a rail, not a wide indent');
+});
+
+test('the row component guarantees a touch target and cannot overflow', () => {
+  const css = src.slice(src.indexOf('.ce-arow {'), src.indexOf('.ce-modal-overlay {'));
+  assert.match(css, /min-height: 44px/, '44px+ touch target');
+  assert.match(css, /grid-template-columns: 20px minmax\(0, 1fr\)/,
+    'fixed control column + flexible text that can shrink');
+  assert.match(css, /overflow-wrap: anywhere/, 'long names wrap instead of overflowing');
+  assert.match(css, /box-sizing: border-box/, 'padding cannot push the row past 100%');
+  assert.match(css, /align-items: start/, 'control stays at the top, not floated mid-block');
+  // The scope must sit on its OWN line, not run on after the primary label.
+  assert.match(css, /\.ce-arow-main \{\s*display: block/, 'primary label is block-level');
+  assert.match(css, /\.ce-arow-sub \{\s*display: block/, 'secondary scope is block-level');
+  assert.match(css, /@media \(max-width: 560px\)/, 'explicit mobile sizing');
+});
+
+test('copy is two-line and plain: primary label, subdued scope beneath', () => {
+  const scope = fn('renderScopeSection');
+  const elig = fn('renderEligibilitySection');
+  assert.match(scope, /Can coach \$\{esc\(g\.name\)\}/, 'no run-on "— whole group" suffix');
+  assert.match(scope, /sub: 'Whole group'/);
+  assert.match(scope, /sub: 'Team only'/);
+  assert.equal(scope.includes('— whole group'), false, 'old run-on label gone');
+  assert.equal(elig.includes('Eligible for '), false, 'old run-on eligibility label gone');
+  assert.match(elig, /main: esc\(t\.name\)/, 'team name is the primary label');
+  assert.match(elig, /sub: esc\(t\.groupName\)/, 'group is the secondary line');
+});
+
+test('the owner row stays visibly non-editable', () => {
+  const scope = fn('renderScopeSection');
+  assert.match(scope, /member\.isOwner/);
+  assert.match(scope, /disabled: true/, 'owner control is disabled, not merely styled');
+  assert.match(scope, /cannot be reduced/i);
+});
+
+// ── Medical access ─────────────────────────────────────────────────────────
+test('Medical access is offered as its own row and confirms on removal', () => {
+  const scope = fn('renderScopeSection');
+  assert.match(scope, /main: 'Medical access'/);
+  assert.match(scope, /member\.medicalAccess === true/, 'reflects the stored flag');
+  assert.match(scope, /Adds nothing else/, 'states it grants nothing further');
+
+  const toggle = fn('adminToggleMedical');
+  assert.match(toggle, /action: 'set_medical_access'/);
+  assert.match(toggle, /ceConfirm/, 'removal confirms');
+  assert.match(toggle, /keep their account, player profile/i, 'reassures nothing else is lost');
+  assert.doesNotMatch(toggle, /accessScope|set_member_access/, 'medical never rewrites access scope');
+});
+
+// ── Eligibility defaults ───────────────────────────────────────────────────
+test('the UI mirrors the server default: group teams shown, nothing written', () => {
+  const body = fn('memberEligibility');
+  const memberScopeBody = fn('memberScope');
+  const memberEligibility = new Function(`
+    const _adminData = arguments[0];
+    ${memberScopeBody}
+    ${body}
+    return memberEligibility(arguments[1]);`);
+
+  const structure = { groups: [
+      { id: 'g1', name: 'Seniors', status: 'active' },
+      { id: 'g2', name: 'U18', status: 'active' },
+      { id: 'g3', name: 'Vets', status: 'archived' }],
+    teams: [
+      { id: 't1', groupId: 'g1', name: 'Premier', status: 'active' },
+      { id: 't2', groupId: 'g1', name: 'Premier Development', status: 'active' },
+      { id: 't3', groupId: 'g1', name: 'Old Boys', status: 'archived' },
+      { id: 't4', groupId: 'g2', name: 'U18', status: 'active' },
+      { id: 't5', groupId: 'g3', name: 'Vets', status: 'active' }] };
+  const admin = { structure };
+
+  const seniors = memberEligibility(admin, { role: 'player', status: 'active',
+    accessScope: { clubWide: false, groups: [{ groupId: 'g1', status: 'active' }], teams: [] } });
+  assert.deepEqual(seniors.teamIds.sort(), ['t1', 't2'], 'both senior squads defaulted');
+  assert.equal(seniors.derived, true);
+
+  const explicit = memberEligibility(admin, { role: 'player', status: 'active',
+    accessScope: { clubWide: false, groups: [{ groupId: 'g1', status: 'active' }], teams: [] },
+    playerEligibility: { teamIds: ['t1'], primaryTeamId: 't1' } });
+  assert.deepEqual(explicit.teamIds, ['t1'], 'explicit choice untouched');
+  assert.equal(explicit.derived, false);
+
+  const u18 = memberEligibility(admin, { role: 'player', status: 'active',
+    accessScope: { clubWide: false, groups: [{ groupId: 'g2', status: 'active' }], teams: [] } });
+  assert.deepEqual(u18.teamIds, ['t4'], 'never crosses into another group');
+
+  const staff = memberEligibility(admin, { role: 'coach', staffLevel: 'head', status: 'active',
+    accessScope: { clubWide: false, groups: [{ groupId: 'g1', status: 'active' }], teams: [] } });
+  assert.deepEqual(staff.teamIds, [], 'staff derive none');
+});
+
+test('toggling eligibility edits the DISPLAYED set, so defaults are not wiped', () => {
+  const toggle = fn('adminToggleEligibility');
+  assert.match(toggle, /memberEligibility\(member\)/,
+    'starts from what the admin can see, not from raw storage');
+  assert.match(toggle, /action: 'set_member_eligibility'/);
+  const primary = fn('adminSetPrimaryTeam');
+  assert.match(primary, /memberEligibility\(member\)/, 'primary keeps the displayed set');
+});
+
+// ── Profile form cleanup ───────────────────────────────────────────────────
+test('the profile form no longer asks for Preferred name, and never blanks it', () => {
+  assert.equal(src.includes("field('Preferred name'"), false, 'field removed from the edit UI');
+  assert.equal(src.includes("pp-preferred-"), false, 'no input id remains');
+  const save = fn('playerSaveProfile');
+  assert.equal(/p\.preferredName\s*=\s*g\(/.test(save), false,
+    'a save must not overwrite the stored historical value');
+});
+
+test('age group and joined date derive from structure and membership', () => {
+  const age = fn('derivedAgeGroup');
+  assert.match(age, /_adminData\.structure/, 'age group comes from the club structure');
+  assert.match(age, /status === 'active'/, 'archived groups are not used');
+  assert.match(age, /group \? group\.name : ''/, 'returns the group name, e.g. U18');
+
+  const joined = fn('derivedJoinedDate');
+  assert.match(joined, /if \(player\.joinedDate\) return player\.joinedDate/,
+    'an existing historical date always wins and is never reset');
+  assert.match(joined, /joinedAt \|\| member\?\.approvedAt/, 'otherwise established from membership');
+
+  assert.match(src, /derivedAgeGroup\(p\)/, 'wired into the form');
+  assert.match(src, /derivedJoinedDate\(p\)/, 'wired into the form');
+});
+
+test('a player created from a claimed identity defaults to Registered', () => {
+  const sync = src.slice(src.indexOf('profiles.forEach(profile =>'));
+  const creation = sync.slice(0, sync.indexOf('state.players.push(player)'));
+  assert.match(creation, /registrationStatus: 'registered'/,
+    'a genuine claimed player needs no manual admin step');
+  assert.match(creation, /joinedDate:/, 'joined date established at creation');
+  // Only on FIRST creation — the update branch must not force it.
+  const update = sync.slice(sync.indexOf('} else {'), sync.indexOf('} else {') + 1500);
+  assert.equal(/registrationStatus: 'registered'/.test(update), false,
+    'existing explicit states are never overwritten');
 });

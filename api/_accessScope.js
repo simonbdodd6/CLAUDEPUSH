@@ -164,9 +164,52 @@ export function effectiveEligibility(member = {}) {
   return { teamIds: [INITIAL_TEAM_ID], primaryTeamId: INITIAL_TEAM_ID };
 }
 
+/**
+ * RC4.7 — a member's eligibility RESOLVED against the live club structure.
+ *
+ * Explicit stored eligibility always wins and is returned untouched. When a
+ * member has none, a player is treated as eligible for every active team in
+ * the groups they belong to — a Seniors player is, by default, pickable for
+ * Premier and Premier Development. This is a read-time derivation only: it
+ * writes nothing, so no migration is needed and an admin's explicit choices
+ * are never overwritten.
+ *
+ * `derived: true` tells the UI it is showing a default rather than a stored
+ * selection.
+ */
+export function resolveEligibility(member = {}, structure = null) {
+  const stored = member?.playerEligibility;
+  if (stored !== undefined && stored !== null) {
+    return { ...normalizeEligibility(stored), derived: false };
+  }
+  if (!member || member.status !== 'active' || canonicalRole(member) !== 'player') {
+    return { teamIds: [], primaryTeamId: null, derived: false };
+  }
+  if (!structure) return { ...effectiveEligibility(member), derived: true };
+
+  // Every active team inside the groups this member can reach. Team-only
+  // grants also imply eligibility for that team. Archived scopes are excluded
+  // by activeGroups/activeTeams, and ids are resolved against THIS club's
+  // structure, so nothing can cross a group or club boundary.
+  const scope = effectiveAccessScope(member);
+  const ids = new Set();
+  const groupIds = scope.clubWide
+    ? activeGroups(structure).map(g => g.id)
+    : scope.groups.filter(g => g.status === 'active').map(g => g.groupId);
+  for (const groupId of groupIds) {
+    for (const team of activeTeams(structure, groupId)) ids.add(team.id);
+  }
+  for (const grant of scope.teams.filter(t => t.status === 'active')) {
+    const team = teamById(structure, grant.teamId);
+    if (team && team.status === 'active') ids.add(team.id);
+  }
+  const teamIds = [...ids];
+  return { teamIds, primaryTeamId: teamIds[0] || null, derived: true };
+}
+
 /** Eligible teams validated against the live structure (active teams only). */
 export function eligibleTeams(member, structure) {
-  const { teamIds } = effectiveEligibility(member);
+  const { teamIds } = resolveEligibility(member, structure);
   return teamIds
     .map(id => teamById(structure, id))
     .filter(team => team && team.status === 'active');

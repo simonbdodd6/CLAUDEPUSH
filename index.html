@@ -1349,6 +1349,65 @@
     }
 
     /* Branded modal (replaces native confirm/prompt) */
+    /* ── RC4.7 Access & squads rows ──────────────────────────────────────
+       Purpose-built selectable rows. The previous markup was a plain flex
+       label: long copy wrapped into a tall block while align-items:center
+       floated the checkbox to the vertical middle, so it read as detached and
+       far from its text, and nested team options were indented 26px away from
+       their own control. These rows keep the control locked beside the label
+       at every width, stack a subdued secondary line beneath it, and give the
+       whole row a 44px touch target. */
+    .ce-arow {
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr);
+      align-items: start;
+      column-gap: 12px;
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 12px;
+      margin: 0;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--panel-2);
+      cursor: pointer;
+      text-align: left;
+      box-sizing: border-box;
+    }
+    .ce-arow + .ce-arow { margin-top: 7px; }
+    .ce-arow input[type="checkbox"] {
+      width: 20px; height: 20px; margin: 1px 0 0; flex: none; cursor: pointer;
+    }
+    /* Block-level so the scope always sits on its OWN line beneath the label,
+       never running on as "Can coach Seniors Whole group". */
+    .ce-arow-main {
+      display: block;
+      font-size: 13.5px; font-weight: 700; color: var(--ink);
+      line-height: 1.35; overflow-wrap: anywhere;
+    }
+    .ce-arow-sub {
+      display: block;
+      font-size: 11.5px; font-weight: 600; color: var(--muted);
+      line-height: 1.35; margin-top: 2px; overflow-wrap: anywhere;
+    }
+    /* A team option belongs to the group above it — a small rail, not a wide
+       indent, so the control never drifts from its label on narrow screens. */
+    .ce-arow-nested {
+      margin-left: 10px;
+      border-left: 3px solid rgba(var(--accent-rgb), 0.30);
+      border-radius: 0 11px 11px 0;
+    }
+    .ce-arow[aria-disabled="true"] { opacity: .65; cursor: default; }
+    .ce-agroup { display: grid; gap: 0; margin-top: 8px; }
+    .ce-ahead {
+      font-size: 11px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: .05em; color: var(--muted); margin-bottom: 6px;
+    }
+    @media (max-width: 560px) {
+      .ce-arow { padding: 11px 12px; border-radius: 12px; }
+      .ce-arow-main { font-size: 14px; }
+      .ce-arow-nested { margin-left: 8px; }
+    }
+
     .ce-modal-overlay {
       position: fixed; inset: 0; z-index: 10000;
       background: rgba(4,8,14,0.78); backdrop-filter: blur(3px);
@@ -9267,6 +9326,12 @@
             medical: '',
             mediaConsent: false,
             contractStatus: 'active',
+            // RC4.7 — a player who has claimed their invitation and holds a real
+            // club membership IS registered; no admin step should be needed to
+            // say so. Only applies when the row is FIRST created from identity,
+            // so any explicit status set later is never overwritten.
+            registrationStatus: 'registered',
+            joinedDate: String(profile.createdAt || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
           };
           state.players.push(player);
           changed = true;
@@ -14629,6 +14694,37 @@
 
     // ── Pure helpers ──────────────────────────────────────────────────────────
 
+    /**
+     * RC4.7 — values the app can already work out, so the form stops asking.
+     *
+     * Age group comes from the club structure: the group a player belongs to
+     * (U18 → "U18", Seniors → "Seniors"). Date joined is established ONCE from
+     * the membership record and then preserved — an existing value always wins,
+     * and editing a profile never resets it.
+     */
+    function derivedAgeGroup(player) {
+      const st = _adminData.structure;
+      if (!st || !player) return '';
+      const member = (_adminData.members || []).find(m =>
+        m.status === 'active' && String(m.userId) === String(player.userId || ''));
+      if (!member) return '';
+      const scope = memberScope(member);
+      if (scope.clubWide) return '';                       // no single group to infer
+      const groupId = scope.groups[0]?.groupId
+        || (st.teams || []).find(t => t.id === scope.teams[0]?.teamId)?.groupId;
+      const group = (st.groups || []).find(g => g.id === groupId && g.status === 'active');
+      return group ? group.name : '';
+    }
+
+    function derivedJoinedDate(player) {
+      if (!player) return '';
+      if (player.joinedDate) return player.joinedDate;      // historical value always wins
+      const member = (_adminData.members || []).find(m =>
+        String(m.userId) === String(player.userId || ''));
+      const stamp = member?.joinedAt || member?.approvedAt || '';
+      return stamp ? String(stamp).slice(0, 10) : '';
+    }
+
     function playerLifecycleInfo(p) {
       if (!p) return PLAYER_LIFECYCLE_LABELS.active;
       const st = p.lifecycleStatus || 'active';
@@ -14716,7 +14812,8 @@
       const g = sfx => { const el = document.getElementById('pp-' + sfx + '-' + id); return el ? el.value.trim() : ''; };
       p.firstName          = g('firstname');
       p.lastName           = g('lastname');
-      p.preferredName      = g('preferred');
+      // RC4.7 — Preferred name is no longer collected in the edit UI. Any
+      // historical value is PRESERVED untouched (never blanked by a save).
       p.dateOfBirth        = g('dob');
       p.ageGroup           = g('agegroup');
       p.jerseyNumber       = g('jersey');
@@ -14817,7 +14914,6 @@
           <div class="grid two-col">
             ${field('First name',    'pp-firstname-'+id,  p.firstName   || '')}
             ${field('Last name',     'pp-lastname-'+id,   p.lastName    || '')}
-            ${field('Preferred name','pp-preferred-'+id,  p.preferredName||'')}
             ${field('Date of birth', 'pp-dob-'+id,        p.dateOfBirth || '', 'date')}
             ${field('Phone',         'pp-phone-'+id,      p.phone       || '', 'tel')}
             ${field('Email',         'pp-email-'+id,      p.email && !p.email.endsWith('@player.test') ? p.email : '')}
@@ -14830,7 +14926,8 @@
           <div class="grid two-col">
             ${sel('Position', 'pp-position-'+id, p.position || p.primaryPosition || 'SUB', posOptions)}
             ${field('Jersey #',   'pp-jersey-'+id,   p.jerseyNumber || '')}
-            ${field('Age group',  'pp-agegroup-'+id, p.ageGroup     || '', 'text', 'placeholder="e.g. Senior Men"')}
+            ${field('Age group',  'pp-agegroup-'+id, p.ageGroup || derivedAgeGroup(p) || '', 'text',
+              'placeholder="From your club structure"')}
             ${sel('Status', 'pp-lifecycle-'+id, p.lifecycleStatus || 'active', lcOptions)}
           </div>
         </div>
@@ -14852,7 +14949,7 @@
           <div class="grid two-col">
             ${sel('Registration status', 'pp-reg-status-'+id, p.registrationStatus || 'unregistered', regOptions)}
             ${field('Federation ID', 'pp-fed-id-'+id, p.federationId || '', 'text', 'placeholder="e.g. IRL-12345"')}
-            ${field('Joined date',   'pp-joined-'+id, p.joinedDate   || '', 'date')}
+            ${field('Joined date',   'pp-joined-'+id, p.joinedDate || derivedJoinedDate(p) || '', 'date')}
           </div>
           <div class="grid two-col" style="margin-top:0">
             <div style="font-size:12px;color:var(--muted);padding:8px 10px;border-radius:7px;background:var(--panel-2);border:1px solid var(--line)">
@@ -17528,6 +17625,55 @@
       return { clubWide: derivedClubWide, groups: [], teams: [], derived: true };
     }
 
+    /**
+     * RC4.7 — a member's eligibility for display, mirroring the server's
+     * resolveEligibility(). Explicit stored selections win untouched; a player
+     * with none is shown the DEFAULT for their group — every active team in the
+     * groups they belong to. Derived values are never written back, so nothing
+     * is migrated and an admin's explicit choices are never overwritten.
+     */
+    function memberEligibility(member) {
+      const stored = member?.playerEligibility;
+      if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+        const teamIds = Array.isArray(stored.teamIds) ? stored.teamIds.map(String) : [];
+        const primary = String(stored.primaryTeamId || '');
+        return { teamIds, primaryTeamId: teamIds.includes(primary) ? primary : (teamIds[0] || null), derived: false };
+      }
+      const st = _adminData.structure;
+      if (!st || String(member?.role || '').toLowerCase() !== 'player') {
+        return { teamIds: [], primaryTeamId: null, derived: false };
+      }
+      const scope = memberScope(member);
+      const activeGroupIds = scope.clubWide
+        ? (st.groups || []).filter(g => g.status === 'active').map(g => g.id)
+        : scope.groups.map(g => g.groupId);
+      const ids = new Set();
+      for (const t of (st.teams || [])) {
+        if (t.status !== 'active') continue;                       // archived never auto-added
+        const group = (st.groups || []).find(g => g.id === t.groupId);
+        if (!group || group.status !== 'active') continue;
+        if (activeGroupIds.includes(t.groupId)) ids.add(t.id);     // never crosses a group
+      }
+      for (const grant of scope.teams) {
+        const t = (st.teams || []).find(x => x.id === grant.teamId && x.status === 'active');
+        if (t) ids.add(t.id);
+      }
+      const teamIds = [...ids];
+      return { teamIds, primaryTeamId: teamIds[0] || null, derived: true };
+    }
+
+    async function adminToggleMedical(memberId, on, name) {
+      if (!on) {
+        const ok = await ceConfirm(`Remove Medical access from ${name}?`,
+          'They keep their account, player profile and every other access — only the Medical page is withdrawn.',
+          { confirmLabel: 'Remove Medical access', danger: true });
+        if (!ok) { render(); return; }
+      }
+      await adminAction({ action: 'set_medical_access', memberId, medicalAccess: on === true },
+        on ? `${name} now has Medical access` : 'Medical access removed');
+      render();
+    }
+
     function renderScopeSection(member, user) {
       const st = _adminData.structure;
       if (!st || !canI('assign_access')) return '';
@@ -17535,12 +17681,24 @@
       const activeGroups = (st.groups || []).filter(g => g.status === 'active');
       const name = user.displayName || 'this member';
 
+      // One row builder for every choice, so spacing and touch targets stay
+      // identical across access and eligibility on any width.
+      const row = ({ checked, disabled, main, sub, onchange, nested }) => `
+        <label class="ce-arow${nested ? ' ce-arow-nested' : ''}"${disabled ? ' aria-disabled="true"' : ''}>
+          <input type="checkbox" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}
+            ${onchange ? `onchange="${onchange}"` : ''}>
+          <span>
+            <span class="ce-arow-main">${main}</span>
+            ${sub ? `<span class="ce-arow-sub">${sub}</span>` : ''}
+          </span>
+        </label>`;
+
       if (member.isOwner) {
         return `
-          <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line)">
-            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:5px">Can access</div>
-            <div style="font-size:12.5px;font-weight:700">Can manage entire club</div>
-            <p class="muted" style="font-size:11px;margin:4px 0 0">As club owner this cannot be reduced.</p>
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+            <div class="ce-ahead">Can access</div>
+            ${row({ checked: true, disabled: true, main: 'Can manage entire club',
+                    sub: 'Club owner — this cannot be reduced' })}
           </div>`;
       }
 
@@ -17548,35 +17706,36 @@
         const teams = (st.teams || []).filter(t => t.groupId === g.id && t.status === 'active');
         const hasGroup = scope.groups.some(x => x.groupId === g.id);
         const teamIds = new Set(scope.teams.map(x => x.teamId));
-        return `
-          <div style="padding:7px 0;border-top:1px solid var(--line)">
-            <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;cursor:pointer">
-              <input type="checkbox" ${scope.clubWide ? 'checked disabled' : hasGroup ? 'checked' : ''}
-                onchange="adminToggleGroupAccess('${esc(member.id)}','${esc(g.id)}',this.checked)">
-              Can coach ${esc(g.name)}<span class="muted" style="font-weight:600"> — whole group</span>
-            </label>
-            ${teams.length && !scope.clubWide && !hasGroup ? `
-              <div style="margin:5px 0 0 26px;display:grid;gap:3px">
-                ${teams.map(t => `
-                  <label style="display:flex;align-items:center;gap:7px;font-size:11.5px;cursor:pointer">
-                    <input type="checkbox" ${teamIds.has(t.id) ? 'checked' : ''}
-                      onchange="adminToggleTeamAccess('${esc(member.id)}','${esc(t.id)}',this.checked)">
-                    ${esc(t.name)} only
-                  </label>`).join('')}
-              </div>` : ''}
-          </div>`;
+        const groupRow = row({
+          checked: scope.clubWide || hasGroup,
+          disabled: scope.clubWide,
+          main: `Can coach ${esc(g.name)}`,
+          sub: 'Whole group',
+          onchange: scope.clubWide ? '' : `adminToggleGroupAccess('${esc(member.id)}','${esc(g.id)}',this.checked)`,
+        });
+        const teamRows = (teams.length && !scope.clubWide && !hasGroup)
+          ? teams.map(t => row({
+              checked: teamIds.has(t.id),
+              main: esc(t.name),
+              sub: 'Team only',
+              onchange: `adminToggleTeamAccess('${esc(member.id)}','${esc(t.id)}',this.checked)`,
+              nested: true,
+            })).join('')
+          : '';
+        return `<div class="ce-agroup">${groupRow}${teamRows}</div>`;
       }).join('');
 
       return `
-        <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line)">
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:5px">Can access</div>
-          <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;cursor:pointer">
-            <input type="checkbox" ${scope.clubWide ? 'checked' : ''}
-              onchange="adminToggleClubWide('${esc(member.id)}',this.checked,'${esc(name)}')">
-            Can manage entire club
-          </label>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+          <div class="ce-ahead">Can access</div>
+          ${row({ checked: scope.clubWide, main: 'Can manage entire club',
+                  sub: 'Every group and team',
+                  onchange: `adminToggleClubWide('${esc(member.id)}',this.checked,'${esc(name)}')` })}
           ${scope.clubWide ? '' : rows}
-          ${scope.derived ? `<p class="muted" style="font-size:11px;margin:7px 0 0">Currently using the default access for their role. Ticking a box above sets it explicitly.</p>` : ''}
+          ${row({ checked: member.medicalAccess === true, main: 'Medical access',
+                  sub: 'Open and update the Medical page. Adds nothing else.',
+                  onchange: `adminToggleMedical('${esc(member.id)}',this.checked,'${esc(name)}')` })}
+          ${scope.derived ? `<p class="muted" style="font-size:11.5px;margin:8px 2px 0">Currently using the default access for their role. Choosing above sets it explicitly.</p>` : ''}
         </div>`;
     }
 
@@ -17586,32 +17745,43 @@
       if (String(member.role || '').toLowerCase() !== 'player') return '';
       const options = structureActiveTeamOptions();
       if (!options.length) return '';
-      const elig = member.playerEligibility && typeof member.playerEligibility === 'object'
-        ? member.playerEligibility : null;
-      const teamIds = new Set(Array.isArray(elig?.teamIds) ? elig.teamIds : []);
-      const primary = elig?.primaryTeamId || null;
+
+      // RC4.7 — a player with no explicit selection is shown their sensible
+      // DEFAULT: every active team in the groups they belong to. Nothing is
+      // written until an admin actually chooses, so no data is rewritten.
+      const elig = memberEligibility(member);
+      const teamIds = new Set(elig.teamIds);
+      const primary = elig.primaryTeamId;
+
+      const row = ({ checked, main, sub, onchange }) => `
+        <label class="ce-arow">
+          <input type="checkbox" ${checked ? 'checked' : ''} onchange="${onchange}">
+          <span>
+            <span class="ce-arow-main">${main}</span>
+            ${sub ? `<span class="ce-arow-sub">${sub}</span>` : ''}
+          </span>
+        </label>`;
 
       return `
-        <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line)">
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">Can be picked for</div>
-          <p class="muted" style="font-size:11px;margin:0 0 6px">Which squads this player can be selected for. This does not change what they can see or manage.</p>
-          <div style="display:grid;gap:4px">
-            ${options.map(t => `
-              <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
-                <input type="checkbox" ${teamIds.has(t.id) ? 'checked' : ''}
-                  onchange="adminToggleEligibility('${esc(member.id)}','${esc(t.id)}',this.checked)">
-                Eligible for ${esc(t.groupName)} · ${esc(t.name)}
-              </label>`).join('')}
-          </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+          <div class="ce-ahead">Can be picked for</div>
+          <p class="muted" style="font-size:11.5px;margin:0 0 8px">Which squads this player can be selected for. This does not change what they can see or manage.</p>
+          ${options.map(t => row({
+            checked: teamIds.has(t.id),
+            main: esc(t.name),
+            sub: esc(t.groupName),
+            onchange: `adminToggleEligibility('${esc(member.id)}','${esc(t.id)}',this.checked)`,
+          })).join('')}
           ${teamIds.size > 1 ? `
-            <div style="margin-top:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span class="muted" style="font-size:11px;font-weight:700">Primary squad</span>
-              <select style="min-height:30px;font-size:11.5px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);padding:0 8px"
+            <div style="margin-top:9px;display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+              <span class="muted" style="font-size:11.5px;font-weight:700">Primary squad</span>
+              <select style="min-height:38px;font-size:12.5px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 10px;flex:1;min-width:140px"
                 onchange="adminSetPrimaryTeam('${esc(member.id)}',this.value)">
                 ${options.filter(t => teamIds.has(t.id)).map(t =>
                   `<option value="${esc(t.id)}" ${primary === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
               </select>
             </div>` : ''}
+          ${elig.derived ? `<p class="muted" style="font-size:11.5px;margin:8px 2px 0">Default for their group — change any box to set it explicitly.</p>` : ''}
         </div>`;
     }
 
@@ -17687,8 +17857,9 @@
     async function adminToggleEligibility(memberId, teamId, on) {
       const member = (_adminData.members || []).find(m => m.id === memberId);
       if (!member) return;
-      const elig = member.playerEligibility && typeof member.playerEligibility === 'object'
-        ? member.playerEligibility : { teamIds: [], primaryTeamId: null };
+      // Start from what the admin can SEE (stored, or the group default), so
+      // the first click edits that set rather than wiping it to a single team.
+      const elig = memberEligibility(member);
       const current = new Set(Array.isArray(elig.teamIds) ? elig.teamIds : []);
       if (on) current.add(teamId); else current.delete(teamId);
       const teamIds = [...current];
@@ -17702,7 +17873,7 @@
     async function adminSetPrimaryTeam(memberId, teamId) {
       const member = (_adminData.members || []).find(m => m.id === memberId);
       if (!member) return;
-      const elig = member.playerEligibility || { teamIds: [] };
+      const elig = memberEligibility(member);
       await adminAction({ action: 'set_member_eligibility', memberId,
         teamIds: Array.isArray(elig.teamIds) ? elig.teamIds : [], primaryTeamId: teamId },
         'Primary squad updated');
