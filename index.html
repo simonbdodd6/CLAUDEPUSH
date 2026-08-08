@@ -9332,10 +9332,25 @@
             // so any explicit status set later is never overwritten.
             registrationStatus: 'registered',
             joinedDate: String(profile.createdAt || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+            // RC4.7 — the Edit profile form reads firstName/lastName. Creating
+            // the row with only `name` left both boxes blank and asked the admin
+            // to retype a name the identity record already holds.
+            firstName: String(name || '').trim().split(/\s+/)[0] || '',
+            lastName:  String(name || '').trim().split(/\s+/).slice(1).join(' '),
           };
           state.players.push(player);
           changed = true;
         } else {
+          // Backfill name parts for rows created before this fix. Only fills
+          // BLANKS — an explicit historical first/last name is never replaced.
+          if (!String(player.firstName || '').trim() && !String(player.lastName || '').trim()) {
+            const bits = String(player.name || name || '').trim().split(/\s+/).filter(Boolean);
+            if (bits.length) {
+              player.firstName = bits[0];
+              player.lastName = bits.slice(1).join(' ');
+              changed = true;
+            }
+          }
           const before = JSON.stringify({ id: player.id, userId: player.userId, legacyPlayerId: player.legacyPlayerId, name: player.name, email: player.email, position: player.position });
           const profileLooksPermanent = isPermanentPlayerUserId(profile.userId);
           if (profileLooksPermanent) {
@@ -13393,7 +13408,10 @@
       if (_mTab === 'timeline')  { _renderMedicalTimeline(_medActivePlayerId); return; }
 
       const injured     = state.players.filter(p => p.game === "injured");
-      const hasIssues   = state.players.filter(p => p.game === "injured" || p.medical);
+      // RC4.7 — the legacy view's tracker is the ACTIVE caseload too.
+      const hasIssues   = typeof activeMedicalCases === 'function'
+        ? activeMedicalCases(state.players, state.medicalRecords, state.medicalNotes)
+        : state.players.filter(p => p.game === "injured" || p.medical);
       const medNotes    = state.medicalNotes   || {};
       const treatLogs   = state.treatmentLogs  || [];
       const medMessages = state.messages.filter(m => m.sessionId === "medical").slice(0,6);
@@ -14702,17 +14720,50 @@
      * the membership record and then preserved — an existing value always wins,
      * and editing a profile never resets it.
      */
+    /** Split a display name into first/last, mirroring the server helper. */
+    function splitIdentityName(full) {
+      const parts = String(full || '').trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) return { firstName: '', lastName: '' };
+      return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+    }
+
+    /** The club membership linked to a roster row, if identity is connected. */
+    function memberForPlayer(player) {
+      if (!player) return null;
+      return (_adminData.members || []).find(m =>
+        m.status === 'active' && String(m.userId) === String(player.userId || '')) || null;
+    }
+
+    /**
+     * First/last name for the profile form. An explicit stored value always
+     * wins; otherwise the linked identity supplies it, so an admin never has to
+     * retype a name the app already knows.
+     */
+    function derivedPlayerName(player) {
+      const stored = { firstName: String(player?.firstName || '').trim(),
+                       lastName: String(player?.lastName || '').trim() };
+      if (stored.firstName || stored.lastName) return stored;
+      const member = memberForPlayer(player);
+      const user = member ? (_adminData.users || []).find(u => u.id === member.userId) : null;
+      return splitIdentityName(user?.displayName || player?.name || '');
+    }
+
     function derivedAgeGroup(player) {
       const st = _adminData.structure;
       if (!st || !player) return '';
-      const member = (_adminData.members || []).find(m =>
-        m.status === 'active' && String(m.userId) === String(player.userId || ''));
+      const member = memberForPlayer(player);
       if (!member) return '';
+      const activeGroups = (st.groups || []).filter(g => g.status === 'active');
       const scope = memberScope(member);
-      if (scope.clubWide) return '';                       // no single group to infer
-      const groupId = scope.groups[0]?.groupId
+      // An explicit grant names the group directly.
+      let groupId = scope.groups.find(g => g.status !== 'removed')?.groupId
         || (st.teams || []).find(t => t.id === scope.teams[0]?.teamId)?.groupId;
-      const group = (st.groups || []).find(g => g.id === groupId && g.status === 'active');
+      // A member with NO explicit scope (the common case for players who joined
+      // before the structure existed) previously derived nothing at all. When
+      // the club has a single active group there is only one possible answer,
+      // so use it rather than leaving the field blank.
+      if (!groupId && !scope.clubWide && activeGroups.length === 1) groupId = activeGroups[0].id;
+      const group = activeGroups.find(g => g.id === groupId);
       return group ? group.name : '';
     }
 
@@ -14912,8 +14963,8 @@
         <div class="card" style="margin-bottom:14px">
           <h3 style="font-size:13px;font-weight:800;margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Profile</h3>
           <div class="grid two-col">
-            ${field('First name',    'pp-firstname-'+id,  p.firstName   || '')}
-            ${field('Last name',     'pp-lastname-'+id,   p.lastName    || '')}
+            ${field('First name',    'pp-firstname-'+id,  derivedPlayerName(p).firstName)}
+            ${field('Last name',     'pp-lastname-'+id,   derivedPlayerName(p).lastName)}
             ${field('Date of birth', 'pp-dob-'+id,        p.dateOfBirth || '', 'date')}
             ${field('Phone',         'pp-phone-'+id,      p.phone       || '', 'tel')}
             ${field('Email',         'pp-email-'+id,      p.email && !p.email.endsWith('@player.test') ? p.email : '')}
@@ -17381,12 +17432,21 @@
     // job title. Only the club owner and Full Access holders (assign_access) can
     // change one, and the server re-checks every rule independently.
     const ACCESS_PROFILE_LABELS = { full: 'Full access', coach: 'Coach access', manager: 'Manager access' };
+    // Shown for a member who is not staff. Deliberately NOT in
+    // ACCESS_PROFILE_LABELS: 'player' is not an assignable staff profile, so it
+    // must never appear as an option in the access selector.
+    const PLAYER_ACCESS_LABEL = 'Player access';
+    const PLAYER_ACCESS_SUMMARY = 'Their own availability, schedule, selections and messages. No administration, no member management, and no medical unless Medical access is granted below.';
     const ACCESS_PROFILE_SUMMARY = {
       full:    'Manage staff, access profiles, invitations, club settings, all teams, reports and player deletion.',
       coach:   'Assigned teams: player profiles, availability, training, selections, Match Centre, team messages, reports and player deletion. No access assignment, club-wide settings or medical.',
       manager: 'Assigned teams: membership and invitations, availability, fixtures and logistics, operational messages and reports, player deletion. No access assignment, coaching notes or medical.',
     };
     const DEFAULT_PROFILE_BY_LEVEL = { head: 'full', assistant: 'coach', manager: 'manager' };
+    // RC4.7 — the shared-squad model: a player is eligible for every active
+    // team in their group, so there is nothing to pick. Flip to true to expose
+    // the per-player picker again when a club needs separate squads.
+    const ELIGIBILITY_PICKER_ENABLED = false;
 
     // ─── RC4.7 Phase C — Club Structure administration ──────────────────────
     // Club → Group → Team, in plain language. No raw ids are ever shown; every
@@ -17526,10 +17586,21 @@
         kind === 'group' ? { groupId: id } : { teamId: id }, `${name} archived`);
     }
 
+    /** True when this membership is staff — anyone who is not a plain player. */
+    function isStaffMember(member) {
+      const role = String(member?.role || '').toLowerCase();
+      return member?.isOwner === true || (role !== 'player' && role !== '' && role !== 'parent' && role !== 'guest');
+    }
+
     function accessProfileFor(member) {
       const explicit = String(member?.accessProfile || '').toLowerCase();
       if (ACCESS_PROFILE_LABELS[explicit]) return explicit;
       if (member?.isOwner) return 'full';
+      // RC4.7 — a PLAYER has no staff access profile. This previously fell
+      // through to DEFAULT_PROFILE_BY_LEVEL with staffLevel defaulting to
+      // 'head', so every ordinary player was labelled "Full access" even though
+      // the server grants them nothing. Display now matches the server.
+      if (!isStaffMember(member)) return 'player';
       return DEFAULT_PROFILE_BY_LEVEL[String(member?.staffLevel || 'head').toLowerCase()] || 'coach';
     }
 
@@ -17580,15 +17651,15 @@
         <div style="margin:-4px 0 12px;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px">
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
             <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Access</div>
-            ${canAssign ? `
+            ${(canAssign && isStaffMember(member)) ? `
               <select style="${inputStyle};min-height:30px;font-size:11px;width:auto"
                 onchange="adminSetAccessProfile('${esc(member.id)}',this.value,'${esc(user.displayName || '')}','${esc(profile)}')">
                 ${Object.entries(ACCESS_PROFILE_LABELS).map(([id, label]) =>
                   `<option value="${id}" ${profile === id ? 'selected' : ''}>${label}</option>`).join('')}
               </select>`
-            : `<span style="font-size:12px;font-weight:700">${esc(ACCESS_PROFILE_LABELS[profile])}</span>`}
+            : `<span style="font-size:12px;font-weight:700">${esc(profile === 'player' ? PLAYER_ACCESS_LABEL : (ACCESS_PROFILE_LABELS[profile] || PLAYER_ACCESS_LABEL))}</span>`}
           </div>
-          <p class="muted" style="font-size:11.5px;line-height:1.5;margin:8px 0 0">${esc(ACCESS_PROFILE_SUMMARY[profile] || '')}</p>
+          <p class="muted" style="font-size:11.5px;line-height:1.5;margin:8px 0 0">${esc(profile === 'player' ? PLAYER_ACCESS_SUMMARY : (ACCESS_PROFILE_SUMMARY[profile] || ''))}</p>
           <div class="muted" style="font-size:11px;margin-top:6px">
             Assigned teams: <strong>${assigned.length ? esc(assigned.join(', ')) : '—'}</strong>
             ${member.isOwner ? ' · <strong>Club owner</strong>' : ''}
@@ -17644,9 +17715,15 @@
         return { teamIds: [], primaryTeamId: null, derived: false };
       }
       const scope = memberScope(member);
-      const activeGroupIds = scope.clubWide
-        ? (st.groups || []).filter(g => g.status === 'active').map(g => g.id)
-        : scope.groups.map(g => g.groupId);
+      const activeGroups = (st.groups || []).filter(g => g.status === 'active');
+      let activeGroupIds = scope.clubWide ? activeGroups.map(g => g.id) : scope.groups.map(g => g.groupId);
+      // A player with NO explicit grant (the common case for anyone who joined
+      // before the structure existed, or via an unscoped invite) belongs to the
+      // club's only group when there is exactly one — the same unambiguous
+      // fallback used for age group. Never guesses between several groups.
+      if (!activeGroupIds.length && !scope.clubWide && !scope.teams.length && activeGroups.length === 1) {
+        activeGroupIds = [activeGroups[0].id];
+      }
       const ids = new Set();
       for (const t of (st.teams || [])) {
         if (t.status !== 'active') continue;                       // archived never auto-added
@@ -17693,12 +17770,34 @@
           </span>
         </label>`;
 
+      const medicalRow = row({
+        checked: member.medicalAccess === true,
+        main: 'Medical access',
+        sub: 'Open and update the Medical page. Adds nothing else.',
+        onchange: `adminToggleMedical('${esc(member.id)}',this.checked,'${esc(name)}')`,
+      });
+
       if (member.isOwner) {
         return `
           <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
             <div class="ce-ahead">Can access</div>
             ${row({ checked: true, disabled: true, main: 'Can manage entire club',
                     sub: 'Club owner — this cannot be reduced' })}
+          </div>`;
+      }
+
+      // RC4.7 — PROGRESSIVE DISCLOSURE. A player is not staff: showing them
+      // every coaching and team-management checkbox implied they held those
+      // powers. They get the one control that genuinely applies. Change their
+      // club role to a staff role to reveal the scope controls.
+      if (!isStaffMember(member)) {
+        return `
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+            <div class="ce-ahead">Can access</div>
+            ${row({ checked: true, disabled: true, main: 'Player access',
+                    sub: 'Their own availability, schedule, selections and messages' })}
+            ${medicalRow}
+            <p class="muted" style="font-size:11.5px;margin:8px 2px 0">To give ${esc(name)} coaching or management responsibilities, change their club role above.</p>
           </div>`;
       }
 
@@ -17732,9 +17831,7 @@
                   sub: 'Every group and team',
                   onchange: `adminToggleClubWide('${esc(member.id)}',this.checked,'${esc(name)}')` })}
           ${scope.clubWide ? '' : rows}
-          ${row({ checked: member.medicalAccess === true, main: 'Medical access',
-                  sub: 'Open and update the Medical page. Adds nothing else.',
-                  onchange: `adminToggleMedical('${esc(member.id)}',this.checked,'${esc(name)}')` })}
+          ${medicalRow}
           ${scope.derived ? `<p class="muted" style="font-size:11.5px;margin:8px 2px 0">Currently using the default access for their role. Choosing above sets it explicitly.</p>` : ''}
         </div>`;
     }
@@ -17745,6 +17842,26 @@
       if (String(member.role || '').toLowerCase() !== 'player') return '';
       const options = structureActiveTeamOptions();
       if (!options.length) return '';
+
+      // RC4.7 — every active player in a group is eligible for EVERY active
+      // team in that group, derived from membership (see resolveEligibility).
+      // With nothing to choose, a per-player checklist was noise that implied a
+      // decision the club does not make. It is withdrawn from the UI and
+      // replaced by a plain statement of what is already true. The underlying
+      // per-team eligibility model is deliberately left intact for Phase D and
+      // for clubs that later need genuinely separate squads.
+      if (!ELIGIBILITY_PICKER_ENABLED) {
+        const elig = memberEligibility(member);
+        const names = options.filter(t => elig.teamIds.includes(t.id)).map(t => t.name);
+        if (!names.length) return '';
+        return `
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+            <div class="ce-ahead">Can be picked for</div>
+            <p class="muted" style="font-size:11.5px;margin:0">
+              ${esc(names.join(' and '))} — every player in this group is available for selection.
+            </p>
+          </div>`;
+      }
 
       // RC4.7 — a player with no explicit selection is shown their sensible
       // DEFAULT: every active team in the groups they belong to. Nothing is
@@ -21181,6 +21298,37 @@
       };
     }
 
+    /**
+     * RC4.7 — does this player have an ACTIVE medical case?
+     *
+     * Built from the existing record model, not a parallel one: a case is open
+     * when medical staff have recorded an injury (currentInjury / severity /
+     * dateInjured), a condition note, or the player is flagged injured or
+     * training-restricted — AND it has not been cleared. Setting
+     * clearanceStatus to 'cleared' resolves it and drops the player off the
+     * active list while the record and its timeline are preserved in full.
+     */
+    function hasActiveMedicalCase(player, medRecords, medNotes) {
+      if (!player) return false;
+      const rec = normalizeMedicalRecord((medRecords || {})[player.id]);
+      const note = (medNotes || {})[player.id] || {};
+      if (rec.clearanceStatus === 'cleared') return false;      // resolved
+      return Boolean(
+        String(rec.currentInjury || '').trim() ||
+        String(rec.severity || '').trim() ||
+        String(rec.dateInjured || '').trim() ||
+        String(note.condition || '').trim() ||
+        String(player.medical || '').trim() ||
+        player.game === 'injured' ||
+        ['unavailable', 'modified', 'gymOnly', 'noContact'].includes(player.trainingStatus)
+      );
+    }
+
+    /** Players with an open medical case — the Medical page's actual subject. */
+    function activeMedicalCases(players, medRecords, medNotes) {
+      return activeRosterPlayers(players).filter(p => hasActiveMedicalCase(p, medRecords, medNotes));
+    }
+
     function medicalDashboardSummary(players, medRecords, medNotes) {
       const active = activeRosterPlayers(players);
       const rec = pid => normalizeMedicalRecord((medRecords||{})[pid]);
@@ -21205,7 +21353,21 @@
         (mn(p.id).condition && String(mn(p.id).condition).trim()) ||
         rec(p.id).severity === 'severe' || rec(p.id).severity === 'moderate'
       );
-      return { injured, returning, cleared, rehab, alerts, all: active };
+      // RC4.7 — `all` is the ACTIVE CASELOAD, not the roster. The Medical page
+      // previously listed every player and rendered healthy ones as
+      // "available", which made the roster and the medical record look like the
+      // same thing. A player with no recorded case simply does not appear.
+      const cases = active.filter(p => {
+        const r = rec(p.id), n = mn(p.id);
+        if (r.clearanceStatus === 'cleared') return false;       // resolved
+        return Boolean(
+          String(r.currentInjury || '').trim() || String(r.severity || '').trim() ||
+          String(r.dateInjured || '').trim() || String(n.condition || '').trim() ||
+          String(p.medical || '').trim() || p.game === 'injured' ||
+          ['unavailable', 'modified', 'gymOnly', 'noContact'].includes(p.trainingStatus)
+        );
+      });
+      return { injured, returning, cleared, rehab, alerts, all: cases, roster: active };
     }
 
     function setMedicalTab(tab) {
@@ -21370,9 +21532,9 @@
             '</div>'
           : '') +
         '<div class="card" style="margin-bottom:14px">' +
-          '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Squad medical status (' + summ.all.length + ' players)</div>' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Active medical cases (' + summ.all.length + ')</div>' +
           (summ.all.length === 0
-            ? '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No active players.</div>'
+            ? '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No active medical cases. Players appear here once an injury is recorded.</div>'
             : summ.all.map(p => {
                 const mn  = medNotes[p.id] || {};
                 const rec = normalizeMedicalRecord(medRecs[p.id]);

@@ -193,9 +193,17 @@ export function resolveEligibility(member = {}, structure = null) {
   // structure, so nothing can cross a group or club boundary.
   const scope = effectiveAccessScope(member);
   const ids = new Set();
-  const groupIds = scope.clubWide
-    ? activeGroups(structure).map(g => g.id)
+  const live = activeGroups(structure);
+  let groupIds = scope.clubWide
+    ? live.map(g => g.id)
     : scope.groups.filter(g => g.status === 'active').map(g => g.groupId);
+  // Mirrors the client: a player with no explicit grant belongs to the club's
+  // only group when there is exactly one. With several groups it stays empty
+  // rather than guessing, so eligibility can never cross a group boundary.
+  const activeTeamGrants = scope.teams.filter(t => t.status === 'active');
+  if (!groupIds.length && !scope.clubWide && !activeTeamGrants.length && live.length === 1) {
+    groupIds = [live[0].id];
+  }
   for (const groupId of groupIds) {
     for (const team of activeTeams(structure, groupId)) ids.add(team.id);
   }
