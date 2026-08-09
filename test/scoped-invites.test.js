@@ -119,6 +119,7 @@ test('invite a scoped group coach and a team-scoped manager', async () => {
 
 test('invite a scoped player; club admin invite must be whole-club', async () => {
   const player = await create(ownerToken, { name: 'New Player', role: 'player',
+    playerGroupId: 'grp-senior-men',
     scope: { level: 'team', teamId: 'team-senior-1' }, sendEmail: false });
   assert.equal(player.statusCode, 201);
 
@@ -135,46 +136,53 @@ test('invite a scoped player; club admin invite must be whole-club', async () =>
 
 test('scope validation: unknown and archived targets are rejected', async () => {
   const unknown = await create(ownerToken, { name: 'X', role: 'player',
-    scope: { level: 'group', groupId: 'grp-nope' }, sendEmail: false });
+    playerGroupId: 'grp-senior-men', scope: { level: 'group', groupId: 'grp-nope' }, sendEmail: false });
   assert.equal(unknown.statusCode, 404);
 
   const archived = await create(ownerToken, { name: 'X', role: 'player',
-    scope: { level: 'group', groupId: 'grp-old' }, sendEmail: false });
+    playerGroupId: 'grp-senior-men', scope: { level: 'group', groupId: 'grp-old' }, sendEmail: false });
   assert.equal(archived.statusCode, 400);
   assert.match(archived.body.error, /archived/);
 
   const unknownTeam = await create(ownerToken, { name: 'X', role: 'player',
-    scope: { level: 'team', teamId: 'team-nope' }, sendEmail: false });
+    playerGroupId: 'grp-senior-men', scope: { level: 'team', teamId: 'team-nope' }, sendEmail: false });
   assert.equal(unknownTeam.statusCode, 404);
 });
 
 test('a scoped coach cannot invite beyond their own scope', async () => {
   const outside = await create(u18Token, { name: 'X', role: 'player',
-    scope: { level: 'group', groupId: 'grp-senior-men' }, sendEmail: false });
+    playerGroupId: 'grp-u18', scope: { level: 'group', groupId: 'grp-senior-men' }, sendEmail: false });
   assert.equal(outside.statusCode, 403);
 
   const club = await create(u18Token, { name: 'X', role: 'player',
-    scope: { level: 'club' }, sendEmail: false });
+    playerGroupId: 'grp-u18', scope: { level: 'club' }, sendEmail: false });
   assert.equal(club.statusCode, 403);
   assert.match(club.body.error, /club-wide administrators/);
 
   const inside = await create(u18Token, { name: 'New U18 Player', role: 'player',
+    playerGroupId: 'grp-u18',
     scope: { level: 'group', groupId: 'grp-u18' }, sendEmail: false });
   assert.equal(inside.statusCode, 201, 'their own group is fine');
 });
 
 test('unscoped invite: auto-scoped for a single-group coach, must choose for multi-group', async () => {
-  const auto = await create(u18Token, { name: 'Auto Scoped', role: 'player', sendEmail: false });
+  const auto = await create(u18Token, { name: 'Auto Scoped', role: 'player',
+    playerGroupId: 'grp-u18', sendEmail: false });
   assert.equal(auto.statusCode, 201, JSON.stringify(auto.body));
   assert.deepEqual(auto.body.invite.scope, { groupId: 'grp-u18' }, 'defaulted to their only group');
 
+  // Multi-group inviter with no group named: must choose, never guess.
   const ambiguous = await create(multiToken, { name: 'Ambiguous', role: 'player', sendEmail: false });
   assert.equal(ambiguous.statusCode, 400);
   assert.match(ambiguous.body.error, /Choose which group/);
 
-  const legacy = await create(ownerToken, { name: 'Legacy Unscoped', role: 'player', sendEmail: false });
+  // D1a — a player invite must still name the GROUP even when the staff scope
+  // is left unset; only the staff-scope field is optional for a club-wide admin.
+  const legacy = await create(ownerToken, { name: 'Legacy Unscoped', role: 'player',
+    playerGroupId: 'grp-senior-men', sendEmail: false });
   assert.equal(legacy.statusCode, 201);
-  assert.equal(legacy.body.invite.scope, undefined, 'club-wide admins keep the legacy unscoped invite');
+  assert.equal(legacy.body.invite.scope, undefined, 'club-wide admins keep the legacy unscoped staff scope');
+  assert.equal(legacy.body.invite.playerGroupId, 'grp-senior-men', 'but the player group is explicit');
 });
 
 // ── Claim behaviour ─────────────────────────────────────────────────────────
@@ -193,6 +201,7 @@ test('claiming a scoped coach invite stamps exactly the stored group grant', asy
 
 test('claiming a team-scoped player invite grants the team + eligibility with primary', async () => {
   const created = await create(ownerToken, { name: 'S2 Player', role: 'player',
+    playerGroupId: 'grp-senior-men',
     scope: { level: 'team', teamId: 'team-senior-2' }, sendEmail: false });
   const result = await store.claimInvite({
     token: created.body.token, email: 's2.player@club.test', password: 'Claim-2026-Pass!',
@@ -206,6 +215,7 @@ test('claiming a team-scoped player invite grants the team + eligibility with pr
 
 test('claiming a group-scoped player invite defaults eligibility to the group\'s active teams', async () => {
   const created = await create(ownerToken, { name: 'Senior Pool Player', role: 'player',
+    playerGroupId: 'grp-senior-men',
     scope: { level: 'group', groupId: 'grp-senior-men' }, sendEmail: false });
   const result = await store.claimInvite({
     token: created.body.token, email: 'pool.player@club.test', password: 'Claim-2026-Pass!',
@@ -221,7 +231,8 @@ test('claiming a group-scoped player invite defaults eligibility to the group\'s
 });
 
 test('a legacy unscoped invite claims exactly as before — no scope stamped', async () => {
-  const created = await create(ownerToken, { name: 'Legacy Player', role: 'player', sendEmail: false });
+  const created = await create(ownerToken, { name: 'Legacy Player', role: 'player',
+    playerGroupId: 'grp-senior-men', sendEmail: false });
   const result = await store.claimInvite({
     token: created.body.token, email: 'legacy.player@club.test', password: 'Claim-2026-Pass!',
   });

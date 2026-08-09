@@ -164,6 +164,61 @@ export function effectiveEligibility(member = {}) {
   return { teamIds: [INITIAL_TEAM_ID], primaryTeamId: INITIAL_TEAM_ID };
 }
 
+// ─── RC4.7 D1a — PLAYER GROUP (where a person PLAYS) ────────────────────────
+//
+// Deliberately separate from access scope (where a person may COACH/ADMIN).
+// One membership can hold both: a U18 player who coaches Seniors keeps
+// playerGroupId=U18 and gains Seniors staff access, and remains eligible to
+// play for U18 only. Staff access must never move a player between groups, and
+// club-wide administration must never make someone a player everywhere.
+
+/** The membership's explicit player group, or '' when they are staff-only. */
+export function playerGroupIdOf(member = {}) {
+  return String(member?.playerGroupId || '').trim();
+}
+
+/** True when this membership represents someone who plays. */
+export function isPlayingMember(member = {}) {
+  return Boolean(playerGroupIdOf(member)) || canonicalRole(member) === 'player';
+}
+
+/**
+ * The player's group RESOLVED against the live structure.
+ *
+ * Returns { groupId, group, source, needsAssignment }.
+ *   source 'explicit' — member.playerGroupId, the authoritative value.
+ *   source 'legacy'   — no explicit value AND the club has exactly one active
+ *                       group. A temporary migration-compatibility path only.
+ *   source 'none'     — cannot be determined. With several active groups the
+ *                       model REFUSES to guess: needsAssignment flags it as a
+ *                       data-integrity state for an admin to resolve, rather
+ *                       than silently placing someone in the wrong group.
+ */
+export function resolvePlayerGroup(member = {}, structure = null) {
+  const none = { groupId: '', group: null, source: 'none', needsAssignment: false };
+  if (!member || member.status !== 'active') return none;
+
+  const explicit = playerGroupIdOf(member);
+  if (explicit) {
+    const group = groupById(structure, explicit);
+    // An explicit id that is unknown or archived resolves to nothing — it is
+    // never quietly replaced by a different group.
+    if (!group || group.status !== 'active') {
+      return { groupId: '', group: null, source: 'none', needsAssignment: true };
+    }
+    return { groupId: group.id, group, source: 'explicit', needsAssignment: false };
+  }
+
+  if (canonicalRole(member) !== 'player') return none;   // staff-only: no player group
+
+  const live = activeGroups(structure);
+  if (live.length === 1) {
+    return { groupId: live[0].id, group: live[0], source: 'legacy', needsAssignment: false };
+  }
+  // Zero groups, or several — never guess.
+  return { groupId: '', group: null, source: 'none', needsAssignment: true };
+}
+
 /**
  * RC4.7 — a member's eligibility RESOLVED against the live club structure.
  *
@@ -180,39 +235,33 @@ export function effectiveEligibility(member = {}) {
 export function resolveEligibility(member = {}, structure = null) {
   const stored = member?.playerEligibility;
   if (stored !== undefined && stored !== null) {
-    return { ...normalizeEligibility(stored), derived: false };
+    // An explicit per-player selection is honoured, but can NEVER cross the
+    // player's group boundary — the group is the hard limit, the stored list
+    // only narrows within it.
+    const explicit = normalizeEligibility(stored);
+    const { groupId } = resolvePlayerGroup(member, structure);
+    if (!structure || !groupId) return { ...explicit, derived: false };
+    const inGroup = new Set(activeTeams(structure, groupId).map(t => t.id));
+    const teamIds = explicit.teamIds.filter(id => inGroup.has(id));
+    return {
+      teamIds,
+      primaryTeamId: teamIds.includes(explicit.primaryTeamId) ? explicit.primaryTeamId : (teamIds[0] || null),
+      derived: false,
+    };
   }
-  if (!member || member.status !== 'active' || canonicalRole(member) !== 'player') {
+  if (!member || member.status !== 'active') {
     return { teamIds: [], primaryTeamId: null, derived: false };
   }
-  if (!structure) return { ...effectiveEligibility(member), derived: true };
 
-  // Every active team inside the groups this member can reach. Team-only
-  // grants also imply eligibility for that team. Archived scopes are excluded
-  // by activeGroups/activeTeams, and ids are resolved against THIS club's
-  // structure, so nothing can cross a group or club boundary.
-  const scope = effectiveAccessScope(member);
-  const ids = new Set();
-  const live = activeGroups(structure);
-  let groupIds = scope.clubWide
-    ? live.map(g => g.id)
-    : scope.groups.filter(g => g.status === 'active').map(g => g.groupId);
-  // Mirrors the client: a player with no explicit grant belongs to the club's
-  // only group when there is exactly one. With several groups it stays empty
-  // rather than guessing, so eligibility can never cross a group boundary.
-  const activeTeamGrants = scope.teams.filter(t => t.status === 'active');
-  if (!groupIds.length && !scope.clubWide && !activeTeamGrants.length && live.length === 1) {
-    groupIds = [live[0].id];
-  }
-  for (const groupId of groupIds) {
-    for (const team of activeTeams(structure, groupId)) ids.add(team.id);
-  }
-  for (const grant of scope.teams.filter(t => t.status === 'active')) {
-    const team = teamById(structure, grant.teamId);
-    if (team && team.status === 'active') ids.add(team.id);
-  }
-  const teamIds = [...ids];
-  return { teamIds, primaryTeamId: teamIds[0] || null, derived: true };
+  // D1a — eligibility comes from the PLAYER GROUP, never from staff access.
+  // Previously this read effectiveAccessScope(), so a Seniors coaching grant
+  // (or club-wide administration) made someone eligible to PLAY for those
+  // teams. Where a person coaches and where they play are different things.
+  const { groupId, source } = resolvePlayerGroup(member, structure);
+  if (!structure || !groupId) return { teamIds: [], primaryTeamId: null, derived: true };
+
+  const teamIds = activeTeams(structure, groupId).map(t => t.id);
+  return { teamIds, primaryTeamId: teamIds[0] || null, derived: true, source };
 }
 
 /** Eligible teams validated against the live structure (active teams only). */

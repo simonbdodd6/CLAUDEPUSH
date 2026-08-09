@@ -14753,23 +14753,35 @@
       return splitIdentityName(user?.displayName || player?.name || '');
     }
 
+    /**
+     * RC4.7 D1a — the age group is where you PLAY, so it comes from
+     * `member.playerGroupId` and nothing else. Staff access is where you COACH:
+     * a Seniors coach with no player group is not a Seniors player, and a U18
+     * player who coaches Seniors is U18. This mirrors the server's
+     * `resolvePlayerGroup()` exactly, so the form never shows a group the
+     * server would not honour.
+     */
     function derivedAgeGroup(player) {
       const st = _adminData.structure;
       if (!st || !player) return '';
       const member = memberForPlayer(player);
       if (!member) return '';
       const activeGroups = (st.groups || []).filter(g => g.status === 'active');
-      const scope = memberScope(member);
-      // An explicit grant names the group directly.
-      let groupId = scope.groups.find(g => g.status !== 'removed')?.groupId
-        || (st.teams || []).find(t => t.id === scope.teams[0]?.teamId)?.groupId;
-      // A member with NO explicit scope (the common case for players who joined
-      // before the structure existed) previously derived nothing at all. When
-      // the club has a single active group there is only one possible answer,
-      // so use it rather than leaving the field blank.
-      if (!groupId && !scope.clubWide && activeGroups.length === 1) groupId = activeGroups[0].id;
-      const group = activeGroups.find(g => g.id === groupId);
-      return group ? group.name : '';
+
+      // An explicit player group is authoritative — but only while it is real.
+      const explicit = String(member.playerGroupId || '').trim();
+      if (explicit) {
+        const group = activeGroups.find(g => g.id === explicit);
+        return group ? group.name : '';       // unknown/archived → needs reassignment
+      }
+
+      // Legacy compatibility, for genuine players who predate the explicit
+      // model and have not been backfilled yet. With exactly one active group
+      // there is only one possible answer; with several, the correct answer is
+      // unknowable, so leave it blank rather than guess. Never fall back to
+      // access scope — that would make every coach a player.
+      if (String(member.role || '').toLowerCase() !== 'player') return '';
+      return activeGroups.length === 1 ? activeGroups[0].name : '';
     }
 
     function derivedJoinedDate(player) {

@@ -3,8 +3,8 @@ import {
   permissionsFor, canonicalRole, accessProfileOf, isClubOwner,
   accessProfileRank, ACCESS_PROFILES, PERM,
 } from './_permissions.js';
-import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope, effectiveEligibility } from './_accessScope.js';
-import { loadClubStructure, groupById, teamById, activeTeams } from './_structureStore.js';
+import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope, effectiveEligibility, playerGroupIdOf } from './_accessScope.js';
+import { loadClubStructure, groupById, teamById, activeTeams, activeGroups } from './_structureStore.js';
 import { key } from './_keys.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
@@ -1086,6 +1086,10 @@ export async function claimInvite(input = {}) {
   if (invite.scope && typeof invite.scope === 'object') {
     await applyInviteScope(member, invite, { membershipExisted });
   }
+  // D1a — a player invite stamps WHERE THEY PLAY, independently of staff scope.
+  if (invite.playerGroupId) {
+    await applyInvitePlayerGroup(member, String(invite.playerGroupId));
+  }
   if (isGroup) {
     // Keep the link open; just track usage.
     invite.acceptedCount = (invite.acceptedCount || 0) + 1;
@@ -1122,6 +1126,11 @@ async function preserveDualRolePlayerState(member, user, priorEligibility) {
     (String(p.teamId) === String(member.teamId) && String(p.userId) === String(user.id))) || null;
   if (!existing) return null;
 
+  // D1a — with an explicit player group the group derivation is authoritative,
+  // so nothing needs materialising. Doing so stamped the legacy team_initial id,
+  // which is not part of the club structure and narrowed eligibility to nothing.
+  if (playerGroupIdOf(member)) return existing;
+
   if (member.playerEligibility === undefined || member.playerEligibility === null) {
     const teamIds = Array.isArray(priorEligibility?.teamIds) ? priorEligibility.teamIds : [];
     if (teamIds.length) {
@@ -1135,6 +1144,38 @@ async function preserveDualRolePlayerState(member, user, priorEligibility) {
     }
   }
   return existing;
+}
+
+/**
+ * RC4.7 D1a — stamp the invite's player group onto the membership.
+ *
+ * A member who ALREADY plays for a different group is never moved silently:
+ * that is a transfer, and it needs a deliberate admin action rather than a
+ * link claim. Their existing group, profile and eligibility are left intact.
+ */
+async function applyInvitePlayerGroup(member, groupId) {
+  const members = await loadTeamMembers();
+  const live = members.find(m => m.id === member.id);
+  if (!live) return;
+  const structure = await loadClubStructure(live.teamId);
+  const group = groupById(structure, groupId);
+  if (!group || group.status !== 'active') return;      // unknown/archived: grant nothing
+
+  const current = String(live.playerGroupId || '').trim();
+  if (current && current !== group.id) {
+    // Conflicting claim — keep the existing group untouched and record it.
+    live.playerGroupConflictAt = nowIso();
+    live.playerGroupConflictWith = group.id;
+    await saveTeamMembers(members);
+    Object.assign(member, live);
+    return;
+  }
+  if (current === group.id) return;                     // already correct
+  live.playerGroupId = group.id;
+  live.accessChangedBy = 'invite';
+  live.accessChangedAt = nowIso();
+  await saveTeamMembers(members);
+  Object.assign(member, live);
 }
 
 /**
@@ -1953,6 +1994,87 @@ export async function setMedicalAccess(memberId, enabled, changedBy, expectedTea
   member.accessChangedAt = nowIso();
   await saveTeamMembers(members);
   return { teamMember: member };
+}
+
+/**
+ * RC4.7 D1a — set a member's PLAYER GROUP (where they play). Independent of
+ * staff access: changing it never touches accessScope, medical or profile.
+ * Pass '' to clear it (a player becoming staff-only).
+ */
+export async function setPlayerGroup(memberId, groupId, changedBy, expectedTeamId) {
+  const members = await loadTeamMembers();
+  const member = findTeamMemberOrThrow(members, memberId, expectedTeamId);
+  const next = String(groupId || '').trim();
+  if (next) {
+    const structure = await loadClubStructure(member.teamId);
+    const group = groupById(structure, next);
+    if (!group) { const e = new Error('Unknown group for this club'); e.status = 404; throw e; }
+    if (group.status !== 'active') {
+      const e = new Error(`"${group.name}" is archived — players cannot be assigned to it`);
+      e.status = 400; throw e;
+    }
+    member.playerGroupId = group.id;
+  } else {
+    delete member.playerGroupId;
+  }
+  member.accessChangedBy = changedBy || member.accessChangedBy || null;
+  member.accessChangedAt = nowIso();
+  await saveTeamMembers(members);
+  return { teamMember: member };
+}
+
+/**
+ * RC4.7 D1a — one-time backfill of playerGroupId for clubs that predate the
+ * explicit model.
+ *
+ * Safety rules, all enforced here rather than by the caller:
+ *  - runs ONLY when the club has exactly ONE active group (with several, the
+ *    correct answer is unknowable and it refuses rather than guess);
+ *  - assigns only to ACTIVE PLAYER memberships that have no explicit value;
+ *  - never overwrites an existing playerGroupId;
+ *  - never touches staff-only memberships, access scope, medical, profiles,
+ *    eligibility or roster rows;
+ *  - idempotent — a second run assigns nothing.
+ *
+ * `dryRun: true` reports exactly what would change and writes nothing.
+ */
+export async function backfillPlayerGroups(clubId, { dryRun = false, changedBy = 'migration' } = {}) {
+  const structure = await loadClubStructure(clubId);
+  const live = activeGroups(structure);
+  const members = await loadTeamMembers();
+  const mine = members.filter(m => String(m.teamId) === String(clubId));
+  const players = mine.filter(m => m.status === 'active' && canonicalRole(m) === 'player');
+
+  const report = {
+    clubId, activeGroups: live.length, groupId: live[0]?.id || null, groupName: live[0]?.name || null,
+    totalMembers: mine.length, activePlayers: players.length,
+    alreadyAssigned: players.filter(m => String(m.playerGroupId || '').trim()).length,
+    staffSkipped: mine.filter(m => canonicalRole(m) !== 'player').length,
+    assigned: 0, wouldAssign: 0, applied: false, reason: null,
+  };
+
+  if (live.length !== 1) {
+    report.reason = live.length === 0
+      ? 'no active group — nothing can be assigned'
+      : `${live.length} active groups — refusing to guess; assign each player explicitly`;
+    return report;
+  }
+
+  const target = live[0].id;
+  const pending = players.filter(m => !String(m.playerGroupId || '').trim());
+  report.wouldAssign = pending.length;
+  if (dryRun) { report.reason = 'dry run — no changes written'; return report; }
+  if (!pending.length) { report.reason = 'nothing to do — already backfilled'; report.applied = true; return report; }
+
+  for (const m of pending) {
+    m.playerGroupId = target;
+    m.accessChangedBy = changedBy;
+    m.accessChangedAt = nowIso();
+  }
+  await saveTeamMembers(members);
+  report.assigned = pending.length;
+  report.applied = true;
+  return report;
 }
 
 /** Set which teams a player may be SELECTED for. Never grants capabilities. */

@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node build-inject.js",
     "test": "node --test test/*.test.js",
+    "backfill:player-groups": "node scripts/backfill-player-groups.js",
     "market:pipeline": "node qa/market-intel/pipeline.js",
     "market:import": "node qa/market-intel/pipeline.js --import",
     "market:score": "node qa/market-intel/pipeline.js --score",

@@ -59,7 +59,10 @@ const STRUCTURE = {
 const groupScope = (...ids) => ({ clubWide: false, groups: ids.map(groupId => ({ groupId, status: 'active' })), teams: [] });
 const teamScope = (...ids) => ({ clubWide: false, groups: [], teams: ids.map(teamId => ({ teamId, status: 'active' })) });
 
-const player = over => ({ id: 'tm-p', teamId: CLUB, userId: 'u-p', role: 'player', status: 'active', ...over });
+// D1a — a player's group is now EXPLICIT (playerGroupId), never inferred from
+// staff access scope. Fixtures declare it directly.
+const player = over => ({ id: 'tm-p', teamId: CLUB, userId: 'u-p', role: 'player', status: 'active',
+  playerGroupId: 'grp-seniors', ...over });
 
 function seed() {
   kv.clear();
@@ -73,10 +76,12 @@ function seed() {
   kv.set('app:identity:team_members', JSON.stringify([
     { id: 'tm-owner', teamId: CLUB, userId: 'u-owner', role: 'coach', staffLevel: 'head',
       status: 'active', isOwner: true, accessProfile: 'full' },
+    // D1a — players declare where they PLAY explicitly; accessScope stays as
+    // their (separate) staff access.
     { id: 'tm-physio', teamId: CLUB, userId: 'u-physio', role: 'player', status: 'active',
-      accessScope: groupScope('grp-seniors') },
+      playerGroupId: 'grp-seniors', accessScope: groupScope('grp-seniors') },
     { id: 'tm-plain', teamId: CLUB, userId: 'u-plain', role: 'player', status: 'active',
-      accessScope: groupScope('grp-seniors') },
+      playerGroupId: 'grp-seniors', accessScope: groupScope('grp-seniors') },
   ]));
   kv.set('app:identity:player_profiles', JSON.stringify([
     { id: 'pr-physio', teamMemberId: 'tm-physio', teamId: CLUB, userId: 'u-physio',
@@ -123,7 +128,7 @@ test('archived teams are never added automatically', () => {
   const elig = resolveEligibility(player({ accessScope: groupScope('grp-seniors') }), STRUCTURE);
   assert.equal(elig.teamIds.includes('team-retired'), false, 'archived squad excluded');
   // …and an archived GROUP contributes nothing either.
-  const vets = resolveEligibility(player({ accessScope: groupScope('grp-old') }), STRUCTURE);
+  const vets = resolveEligibility(player({ playerGroupId: 'grp-old', accessScope: groupScope('grp-old') }), STRUCTURE);
   assert.deepEqual(vets.teamIds, []);
 });
 
@@ -141,15 +146,18 @@ test('explicit eligibility is returned untouched and never overwritten', () => {
 });
 
 test('defaults never cross a group or club boundary', () => {
-  const u18 = resolveEligibility(player({ accessScope: groupScope('grp-u18') }), STRUCTURE);
+  const u18 = resolveEligibility(player({ playerGroupId: 'grp-u18', accessScope: groupScope('grp-u18') }), STRUCTURE);
   assert.deepEqual(u18.teamIds, ['team-u18'], 'U18 player gets U18 only');
   assert.equal(u18.teamIds.includes('team-premier'), false);
   // A grant naming another club's group resolves to nothing here.
-  const foreign = resolveEligibility(player({ accessScope: groupScope('grp-of-another-club') }), STRUCTURE);
+  const foreign = resolveEligibility(player({ playerGroupId: 'grp-of-another-club' }), STRUCTURE);
   assert.deepEqual(foreign.teamIds, []);
-  // Team-only access implies eligibility for that team alone.
-  const teamOnly = resolveEligibility(player({ accessScope: teamScope('team-prem-dev') }), STRUCTURE);
-  assert.deepEqual(teamOnly.teamIds, ['team-prem-dev']);
+  // D1a — team-only STAFF access no longer confers playing eligibility. Where
+  // someone coaches is not where they play.
+  const teamOnly = resolveEligibility(
+    { id: 'tm-x', teamId: CLUB, userId: 'u-x', role: 'coach', staffLevel: 'head', status: 'active',
+      accessScope: teamScope('team-prem-dev') }, STRUCTURE);
+  assert.deepEqual(teamOnly.teamIds, [], 'coaching a team does not make you a player in it');
 });
 
 test('primary squad stays independent of eligibility, and staff derive none', () => {

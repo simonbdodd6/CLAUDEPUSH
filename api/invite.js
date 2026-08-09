@@ -78,6 +78,30 @@ function scopeError(message, status = 400) {
  * creator's own authority. Returns null (unscoped, legacy behaviour — only
  * club-wide admins may mint those) or {clubWide} | {groupId} | {teamId}.
  */
+/**
+ * RC4.7 D1a — a PLAYER invite must name the group the person will play in.
+ * Distinct from staff scope: this is where they PLAY, not what they may manage.
+ * Validated against the club's own structure and the inviter's authority.
+ */
+async function resolvePlayerGroupForInvite(session, body = {}) {
+  const structure = await loadClubStructure(session.teamId);
+  const raw = String(body.playerGroupId || body.scope?.groupId || '').trim();
+  const live = (structure.groups || []).filter(g => g.status === 'active');
+
+  if (!raw) {
+    // Unambiguous only while the club has a single active group.
+    if (live.length === 1) return live[0].id;
+    throw scopeError('Choose which group this player will play in');
+  }
+  const group = groupById(structure, raw);
+  if (!group) throw scopeError('Unknown group for this club', 404);
+  if (group.status !== 'active') throw scopeError(`"${group.name}" is archived — players cannot be invited into it`);
+  if (!canManageGroup(session, structure, group.id, PERM.MANAGE_PLAYERS)) {
+    throw scopeError('You are not allowed to invite players into that group', 403);
+  }
+  return group.id;
+}
+
 async function resolveInviteScope(session, body = {}, role = 'player') {
   const structure = await loadClubStructure(session.teamId);
   const raw = body.scope && typeof body.scope === 'object' ? body.scope : {};
@@ -257,6 +281,10 @@ export default async function handler(req, res) {
           acceptedCount: 0,
         };
         if (linkScope) invite.scope = linkScope;
+        if (groupRole === 'player') {
+          try { invite.playerGroupId = await resolvePlayerGroupForInvite(session, req.body); }
+          catch (error) { return sendAuthError(res, error); }
+        }
         invites.unshift(invite);
         await kvSet(INVITES_KEY, invites.slice(0, 200));
         await auditLog('invite_group_created', { createdBy: session.user.id, teamId: session.teamId, role: groupRole, scoped: Boolean(linkScope), ip: requestIp(req) });
@@ -290,11 +318,19 @@ export default async function handler(req, res) {
       inviteScope = await resolveInviteScope(session, req.body, normRole);
     } catch (error) { return sendAuthError(res, error); }
 
+    // A player invite carries its player group explicitly.
+    let invitePlayerGroupId = null;
+    if (normRole === 'player') {
+      try { invitePlayerGroupId = await resolvePlayerGroupForInvite(session, req.body); }
+      catch (error) { return sendAuthError(res, error); }
+    }
+
     const token  = makeToken();
     const invite = {
       token,
       name:      name.trim(),
       role:      normRole,
+      ...(invitePlayerGroupId ? { playerGroupId: invitePlayerGroupId } : {}),
       ...(normStaffLevel ? { staffLevel: normStaffLevel } : {}),
       email:     email?.trim() || '',
       status:    'pending',

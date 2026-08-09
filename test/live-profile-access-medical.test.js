@@ -84,14 +84,16 @@ test('first and last name derive from the linked identity when the row has none'
 });
 
 test('age group derives from the club structure, including the single-group case', () => {
+  // D1a: the explicit PLAYER group is what names the age group. (This fixture
+  // used to express "explicit" as an accessScope grant; that is staff access,
+  // and the assertion below now proves it confers no age group at all.)
   const explicitScope = {
     structure: STRUCTURE,
-    members: [{ id: 'tm1', userId: 'u1', role: 'player', status: 'active',
-      accessScope: { clubWide: false, groups: [{ groupId: 'g-u18', status: 'active' }], teams: [] } }],
+    members: [{ id: 'tm1', userId: 'u1', role: 'player', status: 'active', playerGroupId: 'g-u18' }],
     users: [{ id: 'u1', displayName: 'Young Player' }],
   };
   const a = scope(['memberScope', 'memberForPlayer', 'derivedAgeGroup'], explicitScope);
-  assert.equal(a.derivedAgeGroup({ userId: 'u1' }), 'U18', 'explicit group grant wins');
+  assert.equal(a.derivedAgeGroup({ userId: 'u1' }), 'U18', 'explicit player group wins');
 
   // The production case: a player with NO stored scope in a club that has a
   // single active group. This previously derived nothing and left the box blank.
@@ -113,6 +115,16 @@ test('age group derives from the club structure, including the single-group case
   assert.equal(c.derivedAgeGroup({ userId: 'u1' }), '', 'never guesses between groups');
   // An archived group is never offered as the answer.
   assert.equal(a.derivedAgeGroup({ userId: 'nobody' }), '');
+
+  // D1a: staff access is where you COACH, never where you play. A Seniors
+  // coach with no player group must not read as a Seniors player.
+  const staffOnly = scope(['memberScope', 'memberForPlayer', 'derivedAgeGroup'], {
+    structure: STRUCTURE,
+    members: [{ id: 'tm1', userId: 'u1', role: 'coach', status: 'active',
+      accessScope: { clubWide: false, groups: [{ groupId: 'g-sen', status: 'active' }], teams: [] } }],
+    users: [{ id: 'u1', displayName: 'Coach' }],
+  });
+  assert.equal(staffOnly.derivedAgeGroup({ userId: 'u1' }), '', 'staff access confers no age group');
 });
 
 test('the form reads the derived values, and joined date stays stable', () => {
