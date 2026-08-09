@@ -108,6 +108,12 @@ function buildNavScope() {
     const BETA_SIMPLE_NAV = true;
     const playerSections = [['availability','Availability']];
     const SECTION_ICONS = {};
+    // RC4.7 — renderNav now reads the shared gate map and the scoped-access
+    // helpers. Taken from the real source so this harness keeps tracking the
+    // product rather than a copy that can drift.
+    ${src.match(/const SECTION_PERM_MAP = \{[^}]*\};/)[0]}
+    ${extractFn('allowedCoachSections')}
+    ${extractFn('hasScopedCoachAccess')}
     ${extractFn('renderNav')}
     renderNav();
     return document.getElementById('coachNav').innerHTML;

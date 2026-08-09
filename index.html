@@ -4842,6 +4842,13 @@
     // in THIS order (not coachSections order); labels are looked up from coachSections.
     const BETA_NAV_IDS = ["overview", "message", "training", "matchday", "messages", "players", "medical", "settings"];
 
+    // Which permission gates each coach-shell section. Module-level so the nav,
+    // the route guard and the tests all read ONE definition — a section that is
+    // hidden must also be unreachable, and that can only be guaranteed if both
+    // gates consult the same map. Sections absent from this map are ungated and
+    // therefore staff-only (see allowedCoachSections).
+    const SECTION_PERM_MAP = { medical: 'medical_access', admin: 'manage_teams', club: 'manage_teams', fixtures: 'manage_teams', selection: 'publish_squads', message: 'reports', messages: 'messaging', training: 'publish_training', matchday: 'publish_squads', players: 'manage_players' };
+
     // ── Core Beta — commercial UX simplification (Phase 3) ────────────────────
     // Hides advanced/admin clutter from key coach pages (Availability, Training,
     // Match Centre) so the Beta reads as a simple, premium rugby tool. NOTHING is
@@ -8153,12 +8160,87 @@
       notify("Training sheet sent to coaches ✓");
     }
 
+    // ─── SHARED MEDICAL STORE (RC4.7) ────────────────────────────────────────
+    // The club's caseload is now server-owned at /api/publish?resource=medical.
+    // It used to live in whichever coach's PRIVATE draft happened to record it,
+    // so two coaches saw two different caseloads and a player granted Medical
+    // saw nothing at all.
+    //
+    // The server is authoritative. On load we PROJECT its cases into the
+    // existing view model (state.medicalRecords / state.medicalNotes) so every
+    // render site keeps working unchanged. Those locals are now a DERIVED
+    // CACHE, overwritten from the server on every load — never the source of
+    // truth, and never merged with whatever the private draft held.
+    let _sharedMedical = { loaded: false, cases: [], players: [] };
+
+    /** One shared case → the legacy record/note shape the views already read. */
+    function medicalCaseToLegacy(c) {
+      return {
+        record: {
+          currentInjury: c.condition || '', bodyLocation: '', severity: c.severity || '',
+          dateInjured: c.dateInjured || '', expectedReturn: c.returnTarget || '',
+          physioNotes: c.notes || '', physiNotes: c.notes || '',
+          clearanceStatus: c.status === 'resolved' ? 'cleared' : (c.clearanceStatus || ''),
+        },
+        note: { condition: c.condition || '', notes: c.notes || '', returnTarget: c.returnTarget || '' },
+      };
+    }
+
+    /** Rebuild the view model from the shared store. Resolved cases are NOT
+     *  projected as active — they leave the caseload but stay in `cases`. */
+    function hydrateMedicalFromShared() {
+      const records = {}, notes = {};
+      for (const c of _sharedMedical.cases) {
+        if (c.status !== 'active') continue;
+        const { record, note } = medicalCaseToLegacy(c);
+        records[c.playerId] = record;
+        notes[c.playerId] = note;
+      }
+      state.medicalRecords = records;
+      state.medicalNotes = notes;
+    }
+
+    /** Full case history for a player, straight from the shared store. */
+    function sharedMedicalHistory(playerId) {
+      return _sharedMedical.cases.filter(c => String(c.playerId) === String(playerId));
+    }
+
+    async function loadMedicalFromServer() {
+      if (!canI('medical_access')) return;
+      try {
+        const res = await fetch('/api/publish?resource=medical');
+        if (!res.ok) return;
+        const d = await res.json();
+        _sharedMedical = { loaded: true, cases: d.cases || [], players: d.players || [] };
+        hydrateMedicalFromShared();
+      } catch { /* offline — keep whatever is already rendered */ }
+    }
+
+    /** The ONE authoritative medical write path. */
+    async function saveSharedMedicalCase(body) {
+      const res = await fetch('/api/publish?resource=medical', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) { showToast('Could not save — try again'); return false; }
+      await loadMedicalFromServer();
+      return true;
+    }
+
     // ─── MEDICAL HELPERS ─────────────────────────────────────────────────────
     function saveMedicalNote(playerId) {
       const cond=document.getElementById("medCond-"+playerId)?.value.trim(), notes=document.getElementById("medNote-"+playerId)?.value.trim(), ret=document.getElementById("medRet-"+playerId)?.value.trim();
-      state.medicalNotes=state.medicalNotes||{};
-      state.medicalNotes[playerId]={...(state.medicalNotes[playerId]||{}),condition:cond||"",notes:notes||"",returnTarget:ret||""};
-      notify("Medical record saved for "+(state.players.find(p=>p.id===playerId)?.name||playerId));
+      // RC4.7 — the shared store is the one authoritative write path.
+      const player = state.players.find(p => String(p.id) === String(playerId));
+      saveSharedMedicalCase({
+        action: 'upsert_case', playerId, userId: player?.userId || '',
+        condition: cond || '', notes: notes || '', returnTarget: ret || '',
+        timelineNote: 'Record updated',
+      }).then(ok => {
+        if (!ok) return;
+        notify("Medical record saved for "+(player?.name||playerId));
+        render();
+      });
     }
     // ── Core Beta (Phase 3): quick Add Injury ──────────────────────────────────
     // Writes to EXISTING medical stores (state.medicalRecords rich record +
@@ -8174,18 +8256,37 @@
       const type = val("injType");
       if (!type) { showToast("Enter an injury type or name"); return; }
       const area = val("injArea"), severity = val("injSeverity"), ret = val("injReturn"), notes = val("injNotes");
-      // Rich record (new Medical dashboard model)
-      state.medicalRecords = state.medicalRecords || {};
-      const rec = state.medicalRecords[pid] = state.medicalRecords[pid] || {};
-      rec.currentInjury = type; rec.bodyLocation = area; rec.severity = severity;
-      rec.expectedReturn = ret; rec.physiNotes = notes;
-      if (!rec.dateInjured) rec.dateInjured = new Date().toISOString().slice(0, 10);
-      // Legacy note (so it also surfaces in alerts, treatment tracker & Match Centre)
-      state.medicalNotes = state.medicalNotes || {};
-      state.medicalNotes[pid] = { ...(state.medicalNotes[pid] || {}), condition: type, returnTarget: ret || (state.medicalNotes[pid]?.returnTarget || "") };
-      saveState("injury added");
-      showToast("Injury added for " + (state.players.find(p => String(p.id) === String(pid))?.name || "player"));
-      render();
+      // RC4.7 — writes go to the SHARED club store, so every authorised Medical
+      // user sees this case. The old path wrote it into this coach's private
+      // draft, where nobody else could ever read it.
+      const player = state.players.find(p => String(p.id) === String(pid));
+      saveSharedMedicalCase({
+        action: 'upsert_case',
+        playerId: pid,
+        userId: player?.userId || '',
+        condition: [type, area].filter(Boolean).join(' — '),
+        severity,
+        returnTarget: ret,
+        notes,
+        dateInjured: new Date().toISOString().slice(0, 10),
+        timelineNote: 'Injury logged',
+      }).then(ok => {
+        if (!ok) return;
+        showToast("Injury added for " + (player?.name || "player"));
+        render();
+      });
+    }
+
+    /** Clear a case: it leaves the active caseload, the history is retained. */
+    function clearSharedMedicalCase(playerId) {
+      const open = _sharedMedical.cases.find(c =>
+        String(c.playerId) === String(playerId) && c.status === 'active');
+      if (!open) return showToast('No active case for this player');
+      saveSharedMedicalCase({ action: 'resolve_case', caseId: open.id }).then(ok => {
+        if (!ok) return;
+        showToast('Case cleared — history kept');
+        render();
+      });
     }
     function setRehabProgress(playerId, val) {
       state.medicalNotes=state.medicalNotes||{}; state.medicalNotes[playerId]=state.medicalNotes[playerId]||{};
@@ -8744,6 +8845,7 @@
         renderAuthBanner();
         if (!isStaffLogin) loadPublishedStateForPlayer().catch(() => {});
         if (isStaffLogin) loadRosterFromServer().catch(() => {});
+        loadMedicalFromServer().catch(() => {});   // no-ops without medical_access
         if (isStaffLogin) loadCoachDraft().catch(() => {});
         loadClubConfigFromServer().catch(() => {});
         refreshPushSubscriptionMetadata(data.user.displayName || data.user.email).catch(() => {});
@@ -8845,15 +8947,14 @@
       if (_nameEl) _nameEl.textContent = _clubName;
       if (_cardEl) _cardEl.textContent = _clubName;
       document.title = 'CoachEasier · ' + _clubName;
-      const SECTION_PERMS = { medical: 'medical_access', admin: 'manage_teams', club: 'manage_teams', fixtures: 'manage_teams', selection: 'publish_squads', message: 'reports', messages: 'messaging', training: 'publish_training', matchday: 'publish_squads', players: 'manage_players' };
+      const SECTION_PERMS = SECTION_PERM_MAP;
       // In beta mode render in BETA_NAV_IDS order (workflow order); otherwise the
       // full coachSections order. Labels are always sourced from coachSections.
       const _sectionLabels = Object.fromEntries(coachSections);
       const _navSections = BETA_SIMPLE_NAV
         ? BETA_NAV_IDS.map(id => [id, _sectionLabels[id]]).filter(([, label]) => label)
         : coachSections;
-      document.getElementById("coachNav").innerHTML = _navSections
-        .filter(([id]) => !SECTION_PERMS[id] || canI(SECTION_PERMS[id]))
+      document.getElementById("coachNav").innerHTML = allowedCoachSections(_navSections)
         .map(([id, label]) =>
         `<button type="button" class="${state.activeView==="coach" && state.activeCoachSection===id ? "active" : ""}" onclick="setSection('coach','${id}')">${icon(SECTION_ICONS[id] || 'home')}${label}</button>`
       ).join("");
@@ -8884,8 +8985,11 @@
       document.getElementById("coachNav").classList.toggle("hidden",  state.activeView !== "coach");
       document.getElementById("playerNav").classList.toggle("hidden", state.activeView !== "player");
       // Hide the Coach|Player toggle entirely for players — they should never see it
+      // A player holding a scoped grant (e.g. Medical) needs a way back and
+      // forth, but is NOT staff — the switch appears, and the coach shell it
+      // opens contains only the sections they actually hold.
       const viewSwitch = document.querySelector('.view-switch');
-      if (viewSwitch) viewSwitch.style.display = isCoach() ? '' : 'none';
+      if (viewSwitch) viewSwitch.style.display = (isCoach() || hasScopedCoachAccess()) ? '' : 'none';
       // Account now lives in the player nav (always visible). Keep the destructive
       // Reset hidden from the normal Beta player UI (Reset stays for coaches).
       const _resetBtn = document.getElementById('resetBtn');
@@ -8893,8 +8997,9 @@
 
       document.getElementById("coachViewBtn").classList.toggle("active",  state.activeView === "coach");
       document.getElementById("playerViewBtn").classList.toggle("active", state.activeView === "player");
-      document.getElementById("coachViewBtn").disabled = !isCoach();
-      document.getElementById("coachViewBtn").title    = !isCoach() ? "Player accounts cannot open coach tools" : "";
+      const _coachShellOpen = isCoach() || hasScopedCoachAccess();
+      document.getElementById("coachViewBtn").disabled = !_coachShellOpen;
+      document.getElementById("coachViewBtn").title    = !_coachShellOpen ? "Player accounts cannot open coach tools" : "";
 
       const roleLabel = { coach:'Coach', admin:'Admin', medical:'Medical', player:'Player' };
       const rlbl = roleLabel[user?.role] || 'Player';
@@ -9058,8 +9163,35 @@
       render();
     }
 
+    /**
+     * RC4.7 — which coach-shell sections this identity may open.
+     *
+     * Staff keep exactly what they had: the ungated sections plus every gated
+     * one they hold. A NON-staff identity with a specific grant (a player who
+     * is also the club physio) gets ONLY that gated section — never Overview,
+     * Settings or anything else ungated, so the grant cannot become a back
+     * door into the coach shell.
+     */
+    function allowedCoachSections(list) {
+      const staff = isCoach();
+      const PERMS = SECTION_PERM_MAP;
+      return (list || []).filter(([id]) => {
+        const perm = PERMS[id];
+        if (!perm) return staff;          // ungated sections are staff-only
+        return canI(perm);
+      });
+    }
+
+    /** True when a non-staff identity holds at least one coach-shell grant. */
+    function hasScopedCoachAccess() {
+      return Object.keys(SECTION_PERM_MAP).some(id => canI(SECTION_PERM_MAP[id]));
+    }
+
     function setSection(view, section) {
-      if (view === "coach" && !isCoach()) return showToast("Player accounts cannot open coach tools");
+      if (view === "coach" && !isCoach() &&
+          !allowedCoachSections([[section]]).length) {
+        return showToast("Player accounts cannot open coach tools");
+      }
       state.activeView = view;
       if (view === "coach")  state.activeCoachSection  = section;
       if (view === "player") state.activePlayerSection = section;
@@ -9124,6 +9256,7 @@
         saveState('Dev login');
         render();
         if (isStaff) loadRosterFromServer().catch(() => {});
+        loadMedicalFromServer().catch(() => {});
         if (isStaff) loadCoachDraft().catch(() => {});
         loadClubConfigFromServer().catch(() => {});
         refreshPushSubscriptionMetadata(data.user?.displayName || '').catch(() => {});
@@ -27987,6 +28120,7 @@
           loadRosterFromServer().catch(() => {}),
           loadPublishedStateForPlayer().catch(() => {}),
           loadCoachDraft().catch(() => {}),
+          loadMedicalFromServer().catch(() => {}),
         ]);
         markSynced();
         render();
@@ -28969,6 +29103,7 @@
         window.history.replaceState({}, '', '/');
         _inviteToken = null; _inviteData = null;
         render();
+        loadMedicalFromServer().catch(() => {});   // no-ops without medical_access
         if (isStaffRole) {
           loadRosterFromServer().catch(() => {});
           loadCoachDraft().catch(() => {});
@@ -29268,6 +29403,7 @@
     // Coach devices adopt the server roster on startup (no-op without a
     // coach session — the API rejects with 401/403 and we keep local state).
     loadRosterFromServer().catch(() => {});
+    loadMedicalFromServer().catch(() => {});   // shared caseload on every page load
     // Restore this coach's private Match Centre draft (no-op for players — the
     // endpoint is coach-only; only fills an empty local sheet so it never clobbers
     // work already in localStorage). Runs again after checkServerSession confirms

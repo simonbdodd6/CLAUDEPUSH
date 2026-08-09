@@ -260,7 +260,9 @@ test('Club Admin is discoverable from Members and Settings, gated on administrat
     'Members header offers Club Admin to authorised staff only');
   assert.match(src, /canI\('manage_teams'\) \? `<button[^`]*setSection\('coach','admin'\)[^`]*Open Club Admin/,
     'Settings offers an explicit Club Admin button');
-  assert.match(src, /SECTION_PERMS = \{[^}]*admin: 'manage_teams'/,
+  // RC4.7 — the gate map is now module-level (SECTION_PERM_MAP) so the nav and
+  // the route guard read ONE definition. The gate itself is unchanged.
+  assert.match(src, /SECTION_PERM_MAP = \{[^}]*admin: 'manage_teams'/,
     'the section itself stays gated on manage_teams');
 });
 

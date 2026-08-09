@@ -27,6 +27,9 @@ import {
   setGroupStatus, setTeamStatus,
 } from './_structureStore.js';
 import { effectiveAccessScope, effectiveEligibility } from './_accessScope.js';
+import {
+  loadMedicalRecord, activeCases, upsertCase, resolveCase, projectPlayer,
+} from './_medicalStore.js';
 import { canonicalRole } from './_permissions.js';
 import { load, save } from './_lib.js';
 import { auditLog, requestIp } from './_security.js';
@@ -171,6 +174,76 @@ async function rosterHandler(req, res) {
     };
     await kvSet(rosterKey(session.teamId), record);
     return res.status(200).json({ ok: true, count: players.length, updatedAt: record.updatedAt });
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+// ── Medical sub-resource (RC4.7) ──────────────────────────────────────────
+// The club's SHARED caseload. Authorisation is MEDICAL_ACCESS and nothing
+// else: MANAGE_PLAYERS and PUBLISH_SQUADS are deliberately NOT accepted as
+// substitutes, because medical information is a separate authorisation that
+// coach and manager access never implies. A player granted Medical reaches
+// this; a plain player does not.
+//
+// The response carries a medical-scoped projection of the roster — enough to
+// identify who a case belongs to, and nothing else. Phone numbers, emails,
+// emergency contacts and guardian details never appear here.
+
+async function medicalHandler(req, res) {
+  let session;
+  try {
+    session = await requireTenantPermission(req, PERM.MEDICAL_ACCESS);
+  } catch (error) {
+    return sendAuthError(res, error);
+  }
+
+  if (req.method === 'GET') {
+    const [record, roster, members, structure] = await Promise.all([
+      loadMedicalRecord(session.teamId),
+      readScoped(rosterKey(session.teamId), 'roster', session.teamId),
+      loadTeamMembers(),
+      loadClubStructure(session.teamId),
+    ]);
+    const mine = members.filter(m => String(m.teamId) === String(session.teamId));
+    const groupName = id => (structure.groups || []).find(g => g.id === id)?.name || '';
+    const players = (roster?.players || []).map(p => {
+      const member = mine.find(m => String(m.userId || '') === String(p.userId || '') && p.userId) || null;
+      return projectPlayer(p, member, groupName(member?.playerGroupId));
+    });
+    return res.status(200).json({
+      ok: true,
+      cases: record.cases,          // full history — the page filters to active
+      active: activeCases(record),
+      players,
+      updatedAt: record.updatedAt,
+    });
+  }
+
+  if (req.method === 'POST') {
+    const action = String(req.body?.action || '');
+    try {
+      if (action === 'resolve_case') {
+        const resolved = await resolveCase(session.teamId, req.body?.caseId, { userId: session.user.id });
+        return res.status(200).json({ ok: true, case: resolved });
+      }
+      if (action === 'upsert_case') {
+        // Only the medical field allow-list survives pickWritable(); playerGroupId
+        // is read from the MEMBERSHIP, never from the request body, so a medical
+        // write can never reassign which group a player belongs to.
+        const members = await loadTeamMembers();
+        const member = members.find(m => String(m.teamId) === String(session.teamId)
+          && String(m.userId || '') === String(req.body?.userId || '') && req.body?.userId) || null;
+        const saved = await upsertCase(session.teamId, {
+          ...req.body,
+          playerGroupId: member?.playerGroupId || '',
+        }, { userId: session.user.id });
+        return res.status(200).json({ ok: true, case: saved });
+      }
+    } catch (error) {
+      return res.status(error.status || 500).json({ error: error.message || 'Medical update failed' });
+    }
+    return res.status(400).json({ error: 'Unknown medical action' });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
@@ -1196,6 +1269,7 @@ export default async function handler(req, res) {
 
   if (String(req.query?.resource || '') === 'structure') return structureHandler(req, res);
   if (String(req.query?.resource || '') === 'roster') return rosterHandler(req, res);
+  if (String(req.query?.resource || '') === 'medical') return medicalHandler(req, res);
   if (String(req.query?.resource || '') === 'club')   return clubHandler(req, res);
   if (String(req.query?.resource || '') === 'availability-check') return availabilityCheckHandler(req, res);
   if (String(req.query?.resource || '') === 'appearance-adjustments') return appearanceAdjustmentsHandler(req, res);

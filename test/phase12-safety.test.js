@@ -129,6 +129,10 @@ function buildNavScope({ users = [], currentUserId = '' } = {}) {
     const playerSections = [['availability','Availability'],['week','This Week'],['fixtures','Fixtures'],['messages','Messages']];
     const BETA_SIMPLE_NAV = false; const BETA_NAV_IDS = [];
     const SECTION_ICONS = {};
+    // RC4.7 — renderNav reads the shared gate map and scoped-access helpers.
+    ${html.match(/const SECTION_PERM_MAP = \{[^}]*\};/)[0]}
+    ${extractFn(html, 'allowedCoachSections')}
+    ${extractFn(html, 'hasScopedCoachAccess')}
     ${extractFn(html, 'renderNav')}
     return { renderNav };
   `;
