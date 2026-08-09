@@ -304,7 +304,10 @@ test('the Medical listing heading and empty state describe cases, not availabili
   assert.match(src, /No active medical cases\. Players appear here once an injury is recorded\./,
     'empty state explains the model');
   const legacy = fn('renderMedical');
-  assert.match(legacy, /activeMedicalCases\(state\.players/,
+  // RC4.7 — the player list is now resolved through medicalPlayers() so a
+  // player with MEDICAL_ACCESS (who never loads the roster) sees the scoped
+  // projection instead. The caseload DEFINITION is unchanged.
+  assert.match(legacy, /activeMedicalCases\(medicalPlayers\(\)/,
     'the legacy view uses the same caseload definition');
 });
 

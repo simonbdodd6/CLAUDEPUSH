@@ -13565,21 +13565,21 @@
       if (_mTab === 'record')    { _renderMedicalRecord(_medActivePlayerId); return; }
       if (_mTab === 'timeline')  { _renderMedicalTimeline(_medActivePlayerId); return; }
 
-      const injured     = state.players.filter(p => p.game === "injured");
+      const injured     = medicalPlayers().filter(p => p.game === "injured");
       // RC4.7 — the legacy view's tracker is the ACTIVE caseload too.
       const hasIssues   = typeof activeMedicalCases === 'function'
-        ? activeMedicalCases(state.players, state.medicalRecords, state.medicalNotes)
-        : state.players.filter(p => p.game === "injured" || p.medical);
+        ? activeMedicalCases(medicalPlayers(), state.medicalRecords, state.medicalNotes)
+        : medicalPlayers().filter(p => p.game === "injured" || p.medical);
       const medNotes    = state.medicalNotes   || {};
       const treatLogs   = state.treatmentLogs  || [];
       const medMessages = state.messages.filter(m => m.sessionId === "medical").slice(0,6);
 
-      document.getElementById("coach-medical").innerHTML = `
+      medicalMountEl().innerHTML = `
         <!-- Medical overview stats -->
         <div class="med-overview-grid">
           <div class="med-stat"><strong style="color:var(--red)">${injured.length}</strong><small>Active injuries</small></div>
           <div class="med-stat"><strong style="color:var(--amber)">${hasIssues.filter(p=>!injured.includes(p)).length}</strong><small>Monitoring</small></div>
-          <div class="med-stat"><strong style="color:var(--green)">${state.players.filter(p=>p.game==="available").length}</strong><small>Cleared to play</small></div>
+          <div class="med-stat"><strong style="color:var(--green)">${medicalPlayers().filter(p=>p.game==="available").length}</strong><small>Cleared to play</small></div>
           <div class="med-stat"><strong style="color:var(--blue)">${treatLogs.length}</strong><small>Treatment logs</small></div>
         </div>
 
@@ -21617,10 +21617,36 @@
         }).join('') + '</div>';
     }
 
+    /**
+     * RC4.7 — Medical is ONE feature with two authorised shells.
+     *
+     * Staff open it inside the coach view (#coach-medical); a player holding
+     * MEDICAL_ACCESS opens the same page inside their own portal
+     * (#player-medical). The renderers were hard-wired to the coach container,
+     * so rendering for a player filled a hidden panel and left the visible one
+     * empty — the blank page. The mount is resolved from the active view
+     * instead; the Medical logic itself is untouched and unforked.
+     */
+    function medicalMountEl() {
+      return document.getElementById(
+        state.activeView === 'player' ? 'player-medical' : 'coach-medical');
+    }
+
+    /**
+     * Who Medical can see. Staff have the full roster; a player with
+     * MEDICAL_ACCESS never loads it (loadRosterFromServer is coach-only), so
+     * they use the medical-scoped projection the shared endpoint returns —
+     * id, name, position, group only, and no contact data.
+     */
+    function medicalPlayers() {
+      if (Array.isArray(state.players) && state.players.length) return state.players;
+      return (typeof _sharedMedical === 'object' && _sharedMedical.players) || [];
+    }
+
     function _renderMedicalDashboard() {
-      const el = document.getElementById('coach-medical');
+      const el = medicalMountEl();
       if (!el) return;
-      const summ    = medicalDashboardSummary(state.players, state.medicalRecords, state.medicalNotes);
+      const summ    = medicalDashboardSummary(medicalPlayers(), state.medicalRecords, state.medicalNotes);
       const medNotes = state.medicalNotes || {};
       const medRecs  = state.medicalRecords || {};
       const INP = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);width:100%;box-sizing:border-box';
@@ -21646,7 +21672,7 @@
           '<div class="card" style="border:1px solid var(--brand-line)">' +
             '<div style="font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px">' + icon('medical') + 'Add injury</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
-              '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Player<select id="injPlayer" style="' + INP + '">' + (state.players.length ? state.players.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>').join('') : '<option value="">No players yet — add players first</option>') + '</select></label>' +
+              '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Player<select id="injPlayer" style="' + INP + '">' + (medicalPlayers().length ? medicalPlayers().map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>').join('') : '<option value="">No players yet — add players first</option>') + '</select></label>' +
               '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Injury type / name<input id="injType" placeholder="e.g. Hamstring strain" style="' + INP + '"></label>' +
               '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Body area<select id="injArea" style="' + INP + '">' + ['','Head','Neck','Shoulder','Arm','Elbow','Wrist / Hand','Chest','Ribs','Back','Hip','Groin','Hamstring','Quad','Knee','Calf','Ankle','Foot','Other'].map(a => '<option value="' + a + '">' + (a || 'Select…') + '</option>').join('') + '</select></label>' +
               '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Severity<select id="injSeverity" style="' + INP + '"><option value="">Select…</option><option value="minor">Minor</option><option value="moderate">Moderate</option><option value="severe">Severe</option></select></label>' +
@@ -21731,14 +21757,14 @@
     }
 
     function _renderMedicalRecord(playerId) {
-      const el = document.getElementById('coach-medical');
+      const el = medicalMountEl();
       if (!el) return;
       if (!playerId) {
         el.innerHTML = _medTabBar(true) +
           '<div class="card" style="text-align:center;padding:40px"><div style="font-size:32px;margin-bottom:10px"></div><div style="font-weight:700">No player selected</div><div style="font-size:13px;color:var(--muted);margin-top:6px">Select a player from the Dashboard to view their medical record.</div><button class="btn" style="margin-top:14px" onclick="setMedicalTab(\'dashboard\')">Back to dashboard</button></div>';
         return;
       }
-      const p    = state.players.find(pl => pl.id === playerId);
+      const p    = medicalPlayers().find(pl => pl.id === playerId);
       if (!p) { el.innerHTML = _medTabBar(true) + '<div class="card" style="padding:24px;text-align:center;color:var(--muted)">Player not found.</div>'; return; }
       const rec  = normalizeMedicalRecord((state.medicalRecords||{})[playerId]);
       const mn   = (state.medicalNotes||{})[playerId] || {};
@@ -21864,14 +21890,14 @@
     }
 
     function _renderMedicalTimeline(playerId) {
-      const el = document.getElementById('coach-medical');
+      const el = medicalMountEl();
       if (!el) return;
       if (!playerId) {
         el.innerHTML = _medTabBar(true) +
           '<div class="card" style="text-align:center;padding:40px"><div style="font-size:32px;margin-bottom:10px"></div><div style="font-weight:700">No player selected</div><div style="font-size:13px;color:var(--muted);margin-top:6px">Select a player from the Dashboard.</div><button class="btn" style="margin-top:14px" onclick="setMedicalTab(\'dashboard\')">Back to dashboard</button></div>';
         return;
       }
-      const p   = state.players.find(pl => pl.id === playerId);
+      const p   = medicalPlayers().find(pl => pl.id === playerId);
       if (!p) { el.innerHTML = _medTabBar(true) + '<div class="card" style="padding:24px;text-align:center;color:var(--muted)">Player not found.</div>'; return; }
       const rec = normalizeMedicalRecord((state.medicalRecords||{})[playerId]);
       const INP = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);box-sizing:border-box';
@@ -26949,7 +26975,7 @@
       }
       safeRender('coach-training',      () => renderTraining());
       safeRender('coach-matchday',      () => renderMatchday());
-      safeRender('coach-medical',       () => renderMedical());
+      safeRender('coach-medical',       () => { if (state.activeView === 'coach') renderMedical(); });
       safeRender('coach-players',       () => renderPlayers());
       safeRender('coach-admin',         () => renderClubAdmin());
       safeRender('coach-club',          () => renderClubSection());
@@ -26961,7 +26987,9 @@
       safeRender('coach-qa',            () => renderBetaQA());
       safeRender('coach-beta',          () => renderBetaLaunch());
       safeRender('coach-search',        () => renderSearch());
-      safeRender('player-medical',      () => { if (canI('medical_access')) renderMedical(); });
+      // One renderer, one mount: only the ACTIVE shell renders, so the two
+      // never write over each other.
+      safeRender('player-medical',      () => { if (state.activeView === 'player' && canI('medical_access')) renderMedical(); });
       safeRender('player-home',         () => renderPlayerHome());
       safeRender('player-week',         () => renderPlayerWeek());
       safeRender('player-availability', () => renderPlayerAvailabilityV2());

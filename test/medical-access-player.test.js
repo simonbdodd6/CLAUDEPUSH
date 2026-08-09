@@ -273,11 +273,48 @@ test('PRODUCTION REPRO — revoking Medical removes it from the player nav', () 
 test('the player Medical route and panel exist and are permission-gated', () => {
   assert.match(src, /<section id="player-medical"\s+class="section"><\/section>/,
     'the player-side panel exists, so showSection() can activate it');
-  assert.match(src, /safeRender\('player-medical',\s*\(\) => \{ if \(canI\('medical_access'\)\) renderMedical\(\); \}\)/,
-    'rendered inside the player view, gated on the permission');
+  assert.match(src, /safeRender\('player-medical',\s*\(\) => \{ if \(state\.activeView === 'player' && canI\('medical_access'\)\) renderMedical\(\); \}\)/,
+    'rendered inside the player view, gated on the permission and on the active shell');
   const setSection = fn('setSection');
   assert.match(setSection, /view === "player" && !playerSectionsFor\(\)\.some/,
     'direct player-route navigation is gated too');
   assert.match(fn('showSection'), /state\.activePlayerSection = "home"/,
     'a revoked grant falls back to Home rather than rendering a closed section');
+});
+
+// ── BLANK PAGE: one renderer, mounted on the ACTIVE shell ─────────────────
+// The route opened and the heading shell rendered, but every Medical renderer
+// wrote into #coach-medical — hidden for a player — leaving #player-medical
+// empty. Medical is one feature with two authorised shells, not two forks.
+test('the Medical renderers mount on the active shell, not a hard-wired one', () => {
+  const mount = fn('medicalMountEl');
+  assert.match(mount, /state\.activeView === 'player' \? 'player-medical' : 'coach-medical'/,
+    'mount follows the active view');
+  assert.equal(/document\.getElementById\('coach-medical'\)/.test(src), false,
+    'no renderer is hard-wired to the coach container any more');
+  assert.equal(/document\.getElementById\("coach-medical"\)\.innerHTML/.test(src), false);
+  // Every Medical renderer resolves its container through the shared helper.
+  for (const r of ['_renderMedicalDashboard', '_renderMedicalRecord', '_renderMedicalTimeline']) {
+    assert.match(fn(r), /medicalMountEl\(\)/, `${r} mounts on the active shell`);
+  }
+});
+
+test('Medical is not forked — the same renderer serves both shells', () => {
+  const count = (src.match(/function renderMedical\(/g) || []).length;
+  assert.equal(count, 1, 'exactly one Medical renderer exists');
+  assert.match(src, /safeRender\('player-medical',\s*\(\) => \{ if \(state\.activeView === 'player' && canI\('medical_access'\)\) renderMedical\(\); \}\)/,
+    'player shell calls the shared renderer');
+  assert.match(src, /safeRender\('coach-medical',\s*\(\) => \{ if \(state\.activeView === 'coach'\) renderMedical\(\); \}\)/,
+    'coach shell calls the same one; only the active view renders');
+});
+
+test('a player with Medical sees the caseload via the scoped projection', () => {
+  const players = fn('medicalPlayers');
+  assert.match(players, /state\.players.*length.*return state\.players/s, 'staff keep the full roster');
+  assert.match(players, /_sharedMedical\.players/, 'a player falls back to the medical-scoped projection');
+  // The roster is coach-only, which is exactly why the fallback is needed.
+  assert.match(fn('loadRosterFromServer'), /if \(!isCoach\(\)\) return;/);
+  // The projection carries no contact data — asserted server-side too.
+  const store = fs.readFileSync(new URL('../api/_medicalStore.js', import.meta.url), 'utf8');
+  assert.match(store, /PROJECTED_PLAYER_FIELDS = \['id', 'name', 'position', 'playerGroupId', 'groupName'\]/);
 });
