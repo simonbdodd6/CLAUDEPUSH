@@ -113,7 +113,7 @@ function buildNavScope() {
     // product rather than a copy that can drift.
     ${src.match(/const SECTION_PERM_MAP = \{[^}]*\};/)[0]}
     ${extractFn('allowedCoachSections')}
-    ${extractFn('hasScopedCoachAccess')}
+    ${extractFn('playerSectionsFor')}
     ${extractFn('renderNav')}
     renderNav();
     return document.getElementById('coachNav').innerHTML;

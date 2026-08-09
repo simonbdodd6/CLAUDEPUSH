@@ -65,11 +65,12 @@ function gates(perms, role) {
   return new Function(`
     const SECTION_PERM_MAP = ${map};
     const _perms = ${JSON.stringify(perms)};
+    ${src.match(/const playerSections = \[[\s\S]*?\n    \];/)[0]}
     function canI(p) { return _perms.includes(p); }
     function isCoach() { return ["coach","admin","medical"].includes(${JSON.stringify(role)}); }
     ${fn('allowedCoachSections')}
-    ${fn('hasScopedCoachAccess')}
-    return { allowedCoachSections, hasScopedCoachAccess, canI, isCoach };
+    ${fn('playerSectionsFor')}
+    return { allowedCoachSections, playerSectionsFor, canI, isCoach };
   `)();
 }
 
@@ -80,7 +81,8 @@ const NAV = [['overview', 'Overview'], ['message', 'Availability'], ['training',
 test('a plain player sees no coach sections at all — Medical included', () => {
   const g = gates([], 'player');
   assert.deepEqual(g.allowedCoachSections(NAV).map(([id]) => id), []);
-  assert.equal(g.hasScopedCoachAccess(), false, 'no coach shell entry point');
+  assert.deepEqual(g.playerSectionsFor().map(([id]) => id),
+    ['home','messages','availability','week'], 'the normal player portal, unchanged');
 });
 
 test('a player + Medical sees Medical, and ONLY Medical', () => {
@@ -92,7 +94,9 @@ test('a player + Medical sees Medical, and ONLY Medical', () => {
     assert.equal(g.allowedCoachSections(NAV).some(([id]) => id === leaked), false,
       `${leaked} is ungated and must stay staff-only`);
   }
-  assert.equal(g.hasScopedCoachAccess(), true, 'can reach the shell for that one section');
+  assert.deepEqual(g.playerSectionsFor().map(([id]) => id),
+    ['home','messages','availability','week','medical'],
+    'Medical joins the PLAYER nav — no coach shell involved');
 });
 
 test('staff behaviour is unchanged — ungated sections still render', () => {
@@ -120,7 +124,8 @@ test('removing the grant closes nav and route together', () => {
   const revoked = gates([], 'player');
   assert.deepEqual(revoked.allowedCoachSections(NAV).map(([id]) => id), []);
   assert.equal(revoked.allowedCoachSections([['medical']]).length, 0, 'route blocked again');
-  assert.equal(revoked.hasScopedCoachAccess(), false, 'view switch hidden again');
+  assert.equal(revoked.playerSectionsFor().some(([id]) => id === 'medical'), false,
+    'Medical leaves the player nav again');
 });
 
 // ── LINK 7: the shared store replaces the staff-gated roster path ──────────
@@ -179,4 +184,100 @@ test('the view model is derived from the server, never merged with the draft', (
   assert.match(hydrate, /state\.medicalNotes = notes/);
   assert.equal(/\.\.\.state\.medicalRecords|Object\.assign\(state\.medicalRecords/.test(hydrate), false,
     'no silent merge of legacy draft data on page load');
+});
+
+// ── THE PRODUCTION REPRODUCTION ───────────────────────────────────────────
+// The earlier fix put Medical in #coachNav. A real player logs in with
+// activeView 'player', renders #playerNav, and showSection() forces any
+// non-isCoach() identity back to the player view on every render — so the
+// coach shell was structurally unreachable and Medical was invisible.
+// This drives the REAL renderNav() and asserts on #playerNav itself.
+
+function renderPlayerNav(perms) {
+  const store = {};
+  const makeEl = () => ({ innerHTML: '', classList: { toggle() {}, add() {}, remove() {} },
+    style: {}, setAttribute() {}, disabled: false, title: '', textContent: '' });
+  const mockDoc = {
+    getElementById(id) { if (!store[id]) store[id] = makeEl(); return store[id]; },
+    querySelector() { return null; }, querySelectorAll() { return []; }, title: '',
+  };
+  const state = {
+    users: [{ id: 'p1', role: 'player', name: 'Test Medical' }], currentUserId: 'p1',
+    players: [], schedule: [], activeView: 'player', activeCoachSection: 'overview',
+    activePlayerSection: 'home', clubName: 'Boitsfort',
+  };
+  const body = `"use strict";
+    const document = mockDoc;
+    const state = ${JSON.stringify(state)};
+    const _perms = ${JSON.stringify(perms)};
+    let _myMemberships = []; let _chatNavUnread = 0; let authTab = 'closed';
+    const window = { _devLoginEnabled: false };
+    function currentUser() { return state.users.find(u => u.id === state.currentUserId); }
+    function isCoach() { const r = currentUser()?.role; return r === "coach" || r === "admin" || r === "medical"; }
+    function canI(p) { return _perms.includes(p); }
+    function icon() { return ''; } function esc(s) { return String(s||''); }
+    function sessionKey(id) { return 's_' + id; }
+    function canonicalSwitchAccounts() { return []; }
+    function renderPushSidebar() {} function updateNavBadge() {}
+    ${src.match(/const coachSections = \[[\s\S]*?\n    \];/)[0]}
+    ${src.match(/const BETA_NAV_IDS = \[[^\]]*\];/)[0]}
+    ${src.match(/const playerSections = \[[\s\S]*?\n    \];/)[0]}
+    ${src.match(/const SECTION_PERM_MAP = \{[^}]*\};/)[0]}
+    const BETA_SIMPLE_NAV = true; const SECTION_ICONS = {};
+    ${fn('allowedCoachSections')}
+    ${fn('playerSectionsFor')}
+    ${fn('renderNav')}
+    renderNav();
+    return { playerNav: document.getElementById('playerNav').innerHTML,
+             coachNav: document.getElementById('coachNav').innerHTML,
+             isCoach: isCoach() };
+  `;
+  return new Function('mockDoc', body)(mockDoc);
+}
+
+test('PRODUCTION REPRO — a plain player sees the 4 portal items, no Medical', () => {
+  const { playerNav, isCoach } = renderPlayerNav([]);
+  assert.equal(isCoach, false, 'canonical role stays Player');
+  for (const id of ['home', 'messages', 'availability', 'week']) {
+    assert.ok(playerNav.includes(`setSection('player','${id}')`), `portal keeps ${id}`);
+  }
+  assert.equal(playerNav.includes(`setSection('player','medical')`), false, 'no Medical');
+});
+
+test('PRODUCTION REPRO — player + Medical gets Medical in the PLAYER nav', () => {
+  const { playerNav, isCoach } = renderPlayerNav(['medical_access']);
+  assert.equal(isCoach, false, 'still a Player — not promoted to staff');
+  assert.ok(playerNav.includes(`setSection('player','medical')`),
+    'Medical appears in the player portal itself');
+  assert.ok(playerNav.includes('Medical'), 'and is labelled');
+  // The four normal items survive.
+  for (const id of ['home', 'messages', 'availability', 'week']) {
+    assert.ok(playerNav.includes(`setSection('player','${id}')`), `portal keeps ${id}`);
+  }
+});
+
+test('PRODUCTION REPRO — no coach/admin surface leaks into the player portal', () => {
+  const { playerNav } = renderPlayerNav(['medical_access']);
+  for (const id of ['overview', 'players', 'matchday', 'settings', 'admin', 'club', 'training', 'message']) {
+    assert.equal(playerNav.includes(`setSection('coach','${id}')`), false,
+      `${id} must never appear in the player portal`);
+  }
+  assert.equal(/Members|Match Centre|Settings|Overview/.test(playerNav), false,
+    'no coach section labels');
+});
+
+test('PRODUCTION REPRO — revoking Medical removes it from the player nav', () => {
+  assert.equal(renderPlayerNav([]).playerNav.includes(`setSection('player','medical')`), false);
+});
+
+test('the player Medical route and panel exist and are permission-gated', () => {
+  assert.match(src, /<section id="player-medical"\s+class="section"><\/section>/,
+    'the player-side panel exists, so showSection() can activate it');
+  assert.match(src, /safeRender\('player-medical',\s*\(\) => \{ if \(canI\('medical_access'\)\) renderMedical\(\); \}\)/,
+    'rendered inside the player view, gated on the permission');
+  const setSection = fn('setSection');
+  assert.match(setSection, /view === "player" && !playerSectionsFor\(\)\.some/,
+    'direct player-route navigation is gated too');
+  assert.match(fn('showSection'), /state\.activePlayerSection = "home"/,
+    'a revoked grant falls back to Home rather than rendering a closed section');
 });

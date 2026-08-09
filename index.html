@@ -4781,6 +4781,7 @@
       <section id="player-home"         class="section"></section>
       <section id="player-availability" class="section"></section>
       <section id="player-week"         class="section"></section>
+      <section id="player-medical"      class="section"></section>
       <section id="player-fixtures"     class="section"></section>
       <section id="player-attendance"   class="section" style="display:none"></section>
       <section id="player-messages"     class="section"></section>
@@ -4855,6 +4856,19 @@
     // deleted: the markup stays in the DOM (hidden via the .beta-hidden class) so
     // every id, handler, API call and data path is intact. Flip to false to restore.
     const BETA_SIMPLE_UI = true;
+
+    /**
+     * RC4.7 — a player granted Medical access stays a PLAYER: same role, same
+     * Player view, same portal. They simply gain Medical in their own
+     * navigation. They must never have to switch to the coach shell — and in
+     * fact cannot, because showSection() forces any non-isCoach() identity back
+     * to the player view on every render.
+     */
+    function playerSectionsFor() {
+      const base = playerSections.slice();
+      if (canI('medical_access')) base.push(['medical', 'Medical']);
+      return base;
+    }
 
     const playerSections = [
       ["home",         "Home"],
@@ -8974,7 +8988,7 @@
         if (!p) return 0;
         return (state.schedule || []).filter(s => (p[sessionKey(s.id)] || 'no-reply') === 'no-reply').length;
       })();
-      document.getElementById("playerNav").innerHTML = playerSections.map(([id, label]) => {
+      document.getElementById("playerNav").innerHTML = playerSectionsFor().map(([id, label]) => {
         const badge = id === 'availability' && _pendingCount > 0
           ? ` <span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;font-size:9px;font-weight:800;border-radius:999px;background:#dc2626;color:#fff;line-height:1;vertical-align:middle;margin-left:3px">${_pendingCount}</span>`
           : '';
@@ -8985,11 +8999,11 @@
       document.getElementById("coachNav").classList.toggle("hidden",  state.activeView !== "coach");
       document.getElementById("playerNav").classList.toggle("hidden", state.activeView !== "player");
       // Hide the Coach|Player toggle entirely for players — they should never see it
-      // A player holding a scoped grant (e.g. Medical) needs a way back and
-      // forth, but is NOT staff — the switch appears, and the coach shell it
-      // opens contains only the sections they actually hold.
+      // Staff-only. A player with a scoped grant (e.g. Medical) reaches it from
+      // their OWN navigation and never enters the coach shell — showSection()
+      // forces any non-isCoach() identity back to the player view regardless.
       const viewSwitch = document.querySelector('.view-switch');
-      if (viewSwitch) viewSwitch.style.display = (isCoach() || hasScopedCoachAccess()) ? '' : 'none';
+      if (viewSwitch) viewSwitch.style.display = isCoach() ? '' : 'none';
       // Account now lives in the player nav (always visible). Keep the destructive
       // Reset hidden from the normal Beta player UI (Reset stays for coaches).
       const _resetBtn = document.getElementById('resetBtn');
@@ -8997,9 +9011,8 @@
 
       document.getElementById("coachViewBtn").classList.toggle("active",  state.activeView === "coach");
       document.getElementById("playerViewBtn").classList.toggle("active", state.activeView === "player");
-      const _coachShellOpen = isCoach() || hasScopedCoachAccess();
-      document.getElementById("coachViewBtn").disabled = !_coachShellOpen;
-      document.getElementById("coachViewBtn").title    = !_coachShellOpen ? "Player accounts cannot open coach tools" : "";
+      document.getElementById("coachViewBtn").disabled = !isCoach();
+      document.getElementById("coachViewBtn").title    = !isCoach() ? "Player accounts cannot open coach tools" : "";
 
       const roleLabel = { coach:'Coach', admin:'Admin', medical:'Medical', player:'Player' };
       const rlbl = roleLabel[user?.role] || 'Player';
@@ -9182,15 +9195,15 @@
       });
     }
 
-    /** True when a non-staff identity holds at least one coach-shell grant. */
-    function hasScopedCoachAccess() {
-      return Object.keys(SECTION_PERM_MAP).some(id => canI(SECTION_PERM_MAP[id]));
-    }
-
     function setSection(view, section) {
       if (view === "coach" && !isCoach() &&
           !allowedCoachSections([[section]]).length) {
         return showToast("Player accounts cannot open coach tools");
+      }
+      // Player-side sections are gated on the same permission map, so a
+      // revoked grant closes the route as well as hiding the entry.
+      if (view === "player" && !playerSectionsFor().some(([id]) => id === section)) {
+        return showToast("You do not have access to that section");
       }
       state.activeView = view;
       if (view === "coach")  state.activeCoachSection  = section;
@@ -9202,7 +9215,7 @@
     function pageTitle() {
       if (state.activeView === "coach")
         return (coachSections.find(([id]) => id === state.activeCoachSection) || coachSections[0])[1];
-      return (playerSections.find(([id]) => id === state.activePlayerSection) || playerSections[0])[1];
+      return (playerSectionsFor().find(([id]) => id === state.activePlayerSection) || playerSections[0])[1];
     }
 
     function devCopyCredential(label, btn) {
@@ -9698,10 +9711,17 @@
     function showSection() {
       document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
       if (state.activeView === "coach" && !isCoach()) state.activeView = "player";
+      // A revoked grant must close the route, not just the nav entry: a player
+      // parked on Medical when access is withdrawn falls back to Home rather
+      // than rendering a section they may no longer open.
+      if (state.activeView === "player" &&
+          !playerSectionsFor().some(([id]) => id === state.activePlayerSection)) {
+        state.activePlayerSection = "home";
+      }
       const id = state.activeView === "coach"
         ? `coach-${state.activeCoachSection}`
         : `player-${state.activePlayerSection}`;
-      document.getElementById(id).classList.add("active");
+      (document.getElementById(id) || document.getElementById("player-home"))?.classList.add("active");
       document.getElementById("pageTitle").textContent  = pageTitle();
       document.getElementById("eyebrow").textContent    = state.activeView === "coach"
         ? "Coach dashboard"
@@ -26941,6 +26961,7 @@
       safeRender('coach-qa',            () => renderBetaQA());
       safeRender('coach-beta',          () => renderBetaLaunch());
       safeRender('coach-search',        () => renderSearch());
+      safeRender('player-medical',      () => { if (canI('medical_access')) renderMedical(); });
       safeRender('player-home',         () => renderPlayerHome());
       safeRender('player-week',         () => renderPlayerWeek());
       safeRender('player-availability', () => renderPlayerAvailabilityV2());

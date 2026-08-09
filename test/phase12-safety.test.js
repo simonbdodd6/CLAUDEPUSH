@@ -132,7 +132,7 @@ function buildNavScope({ users = [], currentUserId = '' } = {}) {
     // RC4.7 — renderNav reads the shared gate map and scoped-access helpers.
     ${html.match(/const SECTION_PERM_MAP = \{[^}]*\};/)[0]}
     ${extractFn(html, 'allowedCoachSections')}
-    ${extractFn(html, 'hasScopedCoachAccess')}
+    ${extractFn(html, 'playerSectionsFor')}
     ${extractFn(html, 'renderNav')}
     return { renderNav };
   `;
