@@ -68,10 +68,21 @@ test('already-correct real DM is left unchanged', () => {
   assert.equal(r.selectedChatId, REAL_DM);
 });
 
-test('pre-fetch (no server DM yet) does NOT downgrade or oscillate', () => {
+test('a phantom legacy DM is replaced by a REAL conversation, never left in place', () => {
+  // CONTRACT CHANGE (messaging audit): leaving the player parked on a
+  // coach-demo DM was not "no downgrade" — that conversation cannot exist
+  // server-side, so every reply 404'd and the read marker never landed. With
+  // no real DM available the player is moved to the squad channel, which is a
+  // real conversation they can both read and post in.
   const r = runCanon({ convs: [], selectedChatId: COACH_DEMO });
-  assert.equal(r.changed, false, 'no swap when there is no better (real) DM yet');
-  assert.equal(r.selectedChatId, COACH_DEMO);
+  assert.equal(r.changed, true, 'the phantom selection is corrected');
+  assert.equal(r.selectedChatId, 'squad', 'moved to a real conversation');
+  assert.equal(String(r.selectedChatId).includes('coach-demo'), false, 'no legacy id survives');
+
+  // And it must not oscillate: re-running from the corrected state is stable.
+  const again = runCanon({ convs: [], selectedChatId: 'squad' });
+  assert.equal(again.changed, false, 'stable once corrected — no oscillation');
+  assert.equal(again.selectedChatId, 'squad');
 });
 
 test('no regression: squad/announcements are left unchanged', () => {

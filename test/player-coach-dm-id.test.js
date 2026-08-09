@@ -53,18 +53,27 @@ test('playerAllowedConversationIds includes the server DM id (selectChat will no
   assert.ok(api.playerAllowedConversationIds().has(SERVER_DM), 'server DM is allowed');
 });
 
-test('fallback to local computation only before any server DM exists', () => {
-  // No server convs yet, but the real coach IS in state.users -> compute with real coach.
+test('local computation is used only when a REAL coach identity is known', () => {
+  // A real coach in state.users -> compute the DM against that coach.
   const withCoach = build({ convs: [], users: [{ id: 'user_coachZ', role: 'coach' }], meId: 'user_playerA' });
   assert.equal(withCoach.playerCoachDmId(), withCoach.dmConvId('user_coachZ', 'user_playerA'));
-  // No server convs AND no coach in state.users -> coach-demo fallback (pre-fetch only).
+
+  // CONTRACT CHANGE (messaging audit): with no server DM AND no coach on the
+  // device, the app must NOT fabricate one from the deleted legacy 'coach-demo'
+  // account. That produced a conversation the server can never have: the
+  // player's replies were POSTed to it, rejected 404, and silently lost — a
+  // player literally could not answer their coach. No identity, no DM id.
   const bare = build({ convs: [], users: [], meId: 'user_playerA' });
-  assert.equal(bare.playerCoachDmId(), bare.dmConvId('coach-demo', 'user_playerA'));
+  assert.equal(bare.playerCoachParticipantId(), '', 'no legacy participant is invented');
+  assert.equal(bare.playerCoachDmId(), '', 'no phantom DM id is produced');
+  assert.equal(String(bare.playerCoachDmId()).includes('coach-demo'), false);
 });
 
-test('a server DM is preferred over the coach-demo computed id, proving server is source of truth', () => {
-  // state.users has NO coach (would compute coach-demo) but a server DM exists -> server wins.
+test('a server DM is always preferred, proving the server is the source of truth', () => {
+  // state.users has NO coach, but a server DM exists -> the canonical server id wins.
   const api = build({ convs: [{ id: SERVER_DM, type: 'DIRECT' }], users: [{ id: 'user_playerA', role: 'player' }], meId: 'user_playerA' });
   assert.equal(api.playerCoachDmId(), SERVER_DM);
-  assert.equal(api.playerCoachParticipantId(), 'coach-demo', 'local compute would have fallen back to coach-demo — but server id is used instead');
+  assert.equal(api.playerCoachParticipantId(), '',
+    'local compute yields nothing without a real coach — the canonical server id is used instead');
+  assert.equal(SERVER_DM.includes('coach-demo'), false, 'the canonical id is never a legacy id');
 });

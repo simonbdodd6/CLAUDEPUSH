@@ -8727,7 +8727,8 @@
         state.activeView = isStaffLogin ? 'coach' : 'player';
         if (isStaffLogin) {
           state.activeCoachSection = state.activeCoachSection || 'overview';
-          state.selectedChatId = state.selectedChatId || 'squad';
+          // See above: never inherit the player-only 'coach' placeholder.
+          if (!state.selectedChatId || state.selectedChatId === 'coach') state.selectedChatId = 'squad';
         } else {
           state.activePlayerSection = 'messages';
           state.selectedPlayerId = data.user.id;
@@ -9196,7 +9197,11 @@
         state.activePlayerSection = 'messages';
         state.selectedChatId = 'coach';
       }
-      if (isStaff) state.selectedChatId = state.selectedChatId || 'squad';
+      // 'coach' is the PLAYER-only placeholder for "my DM with the coach". A
+      // staff session that inherits it (it is the initial default for every new
+      // device) lands on a conversation the server does not have, so sends fail
+      // and the poller 404s every tick. Staff always start on a real channel.
+      if (isStaff && (!state.selectedChatId || state.selectedChatId === 'coach')) state.selectedChatId = 'squad';
       authTab = 'closed';
       saveState('Switched account');
       render();
@@ -17000,6 +17005,10 @@
       }
       saveState('Signed out');
       _serverAuthState = 'anon';
+      // Stop the per-conversation poller immediately. The background unread
+      // poll is gated on _serverAuthState, but this interval is not, so without
+      // this it kept hitting /api/chat after logout.
+      if (typeof chatStopPolling === 'function') chatStopPolling();
       authTab = 'login';
       render();
       renderAuthBanner();
@@ -24505,7 +24514,12 @@
         ['coach', 'admin', 'medical'].includes(String(u.role || '')) &&
         String(u.id || '') !== meUserId
       );
-      return coach?.id || 'coach-demo';
+      // No legacy 'coach-demo' fallback. That account no longer exists, so
+      // inventing a DM id from it produced a conversation the server can never
+      // have: the player's replies were POSTed to it and rejected 404, i.e. a
+      // player literally could not answer their coach. Returning '' lets the
+      // caller fall back to a REAL conversation instead.
+      return coach?.id || '';
     }
 
     function playerCoachDmId() {
@@ -24520,11 +24534,16 @@
         String(c?.type || '').toUpperCase() === 'DIRECT' || String(c?.id || '').startsWith('dm:'));
       if (serverDm && serverDm.id) return String(serverDm.id);
       const coachId = playerCoachParticipantId();
+      // Without a real coach identity there is no DM to compute. Callers treat
+      // '' as "no coach DM yet" and use a real channel.
+      if (!coachId) return '';
       return dmConvId(coachId, me.id);
     }
 
     function playerAllowedConversationIds() {
-      const ids = new Set(['announce', 'squad', playerCoachDmId()]);
+      const ids = new Set(['announce', 'squad']);
+      const dm = playerCoachDmId();
+      if (dm) ids.add(dm);              // only when a real DM exists
       return ids;
     }
 
@@ -24542,6 +24561,13 @@
       if (!current || isStaleCoachDm || !allowed.has(current)) {
         if (coachDm && current !== coachDm) {
           state.selectedChatId = coachDm;
+          return true;
+        }
+        // No real coach DM exists yet. Never leave the player pointing at a
+        // phantom conversation — their messages would be rejected. The squad
+        // channel is a real conversation they can both read and post in.
+        if (!coachDm && current !== 'squad') {
+          state.selectedChatId = 'squad';
           return true;
         }
       }
@@ -24652,8 +24678,19 @@
     }
 
     function chatGetConvId(mode) {
-      // Maps current state.selectedChatId to a proper conv key
-      const cid = state.selectedChatId || (mode === 'coach' ? 'squad' : 'announce');
+      // Maps current state.selectedChatId to a proper conv key.
+      let cid = state.selectedChatId || (mode === 'coach' ? 'squad' : 'announce');
+      // 'coach' is a PLAYER-only placeholder meaning "my DM with the coach".
+      // Every new device starts with it (it is the initial state default), so a
+      // STAFF session that never explicitly picked a thread — notably a coach
+      // who has just created their club through the wizard — was left pointing
+      // at a conversation the server does not have: sends failed outright and
+      // the poller 404'd on every tick. Staff resolve to the real squad channel.
+      if (mode === 'coach' && cid === 'coach' &&
+          !(Array.isArray(_chatConversations) && _chatConversations.some(c => String(c?.id) === 'coach'))) {
+        cid = 'squad';
+        state.selectedChatId = cid;
+      }
       return cid;
     }
 
@@ -24913,8 +24950,30 @@
       return withTs.map(x => x.c);
     }
 
+    /**
+     * True when this id is a client-side PLACEHOLDER rather than a real server
+     * conversation. 'coach' means "my DM with the coach" and must be resolved
+     * to a dm: id before any request; asking the server for it returns 404
+     * forever. This is what produced a continuous 404 storm on /api/chat.
+     */
+    function chatIsUnresolvedPlaceholder(convId) {
+      const id = String(convId || '');
+      if (!id) return true;
+      const known = Array.isArray(_chatConversations) && _chatConversations.some(c => String(c?.id) === id);
+      if (known) return false;                       // a real server conversation
+      if (id === 'coach') return true;               // the player-only placeholder
+      // A locally-computed coach DM that names the legacy 'coach-demo' account.
+      // Real clubs have no such user, so this id can never exist server-side:
+      // polling it produced a permanent 404 loop for every player. Once a real
+      // DM exists, canonicalizePlayerSelectedChat swaps to it and this is false.
+      if (id.startsWith('dm:') && id.includes('coach-demo')) return true;
+      return false;
+    }
+
     // ── Fetch from Redis ─────────────────────────────────
     async function chatFetchMessages(convId, since = 0) {
+      if (typeof _serverAuthState !== 'undefined' && _serverAuthState === 'anon') return [];  // signed out
+      if (chatIsUnresolvedPlaceholder(convId)) return [];
       try {
         const me = chatMe();
         const url = `/api/chat?action=messages&convId=${encodeURIComponent(convId)}&since=${since}&userId=${encodeURIComponent(me.id)}`;
@@ -24936,7 +24995,21 @@
             merged.sort((a, b) => (a.ts || 0) - (b.ts || 0));
             _chatMessages[convId] = merged;
           } else {
-            _chatMessages[convId] = fetched;
+            // MERGE, never replace. The server returns only the newest page
+            // (limit 60) of up to 500 retained messages, so assigning the
+            // response wholesale truncated history the client already had —
+            // the exact regression this code must never reintroduce. Merging
+            // by id keeps older messages and still applies server updates
+            // (edits, soft deletes) to the entries it does return.
+            const existing = _chatMessages[convId] || [];
+            if (!existing.length) { _chatMessages[convId] = fetched; }
+            else {
+              // Use the SHARED merger: as well as de-duplicating by id it
+              // reconciles an optimistic bubble with the server message it
+              // became. An id-only merge left both, so one send rendered twice.
+              const { mergeMessages } = await chatLoadStateModule();
+              _chatMessages[convId] = mergeMessages(existing, fetched);
+            }
           }
           return data.messages;
         }
@@ -25037,6 +25110,10 @@
     }
 
     async function chatFetchConversations() {
+      // Single funnel for /api/chat?action=conversations. Several render paths
+      // call it directly, so gating only the background tick still left a
+      // signed-out tab issuing 401s after logout. No session, no request.
+      if (typeof _serverAuthState !== 'undefined' && _serverAuthState === 'anon') return;
       const me = chatMe();
       try {
         const data = await fetch(`/api/chat?action=conversations&userId=${encodeURIComponent(me.id)}`).then(r => r.json());
@@ -25084,6 +25161,8 @@
     }
 
     async function chatPollTyping(convId) {
+      if (typeof _serverAuthState !== 'undefined' && _serverAuthState === 'anon') return;     // signed out
+      if (chatIsUnresolvedPlaceholder(convId)) return;
       try {
         const me = chatMe();
         const data = await fetch(`/api/chat?action=typing&convId=${encodeURIComponent(convId)}&userId=${encodeURIComponent(me.id)}`).then(r => r.json());
@@ -25205,7 +25284,8 @@
       chatRenderMessages(convId, mode);
       chatScrollToBottom();
 
-      console.log(`[chatSendMessage] convId=${convId} me.id=${me.id} me.userId=${me.userId} text=${text.slice(0,30)}`);
+      // Never log message CONTENT — private text must not reach the console.
+      console.log(`[chatSendMessage] convId=${convId} len=${text.length}`);
       // Send to Redis
       try {
         const res = await fetch('/api/chat', {
@@ -25492,6 +25572,9 @@
 
     // ── Mark conversation read ────────────────────────────
     function chatMarkRead(convId) {
+      // Never POST a read marker for a conversation the server cannot have —
+      // it 404s and the unread badge then never clears.
+      if (typeof chatIsUnresolvedPlaceholder === 'function' && chatIsUnresolvedPlaceholder(convId)) return;
       _chatLastPoll[convId + ':read'] = Date.now();
       chatClearConversationUnread(convId);
       const mode = state.activeView === 'coach' ? 'coach' : 'player';
@@ -25570,6 +25653,12 @@
     // ── Polling ──────────────────────────────────────────
     function chatStartPolling(convId) {
       chatStopPolling();
+      // Never poll without a session. settingsSignOut() stops the timer and then
+      // calls render(), which re-enters the messages view and restarted polling
+      // immediately — a signed-out tab then issued /api/chat every 2.5s (401 on
+      // messages, typing and conversations). Gate the timer itself, so no render
+      // path can resurrect it.
+      if (typeof _serverAuthState !== 'undefined' && _serverAuthState === 'anon') return;
       // Seed the poll cursor so the first tick only fetches NEW messages.
       // renderCoachMessages / renderPlayerMessages already called chatFetchMessages(convId, 0)
       // to load the full history; without this the first 2500ms tick re-fetches everything,
@@ -25580,7 +25669,8 @@
         // polling started can be a pre-fetch coach-demo id (selected before the server
         // conversations loaded); state.selectedChatId is the canonical id, so reads
         // must follow it rather than the stale closure value.
-        const liveConvId = state.selectedChatId || convId;
+        const mode0 = state.activeView === 'coach' ? 'coach' : 'player';
+        const liveConvId = (typeof chatGetConvId === 'function' ? chatGetConvId(mode0) : state.selectedChatId) || convId;
         const since = _chatLastPoll[liveConvId] || 0;
         const msgs = await chatFetchMessages(liveConvId, since);
         if (msgs.length) {
@@ -29195,12 +29285,24 @@
     // unless a conversation is selected, the user is in Messages, and the thread is
     // actually mounted (chatFeed present). Returns a Promise<bool> (did it render new).
     function chatRefreshOpenThread() {
-      const convId = state.selectedChatId;
+      // Normalise through chatGetConvId: reading state.selectedChatId raw let a
+      // placeholder ('coach') reach the server, so the open thread never
+      // refreshed and its read marker was never written.
+      const mode = state.activeView === 'coach' ? 'coach' : 'player';
+      const convId = (typeof chatGetConvId === 'function') ? chatGetConvId(mode) : state.selectedChatId;
       const inMessages = (state.activeView === 'coach' && state.activeCoachSection === 'messages') ||
         (state.activeView === 'player' && state.activePlayerSection === 'messages');
       if (!convId || !inMessages || !document.getElementById('chatFeed')) return Promise.resolve(false);
       const since = _chatLastPoll[convId] || 0;
       return chatFetchMessages(convId, since).then(msgs => {
+        // bgPollUnread computes the badge BEFORE this runs, so a thread that is
+        // already open can be left showing unread. Mark it read whenever it is
+        // the open thread and still counted unread — not only when new messages
+        // happen to arrive, or the badge stays stuck while the user reads it.
+        if (state.selectedChatId === convId && typeof _chatConversations !== 'undefined') {
+          const conv = (_chatConversations || []).find(c => String(c?.id) === String(convId));
+          if (conv && Number(conv.unread || 0) > 0) chatMarkRead(convId);
+        }
         if (!msgs || !msgs.length) return false;
         _chatLastPoll[convId] = Date.now();
         const mode = state.activeView === 'coach' ? 'coach' : 'player';
@@ -29213,6 +29315,9 @@
     }
 
     function bgPollUnread() {
+      // Entry-point guard: the visibilitychange/focus handlers call this
+      // directly, bypassing the interval's gate. No session, no chat traffic.
+      if (typeof _serverAuthState !== 'undefined' && _serverAuthState === 'anon') return;
       chatFetchConversations().then(() => {
         // Keep the nav badge current from the freshly-fetched conversations.
         chatSetUnreadTotal(chatVisibleUnreadTotal());
@@ -29228,8 +29333,16 @@
         chatRefreshOpenThread();
       }).catch(() => {});
     }
-    setTimeout(bgPollUnread, 0);
-    setInterval(() => { if (!document.hidden) bgPollUnread(); }, 5000);
+    // The background unread poll must only run for an AUTHENTICATED session.
+    // It previously fired every 5s for every visitor forever — a signed-out
+    // browser tab issued /api/chat?action=conversations indefinitely (401 each
+    // time), and it never stopped after logout. Gate it on the session state
+    // the rest of the app already maintains.
+    function chatBackgroundPollAllowed() {
+      return _serverAuthState === 'authed' && !document.hidden;
+    }
+    if (chatBackgroundPollAllowed()) setTimeout(bgPollUnread, 0);
+    setInterval(() => { if (chatBackgroundPollAllowed()) bgPollUnread(); }, 5000);
     // The coach Availability board went stale when the laptop tab was backgrounded
     // (browsers throttle/suspend the 30s poll while hidden) and a player changed a
     // reply on another device. The backend already serves the latest value; we just

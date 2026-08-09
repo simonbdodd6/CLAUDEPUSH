@@ -70,8 +70,25 @@ test('renderPlayerMessages re-canonicalises selectedChatId after chatFetchConver
   assert.match(after, /chatStartPolling\(state\.selectedChatId\)/, 'repoints polling to the canonical id');
 });
 
-test('the poll tick uses a live selectedChatId-derived convId (not the captured closure value)', () => {
+test('the poll tick uses a live, NORMALISED convId (not the captured closure value)', () => {
   const fn = extractFn('chatStartPolling');
-  assert.match(fn, /const liveConvId = state\.selectedChatId \|\| convId;/);
+  // Still live rather than the stale closure value — that intent is unchanged.
+  assert.match(fn, /const liveConvId = .*chatGetConvId\(mode0\).*state\.selectedChatId.*\|\| convId;/,
+    'derives from the CURRENT selection each tick');
+  assert.equal(/const liveConvId = state\.selectedChatId \|\| convId;/.test(fn), false,
+    'the raw read is gone — it let a placeholder id reach the server');
   assert.match(fn, /chatFetchMessages\(liveConvId/, 'fetch uses the live id');
+  assert.match(fn, /chatPollTyping\(liveConvId\)/, 'typing uses the same id');
+});
+
+test('every network-facing consumer normalises the conversation id', () => {
+  // CONTRACT (messaging audit): reading state.selectedChatId raw let the
+  // player-only 'coach' placeholder — and legacy coach-demo DMs — reach the
+  // API, producing a permanent 404 loop and an unread badge that never cleared.
+  assert.match(extractFn('chatRefreshOpenThread'), /chatGetConvId\(mode\)/,
+    'open-thread refresh normalises');
+  assert.match(extractFn('chatMarkRead'), /chatIsUnresolvedPlaceholder\(convId\)/,
+    'read marker refuses a placeholder conversation');
+  assert.match(extractFn('chatFetchMessages'), /chatIsUnresolvedPlaceholder\(convId\)/,
+    'message fetch refuses a placeholder conversation');
 });
