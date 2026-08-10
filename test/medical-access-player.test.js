@@ -318,3 +318,49 @@ test('a player with Medical sees the caseload via the scoped projection', () => 
   const store = fs.readFileSync(new URL('../api/_medicalStore.js', import.meta.url), 'utf8');
   assert.match(store, /PROJECTED_PLAYER_FIELDS = \['id', 'name', 'position', 'playerGroupId', 'groupName'\]/);
 });
+
+// ── ADD INJURY: open state must survive a re-render ───────────────────────
+// The panel's open state lived only as a CSS class on markup that
+// renderMedical() rebuilds, so any later render() destroyed it and the button
+// appeared to do nothing.
+test('the Add Injury panel state lives in app state, not in the DOM', () => {
+  assert.match(src, /let _medAddInjuryOpen = false;/, 'open state is held in app state');
+  const toggle = fn('toggleAddInjury');
+  assert.match(toggle, /_medAddInjuryOpen = \(open === undefined\)/, 'toggles the flag');
+  assert.match(toggle, /renderMedical\(\)/, 'renders FROM the flag rather than poking the DOM');
+  assert.equal(/classList\.toggle\("beta-hidden"\)/.test(toggle), false,
+    'no longer a bare class toggle that a re-render can undo');
+  // The markup is emitted from the flag, so a rebuild preserves it.
+  assert.match(src, /addInjuryForm" class="' \+ \(_medAddInjuryOpen \? '' : 'beta-hidden'\)/);
+  assert.match(fn('saveNewInjury'), /_medAddInjuryOpen = false;/, 'saving closes it, and the close sticks');
+});
+
+// ── EVERY medical write reaches the SHARED store ──────────────────────────
+test('the record editor, training status and rehab all write to the shared store', () => {
+  for (const w of ['saveMedRecord', 'setPlayerTrainingStatus', 'setRehabProgress',
+                   'saveMedicalNote', 'saveNewInjury', 'clearSharedMedicalCase']) {
+    assert.match(fn(w), /saveSharedMedicalCase\(/, `${w} writes to the shared store`);
+  }
+  // ...and none of them persists medical data into the private coach draft.
+  for (const w of ['saveMedRecord', 'setRehabProgress', 'saveMedicalNote', 'saveNewInjury']) {
+    assert.equal(/saveState\(/.test(fn(w)), false, `${w} must not write the private draft`);
+  }
+  assert.match(fn('saveMedRecord'), /MED_FIELD_MAP\[field\]/, 'legacy field names map onto the shared model');
+});
+
+test('clearing a case is reachable from the UI', () => {
+  assert.match(src, /onclick="clearSharedMedicalCase\(/, 'a Clear case control is rendered');
+  assert.match(fn('clearSharedMedicalCase'), /action: 'resolve_case'/);
+});
+
+// ── Contact data stays out of the Medical-scoped shell ────────────────────
+test('the Emergency contact card is roster-only and cannot throw', () => {
+  // It used to render blank for a Medical-scoped user and its inline onchange
+  // dereferenced an absent roster row, throwing an uncaught TypeError.
+  assert.equal(/state\.players\.find\(pl=>pl\.id===\\'/.test(src), false,
+    'no inline handler dereferences the roster directly');
+  assert.match(src, /medicalRosterRow\(playerId\)\s*\?\s*'<div class="card">' \+\s*'<div style="[^"]*">Emergency contact<\/div>'/,
+    'the card renders only when a real roster row exists');
+  const saver = fn('medicalSaveRosterField');
+  assert.match(saver, /if \(!row\) return showToast/, 'no roster row → honest refusal, not a crash');
+});

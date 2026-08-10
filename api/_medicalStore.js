@@ -41,6 +41,9 @@ const text = (value, max) => String(value ?? '').trim().slice(0, max);
 export const WRITABLE_CASE_FIELDS = [
   'condition', 'severity', 'dateInjured', 'trainingStatus',
   'gameAvailability', 'clearanceStatus', 'returnTarget', 'notes',
+  // The record editor writes these too. Without them the allow-list would
+  // silently drop half of what a medic types.
+  'bodyLocation', 'rehabProgress', 'concussionCount',
 ];
 
 /** Server-owned fields — set here, never accepted from a client body. */
@@ -81,6 +84,9 @@ export function normalizeCase(raw = {}) {
     clearanceStatus: CLEARANCE_STATUSES.includes(raw.clearanceStatus) ? raw.clearanceStatus : '',
     returnTarget: text(raw.returnTarget, 40),
     notes: text(raw.notes, 2000),
+    bodyLocation: text(raw.bodyLocation, 60),
+    rehabProgress: Math.max(0, Math.min(100, Number(raw.rehabProgress) || 0)),
+    concussionCount: Math.max(0, Math.min(99, Number(raw.concussionCount) || 0)),
     timeline,
     createdAt: text(raw.createdAt, 40) || nowIso(),
     createdBy: text(raw.createdBy, 64),

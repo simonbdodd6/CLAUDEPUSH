@@ -8191,12 +8191,15 @@
     function medicalCaseToLegacy(c) {
       return {
         record: {
-          currentInjury: c.condition || '', bodyLocation: '', severity: c.severity || '',
+          currentInjury: c.condition || '', bodyLocation: c.bodyLocation || '', severity: c.severity || '',
           dateInjured: c.dateInjured || '', expectedReturn: c.returnTarget || '',
           physioNotes: c.notes || '', physiNotes: c.notes || '',
           clearanceStatus: c.status === 'resolved' ? 'cleared' : (c.clearanceStatus || ''),
+          rehabProgress: c.rehabProgress || 0, concussionCount: c.concussionCount || 0,
+          timeline: Array.isArray(c.timeline) ? c.timeline : [],
         },
-        note: { condition: c.condition || '', notes: c.notes || '', returnTarget: c.returnTarget || '' },
+        note: { condition: c.condition || '', notes: c.notes || '', returnTarget: c.returnTarget || '',
+                rehabProgress: c.rehabProgress || 0 },
       };
     }
 
@@ -8260,8 +8263,22 @@
     // Writes to EXISTING medical stores (state.medicalRecords rich record +
     // state.medicalNotes.condition) and persists via the existing saveState()
     // path. No new API, no schema change, no availability/p.game change.
-    function toggleAddInjury() {
-      document.getElementById("addInjuryForm")?.classList.toggle("beta-hidden");
+    /**
+     * RC4.7 — the Add Injury panel's open state lives in APP STATE, not in a
+     * CSS class on markup that renderMedical() rebuilds from scratch. Toggling
+     * the class alone meant any subsequent render() silently destroyed the open
+     * panel, so the button appeared to do nothing.
+     */
+    let _medAddInjuryOpen = false;
+    function toggleAddInjury(open) {
+      _medAddInjuryOpen = (open === undefined) ? !_medAddInjuryOpen : Boolean(open);
+      // Re-render FROM the flag rather than poking the DOM: the panel then
+      // appears correctly even if the markup is stale, mounted in the other
+      // shell, or absent at click time — and it survives every later render.
+      // Nothing is typed yet when opening, so no input is lost.
+      renderMedical();
+      const form = document.getElementById("addInjuryForm");
+      if (_medAddInjuryOpen && form) form.scrollIntoView({ block: 'nearest' });
     }
     function saveNewInjury() {
       const val = id => (document.getElementById(id)?.value || "").trim();
@@ -8286,6 +8303,7 @@
         timelineNote: 'Injury logged',
       }).then(ok => {
         if (!ok) return;
+        _medAddInjuryOpen = false;          // survives the re-render below
         showToast("Injury added for " + (player?.name || "player"));
         render();
       });
@@ -8303,11 +8321,13 @@
       });
     }
     function setRehabProgress(playerId, val) {
-      state.medicalNotes=state.medicalNotes||{}; state.medicalNotes[playerId]=state.medicalNotes[playerId]||{};
-      state.medicalNotes[playerId].rehabProgress=Number(val);
       const bar=document.getElementById("rehabBar-"+playerId); const pct=document.getElementById("rehabPct-"+playerId);
       if (bar) bar.style.width=val+"%"; if (pct) pct.textContent=val+"%";
-      saveState("Rehab updated");
+      const p = medicalPlayers().find(pl => String(pl.id) === String(playerId));
+      saveSharedMedicalCase({
+        action: 'upsert_case', playerId, userId: p?.userId || '',
+        rehabProgress: Number(val), timelineNote: 'Rehab progress updated',
+      });
     }
     function addTreatmentLog() {
       const pid=document.getElementById("treatPid")?.value, t=document.getElementById("treatText")?.value.trim(), th=document.getElementById("treatBy")?.value.trim(), n=document.getElementById("treatNext")?.value.trim();
@@ -21561,19 +21581,40 @@
       render();
     }
 
+    /**
+     * RC4.7 — the record editor now writes to the SHARED store. It previously
+     * wrote into this user's private draft, so an edit was invisible to every
+     * other authorised Medical user and vanished on reload. The legacy field
+     * names are mapped onto the shared case model; unmapped fields are dropped
+     * by the server allow-list rather than silently half-saved.
+     */
+    const MED_FIELD_MAP = {
+      currentInjury: 'condition', bodyLocation: 'bodyLocation', severity: 'severity',
+      dateInjured: 'dateInjured', expectedReturn: 'returnTarget',
+      physioNotes: 'notes', physiNotes: 'notes', clearanceStatus: 'clearanceStatus',
+      rehabProgress: 'rehabProgress', concussionCount: 'concussionCount',
+    };
     function saveMedRecord(playerId, field, value) {
-      if (!state.medicalRecords)             state.medicalRecords = {};
-      if (!state.medicalRecords[playerId])   state.medicalRecords[playerId] = {};
-      state.medicalRecords[playerId][field] = value;
-      saveState('medical record updated');
+      const mapped = MED_FIELD_MAP[field];
+      if (!mapped) return;                      // not part of the shared model
+      const player = medicalPlayers().find(p => String(p.id) === String(playerId));
+      saveSharedMedicalCase({
+        action: 'upsert_case', playerId, userId: player?.userId || '',
+        [mapped]: value, timelineNote: 'Record updated',
+      });
     }
 
     function setPlayerTrainingStatus(playerId, status) {
-      const p = state.players.find(pl => pl.id === playerId);
+      const p = medicalPlayers().find(pl => String(pl.id) === String(playerId));
       if (!p) return;
-      p.trainingStatus = status;
-      saveState('training status updated');
-      render();
+      if (Array.isArray(state.players)) {
+        const row = state.players.find(pl => pl.id === playerId);
+        if (row) row.trainingStatus = status;   // staff's local roster row, if present
+      }
+      saveSharedMedicalCase({
+        action: 'upsert_case', playerId, userId: p.userId || '',
+        trainingStatus: status, timelineNote: 'Training status updated',
+      }).then(ok => { if (ok) render(); });
     }
 
     function addMedTimelineEntry(playerId, type, notes, date) {
@@ -21638,6 +21679,22 @@
      * they use the medical-scoped projection the shared endpoint returns —
      * id, name, position, group only, and no contact data.
      */
+    /** The real roster row for a player, or null when this identity has no
+     *  roster access (a Medical-scoped user). Contact data lives only here. */
+    function medicalRosterRow(playerId) {
+      return (Array.isArray(state.players) ? state.players : [])
+        .find(pl => String(pl.id) === String(playerId)) || null;
+    }
+
+    /** Write a ROSTER field. Silently no-ops without a roster row instead of
+     *  throwing an uncaught TypeError from an inline handler. */
+    function medicalSaveRosterField(playerId, field, value) {
+      const row = medicalRosterRow(playerId);
+      if (!row) return showToast('You do not have access to edit that field');
+      row[field] = value;
+      saveState('medical');
+    }
+
     function medicalPlayers() {
       if (Array.isArray(state.players) && state.players.length) return state.players;
       return (typeof _sharedMedical === 'object' && _sharedMedical.players) || [];
@@ -21668,7 +21725,7 @@
           '<div style="font-size:12px;color:var(--muted);margin-top:2px">Record a new injury in seconds.</div></div>' +
           '<button class="btn primary" type="button" onclick="toggleAddInjury()" style="display:flex;align-items:center;gap:7px">' + icon('medical') + 'Add Injury</button>' +
         '</div>' +
-        '<div id="addInjuryForm" class="beta-hidden" style="margin-bottom:14px">' +
+        '<div id="addInjuryForm" class="' + (_medAddInjuryOpen ? '' : 'beta-hidden') + '" style="margin-bottom:14px">' +
           '<div class="card" style="border:1px solid var(--brand-line)">' +
             '<div style="font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px">' + icon('medical') + 'Add injury</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
@@ -21726,6 +21783,10 @@
                   '<div style="display:flex;gap:6px">' +
                     '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="openMedicalRecord(\'' + p.id + '\')">Record</button>' +
                     '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="openMedicalTimeline(\'' + p.id + '\')">Timeline</button>' +
+                    // RC4.7 — clearing a case had no control at all: the case
+                    // could be opened but never closed. It leaves the active
+                    // caseload; the record and its timeline are retained.
+                    '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="clearSharedMedicalCase(\'' + p.id + '\')">Clear case</button>' +
                   '</div>' +
                 '</div>';
               }).join('') +
@@ -21777,7 +21838,7 @@
           '<input type="' + (type||'text') + '" value="' + esc(val) + '" placeholder="' + esc(placeholder||'') + '"' +
           ' style="' + INP + '"' +
           ' onchange="' + (isPlayer
-              ? 'state.players.find(pl=>pl.id===\'' + playerId + '\')[\''+fld+'\''+']=this.value;saveState(\'medical\');'
+              ? 'medicalSaveRosterField(\'' + playerId + '\',\''+fld+'\',this.value)'
               : 'saveMedRecord(\'' + playerId + '\',\'' + fld + '\',this.value)') + '">' +
         '</label>';
 
@@ -21846,13 +21907,15 @@
             '</div>' +
           '</div>' +
           '<div style="display:grid;gap:14px;align-content:start">' +
-            '<div class="card">' +
-              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Emergency contact</div>' +
-              '<div style="display:grid;gap:10px">' +
-                field('Emergency contact name', 'emergencyContact', p.emergencyContact, 'text', 'Full name', true) +
-                field('Emergency contact phone', 'emergencyPhone', p.emergencyPhone, 'tel', '+44 7xxx xxxxxx', true) +
-              '</div>' +
-            '</div>' +
+            (medicalRosterRow(playerId)
+              ? '<div class="card">' +
+                  '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Emergency contact</div>' +
+                  '<div style="display:grid;gap:10px">' +
+                    field('Emergency contact name', 'emergencyContact', p.emergencyContact, 'text', 'Full name', true) +
+                    field('Emergency contact phone', 'emergencyPhone', p.emergencyPhone, 'tel', '+44 7xxx xxxxxx', true) +
+                  '</div>' +
+                '</div>'
+              : '') +
             '<div class="card">' +
               '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Medications & allergies</div>' +
               '<div style="display:grid;gap:10px">' +
