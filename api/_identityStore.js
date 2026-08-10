@@ -3,7 +3,8 @@ import {
   permissionsFor, canonicalRole, accessProfileOf, isClubOwner,
   accessProfileRank, ACCESS_PROFILES, PERM,
 } from './_permissions.js';
-import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope, effectiveEligibility, playerGroupIdOf } from './_accessScope.js';
+import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope, effectiveEligibility, playerGroupIdOf,
+         operationalGroupsFor, defaultOperationalGroup } from './_accessScope.js';
 import { loadClubStructure, groupById, teamById, activeTeams, activeGroups } from './_structureStore.js';
 import { key } from './_keys.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
@@ -888,6 +889,35 @@ export async function approveJoinRequest(memberId, approvedBy = 'coach-demo', ex
 
 // Attach computed permissions + memberships to an auth result so login,
 // club-creation and dev-login responses match resolveSession's shape.
+
+/**
+ * D1b — the OPERATIONAL CONTEXT the client should adopt.
+ *
+ * The server owns the rules, so the browser never re-derives them and can never
+ * disagree with what the API will actually authorise. Both capacities are
+ * published because a dual-role member needs both: `player` is where they play
+ * (playerGroupId), `staff` is where they administer (accessScope). Switching
+ * view swaps which one is in force — it does not merge them.
+ *
+ * `defaultGroupId` is filled only when the choice is unambiguous. With several
+ * accessible groups it is null and `mustChoose` is true, so the UI asks rather
+ * than the client guessing.
+ */
+async function operationalContextFor(member) {
+  const clubId = member?.teamId;
+  if (!clubId) return { player: null, staff: null };
+  const structure = await loadClubStructure(clubId);
+  const shape = as => {
+    const { group, groups, mustChoose } = defaultOperationalGroup(member, structure, { as });
+    return {
+      groups: groups.map(g => ({ id: g.id, name: g.name })),
+      defaultGroupId: group ? group.id : null,
+      mustChoose,
+    };
+  };
+  return { player: shape('player'), staff: shape('staff') };
+}
+
 async function withIdentityComputed(result, member) {
   const [members, teams] = await Promise.all([loadTeamMembers(), loadTeams()]);
   const memberships = members
@@ -900,7 +930,8 @@ async function withIdentityComputed(result, member) {
       canonicalRole: canonicalRole(item),
       current: item.teamId === member?.teamId,
     }));
-  return { ...result, permissions: [...permissionsFor(member)], memberships };
+  return { ...result, permissions: [...permissionsFor(member)], memberships,
+           operational: await operationalContextFor(member) };
 }
 
 export async function loginUser(input = {}) {
@@ -1431,6 +1462,7 @@ export async function resolveSession(token = '') {
     playerProfile: profile,
     permissions: [...permissionsFor(member)],
     memberships,
+    operational: await operationalContextFor(member),
     teamPlan,
     teamPlanStatus,
     trialEndsAt: teamTrialEndsAt,

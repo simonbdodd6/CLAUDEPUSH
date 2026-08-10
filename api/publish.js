@@ -157,11 +157,43 @@ async function rosterHandler(req, res) {
 
   if (req.method === 'GET') {
     const stored = (await readScoped(rosterKey(session.teamId), 'roster', session.teamId)) || null;
+    const all = stored?.players || [];
+
+    // ── D1b — OPERATIONAL group filtering, server-side ──
+    // Club administration legitimately reads the whole club, so a caller only
+    // gets a group-filtered roster when they ASK for a group. A named group is
+    // authorised against the caller's own capacity, so a forged ?group= cannot
+    // reach another squad. Omitting it preserves the existing club-wide read
+    // that Club Admin depends on.
+    const requested = String(req.query?.group || '').trim();
+    if (!requested) {
+      return res.status(200).json({
+        ok: true, players: all,
+        updatedAt: stored?.updatedAt || null, updatedBy: stored?.updatedBy || null,
+      });
+    }
+
+    const structure = await loadClubStructure(session.teamId);
+    const asCapacity = canonicalRole(session.teamMember) === 'player' ? 'player' : 'staff';
+    let group;
+    try {
+      group = assertOperationalGroup(session, structure, requested, { as: asCapacity });
+    } catch (error) {
+      return res.status(error.status || 403).json({ ok: false, error: error.message });
+    }
+
+    // playerGroupId on the MEMBERSHIP is the authority — never a team name,
+    // age text or roster label.
+    const members = await loadTeamMembers();
+    const mine = members.filter(m => String(m.teamId) === String(session.teamId));
+    const groupOf = p => mine.find(m => String(m.userId || '') === String(p.userId || '') && p.userId)?.playerGroupId || '';
+    const players = all.filter(p => String(groupOf(p)) === group.id);
+
     return res.status(200).json({
-      ok: true,
-      players:   stored?.players || [],
-      updatedAt: stored?.updatedAt || null,
-      updatedBy: stored?.updatedBy || null,
+      ok: true, players,
+      group: { id: group.id, name: group.name },
+      unassigned: all.filter(p => !groupOf(p)).length,   // honest, never silently placed
+      updatedAt: stored?.updatedAt || null, updatedBy: stored?.updatedBy || null,
     });
   }
 
