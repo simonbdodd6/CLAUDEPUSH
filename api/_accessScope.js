@@ -317,6 +317,77 @@ export function getAccessibleGroups(member, structure) {
   return activeGroups(structure).filter(g => scopeAllowsGroup(member, structure, g.id));
 }
 
+/**
+ * D1b — THE OPERATIONAL GROUP CONTEXT.
+ *
+ * Every operational screen (Members, Availability, Training, Medical, Match
+ * Centre, Messages) is read in the context of exactly ONE group. Which groups
+ * an identity may operate in depends on the capacity they are acting in, and
+ * the two are deliberately different lists:
+ *
+ *   as 'staff'  → the groups their accessScope permits (where they COACH)
+ *   as 'player' → exactly one, their playerGroupId (where they PLAY)
+ *
+ * A dual-role member — U18 player who coaches Seniors — therefore gets U18 in
+ * the player portal and Seniors in the coach shell, from the same membership,
+ * with no merging. This is the D1a separation carried into operations.
+ */
+export function operationalGroupsFor(member, structure, { as = 'staff' } = {}) {
+  if (as === 'player') {
+    const { group } = resolvePlayerGroup(member, structure);
+    return group ? [group] : [];
+  }
+  const scoped = getAccessibleGroups(member, structure);
+  if (scoped.length) return scoped;
+
+  // BACKWARD COMPATIBILITY. A member who predates scoped access derives
+  // groups: [INITIAL_GROUP_ID], which only matches a club whose structure was
+  // synthesized rather than created by hand — so a legacy coach in a
+  // hand-built club would otherwise resolve to NOTHING and see an empty page.
+  // While the club has exactly one active group the answer is unambiguous, so
+  // give them that group. With several, guessing would leak, so give none and
+  // let the caller ask. This mirrors the D1a legacy player-group rule.
+  const live = activeGroups(structure);
+  if (live.length === 1 && effectiveAccessScope(member).clubWide === false) return live;
+  return scoped;
+}
+
+/**
+ * The group an identity lands in with no explicit choice.
+ *
+ * One accessible group is unambiguous and is selected for them — today's
+ * Seniors-only club therefore sees no selector and no new friction. With
+ * several, `mustChoose` is true and nothing is guessed: the caller asks.
+ */
+export function defaultOperationalGroup(member, structure, opts = {}) {
+  const groups = operationalGroupsFor(member, structure, opts);
+  return { group: groups.length === 1 ? groups[0] : null, groups, mustChoose: groups.length > 1 };
+}
+
+/**
+ * SERVER-SIDE gate for any operational request that names a group.
+ *
+ * Client filtering is presentation; this is the boundary. A forged, foreign,
+ * archived or simply unpermitted group id is refused here, so editing a
+ * request parameter cannot reach another group's data.
+ */
+export function assertOperationalGroup(sessionContext, structure, groupId, { as = 'staff' } = {}) {
+  if (!canViewClub(sessionContext)) {
+    const e = new Error('Not authorized'); e.status = 401; throw e;
+  }
+  const group = groupById(structure, groupId);
+  // Unknown and foreign are the same answer: this club cannot see that id.
+  if (!group) { const e = new Error('Unknown group for this club'); e.status = 404; throw e; }
+  if (group.status !== 'active') {
+    const e = new Error('That group is archived'); e.status = 400; throw e;
+  }
+  const allowed = operationalGroupsFor(sessionContext?.teamMember, structure, { as });
+  if (!allowed.some(g => g.id === group.id)) {
+    const e = new Error('Not authorized for this group'); e.status = 403; throw e;
+  }
+  return group;
+}
+
 export function getAccessibleTeams(member, structure) {
   return activeTeams(structure).filter(t => scopeAllowsTeam(member, structure, t.id));
 }

@@ -26,7 +26,8 @@ import {
   loadClubStructure, createGroup, createTeam, renameGroup, renameTeam,
   setGroupStatus, setTeamStatus,
 } from './_structureStore.js';
-import { effectiveAccessScope, effectiveEligibility } from './_accessScope.js';
+import { effectiveAccessScope, effectiveEligibility,
+         operationalGroupsFor, defaultOperationalGroup, assertOperationalGroup } from './_accessScope.js';
 import {
   loadMedicalRecord, activeCases, upsertCase, resolveCase, projectPlayer,
 } from './_medicalStore.js';
@@ -206,16 +207,44 @@ async function medicalHandler(req, res) {
       loadClubStructure(session.teamId),
     ]);
     const mine = members.filter(m => String(m.teamId) === String(session.teamId));
+
+    // ── D1b — GROUP ISOLATION, enforced here rather than in the browser ──
+    // A caller may name a group; if they do it is authorised against their own
+    // capacity. A player reads their own group only, so a forged ?group= can
+    // never reach another squad's medical data. With one group in the club the
+    // whole thing collapses to today's behaviour.
+    const asCapacity = canonicalRole(session.teamMember) === 'player' ? 'player' : 'staff';
+    const requested = String(req.query?.group || '').trim();
+    let scope;
+    try {
+      scope = requested
+        ? assertOperationalGroup(session, structure, requested, { as: asCapacity })
+        : defaultOperationalGroup(session.teamMember, structure, { as: asCapacity }).group;
+    } catch (error) {
+      return res.status(error.status || 403).json({ ok: false, error: error.message });
+    }
+    const allowed = operationalGroupsFor(session.teamMember, structure, { as: asCapacity });
+    // No group resolved and none accessible → nothing to show, not everything.
+    const visibleGroupIds = new Set(scope ? [scope.id] : allowed.map(g => g.id));
+
     const groupName = id => (structure.groups || []).find(g => g.id === id)?.name || '';
-    const players = (roster?.players || []).map(p => {
-      const member = mine.find(m => String(m.userId || '') === String(p.userId || '') && p.userId) || null;
-      return projectPlayer(p, member, groupName(member?.playerGroupId));
-    });
+    const memberFor = p => mine.find(m => String(m.userId || '') === String(p.userId || '') && p.userId) || null;
+    const inScope = gid => visibleGroupIds.size === 0 ? false : visibleGroupIds.has(String(gid || ''));
+
+    const players = (roster?.players || [])
+      .map(p => ({ p, member: memberFor(p) }))
+      .filter(({ member }) => inScope(member?.playerGroupId))
+      .map(({ p, member }) => projectPlayer(p, member, groupName(member?.playerGroupId)));
+
+    const cases = record.cases.filter(c => inScope(c.playerGroupId));
+
     return res.status(200).json({
       ok: true,
-      cases: record.cases,          // full history — the page filters to active
-      active: activeCases(record),
+      cases,                        // full history for THIS group
+      active: activeCases({ cases }),
       players,
+      group: scope ? { id: scope.id, name: scope.name } : null,
+      groups: allowed.map(g => ({ id: g.id, name: g.name })),
       updatedAt: record.updatedAt,
     });
   }
