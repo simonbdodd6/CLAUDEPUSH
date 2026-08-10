@@ -13877,6 +13877,11 @@
                     Email (optional — we'll email the link if configured)
                     <input id="inv-email" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="player@example.com" style="padding:9px 11px">
                   </label>
+                  <label id="inv-playergroup-wrap" style="display:none;flex:1;min-width:180px;font-size:12px;font-weight:700;color:var(--muted);gap:5px">
+                    Player group
+                    <select id="inv-playergroup" style="padding:9px 11px" onchange="updateInvitePlayerGroupNote()"></select>
+                    <span id="inv-playergroup-note" class="muted" style="font-size:11px;font-weight:600"></span>
+                  </label>
                   <label id="inv-stafflevel-wrap" style="display:none;flex:1;min-width:150px;font-size:12px;font-weight:700;color:var(--muted);gap:5px">
                     Coach level
                     <select id="inv-stafflevel" style="padding:9px 11px">
@@ -29020,7 +29025,10 @@
         // Give coach/admin a proper 'assistant' staff level (same default as the single
         // coach invite) instead of falling back to head_coach.
         const staffLevel = (role === 'coach' || role === 'admin') ? 'assistant' : '';
-        const res  = await fetch('/api/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ group: true, role, ...(staffLevel ? { staffLevel } : {}) }) });
+        const pgid = role === 'player' ? invitePlayerGroupValue() : '';
+        const res  = await fetch('/api/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ group: true, role, ...(staffLevel ? { staffLevel } : {}),
+                                 ...(pgid ? { playerGroupId: pgid } : {}) }) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.url) throw new Error(data.error || 'Could not create link');
         if (role !== _coachGroupRole) return;  // user switched role mid-request — ignore stale response
@@ -29067,7 +29075,9 @@
       document.body.appendChild(el);
       try {
         await ensureServerSessionForCurrentUser();
-        const res = await fetch('/api/invite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ group: true }) });
+        const pgid = invitePlayerGroupValue();
+        const res = await fetch('/api/invite', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ group: true, ...(pgid ? { playerGroupId: pgid } : {}) }) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.url) throw new Error(data.error || 'Could not create invite link');
         renderInvitePlayersBody(data.url);
@@ -29252,6 +29262,12 @@
       const staffLevel = (role === 'coach' || role === 'admin')
         ? (document.getElementById('inv-stafflevel')?.value || 'assistant') : '';
       if (!name) { showToast('Enter the person\'s name first'); return; }
+      // D1 — a player invite carries its playing group explicitly.
+      let playerGroupId = '';
+      if (role === 'player') {
+        playerGroupId = invitePlayerGroupValue();
+        if (!playerGroupId) { showToast('Choose which group this player will play in'); return; }
+      }
 
       const btn = document.getElementById('inv-create-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
@@ -29259,7 +29275,8 @@
         await ensureServerSessionForCurrentUser();
         const res  = await fetch('/api/invite', {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ name, role, email, ...(staffLevel ? { staffLevel } : {}) }),
+          body: JSON.stringify({ name, role, email, ...(staffLevel ? { staffLevel } : {}),
+                                 ...(playerGroupId ? { playerGroupId } : {}) }),
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
@@ -29300,6 +29317,65 @@
       setTimeout(() => document.getElementById('inv-name')?.focus(), 320);
     }
 
+    /**
+     * D1 — WHERE A PLAYER PLAYS.
+     *
+     * A player belongs to exactly ONE group and is automatically eligible for
+     * every active team inside it, so the inviter chooses a GROUP and never a
+     * team. With one active group the choice is unambiguous and pre-selected;
+     * with several the server refuses an invite that omits it, so the UI must
+     * ask rather than silently pick the first.
+     */
+    /** Group name for a pending invite, even if the group was later archived. */
+    function inviteGroupName(groupId) {
+      const st = _adminData.structure;
+      const g = ((st && st.groups) || []).find(x => x.id === groupId);
+      return g ? g.name : 'Unknown group';
+    }
+
+    function activePlayerGroups() {
+      const st = _adminData.structure;
+      return ((st && st.groups) || []).filter(g => g.status === 'active');
+    }
+
+    function groupTeamNames(groupId) {
+      const st = _adminData.structure;
+      return ((st && st.teams) || [])
+        .filter(t => t.groupId === groupId && t.status === 'active')
+        .map(t => t.name);
+    }
+
+    /** Plain-language note: which teams this group makes them available for. */
+    function playerGroupEligibilityNote(groupId) {
+      const teams = groupTeamNames(groupId);
+      if (!teams.length) return 'This group has no teams yet.';
+      return 'Eligible for: ' + teams.join(', ');
+    }
+
+    function renderInvitePlayerGroupOptions() {
+      const groups = activePlayerGroups();
+      const sel = document.getElementById('inv-playergroup');
+      if (!sel) return;
+      sel.innerHTML = groups.map(g => '<option value="' + esc(g.id) + '">' + esc(g.name) + '</option>').join('');
+      // One group is unambiguous — pre-select it so there is no extra click.
+      if (groups.length === 1) sel.value = groups[0].id;
+      updateInvitePlayerGroupNote();
+    }
+
+    function updateInvitePlayerGroupNote() {
+      const note = document.getElementById('inv-playergroup-note');
+      const sel = document.getElementById('inv-playergroup');
+      if (!note || !sel) return;
+      note.textContent = sel.value ? playerGroupEligibilityNote(sel.value) : '';
+    }
+
+    /** The chosen group, or '' when the club has none yet. */
+    function invitePlayerGroupValue() {
+      const groups = activePlayerGroups();
+      if (groups.length === 1) return groups[0].id;
+      return document.getElementById('inv-playergroup')?.value || '';
+    }
+
     function setInviteRole(role, el) {
       document.querySelectorAll('.inv-role-btn').forEach(b => b.classList.remove('active'));
       el.classList.add('active');
@@ -29307,6 +29383,14 @@
       const isStaff = role === 'coach' || role === 'admin';
       const wrap = document.getElementById('inv-stafflevel-wrap');
       if (wrap) wrap.style.display = isStaff ? 'grid' : 'none';
+      // Player group is asked ONLY for players — staff access is a separate
+      // concept (accessScope) and must never create playing eligibility.
+      const pgWrap = document.getElementById('inv-playergroup-wrap');
+      if (pgWrap) {
+        const showGroup = role === 'player' && activePlayerGroups().length > 1;
+        pgWrap.style.display = showGroup ? 'grid' : 'none';
+        if (showGroup) renderInvitePlayerGroupOptions();
+      }
       const hint = document.getElementById('inv-role-hint');
       if (hint) hint.innerHTML = isStaff
         ? 'Coaches get <strong>staff access</strong> — they can manage players and see the whole squad. Only a head coach can invite staff.'
@@ -29345,7 +29429,7 @@
               <span style="font-size:20px;flex-shrink:0">${roleEmoji[inv.role]||''}</span>
               <div style="flex:1;min-width:0">
                 <div style="font-weight:700;font-size:13px;color:#e2e8f0">${esc(inv.name)}</div>
-                <div style="font-size:11px;color:#64748b;margin-top:1px">${inv.role} · Invited ${date}${acceptedDate ? ' · Joined '+acceptedDate : ''}</div>
+                <div style="font-size:11px;color:#64748b;margin-top:1px">${inv.role}${inv.role === 'player' && inv.playerGroupId ? ' · Group: ' + esc(inviteGroupName(inv.playerGroupId)) : ''} · Invited ${date}${acceptedDate ? ' · Joined '+acceptedDate : ''}</div>
               </div>
               <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
                 <span style="background:${statusBg};color:${statusColor};font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap">${inv.status}</span>
