@@ -11751,7 +11751,7 @@
     // ─── MESSAGE CENTER ───────────────────────────────────────────────────────
     function renderMessageCenter() {
       return renderMessageCenterV2();
-      const selected       = state.schedule.find(s => s.id === (state.messageDetail || "tue")) || state.schedule[0];
+      const selected       = coachSelectedEvent();
       const key            = selected ? sessionKey(selected.id) : "game";
       const rows           = selected ? sessionRows(selected.id) : [];
       const available      = rows.filter(({status}) => status === "available");
@@ -12055,8 +12055,48 @@
       render();
     }
 
+    /**
+     * D1b Pass 3a — the COACH board's event list.
+     *
+     * It selected from state.schedule, the same three recurring slots the
+     * player screen used, so a dated fixture id was never in the list: find()
+     * missed and it fell back to `tue`. A coach therefore could not open the
+     * 22 August board at all. Same derivation as the player side, so both
+     * agree on one event identity, with the coach's own viewed week.
+     */
+    function coachAvailWeek() {
+      if (!state.coachAvailWeekStart) state.coachAvailWeekStart = availWeekStart(availToday());
+      return state.coachAvailWeekStart;
+    }
+
+    function coachAvailShiftWeek(delta) {
+      state.coachAvailWeekStart = availAddDays(coachAvailWeek(), delta * 7);
+      const events = coachAvailEvents();
+      // Keep a valid selection: the same event if it survives the move, else
+      // the first of the new week. Never leave a dangling id.
+      if (!events.some(e => e.id === state.messageDetail)) {
+        state.messageDetail = events[0]?.id || null;
+      }
+      saveState('Coach availability week');
+      render();
+    }
+
+    function coachAvailEvents() {
+      return availabilityEventsForWeek(coachAvailWeek(), {
+        fixtures: (state.fixtures || []).map(normalizeFixture).filter(Boolean),
+        slots: (_trainingSchedule && _trainingSchedule.slots) || [],
+        currentWeekStart: availWeekStart(availToday()),
+      });
+    }
+
+    /** The event the coach is inspecting, resolved against the viewed week. */
+    function coachSelectedEvent() {
+      const events = coachAvailEvents();
+      return events.find(e => e.id === state.messageDetail) || events[0] || null;
+    }
+
     function renderMessageCenterV2() {
-      const selected       = state.schedule.find(s => s.id === (state.messageDetail || "tue")) || state.schedule[0];
+      const selected       = coachSelectedEvent();
       const key            = selected ? sessionKey(selected.id) : "game";
       const rows           = selected ? sessionRows(selected.id) : [];
       const available      = rows.filter(({status}) => status === "available");
@@ -12079,7 +12119,8 @@
       const messagesSent   = state.messages.filter(m => m.from === "Coach").length;
 
       // Cross-session summary: players who've replied to every session
-      const allSessionIds  = state.schedule.map(s => s.id);
+      const coachEvents    = coachAvailEvents();
+      const allSessionIds  = coachEvents.map(e => e.id);
       const repliedAll     = state.players.filter(p => allSessionIds.every(id => (p[sessionKey(id)] || 'no-reply') !== 'no-reply')).length;
       const chaseAny       = state.players.filter(p => allSessionIds.some(id => (p[sessionKey(id)] || 'no-reply') === 'no-reply')).length;
       const injuryFlags    = state.players.filter(p => allSessionIds.some(id => p[sessionKey(id) + 'Reason'] === 'injury')).length;
@@ -12103,7 +12144,7 @@
 
       const sessionDisplayTitle = session => session.title || session.id;
 
-      const sessionCardsHTML = state.schedule.map(session => {
+      const sessionCardsHTML = coachEvents.map(session => {
         const rRows   = sessionRows(session.id);
         const total   = rRows.length;
         const yes     = rRows.filter(({status}) => status === "available").length;
@@ -12213,7 +12254,16 @@
               </div>` : ''}
               <div style="padding:16px">
                 <div class="msg-session-grid">
-                  ${sessionCardsHTML || `<p class="muted">No availability sessions configured yet.</p>`}
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px">
+                    <button type="button" onclick="coachAvailShiftWeek(-1)" aria-label="Previous week"
+                      style="min-height:40px;min-width:60px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);font-size:12px;font-weight:700;cursor:pointer">‹ Prev</button>
+                    <div style="flex:1;text-align:center;min-width:0;font-size:12.5px;font-weight:800;color:var(--ink)">
+                      ${esc(availDatedWeekLabel(coachAvailWeek()))}
+                    </div>
+                    <button type="button" onclick="coachAvailShiftWeek(1)" aria-label="Next week"
+                      style="min-height:40px;min-width:60px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);font-size:12px;font-weight:700;cursor:pointer">Next ›</button>
+                  </div>
+                  ${sessionCardsHTML || `<p class="muted">Nothing scheduled this week. Use Next › to look ahead.</p>`}
                 </div>
                 ${selected ? `
                 <div class="avail-request-cta" style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
@@ -12346,7 +12396,7 @@
           </select></label>`;
       } else if (audience === 'no-reply') {
         const noReply = state.players.filter(p => {
-          const selected = state.schedule.find(s => s.id === (state.messageDetail || 'tue')) || state.schedule[0];
+          const selected = coachSelectedEvent();
           const k = selected ? sessionKey(selected.id) : 'game';
           return (p[k]||'no-reply') === 'no-reply';
         });
@@ -12412,7 +12462,7 @@
       const panel = document.getElementById('player-detail-panel');
       if (panel) {
         const player = state.players.find(p => p.id === playerId);
-        const selected = state.schedule.find(s => s.id === (state.messageDetail || 'tue')) || state.schedule[0];
+        const selected = coachSelectedEvent();
         const k = selected ? sessionKey(selected.id) : 'game';
         const status = player ? (player[k] || 'no-reply') : 'no-reply';
         panel.style.cssText = 'margin-top:14px';
@@ -14313,14 +14363,186 @@
     function availabilityCardModel(player, session) {
       const key = sessionKey(session.id);
       const raw = player[key] || 'no-reply';
+      // A dated event names itself: "Match · Kituro · 22 Aug". Legacy weekly
+      // slots keep their existing wording so nothing shifts under players who
+      // are mid-week.
+      const dated = session.date
+        ? [session.title, session.opponent, availDayLabel(session.date), session.time]
+            .filter(Boolean).join(' · ')
+        : '';
       return {
         key,
-        label: session.title || session.id,
+        label: dated || session.title || session.id,
         status: raw === 'injured' ? 'unavailable' : raw,
         reason: player[key + 'Reason'] || '',
         respondedAt: player[key + 'RespondedAt'] || null,
         isOpenReasonPicker: !!_availReasonOpenByKey[key],
       };
+    }
+
+    // ─── D1b Pass 3a — DATED AVAILABILITY EVENTS ─────────────────────────────
+    //
+    // Availability used to be three recurring slots — tue / thu / game — so a
+    // real fixture had nowhere to attach a response and could never be answered
+    // in advance. Events are now DERIVED from the actual sources:
+    //
+    //   match    → a fixture record, identified by its own stable fx_ id
+    //   training → a recurring schedule slot instantiated on a concrete date,
+    //              identified by <slotId>-<YYYYMMDD>
+    //   legacy   → the original tue / thu / game answers, untouched
+    //
+    // Ids never come from display copy or array position, so renaming a fixture
+    // or reordering a list cannot move somebody's answer. Both new forms satisfy
+    // the server's sessionId charset and neither can collide with the three
+    // legacy words.
+
+    /** Monday-start week containing `iso`, as YYYY-MM-DD. Date-only: no TZ drift. */
+    function availWeekStart(iso) {
+      const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      const dow = (dt.getUTCDay() + 6) % 7;              // Mon=0 … Sun=6
+      dt.setUTCDate(dt.getUTCDate() - dow);
+      return dt.toISOString().slice(0, 10);
+    }
+
+    function availAddDays(iso, days) {
+      const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      dt.setUTCDate(dt.getUTCDate() + days);
+      return dt.toISOString().slice(0, 10);
+    }
+
+    const AVAIL_DAY_INDEX = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+
+    /** The date a recurring slot falls on within a given week, or '' if inactive there. */
+    function availSlotDateInWeek(slot, weekStartIso) {
+      if (!slot || slot.active === false) return '';
+      const idx = AVAIL_DAY_INDEX[slot.day];
+      if (idx === undefined) return '';
+      const date = availAddDays(weekStartIso, idx);
+      if (slot.effectiveFrom && date < slot.effectiveFrom) return '';
+      if (slot.effectiveTo && date > slot.effectiveTo) return '';
+      return date;
+    }
+
+    /** Stable id for one occurrence of a recurring training slot. */
+    function availTrainingEventId(slot, date) {
+      return String(slot.id) + '-' + String(date).replace(/-/g, '');
+    }
+
+    /**
+     * The availability events for one week, from the real sources.
+     *
+     * Legacy compatibility, deliberately narrow: a training slot that still
+     * carries a legacy sessionId (tue/thu) renders under THAT id in the CURRENT
+     * week only — identity is provable there, so existing answers keep working
+     * untouched. Every other week uses the dated id.
+     *
+     * The legacy `game` slot is shown only when the week holds no real fixture.
+     * A dated fixture is always authoritative and never inherits the generic
+     * `game` answer — that identity cannot be proven, so it is not claimed.
+     */
+    function availabilityEventsForWeek(weekStartIso, sources = {}) {
+      const { fixtures = [], slots = [], currentWeekStart = '' } = sources;
+      const weekEnd = availAddDays(weekStartIso, 6);
+      const isCurrentWeek = weekStartIso === currentWeekStart;
+      const events = [];
+
+      for (const slot of slots) {
+        const date = availSlotDateInWeek(slot, weekStartIso);
+        if (!date) continue;
+        const legacyId = isCurrentWeek ? String(slot.sessionId || '') : '';
+        events.push({
+          id: legacyId || availTrainingEventId(slot, date),
+          type: 'training',
+          legacy: Boolean(legacyId),
+          date,
+          time: slot.startTime || '',
+          title: 'Training',
+          venue: slot.venue || '',
+          sourceId: slot.id,
+        });
+      }
+
+      const weekFixtures = (fixtures || []).filter(fx => {
+        const d = String(fx?.date || '').slice(0, 10);
+        return d && d >= weekStartIso && d <= weekEnd && fx.status !== 'cancelled';
+      });
+      for (const fx of weekFixtures) {
+        events.push({
+          id: String(fx.id),                    // the fixture's OWN stable id
+          type: 'match',
+          legacy: false,
+          date: String(fx.date).slice(0, 10),
+          time: fx.kickoffTime || fx.time || '',
+          title: 'Match',
+          opponent: fx.opposition || '',
+          venue: fx.venue || '',
+          sourceId: fx.id,
+        });
+      }
+      // The generic weekly match slot survives only where no real fixture exists.
+      if (isCurrentWeek && !weekFixtures.length) {
+        events.push({ id: 'game', type: 'match', legacy: true, date: '', time: '',
+                      title: 'Match', opponent: '', venue: '', sourceId: 'game' });
+      }
+
+      return events.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
+    }
+
+    /** Today as YYYY-MM-DD. Injectable so tests never depend on the clock. */
+    /** "22 Aug" — short, unambiguous, no locale surprises. */
+    function availDayLabel(iso) {
+      const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+      return d + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1];
+    }
+
+    function availToday() {
+      return (typeof _availTodayOverride === 'string' && _availTodayOverride)
+        || new Date().toISOString().slice(0, 10);
+    }
+    let _availTodayOverride = '';
+
+    /** The week the player is currently looking at. Defaults to this week. */
+    function availViewedWeek() {
+      if (!state.availWeekStart) state.availWeekStart = availWeekStart(availToday());
+      return state.availWeekStart;
+    }
+
+    function availGoToThisWeek() {
+      state.availWeekStart = availWeekStart(availToday());
+      saveState('Availability week');
+      renderPlayerAvailabilityV2();
+    }
+
+    function availShiftWeek(delta) {
+      state.availWeekStart = availAddDays(availViewedWeek(), delta * 7);
+      saveState('Availability week');
+      renderPlayerAvailabilityV2();
+    }
+
+    /**
+     * Label for a week identified by its Monday date, e.g. "10 Aug – 16 Aug 2026".
+     * Deliberately NOT called availWeekLabel: that name is already taken by an
+     * older helper that takes a numeric week OFFSET, and redeclaring it made the
+     * coach board pass an integer into date arithmetic.
+     */
+    function availDatedWeekLabel(weekStartIso) {
+      const fmt = iso => {
+        const [y, m, d] = iso.split('-').map(Number);
+        return d + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1];
+      };
+      const end = availAddDays(weekStartIso, 6);
+      return fmt(weekStartIso) + ' – ' + fmt(end) + ' ' + end.slice(0, 4);
+    }
+
+    /** The dated events the player should answer for the viewed week. */
+    function availEventsForViewedWeek() {
+      return availabilityEventsForWeek(availViewedWeek(), {
+        fixtures: (state.fixtures || []).map(normalizeFixture).filter(Boolean),
+        slots: (_trainingSchedule && _trainingSchedule.slots) || [],
+        currentWeekStart: availWeekStart(availToday()),
+      });
     }
 
     function renderPlayerAvailabilityV2() {
@@ -14331,7 +14553,10 @@
       loadPublishedStateForPlayer().catch(() => {});
 
       const mc           = state.matchCentre || {};
-      const sessions     = state.schedule || [];
+      // D1b Pass 3a — dated events for the VIEWED week, derived from the real
+      // fixture and training sources. The old three-slot state.schedule could
+      // never represent a future fixture, so one could not be answered at all.
+      const sessions     = availEventsForViewedWeek();
       const allAvailable = sessions.length > 0 && sessions.every(s => (player[sessionKey(s.id)] || 'no-reply') === 'available');
       const confirmedCount = sessions.filter(s => (player[sessionKey(s.id)] || 'no-reply') !== 'no-reply').length;
       const pendingCount = sessions.length - confirmedCount;
@@ -14357,10 +14582,27 @@
             </div>
           </div>
 
+          <!-- D1b Pass 3a — week navigation. Mobile-first: two big targets and
+               the week between them, no calendar. Players are not capped at the
+               current week, so a fixture can be answered as soon as it exists. -->
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px">
+            <button type="button" onclick="availShiftWeek(-1)" aria-label="Previous week"
+              style="min-height:44px;min-width:64px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--ink);font-size:13px;font-weight:700;cursor:pointer">‹ Prev</button>
+            <div style="flex:1;text-align:center;min-width:0">
+              <div style="font-size:13px;font-weight:800;color:var(--ink)">${esc(availDatedWeekLabel(availViewedWeek()))}</div>
+              ${availViewedWeek() === availWeekStart(availToday())
+                ? `<div class="muted" style="font-size:11px">This week</div>`
+                : `<button type="button" onclick="availGoToThisWeek()" class="muted"
+                     style="font-size:11px;background:none;border:none;text-decoration:underline;cursor:pointer;padding:0;min-height:22px">Back to this week</button>`}
+            </div>
+            <button type="button" onclick="availShiftWeek(1)" aria-label="Next week"
+              style="min-height:44px;min-width:64px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--ink);font-size:13px;font-weight:700;cursor:pointer">Next ›</button>
+          </div>
+
           <!-- Per-session cards — each fully independent -->
           ${sessions.map(s => availabilityCardV2(availabilityCardModel(player, s), s)).join('')}
 
-          ${sessions.length === 0 ? `<p class="muted" style="text-align:center;padding:30px">No sessions scheduled yet — check back soon.</p>` : ''}
+          ${sessions.length === 0 ? `<p class="muted" style="text-align:center;padding:30px">Nothing scheduled this week. Use Next › to look ahead.</p>` : ''}
         </div>`;
     }
 
