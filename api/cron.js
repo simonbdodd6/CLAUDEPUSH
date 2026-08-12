@@ -280,7 +280,21 @@ export default async function handler(req, res) {
     // it must still reach ONLY active members of a club — never removed members,
     // legacy / test / demo accounts, or devices with no current membership.
     const reminderMembers = await loadTeamMembers();
-    const memberSubscribers = subscriptionsForMembers(subscribers, activeMemberIdSet(reminderMembers));
+    // ── CLUB ISOLATION ──
+    // activeMemberIdSet(members) with no teamId treats null as "match every
+    // member" (_lib.js), so this reminder targeted the active members of EVERY
+    // club. The comment above always claimed club isolation; the call never
+    // implemented it. Scope to the clubs that actually have memberships, and
+    // union the per-club sets — one reminder per person, none to non-members
+    // of any club.
+    const reminderClubIds = [...new Set(reminderMembers
+      .filter(m => m.status === 'active' && m.teamId)
+      .map(m => String(m.teamId)))];
+    const scopedMemberIds = new Set();
+    for (const clubId of reminderClubIds) {
+      for (const id of activeMemberIdSet(reminderMembers, clubId)) scopedMemberIds.add(id);
+    }
+    const memberSubscribers = subscriptionsForMembers(subscribers, scopedMemberIds);
     const responded = await recentResponders(7);
     const reminderPrefs = await loadNotificationPreferenceMap();
     const targets = memberSubscribers.filter(item => !responded.has(item.label))

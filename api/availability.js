@@ -2,6 +2,8 @@
 // Also handles dev-only seed/reset actions when DEV_LOGIN=true.
 import { load } from './_lib.js';
 import { loadAvailability, saveAvailability, loadAvailabilityForIdentity, resolveAvailabilityForIdentities } from './_availabilityStore.js';
+import { loadClubStructure, activeGroups } from './_structureStore.js';
+import { assertOperationalGroup, operationalGroupsFor } from './_accessScope.js';
 import { setCors } from './_http.js';
 import { kvConfigured, kvGet } from './_kv.js';
 import { key } from './_keys.js';
@@ -226,13 +228,39 @@ export default async function handler(req, res) {
       let coachSession;
       try { coachSession = await requireTenantPermission(req, PERM.MANAGE_PLAYERS); }
       catch (error) { return sendAuthError(res, error); }
+
+      // ── D1b — clearing is a GROUP action, never a club-wide wipe ──
+      // MANAGE_PLAYERS alone is held by every manager and coach profile, so on
+      // its own it let a U18 manager blank the Seniors board. The group must be
+      // one this caller may actually operate in, and only that group is
+      // cleared — there is deliberately no "clear every group".
+      const structure = await loadClubStructure(coachSession.teamId);
+      const requested = String(req.body?.group || '').trim();
+      let group;
+      try {
+        if (requested) {
+          group = assertOperationalGroup(coachSession, structure, requested, { as: 'staff' });
+        } else {
+          const mine = operationalGroupsFor(coachSession.teamMember, structure, { as: 'staff' });
+          if (mine.length !== 1) {
+            return res.status(400).json({ error: 'Choose which group to clear' });
+          }
+          group = mine[0];
+        }
+      } catch (error) {
+        return res.status(error.status || 403).json({ error: error.message });
+      }
+
       const ids = Array.isArray(clearSessions) && clearSessions.length ? clearSessions : await activeSessionIds(coachSession.teamId);
       const validIds = ids.filter(id => validSessionId(id));
-      // Writes an empty scoped store per session. The scoped key then masks any
-      // legacy flat data on reads, so this clears ONLY the caller's club — it
-      // can never blank another club's records for a shared session id.
+      // NOTE: the write stays on the CLUB-scoped key for now. The read path
+      // (GET below) still reads club-scoped, so writing a group key here would
+      // clear something nothing reads — the board would look untouched. The
+      // storage split has to move reads and writes together, which is the
+      // remaining Pass 3 work. What IS fixed here is the authorisation: a
+      // caller can no longer act on a group they do not hold.
       await Promise.all(validIds.map(sid => saveAvailability(coachSession.teamId, sid, {})));
-      return res.status(200).json({ ok: true, action: 'clear_week', cleared: validIds });
+      return res.status(200).json({ ok: true, action: 'clear_week', cleared: validIds, group: { id: group.id, name: group.name } });
     }
 
     if (!validSessionId(sessionId) || !RESPONSES.has(response)) {
