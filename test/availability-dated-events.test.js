@@ -213,3 +213,60 @@ test('a past week still resolves, so players can look back', () => {
   assert.equal(events.every(e => !e.legacy), true, 'past weeks are dated, not legacy');
   assert.deepEqual(events.map(e => e.id), ['slot_tue1-20260804', 'slot_thu1-20260806']);
 });
+
+// ── FUTURE TRAINING: the source must actually be loaded ───────────────────
+// The dated model was always correct; the training SOURCE was never fetched
+// for a player, so future weeks showed fixtures and no training at all.
+test('both availability screens ensure the training schedule is loaded', () => {
+  const ensure = fn('ensureTrainingSchedule');
+  assert.match(ensure, /if \(_trainingSchedule \|\| _trainingScheduleAttempted\) return;/,
+    'idempotent, and a failed fetch cannot retry on every render');
+  assert.match(ensure, /loadTrainingSchedule\(\)/);
+
+  assert.match(fn('renderPlayerAvailabilityV2'), /ensureTrainingSchedule\(\);/,
+    'the player screen loads its own source');
+  assert.match(fn('coachAvailEvents'), /ensureTrainingSchedule\(\);/,
+    'and so does the coach board');
+  // A club switch clears the schedule, so the attempt flag must clear too.
+  assert.match(src, /_trainingSchedule = null;[^\n]*\n\s*_trainingScheduleAttempted = false;/,
+    'switching club refetches rather than staying empty');
+});
+
+test('FUTURE TRAINING — both weeks carry Tuesday, Thursday and their fixture', () => {
+  const w1 = week(FIXTURE_WEEK);                       // 17–23 Aug
+  const w2 = week(availWeekStart('2026-08-29'));       // 24–30 Aug
+  const AMSTEL = { id: 'fx_aug29', date: '2026-08-29', time: '15:00', opposition: 'Amstelveense', status: 'scheduled' };
+  const w2b = availabilityEventsForWeek(availWeekStart('2026-08-29'),
+    { fixtures: [...FIXTURES, AMSTEL], slots: SLOTS, currentWeekStart: THIS_WEEK });
+
+  assert.deepEqual(w1.map(e => e.id),
+    ['slot_tue1-20260818', 'slot_thu1-20260820', 'fx_aug22'],
+    '17–23 Aug: Tuesday, Thursday, Mons');
+  assert.deepEqual(w2b.map(e => e.id),
+    ['slot_tue1-20260825', 'slot_thu1-20260827', 'fx_aug29'],
+    '24–30 Aug: Tuesday, Thursday, Amstelveense');
+  assert.equal(w2.some(e => e.type === 'training'), true, 'training appears regardless of fixtures');
+});
+
+test('FUTURE TRAINING — the same weekday in different weeks is a different event', () => {
+  const tue18 = week(FIXTURE_WEEK).find(e => e.id.startsWith('slot_tue1'));
+  const tue25 = availabilityEventsForWeek(availWeekStart('2026-08-25'),
+    { fixtures: [], slots: SLOTS, currentWeekStart: THIS_WEEK }).find(e => e.id.startsWith('slot_tue1'));
+  assert.equal(tue18.id, 'slot_tue1-20260818');
+  assert.equal(tue25.id, 'slot_tue1-20260825');
+  assert.notEqual(tue18.id, tue25.id, 'answers cannot bleed between weeks');
+  assert.equal(tue18.date, '2026-08-18');
+  assert.equal(tue25.date, '2026-08-25');
+});
+
+test('FUTURE TRAINING — no event is represented twice in a week', () => {
+  for (const start of [THIS_WEEK, FIXTURE_WEEK, availWeekStart('2026-08-25')]) {
+    const ids = week(start).map(e => e.id);
+    assert.equal(new Set(ids).size, ids.length, `week ${start} has no duplicate event`);
+    // A slot must never appear as BOTH its legacy id and a dated id.
+    const legacyCount = ids.filter(id => ['tue', 'thu'].includes(id)).length;
+    const datedTue = ids.filter(id => id.startsWith('slot_tue1')).length;
+    assert.equal(legacyCount === 0 || datedTue === 0, true,
+      'a training slot is either legacy or dated in a given week, never both');
+  }
+});

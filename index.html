@@ -12082,6 +12082,7 @@
     }
 
     function coachAvailEvents() {
+      ensureTrainingSchedule();
       return availabilityEventsForWeek(coachAvailWeek(), {
         fixtures: (state.fixtures || []).map(normalizeFixture).filter(Boolean),
         slots: (_trainingSchedule && _trainingSchedule.slots) || [],
@@ -14550,6 +14551,7 @@
       if (!player.id) { document.getElementById("player-availability").innerHTML = noSquadMsg(); return; }
 
       fetchMyAvailabilityFromServer();
+      ensureTrainingSchedule();
       loadPublishedStateForPlayer().catch(() => {});
 
       const mc           = state.matchCentre || {};
@@ -16661,6 +16663,22 @@
     const SCHEDULE_DAY_LABEL = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
     let _trainingSchedule = null;      // { slots, updatedAt, updatedBy, canEdit }
     let _trainingScheduleBusy = false;
+
+    let _trainingScheduleAttempted = false;
+
+    /**
+     * The training schedule is the SOURCE of dated training events, but it was
+     * only ever loaded by the coach Settings card that renders it. A player
+     * never opens that card, so _trainingSchedule stayed null, slots resolved
+     * to [] and future weeks showed fixtures but no training at all. Both
+     * availability screens now ensure it themselves. Guarded so a failed fetch
+     * cannot retry on every render.
+     */
+    function ensureTrainingSchedule() {
+      if (_trainingSchedule || _trainingScheduleAttempted) return;
+      _trainingScheduleAttempted = true;
+      loadTrainingSchedule().catch(() => {});
+    }
 
     async function loadTrainingSchedule(force) {
       if (_trainingSchedule && !force) return _trainingSchedule;
@@ -28573,6 +28591,7 @@
         _appearanceAdjustments = null; // adjustments are per-club — refetch after switch
         _trainingPubState = {}; _trainingPubLoadedAt = 0; // training publication is per-club too
         _trainingSchedule = null;      // the training schedule is per-club too
+        _trainingScheduleAttempted = false;
         _clubConfigChecked = false; _publishedStateLoadedAt = 0;
         if (typeof _adminData === 'object') _adminData.loaded = false;
         _autopilotEnsured = false; _autopilotLogAt = 0; _autopilotLog = [];
