@@ -103,6 +103,25 @@ function sanitiseSessions(raw) {
   })).filter(s => s.id);
 }
 
+/**
+ * A client may name the fixture a squad or draft belongs to, but never decide
+ * it. The club record is the source of truth, so a forged id, an unknown id or
+ * another club's fixture is refused. Omitting it stays valid: every existing
+ * production record predates this field and must keep saving normally.
+ */
+async function assertFixtureBelongsToClub(teamId, fixtureId) {
+  const id = String(fixtureId || '').trim();
+  if (!id) return '';                       // legacy-safe: no claim made
+  const club = (await kvGet(clubKey(teamId))) || {};
+  const fixtures = Array.isArray(club.fixtures) ? club.fixtures : [];
+  if (!fixtures.some(f => String(f?.id || '') === id)) {
+    const e = new Error('Unknown fixture for this club');
+    e.status = 404;
+    throw e;
+  }
+  return id;
+}
+
 function sanitiseSquad(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const formationNames = raw.formationNames && typeof raw.formationNames === 'object'
@@ -129,6 +148,11 @@ function sanitiseSquad(raw) {
     gamePlan:      String(raw.gamePlan      || ''),
     formationNames,
     benchPlayers,
+    // The fixture this squad belongs to. Validated at the request boundary
+    // before it reaches here — sanitisation preserves an already-authorised
+    // identifier, it does not authorise one. Absent on every legacy record,
+    // and absent is a valid state: nothing is inferred to fill it.
+    fixtureId:     String(raw.fixtureId || ''),
   };
 }
 
@@ -1430,6 +1454,11 @@ export default async function handler(req, res) {
     if (type === 'draft') {
       const draft = sanitiseSquad(data);
       if (!draft) return res.status(400).json({ error: 'data must be an object' });
+      try {
+        draft.fixtureId = await assertFixtureBelongsToClub(session.teamId, draft.fixtureId);
+      } catch (error) {
+        return res.status(error.status || 400).json({ error: error.message });
+      }
       draft.userId = session.user.id;
       draft.updatedAt = new Date().toISOString();
       await kvSet(draftKey(session.teamId, session.user.id), draft);
@@ -1445,6 +1474,11 @@ export default async function handler(req, res) {
     if (type === 'squad') {
       const squad = sanitiseSquad(data);
       if (!squad) return res.status(400).json({ error: 'data must be an object' });
+      try {
+        squad.fixtureId = await assertFixtureBelongsToClub(session.teamId, squad.fixtureId);
+      } catch (error) {
+        return res.status(error.status || 400).json({ error: error.message });
+      }
       if (!squad.published) {
         await kvSet(squadKey(session.teamId), null);
         return res.status(200).json({ ok: true, squad: null });

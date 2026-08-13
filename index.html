@@ -7492,6 +7492,109 @@
       clearTimeout(_coachDraftSaveTimer);
       _coachDraftSaveTimer = setTimeout(() => saveCoachDraft().catch(() => {}), 1200);
     }
+    /**
+     * THE fixture this Match Centre squad is for, or '' when not linked.
+     *
+     * state.matchCentre.fixtureId is the explicit, authoritative answer. It is
+     * a stable id from state.fixtures — never opponent text, a date, a venue or
+     * a list position — and it is always re-validated against the club's own
+     * fixture list, so a deleted or stale id degrades to "not linked" rather
+     * than silently pointing at nothing.
+     *
+     * Autopilot may SEED it when it genuinely imported a real fixture, but it
+     * is no longer the only route: the coach can state it explicitly. Absent
+     * stays a legitimate state — nothing is inferred to fill it.
+     */
+    /**
+     * The explicit fixture link. Options are REAL fixtures only, valued by
+     * their stable id, and the honest "Not linked" state is shown rather than
+     * implied. Disabled once squad work exists, because storage is not yet
+     * fixture-scoped — the control explains why instead of failing silently.
+     */
+    function matchCentreFixturePicker() {
+      const fixtures = (state.fixtures || [])
+        .filter(f => f && f.id && f.opposition)
+        .slice()
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+      const selected = matchCentreFixtureId();
+      const locked = Boolean(selected) && matchCentreHasSquadWork();
+      const label = d => {
+        if (!d) return '';
+        const [y, m, day] = String(d).slice(0, 10).split('-').map(Number);
+        return ' · ' + day + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1];
+      };
+      return `
+        <div class="mc-detail-row" style="align-items:flex-start">
+          <label for="mc-fixture-link" style="min-width:96px">Fixture</label>
+          <div style="flex:1;min-width:0">
+            <select id="mc-fixture-link" ${locked ? 'disabled' : ''}
+              onchange="setMatchCentreFixture(this.value)"
+              style="width:100%;min-height:40px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);font-size:13px;padding:0 10px;box-sizing:border-box">
+              <option value="" ${selected ? '' : 'selected'}>Not linked</option>
+              ${fixtures.map(f => `<option value="${esc(f.id)}" ${f.id === selected ? 'selected' : ''}>${esc(f.opposition)}${esc(label(f.date))}</option>`).join('')}
+            </select>
+            <div class="muted" style="font-size:11px;margin-top:4px">
+              ${locked
+                ? 'Linked — clear the squad to move it to a different fixture.'
+                : 'Which real fixture this squad is for.'}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function matchCentreSelectedFixture() {
+      const id = String((state.matchCentre || {}).fixtureId || '').trim();
+      if (!id) return null;
+      return (state.fixtures || []).find(f => String(f?.id || '') === id) || null;
+    }
+
+    function matchCentreFixtureId() {
+      const fx = matchCentreSelectedFixture();
+      return fx ? String(fx.id) : '';
+    }
+
+    /**
+     * Does the working Match Centre hold real squad work? Used only to protect
+     * it — storage is not fixture-scoped yet, so re-pointing a populated squad
+     * at another fixture would silently relabel one match's XV as another's.
+     */
+    function matchCentreHasSquadWork() {
+      const named = Object.values(state.formationNames || {}).filter(n => String(n || '').trim());
+      const bench = (state.benchPlayers || []).filter(n => String(n || '').trim());
+      return named.length > 0 || bench.length > 0;
+    }
+
+    /**
+     * Explicitly link the working Match Centre to a real fixture.
+     *
+     * Refuses while squad work exists and the target differs, because storage
+     * is still shared across fixtures: the honest outcome is to decline rather
+     * than relabel, clear the coach's work, or overwrite anything. Attaching an
+     * as-yet-unlinked squad IS allowed — that is explicit human attribution,
+     * not inference, and it changes identity only, never a single selection.
+     */
+    function setMatchCentreFixture(fixtureId) {
+      const id = String(fixtureId || '').trim();
+      const current = matchCentreFixtureId();
+      if (id === current) return true;
+
+      if (id && !(state.fixtures || []).some(f => String(f?.id || '') === id)) {
+        showToast('That fixture is not in your fixture list');
+        return false;
+      }
+      // Re-pointing populated work at a DIFFERENT fixture is the unsafe case.
+      // Attaching previously-unlinked work is safe: nothing is being taken away
+      // from another fixture.
+      if (current && id !== current && matchCentreHasSquadWork()) {
+        showToast('This squad is already linked to another fixture — clear it first');
+        return false;
+      }
+      state.matchCentre = { ...(state.matchCentre || {}), fixtureId: id };
+      saveState('Match fixture linked');
+      render();
+      return true;
+    }
+
     async function saveCoachDraft() {
       if (!isCoach()) return;
       const mc = state.matchCentre || {};
@@ -7501,7 +7604,8 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'draft',
-            data: { ...mc, formationNames: state.formationNames || {}, benchPlayers: state.benchPlayers || [] },
+            data: { ...mc, formationNames: state.formationNames || {}, benchPlayers: state.benchPlayers || [],
+                    fixtureId: matchCentreFixtureId() },
           }),
         });
       } catch (e) { console.warn('[saveCoachDraft]', e); }
@@ -13439,6 +13543,7 @@
                 <span style="font-size:12px;color:var(--muted)">${[mc.opposition && ('vs ' + mc.opposition), mc.kickoffDate, mc.venue].filter(Boolean).join(' · ') || 'Tap to edit'}</span>
               </summary>
               <div style="padding:0 16px 14px">
+              ${matchCentreFixturePicker()}
               ${[
                 ['Opposition',  'opposition',  mc.opposition  || '', 'text', 'e.g. Kituro RFC'],
                 ['Competition', 'competition', mc.competition || '', 'text', 'League / Cup'],
@@ -15079,6 +15184,7 @@
         venue: next.venue || '',
         competition: next.competition || '',
         _autoFixtureId: next.id,
+        fixtureId: next.id,          // explicit identity, seeded from a real import
       };
       autopilotReceipt(`Match details imported — vs ${next.opposition}, ${next.date}`);
       saveState('Match details imported');
@@ -27873,7 +27979,8 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'squad',
-            data: { ...mc, formationNames: state.formationNames || {}, benchPlayers: state.benchPlayers || [] },
+            data: { ...mc, formationNames: state.formationNames || {}, benchPlayers: state.benchPlayers || [],
+                    fixtureId: matchCentreFixtureId() },
           }),
         });
       } catch(e) { console.warn('[syncSquadToServer]', e); }
