@@ -24,7 +24,7 @@ import { DEFAULT_TEAM, loadTeamMembers, loadUsers } from './_identityStore.js';
 import { requireTenantPermission, requireTenantSession, requireClubManage, assertSameTenant, can, PERM } from './_tenant.js';
 import {
   loadClubStructure, createGroup, createTeam, renameGroup, renameTeam,
-  setGroupStatus, setTeamStatus,
+  setGroupStatus, setTeamStatus, activeGroups,
 } from './_structureStore.js';
 import { effectiveAccessScope, effectiveEligibility,
          operationalGroupsFor, defaultOperationalGroup, assertOperationalGroup } from './_accessScope.js';
@@ -283,9 +283,29 @@ async function medicalHandler(req, res) {
     // No group resolved and none accessible → nothing to show, not everything.
     const visibleGroupIds = new Set(scope ? [scope.id] : allowed.map(g => g.id));
 
+    // ── ORPHANED CASES ──
+    // Cases written before the group was resolvable carry playerGroupId ''.
+    // '' is not a real group, so the filter below hid them from every reader.
+    // They are shown ONLY to a caller whose own accessible groups cover EVERY
+    // active group in the club — with nothing left unseen, there is no squad
+    // the case could be wrongly disclosed to. This is coverage, not a role
+    // check: a club-wide admin qualifies today because Seniors is the only
+    // group, and stops qualifying the moment U18 exists unless they hold both.
+    // The case itself is never rewritten or attributed.
+    const live = activeGroups(structure);
+    // `requested`, not `scope`: asking for a group explicitly is a narrower
+    // question and never returns orphans, but simply defaulting into your only
+    // group still counts as covering the club.
+    const coversWholeClub = live.length > 0 && !requested
+      && live.every(g => allowed.some(a => a.id === g.id));
+
     const groupName = id => (structure.groups || []).find(g => g.id === id)?.name || '';
     const memberFor = p => mine.find(m => String(m.userId || '') === String(p.userId || '') && p.userId) || null;
-    const inScope = gid => visibleGroupIds.size === 0 ? false : visibleGroupIds.has(String(gid || ''));
+    const inScope = gid => {
+      const id = String(gid || '');
+      if (!id) return coversWholeClub;          // orphan: whole-club coverage only
+      return visibleGroupIds.size === 0 ? false : visibleGroupIds.has(id);
+    };
 
     const players = (roster?.players || [])
       .map(p => ({ p, member: memberFor(p) }))
@@ -307,21 +327,46 @@ async function medicalHandler(req, res) {
 
   if (req.method === 'POST') {
     const action = String(req.body?.action || '');
+    const structureForWrite = await loadClubStructure(session.teamId);
     try {
       if (action === 'resolve_case') {
         const resolved = await resolveCase(session.teamId, req.body?.caseId, { userId: session.user.id });
         return res.status(200).json({ ok: true, case: resolved });
       }
       if (action === 'upsert_case') {
-        // Only the medical field allow-list survives pickWritable(); playerGroupId
-        // is read from the MEMBERSHIP, never from the request body, so a medical
+        // Only the medical field allow-list survives pickWritable(); the group
+        // is resolved HERE and never taken from the request body, so a medical
         // write can never reassign which group a player belongs to.
         const members = await loadTeamMembers();
         const member = members.find(m => String(m.teamId) === String(session.teamId)
           && String(m.userId || '') === String(req.body?.userId || '') && req.body?.userId) || null;
+
+        let groupId = member?.playerGroupId || '';
+        if (!groupId) {
+          // A roster row added by hand and never linked to an account has no
+          // userId, so no membership matches. Previously the case was stored
+          // ungrouped and the group filter then hid it from EVERYONE — the
+          // physio's injuries vanished the moment they were saved.
+          //
+          // With exactly one active group the answer is not a guess: there is
+          // only one group the player could be in. With several it IS a guess,
+          // so refuse and say so rather than file the case under the wrong
+          // squad. Nothing is ever inferred from age, team name or position.
+          const live = activeGroups(structureForWrite);
+          if (live.length === 1) {
+            groupId = live[0].id;
+          } else {
+            return res.status(400).json({
+              error: live.length === 0
+                ? 'This club has no active group to record a medical case against'
+                : 'That player is not linked to a squad — add them to a group before recording a medical case',
+            });
+          }
+        }
+
         const saved = await upsertCase(session.teamId, {
           ...req.body,
-          playerGroupId: member?.playerGroupId || '',
+          playerGroupId: groupId,
         }, { userId: session.user.id });
         return res.status(200).json({ ok: true, case: saved });
       }
