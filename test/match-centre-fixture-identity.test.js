@@ -378,3 +378,33 @@ test('the payload sources its id from the explicit selection', () => {
   assert.equal((src.match(/fixtureId: matchCentreFixtureId\(\)/g) || []).length, 2,
     'both the draft and publish payloads carry it');
 });
+
+// ── THE PICKER MUST BE IN THE VISIBLE PLANNER ─────────────────────────────
+// It was first placed inside the Match details block, which sits in the
+// mc-grid that Core Beta marks beta-hidden (display:none !important). The
+// control existed in the DOM and returned correct HTML — the earlier tests
+// asserted on that returned STRING and so passed while nothing was on screen.
+test('the picker lives in the visible header, not the beta-hidden grid', () => {
+  const head = src.indexOf('<header class="mc10-head">');
+  const grid = src.indexOf("<div class=\"mc-grid${BETA_SIMPLE_UI ? ' beta-hidden' : ''}\"");
+  const call = src.indexOf('${matchCentreFixturePicker()}');
+  assert.ok(head > 0 && grid > 0 && call > 0, 'all three anchors exist');
+  assert.ok(call > head && call < grid,
+    'the picker renders inside the always-visible matchday header, above the hidden grid');
+
+  // Exactly one call site — one control, one home.
+  assert.equal((src.match(/\$\{matchCentreFixturePicker\(\)\}/g) || []).length, 1);
+});
+
+test('the picker is reached from renderMatchday, the live planner renderer', () => {
+  const start = src.indexOf('function renderMatchday(');
+  const body = src.slice(start, src.indexOf('${matchCentreFixturePicker()}') + 40);
+  assert.ok(body.includes('${matchCentreFixturePicker()}'),
+    'renderMatchday is what safeRender(\'coach-matchday\') calls');
+  assert.match(src, /safeRender\('coach-matchday',\s*\(\) => renderMatchday\(\)\)/);
+});
+
+test('the control does not depend on autopilot being enabled', () => {
+  const picker = fn('matchCentreFixturePicker');
+  assert.equal(/autopilot/i.test(picker), false, 'a coach with autopilot off still gets it');
+});

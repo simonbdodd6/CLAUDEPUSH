@@ -7524,21 +7524,15 @@
         return ' · ' + day + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1];
       };
       return `
-        <div class="mc-detail-row" style="align-items:flex-start">
-          <label for="mc-fixture-link" style="min-width:96px">Fixture</label>
-          <div style="flex:1;min-width:0">
-            <select id="mc-fixture-link" ${locked ? 'disabled' : ''}
-              onchange="setMatchCentreFixture(this.value)"
-              style="width:100%;min-height:40px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);font-size:13px;padding:0 10px;box-sizing:border-box">
-              <option value="" ${selected ? '' : 'selected'}>Not linked</option>
-              ${fixtures.map(f => `<option value="${esc(f.id)}" ${f.id === selected ? 'selected' : ''}>${esc(f.opposition)}${esc(label(f.date))}</option>`).join('')}
-            </select>
-            <div class="muted" style="font-size:11px;margin-top:4px">
-              ${locked
-                ? 'Linked — clear the squad to move it to a different fixture.'
-                : 'Which real fixture this squad is for.'}
-            </div>
-          </div>
+        <div id="mc-fixture-link-wrap" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <label for="mc-fixture-link" style="font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">Fixture</label>
+          <select id="mc-fixture-link" ${locked ? 'disabled' : ''}
+            onchange="setMatchCentreFixture(this.value)"
+            style="min-height:38px;max-width:100%;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);font-size:13px;font-weight:700;padding:0 10px;box-sizing:border-box">
+            <option value="" ${selected ? '' : 'selected'}>Not linked</option>
+            ${fixtures.map(f => `<option value="${esc(f.id)}" ${f.id === selected ? 'selected' : ''}>${esc(f.opposition)}${esc(label(f.date))}</option>`).join('')}
+          </select>
+          ${locked ? `<span class="muted" style="font-size:11px;flex-basis:100%">Linked — clear the squad to move it to a different fixture.</span>` : ''}
         </div>`;
     }
 
@@ -13447,6 +13441,7 @@
           <div class="mc10-fixture">
             <h1>${esc(state.clubName || 'Your club')} <em>vs</em> ${esc(mc.opposition || 'Opponent TBC')}</h1>
             <p>${[esc(phase.label), esc(mc.competition||''), kickoffDisplay, mc.kickoffTime?esc(mc.kickoffTime):'', esc(mc.venue||'')].filter(Boolean).join(' · ') || 'Fixture to be confirmed'}</p>
+            ${matchCentreFixturePicker()}
           </div>
           </div>
           <div class="mc10-chips" role="group" aria-label="Matchday status">
@@ -13543,7 +13538,6 @@
                 <span style="font-size:12px;color:var(--muted)">${[mc.opposition && ('vs ' + mc.opposition), mc.kickoffDate, mc.venue].filter(Boolean).join(' · ') || 'Tap to edit'}</span>
               </summary>
               <div style="padding:0 16px 14px">
-              ${matchCentreFixturePicker()}
               ${[
                 ['Opposition',  'opposition',  mc.opposition  || '', 'text', 'e.g. Kituro RFC'],
                 ['Competition', 'competition', mc.competition || '', 'text', 'League / Cup'],
