@@ -233,35 +233,37 @@ export function resolvePlayerGroup(member = {}, structure = null) {
  * selection.
  */
 export function resolveEligibility(member = {}, structure = null) {
-  const stored = member?.playerEligibility;
-  if (stored !== undefined && stored !== null) {
-    // An explicit per-player selection is honoured, but can NEVER cross the
-    // player's group boundary — the group is the hard limit, the stored list
-    // only narrows within it.
-    const explicit = normalizeEligibility(stored);
-    const { groupId } = resolvePlayerGroup(member, structure);
-    if (!structure || !groupId) return { ...explicit, derived: false };
-    const inGroup = new Set(activeTeams(structure, groupId).map(t => t.id));
-    const teamIds = explicit.teamIds.filter(id => inGroup.has(id));
-    return {
-      teamIds,
-      primaryTeamId: teamIds.includes(explicit.primaryTeamId) ? explicit.primaryTeamId : (teamIds[0] || null),
-      derived: false,
-    };
-  }
   if (!member || member.status !== 'active') {
     return { teamIds: [], primaryTeamId: null, derived: false };
   }
 
-  // D1a — eligibility comes from the PLAYER GROUP, never from staff access.
-  // Previously this read effectiveAccessScope(), so a Seniors coaching grant
-  // (or club-wide administration) made someone eligible to PLAY for those
-  // teams. Where a person coaches and where they play are different things.
+  // THE shared-squad rule: eligibility IS group membership. Every active
+  // player in a group is eligible for every active team in that group —
+  // a Seniors player is pickable for Premier AND Premier Development, and
+  // never for another group's teams. The group comes from playerGroupId
+  // (D1a), never from staff access: where a person coaches and where they
+  // play are different things.
+  //
+  // A stored playerEligibility list is legacy data and is deliberately NOT
+  // authoritative for the team set anymore: honouring it is exactly how the
+  // hardcoded team_initial default left one Seniors team with 0 eligible
+  // players while its sibling held the whole squad. The field is left in
+  // storage untouched (no migration, still readable) and may still express a
+  // PRIMARY-team preference within the group — a display preference, never a
+  // restriction.
   const { groupId, source } = resolvePlayerGroup(member, structure);
   if (!structure || !groupId) return { teamIds: [], primaryTeamId: null, derived: true };
 
   const teamIds = activeTeams(structure, groupId).map(t => t.id);
-  return { teamIds, primaryTeamId: teamIds[0] || null, derived: true, source };
+  const storedPrimary = (member.playerEligibility !== undefined && member.playerEligibility !== null)
+    ? normalizeEligibility(member.playerEligibility).primaryTeamId
+    : null;
+  return {
+    teamIds,
+    primaryTeamId: teamIds.includes(storedPrimary) ? storedPrimary : (teamIds[0] || null),
+    derived: true,
+    source,
+  };
 }
 
 /** Eligible teams validated against the live structure (active teams only). */

@@ -189,21 +189,24 @@ test('the underlying eligibility model is preserved for future use', () => {
 });
 
 test('derived eligibility covers every active team in the group and nothing else', () => {
+  // Shared-squad model: the client derives from playerGroupId (where a
+  // person PLAYS) — an access grant alone no longer manufactures eligibility.
   const admin = { structure: STRUCTURE };
   const { memberEligibility } = scope(['memberScope', 'memberEligibility'], admin);
-  const seniors = memberEligibility({ role: 'player', status: 'active',
-    accessScope: { clubWide: false, groups: [{ groupId: 'g-sen', status: 'active' }], teams: [] } });
+  const seniors = memberEligibility({ role: 'player', status: 'active', playerGroupId: 'g-sen' });
   assert.deepEqual(seniors.teamIds.sort(), ['t-dev', 't-prem'], 'both senior squads');
   assert.equal(seniors.teamIds.includes('t-gone'), false, 'archived team excluded');
   assert.equal(seniors.teamIds.includes('t-u18'), false, 'no cross-group eligibility');
 
-  const u18 = memberEligibility({ role: 'player', status: 'active',
-    accessScope: { clubWide: false, groups: [{ groupId: 'g-u18', status: 'active' }], teams: [] } });
+  const u18 = memberEligibility({ role: 'player', status: 'active', playerGroupId: 'g-u18' });
   assert.deepEqual(u18.teamIds, ['t-u18']);
   // A team inside an archived group is never eligible.
-  const vets = memberEligibility({ role: 'player', status: 'active',
-    accessScope: { clubWide: false, groups: [{ groupId: 'g-old', status: 'active' }], teams: [] } });
+  const vets = memberEligibility({ role: 'player', status: 'active', playerGroupId: 'g-old' });
   assert.deepEqual(vets.teamIds, []);
+  // And an ACCESS grant without a player group creates nothing.
+  const staffish = memberEligibility({ role: 'player', status: 'active',
+    accessScope: { clubWide: false, groups: [{ groupId: 'g-sen', status: 'active' }], teams: [] } });
+  assert.deepEqual(staffish.teamIds, [], 'coaching scope is not playing membership');
 });
 
 // ── 3. PLAYER ACCESS LABEL ─────────────────────────────────────────────────

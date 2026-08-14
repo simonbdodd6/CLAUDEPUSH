@@ -26,7 +26,7 @@ import {
   loadClubStructure, createGroup, createTeam, renameGroup, renameTeam,
   setGroupStatus, setTeamStatus, activeGroups,
 } from './_structureStore.js';
-import { effectiveAccessScope, effectiveEligibility,
+import { effectiveAccessScope, resolveEligibility,
          operationalGroupsFor, defaultOperationalGroup, assertOperationalGroup } from './_accessScope.js';
 import {
   loadMedicalRecord, activeCases, upsertCase, resolveCase, projectPlayer,
@@ -1467,7 +1467,10 @@ async function structureHandler(req, res) {
         if (staffish) teams[grant.teamId].coaches.push(nameOf(m.userId));
       }
       if (canonicalRole(m) === 'player') {
-        for (const teamId of effectiveEligibility(m).teamIds) {
+        // Counts derive from the GROUP rule (resolveEligibility), not the
+        // legacy stored/team_initial default that left one Seniors team at 0
+        // eligible while its sibling held the whole squad.
+        for (const teamId of resolveEligibility(m, structure).teamIds) {
           if (teams[teamId]) teams[teamId].members += 1;
         }
       }

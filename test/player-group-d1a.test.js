@@ -110,10 +110,15 @@ test('an unknown, archived or cross-club player group resolves to nothing', () =
   }
 });
 
-test('explicit per-player eligibility can narrow within the group but never cross it', () => {
+test('stored eligibility cannot narrow the group pool, and never crosses it', () => {
+  // Shared-squad model: the stored list is legacy data. It no longer narrows —
+  // that behaviour is how one Seniors team read 0 eligible while its sibling
+  // held the whole squad. Within the group it may only prefer a primary.
   const narrowed = member({ role: 'player', playerGroupId: SEN,
     playerEligibility: { teamIds: ['t-prem'], primaryTeamId: 't-prem' } });
-  assert.deepEqual(resolveEligibility(narrowed, TWO_GROUPS).teamIds, ['t-prem'], 'narrowing honoured');
+  const n = resolveEligibility(narrowed, TWO_GROUPS);
+  assert.deepEqual(n.teamIds.sort(), ['t-dev', 't-prem'].sort(), 'the whole Seniors pool');
+  assert.equal(n.primaryTeamId, 't-prem', 'primary preference honoured in-group');
 
   // A stored selection naming a team OUTSIDE the player's group is discarded.
   const crossing = member({ role: 'player', playerGroupId: U18,

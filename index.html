@@ -18813,39 +18813,34 @@
      * is migrated and an admin's explicit choices are never overwritten.
      */
     function memberEligibility(member) {
-      const stored = member?.playerEligibility;
-      if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
-        const teamIds = Array.isArray(stored.teamIds) ? stored.teamIds.map(String) : [];
-        const primary = String(stored.primaryTeamId || '');
-        return { teamIds, primaryTeamId: teamIds.includes(primary) ? primary : (teamIds[0] || null), derived: false };
-      }
+      // THE shared-squad rule, mirroring the server's resolveEligibility:
+      // eligibility IS group membership. Every active team in the member's
+      // PLAYER group (playerGroupId — where they PLAY, never where they
+      // coach) is selectable; other groups' teams never are. A stored
+      // playerEligibility list is legacy data and no longer restricts the
+      // team set — honouring it is exactly how one Seniors team showed 0
+      // eligible players while its sibling held the whole squad. It may
+      // still express a primary-team preference within the group.
       const st = _adminData.structure;
-      if (!st || String(member?.role || '').toLowerCase() !== 'player') {
-        return { teamIds: [], primaryTeamId: null, derived: false };
-      }
-      const scope = memberScope(member);
+      const playing = String(member?.playerGroupId || '').trim() ||
+        (String(member?.role || '').toLowerCase() === 'player' ? 'legacy' : '');
+      if (!st || !playing) return { teamIds: [], primaryTeamId: null, derived: false };
       const activeGroups = (st.groups || []).filter(g => g.status === 'active');
-      let activeGroupIds = scope.clubWide ? activeGroups.map(g => g.id) : scope.groups.map(g => g.groupId);
-      // A player with NO explicit grant (the common case for anyone who joined
-      // before the structure existed, or via an unscoped invite) belongs to the
-      // club's only group when there is exactly one — the same unambiguous
-      // fallback used for age group. Never guesses between several groups.
-      if (!activeGroupIds.length && !scope.clubWide && !scope.teams.length && activeGroups.length === 1) {
-        activeGroupIds = [activeGroups[0].id];
-      }
-      const ids = new Set();
-      for (const t of (st.teams || [])) {
-        if (t.status !== 'active') continue;                       // archived never auto-added
-        const group = (st.groups || []).find(g => g.id === t.groupId);
-        if (!group || group.status !== 'active') continue;
-        if (activeGroupIds.includes(t.groupId)) ids.add(t.id);     // never crosses a group
-      }
-      for (const grant of scope.teams) {
-        const t = (st.teams || []).find(x => x.id === grant.teamId && x.status === 'active');
-        if (t) ids.add(t.id);
-      }
-      const teamIds = [...ids];
-      return { teamIds, primaryTeamId: teamIds[0] || null, derived: true };
+      let groupId = String(member?.playerGroupId || '').trim();
+      if (groupId && !activeGroups.some(g => g.id === groupId)) groupId = '';   // unknown/archived: never guess
+      // No explicit group (pre-structure member): the club's only active
+      // group is unambiguous; several groups → refuse to guess.
+      if (!groupId && playing === 'legacy' && activeGroups.length === 1) groupId = activeGroups[0].id;
+      if (!groupId) return { teamIds: [], primaryTeamId: null, derived: true };
+      const teamIds = (st.teams || [])
+        .filter(t => t.status === 'active' && t.groupId === groupId)
+        .map(t => t.id);
+      const storedPrimary = String(member?.playerEligibility?.primaryTeamId || '');
+      return {
+        teamIds,
+        primaryTeamId: teamIds.includes(storedPrimary) ? storedPrimary : (teamIds[0] || null),
+        derived: true,
+      };
     }
 
     async function adminToggleMedical(memberId, on, name) {

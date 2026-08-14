@@ -357,19 +357,20 @@ test('the UI mirrors the server default: group teams shown, nothing written', ()
       { id: 't5', groupId: 'g3', name: 'Vets', status: 'active' }] };
   const admin = { structure };
 
-  const seniors = memberEligibility(admin, { role: 'player', status: 'active',
-    accessScope: { clubWide: false, groups: [{ groupId: 'g1', status: 'active' }], teams: [] } });
-  assert.deepEqual(seniors.teamIds.sort(), ['t1', 't2'], 'both senior squads defaulted');
+  // Shared-squad model: the UI derives from playerGroupId (where they PLAY);
+  // a stored legacy list may only prefer a primary, never restrict the set.
+  const seniors = memberEligibility(admin, { role: 'player', status: 'active', playerGroupId: 'g1' });
+  assert.deepEqual(seniors.teamIds.sort(), ['t1', 't2'], 'both senior squads');
   assert.equal(seniors.derived, true);
 
-  const explicit = memberEligibility(admin, { role: 'player', status: 'active',
-    accessScope: { clubWide: false, groups: [{ groupId: 'g1', status: 'active' }], teams: [] },
+  const legacyStored = memberEligibility(admin, { role: 'player', status: 'active',
+    playerGroupId: 'g1',
     playerEligibility: { teamIds: ['t1'], primaryTeamId: 't1' } });
-  assert.deepEqual(explicit.teamIds, ['t1'], 'explicit choice untouched');
-  assert.equal(explicit.derived, false);
+  assert.deepEqual(legacyStored.teamIds.sort(), ['t1', 't2'],
+    'the stored list cannot narrow the shared pool');
+  assert.equal(legacyStored.primaryTeamId, 't1', 'in-group primary preference kept');
 
-  const u18 = memberEligibility(admin, { role: 'player', status: 'active',
-    accessScope: { clubWide: false, groups: [{ groupId: 'g2', status: 'active' }], teams: [] } });
+  const u18 = memberEligibility(admin, { role: 'player', status: 'active', playerGroupId: 'g2' });
   assert.deepEqual(u18.teamIds, ['t4'], 'never crosses into another group');
 
   const staff = memberEligibility(admin, { role: 'coach', staffLevel: 'head', status: 'active',

@@ -132,17 +132,23 @@ test('archived teams are never added automatically', () => {
   assert.deepEqual(vets.teamIds, []);
 });
 
-test('explicit eligibility is returned untouched and never overwritten', () => {
+test('stored eligibility no longer restricts — the GROUP rule is authoritative', () => {
+  // Shared-squad model: honouring a stored per-player list is exactly how one
+  // Seniors team showed 0 eligible while its sibling held the whole squad.
+  // The list stays in storage but can only express a primary preference now.
   const explicit = player({
     accessScope: groupScope('grp-seniors'),
     playerEligibility: { teamIds: ['team-premier'], primaryTeamId: 'team-premier' },
   });
   const elig = resolveEligibility(explicit, STRUCTURE);
-  assert.deepEqual(elig.teamIds, ['team-premier'], 'admin choice preserved exactly');
-  assert.equal(elig.derived, false);
-  // An explicitly EMPTY selection means exactly that — not "fall back to all".
+  assert.deepEqual(elig.teamIds.sort(), ['team-prem-dev', 'team-premier'],
+    'the whole group pool, regardless of the stored list');
+  assert.equal(elig.primaryTeamId, 'team-premier', 'the in-group primary preference survives');
+  assert.equal(elig.derived, true, 'and it is a derivation, not a stored choice');
+  // An explicitly EMPTY stored selection cannot suppress the group rule either.
   const none = player({ accessScope: groupScope('grp-seniors'), playerEligibility: { teamIds: [] } });
-  assert.deepEqual(resolveEligibility(none, STRUCTURE).teamIds, []);
+  assert.deepEqual(resolveEligibility(none, STRUCTURE).teamIds.sort(),
+    ['team-prem-dev', 'team-premier']);
 });
 
 test('defaults never cross a group or club boundary', () => {

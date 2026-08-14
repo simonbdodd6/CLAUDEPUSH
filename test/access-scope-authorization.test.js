@@ -67,13 +67,14 @@ const otherClubStructure = {
 };
 
 let seq = 0;
-function ctx({ role = 'coach', staffLevel = 'head', accessProfile = null, isOwner = false, accessScope, playerEligibility, status = 'active' } = {}) {
+function ctx({ role = 'coach', staffLevel = 'head', accessProfile = null, isOwner = false, accessScope, playerEligibility, playerGroupId, status = 'active' } = {}) {
   seq += 1;
   const member = {
     id: `tm-${seq}`, teamId: CLUB, userId: `u-${seq}`, role, staffLevel,
     status, isOwner, accessProfile,
     ...(accessScope !== undefined ? { accessScope } : {}),
     ...(playerEligibility !== undefined ? { playerEligibility } : {}),
+    ...(playerGroupId !== undefined ? { playerGroupId } : {}),
   };
   return { user: { id: member.userId }, teamMember: member, session: { teamId: CLUB } };
 }
@@ -181,13 +182,17 @@ test('11. A player reaches only their assigned scope', () => {
 });
 
 test('12. Dual-eligible senior player keeps ONE identity and one membership', () => {
+  // Shared-squad model: eligibility derives from the PLAYER GROUP, so the
+  // membership carries playerGroupId; the stored list survives only as a
+  // primary-team preference.
   const player = ctx({ role: 'player', staffLevel: null,
+    playerGroupId: 'grp-senior-men',
     accessScope: groupScope('grp-senior-men'),
     playerEligibility: { teamIds: ['team-senior-1', 'team-senior-2'], primaryTeamId: 'team-senior-2' } });
   const elig = effectiveEligibility(player.teamMember);
   assert.deepEqual(elig.teamIds, ['team-senior-1', 'team-senior-2']);
   assert.equal(elig.primaryTeamId, 'team-senior-2');
-  assert.deepEqual(eligibleTeams(player.teamMember, structure).map(t => t.id),
+  assert.deepEqual(eligibleTeams(player.teamMember, structure).map(t => t.id).sort(),
     ['team-senior-1', 'team-senior-2']);
   // One membership record, one user — nothing duplicated for the second team.
   assert.equal(typeof player.teamMember.id, 'string');
