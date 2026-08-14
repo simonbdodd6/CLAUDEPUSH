@@ -117,6 +117,12 @@ function client(server, initialState = {}) {
     ${fn('matchCentreSelectedSide')}
     ${fn('mcOtherSideNames')}
     ${fn('mcLoadOtherSideSelections')}
+    // Fixture group context (3-group foundation): the real helpers, with no
+    // operational context — the unfiltered legacy mode every prior pin assumes.
+    const CE_INITIAL_GROUP_ID = 'grp_initial';
+    function operationalGroups() { return []; }
+    ${fn('fixtureBelongsToGroup')}
+    ${fn('contextFixtures')}
     ${fn('matchCentreFixtureList')}
     ${fn('mcFixtureDateLabel')}
     ${fn('matchCentreSelectedFixture')}

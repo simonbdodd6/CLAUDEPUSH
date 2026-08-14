@@ -108,12 +108,10 @@ test('clearing writes ONLY the authorised group\'s key', async () => {
   const r = await clearWeek('u-sen-coach', { group: SEN });
   assert.equal(r.code, 200);
   assert.equal(r.body.group.name, 'Seniors');
-  // The authorisation is fixed in this pass; the STORAGE split is not — the
-  // write still lands on the club-scoped key because the read path has not
-  // moved yet. Pinned deliberately so the half-done state cannot be mistaken
-  // for full isolation.
-  assert.deepEqual(availWrites(), [`app:availability:${CLUB}:game`],
-    'club-scoped for now — group partitioning lands with the read path');
+  // D1b Pass 3 storage split COMPLETE: the clear writes the GROUP key, so
+  // clearing Seniors can never touch U18's records (and vice versa).
+  assert.deepEqual(availWrites(), [`app:availability:${CLUB}:group:${SEN}:game`],
+    'exactly the authorised group\'s keyspace');
 });
 
 test('a multi-scope admin must name the group — there is no clear-everything', async () => {
@@ -125,7 +123,8 @@ test('a multi-scope admin must name the group — there is no clear-everything',
 
   const explicit = await clearWeek('u-admin', { group: U18 });
   assert.equal(explicit.code, 200);
-  assert.deepEqual(availWrites(), [`app:availability:${CLUB}:game`]);
+  assert.deepEqual(availWrites(), [`app:availability:${CLUB}:group:${U18}:game`],
+    'the named group\'s keyspace only — Seniors untouched');
 });
 
 test('a forged or foreign group is refused', async () => {

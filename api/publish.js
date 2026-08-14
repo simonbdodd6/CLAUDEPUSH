@@ -24,7 +24,7 @@ import { DEFAULT_TEAM, loadTeamMembers, loadUsers } from './_identityStore.js';
 import { requireTenantPermission, requireTenantSession, requireClubManage, assertSameTenant, can, PERM } from './_tenant.js';
 import {
   loadClubStructure, createGroup, createTeam, renameGroup, renameTeam,
-  setGroupStatus, setTeamStatus, activeGroups,
+  setGroupStatus, setTeamStatus, activeGroups, INITIAL_GROUP_ID,
 } from './_structureStore.js';
 import { effectiveAccessScope, resolveEligibility,
          operationalGroupsFor, defaultOperationalGroup, assertOperationalGroup } from './_accessScope.js';
@@ -111,6 +111,35 @@ async function assertSideBelongsToClub(teamId, sideId) {
 
 function sideNameFrom(structure, sideId) {
   return (structure?.teams || []).find(t => String(t.id) === String(sideId))?.name || '';
+}
+
+/**
+ * The PLAYER GROUP a fixture belongs to. A legacy record with no groupId
+ * belongs to the club's INITIAL group — the documented owner of all
+ * pre-structure club data (production's Seniors) — never to a newer group.
+ */
+function fixtureGroupOf(fx) {
+  return String(fx?.groupId || '').trim() || INITIAL_GROUP_ID;
+}
+
+/**
+ * A side and a fixture must play in the SAME group: publishing a Seniors
+ * fixture with a U18 team sheet (or vice versa) is refused before any key is
+ * built. Only enforced when a side is in play — sideless legacy paths are
+ * untouched.
+ */
+async function assertFixtureSideCoherence(teamId, fixtureId, sideId) {
+  if (!fixtureId || !sideId) return;
+  const club = (await kvGet(clubKey(teamId))) || {};
+  const fx = (Array.isArray(club.fixtures) ? club.fixtures : [])
+    .find(f => String(f?.id || '') === String(fixtureId));
+  const structure = await loadClubStructure(teamId);
+  const side = (structure?.teams || []).find(t => String(t.id) === String(sideId));
+  if (!fx || !side || String(side.groupId || '') !== fixtureGroupOf(fx)) {
+    const e = new Error("That team does not play in this fixture's group");
+    e.status = 400;
+    throw e;
+  }
 }
 
 /**
@@ -585,6 +614,11 @@ export function sanitiseFixtureRecord(fx) {
     competition:   s(fx?.competition, 80),
     homeAway:      HOME_AWAY.has(homeAway) ? homeAway : '',
     status:        FIXTURE_STATUSES.has(status) ? status : 'scheduled',
+    // The PLAYER GROUP this fixture belongs to (Seniors / U18 / Women's).
+    // Boundary-validated where fixtures are created or imported; '' on every
+    // legacy record, which by the documented compatibility rule belongs to
+    // the club's INITIAL group — never guessed onto a newer group.
+    groupId:       s(fx?.groupId, 40),
     arrivalTime:   hhmm(fx?.arrivalTime),
     meetingPoint:  s(fx?.meetingPoint, 160),
     notes:         s(fx?.notes, 1000),
@@ -828,9 +862,31 @@ async function fixturesHandler(req, res) {
   const action = String(req.body?.action || 'create');
   const { club, fixtures } = await readClubFixtures(session.teamId);
 
+  // ── GROUP context for fixture writes ─────────────────────────────────────
+  // A new or imported fixture belongs to a PLAYER GROUP. A provided groupId
+  // is asserted against the caller's staff scope; with none provided, the
+  // caller's single operable group is the unambiguous default. A multi-group
+  // caller must say which group — fixtures are never guessed onto one.
+  let fixtureGroup = '';
+  if (action === 'create' || action === 'import') {
+    const structure = await loadClubStructure(session.teamId);
+    const requestedGroup = String(req.body?.groupId || req.body?.fixture?.groupId || '').trim();
+    try {
+      if (requestedGroup) {
+        fixtureGroup = assertOperationalGroup(session, structure, requestedGroup, { as: 'staff' }).id;
+      } else {
+        const mine = operationalGroupsFor(session.teamMember, structure, { as: 'staff' });
+        if (mine.length === 1) fixtureGroup = mine[0].id;
+        else return res.status(400).json({ error: 'Choose which group these fixtures belong to' });
+      }
+    } catch (error) {
+      return res.status(error.status || 403).json({ error: error.message });
+    }
+  }
+
   // ── Single manual fixture ───────────────────────────────────────────────
   if (action === 'create') {
-    const incoming = sanitiseFixtureRecord(req.body?.fixture || {});
+    const incoming = sanitiseFixtureRecord({ ...(req.body?.fixture || {}), groupId: fixtureGroup });
     if (!incoming.opposition) return res.status(400).json({ error: 'Opponent is required' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(incoming.date)) return res.status(400).json({ error: 'A valid date is required' });
     if (req.body?.fixture?.time && !incoming.time) return res.status(400).json({ error: 'Kick-off time must be HH:MM' });
@@ -875,7 +931,9 @@ async function fixturesHandler(req, res) {
 
     for (const raw of rows) {
       const decision = String(raw?.decision || 'new').toLowerCase();  // new | update | skip
-      const fixture = sanitiseFixtureRecord(raw?.fixture || raw || {});
+      // Every imported fixture belongs to the asserted group context — a
+      // season upload is one group's season.
+      const fixture = sanitiseFixtureRecord({ ...(raw?.fixture || raw || {}), groupId: fixtureGroup });
       if (!fixture.opposition || !/^\d{4}-\d{2}-\d{2}$/.test(fixture.date)) {
         summary.errors++;
         details.push({ opposition: fixture.opposition || '(none)', outcome: 'error', reason: 'missing opponent or date' });
@@ -1674,6 +1732,7 @@ export default async function handler(req, res) {
       try {
         requestedFixture = await assertFixtureBelongsToClub(session.teamId, req.query?.fixture);
         requestedSide    = await assertSideBelongsToClub(session.teamId, req.query?.side);
+        await assertFixtureSideCoherence(session.teamId, requestedFixture, requestedSide);
       } catch (error) {
         return res.status(error.status || 400).json({ error: error.message });
       }
@@ -1789,6 +1848,7 @@ export default async function handler(req, res) {
         try {
           asked = await assertFixtureBelongsToClub(session.teamId, req.query?.fixture);
           askedSide = await assertSideBelongsToClub(session.teamId, req.query?.side);
+          await assertFixtureSideCoherence(session.teamId, asked, askedSide);
         } catch (error) {
           return res.status(error.status || 400).json({ error: error.message });
         }
@@ -1859,6 +1919,7 @@ export default async function handler(req, res) {
       try {
         draft.fixtureId = await assertFixtureBelongsToClub(session.teamId, draft.fixtureId);
         draft.sideId    = await assertSideBelongsToClub(session.teamId, draft.sideId);
+        await assertFixtureSideCoherence(session.teamId, draft.fixtureId, draft.sideId);
       } catch (error) {
         return res.status(error.status || 400).json({ error: error.message });
       }
@@ -1893,6 +1954,7 @@ export default async function handler(req, res) {
       try {
         squad.fixtureId = await assertFixtureBelongsToClub(session.teamId, squad.fixtureId);
         squad.sideId    = await assertSideBelongsToClub(session.teamId, squad.sideId);
+        await assertFixtureSideCoherence(session.teamId, squad.fixtureId, squad.sideId);
       } catch (error) {
         return res.status(error.status || 400).json({ error: error.message });
       }
@@ -1955,6 +2017,7 @@ export default async function handler(req, res) {
       try {
         asked = await assertFixtureBelongsToClub(session.teamId, req.body?.fixtureId || req.query?.fixture);
         askedSide = await assertSideBelongsToClub(session.teamId, req.body?.sideId || req.query?.side);
+        await assertFixtureSideCoherence(session.teamId, asked, askedSide);
       } catch (error) {
         return res.status(error.status || 400).json({ error: error.message });
       }

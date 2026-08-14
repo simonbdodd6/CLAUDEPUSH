@@ -67,12 +67,18 @@ async function twoClubs() {
   return { A, B, pa, pb };
 }
 
-test('player POST lands in their own club scoped key only', async () => {
+test('player POST lands in their own club\'s GROUP key only', async () => {
   const { A, B, pa } = await twoClubs();
   await call('POST', {}, { sessionId: 'tue', response: 'available' }, ck(pa.session));
-  const scopedA = JSON.parse(kv.get(`app:availability:${A.team.id}:tue`) || '{}');
-  assert.equal(Object.values(scopedA).some(v => v.userId === pa.user.id), true, 'entry in club A scoped key');
-  assert.equal(kv.has(`app:availability:${B.team.id}:tue`), false, 'nothing written for club B');
+  // D1b Pass 3 storage split: the write lands on the writer's own club AND
+  // group keyspace (a pre-structure club resolves to its initial group).
+  const groupKeyA = [...kv.keys()].find(k =>
+    k.startsWith(`app:availability:${A.team.id}:group:`) && k.endsWith(':tue'));
+  assert.ok(groupKeyA, 'entry in club A group-scoped key');
+  const scopedA = JSON.parse(kv.get(groupKeyA) || '{}');
+  assert.equal(Object.values(scopedA).some(v => v.userId === pa.user.id), true, 'the answer is there');
+  assert.equal([...kv.keys()].some(k => k.startsWith(`app:availability:${B.team.id}:`)), false,
+    'nothing written for club B');
   assert.equal(kv.has('app:availability:tue'), false, 'nothing written to the flat global key');
 });
 

@@ -206,8 +206,9 @@ test('coach invite to claimed player creates one permanent userId across auth ch
     body: { response: 'available', sessionId: 'game' },
   });
   assert.equal(availability.statusCode, 200);
-  // RC4.7A: storage is tenant-scoped; this player belongs to the default club.
-  const availabilityStore = JSON.parse(kv.get('app:availability:boitsfort-rfc:game'));
+  // D1b Pass 3: group-scoped storage; a default-club player writes into the
+  // club's INITIAL group keyspace.
+  const availabilityStore = JSON.parse(kv.get('app:availability:boitsfort-rfc:group:grp_initial:game'));
   assert.equal(availabilityStore[playerUserId].response, 'available');
   assert.equal(availabilityStore[playerUserId].label, 'Test Registered Player');
   assert.equal(availabilityStore[playerUserId].userId, playerUserId);

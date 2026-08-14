@@ -187,6 +187,21 @@ export async function loadAvailabilityForIdentity(teamId, identity = {}) {
   return resolveAvailabilityForIdentity(await loadAllAvailability(teamId), identity);
 }
 
+/** Player self-read, GROUP-scoped: the same resolver over one group's records
+ *  (with the initial group's documented legacy fallback inside the loader). */
+export async function loadGroupAvailabilityForIdentity(clubId, groupId, identity = {}) {
+  return resolveAvailabilityForIdentity(await loadAllGroupAvailability(clubId, groupId), identity);
+}
+
+/** Coach read, GROUP-scoped: many identities from a single group read. */
+export async function resolveGroupAvailabilityForIdentities(clubId, groupId, identities = []) {
+  const bySession = await loadAllGroupAvailability(clubId, groupId);
+  return (Array.isArray(identities) ? identities : []).map(identity => ({
+    identity,
+    answers: resolveAvailabilityForIdentity(bySession, identity),
+  }));
+}
+
 /** Coach read: resolve many identities from a SINGLE read of the team's records. */
 export async function resolveAvailabilityForIdentities(teamId, identities = []) {
   const bySession = await loadAllAvailability(teamId);

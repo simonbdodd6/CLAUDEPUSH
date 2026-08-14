@@ -7712,7 +7712,9 @@
      * even when two fixtures share a date.
      */
     function matchCentreFixtureList() {
-      return (state.fixtures || [])
+      // Fixtures of the CURRENT operational group only (legacy records belong
+      // to the initial group; no context = unfiltered, exactly as before).
+      return contextFixtures()
         .filter(f => f && f.id && f.opposition)
         .slice()
         .sort((a, b) => String(a.date || '9999').localeCompare(String(b.date || '9999'))
@@ -7747,6 +7749,7 @@
       const label = d => { const l = mcFixtureDateLabel(d); return l ? ' · ' + l : ''; };
       return `
         <div id="mc-fixture-link-wrap" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+          ${typeof operationalGroupSwitcherHTML === 'function' ? operationalGroupSwitcherHTML() : ''}
           <div class="mc-fixnav" role="group" aria-label="Fixture navigation">
             <button type="button" class="mc-fixnav-btn" id="mc-fixture-prev" ${prevOk ? '' : 'disabled'}
               onclick="mcFixtureNav(-1)" aria-label="Previous fixture">‹ Prev</button>
@@ -11848,7 +11851,9 @@
       try {
         const res = await fetch('/api/publish?resource=fixtures', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'create', fixture, ...(allowDuplicate ? { allowDuplicate: true } : {}) }),
+          body: JSON.stringify({ action: 'create', fixture,
+            ...(state.operationalGroupId ? { groupId: state.operationalGroupId } : {}),
+            ...(allowDuplicate ? { allowDuplicate: true } : {}) }),
         });
         const data = await res.json().catch(() => ({}));
         if (res.status === 409 && data.duplicateOf && !allowDuplicate) {
@@ -11998,6 +12003,7 @@
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'import', confirmed: true,
+            ...(state.operationalGroupId ? { groupId: state.operationalGroupId } : {}),
             fixtures: usable.map(r => ({ fixture: r.fixture, decision: r.decision, allowDuplicate: r.decision === 'new' && !!r.duplicate })),
           }),
         });
@@ -12771,7 +12777,8 @@
     function coachAvailEvents() {
       ensureTrainingSchedule();
       return availabilityEventsForWeek(coachAvailWeek(), {
-        fixtures: (state.fixtures || []).map(normalizeFixture).filter(Boolean),
+        // The board shows the CURRENT operational group's fixtures only.
+        fixtures: contextFixtures().map(normalizeFixture).filter(Boolean),
         slots: (_trainingSchedule && _trainingSchedule.slots) || [],
         currentWeekStart: availWeekStart(availToday()),
       });
@@ -13378,7 +13385,8 @@
         const res = await fetch('/api/availability', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'clear_week', sessions }),
+          body: JSON.stringify({ action: 'clear_week', sessions,
+            ...(state.operationalGroupId ? { group: state.operationalGroupId } : {}) }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -14026,7 +14034,11 @@
       // "who can play THIS match?". Only with no linked fixture does the
       // legacy weekly game slot still answer, exactly as before.
       const gameSess    = sessions.find(s => s.id === 'game') || sessions[sessions.length - 1];
-      const gameRows    = mcFx ? sessionRows(String(mcFx.id)) : (gameSess ? sessionRows(gameSess.id) : []);
+      // Availability rows restricted to the operational group's players, so
+      // the KPI numbers and filter counts describe THIS group's fixture.
+      const _opPoolIds  = new Set(operationalPlayers().map(p => String(p.id)));
+      const gameRows    = (mcFx ? sessionRows(String(mcFx.id)) : (gameSess ? sessionRows(gameSess.id) : []))
+        .filter(r => _opPoolIds.has(String(r.player.id)));
       const availCount   = gameRows.filter(r => r.status === 'available').length;
       const maybeCount   = gameRows.filter(r => r.status === 'maybe').length;
       const unavailCount = gameRows.filter(r => r.status === 'unavailable').length;
@@ -14088,7 +14100,10 @@
       // records so one real member can't appear twice (duplicate-player fix).
       // Staff (Coach/Admin/Medical) stay visible in Members but are excluded
       // here so a coach can never be picked as a match-day player.
-      const matchdayPlayers  = canonicalVisiblePlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus || 'active') !== 'archived');
+      // The candidate pool is the CURRENT operational group's players (falls
+      // back to the whole roster for single-group clubs — today's behaviour).
+      // A U18 coach can never pick a Seniors player from here.
+      const matchdayPlayers  = operationalPlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus || 'active') !== 'archived');
       const selected         = matchdayPlayers.slice(0, 15);
       const fnames           = state.formationNames || {};
       const fphoto           = state.fphotoIds      || {};
@@ -15410,7 +15425,8 @@
     /** The dated events the player should answer for the viewed week. */
     function availEventsForViewedWeek() {
       return availabilityEventsForWeek(availViewedWeek(), {
-        fixtures: (state.fixtures || []).map(normalizeFixture).filter(Boolean),
+        // Group context: a U18 player answers U18 fixtures, never Seniors'.
+        fixtures: contextFixtures().map(normalizeFixture).filter(Boolean),
         slots: (_trainingSchedule && _trainingSchedule.slots) || [],
         currentWeekStart: availWeekStart(availToday()),
       });
@@ -18684,7 +18700,7 @@
       const opposition = v('adm-fx-opp');
       if (!opposition) { showToast('Enter the opposition first'); return; }
       state.fixtures = state.fixtures || [];
-      state.fixtures.push({ id: 'fx' + Date.now().toString(36), opposition, date: v('adm-fx-date'), time: v('adm-fx-time'), venue: v('adm-fx-venue'), homeAway: v('adm-fx-homeaway') || '' });
+      state.fixtures.push({ id: 'fx' + Date.now().toString(36), opposition, date: v('adm-fx-date'), time: v('adm-fx-time'), venue: v('adm-fx-venue'), homeAway: v('adm-fx-homeaway') || '', groupId: state.operationalGroupId || '' });
       saveState('Fixture added');
       ['adm-fx-opp','adm-fx-date','adm-fx-time','adm-fx-venue','adm-fx-homeaway'].forEach(id => { const el = document.getElementById(id); if (el) el.value = el.tagName === 'SELECT' ? '' : ''; });
       renderClubAdmin();
@@ -19449,6 +19465,9 @@
       return {
         id:                fx.id               || '',
         opposition:        fx.opposition        || '',
+        // The PLAYER GROUP this fixture belongs to; '' on legacy records,
+        // which belong to the club's initial group by the compatibility rule.
+        groupId:           fx.groupId           || '',
         date:              fx.date              || '',
         kickoffTime:       fx.kickoffTime       || fx.time || '',
         meetTime:          fx.meetTime          || '',
@@ -28484,7 +28503,11 @@
         // re-interprets raw records per published sessionId — it consumes the same
         // resolved model, so answers saved under stale / republished / custom
         // session ids attach identically to the player view.
-        const resolved = await fetch('/api/availability?resolveRoster=1')
+        // GROUP-scoped board read: name the operational group when one is in
+        // force. Single-group clubs may omit it — the server defaults safely.
+        const _availGroupQ = state.operationalGroupId
+          ? '&group=' + encodeURIComponent(state.operationalGroupId) : '';
+        const resolved = await fetch('/api/availability?resolveRoster=1' + _availGroupQ)
           .then(r => r.ok ? r.json() : { resolved: {} })
           .then(d => d.resolved || {})
           .catch(() => ({}));
@@ -29164,6 +29187,45 @@
 
     function operationalGroupName() {
       return operationalGroups().find(g => g.id === state.operationalGroupId)?.name || '';
+    }
+
+    /**
+     * Inline group-switcher markup for screens that hide the shared topbar
+     * (Match Centre, the availability board): the operational context must be
+     * visible and switchable exactly where group-scoped work happens. Empty
+     * unless this identity genuinely operates several groups.
+     */
+    function operationalGroupSwitcherHTML() {
+      const groups = operationalGroups();
+      if (state.activeView === 'player' || groups.length < 2) return '';
+      return '<label class="mc-groupsel" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">Group' +
+        '<select onchange="setOperationalGroup(this.value)" aria-label="Operational group" ' +
+        'style="min-height:38px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);font-size:12.5px;font-weight:700;padding:0 8px;max-width:180px;text-transform:none;letter-spacing:0">' +
+        groups.map(g => '<option value="' + esc(g.id) + '"' +
+          (g.id === state.operationalGroupId ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') +
+        '</select></label>';
+    }
+
+    // ── FIXTURE GROUP OWNERSHIP ──────────────────────────────────────────────
+    // A fixture with no groupId is a LEGACY record, and legacy club data
+    // belongs to the club's INITIAL group ('grp_initial' — production's
+    // Seniors). That is the same documented compatibility rule availability
+    // uses: deterministic ownership of pre-structure history, never a guess
+    // between newer groups. U18 and Women's start empty.
+    const CE_INITIAL_GROUP_ID = 'grp_initial';
+    function fixtureBelongsToGroup(fx, groupId) {
+      return (String(fx?.groupId || '').trim() || CE_INITIAL_GROUP_ID) === String(groupId || '');
+    }
+    /**
+     * The fixtures of the CURRENT operational context (coach: the group being
+     * administered; player: the group they play in). With no resolved context
+     * — legacy clients, anonymous states — the full list answers, exactly as
+     * before groups existed.
+     */
+    function contextFixtures() {
+      const gid = state.operationalGroupId;
+      if (!gid || !operationalGroups().length) return state.fixtures || [];
+      return (state.fixtures || []).filter(fx => fixtureBelongsToGroup(fx, gid));
     }
 
     function adoptIdentityPayload(d) {

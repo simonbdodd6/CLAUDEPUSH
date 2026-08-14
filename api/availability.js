@@ -1,17 +1,61 @@
 // Availability replies from notification actions or the player app.
 // Also handles dev-only seed/reset actions when DEV_LOGIN=true.
 import { load } from './_lib.js';
-import { loadAvailability, saveAvailability, loadAvailabilityForIdentity, resolveAvailabilityForIdentities } from './_availabilityStore.js';
-import { loadClubStructure, activeGroups } from './_structureStore.js';
-import { assertOperationalGroup, operationalGroupsFor } from './_accessScope.js';
+import { loadAvailability, saveAvailability, loadAvailabilityForIdentity, resolveAvailabilityForIdentities,
+         loadGroupAvailability, saveGroupAvailability,
+         loadGroupAvailabilityForIdentity, resolveGroupAvailabilityForIdentities } from './_availabilityStore.js';
+import { loadClubStructure, activeGroups, INITIAL_GROUP_ID } from './_structureStore.js';
+import { assertOperationalGroup, operationalGroupsFor, resolvePlayerGroup } from './_accessScope.js';
 import { setCors } from './_http.js';
 import { kvConfigured, kvGet } from './_kv.js';
 import { key } from './_keys.js';
-import { DEFAULT_TEAM, resolveSessionFromRequest, listIdentityState } from './_identityStore.js';
+import { DEFAULT_TEAM, resolveSessionFromRequest, listIdentityState, loadTeamMembers } from './_identityStore.js';
 import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
+}
+
+// ── GROUP CONTEXT (D1b Pass 3 — the storage split) ─────────────────────────
+// Availability is a GROUP resource. Two derivations, never interchangeable:
+//
+//   PLAYER WRITES/SELF-READS derive the group from the SESSION membership's
+//   playerGroupId (where the person PLAYS) — an arbitrary client group id is
+//   never trusted, and coaching scope never manufactures a player group. A
+//   membership that predates groups resolves through resolvePlayerGroup's
+//   single-group rule, else to the INITIAL group — the documented owner of
+//   all pre-structure club data. That is compatibility, not a guess: the
+//   club's history genuinely belongs to its original (Seniors) group.
+//
+//   COACH READS/ACTIONS name a group explicitly (?group=) and are asserted
+//   against the caller's staff scope; with exactly one operable group it is
+//   the default, so today's Seniors-only clients keep working unchanged.
+
+/** The group whose keyspace a PLAYER identity reads and writes. */
+async function playerGroupForIdentity(clubId, identity) {
+  const candidates = [identity?.userId, identity?.playerId, identity?.legacyPlayerId]
+    .map(v => String(v || '').trim()).filter(Boolean);
+  const [structure, members] = await Promise.all([loadClubStructure(clubId), loadTeamMembers()]);
+  const member = members.find(m =>
+    String(m.teamId) === String(clubId) && m.status === 'active' &&
+    candidates.some(c => String(m.userId) === c));
+  const { groupId } = resolvePlayerGroup(member || {}, structure);
+  return groupId || INITIAL_GROUP_ID;
+}
+
+/** The group a COACH request operates on: asserted, or the single default. */
+async function coachGroupForRequest(sessionContext, requestedGroup) {
+  const structure = await loadClubStructure(tenantTeamId(sessionContext));
+  const requested = String(requestedGroup || '').trim();
+  if (requested) {
+    const group = assertOperationalGroup(sessionContext, structure, requested, { as: 'staff' });
+    return group.id;
+  }
+  const mine = operationalGroupsFor(sessionContext?.teamMember, structure, { as: 'staff' });
+  if (mine.length === 1) return mine[0].id;
+  const e = new Error('Choose which group to view');
+  e.status = 400;
+  throw e;
 }
 
 const RESPONSES = new Set(['available', 'unavailable', 'maybe']);
@@ -159,7 +203,11 @@ export default async function handler(req, res) {
       // the read to that list made this self-read return {} even though the answer
       // was persisted. Scanning by identity finds the latest saved answer wherever
       // it lives. Write path and storage format are unchanged.
-      const found = await loadAvailabilityForIdentity(tenantTeamId(sessionContext), identity);
+      // GROUP-scoped self-read: a player's answers live in THEIR group's
+      // keyspace (with the initial group's legacy fallback inside the loader).
+      const clubId = tenantTeamId(sessionContext);
+      const myGroup = await playerGroupForIdentity(clubId, identity);
+      const found = await loadGroupAvailabilityForIdentity(clubId, myGroup, identity);
       const result = {};
       for (const [sid, v] of Object.entries(found)) result[sid] = { response: v.response, reason: v.reason || '' };
       return res.status(200).json({ responses: result });
@@ -175,11 +223,17 @@ export default async function handler(req, res) {
       let tenant;
       try { tenant = await requireTenantPermission(req, PERM.REPORTS); }
       catch (error) { return sendAuthError(res, error); }
+      // GROUP-scoped board: the caller names (or single-defaults to) an
+      // operable group and reads exactly that group's records. A Seniors
+      // answer can never surface on the U18 board, and vice versa.
+      let boardGroup;
+      try { boardGroup = await coachGroupForRequest(tenant, req.query?.group); }
+      catch (error) { return sendAuthError(res, error); }
       const roster = await listIdentityState(tenant.teamId).catch(() => ({ player_profiles: [] }));
       const identities = (roster.player_profiles || []).map(p => ({
         userId: p.userId, playerId: p.userId, legacyPlayerId: p.legacyPlayerId || '',
       }));
-      const resolvedList = await resolveAvailabilityForIdentities(tenant.teamId, identities);
+      const resolvedList = await resolveGroupAvailabilityForIdentities(tenant.teamId, boardGroup, identities);
       const resolved = {};
       resolvedList.forEach(({ identity, answers }) => {
         if (!answers || !Object.keys(answers).length) return;
@@ -198,9 +252,12 @@ export default async function handler(req, res) {
     }
     const sessionId = req.query?.sessionId || 'game';
     if (!validSessionId(sessionId)) return res.status(400).json({ error: 'Invalid sessionId' });
-    // Tenant-scoped read: only the caller's own club records (plus the default
-    // club's legacy flat keys when the caller IS the default club).
-    const responses = await loadAvailability(rawTenant.teamId, sessionId);
+    // GROUP-scoped read (legacy flat keys reachable only through the initial
+    // group's documented fallback inside the loader).
+    let listGroup;
+    try { listGroup = await coachGroupForRequest(rawTenant, req.query?.group); }
+    catch (error) { return sendAuthError(res, error); }
+    const responses = await loadGroupAvailability(rawTenant.teamId, listGroup, sessionId);
     const list = Object.entries(responses).map(([k, value]) => ({
       key:            k,
       label:          typeof value === 'string' ? k     : value?.label          || k,
@@ -253,13 +310,12 @@ export default async function handler(req, res) {
 
       const ids = Array.isArray(clearSessions) && clearSessions.length ? clearSessions : await activeSessionIds(coachSession.teamId);
       const validIds = ids.filter(id => validSessionId(id));
-      // NOTE: the write stays on the CLUB-scoped key for now. The read path
-      // (GET below) still reads club-scoped, so writing a group key here would
-      // clear something nothing reads — the board would look untouched. The
-      // storage split has to move reads and writes together, which is the
-      // remaining Pass 3 work. What IS fixed here is the authorisation: a
-      // caller can no longer act on a group they do not hold.
-      await Promise.all(validIds.map(sid => saveAvailability(coachSession.teamId, sid, {})));
+      // The storage split (D1b Pass 3): reads and writes both live on the
+      // GROUP key now, so clearing writes empty group records — clearing U18
+      // can never blank the Seniors board. For the INITIAL group an empty
+      // group-scoped record also shadows the legacy club/flat fallback, so
+      // its history disappears from the board without being destroyed.
+      await Promise.all(validIds.map(sid => saveGroupAvailability(coachSession.teamId, group.id, sid, {})));
       return res.status(200).json({ ok: true, action: 'clear_week', cleared: validIds, group: { id: group.id, name: group.name } });
     }
 
@@ -278,8 +334,10 @@ export default async function handler(req, res) {
 
     // A signed-in player writes into their OWN club's keyspace; the legacy
     // subscription path (no session) belongs to the default club by definition.
+    // The GROUP comes from the writer's own membership — never from the client.
     const writeTeamId = tenantTeamId(sessionContext) || DEFAULT_TEAM.id;
-    const responses = await loadAvailability(writeTeamId, sessionId);
+    const writeGroup = await playerGroupForIdentity(writeTeamId, identity);
+    const responses = await loadGroupAvailability(writeTeamId, writeGroup, sessionId);
     responses[identity.key] = {
       response,
       reason: safeReason,
@@ -289,7 +347,7 @@ export default async function handler(req, res) {
       playerId: identity.playerId,
       legacyPlayerId: identity.legacyPlayerId,
     };
-    await saveAvailability(writeTeamId, sessionId, responses);
+    await saveGroupAvailability(writeTeamId, writeGroup, sessionId, responses);
     return res.status(200).json({ ok: true, label: identity.label, userId: identity.userId, playerId: identity.playerId, response, reason: safeReason, sessionId });
   }
 

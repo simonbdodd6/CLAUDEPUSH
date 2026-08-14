@@ -72,13 +72,13 @@ function seed() {
   ] }));
   kv.set(`app:structure:${CLUB}`, JSON.stringify({ version: 1,
     groups: [
-      { id: 'grp_seniors', name: 'Seniors', type: 'general', status: 'active' },
+      { id: 'grp_initial', name: 'Seniors', type: 'general', status: 'active' },
       { id: 'grp_u18',     name: 'U18',     type: 'general', status: 'active' },
     ],
     teams: [
-      { id: PREM, groupId: 'grp_seniors', name: 'Premier',             status: 'active' },
-      { id: DEV,  groupId: 'grp_seniors', name: 'Premier Development', status: 'active' },
-      { id: OLD,  groupId: 'grp_seniors', name: 'Old Boys',            status: 'archived' },
+      { id: PREM, groupId: 'grp_initial', name: 'Premier',             status: 'active' },
+      { id: DEV,  groupId: 'grp_initial', name: 'Premier Development', status: 'active' },
+      { id: OLD,  groupId: 'grp_initial', name: 'Old Boys',            status: 'archived' },
       { id: 'team_u18', groupId: 'grp_u18', name: 'U18 XV',            status: 'active' },
     ] }));
   kv.set(`app:structure:${OTHER}`, JSON.stringify({ version: 1,
@@ -298,7 +298,7 @@ test('hostile side ids are percent-encoded and cannot cross key boundaries', asy
   seed(); await login('u-coach');
   const NASTY = ['a:squad', 'x/y', '100%', 'front row', 'équipe–α'];
   const st = JSON.parse(kv.get(`app:structure:${CLUB}`));
-  NASTY.forEach((id, i) => st.teams.push({ id, groupId: 'grp_seniors', name: 'N' + i, status: 'active' }));
+  NASTY.forEach((id, i) => st.teams.push({ id, groupId: 'grp_initial', name: 'N' + i, status: 'active' }));
   kv.set(`app:structure:${CLUB}`, JSON.stringify(st));
 
   for (const id of NASTY) {
@@ -321,7 +321,7 @@ test('a side-scoped squad alone protects its fixture from import updates', async
   const r = res();
   await publishHandler({ method: 'POST', query: { resource: 'fixtures' },
     headers: { cookie: cookies.get('u-coach') || '' },
-    body: { action: 'import', confirmed: true,
+    body: { action: 'import', confirmed: true, groupId: 'grp_initial',   // multi-group club: imports name their group
       fixtures: [{ decision: 'update', fixture: { opposition: 'Amstelveense', date: '2026-08-29', venue: 'Moved' } }] } }, r);
   assert.equal(r.result.body.summary.blocked, 1, 'the side sheet is real squad work');
 });

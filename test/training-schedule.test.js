@@ -265,7 +265,7 @@ test('editing the schedule leaves session ids, availability and publications int
   // A real availability response against the legacy 'tue' session.
   const answered = await avail('POST', {}, { sessionId: 'tue', response: 'available' }, ck(player.session));
   assert.equal(answered.statusCode, 200);
-  const availBefore = kv.get(`app:availability:${A.team.id}:tue`);
+  const availBefore = kv.get(`app:availability:${A.team.id}:group:grp_initial:tue`);   // D1b Pass 3: group-scoped
 
   // A published coach + player training snapshot.
   await pub('POST', { resource: 'training', audience: 'coach' },
@@ -285,8 +285,8 @@ test('editing the schedule leaves session ids, availability and publications int
   const sessions = JSON.parse(kv.get(`app:publish:${A.team.id}:sessions`));
   assert.deepEqual(sessions.map(s => s.id), ['tue', 'thu', 'game'], 'session ids unchanged');
   const availKeys = [...kv.keys()].filter(k => k.startsWith(`app:availability:${A.team.id}:`));
-  assert.deepEqual(availKeys, [`app:availability:${A.team.id}:tue`], 'no new availability sessions');
-  assert.equal(kv.get(`app:availability:${A.team.id}:tue`), availBefore, 'availability responses untouched');
+  assert.deepEqual(availKeys, [`app:availability:${A.team.id}:group:grp_initial:tue`], 'no new availability sessions');
+  assert.equal(kv.get(`app:availability:${A.team.id}:group:grp_initial:tue`), availBefore, 'availability responses untouched');
 
   // The player's answer still reads back.
   const board = await avail('GET', { sessionId: 'tue' }, null, ck(A.session));
