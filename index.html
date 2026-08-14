@@ -5374,6 +5374,9 @@
       activeCoachSection: "overview",
       activePlayerSection: "home",
       selectedPlayerId: "",
+      // Who CHOSE selectedPlayerId. A staff preview only counts when the
+      // current authenticated user made it — see staffPreviewPlayerId().
+      selectedPlayerOwnerId: "",
       selectedMessagePlayerId: "",
       selectedChatId: "coach",
       currentUserId: "",
@@ -6472,15 +6475,62 @@
       parentGuardianName:"", parentGuardianEmail:"",
       registrationStatus:"unregistered", federationId:"", joinedDate:"", archivedDate:null,
       membershipPlanId:"", consentFormSignedAt:null, transferHistory:[], documentIds:[] };
+    /**
+     * The authenticated user's OWN roster record, or null. Matching is by
+     * exact identity keys only — the user's id against the record's id/userId,
+     * or an exact email — never display-name similarity, never list position.
+     * A staff account with no player membership resolves to null, not to
+     * somebody else's profile.
+     */
+    function ownPlayerRecordForUser(user) {
+      if (!user) return null;
+      const uid = String(user.id || '').trim();
+      const email = identityEmailKey(user.email || '');
+      if (!uid && !email) return null;
+      return canonicalVisiblePlayers().find(p =>
+        (uid && (String(p.userId || '') === uid || String(p.id || '') === uid)) ||
+        (email && identityEmailKey(p.email || '') === email)
+      ) || null;
+    }
+
+    /**
+     * The staff preview selection, honoured ONLY when the CURRENT
+     * authenticated user made it: the selection is stamped with the chooser's
+     * userId, so a stale id left behind by a previous account on this browser
+     * (or by any pre-stamp build) is residue, not a choice, and is ignored.
+     */
+    function staffPreviewPlayerId() {
+      return String(state.selectedPlayerOwnerId || '') === String(state.currentUserId || '')
+        ? String(state.selectedPlayerId || '') : '';
+    }
+
+    /**
+     * The player identity the player-facing views render.
+     *
+     * A player account resolves to its own canonical record. A staff account
+     * resolves an EXPLICIT owned preview selection, else their own record
+     * when they are genuinely also a player, else the honest empty player.
+     * There is NO first-roster-player fallback: that is exactly how a coach
+     * with no player membership was greeted with another member's profile.
+     */
     function getPlayer()  {
       const user = currentUser();
-      const id   = user?.role === "player" ? canonicalPlayerIdForUser(user) : state.selectedPlayerId;
       const players = canonicalVisiblePlayers();
-      return players.find(p =>
-        String(p.id || '') === String(id || '') ||
-        String(p.userId || '') === String(id || '') ||
-        String(resolveRosterMessagingId(p, state.users)) === String(id || '')
-      ) || players[0] || EMPTY_PLAYER;
+      if (user?.role === "player") {
+        const id = canonicalPlayerIdForUser(user);
+        return players.find(p =>
+          String(p.id || '') === String(id || '') ||
+          String(p.userId || '') === String(id || '') ||
+          String(resolveRosterMessagingId(p, state.users)) === String(id || '')
+        ) || ownPlayerRecordForUser(user) || EMPTY_PLAYER;
+      }
+      const sel = staffPreviewPlayerId();
+      const chosen = sel ? players.find(p =>
+        String(p.id || '') === sel ||
+        String(p.userId || '') === sel ||
+        String(resolveRosterMessagingId(p, state.users)) === sel
+      ) : null;
+      return chosen || ownPlayerRecordForUser(user) || EMPTY_PLAYER;
     }
     function currentUser()  { return canonicalAccountForUserId(state.currentUserId) || state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
     function isCoach()      { const r = currentUser()?.role; return r === "coach" || r === "admin" || r === "medical"; }
@@ -6488,6 +6538,17 @@
     const _AVATAR_COLORS = ['#4f46e5','#7c3aed','#db2777','#dc2626','#d97706','#16a34a','#0891b2','#4338ca','#b45309','#7e22ce'];
     function playerAvatarColor(key) { let h=0; for(let i=0;i<key.length;i++) h=(h*31+key.charCodeAt(i))&0x7fffffff; return _AVATAR_COLORS[h%_AVATAR_COLORS.length]; }
     function noSquadMsg() {
+      // A staff account with NO linked player profile gets the honest truth,
+      // not "no players added" (the club may have 45) and never somebody
+      // else's profile. The roster-empty message stays for genuinely empty clubs.
+      if (isCoach() && canonicalVisiblePlayers().length > 0) {
+        return `<div class="card" style="text-align:center;padding:40px 20px">
+          <p style="font-size:36px;margin:0">🪪</p>
+          <p style="font-weight:800;margin:10px 0 6px;font-size:16px;color:var(--ink)">You're signed in as staff</p>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:18px">No player profile is linked to your account, so there is nothing personal to show here. You can preview a player's view from the selector in Player Week.</p>
+          <button class="btn primary" type="button" onclick="setView('coach')">Back to coach view →</button>
+        </div>`;
+      }
       return `<div class="card" style="text-align:center;padding:40px 20px">
         <p style="font-size:36px;margin:0"></p>
         <p style="font-weight:800;margin:10px 0 6px;font-size:16px;color:var(--ink)">No players added yet</p>
@@ -9257,6 +9318,10 @@
             existingUser.email = existingUser.email || (data.user.email || '');
           }
         }
+        // A different person may have used this browser before this login —
+        // their preview selection, legacy inbox and unread caches are THEIRS,
+        // not this account's. Staff logins also start with no preview selected.
+        if (String(state.currentUserId || '') !== String(data.user.id)) resetIdentityScopedState();
         state.currentUserId = data.user.id;
         state.activeView = isStaffLogin ? 'coach' : 'player';
         if (isStaffLogin) {
@@ -9581,15 +9646,20 @@
       if (view === "coach" && !isCoach()) return showToast("Player accounts cannot open coach tools");
       state.activeView = view;
       if (view === 'player' && isCoach()) {
+        // A staff account entering the player view resolves an EXPLICIT owned
+        // preview selection, else their OWN player record (dual-role), else
+        // nobody. Never the first roster player — that silently rendered
+        // another member's profile under this account's name.
         const players = canonicalVisiblePlayers();
-        if (players.length) {
-          const resolved = players.find(p =>
-            String(p.id || '') === String(state.selectedPlayerId || '') ||
-            String(p.userId || '') === String(state.selectedPlayerId || '') ||
-            String(resolveRosterMessagingId(p, state.users)) === String(state.selectedPlayerId || '')
-          );
-          state.selectedPlayerId = resolved ? resolved.id : players[0].id;
-        }
+        const sel = staffPreviewPlayerId();
+        const resolved = sel ? players.find(p =>
+          String(p.id || '') === sel ||
+          String(p.userId || '') === sel ||
+          String(resolveRosterMessagingId(p, state.users)) === sel
+        ) : null;
+        const own = resolved ? null : ownPlayerRecordForUser(currentUser());
+        state.selectedPlayerId = resolved ? resolved.id : (own ? own.id : '');
+        state.selectedPlayerOwnerId = state.currentUserId || '';
       }
       saveState("View saved");
       render();
@@ -9630,6 +9700,15 @@
       state.activeView = view;
       if (view === "coach")  state.activeCoachSection  = section;
       if (view === "player") state.activePlayerSection = section;
+      // Opening Messages READS the coach inbox. The legacy local inbox that
+      // used to hold these records is hidden in the Beta UI, so its unread
+      // flags could otherwise never be cleared — leaving a permanent phantom
+      // count on the overview tiles and home card every login.
+      if (view === "coach" && section === "messages" && isCoach() &&
+          (state.messages || []).some(m => m.unread && m.to === "Coach")) {
+        state.messages = state.messages.map(m =>
+          m.to === "Coach" ? { ...m, unread: false, delivery: "read by coach" } : m);
+      }
       saveState("Tab saved");
       render();
     }
@@ -9676,6 +9755,7 @@
         _serverSessionReadyFor = userId;
         _serverAuthState = 'authed';
         adoptIdentityPayload(data);
+        if (String(state.currentUserId || '') !== String(userId)) resetIdentityScopedState();
         state.currentUserId = userId;
         state.activeView = isStaff ? 'coach' : 'player';
         if (isStaff) {
@@ -14693,8 +14773,16 @@
       const player = getPlayer();
       if (!isCoach()) return `<label>Player profile<input value="${player.name}" disabled></label>`;
       const players = canonicalVisiblePlayers();
-      const effectiveId = player?.id || players[0]?.id || '';
-      return `<label>Player profile<select onchange="state.selectedPlayerId=this.value;saveState('Player profile saved');render();">
+      // No silent default: until the coach explicitly chooses, the selector
+      // honestly shows that no player is being previewed.
+      const effectiveId = player?.id || '';
+      if (!effectiveId) {
+        return `<label>Player profile<select onchange="state.selectedPlayerId=this.value;state.selectedPlayerOwnerId=state.currentUserId||'';saveState('Player profile saved');render();">
+          <option value="" selected>— Select a player to preview —</option>
+          ${players.map(p => `<option value="${p.id}">${p.name}</option>`).join("")}
+        </select></label>`;
+      }
+      return `<label>Player profile<select onchange="state.selectedPlayerId=this.value;state.selectedPlayerOwnerId=state.currentUserId||'';saveState('Player profile saved');render();">
         ${players.map(p => `<option value="${p.id}" ${p.id===effectiveId?"selected":""}>${p.name}</option>`).join("")}
       </select></label>`;
     }
@@ -15411,6 +15499,7 @@
         // Local identity: the new coach IS this device's user now.
         state.users = (state.users || []).filter(u => u.id !== data.user.id);
         state.users.push({ id: data.user.id, role: 'coach', name: data.user.displayName || d.name, email: data.user.email || d.email, phone: '', pin: '' });
+        if (String(state.currentUserId || '') !== String(data.user.id)) resetIdentityScopedState();
         state.currentUserId = data.user.id;
         state.activeView = 'coach';
         state.activeCoachSection = 'overview';
@@ -18001,6 +18090,10 @@
       // sign-out confirmation text: "Your club data stays saved locally."
       const prevId = state.currentUserId;
       state.currentUserId = '';
+      // Identity-scoped caches belong to the person signing out — the next
+      // account on this browser must not inherit their preview selection,
+      // legacy inbox or unread badge. Club data stays, as promised above.
+      resetIdentityScopedState();
       _myPermissions = null;
       _myMemberships = [];
       _serverSessionReadyFor = '';
@@ -20647,11 +20740,16 @@
       const clubName= state.clubName || 'your team';
 
       if (!player.id) {
-        el.innerHTML = '<div class="card" style="text-align:center;padding:40px 20px;max-width:560px;margin:0 auto">' +
-          '<div style="font-size:40px;margin-bottom:12px"></div>' +
-          '<div style="font-size:16px;font-weight:700;margin-bottom:8px">Welcome to CoachEasier</div>' +
-          '<div style="font-size:13px;color:var(--muted)">Your coach will add you to the squad shortly.</div>' +
-        '</div>';
+        // Staff with no linked player profile get the honest staff message
+        // (noSquadMsg handles that case); a real player still waiting on the
+        // roster keeps the welcome copy.
+        el.innerHTML = isCoach()
+          ? '<div style="max-width:560px;margin:0 auto">' + noSquadMsg() + '</div>'
+          : '<div class="card" style="text-align:center;padding:40px 20px;max-width:560px;margin:0 auto">' +
+            '<div style="font-size:40px;margin-bottom:12px"></div>' +
+            '<div style="font-size:16px;font-weight:700;margin-bottom:8px">Welcome to CoachEasier</div>' +
+            '<div style="font-size:13px;color:var(--muted)">Your coach will add you to the squad shortly.</div>' +
+          '</div>';
         return;
       }
 
@@ -20669,6 +20767,20 @@
 
       const todayStr = new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
       const firstName = (player.name || 'Player').split(' ')[0];
+      // "Hi, X" is a personal greeting — it is only honest when X IS the
+      // authenticated person. A staff member explicitly previewing somebody
+      // else's portal gets a labelled preview header instead, so two names can
+      // never silently claim the same session.
+      const _greetUser = currentUser();
+      const _isOwnPortal = !isCoach() || (player && (
+        String(player.userId || '') === String(_greetUser?.id || '') ||
+        String(player.id || '') === String(_greetUser?.id || '') ||
+        (identityEmailKey(player.email || '') &&
+         identityEmailKey(player.email || '') === identityEmailKey(_greetUser?.email || ''))));
+      const greetingHtml = _isOwnPortal
+        ? '<h1>Hi, ' + esc(firstName) + '</h1>'
+        : '<h1 style="font-size:20px">Previewing: ' + esc(player.name || 'Player') + '</h1>' +
+          '<p style="font-size:12px;color:var(--amber,#fbbf24);font-weight:700;margin:2px 0 0">Staff preview — this is what ' + esc(firstName) + ' sees</p>';
 
       // Helper for consistent small card building
       function pCard(content, onclick) {
@@ -20867,7 +20979,7 @@
           '<div class="training-hero" style="margin:0 0 4px">' +
             '<div>' +
               '<div class="eyebrow">' + esc(clubName) + '</div>' +
-              '<h1>Hi, ' + esc(firstName) + '</h1>' +
+              greetingHtml +
               '<p style="font-size:13px;color:var(--muted)">' + esc(todayStr) + '</p>' +
             '</div>' +
           '</div>' +
@@ -28661,6 +28773,24 @@
       window.location.replace('/');
     }
 
+    /**
+     * Drop every cached value that belongs to a PERSON rather than the club,
+     * so a browser previously used by another account can never leak that
+     * account's player identity or unread-message state into this login.
+     * Club-shared data (roster, fixtures, schedule, training plans) stays —
+     * it is club-scoped, and sign-out promises to keep it.
+     */
+    function resetIdentityScopedState() {
+      state.selectedPlayerId = '';
+      state.selectedPlayerOwnerId = '';
+      state.selectedMessagePlayerId = '';
+      state.selectedChatId = null;
+      state.messages = [];                 // legacy local inbox is per-person
+      _chatConversations = [];
+      _chatLastPoll = {};
+      chatSetUnreadTotal(0);
+    }
+
     // Tracks whether the SERVER recognises this device. Local state alone must
     // never look like a production login — when the server says no session, a
     // banner makes the offline/stale status unmissable.
@@ -29328,15 +29458,17 @@
             } else {
               state.users.push({ id: sid, role, name, email, phone: '', pin: '' });
             }
-            // Adopt the server user as current — server cookie is the authority.
-            // Always update when current is empty or the legacy demo placeholder;
-            // also reconcile when the stored ID already matches (role may have changed).
+            // Adopt the server user as current — the server cookie is THE
+            // authority, unconditionally. A different locally-stored id is
+            // residue from a previous account on this browser (the exact state
+            // that let one person's app render another person's player profile
+            // and unread badge), so adopting also drops every identity-scoped
+            // cache. Club data stays.
             const cur = state.currentUserId;
-            if (!cur || cur === 'coach-demo' || cur === sid) {
-              if (state.currentUserId !== sid) {
-                state.currentUserId = sid;
-                saveState('Server session restored');
-              }
+            if (cur !== sid) {
+              if (cur && cur !== 'coach-demo') resetIdentityScopedState();
+              state.currentUserId = sid;
+              saveState('Server session restored');
             }
             // Fresh PLAYER client (e.g. an iOS Home Screen PWA with its own empty
             // localStorage): synthesise the player's roster record from this server
@@ -30249,6 +30381,7 @@
           applyApprovedIdentityLocally(data);
         }
 
+        if (String(state.currentUserId || '') !== String(data.user.id)) resetIdentityScopedState();
         state.currentUserId = data.user.id;
         state.activeView = isStaffRole ? 'coach' : 'player';
         if (isStaffRole) {
