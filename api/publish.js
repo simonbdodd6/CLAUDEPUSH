@@ -76,6 +76,79 @@ const fxSeg = fixtureId => encodeURIComponent(String(fixtureId));
 function fixtureSquadKey(teamId, fixtureId) { return key(`publish:${teamId}:fixture:${fxSeg(fixtureId)}:squad`); }
 function fixtureDraftKey(teamId, fixtureId, userId) { return key(`publish:${teamId}:fixture:${fxSeg(fixtureId)}:draft:${encodeURIComponent(String(userId))}`); }
 
+// ── SIDE-SCOPED STORAGE (dual Premier / Premier Development) ─────────────
+// A club structure TEAM ("side") is a real storage dimension: the same
+// Seniors fixture can hold one sheet per side, drawn from the same player
+// pool. The side id is a structure team id — NOT the tenant teamId — and is
+// validated against the club's own structure before any key is built, then
+// percent-encoded so it can never escape its segment. Legacy sideless keys
+// remain readable, explicitly unassigned to either side.
+function fixtureSideSquadKey(teamId, fixtureId, sideId) {
+  return key(`publish:${teamId}:fixture:${fxSeg(fixtureId)}:side:${fxSeg(sideId)}:squad`);
+}
+function fixtureSideDraftKey(teamId, fixtureId, sideId, userId) {
+  return key(`publish:${teamId}:fixture:${fxSeg(fixtureId)}:side:${fxSeg(sideId)}:draft:${encodeURIComponent(String(userId))}`);
+}
+
+/**
+ * The side must be one of THIS club's ACTIVE structure teams. Same strength
+ * as fixture validation: a forged, foreign, unknown or archived id is 404 and
+ * never becomes part of a storage key. '' is valid and means "no side" —
+ * every legacy client and single-team club stays on the sideless paths.
+ */
+async function assertSideBelongsToClub(teamId, sideId) {
+  const id = String(sideId || '').trim();
+  if (!id) return '';
+  const structure = await loadClubStructure(teamId);
+  const team = (structure?.teams || []).find(t => String(t.id) === id);
+  if (!team || team.status !== 'active') {
+    const e = new Error('Unknown team for this club');
+    e.status = 404;
+    throw e;
+  }
+  return id;
+}
+
+function sideNameFrom(structure, sideId) {
+  return (structure?.teams || []).find(t => String(t.id) === String(sideId))?.name || '';
+}
+
+/**
+ * Every player-facing published sheet for ONE fixture: each published
+ * side-scoped record (labelled with its real team name), then the legacy
+ * sideless record as an explicitly UNASSIGNED sheet — it is never
+ * heuristically attributed to a side. Read-only: never rewrites anything.
+ */
+async function publishedSheetsForFixture(teamId, fixtureId) {
+  const sheets = [];
+  const structure = await loadClubStructure(teamId);
+  const sideKeys = await kvScanKeys(
+    `${APP_PREFIX}:publish:${teamId}:fixture:${fxSeg(fixtureId)}:side:*:squad`);
+  for (const k of sideKeys) {
+    const m = k.match(/:side:([^:]+):squad$/);
+    if (!m) continue;
+    let sideId; try { sideId = decodeURIComponent(m[1]); } catch { sideId = m[1]; }
+    const squad = await kvGet(k);
+    if (!squad || typeof squad !== 'object' || !squad.published) continue;
+    sheets.push({ fixtureId: String(fixtureId), sideId,
+                  teamName: sideNameFrom(structure, sideId) || 'Team', squad });
+  }
+  sheets.sort((a, b) => String(a.teamName).localeCompare(String(b.teamName)));
+  const legacy = (await kvGet(fixtureSquadKey(teamId, fixtureId))) || null;
+  if (legacy && typeof legacy === 'object' && legacy.published) {
+    sheets.push({ fixtureId: String(fixtureId), sideId: '', teamName: '', squad: legacy });
+  } else {
+    // Pre-Pass-A compatibility: the CLUB-WIDE record still answers for the one
+    // fixture it names, exactly as the old single-squad read did.
+    const clubWide = (await kvGet(squadKey(teamId))) || null;
+    if (clubWide && typeof clubWide === 'object' && clubWide.published &&
+        String(clubWide.fixtureId || '') === String(fixtureId)) {
+      sheets.push({ fixtureId: String(fixtureId), sideId: '', teamName: '', squad: clubWide });
+    }
+  }
+  return sheets;
+}
+
 // ── WHAT PLAYERS SEE ─────────────────────────────────────────────────────
 // One record decides this, and it is only ever written by a coach ACTING:
 // publishing chooses a squad, withdrawing chooses none. Nothing is inferred
@@ -122,6 +195,25 @@ function writeSquadPointer(teamId, mode, fixtureId, userId) {
  * players are currently seeing — withdrawing some other fixture must not blank
  * a board it was never showing.
  */
+/**
+ * After a withdrawal touching one fixture: players move to 'none' ONLY when
+ * that fixture has nothing published left. If the OTHER side's sheet is still
+ * published, the pointer keeps naming the fixture and that sheet stays on
+ * show — withdrawing Premier must never take Premier Development down.
+ */
+async function settlePointerAfterWithdraw(teamId, fixtureId, userId) {
+  const pointer = await readSquadPointer(teamId);
+  if (!pointer || pointer.mode !== 'fixture' || pointer.fixtureId !== String(fixtureId)) return;
+  const remaining = await publishedSheetsForFixture(teamId, fixtureId);
+  if (!remaining.length) await writeSquadPointer(teamId, 'none', '', userId);
+}
+
+/** Withdraw ONE side's sheet. Real deletion; the sibling side is untouched. */
+async function retireSideSquad(teamId, fixtureId, sideId, userId) {
+  await kvDel(fixtureSideSquadKey(teamId, fixtureId, sideId));
+  await settlePointerAfterWithdraw(teamId, fixtureId, userId);
+}
+
 async function retireFixtureSquad(teamId, fixtureId, userId) {
   await kvDel(fixtureSquadKey(teamId, fixtureId));
 
@@ -133,10 +225,13 @@ async function retireFixtureSquad(teamId, fixtureId, userId) {
   // or it would keep answering for a squad that no longer exists.
   if (legacyNamesIt) await kvDel(squadKey(teamId));
 
-  const wasOnShow = pointer
-    ? (pointer.mode === 'fixture' && pointer.fixtureId === fixtureId)
-    : Boolean(legacyNamesIt);          // no pointer yet: legacy was what players saw
-  if (wasOnShow) await writeSquadPointer(teamId, 'none', '', userId);
+  if (pointer) {
+    // A still-published SIDE sheet keeps the fixture on show (settle checks).
+    await settlePointerAfterWithdraw(teamId, fixtureId, userId);
+  } else if (legacyNamesIt) {
+    // no pointer yet: the legacy record was what players saw
+    await writeSquadPointer(teamId, 'none', '', userId);
+  }
 }
 
 /** Withdraw the unlinked club-wide squad. Players are left with nothing. */
@@ -236,6 +331,10 @@ function sanitiseSquad(raw) {
     // identifier, it does not authorise one. Absent on every legacy record,
     // and absent is a valid state: nothing is inferred to fill it.
     fixtureId:     String(raw.fixtureId || ''),
+    // The structure team (side) this sheet belongs to — Premier vs Premier
+    // Development. Same contract as fixtureId: boundary-validated, absent on
+    // every legacy record, and absent stays absent.
+    sideId:        String(raw.sideId || ''),
   };
 }
 
@@ -689,7 +788,9 @@ async function downstreamContext(teamId) {
   for (const k of scopedSquadKeys) {
     const stored = await kvGet(k);
     if (!stored || typeof stored !== 'object') continue;
-    const m = k.match(/:fixture:([^:]+):squad$/);
+    // Sideless (fixture:<id>:squad) AND side-scoped (fixture:<id>:side:<s>:squad)
+    // records both protect their fixture from being edited out from under them.
+    const m = k.match(/:fixture:([^:]+):squad$/) || k.match(/:fixture:([^:]+):side:[^:]+:squad$/);
     if (!m || !m[1]) continue;
     let id; try { id = decodeURIComponent(m[1]); } catch { id = m[1]; }
     selectionIds.add(id);
@@ -1427,6 +1528,33 @@ async function availabilityCheckHandler(req, res) {
   return res.status(200).json({ ok: true, report, weeklyAvailability: club?.weeklyAvailability || null });
 }
 
+// ── Match-day teams sub-resource ──────────────────────────────────────────
+// The MINIMAL team metadata a Match Centre coach needs in order to know which
+// side they are selecting for: id, name and group of the ACTIVE teams inside
+// the groups this identity may OPERATE as staff — nothing else. Gated on the
+// Match Centre capability (PUBLISH_SQUADS), deliberately NOT on
+// MANAGE_PLAYERS: knowing which team you are picking is not managing the
+// roster, and the full structure read (with member counts and staff lists)
+// stays behind its own permission. Scope-aware by construction: a group-
+// scoped coach receives only their groups' teams; players and other clubs
+// get nothing.
+async function matchdayTeamsHandler(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
+  let session;
+  try {
+    session = await requireTenantPermission(req, PERM.PUBLISH_SQUADS);
+  } catch (error) { return sendAuthError(res, error); }
+  const structure = await loadClubStructure(session.teamId);
+  const groups = operationalGroupsFor(session.teamMember || {}, structure, { as: 'staff' })
+    .filter(g => g.status === 'active');
+  const groupIds = new Set(groups.map(g => String(g.id)));
+  const teams = (structure?.teams || [])
+    .filter(t => t.status === 'active' && groupIds.has(String(t.groupId)))
+    .map(t => ({ id: t.id, name: t.name, groupId: t.groupId }));
+  return res.status(200).json({ ok: true,
+    groups: groups.map(g => ({ id: g.id, name: g.name })), teams });
+}
+
 // ── Club structure sub-resource (RC4.7 Phase C) ───────────────────────────
 // GET  ?resource=structure — hierarchy + member/staff counts (staff only).
 // POST ?resource=structure — administration ops, club-wide admins only.
@@ -1516,6 +1644,7 @@ export default async function handler(req, res) {
   if (!kvConfigured()) return res.status(503).json({ error: 'Storage not configured' });
 
   if (String(req.query?.resource || '') === 'structure') return structureHandler(req, res);
+  if (String(req.query?.resource || '') === 'matchday-teams') return matchdayTeamsHandler(req, res);
   if (String(req.query?.resource || '') === 'roster') return rosterHandler(req, res);
   if (String(req.query?.resource || '') === 'medical') return medicalHandler(req, res);
   if (String(req.query?.resource || '') === 'club')   return clubHandler(req, res);
@@ -1541,14 +1670,19 @@ export default async function handler(req, res) {
       // ?fixture= asks for that fixture's draft. Legacy compatibility is
       // deliberately narrow: the old unscoped record is offered only when it
       // NAMES this fixture. An anonymous legacy draft is never adopted.
-      let requestedFixture = '';
+      let requestedFixture = '', requestedSide = '';
       try {
         requestedFixture = await assertFixtureBelongsToClub(session.teamId, req.query?.fixture);
+        requestedSide    = await assertSideBelongsToClub(session.teamId, req.query?.side);
       } catch (error) {
         return res.status(error.status || 400).json({ error: error.message });
       }
       let draft = null;
-      if (requestedFixture) {
+      if (requestedFixture && requestedSide) {
+        // One side's draft and nothing else: no fallback to the sibling side,
+        // and no sideless record adopted — a legacy draft belongs to no side.
+        draft = (await kvGet(fixtureSideDraftKey(session.teamId, requestedFixture, requestedSide, session.user.id))) || null;
+      } else if (requestedFixture) {
         draft = (await kvGet(fixtureDraftKey(session.teamId, requestedFixture, session.user.id))) || null;
         if (!draft) {
           const legacy = (await kvGet(draftKey(session.teamId, session.user.id))) || null;
@@ -1614,8 +1748,10 @@ export default async function handler(req, res) {
           userId,
           coachName: String(user?.displayName || user?.email || 'Coach'),
           role: member.role,
-          // A coach can now hold one draft per fixture, so each entry says which.
+          // A coach can hold one draft per fixture per SIDE — each row says
+          // exactly which, so panels can filter without mixing records.
           fixtureId: String(rec.fixtureId || ''),
+          sideId: String(rec.sideId || ''),
           updatedAt: rec.updatedAt || null,
           squad: sanitiseSquad(rec),
         });
@@ -1648,10 +1784,11 @@ export default async function handler(req, res) {
       // with the player-facing squad, never with the fixture they named — they
       // cannot browse or enumerate sides that are not on show.
       const mayReadAnyFixture = can(session, PERM.PUBLISH_SQUADS);
-      let asked = '';
+      let asked = '', askedSide = '';
       if (mayReadAnyFixture) {
         try {
           asked = await assertFixtureBelongsToClub(session.teamId, req.query?.fixture);
+          askedSide = await assertSideBelongsToClub(session.teamId, req.query?.side);
         } catch (error) {
           return res.status(error.status || 400).json({ error: error.message });
         }
@@ -1662,30 +1799,42 @@ export default async function handler(req, res) {
         const legacy = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
         return legacy && String(legacy.fixtureId || '') === fixtureId ? legacy : null;
       };
-      if (asked) {
+      if (asked && askedSide) {
+        // A coach asks for ONE side's sheet and gets exactly that — no
+        // fallback to the sibling side, no fallback to the sideless record: a
+        // legacy squad is never heuristically attributed to a side.
+        result.squad = (await kvGet(fixtureSideSquadKey(session.teamId, asked, askedSide))) || null;
+      } else if (asked) {
         result.squad = (await kvGet(fixtureSquadKey(session.teamId, asked))) || await legacySquadFor(asked);
       } else {
-        // Exactly one player-facing mode is active at a time. Nothing here
-        // sorts, compares dates, or promotes a stored squad on its own.
+        // PLAYER-FACING READ. Exactly one mode is active at a time; within
+        // 'fixture' mode each SIDE publishes and withdraws independently, so
+        // the answer is a LIST of sheets. `squad` is kept for older cached
+        // clients: it carries the sheet only when exactly ONE exists — with
+        // two sheets on show a single `squad` could only masquerade as one of
+        // them, so it is null and `publishedSheets` is the whole truth.
         const pointer = await readSquadPointer(session.teamId);
+        let sheets = [];
         if (!pointer) {
           // Nothing has been published or withdrawn under Pass A: the club-wide
           // record still answers, exactly as it did before.
-          result.squad = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
+          const legacy = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
+          if (legacy) sheets = [{ fixtureId: String(legacy.fixtureId || ''), sideId: '', teamName: '', squad: legacy }];
         } else if (pointer.mode === 'none') {
-          result.squad = null;                       // withdrawn, and stays withdrawn
+          sheets = [];                               // withdrawn, and stays withdrawn
         } else if (pointer.mode === 'legacy') {
-          result.squad = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
+          const legacy = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
+          if (legacy) sheets = [{ fixtureId: String(legacy.fixtureId || ''), sideId: '', teamName: '', squad: legacy }];
         } else {
           // A pointer naming a fixture the club no longer has is stale. Players
           // see nothing — it is never repaired by choosing a different fixture,
           // and it does not fall through to the legacy record either.
           let live = '';
           try { live = await assertFixtureBelongsToClub(session.teamId, pointer.fixtureId); } catch { live = ''; }
-          result.squad = live
-            ? ((await kvGet(fixtureSquadKey(session.teamId, live))) || await legacySquadFor(live))
-            : null;
+          sheets = live ? await publishedSheetsForFixture(session.teamId, live) : [];
         }
+        result.publishedSheets = sheets;
+        result.squad = sheets.length === 1 ? sheets[0].squad : null;
       }
     }
     return res.status(200).json(result);
@@ -1709,17 +1858,26 @@ export default async function handler(req, res) {
       if (!draft) return res.status(400).json({ error: 'data must be an object' });
       try {
         draft.fixtureId = await assertFixtureBelongsToClub(session.teamId, draft.fixtureId);
+        draft.sideId    = await assertSideBelongsToClub(session.teamId, draft.sideId);
       } catch (error) {
         return res.status(error.status || 400).json({ error: error.message });
       }
+      if (draft.sideId && !draft.fixtureId) {
+        return res.status(400).json({ error: 'A team sheet needs its fixture' });
+      }
       draft.userId = session.user.id;
       draft.updatedAt = new Date().toISOString();
-      // A draft that names its fixture lands in that fixture's own keyspace, so
-      // preparing Amstelveense cannot overwrite Mons. An unlinked draft keeps
-      // the legacy key: it belongs to no fixture and must not be adopted by one.
-      await kvSet(draft.fixtureId
-        ? fixtureDraftKey(session.teamId, draft.fixtureId, session.user.id)
-        : draftKey(session.teamId, session.user.id), draft);
+      // A draft lands in the narrowest keyspace it names: fixture+side, then
+      // fixture, then the legacy unscoped key — so preparing the Premier XV
+      // cannot overwrite Premier Development's, and neither touches Mons'
+      // sheet for another fixture. An unlinked draft belongs to no fixture and
+      // no side and must never be adopted by one.
+      const draftDest = draft.fixtureId && draft.sideId
+        ? fixtureSideDraftKey(session.teamId, draft.fixtureId, draft.sideId, session.user.id)
+        : draft.fixtureId
+          ? fixtureDraftKey(session.teamId, draft.fixtureId, session.user.id)
+          : draftKey(session.teamId, session.user.id);
+      await kvSet(draftDest, draft);
       return res.status(200).json({ ok: true, draft });
     }
 
@@ -1734,14 +1892,22 @@ export default async function handler(req, res) {
       if (!squad) return res.status(400).json({ error: 'data must be an object' });
       try {
         squad.fixtureId = await assertFixtureBelongsToClub(session.teamId, squad.fixtureId);
+        squad.sideId    = await assertSideBelongsToClub(session.teamId, squad.sideId);
       } catch (error) {
         return res.status(error.status || 400).json({ error: error.message });
       }
+      // A side sheet only exists in the context of a fixture — a sided squad
+      // with no fixture has nowhere unambiguous to live.
+      if (squad.sideId && !squad.fixtureId) {
+        return res.status(400).json({ error: 'A team sheet needs its fixture' });
+      }
       if (!squad.published) {
-        // Withdrawing always ends with players seeing nothing. Whichever record
-        // was on show is removed and the mode goes to 'none', so no other
-        // stored squad can slide into its place.
-        if (squad.fixtureId) {
+        // Withdrawing removes exactly what was named: one side's sheet, one
+        // sideless fixture record, or the legacy global squad. Players move to
+        // nothing only when nothing published remains on show.
+        if (squad.fixtureId && squad.sideId) {
+          await retireSideSquad(session.teamId, squad.fixtureId, squad.sideId, session.user.id);
+        } else if (squad.fixtureId) {
           await retireFixtureSquad(session.teamId, squad.fixtureId, session.user.id);
         } else {
           await retireLegacySquad(session.teamId, session.user.id);
@@ -1749,7 +1915,13 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, squad: null });
       }
       squad.publishedAt = squad.publishedAt || new Date().toISOString();
-      if (squad.fixtureId) {
+      if (squad.fixtureId && squad.sideId) {
+        // One key per fixture+side: publishing Premier can never overwrite
+        // Premier Development. The pointer names the FIXTURE context only —
+        // which sheets are on show is answered per side by the records.
+        await kvSet(fixtureSideSquadKey(session.teamId, squad.fixtureId, squad.sideId), squad);
+        await writeSquadPointer(session.teamId, 'fixture', squad.fixtureId, session.user.id);
+      } else if (squad.fixtureId) {
         await kvSet(fixtureSquadKey(session.teamId, squad.fixtureId), squad);
         // The publish IS the decision about what players see. No dates, no
         // "newest wins" — publishing Amstelveense leaves Mons stored and
@@ -1779,13 +1951,16 @@ export default async function handler(req, res) {
       return sendAuthError(res, error);
     }
     if (type === 'squad') {
-      let asked = '';
+      let asked = '', askedSide = '';
       try {
         asked = await assertFixtureBelongsToClub(session.teamId, req.body?.fixtureId || req.query?.fixture);
+        askedSide = await assertSideBelongsToClub(session.teamId, req.body?.sideId || req.query?.side);
       } catch (error) {
         return res.status(error.status || 400).json({ error: error.message });
       }
-      if (asked) {
+      if (asked && askedSide) {
+        await retireSideSquad(session.teamId, asked, askedSide, session.user.id);
+      } else if (asked) {
         await retireFixtureSquad(session.teamId, asked, session.user.id);
       } else {
         await retireLegacySquad(session.teamId, session.user.id);

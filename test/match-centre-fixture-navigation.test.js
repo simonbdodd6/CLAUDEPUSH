@@ -107,6 +107,16 @@ function client(server, initialState = {}) {
     function esc(v) { return String(v == null ? '' : v); }
     function isCoach() { return true; }
     let _coachDraftSaveTimer = null;
+    // Dual-team pass: the REAL side helpers, with no structure loaded — the
+    // sideless mode, in which every pre-side behaviour must hold unchanged.
+    const _adminData = { structure: null };
+    let _mcOtherSide = null;
+    ${fn('matchCentreSides')}
+    ${fn('matchCentreSidesActive')}
+    ${fn('matchCentreSideId')}
+    ${fn('matchCentreSelectedSide')}
+    ${fn('mcOtherSideNames')}
+    ${fn('mcLoadOtherSideSelections')}
     ${fn('matchCentreFixtureList')}
     ${fn('mcFixtureDateLabel')}
     ${fn('matchCentreSelectedFixture')}
@@ -382,6 +392,8 @@ function draftsPanel(selectedFixtureId, coachDraftsList, users) {
     function esc(v) { return String(v == null ? '' : v); }
     function _draftTimeAgo(iso) { return iso ? 'at ' + iso : ''; }
     const _MC_STAFF_ROLE_LABEL = { coach: 'Coach', admin: 'Admin', medical: 'Medical' };
+    function matchCentreSideId() { return ''; }          // sideless mode
+    function matchCentreSelectedSide() { return null; }
     ${fn('matchCentreSelectedFixture')}
     ${fn('matchCentreFixtureId')}
     ${fn('mcFixtureDateLabel')}

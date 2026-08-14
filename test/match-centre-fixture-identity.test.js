@@ -224,7 +224,7 @@ test('an UNLINKED save keeps the original keys and invents no fixture', async ()
   assert.equal(pointer.fixtureId, '', 'and is given no fixture identity');
 });
 
-test('the allow-list grew by exactly one field', async () => {
+test('the allow-list holds exactly the two identity fields plus display data', async () => {
   seed(); await login('u-coach');
   const r = await post('u-coach', { type: 'squad', data: {
     published: true, publishedAt: 'x', opposition: 'a', competition: 'b', kickoffDate: 'c',
@@ -236,9 +236,12 @@ test('the allow-list grew by exactly one field', async () => {
   const shape = r.body.squad;
   assert.deepEqual(Object.keys(shape).sort(), [
     'announcement', 'arrivalTime', 'benchPlayers', 'competition', 'fixtureId', 'formationNames',
-    'gamePlan', 'kickoffDate', 'kickoffTime', 'kit', 'opposition', 'published', 'publishedAt', 'venue',
+    'gamePlan', 'kickoffDate', 'kickoffTime', 'kit', 'opposition', 'published', 'publishedAt',
+    'sideId',   // the dual-team pass: boundary-validated like fixtureId
+    'venue',
   ]);
   assert.equal(shape.fixtureId, MONS, 'preserved');
+  assert.equal(shape.sideId, '', 'absent side stays absent — nothing is inferred');
   assert.equal(shape._autoFixtureId, undefined, 'the client-internal field never persists');
 });
 
@@ -332,6 +335,12 @@ function mc(matchCentre, formationNames = {}, benchPlayers = []) {
     function isCoach() { return false; }             // keeps the flush inert here
     let _coachDraftSaveTimer = null;
     function saveCoachDraft() {}
+    // Dual-team pass: sideless mode — no structure means no side dimension.
+    const _adminData = { structure: null };
+    ${fn('matchCentreSides')}
+    ${fn('matchCentreSidesActive')}
+    ${fn('matchCentreSideId')}
+    ${fn('matchCentreSelectedSide')}
     ${fn('matchCentreFixtureList')}
     ${fn('mcFixtureDateLabel')}
     ${fn('matchCentreSelectedFixture')}

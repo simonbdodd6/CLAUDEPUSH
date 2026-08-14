@@ -4727,6 +4727,36 @@
     @media (pointer: coarse) {
       .mc7-filter button { min-height: 40px; }
       .mc-fixnav-btn { min-height: 44px; }
+      .mc-side-btn { min-height: 44px; }
+    }
+
+    /* ══ DUAL-TEAM MATCH CENTRE — Premier | Premier Development ══
+       Segmented side control in the always-visible header; a side tag on the
+       pitch (also captured by exports); non-mutating duplicate indicators. */
+    .mc-sidesel { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    .mc-side-btn {
+      min-height: 38px; padding: 0 14px; border: none; cursor: pointer;
+      background: var(--panel-2); color: var(--muted); font-size: 12.5px; font-weight: 800; white-space: nowrap;
+    }
+    .mc-side-btn + .mc-side-btn { border-left: 1px solid var(--line); }
+    .mc-side-btn.on { background: var(--brand-soft); color: var(--brand-2); }
+    .mc-pitch-sidetag {
+      position: absolute; top: 8px; left: 10px; z-index: 5;
+      font-size: 11px; font-weight: 800; letter-spacing: .03em;
+      padding: 3px 10px; border-radius: 999px;
+      background: rgba(0,0,0,0.55); color: #fff; pointer-events: none;
+      max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .mcx2-pitch-wrap { position: relative; }
+    .mc-dup-warn {
+      border: 1.5px solid #fbbf24; background: rgba(251,191,36,0.1);
+      border-radius: 11px; padding: 10px 14px; margin-bottom: 12px;
+      font-size: 12.5px; color: var(--ink);
+    }
+    .mc7-alsotag {
+      display: inline-block; margin-left: 5px; padding: 1px 7px; border-radius: 999px;
+      font-size: 9.5px; font-weight: 800; background: rgba(251,191,36,0.15); color: #d97706;
+      vertical-align: 1px; white-space: nowrap;
     }
 
     /* ══ TRAINING WEEK NAVIGATION — dated planner + history ══
@@ -5475,6 +5505,9 @@
       onboardingDismissed: false,
       autopilotReceipts: [],
       lastWeekTrainingBlocks: null,
+      // Player-facing published team sheets (dual-team model): one entry per
+      // published side for the current fixture context, adopted from the server.
+      playerPublishedSheets: [],
       matchCentre: {
         opposition:    "",
         competition:   "",
@@ -7307,9 +7340,9 @@
 
     // ─── SQUAD PUBLISH HELPERS ────────────────────────────────────────────────
     // Returns { status: 'starting'|'bench'|'not-selected', slot: string|null }
-    function getPlayerSquadStatus(player) {
-      const fnames = state.formationNames || {};
-      const bench  = state.benchPlayers  || [];
+    function getPlayerSquadStatus(player, sheetFnames, sheetBench) {
+      const fnames = sheetFnames || state.formationNames || {};
+      const bench  = sheetBench  || state.benchPlayers  || [];
       // Robust match. The published squad stores NAMES, but a logged-in player's
       // display name can differ from the exact roster string (canonicalisation,
       // typed vs dragged, etc.) — which made selected players read "not selected".
@@ -7337,11 +7370,20 @@
       return { status: 'not-selected', slot: null };
     }
 
-    function renderPublishedTeamSheetCard(player) {
-      const mc     = state.matchCentre || {};
-      const fnames = state.formationNames || {};
-      const bench  = state.benchPlayers  || [];
-      const { status, slot } = getPlayerSquadStatus(player);
+    /**
+     * One published TEAM SHEET card. Without `sheet`, renders the legacy
+     * single-squad state (unchanged behaviour). With `sheet` — one of the
+     * multi-sheet publications — everything comes from that sheet's own squad
+     * record and is labelled with its real team name, so Premier's card can
+     * never masquerade as Premier Development's.
+     */
+    function renderPublishedTeamSheetCard(player, sheet) {
+      const mc     = sheet ? (sheet.squad || {})                  : (state.matchCentre || {});
+      const fnames = sheet ? (sheet.squad?.formationNames || {})  : (state.formationNames || {});
+      const bench  = sheet ? (sheet.squad?.benchPlayers  || [])   : (state.benchPlayers  || []);
+      const teamName = sheet ? String(sheet.teamName || '') : '';
+      const badge  = teamName ? `${teamName} — Published` : 'Squad Published';
+      const { status, slot } = getPlayerSquadStatus(player, sheet ? fnames : null, sheet ? bench : null);
 
       const kickoffDisplay = mc.kickoffDate
         ? new Date(`${mc.kickoffDate}T${mc.kickoffTime || '15:00'}:00`).toLocaleDateString('en-GB',
@@ -7353,8 +7395,8 @@
         return `
           <div style="border:1.5px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:16px;background:var(--panel)">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
-              <strong style="font-size:16px">You are not selected for this match.</strong>
-              <span style="font-size:10px;font-weight:800;padding:3px 10px;border-radius:999px;background:var(--green);color:#fff;text-transform:uppercase;letter-spacing:.07em">Squad Published</span>
+              <strong style="font-size:16px">You are not selected${teamName ? ` for ${esc(teamName)}` : ' for this match'}.</strong>
+              <span style="font-size:10px;font-weight:800;padding:3px 10px;border-radius:999px;background:var(--green);color:#fff;text-transform:uppercase;letter-spacing:.07em">${esc(badge)}</span>
             </div>
             <div style="font-size:13px;color:var(--muted)">vs ${esc(mc.opposition || 'Upcoming match')}${kickoffDisplay ? ' · ' + esc(kickoffDisplay) : ''}</div>
           </div>`;
@@ -7377,9 +7419,9 @@
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
             <div>
               <div style="font-size:17px;font-weight:800;color:${statusColor}">${statusLabel}</div>
-              <div style="font-size:13px;color:var(--muted);margin-top:3px">vs ${esc(mc.opposition || 'Upcoming match')}</div>
+              <div style="font-size:13px;color:var(--muted);margin-top:3px">${teamName ? esc(teamName) + ' · ' : ''}vs ${esc(mc.opposition || 'Upcoming match')}</div>
             </div>
-            <span style="font-size:10px;font-weight:800;padding:3px 10px;border-radius:999px;background:var(--green);color:#fff;text-transform:uppercase;letter-spacing:.07em">Squad Published</span>
+            <span style="font-size:10px;font-weight:800;padding:3px 10px;border-radius:999px;background:var(--green);color:#fff;text-transform:uppercase;letter-spacing:.07em">${esc(badge)}</span>
           </div>
 
           <!-- Match details row -->
@@ -7586,9 +7628,12 @@
         // The export IS the selected fixture's sheet, so its name says which
         // fixture: opponent + the FIXTURE's date, not today's.
         const _fx = matchCentreSelectedFixture();
-        const _oppSlug = _fx ? '-vs-' + String(_fx.opposition || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+        const _side = matchCentreSelectedSide();
+        const _slug = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const _sideSlug = _side ? '-' + _slug(_side.name) : '';
+        const _oppSlug = _fx ? '-vs-' + _slug(_fx.opposition) : '';
         const _dateStr = (_fx && _fx.date) ? String(_fx.date).slice(0, 10) : new Date().toISOString().slice(0, 10);
-        link.download = `${_clubSlug}${_oppSlug}-matchday-${_dateStr}.png`;
+        link.download = `${_clubSlug}${_sideSlug}${_oppSlug}-matchday-${_dateStr}.png`;
         link.href = canvas.toDataURL("image/png");
         link.click();
         showToast("Matchday graphic downloaded — ready to post on Instagram! ✓");
@@ -7718,7 +7763,108 @@
             <option value="" ${selected ? '' : 'selected'}>Not linked</option>
             ${fixtures.map(f => `<option value="${esc(f.id)}" ${f.id === selected ? 'selected' : ''}>${esc(f.opposition)}${esc(label(f.date))}</option>`).join('')}
           </select>
+          ${(() => {
+            // Segmented TEAM control — only when this group truly has two or
+            // more active sides. Rendered here in the always-visible header,
+            // never inside a beta-hidden block.
+            const sides = matchCentreSidesActive();
+            if (!sides.length) return '';
+            const cur = matchCentreSideId();
+            return `<div class="mc-sidesel" id="mc-side-select" role="group" aria-label="Team">
+              ${sides.map(t => `<button type="button" data-side="${esc(t.id)}"
+                class="mc-side-btn${String(t.id) === cur ? ' on' : ''}"
+                aria-pressed="${String(t.id) === cur}"
+                onclick="setMatchCentreSide('${esc(t.id)}')">${esc(t.name)}</button>`).join('')}
+            </div>`;
+          })()}
         </div>`;
+    }
+
+    // ── SIDES — dual Premier / Premier Development ───────────────────────────
+    // A "side" is a club STRUCTURE TEAM id (never the tenant teamId). The
+    // selector only activates when the operational group holds two or more
+    // active teams; single-team clubs stay on the sideless paths untouched.
+    //
+    // Team metadata arrives via the MINIMAL scoped read (?resource=
+    // matchday-teams, gated on the Match Centre permission), so a coach who
+    // can publish squads gets the selector even without roster-management
+    // rights. The structure-admin payload remains a fallback when already
+    // loaded. Both sources are scope-filtered server-side.
+    let _mcTeams = null;               // { groups: [{id,name}], teams: [{id,name,groupId}] }
+    let _mcTeamsAttempted = false;
+    function ensureMatchCentreTeams() {
+      if (_mcTeams || _mcTeamsAttempted || typeof fetch !== 'function') return;
+      _mcTeamsAttempted = true;
+      fetch('/api/publish?resource=matchday-teams')
+        .then(r => (r && r.ok) ? r.json() : null)
+        .then(d => {
+          if (d && d.ok) { _mcTeams = { groups: d.groups || [], teams: d.teams || [] }; render(); }
+        })
+        .catch(() => {});
+    }
+    function matchCentreSides() {
+      if (typeof _mcTeams !== 'undefined' && _mcTeams) {
+        const groups = _mcTeams.groups || [];
+        const opGroup = String(state.operationalGroupId || '');
+        const gid = opGroup && groups.some(g => String(g.id) === opGroup) ? opGroup
+          : (groups.length === 1 ? String(groups[0].id) : '');
+        if (!gid) return [];
+        return (_mcTeams.teams || []).filter(t => String(t.groupId) === gid);
+      }
+      const st = (typeof _adminData !== 'undefined' && _adminData?.structure) || null;
+      if (!st) return [];
+      const activeGroups = (st.groups || []).filter(g => g.status === 'active');
+      const opGroup = String(state.operationalGroupId || '');
+      const gid = opGroup && activeGroups.some(g => g.id === opGroup) ? opGroup
+        : (activeGroups.length === 1 ? activeGroups[0].id : '');
+      if (!gid) return [];
+      return (st.teams || []).filter(t => t.status === 'active' && t.groupId === gid);
+    }
+    function matchCentreSidesActive() {
+      const sides = matchCentreSides();
+      return sides.length >= 2 ? sides : [];
+    }
+    /**
+     * The selected side: the remembered choice when it is still one of this
+     * group's active teams, else the first active team as an explicit UI
+     * default. Never an invented id, and '' whenever sides are not in play.
+     */
+    function matchCentreSideId() {
+      const sides = matchCentreSidesActive();
+      if (!sides.length) return '';
+      const stored = String((state.matchCentre || {}).sideId || '');
+      return sides.some(t => String(t.id) === stored) ? stored : String(sides[0].id);
+    }
+    function matchCentreSelectedSide() {
+      const id = matchCentreSideId();
+      return id ? (matchCentreSidesActive().find(t => String(t.id) === id) || null) : null;
+    }
+
+    /**
+     * Switch the working SIDE. Mirrors the fixture switch exactly: flush the
+     * outgoing side's sheet to its own key first (payload captured before any
+     * mutation), clear locally, then hydrate the incoming side's draft and
+     * published state — stale-guarded, so rapid Premier → Development →
+     * Premier can never file or render one side's XV under the other.
+     */
+    function setMatchCentreSide(sideId) {
+      const id = String(sideId || '').trim();
+      const sides = matchCentreSidesActive();
+      if (!sides.some(t => String(t.id) === id)) {
+        showToast('That team is not in this group');
+        return false;
+      }
+      if (id === matchCentreSideId()) return true;
+      mcFlushDraftNow();                 // the outgoing side keeps its work
+      state.matchCentre = { ...(state.matchCentre || {}), sideId: id, published: false };
+      state.formationNames = {};
+      state.benchPlayers   = Array(8).fill('');
+      state.fphotoIds      = {};
+      saveState('Match team selected');
+      render();
+      const fx = matchCentreFixtureId();
+      if (fx) mcHydrateSelectedFixture(fx);
+      return true;
     }
 
     /**
@@ -7848,28 +7994,78 @@
      * and stale-guarded: if the coach has switched again before the response
      * lands, the reply is discarded rather than applied to the wrong fixture.
      */
+    // What the OTHER side has selected for the SAME fixture — powers the
+    // duplicate-selection indicator. Names only, module-local, display-only.
+    let _mcOtherSide = null;   // { fixtureId, sideId, teamName, names: [] }
+    function mcOtherSideNames() {
+      const fx = matchCentreFixtureId(), side = matchCentreSideId();
+      if (!fx || !side || !_mcOtherSide) return new Set();
+      // Only trust data fetched for exactly this fixture + this side context.
+      if (_mcOtherSide.fixtureId !== fx || _mcOtherSide.sideId !== side) return new Set();
+      return new Set(_mcOtherSide.names);
+    }
+
+    /**
+     * Load what the SIBLING side has selected for this fixture — its
+     * published sheet, else my own draft for it. Fire-and-forget and
+     * stale-guarded: it powers the duplicate indicator only, never delays the
+     * working sheet, and never writes anything.
+     */
+    async function mcLoadOtherSideSelections(fixtureId, side) {
+      const others = matchCentreSidesActive().filter(t => String(t.id) !== side);
+      const other = side && others.length === 1 ? others[0] : null;
+      if (!other) { _mcOtherSide = null; return; }
+      try {
+        const q = encodeURIComponent(String(fixtureId));
+        const oq = '&side=' + encodeURIComponent(String(other.id));
+        const [sRes, dRes] = await Promise.all([
+          fetch('/api/publish?type=squad&fixture=' + q + oq),
+          fetch('/api/publish?type=draft&fixture=' + q + oq),
+        ]);
+        if (String(matchCentreFixtureId()) !== String(fixtureId) || matchCentreSideId() !== side) return;
+        const oSquad = sRes?.ok ? (await sRes.json()).squad : null;
+        const oDraft = dRes?.ok ? (await dRes.json()).draft : null;
+        const src = oSquad || oDraft;
+        const names = src ? [
+          ...Object.values(src.formationNames || {}),
+          ...(Array.isArray(src.benchPlayers) ? src.benchPlayers : []),
+        ].map(n => String(n || '').trim()).filter(Boolean) : [];
+        _mcOtherSide = { fixtureId: String(fixtureId), sideId: side, teamName: String(other.name || ''), names };
+        render();
+      } catch { /* indicator only — silence is safe */ }
+    }
+
     async function mcHydrateSelectedFixture(id) {
       if (!isCoach() || typeof fetch !== 'function') return;
       try {
+        const side = matchCentreSideId();
         const q = encodeURIComponent(String(id));
+        const sideQ = side ? '&side=' + encodeURIComponent(side) : '';
+        // The sibling side's selections load SEPARATELY: the duplicate
+        // indicator must never delay this side's own sheet.
+        mcLoadOtherSideSelections(id, side);
         const [dRes, sRes] = await Promise.all([
-          fetch('/api/publish?type=draft&fixture=' + q),
-          fetch('/api/publish?type=squad&fixture=' + q),
+          fetch('/api/publish?type=draft&fixture=' + q + sideQ),
+          fetch('/api/publish?type=squad&fixture=' + q + sideQ),
         ]);
-        if (String(matchCentreFixtureId()) !== String(id)) return;   // moved on
+        // Stale-reply guard on BOTH dimensions: a slow response for the old
+        // fixture OR the old side is discarded, never applied.
+        if (String(matchCentreFixtureId()) !== String(id) || matchCentreSideId() !== side) return;
         if (dRes.ok) {
           const { draft } = await dRes.json();
-          // Only this fixture's own draft may hydrate this fixture's sheet —
-          // an anonymous legacy draft is never injected into a real fixture.
-          if (draft && String(draft.fixtureId || '') === String(id)) {
-            const { formationNames, benchPlayers, published, publishedAt, fixtureId, ...mcRest } = draft;
-            state.matchCentre = { ...(state.matchCentre || {}), ...mcRest, fixtureId: String(id) };
+          // Only this fixture's (and side's) own draft may hydrate this sheet —
+          // an anonymous legacy draft is never injected, and with sides active
+          // the record must name THIS side.
+          const draftSide = String(draft?.sideId || '');
+          if (draft && String(draft.fixtureId || '') === String(id) && draftSide === side) {
+            const { formationNames, benchPlayers, published, publishedAt, fixtureId, sideId, ...mcRest } = draft;
+            state.matchCentre = { ...(state.matchCentre || {}), ...mcRest, fixtureId: String(id), sideId: side };
             if (formationNames && typeof formationNames === 'object') state.formationNames = formationNames;
             if (Array.isArray(benchPlayers)) state.benchPlayers = benchPlayers;
           }
         }
         if (sRes.ok) {
-          // Published is a per-fixture fact read from the fixture's scoped
+          // Published is a per-fixture(+side) fact read from the scoped
           // record — not the player-facing pointer, which only Publish moves.
           const { squad } = await sRes.json();
           state.matchCentre = { ...(state.matchCentre || {}), published: Boolean(squad && squad.published) };
@@ -7891,7 +8087,7 @@
           body: JSON.stringify({
             type: 'draft',
             data: { ...mc, formationNames: state.formationNames || {}, benchPlayers: state.benchPlayers || [],
-                    fixtureId: matchCentreFixtureId() },
+                    fixtureId: matchCentreFixtureId(), sideId: matchCentreSideId() },
           }),
         });
       } catch (e) { console.warn('[saveCoachDraft]', e); }
@@ -7907,14 +8103,18 @@
         // "resume where I left off" request, whose reply may carry an explicit
         // fixtureId that relinks the device — stored identity, never inference.
         const selected = matchCentreFixtureId();
+        const selectedSide = matchCentreSideId();
         const res = await fetch('/api/publish?type=draft'
-          + (selected ? '&fixture=' + encodeURIComponent(selected) : ''));
+          + (selected ? '&fixture=' + encodeURIComponent(selected) : '')
+          + (selected && selectedSide ? '&side=' + encodeURIComponent(selectedSide) : ''));
         if (!res.ok) return;
         const { draft } = await res.json();
         if (!draft) { if (selected) mcRefreshPublishedForFixture(selected); return; }
-        // While a fixture is selected, only that fixture's own draft may fill
-        // the sheet — an anonymous or other-fixture draft is never adopted.
-        if (selected && String(draft.fixtureId || '') !== selected) {
+        // While a fixture (and side) is selected, only that context's own
+        // draft may fill the sheet — an anonymous, other-fixture or
+        // other-side draft is never adopted.
+        if (selected && (String(draft.fixtureId || '') !== selected ||
+            String(draft.sideId || '') !== selectedSide)) {
           mcRefreshPublishedForFixture(selected);
           return;
         }
@@ -7941,9 +8141,11 @@
     async function mcRefreshPublishedForFixture(id) {
       if (!isCoach() || !id) return;
       try {
-        const res = await fetch('/api/publish?type=squad&fixture=' + encodeURIComponent(String(id)));
+        const side = matchCentreSideId();
+        const res = await fetch('/api/publish?type=squad&fixture=' + encodeURIComponent(String(id))
+          + (side ? '&side=' + encodeURIComponent(side) : ''));
         if (!res.ok) return;
-        if (String(matchCentreFixtureId()) !== String(id)) return;
+        if (String(matchCentreFixtureId()) !== String(id) || matchCentreSideId() !== side) return;
         const { squad } = await res.json();
         const published = Boolean(squad && squad.published);
         if (Boolean((state.matchCentre || {}).published) !== published) {
@@ -8000,7 +8202,11 @@
       // from one record. Unlinked, only anonymous legacy drafts (no fixture)
       // are shown — a legacy draft is never injected into a real fixture.
       const selectedFx = matchCentreFixtureId();
-      const drafts = (_coachDraftsList || []).filter(d => String(d.fixtureId || '') === selectedFx);
+      const selectedSide = matchCentreSideId();
+      // Fixture AND side: viewing Mons + Premier shows Premier drafts only.
+      // Legacy sideless drafts surface only while no side dimension is active.
+      const drafts = (_coachDraftsList || []).filter(d =>
+        String(d.fixtureId || '') === selectedFx && String(d.sideId || '') === selectedSide);
       const draftByUser = new Map(drafts.map(d => [String(d.userId), d]));
       const mine = draftByUser.get(meId);
       // Every coach/staff identity on this team (name + role), de-duplicated.
@@ -8023,9 +8229,10 @@
       }).join('');
 
       const fxRec = matchCentreSelectedFixture();
-      const panelContext = fxRec
+      const sideRec = matchCentreSelectedSide();
+      const panelContext = (fxRec
         ? `${fxRec.opposition}${fxRec.date ? ' · ' + mcFixtureDateLabel(fxRec.date) : ''}`
-        : 'No linked fixture';
+        : 'No linked fixture') + (sideRec ? ` · ${sideRec.name}` : '');
       return `<section class="card mc-cmp-panel" aria-label="Coach draft compare">
         <div class="mc-cmp-panel-head"><h3>Coach drafts — ${esc(panelContext)}</h3><span class="mc-cmp-hint">Each coach keeps their own draft per fixture · read-only</span></div>
         <div class="mc-cmp-list">
@@ -8043,8 +8250,10 @@
     // a coach's draft for a different fixture is never opened by mistake.
     function mcViewCoachDraft(userId) {
       const selectedFx = matchCentreFixtureId();
+      const selectedSide = matchCentreSideId();
       const d = (_coachDraftsList || []).find(x =>
-        String(x.userId) === String(userId) && String(x.fixtureId || '') === selectedFx);
+        String(x.userId) === String(userId) && String(x.fixtureId || '') === selectedFx &&
+        String(x.sideId || '') === selectedSide);
       if (!d) { showToast('That draft is no longer available'); return; }
       _mcOpenCompareViewer(`${d.coachName} · ${_MC_STAFF_ROLE_LABEL[d.role] || 'Staff'}`, `Updated ${_draftTimeAgo(d.updatedAt)} · Read-only`, d.squad);
     }
@@ -8107,13 +8316,15 @@
       state.matchCentre = state.matchCentre || {};
       const isPublishing = !state.matchCentre.published;
       if (isPublishing) {
-        // Name the FIXTURE being published, not just free-text opposition, so
-        // the coach always knows which match this publish will put on show.
+        // Name the FIXTURE and, when two sides exist, the TEAM being
+        // published — never a generic "Publish squad?" that could mean either.
         const fx = matchCentreSelectedFixture();
+        const side = matchCentreSelectedSide();
         const opp = fx
           ? `${fx.opposition}${fx.date ? ' · ' + mcFixtureDateLabel(fx.date) : ''}`
           : (state.matchCentre.opposition || 'the match');
-        if (!(await ceConfirm(`Publish the squad for ${opp}?`, 'Every player with notifications enabled will be notified immediately.', { confirmLabel: 'Publish squad' }))) return;
+        const what = side ? `the ${side.name} squad` : 'the squad';
+        if (!(await ceConfirm(`Publish ${what} for ${opp}?`, 'Every player with notifications enabled will be notified immediately.', { confirmLabel: side ? `Publish ${side.name}` : 'Publish squad' }))) return;
       }
       state.matchCentre.published = isPublishing;
       saveState();
@@ -13783,6 +13994,13 @@
       // Coach Draft Compare (Phase 2): keep the other-coaches' draft list fresh
       // (self-throttled; re-renders when new data arrives). Coach-only.
       if (isCoach()) loadCoachDraftsList();
+      // The group's SIDES (Premier / Premier Development) arrive via the
+      // minimal Match-Centre-scoped read — available to any coach who can
+      // publish squads, with no roster-management requirement. The admin
+      // structure load stays as an independent enrichment for those who have
+      // it. Both are self-guarded and re-render on arrival.
+      if (isCoach()) ensureMatchCentreTeams();
+      if (isCoach() && typeof ensureAdminData === 'function') ensureAdminData();
       const mc      = state.matchCentre || {};
       // The selected fixture drives opponent, date, availability, filters and
       // the drafts panel. Resolved once per render, id-validated — a stale id
@@ -13838,6 +14056,14 @@
       const kickoffDisplay = _hdrDate
         ? new Date(`${_hdrDate}T${_hdrTime || '15:00'}:00`).toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' })
         : "Date TBC";
+      // The SIDE being edited — always visible so the coach knows exactly
+      // which team sheet a save or publish will touch.
+      const mcSide = matchCentreSelectedSide();
+      const dupNames = mcOtherSideNames();
+      const _placedDupes = mcSide ? [
+        ...Object.values(state.formationNames || {}),
+        ...(state.benchPlayers || []),
+      ].map(n => String(n || '').trim()).filter(n => n && dupNames.has(n)) : [];
 
       // Phase planning tips
       const phaseTips = {
@@ -13962,7 +14188,7 @@
             <h1>${_hdrAway
               ? `${esc(_hdrOpp)} <em>vs</em> ${esc(state.clubName || 'Your club')}`
               : `${esc(state.clubName || 'Your club')} <em>vs</em> ${esc(_hdrOpp)}`}</h1>
-            <p>${[esc(phase.label), esc(_hdrComp), kickoffDisplay, _hdrTime?esc(_hdrTime):'', esc(_hdrVenue)].filter(Boolean).join(' · ') || 'Fixture to be confirmed'}</p>
+            <p>${[mcSide ? `<strong style="color:var(--brand-2,var(--accent))">${esc(mcSide.name)}</strong>` : '', esc(phase.label), esc(_hdrComp), kickoffDisplay, _hdrTime?esc(_hdrTime):'', esc(_hdrVenue)].filter(Boolean).join(' · ') || 'Fixture to be confirmed'}</p>
             ${matchCentreFixturePicker()}
           </div>
           </div>
@@ -14109,10 +14335,16 @@
             <span style="font-size:12.5px;color:var(--muted)">Tap any position on the pitch to add a player, or choose from the Available list — 15 starters and up to 8 on the bench.</span>
           </div>
         </div>` : ''}
+        ${_placedDupes.length ? `
+        <div class="mc-dup-warn" role="alert">
+          ⚠️ Also selected for ${esc(_mcOtherSide?.teamName || 'the other team')} (${esc(mcFx?.opposition || 'this fixture')}):
+          <strong>${_placedDupes.map(esc).join(', ')}</strong> — nothing has been changed on either sheet.
+        </div>` : ''}
         <div class="mcx2-board">
 
           <!-- LEFT — the pitch (dominant) -->
           <section class="mcx2-pitch-wrap" style="grid-area:pitch">
+            ${mcSide ? `<div class="mc-pitch-sidetag">${esc(mcSide.name)}${mcFx ? ' — vs ' + esc(mcFx.opposition) + (mcFx.date ? ' · ' + esc(mcFixtureDateLabel(mcFx.date)) : '') : ''}</div>` : ''}
             <div id="matchday-pitch" class="${layout.pitchClass} mcx2-pitch mc12-pitch">
               <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
                 <linearGradient id="mc12kit" x1="0" y1="0" x2="0" y2="1">
@@ -14204,10 +14436,11 @@
                   ${_visibleStats.map(({p, match, attPct}) => {
                     const initials = p.name.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
                     const mLbl = match === 'available' ? 'Available' : match === 'maybe' ? 'Maybe' : (match === 'unavailable' ? 'Out' : 'No reply');
+                    const inOther = dupNames.has(String(p.name || '').trim());
                     return `<div class="mc7-trow has-st squad-player-drag" draggable="true"
                       data-player-name="${esc(p.name)}" data-player-id="${esc(p.id)}" data-player-pos="${esc(p.position || '')}"
                       ondragstart="handlePlayerDragStart(event)" ondragend="mcDragEnd(event)">
-                      <span class="mc7-pl"><span class="mc7-av" style="background:${playerAvatarColor(p.id||p.name)}">${esc(initials)}</span><span class="mc7-nm" title="${esc(p.name)}">${esc(p.name)}</span></span>
+                      <span class="mc7-pl"><span class="mc7-av" style="background:${playerAvatarColor(p.id||p.name)}">${esc(initials)}</span><span class="mc7-nm" title="${esc(p.name)}">${esc(p.name)}${inOther ? ` <span class="mc7-alsotag" title="Also selected for ${esc(_mcOtherSide?.teamName || 'the other team')}">Also: ${esc(_mcOtherSide?.teamName || 'other team')}</span>` : ''}</span></span>
                       <span class="mc7-match ${match}">${esc(mLbl)}</span>
                       <span class="mc7-dot ${match}" title="${esc(mLbl)}" aria-label="${esc(mLbl)}"></span>
                     </div>`;
@@ -15203,8 +15436,13 @@
       document.getElementById("player-availability").innerHTML = `
         <div style="max-width:600px;margin:0 auto;padding:0 2px">
 
-          <!-- Published team sheet — shown when squad is published -->
-          ${mc.published ? renderPublishedTeamSheetCard(player) : ''}
+          <!-- Published team sheets. With the dual-team model there can be
+               MORE than one: one card per published side, each labelled with
+               its team, so the player always knows which side selected them.
+               Falls back to the legacy single-squad card otherwise. -->
+          ${(state.playerPublishedSheets || []).length
+            ? (state.playerPublishedSheets || []).map(sh => renderPublishedTeamSheetCard(player, sh)).join('')
+            : (mc.published ? renderPublishedTeamSheetCard(player) : '')}
 
           <!-- Summary banner -->
           <div style="border:1.5px solid ${allAvailable ? '#16a34a' : pendingCount > 0 ? 'var(--line)' : 'var(--accent)'};border-radius:14px;padding:18px 20px;margin-bottom:16px;background:${allAvailable ? 'rgba(var(--accent-rgb), 0.08)' : 'var(--panel)'}">
@@ -18224,6 +18462,9 @@
         if (state.activeView === 'coach') {
           if (state.activeCoachSection === 'settings' && typeof renderSettings === 'function') renderSettings();
           if (state.activeCoachSection === 'players' && typeof renderPlayers === 'function') renderPlayers();
+          // Match Centre needs the structure too: its Premier / Premier
+          // Development side selector only exists once the group's teams load.
+          if (state.activeCoachSection === 'matchday' && typeof renderMatchday === 'function') renderMatchday();
         }
       }
     }
@@ -20880,7 +21121,45 @@
       // ── Squad status card ─────────────────────────────────────────────────
       let squadCard = '';
       const pubSels = (state.squadSelections || []).filter(s => s.status === 'published');
-      if (pubSels.length === 0) {
+      const pubSheets = state.playerPublishedSheets || [];
+      if (pubSheets.length) {
+        // Dual-team model: the summary understands EVERY published sheet.
+        // Selected in one → that team; selected in both → both rows; selected
+        // in neither → an honest "not selected" that still names what IS
+        // published. Never first-array-entry, never a collapsed single squad.
+        const rows = pubSheets.map(sh => {
+          const st = getPlayerSquadStatus(player,
+            sh.squad?.formationNames || {}, sh.squad?.benchPlayers || []);
+          const fx = sh.fixtureId ? (state.fixtures || []).find(f => f.id === sh.fixtureId) : null;
+          return { sh, st, fx };
+        });
+        const selectedIn = rows.filter(r => r.st.status !== 'not-selected');
+        const line = r => {
+          const c = r.st.status === 'starting' ? '#34d399' : '#60a5fa';
+          const lbl = r.st.status === 'starting' ? '✓ Starting — #' + r.st.slot : 'Bench — #' + r.st.slot;
+          const team = r.sh.teamName ? esc(r.sh.teamName) : 'Squad';
+          const fxLine = r.fx ? 'vs ' + esc(r.fx.opposition || 'TBC') +
+            (r.fx.date ? ' · ' + new Date(r.fx.date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '')
+            : (r.sh.squad?.opposition ? 'vs ' + esc(r.sh.squad.opposition) : '');
+          return '<div style="padding:4px 0">' +
+            '<div style="font-size:15px;font-weight:800;color:' + c + '">' + lbl +
+              ' <span style="font-size:11px;font-weight:800;color:var(--muted)">· ' + team + '</span></div>' +
+            (fxLine ? '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + fxLine + '</div>' : '') +
+          '</div>';
+        };
+        const publishedNames = pubSheets.map(sh => sh.teamName || 'Squad').join(' & ');
+        const anyFx = rows.find(r => r.fx)?.fx || null;   // all sheets share the fixture context
+        squadCard = pCard(
+          pCardHead('My Squad Status') +
+          (selectedIn.length
+            ? selectedIn.map(line).join('<div style="border-top:1px solid var(--line);margin:4px 0"></div>')
+            : '<div style="font-size:16px;font-weight:800;color:#94a3b8">⚪ Not selected</div>' +
+              '<div style="font-size:12px;color:var(--muted);margin-top:4px">' + esc(publishedNames) +
+              ' published' + (anyFx ? ' · vs ' + esc(anyFx.opposition || 'TBC') : '') + '</div>') +
+          '<button type="button" onclick="setSection(\'player\',\'availability\')" class="btn" style="margin-top:10px;font-size:12px">View Match Squad →</button>',
+          null
+        );
+      } else if (pubSels.length === 0) {
         squadCard = pCard(
           pCardHead('My Squad Status') +
           '<div style="font-size:13px;color:var(--muted)">Squad not published yet.</div>'
@@ -28656,7 +28935,7 @@
           body: JSON.stringify({
             type: 'squad',
             data: { ...mc, formationNames: state.formationNames || {}, benchPlayers: state.benchPlayers || [],
-                    fixtureId: matchCentreFixtureId() },
+                    fixtureId: matchCentreFixtureId(), sideId: matchCentreSideId() },
           }),
         });
       } catch(e) { console.warn('[syncSquadToServer]', e); }
@@ -29786,6 +30065,21 @@
           } catch { /* offline — keep whatever was already published locally */ }
         }
 
+        // Dual-team publications: the server now answers with EVERY published
+        // sheet for the current fixture context. Adopted verbatim — one entry
+        // per side, each carrying its real team name. The legacy single-squad
+        // adoption below still runs for older server responses (and for the
+        // exactly-one-sheet case, where `squad` is also populated).
+        if (Array.isArray(data.publishedSheets)) {
+          const sheets = data.publishedSheets
+            .filter(s => s && s.squad && typeof s.squad === 'object')
+            .map(s => ({ fixtureId: String(s.fixtureId || ''), sideId: String(s.sideId || ''),
+                         teamName: String(s.teamName || ''), squad: s.squad }));
+          if (JSON.stringify(state.playerPublishedSheets || []) !== JSON.stringify(sheets)) {
+            state.playerPublishedSheets = sheets;
+            changed = true;
+          }
+        }
         if (data.squad && data.squad.published) {
           // Coach draft isolation: every coach keeps their OWN private match-day
           // draft, so a coach device never auto-adopts the shared published
