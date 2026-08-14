@@ -184,16 +184,44 @@ test('no opponent or date inference exists anywhere in the bridge', () => {
     'and infers nothing from display text');
 });
 
-// ── STORAGE SHAPE IS UNCHANGED ─────────────────────────────────────────────
-test('storage keys are exactly as before — no fixture-scoped keys appear', async () => {
+// ── STORAGE SHAPE ─────────────────────────────────────────────────────────
+// This pass added the identity field and deliberately left storage alone. Pass A
+// (fixture-scoped storage) then moved it, so the assertion below now pins the
+// SCOPED keyspace. The intent is unchanged and still strict: a save touches
+// exactly these keys and no others.
+test('a fixture-linked save touches exactly the fixture-scoped keys', async () => {
   seed(); await login('u-coach');
   await post('u-coach', { type: 'draft', data: squadData({ fixtureId: MONS }) });
   await post('u-coach', { type: 'squad', data: squadData({ fixtureId: MONS }) });
 
   const touched = [...new Set(writes.filter(k => k.includes('publish:')))].sort();
-  assert.deepEqual(touched, [`app:publish:${CLUB}:draft:u-coach`, `app:publish:${CLUB}:squad`],
-    'the original two keys, and nothing fixture-scoped');
-  assert.equal(writes.some(k => k.includes(':fixture:')), false, 'no fixture-scoped key was created');
+  assert.deepEqual(touched, [
+    `app:publish:${CLUB}:fixture:${MONS}:draft:u-coach`,
+    `app:publish:${CLUB}:fixture:${MONS}:squad`,
+    `app:publish:${CLUB}:squad:current`,
+  ].sort(), 'the fixture\'s own draft and squad, plus the player-facing pointer');
+  assert.equal(touched.includes(`app:publish:${CLUB}:squad`), false,
+    'the legacy club-wide squad key is never written by a fixture-linked save');
+});
+
+test('an UNLINKED save keeps the original keys and invents no fixture', async () => {
+  seed(); await login('u-coach');
+  await post('u-coach', { type: 'draft', data: squadData({}) });
+  await post('u-coach', { type: 'squad', data: squadData({}) });
+
+  const touched = [...new Set(writes.filter(k => k.includes('publish:')))].sort();
+  assert.deepEqual(touched, [
+    `app:publish:${CLUB}:draft:u-coach`,
+    `app:publish:${CLUB}:squad`,
+    `app:publish:${CLUB}:squad:current`,
+  ].sort(), 'the original keys, plus the player-facing mode record');
+  assert.equal(writes.some(k => k.includes(':fixture:')), false,
+    'no fixture, so no fixture-scoped key is invented');
+  // Pass A.1: an unlinked publish is still a publish, so it claims the
+  // player-facing slot in LEGACY mode rather than being left overridable.
+  const pointer = JSON.parse(kv.get(`app:publish:${CLUB}:squad:current`));
+  assert.equal(pointer.mode, 'legacy');
+  assert.equal(pointer.fixtureId, '', 'and is given no fixture identity');
 });
 
 test('the allow-list grew by exactly one field', async () => {
@@ -223,12 +251,36 @@ test('authorisation lives at the request boundary, not in sanitisation', () => {
 });
 
 // ── FIXTURE DELETION SAFETY — for NEW records only ─────────────────────────
+/** The bulk-import route — the real consumer of the deletion reference check. */
+async function importUpdate(userId, fixture) {
+  const r = res();
+  await publishHandler({ method: 'POST', query: { resource: 'fixtures' },
+    headers: { cookie: cookies.get(userId) || '' },
+    body: { action: 'import', confirmed: true, fixtures: [{ decision: 'update', fixture }] } }, r);
+  return r.result;
+}
+
 test('a newly saved published squad is now visible to the deletion reference check', async () => {
   seed(); await login('u-coach');
   await post('u-coach', { type: 'squad', data: squadData({ fixtureId: MONS }) });
-  const stored = JSON.parse(kv.get(`app:publish:${CLUB}:squad`));
-  assert.equal(stored.fixtureId, MONS,
-    'downstreamContext reads squad?.fixtureId — which was always undefined before');
+
+  // Asserting on the stored fixtureId alone proved nothing: it passed even with
+  // downstreamContext fully disabled. This drives the REAL consumer instead, so
+  // the test dies if the reference check stops seeing Pass A records.
+  const r = await importUpdate('u-coach', { opposition: 'Mons', date: '2026-08-22', venue: 'Moved' });
+  assert.equal(r.code, 200);
+  assert.equal(r.body.summary.blocked, 1, 'the fixture is protected because a squad references it');
+  assert.equal(r.body.summary.updated, 0);
+  assert.match(r.body.details[0].reason, /squad selection/);
+});
+
+test('a fixture with no squad is NOT protected — the check is specific', async () => {
+  seed(); await login('u-coach');
+  await post('u-coach', { type: 'squad', data: squadData({ fixtureId: MONS }) });
+
+  const r = await importUpdate('u-coach', { opposition: 'Amstelveense', date: '2026-08-29', venue: 'Moved' });
+  assert.equal(r.body.summary.blocked, 0, 'a blanket block would be just as wrong as none');
+  assert.equal(r.body.summary.updated, 1);
 });
 
 test('a legacy squad remains INVISIBLE to that check, and no heuristic rescues it', async () => {

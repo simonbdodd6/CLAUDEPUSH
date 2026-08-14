@@ -61,6 +61,89 @@ export function isTestRosterPlayer(p)  { return TEST_USER_IDS.has(p?.id) || TEST
 
 function sessionsKey(teamId) { return key(`publish:${teamId}:sessions`); }
 function squadKey(teamId)    { return key(`publish:${teamId}:squad`); }
+
+// ── FIXTURE-SCOPED MATCH CENTRE STORAGE ──────────────────────────────────
+// A club used to hold ONE published squad and one draft per coach, so working
+// on a second fixture overwrote the first. These carry the fixture in the key
+// itself. Fixture ids are validated against the club's own fixture list before
+// any key is built, so an id can never be forged into another club's keyspace.
+//
+// The id is club-supplied text, so it is percent-encoded before becoming a key
+// segment: that keeps ':' out of the middle of a key and makes the segment
+// boundaries exact, so a fixture named "a:squad" cannot be read as some other
+// record. Encoding rather than rejecting means no fixture is locked out.
+const fxSeg = fixtureId => encodeURIComponent(String(fixtureId));
+function fixtureSquadKey(teamId, fixtureId) { return key(`publish:${teamId}:fixture:${fxSeg(fixtureId)}:squad`); }
+function fixtureDraftKey(teamId, fixtureId, userId) { return key(`publish:${teamId}:fixture:${fxSeg(fixtureId)}:draft:${encodeURIComponent(String(userId))}`); }
+
+// ── WHAT PLAYERS SEE ─────────────────────────────────────────────────────
+// One record decides this, and it is only ever written by a coach ACTING:
+// publishing chooses a squad, withdrawing chooses none. Nothing is inferred
+// from dates, and no stored squad is ever automatically promoted.
+//
+//   absent            no Pass A action has happened yet -> legacy club-wide
+//                     squad still answers, exactly as it did before Pass A.
+//   {mode:'fixture'}  that fixture's scoped squad, and only that one.
+//   {mode:'legacy'}   the club-wide squad, published with no fixture linked.
+//   {mode:'none'}     explicitly withdrawn. Players see nothing.
+//
+// 'none' is why withdrawal is safe: without it, clearing the record would fall
+// back to whatever legacy squad happened to remain and resurrect a side the
+// coach had just taken down.
+function currentSquadPointerKey(teamId) { return key(`publish:${teamId}:squad:current`); }
+
+const POINTER_MODES = new Set(['fixture', 'legacy', 'none']);
+
+/** Reads the mode record, tolerating an early Pass A record that carried a bare id. */
+async function readSquadPointer(teamId) {
+  const raw = (await kvGet(currentSquadPointerKey(teamId))) || null;
+  if (!raw || typeof raw !== 'object') return null;
+  const fixtureId = String(raw.fixtureId || '').trim();
+  const mode = POINTER_MODES.has(raw.mode) ? raw.mode : (fixtureId ? 'fixture' : null);
+  if (!mode) return null;
+  return { mode, fixtureId };
+}
+
+function writeSquadPointer(teamId, mode, fixtureId, userId) {
+  return kvSet(currentSquadPointerKey(teamId), {
+    mode,
+    fixtureId: mode === 'fixture' ? String(fixtureId) : '',
+    updatedAt: new Date().toISOString(),
+    updatedBy: String(userId || ''),
+  });
+}
+
+/**
+ * Withdraw a fixture's squad.
+ *
+ * Deletes rather than nulls: an existing key is what marks a fixture as having
+ * squad work, so a null tombstone would block that fixture's import updates
+ * forever. Player-facing state moves to 'none' only when THIS fixture is what
+ * players are currently seeing — withdrawing some other fixture must not blank
+ * a board it was never showing.
+ */
+async function retireFixtureSquad(teamId, fixtureId, userId) {
+  await kvDel(fixtureSquadKey(teamId, fixtureId));
+
+  const pointer = await readSquadPointer(teamId);
+  const legacy = (await kvGet(squadKey(teamId))) || null;
+  const legacyNamesIt = legacy && String(legacy.fixtureId || '') === fixtureId;
+
+  // The pre-Pass-A club-wide record for this same fixture is being withdrawn too,
+  // or it would keep answering for a squad that no longer exists.
+  if (legacyNamesIt) await kvDel(squadKey(teamId));
+
+  const wasOnShow = pointer
+    ? (pointer.mode === 'fixture' && pointer.fixtureId === fixtureId)
+    : Boolean(legacyNamesIt);          // no pointer yet: legacy was what players saw
+  if (wasOnShow) await writeSquadPointer(teamId, 'none', '', userId);
+}
+
+/** Withdraw the unlinked club-wide squad. Players are left with nothing. */
+async function retireLegacySquad(teamId, userId) {
+  await kvDel(squadKey(teamId));
+  await writeSquadPointer(teamId, 'none', '', userId);
+}
 // Per-coach PRIVATE match-day draft — scoped to teamId + the owning userId, so
 // each coach has their own working squad that no other coach can overwrite. This
 // is NOT player-facing; only the explicit `squad` key is the official squad.
@@ -595,6 +678,24 @@ async function downstreamContext(teamId) {
   const squad = (await kvGet(squadKey(teamId))) || null;
   const selectionIds = new Set();
   if (squad?.fixtureId) selectionIds.add(String(squad.fixtureId));
+  // Every fixture that holds its own published squad counts as referenced too,
+  // or moving to scoped storage would have quietly weakened the protection that
+  // stops a fixture being edited out from under a squad.
+  //
+  // The VALUE decides, not the key's existence: a withdrawn squad must release
+  // its fixture. Reading through kvGet also means a leftover null from any
+  // earlier build releases correctly rather than blocking the fixture forever.
+  const scopedSquadKeys = await kvScanKeys(`${APP_PREFIX}:publish:${teamId}:fixture:*:squad`);
+  for (const k of scopedSquadKeys) {
+    const stored = await kvGet(k);
+    if (!stored || typeof stored !== 'object') continue;
+    const m = k.match(/:fixture:([^:]+):squad$/);
+    if (!m || !m[1]) continue;
+    let id; try { id = decodeURIComponent(m[1]); } catch { id = m[1]; }
+    selectionIds.add(id);
+  }
+  const pointer = await readSquadPointer(teamId);
+  if (pointer?.mode === 'fixture' && pointer.fixtureId) selectionIds.add(pointer.fixtureId);
   const adjustments = (await kvGet(key(`appearance_adj:${teamId}`))) || [];
   const appearanceIds = new Set(
     (Array.isArray(adjustments) ? adjustments : []).map(a => String(a.fixtureId || '')).filter(Boolean));
@@ -1174,13 +1275,27 @@ async function clubHandler(req, res) {
       if (expected && String(req.body?.confirmName || '').trim() !== expected) {
         return res.status(400).json({ error: 'Type the exact club name to confirm deletion' });
       }
+      // Both generations of Match Centre storage are enumerated rather than
+      // assumed: fixture-scoped squads and drafts, AND the per-coach drafts on
+      // the original key, which the wipe never used to remove.
+      const [scopedKeys, legacyDraftKeys] = await Promise.all([
+        kvScanKeys(`${APP_PREFIX}:publish:${session.teamId}:fixture:*`),
+        kvScanKeys(key(`publish:${session.teamId}:draft:*`)),
+      ]);
       await Promise.all([
         kvSet(clubKey(session.teamId), null),
         kvSet(sessionsKey(session.teamId), null),
         kvSet(squadKey(session.teamId), null),
+        kvDel(currentSquadPointerKey(session.teamId)),
         kvSet(rosterKey(session.teamId), null),
+        ...scopedKeys.map(k => kvDel(k)),
+        ...legacyDraftKeys.map(k => kvDel(k)),
       ]);
-      return res.status(200).json({ ok: true, deleted: ['club', 'sessions', 'squad', 'roster'] });
+      return res.status(200).json({
+        ok: true,
+        deleted: ['club', 'sessions', 'squad', 'squad:current', 'roster',
+          `fixture-scoped:${scopedKeys.length}`, `legacy-drafts:${legacyDraftKeys.length}`],
+      });
     }
 
     if (req.body?.action === 'delete_test_data') {
@@ -1420,7 +1535,36 @@ export default async function handler(req, res) {
       } catch (error) {
         return sendAuthError(res, error);
       }
-      const draft = (await kvGet(draftKey(session.teamId, session.user.id))) || null;
+      // ?fixture= asks for that fixture's draft. Legacy compatibility is
+      // deliberately narrow: the old unscoped record is offered only when it
+      // NAMES this fixture. An anonymous legacy draft is never adopted.
+      let requestedFixture = '';
+      try {
+        requestedFixture = await assertFixtureBelongsToClub(session.teamId, req.query?.fixture);
+      } catch (error) {
+        return res.status(error.status || 400).json({ error: error.message });
+      }
+      let draft = null;
+      if (requestedFixture) {
+        draft = (await kvGet(fixtureDraftKey(session.teamId, requestedFixture, session.user.id))) || null;
+        if (!draft) {
+          const legacy = (await kvGet(draftKey(session.teamId, session.user.id))) || null;
+          if (legacy && String(legacy.fixtureId || '') === requestedFixture) draft = legacy;
+        }
+      } else {
+        // No fixture named — the client that predates fixture-scoped storage
+        // asks this way. Resume the coach's OWN most recently edited draft,
+        // legacy or scoped. The scan is pinned to this user's key suffix, so it
+        // can never surface another coach's private working squad. This is
+        // "carry on where I left off", not an inference about which fixture is
+        // next: nothing here is player-facing.
+        const own = await kvScanKeys(
+          `${APP_PREFIX}:publish:${session.teamId}:fixture:*:draft:${encodeURIComponent(session.user.id)}`);
+        const candidates = [(await kvGet(draftKey(session.teamId, session.user.id))) || null];
+        for (const k of own) candidates.push((await kvGet(k)) || null);
+        draft = candidates.filter(Boolean)
+          .sort((a, b) => String(b?.updatedAt || '').localeCompare(String(a?.updatedAt || '')))[0] || null;
+      }
       return res.status(200).json({ ok: true, draft });
     }
 
@@ -1437,11 +1581,16 @@ export default async function handler(req, res) {
         return sendAuthError(res, error);
       }
       const teamId = session.teamId;
-      const [keys, members, users] = await Promise.all([
+      // Both keyspaces: the legacy unscoped draft and every fixture-scoped one.
+      // Without the second pattern this list would have quietly emptied the
+      // moment drafts became fixture-scoped.
+      const [legacyKeys, scopedKeys, members, users] = await Promise.all([
         kvScanKeys(key(`publish:${teamId}:draft:*`)),
+        kvScanKeys(key(`publish:${teamId}:fixture:*:draft:*`)),
         loadTeamMembers(),
         loadUsers(),
       ]);
+      const keys = [...new Set([...legacyKeys, ...scopedKeys])];
       const userById = new Map(users.map(u => [String(u.id), u]));
       const memberByUser = new Map(
         members.filter(m => String(m.teamId) === String(teamId)).map(m => [String(m.userId), m])
@@ -1450,7 +1599,11 @@ export default async function handler(req, res) {
       for (const k of keys) {
         const rec = await kvGet(k);
         if (!rec || typeof rec !== 'object') continue;
-        const userId = String(rec.userId || k.split(':draft:')[1] || '');
+        let userId = String(rec.userId || '');
+        if (!userId) {
+          const tail = k.split(':draft:')[1] || '';
+          try { userId = decodeURIComponent(tail); } catch { userId = tail; }
+        }
         const member = memberByUser.get(userId);
         if (!member || !['coach', 'admin', 'medical'].includes(member.role)) continue; // current staff only
         const user = userById.get(userId);
@@ -1458,10 +1611,19 @@ export default async function handler(req, res) {
           userId,
           coachName: String(user?.displayName || user?.email || 'Coach'),
           role: member.role,
+          // A coach can now hold one draft per fixture, so each entry says which.
+          fixtureId: String(rec.fixtureId || ''),
           updatedAt: rec.updatedAt || null,
           squad: sanitiseSquad(rec),
         });
       }
+      // SCAN order is arbitrary, and a coach can now hold several drafts, so the
+      // rows are ordered explicitly: most recently edited first, then by coach.
+      // Pass B filters this panel to the selected fixture; until then the order
+      // is at least stable rather than varying between identical requests.
+      drafts.sort((a, b) =>
+        String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))
+        || String(a.userId).localeCompare(String(b.userId)));
       return res.status(200).json({ ok: true, drafts });
     }
 
@@ -1478,7 +1640,50 @@ export default async function handler(req, res) {
       result.sessions = (await readScoped(sessionsKey(session.teamId), 'publish:sessions', session.teamId)) || [];
     }
     if (type === 'all' || type === 'squad') {
-      result.squad = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
+      // Asking for ONE named fixture is a Match Centre capability, so it is
+      // gated on publishing rights. A player supplying ?fixture= is answered
+      // with the player-facing squad, never with the fixture they named — they
+      // cannot browse or enumerate sides that are not on show.
+      const mayReadAnyFixture = can(session, PERM.PUBLISH_SQUADS);
+      let asked = '';
+      if (mayReadAnyFixture) {
+        try {
+          asked = await assertFixtureBelongsToClub(session.teamId, req.query?.fixture);
+        } catch (error) {
+          return res.status(error.status || 400).json({ error: error.message });
+        }
+      }
+      const legacySquadFor = async fixtureId => {
+        // The pre-Pass-A squad lives on the club-wide key and already carries a
+        // fixtureId. It answers for that ONE fixture and no other.
+        const legacy = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
+        return legacy && String(legacy.fixtureId || '') === fixtureId ? legacy : null;
+      };
+      if (asked) {
+        result.squad = (await kvGet(fixtureSquadKey(session.teamId, asked))) || await legacySquadFor(asked);
+      } else {
+        // Exactly one player-facing mode is active at a time. Nothing here
+        // sorts, compares dates, or promotes a stored squad on its own.
+        const pointer = await readSquadPointer(session.teamId);
+        if (!pointer) {
+          // Nothing has been published or withdrawn under Pass A: the club-wide
+          // record still answers, exactly as it did before.
+          result.squad = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
+        } else if (pointer.mode === 'none') {
+          result.squad = null;                       // withdrawn, and stays withdrawn
+        } else if (pointer.mode === 'legacy') {
+          result.squad = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
+        } else {
+          // A pointer naming a fixture the club no longer has is stale. Players
+          // see nothing — it is never repaired by choosing a different fixture,
+          // and it does not fall through to the legacy record either.
+          let live = '';
+          try { live = await assertFixtureBelongsToClub(session.teamId, pointer.fixtureId); } catch { live = ''; }
+          result.squad = live
+            ? ((await kvGet(fixtureSquadKey(session.teamId, live))) || await legacySquadFor(live))
+            : null;
+        }
+      }
     }
     return res.status(200).json(result);
   }
@@ -1506,7 +1711,12 @@ export default async function handler(req, res) {
       }
       draft.userId = session.user.id;
       draft.updatedAt = new Date().toISOString();
-      await kvSet(draftKey(session.teamId, session.user.id), draft);
+      // A draft that names its fixture lands in that fixture's own keyspace, so
+      // preparing Amstelveense cannot overwrite Mons. An unlinked draft keeps
+      // the legacy key: it belongs to no fixture and must not be adopted by one.
+      await kvSet(draft.fixtureId
+        ? fixtureDraftKey(session.teamId, draft.fixtureId, session.user.id)
+        : draftKey(session.teamId, session.user.id), draft);
       return res.status(200).json({ ok: true, draft });
     }
 
@@ -1525,11 +1735,31 @@ export default async function handler(req, res) {
         return res.status(error.status || 400).json({ error: error.message });
       }
       if (!squad.published) {
-        await kvSet(squadKey(session.teamId), null);
+        // Withdrawing always ends with players seeing nothing. Whichever record
+        // was on show is removed and the mode goes to 'none', so no other
+        // stored squad can slide into its place.
+        if (squad.fixtureId) {
+          await retireFixtureSquad(session.teamId, squad.fixtureId, session.user.id);
+        } else {
+          await retireLegacySquad(session.teamId, session.user.id);
+        }
         return res.status(200).json({ ok: true, squad: null });
       }
       squad.publishedAt = squad.publishedAt || new Date().toISOString();
-      await kvSet(squadKey(session.teamId), squad);
+      if (squad.fixtureId) {
+        await kvSet(fixtureSquadKey(session.teamId, squad.fixtureId), squad);
+        // The publish IS the decision about what players see. No dates, no
+        // "newest wins" — publishing Amstelveense leaves Mons stored and
+        // retrievable, it just stops being the one on show.
+        await writeSquadPointer(session.teamId, 'fixture', squad.fixtureId, session.user.id);
+      } else {
+        // An unlinked publish is still a publish. It keeps the legacy key and
+        // is given NO fixture identity, but it must take over the player-facing
+        // slot — otherwise a pointer left by an earlier fixture would keep
+        // showing last week's side while this call answered 200.
+        await kvSet(squadKey(session.teamId), squad);
+        await writeSquadPointer(session.teamId, 'legacy', '', session.user.id);
+      }
       return res.status(200).json({ ok: true, squad });
     }
 
@@ -1546,7 +1776,17 @@ export default async function handler(req, res) {
       return sendAuthError(res, error);
     }
     if (type === 'squad') {
-      await kvSet(squadKey(session.teamId), null);
+      let asked = '';
+      try {
+        asked = await assertFixtureBelongsToClub(session.teamId, req.body?.fixtureId || req.query?.fixture);
+      } catch (error) {
+        return res.status(error.status || 400).json({ error: error.message });
+      }
+      if (asked) {
+        await retireFixtureSquad(session.teamId, asked, session.user.id);
+      } else {
+        await retireLegacySquad(session.teamId, session.user.id);
+      }
       return res.status(200).json({ ok: true });
     }
     if (type === 'sessions') {
