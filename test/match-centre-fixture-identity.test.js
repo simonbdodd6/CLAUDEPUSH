@@ -329,9 +329,19 @@ function mc(matchCentre, formationNames = {}, benchPlayers = []) {
     function saveState() {}
     function render() {}
     function esc(v) { return String(v == null ? '' : v); }
+    function isCoach() { return false; }             // keeps the flush inert here
+    let _coachDraftSaveTimer = null;
+    function saveCoachDraft() {}
+    ${fn('matchCentreFixtureList')}
+    ${fn('mcFixtureDateLabel')}
     ${fn('matchCentreSelectedFixture')}
     ${fn('matchCentreFixtureId')}
     ${fn('matchCentreHasSquadWork')}
+    ${fn('mcFlushDraftNow')}
+    ${fn('mcApplyFixtureDisplay')}
+    ${fn('mcClearFixtureDisplay')}
+    function mcHydrateSelectedFixture() {}           // async loads exercised elsewhere
+    function mcRefreshPublishedForFixture() {}
     ${fn('setMatchCentreFixture')}
     ${fn('matchCentreFixturePicker')}
     return { state, toasts, matchCentreFixtureId, matchCentreHasSquadWork,
@@ -374,24 +384,43 @@ test('the picker offers REAL fixtures only, valued by stable id', () => {
   assert.match(html, /setMatchCentreFixture\(this\.value\)/);
 });
 
-// ── THE UNSAFE-SWITCH GUARD ────────────────────────────────────────────────
-test('a populated squad CANNOT be re-pointed at another fixture', () => {
+// ── SWITCHING IS NOW SAFE (Pass B) ─────────────────────────────────────────
+// Pass A made storage fixture-scoped, so the old cannot-switch lock is gone:
+// each fixture keeps its own draft. A switch flushes the outgoing sheet to its
+// own key and NEVER carries XV/bench across as temporary state.
+test('a populated squad CAN switch fixture — and the sheet does not travel', () => {
   const ctx = mc({ fixtureId: MONS }, { 1: 'Prop', 2: 'Hooker' }, ['Sub A']);
   assert.equal(ctx.matchCentreHasSquadWork(), true);
 
   const ok = ctx.setMatchCentreFixture(AMSTEL);
-  assert.equal(ok, false, 'refused');
-  assert.equal(ctx.state.matchCentre.fixtureId, MONS, 'the link did not move');
-  assert.match(ctx.toasts.join(' '), /already linked to another fixture/);
-  // And nothing about the squad was touched.
-  assert.deepEqual(ctx.state.formationNames, { 1: 'Prop', 2: 'Hooker' }, 'XV unchanged');
-  assert.deepEqual(ctx.state.benchPlayers, ['Sub A'], 'bench unchanged');
+  assert.equal(ok, true, 'the switch is allowed now');
+  assert.equal(ctx.state.matchCentre.fixtureId, AMSTEL, 'the link moved');
+  // Mons' XV/bench must NOT appear under Amstelveense, not even transiently:
+  // the local sheet is cleared and Amstelveense's own draft loads async.
+  assert.deepEqual(ctx.state.formationNames, {}, 'no XV carried across');
+  assert.equal((ctx.state.benchPlayers || []).filter(n => String(n || '').trim()).length, 0,
+    'no bench carried across');
 });
 
-test('the picker is disabled while linked work exists, and says why', () => {
+test('the picker is never disabled — switching populated work is safe now', () => {
   const html = mc({ fixtureId: MONS }, { 1: 'Prop' }).matchCentreFixturePicker();
-  assert.match(html, /disabled/);
-  assert.match(html, /clear the squad to move it/);
+  assert.equal(/<select[^>]*disabled/.test(html), false, 'no lock');
+  assert.equal(/clear the squad to move it/.test(html), false, 'no lock copy either');
+});
+
+test('the switch flushes the OUTGOING draft before anything is cleared', () => {
+  // In the SWITCH branch the flush must come before fixtureId moves and the
+  // sheet is cleared — the ordering is what stops a debounced save filing
+  // fixture A's sheet under fixture B. (The attribution branch above it
+  // deliberately flushes AFTER relinking; anchor on the switch branch's
+  // unique 'published: false' marker.)
+  const body = fn('setMatchCentreFixture');
+  const flushAt = body.lastIndexOf('mcFlushDraftNow()');
+  const moveAt  = body.indexOf('fixtureId: id, published: false');
+  const clearAt = body.indexOf('state.formationNames = {}');
+  assert.ok(flushAt > 0 && moveAt > 0 && clearAt > 0, 'all three steps exist');
+  assert.ok(flushAt < moveAt, 'flush happens before the link moves');
+  assert.ok(moveAt < clearAt, 'and the sheet clears only after that');
 });
 
 test('an EMPTY Match Centre may select any real fixture freely', () => {
@@ -419,8 +448,10 @@ test('an anonymous populated squad CAN be linked by the coach, changing only ide
   assert.equal(ctx.state.matchCentre.fixtureId, MONS);
   assert.deepEqual(ctx.state.formationNames, { 1: 'Prop' }, 'XV untouched by attribution');
   assert.deepEqual(ctx.state.benchPlayers, ['Sub A'], 'bench untouched');
-  // Once linked, it is protected like any other linked squad.
-  assert.equal(ctx.setMatchCentreFixture(AMSTEL), false);
+  // Once linked it behaves like any linked fixture: switching away is ALLOWED
+  // (fixture-scoped storage keeps the Mons work), and nothing travels.
+  assert.equal(ctx.setMatchCentreFixture(AMSTEL), true);
+  assert.deepEqual(ctx.state.formationNames, {}, 'the Mons sheet did not follow to Amstelveense');
 });
 
 test('the payload sources its id from the explicit selection', () => {

@@ -4695,6 +4695,39 @@
       width: 18px; height: 18px; display: inline-block; vertical-align: -3px;
       margin-right: 7px;
     }
+
+    /* ══ MATCH CENTRE PASS B — fixture navigation + availability filters ══
+       ‹ Prev / Next › walk the chronological fixture list; the compact filter
+       chips control ONLY which candidate names are shown. Both reuse the
+       existing mc7/mc10 visual language. */
+    .mc-fixnav { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; }
+    .mc-fixnav-btn {
+      min-height: 38px; min-width: 44px; padding: 0 10px; flex-shrink: 0;
+      border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2);
+      color: var(--ink); font-size: 12.5px; font-weight: 800; cursor: pointer;
+    }
+    .mc-fixnav-btn:disabled { opacity: .35; cursor: default; }
+    .mc-fixnav-label {
+      font-size: 13px; font-weight: 800; color: var(--ink); padding: 0 4px;
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .mc7-filter { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 9px; }
+    .mc7-filter button {
+      flex: 0 1 auto; min-height: 30px; padding: 0 9px; white-space: nowrap;
+      border: 1px solid var(--hair); background: rgba(255,255,255,0.02);
+      color: var(--muted); font-size: 11px; font-weight: 700; border-radius: 999px; cursor: pointer;
+    }
+    .mc7-filter button.on { background: var(--brand-soft); color: var(--brand-2); border-color: var(--brand-line); }
+    .mc7-fcount { opacity: .75; font-weight: 800; margin-left: 2px; }
+    /* Candidate rows now carry a visible status label beside the dot, so the
+       colour never has to be guessed. */
+    .mc7-trow.has-st { grid-template-columns: minmax(0,1fr) auto 16px; }
+    .mc7-match.maybe { color: #fbbf24; }
+    .mc7-dot.maybe { background: #fbbf24; }
+    @media (pointer: coarse) {
+      .mc7-filter button { min-height: 40px; }
+      .mc-fixnav-btn { min-height: 44px; }
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -4963,6 +4996,32 @@
     // Match Centre — Available Players table sort (presentation-only view state): 'pos' | 'training'.
     let _mcAvailSort = 'training';
     function mcSetAvailSort(k) { _mcAvailSort = k; render(); }
+    // Candidate-list availability filter (Pass B). null = not chosen yet, which
+    // resolves to 'available' when a fixture is selected (explicit product
+    // decision: the default view shows only players who said Available for the
+    // selected fixture) and 'all' when unlinked. VIEW-ONLY: it changes which
+    // candidate names render, never eligibility, XV, bench, drafts or squads.
+    let _mcAvailFilter = null;
+    function mcSetAvailFilter(k) {
+      _mcAvailFilter = ['all', 'available', 'maybe', 'unavailable', 'noreply'].includes(k) ? k : 'all';
+      render();
+    }
+    /**
+     * Pure: one selected-fixture response → one filter bucket. Strict by
+     * design — available / maybe / unavailable are the exact recorded answers
+     * for THAT fixture; anything else (including no stored response at all)
+     * is No reply. 'injured' is a legacy coach-set state that only the
+     * generic weekly slot can carry; it reads as unavailable, never invents a
+     * reply. Generic game responses never reach here for a linked fixture,
+     * because the rows come from sessionRows(<fixtureId>).
+     */
+    function mcAvailFilterBucket(status) {
+      const s = String(status || '');
+      return s === 'available' ? 'available'
+           : s === 'maybe' ? 'maybe'
+           : (s === 'unavailable' || s === 'injured') ? 'unavailable'
+           : 'noreply';
+    }
 
     // Squad starts empty — add your real players via Player DB → Add Player
     const playerSeed = [];
@@ -7433,7 +7492,12 @@
       html2canvas(pitch, { scale:2, useCORS:true, allowTaint:true, backgroundColor:null }).then(canvas => {
         const link = document.createElement("a");
         const _clubSlug = (state.clubName || 'team').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        link.download = `${_clubSlug}-matchday-${new Date().toISOString().slice(0,10)}.png`;
+        // The export IS the selected fixture's sheet, so its name says which
+        // fixture: opponent + the FIXTURE's date, not today's.
+        const _fx = matchCentreSelectedFixture();
+        const _oppSlug = _fx ? '-vs-' + String(_fx.opposition || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+        const _dateStr = (_fx && _fx.date) ? String(_fx.date).slice(0, 10) : new Date().toISOString().slice(0, 10);
+        link.download = `${_clubSlug}${_oppSlug}-matchday-${_dateStr}.png`;
         link.href = canvas.toDataURL("image/png");
         link.click();
         showToast("Matchday graphic downloaded — ready to post on Instagram! ✓");
@@ -7506,34 +7570,78 @@
      * stays a legitimate state — nothing is inferred to fill it.
      */
     /**
-     * The explicit fixture link. Options are REAL fixtures only, valued by
-     * their stable id, and the honest "Not linked" state is shown rather than
-     * implied. Disabled once squad work exists, because storage is not yet
-     * fixture-scoped — the control explains why instead of failing silently.
+     * Chronologically ordered REAL fixtures — the single source for the
+     * dropdown, the ‹ Previous / Next › navigation and every boundary
+     * decision. Ordered by date then id, so the order is total and stable
+     * even when two fixtures share a date.
      */
-    function matchCentreFixturePicker() {
-      const fixtures = (state.fixtures || [])
+    function matchCentreFixtureList() {
+      return (state.fixtures || [])
         .filter(f => f && f.id && f.opposition)
         .slice()
-        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+        .sort((a, b) => String(a.date || '9999').localeCompare(String(b.date || '9999'))
+          || String(a.id).localeCompare(String(b.id)));
+    }
+
+    /** "22 Aug" from an ISO date, or '' — display only, never identity. */
+    function mcFixtureDateLabel(d) {
+      if (!d) return '';
+      const [y, m, day] = String(d).slice(0, 10).split('-').map(Number);
+      if (!m || !day) return '';
+      return day + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1];
+    }
+
+    /**
+     * The explicit fixture link. Options are REAL fixtures only, valued by
+     * their stable id, and the honest "Not linked" state is shown rather than
+     * implied. Storage is fixture-scoped (Pass A), so switching a populated
+     * squad is safe: each fixture keeps its own draft, and the old
+     * cannot-switch lock is gone. ‹ Previous / Next › walk the chronological
+     * list; the dropdown remains for direct selection.
+     */
+    function matchCentreFixturePicker() {
+      const fixtures = matchCentreFixtureList();
       const selected = matchCentreFixtureId();
-      const locked = Boolean(selected) && matchCentreHasSquadWork();
-      const label = d => {
-        if (!d) return '';
-        const [y, m, day] = String(d).slice(0, 10).split('-').map(Number);
-        return ' · ' + day + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1];
-      };
+      const idx = fixtures.findIndex(f => String(f.id) === selected);
+      const current = idx >= 0 ? fixtures[idx] : null;
+      // Boundaries: at the first fixture Previous is disabled, at the last Next
+      // is disabled. Unlinked, Next enters the list at its start.
+      const prevOk = idx > 0;
+      const nextOk = fixtures.length > 0 && idx < fixtures.length - 1;
+      const label = d => { const l = mcFixtureDateLabel(d); return l ? ' · ' + l : ''; };
       return `
         <div id="mc-fixture-link-wrap" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <div class="mc-fixnav" role="group" aria-label="Fixture navigation">
+            <button type="button" class="mc-fixnav-btn" id="mc-fixture-prev" ${prevOk ? '' : 'disabled'}
+              onclick="mcFixtureNav(-1)" aria-label="Previous fixture">‹ Prev</button>
+            <span class="mc-fixnav-label" id="mc-fixture-current">${current
+              ? esc(current.opposition) + esc(label(current.date))
+              : 'Not linked'}</span>
+            <button type="button" class="mc-fixnav-btn" id="mc-fixture-next" ${nextOk ? '' : 'disabled'}
+              onclick="mcFixtureNav(1)" aria-label="Next fixture">Next ›</button>
+          </div>
           <label for="mc-fixture-link" style="font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">Fixture</label>
-          <select id="mc-fixture-link" ${locked ? 'disabled' : ''}
+          <select id="mc-fixture-link"
             onchange="setMatchCentreFixture(this.value)"
             style="min-height:38px;max-width:100%;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);font-size:13px;font-weight:700;padding:0 10px;box-sizing:border-box">
             <option value="" ${selected ? '' : 'selected'}>Not linked</option>
             ${fixtures.map(f => `<option value="${esc(f.id)}" ${f.id === selected ? 'selected' : ''}>${esc(f.opposition)}${esc(label(f.date))}</option>`).join('')}
           </select>
-          ${locked ? `<span class="muted" style="font-size:11px;flex-basis:100%">Linked — clear the squad to move it to a different fixture.</span>` : ''}
         </div>`;
+    }
+
+    /**
+     * Walk the chronological fixture list. Boundary-safe: past either end the
+     * call is a no-op. From the unlinked state, Next enters at the earliest
+     * fixture and Previous stays put — there is nothing "before" no fixture.
+     */
+    function mcFixtureNav(delta) {
+      const fixtures = matchCentreFixtureList();
+      if (!fixtures.length) return;
+      const idx = fixtures.findIndex(f => String(f.id) === matchCentreFixtureId());
+      const next = idx < 0 ? (delta > 0 ? 0 : -1) : idx + delta;
+      if (next < 0 || next >= fixtures.length) return;
+      setMatchCentreFixture(fixtures[next].id);
     }
 
     function matchCentreSelectedFixture() {
@@ -7548,9 +7656,9 @@
     }
 
     /**
-     * Does the working Match Centre hold real squad work? Used only to protect
-     * it — storage is not fixture-scoped yet, so re-pointing a populated squad
-     * at another fixture would silently relabel one match's XV as another's.
+     * Does the working Match Centre hold real squad work? Retained for the
+     * empty-state hint; it no longer gates fixture switching — Pass A made
+     * storage fixture-scoped, so each fixture keeps its own draft and squad.
      */
     function matchCentreHasSquadWork() {
       const named = Object.values(state.formationNames || {}).filter(n => String(n || '').trim());
@@ -7559,13 +7667,17 @@
     }
 
     /**
-     * Explicitly link the working Match Centre to a real fixture.
+     * Select the fixture the Match Centre is working on.
      *
-     * Refuses while squad work exists and the target differs, because storage
-     * is still shared across fixtures: the honest outcome is to decline rather
-     * than relabel, clear the coach's work, or overwrite anything. Attaching an
-     * as-yet-unlinked squad IS allowed — that is explicit human attribution,
-     * not inference, and it changes identity only, never a single selection.
+     * The switch is safe because storage is fixture-scoped: the OUTGOING
+     * fixture's sheet is flushed to its own draft key first — synchronously
+     * capturing the payload, so a pending debounced save can never file
+     * fixture A's XV under fixture B — then the local sheet is cleared and the
+     * INCOMING fixture's draft and published state are loaded. XV and bench
+     * are never carried across as temporary state, not even for one render.
+     *
+     * Unlinking (id = '') keeps an honest empty workspace: the anonymous
+     * legacy draft belongs to no fixture and nothing else is auto-adopted.
      */
     function setMatchCentreFixture(fixtureId) {
       const id = String(fixtureId || '').trim();
@@ -7576,17 +7688,106 @@
         showToast('That fixture is not in your fixture list');
         return false;
       }
-      // Re-pointing populated work at a DIFFERENT fixture is the unsafe case.
-      // Attaching previously-unlinked work is safe: nothing is being taken away
-      // from another fixture.
-      if (current && id !== current && matchCentreHasSquadWork()) {
-        showToast('This squad is already linked to another fixture — clear it first');
-        return false;
+      const hasWork = matchCentreHasSquadWork();
+      if (!current && id && hasWork) {
+        // ATTRIBUTION: previously-unlinked work gains an identity. Explicit
+        // human attribution changes identity ONLY — never a single selection —
+        // so the sheet stays put and is persisted under its new fixture key.
+        state.matchCentre = { ...(state.matchCentre || {}), fixtureId: id };
+        const fx = matchCentreSelectedFixture();
+        if (fx) mcApplyFixtureDisplay(fx);
+        saveState('Match fixture linked');
+        mcFlushDraftNow();
+        render();
+        mcRefreshPublishedForFixture(id);
+        return true;
       }
-      state.matchCentre = { ...(state.matchCentre || {}), fixtureId: id };
+      // SWITCH: the outgoing fixture keeps its work under its own key, and
+      // nothing crosses over. (From the unlinked-and-empty state there is
+      // nothing to flush — and flushing would overwrite the coach's stored
+      // anonymous draft with an empty sheet.)
+      if (current || hasWork) mcFlushDraftNow();
+      state.matchCentre = { ...(state.matchCentre || {}), fixtureId: id, published: false };
+      state.formationNames = {};
+      state.benchPlayers   = Array(8).fill('');
+      state.fphotoIds      = {};
+      const fx = matchCentreSelectedFixture();
+      if (fx) mcApplyFixtureDisplay(fx); else mcClearFixtureDisplay();
       saveState('Match fixture linked');
       render();
+      if (id) mcHydrateSelectedFixture(id);
       return true;
+    }
+
+    /**
+     * Flush the coach's draft for the CURRENT fixture immediately. The payload
+     * (including fixtureId) is serialised before this returns, so state can be
+     * mutated right afterwards without racing the request body.
+     */
+    function mcFlushDraftNow() {
+      if (!isCoach()) return;
+      clearTimeout(_coachDraftSaveTimer);
+      saveCoachDraft();
+    }
+
+    /**
+     * Display fields FOLLOW the selected fixture record — the same
+     * fixture → Match Centre direction autopilot already uses. Identity stays
+     * fixtureId; these are presentation copies, and rendering never writes
+     * back to the fixture.
+     */
+    function mcApplyFixtureDisplay(fx) {
+      state.matchCentre = {
+        ...(state.matchCentre || {}),
+        opposition:  fx.opposition || '',
+        kickoffDate: String(fx.date || '').slice(0, 10),
+        kickoffTime: fx.kickoffTime || fx.time || '',
+        venue:       fx.venue || '',
+        competition: fx.competition || '',
+        homeAway:    fx.homeAway || '',
+      };
+    }
+    function mcClearFixtureDisplay() {
+      state.matchCentre = { ...(state.matchCentre || {}),
+        opposition: '', kickoffDate: '', kickoffTime: '', venue: '', competition: '', homeAway: '' };
+    }
+
+    /**
+     * Load the incoming fixture's OWN draft and published state. Best-effort
+     * and stale-guarded: if the coach has switched again before the response
+     * lands, the reply is discarded rather than applied to the wrong fixture.
+     */
+    async function mcHydrateSelectedFixture(id) {
+      if (!isCoach() || typeof fetch !== 'function') return;
+      try {
+        const q = encodeURIComponent(String(id));
+        const [dRes, sRes] = await Promise.all([
+          fetch('/api/publish?type=draft&fixture=' + q),
+          fetch('/api/publish?type=squad&fixture=' + q),
+        ]);
+        if (String(matchCentreFixtureId()) !== String(id)) return;   // moved on
+        if (dRes.ok) {
+          const { draft } = await dRes.json();
+          // Only this fixture's own draft may hydrate this fixture's sheet —
+          // an anonymous legacy draft is never injected into a real fixture.
+          if (draft && String(draft.fixtureId || '') === String(id)) {
+            const { formationNames, benchPlayers, published, publishedAt, fixtureId, ...mcRest } = draft;
+            state.matchCentre = { ...(state.matchCentre || {}), ...mcRest, fixtureId: String(id) };
+            if (formationNames && typeof formationNames === 'object') state.formationNames = formationNames;
+            if (Array.isArray(benchPlayers)) state.benchPlayers = benchPlayers;
+          }
+        }
+        if (sRes.ok) {
+          // Published is a per-fixture fact read from the fixture's scoped
+          // record — not the player-facing pointer, which only Publish moves.
+          const { squad } = await sRes.json();
+          state.matchCentre = { ...(state.matchCentre || {}), published: Boolean(squad && squad.published) };
+        }
+        const fx = matchCentreSelectedFixture();
+        if (fx) mcApplyFixtureDisplay(fx);   // real fixture data wins for display
+        saveState('Fixture loaded');
+        render();
+      } catch (e) { console.warn('[mcHydrateSelectedFixture]', e); }
     }
 
     async function saveCoachDraft() {
@@ -7611,21 +7812,55 @@
     async function loadCoachDraft() {
       if (!isCoach()) return;
       try {
-        const res = await fetch('/api/publish?type=draft');
+        // A selected fixture asks for ITS draft; unlinked keeps the pre-Pass-B
+        // "resume where I left off" request, whose reply may carry an explicit
+        // fixtureId that relinks the device — stored identity, never inference.
+        const selected = matchCentreFixtureId();
+        const res = await fetch('/api/publish?type=draft'
+          + (selected ? '&fixture=' + encodeURIComponent(selected) : ''));
         if (!res.ok) return;
         const { draft } = await res.json();
-        if (!draft) return;
+        if (!draft) { if (selected) mcRefreshPublishedForFixture(selected); return; }
+        // While a fixture is selected, only that fixture's own draft may fill
+        // the sheet — an anonymous or other-fixture draft is never adopted.
+        if (selected && String(draft.fixtureId || '') !== selected) {
+          mcRefreshPublishedForFixture(selected);
+          return;
+        }
         const localHasDraft =
           Object.values(state.formationNames || {}).some(n => String(n || '').trim()) ||
           (state.benchPlayers || []).some(n => String(n || '').trim());
-        if (localHasDraft) return;
+        if (localHasDraft) { if (selected) mcRefreshPublishedForFixture(selected); return; }
         const { formationNames, benchPlayers, published, publishedAt, ...mc } = draft;
         state.matchCentre = { ...(state.matchCentre || {}), ...mc };
         if (formationNames && typeof formationNames === 'object') state.formationNames = formationNames;
         if (Array.isArray(benchPlayers)) state.benchPlayers = benchPlayers;
         saveState('Coach draft loaded');
         render();
+        const now = matchCentreFixtureId();
+        if (now) mcRefreshPublishedForFixture(now);
       } catch (e) { console.warn('[loadCoachDraft]', e); }
+    }
+
+    /**
+     * The coach-facing "published" flag is a PER-FIXTURE fact: it reflects the
+     * selected fixture's scoped squad record, never the player-facing pointer.
+     * Stale-guarded like every fixture-scoped load.
+     */
+    async function mcRefreshPublishedForFixture(id) {
+      if (!isCoach() || !id) return;
+      try {
+        const res = await fetch('/api/publish?type=squad&fixture=' + encodeURIComponent(String(id)));
+        if (!res.ok) return;
+        if (String(matchCentreFixtureId()) !== String(id)) return;
+        const { squad } = await res.json();
+        const published = Boolean(squad && squad.published);
+        if (Boolean((state.matchCentre || {}).published) !== published) {
+          state.matchCentre = { ...(state.matchCentre || {}), published };
+          saveState('Published state refreshed');
+          render();
+        }
+      } catch (e) { console.warn('[mcRefreshPublishedForFixture]', e); }
     }
 
     // ─── COACH DRAFT COMPARE (Phase 2) ───────────────────────────────────────
@@ -7668,7 +7903,13 @@
     function mcComparePanelHTML() {
       if (!isCoach()) return '';
       const meId = String(state.currentUserId || '');
-      const drafts = _coachDraftsList || [];
+      // The server returns one draft row per fixture per coach. Only rows for
+      // the SELECTED fixture are shown, so a coach never appears twice for
+      // work on other fixtures, and every displayed Updated/View pair comes
+      // from one record. Unlinked, only anonymous legacy drafts (no fixture)
+      // are shown — a legacy draft is never injected into a real fixture.
+      const selectedFx = matchCentreFixtureId();
+      const drafts = (_coachDraftsList || []).filter(d => String(d.fixtureId || '') === selectedFx);
       const draftByUser = new Map(drafts.map(d => [String(d.userId), d]));
       const mine = draftByUser.get(meId);
       // Every coach/staff identity on this team (name + role), de-duplicated.
@@ -7690,8 +7931,12 @@
           <button class="btn" type="button" onclick="mcViewCoachDraft('${esc(String(u.id)).replace(/'/g, "\\'")}')">View</button></div></div>`;
       }).join('');
 
+      const fxRec = matchCentreSelectedFixture();
+      const panelContext = fxRec
+        ? `${fxRec.opposition}${fxRec.date ? ' · ' + mcFixtureDateLabel(fxRec.date) : ''}`
+        : 'No linked fixture';
       return `<section class="card mc-cmp-panel" aria-label="Coach draft compare">
-        <div class="mc-cmp-panel-head"><h3>Coach drafts</h3><span class="mc-cmp-hint">Each coach keeps their own draft · read-only</span></div>
+        <div class="mc-cmp-panel-head"><h3>Coach drafts — ${esc(panelContext)}</h3><span class="mc-cmp-hint">Each coach keeps their own draft per fixture · read-only</span></div>
         <div class="mc-cmp-list">
           <div class="mc-cmp-item reference"><div class="mc-cmp-item-main"><span class="mc-cmp-item-name">Published Squad</span><span class="mc-cmp-item-role official">Official</span></div>
             <div class="mc-cmp-item-right"><span class="mc-cmp-item-meta muted">What players see</span><button class="btn" type="button" onclick="mcViewPublishedSquad()">View</button></div></div>
@@ -7702,20 +7947,33 @@
       </section>`;
     }
 
-    // Open the read-only viewer for another coach's draft (from the cached list).
+    // Open the read-only viewer for another coach's draft (from the cached
+    // list). Scoped to the SELECTED fixture, matching what the panel shows —
+    // a coach's draft for a different fixture is never opened by mistake.
     function mcViewCoachDraft(userId) {
-      const d = (_coachDraftsList || []).find(x => String(x.userId) === String(userId));
+      const selectedFx = matchCentreFixtureId();
+      const d = (_coachDraftsList || []).find(x =>
+        String(x.userId) === String(userId) && String(x.fixtureId || '') === selectedFx);
       if (!d) { showToast('That draft is no longer available'); return; }
       _mcOpenCompareViewer(`${d.coachName} · ${_MC_STAFF_ROLE_LABEL[d.role] || 'Staff'}`, `Updated ${_draftTimeAgo(d.updatedAt)} · Read-only`, d.squad);
     }
-    // Open the read-only viewer for the official published squad (fetched fresh).
+    // Open the read-only viewer for the published squad. With a fixture
+    // selected this is THAT fixture's scoped record (a coach capability);
+    // unlinked it is the player-facing squad. The subtitle keeps the
+    // distinction honest — only the player-facing pointer is "what players see".
     async function mcViewPublishedSquad() {
       try {
-        const res = await fetch('/api/publish?type=squad');
+        const selected = matchCentreFixtureId();
+        const res = await fetch('/api/publish?type=squad'
+          + (selected ? '&fixture=' + encodeURIComponent(selected) : ''));
         if (!res.ok) { showToast('Could not load published squad'); return; }
         const { squad } = await res.json();
-        if (!squad) { showToast('No squad published yet'); return; }
-        _mcOpenCompareViewer('Published Squad', 'Official — this is what players see', squad);
+        if (!squad) { showToast(selected ? 'No squad published for this fixture yet' : 'No squad published yet'); return; }
+        const fx = matchCentreSelectedFixture();
+        const subtitle = fx
+          ? `Official — published for ${fx.opposition}${fx.date ? ' · ' + mcFixtureDateLabel(fx.date) : ''}`
+          : 'Official — this is what players see';
+        _mcOpenCompareViewer('Published Squad', subtitle, squad);
       } catch { showToast('Could not load published squad'); }
     }
     function _mcOpenCompareViewer(title, subtitle, squad) {
@@ -7758,7 +8016,12 @@
       state.matchCentre = state.matchCentre || {};
       const isPublishing = !state.matchCentre.published;
       if (isPublishing) {
-        const opp = state.matchCentre.opposition || 'the match';
+        // Name the FIXTURE being published, not just free-text opposition, so
+        // the coach always knows which match this publish will put on show.
+        const fx = matchCentreSelectedFixture();
+        const opp = fx
+          ? `${fx.opposition}${fx.date ? ' · ' + mcFixtureDateLabel(fx.date) : ''}`
+          : (state.matchCentre.opposition || 'the match');
         if (!(await ceConfirm(`Publish the squad for ${opp}?`, 'Every player with notifications enabled will be notified immediately.', { confirmLabel: 'Publish squad' }))) return;
       }
       state.matchCentre.published = isPublishing;
@@ -8112,11 +8375,16 @@
     function mcDragEnd(event) { stopMatchdayAutoScroll(); _mcClearDragFx(); }
 
     // ─── Available Players · instant search (DOM filter — no re-render, keeps focus)
+    // Matches name OR position. Position comes from the row's data attribute —
+    // the compact rows don't render a position cell, so searching "prop" would
+    // otherwise never find a prop. Composes with the availability filter: it
+    // only ever hides rows the filter chose to render.
     function mcAvailSearch(v) {
       const q = String(v || '').trim().toLowerCase();
       document.querySelectorAll('#coach-matchday .mc7-trow').forEach(r => {
         const n = (r.getAttribute('data-player-name') || '').toLowerCase();
-        const pos = (r.querySelector('.mc7-pos') ? r.querySelector('.mc7-pos').textContent : '').toLowerCase();
+        const pos = ((r.getAttribute('data-player-pos') || '')
+          || (r.querySelector('.mc7-pos') ? r.querySelector('.mc7-pos').textContent : '')).toLowerCase();
         r.style.display = (!q || n.indexOf(q) !== -1 || pos.indexOf(q) !== -1) ? '' : 'none';
       });
     }
@@ -12853,6 +13121,77 @@
       }
     }
 
+    /**
+     * Remind the players who have NOT replied for the SELECTED fixture.
+     *
+     * The non-responder set is computed client-side from the fixture's own
+     * dated event (sessionRows(fixtureId)) and each player is targeted
+     * individually — the server's audience:'no-reply' filter uses a global
+     * 7-day responder window that cannot answer "who hasn't replied for
+     * Mons?", so it is deliberately not used here. sessionId carries the
+     * fixture's event id for notification preferences and the push tag.
+     */
+    /**
+     * The players a fixture reminder may reach: current ROSTER players only
+     * (never staff records, never archived members), one entry per person.
+     * canonicalVisiblePlayers already de-duplicates identities upstream; the
+     * by-id Map here makes "at most one push per player" a local guarantee
+     * rather than an assumption about the caller.
+     */
+    function mcFixtureRemindTargets(fixtureId) {
+      const byId = new Map();
+      for (const r of sessionRows(String(fixtureId))) {
+        const p = r.player;
+        if (!isRosterPlayerRecord(p) || (p.lifecycleStatus || 'active') === 'archived') continue;
+        if (r.status && r.status !== 'no-reply') continue;   // any recorded answer excludes them
+        if (!byId.has(String(p.id))) byId.set(String(p.id), p);
+      }
+      return [...byId.values()];
+    }
+
+    let _mcRemindInFlight = false;   // one click = one batch; re-taps are ignored until done
+    async function remindFixtureNonResponders() {
+      if (!isCoach()) return showToast("Only coaches can send reminders");
+      if (_mcRemindInFlight) return;
+      const fx = matchCentreSelectedFixture();
+      if (!fx) return chaseAllNonResponders();
+      const targets = mcFixtureRemindTargets(fx.id);
+      const label = `${fx.opposition}${fx.date ? ' · ' + mcFixtureDateLabel(fx.date) : ''}`;
+      if (!targets.length) return showToast('Everyone has replied for this fixture');
+      _mcRemindInFlight = true;
+      try {
+        if (!(await ceConfirm(`Remind ${targets.length} player${targets.length > 1 ? 's' : ''}?`,
+          `Players who have not replied for ${label} get one push asking them to confirm availability.`,
+          { confirmLabel: 'Send reminders' }))) return;
+        let sent = 0;
+        for (const p of targets) {
+          try {
+            const res = await fetch('/api/push', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title:        'Availability reminder',
+                body:         `Please confirm your availability for ${label} in the app.`,
+                tag:          `remind-${fx.id}-${p.id}`,
+                type:         'availability',
+                sessionId:    String(fx.id),
+                url:          '/?to=availability',
+                targetUserId: String(p.userId || p.id || ''),
+                targetLabel:  p.name || undefined,
+              }),
+            });
+            const d = await res.json().catch(() => ({}));
+            if ((d.sent || 0) > 0) sent += d.sent;
+          } catch { /* keep going — one player's failed push must not stop the rest */ }
+        }
+        showToast(sent > 0
+          ? `Reminder sent to ${sent} player${sent > 1 ? 's' : ''}`
+          : 'No reminders delivered — players may not have notifications enabled');
+      } finally {
+        _mcRemindInFlight = false;
+      }
+    }
+
     async function chaseAllNonResponders() {
       if (!isCoach()) return showToast("Only coaches can send reminders");
       const sessions = state.schedule || [];
@@ -13298,6 +13637,10 @@
       // (self-throttled; re-renders when new data arrives). Coach-only.
       if (isCoach()) loadCoachDraftsList();
       const mc      = state.matchCentre || {};
+      // The selected fixture drives opponent, date, availability, filters and
+      // the drafts panel. Resolved once per render, id-validated — a stale id
+      // degrades to null and the view says so honestly.
+      const mcFx    = matchCentreSelectedFixture();
       const phase   = matchCentrePhase();
       const countdown = matchCountdownStr();
       const layout  = matchPlannerLayout(state.matchDetailsCollapsed);
@@ -13313,12 +13656,19 @@
           pending: rows.filter(r => !r.status || r.status === 'no-reply').length,
         };
       });
-      // Use game session for hero KPIs; fall back to last session
+      // Availability for THIS view: the selected fixture's own dated event
+      // (its id IS the fixture id — Pass 3a), so the numbers and dots answer
+      // "who can play THIS match?". Only with no linked fixture does the
+      // legacy weekly game slot still answer, exactly as before.
       const gameSess    = sessions.find(s => s.id === 'game') || sessions[sessions.length - 1];
-      const gameRows    = gameSess ? sessionRows(gameSess.id) : [];
-      const availCount  = gameRows.filter(r => r.status === 'available').length;
+      const gameRows    = mcFx ? sessionRows(String(mcFx.id)) : (gameSess ? sessionRows(gameSess.id) : []);
+      const availCount   = gameRows.filter(r => r.status === 'available').length;
+      const maybeCount   = gameRows.filter(r => r.status === 'maybe').length;
       const unavailCount = gameRows.filter(r => r.status === 'unavailable').length;
       const pendingCount = gameRows.filter(r => !r.status || r.status === 'no-reply').length;
+      // The remind button's number equals the players a click would actually
+      // target: roster players only, never staff or archived members.
+      const remindCount  = mcFx ? mcFixtureRemindTargets(mcFx.id).length : pendingCount;
 
       // Medical
       const medAlerts = state.players.filter(p => p.game === 'injured' || p.medical);
@@ -13328,9 +13678,18 @@
         ? (phase.days >= 1 ? `${Math.floor(phase.days)}d` : `${Math.floor(phase.days * 24)}h`)
         : "—";
 
-      // Kickoff date formatted
-      const kickoffDisplay = mc.kickoffDate
-        ? new Date(`${mc.kickoffDate}T${mc.kickoffTime || '15:00'}:00`).toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' })
+      // Header display comes from the REAL fixture record when one is
+      // selected — render-derived, so it can never show another fixture's
+      // stale copy. Display only: identity stays fixtureId and nothing here
+      // writes to the fixture. Unlinked keeps the honest TBC state.
+      const _hdrOpp   = mcFx ? (mcFx.opposition || 'Opponent TBC') : (mc.opposition || 'Opponent TBC');
+      const _hdrDate  = mcFx ? String(mcFx.date || '').slice(0, 10) : (mc.kickoffDate || '');
+      const _hdrTime  = mcFx ? (mcFx.kickoffTime || mcFx.time || '') : (mc.kickoffTime || '');
+      const _hdrVenue = mcFx ? (mcFx.venue || '') : (mc.venue || '');
+      const _hdrComp  = mcFx ? (mcFx.competition || '') : (mc.competition || '');
+      const _hdrAway  = (mcFx ? mcFx.homeAway : mc.homeAway) === 'away';
+      const kickoffDisplay = _hdrDate
+        ? new Date(`${_hdrDate}T${_hdrTime || '15:00'}:00`).toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' })
         : "Date TBC";
 
       // Phase planning tips
@@ -13389,15 +13748,16 @@
       // Available list excludes by PERSON (every record of a placed member is hidden).
       const available = matchdayPlayers.filter(p => !_seenPersons.has(mcPersonKey(p.name)));
 
-      // Available Players table — Match (this fixture) + Training attendance % (season). Read-only.
-      const _schedAll = state.schedule || [];
+      // Available Players table — selected-fixture availability + Training
+      // attendance % (season). Read-only. Statuses come from the SAME rows as
+      // the KPIs above (the fixture's dated event when linked), so a player
+      // who answered Available for Mons shows Available while Mons is
+      // selected — never red because of training or some other fixture.
       const _attBySession = state.trainingAttendance || {};
-      const _gameSessTbl = _schedAll.find(s => s.id === 'game') || _schedAll[_schedAll.length - 1];
-      const _gameKeyTbl  = _gameSessTbl ? sessionKey(_gameSessTbl.id) : null;
+      const _statusByPlayer = new Map(gameRows.map(r => [String(r.player.id), String(r.status || '')]));
       const _posRank = p => { const m = { prop:1, hooker:2, lock:4, flanker:6, 'no.8':8, 'number 8':8, 'scrum-half':9, 'fly-half':10, 'fly half':10, centre:12, wing:11, 'full-back':15, fullback:15 }; return m[String(p.position||'').toLowerCase().trim()] || 99; };
       const _availStats = available.map(p => {
-        const ms = _gameKeyTbl ? String(p[_gameKeyTbl] || '') : '';
-        const match = ms === 'available' ? 'available' : ((ms === 'unavailable' || ms === 'injured') ? 'unavailable' : 'noreply');
+        const match = mcAvailFilterBucket(_statusByPlayer.get(String(p.id)));
         let attN = 0, attT = 0;
         Object.keys(_attBySession).forEach(sid => {
           const st = _attBySession[sid] && _attBySession[sid][p.id];
@@ -13410,13 +13770,26 @@
       _availStats.sort((a, b) => _availSortKey === 'pos'
         ? (_posRank(a.p) - _posRank(b.p)) || String(a.p.name).localeCompare(String(b.p.name))
         : (b.attPct ?? -1) - (a.attPct ?? -1));
+      // Compact availability filters (Pass B). Counts are over the CANDIDATE
+      // pool (eligible players not already placed). Default = Available when a
+      // fixture is linked — the explicit product decision that shortens the
+      // page — and All when unlinked. View-only: filtering mutates nothing.
+      const _filterCounts = {
+        all:         _availStats.length,
+        available:   _availStats.filter(s => s.match === 'available').length,
+        maybe:       _availStats.filter(s => s.match === 'maybe').length,
+        unavailable: _availStats.filter(s => s.match === 'unavailable').length,
+        noreply:     _availStats.filter(s => s.match === 'noreply').length,
+      };
+      const _activeFilter  = _mcAvailFilter || (mcFx ? 'available' : 'all');
+      const _visibleStats  = _activeFilter === 'all' ? _availStats : _availStats.filter(s => s.match === _activeFilter);
 
       const squadSelected = slotNames.filter(n=>n).length + bench.filter(n=>n).length;
 
       // ── Matchday Command hero — presentation-only readiness summary ──────────
       // Pure visualisation of values already computed above (availability,
       // selection, medical, kickoff). No new data, persistence, API or behaviour.
-      const _replied   = availCount + unavailCount;
+      const _replied   = availCount + maybeCount + unavailCount;
       const _availPct  = _replied > 0 ? Math.round((availCount / _replied) * 100) : 0;
       const _selPct    = Math.min(100, Math.round((squadSelected / 23) * 100));
       const _medClear  = medAlerts.length === 0;
@@ -13425,7 +13798,7 @@
       const _verdict   = _ready ? { k:'ready',  t:'Match Ready',     s:'Squad set · all replied · cleared' }
                        : _almost ? { k:'almost', t:'Almost Set',      s:`${23 - squadSelected} to pick${pendingCount?` · ${pendingCount} awaiting reply`:''}${_medClear?'':` · ${medAlerts.length} medical`}` }
                        :           { k:'build',  t:'Building Squad',  s:`${squadSelected}/23 selected${pendingCount?` · ${pendingCount} awaiting reply`:''}` };
-      const _availTotal = availCount + unavailCount + pendingCount;
+      const _availTotal = availCount + maybeCount + unavailCount + pendingCount;
       const _conf       = _ready ? { t:'High', c:'ready' } : _almost ? { t:'Building', c:'almost' } : { t:'Early', c:'build' };
 
       document.getElementById("coach-matchday").innerHTML = `
@@ -13439,8 +13812,10 @@
           <div style="display:flex;align-items:center;gap:14px;min-width:0">
           ${clubLogoBadgeHtml('width:46px;height:46px;border-radius:12px')}
           <div class="mc10-fixture">
-            <h1>${esc(state.clubName || 'Your club')} <em>vs</em> ${esc(mc.opposition || 'Opponent TBC')}</h1>
-            <p>${[esc(phase.label), esc(mc.competition||''), kickoffDisplay, mc.kickoffTime?esc(mc.kickoffTime):'', esc(mc.venue||'')].filter(Boolean).join(' · ') || 'Fixture to be confirmed'}</p>
+            <h1>${_hdrAway
+              ? `${esc(_hdrOpp)} <em>vs</em> ${esc(state.clubName || 'Your club')}`
+              : `${esc(state.clubName || 'Your club')} <em>vs</em> ${esc(_hdrOpp)}`}</h1>
+            <p>${[esc(phase.label), esc(_hdrComp), kickoffDisplay, _hdrTime?esc(_hdrTime):'', esc(_hdrVenue)].filter(Boolean).join(' · ') || 'Fixture to be confirmed'}</p>
             ${matchCentreFixturePicker()}
           </div>
           </div>
@@ -13666,6 +14041,11 @@
                 <!-- Contenteditable element (NOT an <input>) so the browser/password manager cannot show saved login/email/password autofill. -->
                 <div class="mc7-search" id="mc-player-filter" role="searchbox" aria-label="Search players" data-placeholder="Search players…" contenteditable="true" inputmode="search" enterkeyhint="search" spellcheck="false" autocorrect="off" autocapitalize="off" oninput="mcAvailSearch(this.textContent)" onkeydown="if(event.key==='Enter')event.preventDefault();"></div>
               </div>
+              <div class="mc7-filter" role="group" aria-label="Filter candidates by availability${mcFx ? ` for ${esc(mcFx.opposition)}` : ''}">
+                ${[['all','All'],['available','Available'],['maybe','Maybe'],['unavailable','Unavailable'],['noreply','No reply']].map(([k, lbl]) => `
+                  <button type="button" class="${_activeFilter === k ? 'on' : ''}" data-filter="${k}"
+                    aria-pressed="${_activeFilter === k}" onclick="mcSetAvailFilter('${k}')">${lbl} <span class="mc7-fcount">${_filterCounts[k]}</span></button>`).join('')}
+              </div>
               <div class="mc7-sort">
                 <span class="mc7-sortlbl">Sort</span>
                 <button type="button" class="${_availSortKey==='pos'?'on':''}" onclick="mcSetAvailSort('pos')">Position</button>
@@ -13674,16 +14054,19 @@
               <div class="mc7-table">
                 <div class="mc7-thead"><span>Player</span><span></span></div>
                 <div class="mc7-tbody">
-                  ${_availStats.map(({p, match, attPct}) => {
+                  ${_visibleStats.map(({p, match, attPct}) => {
                     const initials = p.name.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
-                    const mLbl = match === 'available' ? 'Available' : (match === 'unavailable' ? 'Out' : 'No reply');
-                    return `<div class="mc7-trow squad-player-drag" draggable="true"
-                      data-player-name="${esc(p.name)}" data-player-id="${esc(p.id)}"
+                    const mLbl = match === 'available' ? 'Available' : match === 'maybe' ? 'Maybe' : (match === 'unavailable' ? 'Out' : 'No reply');
+                    return `<div class="mc7-trow has-st squad-player-drag" draggable="true"
+                      data-player-name="${esc(p.name)}" data-player-id="${esc(p.id)}" data-player-pos="${esc(p.position || '')}"
                       ondragstart="handlePlayerDragStart(event)" ondragend="mcDragEnd(event)">
                       <span class="mc7-pl"><span class="mc7-av" style="background:${playerAvatarColor(p.id||p.name)}">${esc(initials)}</span><span class="mc7-nm" title="${esc(p.name)}">${esc(p.name)}</span></span>
+                      <span class="mc7-match ${match}">${esc(mLbl)}</span>
                       <span class="mc7-dot ${match}" title="${esc(mLbl)}" aria-label="${esc(mLbl)}"></span>
                     </div>`;
-                  }).join("") || `<p class="muted" style="padding:18px 8px;font-size:12px;text-align:center">Full squad selected — every available player is on the pitch or bench.</p>`}
+                  }).join("") || (_availStats.length
+                    ? `<p class="muted" style="padding:18px 8px;font-size:12px;text-align:center">No players in this view — tap All to see the whole candidate pool.</p>`
+                    : `<p class="muted" style="padding:18px 8px;font-size:12px;text-align:center">Full squad selected — every available player is on the pitch or bench.</p>`)}
                 </div>
               </div>
             </div>
@@ -13719,7 +14102,7 @@
 
         <!-- ── V10 · secondary actions (below the pitch — must not compete with it) ── -->
         <div class="mc10-actions">
-          ${pendingCount>0?`<button class="btn" type="button" onclick="chaseAllNonResponders()">Remind ${pendingCount} player${pendingCount>1?'s':''}</button>`:''}
+          ${remindCount>0?`<button class="btn" type="button" onclick="${mcFx ? 'remindFixtureNonResponders()' : 'chaseAllNonResponders()'}">Remind ${remindCount} player${remindCount>1?'s':''}</button>`:''}
           ${mc.published?`<button class="btn" type="button" onclick="startNewWeek()">New week</button>`:''}
           <button class="btn" type="button" onclick="exportFormation()">Export</button>
           <button class="mc5-publish ${mc.published?'published':''}" type="button" onclick="publishSquad()">${mc.published?'Squad published':'Publish squad'}</button>
