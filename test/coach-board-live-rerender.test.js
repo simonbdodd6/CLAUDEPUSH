@@ -38,6 +38,7 @@ function makeRefresh(resolvedSequence) {
     let _i = 0;
     const fetch = () => { calls.fetches++; const r = SEQ[Math.min(_i++, SEQ.length-1)]; return Promise.resolve({ ok:true, json: async () => ({ resolved: r }) }); };
     async function ensureCoachRosterIdentityLinked(){}
+    function operationalGroups(){ return []; }   // single-group harness: never mustChoose
     function saveState(){}
     function renderMessageCenter(){ calls.render++; }
     function renderAudiencePicker(){ calls.panels++; }
@@ -88,6 +89,7 @@ test('board-only tick does NOT trigger the heavier side-panel reloads', async ()
 function makeSessionRows(resolved, players) {
   const body = `"use strict";
     let _resolvedAvailability = ${JSON.stringify(resolved)};
+    function operationalPlayers(){ return canonicalVisiblePlayers(); }   // single-group harness: passthrough
     function canonicalVisiblePlayers(){ return ${JSON.stringify(players)}; }
     ${extractFn('sessionKey')}
     ${extractFn('sessionReasonKey')}

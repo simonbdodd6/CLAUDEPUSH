@@ -30,6 +30,7 @@ function extractFn(name) {
 function makeSessionRows(resolved, players) {
   const body = `"use strict";
     let _resolvedAvailability = ${JSON.stringify(resolved)};
+    function operationalPlayers(){ return canonicalVisiblePlayers(); }   // single-group harness: passthrough
     function canonicalVisiblePlayers(){ return ${JSON.stringify(players)}; }
     ${extractFn('sessionKey')}
     ${extractFn('sessionReasonKey')}

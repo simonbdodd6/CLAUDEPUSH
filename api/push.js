@@ -1,6 +1,8 @@
 // Immediate Web Push delivery for coach "Send now" actions.
 import webpush from 'web-push';
-import { load, save, clubMemberSubscriptions } from './_lib.js';
+import { load, save, clubMemberSubscriptions, subscriptionsForMembers } from './_lib.js';
+import { loadClubStructure } from './_structureStore.js';
+import { operationalGroupsFor, resolvePlayerGroup } from './_accessScope.js';
 import { recentResponders } from './_availabilityStore.js';
 import { kvLpush, kvLtrim, kvConfigured } from './_kv.js';
 import { key } from './_keys.js';
@@ -118,6 +120,25 @@ export default async function handler(req, res) {
       return targetLower && (item.label || '').toLowerCase().trim() === targetLower;
     })
     : clubSubscriptions;
+  // ── Group-scoped reminder context ────────────────────────────────────────
+  // When the sender names a group, delivery narrows to that group's PLAYING
+  // members — a U18 coach's "chase all" must never ping Seniors or Women's.
+  // The named group is asserted against the sender's own operational scope,
+  // exactly like every other group-targeted write. Omitting the group keeps
+  // the existing club-wide behaviour for legacy single-group clubs.
+  const requestedGroup = String(req.body?.group || '').trim();
+  if (requestedGroup) {
+    const structure = await loadClubStructure(teamId);
+    const group = (structure?.groups || []).find(g => g.id === requestedGroup && g.status !== 'archived');
+    if (!group) return res.status(404).json({ error: 'That group does not exist in this club' });
+    const mine = operationalGroupsFor(sessionContext.teamMember, structure, { as: 'staff' });
+    if (!mine.some(g => g.id === requestedGroup)) return res.status(403).json({ error: 'You do not operate that group' });
+    const groupMemberIds = teamMembers
+      .filter(m => m.teamId === teamId && m.status === 'active'
+        && (resolvePlayerGroup(m, structure).groupId || '') === requestedGroup)
+      .map(m => String(m.userId));
+    subscriptions = subscriptionsForMembers(subscriptions, groupMemberIds);
+  }
   if (audience === 'no-reply') {
     const responded = await recentResponders(7);
     subscriptions = subscriptions.filter(item =>

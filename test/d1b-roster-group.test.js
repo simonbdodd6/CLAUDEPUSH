@@ -348,8 +348,17 @@ test('CLIENT — Members narrows by membership playerGroupId, not by name', () =
   c.setOperationalGroup(U18);
   assert.deepEqual(c.operationalPlayers().map(p => p.name), ['U18 A']);
 
-  // A single-group club keeps today's behaviour exactly.
+  // A single-group COACH in a grouped club is scoped to their group too —
+  // their club may hold squads they never see (final readiness pass).
   const single = ctx(one, 'coach', members, players);
   single.resolveOperationalGroup();
-  assert.equal(single.operationalPlayers().length, 3, 'unchanged when there is nothing to isolate');
+  assert.deepEqual(single.operationalPlayers().map(p => p.name), ['Senior A'],
+    'grouped memberships scope even a single-group context');
+
+  // A PRE-STRUCTURE club — no grouped memberships at all — keeps today's
+  // full roster: there is genuinely nothing to isolate.
+  const ungrouped = members.map(m => ({ ...m, playerGroupId: undefined }));
+  const legacy = ctx(one, 'coach', ungrouped, players);
+  legacy.resolveOperationalGroup();
+  assert.equal(legacy.operationalPlayers().length, 3, 'unchanged when there is nothing to isolate');
 });

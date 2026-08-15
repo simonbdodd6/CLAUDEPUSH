@@ -147,22 +147,23 @@ test('eligibility edits never touch access, and keep a valid primary squad', () 
 });
 
 // ── Scoped invites ──────────────────────────────────────────────────────────
-test('the invite form offers whole club / group / single team in plain words', () => {
-  const select = fn('inviteScopeSelect');
-  assert.match(select, /Whole club/);
-  assert.match(select, /whole group/);
-  assert.match(select, /only</, 'single-team option');
-  assert.match(select, /status === 'active'/, 'archived scopes are not offered');
-  assert.ok(src.includes("inviteScopeSelect('adm-staff-scope')"), 'wired into the staff invite form');
+// The staff invite grants coaching access at GROUP level — whole club, or any
+// combination of groups — through checkboxes (multi-group clubs only).
+test('the staff invite form offers whole club and per-group coaching access', () => {
+  const control = fn('inviteStaffScopeControl');
+  assert.match(control, /Whole club/);
+  assert.match(control, /data-staff-scope="group"/, 'one checkbox per group');
+  assert.match(control, /status === 'active'/, 'archived groups are not offered');
+  assert.ok(src.includes("inviteStaffScopeControl('adm-staff-scope')"), 'wired into the staff invite form');
 });
 
 test('the chosen invite scope is sent to the server for re-validation', () => {
-  const value = fn('inviteScopeValue');
+  const value = fn('inviteStaffScopeValue');
   assert.match(value, /level: 'club'/);
   assert.match(value, /level: 'group', groupId/);
-  assert.match(value, /level: 'team', teamId/);
+  assert.match(value, /level: 'groups', groupIds/, 'multi-group combinations');
   const invite = fn('adminInviteStaff');
-  assert.match(invite, /inviteScopeValue\('adm-staff-scope'\)/);
+  assert.match(invite, /inviteStaffScopeValue\('adm-staff-scope'\)/);
   assert.match(invite, /\.\.\.\(scope \? \{ scope \} : \{\}\)/, 'scope travels with the invite');
 });
 

@@ -125,8 +125,29 @@ async function resolveInviteScope(session, body = {}, role = 'player') {
     }
     return { teamId: team.id };
   }
+  // Multi-group coaching access: a staff invite may grant SEVERAL groups at
+  // once (U18 + Women's, all three…). EVERY named group is validated and the
+  // creator must hold manage rights over EACH — the combination can never
+  // exceed what the creator could grant one group at a time. A single-entry
+  // list collapses to the existing one-group shape, so the claim path and
+  // every older reader see the format they always did.
+  const rawGroupIds = Array.isArray(raw.groupIds)
+    ? [...new Set(raw.groupIds.map(x => String(x || '').trim()).filter(Boolean))]
+    : [];
+  if (level === 'groups' || rawGroupIds.length > 1) {
+    if (!rawGroupIds.length) throw scopeError('Choose at least one group');
+    for (const gid of rawGroupIds) {
+      const group = groupById(structure, gid);
+      if (!group) throw scopeError('Unknown group for this club', 404);
+      if (group.status === 'archived') throw scopeError(`"${group.name}" is archived — restore it before inviting`);
+      if (!canManageGroup(session, structure, group.id, invitePerm)) {
+        throw scopeError('You are not allowed to invite people to that group', 403);
+      }
+    }
+    return rawGroupIds.length === 1 ? { groupId: rawGroupIds[0] } : { groupIds: rawGroupIds };
+  }
   if (level === 'group') {
-    const group = groupById(structure, raw.groupId);
+    const group = groupById(structure, raw.groupId || rawGroupIds[0]);
     if (!group) throw scopeError('Unknown group for this club', 404);
     if (group.status === 'archived') throw scopeError(`"${group.name}" is archived — restore it before inviting`);
     if (!canManageGroup(session, structure, group.id, invitePerm)) {
@@ -164,6 +185,11 @@ async function inviteScopeNames(invite, structureCache = null) {
   if (invite.scope.groupId) {
     const group = groupById(structure, invite.scope.groupId);
     return { level: 'group', label: group ? group.name : 'Group' };
+  }
+  if (Array.isArray(invite.scope.groupIds) && invite.scope.groupIds.length) {
+    const names = invite.scope.groupIds
+      .map(id => groupById(structure, id)?.name || id);
+    return { level: 'groups', label: names.join(' + ') };
   }
   return null;
 }

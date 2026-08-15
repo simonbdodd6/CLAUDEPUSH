@@ -6419,6 +6419,9 @@
 
     async function sendPushToPlayers(title, body, opts = {}) {
       const { type, sessionId, targetLabel, targetUserId, targetPlayerId, audience } = opts;
+      // Staff-context sends carry the OPERATING group so the server narrows
+      // delivery to that group's players (asserted server-side).
+      const _pushGroup = state.activeView !== 'player' ? (state.operationalGroupId || '') : '';
       try {
         const payload = { title, body, from: currentUser().name };
         if (type)        payload.type        = type;
@@ -6427,6 +6430,7 @@
         if (targetUserId) payload.targetUserId = targetUserId;
         if (targetPlayerId) payload.targetPlayerId = targetPlayerId;
         if (audience)    payload.audience    = audience;
+        if (_pushGroup)  payload.group       = _pushGroup;
         const res = await fetch('/api/push', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -6725,7 +6729,10 @@
       // fixing stale display when the patched representation (raw state.players or
       // a session-id alias) diverged from the rendered (canonical) one. Falls back
       // to the local per-session field when the resolved map has no entry yet.
-      return canonicalVisiblePlayers().map(p => {
+      // The board serves the OPERATING group: its rows are the group's players
+      // (the full club only in single-group/legacy contexts, where
+      // operationalPlayers() falls through unchanged).
+      return operationalPlayers().map(p => {
         const live = resolvedAnswerFor(p, id);
         if (live) return {
           player:         p,
@@ -8553,6 +8560,7 @@
             body,
             from:      currentUser()?.name || 'Coach',
             type:      'availability',   // ← triggers YES/NO buttons on lock screen
+            group:     state.operationalGroupId || undefined,
             sessionId: 'game',           // default; coach can specify per session later
           }),
         });
@@ -12817,9 +12825,13 @@
       const boardUnavailable = boardRows.filter(({status}) => ["unavailable", "injured"].includes(status));
       const boardNoReply   = boardRows.filter(({status}) => status === "no-reply");
       const boardAnswered  = boardRows.filter(({status}) => status !== "no-reply");
-      const selectedPlayer = state.players.find(p => p.id === state.selectedMessagePlayerId) || rows[0]?.player || EMPTY_PLAYER;
+      // Every count, chase list and summary on this board reads the OPERATING
+      // group's players — the whole-club list would mix another group's
+      // answers into this group's numbers and reminders.
+      const opPlayers      = operationalPlayers();
+      const selectedPlayer = opPlayers.find(p => p.id === state.selectedMessagePlayerId) || rows[0]?.player || EMPTY_PLAYER;
       const selectedStatus = selectedPlayer[key] || "no-reply";
-      const noReplyPlayers = state.players.filter(p => (p[key] || "no-reply") === "no-reply");
+      const noReplyPlayers = opPlayers.filter(p => (p[key] || "no-reply") === "no-reply");
       const campaignDays   = state.autoSendSchedule?.days || ["Mon"];
       const campaignAudience = state.autoSendSchedule?.audience || "all";
       const responseRate   = percent(answered.length, rows.length);
@@ -12828,9 +12840,9 @@
       // Cross-session summary: players who've replied to every session
       const coachEvents    = coachAvailEvents();
       const allSessionIds  = coachEvents.map(e => e.id);
-      const repliedAll     = state.players.filter(p => allSessionIds.every(id => (p[sessionKey(id)] || 'no-reply') !== 'no-reply')).length;
-      const chaseAny       = state.players.filter(p => allSessionIds.some(id => (p[sessionKey(id)] || 'no-reply') === 'no-reply')).length;
-      const injuryFlags    = state.players.filter(p => allSessionIds.some(id => p[sessionKey(id) + 'Reason'] === 'injury')).length;
+      const repliedAll     = opPlayers.filter(p => allSessionIds.every(id => (p[sessionKey(id)] || 'no-reply') !== 'no-reply')).length;
+      const chaseAny       = opPlayers.filter(p => allSessionIds.some(id => (p[sessionKey(id)] || 'no-reply') === 'no-reply')).length;
+      const injuryFlags    = opPlayers.filter(p => allSessionIds.some(id => p[sessionKey(id) + 'Reason'] === 'injury')).length;
 
       const playerRows = list => list.map(({player, status, reason, attendanceRate, respondedAt}) => {
         const isInjury   = reason === 'injury';
@@ -12919,7 +12931,10 @@
                  clear of the week navigator and response filters below. -->
             <div class="avail-head-row">
               <h2>Availability</h2>
-              ${ceProductMarkHtml()}
+              <div style="display:flex;align-items:center;gap:10px">
+                ${operationalGroupSwitcherHTML()}
+                ${ceProductMarkHtml()}
+              </div>
             </div>
             <nav class="avail-weeknav" aria-label="Week">
               <button class="awk-arrow" type="button" onclick="availWeekShift(-1)" aria-label="Previous week"><span class="awk-chev">‹</span><span class="awk-word">Previous Week</span></button>
@@ -12949,10 +12964,10 @@
                 </div>
                 <span id="avail-refresh-ts" class="msg-chip ${_availLastSync ? 'available' : 'no-reply'}">${_availLastSync ? 'Synced ' + new Date(_availLastSync).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : 'Live sync'}</span>
               </div>
-              ${state.players.length > 0 ? `
+              ${opPlayers.length > 0 ? `
               <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(var(--accent-rgb), 0.04);border-bottom:1px solid var(--line);font-size:12px;flex-wrap:wrap">
                 <span style="color:var(--muted)">This week:</span>
-                <span style="font-weight:700;color:var(--ink)">${repliedAll} / ${state.players.length} replied to all sessions</span>
+                <span style="font-weight:700;color:var(--ink)">${repliedAll} / ${opPlayers.length} replied to all sessions</span>
                 ${chaseAny > 0 ? `<span class="msg-chip no-reply">${chaseAny} to chase</span>` : `<span class="msg-chip available">All replied</span>`}
                 ${injuryFlags > 0 ? `<span class="msg-chip unavailable">${injuryFlags} injury flag${injuryFlags > 1 ? 's' : ''}</span>` : ''}
                 ${chaseAny > 0 ? `<button type="button" onclick="chaseAllNonResponders()"
@@ -12974,7 +12989,7 @@
                 </div>
                 ${selected ? `
                 <div class="avail-request-cta" style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
-                  ${state.players.length > 0
+                  ${opPlayers.length > 0
                     ? `<button class="btn primary" type="button" onclick="sendAvailabilityRequest('${selected.id}')" style="width:100%;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;line-height:1.2;font-weight:800">
                         <span style="font-size:15px">Request Availability</span>
                         <span style="font-size:11px;font-weight:600;opacity:.85">${esc(selected.title || selected.id)} • ${esc(selected.date || 'Date to be confirmed')}</span>
@@ -13445,6 +13460,7 @@
             sessionId,
             url:       '/?to=availability',
             audience:  'no-reply',
+            group:     state.operationalGroupId || undefined,
           })
         });
         const data = await res.json().catch(() => ({}));
@@ -13515,6 +13531,7 @@
                 body:         `Please confirm your availability for ${label} in the app.`,
                 tag:          `remind-${fx.id}-${p.id}`,
                 type:         'availability',
+                group:        state.operationalGroupId || undefined,
                 sessionId:    String(fx.id),
                 url:          '/?to=availability',
                 targetUserId: String(p.userId || p.id || ''),
@@ -13539,7 +13556,7 @@
       if (!sessions.length) return;
       // Identify players who haven't replied to at least one session
       const noReplyIds = new Set(
-        state.players
+        operationalPlayers()
           .filter(p => sessions.some(s => (p[sessionKey(s.id)] || 'no-reply') === 'no-reply'))
           .map(p => p.id)
       );
@@ -13556,6 +13573,7 @@
             tag:      `chase-all-${Date.now()}`,
             type:     'availability',
             audience: 'no-reply',
+            group:    state.operationalGroupId || undefined,
             url:      '/?to=availability',
           }),
         });
@@ -18696,7 +18714,7 @@
                 <option value="manager">Team Manager</option>
                 <option value="head">Head Coach</option>
               </select>
-              ${inviteScopeSelect('adm-staff-scope')}
+              ${inviteStaffScopeControl('adm-staff-scope')}
               <button class="btn primary" type="button" style="min-height:38px;font-size:12px" onclick="adminInviteStaff()">+ Invite staff</button>
             </div>
           </div>
@@ -19437,31 +19455,39 @@
     // One dropdown, plain language: whole club, a group, or a single team.
     // The value encodes the level+id; the server re-validates both and refuses
     // any scope the inviter could not assign themselves.
-    function inviteScopeSelect(id) {
+    /**
+     * STAFF coaching-access control: whole club, or any COMBINATION of
+     * groups (Seniors + U18, U18 + Women's, all three…). Scope is at group
+     * level — coaching access is accessScope, never playerGroupId, and no
+     * team-level checkboxes exist here. A single-group club renders nothing:
+     * the server's existing defaulting rules already resolve that case.
+     */
+    function inviteStaffScopeControl(id) {
       const st = _adminData.structure;
-      if (!st) return '';
-      const inputStyle = 'width:100%;min-height:38px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 10px;font-size:12px;box-sizing:border-box';
-      const groups = (st.groups || []).filter(g => g.status === 'active');
-      const options = groups.map(g => {
-        const teams = (st.teams || []).filter(t => t.groupId === g.id && t.status === 'active');
-        return `<option value="group:${esc(g.id)}">${esc(g.name)} — whole group</option>` +
-          teams.map(t => `<option value="team:${esc(t.id)}">${esc(g.name)} · ${esc(t.name)} only</option>`).join('');
-      }).join('');
-      return `<select id="${esc(id)}" style="${inputStyle}">
-          <option value="club">Whole club</option>
-          ${options}
-        </select>`;
+      const groups = ((st && st.groups) || []).filter(g => g.status === 'active');
+      if (groups.length <= 1) return '';
+      const cb = 'display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink);cursor:pointer';
+      return `<div id="${esc(id)}" style="grid-column:1/-1;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);padding:10px 12px">
+          <div style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Coaching access</div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap">
+            <label style="${cb}"><input type="checkbox" data-staff-scope="club"
+              onchange="if(this.checked)document.querySelectorAll('#${esc(id)} [data-staff-scope=group]').forEach(c=>c.checked=false)"> Whole club</label>
+            ${groups.map(g => `<label style="${cb}"><input type="checkbox" data-staff-scope="group" value="${esc(g.id)}"
+              onchange="if(this.checked){const c=document.querySelector('#${esc(id)} [data-staff-scope=club]');if(c)c.checked=false}"> ${esc(g.name)}</label>`).join('')}
+          </div>
+        </div>`;
     }
 
-    /** Turn the dropdown value into the API's scope object. */
-    function inviteScopeValue(id) {
-      const raw = document.getElementById(id)?.value || '';
-      if (!raw) return null;
-      if (raw === 'club') return { level: 'club' };
-      const [level, scopeId] = raw.split(':');
-      if (level === 'group') return { level: 'group', groupId: scopeId };
-      if (level === 'team') return { level: 'team', teamId: scopeId };
-      return null;
+    /** Read the staff control into the API scope object. */
+    function inviteStaffScopeValue(id) {
+      const host = document.getElementById(id);
+      if (!host) return null;                      // single-group club — server defaults
+      if (host.querySelector('[data-staff-scope=club]')?.checked) return { level: 'club' };
+      const gids = [...host.querySelectorAll('[data-staff-scope=group]:checked')].map(c => c.value);
+      if (!gids.length) return null;
+      return gids.length === 1
+        ? { level: 'group', groupId: gids[0] }
+        : { level: 'groups', groupIds: gids };
     }
 
     async function adminInviteStaff() {
@@ -19469,7 +19495,7 @@
       const name = v('adm-staff-name');
       const email = v('adm-staff-email');
       const staffLevel = v('adm-staff-level') || 'assistant';
-      const scope = inviteScopeValue('adm-staff-scope');
+      const scope = inviteStaffScopeValue('adm-staff-scope');
       if (!name) { showToast('Enter the staff member\'s name first'); return; }
       try {
         const res = await fetch('/api/invite', {
@@ -25641,10 +25667,25 @@
       </div>`;
     }
 
+    /**
+     * The fixtures a PLAYER sees: their PLAYING group's season only, derived
+     * from the server identity payload (playerGroupId) — never from the
+     * operational/coaching context, so a dual-role coach's player view stays
+     * their playing group. Legacy unscoped fixtures belong to the INITIAL
+     * group (the documented compatibility rule); an unresolved playing group
+     * (pre-structure club) keeps the full legacy list.
+     */
+    function playerContextFixtures() {
+      const rows = (state.fixtures || []).filter(f => f.opposition);
+      const pg = _myOperational?.player?.groups?.[0]?.id || '';
+      if (!pg) return rows;
+      return rows.filter(f => fixtureBelongsToGroup(f, pg));
+    }
+
     function renderPlayerFixtures() {
       const player   = getPlayer();
       const sched    = state.schedule || [];
-      const fixtures = (state.fixtures || []).filter(f => f.opposition);
+      const fixtures = playerContextFixtures();
       document.getElementById("player-fixtures").innerHTML = `
         <div style="max-width:560px;margin:0 auto;display:grid;gap:14px">
         <div class="card">
@@ -28655,6 +28696,9 @@
         // session ids attach identically to the player view.
         // GROUP-scoped board read: name the operational group when one is in
         // force. Single-group clubs may omit it — the server defaults safely.
+        // A multi-group operator who has not chosen yet has NO board to ask
+        // for — the server would refuse ("Choose which group"), so don't ask.
+        if (!state.operationalGroupId && operationalGroups().length > 1) return;
         const _availGroupQ = state.operationalGroupId
           ? '&group=' + encodeURIComponent(state.operationalGroupId) : '';
         const resolved = await fetch('/api/availability?resolveRoster=1' + _availGroupQ)
@@ -29299,9 +29343,14 @@
     function operationalPlayers() {
       const rows = canonicalVisiblePlayers();
       const gid = state.operationalGroupId;
-      // One group, or context not yet resolved → today's behaviour, unchanged.
-      if (!gid || operationalGroups().length < 2) return rows;
+      // No group in force → today's behaviour, unchanged.
+      if (!gid) return rows;
       const members = _adminData.members || [];
+      // A pre-structure club has no grouped memberships at all — keep the
+      // full roster (legacy behaviour). The moment memberships carry player
+      // groups, the pool follows the OPERATING group — including for a
+      // single-group coach, whose club may hold groups they never see.
+      if (!members.some(m => m.playerGroupId)) return rows;
       const groupOf = p => members.find(m =>
         m.status === 'active' && String(m.userId) === String(p.userId || ''))?.playerGroupId || '';
       return rows.filter(p => String(groupOf(p)) === gid);
