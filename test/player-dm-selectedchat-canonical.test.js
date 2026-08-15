@@ -29,6 +29,7 @@ const COACH_DEMO = 'dm:coach-demo:user_1781985675283_8sr7et';
 function runCanon({ convs, selectedChatId, role = 'player' }) {
   const body = `"use strict";
     let _chatConversations = ${JSON.stringify(convs)};
+    let _myOperational = null;   // group channels resolve from identity; none in this harness
     const state = { users: [], selectedChatId: ${JSON.stringify(selectedChatId)} };
     function currentUser(){ return { role: ${JSON.stringify(role)} }; }
     function chatMe(){ return { id: ${JSON.stringify(PLAYER)}, userId: ${JSON.stringify(PLAYER)} }; }

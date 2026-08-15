@@ -23,6 +23,7 @@ function extractFn(name) {
 function build({ convs = [], users = [], meId = 'user_player' }) {
   const body = `"use strict";
     const _chatConversations = ${JSON.stringify(convs)};
+    let _myOperational = null;   // group channels resolve from identity; none in this harness
     const state = { users: ${JSON.stringify(users)} };
     function chatMe(){ return { id: ${JSON.stringify(meId)}, userId: ${JSON.stringify(meId)} }; }
     ${extractFn('dmConvId')}

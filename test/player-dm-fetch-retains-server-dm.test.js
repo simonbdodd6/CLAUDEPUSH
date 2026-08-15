@@ -31,6 +31,7 @@ const COACH_DEMO_DM = 'dm:coach-demo:user_playerA';
 function runFetchResolve({ serverConvs, users, allowedDmIds, selectedChatId }) {
   const body = `"use strict";
     let _chatConversations = [];
+    let _myOperational = null;
     const state = { users: ${JSON.stringify(users)}, selectedChatId: ${JSON.stringify(selectedChatId)} };
     const ME = { id: ${JSON.stringify(PLAYER)}, userId: ${JSON.stringify(PLAYER)}, role: 'player' };
     function chatMe(){ return ME; }
@@ -107,6 +108,7 @@ function runSend({ selectedChatId }) {
     const _chatMessages = {}; const _chatLastPoll = {}; let _chatReplyTo = null;
     let _serverAuthState = 'authed';
     const ME = { id: ${JSON.stringify(PLAYER)}, name: 'P', role: 'player', userId: ${JSON.stringify(PLAYER)} };
+    let _myOperational = null;
     const state = { activeView: 'player', selectedChatId: ${JSON.stringify(selectedChatId)}, messages: [], players: [], users: [] };
     const document = { getElementById: (id) => id === 'chatComposer' ? { value: 'reply-after-fix', style: {} } : null };
     function chatMe(){ return ME; }

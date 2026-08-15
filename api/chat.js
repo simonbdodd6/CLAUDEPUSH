@@ -12,7 +12,10 @@ import webpush from 'web-push';
 import { kvGet, kvSet, kvLpush, kvLrange, kvLtrim } from './_kv.js';
 import { key } from './_keys.js';
 import { unreadCountForUser } from '../src/chat-notifications.js';
-import { DEFAULT_TEAM, resolveSessionFromRequest, loadHealedPlayerProfiles } from './_identityStore.js';
+import { DEFAULT_TEAM, resolveSessionFromRequest, loadHealedPlayerProfiles,
+         loadTeamMembers, loadUsers } from './_identityStore.js';
+import { loadClubStructure } from './_structureStore.js';
+import { operationalGroupsFor, resolvePlayerGroup } from './_accessScope.js';
 import { tenantTeamId } from './_tenant.js';
 import { load as loadSubs, save as saveSubs } from './_lib.js';
 import { setCors, vapidContact, notificationUrl } from './_http.js';
@@ -131,9 +134,52 @@ const PRESENCE_KEY  = (u)  => key(`chat:presence:${u}`);
 const BUILTIN_CONV_IDS = new Set(['squad', 'coaching', 'announce']);
 function storageConvId(sessionContext, convId) {
   const id = String(convId || '');
-  if (!BUILTIN_CONV_IDS.has(id)) return id;
+  // Group channels use the same per-club storage scoping as the built-ins:
+  // the protocol id stays 'group:<gid>' on every client, but two clubs whose
+  // structures use the same group id must never share a message list.
+  if (!BUILTIN_CONV_IDS.has(id) && !id.startsWith('group:')) return id;
   const teamId = tenantTeamId(sessionContext) || DEFAULT_TEAM.id;
   return teamId === DEFAULT_TEAM.id ? id : `${id}@${teamId}`;
+}
+
+// ── GROUP-TARGETED CONVERSATIONS ────────────────────────────────────────
+// A conversation is GROUP-TARGETED when it carries an explicit groupId (or
+// uses the reserved 'group:<gid>' id form). The audience model is explicit:
+//   DIRECT       dm:A:B                  — its two participants
+//   PLAYER GROUP group:<gid> / groupId   — the group's playing members +
+//                                          the staff who OPERATE that group
+//   CLUB-WIDE    squad / announce        — the existing whole-club channels,
+//                                          unchanged legacy semantics
+//   STAFF        coaching                — the existing all-staff channel
+// Legacy conversations carry no groupId and are NEVER assigned one — their
+// audience stays exactly what it always was.
+function conversationGroupId(conversation = {}) {
+  const explicit = String(conversation?.groupId || '').trim();
+  if (explicit) return explicit;
+  const id = String(conversation?.id || '');
+  return id.startsWith('group:') ? id.slice('group:'.length) : '';
+}
+
+/**
+ * The session's group standing, resolved ONCE per request from the club
+ * structure — never from anything the client sent:
+ *   playingGroupId — where this person PLAYS (their playerGroupId, with the
+ *                    documented legacy single-group fallback)
+ *   staffGroupIds  — the groups they may OPERATE (accessScope; owner = all)
+ * Playing never grants coaching authority and coaching never manufactures
+ * playing membership — the two sets are carried separately on purpose.
+ */
+async function groupContextForSession(sessionContext) {
+  const none = { playingGroupId: '', staffGroupIds: new Set() };
+  const teamId = tenantTeamId(sessionContext);
+  const member = sessionContext?.teamMember || null;
+  if (!teamId || !member) return none;
+  const structure = await loadClubStructure(teamId);
+  const playingGroupId = resolvePlayerGroup(member, structure).groupId || '';
+  const staffGroupIds = new Set(isStaffSession(sessionContext)
+    ? operationalGroupsFor(member, structure, { as: 'staff' }).map(g => g.id)
+    : []);
+  return { playingGroupId, staffGroupIds };
 }
 
 // DM participant IDs for removed test accounts (user IDs and legacy player IDs).
@@ -251,9 +297,18 @@ function sessionIsConversationParticipant(sessionContext, conversation = {}, act
   return participants.some(id => ids.includes(id));
 }
 
-export function sessionCanReadConversation(sessionContext, conversation = {}, actorIds = null) {
+export function sessionCanReadConversation(sessionContext, conversation = {}, actorIds = null, groupCtx = null) {
   if (!sessionContext?.user?.id) return true;
   if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
+  // GROUP-TARGETED conversations are readable by exactly two standings:
+  // the group's PLAYING members, and the staff who OPERATE the group. A
+  // staff session's blanket channel access does NOT extend here — a U18
+  // coach has no window into the Seniors players' channel.
+  const targetGroup = conversationGroupId(conversation);
+  if (targetGroup) {
+    const ctx = groupCtx || { playingGroupId: '', staffGroupIds: new Set() };
+    return ctx.playingGroupId === targetGroup || ctx.staffGroupIds.has(targetGroup);
+  }
   if (isStaffSession(sessionContext)) {
     // Staff may access all GROUP / TEAM / SYSTEM channels (squad, coaching, announce,
     // custom groups). Direct messages stay PRIVATE: a coach only sees a DM they are
@@ -273,9 +328,22 @@ export function sessionCanReadConversation(sessionContext, conversation = {}, ac
   return sessionIsConversationParticipant(sessionContext, conversation, actorIds);
 }
 
-function sessionCanWriteConversation(sessionContext, conversation = {}, actorIds = null) {
+function sessionCanWriteConversation(sessionContext, conversation = {}, actorIds = null, groupCtx = null) {
   if (!sessionContext?.user?.id) return true;
   if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
+  // GROUP-TARGETED writes: operating staff may always post. Beyond that,
+  // a GROUP channel is the group's own chat — its playing members may post
+  // (the squad-open rule, group-scoped). An ANNOUNCEMENT to a group is a
+  // BROADCAST: staff scope only — playing there grants NO send authority,
+  // so a Seniors player who coaches U18 can never broadcast to Seniors.
+  const targetGroup = conversationGroupId(conversation);
+  if (targetGroup) {
+    const ctx = groupCtx || { playingGroupId: '', staffGroupIds: new Set() };
+    if (ctx.staffGroupIds.has(targetGroup)) return true;
+    const targetType = String(conversation?.type || '').toUpperCase();
+    if (targetType === 'ANNOUNCEMENT') return false;
+    return ctx.playingGroupId === targetGroup;
+  }
   if (isStaffSession(sessionContext)) {
     // Mirror the read rule: staff can post to any group/team/system channel, but a DM
     // is writable only by its participants — a coach cannot post into another coach's
@@ -297,9 +365,18 @@ function sessionCanWriteConversation(sessionContext, conversation = {}, actorIds
   return sessionCanReadConversation(sessionContext, conversation, actorIds);
 }
 
-async function findConversation(convId) {
+async function findConversation(convId, sessionContext = null) {
   const convs = await ensureDefaults();
-  return convs.find(c => c.id === convId) || null;
+  const matches = convs.filter(c => c.id === convId);
+  if (matches.length <= 1) return matches[0] || null;
+  // Two clubs may legitimately hold a conversation under the same protocol id
+  // (group:<gid> — group ids are per-structure, not globally unique). The
+  // session's own club's record wins; a teamless (legacy/global) record is
+  // the only other acceptable answer — never another club's.
+  const teamId = tenantTeamId(sessionContext) || '';
+  return matches.find(c => String(c.teamId || '') === String(teamId))
+      || matches.find(c => !c.teamId)
+      || null;
 }
 
 async function requireConversationAccess(res, sessionContext, convId, mode = 'read') {
@@ -307,15 +384,20 @@ async function requireConversationAccess(res, sessionContext, convId, mode = 're
     err(res, 401, 'Authentication required');
     return false;
   }
-  const conversation = await findConversation(convId);
+  const conversation = await findConversation(convId, sessionContext);
   if (!conversation) {
     err(res, 404, 'Conversation not found');
     return false;
   }
   const actorIds = await actorIdsForSession(sessionContext);
+  // The group standing is resolved only when the conversation actually needs
+  // it — DM and channel traffic never pays for a structure read.
+  const groupCtx = conversationGroupId(conversation)
+    ? await groupContextForSession(sessionContext)
+    : null;
   const allowed = mode === 'write'
-    ? sessionCanWriteConversation(sessionContext, conversation, actorIds)
-    : sessionCanReadConversation(sessionContext, conversation, actorIds);
+    ? sessionCanWriteConversation(sessionContext, conversation, actorIds, groupCtx)
+    : sessionCanReadConversation(sessionContext, conversation, actorIds, groupCtx);
   if (!allowed) {
     err(res, 403, 'Not authorized for this conversation');
     return false;
@@ -354,7 +436,12 @@ async function handleGet(req, res) {
     if (!sessionContext?.user?.id) return err(res, 401, 'Authentication required');
     const convs = await ensureDefaults();
     const actorIds = await actorIdsForSession(sessionContext);
-    const visibleConvs = convs.filter(c => sessionCanReadConversation(sessionContext, c, actorIds));
+    // One structure read serves the whole list — group-targeted rows filter
+    // on the session's playing membership and coaching scope.
+    const groupCtx = convs.some(c => conversationGroupId(c))
+      ? await groupContextForSession(sessionContext)
+      : null;
+    const visibleConvs = convs.filter(c => sessionCanReadConversation(sessionContext, c, actorIds, groupCtx));
     // Enrich with last message + unread count per user
     const enriched = await Promise.all(visibleConvs.map(async c => {
       const sid = storageConvId(sessionContext, c.id);
@@ -399,6 +486,41 @@ async function handleGet(req, res) {
     const now = Date.now();
     const active = (raw || []).filter(t => now - t.ts < 5000); // 5s window
     return ok(res, { typing: active.filter(t => t.userId !== userId) });
+  }
+
+  if (action === 'group_recipients') {
+    // SERVER-AUTHORITATIVE recipient resolution for a group-targeted send.
+    // The client may say WHICH group; it never supplies the recipient list.
+    // Recipients are the group's ACTIVE playing members — resolved from the
+    // membership store at call time. Coaching scope does not make a person a
+    // recipient: a Seniors player coaching U18 is a Seniors recipient only.
+    if (!sessionContext?.user?.id) return err(res, 401, 'Authentication required');
+    if (!isStaffSession(sessionContext)) return err(res, 403, 'Staff only');
+    const gid = String(url.searchParams.get('groupId') || '').trim();
+    if (!gid) return err(res, 400, 'groupId required');
+    const teamId = tenantTeamId(sessionContext);
+    const structure = await loadClubStructure(teamId);
+    const group = (structure?.groups || []).find(g => g.id === gid && g.status !== 'archived');
+    if (!group) return err(res, 404, 'That group does not exist in this club');
+    const mine = operationalGroupsFor(sessionContext.teamMember, structure, { as: 'staff' });
+    if (!mine.some(g => g.id === gid)) return err(res, 403, 'You do not operate that group');
+    const [members, users] = await Promise.all([loadTeamMembers(), loadUsers()]);
+    const seen = new Set();
+    const recipients = members
+      .filter(m => m.teamId === teamId && m.status === 'active')
+      .filter(m => (resolvePlayerGroup(m, structure).groupId || '') === gid)
+      .filter(m => {
+        // One authenticated person = one recipient, whatever their roles.
+        const uid = String(m.userId || '');
+        if (!uid || seen.has(uid)) return false;
+        seen.add(uid);
+        return true;
+      })
+      .map(m => ({
+        userId: m.userId,
+        name: users.find(u => u.id === m.userId)?.displayName || m.userId,
+      }));
+    return ok(res, { groupId: gid, groupName: group.name, recipients, count: recipients.length });
   }
 
   if (action === 'presence') {
@@ -467,9 +589,12 @@ async function handlePost(req, res) {
     const sendSid = storageConvId(sessionContext, convId);
     await kvLpush(MSGS_KEY(sendSid), msg);
     await kvLtrim(MSGS_KEY(sendSid), 500); // keep last 500 messages
-    // Update conv last activity
+    // Update conv last activity — team-aware, so a same-id conversation in
+    // another club (group:<gid> collisions) is never the one bumped.
     const convs = await getConvs();
-    const idx = convs.findIndex(c => c.id === convId);
+    const senderTeam = String(tenantTeamId(sessionContext) || '');
+    const idx = convs.findIndex(c => c.id === convId &&
+      (!c.teamId || String(c.teamId) === senderTeam));
     if (idx >= 0) { convs[idx].lastActivity = msg.ts; await saveConvs(convs); }
     // Mark sender as read
     await kvSet(key(`chat:read:${sendSid}:${senderId}`), msg.ts);
@@ -582,6 +707,30 @@ async function handlePost(req, res) {
     // a forged id like 'squad@<otherTeamId>' must never become a conversation.
     if (String(id || '').includes('@')) return err(res, 400, "Conversation id cannot contain '@'");
 
+    // GROUP-TARGETED conversations: an explicit groupId (or the reserved
+    // 'group:<gid>' id form) binds the conversation to ONE player group of
+    // THIS club. Only staff who OPERATE that group may create it — playing
+    // there grants nothing, and an unknown or forged group writes nothing.
+    // The group is validated against the session club's structure, so a
+    // cross-club group id can never bind here.
+    const requestedGroupId = String(body.groupId || '').trim()
+      || (String(id || '').startsWith('group:') ? String(id).slice('group:'.length) : '');
+    if (requestedGroupId) {
+      if (!isStaffSession(sessionContext)) {
+        return err(res, 403, 'Only staff can create group-targeted conversations');
+      }
+      if (String(id || '') && String(id) !== `group:${requestedGroupId}`) {
+        return err(res, 400, 'A group-targeted conversation id must be group:<groupId>');
+      }
+      const structure = await loadClubStructure(tenantTeamId(sessionContext));
+      const group = (structure?.groups || []).find(g => g.id === requestedGroupId && g.status !== 'archived');
+      if (!group) return err(res, 404, 'That group does not exist in this club');
+      const mine = operationalGroupsFor(sessionContext.teamMember, structure, { as: 'staff' });
+      if (!mine.some(g => g.id === requestedGroupId)) {
+        return err(res, 403, 'You do not operate that group');
+      }
+    }
+
     if (!isStaffSession(sessionContext)) {
       // Players may only create DIRECT conversations that include themselves.
       if (convType !== 'DIRECT') return err(res, 403, 'Players can only create direct conversations');
@@ -602,8 +751,12 @@ async function handlePost(req, res) {
     const teamId = tenantTeamId(sessionContext);
     const convId = id || `conv_${Date.now()}`;
     const convs = await getConvs();
-    if (!convs.some(c => c.id === convId)) {
-      convs.push({ id: convId, teamId, name, type: convType, icon, description, participants, pinned: false, createdAt: Date.now(), lastActivity: Date.now() });
+    // Dedupe per (id, club): two clubs may hold the same group:<gid> protocol
+    // id; a second club's create must add ITS record, not adopt the first's.
+    if (!convs.some(c => c.id === convId && String(c.teamId || '') === String(teamId || ''))) {
+      convs.push({ id: convId, teamId, name, type: convType, icon, description, participants,
+        ...(requestedGroupId ? { groupId: requestedGroupId } : {}),
+        pinned: false, createdAt: Date.now(), lastActivity: Date.now() });
       await saveConvs(convs);
     }
     return ok(res, { convId });

@@ -25943,9 +25943,78 @@
         .map(u => ({ id: String(u.id), name: u.name, position: LABEL[u.role] || 'Staff', email: u.email || '', photo: '', _staff: true }));
     }
 
+    // ── GROUP-TARGETED MESSAGING (client) ──────────────────────────────────
+    // Server-resolved recipient sets for group channels, keyed by the group
+    // each reply was ASKED for. Keying by request-time group makes a late
+    // reply file under its own group — it can never masquerade as whichever
+    // group the operator has since switched to.
+    let _groupRecipients = {};
+    async function chatLoadGroupRecipients(gid) {
+      const asked = String(gid || '');
+      if (!asked || _groupRecipients[asked]) return;
+      _groupRecipients[asked] = { count: 0, recipients: [], pending: true };
+      try {
+        const res = await fetch('/api/chat?action=group_recipients&groupId=' + encodeURIComponent(asked));
+        if (!res.ok) { delete _groupRecipients[asked]; return; }
+        const data = await res.json();
+        _groupRecipients[asked] = { count: Number(data.count || 0), recipients: data.recipients || [] };
+        // Refresh the visible rows/header only if this group is still the one
+        // in force — otherwise the cached entry simply waits for its group.
+        if (state.operationalGroupId === asked && document.getElementById('chatContactList')) {
+          const mode = state.activeView === 'coach' ? 'coach' : 'player';
+          chatRenderContactList(mode);
+          if (state.selectedChatId === `group:${asked}`) {
+            const sub = document.getElementById('chatHeaderSub');
+            if (sub) sub.textContent = `${_groupRecipients[asked].count} players · group only`;
+          }
+        }
+      } catch { delete _groupRecipients[asked]; }
+    }
+
+    /**
+     * The people a coach's Messages DIRECTORY offers (DM rows + New-message
+     * picker). Stricter than operationalPlayers(): a single-group coach in a
+     * MULTI-group club must not get a convenient club-wide directory — their
+     * discovery follows the group they operate. A pre-structure club (no
+     * grouped memberships at all) keeps today's full directory; existing
+     * threads always remain visible via the server conversation merge.
+     */
+    function chatDirectoryPlayers() {
+      const rows = canonicalVisiblePlayers();
+      const gid = state.operationalGroupId;
+      if (!gid) return rows;
+      const members = _adminData.members || [];
+      if (!members.some(m => m.playerGroupId)) return rows;   // legacy club — ungrouped
+      const groupOf = p => members.find(m =>
+        m.status === 'active' && String(m.userId) === String(p.userId || ''))?.playerGroupId || '';
+      return rows.filter(p => String(groupOf(p)) === gid);
+    }
+
+    /** Lazily create the operating group's channel the first time it is opened. */
+    async function chatEnsureGroupChannel(convId) {
+      const gid = String(convId || '').startsWith('group:') ? String(convId).slice(6) : '';
+      if (!gid) return;
+      if ((_chatConversations || []).some(c => String(c.id) === String(convId))) return;
+      const group = operationalGroups().find(g => g.id === gid);
+      if (!group) return;                 // only groups this identity operates
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'create_conv', id: convId, groupId: gid,
+            name: `${group.name} players`, type: 'GROUP', icon: '',
+            description: 'Group players and group staff' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok !== false) await chatFetchConversations();
+      } catch (e) { console.warn('[chatEnsureGroupChannel]', e); }
+    }
+
     function chatCoachDmPickerPlayers() {
       const me = chatMe();
-      const players = canonicalVisiblePlayers();
+      // The picker offers the OPERATING group's players (full club only for a
+      // pre-structure legacy club) — a group coach composes to their own
+      // group; existing threads with anyone remain in the list regardless.
+      const players = chatDirectoryPlayers();
       const q = String(_chatNewDmQuery || '').trim().toLowerCase();
       const coach = String(me.id || '');
       // Inline filter runs on pre-deduped players — used as reliable fallback.
@@ -26180,6 +26249,11 @@
       const ids = new Set(['announce', 'squad']);
       const dm = playerCoachDmId();
       if (dm) ids.add(dm);              // only when a real DM exists
+      // Their own PLAYING group's channel — membership comes from the server
+      // identity payload, never from a local guess. Other groups' channels
+      // stay invisible (and the server refuses them anyway).
+      const myPg = _myOperational?.player?.groups?.[0]?.id || '';
+      if (myPg) ids.add(`group:${myPg}`);
       return ids;
     }
 
@@ -26432,12 +26506,31 @@
       let contacts = [];
       if (isCoachMode) {
         contacts = [
-          { id: 'squad',    name: 'Squad',           icon: '', sub: `${members.length} members`, type: 'GROUP', pinned: true },
+          { id: 'squad',    name: 'Squad',           icon: '', sub: `${members.length} members · whole club`, type: 'GROUP', pinned: true },
           { id: 'coaching', name: 'Coaching Team',   icon: '', sub: 'Coaches only', type: 'GROUP', pinned: true },
-          { id: 'announce', name: 'Announcements',   icon: '', sub: 'Broadcast channel', type: 'ANNOUNCEMENT', pinned: true },
+          { id: 'announce', name: 'Announcements',   icon: '', sub: 'Whole club broadcast', type: 'ANNOUNCEMENT', pinned: true },
         ];
-        // Add 1-to-1 with each player
-        members.filter(p => p.id !== me.id).forEach(p => {
+        // The OPERATING group's own channel — the explicit group-targeted
+        // audience ("U18 players"), distinct from the whole-club Squad.
+        // Shown for real multi-group contexts and for coaches scoped to a
+        // non-initial group; a legacy single-group club keeps its Squad-only
+        // layout unchanged.
+        const opGid = state.operationalGroupId;
+        if (opGid && (operationalGroups().length >= 2 || opGid !== CE_INITIAL_GROUP_ID)) {
+          const gname = operationalGroupName() || 'Group';
+          const rc = _groupRecipients[opGid];
+          contacts.splice(1, 0, {
+            id: `group:${opGid}`, name: `${gname} players`, icon: '',
+            sub: rc ? `${rc.count} player${rc.count === 1 ? '' : 's'} · group only` : 'This group only',
+            type: 'GROUP', pinned: true, _groupId: opGid,
+          });
+          chatLoadGroupRecipients(opGid);
+        }
+        // Add 1-to-1 with each player of the OPERATING group. Staff reach the
+        // group they operate (multi-group staff switch to reach the others);
+        // only a pre-structure legacy club keeps the full list. Existing DM
+        // threads always surface via the server merge below regardless.
+        chatDirectoryPlayers().filter(p => p.id !== me.id).forEach(p => {
           const participantId = chatResolvePlayerParticipantId(p);
           contacts.push({ id: dmConvId(me.id, participantId), name: p.name, sub: p.position || 'Player', type: 'DIRECT', photo: p.photo, playerId: participantId, rosterPlayerId: p.id });
         });
@@ -26457,6 +26550,13 @@
           { id: 'squad',    name: 'Squad',           icon: '', sub: `${members.length} members`, type: 'GROUP' },
           { id: coachDm, name: 'Coach', icon: '', sub: 'Direct message', type: 'DIRECT' },
         ];
+        // Their own PLAYING group's channel, when the coach has opened one —
+        // surfaced from the server list (never guessed client-side).
+        const myPg = _myOperational?.player?.groups?.[0]?.id || '';
+        if (myPg) {
+          const gc = (_chatConversations || []).find(c => String(c.id) === `group:${myPg}`);
+          if (gc) contacts.splice(2, 0, { id: gc.id, name: gc.name || 'My group', icon: '', sub: 'Your group', type: gc.type || 'GROUP' });
+        }
       }
       // Merge in any Redis conversations not covered by local contacts.
       // This is essential for players whose device doesn't have the coach's user
@@ -27231,6 +27331,9 @@
       if (currentUser()?.role === 'player' && !playerAllowedConversationIds().has(chatId)) {
         chatId = playerCoachDmId();
       }
+      if (state.activeView === 'coach' && String(chatId || '').startsWith('group:')) {
+        chatEnsureGroupChannel(chatId).catch(() => {});
+      }
       state.selectedChatId = chatId;
       _chatMobileOpen = true;
       const shell = document.querySelector('.chat-shell');
@@ -27340,10 +27443,26 @@
       btn.classList.toggle('show', fromBottom > 100);
     }
 
+    /**
+     * The Messages inline group switcher lives in a PERMANENT host inside the
+     * once-built chat shell, refilled whenever the contact list refreshes —
+     * so an operational context that arrives after the shell was built (the
+     * usual cold-load order) still surfaces the switcher. Empty for players
+     * and single-group staff.
+     */
+    function chatRenderGroupSwitcher() {
+      const host = document.getElementById('chatGroupSwitch');
+      if (!host) return;
+      const html = operationalGroupSwitcherHTML();
+      host.innerHTML = html;
+      host.style.display = html ? 'flex' : 'none';
+    }
+
     // ── Render contact list ───────────────────────────────
     function chatRenderContactList(mode) {
       const el = document.getElementById('chatContactList');
       if (!el) return;
+      if (mode === 'coach') chatRenderGroupSwitcher();
       const contacts = chatBuildContacts(mode);
       const q = _chatSearchQuery.toLowerCase().trim();
       // Search by name, position (contact.sub / roster position) and real email —
@@ -27508,6 +27627,7 @@
             </div>
           </div>
           ${mode==='coach'?`<div id="chatNewDmPicker">${chatNewDmPickerHtml()}</div>`:''}
+          ${mode==='coach'?`<div class="chat-group-switch" id="chatGroupSwitch" style="padding:8px 14px 0;display:none;justify-content:flex-end"></div>`:''}
           <div class="chat-search-bar">
             <!-- Contenteditable element (NOT an <input>) so the browser/password manager cannot show saved login/email/password autofill. -->
             <div class="chat-search-field chat-ce-search" role="searchbox" aria-label="Search conversations" data-placeholder="Search conversations…" contenteditable="true" spellcheck="false" autocorrect="off" autocapitalize="off"
@@ -29121,6 +29241,9 @@
       state.messages = [];                 // legacy local inbox is per-person
       _chatConversations = [];
       _chatLastPoll = {};
+      // Server-resolved group recipient sets are identity/club-scoped too —
+      // the next identity must resolve its own, never inherit these.
+      _groupRecipients = {};
       chatSetUnreadTotal(0);
     }
 
@@ -29308,6 +29431,13 @@
       }
       state.operationalGroupId = groupId;
       syncTrainingStateToGroup();
+      // A group channel open in the composer is a GROUP-TARGETED audience —
+      // it must follow the group now in force, so the next message can never
+      // land on the group the operator just left.
+      if (String(state.selectedChatId || '').startsWith('group:')
+          && state.selectedChatId !== `group:${groupId}`) {
+        state.selectedChatId = `group:${groupId}`;
+      }
       saveState('Group switched');
       render();
     }
@@ -29861,6 +29991,7 @@
         _trainingPubState = {}; _trainingPubLoadedAt = 0; // training publication is per-club too
         _trainingSchedule = null;      // the training schedule is per-club too
         _trainingScheduleAttempted = false;
+        _groupRecipients = {};         // group ids are per-club (grp_initial collides across clubs)
         _clubConfigChecked = false; _publishedStateLoadedAt = 0;
         if (typeof _adminData === 'object') _adminData.loaded = false;
         _autopilotEnsured = false; _autopilotLogAt = 0; _autopilotLog = [];
