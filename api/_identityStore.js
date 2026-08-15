@@ -1033,6 +1033,21 @@ export async function claimInvite(input = {}) {
     error.status = 410;
     throw error;
   }
+  // GUARD — a PLAYER invite that names no player group cannot be claimed once
+  // the club holds SEVERAL active groups: the claim would mint a member who
+  // resolves to NO group and silently vanishes from every squad surface. With
+  // exactly one active group the legacy behaviour stands — the sole group is
+  // unambiguous. Runs BEFORE any account/membership write and never consumes
+  // the invite. Staff invites (coach/admin/medical) are deliberately
+  // untouched: their null scope derives safe Seniors-only access instead.
+  if (String(invite.role || 'player') === 'player' && !String(invite.playerGroupId || '').trim()) {
+    const structure = await loadClubStructure(invite.teamId || DEFAULT_TEAM.id);
+    if (activeGroups(structure).length > 1) {
+      const error = new Error('This player invite is no longer valid for this club. Ask your coach for a new team invite.');
+      error.status = 410;
+      throw error;
+    }
+  }
   const email = normalizeEmail(input.email || invite.email);
   if (!EMAIL_RE.test(email)) throw new Error('Valid email is required');
   assertPassword(input.password);
