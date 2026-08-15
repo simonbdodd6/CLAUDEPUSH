@@ -48,6 +48,8 @@ function clientScope({ users = [], currentUserId = '', sessionPayload = null } =
     function loadCoachDraft() { return Promise.resolve(); }
     function isCoach() { return true; }
     function render() {}
+    // Training group partition: post-adoption switcher refresh in checkServerSession.
+    function renderOperationalGroupSwitcher() {}
     let _playerAvailFetched = false, _publishedStateLoadedAt = 0;
     ${extractFn('chatMe')}
     // console used by chatMe

@@ -203,9 +203,15 @@ test('full beta publish flow: coach publishes, player on separate device sees it
     assert.equal(res.body.squad.formationNames['9'], 'Noah Vandamme');
     assert.equal(res.body.sessions.length, 3);
 
-    // And the team-scoped Redis keys are the only storage involved
+    // And the team-scoped Redis keys are the only storage involved. Sessions
+    // are a GROUP resource since the training partition: with no club
+    // structure, writes file under the INITIAL group's key — the deterministic
+    // owner of pre-group data — and the flat legacy key is never written.
     assert.ok(kv.has('app:publish:boitsfort-rfc:squad'), 'squad must live at app:publish:<teamId>:squad');
-    assert.ok(kv.has('app:publish:boitsfort-rfc:sessions'), 'sessions must live at app:publish:<teamId>:sessions');
+    assert.ok(kv.has('app:publish:boitsfort-rfc:group:grp_initial:sessions'),
+      'sessions must live at app:publish:<teamId>:group:grp_initial:sessions');
+    assert.equal(kv.has('app:publish:boitsfort-rfc:sessions'), false,
+      'the pre-partition flat sessions key is read-only legacy now');
     const rawSquad = JSON.parse(kv.get('app:publish:boitsfort-rfc:squad'));
     assert.equal(rawSquad.opposition, 'France U20');
   });

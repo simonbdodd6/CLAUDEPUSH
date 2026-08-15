@@ -257,6 +257,15 @@ function ctx(operational, activeView = 'coach', members = [], players = []) {
     function showToast() {}
     function saveState() {}
     function render() {}
+    // Training group partition: switching groups swaps the training stash.
+    const defaultState = { schedule: [], trainingBlocks: {}, tacticsDrawings: {} };
+    const CE_INITIAL_GROUP_ID = 'grp_initial';
+    let _trainingSchedule = null, _trainingScheduleAttempted = false,
+        _trainingPubState = {}, _trainingPubLoadedAt = 0, _publishedStateLoadedAt = 0;
+    ${fn('captureTrainingState')}
+    ${fn('stashTrainingState')}
+    ${fn('adoptTrainingState')}
+    ${fn('syncTrainingStateToGroup')}
     ${fn('operationalCapacity')}
     ${fn('operationalGroups')}
     ${fn('resolveOperationalGroup')}

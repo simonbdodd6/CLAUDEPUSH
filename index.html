@@ -6151,6 +6151,9 @@
       next.trainingAttendance = (typeof input.trainingAttendance === 'object' && input.trainingAttendance !== null) ? input.trainingAttendance : {};
       next.sessionNotes       = (typeof input.sessionNotes === 'object' && input.sessionNotes !== null) ? input.sessionNotes : {};
       next.activeTrainingTab  = input.activeTrainingTab || 'planner';
+      // Per-group stash of the training working state (schedule, blocks,
+      // attendance, notes…) — the group partition's local half.
+      next.trainingByGroup    = (typeof input.trainingByGroup === 'object' && input.trainingByGroup !== null) ? input.trainingByGroup : {};
 
       // Ensure trainingBlocks has an entry for every schedule session
       next.schedule.forEach(s => {
@@ -7206,17 +7209,26 @@
 
     async function loadTrainingPublicationState() {
       if (!canI('publish_training')) return;
+      // Publication state is per GROUP — stamp the request with the operating
+      // group and discard the answer if the operator moved on before it landed.
+      const gid = trainingGroupParam();
+      const gq = gid ? `&group=${encodeURIComponent(gid)}` : '';
       try {
-        const res = await fetch('/api/publish?resource=training&audience=coach');
+        const res = await fetch(`/api/publish?resource=training&audience=coach${gq}`);
         if (!res.ok) return;
         const data = await res.json();
+        if (trainingGroupParam() !== gid) {              // stale reply — re-chase
+          _trainingPubLoadedAt = 0; loadTrainingPublicationState();
+          return;
+        }
         (data.sessions || []).forEach(s => {
           _trainingPubState[s.id] = _trainingPubState[s.id] || {};
           _trainingPubState[s.id].coach = { status: s.status, publishedAt: s.publishedAt, publishedBy: s.publishedBy };
         });
-        const pres = await fetch('/api/publish?resource=training&audience=player');
+        const pres = await fetch(`/api/publish?resource=training&audience=player${gq}`);
         if (pres.ok) {
           const pdata = await pres.json();
+          if (trainingGroupParam() !== gid) return;      // stale reply (incl. pre-adoption unstamped)
           (pdata.sessions || []).forEach(s => {
             _trainingPubState[s.id] = _trainingPubState[s.id] || {};
             _trainingPubState[s.id].player = { status: s.status, publishedAt: s.publishedAt, publishedBy: s.publishedBy };
@@ -7258,7 +7270,7 @@
       try {
         const res = await fetch(`/api/publish?resource=training&audience=${audience}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session: payload }),
+          body: JSON.stringify({ session: payload, group: trainingGroupParam() || undefined }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { showToast(data.error || `Could not publish to ${who}`); return; }
@@ -7312,7 +7324,7 @@
         try {
           const res = await fetch('/api/publish?resource=training', {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session: payload }),
+            body: JSON.stringify({ session: payload, group: trainingGroupParam() || undefined }),
           });
           if (!res.ok) return;
           const data = await res.json();
@@ -13740,7 +13752,9 @@
           ${schedSessions.map(s => {
             const sBlocks = (state.trainingBlocks||{})[s.id]?.length || 0;
             const sKey    = sessionKey(s.id);
-            const sAvail  = state.players.filter(p => (p[sKey]||'no-reply') === 'available').length;
+            // Confirmed counts read the OPERATING group's players only — the
+            // whole-club list would count another group's answers.
+            const sAvail  = operationalPlayers().filter(p => (p[sKey]||'no-reply') === 'available').length;
             const sentForSession = (state.availabilityRequests||[]).some(r => r.sessionId === s.id && r.status === 'sent');
             const availBadge = sentForSession ? ` · <span style="color:${sAvail>=10?'var(--accent)':'var(--muted)'};">${sAvail} confirmed</span>` : '';
             return `
@@ -17575,10 +17589,23 @@
 
     async function loadTrainingSchedule(force) {
       if (_trainingSchedule && !force) return _trainingSchedule;
+      // The group is captured when the request LEAVES: if the operator has
+      // switched groups by the time the reply lands, that reply describes the
+      // wrong group's schedule and is discarded.
+      const gid = trainingGroupParam();
       try {
-        const res = await fetch('/api/publish?resource=training-schedule');
+        const res = await fetch('/api/publish?resource=training-schedule'
+          + (gid ? `&group=${encodeURIComponent(gid)}` : ''));
         if (!res.ok) return null;
-        _trainingSchedule = await res.json();
+        const data = await res.json();
+        if (trainingGroupParam() !== gid) {
+          // Stale reply (incl. pre-adoption unstamped): discard it and chase
+          // the group NOW in force, so the UI never stalls on a dropped reply.
+          _trainingSchedule = null; _trainingScheduleAttempted = false;
+          loadTrainingSchedule(true).catch(() => {});
+          return null;
+        }
+        _trainingSchedule = data;
         render();
         return _trainingSchedule;
       } catch { return null; }
@@ -17587,15 +17614,15 @@
     async function trainingScheduleSave(body) {
       if (_trainingScheduleBusy) return;                  // duplicate-click guard
       _trainingScheduleBusy = true;
+      const gid = trainingGroupParam();
       try {
         const res = await fetch('/api/publish?resource=training-schedule', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          body: JSON.stringify(gid ? { ...body, group: gid } : body),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { showToast(data.error || 'Could not save the training schedule'); return null; }
-        _trainingSchedule = data;
-        render();
+        if (!gid || trainingGroupParam() === gid) { _trainingSchedule = data; render(); }
         return data;
       } catch {
         showToast("We couldn't connect. Check your internet connection and try again.");
@@ -18275,7 +18302,7 @@
           fetch('/api/identity').then(r => r.ok ? r.json() : null),
           fetch('/api/invite').then(r => r.ok ? r.json() : null),
           fetch('/api/publish?resource=club').then(r => r.ok ? r.json() : null),
-          fetch('/api/publish?type=all').then(r => r.ok ? r.json() : null),
+          fetch('/api/publish?type=all' + (trainingGroupParam() ? `&group=${encodeURIComponent(trainingGroupParam())}` : '')).then(r => r.ok ? r.json() : null),
           fetch('/api/roster').then(r => r.ok ? r.json() : null),
         ]);
         const payload = {
@@ -24045,7 +24072,7 @@
           let subLine = '';
           if (mode === 'attendance') {
             const hasAtt = Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0;
-            subLine = hasAtt ? trainingAttendanceForSession(s.id, state.players).pct + '% attendance' : 'No records yet';
+            subLine = hasAtt ? trainingAttendanceForSession(s.id, operationalPlayers()).pct + '% attendance' : 'No records yet';
           } else if (mode === 'notes') {
             const n = (state.sessionNotes||{})[s.id] || {};
             subLine = Object.values(n).some(v=>v) ? 'Notes saved' : 'No notes yet';
@@ -24087,7 +24114,7 @@
         .filter(s => s.type === 'Training' && Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0)
         .slice(-5);
       const avgPct = withData.length > 0
-        ? Math.round(withData.reduce((sum,s) => sum + trainingAttendanceForSession(s.id, state.players).pct, 0) / withData.length)
+        ? Math.round(withData.reduce((sum,s) => sum + trainingAttendanceForSession(s.id, operationalPlayers()).pct, 0) / withData.length)
         : null;
       const noReplyCount = activeRosterPlayers(state.players).filter(p =>
         schedSessions.filter(s=>s.type==='Training').every(s => !p[sessionKey(s.id)] || p[sessionKey(s.id)] === 'no-reply')
@@ -24133,7 +24160,7 @@
               '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Attendance trend — last ' + withData.length + ' sessions</div>' +
               '<div style="display:flex;gap:8px;align-items:flex-end;height:64px">' +
                 withData.map(s => {
-                  const a = trainingAttendanceForSession(s.id, state.players);
+                  const a = trainingAttendanceForSession(s.id, operationalPlayers());
                   const h = Math.max(8, Math.round(a.pct*0.6));
                   const c = a.pct>=75?'#34d399':a.pct>=50?'#fbbf24':'#f87171';
                   return '<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:4px">' +
@@ -24176,7 +24203,7 @@
             : '') +
           '<div>' +
             schedSessions.map(s => {
-              const att = trainingAttendanceForSession(s.id, state.players);
+              const att = trainingAttendanceForSession(s.id, operationalPlayers());
               const hasAtt = Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0;
               const canDel = !['tue','thu','game'].includes(s.id);
               return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">' +
@@ -24203,8 +24230,11 @@
       const rawId  = state.trainingActiveSession || (schedSessions[0]?.id ?? 'tue');
       const sessId = schedSessions.find(s => s.id === rawId) ? rawId : (schedSessions[0]?.id ?? 'tue');
       const sessObj = schedSessions.find(s => s.id === sessId);
-      const att = trainingAttendanceForSession(sessId, state.players);
-      const players = activeRosterPlayers(state.players);
+      // Register the OPERATING group's players only — an attendance register
+      // listing the whole club would let one group's coach mark another's.
+      const groupRows = operationalPlayers();
+      const att = trainingAttendanceForSession(sessId, groupRows);
+      const players = activeRosterPlayers(groupRows);
       const STATUSES = ['present','late','excused','injured','absent'];
 
       const statusBtn = (pid, st) => {
@@ -24485,7 +24515,7 @@
             '</div>'
           : '<div style="display:grid;gap:10px;margin-bottom:14px">' +
               shown.map(s => {           // already newest-first
-                const att = trainingAttendanceForSession(s.id, state.players);
+                const att = trainingAttendanceForSession(s.id, operationalPlayers());
                 const hasAtt    = Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0;
                 const blocksCnt = ((state.trainingBlocks||{})[s.id]||[]).length;
                 const hasNotes  = Object.values((state.sessionNotes||{})[s.id]||{}).some(v=>v);
@@ -28932,6 +28962,11 @@
 
     async function syncSessionsToServer() {
       if (!isCoach()) return;
+      // The sessions list is group-owned. A multi-group operator with no group
+      // in force has nowhere unambiguous to file this write — hold the sync
+      // until the switcher answers rather than let the server guess.
+      const gid = trainingGroupParam();
+      if (!gid && operationalGroups().length > 1) return;
       try {
         await fetch('/api/publish', {
           method: 'POST',
@@ -28941,9 +28976,10 @@
           // re-synced on every keystroke and leaked unpublished edits into an
           // already published view. Blocks now reach each audience solely
           // through an explicit publish (?resource=training&audience=…).
-          body: JSON.stringify({ type: 'sessions', data: (state.schedule || []).map(s => ({
-            ...s, blocks: [],
-          })) }),
+          body: JSON.stringify({ type: 'sessions', group: gid || undefined,
+            data: (state.schedule || []).map(s => ({
+              ...s, blocks: [],
+            })) }),
         });
       } catch(e) { console.warn('[syncSessionsToServer]', e); }
     }
@@ -29171,16 +29207,107 @@
       const side = _myOperational?.[operationalCapacity()];
       if (!side) { state.operationalGroupId = null; return; }
       const allowed = new Set((side.groups || []).map(g => g.id));
-      if (state.operationalGroupId && allowed.has(state.operationalGroupId)) return;
-      state.operationalGroupId = side.defaultGroupId || null;
+      if (!state.operationalGroupId || !allowed.has(state.operationalGroupId)) {
+        state.operationalGroupId = side.defaultGroupId || null;
+      }
+      // Capacity changes route through HERE, not setOperationalGroup — a
+      // dual-role member coaching U18 must not carry U18 working state into
+      // their Seniors player view (or vice versa).
+      syncTrainingStateToGroup();
     }
 
     /** Switch group. Refuses anything the server would not authorise. */
+    // ── TRAINING GROUP PARTITION (client) ───────────────────────────────────
+    // Training's local working state (recurring sessions, planner blocks,
+    // attendance, notes, viewed week) is GROUP state: Seniors' Tuesday plan is
+    // not U18's Tuesday plan even though both may be called "tue". Switching
+    // the operational group stashes the outgoing group's training state and
+    // adopts the incoming group's — the same flush→clear→hydrate shape the
+    // Match Centre uses for fixtures and sides.
+    function captureTrainingState() {
+      return {
+        schedule:               structuredClone(state.schedule || []),
+        trainingBlocks:         structuredClone(state.trainingBlocks || {}),
+        trainingAttendance:     structuredClone(state.trainingAttendance || {}),
+        sessionNotes:           structuredClone(state.sessionNotes || {}),
+        tacticsDrawings:        structuredClone(state.tacticsDrawings || {}),
+        trainingWeekStart:      state.trainingWeekStart || null,
+        trainingActiveSession:  state.trainingActiveSession || 'tue',
+        lastWeekTrainingBlocks: structuredClone(state.lastWeekTrainingBlocks ?? null),
+      };
+    }
+
+    function stashTrainingState() {
+      state.trainingByGroup = state.trainingByGroup || {};
+      // The live training state is owned by the group recorded when it was
+      // adopted. A device that has never partitioned holds pre-split data,
+      // and legacy data belongs to the INITIAL group — never to whichever
+      // group happened to be selected when the split engaged.
+      const owner = state.trainingStateGroupId || CE_INITIAL_GROUP_ID;
+      state.trainingByGroup[owner] = captureTrainingState();
+    }
+
+    function adoptTrainingState(gid) {
+      const saved = (state.trainingByGroup || {})[gid];
+      const fresh = saved || {
+        schedule:               structuredClone(defaultState.schedule),
+        trainingBlocks:         structuredClone(defaultState.trainingBlocks),
+        trainingAttendance:     {},
+        sessionNotes:           {},
+        tacticsDrawings:        structuredClone(defaultState.tacticsDrawings),
+        trainingWeekStart:      null,
+        trainingActiveSession:  'tue',
+        lastWeekTrainingBlocks: null,
+      };
+      state.schedule               = fresh.schedule;
+      state.trainingBlocks         = fresh.trainingBlocks;
+      state.trainingAttendance     = fresh.trainingAttendance;
+      state.sessionNotes           = fresh.sessionNotes;
+      state.tacticsDrawings        = fresh.tacticsDrawings;
+      state.trainingWeekStart      = fresh.trainingWeekStart;
+      state.trainingActiveSession  = fresh.trainingActiveSession;
+      state.lastWeekTrainingBlocks = fresh.lastWeekTrainingBlocks;
+      state.trainingStateGroupId   = gid;
+    }
+
+    /**
+     * Make the live training state match the group in force. This is THE
+     * transition — used by the switcher AND by capacity changes (a dual-role
+     * member re-resolves their group when moving between player and coach
+     * views, without ever passing through setOperationalGroup). With no group
+     * in force (multi-group staff mid-choice, staff preview with no playing
+     * membership) the live state is left alone: it keeps its recorded owner
+     * and is stashed correctly whenever a group IS chosen.
+     */
+    function syncTrainingStateToGroup() {
+      const target = state.operationalGroupId;
+      if (!target) return;
+      const owner = state.trainingStateGroupId || CE_INITIAL_GROUP_ID;
+      if (owner === target) { state.trainingStateGroupId = target; return; }
+      stashTrainingState();
+      adoptTrainingState(target);
+      // Server-cached training answers belong to the OLD group — drop them so
+      // the next render refetches under the new group. Any reply still in
+      // flight is discarded by the per-request group guards.
+      _trainingSchedule = null; _trainingScheduleAttempted = false;
+      _trainingPubState = {}; _trainingPubLoadedAt = 0;
+      _publishedStateLoadedAt = 0;
+    }
+
+    /** The group a coach-context training request should name — '' in the
+     *  player view, where the SERVER derives the group from the membership. */
+    function trainingGroupParam() {
+      if (state.activeView === 'player') return '';
+      const gid = state.operationalGroupId;
+      return gid && operationalGroups().length ? gid : '';
+    }
+
     function setOperationalGroup(groupId) {
       if (!operationalGroups().some(g => g.id === groupId)) {
         return showToast('You do not have access to that group');
       }
       state.operationalGroupId = groupId;
+      syncTrainingStateToGroup();
       saveState('Group switched');
       render();
     }
@@ -29764,6 +29891,11 @@
       state.benchPlayers = Array(8).fill('');
       state.schedule = structuredClone(defaultState.schedule);
       state.trainingBlocks = structuredClone(defaultState.trainingBlocks);
+      // The per-group training stash belongs to THIS club's groups — another
+      // club's Seniors must never inherit it.
+      state.trainingByGroup = {};
+      state.trainingStateGroupId = null;
+      state.trainingAttendance = {}; state.sessionNotes = {};
       state.availabilityRequests = [];
       state.autopilotReceipts = [];
       state.lastWeekTrainingBlocks = null;
@@ -29830,6 +29962,11 @@
       } catch { _serverAuthState = 'unknown'; } // offline — stay quiet
       renderAuthBanner();
       renderNav();
+      // The operational context may have just arrived (adoptIdentityPayload
+      // above). When nothing else re-renders — same user, no hydration — the
+      // group switcher must still reflect it, or a multi-group owner gets no
+      // switcher until some unrelated render happens by luck.
+      renderOperationalGroupSwitcher();
     }
 
     function renderAuthBanner() {
@@ -30076,10 +30213,19 @@
       const now = Date.now();
       if (now - _publishedStateLoadedAt < 30000) return;
       _publishedStateLoadedAt = now;
+      // Group-stamped: sessions are a GROUP list, and this merge writes into
+      // the WORKING schedule — un-stamped, a multi-group coach would adopt
+      // another group's sessions into the one they are operating.
+      const gid = trainingGroupParam();
       try {
-        const res = await fetch('/api/publish?type=all');
+        const res = await fetch('/api/publish?type=all'
+          + (gid ? `&group=${encodeURIComponent(gid)}` : ''));
         if (!res.ok) return;
         const data = await res.json();
+        if (trainingGroupParam() !== gid) {          // stale reply — re-chase
+          _publishedStateLoadedAt = 0; loadPublishedStateForPlayer().catch(() => {});
+          return;
+        }
         let changed = false;
         if (Array.isArray(data.sessions) && data.sessions.length) {
           // Merge: published sessions are authoritative. A local session is kept

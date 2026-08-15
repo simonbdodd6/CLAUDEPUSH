@@ -26,7 +26,7 @@ import {
   loadClubStructure, createGroup, createTeam, renameGroup, renameTeam,
   setGroupStatus, setTeamStatus, activeGroups, INITIAL_GROUP_ID,
 } from './_structureStore.js';
-import { effectiveAccessScope, resolveEligibility,
+import { effectiveAccessScope, resolveEligibility, resolvePlayerGroup,
          operationalGroupsFor, defaultOperationalGroup, assertOperationalGroup } from './_accessScope.js';
 import {
   loadMedicalRecord, activeCases, upsertCase, resolveCase, projectPlayer,
@@ -654,6 +654,75 @@ export function fixtureHasDownstreamData(fx = {}, context = {}) {
 
 function trainingScheduleKey(teamId) { return key(`publish:${teamId}:training_schedule`); }
 
+// ── GROUP-SCOPED TRAINING STORAGE ────────────────────────────────────────
+// Training is a GROUP resource: Seniors, U18 and Women's each hold their own
+// recurring schedule, published plans and session list, so the same nominal
+// session id (tue / slot_tue1-20260818) can exist in every group without
+// collision. Legacy club-wide records remain readable ONLY through the
+// INITIAL group — production's Seniors — exactly the availability rule:
+// deterministic ownership of pre-group history, never a guess. Writes always
+// land on the group key; the legacy keys stay untouched underneath.
+function trainingScheduleGroupKey(teamId, groupId) {
+  return key(`publish:${teamId}:group:${fxSeg(groupId)}:training_schedule`);
+}
+function trainingGroupStoreKey(teamId, groupId) {
+  return key(`publish:${teamId}:group:${fxSeg(groupId)}:training`);
+}
+function sessionsGroupKey(teamId, groupId) {
+  return key(`publish:${teamId}:group:${fxSeg(groupId)}:sessions`);
+}
+
+/** STAFF group for a training WRITE: asserted, or the single operable default. */
+async function staffTrainingGroup(session, requestedGroup) {
+  const structure = await loadClubStructure(session.teamId);
+  const requested = String(requestedGroup || '').trim();
+  if (requested) return assertOperationalGroup(session, structure, requested, { as: 'staff' }).id;
+  const mine = operationalGroupsFor(session.teamMember, structure, { as: 'staff' });
+  if (mine.length === 1) return mine[0].id;
+  const e = new Error('Choose which group');
+  e.status = 400;
+  throw e;
+}
+
+/**
+ * The group a training VIEW resolves to. An explicit ?group= is a staff ask
+ * and is asserted. Otherwise: a playing member reads where they PLAY; a
+ * staff-only member falls back to their first operable group (deterministic,
+ * and never outside their scope); a pre-group identity lands on the INITIAL
+ * group — the legacy view.
+ */
+async function trainingViewGroup(session, requestedGroup) {
+  const structure = await loadClubStructure(session.teamId);
+  const requested = String(requestedGroup || '').trim();
+  if (requested) return assertOperationalGroup(session, structure, requested, { as: 'staff' }).id;
+  const { groupId } = resolvePlayerGroup(session.teamMember || {}, structure);
+  if (groupId) return groupId;
+  const mine = operationalGroupsFor(session.teamMember, structure, { as: 'staff' });
+  return mine[0]?.id || INITIAL_GROUP_ID;
+}
+
+/**
+ * The group's published-training store. When a group has no scoped store yet,
+ * only the INITIAL group sees the legacy club-wide one — and because a write
+ * persists the WHOLE store back to the group key, the first scoped write
+ * copy-forwards every legacy publication rather than shadowing them.
+ */
+async function readGroupTrainingStore(teamId, groupId) {
+  const scoped = await kvGet(trainingGroupStoreKey(teamId, groupId));
+  if (scoped && typeof scoped === 'object') return scoped;
+  if (String(groupId) !== INITIAL_GROUP_ID) return {};
+  return (await kvGet(trainingKey(teamId))) || {};
+}
+
+/** Same rule for the session-definition list. */
+async function readGroupSessions(teamId, groupId) {
+  const scoped = await kvGet(sessionsGroupKey(teamId, groupId));
+  if (Array.isArray(scoped)) return scoped;
+  if (String(groupId) !== INITIAL_GROUP_ID) return [];
+  const legacy = await readScoped(sessionsKey(teamId), 'publish:sessions', teamId);
+  return Array.isArray(legacy) ? legacy : [];
+}
+
 const MAX_SCHEDULE_SLOTS = 14;
 const SCHEDULE_DAYS = new Set(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
 // The two slots that still back the legacy availability sessions. Everything
@@ -686,7 +755,18 @@ function sanitiseScheduleSlot(raw, index = 0) {
  * Idempotent: the seed only runs when no record exists, and it derives from the
  * live tue/thu sessions and club.trainingDays without modifying either.
  */
-async function readTrainingSchedule(teamId) {
+async function readTrainingSchedule(teamId, groupId = INITIAL_GROUP_ID) {
+  // The group's own record wins; only the INITIAL group may fall through to
+  // the legacy club-wide record (and its club-config seeding below). Any
+  // OTHER group with no stored schedule starts honestly EMPTY — U18 and
+  // Women's configure their own nights, they never inherit Seniors times.
+  const scoped = await kvGet(trainingScheduleGroupKey(teamId, groupId));
+  if (scoped && Array.isArray(scoped.slots)) {
+    return { record: { ...scoped, slots: scoped.slots.map(sanitiseScheduleSlot) }, seeded: false };
+  }
+  if (String(groupId) !== INITIAL_GROUP_ID) {
+    return { record: { slots: [], updatedAt: null, updatedBy: null, seededFrom: 'empty-group' }, seeded: true };
+  }
   const stored = await kvGet(trainingScheduleKey(teamId));
   if (stored && Array.isArray(stored.slots)) {
     return { record: { ...stored, slots: stored.slots.map(sanitiseScheduleSlot) }, seeded: false };
@@ -720,11 +800,16 @@ async function readTrainingSchedule(teamId) {
 async function trainingScheduleHandler(req, res) {
   if (req.method === 'GET') {
     // Any active member may VIEW the schedule — players need training times.
+    // GROUP-scoped: players read where they play, staff read their asserted
+    // (or single) operational group.
     let session;
     try { session = await requireTenantSession(req); }
     catch (error) { return sendAuthError(res, error); }
-    const { record, seeded } = await readTrainingSchedule(session.teamId);
-    return res.status(200).json({ ok: true, ...record, seeded, canEdit: can(session, PERM.MANAGE_FIXTURES) });
+    let gid;
+    try { gid = await trainingViewGroup(session, req.query?.group); }
+    catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
+    const { record, seeded } = await readTrainingSchedule(session.teamId, gid);
+    return res.status(200).json({ ok: true, ...record, seeded, groupId: gid, canEdit: can(session, PERM.MANAGE_FIXTURES) });
   }
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -739,7 +824,13 @@ async function trainingScheduleHandler(req, res) {
     catch (error) { return sendAuthError(res, error); }
   }
 
-  const { record } = await readTrainingSchedule(session.teamId);
+  // A write must name (or unambiguously imply) the group it edits — a
+  // forged group outside the caller's scope is rejected by the assertion.
+  let writeGid;
+  try { writeGid = await staffTrainingGroup(session, req.body?.group ?? req.query?.group); }
+  catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
+
+  const { record } = await readTrainingSchedule(session.teamId, writeGid);
   const slots = record.slots;
   const action = String(req.body?.action || 'save');
   const slotId = String(req.body?.slotId || '');
@@ -784,12 +875,16 @@ async function trainingScheduleHandler(req, res) {
     updatedAt: new Date().toISOString(),
     updatedBy: session.user.id,
   };
-  await kvSet(trainingScheduleKey(session.teamId), next);
+  // Writes ALWAYS land on the group key — the legacy club-wide record stays
+  // frozen underneath as pre-partition history. For the INITIAL group this is
+  // the copy-forward moment: the merged record (legacy fallback + this edit)
+  // becomes the group's own store.
+  await kvSet(trainingScheduleGroupKey(session.teamId, writeGid), next);
   await auditLog(auditEvent, {
-    teamId: session.teamId, slotId: slotId || next.slots[next.slots.length - 1]?.id || '',
+    teamId: session.teamId, groupId: writeGid, slotId: slotId || next.slots[next.slots.length - 1]?.id || '',
     by: session.user.id, slotCount: next.slots.length, ip: requestIp(req),
   });
-  return res.status(200).json({ ok: true, ...next, canEdit: true });
+  return res.status(200).json({ ok: true, ...next, groupId: writeGid, canEdit: true });
 }
 
 // ── Fixtures sub-resource (RC4.10B manual entry + bulk import) ────────────
@@ -1121,7 +1216,12 @@ async function trainingHandler(req, res) {
     } catch (error) {
       return sendAuthError(res, error);
     }
-    const store = (await kvGet(trainingKey(session.teamId))) || {};
+    // Published training is read per GROUP: players see their playing group's
+    // plans, staff see the group they are operating.
+    let gid;
+    try { gid = await trainingViewGroup(session, req.query?.group); }
+    catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
+    const store = await readGroupTrainingStore(session.teamId, gid);
     const sessions = [];
     for (const [id, rec] of Object.entries(store)) {
       const entry = rec?.[audience];
@@ -1135,7 +1235,7 @@ async function trainingHandler(req, res) {
         status: audienceStatus(entry, rec.currentRevision),
       });
     }
-    return res.status(200).json({ ok: true, audience, sessions, count: sessions.length });
+    return res.status(200).json({ ok: true, audience, groupId: gid, sessions, count: sessions.length });
   }
 
   // ── POST: publish one session to ONE audience ───────────────────────────
@@ -1155,7 +1255,10 @@ async function trainingHandler(req, res) {
       return res.status(400).json({ error: 'session object with an id is required' });
     }
 
-    const store = (await kvGet(trainingKey(session.teamId))) || {};
+    let gid;
+    try { gid = await staffTrainingGroup(session, req.body?.group ?? req.query?.group); }
+    catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
+    const store = await readGroupTrainingStore(session.teamId, gid);
     const id = String(incoming.id);
     const record = store[id] || {};
 
@@ -1175,10 +1278,10 @@ async function trainingHandler(req, res) {
     };
     // Publishing to one audience must never disturb the other's snapshot.
     store[id] = record;
-    await kvSet(trainingKey(session.teamId), store);
+    await kvSet(trainingGroupStoreKey(session.teamId, gid), store);
 
     await auditLog('training_published', {
-      audience, sessionId: id, teamId: session.teamId,
+      audience, sessionId: id, teamId: session.teamId, groupId: gid,
       publishedBy: session.user.id, revision: currentRevision,
       republished: Boolean(previous), ip: requestIp(req),
     });
@@ -1187,6 +1290,7 @@ async function trainingHandler(req, res) {
       ok: true,
       audience,
       sessionId: id,
+      groupId: gid,
       currentRevision,
       publishedAt: record[audience].publishedAt,
       publishedBy: record[audience].publishedBy,
@@ -1209,12 +1313,15 @@ async function trainingHandler(req, res) {
     if (!incoming || !String(incoming.id || '')) {
       return res.status(400).json({ error: 'session object with an id is required' });
     }
-    const store = (await kvGet(trainingKey(session.teamId))) || {};
+    let gid;
+    try { gid = await staffTrainingGroup(session, req.body?.group ?? req.query?.group); }
+    catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
+    const store = await readGroupTrainingStore(session.teamId, gid);
     const id = String(incoming.id);
     const record = store[id] || {};
     record.currentRevision = trainingRevision(coachSessionSnapshot(incoming));
     store[id] = record;
-    await kvSet(trainingKey(session.teamId), store);
+    await kvSet(trainingGroupStoreKey(session.teamId, gid), store);
     return res.status(200).json({
       ok: true,
       sessionId: id,
@@ -1237,13 +1344,16 @@ async function trainingHandler(req, res) {
       return res.status(400).json({ error: "audience must be 'coach' or 'player'" });
     }
     const id = String(req.body?.sessionId || '');
-    const store = (await kvGet(trainingKey(session.teamId))) || {};
+    let gid;
+    try { gid = await staffTrainingGroup(session, req.body?.group ?? req.query?.group); }
+    catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
+    const store = await readGroupTrainingStore(session.teamId, gid);
     if (store[id]) {
       delete store[id][audience];
-      await kvSet(trainingKey(session.teamId), store);
-      await auditLog('training_unpublished', { audience, sessionId: id, teamId: session.teamId, by: session.user.id, ip: requestIp(req) });
+      await kvSet(trainingGroupStoreKey(session.teamId, gid), store);
+      await auditLog('training_unpublished', { audience, sessionId: id, teamId: session.teamId, groupId: gid, by: session.user.id, ip: requestIp(req) });
     }
-    return res.status(200).json({ ok: true, audience, sessionId: id });
+    return res.status(200).json({ ok: true, audience, sessionId: id, groupId: gid });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
@@ -1437,9 +1547,14 @@ async function clubHandler(req, res) {
       // Both generations of Match Centre storage are enumerated rather than
       // assumed: fixture-scoped squads and drafts, AND the per-coach drafts on
       // the original key, which the wipe never used to remove.
-      const [scopedKeys, legacyDraftKeys] = await Promise.all([
+      // Group-scoped training stores (schedule / published plans / sessions
+      // per group) live under publish:<team>:group:* — the wipe enumerates
+      // them the same way it does fixture-scoped squads, so no group's
+      // training survives a club reset.
+      const [scopedKeys, legacyDraftKeys, groupKeys] = await Promise.all([
         kvScanKeys(`${APP_PREFIX}:publish:${session.teamId}:fixture:*`),
         kvScanKeys(key(`publish:${session.teamId}:draft:*`)),
+        kvScanKeys(`${APP_PREFIX}:publish:${session.teamId}:group:*`),
       ]);
       await Promise.all([
         kvSet(clubKey(session.teamId), null),
@@ -1449,11 +1564,13 @@ async function clubHandler(req, res) {
         kvSet(rosterKey(session.teamId), null),
         ...scopedKeys.map(k => kvDel(k)),
         ...legacyDraftKeys.map(k => kvDel(k)),
+        ...groupKeys.map(k => kvDel(k)),
       ]);
       return res.status(200).json({
         ok: true,
         deleted: ['club', 'sessions', 'squad', 'squad:current', 'roster',
-          `fixture-scoped:${scopedKeys.length}`, `legacy-drafts:${legacyDraftKeys.length}`],
+          `fixture-scoped:${scopedKeys.length}`, `legacy-drafts:${legacyDraftKeys.length}`,
+          `group-scoped:${groupKeys.length}`],
       });
     }
 
@@ -1465,12 +1582,23 @@ async function clubHandler(req, res) {
 
       const deleted = { sessions: 0, availability: 0, messages: 0, rosterPlayers: 0 };
 
-      // 1. Published training sessions with TEST in the title
+      // 1. Published training sessions with TEST in the title — swept from the
+      // legacy club list AND from every group's own list.
       const pubSessions = (await readScoped(sessionsKey(session.teamId), 'publish:sessions', session.teamId)) || [];
       const cleanSessions = pubSessions.filter(s => !isTestSession(s));
       if (cleanSessions.length < pubSessions.length) {
         deleted.sessions = pubSessions.length - cleanSessions.length;
         await kvSet(sessionsKey(session.teamId), cleanSessions);
+      }
+      const groupSessionKeys = await kvScanKeys(`${APP_PREFIX}:publish:${session.teamId}:group:*:sessions`);
+      for (const k of groupSessionKeys) {
+        const list = await kvGet(k);
+        if (!Array.isArray(list)) continue;
+        const clean = list.filter(s => !isTestSession(s));
+        if (clean.length < list.length) {
+          deleted.sessions += list.length - clean.length;
+          await kvSet(k, clean);
+        }
       }
 
       // 2. Availability records — strip per-player entries that match test markers.
@@ -1835,7 +1963,13 @@ export default async function handler(req, res) {
     const result = { ok: true };
 
     if (type === 'all' || type === 'sessions') {
-      result.sessions = (await readScoped(sessionsKey(session.teamId), 'publish:sessions', session.teamId)) || [];
+      // Session definitions are a GROUP list — resolved exactly like the
+      // schedule view: players by playing group, staff by asserted/first group.
+      let gid;
+      try { gid = await trainingViewGroup(session, req.query?.group); }
+      catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
+      result.sessions = await readGroupSessions(session.teamId, gid);
+      result.trainingGroupId = gid;
     }
     if (type === 'all' || type === 'squad') {
       // Asking for ONE named fixture is a Match Centre capability, so it is
@@ -1944,8 +2078,11 @@ export default async function handler(req, res) {
 
     if (type === 'sessions') {
       const sessions = sanitiseSessions(data);
-      await kvSet(sessionsKey(session.teamId), sessions);
-      return res.status(200).json({ ok: true, sessions });
+      let gid;
+      try { gid = await staffTrainingGroup(session, req.body?.group ?? req.query?.group); }
+      catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
+      await kvSet(sessionsGroupKey(session.teamId, gid), sessions);
+      return res.status(200).json({ ok: true, sessions, groupId: gid });
     }
 
     if (type === 'squad') {
@@ -2031,8 +2168,13 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
     if (type === 'sessions') {
-      await kvSet(sessionsKey(session.teamId), []);
-      return res.status(200).json({ ok: true });
+      let gid;
+      try { gid = await staffTrainingGroup(session, req.body?.group ?? req.query?.group); }
+      catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
+      // An explicit empty list, not null — so the INITIAL group's clear does
+      // NOT fall back to (and appear to resurrect) the legacy sessions.
+      await kvSet(sessionsGroupKey(session.teamId, gid), []);
+      return res.status(200).json({ ok: true, groupId: gid });
     }
     return res.status(400).json({ error: 'type must be sessions or squad' });
   }

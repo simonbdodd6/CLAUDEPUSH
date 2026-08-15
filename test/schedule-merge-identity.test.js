@@ -45,6 +45,8 @@ async function runMerge({ localSchedule, publishedSessions, publishedSquad = nul
     const state = { schedule: ${JSON.stringify(localSchedule)}, matchCentre: {}, formationNames: {}, benchPlayers: [] };
     function saveState() {}
     function render() {}
+    // Training group partition: the merge is group-stamped for staff contexts.
+    function trainingGroupParam() { return ''; }
     globalThis.fetch = async () => ({ ok: true, json: async () => (${JSON.stringify({ sessions: publishedSessions, squad: publishedSquad })}) });
     async ${extractFn('loadPublishedStateForPlayer')}
     return (async () => { await loadPublishedStateForPlayer(); return state.schedule; })();
