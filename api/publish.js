@@ -507,7 +507,14 @@ async function medicalHandler(req, res) {
     // `requested`, not `scope`: asking for a group explicitly is a narrower
     // question and never returns orphans, but simply defaulting into your only
     // group still counts as covering the club.
-    const coversWholeClub = live.length > 0 && !requested
+    // The INITIAL group owns unattributable legacy data everywhere else in
+    // the product, so a whole-club-covering caller ASKING for the initial
+    // group still sees orphan cases there — otherwise stamping the operating
+    // group on the Medical screen would make orphans invisible to everyone.
+    // Asking for any OTHER group remains a strictly narrower question and
+    // never returns orphans.
+    const coversWholeClub = live.length > 0
+      && (!requested || requested === INITIAL_GROUP_ID)
       && live.every(g => allowed.some(a => a.id === g.id));
 
     const groupName = id => (structure.groups || []).find(g => g.id === id)?.name || '';
@@ -1759,14 +1766,26 @@ async function structureHandler(req, res) {
     };
 
     const clubWideStaff = [];
+    const clubWideStaffIds = [];
     const groups = {};
     const teams = {};
-    for (const g of structure.groups) groups[g.id] = { members: 0, staff: [] };
+    for (const g of structure.groups) groups[g.id] = { members: 0, staff: [], staffUserIds: [] };
     for (const t of structure.teams) teams[t.id] = { members: 0, coaches: [] };
 
     for (const m of active) {
       const scope = effectiveAccessScope(m);
       const staffish = canonicalRole(m) !== 'player';
+      // OPERATIONAL group ids for staff via the canonical resolver — the same
+      // rule that gates every server surface (explicit scope, team-implied
+      // groups, and the legacy null-scope → initial-group derivation). The
+      // Members screen filters its staff list with these ids, so a
+      // Seniors-only assistant never appears as U18/Women's staff.
+      if (staffish) {
+        if (scope.clubWide) clubWideStaffIds.push(String(m.userId));
+        else for (const g of operationalGroupsFor(m, structure, { as: 'staff' })) {
+          if (groups[g.id]) groups[g.id].staffUserIds.push(String(m.userId));
+        }
+      }
       if (scope.clubWide) {
         if (staffish) clubWideStaff.push(nameOf(m.userId));
         continue;   // club-wide members are listed once, not in every group
@@ -1789,7 +1808,7 @@ async function structureHandler(req, res) {
         }
       }
     }
-    return res.status(200).json({ ok: true, structure, counts: { groups, teams }, clubWideStaff });
+    return res.status(200).json({ ok: true, structure, counts: { groups, teams }, clubWideStaff, clubWideStaffIds });
   }
 
   if (req.method === 'POST') {

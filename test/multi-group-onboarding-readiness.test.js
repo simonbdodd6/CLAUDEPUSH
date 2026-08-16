@@ -160,8 +160,14 @@ test('MEDICAL: the orphan case surfaces ONLY under whole-club coverage', async (
   const owner = (await pub('u-owner', 'GET', { resource: 'medical' })).body.cases.map(c => c.id).sort();
   assert.deepEqual(owner, ['case-orphan', 'case-sen', 'case-u18', 'case-wom'],
     'the owner covers every group, so the unattributable case is safe to show');
-  const ownerAsked = (await pub('u-owner', 'GET', { resource: 'medical', group: SEN })).body.cases.map(c => c.id);
-  assert.deepEqual(ownerAsked, ['case-sen'], 'asking for a group explicitly NEVER returns orphans');
+  // The INITIAL group owns unattributable legacy data: a whole-club-covering
+  // caller asking for it still sees orphans there (the Medical screen now
+  // stamps the operating group, so this keeps orphans reachable). Any OTHER
+  // group ask stays strictly narrower and never returns orphans.
+  const ownerAsked = (await pub('u-owner', 'GET', { resource: 'medical', group: SEN })).body.cases.map(c => c.id).sort();
+  assert.deepEqual(ownerAsked, ['case-orphan', 'case-sen'], 'initial-group ask by whole-club coverage includes orphans');
+  const ownerAskedU18 = (await pub('u-owner', 'GET', { resource: 'medical', group: U18 })).body.cases.map(c => c.id);
+  assert.deepEqual(ownerAskedU18, ['case-u18'], 'a NON-initial group ask never returns orphans');
   const u18 = (await pub('u-u18-m', 'GET', { resource: 'medical' })).body.cases.map(c => c.id);
   assert.equal(u18.includes('case-orphan'), false, 'a scoped medic never sees the orphan');
 });

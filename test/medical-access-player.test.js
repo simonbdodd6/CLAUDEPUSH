@@ -147,7 +147,7 @@ test('the medical resource is gated on MEDICAL_ACCESS, not a staff permission', 
 test('the Medical page loads its caseload from the shared endpoint', () => {
   const load = fn('loadMedicalFromServer');
   assert.match(load, /canI\('medical_access'\)/, 'gated on the permission');
-  assert.match(load, /fetch\('\/api\/publish\?resource=medical'\)/, 'reads the shared store');
+  assert.match(load, /fetch\('\/api\/publish\?resource=medical'\s*\n?\s*\+/, 'reads the shared store (group-stamped)');
   assert.match(load, /hydrateMedicalFromShared\(\)/, 'projects server state into the view model');
   // Loaded on every page boot, so a normal refresh is enough.
   assert.ok(src.split('loadMedicalFromServer().catch').length - 1 >= 4,

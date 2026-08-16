@@ -125,6 +125,13 @@ function buildScope({
     'function chatUnreadTotal() { return ' + JSON.stringify(stubUnread) + '; }\n' +
     'function getTodayReceipts() { return ' + JSON.stringify(stubReceipts) + '; }\n' +
     'function setSection() {}\n' +
+    // Group-context helpers: this harness models a single-group club, so the
+    // context resolvers pass everything through unchanged.
+    'function operationalGroups() { return []; }\n' +
+    'function operationalPlayers() { return state.players || []; }\n' +
+    'function contextFixtures() { return state.fixtures || []; }\n' +
+    'function contextMatchCentre() { return state.matchCentre || {}; }\n' +
+    'const CE_INITIAL_GROUP_ID = "grp_initial";\n' +
     'function settingsManageBilling() {}\n' +
     'let _upgradeCallCount = 0;\n' +
     'function upgradeFromFeature() { _upgradeCallCount++; }\n' +

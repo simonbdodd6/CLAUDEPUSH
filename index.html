@@ -8918,10 +8918,18 @@
 
     async function loadMedicalFromServer() {
       if (!canI('medical_access')) return;
+      // GROUP context: the caseload follows the OPERATING group. Whole-club
+      // authority lets a user SWITCH groups — it must not collapse the
+      // selected group's filter into every case at once. The reply is
+      // discarded if the operator moved on before it landed.
+      const gid = state.activeView !== 'player' ? (state.operationalGroupId || '') : '';
       try {
-        const res = await fetch('/api/publish?resource=medical');
+        const res = await fetch('/api/publish?resource=medical'
+          + (gid ? `&group=${encodeURIComponent(gid)}` : ''));
         if (!res.ok) return;
         const d = await res.json();
+        const nowGid = state.activeView !== 'player' ? (state.operationalGroupId || '') : '';
+        if (nowGid !== gid) { loadMedicalFromServer().catch(() => {}); return; }   // stale reply — re-chase
         _sharedMedical = { loaded: true, cases: d.cases || [], players: d.players || [] };
         hydrateMedicalFromShared();
       } catch { /* offline — keep whatever is already rendered */ }
@@ -10676,6 +10684,8 @@
       if (state.matchCentre?.published) receipts.push('Squad published');
       (state.autopilotReceipts || [])
         .filter(r => String(r.at || '').slice(0, 10) === today)
+        .filter(r => !state.operationalGroupId
+          || String(r.groupId || CE_INITIAL_GROUP_ID) === state.operationalGroupId)
         .forEach(r => receipts.push(r.text));
       (_autopilotLog || []).forEach(t => receipts.push(t));
       // Player self-service: profiles updated today (from the admin cache)
@@ -11132,8 +11142,9 @@
     function renderExecutiveDashboard() {
       if (!_briefEngine) _loadBriefEngine();
 
-      const mc       = state.matchCentre || {};
-      const players  = state.players || [];
+      // GROUP context: match state and pools follow the operating group.
+      const mc       = contextMatchCentre();
+      const players  = operationalPlayers();
       const schedule = state.schedule || [];
       const phase    = matchCentrePhase();
       const tonight  = getTonightSessionId();
@@ -11184,7 +11195,7 @@
         situationSub = `${picked} of 15 picked for ${esc(mc.opposition)}.`;
         situationColor = '#fbbf24';
       } else {
-        const nxt = (state.fixtures || [])[0];
+        const nxt = contextFixtures()[0];
         situation = nxt ? `Planning week — next match vs ${esc(nxt.opposition || 'TBC')}.` : 'All clear.';
         situationSub = 'Nothing urgent needs your attention.';
         situationColor = 'var(--muted)';
@@ -11321,7 +11332,7 @@
     // fields — no new business logic, no AI, no Stripe changes.
 
     function renderClubCommandDashboard() {
-      const players      = state.players || [];
+      const players      = operationalPlayers();
       const activePlayers = players.filter(function(p) { return p.id && !playerIsArchived(p); });
 
       // ── Availability ──────────────────────────────────────────────────────────
@@ -11341,11 +11352,11 @@
       const tonightBlks  = tonightId ? ((state.trainingBlocks || {})[tonightId] || []).length : 0;
 
       // ── Upcoming Fixture ──────────────────────────────────────────────────────
-      const mc        = state.matchCentre || {};
+      const mc        = contextMatchCentre();
       const todayIso  = new Date().toISOString().slice(0, 10);
       const phase     = matchCentrePhase();
       const mcActive  = !!(mc.kickoffDate && mc.kickoffDate >= todayIso);
-      const nextFx    = (state.fixtures || [])
+      const nextFx    = contextFixtures()
         .filter(function(f) { return f.date && f.date >= todayIso; })
         .sort(function(a, b) { return a.date > b.date ? 1 : -1; })[0] || null;
 
@@ -11760,7 +11771,10 @@
 
     function upcomingFixtures(limit = 3) {
       const today = new Date().toISOString().slice(0, 10);
-      return (state.fixtures || [])
+      // GROUP context: Overview shows the OPERATING group's season. Legacy
+      // ungrouped fixtures belong to the initial group only — U18/Women's
+      // never inherit them (same rule as every other fixture surface).
+      return contextFixtures()
         .filter(f => f && f.opposition && f.status !== 'cancelled')
         .filter(f => !f.date || f.date >= today)
         .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
@@ -12169,7 +12183,15 @@
       }
       const phase  = matchCentrePhase();
       const mc     = state.matchCentre || {};
-      const nextFx = fixtureGetNext(state.fixtures);
+      const nextFx = fixtureGetNext(contextFixtures());
+      // The Match Centre working state points at ONE fixture; its Overview
+      // cards belong to the group that fixture plays in. Operating another
+      // group must not surface the Seniors match here. A legacy mc with no
+      // fixture link counts as initial-group data (the compatibility rule).
+      const mcInGroup = !state.operationalGroupId
+        || (mc.fixtureId
+          ? contextFixtures().some(f => String(f.id) === String(mc.fixtureId))
+          : fixtureBelongsToGroup({}, state.operationalGroupId));
       const items  = getNeedsAttentionItems().filter(i => i.level !== 'info-done');
       const nowItems  = items.slice(0, 3);
       const weekItems = items.slice(3);
@@ -12187,11 +12209,11 @@
       const tonightSess = tonightId ? (state.schedule || []).find(s => s.id === tonightId) : null;
       const tonightTime = tonightSess ? (String(tonightSess.date || '').match(/\d{2}:\d{2}/) || [])[0] : '';
       let contextRight = '';
-      if (tonightId === 'game' || (mc.kickoffDate && mc.kickoffDate === new Date().toISOString().slice(0, 10))) {
+      if (mcInGroup && (tonightId === 'game' || (mc.kickoffDate && mc.kickoffDate === new Date().toISOString().slice(0, 10)))) {
         contextRight = `Match day · vs ${esc(mc.opposition || 'TBC')} · ${esc(mc.kickoffTime || '15:00')}`;
       } else if (tonightSess) {
         contextRight = `Training tonight${tonightTime ? ' · ' + esc(tonightTime) : ''}`;
-      } else if (mc.kickoffDate && phase.msLeft > 0) {
+      } else if (mcInGroup && mc.kickoffDate && phase.msLeft > 0) {
         contextRight = `${esc(matchCountdownStr())} · vs ${esc(mc.opposition || 'TBC')}`;
       }
 
@@ -12354,7 +12376,7 @@
           <!-- Phase 18 — Next fixture availability widget -->
           ${isCoach() ? (() => {
             const _today    = new Date().toISOString().slice(0,10);
-            const _upcoming = fixtureSortByDate((state.fixtures||[]).map(normalizeFixture).filter(Boolean))
+            const _upcoming = fixtureSortByDate(contextFixtures().map(normalizeFixture).filter(Boolean))
               .find(f => (f.date >= _today || !f.date) && f.status !== 'cancelled' && f.status !== 'completed');
             if (!_upcoming) return '';
             const _summ   = fixtureAvailabilitySummary(_upcoming.id, state.players);
@@ -12392,7 +12414,7 @@
             const events = (state.matchEvents || {})[key] || [];
             const score  = matchComputeScore(events);
             const status = (state.matchStatus || {})[key] || 'pre';
-            const hasMatch = mc.kickoffDate || mc.opposition;
+            const hasMatch = mcInGroup && (mc.kickoffDate || mc.opposition);
             const statusColors = { pre:'#60a5fa', live:'#34d399', ht:'#fbbf24', ft:'#94a3b8' };
             const sColor = statusColors[status] || '#60a5fa';
             const kickoffDisplay = mc.kickoffDate
@@ -14793,8 +14815,20 @@
       if (isCoach()) chatEnsureStaffDirectory();
       const _STAFF_LABEL = { coach: 'Coach', admin: 'Admin', medical: 'Medical' };
       const _staffSeen = new Set();
+      // GROUP context: show a staff member only when their operational access
+      // covers the group being administered (server-computed ids — club-wide
+      // staff appear everywhere, a Seniors-only assistant appears in Seniors
+      // only). Without a group context or access data, today's full list.
+      const _acc = _adminData.structureAccess;
+      const _gid = state.operationalGroupId;
+      const _staffInScope = u => {
+        if (!_gid || !_acc) return true;
+        if ((_acc.clubWideStaffIds || []).includes(String(u.id))) return true;
+        return ((_acc.groupStaffIds || {})[_gid] || []).includes(String(u.id));
+      };
       const staffMembers = (state.users || [])
         .filter(u => ['coach', 'admin', 'medical'].includes(u.role) && u.name)
+        .filter(_staffInScope)
         .filter(u => { const k = String(u.id); if (_staffSeen.has(k)) return false; _staffSeen.add(k); return true; })
         .map(u => ({
           id: u.id, name: u.name, role: u.role, label: _STAFF_LABEL[u.role] || 'Staff',
@@ -15923,7 +15957,11 @@
     function autopilotOn() { return state.features?.autopilot !== false; }
 
     function autopilotReceipt(text) {
-      state.autopilotReceipts = [{ at: new Date().toISOString(), text: String(text).slice(0, 120) },
+      // Receipts record which GROUP the action happened in, so the Overview
+      // of another group never displays them (legacy receipts without a
+      // group belong to the initial group, like all pre-group data).
+      state.autopilotReceipts = [{ at: new Date().toISOString(), text: String(text).slice(0, 120),
+        groupId: state.operationalGroupId || '' },
         ...(state.autopilotReceipts || [])].slice(0, 20);
       saveState('Autopilot');
     }
@@ -15991,7 +16029,7 @@
       const mc = state.matchCentre || {};
       if (String(mc.opposition || '').trim() || mc.kickoffDate) return;
       const today = new Date().toISOString().slice(0, 10);
-      const next = (state.fixtures || [])
+      const next = contextFixtures()
         .filter(f => f.opposition && f.date && f.date >= today)
         .sort((a, b) => a.date.localeCompare(b.date))[0];
       if (!next || mc._autoFixtureId === next.id) return;
@@ -18502,6 +18540,14 @@
         if (structureRes && structureRes.ok) {
           const d = await structureRes.json();
           _adminData.structure = d.structure || null;
+          // Canonical per-group staff access, computed SERVER-side with the
+          // same resolver that gates every API surface — the Members screen
+          // filters its staff list with these ids.
+          _adminData.structureAccess = {
+            clubWideStaffIds: d.clubWideStaffIds || [],
+            groupStaffIds: Object.fromEntries(Object.entries(d.counts?.groups || {})
+              .map(([gid, g]) => [gid, g.staffUserIds || []])),
+          };
           _adminData.counts = d.counts || null;
           _adminData.clubWideStaff = d.clubWideStaff || [];
         }
@@ -27403,6 +27449,10 @@
       if (noSend)       noSend.style.display       = isAnn ? ''     : 'none';
 
       const mode = state.activeView === 'coach' ? 'coach' : 'player';
+      // Paint the newly-selected thread IMMEDIATELY (cached messages or the
+      // empty state) so the previous conversation's feed can never linger
+      // under this thread's header while the fetch below is in flight.
+      chatRenderMessages(chatId, mode);
       // Coach must not let local fallback cache hide Simon Test Player's Redis history.
       if (mode === 'coach' && chatId === 'dm:coach-demo:inv-YxnjxnQa') {
         await chatFetchMessages(chatId);
@@ -27541,6 +27591,12 @@
     function chatRenderMessages(convId, mode) {
       const feed = document.getElementById('chatFeed');
       if (!feed) return;
+      // HARD GUARD: only the OPEN conversation may paint the feed. A stale
+      // async caller (poll reply, late fetch) for a thread the user has left
+      // must never draw another conversation's history under the current
+      // header — group channels especially.
+      const _open = typeof chatGetConvId === 'function' ? chatGetConvId(mode) : state.selectedChatId;
+      if (String(convId || '') !== String(_open || '')) return;
       const allMsgs = _chatMessages[convId] || [];
       // Local state.messages is display-only fallback. Do not write it into
       // _chatMessages, which is the Redis-backed cache for live conversations.
@@ -29458,12 +29514,15 @@
       if (owner === target) { state.trainingStateGroupId = target; return; }
       stashTrainingState();
       adoptTrainingState(target);
-      // Server-cached training answers belong to the OLD group — drop them so
+      // Server-cached GROUP answers belong to the OLD group — drop them so
       // the next render refetches under the new group. Any reply still in
-      // flight is discarded by the per-request group guards.
+      // flight is discarded by the per-request group guards. (This function
+      // is the canonical group transition, so the medical caseload cache is
+      // reset here too.)
       _trainingSchedule = null; _trainingScheduleAttempted = false;
       _trainingPubState = {}; _trainingPubLoadedAt = 0;
       _publishedStateLoadedAt = 0;
+      _sharedMedical = { loaded: false, cases: [], players: [] };
     }
 
     /** The group a coach-context training request should name — '' in the
@@ -29532,6 +29591,22 @@
       const gid = state.operationalGroupId;
       if (!gid || !operationalGroups().length) return state.fixtures || [];
       return (state.fixtures || []).filter(fx => fixtureBelongsToGroup(fx, gid));
+    }
+
+    /**
+     * The Match Centre working state, but ONLY when it belongs to the
+     * operating group (via its linked fixture; an unlinked legacy match
+     * counts as initial-group data). Every Overview variant reads the match
+     * through this, so operating U18/Women's never surfaces the Seniors
+     * match, countdown or kickoff cards.
+     */
+    function contextMatchCentre() {
+      const mc = state.matchCentre || {};
+      if (!state.operationalGroupId || !operationalGroups().length) return mc;
+      const inGroup = mc.fixtureId
+        ? contextFixtures().some(f => String(f.id) === String(mc.fixtureId))
+        : fixtureBelongsToGroup({}, state.operationalGroupId);
+      return inGroup ? mc : {};
     }
 
     function adoptIdentityPayload(d) {
