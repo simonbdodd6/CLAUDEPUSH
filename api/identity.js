@@ -7,6 +7,8 @@ import {
   changePassword,
   claimInvite,
   createClub,
+  provisionClub,
+  isPlatformAdmin,
   createEmailVerificationToken,
   destroyAllSessionsForUser,
   requireSession,
@@ -289,6 +291,16 @@ export default async function handler(req, res) {
         }
       }
       if (action === 'create_club') {
+        // PUBLIC club self-signup is CLOSED: only a platform administrator
+        // (or an explicit PUBLIC_CLUB_SIGNUP=true launch flag) may create a
+        // club. Rate limiting alone previously left this open to anyone.
+        if (process.env.PUBLIC_CLUB_SIGNUP !== 'true') {
+          const creatorContext = await resolveSessionFromRequest(req).catch(() => null);
+          if (!isPlatformAdmin(creatorContext?.user)) {
+            return res.status(403).json({ ok: false,
+              error: 'Club creation is not open yet — contact CoachEasier to set up your club' });
+          }
+        }
         await enforceRateLimit('create_club', requestIp(req), { limit: 5, windowMs: 60 * 60 * 1000 });
         const result = await createClub(req.body || {});
         await auditLog('club_created', {
@@ -297,6 +309,28 @@ export default async function handler(req, res) {
         });
         if (result.session?.token) res.setHeader('Set-Cookie', sessionCookie(result.session.token));
         return res.status(201).json({ ok: true, ...publicAuthResult(result) });
+      }
+      if (action === 'provision_club') {
+        // Platform administrators only — a club-wide admin, coach or player
+        // of ANY club is refused; authority lives on the user record.
+        const provisioner = await resolveSessionFromRequest(req).catch(() => null);
+        if (!isPlatformAdmin(provisioner?.user)) {
+          return res.status(403).json({ ok: false, error: 'Platform administrators only' });
+        }
+        await enforceRateLimit('provision_club', requestIp(req), { limit: 10, windowMs: 60 * 60 * 1000 });
+        const result = await provisionClub(req.body || {});
+        await auditLog('club_provisioned', {
+          teamId: result.team.id, clubName: result.team.name,
+          adminEmail: result.invite.email, provisionedBy: provisioner.user.id, ip: requestIp(req),
+        });
+        const host = req.headers?.['x-forwarded-host'] || req.headers?.host;
+        const proto = req.headers?.['x-forwarded-proto'] || 'https';
+        const inviteUrl = host
+          ? `${proto}://${host}/?inv=${encodeURIComponent(result.invite.token)}`
+          : `/?inv=${encodeURIComponent(result.invite.token)}`;
+        return res.status(201).json({ ok: true,
+          team: { id: result.team.id, name: result.team.name, teamCode: result.team.teamCode },
+          adminEmail: result.invite.email, inviteUrl });
       }
       if (action === 'claim_invite') {
         // SECURITY: throttle claims (mirrors login) so the invite-claim path can't

@@ -15,6 +15,9 @@ import assert from 'node:assert/strict';
 process.env.UPSTASH_REDIS_REST_URL  = 'https://redis.first-club.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
 process.env.APP_KEY_PREFIX          = 'app';
+// These suites exercise the founder self-signup path — explicitly opt in
+// (public club creation is otherwise CLOSED behind platform provisioning).
+process.env.PUBLIC_CLUB_SIGNUP = 'true';
 process.env.VERCEL                  = '1';   // production mode: no legacy seeding
 
 const kv = new Map();

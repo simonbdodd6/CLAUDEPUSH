@@ -1635,6 +1635,84 @@ function requireCurrentPassword(user, currentPassword) {
   }
 }
 
+// ─── PLATFORM PROVISIONING ──────────────────────────────────────────────────
+// Platform authority is a USER-record fact (user.platformRole), never derived
+// from any club membership, client field or email string. No profile grants
+// it and no claim path can set it — it exists only where explicitly written.
+export function isPlatformAdmin(user) {
+  return String(user?.platformRole || '') === 'platform_admin';
+}
+
+/**
+ * Provision a NEW customer club: an isolated tenant plus a single-use
+ * head-coach invitation for its first administrator. Unlike createClub (the
+ * founder self-signup), no user account is created here — the first admin
+ * arrives through the EXISTING invite/claim flow, which attaches them to
+ * exactly this club as club-wide staff (head + legacy null scope) and never
+ * grants platform authority. The new tenant starts with only its team
+ * record; structure synthesizes lazily under the club's OWN name, and every
+ * other surface begins empty.
+ */
+export async function provisionClub({ clubName, adminEmail, adminName = '', firstTeamName = '' } = {}) {
+  const club = String(clubName || '').trim().slice(0, 80);
+  if (!club) { const e = new Error('Club name is required'); e.status = 400; throw e; }
+  const normalized = normalizeEmail(adminEmail);
+  if (!EMAIL_RE.test(normalized)) {
+    const e = new Error('A valid first-administrator email is required'); e.status = 400; throw e;
+  }
+
+  const teams = await loadTeams();
+  if (teams.some(t => String(t.name || '').trim().toLowerCase() === club.toLowerCase())) {
+    const e = new Error('A club with that name already exists'); e.status = 409; throw e;
+  }
+  // Stable tenant id from the club name; collision-proofed, never overwrites.
+  let teamId = teamSlug(club);
+  while (teams.some(t => t.id === teamId)) {
+    teamId = `${teamSlug(club)}-${randomBytes(2).toString('hex')}`;
+  }
+  const teamCode = (club.replace(/[^a-zA-Z]/g, '').slice(0, 6).toUpperCase() || 'CLUB') +
+    String(Math.floor(Math.random() * 90) + 10);
+  const createdAt = nowIso();
+  const team = {
+    id: teamId,
+    name: club,
+    teamName: String(firstTeamName || '').trim().slice(0, 80),
+    sport: 'Rugby',
+    teamCode,
+    createdAt,
+    plan: 'trial',
+    planStatus: 'active',
+    trialEndsAt: new Date(new Date(createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+  };
+  teams.push(team);
+  await saveTeams(teams);
+
+  // First-admin invitation, tenant-scoped to the NEW club, with an EXPLICIT
+  // club-wide scope: the claim stamps it via the existing scoped-invite
+  // machinery, so the first administrator is unambiguously club-wide from
+  // the moment they join — no reliance on legacy scope derivation.
+  const invites = await loadInvites();
+  const invite = {
+    token:      randomBytes(24).toString('base64url'),
+    name:       String(adminName || '').trim().slice(0, 80),
+    role:       'coach',
+    staffLevel: 'head',
+    scope:      { clubWide: true },
+    email:      normalized,
+    status:     'pending',
+    teamId,
+    createdAt:  nowIso(),
+    expiresAt:  new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    createdBy:  'platform-provisioning',
+    acceptedAt: null,
+  };
+  invites.push(invite);
+  await saveInvites(invites);
+  return { team, invite };
+}
+
 export async function changePassword(userId, { currentPassword, newPassword } = {}) {
   assertPassword(newPassword);
   const users = await loadUsers();

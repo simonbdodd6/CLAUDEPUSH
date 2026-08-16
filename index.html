@@ -17881,6 +17881,9 @@
           <!-- Club structure: groups and teams (RC4.7 Phase C) -->
           ${(typeof renderClubStructureCard === 'function' ? renderClubStructureCard() : '')}
 
+          <!-- Platform provisioning — platform administrators only -->
+          ${(typeof renderPlatformAdminCard === 'function' ? renderPlatformAdminCard() : '')}
+
           <!-- Support — always visible so beta coaches can reach a human -->
           <div class="card">
             <h2 style="margin-bottom:4px"><img src="/brand/svg/coacheasier-mark-on-light.svg" alt="" class="ce-support-mark" onerror="this.remove()">CoachEasier Support</h2>
@@ -18968,6 +18971,62 @@
           ${groupRows || '<p class="muted" style="font-size:12.5px">No groups yet.</p>'}
           ${_canEditStructure ? '<button class="btn primary" style="margin-top:6px;font-size:13px" onclick="structureAddGroup()">Add a group</button>' : ''}
         </div>`;
+    }
+
+    // ── PLATFORM ADMIN: new-club provisioning ──────────────────────────────
+    // Rendered ONLY when the session payload carries platformRole
+    // 'platform_admin' — invisible to every normal club user, and the server
+    // independently refuses anyone else.
+    function renderPlatformAdminCard() {
+      if (_myPlatformRole !== 'platform_admin') return '';
+      const inp = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
+      const lbl = 'display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted);text-align:left;margin-top:10px';
+      return `
+        <div class="card">
+          <h2 style="margin-bottom:4px">Platform admin · New club</h2>
+          <p class="muted" style="font-size:12.5px;margin:0 0 4px">
+            Provision a new CoachEasier customer club. The club starts empty and isolated;
+            its first administrator joins through a secure invitation and sets everything
+            else up with the self-service tools.</p>
+          <label style="${lbl}">Club name<input id="pa-club-name" placeholder="Example Rugby Club" style="${inp}"></label>
+          <label style="${lbl}">First administrator email<input id="pa-admin-email" type="email" placeholder="admin@example.com" autocapitalize="none" style="${inp}"></label>
+          <button class="btn primary" id="pa-create-btn" style="margin-top:12px;font-size:13px" onclick="platformProvisionClub()">Create club</button>
+          <div id="pa-result" style="margin-top:10px"></div>
+        </div>`;
+    }
+
+    async function platformProvisionClub() {
+      const name = document.getElementById('pa-club-name')?.value.trim();
+      const email = document.getElementById('pa-admin-email')?.value.trim();
+      if (!name)  return showToast('Enter the club name first');
+      if (!email) return showToast("Enter the first administrator's email");
+      const btn = document.getElementById('pa-create-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'provision_club', clubName: name, adminEmail: email }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not create the club');
+        const out = document.getElementById('pa-result');
+        if (out) out.innerHTML = `
+          <div style="border:1.5px solid #16a34a;border-radius:11px;padding:12px;background:rgba(22,163,74,0.06)">
+            <strong style="font-size:13px">✓ ${esc(data.team.name)} created</strong>
+            <div class="muted" style="font-size:11.5px;margin:4px 0 8px">Club id: ${esc(data.team.id)} · send this invitation to ${esc(data.adminEmail)}:</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input value="${esc(data.inviteUrl)}" readonly id="pa-invite-link" onfocus="this.select()"
+                style="flex:1;min-width:0;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--ink)">
+              <button class="btn primary" type="button" style="white-space:nowrap;padding:0 14px;min-height:38px"
+                onclick="navigator.clipboard.writeText(document.getElementById('pa-invite-link').value).then(()=>showToast('Invite link copied ✓'))">Copy</button>
+            </div>
+          </div>`;
+        showToast(`${data.team.name} created ✓`);
+      } catch (e) {
+        showToast(e.message || 'Could not create the club');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Create club'; }
+      }
     }
 
     async function structureOp(op, payload, successMsg) {
@@ -29384,6 +29443,7 @@
       _trainingScheduleAttempted = false;
       _trainingScheduleQueue = null;
       _trainingScheduleGroupId = '';
+      _myPlatformRole = '';
       chatSetUnreadTotal(0);
     }
 
@@ -29662,8 +29722,13 @@
       return inGroup ? mc : {};
     }
 
+    // Platform authority (provisioning new clubs) — delivered on the session
+    // payload from the user RECORD; purely a UI gate, the server re-checks.
+    let _myPlatformRole = '';
+
     function adoptIdentityPayload(d) {
       if (Array.isArray(d?.permissions)) _myPermissions = d.permissions;
+      if (d?.user?.platformRole !== undefined) _myPlatformRole = String(d.user.platformRole || '');
       // D1b — the SERVER decides which groups this identity may operate in, in
       // each capacity. The client adopts that answer rather than re-deriving
       // the rules, so the UI can never offer a group the API would refuse.

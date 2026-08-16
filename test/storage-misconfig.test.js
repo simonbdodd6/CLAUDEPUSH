@@ -17,6 +17,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 process.env.APP_KEY_PREFIX = 'app';
+// These suites exercise the founder self-signup path — explicitly opt in
+// (public club creation is otherwise CLOSED behind platform provisioning).
+process.env.PUBLIC_CLUB_SIGNUP = 'true';
 process.env.VERCEL = '1';
 
 const GARBAGE_URL = 'UPSTASH_REDIS_REST_TOKEN="fake-pasted-token-value-12345"';
@@ -109,13 +112,16 @@ test('WRONGPASS from Upstash: identity 503, upstream text never reaches the clie
   assertNoLeak(res.body);
 });
 
-test('WRONGPASS from Upstash: chat returns 503 instead of a 500 storm with internals', async () => {
+test('WRONGPASS from Upstash: chat never leaks internals to an anonymous caller', async () => {
   globalThis.fetch = async () => ({ ok: false, status: 401, text: async () => WRONGPASS_BODY,
     json: async () => JSON.parse(WRONGPASS_BODY) });
 
   const res = buildRes();
   await chatHandler(buildReq({ method: 'GET', url: '/api/chat?conv=general', query: { conv: 'general' } }), res);
-  assert.equal(res.statusCode, 503, JSON.stringify(res.body));
+  // Since the presence hardening, an anonymous action-less GET is refused
+  // BEFORE any storage touch — 400, not a storage-shaped 503. The point of
+  // this pin is unchanged: no 500 storm, no Redis internals in the body.
+  assert.equal(res.statusCode, 400, JSON.stringify(res.body));
   assertNoLeak(res.body);
 });
 
