@@ -125,6 +125,10 @@ function buildScope({
     'function chatUnreadTotal() { return ' + JSON.stringify(stubUnread) + '; }\n' +
     'function getTodayReceipts() { return ' + JSON.stringify(stubReceipts) + '; }\n' +
     'function setSection() {}\n' +
+    // The beta hides commercial cards; this harness pins the underlying
+    // cards, so run with the flag OFF (the hiding itself is pinned in
+    // multi-group-remaining-bugs).
+    'const BETA_HIDE_COMMERCIAL = false;\n' +
     // Group-context helpers: this harness models a single-group club, so the
     // context resolvers pass everything through unchanged.
     'function operationalGroups() { return []; }\n' +

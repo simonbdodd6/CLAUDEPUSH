@@ -107,7 +107,9 @@ function client(server) {
     ${fn('contextFixtures')}
     ${fn('matchCentreFixtureList')}
     ${fn('mcFixtureDateLabel')}
-    ${fn('matchCentreSelectedFixture')}
+    // single-group harness: the group context passes fixtures through
+    function contextFixtures() { return state.fixtures || []; }
+        ${fn('matchCentreSelectedFixture')}
     ${fn('matchCentreFixtureId')}
     ${fn('matchCentreHasSquadWork')}
     ${fn('saveCoachDraft')}
@@ -257,6 +259,8 @@ test('the other side\'s names surface only for the exact fixture+side context', 
                     operationalGroupId: 'grp_seniors' };
     const _adminData = { structure: ${JSON.stringify(STRUCTURE)} };
     let _mcOtherSide = arguments[0];
+    // single-group harness: the group context passes fixtures through
+    function contextFixtures() { return state.fixtures || []; }
     ${fn('matchCentreSides')}
     ${fn('matchCentreSidesActive')}
     ${fn('matchCentreSideId')}

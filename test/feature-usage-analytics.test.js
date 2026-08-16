@@ -104,6 +104,7 @@ function buildScope({
     'function esc(s) { return String(s || ""); }\n' +
     'function settingsUpgradeToPro() { _upgradeCallCount++; }\n' +
     extractConst(html, 'PLAN_LEVEL') + '\n' +
+    'const BETA_HIDE_COMMERCIAL = false;\n' +
     extractFn(html, 'planLevel') + '\n' +
     extractConst(html, 'FEATURE_REGISTRY') + '\n' +
     extractConst(html, 'CATEGORY_META') + '\n' +

@@ -4944,6 +4944,10 @@
     // deleted: the markup stays in the DOM (hidden via the .beta-hidden class) so
     // every id, handler, API call and data path is intact. Flip to false to restore.
     const BETA_SIMPLE_UI = true;
+    // Core Beta has nothing to sell yet: every visible Pro / trial /
+    // subscription surface is hidden. UI ONLY — plans, trials, Stripe and
+    // entitlement logic underneath are untouched.
+    const BETA_HIDE_COMMERCIAL = true;
 
     /**
      * RC4.7 — a player granted Medical access stays a PLAYER: same role, same
@@ -7906,7 +7910,11 @@
     function matchCentreSelectedFixture() {
       const id = String((state.matchCentre || {}).fixtureId || '').trim();
       if (!id) return null;
-      return (state.fixtures || []).find(f => String(f?.id || '') === id) || null;
+      // Resolve within the OPERATING group's fixtures only: a Seniors
+      // fixture must never become U18/Women's Match Centre context. Out of
+      // group → no current fixture (nothing is written; switching back to
+      // the fixture's own group recovers it untouched).
+      return contextFixtures().find(f => String(f?.id || '') === id) || null;
     }
 
     function matchCentreFixtureId() {
@@ -11392,7 +11400,36 @@
       const daysLeft  = trialDaysRemaining();
       const planLabel = isPro ? 'Pro' : isEnt ? 'Enterprise' : onTrial ? 'Trial' : 'Core';
       const planCol   = isPro ? 'var(--accent)' : isEnt ? '#B8964A' : onTrial ? '#fbbf24' : 'var(--muted)';
+
       const canManage = canI('manage_subscriptions');
+      // Core Beta: no commercial surfaces — the Subscription and Trial cards
+      // render only when the beta flag is lifted.
+      const _commercialCards = BETA_HIDE_COMMERCIAL ? '' : `<!-- Subscription Status -->
+        <div class="card" style="padding:14px 16px">
+          ${cardHead('Subscription', `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.06);color:${planCol}">${esc(planLabel)}</span>`)}
+          ${isPro ? `
+            <div style="font-size:13px;color:var(--ink);margin-bottom:8px">You're on the <strong>Pro plan</strong> — all features unlocked.</div>
+            ${canManage ? `<button class="btn" type="button" onclick="settingsManageBilling()" style="font-size:12px;min-height:30px;padding:0 12px">Manage billing</button>` : ''}
+          ` : isEnt ? `
+            <div style="font-size:13px;color:var(--ink)">You're on the <strong>Enterprise plan</strong>.</div>
+          ` : onTrial ? `
+            <div style="font-size:13px;color:var(--ink);margin-bottom:8px">${daysLeft !== null ? `<strong>${daysLeft}</strong> day${daysLeft !== 1 ? 's' : ''} left in your free trial.` : 'Free trial active.'}</div>
+            ${canManage ? `<button class="btn primary" type="button" onclick="upgradeFromFeature('dashboard_sub')" style="font-size:12px;min-height:30px;padding:0 12px">Upgrade to Pro</button>` : `<span class="muted" style="font-size:12px">Ask your admin to upgrade</span>`}
+          ` : `
+            <div style="font-size:13px;color:var(--ink);margin-bottom:8px">You're on the <strong>Core plan</strong>. Unlock AI, video and more.</div>
+            ${canManage ? `<button class="btn primary" type="button" onclick="upgradeFromFeature('dashboard_sub')" style="font-size:12px;min-height:30px;padding:0 12px">Upgrade to Pro</button>` : `<span class="muted" style="font-size:12px">Ask your admin to upgrade</span>`}
+          `}
+        </div>
+
+        ${onTrial && daysLeft !== null ? `
+        <!-- Trial Remaining (only when on trial) -->
+        <div class="card" style="padding:14px 16px;border-color:rgba(251,191,36,0.3)">
+          ${cardHead('Trial Remaining', `<span style="font-size:11px;font-weight:700;color:#fbbf24">${daysLeft}d</span>`)}
+          ${bigNum(daysLeft, `day${daysLeft !== 1 ? 's' : ''} remaining`, 'var(--ink)')}
+          ${progressBar(Math.min(100, Math.max(0, 100 - (daysLeft / 14) * 100)), '#fbbf24')}
+          ${canManage ? `<button class="btn" type="button" onclick="upgradeFromFeature('trial_banner')" style="font-size:12px;min-height:30px;padding:0 12px;border-color:rgba(251,191,36,0.5);color:#fbbf24">Upgrade before trial ends</button>` : `<span class="muted" style="font-size:12px">Ask your admin to upgrade to Pro</span>`}
+        </div>
+        ` : ''}`;
 
       // ── Card builder helpers ──────────────────────────────────────────────────
       function cardHead(label, aside) {
@@ -11494,32 +11531,7 @@
             : `<p class="muted" style="font-size:13px;margin:0">No activity yet today.</p>`}
         </div>
 
-        <!-- Subscription Status -->
-        <div class="card" style="padding:14px 16px">
-          ${cardHead('Subscription', `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.06);color:${planCol}">${esc(planLabel)}</span>`)}
-          ${isPro ? `
-            <div style="font-size:13px;color:var(--ink);margin-bottom:8px">You're on the <strong>Pro plan</strong> — all features unlocked.</div>
-            ${canManage ? `<button class="btn" type="button" onclick="settingsManageBilling()" style="font-size:12px;min-height:30px;padding:0 12px">Manage billing</button>` : ''}
-          ` : isEnt ? `
-            <div style="font-size:13px;color:var(--ink)">You're on the <strong>Enterprise plan</strong>.</div>
-          ` : onTrial ? `
-            <div style="font-size:13px;color:var(--ink);margin-bottom:8px">${daysLeft !== null ? `<strong>${daysLeft}</strong> day${daysLeft !== 1 ? 's' : ''} left in your free trial.` : 'Free trial active.'}</div>
-            ${canManage ? `<button class="btn primary" type="button" onclick="upgradeFromFeature('dashboard_sub')" style="font-size:12px;min-height:30px;padding:0 12px">Upgrade to Pro</button>` : `<span class="muted" style="font-size:12px">Ask your admin to upgrade</span>`}
-          ` : `
-            <div style="font-size:13px;color:var(--ink);margin-bottom:8px">You're on the <strong>Core plan</strong>. Unlock AI, video and more.</div>
-            ${canManage ? `<button class="btn primary" type="button" onclick="upgradeFromFeature('dashboard_sub')" style="font-size:12px;min-height:30px;padding:0 12px">Upgrade to Pro</button>` : `<span class="muted" style="font-size:12px">Ask your admin to upgrade</span>`}
-          `}
-        </div>
-
-        ${onTrial && daysLeft !== null ? `
-        <!-- Trial Remaining (only when on trial) -->
-        <div class="card" style="padding:14px 16px;border-color:rgba(251,191,36,0.3)">
-          ${cardHead('Trial Remaining', `<span style="font-size:11px;font-weight:700;color:#fbbf24">${daysLeft}d</span>`)}
-          ${bigNum(daysLeft, `day${daysLeft !== 1 ? 's' : ''} remaining`, 'var(--ink)')}
-          ${progressBar(Math.min(100, Math.max(0, 100 - (daysLeft / 14) * 100)), '#fbbf24')}
-          ${canManage ? `<button class="btn" type="button" onclick="upgradeFromFeature('trial_banner')" style="font-size:12px;min-height:30px;padding:0 12px;border-color:rgba(251,191,36,0.5);color:#fbbf24">Upgrade before trial ends</button>` : `<span class="muted" style="font-size:12px">Ask your admin to upgrade to Pro</span>`}
-        </div>
-        ` : ''}
+        ${_commercialCards}
 
       </div>`;
     }
@@ -12200,7 +12212,11 @@
       // Onboarding checklist (unchanged) — renders above NOW until complete.
       const obSteps  = getOnboardingSteps();
       const obDone   = obSteps.filter(s => s.done).length;
-      const showOnboarding = !state.onboardingDismissed && obDone < obSteps.length;
+      // Club setup is CLUB-level work: the checklist lives in the initial
+      // group's Overview only. U18/Women's never repeat it (and switching
+      // groups never touches its progress).
+      const showOnboarding = !state.onboardingDismissed && obDone < obSteps.length
+        && (!state.operationalGroupId || state.operationalGroupId === CE_INITIAL_GROUP_ID);
       obSteps.forEach(s => { s.justDone = s.done && _obDoneState[s.key] === false; _obDoneState[s.key] = s.done; });
 
       // Context strip: today + what today IS (training night / match day / next match)
@@ -13944,7 +13960,7 @@
         <div class="grid two-col${BETA_SIMPLE_UI ? ' beta-hidden' : ''}">
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-              <div><h2 style="margin:0">Club video library</h2><p class="muted" style="margin-top:2px">${canUseFeature('unlimited_videos') ? 'Upload up to 100 × 120-second training clips.' : 'Save up to 10 training clips. Upgrade to Pro for unlimited storage.'}</p></div>
+              <div><h2 style="margin:0">Club video library</h2><p class="muted" style="margin-top:2px">${canUseFeature('unlimited_videos') ? 'Upload up to 100 × 120-second training clips.' : BETA_HIDE_COMMERCIAL ? 'Save up to 10 training clips.' : 'Save up to 10 training clips. Upgrade to Pro for unlimited storage.'}</p></div>
               <span class="pill">${(state.clubVideos||[]).length}/${canUseFeature('unlimited_videos') ? 100 : 10}</span>
             </div>
             ${!(state.clubVideos||[]).length ? `<p class="muted" style="font-size:12px;margin-bottom:14px">Save training clips here — reference them during sessions or share with coaches.</p>` : ''}
@@ -14063,7 +14079,7 @@
       // it. Both are self-guarded and re-render on arrival.
       if (isCoach()) ensureMatchCentreTeams();
       if (isCoach() && typeof ensureAdminData === 'function') ensureAdminData();
-      const mc      = state.matchCentre || {};
+      const mc      = contextMatchCentre();   // out-of-group working match renders as no fixture
       // The selected fixture drives opponent, date, availability, filters and
       // the drafts panel. Resolved once per render, id-validated — a stale id
       // degrades to null and the view says so honestly.
@@ -17808,9 +17824,9 @@
         return { label: 'Core plan', color: 'var(--muted)', text: 'You are on the Core plan.' };
       })();
 
-      el.innerHTML = `
-        <div style="display:grid;gap:16px;max-width:620px">
-
+      // Core Beta: the plan/trial/upgrade card is hidden until there is
+      // something to sell. Plans and billing logic stay intact underneath.
+      const _planStatusCard = `
           <!-- Plan status -->
           <div class="card" style="border-color:rgba(255,255,255,0.07)">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
@@ -17826,7 +17842,11 @@
                 : `<button id="btn-upgrade-pro" class="btn primary" type="button" onclick="settingsUpgradeToPro()" style="min-height:36px;font-size:12px;white-space:nowrap;flex-shrink:0">Upgrade to Pro</button>`
               ) : ''}
             </div>
-          </div>
+          </div>`;
+      el.innerHTML = `
+        <div style="display:grid;gap:16px;max-width:620px">
+
+          ${BETA_HIDE_COMMERCIAL ? '' : _planStatusCard}
 
           ${_betaUI ? "" : renderFeatureDiscovery()}
 
@@ -23491,7 +23511,7 @@
     function _renderMatchOverview() {
       const el = document.getElementById('coach-matchday');
       if (!el) return;
-      const mc     = state.matchCentre || {};
+      const mc      = contextMatchCentre();   // group-scoped working match
       const key    = matchKey();
       const events = (state.matchEvents || {})[key] || [];
       const score  = matchComputeScore(events);
@@ -23604,7 +23624,7 @@
     function _renderMatchTimeline() {
       const el = document.getElementById('coach-matchday');
       if (!el) return;
-      const mc       = state.matchCentre || {};
+      const mc      = contextMatchCentre();   // group-scoped working match
       const key      = matchKey();
       const events   = (state.matchEvents || {})[key] || [];
       const score    = matchComputeScore(events);
@@ -23690,7 +23710,7 @@
     function _renderMatchScoreboard() {
       const el = document.getElementById('coach-matchday');
       if (!el) return;
-      const mc     = state.matchCentre || {};
+      const mc      = contextMatchCentre();   // group-scoped working match
       const key    = matchKey();
       const events = (state.matchEvents || {})[key] || [];
       const score  = matchComputeScore(events);
@@ -23769,7 +23789,7 @@
     function _renderMatchBench() {
       const el = document.getElementById('coach-matchday');
       if (!el) return;
-      const mc       = state.matchCentre || {};
+      const mc      = contextMatchCentre();   // group-scoped working match
       const key      = matchKey();
       const events   = (state.matchEvents || {})[key] || [];
       const subEvents = events.filter(e => e.type === 'substitution');
@@ -25865,6 +25885,7 @@
 
     // ── State ──────────────────────────────────────────
     let _chatConversations = [];   // from Redis
+    let _chatFeedPaintedFor = null;  // conv id the #chatFeed DOM currently shows
     let _chatMessages      = {};   // { convId: [...msgs] }
     let _chatPollTimer     = null;
     let _chatLastPoll      = {};   // { convId: ts }
@@ -26024,8 +26045,22 @@
     function chatStaffDmCandidates(meId) {
       const LABEL = { coach: 'Coach', admin: 'Admin', medical: 'Medical' };
       const seen = new Set();
+      // GROUP context: staff DISCOVERY follows the operating group — the
+      // same server-computed access ids the Members screen filters with.
+      // Club-wide staff appear everywhere; a Seniors-only assistant is not
+      // presented as U18/Women's staff. EXISTING DM threads are untouched:
+      // they surface from the server conversation list regardless (a private
+      // inbox keeps its history — discovery is what narrows).
+      const _acc = _adminData.structureAccess;
+      const _gid = state.operationalGroupId;
+      const inScope = u => {
+        if (!_gid || !_acc) return true;
+        if ((_acc.clubWideStaffIds || []).includes(String(u.id))) return true;
+        return ((_acc.groupStaffIds || {})[_gid] || []).includes(String(u.id));
+      };
       return (state.users || [])
         .filter(u => ['coach', 'admin', 'medical'].includes(u.role) && u.name && String(u.id) !== String(meId))
+        .filter(inScope)
         .filter(u => { const k = String(u.id); if (seen.has(k)) return false; seen.add(k); return true; })
         .map(u => ({ id: String(u.id), name: u.name, position: LABEL[u.role] || 'Staff', email: u.email || '', photo: '', _staff: true }));
     }
@@ -26475,8 +26510,14 @@
     }
 
     function chatGetConvId(mode) {
-      // Maps current state.selectedChatId to a proper conv key.
-      let cid = state.selectedChatId || (mode === 'coach' ? 'squad' : 'announce');
+      // Maps current state.selectedChatId to a proper conv key. With no
+      // selection, a coach operating a NON-initial group defaults to that
+      // group's own channel — never the club-wide squad, whose history is
+      // another group's chatter.
+      const groupDefault = mode === 'coach' && state.operationalGroupId
+        && state.operationalGroupId !== CE_INITIAL_GROUP_ID
+        ? `group:${state.operationalGroupId}` : null;
+      let cid = state.selectedChatId || groupDefault || (mode === 'coach' ? 'squad' : 'announce');
       // 'coach' is a PLAYER-only placeholder meaning "my DM with the coach".
       // Every new device starts with it (it is the initial state default), so a
       // STAFF session that never explicitly picked a thread — notably a coach
@@ -27411,7 +27452,7 @@
     }
 
     // ── Select a conversation ────────────────────────────
-    async function selectChat(chatId) {
+    async function selectChat(chatId, opts = {}) {
       if (state.activeView === 'coach' && String(chatId || '').startsWith('dm:')) {
         chatId = await chatResolveCoachDirectChatId(chatId);
       }
@@ -27422,11 +27463,16 @@
         chatEnsureGroupChannel(chatId).catch(() => {});
       }
       state.selectedChatId = chatId;
-      _chatMobileOpen = true;
-      const shell = document.querySelector('.chat-shell');
-      if (shell) shell.classList.add('chat-open');
+      // AUTOMATIC selection (group-switch re-point, stale-feed repaint) must
+      // not touch read state or force the mobile thread open — the account's
+      // unread total belongs to what the user actually read.
+      if (!opts.auto) {
+        _chatMobileOpen = true;
+        const shell = document.querySelector('.chat-shell');
+        if (shell) shell.classList.add('chat-open');
+        chatMarkRead(chatId);
+      }
       saveState('Chat opened');
-      chatMarkRead(chatId);
 
       // Update header in-place (name + subtitle + avatar)
       const mode2 = state.activeView === 'coach' ? 'coach' : 'player';
@@ -27597,6 +27643,7 @@
       // header — group channels especially.
       const _open = typeof chatGetConvId === 'function' ? chatGetConvId(mode) : state.selectedChatId;
       if (String(convId || '') !== String(_open || '')) return;
+      _chatFeedPaintedFor = String(convId || '');
       const allMsgs = _chatMessages[convId] || [];
       // Local state.messages is display-only fallback. Do not write it into
       // _chatMessages, which is the Redis-backed cache for live conversations.
@@ -27772,6 +27819,21 @@
     function renderCoachMessages() {
       const el = document.getElementById('coach-messages');
       if (!el) return;
+      // The steps below run only while Messages is actually OPEN: this
+      // renderer also fires on background renders of other screens, and a
+      // mere group switch elsewhere must not create channels or touch chat.
+      const _messagesActive = state.activeView === 'coach' && state.activeCoachSection === 'messages';
+      // Operating a NON-initial group: a persisted club-wide squad selection
+      // re-points to the group's own channel BEFORE anything paints — U18 and
+      // Women's Messages must never open onto Seniors-era squad history.
+      // (Squad remains one tap away in the list; nothing is deleted.)
+      if (_messagesActive && state.operationalGroupId && state.operationalGroupId !== CE_INITIAL_GROUP_ID
+          && (state.selectedChatId === 'squad' || !state.selectedChatId)) {
+        state.selectedChatId = `group:${state.operationalGroupId}`;
+      }
+      if (_messagesActive && String(state.selectedChatId || '').startsWith('group:')) {
+        chatEnsureGroupChannel(state.selectedChatId).catch(() => {});
+      }
       // Ensure other staff are loaded so coach ↔ coach DMs are discoverable.
       chatEnsureStaffDirectory();
       chatLoadStateModule().then(() => {
@@ -27784,6 +27846,15 @@
       // after a view switch. Subsequent render() calls (e.g. saveState, player filter changes)
       // skip the expensive innerHTML rebuild, preventing scroll jumps and poll restarts.
       const feedExists = Boolean(document.getElementById('chatFeed'));
+      // STALE-FEED GUARD: the skip above means a selection changed OUTSIDE
+      // selectChat (the group-switch re-point) would leave the previous
+      // conversation's DOM sitting under the new selection — the exact way
+      // Seniors squad history appeared inside the U18 players pane. When the
+      // painted conversation no longer matches the selection, re-open it.
+      if (_messagesActive && feedExists
+          && String(_chatFeedPaintedFor || '') !== String(state.selectedChatId || '')) {
+        selectChat(state.selectedChatId, { auto: true }).catch(() => {});
+      }
       if (!feedExists) {
         _chatShellRendered = 'coach';
         el.innerHTML = renderChatShell('coach');
@@ -29341,6 +29412,7 @@
       state.messages = [];                 // legacy local inbox is per-person
       _chatConversations = [];
       _chatLastPoll = {};
+      _chatFeedPaintedFor = null;
       // Server-resolved group recipient sets are identity/club-scoped too —
       // the next identity must resolve its own, never inherit these.
       _groupRecipients = {};
@@ -29541,9 +29613,14 @@
       syncTrainingStateToGroup();
       // A group channel open in the composer is a GROUP-TARGETED audience —
       // it must follow the group now in force, so the next message can never
-      // land on the group the operator just left.
+      // land on the group the operator just left. Entering a NON-initial
+      // group with the club-wide squad open also re-points to the group's
+      // own channel: the squad pane is Seniors-era chatter and must not be
+      // what a U18/Women's context opens onto (it stays one tap away).
       if (String(state.selectedChatId || '').startsWith('group:')
           && state.selectedChatId !== `group:${groupId}`) {
+        state.selectedChatId = `group:${groupId}`;
+      } else if (state.selectedChatId === 'squad' && groupId !== CE_INITIAL_GROUP_ID) {
         state.selectedChatId = `group:${groupId}`;
       }
       saveState('Group switched');
@@ -29964,6 +30041,7 @@
     }
 
     function renderUpgradePrompt(featureName, { compact = false } = {}) {
+      if (BETA_HIDE_COMMERCIAL) return '';
       recordFeatureUsage('upgrade_prompt_view', featureName);
       const feature = getFeature(featureName);
       const name = feature ? feature.displayName : featureName;

@@ -125,6 +125,8 @@ function client(server, initialState = {}) {
     ${fn('contextFixtures')}
     ${fn('matchCentreFixtureList')}
     ${fn('mcFixtureDateLabel')}
+    // single-group harness: group context passes fixtures through
+    function contextFixtures() { return state.fixtures || []; }
     ${fn('matchCentreSelectedFixture')}
     ${fn('matchCentreFixtureId')}
     ${fn('matchCentreHasSquadWork')}
@@ -400,6 +402,8 @@ function draftsPanel(selectedFixtureId, coachDraftsList, users) {
     const _MC_STAFF_ROLE_LABEL = { coach: 'Coach', admin: 'Admin', medical: 'Medical' };
     function matchCentreSideId() { return ''; }          // sideless mode
     function matchCentreSelectedSide() { return null; }
+    // single-group harness: group context passes fixtures through
+    function contextFixtures() { return state.fixtures || []; }
     ${fn('matchCentreSelectedFixture')}
     ${fn('matchCentreFixtureId')}
     ${fn('mcFixtureDateLabel')}
@@ -491,6 +495,8 @@ function remindHarness(rows, { confirm = true } = {}) {
     function identityNameKey(v = '') { return String(v || '').trim().toLowerCase(); }
     ${fn('isRosterPlayerRecord')}
     ${fn('mcFixtureDateLabel')}
+    // single-group harness: group context passes fixtures through
+    function contextFixtures() { return state.fixtures || []; }
     ${fn('matchCentreSelectedFixture')}
     ${fn('mcFixtureRemindTargets')}
     let _mcRemindInFlight = false;

@@ -106,6 +106,7 @@ function buildScope({ teamPlan = null, teamPlanStatus = null, permissions = [], 
     'function recordFeatureUsage() {}\n' +
     'function upgradeFromFeature(id) { settingsUpgradeToPro(); }\n' +
     extractConst(html, 'PLAN_LEVEL') + '\n' +
+    'const BETA_HIDE_COMMERCIAL = false;\n' +
     extractFn(html, 'planLevel') + '\n' +
     extractConst(html, 'FEATURE_REGISTRY') + '\n' +
     extractFn(html, 'getFeature') + '\n' +

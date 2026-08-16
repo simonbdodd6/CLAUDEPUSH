@@ -162,6 +162,7 @@ function buildSettingsScope({ buildInfo = { sha: 'abc1234', env: 'production', b
 
   const body = `"use strict";
     const document = mockDoc;
+    const BETA_HIDE_COMMERCIAL = false;   // pins pre-beta settings behavior
     const state = ${JSON.stringify(state)};
     const _BUILD_INFO = ${JSON.stringify(buildInfo)};
     let _serverAuthState = ${JSON.stringify(serverAuthState)};
