@@ -12869,18 +12869,24 @@
       const opPlayers      = operationalPlayers();
       const selectedPlayer = opPlayers.find(p => p.id === state.selectedMessagePlayerId) || rows[0]?.player || EMPTY_PLAYER;
       const selectedStatus = selectedPlayer[key] || "no-reply";
-      const noReplyPlayers = opPlayers.filter(p => (p[key] || "no-reply") === "no-reply");
+      const noReplyPlayers = opPlayers.filter(p =>
+        ((resolvedAnswerFor(p, selected?.id) || {}).response || p[key] || "no-reply") === "no-reply");
       const campaignDays   = state.autoSendSchedule?.days || ["Mon"];
       const campaignAudience = state.autoSendSchedule?.audience || "all";
       const responseRate   = percent(answered.length, rows.length);
       const messagesSent   = state.messages.filter(m => m.from === "Coach").length;
 
-      // Cross-session summary: players who've replied to every session
+      // Cross-session summary: players who've replied to every session.
+      // Resolved through the SAME layer the board rows use — the raw
+      // p[sessionKey] fields live on roster copies the server patch may not
+      // reach, which is how an answered player still counted as "to chase".
       const coachEvents    = coachAvailEvents();
       const allSessionIds  = coachEvents.map(e => e.id);
-      const repliedAll     = opPlayers.filter(p => allSessionIds.every(id => (p[sessionKey(id)] || 'no-reply') !== 'no-reply')).length;
-      const chaseAny       = opPlayers.filter(p => allSessionIds.some(id => (p[sessionKey(id)] || 'no-reply') === 'no-reply')).length;
-      const injuryFlags    = opPlayers.filter(p => allSessionIds.some(id => p[sessionKey(id) + 'Reason'] === 'injury')).length;
+      const statusFor      = (p, id) => (resolvedAnswerFor(p, id) || {}).response || p[sessionKey(id)] || 'no-reply';
+      const repliedAll     = opPlayers.filter(p => allSessionIds.every(id => statusFor(p, id) !== 'no-reply')).length;
+      const chaseAny       = opPlayers.filter(p => allSessionIds.some(id => statusFor(p, id) === 'no-reply')).length;
+      const injuryFlags    = opPlayers.filter(p => allSessionIds.some(id =>
+        (resolvedAnswerFor(p, id) || {}).reason === 'injury' || p[sessionKey(id) + 'Reason'] === 'injury')).length;
 
       const playerRows = list => list.map(({player, status, reason, attendanceRate, respondedAt}) => {
         const isInjury   = reason === 'injury';
@@ -15656,7 +15662,10 @@
       if (!player.id) return;
       _availReasonOpenByKey = {}; // all become Available — no reason pickers needed
       const liveRecords = findLiveAvailabilityRecords(state.players, player);
-      state.schedule.forEach(session => {
+      // The REAL dated events for the viewed week — never the legacy demo
+      // trio in state.schedule, whose tue/thu/game ids don't exist on this
+      // group's coach board.
+      availEventsForViewedWeek().forEach(session => {
         const k = sessionKey(session.id);
         availabilityApplyToRecord(player, k, 'available', '');
         liveRecords.forEach(rec => availabilityApplyToRecord(rec, k, 'available', ''));
@@ -17644,6 +17653,11 @@
     let _trainingScheduleBusy = false;
 
     let _trainingScheduleAttempted = false;
+    // The group the cached schedule was fetched FOR. An early fetch can race
+    // the operational context (operationalGroups() is empty until the session
+    // reply lands), landing the legacy/Seniors record in the cache; the stamp
+    // lets ensureTrainingSchedule notice and refetch for the real group.
+    let _trainingScheduleGroupId = '';
 
     /**
      * The training schedule is the SOURCE of dated training events, but it was
@@ -17654,6 +17668,14 @@
      * cannot retry on every render.
      */
     function ensureTrainingSchedule() {
+      const gid = trainingGroupParam();
+      if (_trainingSchedule && _trainingScheduleGroupId !== gid) {
+        // Cached under ANOTHER group context — e.g. fetched before the
+        // operational context resolved. Availability events derive their ids
+        // from these slots, so serving the wrong group's schedule makes
+        // answers irreconcilable. Drop and refetch for the group in force.
+        _trainingSchedule = null; _trainingScheduleAttempted = false;
+      }
       if (_trainingSchedule || _trainingScheduleAttempted) return;
       _trainingScheduleAttempted = true;
       loadTrainingSchedule().catch(() => {});
@@ -17678,6 +17700,7 @@
           return null;
         }
         _trainingSchedule = data;
+        _trainingScheduleGroupId = gid;
         render();
         return _trainingSchedule;
       } catch { return null; }
@@ -17694,7 +17717,22 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { showToast(data.error || 'Could not save the training schedule'); return null; }
-        if (!gid || trainingGroupParam() === gid) { _trainingSchedule = data; render(); }
+        if (!gid || trainingGroupParam() === gid) {
+          _trainingSchedule = data;
+          _trainingScheduleGroupId = gid;
+          // Edits still queued BEHIND this save re-apply on top of the fresh
+          // record, so this repaint can never revert them to older values.
+          for (const [sid, fields] of Object.entries(_trainingScheduleQueue || {})) {
+            const slot = (_trainingSchedule.slots || []).find(x => x.id === sid);
+            if (slot) Object.assign(slot, fields);
+          }
+          // Repainting Settings rebuilds this card's inputs. Doing that while
+          // the operator is typing in one destroys the uncommitted value
+          // before its onchange ever fires — exactly how end times vanished.
+          // Defer to the next natural render when focus is inside the card.
+          const focused = typeof document !== 'undefined' && document.activeElement;
+          if (!(focused && focused.closest && focused.closest('#training-schedule-card'))) render();
+        }
         return data;
       } catch {
         showToast("We couldn't connect. Check your internet connection and try again.");
@@ -17702,8 +17740,30 @@
       } finally { _trainingScheduleBusy = false; }
     }
 
+    // Field edits are QUEUED per slot and pumped serially — an edit made while
+    // an earlier field's save is still in flight must merge behind it, never
+    // be dropped by the busy guard (dropping is how a Start save in flight
+    // silently swallowed the End time the operator entered next).
+    let _trainingScheduleQueue = null;
+
     function trainingScheduleUpdateField(slotId, field, value) {
-      trainingScheduleSave({ action: 'update', slotId, slot: { [field]: value } });
+      // Optimistic: the local slot reflects the edit immediately, so any
+      // interleaved repaint shows what the operator just typed.
+      const local = (_trainingSchedule?.slots || []).find(x => x.id === slotId);
+      if (local) local[field] = value;
+      _trainingScheduleQueue = _trainingScheduleQueue || {};
+      _trainingScheduleQueue[slotId] = { ...(_trainingScheduleQueue[slotId] || {}), [field]: value };
+      trainingSchedulePump();
+    }
+
+    async function trainingSchedulePump() {
+      if (_trainingScheduleBusy || !_trainingScheduleQueue) return;
+      const slotId = Object.keys(_trainingScheduleQueue)[0];
+      const fields = _trainingScheduleQueue[slotId];
+      delete _trainingScheduleQueue[slotId];
+      if (!Object.keys(_trainingScheduleQueue).length) _trainingScheduleQueue = null;
+      await trainingScheduleSave({ action: 'update', slotId, slot: fields });
+      trainingSchedulePump();
     }
     function trainingScheduleAdd() {
       trainingScheduleSave({ action: 'add', slot: { day: 'Wed', startTime: '19:00' } })
@@ -17746,10 +17806,7 @@
               </select>` : ro(SCHEDULE_DAY_LABEL[s.day])}</label>
             <label style="${lbl}">Start${canEdit ? `<input type="time" value="${esc(s.startTime)}" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','startTime',this.value)">` : ro(s.startTime)}</label>
             <label style="${lbl}">End${canEdit ? `<input type="time" value="${esc(s.endTime)}" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','endTime',this.value)">` : ro(s.endTime)}</label>
-            <label style="${lbl}">Arrival${canEdit ? `<input type="time" value="${esc(s.arrivalTime)}" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','arrivalTime',this.value)">` : ro(s.arrivalTime)}</label>
             <label style="${lbl}">Venue${canEdit ? `<input value="${esc(s.venue)}" placeholder="e.g. Main pitch" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','venue',this.value)">` : ro(s.venue)}</label>
-            <label style="${lbl}">From${canEdit ? `<input type="date" value="${esc(s.effectiveFrom)}" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','effectiveFrom',this.value)">` : ro(s.effectiveFrom)}</label>
-            <label style="${lbl}">Until${canEdit ? `<input type="date" value="${esc(s.effectiveTo)}" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','effectiveTo',this.value)">` : ro(s.effectiveTo)}</label>
           </div>
           ${canEdit ? `
           <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
@@ -17760,9 +17817,9 @@
 
       const extra = slots.filter(s => !s.sessionId).length;
       return `
-        <div class="card">
+        <div class="card" id="training-schedule-card">
           <h2 style="margin-bottom:4px">Teams · Training schedule</h2>
-          <p class="muted" style="font-size:12px;margin:0 0 12px">Your club's recurring training nights — day, time, venue, arrival and the dates each night runs between.</p>
+          <p class="muted" style="font-size:12px;margin:0 0 12px">Your club's recurring training nights — day, start and end time, and venue.</p>
           ${slots.length ? slots.map(slotCard).join('') : `<p class="muted" style="font-size:12.5px">No training nights configured yet.</p>`}
           ${canEdit ? `<button class="btn" type="button" style="min-height:38px;font-size:12.5px" onclick="trainingScheduleAdd()">+ Add training night</button>` : ''}
           ${extra ? `<p class="muted" style="font-size:11.5px;margin:10px 0 0;line-height:1.5">
@@ -29430,6 +29487,15 @@
       // Server-resolved group recipient sets are identity/club-scoped too —
       // the next identity must resolve its own, never inherit these.
       _groupRecipients = {};
+      // The training-schedule cache is the availability event SOURCE. Kept
+      // across an identity change it fed the previous identity's slot ids
+      // (e.g. Seniors slot_tue) into the next identity's availability answers,
+      // which the coach board could then never reconcile. The next identity
+      // refetches its own group's schedule.
+      _trainingSchedule = null;
+      _trainingScheduleAttempted = false;
+      _trainingScheduleQueue = null;
+      _trainingScheduleGroupId = '';
       chatSetUnreadTotal(0);
     }
 
@@ -29606,6 +29672,7 @@
       // is the canonical group transition, so the medical caseload cache is
       // reset here too.)
       _trainingSchedule = null; _trainingScheduleAttempted = false;
+      _trainingScheduleGroupId = '';
       _trainingPubState = {}; _trainingPubLoadedAt = 0;
       _publishedStateLoadedAt = 0;
       _sharedMedical = { loaded: false, cases: [], players: [] };
