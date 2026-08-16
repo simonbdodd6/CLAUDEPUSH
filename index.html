@@ -18799,6 +18799,11 @@
         if (!res.ok || data.ok === false) throw new Error(data.error || 'Action failed');
         if (successMsg) showToast(successMsg);
         await loadAdminData(true);
+        // Role/scope changes must reach the staff directory NOW, not after
+        // the 30s throttle — a freshly granted coach appears (and a revoked
+        // one disappears) on the very next render.
+        _staffDirLoadedAt = 0;
+        await loadStaffDirectory().catch(() => {});
         return data;
       } catch(e) { showToast(e.message || 'Action failed'); return null; }
     }
@@ -26083,7 +26088,12 @@
           if (!existing) {
             state.users.push({ id, role: m.role, name, email, phone: '', pin: '', _staff: true });
           } else {
-            if (!existing.role)  existing.role  = m.role;
+            // The MEMBER row is authoritative for staffness. A player upgraded
+            // to coach kept role 'player' in this cached directory forever
+            // (the old `if (!existing.role)` never corrected a truthy value),
+            // which hid every dual-role coach from the Members staff list and
+            // the DM directory even though the server standing was right.
+            if (existing.role !== m.role) existing.role = m.role;
             if (!existing.name)  existing.name  = name;
             if (!existing.email) existing.email = email;
           }
@@ -31115,9 +31125,20 @@
         // coach invite) instead of falling back to head_coach.
         const staffLevel = (role === 'coach' || role === 'admin') ? 'assistant' : '';
         const pgid = role === 'player' ? invitePlayerGroupValue() : '';
+        // COACH/MEDICAL links bind to the OPERATING group, exactly like the
+        // player link: an unscoped staff link claimed in a multi-group club
+        // derives legacy access (Seniors for coaches — and CLUB-WIDE for
+        // admins, which is how a "U18 manager" link quietly minted whole-club
+        // administrators). Admin stays unscoped by MODEL (Club Admin is a
+        // whole-club role — the server refuses a scoped admin), so the modal
+        // says so in plain words instead. Single-group clubs keep the legacy
+        // unscoped body so their existing links continue to match.
+        const staffGid = (role === 'coach' || role === 'medical') ? inviteLinkPlayerGroup() : '';
+        const staffScoped = staffGid && activePlayerGroups().length > 1;
         const res  = await fetch('/api/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ group: true, role, ...(staffLevel ? { staffLevel } : {}),
-                                 ...(pgid ? { playerGroupId: pgid } : {}) }) });
+                                 ...(pgid ? { playerGroupId: pgid } : {}),
+                                 ...(staffScoped ? { scope: { groupId: staffGid } } : {}) }) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.url) throw new Error(data.error || 'Could not create link');
         if (role !== _coachGroupRole) return;  // user switched role mid-request — ignore stale response
@@ -31144,7 +31165,12 @@
           <a class="btn" href="${wa}" target="_blank" rel="noopener" style="flex:1;text-align:center;min-height:44px;display:flex;align-items:center;justify-content:center">WhatsApp</a>
           <a class="btn" href="${mail}" style="flex:1;text-align:center;min-height:44px;display:flex;align-items:center;justify-content:center">Email</a>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:10px">Reusable — everyone who opens it joins as ${esc(_coachRoleWord(role))}. Only a head coach can share staff links.</div>`;
+        <div style="font-size:11px;color:var(--muted);margin-top:10px">${(() => {
+          if (role === 'admin') return 'Reusable — everyone who opens it becomes a <strong>whole-club administrator</strong>. For a single group\'s manager, use a Coach link in that group instead.';
+          const gid = (role === 'coach' || role === 'medical') ? inviteLinkPlayerGroup() : '';
+          const g = gid && activePlayerGroups().length > 1 ? activePlayerGroups().find(x => x.id === gid) : null;
+          return `Reusable — everyone who opens it joins as ${esc(_coachRoleWord(role))}${g ? ` for <strong>${esc(g.name)}</strong> only` : ''}. Only a head coach can share staff links.`;
+        })()}</div>`;
     }
 
     async function openInvitePlayersModal() {
