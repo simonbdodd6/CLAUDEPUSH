@@ -1136,7 +1136,12 @@ export async function claimInvite(input = {}) {
     // their upgrade starts from nothing but the invite's grant — the legacy
     // scope derivation must never silently hand them the initial group.
     const priorWasStaff = Boolean(priorMember) && priorMember.role !== 'player';
-    await applyInviteScope(member, invite, { membershipExisted, priorWasStaff });
+    // The INVITE's role decides what its scope may grant: a STAFF invite's
+    // scope becomes coaching accessScope; a PLAYER link's scope is the link's
+    // dedupe identity and drives ELIGIBILITY only — it must never stamp
+    // coaching access on anyone (not on the claiming player, and not on a
+    // coach who happens to open a player link).
+    await applyInviteScope(member, invite, { membershipExisted, priorWasStaff, staffInvite: inviteIsStaff });
   }
   // D1a — a player invite stamps WHERE THEY PLAY, independently of staff scope.
   if (invite.playerGroupId) {
@@ -1238,21 +1243,24 @@ async function applyInvitePlayerGroup(member, groupId) {
  * eligibility for the group's active teams at claim time (an admin can trim
  * afterwards — documented Phase C behaviour).
  */
-async function applyInviteScope(member, invite, { membershipExisted = false, priorWasStaff = false } = {}) {
+async function applyInviteScope(member, invite, { membershipExisted = false, priorWasStaff = false, staffInvite = false } = {}) {
   const scope = invite.scope || {};
   const members = await loadTeamMembers();
   const live = members.find(m => m.id === member.id);
   if (!live) return;
 
-  // Merge base: an EXISTING member keeps everything they already hold — a
-  // scoped claim never reduces access. A stored scope is always kept. The
-  // LEGACY DERIVATION (null scope → the initial group) is materialised only
-  // for a member who was already STAFF: it described real coaching access
-  // they were exercising. A member who was a PLAYER had no coaching
-  // authority to keep — materialising the derivation would quietly grant a
-  // freshly-upgraded coach the initial group on top of what their invite
-  // actually named. A BRAND-NEW membership starts from nothing likewise.
-  const current = (live.accessScope != null || (membershipExisted && priorWasStaff))
+  // Merge base: an EXISTING STAFF member keeps everything they already hold —
+  // a scoped claim never reduces access, and the legacy derivation (null
+  // scope → the initial group) is materialised for them because it described
+  // real coaching access they were exercising. A member who was a PLAYER had
+  // no coaching authority to keep — their upgrade starts from NOTHING but the
+  // invite's grant. That includes a player-era STORED scope: scoped player
+  // links stamp accessScope for link identity, and letting it seed the staff
+  // merge quietly granted a freshly-upgraded coach their PLAYING group's
+  // staff access on top of what the invite actually named (a Seniors player
+  // claiming a U18 coach invite came out coaching Seniors AND U18). A
+  // BRAND-NEW membership starts from nothing likewise.
+  const current = (membershipExisted && priorWasStaff)
     ? effectiveAccessScope(live)
     : { clubWide: false, groups: [], teams: [] };
   const freshMember = !membershipExisted;
@@ -1260,10 +1268,10 @@ async function applyInviteScope(member, invite, { membershipExisted = false, pri
   let changed = false;
 
   if (scope.clubWide === true) {
-    if (!current.clubWide) { live.accessScope = { clubWide: true, groups: [], teams: [] }; changed = true; }
+    if (staffInvite && !current.clubWide) { live.accessScope = { clubWide: true, groups: [], teams: [] }; changed = true; }
   } else if (scope.teamId) {
     const team = teamById(structure, scope.teamId);
-    if (team && team.status === 'active' && !current.teams.some(t => t.teamId === team.id && t.status === 'active')) {
+    if (staffInvite && team && team.status === 'active' && !current.teams.some(t => t.teamId === team.id && t.status === 'active')) {
       current.teams = [...current.teams.filter(t => t.teamId !== team.id), { teamId: team.id, role: null, status: 'active' }];
       live.accessScope = normalizeAccessScope(current);
       changed = true;
@@ -1286,18 +1294,20 @@ async function applyInviteScope(member, invite, { membershipExisted = false, pri
     // Multi-group coaching grant: merge EVERY named group into the member's
     // scope, exactly as a sequence of single-group claims would — additive
     // only, never touching playerGroupId, eligibility or existing access.
-    for (const gid of scope.groupIds) {
-      const group = groupById(structure, gid);
-      if (!group || group.status !== 'active' || current.clubWide) continue;
-      if (!current.groups.some(g => g.groupId === group.id && g.status === 'active')) {
-        current.groups = [...current.groups.filter(g => g.groupId !== group.id), { groupId: group.id, role: null, status: 'active' }];
-        changed = true;
+    if (staffInvite) {
+      for (const gid of scope.groupIds) {
+        const group = groupById(structure, gid);
+        if (!group || group.status !== 'active' || current.clubWide) continue;
+        if (!current.groups.some(g => g.groupId === group.id && g.status === 'active')) {
+          current.groups = [...current.groups.filter(g => g.groupId !== group.id), { groupId: group.id, role: null, status: 'active' }];
+          changed = true;
+        }
       }
+      if (changed) live.accessScope = normalizeAccessScope(current);
     }
-    if (changed) live.accessScope = normalizeAccessScope(current);
   } else if (scope.groupId) {
     const group = groupById(structure, scope.groupId);
-    if (group && group.status === 'active' && !current.clubWide &&
+    if (staffInvite && group && group.status === 'active' && !current.clubWide &&
         !current.groups.some(g => g.groupId === group.id && g.status === 'active')) {
       current.groups = [...current.groups.filter(g => g.groupId !== group.id), { groupId: group.id, role: null, status: 'active' }];
       live.accessScope = normalizeAccessScope(current);

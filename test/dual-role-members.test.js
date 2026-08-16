@@ -205,8 +205,12 @@ test('existing access grants are merged, never reduced', async () => {
 
   const scope = effectiveAccessScope(claimed.teamMember);
   const groups = scope.groups.filter(g => g.status === 'active').map(g => g.groupId).sort();
-  assert.deepEqual(groups, ['grp-senior-men', 'grp-u18'],
-    'the new grant is ADDED to the one they already held');
+  // A PLAYER held no coaching authority — the upgrade grants EXACTLY what
+  // the staff invite named. (The old expectation ['grp-senior-men','grp-u18']
+  // encoded the over-grant: a Seniors player claiming a U18 coach invite
+  // came out coaching Seniors too.)
+  assert.deepEqual(groups, ['grp-u18'],
+    'the upgrade grants exactly the invite\'s scope, nothing inherited from playing');
   assert.equal(profilesOf(player.user.id).length, 1, 'player profile still intact');
 });
 

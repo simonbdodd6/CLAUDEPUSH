@@ -31201,13 +31201,14 @@
       el.innerHTML = `
         <div style="background:#fff;border-radius:20px;padding:30px;max-width:440px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.5);animation:fadeUp 0.24s ease both;max-height:92vh;overflow-y:auto">
           <div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">${club}</div>
-          <h2 style="margin:4px 0 4px;font-size:22px;color:var(--ink)">${isGroup ? 'Join your squad' : 'Welcome to ' + club}</h2>
-          <p style="color:var(--muted);font-size:13.5px;margin:0 0 6px">Create your CoachEasier account — you'll be logged in straight away.</p>
+          <h2 id="invite-modal-title" style="margin:4px 0 4px;font-size:22px;color:var(--ink)">${isGroup ? 'Join your squad' : 'Welcome to ' + club}</h2>
+          <p id="invite-modal-sub" style="color:var(--muted);font-size:13.5px;margin:0 0 6px">Create your CoachEasier account — you'll be logged in straight away.<br>
+            <span style="font-size:12.5px">Already have a CoachEasier account? Use its email and your <strong>existing</strong> password — this invite adds the new access to that account.</span></p>
           ${nameFields}
           <label style="${labelCss}">Email<input id="invite-email-input" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(invite.email || '')}" placeholder="you@example.com" autocomplete="email" style="${fieldCss}"></label>
-          <label style="${labelCss}">Create password<input id="invite-password-input" type="password" placeholder="At least 8 characters" autocomplete="new-password" style="${fieldCss}"></label>
+          <label style="${labelCss}"><span id="invite-password-label">Password</span><input id="invite-password-input" type="password" placeholder="New password — or your existing one" autocomplete="new-password" style="${fieldCss}"></label>
           ${optionalFields}
-          <button class="btn primary" type="button" onclick="acceptInvite()" style="width:100%;min-height:48px;font-size:15px;font-weight:700;margin-top:18px">Create account &amp; join →</button>
+          <button id="invite-accept-btn" class="btn primary" type="button" onclick="acceptInvite()" style="width:100%;min-height:48px;font-size:15px;font-weight:700;margin-top:18px">Continue &amp; join →</button>
           <button class="btn" type="button" style="width:100%;font-size:13px;margin-top:8px"
             onclick="document.getElementById('invite-modal')?.remove();window.history.replaceState({},'','/')">Cancel</button>
         </div>`;
@@ -31298,11 +31299,32 @@
         }
         loadClubConfigFromServer().catch(() => {});
         refreshPushSubscriptionMetadata(name).catch(() => {});
+        // Adopt the full session payload (operational groups, permissions) so
+        // a freshly-upgraded dual-role member sees their coach selector
+        // IMMEDIATELY — not after the next reload.
+        checkServerSession().catch(() => {});
         showToast(`Welcome ${name.split(' ')[0]}! Your account is ready.`);
       } catch(e) {
         console.warn('[invite] claim failed', e);
         showToast(friendlyAuthError(e, 'invite'));
-        if (btn) { btn.disabled = false; btn.textContent = 'Create account & join →'; }
+        // 403 here means EXACTLY "this email already has an account and that
+        // password didn't match it" — flip the modal into sign-in wording so
+        // an existing member (e.g. a Seniors player claiming a staff invite)
+        // is never told to create a second account.
+        if (Number(e?.status) === 403) {
+          const title = document.getElementById('invite-modal-title');
+          const sub   = document.getElementById('invite-modal-sub');
+          const pwLbl = document.getElementById('invite-password-label');
+          if (title) title.textContent = 'Sign in to add this access';
+          if (sub) sub.innerHTML = 'This email already has a CoachEasier account. '
+            + 'Enter that account\'s <strong>existing</strong> password — the invite adds the new access to it. Nothing else changes.';
+          if (pwLbl) pwLbl.textContent = 'Your existing password';
+          const pw = document.getElementById('invite-password-input');
+          if (pw) { pw.value = ''; pw.placeholder = 'Your existing password'; pw.focus(); }
+          if (btn) { btn.disabled = false; btn.innerHTML = 'Sign in &amp; add access →'; }
+          return;
+        }
+        if (btn) { btn.disabled = false; btn.textContent = 'Continue & join →'; }
         return;
       }
       // Prompt for push after a short delay (must be triggered by user gesture for mobile)

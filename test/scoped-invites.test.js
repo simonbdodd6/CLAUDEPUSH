@@ -206,8 +206,11 @@ test('claiming a team-scoped player invite grants the team + eligibility with pr
   const result = await store.claimInvite({
     token: created.body.token, email: 's2.player@club.test', password: 'Claim-2026-Pass!',
   });
-  const scope = effectiveAccessScope(result.teamMember);
-  assert.deepEqual(scope.teams.filter(t => t.status === 'active').map(t => t.teamId), ['team-senior-2']);
+  // A PLAYER invite's scope drives ELIGIBILITY only — it never stamps
+  // coaching accessScope (that stamped scope later seeded staff over-grants
+  // on player→coach upgrades).
+  const raw = JSON.parse(kv.get('app:identity:team_members')).find(m => m.id === result.teamMember.id);
+  assert.equal(raw.accessScope, undefined, 'no coaching scope stored on a player');
   const elig = effectiveEligibility(result.teamMember);
   assert.deepEqual(elig.teamIds, ['team-senior-2']);
   assert.equal(elig.primaryTeamId, 'team-senior-2');
@@ -220,8 +223,8 @@ test('claiming a group-scoped player invite defaults eligibility to the group\'s
   const result = await store.claimInvite({
     token: created.body.token, email: 'pool.player@club.test', password: 'Claim-2026-Pass!',
   });
-  const scope = effectiveAccessScope(result.teamMember);
-  assert.deepEqual(scope.groups.filter(g => g.status === 'active').map(g => g.groupId), ['grp-senior-men']);
+  const raw = JSON.parse(kv.get('app:identity:team_members')).find(m => m.id === result.teamMember.id);
+  assert.equal(raw.accessScope, undefined, 'no coaching scope stored on a player');
   const elig = effectiveEligibility(result.teamMember);
   assert.deepEqual(elig.teamIds.sort(), ['team-senior-1', 'team-senior-2'],
     'eligible for the group\'s active teams by default');
@@ -259,8 +262,9 @@ test('a reusable scoped group link exists per role+scope and claims for many use
       token: link.body.token, name: `U18 Player ${n}`,
       email: `u18.player${n}@club.test`, password: 'Claim-2026-Pass!',
     });
-    const scope = effectiveAccessScope(result.teamMember);
-    assert.deepEqual(scope.groups.filter(g => g.status === 'active').map(g => g.groupId), ['grp-u18']);
+    assert.equal(result.teamMember.playerGroupId, 'grp-u18', 'plays in the link\'s group');
+    const raw = JSON.parse(kv.get('app:identity:team_members')).find(m => m.id === result.teamMember.id);
+    assert.equal(raw.accessScope, undefined, 'no coaching scope stored on a player');
   }
 });
 
