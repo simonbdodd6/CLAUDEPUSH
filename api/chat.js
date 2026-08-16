@@ -87,6 +87,13 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
     type:  'dm',
   });
 
+  await dispatchPush(allSubs, targets, payload, 'DM push');
+}
+
+// Shared dispatch: fan out one payload to the target subscriptions, log
+// failures, and prune subscriptions the push service says are gone. Push is
+// always best-effort — callers persist the message BEFORE any push runs.
+async function dispatchPush(allSubs, targets, payload, label) {
   const results = await Promise.allSettled(
     targets.map(({ subscription }) => webpush.sendNotification(subscription, payload))
   );
@@ -94,7 +101,7 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
   results.forEach((r, i) => {
     if (r.status === 'rejected') {
       const t = targets[i];
-      console.warn(`[DM push] send failed — status=${r.reason?.statusCode} msg="${r.reason?.message}" userId=${t.userId}`);
+      console.warn(`[${label}] send failed — status=${r.reason?.statusCode} msg="${r.reason?.message}" userId=${t.userId}`);
     }
   });
 
@@ -107,6 +114,83 @@ async function sendDmPush(convId, senderId, senderDisplayName, text) {
   if (expired.size) {
     await saveSubs(allSubs.filter(s => !expired.has(s.subscription.endpoint)));
   }
+}
+
+// ── CHANNEL PUSH AUDIENCE ───────────────────────────────────────────────
+// The push audience for a non-DM conversation, resolved SERVER-side from the
+// membership store with the SAME standing rules the read gates use — the
+// client never supplies recipients:
+//   group:<gid> / groupId — the group's ACTIVE playing members + the staff
+//                           who OPERATE that group (mirrors
+//                           sessionCanReadConversation's group branch)
+//   coaching              — active coach/admin members only
+//   squad / announce      — every active member the read rule admits
+//                           (players + coach/admin staff)
+//   anything else         — the conversation's own participants
+// Exported for tests; pure resolution, no push side effects.
+export async function channelPushRecipientIds(sessionContext, conversation) {
+  const teamId = tenantTeamId(sessionContext) || DEFAULT_TEAM.id;
+  const members = (await loadTeamMembers())
+    .filter(m => String(m.teamId) === String(teamId) && m.status === 'active');
+  const uid = m => String(m.userId || '');
+  const isStaffRole = m => ['coach', 'admin'].includes(String(m.role || ''));
+
+  const targetGroup = conversationGroupId(conversation);
+  if (targetGroup) {
+    const structure = await loadClubStructure(teamId);
+    return [...new Set(members.filter(m =>
+      (resolvePlayerGroup(m, structure).groupId || '') === targetGroup ||
+      (isStaffRole(m) && operationalGroupsFor(m, structure, { as: 'staff' }).some(g => g.id === targetGroup))
+    ).map(uid).filter(Boolean))];
+  }
+  const id = String(conversation?.id || '');
+  if (id === 'coaching') {
+    return [...new Set(members.filter(isStaffRole).map(uid).filter(Boolean))];
+  }
+  if (id === 'squad' || id === 'announce') {
+    return [...new Set(members
+      .filter(m => m.role === 'player' || isStaffRole(m))
+      .map(uid).filter(Boolean))];
+  }
+  return conversationParticipants(conversation);
+}
+
+// Push one channel message to its server-resolved audience, sender excluded.
+// Bounded fan-out for the beta: club audiences are tens of people; a hard cap
+// keeps a pathological subscription store from turning one send into an
+// unbounded synchronous burst.
+const CHANNEL_PUSH_MAX_TARGETS = 120;
+async function sendChannelPush(sessionContext, conversation, senderId, senderName, text) {
+  if (!configurePush()) return;
+  const recipients = await channelPushRecipientIds(sessionContext, conversation);
+  if (!recipients.length) return;
+
+  const [allSubs, profiles] = await Promise.all([
+    loadSubs(),
+    kvGet(key('identity:player_profiles')).then(v => Array.isArray(v) ? v : []),
+  ]);
+  // Subscriptions may be stored under legacy aliases; expand both sides the
+  // same way the DM path does, then subtract every alias of the sender.
+  const senderIds = new Set(expandParticipantAliases([senderId], profiles));
+  const recipientIds = new Set(expandParticipantAliases(recipients, profiles));
+  senderIds.forEach(idv => recipientIds.delete(idv));
+  if (!recipientIds.size) return;
+
+  const targets = allSubs.filter(sub => {
+    const checked = [String(sub.userId || ''), String(sub.playerId || ''), String(sub.legacyPlayerId || '')];
+    return checked.some(v => v && recipientIds.has(v));
+  }).slice(0, CHANNEL_PUSH_MAX_TARGETS);
+  if (!targets.length) return;
+
+  const convId = String(conversation?.id || '');
+  const payload = JSON.stringify({
+    title: conversation?.name ? `${senderName} · ${conversation.name}` : senderName,
+    body:  String(text || '').slice(0, 200),
+    tag:   `conv-${convId}`,
+    url:   notificationUrl('dm'),
+    type:  'chat',
+  });
+  await dispatchPush(allSubs, targets, payload, 'channel push');
 }
 
 function ok(res, data) {
@@ -429,8 +513,11 @@ async function handleGet(req, res) {
   const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
   const userId = sessionContext?.user?.id || url.searchParams.get('userId') || 'anon';
 
-  // Update presence
-  await kvSet(PRESENCE_KEY(userId), { userId, ts: Date.now() }, 60);
+  // Presence is stamped ONLY for the authenticated session identity — an
+  // anonymous caller must not be able to mark an arbitrary userId online.
+  if (sessionContext?.user?.id) {
+    await kvSet(PRESENCE_KEY(sessionContext.user.id), { userId: sessionContext.user.id, ts: Date.now() }, 60);
+  }
 
   if (action === 'conversations') {
     if (!sessionContext?.user?.id) return err(res, 401, 'Authentication required');
@@ -530,7 +617,16 @@ async function handleGet(req, res) {
   }
 
   if (action === 'presence') {
-    const ids = (url.searchParams.get('ids') || '').split(',').filter(Boolean);
+    // Authenticated, same-club only: presence must not let anyone probe the
+    // online status of arbitrary user ids across the app. Ids outside the
+    // caller's club are silently dropped, never answered.
+    if (!sessionContext?.user?.id) return err(res, 401, 'Authentication required');
+    const teamId = tenantTeamId(sessionContext);
+    const clubMemberIds = new Set((await loadTeamMembers())
+      .filter(m => String(m.teamId) === String(teamId) && m.status === 'active')
+      .map(m => String(m.userId || '')).filter(Boolean));
+    const ids = (url.searchParams.get('ids') || '').split(',').filter(Boolean)
+      .filter(id => clubMemberIds.has(String(id)));
     const now = Date.now();
     const presence = await Promise.all(ids.map(async id => {
       const p = await kvGet(PRESENCE_KEY(id));
@@ -606,10 +702,19 @@ async function handlePost(req, res) {
     await kvSet(key(`chat:read:${sendSid}:${senderId}`), msg.ts);
     // Await push before responding — serverless functions terminate after res.end()
     // so fire-and-forget does not work; the async operation is abandoned.
+    // The message is already persisted above: any push failure is logged and
+    // swallowed, never surfaced as a send failure.
     if (convId.startsWith('dm:') && !isAutomated) {
       await sendDmPush(convId, senderId, msg.senderName, msg.text).catch(e => {
         console.error('[DM push] top-level error:', e?.message);
       });
+    } else if (!isAutomated) {
+      const conversation = await findConversation(convId, sessionContext);
+      if (conversation) {
+        await sendChannelPush(sessionContext, conversation, senderId, msg.senderName, msg.text).catch(e => {
+          console.error('[channel push] top-level error:', e?.message);
+        });
+      }
     }
     return ok(res, { message: msg });
   }
@@ -737,21 +842,28 @@ async function handlePost(req, res) {
       }
     }
 
-    if (!isStaffSession(sessionContext)) {
-      // Players may only create DIRECT conversations that include themselves.
-      if (convType !== 'DIRECT') return err(res, 403, 'Players can only create direct conversations');
+    // A private DM can only be created by one of its OWN two participants —
+    // for EVERY role. Staff previously bypassed this and could fabricate a
+    // dm:X:Y record between two other members (unreadable to the creator,
+    // but a phantom thread in both targets' lists). The gate keys on the
+    // dm shape as well as the declared type so a dm:-id can't dodge it by
+    // claiming another type.
+    if (convType === 'DIRECT' || String(id || '').startsWith('dm:')) {
       const actorIds = participantIdsForSession(sessionContext);
       const isSelfParticipant = (Array.isArray(participants) ? participants : [])
         .some(p => actorIds.includes(String(p || '')));
-      if (!isSelfParticipant) return err(res, 403, 'Players can only create conversations they participate in');
-      // Prevent DM id spoofing: a player-created DIRECT conversation's id must embed
-      // the creator, so a player cannot pre-create/hijack a dm:X:Y conversation
+      if (!isSelfParticipant) return err(res, 403, 'A direct conversation must include its creator');
+      // Prevent DM id spoofing: a DIRECT conversation's id must embed the
+      // creator, so nobody can pre-create/hijack a dm:X:Y conversation
       // between two OTHER members (which they could then read as a listed
       // participant). Every legitimate client id is dm:sorted(me, other).
       const dmParts = String(id || '').split(':').slice(1);
       if (String(id || '').startsWith('dm:') && !dmParts.some(p => actorIds.includes(String(p)))) {
         return err(res, 403, 'Conversation id must include the creator');
       }
+    }
+    if (!isStaffSession(sessionContext) && convType !== 'DIRECT') {
+      return err(res, 403, 'Players can only create direct conversations');
     }
 
     const teamId = tenantTeamId(sessionContext);
