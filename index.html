@@ -31098,9 +31098,18 @@
       document.body.appendChild(el);
       try {
         await ensureServerSessionForCurrentUser();
-        const pgid = invitePlayerGroupValue();
+        const pgid = inviteLinkPlayerGroup();
+        // A MULTI-group club names the group as the link's SCOPE too: the
+        // server dedupes reusable links by scope fingerprint, so this returns
+        // the club's EXISTING scoped link for that group instead of minting a
+        // duplicate. A single-group club keeps the legacy unscoped body so its
+        // existing link keeps matching (fingerprint null), and the server
+        // resolves the one group exactly as before.
+        const scoped = pgid && activePlayerGroups().length > 1;
         const res = await fetch('/api/invite', { method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ group: true, ...(pgid ? { playerGroupId: pgid } : {}) }) });
+          body: JSON.stringify({ group: true,
+            ...(pgid ? { playerGroupId: pgid } : {}),
+            ...(scoped ? { scope: { groupId: pgid } } : {}) }) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.url) throw new Error(data.error || 'Could not create invite link');
         renderInvitePlayersBody(data.url);
@@ -31398,6 +31407,17 @@
       const groups = activePlayerGroups();
       if (groups.length === 1) return groups[0].id;
       return document.getElementById('inv-playergroup')?.value || '';
+    }
+
+    /** The group a REUSABLE player invite link binds to. The OPERATING group
+     *  is the source of truth in the coach view — Members is already scoped
+     *  to it, so the operator must never be asked to choose again. Falls back
+     *  to the single-group auto-resolution (the reusable-link modal has no
+     *  group picker of its own — #inv-playergroup lives in the per-name form). */
+    function inviteLinkPlayerGroup() {
+      const gid = state.activeView !== 'player' ? String(state.operationalGroupId || '') : '';
+      if (gid && activePlayerGroups().some(g => g.id === gid)) return gid;
+      return invitePlayerGroupValue();
     }
 
     function setInviteRole(role, el) {
