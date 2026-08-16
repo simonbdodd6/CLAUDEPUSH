@@ -18900,6 +18900,14 @@
 
     function renderClubStructureCard() {
       if (!_adminData.structure || !canI('manage_teams')) return '';
+      // Structure CREATION is a club-wide administrator action (the server
+      // refuses everyone else via requireClubManage). A group-scoped coach
+      // holds manage_teams for their own group's fixtures/config, so they see
+      // the structure READ-ONLY — no create/rename/archive controls that
+      // would only 403.
+      const _canEditStructure = (_adminData.structureAccess?.clubWideStaffIds || [])
+        .includes(String(state.currentUserId || ''))
+        || !(_adminData.structureAccess?.clubWideStaffIds || []).length;
       const counts = _adminData.counts || { groups: {}, teams: {} };
       const groups = structureGroupsSorted();
       const pill = (text, tone) => `<span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:999px;background:${tone};color:#fff">${esc(text)}</span>`;
@@ -18921,7 +18929,7 @@
                 </div>
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
-                ${archived
+                ${!_canEditStructure ? '' : archived
                   ? `<button class="btn ghost" style="font-size:11px;padding:5px 9px" onclick="structureOp('restore_group',{groupId:'${esc(g.id)}'},'${esc(g.name)} restored')">Restore</button>`
                   : `<button class="btn ghost" style="font-size:11px;padding:5px 9px" onclick="structureRename('group','${esc(g.id)}','${esc(g.name)}')">Rename</button>
                      <button class="btn ghost" style="font-size:11px;padding:5px 9px" onclick="structureAddTeam('${esc(g.id)}','${esc(g.name)}')">Add team</button>
@@ -18940,7 +18948,7 @@
                     </div>
                   </div>
                   <div style="display:flex;gap:6px;flex-wrap:wrap">
-                    ${tArch
+                    ${!_canEditStructure ? '' : tArch
                       ? `<button class="btn ghost" style="font-size:11px;padding:4px 8px" onclick="structureOp('restore_team',{teamId:'${esc(t.id)}'},'${esc(t.name)} restored')">Restore</button>`
                       : `<button class="btn ghost" style="font-size:11px;padding:4px 8px" onclick="structureRename('team','${esc(t.id)}','${esc(t.name)}')">Rename</button>
                          <button class="btn ghost" style="font-size:11px;padding:4px 8px;color:#f87171" onclick="structureArchive('team','${esc(t.id)}','${esc(t.name)}')">Archive</button>`}
@@ -18958,7 +18966,7 @@
             ${_adminData.clubWideStaff?.length ? `<br>Whole-club access: <strong>${esc(_adminData.clubWideStaff.join(', '))}</strong>.` : ''}
           </p>
           ${groupRows || '<p class="muted" style="font-size:12.5px">No groups yet.</p>'}
-          <button class="btn primary" style="margin-top:6px;font-size:13px" onclick="structureAddGroup()">Add a group</button>
+          ${_canEditStructure ? '<button class="btn primary" style="margin-top:6px;font-size:13px" onclick="structureAddGroup()">Add a group</button>' : ''}
         </div>`;
     }
 
@@ -18972,6 +18980,10 @@
         if (!res.ok || data.ok === false) throw new Error(data.error || 'That change could not be saved');
         if (successMsg) showToast(successMsg);
         await loadAdminData(true);
+        // The operational group switcher reads _myOperational, which only the
+        // SESSION payload carries — refresh it so a group created a moment ago
+        // is immediately selectable, no logout or reload needed.
+        await checkServerSession().catch(() => {});
         render();
         return data;
       } catch (e) { showToast(e.message || 'That change could not be saved'); return null; }
