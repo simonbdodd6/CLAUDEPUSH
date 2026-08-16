@@ -450,10 +450,16 @@ async function handleGet(req, res) {
       // Unread: messages after this user's last read timestamp
       const readKey = key(`chat:read:${sid}:${userId}`);
       const lastRead = (await kvGet(readKey)) || 0;
+      // A member's unread history starts when THEY joined the club: messages
+      // that predate the membership are archive, not unread — a brand-new
+      // account must never log in to a "9+" inherited from history written
+      // before it existed. Read markers still win once they are newer.
+      const joinedTs = Date.parse(sessionContext?.teamMember?.joinedAt
+        || sessionContext?.teamMember?.createdAt || '') || 0;
       // Count unread from the retained message window so refresh/login badge
       // state remains consistent even after long gaps between visits.
       const recent = await kvLrange(MSGS_KEY(sid), 0, 499);
-      const unread = unreadCountForUser(recent, userId, lastRead);
+      const unread = unreadCountForUser(recent, userId, Math.max(Number(lastRead) || 0, joinedTs));
       return { ...c, lastMessage: last, unread, lastActivity: last?.ts || c.createdAt };
     }));
     // Sort: pinned first, then by lastActivity

@@ -12782,10 +12782,7 @@
       renderMessageCenter();
     }
 
-    // Availability week navigator (presentation only). Availability is tracked for
-    // the CURRENT week; navigating shows other weeks with their label + a placeholder.
-    // No change to how availability is stored or read.
-    let _availWeekOffset = 0;
+    // Relative wording for a week ("This week" / "Next week" / "In 3 weeks").
     function availWeekLabel(offset) {
       if (offset === 0) return 'This week';
       if (offset === -1) return 'Last week';
@@ -12802,7 +12799,15 @@
       return `${fmt(mon)} – ${fmt(sun)}`;
     }
     function availWeekShift(delta) {
-      _availWeekOffset = delta === 0 ? 0 : _availWeekOffset + delta;
+      // Delegates to the ONE dated week the whole board renders from.
+      state.coachAvailWeekStart = delta === 0
+        ? availWeekStart(availToday())
+        : availAddDays(coachAvailWeek(), delta * 7);
+      const events = coachAvailEvents();
+      if (!events.some(e => e.id === state.messageDetail)) {
+        state.messageDetail = events[0]?.id || null;
+      }
+      saveState('Coach availability week');
       render();
     }
 
@@ -12956,14 +12961,16 @@
         `Team update for ${selected?.title || "this week"}: please check the app and reply when you can.`
       ];
 
-      const weekOffset = _availWeekOffset;
-      const weekPlaceholder = `
-        <section class="msg-card" style="padding:44px 24px;text-align:center;margin-top:2px">
-          <div style="font-size:30px;margin-bottom:8px">🗓️</div>
-          <p style="font-size:16px;font-weight:800;color:var(--ink);margin:0 0 4px">${esc(availWeekLabel(weekOffset))} · ${esc(availWeekRange(weekOffset))}</p>
-          <p class="muted" style="font-size:13px;max-width:440px;margin:0 auto 18px">CoachEasier tracks live availability for the current week. Go back to <strong>This week</strong> to see and manage replies.</p>
-          <button class="btn primary" type="button" onclick="availWeekShift(0)">Back to this week</button>
-        </section>`;
+      // ONE week system. The header nav, the sessions list, the counters and
+      // every event date read coachAvailWeek() — the dated week. The old
+      // offset-based header state ran a SEPARATE week from the sessions card
+      // below it: the header could say 10–16 Aug while the cards showed
+      // 17–23 Aug, and "Next Week" blanked the whole board behind a
+      // placeholder. The dated board renders EVERY week.
+      const weekStart = coachAvailWeek();
+      const nowWeekStart = availWeekStart(availToday());
+      const isNowWeek = weekStart === nowWeekStart;
+      const weekDelta = Math.round((Date.parse(weekStart) - Date.parse(nowWeekStart)) / 604800000);
 
       document.getElementById("coach-message").innerHTML = `
         <div class="msg-hub">
@@ -12982,15 +12989,15 @@
             </div>
             <nav class="avail-weeknav" aria-label="Week">
               <button class="awk-arrow" type="button" onclick="availWeekShift(-1)" aria-label="Previous week"><span class="awk-chev">‹</span><span class="awk-word">Previous Week</span></button>
-              <button class="awk-now${weekOffset === 0 ? ' is-now' : ''}" type="button" onclick="availWeekShift(0)" title="Back to this week">
-                <span class="awk-week">${esc(availWeekLabel(weekOffset))}</span>
-                <span class="awk-range">${esc(availWeekRange(weekOffset))}</span>
+              <button class="awk-now${isNowWeek ? ' is-now' : ''}" type="button" onclick="availWeekShift(0)" title="Back to this week">
+                <span class="awk-week">${esc(availWeekLabel(weekDelta))}</span>
+                <span class="awk-range">${esc(availDatedWeekLabel(weekStart))}</span>
               </button>
               <button class="awk-arrow" type="button" onclick="availWeekShift(1)" aria-label="Next week"><span class="awk-word">Next Week</span><span class="awk-chev">›</span></button>
             </nav>
           </header>
 
-          ${weekOffset !== 0 ? weekPlaceholder : `
+          ${`
           <section class="msg-kpi-grid avail-summary">
             <article class="msg-kpi available"><span>Available</span><strong>${available.length}</strong></article>
             <article class="msg-kpi maybe"><span>Maybe</span><strong>${maybe.length}</strong></article>
@@ -13010,7 +13017,7 @@
               </div>
               ${opPlayers.length > 0 ? `
               <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(var(--accent-rgb), 0.04);border-bottom:1px solid var(--line);font-size:12px;flex-wrap:wrap">
-                <span style="color:var(--muted)">This week:</span>
+                <span style="color:var(--muted)">${esc(isNowWeek ? 'This week' : availDatedWeekLabel(weekStart))}:</span>
                 <span style="font-weight:700;color:var(--ink)">${repliedAll} / ${opPlayers.length} replied to all sessions</span>
                 ${chaseAny > 0 ? `<span class="msg-chip no-reply">${chaseAny} to chase</span>` : `<span class="msg-chip available">All replied</span>`}
                 ${injuryFlags > 0 ? `<span class="msg-chip unavailable">${injuryFlags} injury flag${injuryFlags > 1 ? 's' : ''}</span>` : ''}

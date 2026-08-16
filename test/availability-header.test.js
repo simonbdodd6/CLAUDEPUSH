@@ -51,7 +51,10 @@ test('the header has a simple week navigator (Previous / Current / Next)', () =>
   assert.ok(render.includes('availWeekShift(0)'), 'back to current week');
   assert.ok(render.includes('availWeekShift(1)'), 'Next week');
   assert.ok(render.includes('Previous Week') && render.includes('Next Week'), 'navigator labels');
-  assert.ok(render.includes('availWeekLabel(weekOffset)'), 'centre shows the displayed week label');
+  // The navigator reads the ONE dated week the whole board renders from —
+  // relative wording plus the dated range, both derived from coachAvailWeek().
+  assert.ok(render.includes('availWeekLabel(weekDelta)'), 'centre shows the displayed week label');
+  assert.ok(render.includes('availDatedWeekLabel(weekStart)'), 'centre shows the dated range of the SAME week');
 });
 
 test('the week navigator defaults to the current week with sensible labels', () => {
