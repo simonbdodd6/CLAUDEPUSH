@@ -14697,6 +14697,33 @@
 
       // Phase 17 — show player detail panel if one is open
       // Phase 31 — premium Member Centre (overview) is the default view; the
+      // STAFF-ONLY member editor: staff without a roster row (a manager, an
+      // admin, a medic) have no _playerDetailId to open, so their profile was
+      // unreachable and a mis-granted role could never be corrected from the
+      // UI. Same authoritative editor components; dual-role members route to
+      // the full player detail instead (openStaffDetail decides).
+      if (_staffDetailUserId) {
+        const member = (_adminData.members || []).find(m =>
+          m.status === 'active' && String(m.userId) === String(_staffDetailUserId));
+        const user = (_adminData.users || []).find(u => String(u.id) === String(_staffDetailUserId))
+          || (state.users || []).find(u => String(u.id) === String(_staffDetailUserId)) || {};
+        const name = user.displayName || user.name || 'Staff member';
+        document.getElementById("coach-players").innerHTML = `
+          <div class="section-inner">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+              <button class="btn ghost" type="button" onclick="staffCloseDetail()" style="font-size:13px;padding:5px 12px">← Members</button>
+            </div>
+            ${member ? `
+            <div class="card">
+              <h2 style="margin-bottom:4px">${esc(name)}</h2>
+              <p class="muted" style="font-size:12.5px;margin:0 0 12px">${esc(user.email || '')}</p>
+              ${renderStaffRoleControls(member, name)}
+              ${renderAccessSection(member, user)}
+            </div>` : `<div class="card"><p class="muted" style="font-size:13px">Loading member…</p></div>`}
+          </div>`;
+        return;
+      }
+
       // existing editable profile form is preserved under the "Edit profile" tab.
       if (_playerDetailId) {
         const tab = _memberTab === 'edit' ? 'edit' : 'overview';
@@ -14747,6 +14774,11 @@
         if ((_acc.clubWideStaffIds || []).includes(String(u.id))) return true;
         return ((_acc.groupStaffIds || {})[_gid] || []).includes(String(u.id));
       };
+      // Staff rows open the member editor for CLUB-WIDE admins only (the
+      // server refuses everyone else anyway — this just avoids dead ends).
+      const _staffRowsEditable = canI('assign_access')
+        && ((_acc?.clubWideStaffIds || []).includes(String(state.currentUserId || ''))
+            || !(_acc?.clubWideStaffIds || []).length);
       const staffMembers = (state.users || [])
         .filter(u => ['coach', 'admin', 'medical'].includes(u.role) && u.name)
         .filter(_staffInScope)
@@ -14973,14 +15005,25 @@
               <span class="pill" style="font-size:11px">${staffMembers.length}</span>
             </div>
             ${staffMembers.length ? `<div style="padding:8px 10px;display:grid;gap:4px">
-              ${staffMembers.map(s => `<div style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:10px">
+              ${staffMembers.map(s => {
+                // A club-wide admin opens the SAME authoritative member
+                // editor from a staff row that player rows already have —
+                // this is how a mis-roled staff member (e.g. an accidental
+                // whole-club Admin) gets corrected from the UI.
+                const _editable = _staffRowsEditable && (_adminData.members || [])
+                  .some(m => m.status === 'active' && String(m.userId) === String(s.id));
+                return `<div ${_editable ? `onclick="openStaffDetail('${esc(String(s.id))}')" role="button" tabindex="0"` : ''}
+                  style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:10px;${_editable ? 'cursor:pointer' : ''}"
+                  ${_editable ? `onmouseover="this.style.background='var(--panel-2)'" onmouseout="this.style.background='transparent'"` : ''}>
                 <div style="width:36px;height:36px;border-radius:50%;background:${playerAvatarColor(String(s.id||s.name))};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;flex-shrink:0">${esc(s.name.split(' ').map(w=>w[0]).slice(0,2).join(''))}</div>
                 <div style="min-width:0;flex:1">
                   <strong style="font-size:13px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name)}</strong>
                   ${s.email ? `<div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.email)}</div>` : ''}
                 </div>
                 <span class="pill" style="font-size:11px;background:var(--accent-soft);color:var(--accent);border-color:transparent;flex-shrink:0">${esc(s.label)}</span>
-              </div>`).join('')}
+                ${_editable ? '<span style="color:var(--muted);font-size:12px;flex-shrink:0">›</span>' : ''}
+              </div>`;
+              }).join('')}
             </div>` : `<p class="muted" style="font-size:12.5px;padding:16px 18px;margin:0">No coaches or staff have joined yet. Invite them with a <strong>Coach</strong> invite link above.</p>`}
           </div>
 
@@ -16224,6 +16267,70 @@
     function playerOpenDetail(id) {
       _playerDetailId = id;
       _memberTab = 'overview'; // Phase 31 — always open on the premium Member Centre
+      renderPlayers();
+    }
+
+    // ── Staff member editor (opened from Coaches & staff rows) ──────────────
+    let _staffDetailUserId = null;
+
+    function openStaffDetail(userId) {
+      // A dual-role member has a roster row — open the FULL existing player
+      // detail (it already embeds the access editor, and editing staff scope
+      // there never touches their player side). Staff-only members get the
+      // dedicated staff panel built from the same authoritative components.
+      const rosterRow = (state.players || []).find(p => String(p.userId || '') === String(userId));
+      if (rosterRow) { playerOpenDetail(rosterRow.id); return; }
+      _staffDetailUserId = String(userId);
+      renderPlayers();
+    }
+
+    function staffCloseDetail() {
+      _staffDetailUserId = null;
+      renderPlayers();
+    }
+
+    /** Club role + staff level, through the EXISTING set_member_access
+     *  contract — no new endpoint. The server keeps its own guards (owner
+     *  protection, last-full-admin, club-wide-admin-only authorization). */
+    function renderStaffRoleControls(member, name) {
+      if (!canI('assign_access')) return '';
+      const inp = 'min-height:38px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);padding:0 9px;font-size:13px;width:100%;box-sizing:border-box';
+      const lbl = 'display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em';
+      const role = String(member.role || 'coach');
+      const level = String(member.staffLevel || 'assistant');
+      return `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px">
+          <label style="${lbl}">Club role
+            <select style="${inp}" ${member.isOwner ? 'disabled' : ''}
+              onchange="adminSetMemberRoleLevel('${esc(member.id)}',this.value,null,'${esc(name)}')">
+              ${[['coach', 'Coach'], ['admin', 'Club Admin (whole club)'], ['medical', 'Medical']]
+                .map(([v, l]) => `<option value="${v}" ${role === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </label>
+          ${role === 'coach' ? `
+          <label style="${lbl}">Staff level
+            <select style="${inp}" onchange="adminSetMemberRoleLevel('${esc(member.id)}','coach',this.value,'${esc(name)}')">
+              ${[['head', 'Head coach'], ['assistant', 'Assistant coach'], ['manager', 'Team manager']]
+                .map(([v, l]) => `<option value="${v}" ${level === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </label>` : ''}
+        </div>
+        ${role === 'admin' ? `<p class="muted" style="font-size:11.5px;margin:0 0 12px">Club Admin is a <strong>whole-club</strong> role. For a single group's manager, set the role to Coach with the Team manager level and tick that group below.</p>` : ''}`;
+    }
+
+    async function adminSetMemberRoleLevel(memberId, role, staffLevel, name) {
+      const member = (_adminData.members || []).find(m => m.id === memberId);
+      if (!member) return;
+      const nextLevel = staffLevel || member.staffLevel || 'assistant';
+      const ok = await ceConfirm(`Change ${name}'s club role?`,
+        role === 'admin'
+          ? `${name} will become a whole-club administrator.`
+          : `${name} becomes ${role === 'coach' ? ({ head: 'a Head coach', assistant: 'an Assistant coach', manager: 'a Team manager' })[nextLevel] || 'a Coach' : 'Medical staff'}. Their account, history and any player membership stay exactly as they are — set their coaching groups below.`,
+        { confirmLabel: 'Change role' });
+      if (!ok) { renderPlayers(); return; }
+      await adminAction({ action: 'set_member_access', memberId,
+        role, ...(role === 'coach' ? { staffLevel: nextLevel } : {}) },
+        `${name}'s role updated`);
       renderPlayers();
     }
 

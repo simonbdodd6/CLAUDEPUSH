@@ -244,8 +244,11 @@ test('exactly one implementation of the access editor serves both screens', () =
   // confirmation prompts cannot diverge between the two screens.
   assert.equal((src.match(/function renderAccessSection\(/g) || []).length, 1, 'defined once');
   // Exclude the definition line itself, which also matches the call pattern.
+  // Three call sites share the ONE implementation: Club Admin, the Members
+  // player wrapper, and the staff-row editor panel (staff-only members have
+  // no roster row, so they get their own panel built from the same editor).
   const calls = (src.match(/(?<!function )renderAccessSection\(member, user\)/g) || []).length;
-  assert.equal(calls, 2, `called from both screens, got ${calls}`);
+  assert.equal(calls, 3, `called from all three screens, got ${calls}`);
   assert.ok(fn('renderClubAdmin').includes('renderAccessSection(member, user)'), 'Club Admin call site');
   assert.ok(fn('renderMemberAccessCard').includes('renderAccessSection(member, user)'), 'Members call site');
   assert.equal((src.match(/function renderScopeSection\(/g) || []).length, 1, 'scope editor defined once');
