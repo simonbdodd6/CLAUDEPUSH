@@ -8988,20 +8988,6 @@
     }
 
     // ─── MEDICAL HELPERS ─────────────────────────────────────────────────────
-    function saveMedicalNote(playerId) {
-      const cond=document.getElementById("medCond-"+playerId)?.value.trim(), notes=document.getElementById("medNote-"+playerId)?.value.trim(), ret=document.getElementById("medRet-"+playerId)?.value.trim();
-      // RC4.7 — the shared store is the one authoritative write path.
-      const player = state.players.find(p => String(p.id) === String(playerId));
-      saveSharedMedicalCase({
-        action: 'upsert_case', playerId, userId: player?.userId || '',
-        condition: cond || '', notes: notes || '', returnTarget: ret || '',
-        timelineNote: 'Record updated',
-      }).then(ok => {
-        if (!ok) return;
-        notify("Medical record saved for "+(player?.name||playerId));
-        render();
-      });
-    }
     // ── Core Beta (Phase 3): quick Add Injury ──────────────────────────────────
     // Writes to EXISTING medical stores (state.medicalRecords rich record +
     // state.medicalNotes.condition) and persists via the existing saveState()
@@ -9063,22 +9049,9 @@
         render();
       });
     }
-    function setRehabProgress(playerId, val) {
-      const bar=document.getElementById("rehabBar-"+playerId); const pct=document.getElementById("rehabPct-"+playerId);
-      if (bar) bar.style.width=val+"%"; if (pct) pct.textContent=val+"%";
-      const p = medicalPlayers().find(pl => String(pl.id) === String(playerId));
-      saveSharedMedicalCase({
-        action: 'upsert_case', playerId, userId: p?.userId || '',
-        rehabProgress: Number(val), timelineNote: 'Rehab progress updated',
-      });
-    }
-    function addTreatmentLog() {
-      const pid=document.getElementById("treatPid")?.value, t=document.getElementById("treatText")?.value.trim(), th=document.getElementById("treatBy")?.value.trim(), n=document.getElementById("treatNext")?.value.trim();
-      if (!pid||!t) return showToast("Select player and enter treatment");
-      (state.treatmentLogs=state.treatmentLogs||[]).unshift({id:"tl"+Date.now(),playerId:pid,date:new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short'}),treatment:t,therapist:th||"Self",next:n||"TBC"});
-      notify("Treatment log added");
-    }
-    function saveCoachNotes() { state.coachNotes=document.getElementById("coachNotesArea")?.value||""; saveState('Coach notes saved'); showToast('Coach notes saved ✓'); }
+    // (addTreatmentLog and saveCoachNotes removed with the unreachable legacy
+    //  Medical body — their inputs existed only there. Stored treatmentLogs
+    //  and coachNotes remain readable wherever they still surface.)
 
     // ─── PLAYER DB HELPERS ───────────────────────────────────────────────────
     function setPlayerFilter(f) { state.playerFilter=f; saveState(); render(); }
@@ -14630,141 +14603,16 @@
 
     // ─── MEDICAL ─────────────────────────────────────────────────────────────
     function renderMedical() {
-      // Phase 21 — tab delegation; existing content preserved as legacy fallback
+      // ONE Medical surface: the tabbed views below are the ENTIRE feature.
+      // The pre-Phase-21 single-page body that used to follow these returns
+      // was provably unreachable (the tab value domain is closed to
+      // dashboard/record/timeline) and has been removed, together with its
+      // orphaned handlers (saveMedicalNote, setRehabProgress,
+      // addTreatmentLog, saveCoachNotes) whose inputs existed only there.
       const _mTab = _medActiveTab || 'dashboard';
-      if (_mTab === 'dashboard') { _renderMedicalDashboard(); return; }
-      if (_mTab === 'record')    { _renderMedicalRecord(_medActivePlayerId); return; }
-      if (_mTab === 'timeline')  { _renderMedicalTimeline(_medActivePlayerId); return; }
-
-      const injured     = medicalPlayers().filter(p => p.game === "injured");
-      // RC4.7 — the legacy view's tracker is the ACTIVE caseload too.
-      const hasIssues   = typeof activeMedicalCases === 'function'
-        ? activeMedicalCases(medicalPlayers(), state.medicalRecords, state.medicalNotes)
-        : medicalPlayers().filter(p => p.game === "injured" || p.medical);
-      const medNotes    = state.medicalNotes   || {};
-      const treatLogs   = state.treatmentLogs  || [];
-      const medMessages = state.messages.filter(m => m.sessionId === "medical").slice(0,6);
-
-      medicalMountEl().innerHTML = `
-        <!-- Medical overview stats -->
-        <div class="med-overview-grid">
-          <div class="med-stat"><strong style="color:var(--red)">${injured.length}</strong><small>Active injuries</small></div>
-          <div class="med-stat"><strong style="color:var(--amber)">${hasIssues.filter(p=>!injured.includes(p)).length}</strong><small>Monitoring</small></div>
-          <div class="med-stat"><strong style="color:var(--green)">${medicalPlayers().filter(p=>p.game==="available").length}</strong><small>Cleared to play</small></div>
-          <div class="med-stat"><strong style="color:var(--blue)">${treatLogs.length}</strong><small>Treatment logs</small></div>
-        </div>
-
-        <div class="grid two-col" style="margin-top:14px">
-          <!-- Treatment & rehab tracker -->
-          <div style="display:grid;gap:14px">
-            <div class="card">
-              <h2>Treatment & rehab tracker</h2>
-              <p class="muted">Track each player's recovery progress and return-to-play timeline.</p>
-              <div style="display:grid;gap:10px;margin-top:14px">
-                ${hasIssues.map(p => {
-                  const mn = medNotes[p.id] || {};
-                  const prog = mn.rehabProgress ?? (p.game==="injured" ? 40 : 80);
-                  return `<div class="rehab-card">
-                    <div class="rehab-header">
-                      <div>
-                        <strong style="font-size:14px">${p.name}</strong>
-                        <span class="status ${p.game}" style="margin-left:8px">${statusLabel(p.game)}</span>
-                        <div style="color:var(--muted);font-size:12px;margin-top:3px">${mn.condition || p.medical || "Under review"}</div>
-                      </div>
-                      <div style="text-align:right">
-                        <strong id="rehabPct-${p.id}" style="font-size:18px;color:var(--accent)">${prog}%</strong>
-                        <div style="color:var(--muted);font-size:11px">recovery</div>
-                      </div>
-                    </div>
-                    <input type="range" min="0" max="100" value="${prog}" style="width:100%;accent-color:var(--accent)" oninput="setRehabProgress('${p.id}',this.value)">
-                    <div class="rehab-bar"><span id="rehabBar-${p.id}" style="width:${prog}%"></span></div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
-                      <label style="font-weight:600;font-size:12px;display:block">Return target<input type="date" id="medRet-${p.id}" value="${mn.returnTarget||""}" style="display:block;width:100%;font-size:12px;padding:6px 9px;margin-top:3px"></label>
-                      <label style="font-weight:600;font-size:12px">Condition<input id="medCond-${p.id}" value="${mn.condition||p.medical||""}" placeholder="Describe injury" style="font-size:12px;padding:6px 9px"></label>
-                    </div>
-                    <label style="font-weight:600;font-size:12px;margin-top:8px">Coach notes<textarea id="medNote-${p.id}" style="min-height:56px;font-size:12px;padding:7px 9px">${mn.notes||""}</textarea></label>
-                    <div style="display:flex;gap:7px;margin-top:9px">
-                      <button class="btn primary" type="button" style="flex:1;font-size:12px" onclick="saveMedicalNote('${p.id}')">Save record</button>
-                      <button class="btn" type="button" style="font-size:12px" onclick="requestMedical('${p.id}')">Request check-in</button>
-                    </div>
-                  </div>`;
-                }).join("") || `<div class="empty-state" style="padding:24px 16px">
-                  <div class="empty-icon">✓</div>
-                  <strong>All clear</strong>
-                  <p>No players flagged this week. When a player marks themselves injured in the availability check, they appear here for tracking and return-to-play management.</p>
-                </div>`}
-              </div>
-            </div>
-
-            <!-- Treatment log -->
-            <div class="card">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-                <h2 style="margin:0">Treatment log</h2>
-                <button class="btn primary" type="button" onclick="document.getElementById('addTreatForm').classList.toggle('hidden')">+ Log treatment</button>
-              </div>
-              <div id="addTreatForm" class="hidden" style="border:1px solid var(--accent);border-radius:9px;padding:12px;background:rgba(var(--accent-rgb), 0.05);margin-bottom:14px;display:grid;gap:9px">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
-                  <label>Player<select id="treatPid">${state.players.map(p=>`<option value="${p.id}">${p.name}</option>`).join("")}</select></label>
-                  <label>Therapist<input id="treatBy" placeholder="Dr. / Physio name"></label>
-                </div>
-                <label>Treatment description<input id="treatText" placeholder="Ice, physio session, ultrasound..."></label>
-                <div style="display:grid;grid-template-columns:1fr auto;gap:9px;align-items:end">
-                  <label>Next session / check-in<input id="treatNext" placeholder="Thursday, Saturday..."></label>
-                  <button class="btn primary" type="button" onclick="addTreatmentLog()">Log</button>
-                </div>
-              </div>
-              ${treatLogs.length ? `<div>
-                ${treatLogs.map(t => {
-                  const pname = state.players.find(p=>p.id===t.playerId)?.name || t.playerId;
-                  return `<div class="treatment-row">
-                    <span style="color:var(--muted);font-size:12px">${t.date}</span>
-                    <div><strong style="font-size:13px">${pname}</strong><div style="color:var(--muted);font-size:12px">${t.treatment}</div></div>
-                    <div style="font-size:12px;color:var(--muted)">Next: ${t.next}</div>
-                    <span style="color:var(--muted);font-size:11px">${t.therapist}</span>
-                  </div>`;
-                }).join("")}
-              </div>` : `<p class="muted" style="font-size:12px;padding:12px 0">No treatment logs yet. Use <strong>+ Log treatment</strong> above to record physio sessions, strapping and return-to-play milestones.</p>`}
-            </div>
-          </div>
-
-          <!-- RIGHT: Medical messages + coach notes -->
-          <div style="display:grid;gap:14px;align-content:start">
-            <div class="card">
-              <h2>Medical follow-up messages</h2>
-              <p class="muted">Check-in requests and player responses.</p>
-              <div style="margin-top:14px">
-                ${medMessages.map(m=>`
-                  <div class="med-msg-card ${m.unread?"unread":""}">
-                    <div class="message-meta"><span>${m.type}</span><span>${m.time}</span></div>
-                    <strong>${m.from} → ${m.to}</strong>
-                    <p class="muted" style="margin-top:4px;font-size:13px">${m.text}</p>
-                  </div>`).join("") || `<p class="muted">No medical messages yet. Request check-ins from the tracker above.</p>`}
-              </div>
-              <button class="btn" type="button" style="margin-top:12px;width:100%" onclick="setSection('coach','message')">Open message center →</button>
-            </div>
-
-            <div class="card">
-              <h2>Coach notes</h2>
-              <p class="muted">Private notes — not shared with players.</p>
-              <textarea id="coachNotesArea" style="margin-top:12px;min-height:160px" onblur="saveCoachNotes()">${state.coachNotes||""}</textarea>
-              <button class="btn" type="button" style="margin-top:10px;width:100%" onclick="saveCoachNotes()">Save notes</button>
-            </div>
-
-            <div class="card">
-              <h2>Medical overview</h2>
-              <table class="cs-table" style="margin-top:11px">
-                <thead><tr><th>Player</th><th>Status</th><th>Return</th></tr></thead>
-                <tbody>
-                  ${hasIssues.map(p=>{const mn=medNotes[p.id]||{};return`<tr>
-                    <td>${p.name}</td>
-                    <td><span class="status ${p.game}">${statusLabel(p.game)}</span></td>
-                    <td style="font-size:12px;color:var(--muted)">${mn.returnTarget||"TBC"}</td>
-                  </tr>`;}).join("")||`<tr><td colspan="3" style="color:var(--muted);text-align:center">All players clear.</td></tr>`}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>`;
+      if (_mTab === 'record')   { _renderMedicalRecord(_medActivePlayerId); return; }
+      if (_mTab === 'timeline') { _renderMedicalTimeline(_medActivePlayerId); return; }
+      _renderMedicalDashboard();
     }
 
     function requestMedical(playerId) {
@@ -23280,7 +23128,6 @@
       const p    = medicalPlayers().find(pl => pl.id === playerId);
       if (!p) { el.innerHTML = _medTabBar(true) + '<div class="card" style="padding:24px;text-align:center;color:var(--muted)">Player not found.</div>'; return; }
       const rec  = normalizeMedicalRecord((state.medicalRecords||{})[playerId]);
-      const mn   = (state.medicalNotes||{})[playerId] || {};
       const ts   = p.trainingStatus || '';
       const INP  = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);width:100%;box-sizing:border-box';
       const TA   = INP + ';font-family:inherit;resize:vertical;min-height:72px';
@@ -23385,24 +23232,13 @@
                 taField('Concussion notes / dates', 'concussionNotes', rec.concussionNotes) +
               '</div>' +
             '</div>' +
-            '<div class="card">' +
-              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Legacy rehab (existing)</div>' +
-              '<div style="display:grid;gap:10px">' +
-                '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Condition' +
-                  '<input type="text" value="' + esc(mn.condition||p.medical||'') + '" placeholder="Brief condition note"' +
-                  ' style="' + INP + '"' +
-                  ' onchange="state.medicalNotes=state.medicalNotes||{};state.medicalNotes[\'' + playerId + '\']=state.medicalNotes[\'' + playerId + '\']||{};state.medicalNotes[\'' + playerId + '\'].condition=this.value;saveState(\'medical\');">' +
-                '</label>' +
-                '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Return target' +
-                  '<input type="date" value="' + esc(mn.returnTarget||'') + '"' +
-                  ' style="' + INP + '"' +
-                  ' onchange="state.medicalNotes=state.medicalNotes||{};state.medicalNotes[\'' + playerId + '\']=state.medicalNotes[\'' + playerId + '\']||{};state.medicalNotes[\'' + playerId + '\'].returnTarget=this.value;saveState(\'medical\');">' +
-                '</label>' +
-              '</div>' +
-            '</div>' +
           '</div>' +
         '</div>';
     }
+    // (The old duplicate rehab card is gone: its two fields duplicated the
+    //  authoritative editor's Injury description and Expected return, and its
+    //  local-only medicalNotes writes were silently overwritten by every
+    //  server hydrate — edits made there LOOKED saved and then vanished.)
 
     function _renderMedicalTimeline(playerId) {
       const el = medicalMountEl();

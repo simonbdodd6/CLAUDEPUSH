@@ -306,12 +306,14 @@ test('the Medical listing heading and empty state describe cases, not availabili
   assert.equal(src.includes('Squad medical status ('), false, 'old roster heading gone');
   assert.match(src, /No active medical cases\. Players appear here once an injury is recorded\./,
     'empty state explains the model');
-  const legacy = fn('renderMedical');
-  // RC4.7 — the player list is now resolved through medicalPlayers() so a
-  // player with MEDICAL_ACCESS (who never loads the roster) sees the scoped
-  // projection instead. The caseload DEFINITION is unchanged.
-  assert.match(legacy, /activeMedicalCases\(medicalPlayers\(\)/,
-    'the legacy view uses the same caseload definition');
+  // The unreachable pre-Phase-21 legacy body has been REMOVED: renderMedical
+  // is now pure tab delegation, so the tabbed views (whose caseload is
+  // activeMedicalCases over the group-scoped medicalPlayers()) are the ONLY
+  // Medical surface.
+  const renderer = fn('renderMedical');
+  assert.match(renderer, /_renderMedicalDashboard\(\)/, 'dashboard is the default tab');
+  assert.equal(/Treatment & rehab tracker/.test(renderer), false, 'legacy body gone');
+  assert.equal(src.includes("oninput=\"setRehabProgress("), false, 'no legacy rehab slider markup');
 });
 
 test('a player with no explicit grant belongs to the club\'s only group', () => {

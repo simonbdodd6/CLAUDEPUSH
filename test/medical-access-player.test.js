@@ -168,7 +168,8 @@ test('every medical write goes to the shared endpoint, not a private draft', () 
   assert.match(save, /\/api\/publish\?resource=medical/);
   assert.match(save, /await loadMedicalFromServer\(\)/, 'refetches so both users converge');
 
-  for (const writer of ['saveNewInjury', 'saveMedicalNote', 'clearSharedMedicalCase']) {
+  // (saveMedicalNote was removed with the unreachable legacy Medical body.)
+  for (const writer of ['saveNewInjury', 'clearSharedMedicalCase']) {
     const body = fn(writer);
     assert.match(body, /saveSharedMedicalCase\(/, `${writer} uses the authoritative path`);
     assert.equal(/saveState\(/.test(body), false,
@@ -340,12 +341,14 @@ test('the Add Injury panel state lives in app state, not in the DOM', () => {
 
 // ── EVERY medical write reaches the SHARED store ──────────────────────────
 test('the record editor, training status and rehab all write to the shared store', () => {
-  for (const w of ['saveMedRecord', 'setPlayerTrainingStatus', 'setRehabProgress',
-                   'saveMedicalNote', 'saveNewInjury', 'clearSharedMedicalCase']) {
+  // (setRehabProgress and saveMedicalNote were removed with the unreachable
+  //  legacy Medical body — the remaining writers are the live surface.)
+  for (const w of ['saveMedRecord', 'setPlayerTrainingStatus',
+                   'saveNewInjury', 'clearSharedMedicalCase']) {
     assert.match(fn(w), /saveSharedMedicalCase\(/, `${w} writes to the shared store`);
   }
   // ...and none of them persists medical data into the private coach draft.
-  for (const w of ['saveMedRecord', 'setRehabProgress', 'saveMedicalNote', 'saveNewInjury']) {
+  for (const w of ['saveMedRecord', 'saveNewInjury']) {
     assert.equal(/saveState\(/.test(fn(w)), false, `${w} must not write the private draft`);
   }
   assert.match(fn('saveMedRecord'), /MED_FIELD_MAP\[field\]/, 'legacy field names map onto the shared model');
