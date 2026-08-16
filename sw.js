@@ -1,6 +1,11 @@
 // coacheseyeGPT service worker: receive push messages and record player replies.
 // SW_VERSION is queried by the diagnostics panel to confirm the running build.
-const SW_VERSION = '20260702.1';
+// Bumping it is ALSO the lever that refreshes long-lived PWA pages: the new
+// SW activates (skipWaiting + claim) and reloads every controlled window
+// once, so a page that has stayed open across deploys picks up the current
+// bundle. Without this, an installed PWA can run a weeks-old build forever —
+// the SW never caches the shell, but the page itself never re-navigates.
+const SW_VERSION = '20260816.1';
 const APP_URL = '/';
 
 // Cache used to persist the push event log across page reloads and app restarts.
@@ -9,7 +14,16 @@ const LOG_CACHE = 'push-diag-v1';
 const LOG_KEY   = 'push-event-log';
 
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
+self.addEventListener('activate', event => event.waitUntil((async () => {
+  await self.clients.claim();
+  // Refresh every open window ONCE so pages that outlived deploys load the
+  // current bundle. Runs only when sw.js itself changes (a deliberate bump),
+  // never on ordinary page loads.
+  try {
+    const wins = await self.clients.matchAll({ type: 'window' });
+    await Promise.all(wins.map(w => w.navigate(w.url).catch(() => {})));
+  } catch (_) { /* navigation refresh is best-effort */ }
+})()));
 
 // Broadcast a message to all open windows (live diagnostics while app is open).
 function broadcast(data) {

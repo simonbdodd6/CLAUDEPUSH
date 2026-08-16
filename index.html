@@ -6300,6 +6300,39 @@
 
     let _swVersion = null; // version string reported by the active SW
 
+    // ── STALE-PAGE SELF-HEAL ────────────────────────────────────────────────
+    // An installed PWA keeps one page alive across deploys: the SW never
+    // caches the shell, but the page never re-navigates either, so a device
+    // can run a weeks-old bundle where new features simply do not exist
+    // (a real Seniors player was still answering the legacy three-slot
+    // availability screen days after dated weeks shipped). When the served
+    // build (stamped at deploy) no longer matches the live /api/config
+    // version, reload ONCE per new version — on foreground resume (the safe
+    // moment an iOS PWA comes back) or while hidden, never mid-use.
+    let _driftReloadArmed = true;
+    async function checkBuildDrift(allowVisible) {
+      try {
+        if (!_driftReloadArmed) return;
+        const sha = String((typeof _BUILD_INFO === 'object' && _BUILD_INFO?.sha) || '');
+        if (!sha || sha === 'DEV') return;               // local/dev builds never self-reload
+        const cfg = await fetch('/api/config').then(r => r.ok ? r.json() : null).catch(() => null);
+        const live = String(cfg?.version || '');
+        if (!live || live === sha) return;
+        if (!allowVisible && document.visibilityState === 'visible') return;
+        const guard = 'ce-drift-reload-' + live;
+        try {
+          if (sessionStorage.getItem(guard)) return;     // one attempt per version per tab
+          sessionStorage.setItem(guard, '1');
+        } catch (_) { /* storage unavailable — _driftReloadArmed still stops loops */ }
+        _driftReloadArmed = false;
+        location.reload();
+      } catch (_) { /* offline — try again on the next resume */ }
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkBuildDrift(true);
+    });
+    setInterval(() => checkBuildDrift(false), 60 * 60 * 1000);
+
     async function initServiceWorker() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
       try {
