@@ -9469,9 +9469,20 @@
       if (status) {
         switch (Number(status)) {
           case 401: return 'The email or password is incorrect.';
-          case 403: return context === 'join'
-            ? "This account isn't active for this team yet — your coach needs to approve it."
-            : "You don't have access yet — check with your coach.";
+          case 403:
+            // INVITE claims 403 for exactly one reason: the email already has
+            // an account and the typed password doesn't match it (the
+            // account-takeover guard). The old generic wording ("You don't
+            // have access yet — check with your coach") sent real players to
+            // their coach for a problem only they could fix.
+            if (context === 'invite') {
+              return 'An account with this email already exists. Enter that '
+                + "account's password to join with it — or use a different email. "
+                + 'If you already registered, just close this and log in.';
+            }
+            return context === 'join'
+              ? "This account isn't active for this team yet — your coach needs to approve it."
+              : "You don't have access yet — check with your coach.";
           case 404: return context === 'invite'
             ? "We couldn't find this invite. Check the link or ask your coach for a new one."
             : "We couldn't find an account for that email.";
