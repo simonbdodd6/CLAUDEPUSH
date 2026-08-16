@@ -310,7 +310,10 @@ test('Medical is not forked — the same renderer serves both shells', () => {
 
 test('a player with Medical sees the caseload via the scoped projection', () => {
   const players = fn('medicalPlayers');
-  assert.match(players, /state\.players.*length.*return state\.players/s, 'staff keep the full roster');
+  // Staff read the OPERATING group's roster (multi-group isolation); the
+  // player view keeps the raw roster — the server scopes that reply already.
+  assert.match(players, /operationalPlayers\(\)/s, 'staff follow the operating group');
+  assert.match(players, /activeView !== 'player'/, 'group scoping is coach-view only');
   assert.match(players, /_sharedMedical\.players/, 'a player falls back to the medical-scoped projection');
   // The roster is coach-only, which is exactly why the fallback is needed.
   assert.match(fn('loadRosterFromServer'), /if \(!isCoach\(\)\) return;/);

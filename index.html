@@ -23042,7 +23042,16 @@
     }
 
     function medicalPlayers() {
-      if (Array.isArray(state.players) && state.players.length) return state.players;
+      // GROUP context (coach view): the caseload roster follows the OPERATING
+      // group, mirroring the &group= that loadMedicalFromServer fetches with.
+      // The dashboard flags injuries from roster fields (p.game, p.medical)
+      // as well as records, so an unscoped state.players leaks every group's
+      // cases at once. Player view keeps the raw roster — the server already
+      // scopes that reply to the player's own group.
+      const rows = state.activeView !== 'player' && typeof operationalPlayers === 'function'
+        ? operationalPlayers()
+        : (Array.isArray(state.players) ? state.players : []);
+      if (Array.isArray(rows) && rows.length) return rows;
       return (typeof _sharedMedical === 'object' && _sharedMedical.players) || [];
     }
 
@@ -26954,6 +26963,11 @@
       return ids;
     }
     let _allowedDmParticipantIds = _buildInitialAllowedDmIds();
+    // PRODUCT RULE — private DMs are ACCOUNT-WIDE. A direct conversation is
+    // private correspondence between two people; it has no groupId and never
+    // follows the operational group. Switching groups scopes DISCOVERY (who
+    // you can start a new conversation with), never the existing inbox — an
+    // existing DM with Seniors staff stays listed while operating U18.
     function _filterCanonicalConversations(convs, trustServer = false) {
       const meId = String(chatMe()?.id || '');
       return (Array.isArray(convs) ? convs : []).filter(c => {
@@ -29595,6 +29609,13 @@
       _trainingPubState = {}; _trainingPubLoadedAt = 0;
       _publishedStateLoadedAt = 0;
       _sharedMedical = { loaded: false, cases: [], players: [] };
+      // Resetting the store is not enough: state.medicalRecords/Notes are a
+      // hydrated VIEW of it and would keep rendering the OLD group's caseload.
+      // Drop them (hydrate from the now-empty store) and refetch under the new
+      // group — loadMedicalFromServer's own group guard discards stale replies,
+      // and it no-ops entirely without medical_access.
+      if (typeof hydrateMedicalFromShared === 'function') hydrateMedicalFromShared();
+      if (typeof loadMedicalFromServer === 'function') loadMedicalFromServer().catch(() => {});
     }
 
     /** The group a coach-context training request should name — '' in the
