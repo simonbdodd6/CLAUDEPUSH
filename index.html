@@ -19285,18 +19285,32 @@
           </div>`;
       }
 
-      // RC4.7 — PROGRESSIVE DISCLOSURE. A player is not staff: showing them
-      // every coaching and team-management checkbox implied they held those
-      // powers. They get the one control that genuinely applies. Change their
-      // club role to a staff role to reveal the scope controls.
+      // A player is not staff — but coaching access is a FIRST-CLASS concept
+      // on every profile: a club-wide admin grants scoped coaching right
+      // here, no role dance first. Ticking a group performs the same upgrade
+      // the scoped staff invite does (role coach + exactly that group) via
+      // the existing set_member_access contract; playerGroupId is untouched.
+      // The boxes start UNTICKED: a player holds no coaching authority, and
+      // the null-scope legacy derivation must never paint phantom ticks.
       if (!isStaffMember(member)) {
+        const canGrantCoaching = canI('assign_access')
+          && ((_adminData.structureAccess?.clubWideStaffIds || []).includes(String(state.currentUserId || ''))
+              || !(_adminData.structureAccess?.clubWideStaffIds || []).length);
+        const coachingRows = canGrantCoaching ? activeGroups.map(g => row({
+          checked: false,
+          main: `Can coach ${esc(g.name)}`,
+          sub: 'Adds scoped coaching to this same account',
+          onchange: `adminGrantPlayerCoaching('${esc(member.id)}','${esc(g.id)}',this.checked,'${esc(name)}')`,
+        })).join('') : '';
         return `
           <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
             <div class="ce-ahead">Can access</div>
             ${row({ checked: true, disabled: true, main: 'Player access',
                     sub: 'Their own availability, schedule, selections and messages' })}
             ${medicalRow}
-            <p class="muted" style="font-size:11.5px;margin:8px 2px 0">To give ${esc(name)} coaching or management responsibilities, change their club role above.</p>
+            ${canGrantCoaching
+              ? `<div class="ce-ahead" style="margin-top:12px">Coaching access</div>${coachingRows}`
+              : `<p class="muted" style="font-size:11.5px;margin:8px 2px 0">To give ${esc(name)} coaching or management responsibilities, ask a whole-club administrator.</p>`}
           </div>`;
       }
 
@@ -19404,6 +19418,27 @@
     /** Send the member's FULL scope — the server replaces it wholesale. */
     async function adminSaveScope(memberId, scope, successMsg) {
       await adminAction({ action: 'set_member_access', memberId, accessScope: scope }, successMsg);
+      render();
+    }
+
+    /** Grant an existing PLAYER scoped coaching from their profile — the
+     *  same end state as claiming a scoped staff invite: role coach
+     *  (assistant unless they already carry a level) + EXACTLY the ticked
+     *  group. playerGroupId and eligibility are never touched; the server
+     *  (requireClubManage) refuses anyone who is not a club-wide admin. */
+    async function adminGrantPlayerCoaching(memberId, groupId, on, name) {
+      const member = (_adminData.members || []).find(m => m.id === memberId);
+      if (!member) return;
+      if (!on) { render(); return; }   // a player has nothing to untick
+      const groupName = (_adminData.structure?.groups || []).find(g => g.id === groupId)?.name || 'that group';
+      const ok = await ceConfirm(`Make ${name} a coach of ${groupName}?`,
+        `They stay a player exactly as they are — this adds scoped coaching access for ${groupName} to the same account.`,
+        { confirmLabel: 'Add coaching access' });
+      if (!ok) { render(); return; }
+      await adminAction({ action: 'set_member_access', memberId,
+        role: 'coach', staffLevel: member.staffLevel || 'assistant',
+        accessScope: { clubWide: false, groups: [{ groupId, status: 'active' }], teams: [] } },
+        `${name} can now coach ${groupName}`);
       render();
     }
 

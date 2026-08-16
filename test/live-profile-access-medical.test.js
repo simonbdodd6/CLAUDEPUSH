@@ -240,14 +240,20 @@ test('"player" is never offered as an assignable staff profile', () => {
 
 test('a player sees only the controls that apply to them', () => {
   const scopeSection = fn('renderScopeSection');
-  assert.match(scopeSection, /if \(!isStaffMember\(member\)\)/, 'progressive disclosure branch');
-  const branch = scopeSection.slice(scopeSection.indexOf('if (!isStaffMember(member))'),
-    scopeSection.indexOf('if (!isStaffMember(member))') + 900);
+  assert.match(scopeSection, /if \(!isStaffMember\(member\)\)/, 'player-specific branch');
+  const branchStart = scopeSection.indexOf('if (!isStaffMember(member))');
+  const branch = scopeSection.slice(branchStart, branchStart + 1800);
   assert.match(branch, /Player access/);
   assert.match(branch, /medicalRow/, 'Medical stays available as the additive option');
-  assert.equal(/Can coach/.test(branch), false, 'no coaching scope checkboxes for a player');
+  // Coaching access is now FIRST-CLASS on the player profile — but only a
+  // club-wide admin gets the mutating checkboxes (unticked: a player holds
+  // no coaching authority and derived phantom ticks are forbidden); anyone
+  // else sees a read-only pointer, and no club-wide checkbox ever shows.
+  assert.match(branch, /canGrantCoaching/, 'checkboxes gated on club-wide standing');
+  assert.match(branch, /Coaching access/, 'the section is explicit');
+  assert.match(branch, /checked: false/, 'boxes start unticked — no derived ticks');
   assert.equal(/Can manage entire club/.test(branch), false, 'no club-wide checkbox for a player');
-  assert.match(branch, /change their club role/i, 'explains how to make them staff');
+  assert.match(branch, /whole-club administrator/i, 'non-admin staff get a pointer, not controls');
 });
 
 // ── 4. MEDICAL = ACTIVE CASES ──────────────────────────────────────────────
