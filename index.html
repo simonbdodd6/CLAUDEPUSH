@@ -7074,31 +7074,33 @@
         null;
     }
 
+    let _availAuthPromptedAt = 0; // one auth prompt per burst, not one per session
     async function saveAvailabilityResponseToServer(sessionId, response, reason) {
       // 'injured' is a legacy local-only status — map to unavailable + reason:injury for server.
       const sendResponse = response === 'injured' ? 'unavailable' : response;
       const sendReason   = response === 'injured' ? 'injury'     : (reason || '');
-      let endpoint = '';
+      // Availability writes are AUTHENTICATED-ONLY. The old push-endpoint
+      // identity fallback is gone server-side (it let an expired session write
+      // into the default club), so a lapsed session now answers 401 — say so
+      // honestly and route to the existing login UX instead of letting the
+      // success toast stand. A network failure stays quiet (offline ≠ signed
+      // out; the answer is kept locally exactly as before).
       try {
-        // Best-effort push endpoint, used ONLY for the unauthenticated fallback.
-        // NEVER block the save on it: navigator.serviceWorker.ready can stay
-        // pending forever when no active SW exists (iOS / first load / private
-        // mode / notifications declined), which hung this POST so a tap updated
-        // the UI but never reached the server. Race it against a short timeout so
-        // the authenticated POST always fires.
-        const sub = await Promise.race([
-          Promise.resolve(navigator.serviceWorker?.ready)
-            .then(reg => (reg ? reg.pushManager.getSubscription() : null))
-            .catch(() => null),
-          new Promise(resolve => setTimeout(() => resolve(null), 600)),
-        ]);
-        endpoint = sub?.endpoint || '';
+        const res = await fetch('/api/availability', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ response: sendResponse, reason: sendReason, sessionId })
+        });
+        if (res.status === 401 || res.status === 403) {
+          if (Date.now() - _availAuthPromptedAt > 4000) {
+            _availAuthPromptedAt = Date.now();
+            showToast('Not saved — your session has expired. Please log in again.');
+            checkServerSession().catch(() => {});   // flips the app into its signed-out presentation
+            setAuthTab('login');                    // the same entry the Welcome screen / banner use
+          }
+        }
+        return res;
       } catch {}
-      return fetch('/api/availability', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endpoint, response: sendResponse, reason: sendReason, sessionId })
-      }).catch(() => {});
     }
     function applyTemplate() {
       const sel  = document.getElementById("templateSelect");

@@ -167,7 +167,13 @@ test('cron weekly reminder handler targets only active members (end-to-end)', as
   assert.equal(res.body.total, 1, 'only the active member (Amy) is targeted; removed + non-member subscriptions excluded');
 });
 
-test('availability saves registered player replies and rejects unknown endpoints', async () => {
+test('availability refuses session-less replies — the endpoint identity fallback is closed', async () => {
+  // CONTRACT CHANGE (tenant wall): the unauthenticated subscription reply used
+  // to write into the default club's initial group. Multi-club made that a
+  // cross-tenant write (a stale client with an expired session polluted the
+  // default club's board with another club's answer), so EVERY write now
+  // requires an authenticated session — a registered endpoint grants nothing.
+  // Full contract: test/availability-write-tenant-wall.test.js.
   store.clear();
   store.set('app:subscriptions', JSON.stringify([
     { label: 'Simon Dodd', subscription: { endpoint: 'endpoint-1' } },
@@ -177,15 +183,14 @@ test('availability saves registered player replies and rejects unknown endpoints
     method: 'POST',
     body: { endpoint: 'endpoint-1', response: 'available', sessionId: 'tue' },
   }, good);
-  assert.equal(good.statusCode, 200);
-  // D1b Pass 3: the unauthenticated subscription reply belongs to the default
-  // club's INITIAL group — group-scoped storage, legacy ownership rule.
-  assert.equal(JSON.parse(store.get('app:availability:boitsfort-rfc:group:grp_initial:tue'))['Simon Dodd'].response, 'available');
+  assert.equal(good.statusCode, 401, 'registered endpoint without a session: refused');
+  assert.equal(store.get('app:availability:boitsfort-rfc:group:grp_initial:tue'), undefined,
+    'nothing written to the default club');
 
   const bad = response();
   await availabilityHandler({
     method: 'POST',
     body: { endpoint: 'not-owned', response: 'available', sessionId: 'tue' },
   }, bad);
-  assert.equal(bad.statusCode, 404);
+  assert.equal(bad.statusCode, 401, 'unknown endpoint without a session: same refusal');
 });

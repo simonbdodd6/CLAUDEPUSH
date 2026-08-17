@@ -1,6 +1,5 @@
 // Availability replies from notification actions or the player app.
 // Also handles dev-only seed/reset actions when DEV_LOGIN=true.
-import { load } from './_lib.js';
 import { loadAvailability, saveAvailability, loadAvailabilityForIdentity, resolveAvailabilityForIdentities,
          loadGroupAvailability, saveGroupAvailability,
          loadGroupAvailabilityForIdentity, resolveGroupAvailabilityForIdentities } from './_availabilityStore.js';
@@ -102,19 +101,6 @@ function availabilityIdentityFromSession(sessionContext = {}) {
     label: profile.displayName || user.displayName ||
       [user.firstName, user.lastName].filter(Boolean).join(' ') ||
       user.name || user.email || userId,
-  };
-}
-
-function availabilityIdentityFromSubscription(subscription = {}) {
-  const userId = subscription.userId || '';
-  const playerId = subscription.playerId || userId || '';
-  const label = subscription.label || 'Player';
-  return {
-    key: userId || playerId || label,
-    userId,
-    playerId,
-    legacyPlayerId: subscription.legacyPlayerId || '',
-    label,
   };
 }
 
@@ -278,7 +264,7 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
-    const { action: postAction, endpoint, response, sessionId, reason, sessions: clearSessions } = req.body || {};
+    const { action: postAction, response, sessionId, reason, sessions: clearSessions } = req.body || {};
 
     // ── Coach-gated clear_week action ──────────────────────────────────────────
     if (postAction === 'clear_week') {
@@ -324,18 +310,24 @@ export default async function handler(req, res) {
     }
     const safeReason = REASONS.has(reason) ? (reason || '') : '';
 
-    let identity = availabilityIdentityFromSession(sessionContext);
+    // ── TENANT WALL — the session-less write fallback is CLOSED ────────────
+    // An availability answer is a WRITE into one club's keyspace, so it
+    // requires an authenticated session: the club AND the group both derive
+    // from the caller's own server-side membership, never from the request
+    // body. The old compatibility path (identity looked up from a client-
+    // supplied push-subscription `endpoint`, club defaulting to the DEFAULT
+    // team) let an expired/missing session silently write into the default
+    // tenant — a real stray production record proved it. An old client
+    // posting with a lapsed session now gets a clear 401 (and writes
+    // nothing anywhere) instead of polluting another club's board.
+    const identity = availabilityIdentityFromSession(sessionContext);
     if (!identity) {
-      if (!endpoint) return res.status(400).json({ error: 'endpoint is required without an authenticated session' });
-      const subscription = (await load()).find(item => item.subscription?.endpoint === endpoint);
-      if (!subscription) return res.status(404).json({ error: 'Subscription not registered' });
-      identity = availabilityIdentityFromSubscription(subscription);
+      return res.status(401).json({ ok: false, error: 'Your session has expired — please sign in to save your availability', code: 'session_required' });
     }
-
-    // A signed-in player writes into their OWN club's keyspace; the legacy
-    // subscription path (no session) belongs to the default club by definition.
-    // The GROUP comes from the writer's own membership — never from the client.
-    const writeTeamId = tenantTeamId(sessionContext) || DEFAULT_TEAM.id;
+    const writeTeamId = tenantTeamId(sessionContext);
+    if (!writeTeamId) {
+      return res.status(403).json({ ok: false, error: 'Your account is not an active member of a club', code: 'no_membership' });
+    }
     const writeGroup = await playerGroupForIdentity(writeTeamId, identity);
     const responses = await loadGroupAvailability(writeTeamId, writeGroup, sessionId);
     responses[identity.key] = {
