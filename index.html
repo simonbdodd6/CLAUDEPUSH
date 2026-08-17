@@ -10499,6 +10499,13 @@
 
     function showSection() {
       document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+      // The view can only ever be coach or player. An unknown value (e.g. a
+      // bad setSection target persisted by an older bundle) stranded users on
+      // a half-rendered player page — coerce to this account's real capacity
+      // so a corrupted saved state self-heals on the next render.
+      if (state.activeView !== "coach" && state.activeView !== "player") {
+        state.activeView = isCoach() ? "coach" : "player";
+      }
       if (state.activeView === "coach" && !isCoach()) state.activeView = "player";
       // A revoked grant must close the route, not just the nav entry: a player
       // parked on Medical when access is withdrawn falls back to Home rather
@@ -12449,7 +12456,7 @@
                   '<div style="font-size:13px;font-weight:700">Availability — vs ' + esc(_upcoming.opposition||'TBC') + '</div>' +
                   '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + _daysStr + '</div>' +
                 '</div>' +
-                '<button class="btn" type="button" style="font-size:12px" onclick="setSection(\'fixtures\')">View fixtures</button>' +
+                '<button class="btn" type="button" style="font-size:12px" onclick="setSection(\'coach\',\'fixtures\')">View fixtures</button>' +
               '</div>' +
               '<div style="display:flex;gap:10px;font-size:12px;flex-wrap:wrap">' +
                 '<span style="color:#34d399;font-weight:700">' + _summ.available + ' available</span>' +
