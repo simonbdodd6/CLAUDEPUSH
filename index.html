@@ -8272,10 +8272,28 @@
         String(d.fixtureId || '') === selectedFx && String(d.sideId || '') === selectedSide);
       const draftByUser = new Map(drafts.map(d => [String(d.userId), d]));
       const mine = draftByUser.get(meId);
-      // Every coach/staff identity on this team (name + role), de-duplicated.
+      // GROUP scope — the SELECTED FIXTURE's group decides whose drafts
+      // belong on this panel (a legacy unscoped fixture is initial-group
+      // data; with no linked fixture the OPERATING group stands in). The
+      // filter consumes the same server-computed standing ids as Members →
+      // Coaches & staff, so the two lists can never disagree: club-wide
+      // staff appear everywhere, scoped staff in their groups only —
+      // playerGroupId and a bare role/staffLevel grant nothing.
+      const _mcFxRec = matchCentreSelectedFixture();
+      const _mcGid = _mcFxRec
+        ? (String(_mcFxRec.groupId || '').trim() || CE_INITIAL_GROUP_ID)
+        : String(state.operationalGroupId || '');
+      const _mcAcc = _adminData.structureAccess;
+      const _mcStaffInScope = u => {
+        if (!_mcGid || !_mcAcc) return true;   // pre-structure/legacy clubs: today's full list
+        if ((_mcAcc.clubWideStaffIds || []).includes(String(u.id))) return true;
+        return ((_mcAcc.groupStaffIds || {})[_mcGid] || []).includes(String(u.id));
+      };
+      // Every IN-SCOPE coach/staff identity on this team, de-duplicated.
       const seen = new Set();
       const staff = (state.users || [])
         .filter(u => ['coach', 'admin', 'medical'].includes(u.role) && u.name)
+        .filter(_mcStaffInScope)
         .filter(u => { const k = String(u.id); if (seen.has(k)) return false; seen.add(k); return true; });
       const others = staff.filter(u => String(u.id) !== meId);
       const mineUpdated = mine?.updatedAt ? `Updated ${_draftTimeAgo(mine.updatedAt)}` : 'Not saved yet';

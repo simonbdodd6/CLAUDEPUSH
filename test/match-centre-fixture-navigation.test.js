@@ -404,6 +404,11 @@ function draftsPanel(selectedFixtureId, coachDraftsList, users) {
     function matchCentreSelectedSide() { return null; }
     // single-group harness: group context passes fixtures through
     function contextFixtures() { return state.fixtures || []; }
+    // legacy club shape: no structure access loaded → staff scope filter
+    // falls back to the full staff list (the pre-multi-group behaviour
+    // these pins were recorded against)
+    const CE_INITIAL_GROUP_ID = 'grp_initial';
+    const _adminData = {};
     ${fn('matchCentreSelectedFixture')}
     ${fn('matchCentreFixtureId')}
     ${fn('mcFixtureDateLabel')}
@@ -497,6 +502,11 @@ function remindHarness(rows, { confirm = true } = {}) {
     ${fn('mcFixtureDateLabel')}
     // single-group harness: group context passes fixtures through
     function contextFixtures() { return state.fixtures || []; }
+    // legacy club shape: no structure access loaded → staff scope filter
+    // falls back to the full staff list (the pre-multi-group behaviour
+    // these pins were recorded against)
+    const CE_INITIAL_GROUP_ID = 'grp_initial';
+    const _adminData = {};
     ${fn('matchCentreSelectedFixture')}
     ${fn('mcFixtureRemindTargets')}
     let _mcRemindInFlight = false;
