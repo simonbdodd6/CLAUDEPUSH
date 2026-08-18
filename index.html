@@ -4155,15 +4155,19 @@
     .mc-picker-head { display: flex; align-items: center; justify-content: space-between; padding: 11px 13px 7px; }
     .mc-picker-title { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: var(--brand-2, #34d399); text-transform: uppercase; }
     .mc-picker-x { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; }
-    .mc-picker-x:hover { color: var(--ink); }
+    /* #ECEDF2, not var(--ink): the popup is a DARK surface in BOTH themes
+       (hard-coded #14151c above), but the light theme flips --ink to a
+       near-black — typed names and player rows became invisible against
+       the popup's own background. Its text must never follow page tokens. */
+    .mc-picker-x:hover { color: #ECEDF2; }
     .mc-picker-search { margin: 0 13px 9px; height: 36px; padding: 0 12px; border-radius: 10px;
-      border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--ink); font-size: 13px;
+      border: 1px solid var(--line); background: rgba(255,255,255,.04); color: #ECEDF2; caret-color: #ECEDF2; font-size: 13px;
       box-sizing: border-box; line-height: 34px; white-space: nowrap; overflow: hidden; cursor: text; }
     .mc-picker-search:empty:before { content: attr(data-placeholder); color: var(--faint); pointer-events: none; }
     .mc-picker-search:focus { outline: none; border-color: var(--brand-line, rgba(52,211,153,.5)); }
     .mc-picker-list { overflow-y: auto; padding: 0 9px 9px; display: flex; flex-direction: column; gap: 2px; }
     .mc-picker-row { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
-      background: none; border: 0; border-radius: 10px; padding: 7px 8px; cursor: pointer; color: var(--ink); transition: background .12s; }
+      background: none; border: 0; border-radius: 10px; padding: 7px 8px; cursor: pointer; color: #ECEDF2; transition: background .12s; }
     .mc-picker-row:hover { background: rgba(255,255,255,.07); }
     .mc-picker-av { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 9px; font-weight: 800; flex: 0 0 auto; }
     .mc-picker-nm { font-size: 13px; font-weight: 650; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
