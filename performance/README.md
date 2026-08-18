@@ -12,9 +12,17 @@ Premium strength & conditioning module.
   blocks), and the player/coach library experience. See performance/docs/
   exercise-*.md.
 
-Programme generation is **not** part of SC1–SC3 — nothing prescribes
-workouts, recommends loads, or makes medical judgements. The future engine
-may select only approved CoachEasier-validated exercises.
+- **SC4** — programme architecture: the full
+  Programme → Version → Phase → Week → Training Day → Session → Block →
+  Exercise Prescription → Set Prescription hierarchy, immutable published
+  versions, assignment-snapshot contracts, ownership/visibility and audit
+  rules. Pure domain — no UI, no programmes created. See
+  performance/docs/programme-*.md.
+
+Programme generation is **not** part of SC1–SC4 — nothing prescribes
+workouts, recommends loads, calculates values, or makes medical judgements.
+The future engine may select only approved CoachEasier-validated exercises
+and must obey the SC4 versioning and snapshot contracts.
 
 This directory is the **module home** for everything Performance-specific that
 is not UI chrome. It follows the same architectural split the rest of
