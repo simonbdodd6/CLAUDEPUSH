@@ -195,7 +195,10 @@ function sendError(res, error, fallbackStatus = 400) {
     return res.status(500).json({ ok: false, error: 'Something went wrong on our side — please try again.' });
   }
   const status = intentional ? error.status : fallbackStatus;
-  return res.status(status).json({ ok: false, error: error?.message || 'Identity request failed' });
+  // Author-written machine codes (e.g. 'account_exists') ride along so the
+  // client can pick DETERMINISTIC copy without sniffing message text.
+  return res.status(status).json({ ok: false, error: error?.message || 'Identity request failed',
+    ...(error?.code ? { code: error.code } : {}) });
 }
 
 // RC4.9B — after a permanent deletion, any still-unclaimed invitation for that

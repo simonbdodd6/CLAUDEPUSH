@@ -42,6 +42,15 @@ test('clubWizErrorMessage: 409 returns conflict message', () => {
   assert.equal(msg, 'This club or team already exists. Please choose a different name.');
 });
 
+test('clubWizErrorMessage: 409 + account_exists code returns the log-in-instead copy', () => {
+  const { clubWizErrorMessage } = buildScope();
+  assert.equal(clubWizErrorMessage(409, 'whatever server said', 'account_exists'),
+    'An account with that email already exists. Please log in instead.');
+  // Still deterministic: the server text is never echoed, only the code branches.
+  assert.equal(clubWizErrorMessage(409, 'whatever server said', 'club_name_taken'),
+    'This club or team already exists. Please choose a different name.');
+});
+
 test('clubWizErrorMessage: 429 returns rate-limit message', () => {
   const { clubWizErrorMessage } = buildScope();
   const msg = clubWizErrorMessage(429, 'Too many requests');

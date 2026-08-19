@@ -1,4 +1,4 @@
-import { kvGet, kvSet } from './_kv.js';
+import { kvGet, kvSet, kvSetNX } from './_kv.js';
 import {
   permissionsFor, canonicalRole, accessProfileOf, isClubOwner,
   accessProfileRank, ACCESS_PROFILES, PERM,
@@ -1550,7 +1550,36 @@ function teamSlug(name = '') {
   return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'club';
 }
 
-export async function createClub({ clubName, teamName, sport, name, email, password } = {}) {
+// ── Club-name uniqueness — ONE policy for every creation path ──────────────
+// Logical duplicates (case/whitespace-insensitive) are refused; near-but-
+// different names ("Mons RFC" vs "Mons Rugby") pass. `exceptTeamId` lets an
+// idempotent signup RETRY see its own already-created team without tripping
+// over its own name.
+function normalizeClubName(name = '') {
+  return String(name).trim().replace(/\s+/g, ' ').toLowerCase();
+}
+function clubNameTaken(teams, clubName, exceptTeamId = null) {
+  const wanted = normalizeClubName(clubName);
+  return teams.some(t => normalizeClubName(t.name) === wanted && String(t.id) !== String(exceptTeamId || ''));
+}
+function clubNameTakenError() {
+  const error = new Error('A club with that name already exists');
+  error.status = 409;
+  error.code = 'club_name_taken';
+  return error;
+}
+
+// ── Signup idempotency records ─────────────────────────────────────────────
+// One record per client-generated signup key, claimed ATOMICALLY (SET NX) so
+// two concurrent submissions of the same attempt agree on ONE set of
+// server-generated ids. The record stores identity BINDINGS only (normalized
+// email + club name + the reserved ids) — never password material. A long
+// TTL lets a network-failed signup resume days later, then self-cleans.
+const SIGNUP_KEY_RE = /^[A-Za-z0-9_-]{16,64}$/;
+const SIGNUP_RECORD_TTL_S = 30 * 24 * 60 * 60;
+const signupRecordKey = k => key(`signup:${k}`);
+
+export async function createClub({ clubName, teamName, sport, name, email, password, idempotencyKey } = {}) {
   const club = String(clubName || '').trim().slice(0, 80);
   if (!club) throw new Error('Club name is required');
   const coachName = String(name || '').trim().slice(0, 80);
@@ -1559,77 +1588,174 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
   if (!EMAIL_RE.test(normalized)) throw new Error('Valid email is required');
   assertPassword(password);
 
+  // ── Idempotency: claim or resume this signup attempt ─────────────────────
+  // The record reserves every server-generated id BEFORE any entity write,
+  // so a retry after ANY partial failure deterministically completes the
+  // same club instead of duplicating it or wedging on its own leftovers.
+  // The key names an ATTEMPT, never a tenant: teamId stays server-made.
+  let record = null;
+  if (idempotencyKey !== undefined && idempotencyKey !== null && idempotencyKey !== '') {
+    const idem = String(idempotencyKey);
+    if (!SIGNUP_KEY_RE.test(idem)) {
+      const error = new Error('Invalid signup reference');
+      error.status = 400;
+      throw error;
+    }
+    record = await kvGet(signupRecordKey(idem));
+    if (!record) {
+      const teamsNow = await loadTeams();
+      let newTeamId = teamSlug(club);
+      while (teamsNow.some(t => t.id === newTeamId)) {
+        newTeamId = `${teamSlug(club)}-${randomBytes(2).toString('hex')}`;
+      }
+      const candidate = {
+        emailNorm: normalized,
+        clubNorm: normalizeClubName(club),
+        teamId: newTeamId,
+        userId: makeId('user'),
+        memberId: makeId('tm'),
+        teamCode: (club.replace(/[^a-zA-Z]/g, '').slice(0, 6).toUpperCase() || 'CLUB') +
+          String(Math.floor(Math.random() * 90) + 10),
+        createdAt: nowIso(),
+        status: 'pending',
+      };
+      const claimed = await kvSetNX(signupRecordKey(idem), candidate, SIGNUP_RECORD_TTL_S);
+      // Lost a concurrent race → the winner's ids stand; adopt them below.
+      record = claimed ? candidate : await kvGet(signupRecordKey(idem));
+      if (!record) record = candidate; // NX raced with an expiry — ours is as good
+    }
+    // A key binds to ONE logical signup. Reusing it with a different email
+    // or club is a conflict, and it can never read out another signup.
+    if (record.emailNorm !== normalized || record.clubNorm !== normalizeClubName(club)) {
+      const error = new Error('This signup reference was already used for a different signup');
+      error.status = 409;
+      error.code = 'signup_conflict';
+      throw error;
+    }
+  }
+
+  // Server-generated identifiers — from the claimed record when resuming,
+  // fresh otherwise. NOTHING here is accepted from the client.
+  const ids = record || {
+    teamId: null, // resolved against the live team list below
+    userId: makeId('user'),
+    memberId: makeId('tm'),
+    teamCode: (club.replace(/[^a-zA-Z]/g, '').slice(0, 6).toUpperCase() || 'CLUB') +
+      String(Math.floor(Math.random() * 90) + 10),
+    createdAt: nowIso(),
+  };
+
+  // ── PRE-FLIGHT: refuse a taken club name BEFORE creating anything ───────
+  // Checked again at team-write time (races), but it must ALSO fail here:
+  // creating the user first and then refusing the name would burn the email
+  // — the person could never start a fresh signup under a free name.
+  {
+    const teamsNow = await loadTeams();
+    const ours = ids.teamId ? teamsNow.find(t => t.id === ids.teamId) : null;
+    if (!ours && clubNameTaken(teamsNow, club, ids.teamId)) throw clubNameTakenError();
+  }
+
+  // ── Ensure USER (first: an abandoned half-signup still owns a login) ────
   const users = await loadUsers();
-  if (users.some(item => normalizeEmail(item.email) === normalized)) {
-    const error = new Error('An account with that email already exists — log in instead');
+  let user = users.find(item => item.id === ids.userId) || null;
+  if (!user) {
+    const existing = users.find(item => normalizeEmail(item.email) === normalized);
+    if (existing) {
+      // Genuinely pre-existing account (not created by THIS signup attempt).
+      const error = new Error('An account with that email already exists — log in instead');
+      error.status = 409;
+      error.code = 'account_exists';
+      throw error;
+    }
+    const parts = splitDisplayName(coachName);
+    user = {
+      id: ids.userId,
+      email: normalized,
+      firstName: parts.firstName,
+      lastName: parts.lastName,
+      displayName: coachName,
+      authProvider: 'password',
+      passwordSet: true,
+      emailVerified: false,
+      ...hashPassword(password),
+      createdAt: nowIso(),
+      lastLoginAt: nowIso(),
+    };
+    users.push(user);
+    await saveUsers(users);
+  } else if (!verifyPassword(password, user).ok) {
+    // OUR half-created account, but a different password on the retry: this
+    // is a conflicting reuse of the key, never a silent credential swap.
+    const error = new Error('This signup was already started with a different password');
     error.status = 409;
+    error.code = 'signup_conflict';
     throw error;
   }
 
-  // Unique team id derived from the club name; collision-proofed with a suffix.
+  // ── Ensure TEAM ─────────────────────────────────────────────────────────
   const teams = await loadTeams();
-  let teamId = teamSlug(club);
-  while (teams.some(t => t.id === teamId)) {
-    teamId = `${teamSlug(club)}-${randomBytes(2).toString('hex')}`;
+  let team = ids.teamId ? teams.find(t => t.id === ids.teamId) || null : null;
+  if (!team) {
+    if (clubNameTaken(teams, club, ids.teamId)) throw clubNameTakenError();
+    let teamId = ids.teamId;
+    if (!teamId) {
+      teamId = teamSlug(club);
+      while (teams.some(t => t.id === teamId)) {
+        teamId = `${teamSlug(club)}-${randomBytes(2).toString('hex')}`;
+      }
+      ids.teamId = teamId;
+    }
+    team = {
+      id: teamId,
+      name: club,
+      teamName: String(teamName || '').trim().slice(0, 80),
+      sport: String(sport || 'Rugby').trim().slice(0, 40) || 'Rugby',
+      teamCode: ids.teamCode,
+      createdAt: ids.createdAt,
+      plan: 'trial',
+      planStatus: 'active',
+      trialEndsAt: new Date(new Date(ids.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+    };
+    teams.push(team);
+    await saveTeams(teams);
   }
-  const teamCode = (club.replace(/[^a-zA-Z]/g, '').slice(0, 6).toUpperCase() || 'CLUB') +
-    String(Math.floor(Math.random() * 90) + 10);
-  const createdAt = nowIso();
-  const team = {
-    id: teamId,
-    name: club,
-    teamName: String(teamName || '').trim().slice(0, 80),
-    sport: String(sport || 'Rugby').trim().slice(0, 40) || 'Rugby',
-    teamCode,
-    createdAt,
-    plan: 'trial',
-    planStatus: 'active',
-    trialEndsAt: new Date(new Date(createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-    stripeCustomerId: null,
-    stripeSubscriptionId: null,
-  };
-  teams.push(team);
-  await saveTeams(teams);
 
-  const parts = splitDisplayName(coachName);
-  const user = {
-    id: makeId('user'),
-    email: normalized,
-    firstName: parts.firstName,
-    lastName: parts.lastName,
-    displayName: coachName,
-    authProvider: 'password',
-    passwordSet: true,
-    emailVerified: false,
-    ...hashPassword(password),
-    createdAt: nowIso(),
-    lastLoginAt: nowIso(),
-  };
-  users.push(user);
-  await saveUsers(users);
-
+  // ── Ensure OWNER MEMBERSHIP ─────────────────────────────────────────────
   const members = await loadTeamMembers();
-  const member = {
-    id: makeId('tm'),
-    teamId,
-    userId: user.id,
-    role: 'coach',
-    staffLevel: 'head',
-    // The founder owns the club and holds Full Access from the outset.
-    isOwner: true,
-    accessProfile: 'full',
-    status: 'active',
-    joinedAt: nowIso(),
-    approvedAt: nowIso(),
-    approvedBy: 'club-creation',
-    rejectedAt: null,
-    rejectedBy: null,
-  };
-  members.push(member);
-  await saveTeamMembers(members);
+  let member = members.find(m => m.id === ids.memberId ||
+    (String(m.teamId) === String(team.id) && String(m.userId) === String(user.id))) || null;
+  if (!member) {
+    member = {
+      id: ids.memberId,
+      teamId: team.id,
+      userId: user.id,
+      role: 'coach',
+      staffLevel: 'head',
+      // The founder owns the club and holds Full Access from the outset.
+      isOwner: true,
+      accessProfile: 'full',
+      status: 'active',
+      joinedAt: nowIso(),
+      approvedAt: nowIso(),
+      approvedBy: 'club-creation',
+      rejectedAt: null,
+      rejectedBy: null,
+    };
+    members.push(member);
+    await saveTeamMembers(members);
+  }
 
-  const session = await createSession({ userId: user.id, teamId, role: 'coach' });
-  return withIdentityComputed({ user: publicUserWithRole(user, member), team, teamMember: member, session }, member);
+  const resumed = Boolean(record && record.status === 'complete');
+  if (record && record.status !== 'complete') {
+    await kvSet(signupRecordKey(String(idempotencyKey)), { ...record, teamId: team.id, status: 'complete' }, SIGNUP_RECORD_TTL_S);
+  }
+
+  const session = await createSession({ userId: user.id, teamId: team.id, role: 'coach' });
+  const result = await withIdentityComputed({ user: publicUserWithRole(user, member), team, teamMember: member, session }, member);
+  if (resumed) result.resumed = true;
+  return result;
 }
 
 // ─── Self-service account management (Settings screen) ──────────────────────
@@ -1672,9 +1798,8 @@ export async function provisionClub({ clubName, adminEmail, adminName = '', firs
   }
 
   const teams = await loadTeams();
-  if (teams.some(t => String(t.name || '').trim().toLowerCase() === club.toLowerCase())) {
-    const e = new Error('A club with that name already exists'); e.status = 409; throw e;
-  }
+  // Same ONE duplicate-name policy as createClub — a single definition.
+  if (clubNameTaken(teams, club)) throw clubNameTakenError();
   // Stable tenant id from the club name; collision-proofed, never overwrites.
   let teamId = teamSlug(club);
   while (teams.some(t => t.id === teamId)) {

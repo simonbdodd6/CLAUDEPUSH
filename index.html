@@ -15723,10 +15723,12 @@
     let _clubWiz = null;
     let _cwFinishing = false; // duplicate-submit guard for clubWizFinish
 
-    // Pure helper — maps HTTP status to a deterministic user-facing message.
+    // Pure helper — maps HTTP status (+ optional server machine code) to a
+    // DETERMINISTIC user-facing message; server text is never echoed.
     // Exported as window.clubWizErrorMessage for testability.
-    function clubWizErrorMessage(status, serverMsg) {
+    function clubWizErrorMessage(status, serverMsg, code) {
       if (status === 401) return 'Your session has expired. Please refresh and try again.';
+      if (status === 409 && code === 'account_exists') return 'An account with that email already exists. Please log in instead.';
       if (status === 409) return 'This club or team already exists. Please choose a different name.';
       if (status === 429) return 'Too many attempts. Please wait a few minutes before trying again.';
       // 5xx = our side, not the coach's. Everything they typed is kept in the
@@ -15792,6 +15794,26 @@
       img.src = URL.createObjectURL(file);
     }
 
+    // One idempotency key per LOGICAL signup attempt: minted on first submit,
+    // reused verbatim for every retry of that same submission (network blips,
+    // 5xx, double-taps), refreshed only when the identifying inputs change —
+    // so the server can guarantee one club per attempt, and a retry after a
+    // lost response resumes the same club instead of creating a second one.
+    function clubWizSignupKey(d) {
+      const w = _clubWiz;
+      if (!w._idem || w._idem.email !== d.email || w._idem.clubName !== d.clubName) {
+        let k = '';
+        try { k = crypto.randomUUID().replace(/-/g, ''); } catch {}
+        if (!k) {
+          const b = new Uint8Array(16);
+          crypto.getRandomValues(b);
+          k = [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+        }
+        w._idem = { key: k, email: d.email, clubName: d.clubName };
+      }
+      return w._idem.key;
+    }
+
     async function clubWizFinish() {
       if (_cwFinishing) return; // prevent duplicate submissions
       const d = _clubWiz?.data || {};
@@ -15807,11 +15829,12 @@
             action: 'create_club',
             clubName: d.clubName, teamName: d.teamName, sport: d.sport,
             name: d.name, email: d.email, password: d.password,
+            idempotencyKey: clubWizSignupKey(d),
           }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.ok === false) {
-          throw new Error(clubWizErrorMessage(res.status, data.error));
+          throw new Error(clubWizErrorMessage(res.status, data.error, data.code));
         }
 
         // Local identity: the new coach IS this device's user now.

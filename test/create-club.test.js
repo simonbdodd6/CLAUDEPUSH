@@ -165,12 +165,19 @@ test('validation: club name and password rules enforced', async () => {
   assert.equal(shortPw.statusCode, 400);
 });
 
-test('two clubs with the same name get distinct team ids', async () => {
+test('a second club with the same name is refused (one shared duplicate policy)', async () => {
+  // CONTRACT CHANGE (signup hardening, Phase A): identical club names used to
+  // be allowed with distinct team ids — an impersonation/duplication hazard
+  // once signup opens publicly. createClub now follows the SAME 409 policy
+  // provisionClub always had (case/whitespace-insensitive); genuinely
+  // different names still work. Full contract:
+  // test/public-signup-hardening.test.js.
   kv.clear();
   const a = await createClub({ ...NICK });
-  const b = await createClub({ ...NICK, email: 'second@coach.test' });
-  assert.notEqual(a.team.id, b.team.id);
-  assert.equal(a.team.name, b.team.name);
+  await assert.rejects(createClub({ ...NICK, email: 'second@coach.test' }),
+    e => e.status === 409 && /already exists/.test(e.message));
+  const b = await createClub({ ...NICK, email: 'second@coach.test', clubName: NICK.clubName + ' Academy' });
+  assert.notEqual(a.team.id, b.team.id, 'a different name still creates a distinct tenant');
 });
 
 test('new coach is head coach with full staff powers in their own club', async () => {
