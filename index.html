@@ -15860,9 +15860,12 @@
         ensureAutopilotSchedule().catch(() => {});
         markSynced();
 
-        // Fire-and-forget verification email — never blocks club creation.
-        fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'send_verification_email' }) }).catch(() => {});
+        // The SERVER now auto-sends the verification email with create_club
+        // (once per signup, replay-safe) — no client-side send, so idempotent
+        // retries can never double-mail. Resend lives on the reminder banner,
+        // which appears via the session payload — fetch it now so the new
+        // founder sees the verify reminder immediately, not after a reload.
+        checkServerSession().catch(() => {});
         clubWizClose();
         render();
         showToast('Club created — check your email to verify your account.');
@@ -19797,7 +19800,7 @@
           body: JSON.stringify({ name, email, role: 'coach', staffLevel, ...(scope ? { scope } : {}) }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Could not create invite');
+        if (!res.ok) throw new Error(inviteCreateErrorMessage(data, 'Could not create invite'));
         showToast(`${STAFF_LEVEL_LABELS[staffLevel]} invite created — ${data.emailDelivery?.sent ? 'email sent ✓' : 'copy the link from Pending'}`);
         await loadAdminData(true);
       } catch(e) { showToast(e.message || 'Could not create invite'); }
@@ -29954,6 +29957,62 @@
       if (d?.teamPlan       !== undefined) state.teamPlan       = d.teamPlan;
       if (d?.teamPlanStatus !== undefined) state.teamPlanStatus = d.teamPlanStatus;
       if (d?.trialEndsAt    !== undefined) state.trialEndsAt    = d.trialEndsAt;
+      // Self-service founder verification reminder — present on the session
+      // payload only while the founding owner is unverified; absence clears it
+      // (i.e. the banner disappears on the first session read after verifying).
+      _verifyNotice = d?.selfServiceVerification || null;
+      renderVerifyEmailBanner();
+    }
+
+    // ─── VERIFY-EMAIL REMINDER (Phase B) ─────────────────────────────────────
+    // Guidance only — the SERVER refuses new invite links after the grace
+    // period regardless of anything the client shows or hides.
+    let _verifyNotice = null;
+    let _verifyResendBusy = false;
+
+    function renderVerifyEmailBanner() {
+      let el = document.getElementById('verify-email-banner');
+      if (!_verifyNotice) { el?.remove(); return; }
+      const me = state.users.find(u => u.id === state.currentUserId);
+      const inGrace = _verifyNotice.inGrace !== false &&
+        Date.now() < new Date(_verifyNotice.graceEndsAt || 0).getTime();
+      const hoursLeft = Math.max(0, Math.ceil((new Date(_verifyNotice.graceEndsAt || 0).getTime() - Date.now()) / 3600000));
+      const copy = inGrace
+        ? `Verify your email to keep inviting players and staff${hoursLeft ? ` — ${hoursLeft} hour${hoursLeft === 1 ? '' : 's'} left` : ''}.`
+        : 'Verify your email to create new invite links.';
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'verify-email-banner';
+        el.style.cssText = 'position:sticky;top:0;z-index:899;background:#78350f;color:#fde68a;font-size:12px;font-weight:600;padding:8px 14px;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;text-align:center';
+        document.body.prepend(el);
+      }
+      el.innerHTML = `✉️ ${esc(copy)}${me?.email ? ` <span style="opacity:.75;font-weight:500">(${esc(me.email)})</span>` : ''}
+        <button type="button" onclick="verifyBannerResend(this)"
+          style="min-height:28px;padding:0 12px;border-radius:7px;border:1px solid #fde68a;background:transparent;color:#fde68a;font-size:11px;font-weight:700;cursor:pointer">Resend verification email</button>`;
+    }
+
+    /** Truthful copy for a refused invite creation — routes the founder to
+     *  the resend CTA when the server said email_verification_required. */
+    function inviteCreateErrorMessage(data, fallback) {
+      if (data?.code === 'email_verification_required') {
+        return 'Verify your email address to create new invite links — use "Resend verification email" in the banner above.';
+      }
+      return data?.error || fallback;
+    }
+
+    async function verifyBannerResend(btn) {
+      if (_verifyResendBusy) return;
+      _verifyResendBusy = true;
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+      try {
+        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'send_verification_email' }) });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) showToast(data.alreadyVerified ? 'Your email is already verified ✓' : 'Verification email sent — check your inbox');
+        else showToast(data.error || 'Could not send right now — try again in a few minutes');
+      } catch { showToast('Could not send — check your connection'); }
+      _verifyResendBusy = false;
+      if (btn) { btn.disabled = false; btn.textContent = 'Resend verification email'; }
     }
 
     function trialDaysRemaining() {
@@ -31095,6 +31154,9 @@
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.ok) {
           showEmailVerifiedModal(data.user?.displayName || data.user?.email || '');
+          // Refresh the session payload so the verify reminder clears at once
+          // and invite creation is immediately available — no logout needed.
+          checkServerSession().catch(() => {});
         } else {
           showEmailVerifyErrorModal(data.error || 'This verification link is invalid or has expired.');
         }
@@ -31301,7 +31363,7 @@
                                  ...(pgid ? { playerGroupId: pgid } : {}),
                                  ...(staffScoped ? { scope: { groupId: staffGid } } : {}) }) });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.url) throw new Error(data.error || 'Could not create link');
+        if (!res.ok || !data.url) throw new Error(inviteCreateErrorMessage(data, 'Could not create link'));
         if (role !== _coachGroupRole) return;  // user switched role mid-request — ignore stale response
         _renderCoachGroupInviteBody(data.url, role);
       } catch (e) {
@@ -31364,7 +31426,7 @@
             ...(pgid ? { playerGroupId: pgid } : {}),
             ...(scoped ? { scope: { groupId: pgid } } : {}) }) });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.url) throw new Error(data.error || 'Could not create invite link');
+        if (!res.ok || !data.url) throw new Error(inviteCreateErrorMessage(data, 'Could not create invite link'));
         renderInvitePlayersBody(data.url);
       } catch(e) {
         const body = document.getElementById('invite-players-body');

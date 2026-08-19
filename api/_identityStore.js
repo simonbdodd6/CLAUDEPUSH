@@ -1503,6 +1503,16 @@ export async function resolveSession(token = '') {
       canonicalRole: canonicalRole(item),
       current: item.teamId === session.teamId,
     }));
+  // Self-service founder still unverified → the session carries the notice
+  // (grace deadline) so the client can show the reminder and the resend CTA.
+  // Present only for the founding owner of a self-service club; disappears
+  // automatically on the first session read after verification.
+  let selfServiceVerification;
+  if (member?.isOwner && currentTeam?.signupSource === 'self_service' && !user.emailVerified) {
+    const graceEndsAt = new Date(new Date(currentTeam.createdAt || 0).getTime() + SELF_SERVICE_VERIFY_GRACE_MS).toISOString();
+    selfServiceVerification = { graceEndsAt, inGrace: Date.now() < new Date(graceEndsAt).getTime() };
+  }
+
   return {
     session,
     user: publicUserWithRole(user, member || session),
@@ -1514,6 +1524,7 @@ export async function resolveSession(token = '') {
     teamPlan,
     teamPlanStatus,
     trialEndsAt: teamTrialEndsAt,
+    ...(selfServiceVerification ? { selfServiceVerification } : {}),
   };
 }
 
@@ -1521,6 +1532,45 @@ export async function resolveSessionFromRequest(req) {
   const token = sessionTokenFromRequest(req);
   if (!token) return null;
   return resolveSession(token);
+}
+
+// ─── Self-service founder verification policy ───────────────────────────────
+// A club born through the self-service wizard (team.signupSource) must have
+// its FOUNDING OWNER verify their email: 48 hours of grace from club
+// creation, then NEW invite creation is refused until verified. The state is
+// a CLUB fact keyed to the founder — a second (verified) admin can never
+// bypass an unverified founder, because the check never looks at the caller.
+// Everything else (login, fixtures, training, availability, MC, medical,
+// messaging, administration) is deliberately untouched by this policy.
+export const SELF_SERVICE_VERIFY_GRACE_MS = 48 * 60 * 60 * 1000;
+
+export async function clubInviteVerificationState(teamId, preloaded = {}) {
+  const teams = preloaded.teams || await loadTeams();
+  const team = teams.find(t => String(t.id) === String(teamId || ''));
+  if (!team || team.signupSource !== 'self_service') return { policied: false, allowed: true };
+  const members = preloaded.members || await loadTeamMembers();
+  const users = preloaded.users || await loadUsers();
+  // The founding owner: the earliest-joined owner membership of this club.
+  // (Ownership transfer does not exist yet; when it does, this resolution is
+  // the single place to teach about it.)
+  const owners = members
+    .filter(m => String(m.teamId) === String(team.id) && m.isOwner && m.status === 'active')
+    .sort((a, b) => String(a.joinedAt || '').localeCompare(String(b.joinedAt || '')));
+  const founderUser = owners.length ? users.find(u => u.id === owners[0].userId) : null;
+  const graceEndsAt = new Date(new Date(team.createdAt || 0).getTime() + SELF_SERVICE_VERIFY_GRACE_MS).toISOString();
+  // No resolvable founder (edge: founder removed before transfer exists) —
+  // fail OPEN for the club's daily running but keep the fact visible.
+  if (!founderUser) return { policied: true, verified: false, founderMissing: true, graceEndsAt, allowed: true };
+  const verified = Boolean(founderUser.emailVerified);
+  const inGrace = Date.now() < new Date(graceEndsAt).getTime();
+  return { policied: true, verified, graceEndsAt, inGrace, founderUserId: founderUser.id, allowed: verified || inGrace };
+}
+
+export function emailVerificationRequiredError() {
+  const error = new Error('Verify your email address to create new invite links');
+  error.status = 403;
+  error.code = 'email_verification_required';
+  return error;
 }
 
 // Multi-team: switch the current session to another team where the user
@@ -1712,6 +1762,12 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
       sport: String(sport || 'Rugby').trim().slice(0, 40) || 'Rugby',
       teamCode: ids.teamCode,
       createdAt: ids.createdAt,
+      // SERVER-AUTHORED marker: this tenant was born through the self-service
+      // wizard, so the founder-verification policy applies to it. Never read
+      // from the request body; clubs created any other way (provisioning,
+      // legacy) lack the field and are exempt — no migration, no retroactive
+      // enforcement.
+      signupSource: 'self_service',
       plan: 'trial',
       planStatus: 'active',
       trialEndsAt: new Date(new Date(ids.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),

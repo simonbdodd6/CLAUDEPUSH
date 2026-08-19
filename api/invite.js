@@ -19,7 +19,7 @@
 import { kvGet, kvSet } from './_kv.js';
 import { key } from './_keys.js';
 import { setCors } from './_http.js';
-import { DEFAULT_TEAM } from './_identityStore.js';
+import { DEFAULT_TEAM, clubInviteVerificationState, emailVerificationRequiredError } from './_identityStore.js';
 import { inviteEmail, sendTransactionalEmail } from './_email.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
 import { assertSameTenant, requireTenantPermission, can, PERM } from './_tenant.js';
@@ -34,7 +34,8 @@ const INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 
 function sendAuthError(res, error) {
   const status = error?.status || 403;
-  return res.status(status).json({ ok: false, error: error?.message || 'Not authorized' });
+  return res.status(status).json({ ok: false, error: error?.message || 'Not authorized',
+    ...(error?.code ? { code: error.code } : {}) });
 }
 
 // Valid roles — maps to what the joining user will see in the app
@@ -261,6 +262,14 @@ export default async function handler(req, res) {
       return sendAuthError(res, error);
     }
 
+    // ── Phase B verification pressure — a CLUB-level gate on NEW invites ──
+    // A self-service club whose FOUNDING OWNER is still unverified past the
+    // 48h grace may not mint NEW invite links (player or staff, single-use
+    // or reusable). Existing links keep working and are still returned;
+    // every other club feature is untouched. Keyed to the club's founder,
+    // never the caller — a verified second admin cannot bypass it.
+    const verifyGate = await clubInviteVerificationState(session.teamId);
+
     // ── Group invite: one permanent, reusable link per club ──────────────────
     // Players self-register their own details (no coach-set name, no expiry, no
     // single-use). Idempotent: returns the existing group link if one exists.
@@ -291,6 +300,8 @@ export default async function handler(req, res) {
         && (i.role || 'player') === groupRole && i.status !== 'revoked'
         && JSON.stringify(i.scope ?? null) === scopeFingerprint);
       if (!invite) {
+        // An existing link is returned above regardless; only MINTING is gated.
+        if (!verifyGate.allowed) return sendAuthError(res, emailVerificationRequiredError());
         invite = {
           token:      makeToken(),
           kind:       'group',
@@ -350,6 +361,8 @@ export default async function handler(req, res) {
       try { invitePlayerGroupId = await resolvePlayerGroupForInvite(session, req.body); }
       catch (error) { return sendAuthError(res, error); }
     }
+
+    if (!verifyGate.allowed) return sendAuthError(res, emailVerificationRequiredError());
 
     const token  = makeToken();
     const invite = {

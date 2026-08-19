@@ -310,8 +310,30 @@ export default async function handler(req, res) {
           teamId: result.team?.id, clubName: result.team?.name,
           userId: result.user?.id, email: result.user?.email, ip: requestIp(req),
         });
+        // Verification pressure (Phase B): ONE automatic verification email per
+        // fresh signup — idempotent replays of the same attempt (result.resumed)
+        // never send again; the session-gated resend action covers everything
+        // else. Delivery failure is NON-FATAL by design: the durable signup is
+        // already complete, the founder can resend from the in-app reminder.
+        let verificationEmail = { requested: false };
+        if (!result.resumed && result.user?.id && !result.user?.emailVerified) {
+          try {
+            const v = await createEmailVerificationToken(result.user.id);
+            let delivery = { ok: true, sent: false, skipped: true, reason: 'already_verified' };
+            if (v.token && v.user?.email) {
+              const verifyUrl = `${appBaseUrl(req)}/?verify=${encodeURIComponent(v.token)}`;
+              const message = emailVerificationEmail({ name: v.user.displayName || v.user.email, url: verifyUrl });
+              delivery = await sendTransactionalEmail({ to: v.user.email, ...message });
+            }
+            verificationEmail = { requested: true, delivery };
+            await auditLog('email_verification_sent', { userId: result.user.id, ip: requestIp(req), source: 'create_club' });
+          } catch (mailError) {
+            console.error('create_club verification email failed:', mailError?.message || mailError);
+            verificationEmail = { requested: true, delivery: { ok: false } };
+          }
+        }
         if (result.session?.token) res.setHeader('Set-Cookie', sessionCookie(result.session.token));
-        return res.status(201).json({ ok: true, ...publicAuthResult(result) });
+        return res.status(201).json({ ok: true, ...publicAuthResult(result), verificationEmail });
       }
       if (action === 'provision_club') {
         // Platform administrators only — a club-wide admin, coach or player
