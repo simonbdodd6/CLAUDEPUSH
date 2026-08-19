@@ -19,10 +19,19 @@ Premium strength & conditioning module.
   rules. Pure domain — no UI, no programmes created. See
   performance/docs/programme-*.md.
 
-Programme generation is **not** part of SC1–SC4 — nothing prescribes
-workouts, recommends loads, calculates values, or makes medical judgements.
-The future engine may select only approved CoachEasier-validated exercises
-and must obey the SC4 versioning and snapshot contracts.
+- **SC5** — deterministic coaching rule engine: development context with
+  youth safeguards (U16/U18/Senior as inputs, never verdicts), explicit
+  rule precedence, position demand priors, goal/season rules, frequency
+  and match-week decisions, safety-first exercise eligibility + ranking,
+  and explainable programme BLUEPRINTS (categories only — no loads). All
+  rule tables are PROVISIONAL_REQUIRES_SNC_REVIEW. See
+  performance/docs/coaching-rule-engine.md and companions.
+
+Progressive loading is **not** part of SC1–SC5 — nothing calculates
+kilograms, percentages against maxima, week-to-week progression or
+recovery weeks, and no language model makes coaching decisions. The engine
+selects only approved CoachEasier-validated exercises and obeys the SC4
+versioning and snapshot contracts.
 
 This directory is the **module home** for everything Performance-specific that
 is not UI chrome. It follows the same architectural split the rest of
