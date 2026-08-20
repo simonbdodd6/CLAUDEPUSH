@@ -27,11 +27,22 @@ Premium strength & conditioning module.
   rule tables are PROVISIONAL_REQUIRES_SNC_REVIEW. See
   performance/docs/coaching-rule-engine.md and companions.
 
-Progressive loading is **not** part of SC1–SC5 — nothing calculates
-kilograms, percentages against maxima, week-to-week progression or
-recovery weeks, and no language model makes coaching decisions. The engine
-selects only approved CoachEasier-validated exercises and obeys the SC4
-versioning and snapshot contracts.
+- **SC6** — controlled progression engine: typed loads (no bare numbers),
+  evidence-earned progression (repeated exposures — one PR/one bad day
+  changes nothing), bounded methods (double progression, effort-based,
+  percentage, duration/distance/density, heavily-gated complexity),
+  equipment-increment awareness, trend-based readiness modifiers,
+  match-proximity holds, missed-session/deload/plateau rules, coach
+  overrides with audit, a programme-wide progression budget, and
+  progression plans that write only into SC4 DRAFT versions. All
+  thresholds PROVISIONAL_REQUIRES_SNC_REVIEW. See
+  performance/docs/progression-*.md.
+
+No workout execution, set logging, analytics, scheduling orchestration or
+UI exists through SC6, and no language model makes coaching or progression
+decisions. The engine selects only approved CoachEasier-validated
+exercises, never requires a 1RM, never fabricates a load, and obeys the
+SC4 versioning and snapshot contracts — published history is immutable.
 
 This directory is the **module home** for everything Performance-specific that
 is not UI chrome. It follows the same architectural split the rest of
