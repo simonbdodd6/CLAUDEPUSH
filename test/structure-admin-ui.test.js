@@ -200,8 +200,15 @@ test('memberScope mirrors the server derivation and drops removed grants', () =>
 test('any admin screen can request the data it needs, with a loop guard', () => {
   const ensure = fn('ensureAdminData');
   assert.match(ensure, /canI\('manage_players'\)|canI\('manage_teams'\)/, 'permission gated');
-  assert.match(ensure, /_adminData\.loaded \|\| _adminData\.loading \|\| _adminData\.attempted/,
-    'guards against duplicate AND repeated-failure fetches');
+  // CONTRACT CHANGE (group-isolation fix): the attempted latch froze a failed
+  // load for the whole session — an installed PWA whose first fetch aborted
+  // never recovered and group surfaces failed open. The guard is now
+  // loaded/loading plus a BACKOFF on failures: duplicates still blocked,
+  // fresh failures still held, stale failures retry.
+  assert.match(ensure, /_adminData\.loaded \|\| _adminData\.loading/,
+    'guards against duplicate fetches');
+  assert.match(ensure, /_adminData\.attempted && Date\.now\(\) - _adminDataAttemptAt/,
+    'failed loads retry after a backoff instead of latching forever');
   assert.match(ensure, /loadAdminData\(\)/);
   // `attempted` is what stops a failed fetch looping forever, because
   // loadAdminData re-renders the very screens that call ensureAdminData.

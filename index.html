@@ -8291,7 +8291,13 @@
         : String(state.operationalGroupId || '');
       const _mcAcc = _adminData.structureAccess;
       const _mcStaffInScope = u => {
-        if (!_mcGid || !_mcAcc) return true;   // pre-structure/legacy clubs: today's full list
+        if (!_mcGid) return true;              // no group context at all: legacy club
+        // UNKNOWN ≠ LEGACY: until the server-computed access ids have loaded,
+        // show NO ONE rather than everyone (the PWA whole-club staff leak).
+        // The panel re-renders when loadAdminData lands. A club that loaded
+        // WITHOUT structure data is genuinely pre-structure → full list.
+        if (!_adminData.loaded) return false;
+        if (!_mcAcc) return true;
         if ((_mcAcc.clubWideStaffIds || []).includes(String(u.id))) return true;
         return ((_mcAcc.groupStaffIds || {})[_mcGid] || []).includes(String(u.id));
       };
@@ -18653,9 +18659,14 @@
      * render, and loadAdminData re-renders them on completion, so a FAILED
      * fetch (which leaves `loaded` false) would otherwise retry forever.
      */
+    let _adminDataAttemptAt = 0;
     function ensureAdminData() {
       if (!canI('manage_players') && !canI('manage_teams')) return;
-      if (_adminData.loaded || _adminData.loading || _adminData.attempted) return;
+      if (_adminData.loaded || _adminData.loading) return;
+      // A failed load must not latch for the whole session (a phone's first
+      // fetch after wake often aborts) — retry with a gentle backoff. Until
+      // it succeeds, group surfaces stay fail-closed rather than whole-club.
+      if (_adminData.attempted && Date.now() - _adminDataAttemptAt < 15000) return;
       loadAdminData();
     }
     let _adminSearch = '';
@@ -18706,6 +18717,7 @@
       finally {
         _adminData.loading = false;
         _adminData.attempted = true;
+        _adminDataAttemptAt = Date.now();
         renderClubAdmin();
         // Re-render the screen that asked for this data so the newly available
         // structure appears immediately, with no navigation dance.
@@ -29721,6 +29733,17 @@
       const gid = state.operationalGroupId;
       // No group in force → today's behaviour, unchanged.
       if (!gid) return rows;
+      // UNKNOWN ≠ LEGACY. Before the membership list has LOADED, an empty
+      // members array is indistinguishable from a pre-structure club, and
+      // failing open painted the WHOLE club's roster onto group surfaces
+      // (observed on the installed PWA when the admin-data fetch aborted).
+      // While the load is pending/failed for someone entitled to it, fail
+      // CLOSED — loadAdminData re-renders the asking screen when it lands,
+      // and ensureAdminData retries after a failure.
+      if (!_adminData.loaded && (canI('manage_players') || canI('manage_teams'))) {
+        ensureAdminData();
+        return [];
+      }
       const members = _adminData.members || [];
       // A pre-structure club has no grouped memberships at all — keep the
       // full roster (legacy behaviour). The moment memberships carry player

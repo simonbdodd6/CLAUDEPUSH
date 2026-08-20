@@ -111,7 +111,9 @@ function panelNames(access, fxGroupId, { linked = true, operationalGroupId = '' 
       operationalGroupId: ${JSON.stringify(operationalGroupId || fxGroupId || '')},
       users: ${JSON.stringify(MEMBERS.map(m => ({ id: m.userId, role: m.role, name: NAMES[m.userId] })))},
     };
-    const _adminData = { structureAccess: ${JSON.stringify(access)} };
+    // loaded:true — these pins model a club whose access ids HAVE arrived;
+    // the not-yet-loaded state now fails closed (group-isolation regression fix).
+    const _adminData = { loaded: true, structureAccess: ${JSON.stringify(access)} };
     const _coachDraftsList = [];
     function isCoach() { return true; }
     function esc(s) { return String(s == null ? '' : s); }

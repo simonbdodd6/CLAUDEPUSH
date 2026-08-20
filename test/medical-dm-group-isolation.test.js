@@ -54,7 +54,8 @@ function buildMedicalScope(gid) {
       operationalGroupId: ${JSON.stringify(gid)},
       players: ${JSON.stringify(SENIORS_CASES)},
     };
-    const _adminData = { members: ${JSON.stringify(
+    // loaded:true — models arrived admin data; pending now fails closed (group-isolation fix).
+    const _adminData = { loaded: true, members: ${JSON.stringify(
       SENIORS_CASES.map(c => ({ userId: c.userId, status: 'active', playerGroupId: SEN }))
     )} };
     let _sharedMedical = { loaded: false, cases: [], players: [] };
@@ -86,7 +87,8 @@ test("Medical/Women's: zero cases — no Seniors player reaches the dashboard", 
 test('Medical: legacy club (no grouped memberships) and player view keep the full roster', () => {
   const legacy = new Function(`"use strict";
     const state = { activeView: 'coach', operationalGroupId: '', players: ${JSON.stringify(SENIORS_CASES)} };
-    const _adminData = { members: [] };
+    // loaded:true — models arrived admin data; pending now fails closed (group-isolation fix).
+    const _adminData = { loaded: true, members: [] };
     let _sharedMedical = { loaded: false, cases: [], players: [] };
     function canonicalVisiblePlayers() { return state.players; }
     ${fn('operationalPlayers')}

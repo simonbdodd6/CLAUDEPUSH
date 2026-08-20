@@ -341,7 +341,8 @@ function clientPool(groupId, memberCount) {
   add(SEN, 44, 'sen'); add(U18, 30, 'u18'); add(WOM, 28, 'wom');
   return new Function(`
     const state = { operationalGroupId: arguments[0] };
-    const _adminData = { members: arguments[2] };
+    // loaded:true — models arrived admin data; pending now fails closed (group-isolation fix).
+    const _adminData = { loaded: true, members: arguments[2] };
     function canonicalVisiblePlayers() { return arguments.length ? arguments[1] || [] : []; }
     const _players = arguments[1];
     function operationalGroups() { return [

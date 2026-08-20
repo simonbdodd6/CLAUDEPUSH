@@ -252,7 +252,8 @@ function ctx(operational, activeView = 'coach', members = [], players = []) {
   return new Function(`
     const state = arguments[0];
     let _myOperational = arguments[1];
-    const _adminData = { members: arguments[2] };
+    // loaded:true — models arrived admin data; pending data now fails closed.
+    const _adminData = { loaded: true, members: arguments[2] };
     function canonicalVisiblePlayers() { return state.players; }
     function showToast() {}
     function saveState() {}

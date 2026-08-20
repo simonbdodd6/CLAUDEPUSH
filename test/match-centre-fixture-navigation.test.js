@@ -408,7 +408,8 @@ function draftsPanel(selectedFixtureId, coachDraftsList, users) {
     // falls back to the full staff list (the pre-multi-group behaviour
     // these pins were recorded against)
     const CE_INITIAL_GROUP_ID = 'grp_initial';
-    const _adminData = {};
+    // loaded:true — models arrived admin data; pending now fails closed (group-isolation fix).
+    const _adminData = { loaded: true };
     ${fn('matchCentreSelectedFixture')}
     ${fn('matchCentreFixtureId')}
     ${fn('mcFixtureDateLabel')}
@@ -506,7 +507,8 @@ function remindHarness(rows, { confirm = true } = {}) {
     // falls back to the full staff list (the pre-multi-group behaviour
     // these pins were recorded against)
     const CE_INITIAL_GROUP_ID = 'grp_initial';
-    const _adminData = {};
+    // loaded:true — models arrived admin data; pending now fails closed (group-isolation fix).
+    const _adminData = { loaded: true };
     ${fn('matchCentreSelectedFixture')}
     ${fn('mcFixtureRemindTargets')}
     let _mcRemindInFlight = false;
