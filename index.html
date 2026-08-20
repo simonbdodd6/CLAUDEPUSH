@@ -4912,6 +4912,103 @@
       .perf-ex-card { flex-direction:row; }
       .perf-ex-thumb { width:38px; height:38px; }
     }
+
+    /* ═══ COACHEASIER PERFORMANCE (SC7) — workout execution ═══════════════════
+       Mobile-first, one-hand operable at 390px. Big targets, sticky rest
+       timer, honest sync labels, unmistakable pain-stop. */
+
+    .wk-sync { font-size:10.5px; color:var(--muted); }
+    .wk-today-card { max-width:720px; }
+    .wk-start-row { margin-top:16px; }
+    .wk-big { min-height:50px; font-size:15px; flex:1 1 auto; }
+
+    .wk-readiness-note {
+      margin:10px 0 0; padding:10px 13px; border-radius:11px; font-size:12.5px; font-weight:600;
+      color:var(--ink); background:var(--brand-soft); border:1px solid var(--brand-line);
+    }
+    .wk-ex-tabs { display:flex; gap:6px; margin:14px 0; flex-wrap:wrap; }
+    .wk-ex-tab {
+      font-family:inherit; width:44px; height:44px; border-radius:12px; cursor:pointer;
+      border:1px solid var(--line); background:var(--panel); color:var(--muted); font-weight:800; font-size:14px;
+    }
+    .wk-ex-tab.on { border-color:var(--brand); background:var(--brand-soft); color:var(--brand-2); }
+    .wk-ex-tab.done { color:var(--status-available); }
+    .wk-ex-tab.pain { color:var(--status-maybe); }
+
+    .wk-active-card { max-width:720px; margin-bottom:88px; }
+    .wk-media {
+      display:flex; align-items:center; justify-content:center; gap:8px; margin:12px 0;
+      padding:16px; border:1px dashed var(--line-2); border-radius:12px; color:var(--muted); font-size:12.5px;
+    }
+    .wk-cues { margin:0 0 10px; padding-left:18px; }
+    .wk-cues li { font-size:12.5px; color:var(--muted); margin:2px 0; }
+    .wk-prev { margin:0 0 12px; font-size:12.5px; color:var(--muted); }
+    .wk-prev strong { color:var(--ink); }
+    .wk-pain-banner {
+      margin:0 0 12px; padding:12px 14px; border-radius:12px; font-size:12.5px; line-height:1.5; font-weight:600;
+      color:var(--ink); background:var(--status-maybe-soft); border:1px solid var(--status-maybe);
+    }
+
+    .wk-sets { display:grid; gap:8px; }
+    .wk-set-row {
+      display:flex; align-items:center; gap:10px; padding:10px 12px;
+      border:1px solid var(--line); border-radius:12px; background:var(--panel-2);
+    }
+    .wk-set-row.current { border-color:var(--brand); background:var(--brand-soft); flex-wrap:wrap; }
+    .wk-set-row.done { opacity:.85; }
+    .wk-set-num {
+      flex-shrink:0; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center;
+      border-radius:50%; font-size:12.5px; font-weight:800; color:var(--brand-2);
+      background:var(--panel); border:1px solid var(--brand-line);
+    }
+    .wk-set-fields { flex:1 1 auto; min-width:0; }
+    .wk-set-presc { display:block; font-size:11px; color:var(--muted); margin-bottom:6px; }
+    .wk-set-inputs { display:flex; flex-wrap:wrap; gap:8px; }
+    .wk-set-inputs label { display:flex; flex-direction:column; gap:2px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+    .wk-set-inputs input {
+      width:76px; min-height:44px; padding:0 10px; font-family:inherit; font-size:16px; font-weight:700;
+      border:1px solid var(--line); border-radius:11px; background:var(--panel); color:var(--ink);
+    }
+    .wk-set-inputs input:focus { outline:none; border-color:var(--brand-line); box-shadow:var(--ring, 0 0 0 3px rgba(110,116,240,.18)); }
+    .wk-set-btns { display:flex; gap:8px; width:100%; margin-top:8px; }
+    .wk-set-done { flex:1 1 auto; font-size:13px; font-weight:650; color:var(--ink); }
+    .wk-set-status { flex-shrink:0; font-weight:800; }
+    .wk-set-status.completed { color:var(--status-available); }
+    .wk-set-status.skipped { color:var(--muted); }
+    .wk-set-status.pain_stop { color:var(--status-maybe); }
+
+    .wk-ex-actions { display:flex; gap:8px; margin-top:14px; }
+    .wk-ex-actions .btn { flex:1 1 auto; min-height:44px; }
+    .wk-pain-btn { color:var(--status-unavailable); border-color:var(--status-unavailable) !important; font-weight:750; }
+
+    .wk-plates { margin-top:12px; border:1px solid var(--line); border-radius:12px; padding:10px 14px; }
+    .wk-plates summary { cursor:pointer; font-size:12.5px; font-weight:700; color:var(--muted); }
+    .wk-plates-body { padding-top:10px; font-size:13px; color:var(--ink); }
+    .wk-plates-body label { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); margin-bottom:8px; }
+    .wk-plates-body input { width:90px; min-height:40px; padding:0 10px; font-family:inherit; font-size:15px; border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--ink); }
+
+    .wk-timer-bar {
+      position:sticky; bottom:12px; z-index:5; display:flex; align-items:center; gap:10px;
+      margin-top:16px; padding:10px 14px; padding-bottom:calc(10px + env(safe-area-inset-bottom, 0px));
+      border-radius:14px; border:1px solid var(--brand-line);
+      background:var(--panel); box-shadow:var(--shadow-lift);
+    }
+    .wk-timer-bar.idle { border-color:var(--line); opacity:.9; }
+    .wk-timer-bar.done { border-color:var(--status-available); }
+    .wk-timer-label { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+    .wk-timer-bar strong { font-size:20px; font-variant-numeric:tabular-nums; color:var(--ink); min-width:64px; }
+    .wk-timer-actions { display:flex; gap:6px; margin-left:auto; flex-wrap:wrap; }
+    .wk-timer-actions button {
+      font-family:inherit; cursor:pointer; min-height:40px; padding:0 12px; font-size:12px; font-weight:700;
+      border:1px solid var(--line); border-radius:10px; background:var(--panel-2); color:var(--ink);
+    }
+
+    @media (max-width: 640px) {
+      .wk-set-inputs input { width:70px; }
+      .wk-ex-actions { flex-direction:row; }
+      .wk-timer-actions button { padding:0 10px; }
+      .perf-page-head .pill-row .btn { min-height:44px; }
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -5229,6 +5326,23 @@
         stateVersion: 1,
         favourites: idList(raw.favourites) ? [...new Set(raw.favourites)].slice(0, 200) : [],
         recent: idList(raw.recent) ? raw.recent.slice(-12) : [],
+      };
+    }
+
+    // ── SC7 — workout state mirror (workout-store.js) ─────────────────────────
+    // Thin fail-safe shape check (the module owns full normalisation at
+    // runtime). Active session + completed history survive refresh.
+    function perfNormalizeWorkoutState(raw) {
+      const empty = { stateVersion: 1, active: null, history: [], syncQueue: [], syncStatus: "device" };
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return empty;
+      if (typeof raw.stateVersion !== "number" || raw.stateVersion > 1) return empty;
+      const isSession = w => w && typeof w === "object" && w.kind === "workout_session" && Array.isArray(w.exerciseLogs);
+      return {
+        stateVersion: 1,
+        active: isSession(raw.active) ? raw.active : null,
+        history: Array.isArray(raw.history) ? raw.history.filter(w => isSession(w) && w.completedAt).slice(-40) : [],
+        syncQueue: Array.isArray(raw.syncQueue) ? raw.syncQueue.filter(x => typeof x === "string").slice(-40) : [],
+        syncStatus: ["device", "pending", "synced"].includes(raw.syncStatus) ? raw.syncStatus : "device",
       };
     }
 
@@ -5700,6 +5814,10 @@
       // performance/services/exercise-prefs-store.js (inline mirror
       // perfNormalizeLibraryState).
       performanceLibrary: null,
+      // SC7 — workout execution state: the recoverable ACTIVE session plus
+      // immutable completed history. Shape owned by performance/services/
+      // workout-store.js (inline mirror perfNormalizeWorkoutState).
+      performanceWorkout: null,
       selectedPlayerId: "",
       selectedMessagePlayerId: "",
       selectedChatId: "coach",
@@ -6350,6 +6468,9 @@
       next.performanceProfile = input.performanceProfile == null ? null : perfNormalizeProfileState(input.performanceProfile);
       // SC3 — same guarantee for library preferences.
       next.performanceLibrary = input.performanceLibrary == null ? null : perfNormalizeLibraryState(input.performanceLibrary);
+      // SC7 — workout state must never break app load; completed history and
+      // the active session survive refresh, malformed data fails safe.
+      next.performanceWorkout = input.performanceWorkout == null ? null : perfNormalizeWorkoutState(input.performanceWorkout);
       next.clubLogo = input.clubLogo ?? "";
       next.clubColours = input.clubColours ?? null;
       next.autopilotReceipts = Array.isArray(input.autopilotReceipts) ? input.autopilotReceipts.slice(0, 20) : [];
@@ -26458,37 +26579,634 @@
         </div>`;
     }
 
-    // ── Workouts (today's session shell) ──────────────────────────────────────
+    // ═══ SC7 — WORKOUT EXECUTION (UI layer) ══════════════════════════════════
+    // index.html is integration + rendering only: the workout truth lives in
+    // performance/services/workout-runtime.js (loaded via dynamic import,
+    // same convention as the exercise catalogue). The player edits ACTUAL
+    // performance; source prescriptions, exercise definitions and safety
+    // rules are never editable here.
+
+    let _perfWkMod = null;
+    let _perfWkErr = false;
+    let _perfWkPromise = null;
+    let _wkView = null;            // null | readiness | substitution | complete_review | summary | history | history_detail
+    let _wkHistoryIdx = null;
+    let _wkSubIdx = null;
+    let _wkSubReason = 'equipment_unavailable';
+    let _wkReadiness = {};         // draft pre-workout scores
+    let _wkLastFinished = null;    // {workout, previews}
+    let _wkPlateFor = null;        // set target for plate calculator display
+    let _wkTimer = { endsAt: null, paused: false, remainingMs: 0, intervalId: null };
+
+    function perfLoadWorkoutRuntime() {
+      if (_perfWkMod || _perfWkErr) return;
+      if (!_perfWkPromise) {
+        _perfWkPromise = import('./performance/services/workout-runtime.js')
+          .then(mod => { _perfWkMod = mod; renderPerformance(); })
+          .catch(e => { console.error('[performance] workout runtime load failed', e); _perfWkErr = true; renderPerformance(); });
+      }
+    }
+
+    function perfWkState() {
+      return _perfWkMod.normalizeWorkoutState(state.performanceWorkout);
+    }
+    function perfWkPersistActive(session, msg = 'Saved on device') {
+      state.performanceWorkout = _perfWkMod.saveActiveSession(perfWkState(), session);
+      saveState(msg);
+    }
+    function perfWkActive() {
+      return perfWkState().active;
+    }
+    function perfWkNow() { return new Date().toISOString(); }
+
+    // ── Today / start flow ───────────────────────────────────────────────────
+    function perfWkBeginReadiness() { _wkView = 'readiness'; _wkReadiness = {}; renderPerformance(); }
+    function perfWkReadinessScore(key, v) { _wkReadiness[key] = v; renderPerformance(); }
+    function perfWkStart(withReadiness) {
+      const demo = _perfWkMod.getDemoAssignment();
+      let session = _perfWkMod.createWorkoutSession({
+        athleteId: state.currentUserId || 'local-athlete',
+        programme: demo.programme, sessionNode: demo.sessionNode,
+        catalogue: _perfWkMod.getCatalogue(), meta: demo.meta, now: perfWkNow(),
+      });
+      session = _perfWkMod.startWorkout(session, perfWkNow());
+      if (withReadiness && Object.keys(_wkReadiness).length) {
+        const analysis = _perfWkMod.analyseReadiness([{ date: perfWkNow(), scores: _wkReadiness }]);
+        const text = analysis.status === 'one_low' || analysis.status === 'sustained_low'
+          ? 'Feeling rough today — optional extras are worth skipping. Nothing else changes from one check-in.'
+          : 'No change — train as prescribed.';
+        session = _perfWkMod.recordReadiness(session, { scores: _wkReadiness, adjustmentText: text }, perfWkNow());
+      }
+      _wkView = null;
+      perfWkPersistActive(session, 'Workout started');
+      renderPerformance();
+    }
+
+    // ── Set logging ──────────────────────────────────────────────────────────
+    function perfWkDraft(exIdx, setIdx, field, raw) {
+      // Draft write for recovery: updates ACTUAL values only, keeps the set
+      // pending (drafts never complete a set) and adds no audit noise.
+      const session = structuredClone(perfWkActive()); if (!session) return;
+      const set = session.exerciseLogs[exIdx]?.sets[setIdx]; if (!set) return;
+      if (field === 'reps') set.actual.reps = raw === '' ? null : Math.max(0, Math.round(Number(raw) || 0));
+      if (field === 'rpe') set.actual.rpe = raw === '' ? null : Math.min(10, Math.max(1, Number(raw)));
+      if (field === 'durationSec') set.actual.durationSec = raw === '' ? null : Math.max(0, Math.round(Number(raw) || 0));
+      if (field === 'loadValue') {
+        const base = set.actual.load || perfWkPrescribedLoad(session.exerciseLogs[exIdx], setIdx) || _perfWkMod.makeLoad('kg', null);
+        set.actual.load = { ...base, value: raw === '' ? null : Number(raw) };
+      }
+      perfWkPersistActive(session);
+    }
+    function perfWkPrescribedLoad(log, setIdx) {
+      const p = log.sets[setIdx]?.prescribed || {};
+      if (p.load != null) {
+        const implementCount = log.exerciseId === 'ex-db-bench' ? 2 : 1; // demo: dumbbell pairs
+        return _perfWkMod.makeLoad('kg', p.load, { implements: implementCount });
+      }
+      if (p.percentage != null) return _perfWkMod.makeLoad('percentage', p.percentage, { of: 'reference' });
+      if (p.holdSec != null || p.durationSec != null) return null;
+      return _perfWkMod.makeLoad('bodyweight');
+    }
+    function perfWkCompleteSet(exIdx, setIdx, status) {
+      let session = perfWkActive(); if (!session) return;
+      const el = id => document.getElementById(id);
+      const reps = el(`wkReps-${exIdx}-${setIdx}`)?.value ?? '';
+      const loadV = el(`wkLoad-${exIdx}-${setIdx}`)?.value ?? '';
+      const rpe = el(`wkRpe-${exIdx}-${setIdx}`)?.value ?? '';
+      const dur = el(`wkDur-${exIdx}-${setIdx}`)?.value ?? '';
+      const log = session.exerciseLogs[exIdx];
+      const baseLoad = perfWkPrescribedLoad(log, setIdx);
+      const patch = { status: status || 'completed' };
+      if (reps !== '') patch.reps = Math.round(Number(reps) || 0);
+      if (loadV !== '' && baseLoad && baseLoad.type !== 'bodyweight') patch.load = { ...baseLoad, value: Number(loadV) };
+      else if (baseLoad) patch.load = baseLoad;
+      if (rpe !== '') patch.rpe = Number(rpe);
+      if (dur !== '') patch.durationSec = Math.round(Number(dur) || 0);
+      session = _perfWkMod.logSet(session, exIdx, setIdx, patch, perfWkNow());
+      perfWkPersistActive(session, status === 'skipped' ? 'Set skipped' : 'Set saved on device');
+      if ((status || 'completed') === 'completed') perfWkTimerStart(log.restSec);
+      renderPerformance();
+    }
+    function perfWkSkipSet(exIdx, setIdx) { perfWkCompleteSet(exIdx, setIdx, 'skipped'); }
+    function perfWkGotoExercise(i) {
+      let session = perfWkActive(); if (!session) return;
+      session = _perfWkMod.setCurrentExercise(session, i);
+      perfWkPersistActive(session);
+      renderPerformance();
+    }
+    function perfWkExerciseNote(i, v) {
+      let session = perfWkActive(); if (!session) return;
+      perfWkPersistActive(_perfWkMod.setExerciseNote(session, i, v));
+    }
+    function perfWkSessionNote(v) {
+      let session = perfWkActive(); if (!session) return;
+      perfWkPersistActive(_perfWkMod.setSessionNote(session, v));
+    }
+
+    // ── Pause / resume / abandon ─────────────────────────────────────────────
+    function perfWkPause() {
+      let session = perfWkActive(); if (!session) return;
+      perfWkPersistActive(_perfWkMod.pauseWorkout(session, perfWkNow()), 'Workout paused');
+      renderPerformance();
+    }
+    function perfWkResume() {
+      let session = perfWkActive(); if (!session) return;
+      perfWkPersistActive(_perfWkMod.resumeWorkout(session, perfWkNow()), 'Workout resumed');
+      renderPerformance();
+    }
+    async function perfWkAbandon() {
+      const okGo = await ceConfirm('Abandon workout?', 'Completed sets stay in your history as an abandoned session.', { confirmLabel: 'Abandon', danger: true });
+      if (!okGo) return;
+      let session = perfWkActive(); if (!session) return;
+      const done = _perfWkMod.completeWorkout(_perfWkMod.abandonWorkout(session, perfWkNow()), { now: perfWkNow() });
+      state.performanceWorkout = _perfWkMod.archiveCompletedWorkout(perfWkState(), done);
+      saveState('Saved on device');
+      _wkView = null;
+      perfWkTimerStop();
+      renderPerformance();
+    }
+
+    // ── Substitution (SC3 rules — pain is never a reason here) ───────────────
+    function perfWkOpenSub(exIdx) { _wkSubIdx = exIdx; _wkSubReason = 'equipment_unavailable'; _wkView = 'substitution'; renderPerformance(); }
+    function perfWkSubReason(r) { _wkSubReason = r; renderPerformance(); }
+    function perfWkPickSub(exId) {
+      let session = perfWkActive(); if (!session || _wkSubIdx === null) return;
+      const sub = _perfWkMod.getExerciseById(exId);
+      if (!sub) return;
+      session = _perfWkMod.substituteExercise(session, _wkSubIdx, sub, _wkSubReason, perfWkNow());
+      _wkView = null; _wkSubIdx = null;
+      perfWkPersistActive(session, 'Exercise substituted');
+      renderPerformance();
+    }
+    function perfWkCloseSub() { _wkView = null; _wkSubIdx = null; renderPerformance(); }
+
+    // ── Pain / stop (safety-critical) ────────────────────────────────────────
+    async function perfWkPainStop(exIdx) {
+      const okGo = await ceConfirm('Stop this exercise?', 'Use this if you feel pain. The exercise stops, nothing replaces it, and it gets flagged for review.', { confirmLabel: 'Pain — stop exercise', danger: true });
+      if (!okGo) return;
+      let session = perfWkActive(); if (!session) return;
+      session = _perfWkMod.painStopExercise(session, exIdx, perfWkNow());
+      perfWkPersistActive(session, 'Exercise stopped — flagged for review');
+      renderPerformance();
+    }
+
+    // ── Rest timer (state survives rerenders; never completes sets) ──────────
+    function perfWkTimerStart(sec) {
+      perfWkTimerStop();
+      _wkTimer = { endsAt: Date.now() + sec * 1000, paused: false, remainingMs: sec * 1000, intervalId: null };
+      let session = perfWkActive();
+      if (session) { session = structuredClone(session); session.timer = { endsAt: _wkTimer.endsAt, running: true }; perfWkPersistActive(session); }
+      _wkTimer.intervalId = setInterval(perfWkTimerTick, 500);
+      perfWkTimerTick();
+    }
+    function perfWkTimerTick() {
+      const el = document.getElementById('wkTimerVal');
+      if (_wkTimer.endsAt === null) { if (el) el.textContent = '—'; return; }
+      const ms = _wkTimer.paused ? _wkTimer.remainingMs : _wkTimer.endsAt - Date.now();
+      if (ms <= 0) {
+        perfWkTimerStop(false);
+        if (el) el.textContent = 'Rest done';
+        const bar = document.getElementById('wkTimerBar');
+        if (bar) bar.classList.add('done');
+        return;
+      }
+      if (el) el.textContent = `${Math.floor(ms / 60000)}:${String(Math.ceil(ms / 1000) % 60).padStart(2, '0')}`;
+    }
+    function perfWkTimerPause() {
+      if (_wkTimer.endsAt === null) return;
+      if (_wkTimer.paused) { _wkTimer.endsAt = Date.now() + _wkTimer.remainingMs; _wkTimer.paused = false; }
+      else { _wkTimer.remainingMs = Math.max(0, _wkTimer.endsAt - Date.now()); _wkTimer.paused = true; }
+      renderPerformance();
+    }
+    function perfWkTimerPlus30() {
+      if (_wkTimer.endsAt === null) return;
+      if (_wkTimer.paused) _wkTimer.remainingMs += 30000; else _wkTimer.endsAt += 30000;
+      perfWkTimerTick();
+    }
+    function perfWkTimerSkip() { perfWkTimerStop(); renderPerformance(); }
+    function perfWkTimerStop(clear = true) {
+      if (_wkTimer.intervalId) clearInterval(_wkTimer.intervalId);
+      if (clear) _wkTimer = { endsAt: null, paused: false, remainingMs: 0, intervalId: null };
+      else _wkTimer.intervalId = null;
+    }
+    function perfWkTimerRestore(session) {
+      if (session?.timer?.running && session.timer.endsAt && session.timer.endsAt > Date.now() && _wkTimer.endsAt === null) {
+        _wkTimer = { endsAt: session.timer.endsAt, paused: false, remainingMs: session.timer.endsAt - Date.now(), intervalId: setInterval(perfWkTimerTick, 500) };
+      }
+    }
+
+    // ── Completion ───────────────────────────────────────────────────────────
+    function perfWkFinishRequest() {
+      const session = perfWkActive(); if (!session) return;
+      const v = _perfWkMod.validateCompletion(session);
+      if (v.needsConfirmation) { _wkView = 'complete_review'; renderPerformance(); return; }
+      perfWkFinishConfirm();
+    }
+    function perfWkFinishConfirm() {
+      let session = perfWkActive(); if (!session) return;
+      const now = perfWkNow();
+      const wstate = perfWkState();
+      const previousBests = _perfWkMod.previousBestsFromHistory(wstate);
+      const done = _perfWkMod.completeWorkout(session, { now, previousBests });
+      // History first, active cleared only after (store enforces ordering).
+      state.performanceWorkout = _perfWkMod.archiveCompletedWorkout(wstate, done);
+      saveState('Workout saved on device');
+      const previews = perfWkBuildPreviews(done);
+      _wkLastFinished = { workout: done, previews };
+      _wkView = 'summary';
+      perfWkTimerStop();
+      renderPerformance();
+    }
+    function perfWkBuildPreviews(done) {
+      const out = [];
+      const wstate = perfWkState();
+      done.exerciseLogs.forEach((log, i) => {
+        try {
+          const exercise = _perfWkMod.getExerciseById(log.exerciseId);
+          if (!exercise) return;
+          const p = log.sets[0]?.prescribed || {};
+          const prescription = {
+            sets: p.sets ?? log.sets.length,
+            repRange: typeof p.reps === 'string' ? p.reps.split(/[-–]/).map(Number) : (Number.isInteger(p.reps) ? [p.reps, p.reps] : null),
+            load: perfWkPrescribedLoad(log, 0) || _perfWkMod.makeLoad('bodyweight'),
+            rpeTarget: p.rpe ?? null,
+            durationSec: p.holdSec ?? p.durationSec ?? null,
+          };
+          const prior = _perfWkMod.priorExposuresForExercise(wstate, log.exerciseId, _perfWkMod.exposuresFromWorkout).slice(0, -1);
+          const preview = _perfWkMod.progressionPreviewForExercise(done, i, {
+            exercise, priorHistory: prior, prescription,
+            equipmentKind: log.exerciseId === 'ex-db-bench' ? 'dumbbells' : (prescription.load?.type === 'bodyweight' ? 'bodyweight' : 'barbell'),
+            athlete: { context: 'adult', experience: 'intermediate', supervisionAvailable: true },
+            match: done.matchContext || {},
+          });
+          if (preview) out.push({ name: log.exerciseSnapshot.name, outcome: preview.outcome, text: preview.reasons[preview.reasons.length - 1]?.text || '', requiresReview: preview.requiresReview });
+        } catch (e) { console.error('[performance] preview failed', e); }
+      });
+      return out;
+    }
+    function perfWkDismissSummary() { _wkLastFinished = null; _wkView = null; renderPerformance(); }
+
+    // ── History ──────────────────────────────────────────────────────────────
+    function perfWkOpenHistory() { _wkView = 'history'; renderPerformance(); }
+    function perfWkOpenHistoryItem(i) { _wkHistoryIdx = i; _wkView = 'history_detail'; renderPerformance(); }
+    function perfWkCloseHistory() { _wkView = null; _wkHistoryIdx = null; renderPerformance(); }
+
+    // ── View helpers ─────────────────────────────────────────────────────────
+    function perfWkFmtSet(set) {
+      const a = set.actual;
+      const bits = [];
+      if (a.load) bits.push(_perfWkMod.formatLoad(a.load));
+      if (a.reps != null) bits.push(`× ${a.reps}`);
+      if (a.durationSec != null) bits.push(`${a.durationSec}s`);
+      if (a.rpe != null) bits.push(`@ RPE ${a.rpe}`);
+      return bits.join(' ') || '—';
+    }
+    function perfWkPrevPerformance(exerciseId, todaysLoad) {
+      // "Last time" must be genuinely comparable: same exercise, not a
+      // substituted-in performance, and the same load semantics (type AND
+      // implement count) as today's prescription. Anything else is omitted
+      // rather than shown as a misleading comparison.
+      const history = _perfWkMod.getHistory(perfWkState());
+      for (const w of history) {
+        const log = (w.exerciseLogs || []).find(l => l.exerciseId === exerciseId);
+        if (!log || log.substitution) continue;
+        const doneSets = log.sets.filter(x => x.status === 'completed');
+        if (!doneSets.length) continue;
+        const prevLoad = doneSets[0].actual.load;
+        if (todaysLoad && prevLoad) {
+          if (prevLoad.type !== todaysLoad.type) continue;
+          if ((prevLoad.implements || 1) !== (todaysLoad.implements || 1)) continue;
+        } else if (!!todaysLoad !== !!prevLoad) continue;
+        const load = prevLoad ? _perfWkMod.formatLoad(prevLoad) : '';
+        const reps = doneSets.map(x => x.actual.reps ?? '—').join(', ');
+        const rpes = doneSets.map(x => x.actual.rpe).filter(v => v != null);
+        return `${load} × ${reps}${rpes.length ? ` @ RPE ${Math.max(...rpes)}` : ''}`;
+      }
+      return null;
+    }
+    function perfWkPrescribedText(log, setIdx) {
+      const p = log.sets[setIdx].prescribed;
+      const bits = [];
+      if (p.reps != null) bits.push(`${p.reps} reps`);
+      if (p.holdSec != null) bits.push(`${p.holdSec}s hold`);
+      if (p.durationSec != null) bits.push(`${p.durationSec}s`);
+      const load = perfWkPrescribedLoad(log, setIdx);
+      if (load) bits.push(_perfWkMod.formatLoad(load));
+      if (p.rpe != null) bits.push(`@ RPE ${p.rpe}`);
+      return bits.join(' · ');
+    }
+
+    // ── Main workout view dispatcher ─────────────────────────────────────────
     function perfWorkoutsHtml() {
-      const t = PERF_SAMPLE_TODAY;
-      const donePct = Math.round((t.completedCount / t.assignedCount) * 100);
+      if (_perfWkErr) {
+        return `<div class="perf-page-head"><div><h2>Today's Workout</h2></div></div>
+          <div class="card" style="text-align:center;padding:28px 16px"><p style="font-weight:700;margin:0 0 4px">The workout engine couldn't load</p>
+          <p class="muted" style="font-size:12px;margin:0">Check your connection and reload the page.</p></div>`;
+      }
+      if (!_perfWkMod) {
+        perfLoadWorkoutRuntime();
+        return `<div class="perf-page-head"><div><h2>Today's Workout</h2><p class="muted">Loading…</p></div></div>
+          <div class="card" style="padding:28px 16px;text-align:center"><p class="muted" style="margin:0">Loading…</p></div>`;
+      }
+      const wstate = perfWkState();
+      if (_wkView === 'history') return perfWkHistoryHtml(wstate);
+      if (_wkView === 'history_detail') return perfWkHistoryDetailHtml(wstate);
+      if (_wkView === 'summary' && _wkLastFinished) return perfWkSummaryHtml();
+      const active = wstate.active;
+      if (active) {
+        perfWkTimerRestore(active);
+        if (_wkView === 'substitution') return perfWkSubstitutionHtml(active);
+        if (_wkView === 'complete_review') return perfWkCompleteReviewHtml(active);
+        if (active.status === 'paused') return perfWkPausedHtml(active);
+        return perfWkActiveHtml(active);
+      }
+      if (_wkView === 'readiness') return perfWkReadinessHtml();
+      return perfWkTodayHtml(wstate);
+    }
+
+    function perfWkSyncPill(wstate) {
+      const label = wstate.syncStatus === 'pending' ? 'Saved on device · sync pending' : wstate.syncStatus === 'synced' ? 'Synced' : 'Saved on device';
+      return `<span class="pill wk-sync">${label}</span>`;
+    }
+
+    // ── Today ────────────────────────────────────────────────────────────────
+    function perfWkTodayHtml(wstate) {
+      const demo = _perfWkMod.getDemoAssignment();
+      const sess = demo.sessionNode;
+      const exCount = sess.blocks.reduce((n, b) => n + b.prescriptions.length, 0);
+      const historyCount = wstate.history.length;
       return `
         <div class="perf-page-head">
-          <div>
-            <h2>Today's Workout</h2>
-            <p class="muted">Monday 3 August · ${esc(t.programme)}</p>
-          </div>
-          <span class="status maybe">${t.completedCount} of ${t.assignedCount} completed</span>
+          <div><h2>Today's Workout</h2><p class="muted">${esc(demo.programme.title)} · Pre-season · Week ${demo.meta.week}</p></div>
+          ${perfWkSyncPill(wstate)}
         </div>
-        <div class="card perf-card perf-session-card">
-          <div class="perf-card-head">
-            <small>${t.time} · ~${t.estimatedMinutes} min</small>
-            <span class="pill">${t.blocks.length} blocks</span>
+        <div class="card perf-card wk-today-card">
+          <div class="perf-card-head"><small>${esc(sess.purpose)} session</small><span class="pill">${demo.meta.matchContext.md} · match ${esc(demo.meta.matchContext.matchDay)}</span></div>
+          <strong class="perf-card-title">${esc(sess.title)}</strong>
+          <div class="perf-ex-chips" style="margin-top:8px">
+            <span class="pill">~${sess.estimatedMinutes} min</span>
+            <span class="pill">${exCount} exercises</span>
+            <span class="pill">Demo assignment</span>
           </div>
-          <strong class="perf-card-title">${esc(t.title)}</strong>
-          <div style="margin-top:12px">${perfMeter(donePct)}</div>
-          <div class="perf-block-list">
-            ${t.blocks.map((b, i) => `
-              <div class="perf-block">
-                <span class="perf-block-num">${i + 1}</span>
-                <div class="perf-block-body">
-                  <strong>${esc(b.name)}</strong>
-                  <small class="muted">${esc(b.detail)}</small>
-                </div>
-                <span class="pill">${b.minutes} min</span>
-              </div>`).join('')}
+          <p class="muted" style="font-size:12.5px;margin:10px 0 0">${esc(sess.objective)}</p>
+          <div class="wk-start-row">
+            <button class="btn primary wk-big" type="button" onclick="perfWkBeginReadiness()">Start workout</button>
           </div>
-          <p class="muted" style="font-size:12px;margin:14px 0 0">Exercise prescription arrives with the Performance engine — blocks above define today's session structure.</p>
+        </div>
+        ${historyCount ? `
+          <div class="perf-page-head" style="margin-top:20px"><div><h2 style="font-size:17px">History</h2></div>
+            <button class="btn ghost" type="button" onclick="perfWkOpenHistory()">All workouts</button></div>
+          ${perfWkHistoryListHtml(wstate, 3)}` : `
+          <p class="muted" style="font-size:12.5px;margin-top:16px">No workouts yet — your completed sessions will appear here exactly as you logged them.</p>`}`;
+    }
+
+    // ── Readiness ────────────────────────────────────────────────────────────
+    function perfWkReadinessHtml() {
+      const keys = [["sleep","Sleep quality"],["fatigue","Energy"],["soreness","Muscle soreness"],["stress","Stress"],["motivation","Motivation"],["readiness","Ready to train"]];
+      return `
+        <div class="perf-page-head"><div><h2>Quick check-in</h2><p class="muted">Optional — how you feel today. A snapshot, never a medical assessment.</p></div></div>
+        <div class="card perf-card perf-ob-card">
+          ${keys.map(([id, label]) => `
+            <div class="perf-ob-q"><div class="perf-ob-q-title">${label}<span class="perf-optional">Optional</span></div>
+              <div class="perf-scale">${[1,2,3,4,5].map(v => `<button type="button" class="perf-scale-btn ${_wkReadiness[id] === v ? 'on' : ''}" onclick="perfWkReadinessScore('${id}',${v})">${v}</button>`).join('')}</div>
+            </div>`).join('')}
+          <div class="perf-ob-nav">
+            <button class="btn ghost" type="button" onclick="perfWkStart(false)">Skip</button>
+            <button class="btn primary" type="button" onclick="perfWkStart(true)">Start workout</button>
+          </div>
+        </div>`;
+    }
+
+    // ── Active workout ───────────────────────────────────────────────────────
+    function perfWkActiveHtml(session) {
+      const i = session.currentExerciseIndex;
+      const log = session.exerciseLogs[i];
+      const progress = _perfWkMod.sessionProgress(session);
+      const liveEx = _perfWkMod.getExerciseById(log.exerciseId);
+      const cues = liveEx?.coaching?.cues?.slice(0, 2) || [];
+      const prev = perfWkPrevPerformance(log.exerciseId, perfWkPrescribedLoad(log, 0));
+      const nextSet = _perfWkMod.nextPendingSet(session, i);
+      const readinessNote = session.readinessAdjustment;
+      // PROVISIONAL threshold: a session started >24h ago is stale — never
+      // silently treated as today's workout; the player decides.
+      const staleMs = session.startedAt ? Date.now() - new Date(session.startedAt).getTime() : 0;
+      const staleBanner = staleMs > 24 * 3600000
+        ? `<div class="wk-pain-banner" style="border-color:var(--line-2);background:var(--panel-2)">This workout was started on ${esc(String(session.startedAt).slice(0, 10))} and is still unfinished. Completed sets are safe — resume it, or finish/abandon it before starting a new session.</div>`
+        : '';
+      const painBanner = log.painStop ? `<div class="wk-pain-banner">${esc(log.painStop.guidance)}</div>` : '';
+      const timerActive = _wkTimer.endsAt !== null;
+      const baseLoad = perfWkPrescribedLoad(log, 0);
+      const showPlates = baseLoad && baseLoad.type === 'kg' && (baseLoad.implements || 1) === 1 && (log.exerciseId === 'ex-back-squat' || log.exerciseId === 'ex-barbell-rdl');
+
+      return `
+        <div class="perf-page-head">
+          <div><h2>${esc(session.sourceSessionSnapshot.title)}</h2>
+            <p class="muted">${progress.setsDone} of ${progress.setsTotal} sets · exercise ${i + 1} of ${session.exerciseLogs.length}</p></div>
+          <div class="pill-row">
+            <button class="btn ghost" type="button" onclick="perfWkPause()">Pause</button>
+            <button class="btn primary" type="button" onclick="perfWkFinishRequest()">Finish</button>
+          </div>
+        </div>
+        ${perfMeter(progress.pct)}
+        ${staleBanner}
+        ${readinessNote ? `<p class="wk-readiness-note">${esc(readinessNote)}</p>` : ''}
+        <div class="wk-ex-tabs">
+          ${session.exerciseLogs.map((l, idx) => `<button type="button" class="wk-ex-tab ${idx === i ? 'on' : ''} ${l.status === 'completed' ? 'done' : ''} ${l.painStop ? 'pain' : ''}" onclick="perfWkGotoExercise(${idx})">${idx + 1}</button>`).join('')}
+        </div>
+
+        <div class="card perf-card wk-active-card">
+          <div class="perf-card-head"><small>${esc(log.blockType.replace(/_/g, ' '))}</small>
+            ${log.substitution ? `<span class="perf-tier-badge club">Substituted</span>` : ''}</div>
+          <strong class="perf-card-title">${esc(log.exerciseSnapshot.name)}</strong>
+          ${log.coachingNotes ? `<small class="muted" style="display:block;margin-top:3px">Coach: ${esc(log.coachingNotes)}</small>` : ''}
+          <div class="wk-media">${icon('dumbbell', 20)}<span>Demo coming soon</span></div>
+          ${cues.length ? `<ul class="wk-cues">${cues.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
+          ${prev ? `<p class="wk-prev">Last time: <strong>${esc(prev)}</strong></p>` : ''}
+          ${painBanner}
+
+          <div class="wk-sets">
+            ${log.sets.map((set, si) => perfWkSetRowHtml(log, i, si, set, nextSet)).join('')}
+          </div>
+          ${showPlates ? perfWkPlateHtml(log, i) : ''}
+
+          <div class="wk-ex-actions">
+            <button class="btn ghost" type="button" onclick="perfWkOpenSub(${i})" ${log.painStop ? 'disabled' : ''}>Substitute</button>
+            <button class="btn ghost wk-pain-btn" type="button" onclick="perfWkPainStop(${i})" ${log.painStop ? 'disabled' : ''}>Pain / Stop</button>
+          </div>
+          <input type="text" class="perf-search" style="margin-top:10px" maxlength="300" placeholder="Exercise note (optional)" value="${esc(log.exerciseNote)}" onchange="perfWkExerciseNote(${i}, this.value)">
+        </div>
+
+        <input type="text" class="perf-search" style="margin-top:12px" maxlength="500" placeholder="Session note (optional — saved with the workout)" value="${esc(session.sessionNote)}" onchange="perfWkSessionNote(this.value)">
+        <div class="wk-timer-bar ${timerActive ? '' : 'idle'}" id="wkTimerBar">
+          <span class="wk-timer-label">Rest</span>
+          <strong id="wkTimerVal">${timerActive ? '…' : '—'}</strong>
+          <div class="wk-timer-actions">
+            <button type="button" onclick="perfWkTimerPause()">${_wkTimer.paused ? 'Resume' : 'Pause'}</button>
+            <button type="button" onclick="perfWkTimerPlus30()">+30s</button>
+            <button type="button" onclick="perfWkTimerSkip()">Skip</button>
+            <button type="button" onclick="perfWkTimerStart(${log.restSec})">Reset</button>
+          </div>
+        </div>`;
+    }
+
+    function perfWkSetRowHtml(log, exIdx, setIdx, set, nextSet) {
+      const isNext = setIdx === nextSet;
+      const doneCls = set.status !== 'pending' ? 'done' : (isNext ? 'current' : '');
+      const p = set.prescribed;
+      const baseLoad = perfWkPrescribedLoad(log, setIdx);
+      const loadEditable = baseLoad && baseLoad.type !== 'bodyweight' && baseLoad.type !== 'percentage';
+      const isHold = p.holdSec != null || p.durationSec != null;
+      if (set.status !== 'pending') {
+        const label = { completed: '✓', skipped: '—', pain_stop: '⚑' }[set.status] || '✗';
+        return `<div class="wk-set-row ${doneCls}">
+          <span class="wk-set-num">${set.setNumber}</span>
+          <span class="wk-set-done">${perfWkFmtSet(set)}</span>
+          <span class="wk-set-status ${set.status}">${label}</span>
+        </div>`;
+      }
+      return `<div class="wk-set-row ${doneCls}">
+        <span class="wk-set-num">${set.setNumber}</span>
+        <div class="wk-set-fields">
+          <small class="wk-set-presc">${esc(perfWkPrescribedText(log, setIdx))}</small>
+          <div class="wk-set-inputs">
+            ${loadEditable ? `<label>${(baseLoad.implements || 1) > 1 ? 'kg each' : 'kg'}<input id="wkLoad-${exIdx}-${setIdx}" type="number" inputmode="decimal" step="0.5" value="${set.actual.load?.value ?? baseLoad.value ?? ''}" onchange="perfWkDraft(${exIdx},${setIdx},'loadValue',this.value)"></label>` : ''}
+            ${!isHold ? `<label>reps<input id="wkReps-${exIdx}-${setIdx}" type="number" inputmode="numeric" value="${set.actual.reps ?? (Number.isInteger(p.reps) ? p.reps : '')}" placeholder="${typeof p.reps === 'string' ? p.reps : ''}" onchange="perfWkDraft(${exIdx},${setIdx},'reps',this.value)"></label>` : ''}
+            ${isHold ? `<label>secs<input id="wkDur-${exIdx}-${setIdx}" type="number" inputmode="numeric" value="${set.actual.durationSec ?? (p.holdSec ?? p.durationSec ?? '')}" onchange="perfWkDraft(${exIdx},${setIdx},'durationSec',this.value)"></label>` : ''}
+            ${p.rpe != null ? `<label>RPE<input id="wkRpe-${exIdx}-${setIdx}" type="number" inputmode="decimal" step="0.5" min="1" max="10" value="${set.actual.rpe ?? ''}" placeholder="${p.rpe}" onchange="perfWkDraft(${exIdx},${setIdx},'rpe',this.value)"></label>` : ''}
+          </div>
+        </div>
+        ${isNext ? `<div class="wk-set-btns">
+          <button class="btn primary wk-big" type="button" onclick="perfWkCompleteSet(${exIdx},${setIdx})">Done</button>
+          <button class="btn ghost" type="button" onclick="perfWkSkipSet(${exIdx},${setIdx})">Skip</button>
+        </div>` : ''}
+      </div>`;
+    }
+
+    function perfWkPlateHtml(log, exIdx) {
+      const target = _wkPlateFor ?? (perfWkPrescribedLoad(log, 0)?.value || 0);
+      const res = _perfWkMod.platesPerSide(target, 20);
+      return `<details class="wk-plates"><summary>Plate calculator</summary>
+        <div class="wk-plates-body">
+          <label>Target kg <input type="number" inputmode="decimal" step="0.5" value="${target}" onchange="_wkPlateFor = Number(this.value)||0; renderPerformance()"></label>
+          <p>${res.ok ? `Per side: <strong>${res.perSide.join(' + ')} kg</strong> (bar 20 kg)` : res.achievedTotal >= 20 ? `Closest: ${res.achievedTotal} kg (${res.perSide.join(' + ') || 'empty bar'} per side) — ${res.shortfallKg} kg short with these plates` : 'Below bar weight'}</p>
+        </div></details>`;
+    }
+
+    // ── Paused ───────────────────────────────────────────────────────────────
+    function perfWkPausedHtml(session) {
+      const progress = _perfWkMod.sessionProgress(session);
+      return `
+        <div class="perf-page-head"><div><h2>Workout paused</h2><p class="muted">${esc(session.sourceSessionSnapshot.title)} · ${progress.setsDone} of ${progress.setsTotal} sets saved on device</p></div></div>
+        <div class="card perf-card" style="text-align:center;padding:26px">
+          <p class="muted" style="margin:0 0 16px">Everything so far is saved. Pick up exactly where you left off.</p>
+          <div class="pill-row" style="justify-content:center">
+            <button class="btn primary wk-big" type="button" onclick="perfWkResume()">Resume workout</button>
+            <button class="btn ghost" type="button" onclick="perfWkAbandon()">Abandon</button>
+          </div>
+        </div>`;
+    }
+
+    // ── Substitution picker ──────────────────────────────────────────────────
+    function perfWkSubstitutionHtml(session) {
+      const log = session.exerciseLogs[_wkSubIdx];
+      const alts = _perfWkMod.eligibleSubstitutes(session, _wkSubIdx, _perfWkMod.getCatalogue(), { athleteEquipment: { locations: ['commercial_gym'], items: [] } });
+      const reasons = _perfWkMod.SUBSTITUTION_REQUEST_REASONS;
+      return `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><button class="btn ghost" type="button" onclick="perfWkCloseSub()" style="font-size:13px;padding:5px 12px">← Back</button></div>
+        <div class="perf-page-head"><div><h2>Substitute ${esc(log.exerciseSnapshot.name)}</h2><p class="muted">Safe, validated alternatives only. In pain? Use Pain / Stop instead — substitution is never the answer to pain.</p></div></div>
+        <div class="perf-chip-row">${reasons.map(r => `<button type="button" class="perf-tool-chip ${_wkSubReason === r.id ? 'active' : ''}" onclick="perfWkSubReason('${r.id}')">${esc(r.label)}</button>`).join('')}</div>
+        <div class="list">
+          ${alts.length ? alts.map(a => `
+            <button type="button" class="row perf-athlete-row clickable" onclick="perfWkPickSub('${a.exercise.id}')">
+              <div><strong>${esc(a.exercise.name)}</strong><small>${esc(a.exercise.shortDescription)} · ${esc(a.reason.replace(/_/g, ' '))}</small></div>
+            </button>`).join('') : '<div class="card" style="text-align:center;padding:24px"><p class="muted" style="margin:0">No safe alternative fits — skip the exercise or ask your coach.</p></div>'}
+        </div>`;
+    }
+
+    // ── Completion review ────────────────────────────────────────────────────
+    function perfWkCompleteReviewHtml(session) {
+      const v = _perfWkMod.validateCompletion(session);
+      return `
+        <div class="perf-page-head"><div><h2>Finish workout?</h2><p class="muted">Some prescribed work is still unfinished — it will be recorded as skipped, exactly as it happened.</p></div></div>
+        <div class="card perf-card">
+          <div class="list">
+            ${v.unresolved.map(u => `<div class="row"><div><strong>${esc(u.name)}</strong><small>${u.pendingSets} set${u.pendingSets === 1 ? '' : 's'} remaining</small></div></div>`).join('')}
+          </div>
+          <div class="perf-ob-nav">
+            <button class="btn ghost" type="button" onclick="_wkView = null; renderPerformance()">Keep training</button>
+            <button class="btn primary" type="button" onclick="perfWkFinishConfirm()">Finish anyway</button>
+          </div>
+        </div>`;
+    }
+
+    // ── Summary ──────────────────────────────────────────────────────────────
+    function perfWkSummaryHtml() {
+      const { workout, previews } = _wkLastFinished;
+      const s = workout.summary;
+      const wstate = perfWkState();
+      return `
+        <div class="perf-page-head"><div><h2>${workout.status === 'stopped_for_review' ? 'Session saved — review needed' : 'Session complete'}</h2>
+          <p class="muted">${esc(workout.sourceSessionSnapshot.title)}</p></div>${perfWkSyncPill(wstate)}</div>
+        <div class="grid perf-grid-3">
+          <div class="card perf-card"><div class="perf-card-head"><small>Work done</small></div>
+            <strong class="perf-big">${s.setsCompleted}/${s.setsPrescribed}</strong><small class="muted">sets completed · ${s.durationMin ?? '—'} min${s.avgRpe ? ` · avg RPE ${s.avgRpe}` : ''}</small></div>
+          ${s.personalRecords.length ? `<div class="card perf-card"><div class="perf-card-head"><small>Personal records</small></div>
+            ${s.personalRecords.map(pr => `<div class="perf-bench-row"><span>${esc(pr.name)}</span><strong>${pr.value} ${pr.unit}</strong></div>`).join('')}
+            <small class="muted" style="display:block;margin-top:8px">An achievement — progression still follows the normal rules.</small></div>` : ''}
+          ${s.painStops.length ? `<div class="card perf-card perf-review-flag"><div class="perf-card-head"><small>Flagged for review</small></div>
+            <small class="muted">${s.painStops.map(esc).join(', ')} stopped for pain. Speak to an appropriate member of staff before loading ${s.painStops.length === 1 ? 'this movement' : 'these movements'} again.</small></div>` : ''}
+          ${s.skippedExercises.length ? `<div class="card perf-card"><div class="perf-card-head"><small>Skipped</small></div>
+            <small class="muted">${s.skippedExercises.map(esc).join(', ')}</small></div>` : ''}
+        </div>
+        ${previews.length ? `
+        <div class="perf-group-title">Next time (pending — nothing is published automatically)</div>
+        <div class="card perf-card"><div class="list" style="gap:7px">
+          ${previews.map(p => `<div class="perf-bench-row"><span>${esc(p.name)}</span><small class="muted" style="text-align:right;max-width:60%">${esc(p.text)}</small></div>`).join('')}
+        </div></div>` : ''}
+        ${workout.sessionNote ? `<p class="muted" style="font-size:12.5px;margin-top:12px">Your note: ${esc(workout.sessionNote)}</p>` : ''}
+        <p class="muted" style="font-size:12px;margin-top:12px">Next planned session appears here once scheduling arrives.</p>
+        <div class="perf-ob-nav"><span></span><button class="btn primary" type="button" onclick="perfWkDismissSummary()">Done</button></div>`;
+    }
+
+    // ── History ──────────────────────────────────────────────────────────────
+    function perfWkHistoryListHtml(wstate, limit) {
+      const items = _perfWkMod.getHistory(wstate).slice(0, limit || 50);
+      return `<div class="list">
+        ${items.map((w, idx) => `
+          <button type="button" class="row perf-athlete-row clickable" onclick="perfWkOpenHistoryItem(${idx})">
+            <div><strong>${esc(w.sourceSessionSnapshot.title)}${w.summary?.personalRecords?.length ? ' <span class="perf-flag" title="PR">★</span>' : ''}</strong>
+              <small>${esc((w.completedAt || '').slice(0, 10))} · ${esc(w.programmeTitle || '')} · ${w.summary?.setsCompleted ?? 0}/${w.summary?.setsPrescribed ?? 0} sets · ${w.summary?.durationMin ?? '—'} min</small></div>
+            ${w.status === 'stopped_for_review' ? '<span class="status maybe">Review</span>' : w.status === 'abandoned' ? '<span class="status no-reply">Abandoned</span>' : '<span class="status available">Done</span>'}
+          </button>`).join('')}
+      </div>`;
+    }
+    function perfWkHistoryHtml(wstate) {
+      return `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><button class="btn ghost" type="button" onclick="perfWkCloseHistory()" style="font-size:13px;padding:5px 12px">← Workouts</button></div>
+        <div class="perf-page-head"><div><h2>Workout history</h2><p class="muted">Every session exactly as you logged it — later programme changes never rewrite it.</p></div>${perfWkSyncPill(wstate)}</div>
+        ${wstate.history.length ? perfWkHistoryListHtml(wstate) : '<div class="card" style="text-align:center;padding:26px"><p class="muted" style="margin:0">No workouts yet.</p></div>'}`;
+    }
+    function perfWkHistoryDetailHtml(wstate) {
+      const w = _perfWkMod.getHistory(wstate)[_wkHistoryIdx];
+      if (!w) { _wkView = 'history'; return perfWkHistoryHtml(wstate); }
+      return `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><button class="btn ghost" type="button" onclick="_wkView='history';renderPerformance()" style="font-size:13px;padding:5px 12px">← History</button></div>
+        <div class="perf-page-head"><div><h2>${esc(w.sourceSessionSnapshot.title)}</h2>
+          <p class="muted">${esc((w.completedAt || '').slice(0, 10))} · ${esc(w.programmeTitle || '')} · ${w.summary?.durationMin ?? '—'} min</p></div></div>
+        <div class="list">
+          ${w.exerciseLogs.map(log => `
+            <div class="card perf-card">
+              <div class="perf-card-head"><small>${esc(log.blockType.replace(/_/g, ' '))}</small>
+                ${log.painStop ? '<span class="status maybe">Stopped — review</span>' : log.substitution ? '<span class="perf-tier-badge club">Substituted</span>' : ''}</div>
+              <strong class="perf-card-title">${esc(log.exerciseSnapshot.name)}</strong>
+              ${log.substitution ? `<small class="muted" style="display:block">Originally: ${esc(log.substitution.originalExerciseName)} (${esc(log.substitution.reason.replace(/_/g, ' '))})</small>` : ''}
+              <div class="wk-sets" style="margin-top:8px">
+                ${log.sets.map(set => `<div class="wk-set-row done"><span class="wk-set-num">${set.setNumber}</span>
+                  <span class="wk-set-done">${perfWkFmtSet(set)}</span>
+                  <span class="wk-set-status ${set.status}">${{ completed: '✓', skipped: '—', pain_stop: '⚑' }[set.status] || '✗'}</span></div>`).join('')}
+              </div>
+              ${log.exerciseNote ? `<small class="muted" style="display:block;margin-top:8px">Note: ${esc(log.exerciseNote)}</small>` : ''}
+            </div>`).join('')}
         </div>`;
     }
 

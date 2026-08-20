@@ -100,7 +100,8 @@ test('4. favourites/recent write only through the namespaced store', () => {
   assert.match(view, /slice\(-12\)/, 'recent list capped');
   for (const region of perfRegions()) {
     const writes = [...region.matchAll(/state\.performance([A-Za-z]+)\s*=/g)].map(m => m[1]);
-    assert.ok(writes.every(w => ['Profile', 'Library', 'Settings'].includes(w)), 'only perf namespaces written: ' + writes.join(','));
+    // SC7 adds the Workout namespace (performanceWorkout) — same store pattern.
+    assert.ok(writes.every(w => ['Profile', 'Library', 'Settings', 'Workout'].includes(w)), 'only perf namespaces written: ' + writes.join(','));
   }
 });
 

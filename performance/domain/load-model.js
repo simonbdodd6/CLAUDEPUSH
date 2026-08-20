@@ -39,6 +39,29 @@ export function makeLoad(type, value = null, { of = null, per = 'implement', imp
   };
 }
 
+/**
+ * Human display for a typed load (SC7 Part 10). Never an ambiguous bare
+ * number: implements, bodyweight, stacks, bands and percentage references
+ * are always explicit.
+ */
+export function formatLoad(load) {
+  if (!load || load.type === 'unknown' || (load.value === null && load.type !== 'bodyweight')) return 'Choose load';
+  switch (load.type) {
+    case 'kg':
+    case 'lb': {
+      const unit = load.type;
+      return (load.implements || 1) > 1 ? `${load.value} ${unit} each` : `${load.value} ${unit}`;
+    }
+    case 'bodyweight': return 'Bodyweight';
+    case 'bodyweight_plus_kg': return `Bodyweight + ${load.value} kg`;
+    case 'assistance_kg': return `Assisted −${load.value} kg`;
+    case 'machine_stack': return `Stack ${load.value}`;
+    case 'band_level': return `Band level ${load.value}`;
+    case 'percentage': return `${load.value}% of ${load.of ? String(load.of).replace('e1rm:', 'estimated 1RM (') + (String(load.of).startsWith('e1rm:') ? ')' : '') : 'reference'}`;
+    default: return 'Choose load';
+  }
+}
+
 /** Combined external load across implements — derived, never authoritative. */
 export function totalExternalLoad(load) {
   if (!load || !Number.isFinite(load.value)) return null;

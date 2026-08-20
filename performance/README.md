@@ -38,11 +38,20 @@ Premium strength & conditioning module.
   thresholds PROVISIONAL_REQUIRES_SNC_REVIEW. See
   performance/docs/progression-*.md.
 
-No workout execution, set logging, analytics, scheduling orchestration or
-UI exists through SC6, and no language model makes coaching or progression
-decisions. The engine selects only approved CoachEasier-validated
-exercises, never requires a 1RM, never fabricates a load, and obeys the
-SC4 versioning and snapshot contracts — published history is immutable.
+- **SC7** — workout execution & logging: mobile-first player flow from
+  Today's Workout through set logging, rest timer, substitution,
+  pain-stop, interruption recovery and completion into immutable history,
+  with SC6 exposure records and display-only progression previews.
+  Executes real SC4 session snapshots (demo assignment through the proper
+  seam); honest on-device/sync-pending persistence. See
+  performance/docs/workout-*.md.
+
+No scheduling orchestration, coach assignment tooling, production sync,
+analytics dashboards or AI exists through SC7, and no language model makes
+coaching or progression decisions. The engine selects only approved
+CoachEasier-validated exercises, never requires a 1RM, never fabricates a
+load, and obeys the SC4 versioning and snapshot contracts — completed
+workout history and published programmes are immutable.
 
 This directory is the **module home** for everything Performance-specific that
 is not UI chrome. It follows the same architectural split the rest of
