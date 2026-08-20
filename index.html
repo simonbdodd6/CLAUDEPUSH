@@ -6847,9 +6847,16 @@
       _sessionFormMode = null;
       _sessionFormId   = null;
       saveState('Session saved');
-      syncSessionsToServer().catch(() => {});
       render();
-      showToast('Session saved');
+      // This is the LIVE beta create/edit path (the planner Dashboard is
+      // hidden). It used to fire-and-forget the sync and toast "saved"
+      // unconditionally — a dropped/refused write left the session on this
+      // device only, which is exactly how a coach's sessions "disappeared"
+      // on every other device. Claim success only when the server has it.
+      syncSessionsToServer().then(ok => {
+        showToast(ok ? 'Session saved'
+          : 'Saved on this device only — could not reach the server. Check your connection; it will sync with your next successful save.');
+      });
     }
 
     async function deleteSession(id) {
@@ -6861,9 +6868,11 @@
       _sessionFormMode = null;
       _sessionFormId   = null;
       saveState('Session deleted');
-      syncSessionsToServer().catch(() => {});
       render();
-      showToast('Session removed');
+      syncSessionsToServer().then(ok => {
+        showToast(ok ? 'Session removed'
+          : 'Removed on this device only — could not reach the server.');
+      });
     }
 
     function sessionTypeIcon(type) {
@@ -13833,7 +13842,13 @@
       const schedSessions = twCurrent ? (state.schedule || []) : trainingWeekOccurrences(twWeek).map(e => ({
         id: e.id, type: 'Training', title: trainingOccurrenceTitle(e.date), date: e.date,
         startTime: e.time, location: e.venue, published: false, occurrence: true,
-      }));
+      // Coach-created DATED sessions belong to their week's view too: they
+      // only ever appeared under "This week" (other weeks rendered schedule
+      // occurrences alone), so a session created for a future week looked
+      // like it vanished the moment the coach navigated to that week.
+      })).concat((state.schedule || []).filter(sess =>
+        sess && sess.date && /^\d{4}-\d{2}-\d{2}/.test(String(sess.date)) &&
+        availWeekStart(String(sess.date).slice(0, 10)) === twWeek));
       const rawId  = state.trainingActiveSession || (schedSessions[0]?.id ?? "tue");
       const sessId = schedSessions.find(s => s.id === rawId) ? rawId : (schedSessions[0]?.id ?? "tue");
       const blocks    = (state.trainingBlocks||{})[sessId] || [];
@@ -24359,8 +24374,17 @@
       _trainingNewSessionOpen = false;
       state.trainingActiveSession = id;
       saveState('training session created');
-      notify(title + ' created');
       render();
+      // THE SERVER WRITE. This path used to stop at localStorage — the
+      // session existed only on the creating device ("created" was claimed
+      // instantly), so it never appeared on any other device and evaporated
+      // with cleared/evicted phone storage. Persist through the same
+      // group-owned sessions sync the Availability form uses, and only then
+      // report the truth.
+      syncSessionsToServer().then(ok => {
+        notify(ok ? title + ' created'
+          : title + ' is saved on this device only — could not reach the server. Check your connection; it will sync with your next successful save.');
+      });
     }
 
     function trainingDeleteSession(sessionId) {
@@ -24374,6 +24398,11 @@
           if (state.trainingBlocks)     delete state.trainingBlocks[sessionId];
           saveState('training session deleted');
           render();
+          // Local-only deletion resurrected the session from the server list
+          // on the next merge — persist the removal the same way creation does.
+          syncSessionsToServer().then(ok => {
+            if (!ok) notify('Deleted on this device only — could not reach the server.');
+          });
         });
     }
 
@@ -29509,7 +29538,7 @@
       const gid = trainingGroupParam();
       if (!gid && operationalGroups().length > 1) return;
       try {
-        await fetch('/api/publish', {
+        const res = await fetch('/api/publish', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // RC4.10A: this path carries the SCHEDULE only (title, date, time,
@@ -29522,7 +29551,10 @@
               ...s, blocks: [],
             })) }),
         });
-      } catch(e) { console.warn('[syncSessionsToServer]', e); }
+        // A refused/failed write must be reportable: callers that claim
+        // "saved" (session create/delete) await this and speak truthfully.
+        return res.ok;
+      } catch(e) { console.warn('[syncSessionsToServer]', e); return false; }
     }
 
     async function syncSquadToServer() {
