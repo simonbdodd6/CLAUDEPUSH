@@ -5690,6 +5690,10 @@
           <button class="btn" type="button" onclick="welcomeJoin()">Join a team</button>
           <button class="btn" type="button" onclick="_welcomeDismissed=true;document.getElementById('ce-welcome')?.remove();startClubWizard()" style="border-color:var(--brand-line);color:var(--brand-2)">Start a new club</button>
           <p class="muted" style="font-size:11.5px;margin-top:14px">Got an invite link? Just open it — no setup needed.</p>
+          <p class="muted ce-welcome-foot" style="font-size:11px;margin-top:12px;line-height:1.7">
+            Need help? <a href="mailto:support@coacheasier.com" style="color:inherit">support@coacheasier.com</a><br>
+            <a href="/privacy" style="color:inherit">Privacy</a> · <a href="/terms" style="color:inherit">Terms</a>
+          </p>
         </div>`;
       document.body.appendChild(el);
     }
@@ -10363,6 +10367,20 @@
         `<button type="button" onclick="openPlayerAccountMenu()" aria-label="Account and sign out">${icon('user')}Account</button>`;
       document.getElementById("coachNav").classList.toggle("hidden",  state.activeView !== "coach");
       document.getElementById("playerNav").classList.toggle("hidden", state.activeView !== "player");
+      // A stuck PLAYER had no way to reach us — support lived in coach
+      // Settings only. One quiet line under their own nav, nothing more.
+      const playerHelp = document.getElementById('player-help-link');
+      if (state.activeView === 'player') {
+        if (!playerHelp) {
+          const el = document.createElement('p');
+          el.id = 'player-help-link';
+          el.className = 'muted';
+          el.style.cssText = 'font-size:11px;line-height:1.7;margin:10px 6px 0;text-align:center';
+          el.innerHTML = `Need help? <a href="mailto:support@coacheasier.com" style="color:inherit">support@coacheasier.com</a><br>
+            <a href="/privacy" style="color:inherit">Privacy</a> · <a href="/terms" style="color:inherit">Terms</a>`;
+          document.getElementById('playerNav').after(el);
+        }
+      } else if (playerHelp) playerHelp.remove();
       // Hide the Coach|Player toggle entirely for players — they should never see it
       // Staff-only. A player with a scoped grant (e.g. Medical) reaches it from
       // their OWN navigation and never enters the coach shell — showSection()
@@ -11108,10 +11126,21 @@
           !playerSectionsFor().some(([id]) => id === state.activePlayerSection)) {
         state.activePlayerSection = "home";
       }
+      // The COACH section needs the same treatment: an unknown id (stale
+      // localStorage, a renamed/removed section, an old deep link) used to
+      // fall through to the universal player-home fallback, so a COACH landed
+      // in the PLAYER app. Recover inside the account's own capacity instead.
+      if (state.activeView === "coach" &&
+          !coachSections.some(([id]) => id === state.activeCoachSection)) {
+        state.activeCoachSection = "overview";
+      }
       const id = state.activeView === "coach"
         ? `coach-${state.activeCoachSection}`
         : `player-${state.activePlayerSection}`;
-      (document.getElementById(id) || document.getElementById("player-home"))?.classList.add("active");
+      // Last-resort fallback is account-appropriate: a coach never lands on a
+      // player screen, and vice versa.
+      const fallbackId = state.activeView === "coach" ? "coach-overview" : "player-home";
+      (document.getElementById(id) || document.getElementById(fallbackId))?.classList.add("active");
       document.getElementById("pageTitle").textContent  = pageTitle();
       renderOperationalGroupSwitcher();
       document.getElementById("eyebrow").textContent    = state.activeView === "coach"
@@ -16568,6 +16597,14 @@
           </div>
           <div id="cw-error" role="alert" style="display:none;margin-bottom:12px;padding:11px 14px;border:1px solid rgba(239,68,68,0.5);border-left:4px solid #ef4444;border-radius:9px;background:rgba(239,68,68,0.08);color:var(--ink);font-size:13px;font-weight:600;text-align:left"></div>
           <button id="cw-finish-btn" class="btn primary" type="button" onclick="clubWizFinish()" style="width:100%;min-height:48px;font-size:15px">Create my club →</button>
+          <!-- LINKS ONLY. No acceptance is claimed or recorded: the policies
+               are still in draft, so asserting "by creating an account you
+               agree…" would be untrue. This is the spot an acceptance control
+               will occupy once the policies are final. -->
+          <p class="muted" id="cw-legal" style="font-size:11px;margin:12px 0 0;text-align:center;line-height:1.7">
+            <a href="/privacy" target="_blank" rel="noopener" style="color:inherit">Privacy</a> ·
+            <a href="/terms" target="_blank" rel="noopener" style="color:inherit">Terms</a>
+          </p>
         </div>`,
       ];
 
@@ -18692,6 +18729,9 @@
             <p class="muted" style="font-size:11.5px;line-height:1.5;margin:10px 0 0">
               ${esc(state.clubName || 'Your club')} runs on <strong>CoachEasier</strong> — selection, availability and team
               communication for match week. Your club's name, badge and colours stay yours.</p>
+            <p class="muted" style="font-size:11.5px;margin:10px 0 0">
+              <a href="/privacy" style="color:inherit">Privacy</a> · <a href="/terms" style="color:inherit">Terms</a>
+            </p>
           </div>
 
           <!-- Device (hidden in the commercial Beta UI; functions retained) -->

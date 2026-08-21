@@ -79,6 +79,10 @@ function harness({ role = 'coach', view = 'coach', coachSection = 'overview', pl
     function isCoach() { return ${JSON.stringify(role)} === 'coach'; }
     function resolveOperationalGroup() { calls.groupResolves++; }
     function allowedCoachSections(list) { return list; }
+    // The real registry showSection validates the coach section against
+    // (R1 route recovery): an unknown coach section falls back inside the
+    // COACH capacity now, never to player-home.
+    const coachSections = [['overview','Overview'],['fixtures','Fixtures'],['medical','Medical']];
     function playerSectionsFor() { return [['home','Home'],['medical','Medical'],['availability','Availability']]; }
     function showToast(t) { calls.toasts.push(t); }
     function saveState() { calls.saves++; }
