@@ -4,6 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>CoachEasier</title>
+  <!-- Share/metadata. Deliberately generic: this is the APP shell, so nothing
+       here may carry a club's name, badge or any customer data. -->
+  <meta name="description" content="CoachEasier is team management for rugby clubs: squad selection, player availability, training plans, fixtures and match-day communication in one place.">
+  <link rel="canonical" href="https://www.coacheasier.com/">
+  <meta property="og:site_name" content="CoachEasier">
+  <meta property="og:title" content="CoachEasier — team management for rugby clubs">
+  <meta property="og:description" content="Squad selection, player availability, training plans, fixtures and match-day communication in one place.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.coacheasier.com/">
+  <meta property="og:image" content="https://www.coacheasier.com/brand/png/coacheasier-logo-master-1600.png">
+  <meta property="og:image:alt" content="CoachEasier">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CoachEasier — team management for rugby clubs">
+  <meta name="twitter:description" content="Squad selection, player availability, training plans, fixtures and match-day communication in one place.">
+  <meta name="twitter:image" content="https://www.coacheasier.com/brand/png/coacheasier-logo-master-1600.png">
   <link rel="icon" type="image/svg+xml" href="/brand/svg/coacheasier-favicon.svg">
   <link rel="icon" type="image/x-icon" href="/brand/png/coacheasier-favicon.ico" sizes="16x16 32x32 48x48">
   <link rel="apple-touch-icon" href="/brand/png/coacheasier-apple-touch-180.png">
@@ -12380,8 +12395,8 @@
         const s = wa[key];
         return `<div style="display:grid;grid-template-columns:1fr 132px 108px;gap:10px;align-items:center;margin-top:11px">
           <span style="font-size:13px;font-weight:700;color:var(--ink)">${label}</span>
-          <select id="wa-day-${key}" style="width:100%">${dayOpts(s.day)}</select>
-          <select id="wa-hour-${key}" style="width:100%">${hourOpts(s.time)}</select></div>`;
+          <select id="wa-day-${key}" aria-label="${esc(label)} — day" style="width:100%">${dayOpts(s.day)}</select>
+          <select id="wa-hour-${key}" aria-label="${esc(label)} — time" style="width:100%">${hourOpts(s.time)}</select></div>`;
       };
       const el = document.createElement('div');
       el.id = 'wa-editor';
@@ -12762,7 +12777,7 @@
             ${s.headers.map((h, i) => `
               <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
                 <span style="font-size:12.5px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(String(h || `Column ${i + 1}`))}</span>
-                <select style="${inp}" onchange="fixtureImportSetMapping(${i}, this.value)">
+                <select aria-label="Map spreadsheet column ${esc(String(h || `Column ${i + 1}`))} to a fixture field" style="${inp}" onchange="fixtureImportSetMapping(${i}, this.value)">
                   <option value="">— ignore —</option>
                   ${FixtureImport.FIXTURE_TARGET_FIELDS.map(f =>
                     `<option value="${f}" ${s.mapping[i] === f ? 'selected' : ''}>${f}</option>`).join('')}
@@ -12800,7 +12815,7 @@
                 ${r.duplicate ? `
                   <div style="font-size:11.5px;margin-top:6px">
                     Possible duplicate (${esc(r.duplicate.reason)}) —
-                    <select style="${inp};min-height:28px" onchange="fixtureImportSetDecision(${i}, this.value)">
+                    <select aria-label="What to do with this possible duplicate fixture" style="${inp};min-height:28px" onchange="fixtureImportSetDecision(${i}, this.value)">
                       <option value="skip" ${r.decision === 'skip' ? 'selected' : ''}>Skip</option>
                       <option value="update" ${r.decision === 'update' ? 'selected' : ''}>Update existing</option>
                       <option value="new" ${r.decision === 'new' ? 'selected' : ''}>Import as new</option>
@@ -19434,13 +19449,13 @@
             <p class="muted" style="font-size:12px;margin-bottom:14px">Shown to players in their app and in invite emails.</p>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
               <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Club name
-                <input value="${esc(state.clubName || '')}" style="${inputStyle}"
+                <input value="${esc(state.clubName || '')}" aria-label="Club name" style="${inputStyle}"
                   onchange="state.clubName=this.value.trim();adminSaveClub()"></label>
               <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Team name
-                <input value="${esc(state.teamName || '')}" style="${inputStyle}"
+                <input value="${esc(state.teamName || '')}" aria-label="Team name" style="${inputStyle}"
                   onchange="state.teamName=this.value.trim();adminSaveClub()"></label>
               <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Season
-                <input value="${esc(state.seasonName || '')}" style="${inputStyle}"
+                <input value="${esc(state.seasonName || '')}" aria-label="Season name" style="${inputStyle}"
                   onchange="state.seasonName=this.value.trim();adminSaveClub()"></label>
             </div>
           </div>
@@ -19451,7 +19466,7 @@
             <p class="muted" style="font-size:12px;margin-bottom:12px">Session titles and times players see in Availability and Calendar.</p>
             ${(state.schedule || []).filter(s => s.type === 'Training').map(s => `
               <div style="${rowStyle}">
-                <input value="${esc(s.title || '')}" style="${inputStyle};max-width:240px"
+                <input value="${esc(s.title || '')}" aria-label="Session title" style="${inputStyle};max-width:240px"
                   onchange="adminEditSession('${s.id}','title',this.value)">
                 <input value="${esc(s.date || '')}" placeholder="e.g. Tuesday 19:00" style="${inputStyle};max-width:180px"
                   onchange="adminEditSession('${s.id}','date',this.value)">
@@ -19472,11 +19487,11 @@
                   onclick="adminRemoveFixture('${esc(f.id)}')">Remove</button>
               </div>`).join('') : `<p class="muted" style="font-size:12px;padding:8px 0">No fixtures yet — add your first match below and it will appear in the Match Centre automatically.</p>`}
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:12px">
-              <input id="adm-fx-opp" placeholder="Opposition *" style="${inputStyle}">
-              <input id="adm-fx-date" type="date" style="${inputStyle}">
-              <input id="adm-fx-time" type="time" style="${inputStyle}">
-              <input id="adm-fx-venue" placeholder="Venue" style="${inputStyle}">
-              <select id="adm-fx-homeaway" style="${inputStyle}">
+              <input id="adm-fx-opp" placeholder="Opposition *" aria-label="Opposition" style="${inputStyle}">
+              <input id="adm-fx-date" type="date" aria-label="Fixture date" style="${inputStyle}">
+              <input id="adm-fx-time" type="time" aria-label="Kick-off time" style="${inputStyle}">
+              <input id="adm-fx-venue" placeholder="Venue" aria-label="Venue" style="${inputStyle}">
+              <select id="adm-fx-homeaway" aria-label="Home or away" style="${inputStyle}">
                 <option value="">Home / Away</option>
                 <option value="home">Home</option>
                 <option value="away">Away</option>
@@ -19555,7 +19570,7 @@
                   <div class="muted" style="font-size:11px">${esc(user.email || '')}</div>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-                  <select style="${inputStyle};min-height:30px;font-size:11px;width:auto"
+                  <select aria-label="Staff level for ${esc(adminUserFor(member).displayName || adminUserFor(member).email || 'this member')}" style="${inputStyle};min-height:30px;font-size:11px;width:auto"
                     onchange="adminSetStaffLevel('${esc(member.id)}',this.value)">
                     ${Object.entries(STAFF_LEVEL_LABELS).map(([lvl, label]) =>
                       `<option value="${lvl}" ${(member.staffLevel || 'head') === lvl ? 'selected' : ''}>${label}</option>`).join('')}
@@ -19569,7 +19584,7 @@
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:14px">
               <input id="adm-staff-name" placeholder="Name" style="${inputStyle}">
               <input id="adm-staff-email" placeholder="Email" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" style="${inputStyle}">
-              <select id="adm-staff-level" style="${inputStyle}">
+              <select id="adm-staff-level" aria-label="Staff level" style="${inputStyle}">
                 <option value="assistant">Assistant Coach</option>
                 <option value="manager">Team Manager</option>
                 <option value="head">Head Coach</option>
@@ -19996,7 +20011,7 @@
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
             <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Access</div>
             ${(canAssign && isStaffMember(member)) ? `
-              <select style="${inputStyle};min-height:30px;font-size:11px;width:auto"
+              <select aria-label="Access level for ${esc(user.displayName || user.email || 'this member')}" style="${inputStyle};min-height:30px;font-size:11px;width:auto"
                 onchange="adminSetAccessProfile('${esc(member.id)}',this.value,'${esc(user.displayName || '')}','${esc(profile)}')">
                 ${Object.entries(ACCESS_PROFILE_LABELS).map(([id, label]) =>
                   `<option value="${id}" ${profile === id ? 'selected' : ''}>${label}</option>`).join('')}
