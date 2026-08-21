@@ -7602,6 +7602,421 @@
       showToast('New week started — squad and sessions cleared ✓');
     }
 
+    // ─── TRAINING PLAN IMPORT (CSV / Excel) ──────────────────────────────────
+    // A second way to build the SAME plan: imported rows become ordinary
+    // training blocks in state.trainingBlocks[sessionId] — no parallel model,
+    // no import-specific storage, no "locked" rows. Everything below is pure
+    // parsing/validation; nothing touches planner state until Apply.
+
+    /** RFC4180-ish CSV → rows. Handles quotes, escaped quotes, embedded
+     *  commas and newlines, CRLF/LF, and a UTF-8 BOM. */
+    function csvParse(text) {
+      const src = String(text || '').replace(/^\uFEFF/, '');
+      const rows = [];
+      let row = [], cell = '', quoted = false;
+      for (let i = 0; i < src.length; i++) {
+        const c = src[i];
+        if (quoted) {
+          if (c === '"') {
+            if (src[i + 1] === '"') { cell += '"'; i++; }   // escaped quote
+            else quoted = false;
+          } else cell += c;
+          continue;
+        }
+        if (c === '"') { quoted = true; continue; }
+        if (c === ',') { row.push(cell); cell = ''; continue; }
+        if (c === '\r') { if (src[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; continue; }
+        if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; continue; }
+        cell += c;
+      }
+      if (cell.length || row.length) { row.push(cell); rows.push(row); }
+      return rows;
+    }
+
+    /**
+     * Minimal, VALUES-ONLY .xlsx reader — no dependency, no formula
+     * evaluation, no macros: an xlsx is a zip of XML, so the first sheet and
+     * the shared-string table are inflated with the browser's own
+     * DecompressionStream and read as text. Cell <f> (formula) nodes are
+     * ignored entirely; only cached <v>/<t> values are taken. Returns null
+     * when the browser cannot inflate, so the caller can say so honestly.
+     */
+    async function xlsxParse(buffer) {
+      if (typeof DecompressionStream !== 'function') return null;
+      const bytes = new Uint8Array(buffer);
+      const dv = new DataView(buffer);
+      const dec = new TextDecoder();
+      // Walk local file headers (PK\x03\x04) — enough for files written by
+      // Excel/Numbers/Sheets, which never use zip64 for a small sheet.
+      const files = {};
+      for (let i = 0; i + 4 < bytes.length; i++) {
+        if (!(bytes[i] === 0x50 && bytes[i + 1] === 0x4b && bytes[i + 2] === 0x03 && bytes[i + 3] === 0x04)) continue;
+        const method = dv.getUint16(i + 8, true);
+        let compSize = dv.getUint32(i + 18, true);
+        let uncompSize = dv.getUint32(i + 22, true);
+        const nameLen = dv.getUint16(i + 26, true);
+        const extraLen = dv.getUint16(i + 28, true);
+        const nameStart = i + 30;
+        const name = dec.decode(bytes.subarray(nameStart, nameStart + nameLen));
+        const dataStart = nameStart + nameLen + extraLen;
+        if (!compSize && !uncompSize) continue;           // streamed entry: skip
+        const data = bytes.subarray(dataStart, dataStart + compSize);
+        if (name.endsWith('.xml')) files[name] = { method, data };
+        i = dataStart + compSize - 1;
+      }
+      const inflate = async entry => {
+        if (!entry) return '';
+        if (entry.method === 0) return dec.decode(entry.data);           // stored
+        const ds = new DecompressionStream('deflate-raw');
+        const stream = new Blob([entry.data]).stream().pipeThrough(ds);
+        return new Response(stream).text();
+      };
+      const sheetName = Object.keys(files).find(n => /^xl\/worksheets\/sheet1\.xml$/.test(n))
+        || Object.keys(files).find(n => /^xl\/worksheets\/.+\.xml$/.test(n));
+      if (!sheetName) return null;
+      const [sheetXml, sharedXml] = await Promise.all([
+        inflate(files[sheetName]),
+        inflate(files['xl/sharedStrings.xml']),
+      ]);
+      const shared = [];
+      String(sharedXml || '').replace(/<si>([\s\S]*?)<\/si>/g, (_m, si) => {
+        let out = '';
+        si.replace(/<t[^>]*>([\s\S]*?)<\/t>/g, (_x, t) => { out += t; return ''; });
+        shared.push(xmlUnescape(out));
+        return '';
+      });
+      const grid = [];
+      String(sheetXml || '').replace(/<row[^>]*>([\s\S]*?)<\/row>/g, (_m, rowXml) => {
+        const cells = [];
+        rowXml.replace(/<c([^>]*)>([\s\S]*?)<\/c>|<c([^>]*)\/>/g, (_c, attrs, inner) => {
+          const a = attrs || '';
+          const ref = (a.match(/r="([A-Z]+)\d+"/) || [])[1] || '';
+          const type = (a.match(/t="([^"]+)"/) || [])[1] || '';
+          let value = '';
+          if (inner) {
+            if (type === 'inlineStr') {
+              const m = inner.match(/<t[^>]*>([\s\S]*?)<\/t>/);
+              value = m ? xmlUnescape(m[1]) : '';
+            } else {
+              // Only the cached VALUE is read — <f> formula text is ignored.
+              const m = inner.match(/<v>([\s\S]*?)<\/v>/);
+              const raw = m ? m[1] : '';
+              value = type === 's' ? (shared[Number(raw)] ?? '') : xmlUnescape(raw);
+            }
+          }
+          cells.push({ col: colIndexFromRef(ref), value: String(value) });
+          return '';
+        });
+        const row = [];
+        cells.forEach((c, i) => { row[c.col >= 0 ? c.col : i] = c.value; });
+        for (let i = 0; i < row.length; i++) if (row[i] === undefined) row[i] = '';
+        grid.push(row);
+        return '';
+      });
+      return grid;
+    }
+    function xmlUnescape(v) {
+      return String(v).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_m, d) => String.fromCharCode(+d)).replace(/&amp;/g, '&');
+    }
+    function colIndexFromRef(ref) {
+      if (!ref) return -1;
+      let n = 0;
+      for (const ch of ref) n = n * 26 + (ch.charCodeAt(0) - 64);
+      return n - 1;
+    }
+
+    // The canonical sheet. Headings are matched case/space-insensitively and
+    // a small set of obvious aliases is accepted — no fuzzy guessing.
+    const TRAINING_IMPORT_FIELDS = [
+      { key: 'time',     label: 'Start',      aliases: ['start', 'start time', 'time', 'from'] },
+      { key: 'duration', label: 'Duration',   aliases: ['duration', 'mins', 'minutes', 'length'] },
+      { key: 'activity', label: 'Activity',   aliases: ['activity', 'title', 'drill', 'session', 'block'] },
+      { key: 'keyFocus', label: 'Details',    aliases: ['details', 'key focus', 'focus', 'coaching points', 'notes', 'description'] },
+      { key: 'coach',    label: 'Lead coach', aliases: ['lead coach', 'coach', 'lead', 'responsible'] },
+    ];
+    const TRAINING_IMPORT_MAX_ROWS = 200;
+    const normHead = h => String(h || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+    /**
+     * Turn parsed rows into a preview: which columns were recognised, which
+     * rows are usable, and every row-level problem — WITHOUT touching state.
+     * `firstStart` is the planner's group-specific start time (7247036), used
+     * only when the sheet omits a start time; nothing is invented beyond it.
+     */
+    function trainingImportPlan(rows, { firstStart = '', mapping = null } = {}) {
+      const grid = (rows || []).filter(r => (r || []).some(c => String(c ?? '').trim()));
+      if (!grid.length) return { ok: false, errors: ['The file has no rows.'], blocks: [], columns: [], ignored: [], usable: 0 };
+      const headings = (grid[0] || []).map(h => String(h ?? '').trim());
+      const errors = [];
+      const dupes = headings.map(normHead).filter((h, i, a) => h && a.indexOf(h) !== i);
+      if (dupes.length) errors.push(`Duplicate column heading: "${[...new Set(dupes)].join('", "')}".`);
+      // Map headings → fields (explicit mapping wins).
+      const map = {};
+      headings.forEach((h, i) => {
+        const n = normHead(h);
+        const chosen = mapping && mapping[String(i)];
+        const field = chosen
+          ? TRAINING_IMPORT_FIELDS.find(f => f.key === chosen)
+          : TRAINING_IMPORT_FIELDS.find(f => f.aliases.includes(n));
+        if (field && map[field.key] === undefined) map[field.key] = i;
+      });
+      const ignored = headings.filter((h, i) => h && !Object.values(map).includes(i));
+      if (map.activity === undefined) {
+        errors.push('No "Activity" column found — add one (or map a column to it) and import again.');
+      }
+      const body = grid.slice(1);
+      if (body.length > TRAINING_IMPORT_MAX_ROWS) {
+        errors.push(`That file has ${body.length} rows — CoachEasier imports up to ${TRAINING_IMPORT_MAX_ROWS} per session.`);
+      }
+      const HHMM = /^([0-9]{1,2}):([0-9]{2})$/;
+      const blocks = [];
+      let prev = '';
+      body.forEach((r, idx) => {
+        const cell = key => String((map[key] !== undefined ? r[map[key]] : '') ?? '').trim();
+        const activity = cell('activity');
+        const rowNo = idx + 2;                                  // 1-based incl. heading row
+        if (!(r || []).some(c => String(c ?? '').trim())) return;   // blank row: ignored
+        if (map.activity !== undefined && !activity) {
+          errors.push(`Row ${rowNo} — "Activity" is empty.`);
+          return;
+        }
+        let time = cell('time');
+        if (time) {
+          const m = HHMM.exec(time);
+          if (!m || +m[1] > 23 || +m[2] > 59) { errors.push(`Row ${rowNo} — invalid start time "${time}".`); return; }
+          time = `${String(+m[1]).padStart(2, '0')}:${m[2]}`;
+        }
+        const durRaw = cell('duration');
+        let duration = 0;
+        if (durRaw) {
+          const d = Number(String(durRaw).replace(/[^0-9.]/g, ''));
+          if (!Number.isFinite(d) || d <= 0 || d > 600) { errors.push(`Row ${rowNo} — invalid duration "${durRaw}".`); return; }
+          duration = Math.round(d);
+        }
+        if (!time) {
+          // No start given: continue from the previous row (its duration, else
+          // the planner's usual 30-minute step), starting from the session's
+          // own group-specific start time.
+          time = prev ? addMinutesHHMM(prev, blocks[blocks.length - 1]?._dur || 30) : String(firstStart || '');
+        }
+        prev = time;
+        blocks.push({
+          time,
+          activity,
+          keyFocus: cell('keyFocus'),
+          coach: cell('coach'),
+          _dur: duration,
+          _row: rowNo,
+        });
+      });
+      if (!blocks.length && !errors.length) errors.push('No usable rows found in that file.');
+      return { ok: errors.length === 0 && blocks.length > 0, errors, blocks, columns: headings, ignored, usable: blocks.length, map };
+    }
+    function addMinutesHHMM(t, mins) {
+      const m = /^([0-9]{1,2}):([0-9]{2})$/.exec(String(t || ''));
+      if (!m) return '';
+      const total = (+m[1]) * 60 + (+m[2]) + (Number(mins) || 0);
+      return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    }
+
+    /**
+     * Imported rows → REAL training blocks. Only block fields are taken: a
+     * spreadsheet can never carry club/team/group/scope/user identity into
+     * the app (any such column is simply not read).
+     */
+    function trainingImportToBlocks(planBlocks) {
+      const stamp = Date.now();
+      return (planBlocks || []).map((b, i) => ({
+        id: 'tb' + stamp + i,
+        time: b.time || '',
+        activity: b.activity || '',
+        keyFocus: b.keyFocus || '',
+        coach: b.coach || '',
+        tag: 'General',
+      }));
+    }
+
+    // Import panel state — preview only; planner state is untouched until Apply.
+    let _trainingImportOpen = false;
+    let _trainingImport = null;   // { sessionId, fileName, kind, plan, rows }
+    let _trainingImportBusy = false;
+
+    function trainingImportToggle(sessionId) {
+      _trainingImportOpen = !_trainingImportOpen;
+      if (!_trainingImportOpen) _trainingImport = null;
+      render();
+    }
+    function trainingImportCancel() {
+      _trainingImport = null;                       // zero planner mutation
+      _trainingImportOpen = false;
+      render();
+    }
+
+    async function trainingImportFile(input, sessionId) {
+      const file = input?.files?.[0];
+      if (!file || _trainingImportBusy) return;
+      _trainingImportBusy = true;
+      try {
+        if (file.size > 2 * 1024 * 1024) { showToast('That file is over 2 MB — export just the session plan.'); return; }
+        const isXlsx = /\.xlsx$/i.test(file.name);
+        let rows = null;
+        if (isXlsx) {
+          rows = await xlsxParse(await file.arrayBuffer());
+          if (!rows) {
+            _trainingImport = { sessionId, fileName: file.name, kind: 'xlsx',
+              plan: { ok: false, errors: ['This browser cannot open .xlsx files. In Excel choose File → Save As → CSV, then import that.'], blocks: [], columns: [], ignored: [], usable: 0 } };
+            return;
+          }
+        } else {
+          rows = csvParse(await file.text());
+        }
+        const plan = trainingImportPlan(rows, { firstStart: trainingPlannedStartTime(sessionId) });
+        _trainingImport = { sessionId, fileName: file.name, kind: isXlsx ? 'xlsx' : 'csv', plan, rows };
+      } catch (e) {
+        console.warn('[trainingImportFile]', e);
+        _trainingImport = { sessionId, fileName: file?.name || '', kind: 'csv',
+          plan: { ok: false, errors: ['That file could not be read. Save it as CSV and try again.'], blocks: [], columns: [], ignored: [], usable: 0 } };
+      } finally {
+        _trainingImportBusy = false;
+        if (input) input.value = '';
+        render();
+      }
+    }
+
+    /** Re-map one column by hand (only offered when auto-mapping fell short). */
+    function trainingImportRemap(colIndex, fieldKey) {
+      if (!_trainingImport) return;
+      const mapping = { ...(_trainingImport.mapping || {}) };
+      if (fieldKey) mapping[String(colIndex)] = fieldKey; else delete mapping[String(colIndex)];
+      _trainingImport.mapping = mapping;
+      _trainingImport.plan = trainingImportPlan(_trainingImport.rows, {
+        firstStart: trainingPlannedStartTime(_trainingImport.sessionId), mapping,
+      });
+      render();
+    }
+
+    /** APPLY — the only function here that changes the plan. */
+    async function trainingImportApply(mode) {
+      const imp = _trainingImport;
+      if (!imp || !imp.plan?.ok) return;
+      const sessionId = imp.sessionId;
+      const existing = (state.trainingBlocks?.[sessionId] || []);
+      if (mode === 'replace' && existing.length) {
+        const ok = await ceConfirm('Replace this session plan?',
+          `The ${existing.length} block${existing.length === 1 ? '' : 's'} already in this session will be removed and replaced by the ${imp.plan.usable} imported row${imp.plan.usable === 1 ? '' : 's'}.`,
+          { confirmLabel: 'Replace plan', danger: true });
+        if (!ok) return;
+      }
+      const imported = trainingImportToBlocks(imp.plan.blocks);
+      state.trainingBlocks = state.trainingBlocks || {};
+      state.trainingBlocks[sessionId] = mode === 'replace' ? imported : [...existing, ...imported];
+      _trainingImport = null;
+      _trainingImportOpen = false;
+      saveState('Training plan imported');
+      // The ordinary planner persistence — no import-specific storage.
+      syncPublishedSessionEdit(sessionId);
+      render();
+      showToast(`${imported.length} block${imported.length === 1 ? '' : 's'} imported`);
+    }
+
+    /** The canonical sheet, generated in the browser (no server endpoint). */
+    function trainingImportTemplate() {
+      const rows = [
+        TRAINING_IMPORT_FIELDS.map(f => f.label),
+        ['19:00', '15', 'Warm-up', 'Raise heart rate, activate shoulders', 'Simon'],
+        ['19:15', '25', 'Ruck contest', 'Body height, clear past the ball, "low and legal"', 'Ana'],
+        ['19:40', '20', 'Attack shape', 'Depth off 9, hit the line flat', ''],
+      ];
+      const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = Object.assign(document.createElement('a'),
+        { href: URL.createObjectURL(blob), download: 'coacheasier-training-plan-template.csv' });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    /** The import panel — preview and choices only; Apply does the work. */
+    function trainingImportPanelHTML(sessionId) {
+      const existing = (state.trainingBlocks?.[sessionId] || []).length;
+      const bar = `
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:2px 0 12px">
+          <button class="btn${_trainingImportOpen ? '' : ' primary'}" type="button" style="font-size:12px"
+            onclick="if(_trainingImportOpen)trainingImportToggle('${sessionId}')">Plan manually</button>
+          <button class="btn${_trainingImportOpen ? ' primary' : ''}" type="button" style="font-size:12px"
+            onclick="if(!_trainingImportOpen)trainingImportToggle('${sessionId}')">Import CSV / Excel</button>
+        </div>`;
+      if (!_trainingImportOpen) return bar;
+      const imp = _trainingImport && _trainingImport.sessionId === sessionId ? _trainingImport : null;
+      const plan = imp?.plan;
+      const preview = plan?.blocks?.length ? `
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:10px">
+          <table class="cs-table" style="width:100%;font-size:12.5px">
+            <thead><tr><th style="width:64px">Start</th><th>Activity</th><th>Details</th><th style="width:110px">Lead coach</th></tr></thead>
+            <tbody>
+              ${plan.blocks.slice(0, 6).map(b => `<tr>
+                <td>${esc(b.time || '—')}</td><td>${esc(b.activity)}</td>
+                <td>${esc(String(b.keyFocus || '').slice(0, 70))}</td><td>${esc(b.coach || '')}</td></tr>`).join('')}
+            </tbody>
+          </table>
+          ${plan.blocks.length > 6 ? `<p class="muted" style="font-size:11.5px;margin:6px 0 0">…and ${plan.blocks.length - 6} more row${plan.blocks.length - 6 === 1 ? '' : 's'}.</p>` : ''}
+        </div>` : '';
+      const issues = plan?.errors?.length ? `
+        <div style="margin-top:10px;border:1px solid rgba(220,38,38,.35);background:rgba(220,38,38,.06);border-radius:9px;padding:10px 12px">
+          <div style="font-size:12px;font-weight:800;color:#dc2626;margin-bottom:4px">Nothing has been imported yet</div>
+          <ul style="margin:0;padding-left:18px;font-size:12.5px;line-height:1.55">
+            ${plan.errors.slice(0, 8).map(e => `<li>${esc(e)}</li>`).join('')}
+          </ul>
+          ${plan.errors.length > 8 ? `<p class="muted" style="font-size:11.5px;margin:6px 0 0">…and ${plan.errors.length - 8} more.</p>` : ''}
+        </div>` : '';
+      // Column mapping is offered ONLY when auto-mapping could not find the
+      // required column — correct headings need no work from the coach.
+      const needsMap = plan && plan.map && plan.map.activity === undefined && (plan.columns || []).length;
+      const mapper = needsMap ? `
+        <div style="margin-top:10px;display:grid;gap:6px">
+          <div style="font-size:12px;font-weight:800;color:var(--muted)">Which column holds the activity?</div>
+          ${plan.columns.map((c, i) => `
+            <label style="display:flex;gap:8px;align-items:center;font-size:12.5px">
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c || '(column ' + (i + 1) + ')')}</span>
+              <select onchange="trainingImportRemap(${i}, this.value)" style="min-height:36px;border:1px solid var(--line);border-radius:7px;background:var(--panel-2);color:var(--ink);font-size:12.5px;padding:0 8px">
+                <option value="">Ignore</option>
+                ${TRAINING_IMPORT_FIELDS.map(f => `<option value="${f.key}"${(_trainingImport?.mapping || {})[String(i)] === f.key ? ' selected' : ''}>${esc(f.label)}</option>`).join('')}
+              </select>
+            </label>`).join('')}
+        </div>` : '';
+      const actions = plan?.ok ? `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          ${existing ? `
+            <button class="btn primary" type="button" style="font-size:12.5px" onclick="trainingImportApply('append')">Append ${plan.usable} to plan</button>
+            <button class="btn" type="button" style="font-size:12.5px" onclick="trainingImportApply('replace')">Replace plan…</button>`
+          : `<button class="btn primary" type="button" style="font-size:12.5px" onclick="trainingImportApply('replace')">Add ${plan.usable} block${plan.usable === 1 ? '' : 's'}</button>`}
+          <button class="btn ghost" type="button" style="font-size:12.5px" onclick="trainingImportCancel()">Cancel</button>
+        </div>` : `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button class="btn ghost" type="button" style="font-size:12.5px" onclick="trainingImportCancel()">Cancel</button>
+        </div>`;
+      return bar + `
+        <div id="training-import-panel" style="border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px;background:var(--panel-2)">
+          <div style="font-size:13px;font-weight:800;margin-bottom:2px">Import a session plan</div>
+          <p class="muted" style="font-size:12px;margin:0 0 10px">
+            A spreadsheet with <strong>Start</strong>, <strong>Duration</strong>, <strong>Activity</strong>, <strong>Details</strong> and <strong>Lead coach</strong> columns.
+            Every imported row becomes a normal, editable block.</p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="file" id="ti-file-${esc(sessionId)}" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onchange="trainingImportFile(this, '${sessionId}')"
+              style="font-size:12.5px;max-width:100%">
+            <button class="btn" type="button" style="font-size:12px" onclick="trainingImportTemplate()">Download CSV template</button>
+          </div>
+          ${imp ? `<div style="margin-top:10px;font-size:12.5px"><strong>${esc(imp.fileName)}</strong>
+            ${plan?.usable ? ` · ${plan.usable} usable row${plan.usable === 1 ? '' : 's'}` : ''}
+            ${plan?.ignored?.length ? ` · ignored column${plan.ignored.length === 1 ? '' : 's'}: ${esc(plan.ignored.join(', '))}` : ''}</div>` : ''}
+          ${mapper}
+          ${preview}
+          ${issues}
+          ${actions}
+        </div>`;
+    }
+
     /**
      * The start time a session's FIRST block should open at — resolved from
      * the group whose session is being planned, never from a hard-coded
@@ -14084,6 +14499,7 @@
               ${twCurrent ? '' : `<span class="muted" style="font-size:11px">Planned week — publish opens when the week arrives</span>`}
             </div>
           </div>
+          ${trainingImportPanelHTML(sessId)}
           ${blocks.length ? `
           <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:-4px -2px 0">
           <table class="training-gs-table" style="min-width:820px;table-layout:fixed;width:100%">
