@@ -78,10 +78,14 @@ test('nothing deleted: every hidden section still exists in coachSections', () =
 
 function buildNavScope({ entitled = true } = {}) {
   const store = {};
+  // Core's renderNav appends/removes a support link beside the player nav
+  // (9d1abd41), so the mock element needs the node methods it calls.
   const makeEl = () => ({ innerHTML: '', classList: { toggle() {}, add() {}, remove() {} },
-    style: {}, setAttribute() {}, classList_: {}, disabled: false, title: '', textContent: '' });
+    style: { cssText: '' }, setAttribute() {}, classList_: {}, disabled: false, title: '',
+    textContent: '', id: '', className: '', remove() {}, after() {}, appendChild() {} });
   const mockDoc = {
     getElementById(id) { if (!store[id]) store[id] = makeEl(); return store[id]; },
+    createElement() { return makeEl(); },
     querySelector() { return null; }, querySelectorAll() { return []; }, title: '',
   };
   const state = {

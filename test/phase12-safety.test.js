@@ -81,8 +81,14 @@ function makeEl(id = '') {
     get innerHTML() { return _html; },
     set innerHTML(v) { _html = v; },
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
-    style: {},
+    // Core's renderNav appends/removes a support link beside the player nav
+    // (9d1abd41); the mock needs the node methods it calls.
+    style: { cssText: '' },
     textContent: '',
+    className: '',
+    remove() {},
+    after() {},
+    appendChild() {},
   };
 }
 
@@ -96,6 +102,7 @@ function buildNavScope({ users = [], currentUserId = '' } = {}) {
       if (!store[id]) store[id] = makeEl(id);
       return store[id];
     },
+    createElement() { return makeEl(); },
     querySelectorAll() { return []; },
     querySelector() { return null; },
     title: '',
