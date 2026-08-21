@@ -24,3 +24,10 @@ export { analyseReadiness } from '../domain/progression-evidence.js';
 export { getDemoAssignment } from './demo-assignment.js';
 export { getCatalogue, getExerciseById } from './exercise-catalogue.js';
 export { PAIN_STOP_GUIDANCE, SUBSTITUTION_REQUEST_REASONS, SYNC_STATUSES, DEFAULT_REST_SEC } from '../types/workout.js';
+
+// SC5 development context — the Core integration seam. The host supplies the
+// operational group's structured developmentCategory as teamCategory; athlete
+// age evidence still outranks it inside the resolver.
+export { resolveDevelopmentContext, isYouthContext } from '../domain/development-context.js';
+export { engineInputFromProfile } from '../domain/programme-blueprint.js';
+export { TEAM_DEVELOPMENT_CATEGORIES, normalizeTeamDevelopmentCategory } from '../types/coaching.js';

@@ -20500,6 +20500,17 @@
                   ${gc.members} ${gc.members === 1 ? 'member' : 'members'} · ${teams.filter(t => t.status === 'active').length} ${teams.filter(t => t.status === 'active').length === 1 ? 'team' : 'teams'}
                   ${gc.staff?.length ? ` · Staff: ${esc(gc.staff.join(', '))}` : ' · No staff assigned'}
                 </div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap">
+                  <span class="muted" style="font-size:11px;font-weight:700">Age group</span>
+                  ${_canEditStructure && !archived
+                    ? `<select aria-label="Development category for ${esc(g.name)}"
+                        onchange="structureSetDevelopmentCategory('${esc(g.id)}','${esc(g.name)}',this.value)"
+                        style="min-height:32px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);font-size:11.5px;font-weight:700;padding:0 8px">
+                        ${Object.entries(DEVELOPMENT_CATEGORY_LABELS).map(([code, label]) =>
+                          `<option value="${esc(code)}" ${(g.developmentCategory || 'unknown') === code ? 'selected' : ''}>${esc(label)}</option>`).join('')}
+                      </select>`
+                    : `<span style="font-size:11px;font-weight:700;color:var(--ink)">${esc(developmentCategoryLabel(g.developmentCategory))}</span>`}
+                </div>
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
                 ${!_canEditStructure ? '' : archived
@@ -20628,6 +20639,27 @@
       const name = await cePrompt(`Add a team to ${groupName}`, 'Teams pick their own match-day squad from the group\'s players — for example Senior 1 and Senior 2.', { placeholder: 'Team name', confirmLabel: 'Create team' });
       if (!name) return;
       await structureOp('create_team', { groupId, name }, `${name} added to ${groupName}`);
+    }
+
+    // Development category — friendly labels over the server's controlled
+    // vocabulary (api/_structureStore.js DEVELOPMENT_CATEGORIES). Coaches pick
+    // a category; the snake_case code stays internal. Deliberately optional:
+    // a club can run all of Core without ever setting it, and 'unknown' is the
+    // conservative default rather than a permissive one.
+    const DEVELOPMENT_CATEGORY_LABELS = {
+      unknown:    'Not set',
+      youth_u16:  'Youth under 16',
+      youth_u18:  'Youth under 18',
+      adult:      'Adult / Senior',
+      mixed_open: 'Mixed / Open',
+    };
+    const developmentCategoryLabel = (code) =>
+      DEVELOPMENT_CATEGORY_LABELS[code] || DEVELOPMENT_CATEGORY_LABELS.unknown;
+
+    async function structureSetDevelopmentCategory(groupId, groupName, value) {
+      await structureOp('set_group_development_category',
+        { groupId, developmentCategory: value },
+        `${groupName}: ${developmentCategoryLabel(value)}`);
     }
 
     async function structureRename(kind, id, currentName) {
@@ -31084,6 +31116,28 @@
           <div style="min-width:160px">${perfMeter(pct)}</div>
         </div>
 
+        ${(() => {
+          // Development context — WHY a given set of safeguards applies. Shows
+          // the athlete's own evidence and the club's structured group
+          // classification separately, so a coach can see which one is driving
+          // the outcome and fix the right one.
+          const dev = perfDevelopmentContext();
+          if (!dev) return '';
+          const teamCat = perfTeamDevelopmentCategory();
+          return `<div class="card perf-card" style="margin-bottom:14px">
+            <div class="perf-card-head"><small>Development context</small>
+              ${dev.safeguardsActive ? '<span class="pill">Safeguards active</span>' : ''}
+            </div>
+            <strong class="perf-card-title">${esc(PERF_CONTEXT_LABELS[dev.context] || PERF_CONTEXT_LABELS.unknown)}</strong>
+            <small class="muted" style="display:block;margin-top:5px">
+              Your age evidence: ${esc(PERF_OPT_LABEL[p.personal.ageBand] || 'not provided')} ·
+              Squad classification: ${esc(developmentCategoryLabel(teamCat))}
+            </small>
+            ${dev.conflicts.length ? `<small class="muted" style="display:block;margin-top:5px">Your own age evidence takes precedence over the squad classification.</small>` : ''}
+            ${dev.context === 'unknown' ? `<small class="muted" style="display:block;margin-top:5px">Without confirmed age evidence, programming stays conservative.</small>` : ''}
+          </div>`;
+        })()}
+
         <div class="perf-group-title">My Performance Profile</div>
         <div class="grid perf-grid-3">
           ${card("Rugby identity", `
@@ -31488,6 +31542,46 @@
           .catch(e => { console.error('[performance] workout runtime load failed', e); _perfWkErr = true; renderPerformance(); });
       }
     }
+
+    /**
+     * The athlete's structured TEAM development category, read from Core's
+     * authoritative group structure (projected onto the session as
+     * _myOperational). Group NAMES are never parsed — only the stored
+     * classification is read, so a group called "U18" with no classification
+     * stays 'unknown'. Supporting context only: resolveDevelopmentContext()
+     * still lets real athlete age evidence outrank it, and 'unknown' can never
+     * unlock adult programming.
+     */
+    function perfTeamDevelopmentCategory() {
+      const groups = _myOperational?.player?.groups || [];
+      const id = _myOperational?.player?.defaultGroupId || '';
+      const g = groups.find(x => String(x.id) === String(id)) || (groups.length === 1 ? groups[0] : null);
+      return g?.developmentCategory || 'unknown';
+    }
+
+    /**
+     * Canonical development context for THIS athlete. All precedence lives in
+     * the pure SC5 module (athlete age evidence first, structured team category
+     * as support, conservative 'unknown' otherwise) — index.html only supplies
+     * inputs and renders the result.
+     */
+    function perfDevelopmentContext() {
+      if (!_perfWkMod) return null;
+      const personal = state.performanceProfile?.profile?.personal || null;
+      return _perfWkMod.resolveDevelopmentContext({
+        ageBand: personal?.ageBand || null,
+        dateOfBirth: personal?.dateOfBirth || null,
+        teamCategory: perfTeamDevelopmentCategory(),
+        now: new Date(),
+      });
+    }
+
+    const PERF_CONTEXT_LABELS = {
+      youth_u16: 'Under-16 safeguards',
+      youth_u18: 'Under-18 safeguards',
+      adult: 'Adult programming',
+      unknown: 'Conservative — development context not confirmed',
+    };
 
     function perfWkState() {
       return _perfWkMod.normalizeWorkoutState(state.performanceWorkout);

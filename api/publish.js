@@ -25,6 +25,7 @@ import { requireTenantPermission, requireTenantSession, requireClubManage, asser
 import {
   loadClubStructure, createGroup, createTeam, renameGroup, renameTeam,
   setGroupStatus, setTeamStatus, activeGroups, INITIAL_GROUP_ID,
+  setGroupDevelopmentCategory,
 } from './_structureStore.js';
 import { effectiveAccessScope, resolveEligibility, resolvePlayerGroup,
          operationalGroupsFor, defaultOperationalGroup, assertOperationalGroup } from './_accessScope.js';
@@ -1828,10 +1829,15 @@ async function structureHandler(req, res) {
       else if (op === 'restore_group')  result = await setGroupStatus(session.teamId, b.groupId, 'active');
       else if (op === 'archive_team')   result = await setTeamStatus(session.teamId, b.teamId, 'archived');
       else if (op === 'restore_team')   result = await setTeamStatus(session.teamId, b.teamId, 'active');
+      // Development category drives age-appropriate programming, so it is a
+      // club-administration change like any other: same club-wide MANAGE_TEAMS
+      // gate above, same club_structure_changed audit entry below.
+      else if (op === 'set_group_development_category') result = await setGroupDevelopmentCategory(session.teamId, b.groupId, b.developmentCategory);
       else return res.status(400).json({ ok: false, error: 'Unknown structure operation' });
 
       await auditLog('club_structure_changed', {
         op, groupId: b.groupId || result.group?.id || null, teamId: b.teamId || result.team?.id || null,
+        developmentCategory: op === 'set_group_development_category' ? b.developmentCategory : undefined,
         changedBy: session.user.id, teamId_club: session.teamId, ip: requestIp(req),
       });
       return res.status(200).json({ ok: true, structure: result.structure, group: result.group || null, team: result.team || null });
