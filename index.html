@@ -1735,6 +1735,17 @@
     .training-gs-table tr:hover td { background:var(--panel-2); }
     .training-gs-table textarea { width:100%; font-size:14px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; resize:vertical; min-height:76px; font-family:inherit; line-height:1.5; background:var(--panel-2); color:var(--ink); }
     .training-gs-table textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px rgba(var(--accent-rgb), 0.12); }
+    /* Planner blocks size to the text actually written (JS sets the height to
+       the content), so a finished block is never a giant empty rectangle and
+       the next control stays within thumb reach. The block being EDITED gets
+       comfortable room via min-height — a constraint, so it wins over the
+       smaller content height without any JS bookkeeping — and relaxes again
+       on blur. Long content always wins over both. */
+    /* No transition on min-height: autosize neutralises min-height to measure
+       the text, and an animating value made every measurement read the old
+       editing floor — blocks then never compacted. */
+    .training-gs-table textarea.tb-auto { min-height:40px; overflow:hidden; }
+    .training-gs-table textarea.tb-auto:focus { min-height:132px; overflow:auto; }
     .gs-time-input { width:84px; border:2px solid var(--line); border-radius:7px; padding:8px 10px; font-size:15px; font-weight:800; color:var(--accent); text-align:center; background:var(--panel-2); }
     .gs-time-input:focus { outline:none; border-color:var(--accent); background:var(--panel); }
     .gs-sm-input { width:100%; border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:13px; background:var(--panel-2); color:var(--ink); }
@@ -2360,7 +2371,12 @@
         box-sizing: border-box;
       }
       .training-gs-table .gs-time-input { width: 150px !important; }
-      .training-gs-table td textarea { min-height: 92px !important; height: auto !important; }
+      /* Autosizing planner blocks own their height on phones too — this rule
+         forced every block to 92px and discarded the measured height, which
+         is what made finished blocks big empty rectangles on mobile. */
+      .training-gs-table td textarea:not(.tb-auto) { min-height: 92px !important; height: auto !important; }
+      .training-gs-table td textarea.tb-auto { min-height: 44px; }
+      .training-gs-table td textarea.tb-auto:focus { min-height: 140px; }
       .training-gs-table td[data-label=""] { text-align: right; padding-top: 2px; }
     }
 
@@ -7586,14 +7602,95 @@
       showToast('New week started — squad and sessions cleared ✓');
     }
 
+    /**
+     * The start time a session's FIRST block should open at — resolved from
+     * the group whose session is being planned, never from a hard-coded
+     * default or the group the coach happened to be in before.
+     *
+     * Order: the session's own configured start (dated occurrences carry
+     * their slot's time) → the GROUP's training schedule (_trainingSchedule
+     * is fetched per operating group and stamped with it, so a cached other
+     * group's copy is refused) → '' (honest empty; the coach types it, and
+     * no other group's time is ever silently inherited).
+     */
+    function trainingPlannedStartTime(sessionId) {
+      const HHMM = /^\d{1,2}:\d{2}$/;
+      const id = String(sessionId || '');
+      const sess = (state.schedule || []).find(x => String(x.id) === id);
+      const own = String(sess?.startTime || '').trim();
+      if (HHMM.test(own)) return own;
+      // Only THIS group's schedule may answer.
+      if (!_trainingSchedule || _trainingScheduleGroupId !== trainingGroupParam()) return '';
+      const slots = (_trainingSchedule.slots || []).filter(sl => sl && sl.active !== false);
+      const slotId = id.split('-')[0];                 // dated occurrence: slot_x-YYYYMMDD
+      const match = slots.find(sl => String(sl.id) === slotId);
+      const t = String((match || slots[0] || {}).startTime || '').trim();
+      return HHMM.test(t) ? t : '';
+    }
+
     function addTimeBlock(sessionId) {
       state.trainingBlocks = state.trainingBlocks || {};
       const blocks = state.trainingBlocks[sessionId] = state.trainingBlocks[sessionId] || [];
       const last = blocks[blocks.length-1];
       const addMins = (t,m) => { const [h,mn]=t.split(":").map(Number),tot=h*60+mn+m; return `${String(Math.floor(tot/60)%24).padStart(2,"0")}:${String(tot%60).padStart(2,"0")}`; };
-      blocks.push({ id:"tb"+Date.now(), time:last?addMins(last.time,30):"19:45", activity:"New session block", tag:"General" });
+      const lastTime = String(last?.time || '').trim();
+      // A NEW block is genuinely empty — the guidance is placeholder text on
+      // the inputs, never content the coach has to delete first. The opening
+      // time follows the PLANNED GROUP's own schedule (was hard-coded 19:45,
+      // which is why a U18 session inherited the Seniors evening).
+      const time = /^\d{1,2}:\d{2}$/.test(lastTime) ? addMins(lastTime, 30) : trainingPlannedStartTime(sessionId);
+      const id = "tb" + Date.now();
+      blocks.push({ id, time, activity: "", tag: "General" });
       notify("Time block added");
       syncPublishedSessionEdit(sessionId);
+      // Put the coach straight into the new block (it is already on screen,
+      // directly under the control they just tapped).
+      setTimeout(() => {
+        const el = document.querySelector(`#coach-training textarea.tb-auto[oninput*="'${id}','activity'"]`);
+        if (el) { el.focus({ preventScroll: false }); tbAutosize(el, true); }
+      }, 40);
+    }
+
+    /**
+     * Size a planner textarea to the text it actually holds. `editing` gives
+     * the block being worked on a comfortable floor; every other block sits
+     * at its content height, so a finished block is never a big empty box.
+     * The measurement neutralises min-height first — otherwise a focused
+     * block would measure its own floor and stay tall after blur.
+     */
+    function tbAutosize(el, editing) {
+      if (!el) return;
+      const prevMin = el.style.minHeight;
+      el.style.minHeight = '0px';
+      // Measure at height:0 — with `auto`, a stretched table/grid cell reports
+      // the ROW's height as scrollHeight and the block never compacts.
+      el.style.height = '0px';
+      const content = el.scrollHeight || 0;
+      el.style.minHeight = prevMin;
+      el.style.height = Math.max(content, editing ? 132 : 40) + 'px';
+    }
+    /**
+     * Recompact a block the coach has just left. Deferred one tick so the
+     * measurement happens after the browser has dropped the focus styling —
+     * measuring during the blur event returns the editing height and the
+     * block stays tall.
+     */
+    function tbBlur(el) { setTimeout(() => tbAutosize(el), 0); }
+
+    /**
+     * Size every planner block after a render (compact = content height).
+     * Deferred a tick: measured during the render pass the layout is not
+     * settled and a block can keep a stale editing height.
+     */
+    function trainingAutosizeBlocks() {
+      const size = () => document.querySelectorAll('#coach-training textarea.tb-auto')
+        .forEach(el => tbAutosize(el, document.activeElement === el));
+      size();
+      setTimeout(size, 0);
+      // One more pass once fonts/labels have settled: a first measurement can
+      // land while the stacked mobile row is still being laid out, leaving a
+      // block taller than its text.
+      setTimeout(size, 150);
     }
     function removeTimeBlock(sessionId, blockId) {
       if (!state.trainingBlocks?.[sessionId]) return;
@@ -13985,7 +14082,6 @@
                 <button class="btn primary" type="button" id="pub-player-${esc(sessId)}" onclick="trainingPublishTo('${sessId}','player')">Publish to players</button>
               </div>` : ''}
               ${twCurrent ? '' : `<span class="muted" style="font-size:11px">Planned week — publish opens when the week arrives</span>`}
-              <button class="btn" type="button" onclick="addTimeBlock('${sessId}')">+ Add block</button>
             </div>
           </div>
           ${blocks.length ? `
@@ -14008,34 +14104,45 @@
                       style="width:84px;font-size:15px;padding:8px 10px">
                   </td>
                   <td data-label="Activity" style="vertical-align:top">
-                    <textarea
-                      oninput="updateTimeBlock('${sessId}','${b.id}','activity',this.value)"
+                    <textarea class="tb-auto"
+                      oninput="updateTimeBlock('${sessId}','${b.id}','activity',this.value);tbAutosize(this,true)"
+                      onfocus="tbAutosize(this,true)" onblur="tbBlur(this)"
                       placeholder="Short title (e.g. Ruck drill)"
-                      style="font-size:14px;line-height:1.5;min-height:180px;height:100%;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${b.activity.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
+                      style="font-size:14px;line-height:1.5;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${b.activity.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
                   </td>
                   <td data-label="Key Focus" style="vertical-align:top">
-                    <textarea
-                      oninput="updateTimeBlock('${sessId}','${b.id}','keyFocus',this.value)"
+                    <textarea class="tb-auto"
+                      oninput="updateTimeBlock('${sessId}','${b.id}','keyFocus',this.value);tbAutosize(this,true)"
+                      onfocus="tbAutosize(this,true)" onblur="tbBlur(this)"
                       placeholder="Key coaching points, cues and targets — write as much as you need…"
-                      style="font-size:14px;line-height:1.5;min-height:180px;height:100%;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${(b.keyFocus||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
+                      style="font-size:14px;line-height:1.5;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${(b.keyFocus||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
                   </td>
                   <td data-label="Lead Coach" style="vertical-align:top">
-                    <textarea
-                      oninput="updateTimeBlock('${sessId}','${b.id}','coach',this.value)"
+                    <textarea class="tb-auto"
+                      oninput="updateTimeBlock('${sessId}','${b.id}','coach',this.value);tbAutosize(this,true)"
+                      onfocus="tbAutosize(this,true)" onblur="tbBlur(this)"
                       placeholder="Lead coach, assistants, responsibilities…"
                       name="session-plan-coach" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                       data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore
-                      style="font-size:13px;line-height:1.5;min-height:180px;height:100%;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${(b.coach||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
+                      style="font-size:13px;line-height:1.5;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${(b.coach||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
                   </td>
                   <td data-label="" style="vertical-align:middle">
                     <button class="btn ghost" type="button" style="padding:0 10px;min-height:36px;color:var(--muted)" onclick="removeTimeBlock('${sessId}','${b.id}')">✕</button>
                   </td>
                 </tr>`).join("")}
             </tbody>
-          </table></div>` : `<div style="padding:24px 0;text-align:center">
+          </table></div>
+          <!-- THE add control lives immediately under the last block (which is
+               where the coach is working), not back up in the header: on a
+               phone the old position meant scrolling the whole plan to add the
+               next one. One button only — no duplicate CTAs. -->
+          <div style="margin-top:10px">
+            <button class="btn" type="button" style="width:100%;max-width:320px" onclick="addTimeBlock('${sessId}')">+ Add block</button>
+          </div>` : `<div style="padding:24px 0;text-align:center">
             <div style="font-size:30px;margin-bottom:8px;opacity:.5">📋</div>
             <p style="font-size:14px;font-weight:600;color:var(--ink);margin:0 0 4px">No session plan yet</p>
             <p class="muted" style="font-size:12px;margin:0 0 14px">Add time blocks to build your coaching plan — warm-up, drills, set piece, match review and more.</p>
+            <button class="btn primary" type="button" style="font-size:13px;margin-bottom:10px" onclick="addTimeBlock('${sessId}')">+ Add block</button>
             ${autopilotOn() && ((state.lastWeekTrainingBlocks || {})[state.trainingActiveSession] || []).length ? `
             <button class="btn primary" type="button" onclick="autopilotDuplicateSession('${esc(state.trainingActiveSession)}')" style="font-size:13px">
               ⧉ Duplicate last week's plan (${((state.lastWeekTrainingBlocks || {})[state.trainingActiveSession] || []).length} blocks)
@@ -14153,6 +14260,9 @@
         <!-- Advanced analytics — Pro feature placeholder (hidden in commercial Beta) -->
         ${(!BETA_SIMPLE_UI && !canUseFeature('advanced_analytics')) ? renderUpgradePrompt('advanced_analytics') : ''}`;
 
+      // Freshly-painted blocks size to their own content, so a finished block
+      // is as tall as what is written in it and nothing more.
+      trainingAutosizeBlocks();
     }
 
     // ─── MATCH CENTRE ────────────────────────────────────────────────────────
