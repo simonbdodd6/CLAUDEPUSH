@@ -81,8 +81,14 @@ function makeEl(id = '') {
     get innerHTML() { return _html; },
     set innerHTML(v) { _html = v; },
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
-    style: {},
+    // Core's renderNav appends/removes a support link beside the player nav
+    // (9d1abd41); the mock needs the node methods it calls.
+    style: { cssText: '' },
     textContent: '',
+    className: '',
+    remove() {},
+    after() {},
+    appendChild() {},
   };
 }
 
@@ -96,6 +102,7 @@ function buildNavScope({ users = [], currentUserId = '' } = {}) {
       if (!store[id]) store[id] = makeEl(id);
       return store[id];
     },
+    createElement() { return makeEl(); },
     querySelectorAll() { return []; },
     querySelector() { return null; },
     title: '',
@@ -131,6 +138,13 @@ function buildNavScope({ users = [], currentUserId = '' } = {}) {
     const SECTION_ICONS = {};
     // RC4.7 — renderNav reads the shared gate map and scoped-access helpers.
     ${html.match(/const SECTION_PERM_MAP = \{[^}]*\};/)[0]}
+    // INT2 — the nav filter now also consults the premium map. Core Beta
+    // clubs are UNENTITLED, which is the condition these player-portal
+    // contracts describe, so Performance is correctly absent below.
+    const SECTION_FEATURE_MAP = { performance: 'performance' };
+    const BETA_HIDE_COMMERCIAL = true;
+    function _isLocalDemoHost() { return false; }
+    function canUseFeature() { return false; }
     ${extractFn(html, 'allowedCoachSections')}
     ${extractFn(html, 'playerSectionsFor')}
     ${extractFn(html, 'renderNav')}

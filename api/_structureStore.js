@@ -29,6 +29,26 @@ export const INITIAL_TEAM_ID = 'team_initial';
 
 export const SCOPE_STATUSES = ['active', 'archived'];
 
+/**
+ * A group's DEVELOPMENT CATEGORY — structured context for age-appropriate
+ * programming (CoachEasier Performance / SC5).
+ *
+ * This is deliberately a controlled vocabulary rather than anything derived
+ * from a group's display name: clubs name groups "U18", "Colts", "Section
+ * Jeunes" or "Firsts", and a safeguarding rule must never depend on parsing
+ * free text. Display names stay presentation only.
+ *
+ * 'unknown' is the safe default and is RESTRICTIVE, never permissive — an
+ * unclassified group must not silently unlock adult programming. It is also
+ * supporting context only: an athlete's own trustworthy age evidence remains
+ * authoritative for youth safeguards.
+ */
+export const DEVELOPMENT_CATEGORIES = ['youth_u16', 'youth_u18', 'adult', 'mixed_open', 'unknown'];
+export const DEFAULT_DEVELOPMENT_CATEGORY = 'unknown';
+
+const cleanDevelopmentCategory = value =>
+  DEVELOPMENT_CATEGORIES.includes(value) ? value : DEFAULT_DEVELOPMENT_CATEGORY;
+
 const structureKey = clubId => key(`structure:${clubId}`);
 
 const cleanName = (value, fallback) =>
@@ -49,7 +69,7 @@ export function synthesizeInitialStructure(clubId, clubRecord = null) {
     clubId: String(clubId || ''),
     synthesized: true,        // stripped on persist; marks "not yet stored"
     groups: [
-      { id: INITIAL_GROUP_ID, name, type: 'general', status: 'active' },
+      { id: INITIAL_GROUP_ID, name, type: 'general', developmentCategory: DEFAULT_DEVELOPMENT_CATEGORY, status: 'active' },
     ],
     teams: [
       { id: INITIAL_TEAM_ID, groupId: INITIAL_GROUP_ID, name, ageGrade: '', genderCategory: '', status: 'active' },
@@ -70,6 +90,10 @@ function normalizeStructure(clubId, stored) {
       .map(g => ({
         id: String(g.id), name: cleanName(g.name, 'Group'),
         type: String(g.type || 'general'),
+        // Read-time normalization IS the migration: a group stored before this
+        // field existed reads back as 'unknown' without any destructive
+        // rewrite, exactly as `type` and `status` already behave.
+        developmentCategory: cleanDevelopmentCategory(g.developmentCategory),
         status: SCOPE_STATUSES.includes(g.status) ? g.status : 'active',
       })),
     teams: teams
@@ -187,7 +211,7 @@ function freshId(prefix, taken) {
   return id;
 }
 
-export async function createGroup(clubId, { name, type = 'general' } = {}) {
+export async function createGroup(clubId, { name, type = 'general', developmentCategory = DEFAULT_DEVELOPMENT_CATEGORY } = {}) {
   const groupName = assertValidName(name, 'group');
   const structure = await persistClubStructure(clubId);
   if (structure.groups.some(g => g.status !== 'archived' && nameKey(g.name) === nameKey(groupName))) {
@@ -197,6 +221,7 @@ export async function createGroup(clubId, { name, type = 'general' } = {}) {
     id: freshId('grp', new Set(structure.groups.map(g => g.id))),
     name: groupName,
     type: String(type || 'general').slice(0, 40),
+    developmentCategory: cleanDevelopmentCategory(developmentCategory),
     status: 'active',
   };
   structure.groups.push(group);
@@ -235,6 +260,23 @@ export async function renameGroup(clubId, groupId, name) {
     throw adminError('A group with that name already exists');
   }
   group.name = groupName;
+  await saveClubStructure(clubId, structure);
+  return { structure, group };
+}
+
+/**
+ * Classify an existing group. Rejects anything outside the controlled
+ * vocabulary rather than storing it — the value drives youth safeguards, so a
+ * typo must fail loudly instead of silently reading back as 'unknown'.
+ */
+export async function setGroupDevelopmentCategory(clubId, groupId, developmentCategory) {
+  if (!DEVELOPMENT_CATEGORIES.includes(developmentCategory)) {
+    throw adminError('Unknown development category');
+  }
+  const structure = await persistClubStructure(clubId);
+  const group = groupById(structure, groupId);
+  if (!group) throw adminError('Unknown group for this club', 404);
+  group.developmentCategory = developmentCategory;
   await saveClubStructure(clubId, structure);
   return { structure, group };
 }

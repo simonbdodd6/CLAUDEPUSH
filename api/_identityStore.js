@@ -910,7 +910,10 @@ async function operationalContextFor(member) {
   const shape = as => {
     const { group, groups, mustChoose } = defaultOperationalGroup(member, structure, { as });
     return {
-      groups: groups.map(g => ({ id: g.id, name: g.name })),
+      // developmentCategory travels with the group so the client can apply
+      // age-appropriate rules without a second admin fetch. It is a
+      // classification, not personal data — no athlete information is exposed.
+      groups: groups.map(g => ({ id: g.id, name: g.name, developmentCategory: g.developmentCategory || 'unknown' })),
       defaultGroupId: group ? group.id : null,
       mustChoose,
     };
