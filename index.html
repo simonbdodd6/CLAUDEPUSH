@@ -4,6 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>CoachEasier</title>
+  <!-- Share/metadata. Deliberately generic: this is the APP shell, so nothing
+       here may carry a club's name, badge or any customer data. -->
+  <meta name="description" content="CoachEasier is team management for rugby clubs: squad selection, player availability, training plans, fixtures and match-day communication in one place.">
+  <link rel="canonical" href="https://www.coacheasier.com/">
+  <meta property="og:site_name" content="CoachEasier">
+  <meta property="og:title" content="CoachEasier — team management for rugby clubs">
+  <meta property="og:description" content="Squad selection, player availability, training plans, fixtures and match-day communication in one place.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.coacheasier.com/">
+  <meta property="og:image" content="https://www.coacheasier.com/brand/png/coacheasier-logo-master-1600.png">
+  <meta property="og:image:alt" content="CoachEasier">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CoachEasier — team management for rugby clubs">
+  <meta name="twitter:description" content="Squad selection, player availability, training plans, fixtures and match-day communication in one place.">
+  <meta name="twitter:image" content="https://www.coacheasier.com/brand/png/coacheasier-logo-master-1600.png">
   <link rel="icon" type="image/svg+xml" href="/brand/svg/coacheasier-favicon.svg">
   <link rel="icon" type="image/x-icon" href="/brand/png/coacheasier-favicon.ico" sizes="16x16 32x32 48x48">
   <link rel="apple-touch-icon" href="/brand/png/coacheasier-apple-touch-180.png">
@@ -6429,6 +6444,10 @@
           <button class="btn" type="button" onclick="welcomeJoin()">Join a team</button>
           <button class="btn" type="button" onclick="_welcomeDismissed=true;document.getElementById('ce-welcome')?.remove();startClubWizard()" style="border-color:var(--brand-line);color:var(--brand-2)">Start a new club</button>
           <p class="muted" style="font-size:11.5px;margin-top:14px">Got an invite link? Just open it — no setup needed.</p>
+          <p class="muted ce-welcome-foot" style="font-size:11px;margin-top:12px;line-height:1.7">
+            Need help? <a href="mailto:support@coacheasier.com" style="color:inherit">support@coacheasier.com</a><br>
+            <a href="/privacy" style="color:inherit">Privacy</a> · <a href="/terms" style="color:inherit">Terms</a>
+          </p>
         </div>`;
       document.body.appendChild(el);
     }
@@ -11113,6 +11132,20 @@
         `<button type="button" onclick="openPlayerAccountMenu()" aria-label="Account and sign out">${icon('user')}Account</button>`;
       document.getElementById("coachNav").classList.toggle("hidden",  state.activeView !== "coach");
       document.getElementById("playerNav").classList.toggle("hidden", state.activeView !== "player");
+      // A stuck PLAYER had no way to reach us — support lived in coach
+      // Settings only. One quiet line under their own nav, nothing more.
+      const playerHelp = document.getElementById('player-help-link');
+      if (state.activeView === 'player') {
+        if (!playerHelp) {
+          const el = document.createElement('p');
+          el.id = 'player-help-link';
+          el.className = 'muted';
+          el.style.cssText = 'font-size:11px;line-height:1.7;margin:10px 6px 0;text-align:center';
+          el.innerHTML = `Need help? <a href="mailto:support@coacheasier.com" style="color:inherit">support@coacheasier.com</a><br>
+            <a href="/privacy" style="color:inherit">Privacy</a> · <a href="/terms" style="color:inherit">Terms</a>`;
+          document.getElementById('playerNav').after(el);
+        }
+      } else if (playerHelp) playerHelp.remove();
       // Hide the Coach|Player toggle entirely for players — they should never see it
       // Staff-only. A player with a scoped grant (e.g. Medical) reaches it from
       // their OWN navigation and never enters the coach shell — showSection()
@@ -11867,10 +11900,21 @@
           !playerSectionsFor().some(([id]) => id === state.activePlayerSection)) {
         state.activePlayerSection = "home";
       }
+      // The COACH section needs the same treatment: an unknown id (stale
+      // localStorage, a renamed/removed section, an old deep link) used to
+      // fall through to the universal player-home fallback, so a COACH landed
+      // in the PLAYER app. Recover inside the account's own capacity instead.
+      if (state.activeView === "coach" &&
+          !coachSections.some(([id]) => id === state.activeCoachSection)) {
+        state.activeCoachSection = "overview";
+      }
       const id = state.activeView === "coach"
         ? `coach-${state.activeCoachSection}`
         : `player-${state.activePlayerSection}`;
-      (document.getElementById(id) || document.getElementById("player-home"))?.classList.add("active");
+      // Last-resort fallback is account-appropriate: a coach never lands on a
+      // player screen, and vice versa.
+      const fallbackId = state.activeView === "coach" ? "coach-overview" : "player-home";
+      (document.getElementById(id) || document.getElementById(fallbackId))?.classList.add("active");
       document.getElementById("pageTitle").textContent  = pageTitle();
       renderOperationalGroupSwitcher();
       document.getElementById("eyebrow").textContent    = state.activeView === "coach"
@@ -13110,8 +13154,8 @@
         const s = wa[key];
         return `<div style="display:grid;grid-template-columns:1fr 132px 108px;gap:10px;align-items:center;margin-top:11px">
           <span style="font-size:13px;font-weight:700;color:var(--ink)">${label}</span>
-          <select id="wa-day-${key}" style="width:100%">${dayOpts(s.day)}</select>
-          <select id="wa-hour-${key}" style="width:100%">${hourOpts(s.time)}</select></div>`;
+          <select id="wa-day-${key}" aria-label="${esc(label)} — day" style="width:100%">${dayOpts(s.day)}</select>
+          <select id="wa-hour-${key}" aria-label="${esc(label)} — time" style="width:100%">${hourOpts(s.time)}</select></div>`;
       };
       const el = document.createElement('div');
       el.id = 'wa-editor';
@@ -13492,7 +13536,7 @@
             ${s.headers.map((h, i) => `
               <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
                 <span style="font-size:12.5px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(String(h || `Column ${i + 1}`))}</span>
-                <select style="${inp}" onchange="fixtureImportSetMapping(${i}, this.value)">
+                <select aria-label="Map spreadsheet column ${esc(String(h || `Column ${i + 1}`))} to a fixture field" style="${inp}" onchange="fixtureImportSetMapping(${i}, this.value)">
                   <option value="">— ignore —</option>
                   ${FixtureImport.FIXTURE_TARGET_FIELDS.map(f =>
                     `<option value="${f}" ${s.mapping[i] === f ? 'selected' : ''}>${f}</option>`).join('')}
@@ -13530,7 +13574,7 @@
                 ${r.duplicate ? `
                   <div style="font-size:11.5px;margin-top:6px">
                     Possible duplicate (${esc(r.duplicate.reason)}) —
-                    <select style="${inp};min-height:28px" onchange="fixtureImportSetDecision(${i}, this.value)">
+                    <select aria-label="What to do with this possible duplicate fixture" style="${inp};min-height:28px" onchange="fixtureImportSetDecision(${i}, this.value)">
                       <option value="skip" ${r.decision === 'skip' ? 'selected' : ''}>Skip</option>
                       <option value="update" ${r.decision === 'update' ? 'selected' : ''}>Update existing</option>
                       <option value="new" ${r.decision === 'new' ? 'selected' : ''}>Import as new</option>
@@ -17327,6 +17371,14 @@
           </div>
           <div id="cw-error" role="alert" style="display:none;margin-bottom:12px;padding:11px 14px;border:1px solid rgba(239,68,68,0.5);border-left:4px solid #ef4444;border-radius:9px;background:rgba(239,68,68,0.08);color:var(--ink);font-size:13px;font-weight:600;text-align:left"></div>
           <button id="cw-finish-btn" class="btn primary" type="button" onclick="clubWizFinish()" style="width:100%;min-height:48px;font-size:15px">Create my club →</button>
+          <!-- LINKS ONLY. No acceptance is claimed or recorded: the policies
+               are still in draft, so asserting "by creating an account you
+               agree…" would be untrue. This is the spot an acceptance control
+               will occupy once the policies are final. -->
+          <p class="muted" id="cw-legal" style="font-size:11px;margin:12px 0 0;text-align:center;line-height:1.7">
+            <a href="/privacy" target="_blank" rel="noopener" style="color:inherit">Privacy</a> ·
+            <a href="/terms" target="_blank" rel="noopener" style="color:inherit">Terms</a>
+          </p>
         </div>`,
       ];
 
@@ -19451,6 +19503,9 @@
             <p class="muted" style="font-size:11.5px;line-height:1.5;margin:10px 0 0">
               ${esc(state.clubName || 'Your club')} runs on <strong>CoachEasier</strong> — selection, availability and team
               communication for match week. Your club's name, badge and colours stay yours.</p>
+            <p class="muted" style="font-size:11.5px;margin:10px 0 0">
+              <a href="/privacy" style="color:inherit">Privacy</a> · <a href="/terms" style="color:inherit">Terms</a>
+            </p>
           </div>
 
           <!-- Device (hidden in the commercial Beta UI; functions retained) -->
@@ -20153,13 +20208,13 @@
             <p class="muted" style="font-size:12px;margin-bottom:14px">Shown to players in their app and in invite emails.</p>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
               <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Club name
-                <input value="${esc(state.clubName || '')}" style="${inputStyle}"
+                <input value="${esc(state.clubName || '')}" aria-label="Club name" style="${inputStyle}"
                   onchange="state.clubName=this.value.trim();adminSaveClub()"></label>
               <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Team name
-                <input value="${esc(state.teamName || '')}" style="${inputStyle}"
+                <input value="${esc(state.teamName || '')}" aria-label="Team name" style="${inputStyle}"
                   onchange="state.teamName=this.value.trim();adminSaveClub()"></label>
               <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Season
-                <input value="${esc(state.seasonName || '')}" style="${inputStyle}"
+                <input value="${esc(state.seasonName || '')}" aria-label="Season name" style="${inputStyle}"
                   onchange="state.seasonName=this.value.trim();adminSaveClub()"></label>
             </div>
           </div>
@@ -20170,7 +20225,7 @@
             <p class="muted" style="font-size:12px;margin-bottom:12px">Session titles and times players see in Availability and Calendar.</p>
             ${(state.schedule || []).filter(s => s.type === 'Training').map(s => `
               <div style="${rowStyle}">
-                <input value="${esc(s.title || '')}" style="${inputStyle};max-width:240px"
+                <input value="${esc(s.title || '')}" aria-label="Session title" style="${inputStyle};max-width:240px"
                   onchange="adminEditSession('${s.id}','title',this.value)">
                 <input value="${esc(s.date || '')}" placeholder="e.g. Tuesday 19:00" style="${inputStyle};max-width:180px"
                   onchange="adminEditSession('${s.id}','date',this.value)">
@@ -20191,11 +20246,11 @@
                   onclick="adminRemoveFixture('${esc(f.id)}')">Remove</button>
               </div>`).join('') : `<p class="muted" style="font-size:12px;padding:8px 0">No fixtures yet — add your first match below and it will appear in the Match Centre automatically.</p>`}
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:12px">
-              <input id="adm-fx-opp" placeholder="Opposition *" style="${inputStyle}">
-              <input id="adm-fx-date" type="date" style="${inputStyle}">
-              <input id="adm-fx-time" type="time" style="${inputStyle}">
-              <input id="adm-fx-venue" placeholder="Venue" style="${inputStyle}">
-              <select id="adm-fx-homeaway" style="${inputStyle}">
+              <input id="adm-fx-opp" placeholder="Opposition *" aria-label="Opposition" style="${inputStyle}">
+              <input id="adm-fx-date" type="date" aria-label="Fixture date" style="${inputStyle}">
+              <input id="adm-fx-time" type="time" aria-label="Kick-off time" style="${inputStyle}">
+              <input id="adm-fx-venue" placeholder="Venue" aria-label="Venue" style="${inputStyle}">
+              <select id="adm-fx-homeaway" aria-label="Home or away" style="${inputStyle}">
                 <option value="">Home / Away</option>
                 <option value="home">Home</option>
                 <option value="away">Away</option>
@@ -20274,7 +20329,7 @@
                   <div class="muted" style="font-size:11px">${esc(user.email || '')}</div>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-                  <select style="${inputStyle};min-height:30px;font-size:11px;width:auto"
+                  <select aria-label="Staff level for ${esc(adminUserFor(member).displayName || adminUserFor(member).email || 'this member')}" style="${inputStyle};min-height:30px;font-size:11px;width:auto"
                     onchange="adminSetStaffLevel('${esc(member.id)}',this.value)">
                     ${Object.entries(STAFF_LEVEL_LABELS).map(([lvl, label]) =>
                       `<option value="${lvl}" ${(member.staffLevel || 'head') === lvl ? 'selected' : ''}>${label}</option>`).join('')}
@@ -20288,7 +20343,7 @@
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:14px">
               <input id="adm-staff-name" placeholder="Name" style="${inputStyle}">
               <input id="adm-staff-email" placeholder="Email" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" style="${inputStyle}">
-              <select id="adm-staff-level" style="${inputStyle}">
+              <select id="adm-staff-level" aria-label="Staff level" style="${inputStyle}">
                 <option value="assistant">Assistant Coach</option>
                 <option value="manager">Team Manager</option>
                 <option value="head">Head Coach</option>
@@ -20747,7 +20802,7 @@
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
             <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Access</div>
             ${(canAssign && isStaffMember(member)) ? `
-              <select style="${inputStyle};min-height:30px;font-size:11px;width:auto"
+              <select aria-label="Access level for ${esc(user.displayName || user.email || 'this member')}" style="${inputStyle};min-height:30px;font-size:11px;width:auto"
                 onchange="adminSetAccessProfile('${esc(member.id)}',this.value,'${esc(user.displayName || '')}','${esc(profile)}')">
                 ${Object.entries(ACCESS_PROFILE_LABELS).map(([id, label]) =>
                   `<option value="${id}" ${profile === id ? 'selected' : ''}>${label}</option>`).join('')}

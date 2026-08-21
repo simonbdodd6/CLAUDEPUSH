@@ -1,0 +1,7 @@
+# CoachEasier — the product at / is an authenticated single-page app.
+# There is no public marketing site yet, so nothing here should be indexed.
+# WHEN A PUBLIC LANDING/MARKETING SITE EXISTS: allow those paths explicitly
+# (e.g. Allow: /features, Allow: /pricing) and keep the app shell, the API and
+# the legal pages disallowed, then add Sitemap: https://www.coacheasier.com/sitemap.xml
+User-agent: *
+Disallow: /
