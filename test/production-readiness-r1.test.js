@@ -155,7 +155,11 @@ test('12+13: both pages stand alone — no account, no app bootstrap, no app dat
 test('18: the pages state clearly that they are DRAFT — no finalized legal claim is made', () => {
   for (const [name, page] of [['privacy', privacy], ['terms', terms]]) {
     assert.match(page, /DRAFT — pending final legal review/, `${name} is labelled draft`);
-    assert.match(page, /not final and is not a legal\s*\n?\s*agreement/, `${name} disclaims agreement status`);
+    // R3 expanded the shells into substantive drafts; the disclaimer moved
+    // with them (…"not yet a published privacy policy" / "not yet a binding
+    // set of terms" … "Nothing here is a binding agreement yet").
+    assert.match(page, /not yet a (published privacy policy|binding set of terms)/, `${name} disclaims finality`);
+    assert.match(page, /Nothing here is a\s+binding agreement yet/, `${name} disclaims agreement status`);
     assert.match(page, /Last updated: <strong>not yet published<\/strong>/, `${name} claims no publication date`);
   }
 });
@@ -163,14 +167,15 @@ test('18: the pages state clearly that they are DRAFT — no finalized legal cla
 test('no legal FACTS are invented — entity, address, jurisdiction, retention, compliance promises', () => {
   const both = privacy + terms;
   // Nothing that would assert a company identity or legal venue.
-  assert.doesNotMatch(both, /\b(Ltd|Limited|LLC|GmbH|SPRL|SRL|BV|SA|Inc\.)\b/, 'no legal entity invented');
-  assert.doesNotMatch(both, /governed by the laws of|jurisdiction of the courts|registered office|company number|VAT/i,
+  // Case-SENSITIVE entity suffixes only: "limited"/"sa" appear in ordinary prose.
+  assert.doesNotMatch(both, /\b(Ltd\.?|LLC|GmbH|SPRL|SRL|BVBA|Inc\.)\b/, 'no legal entity invented');
+  assert.doesNotMatch(both, /governed by the laws of|jurisdiction of the courts|registered office|company number|\bVAT\b/i,
     'no jurisdiction or registration invented');
   assert.doesNotMatch(both, /\b(GDPR|UK GDPR|CCPA|HIPAA)[- ]compliant\b/i, 'no compliance promise invented');
   assert.doesNotMatch(both, /we (retain|keep|delete) .{0,30}\b(for|after) \d+ (days|months|years)/i, 'no retention period invented');
   assert.doesNotMatch(both, /guardian consent (is|has been) obtained/i, 'no guardian-consent claim invented');
   // What it DOES say about today is verifiable product fact.
-  assert.match(privacy, /no analytics, tracking or\s*\n?\s*marketing software/i, 'states the true zero-tracking position');
+  assert.match(privacy, /no advertising, analytics or tracking/i, 'states the true zero-tracking position');
 });
 
 // ─── 14–17: links, and the acceptance rule ─────────────────────────────────
