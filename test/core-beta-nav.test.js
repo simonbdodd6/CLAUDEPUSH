@@ -1,8 +1,9 @@
 // Core Beta — simplified coach navigation (Phase 1).
 //
 // Verifies the beta sidebar allow-list:
-//   - BETA_SIMPLE_NAV is enabled and BETA_NAV_IDS holds exactly the 8 beta items.
-//   - renderNav() renders ONLY those 8 sidebar buttons for a coach.
+//   - BETA_SIMPLE_NAV is enabled and BETA_NAV_IDS holds exactly the 9 beta items
+//     (8 original Core Beta sections + Performance, added in SC1).
+//   - renderNav() renders ONLY those 9 sidebar buttons for a coach.
 //   - Advanced / club / automation surfaces are withheld from the sidebar.
 //   - Nothing is deleted: every original coachSections entry still exists, so
 //     the hidden sections remain reachable programmatically.
@@ -16,9 +17,9 @@ import fs from 'node:fs';
 
 const src = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
-// Workflow order: Overview → Availability → Training → Match Centre → Messages
-// → Members → Medical → Settings.
-const BETA_IDS = ['overview', 'message', 'training', 'matchday', 'messages', 'players', 'medical', 'settings'];
+// Workflow order: Overview → Availability → Training → Performance →
+// Match Centre → Messages → Members → Medical → Settings.
+const BETA_IDS = ['overview', 'message', 'training', 'performance', 'matchday', 'messages', 'players', 'medical', 'settings'];
 const HIDDEN_IDS = ['fixtures', 'selection', 'admin', 'club', 'reports', 'calendar', 'qa', 'beta', 'search'];
 
 function extractFn(name) {
@@ -53,7 +54,7 @@ test('BETA_SIMPLE_NAV is enabled on the Core Beta branch', () => {
     'beta navigation must be ON for the simplified beta');
 });
 
-test('BETA_NAV_IDS is exactly the 8 beta sections', () => {
+test('BETA_NAV_IDS is exactly the 9 beta sections', () => {
   const scope = new Function(`${extractArrayConst('BETA_NAV_IDS')} return BETA_NAV_IDS;`)();
   assert.deepEqual(scope, BETA_IDS);
 });
@@ -121,7 +122,7 @@ function buildNavScope() {
   return new Function('mockDoc', body)(mockDoc);
 }
 
-test('renderNav() shows only the 8 beta buttons for a coach', () => {
+test('renderNav() shows only the 9 beta buttons for a coach', () => {
   const html = buildNavScope();
   for (const id of BETA_IDS) {
     assert.ok(html.includes(`setSection('coach','${id}')`), `beta nav must include "${id}"`);
@@ -135,10 +136,10 @@ test('renderNav() hides advanced / club / automation sections from the sidebar',
   }
 });
 
-test('renderNav() renders exactly 8 coach buttons', () => {
+test('renderNav() renders exactly 9 coach buttons', () => {
   const html = buildNavScope();
   const count = (html.match(/setSection\('coach',/g) || []).length;
-  assert.equal(count, 8);
+  assert.equal(count, 9);
 });
 
 test('renderNav() renders the beta buttons in BETA_NAV_IDS (workflow) order', () => {

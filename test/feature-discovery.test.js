@@ -133,9 +133,9 @@ const entScope   = buildScope({ teamPlan: 'enterprise', teamPlanStatus: 'active'
 
 // ── 1. discoveryFilteredFeatures('all') ──────────────────────────────────────
 
-test("discoveryFilteredFeatures('all') returns all 22 features", () => {
+test("discoveryFilteredFeatures('all') returns all 23 features", () => {
   const all = coachScope.discoveryFilteredFeatures('all');
-  assert.equal(all.length, 22, 'Expected 22 features for filter:all');
+  assert.equal(all.length, 23, 'Expected 23 features for filter:all');
 });
 
 // ── 2. discoveryFilteredFeatures('core') ─────────────────────────────────────
@@ -170,8 +170,8 @@ test("discoveryFilteredFeatures('available') on Pro returns non-comingSoon featu
       f.id + ' should be accessible on Pro plan',
     );
   }
-  // Core (8) + active Pro (4) = 12 available features on Pro
-  assert.equal(result.length, 12, 'Pro should have 12 available features (8 core + 4 active pro)');
+  // Core (8) + active Pro (5) = 13 available features on Pro
+  assert.equal(result.length, 13, 'Pro should have 13 available features (8 core + 5 active pro)');
 });
 
 // ── 5. discoveryFilteredFeatures('locked') on Core ───────────────────────────
@@ -183,8 +183,8 @@ test("discoveryFilteredFeatures('locked') on Core returns non-comingSoon premium
     assert.ok(!f.comingSoon, f.id + ' should not be comingSoon in locked filter');
     assert.ok(f.minimumPlan !== 'core', f.id + ' should not be core-plan in locked filter');
   }
-  // 4 active pro features are locked for core
-  assert.equal(result.length, 4, 'Core should have 4 locked features (4 active pro, not core)');
+  // 5 active pro features are locked for core
+  assert.equal(result.length, 5, 'Core should have 5 locked features (5 active pro, not core)');
 });
 
 // ── 6. discoveryFilteredFeatures('ai') ───────────────────────────────────────
