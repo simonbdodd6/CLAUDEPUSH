@@ -68,6 +68,13 @@ function gates(perms, role) {
     ${src.match(/const playerSections = \[[\s\S]*?\n    \];/)[0]}
     function canI(p) { return _perms.includes(p); }
     function isCoach() { return ["coach","admin","medical"].includes(${JSON.stringify(role)}); }
+    // INT2 — the nav filter now also consults the premium map. Core Beta
+    // clubs are UNENTITLED, which is the condition these player-portal
+    // contracts describe, so Performance is correctly absent below.
+    const SECTION_FEATURE_MAP = { performance: 'performance' };
+    const BETA_HIDE_COMMERCIAL = true;
+    function _isLocalDemoHost() { return false; }
+    function canUseFeature() { return false; }
     ${fn('allowedCoachSections')}
     ${fn('playerSectionsFor')}
     return { allowedCoachSections, playerSectionsFor, canI, isCoach };
@@ -225,6 +232,12 @@ function renderPlayerNav(perms) {
     ${src.match(/const playerSections = \[[\s\S]*?\n    \];/)[0]}
     ${src.match(/const SECTION_PERM_MAP = \{[^}]*\};/)[0]}
     const BETA_SIMPLE_NAV = true; const SECTION_ICONS = {};
+    // INT2 — premium-gate deps for the nav filter. Core Beta clubs are
+    // unentitled, so Performance is correctly absent from both navs here.
+    const SECTION_FEATURE_MAP = { performance: 'performance' };
+    const BETA_HIDE_COMMERCIAL = true;
+    function _isLocalDemoHost() { return false; }
+    function canUseFeature() { return false; }
     ${fn('allowedCoachSections')}
     ${fn('playerSectionsFor')}
     ${fn('renderNav')}

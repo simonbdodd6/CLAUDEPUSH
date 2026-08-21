@@ -5361,6 +5361,7 @@
       <section id="player-availability" class="section"></section>
       <section id="player-week"         class="section"></section>
       <section id="player-medical"      class="section"></section>
+      <section id="player-performance"  class="section"></section>
       <section id="player-fixtures"     class="section"></section>
       <section id="player-attendance"   class="section" style="display:none"></section>
       <section id="player-messages"     class="section"></section>
@@ -5430,6 +5431,14 @@
     // therefore staff-only (see allowedCoachSections).
     const SECTION_PERM_MAP = { medical: 'medical_access', admin: 'manage_teams', club: 'manage_teams', fixtures: 'manage_teams', selection: 'publish_squads', message: 'reports', messages: 'messaging', training: 'publish_training', performance: 'publish_training', matchday: 'publish_squads', players: 'manage_players' };
 
+    // Sections whose sidebar VISIBILITY also depends on a premium entitlement.
+    // This is presentation only: the section's own renderer keeps its
+    // mandatory gate (renderPerformance checks canUseFeature('performance')
+    // before anything else), so hiding an entry never becomes the access
+    // control. Kept beside SECTION_PERM_MAP so there is exactly ONE place
+    // that decides what the coach sidebar offers.
+    const SECTION_FEATURE_MAP = { performance: 'performance' };
+
     // ── Core Beta — commercial UX simplification (Phase 3) ────────────────────
     // Hides advanced/admin clutter from key coach pages (Availability, Training,
     // Match Centre) so the Beta reads as a simple, premium rugby tool. NOTHING is
@@ -5451,6 +5460,11 @@
     function playerSectionsFor() {
       const base = playerSections.slice();
       if (canI('medical_access')) base.push(['medical', 'Medical']);
+      // Performance is the athlete's own S&C experience, so it belongs in the
+      // PLAYER navigation — but only for an entitled club. setSection() gates
+      // player routes on this same list, so an unentitled athlete cannot reach
+      // it by hand either, and renderPerformance keeps its own premium gate.
+      if (canUseFeature('performance')) base.push(['performance', 'Performance']);
       return base;
     }
 
@@ -5469,6 +5483,14 @@
       { id: "tools",      label: "Coach Tools" },
       { id: "settings",   label: "Settings" },
     ];
+
+    // The ATHLETE's own Performance experience. A player reaches their profile,
+    // their workouts, the exercise library and their own display preferences —
+    // never Athletes (a roster), Programmes (club programming), Analytics or
+    // Coach Tools. renderPerformance() validates the active tab against this
+    // list in player view, so a stored or hand-set coach tab cannot open a
+    // coach surface inside the player shell.
+    const PERF_PLAYER_TAB_IDS = ['profile', 'workouts', 'library', 'settings'];
 
     // ── CoachEasier Performance — athlete profile model (SC2, inline mirror) ──
     // Kept in lockstep with performance/types/athlete-profile.js,
@@ -11287,6 +11309,15 @@
       const staff = isCoach();
       const PERMS = SECTION_PERM_MAP;
       return (list || []).filter(([id]) => {
+        // Premium sections: while Core Beta hides commercial discovery
+        // (BETA_HIDE_COMMERCIAL), an unentitled club offered a locked
+        // destination would arrive at a screen whose upgrade prompt has
+        // deliberately been suppressed — a dead end. Hide the entry instead.
+        // When commercial discovery returns, the locked entry comes back with
+        // it and renderUpgradePrompt does its job. Demo hosts always see the
+        // section so the module stays drivable locally.
+        const feat = SECTION_FEATURE_MAP[id];
+        if (feat && BETA_HIDE_COMMERCIAL && !canUseFeature(feat) && !_isLocalDemoHost()) return false;
         const perm = PERMS[id];
         if (!perm) return staff;          // ungated sections are staff-only
         return canI(perm);
@@ -31160,7 +31191,10 @@
 
     // ── Section renderer ──────────────────────────────────────────────────────
     function renderPerformance() {
-      const el = document.getElementById('coach-performance');
+      // Same dual-host pattern as Medical: the athlete sees Performance inside
+      // their own player shell, staff see it in the coach shell.
+      const asPlayer = state.activeView === 'player';
+      const el = document.getElementById(asPlayer ? 'player-performance' : 'coach-performance');
       if (!el) return;
 
       // Premium gate — standard capability layer. Locked teams see the branded
@@ -31186,9 +31220,13 @@
         return;
       }
 
-      const tab = PERF_TABS.some(t => t.id === state.activePerformanceTab) ? state.activePerformanceTab : 'dashboard';
+      // Athletes get their own tab set; an unrecognised or coach-only stored tab
+      // falls back to a safe default rather than rendering a coach surface.
+      const tabs = asPlayer ? PERF_TABS.filter(t => PERF_PLAYER_TAB_IDS.includes(t.id)) : PERF_TABS;
+      const tab = tabs.some(t => t.id === state.activePerformanceTab)
+        ? state.activePerformanceTab : (asPlayer ? 'workouts' : 'dashboard');
       const tabNav = `<div class="perf-tabs" role="tablist" aria-label="Performance sections">
-        ${PERF_TABS.map(t => `<button type="button" role="tab" aria-selected="${t.id === tab}" class="perf-tab ${t.id === tab ? 'active' : ''}" onclick="setPerfTab('${t.id}')">${esc(t.label)}</button>`).join('')}
+        ${tabs.map(t => `<button type="button" role="tab" aria-selected="${t.id === tab}" class="perf-tab ${t.id === tab ? 'active' : ''}" onclick="setPerfTab('${t.id}')">${esc(t.label)}</button>`).join('')}
       </div>`;
 
       let body = '';
@@ -31467,7 +31505,11 @@
     function perfWkBeginReadiness() { _wkView = 'readiness'; _wkReadiness = {}; renderPerformance(); }
     function perfWkReadinessScore(key, v) { _wkReadiness[key] = v; renderPerformance(); }
     function perfWkStart(withReadiness) {
-      const demo = _perfWkMod.getDemoAssignment();
+      const demo = perfWkAssignment();
+      // No assignment means nothing to start. Hiding the button is not the
+      // control — this is: a directly invoked perfWkStart() must not fabricate
+      // a session in production.
+      if (!demo) { _wkView = null; renderPerformance(); return; }
       let session = _perfWkMod.createWorkoutSession({
         athleteId: state.currentUserId || 'local-athlete',
         programme: demo.programme, sessionNode: demo.sessionNode,
@@ -31774,8 +31816,47 @@
     }
 
     // ── Today ────────────────────────────────────────────────────────────────
+    /**
+     * THE assignment gate. SC7's demo programme is a development fixture, not
+     * a coach's work: showing it in production would present a fabricated
+     * session as though a real coach had assigned it. It is therefore
+     * available ONLY on Core's local demo hosts (the same _isLocalDemoHost()
+     * rule that guards installDemoSquad), and every caller — render AND start
+     * — resolves through here, so console/state manipulation cannot conjure
+     * one either. Real assignment tooling is a later milestone; until it
+     * exists, production honestly reports no programme.
+     */
+    function perfWkAssignment() {
+      if (!_isLocalDemoHost()) return null;
+      return _perfWkMod.getDemoAssignment();
+    }
+
+    function perfWkNoAssignmentHtml(wstate) {
+      const historyCount = wstate.history.length;
+      return `
+        <div class="perf-page-head">
+          <div><h2>Today's Workout</h2><p class="muted">Strength &amp; conditioning</p></div>
+          ${perfWkSyncPill(wstate)}
+        </div>
+        <div class="card perf-card wk-today-card">
+          <strong class="perf-card-title">No programme assigned</strong>
+          <p class="muted" style="font-size:13px;margin:8px 0 0">
+            When your coach assigns a strength &amp; conditioning programme, today's
+            session will appear here with every set, load and rest period ready to log.
+          </p>
+          <p class="muted" style="font-size:12.5px;margin:10px 0 0">
+            In the meantime you can browse the exercise library and complete your athlete profile.
+          </p>
+        </div>
+        ${historyCount ? `
+          <div class="perf-page-head" style="margin-top:20px"><div><h2 style="font-size:17px">History</h2></div>
+            <button class="btn ghost" type="button" onclick="perfWkOpenHistory()">All workouts</button></div>
+          ${perfWkHistoryListHtml(wstate, 3)}` : ''}`;
+    }
+
     function perfWkTodayHtml(wstate) {
-      const demo = _perfWkMod.getDemoAssignment();
+      const demo = perfWkAssignment();
+      if (!demo) return perfWkNoAssignmentHtml(wstate);
       const sess = demo.sessionNode;
       const exCount = sess.blocks.reduce((n, b) => n + b.prescriptions.length, 0);
       const historyCount = wstate.history.length;
@@ -32422,6 +32503,7 @@
       }
       safeRender('coach-training',      () => renderTraining());
       safeRender('coach-performance',   () => renderPerformance());
+      safeRender('player-performance',  () => renderPerformance());
       safeRender('coach-matchday',      () => renderMatchday());
       safeRender('coach-medical',       () => { if (state.activeView === 'coach') renderMedical(); });
       safeRender('coach-players',       () => renderPlayers());
@@ -33144,6 +33226,18 @@
       _trainingScheduleQueue = null;
       _trainingScheduleGroupId = '';
       _myPlatformRole = '';
+      // Performance (SC2/SC3/SC7) is PERSON-scoped and must not survive an
+      // identity change on a shared device. The athlete profile carries
+      // wellness check-ins, the workout store carries an in-flight session
+      // AND immutable history, and library prefs are one athlete's own
+      // curation — left behind, the next athlete would be offered a resume
+      // of someone else's workout and shown their training record.
+      // performanceSettings (units, week start, celebration toggles) is a
+      // device display preference, not personal data, and is deliberately
+      // kept — the same rule Core applies to other view preferences.
+      state.performanceProfile = null;
+      state.performanceLibrary = null;
+      state.performanceWorkout = null;
       chatSetUnreadTotal(0);
     }
 
@@ -34069,6 +34163,12 @@
       // Legacy local message model is team-scoped in effect — clear it so one club's
       // messages can't linger in legacy display state (registers/badges) after switching.
       state.messages = [];
+      // A workout is executed against a CLUB's programme, so the in-flight
+      // session and the completed history are club context: another club must
+      // never inherit them (nor the coach-authored programme titles inside
+      // them). The athlete's own profile and wellness log follow the person,
+      // not the club, so they survive a club switch.
+      state.performanceWorkout = null;
       saveState('Team switched');
     }
 

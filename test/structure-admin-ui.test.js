@@ -279,8 +279,13 @@ test('Club Admin is discoverable from Members and Settings, gated on administrat
 
 test('the beta navigation contract is untouched — admin stays out of the sidebar', () => {
   const ids = new Function(`const BETA_NAV_IDS = ${src.match(/const BETA_NAV_IDS = (\[[^\]]*\])/)[1]}; return BETA_NAV_IDS;`)();
-  assert.equal(ids.length, 8, 'still exactly 8 beta sections');
+  // 8 original Core Beta sections + Performance (added by SC1, premium and
+  // additionally entitlement-filtered at render time by allowedCoachSections).
+  assert.equal(ids.length, 9, 'still exactly the beta sections');
   assert.equal(ids.includes('admin'), false, 'admin remains hidden from the beta sidebar');
+  for (const hidden of ['club', 'reports', 'fixtures', 'selection']) {
+    assert.equal(ids.includes(hidden), false, hidden + ' remains hidden from the beta sidebar');
+  }
 });
 
 // ── RC4.7 mobile Access & squads cleanup ───────────────────────────────────

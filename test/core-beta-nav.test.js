@@ -76,7 +76,7 @@ test('nothing deleted: every hidden section still exists in coachSections', () =
 
 // ── renderNav() behaviour ────────────────────────────────────────────────────
 
-function buildNavScope() {
+function buildNavScope({ entitled = true } = {}) {
   const store = {};
   const makeEl = () => ({ innerHTML: '', classList: { toggle() {}, add() {}, remove() {} },
     style: {}, setAttribute() {}, classList_: {}, disabled: false, title: '', textContent: '' });
@@ -113,6 +113,13 @@ function buildNavScope() {
     // helpers. Taken from the real source so this harness keeps tracking the
     // product rather than a copy that can drift.
     ${src.match(/const SECTION_PERM_MAP = \{[^}]*\};/)[0]}
+    // INT2 — allowedCoachSections also consults the premium map: a locked
+    // section is not offered while the Beta hides commercial discovery. Taken
+    // from real source for the same reason as the gate map above.
+    ${src.match(/const SECTION_FEATURE_MAP = \{[^}]*\};/)[0]}
+    const BETA_HIDE_COMMERCIAL = true;
+    function _isLocalDemoHost() { return false; }
+    function canUseFeature() { return ${entitled}; }
     ${extractFn('allowedCoachSections')}
     ${extractFn('playerSectionsFor')}
     ${extractFn('renderNav')}
@@ -146,4 +153,15 @@ test('renderNav() renders the beta buttons in BETA_NAV_IDS (workflow) order', ()
   const html = buildNavScope();
   const order = [...html.matchAll(/setSection\('coach','([^']+)'\)/g)].map(m => m[1]);
   assert.deepEqual(order, BETA_IDS);
+});
+
+// INT2 — Performance is premium. While the Beta hides commercial discovery
+// (BETA_HIDE_COMMERCIAL), an unentitled club must not be offered a locked
+// destination whose upgrade prompt is deliberately suppressed. The other eight
+// sections are unaffected, and the section keeps its own route-level gate.
+test('renderNav() drops ONLY Performance for an unentitled club', () => {
+  const html = buildNavScope({ entitled: false });
+  const order = [...html.matchAll(/setSection\('coach','([^']+)'\)/g)].map(m => m[1]);
+  assert.deepEqual(order, BETA_IDS.filter(id => id !== 'performance'));
+  assert.equal(order.length, 8);
 });
