@@ -8004,11 +8004,17 @@
         return false;
       }
       const hasWork = matchCentreHasSquadWork();
-      if (!current && id && hasWork) {
+      // Attribution is for the ANONYMOUS workspace only (sheet bound to '').
+      // A sheet bound to an out-of-context fixture — e.g. a Seniors sheet
+      // surviving a switch to U18, where the Seniors fixture reads as "not
+      // linked" — must NEVER be re-attributed to the newly picked fixture:
+      // that is exactly how a Seniors draft became a U18 squad.
+      if (!current && id && hasWork && String(_mcSheetFixtureId ?? '') === '') {
         // ATTRIBUTION: previously-unlinked work gains an identity. Explicit
         // human attribution changes identity ONLY — never a single selection —
         // so the sheet stays put and is persisted under its new fixture key.
         state.matchCentre = { ...(state.matchCentre || {}), fixtureId: id };
+        _mcSheetFixtureId = id;                 // the work is now this fixture's
         const fx = matchCentreSelectedFixture();
         if (fx) mcApplyFixtureDisplay(fx);
         saveState('Match fixture linked');
@@ -8018,13 +8024,19 @@
         return true;
       }
       // SWITCH: the outgoing fixture keeps its work under its own key, and
-      // nothing crosses over. (From the unlinked-and-empty state there is
-      // nothing to flush — and flushing would overwrite the coach's stored
-      // anonymous draft with an empty sheet.)
-      if (current || hasWork) mcFlushDraftNow();
+      // nothing crosses over. The flush additionally requires the sheet to be
+      // BOUND to the outgoing context: a transitional sheet (selected fixture
+      // whose stored draft never hydrated — fresh device, quick Next/Next
+      // navigation) must not overwrite that fixture's stored draft with
+      // emptiness. That unguarded flush is what rewrote three Seniors drafts
+      // as empty within seconds in production.
+      if ((current || hasWork) && String(_mcSheetFixtureId ?? '\u0000') === current) mcFlushDraftNow();
       state.matchCentre = { ...(state.matchCentre || {}), fixtureId: id, published: false };
       state.formationNames = {};
       state.benchPlayers   = Array(8).fill('');
+      // Transitional until the incoming fixture's own draft hydrates; the
+      // unlinked workspace ('') is immediately live — there is nothing to load.
+      _mcSheetFixtureId = id ? null : '';
       state.fphotoIds      = {};
       const fx = matchCentreSelectedFixture();
       if (fx) mcApplyFixtureDisplay(fx); else mcClearFixtureDisplay();
@@ -8032,6 +8044,43 @@
       render();
       if (id) mcHydrateSelectedFixture(id);
       return true;
+    }
+
+    /**
+     * WHICH fixture the in-memory sheet (formationNames/bench) belongs to.
+     * This is THE identity that makes draft writes safe:
+     *   · a fixture id   — the sheet holds that fixture's draft (hydrated or
+     *                      being edited under it);
+     *   · ''             — the sheet is the anonymous unlinked workspace;
+     *   · null           — TRANSITIONAL: a fixture was just selected and its
+     *                      stored draft has not hydrated yet. Nothing may be
+     *                      saved and nothing may be flushed in this state —
+     *                      this is what used to let fixture navigation wipe
+     *                      stored drafts with an empty sheet, and what let a
+     *                      Seniors sheet be re-attributed to a U18 fixture
+     *                      after a group switch.
+     * Initialised from the persisted selection: a restored device's sheet
+     * belongs to the fixture it was persisted with.
+     */
+    let _mcSheetFixtureId = String((state.matchCentre || {}).fixtureId || '');
+
+    /**
+     * Drop the Match Centre fixture context entirely — used when the
+     * OPERATIONAL GROUP changes (or a restored selection turns out to belong
+     * to another group). The selection, display fields, sheet and binding are
+     * all cleared together, so a new group can never render another group's
+     * fixture, sheet or draft. Deliberately NO flush here: any save for the
+     * outgoing fixture must have happened while its context was still in
+     * force (the identity guard in saveCoachDraft refuses anything else).
+     */
+    function mcDetachFixture() {
+      clearTimeout(_coachDraftSaveTimer);
+      state.matchCentre = { ...(state.matchCentre || {}), fixtureId: '', published: false };
+      mcClearFixtureDisplay();
+      state.formationNames = {};
+      state.benchPlayers   = Array(8).fill('');
+      state.fphotoIds      = {};
+      _mcSheetFixtureId = '';
     }
 
     /**
@@ -8129,6 +8178,10 @@
         // Stale-reply guard on BOTH dimensions: a slow response for the old
         // fixture OR the old side is discarded, never applied.
         if (String(matchCentreFixtureId()) !== String(id) || matchCentreSideId() !== side) return;
+        // The sheet now authoritatively belongs to this fixture — whether a
+        // stored draft exists (adopted below) or not (legitimately empty and
+        // ready for new work). Saves/flushes are unlocked from here on.
+        _mcSheetFixtureId = String(id);
         if (dRes.ok) {
           const { draft } = await dRes.json();
           // Only this fixture's (and side's) own draft may hydrate this sheet —
@@ -8157,6 +8210,13 @@
 
     async function saveCoachDraft() {
       if (!isCoach()) return;
+      // IDENTITY GUARD — the choke point every draft write passes through.
+      // The sheet may only be saved under the fixture it is BOUND to: a
+      // transitional sheet (null — selected but not yet hydrated) or a sheet
+      // bound to a different fixture must never be written anywhere. This is
+      // what stops navigation writing empty sheets over stored drafts, and a
+      // group-switch leftover sheet being filed under another group's fixture.
+      if (String(_mcSheetFixtureId ?? '\u0000') !== matchCentreFixtureId()) return;
       const mc = state.matchCentre || {};
       try {
         await fetch('/api/publish', {
@@ -8204,6 +8264,9 @@
         state.matchCentre = { ...(state.matchCentre || {}), ...mc };
         if (formationNames && typeof formationNames === 'object') state.formationNames = formationNames;
         if (Array.isArray(benchPlayers)) state.benchPlayers = benchPlayers;
+        // The adopted sheet belongs to the draft's OWN stored fixture (or the
+        // anonymous workspace) — stored identity, never inference.
+        _mcSheetFixtureId = String(draft.fixtureId || '');
         saveState('Coach draft loaded');
         render();
         const now = matchCentreFixtureId();
@@ -14141,6 +14204,20 @@
     }
 
     function renderMatchday() {
+      // SELF-HEAL (PWA restore): a persisted selection pointing at a fixture
+      // that belongs to ANOTHER group must not haunt this group's shell. It
+      // is detached only when the fixture is provably foreign — present in
+      // the club's fixture list but absent from this group's context. An id
+      // the club doesn't know (fixtures not loaded yet, or deleted) is left
+      // to the existing degrade-to-unlinked behaviour, where the sheet
+      // binding still blocks any mistargeted write.
+      if (isCoach()) {
+        const _mcRawFx = String((state.matchCentre || {}).fixtureId || '');
+        if (_mcRawFx && !matchCentreSelectedFixture() &&
+            (state.fixtures || []).some(f => String(f?.id || '') === _mcRawFx)) {
+          mcDetachFixture();
+        }
+      }
       // Phase 20 — tab delegation; planner falls through to existing render
       const _mTab = state.activeMatchTab || 'planner';
       if (_mTab === 'overview')   { _renderMatchOverview();   return; }
@@ -16078,15 +16155,16 @@
         .filter(f => f.opposition && f.date && f.date >= today)
         .sort((a, b) => a.date.localeCompare(b.date))[0];
       if (!next || mc._autoFixtureId === next.id) return;
+      // Identity goes through the ONE selection path — flush-if-bound, sheet
+      // clear, hydration and the sheet↔fixture binding all included. The old
+      // direct fixtureId assignment silently linked a fixture with an
+      // unhydrated sheet, which is exactly the state that let navigation
+      // flush emptiness over stored drafts.
+      if (!setMatchCentreFixture(next.id)) return;
       state.matchCentre = {
-        ...mc,
-        opposition: next.opposition,
-        kickoffDate: next.date,
-        kickoffTime: next.time || mc.kickoffTime || '15:00',
-        venue: next.venue || '',
-        competition: next.competition || '',
+        ...(state.matchCentre || {}),
+        kickoffTime: (state.matchCentre || {}).kickoffTime || next.time || '15:00',
         _autoFixtureId: next.id,
-        fixtureId: next.id,          // explicit identity, seeded from a real import
       };
       autopilotReceipt(`Match details imported — vs ${next.opposition}, ${next.date}`);
       saveState('Match details imported');
@@ -29889,6 +29967,13 @@
       if (owner === target) { state.trainingStateGroupId = target; return; }
       stashTrainingState();
       adoptTrainingState(target);
+      // The Match Centre selection is fixture-bound and fixtures are
+      // group-owned: any real group transition (capacity swap, adoption,
+      // restore with a different group) drops the selection and sheet rather
+      // than letting them haunt the incoming group's shell. Edits were
+      // already persisted by their own debounced saves; the identity guard
+      // refuses anything mistargeted, so detaching loses nothing durable.
+      if (typeof mcDetachFixture === 'function') mcDetachFixture();
       // Server-cached GROUP answers belong to the OLD group — drop them so
       // the next render refetches under the new group. Any reply still in
       // flight is discarded by the per-request group guards. (This function
@@ -29919,6 +30004,16 @@
     function setOperationalGroup(groupId) {
       if (!operationalGroups().some(g => g.id === groupId)) {
         return showToast('You do not have access to that group');
+      }
+      // MATCH CENTRE crosses no group boundary. While the OLD group's context
+      // is still in force, persist the outgoing fixture's sheet (only if the
+      // sheet is genuinely bound to it), then detach fixture + sheet + display
+      // entirely: the new group starts at its own fixture-selection state —
+      // never a U18 shell around a Seniors fixture, sheet or draft.
+      if (state.operationalGroupId !== groupId) {
+        const mcCurrent = matchCentreFixtureId();
+        if (mcCurrent && String(_mcSheetFixtureId ?? '\u0000') === mcCurrent) mcFlushDraftNow();
+        mcDetachFixture();
       }
       state.operationalGroupId = groupId;
       syncTrainingStateToGroup();

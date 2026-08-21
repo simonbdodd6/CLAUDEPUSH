@@ -405,6 +405,12 @@ function switchHarness(initialState, targetGid) {
     function operationalGroups() { return [
       { id: 'grp_initial', name: 'Seniors' }, { id: 'grp_u18', name: 'U18' }, { id: 'grp_womens', name: "Women's" }]; }
     function showToast() {} function saveState() {} function render() {}
+    // Match Centre detach machinery (fixture/draft identity fix): inert stubs —
+    // this suite exercises the TRAINING partition only.
+    let _mcSheetFixtureId = '';
+    function matchCentreFixtureId() { return ''; }
+    function mcFlushDraftNow() {}
+    function mcDetachFixture() {}
     ${fn('captureTrainingState')}
     ${fn('stashTrainingState')}
     ${fn('adoptTrainingState')}
@@ -501,6 +507,11 @@ test('dual-role capacity switch swaps training state too — coach work never en
       staff:  { groups: [{ id: 'grp_u18', name: 'U18' }, { id: 'grp_womens', name: "Women's" }], defaultGroupId: null, mustChoose: true },
     };
     function showToast() {} function saveState() {} function render() {}
+    // Inert Match Centre detach stubs (fixture/draft identity fix).
+    let _mcSheetFixtureId = '';
+    function matchCentreFixtureId() { return ''; }
+    function mcFlushDraftNow() {}
+    function mcDetachFixture() {}
     ${fn('operationalCapacity')}
     ${fn('operationalGroups')}
     ${fn('captureTrainingState')}

@@ -335,6 +335,9 @@ function mc(matchCentre, formationNames = {}, benchPlayers = []) {
     function isCoach() { return false; }             // keeps the flush inert here
     let _coachDraftSaveTimer = null;
     function saveCoachDraft() {}
+    // Sheet↔fixture binding (identity fix): initialised exactly like product
+    // boot — a persisted sheet belongs to its persisted fixture selection.
+    let _mcSheetFixtureId = String((state.matchCentre || {}).fixtureId || '');
     // Dual-team pass: sideless mode — no structure means no side dimension.
     const _adminData = { structure: null };
     ${fn('matchCentreSides')}
@@ -371,9 +374,17 @@ test('the explicit field is the identity, and it is validated', () => {
   assert.equal(mc({}).matchCentreFixtureId(), '', 'absent stays absent');
 });
 
-test('autopilot seeds the explicit field from a REAL import', () => {
-  assert.match(src, /_autoFixtureId: next\.id,\s*\n\s*fixtureId: next\.id,/,
-    'the import stamps the explicit identity too, from the fixture object');
+test('autopilot seeds the explicit identity through the ONE selection path', () => {
+  // CONTRACT CHANGE (fixture/draft identity fix): autopilot used to assign
+  // fixtureId directly — silently linking a fixture with an UNHYDRATED sheet,
+  // the state that let navigation flush emptiness over stored drafts. It now
+  // routes through setMatchCentreFixture (flush-if-bound, sheet clear,
+  // hydration, sheet↔fixture binding) and stamps only its own marker after.
+  const ap = fn('autopilotFillMatchFromFixture');
+  assert.match(ap, /if \(!setMatchCentreFixture\(next\.id\)\) return;/,
+    'identity goes through the real selection path');
+  assert.match(ap, /_autoFixtureId: next\.id,/, 'the import marker survives');
+  assert.doesNotMatch(ap, /fixtureId: next\.id/, 'no direct identity assignment remains');
 });
 
 test('identity never comes from opponent, date or position', () => {
