@@ -22836,11 +22836,18 @@
         return;
       }
 
-      const nextFx      = playerPortalNextFixture(state.fixtures, today);
+      // THE group boundary for this dashboard. Every fixture-derived card
+      // reads this list, never state.fixtures: the raw array is the whole
+      // club's, which is exactly how Seniors' "vs Mons" reached a U18 player's
+      // Next fixture and put all four groups in Coming Up. Training already
+      // arrives group-resolved from the server (the player's own membership
+      // group), so it is left as it is.
+      const myFixtures  = playerContextFixtures();
+      const nextFx      = playerPortalNextFixture(myFixtures, today);
       const nextTrain   = playerPortalNextTraining(state.schedule, today);
       const ownMed      = playerPortalOwnMedical(player.id, state.medicalRecords, state.medicalNotes);
       const recentAnn   = playerPortalRecentAnnouncement(state.announcements);
-      const upcoming    = playerPortalUpcomingEvents(state.fixtures, state.schedule, today, 5);
+      const upcoming    = playerPortalUpcomingEvents(myFixtures, state.schedule, today, 5);
       const squadSt     = playerPortalSquadStatus(
         player.name,
         state.squadSelections,
@@ -27464,8 +27471,17 @@
     function playerContextFixtures() {
       const rows = (state.fixtures || []).filter(f => f.opposition);
       const pg = _myOperational?.player?.groups?.[0]?.id || '';
-      if (!pg) return rows;
-      return rows.filter(f => fixtureBelongsToGroup(f, pg));
+      if (pg) return rows.filter(f => fixtureBelongsToGroup(f, pg));
+      // UNKNOWN ≠ LEGACY (the d8abe940 rule, applied to the player portal).
+      // Returning every fixture when the player's group is unresolved is how a
+      // U18 player was shown the Seniors "vs Mons" fixture: the group had not
+      // loaded (or the player is unassigned), and the whole club answered.
+      // A club whose fixtures carry group identity is a GROUPED club, so an
+      // unresolved player group must show NOTHING group-specific; a club with
+      // no grouped fixtures at all is genuinely pre-group and keeps the old
+      // full list.
+      const clubIsGrouped = rows.some(f => String(f.groupId || '').trim());
+      return clubIsGrouped ? [] : rows;
     }
 
     function renderPlayerFixtures() {
@@ -34110,6 +34126,13 @@
       _trainingScheduleQueue = null;
       _trainingScheduleGroupId = '';
       _myPlatformRole = '';
+      // The operational context belongs to the PERSON, not the device. Left
+      // behind, the next identity renders the previous one's group until the
+      // session payload lands — the window in which a U18 player could still
+      // be shown Seniors fixtures. Cleared here, that window fails closed;
+      // adoptIdentityPayload re-resolves it for the new identity.
+      _myOperational = null;
+      state.operationalGroupId = null;
       // Performance (SC2/SC3/SC7) is PERSON-scoped and must not survive an
       // identity change on a shared device. The athlete profile carries
       // wellness check-ins, the workout store carries an in-flight session
