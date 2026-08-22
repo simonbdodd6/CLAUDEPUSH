@@ -216,21 +216,18 @@ test('12. diagnosis language guard: within Performance, "diagnos*" only ever app
   assert.ok(count >= 2, 'the safety disclaimers exist in the Performance regions');
 });
 
-test('13. athlete list: categories and flags only — no sensitive data', () => {
+test('13. athlete list: programme decision data only — no sensitive data', () => {
+  // SC8 replaced the sample fixture with REAL server-scoped athletes. The
+  // guarantee that mattered is unchanged and now stronger: the coach list
+  // carries squad classification and assignment status, never health data —
+  // and the server projection (performance-assignment-api test 6) enforces it
+  // rather than the browser merely declining to render it.
   const list = extractFn(html, 'perfAthletesHtml');
-  assert.match(list, /perfReadinessCat/, 'readiness shown as a category');
-  assert.ok(!/readiness\}\s*ready|\$\{a\.readiness\}/.test(list), 'no raw readiness score rendered');
-  assert.match(list, /Needs attention/, 'attention flag present');
-  assert.match(list, /a\.completion/, 'profile completion shown');
-  // Every inline sample athlete must carry the completion field the list
-  // renders — a missing field would render "undefined%".
-  const sample = html.match(/const PERF_SAMPLE_ATHLETES = \[([\s\S]*?)\];/);
-  assert.ok(sample, 'inline sample athletes found');
-  const rows = sample[1].split('\n').filter(l => l.includes("id: 'ath-"));
-  assert.ok(rows.length >= 12, 'sample roster present');
-  for (const row of rows) assert.match(row, /completion: \d+/, 'athlete row has completion: ' + row.trim().slice(0, 40));
-  assert.match(list, /perfAthleteOpen/, 'rows open the summary shell');
-  for (const banned of ['wellnessLog', 'pain.', 'health.', 'injuryHistory', 'physioInstructions']) {
+  assert.match(list, /_perfAssign\.athletes/, 'athletes come from the scoped server payload');
+  assert.match(list, /perfDevCategoryLabel/, 'development category shown as a category');
+  assert.match(list, /No programme assigned/, 'assignment status shown honestly');
+  for (const banned of ['wellnessLog', 'pain.', 'health.', 'injuryHistory', 'physioInstructions',
+                        'readiness', 'medical']) {
     assert.ok(!list.includes(banned), `list must not reference ${banned}`);
   }
 });

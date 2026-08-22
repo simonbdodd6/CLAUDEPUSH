@@ -5489,6 +5489,7 @@
     // normalizeState validates the persisted tab against this list.
     const PERF_TABS = [
       { id: "dashboard",  label: "Dashboard" },
+      { id: "programme",  label: "My Programme" },
       { id: "profile",    label: "My Profile" },
       { id: "athletes",   label: "Athletes" },
       { id: "programmes", label: "Programmes" },
@@ -5505,7 +5506,7 @@
     // Coach Tools. renderPerformance() validates the active tab against this
     // list in player view, so a stored or hand-set coach tab cannot open a
     // coach surface inside the player shell.
-    const PERF_PLAYER_TAB_IDS = ['profile', 'workouts', 'library', 'settings'];
+    const PERF_PLAYER_TAB_IDS = ['programme', 'profile', 'workouts', 'library', 'settings'];
 
     // ── CoachEasier Performance — athlete profile model (SC2, inline mirror) ──
     // Kept in lockstep with performance/types/athlete-profile.js,
@@ -30726,6 +30727,91 @@
       saveState("Tab saved");
       render();
     }
+    /**
+     * SC8 — publish the athlete's AUTHORING PROJECTION to the server.
+     *
+     * Only the small programming projection travels: position, training age,
+     * equipment, schedule, goals and non-identifying restriction flags. The
+     * wellness log, pain detail and health sections stay on this device — a
+     * coach's programming tool has no business holding them, and what is not
+     * uploaded cannot leak.
+     *
+     * Local state remains the working draft and the offline fallback; the
+     * server is authoritative for what a coach may read. Sync status is
+     * reported honestly and never claims a server save that did not happen.
+     */
+    let _perfProfileSync = 'device';   // 'device' | 'pending' | 'synced' | 'error'
+
+    async function perfPublishAuthoringProfile({ quiet = true } = {}) {
+      const profile = state.performanceProfile?.profile || null;
+      if (!profile || !_perfWkMod) return false;
+      _perfProfileSync = 'pending';
+      try {
+        const projection = _perfWkMod.authoringProfileFrom(profile, { now: new Date() });
+        const res = await fetch('/api/publish?resource=performance', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ op: 'save_athlete_profile', profile: projection }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+          // Entitlement or connectivity — the athlete's work is still saved on
+          // this device, and we say exactly that rather than claiming a sync.
+          _perfProfileSync = res.status === 402 ? 'device' : 'error';
+          if (!quiet) showToast('Saved on this device — could not reach the server');
+          return false;
+        }
+        _perfProfileSync = 'synced';
+        return true;
+      } catch (e) {
+        _perfProfileSync = 'error';
+        if (!quiet) showToast('Saved on this device — you appear to be offline');
+        return false;
+      }
+    }
+
+    /**
+     * Adopt the server's copy of THIS athlete's profile when the device has
+     * none. A device that already holds a profile keeps it — the local copy is
+     * the athlete's working draft and is never silently overwritten; it
+     * re-publishes instead, so the newer edit wins rather than the older read.
+     */
+    function perfAdoptServerProfile(serverProfile) {
+      if (!serverProfile || !_perfWkMod) return;
+      if (state.performanceProfile?.profile) { perfPublishAuthoringProfile(); return; }
+      const ps = perfInitialProfileState();
+      const p = perfEmptyProfile(state.currentUserId || null, new Date().toISOString());
+      // Only the projection's own fields are restored — nothing else exists.
+      p.personal.ageBand = serverProfile.personal?.ageBand || null;
+      Object.assign(p.rugby, {
+        primaryPosition: serverProfile.rugby?.primaryPosition || null,
+        secondaryPosition: serverProfile.rugby?.secondaryPosition || null,
+        playingLevel: serverProfile.rugby?.playingLevel || null,
+        seasonPhase: serverProfile.rugby?.seasonPhase || null,
+        matchDay: serverProfile.rugby?.matchDay || null,
+      });
+      Object.assign(p.training, {
+        experience: serverProfile.training?.experience || null,
+        techConfidence: serverProfile.training?.techConfidence || null,
+        preferredSessionMinutes: serverProfile.training?.preferredSessionMinutes ?? null,
+      });
+      p.equipment.locations = [...(serverProfile.equipment?.locations || [])];
+      p.equipment.items = [...(serverProfile.equipment?.items || [])];
+      Object.assign(p.schedule, {
+        availableDays: [...(serverProfile.schedule?.availableDays || [])],
+        rugbyDays: [...(serverProfile.schedule?.rugbyDays || [])],
+        matchDay: serverProfile.schedule?.matchDay || null,
+        maxSessionMinutes: serverProfile.schedule?.maxSessionMinutes ?? null,
+      });
+      p.goals = (serverProfile.goals || []).map(g => ({ type: g.type, importance: g.importance ?? 3 }));
+      ps.profile = p;
+      ps.onboarding = { step: 'done', startedAt: serverProfile.updatedAt || null,
+                        completedAt: serverProfile.profileComplete ? (serverProfile.updatedAt || null) : null,
+                        skippedSteps: [] };
+      state.performanceProfile = ps;
+      _perfProfileSync = 'synced';
+      saveState('Profile restored from your club account');
+    }
+
     function perfObNext() {
       const ps = perfObEnsure();
       const step = ps.onboarding.step;
@@ -30755,6 +30841,7 @@
       if (_perfObReturn) perfObResolveReturn(ps);
       else ps.onboarding.step = PERF_OB_STEPS[Math.min(perfObStepIndex(step) + 1, PERF_OB_STEPS.length - 1)].id;
       saveState("Saved");
+      perfPublishAuthoringProfile();
       render();
     }
     function perfObSubmit() {
@@ -31178,12 +31265,16 @@
           // the outcome and fix the right one.
           const dev = perfDevelopmentContext();
           if (!dev) return '';
+          const syncLine = { synced: 'Saved to your club account', pending: 'Saving…',
+                             error: 'Saved on this device — not yet synced',
+                             device: 'Saved on this device' }[_perfProfileSync] || 'Saved on this device';
           const teamCat = perfTeamDevelopmentCategory();
           return `<div class="card perf-card" style="margin-bottom:14px">
             <div class="perf-card-head"><small>Development context</small>
               ${dev.safeguardsActive ? '<span class="pill">Safeguards active</span>' : ''}
             </div>
             <strong class="perf-card-title">${esc(PERF_CONTEXT_LABELS[dev.context] || PERF_CONTEXT_LABELS.unknown)}</strong>
+            <small class="muted" style="display:block;margin-top:5px">${esc(syncLine)} · your coach sees only your training inputs, never your wellness or health notes</small>
             <small class="muted" style="display:block;margin-top:5px">
               Your age evidence: ${esc(PERF_OPT_LABEL[p.personal.ageBand] || 'not provided')} ·
               Squad classification: ${esc(developmentCategoryLabel(teamCat))}
@@ -31329,17 +31420,25 @@
         return;
       }
 
+      // SC8: assignment, calendar and authoring logic all live in the workout
+      // runtime, so every Performance screen needs it — not just Workouts.
+      perfLoadWorkoutRuntime();
+      // Real assignment data is server-owned; fetch it once per view. A player
+      // gets only their own, a coach only their scoped athletes'.
+      if (_perfWkMod && !_perfAssign.loaded && !_perfAssign.loading) perfLoadAssignments();
+
       // Athletes get their own tab set; an unrecognised or coach-only stored tab
       // falls back to a safe default rather than rendering a coach surface.
       const tabs = asPlayer ? PERF_TABS.filter(t => PERF_PLAYER_TAB_IDS.includes(t.id)) : PERF_TABS;
       const tab = tabs.some(t => t.id === state.activePerformanceTab)
-        ? state.activePerformanceTab : (asPlayer ? 'workouts' : 'dashboard');
+        ? state.activePerformanceTab : (asPlayer ? 'programme' : 'dashboard');
       const tabNav = `<div class="perf-tabs" role="tablist" aria-label="Performance sections">
         ${tabs.map(t => `<button type="button" role="tab" aria-selected="${t.id === tab}" class="perf-tab ${t.id === tab ? 'active' : ''}" onclick="setPerfTab('${t.id}')">${esc(t.label)}</button>`).join('')}
       </div>`;
 
       let body = '';
       if (tab === 'dashboard')  body = perfDashboardHtml();
+      if (tab === 'programme')  body = perfProgrammeViewHtml();
       if (tab === 'profile')    body = perfProfileHtml();
       if (tab === 'athletes')   body = perfAthletesHtml();
       if (tab === 'programmes') body = perfProgrammesHtml();
@@ -31493,81 +31592,576 @@
       return a.readiness < 60 || a.trainingStatus !== 'full';
     }
     function perfAthletesHtml() {
-      if (_perfAthleteId) {
-        const open = PERF_SAMPLE_ATHLETES.find(a => a.id === _perfAthleteId);
-        if (open) return perfAthleteDetailHtml(open);
-        _perfAthleteId = null;
-      }
-      const flagged = PERF_SAMPLE_ATHLETES.filter(perfAthleteFlag).length;
+      if (!_perfWkMod) return perfAssignLoadingHtml('Athletes');
+      // REAL athletes, and only the ones Core's operational scope allows: this
+      // list is whatever /api/publish?resource=performance was willing to send
+      // for this coach. state.players is deliberately never consulted — it is
+      // club-wide on every coach's device, so reading it here would show a
+      // Seniors coach the U18 squad.
+      if (!_perfAssign.loaded) { perfLoadAssignments(); return perfAssignLoadingHtml('Athletes'); }
+      if (_perfAssign.error) return perfAssignErrorHtml('Athletes');
+      const today = perfToday();
+      const rows = _perfAssign.athletes.map(a => {
+        const mine = _perfAssign.assignments.filter(x => x.athleteUserId === a.userId);
+        const live = mine.find(x => _perfWkMod && _perfWkMod.isLiveToday(x, today));
+        const current = live || mine.find(x => ['scheduled', 'paused'].includes(x.status)) || null;
+        const wk = live && _perfWkMod ? (_perfWkMod.programmePosition(live, today)?.week ?? null) : null;
+        return { a, current, live, wk, pending: mine.some(x => x.progressionReview?.status === 'pending') };
+      });
       return `
         <div class="perf-page-head">
-          <div>
-            <h2>Athletes</h2>
-            <p class="muted">Profiles, programmes and training status for your assigned athletes.</p>
-          </div>
-          <div class="pill-row">
-            <span class="pill">${PERF_SAMPLE_ATHLETES.length} athletes</span>
-            ${flagged ? `<span class="status maybe">${flagged} need attention</span>` : '<span class="status available">All clear</span>'}
-          </div>
+          <div><h2>Athletes</h2><p class="muted">Athletes in your coaching scope, and what they are currently training.</p></div>
+          <span class="pill">${rows.length} athlete${rows.length === 1 ? '' : 's'}</span>
         </div>
-        <div class="list">
-          ${PERF_SAMPLE_ATHLETES.map(a => `
-            <button type="button" class="row perf-athlete-row clickable" onclick="perfAthleteOpen('${a.id}')">
-              <div class="perf-athlete-main">
-                <span class="perf-jersey">${a.jersey}</span>
-                <div class="perf-athlete-id">
-                  <strong>${esc(a.name)}${perfAthleteFlag(a) ? ' <span class="perf-flag" title="Needs attention">⚑</span>' : ''}</strong>
-                  <small>${esc(a.position)} · ${esc(a.programme)} · active ${perfRelativeDay(a.lastSession).toLowerCase()}</small>
-                </div>
-              </div>
-              <div class="perf-athlete-metrics">
-                <div class="perf-adherence" title="Profile completion">
-                  <small class="muted">Profile ${a.completion}%</small>
-                  ${perfMeter(a.completion, 'slim')}
-                </div>
-                <div class="perf-adherence" title="4-week adherence">
-                  <small class="muted">Adherence ${a.adherence}%</small>
-                  ${perfMeter(a.adherence, 'slim')}
-                </div>
-                ${perfReadinessCat(a.readiness)}
-              </div>
-            </button>`).join('')}
-        </div>
-        <p class="muted" style="font-size:12px;margin-top:14px">Sample data. Wellness and health details are never shown in this list — they stay with each athlete and explicitly authorised staff.</p>`;
+        ${rows.length ? `<div class="grid perf-grid-3">${rows.map(({ a, current, wk, pending }) => `
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <small>${esc(a.groupName || 'No group')}</small>
+              <span class="pill">${esc(perfDevCategoryLabel(a.developmentCategory))}</span>
+            </div>
+            <strong class="perf-card-title">${esc(a.name)}</strong>
+            <small class="muted" style="display:block;margin-top:3px">${esc(a.position || 'Position not set')}</small>
+            <div style="margin-top:10px;font-size:12.5px">
+              ${current
+                ? `<strong>${esc(current.programmeTitle || 'Programme')}</strong>
+                   <div class="muted" style="margin-top:2px">${perfAssignStatusPill(current)}${wk ? ` · Week ${wk}` : ''}</div>`
+                : '<span class="muted">No programme assigned</span>'}
+            </div>
+            ${pending ? '<div class="pill" style="margin-top:8px">Progression suggestion pending</div>' : ''}
+            <div class="wk-ex-actions" style="margin-top:12px">
+              <button class="btn ghost" type="button" onclick="perfStartAuthoring('${esc(a.userId)}')">
+                ${current ? 'New programme' : 'Create programme'}</button>
+              ${current && current.status !== 'completed' ? `
+                <button class="btn ghost" type="button" onclick="perfAssignAction('${esc(current.assignmentId)}','${current.status === 'paused' ? 'resume' : 'pause'}')">
+                  ${current.status === 'paused' ? 'Resume' : 'Pause'}</button>` : ''}
+            </div>
+          </div>`).join('')}</div>`
+        : `<div class="card perf-card"><strong class="perf-card-title">No athletes in your scope</strong>
+             <p class="muted" style="font-size:13px;margin:8px 0 0">Athletes appear here once they are members of a group you coach.</p></div>`}`;
+    }
+
+    function perfDevCategoryLabel(code) {
+      return ({ youth_u16: 'U16', youth_u18: 'U18', adult: 'Adult', mixed_open: 'Mixed', unknown: 'Not set' })[code] || 'Not set';
+    }
+
+    function perfAssignStatusPill(a) {
+      const status = _perfWkMod ? _perfWkMod.effectiveStatus(a, perfToday()) : a.status;
+      const label = { active: 'Active', scheduled: 'Scheduled', paused: 'Paused', completed: 'Completed',
+                      replaced: 'Replaced', cancelled: 'Cancelled', draft: 'Draft' }[status] || status;
+      const cls = status === 'active' ? 'status available' : status === 'paused' ? 'status maybe' : 'pill';
+      return `<span class="${cls}">${label}</span>`;
+    }
+
+    function perfAssignLoadingHtml(title) {
+      return `<div class="perf-page-head"><div><h2>${esc(title)}</h2></div></div>
+        <div class="card perf-card"><span class="muted">Loading…</span></div>`;
+    }
+
+    function perfAssignErrorHtml(title) {
+      const notEntitled = _perfAssign.error === 'not_entitled';
+      return `<div class="perf-page-head"><div><h2>${esc(title)}</h2></div></div>
+        <div class="card perf-card">
+          <strong class="perf-card-title">${notEntitled ? 'Performance is not enabled for this club' : 'Could not load programmes'}</strong>
+          <p class="muted" style="font-size:13px;margin:8px 0 0">
+            ${notEntitled
+              ? 'Programmes and assignments are part of CoachEasier Performance.'
+              : 'You are offline or the server could not be reached. Nothing has been changed.'}</p>
+          ${notEntitled ? '' : '<button class="btn ghost" type="button" style="margin-top:10px" onclick="perfLoadAssignments(true)">Try again</button>'}
+        </div>`;
     }
 
     // ── Programmes ────────────────────────────────────────────────────────────
-    function perfProgrammesHtml() {
-      const statusPill = s => ({
-        active:    '<span class="status available">Active</span>',
-        draft:     '<span class="status no-reply">Draft</span>',
-        completed: '<span class="pill">Completed</span>',
-        archived:  '<span class="pill">Archived</span>',
-      }[s] || '');
+    // ── SC8 — programme authoring (coach) ────────────────────────────────────
+    //
+    // The flow is deliberately: PICK ATHLETE → GENERATE → REVIEW → PUBLISH →
+    // ASSIGN. Nothing auto-publishes and nothing auto-assigns: every step is a
+    // coach decision, and the generated draft is only ever a starting point
+    // produced by the deterministic rules from the athlete's own profile.
+    let _perfAuthor = { step: null, athleteUserId: null, draft: null, provenance: null, athleteProfile: null,
+                        programmeId: null, weeks: 4, ack: false, busy: false, error: null,
+                        startDate: null, intent: 'assign', assignProgrammeId: null };
+
+    function perfResetAuthoring() {
+      _perfAuthor = { step: null, athleteUserId: null, draft: null, provenance: null, athleteProfile: null,
+                      programmeId: null, weeks: 4, ack: false, busy: false, error: null,
+                      startDate: null, intent: 'assign', assignProgrammeId: null };
+      renderPerformance();
+    }
+
+    function perfStartAuthoring(athleteUserId = null) {
+      _perfAuthor = { ..._perfAuthor, step: athleteUserId ? 'generate' : 'pick',
+                      athleteUserId, draft: null, provenance: null, athleteProfile: null,
+                      programmeId: null, error: null, ack: false };
+      if (!_perfAssign.loaded) perfLoadAssignments();
+      renderPerformance();
+    }
+
+    function perfOpenAssign(programmeId) {
+      _perfAuthor = { ..._perfAuthor, step: 'assign', assignProgrammeId: programmeId,
+                      startDate: perfToday(), intent: 'assign', error: null };
+      renderPerformance();
+    }
+
+    /**
+     * Build the draft. The athlete's OWN Performance profile is the input; if
+     * they have not completed one we say so rather than inventing a
+     * convincing athlete, because a fabricated profile would produce a
+     * real-looking programme built on nothing.
+     */
+    async function perfGenerateDraft() {
+      _perfAuthor.busy = true; _perfAuthor.error = null; renderPerformance();
+      try {
+        const athlete = _perfAssign.athletes.find(a => a.userId === _perfAuthor.athleteUserId);
+        if (!athlete) throw new Error('That athlete is not in your scope.');
+
+        // THE ATHLETE'S OWN PROFILE, FROM THE SERVER — never this device's.
+        // A coach is very often also an athlete with their own local profile;
+        // reading state.performanceProfile here would silently build Athlete
+        // B's programme from the coach's body data. The server returns the
+        // small authoring projection, and only for athletes in scope.
+        const res = await fetch(`/api/publish?resource=performance&athleteProfile=${encodeURIComponent(athlete.userId)}`);
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 403) throw new Error('That athlete is outside your coaching scope.');
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not load this athlete\'s profile.');
+        const ap = data.profile || null;
+        if (!_perfWkMod.authoringProfileUsable(ap)) {
+          const missing = _perfWkMod.missingAuthoringInputs(ap);
+          throw new Error(`${athlete.name}'s Performance profile is incomplete, so a programme cannot be built from real information yet. Still needed: ${missing.join(', ')}. Ask them to finish onboarding on their own device.`);
+        }
+        _perfAuthor.athleteProfile = ap;
+        const profile = ap;
+        const input = _perfWkMod.engineInputFromAuthoringProfile(ap, { teamCategory: athlete.developmentCategory || null });
+        const blueprint = _perfWkMod.generateBlueprint(input, { catalogue: _perfWkMod.getCatalogue() });
+        if (!blueprint.frequency) throw new Error('The coaching rules produced no sessions for this athlete — check their availability and schedule.');
+        const built = _perfWkMod.programmeDraftFromBlueprint(blueprint, {
+          catalogue: _perfWkMod.getCatalogue(), athleteName: athlete.name, athleteUserId: athlete.userId,
+          author: state.currentUserId || 'coach', clubId: null, weeks: _perfAuthor.weeks,
+          schedule: profile.schedule || {}, now: perfWkNow(),
+        });
+        _perfAuthor.draft = built.programme;
+        _perfAuthor.provenance = built.provenance;
+        _perfAuthor.step = 'review';
+      } catch (e) {
+        _perfAuthor.error = e.message || 'Could not generate a programme.';
+      }
+      _perfAuthor.busy = false; renderPerformance();
+    }
+
+    /** Publish: validate, freeze through SC4, then persist server-side. */
+    async function perfPublishDraft() {
+      _perfAuthor.busy = true; _perfAuthor.error = null; renderPerformance();
+      try {
+        const draft = _perfAuthor.draft;
+        const version = draft.versions[0];
+        const check = _perfWkMod.validateProgrammeVersion(version, {
+          catalogue: _perfWkMod.getCatalogue(), collections: _perfWkMod.COLLECTIONS });
+        if (!check.ok) throw new Error(`This programme is not valid yet: ${check.errors.slice(0, 2).join('; ')}`);
+        const requiresReview = !!_perfAuthor.provenance?.requiresReview;
+        if (requiresReview && !_perfAuthor.ack) throw new Error('Please confirm you have reviewed this programme.');
+
+        const athlete = _perfAssign.athletes.find(a => a.userId === _perfAuthor.athleteUserId);
+        const saved = await perfPost({
+          op: 'save_draft', programmeId: _perfAuthor.programmeId,
+          title: draft.title, goal: draft.goal, phase: _perfAuthor.provenance?.developmentContext ? draft.season : '',
+          athleteUserId: _perfAuthor.athleteUserId, athleteName: athlete?.name || '',
+          groupId: athlete?.groupId || '', source: 'blueprint_generated',
+          programme: draft, provenance: _perfAuthor.provenance, requiresReview,
+        });
+        const programmeId = saved.programme.programmeId;
+        // SC4 freezes the training content; the server records the published fact.
+        _perfWkMod.publishProgrammeVersion(draft, 1, { actor: state.currentUserId || 'coach', now: perfWkNow() });
+        await perfPost({ op: 'publish_programme', programmeId, versionNumber: 1,
+                         programme: draft, reviewAcknowledged: _perfAuthor.ack || !requiresReview });
+        _perfAuthor.programmeId = programmeId;
+        _perfAuthor.step = 'assign';
+        _perfAuthor.assignProgrammeId = programmeId;
+        _perfAuthor.startDate = perfToday();
+        await perfLoadAssignments(true);
+      } catch (e) {
+        _perfAuthor.error = e.message || 'Could not publish this programme.';
+      }
+      _perfAuthor.busy = false; renderPerformance();
+    }
+
+    /** Assign the published version to the athlete. */
+    async function perfConfirmAssign() {
+      _perfAuthor.busy = true; _perfAuthor.error = null; renderPerformance();
+      try {
+        const programmeId = _perfAuthor.assignProgrammeId;
+        const meta = _perfAssign.programmes.find(p => p.programmeId === programmeId);
+        const athleteUserId = _perfAuthor.athleteUserId || meta?.athleteUserId;
+        if (!athleteUserId) throw new Error('Choose an athlete first.');
+        const draft = _perfAuthor.draft;
+        if (!draft) throw new Error('This programme must be opened for review before it can be assigned.');
+        const snapshot = _perfWkMod.snapshotForProgrammeAssignment(draft, meta?.publishedVersion || 1, {
+          catalogue: _perfWkMod.getCatalogue(), now: perfWkNow() });
+        const res = await perfPost({
+          op: 'create_assignment', programmeId, athleteUserId,
+          programmeVersionId: snapshot.programmeVersionId, versionNumber: snapshot.versionNumber,
+          snapshot, startDate: _perfAuthor.startDate || perfToday(),
+          notes: '', intent: _perfAuthor.intent,
+          reviewFlags: (_perfAuthor.provenance?.flags || []).map(f => f.id),
+        });
+        await perfLoadAssignments(true);
+        showToast(`Assigned to ${esc(res.assignment.athleteName || 'athlete')}`);
+        perfResetAuthoring();
+        return;
+      } catch (e) {
+        _perfAuthor.error = e.message || 'Could not assign this programme.';
+      }
+      _perfAuthor.busy = false; renderPerformance();
+    }
+
+    async function perfAssignAction(assignmentId, op) {
+      if (op === 'end' || op === 'cancel') {
+        const ok = await ceConfirm(op === 'end' ? 'End this programme?' : 'Cancel this assignment?',
+          'The athlete stops receiving daily sessions. Their completed workout history is kept exactly as it is.',
+          { confirmLabel: op === 'end' ? 'End programme' : 'Cancel', danger: true });
+        if (!ok) return;
+      }
+      try {
+        await perfPost({ op, assignmentId });
+        await perfLoadAssignments(true);
+        showToast(({ pause: 'Programme paused', resume: 'Programme resumed', end: 'Programme ended', cancel: 'Assignment cancelled' })[op] || 'Updated');
+      } catch (e) { showToast(e.message || 'That change could not be saved'); }
+    }
+
+    /** One POST path for every Performance mutation. Fails loudly. */
+    async function perfPost(body) {
+      const res = await fetch('/api/publish?resource=performance', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) {
+        const err = new Error(data.error || 'That change could not be saved');
+        err.code = data.code; throw err;
+      }
+      return data;
+    }
+
+    // ── Authoring screens ────────────────────────────────────────────────────
+
+    function perfAuthoringHtml() {
+      const back = `<button class="btn ghost" type="button" onclick="perfResetAuthoring()">← Programmes</button>`;
+      const err = _perfAuthor.error
+        ? `<div class="card perf-card" style="border-color:#dc2626"><strong class="perf-card-title">Not done</strong>
+             <p class="muted" style="font-size:13px;margin:8px 0 0">${esc(_perfAuthor.error)}</p></div>` : '';
+      if (_perfAuthor.step === 'pick')     return `${back}${err}${perfPickAthleteHtml()}`;
+      if (_perfAuthor.step === 'generate') return `${back}${err}${perfGenerateHtml()}`;
+      if (_perfAuthor.step === 'review')   return `${back}${err}${perfReviewHtml()}`;
+      if (_perfAuthor.step === 'assign')   return `${back}${err}${perfAssignHtml()}`;
+      return back;
+    }
+
+    function perfPickAthleteHtml() {
+      const list = _perfAssign.athletes;
+      return `
+        <div class="perf-page-head" style="margin-top:14px">
+          <div><h2>New programme</h2><p class="muted">Choose the athlete this programme is for.</p></div>
+        </div>
+        ${list.length ? `<div class="grid perf-grid-3">${list.map(a => `
+          <button class="card perf-card" type="button" style="text-align:left;cursor:pointer;font-family:inherit"
+            onclick="perfStartAuthoring('${esc(a.userId)}')">
+            <div class="perf-card-head"><small>${esc(a.groupName || 'No group')}</small>
+              <span class="pill">${esc(perfDevCategoryLabel(a.developmentCategory))}</span></div>
+            <strong class="perf-card-title">${esc(a.name)}</strong>
+            <small class="muted" style="display:block;margin-top:3px">${esc(a.position || 'Position not set')}</small>
+          </button>`).join('')}</div>`
+        : '<div class="card perf-card"><span class="muted">No athletes in your coaching scope.</span></div>'}`;
+    }
+
+    function perfGenerateHtml() {
+      const a = _perfAssign.athletes.find(x => x.userId === _perfAuthor.athleteUserId);
+      return `
+        <div class="perf-page-head" style="margin-top:14px">
+          <div><h2>New programme</h2><p class="muted">${esc(a?.name || 'Athlete')} · ${esc(a?.groupName || '')}</p></div>
+        </div>
+        <div class="card perf-card">
+          <div class="perf-card-head"><small>Deterministic coaching rules</small><span class="pill">Provisional</span></div>
+          <strong class="perf-card-title">Build a structured draft</strong>
+          <p class="muted" style="font-size:13px;margin:8px 0 0">
+            CoachEasier builds a draft from this athlete's Performance profile — their position, training age,
+            goals, equipment, availability and rugby schedule — using fixed coaching rules. No AI is involved,
+            nothing is published, and you review and edit everything before the athlete sees it.
+          </p>
+          <label style="display:block;margin-top:14px;font-size:12px;font-weight:700;color:var(--muted)">Programme length
+            <select id="perfWeeks" onchange="_perfAuthor.weeks = Number(this.value)"
+              style="display:block;margin-top:5px;min-height:40px;width:160px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);font-size:13px;padding:0 10px">
+              ${[3, 4, 6, 8].map(w => `<option value="${w}" ${w === _perfAuthor.weeks ? 'selected' : ''}>${w} weeks</option>`).join('')}
+            </select>
+          </label>
+          <div class="wk-start-row">
+            <button class="btn primary wk-big" type="button" ${_perfAuthor.busy ? 'disabled' : ''}
+              onclick="perfGenerateDraft()">${_perfAuthor.busy ? 'Building…' : 'Build draft programme'}</button>
+          </div>
+        </div>`;
+    }
+
+    /**
+     * The review screen — the heart of the coach experience. It must answer
+     * "why does this programme look like this?", so it shows the athlete
+     * context, the dose decisions, every warning, and the full week structure.
+     */
+    function perfReviewHtml() {
+      const pr = _perfAuthor.provenance;
+      const draft = _perfAuthor.draft;
+      const v = draft.versions[0];
+      const a = _perfAssign.athletes.find(x => x.userId === _perfAuthor.athleteUserId);
+      const weeks = v.phases[0].weeks;
+      const wk1 = weeks[0];
+      const sevPill = f => `<span class="${f.severity === 'requires_review' || f.severity === 'blocking' ? 'status maybe' : 'pill'}">${esc(f.label || f.id)}</span>`;
+      return `
+        <div class="perf-page-head" style="margin-top:14px">
+          <div><h2>Review programme</h2><p class="muted">${esc(draft.title)}</p></div>
+          <span class="pill">Draft · not yet visible to the athlete</span>
+        </div>
+
+        <div class="card perf-card">
+          <div class="perf-card-head"><small>Why this programme</small><span class="pill">${esc(pr.engineVersion)}</span></div>
+          <div class="perf-ex-chips" style="margin-top:6px">
+            <span class="pill">${esc(a?.name || 'Athlete')}</span>
+            <span class="pill">${esc(a?.position || 'Position not set')}</span>
+            <span class="pill">${esc(perfContextLabel(pr.developmentContext.context))}</span>
+            <span class="pill">${pr.frequency}× / week</span>
+            <span class="pill">${esc(pr.volumeCategory)} volume</span>
+            <span class="pill">${esc(pr.intensityCategory)} intensity</span>
+            <span class="pill">${pr.weeks} weeks</span>
+          </div>
+          ${pr.developmentContext.youth ? `
+            <p class="muted" style="font-size:12.5px;margin:10px 0 0">
+              Youth safeguards are active: exercise selection, complexity and dose are constrained by this athlete's development context.</p>` : ''}
+          <p class="muted" style="font-size:12.5px;margin:10px 0 0">
+            Training days chosen from this athlete's availability: <strong>${esc(pr.daysChosen.join(', '))}</strong>.
+            ${pr.daysChosen.includes('unscheduled') ? 'Some days are unscheduled because their availability is not known — place them yourself.' : ''}
+          </p>
+        </div>
+
+        ${pr.flags.length ? `
+          <div class="card perf-card">
+            <div class="perf-card-head"><small>Warnings and review flags</small></div>
+            <div class="perf-ex-chips" style="margin-top:4px">${pr.flags.map(sevPill).join('')}</div>
+            ${pr.unresolvedSlots.length ? `<p class="muted" style="font-size:12.5px;margin:10px 0 0">
+              ${pr.unresolvedSlots.length} slot(s) could not be filled from the eligible exercise library — those blocks are shorter than planned.</p>` : ''}
+            ${pr.patternCoverage?.missing?.length ? `<p class="muted" style="font-size:12.5px;margin:8px 0 0">
+              Movement patterns not covered this week: ${esc(pr.patternCoverage.missing.join(', '))}.</p>` : ''}
+          </div>` : ''}
+
+        <div class="perf-group-title">Week 1 of ${weeks.length} — the same structure repeats each week</div>
+        ${wk1.days.map(day => `
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <small>${esc(day.day === 'unscheduled' ? 'Day not scheduled' : day.day)}${day.rugbyRelation && day.rugbyRelation !== 'none' ? ` · ${esc(String(day.rugbyRelation).replace(/_/g, ' '))}` : ''}</small>
+              <span class="pill">${day.sessions[0].estimatedMinutes} min</span>
+            </div>
+            <strong class="perf-card-title">${esc(day.sessions[0].title)}</strong>
+            <small class="muted" style="display:block;margin-top:3px">${esc(day.sessions[0].objective || '')}</small>
+            ${day.sessions[0].blocks.map(b => `
+              <div style="margin-top:10px">
+                <div style="font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">
+                  ${esc(String(b.blockType).replace(/_/g, ' '))}</div>
+                ${b.prescriptions.length ? b.prescriptions.map(pres => {
+                  const ex = _perfWkMod.getExerciseById(pres.exerciseId);
+                  const f = pres.sets[0]?.fields || {};
+                  const bits = [`${pres.sets.length} × ${f.reps ?? (f.durationSec ? f.durationSec + 's' : '—')}`];
+                  if (f.rpe) bits.push(`RPE ${f.rpe}`);
+                  if (f.restSec) bits.push(`${f.restSec}s rest`);
+                  return `<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-bottom:1px solid var(--line)">
+                    <span>${esc(ex?.name || pres.exerciseId)}</span>
+                    <span class="muted" style="white-space:nowrap">${esc(bits.join(' · '))}</span></div>`;
+                }).join('')
+                : `<div class="muted" style="font-size:12.5px;padding:4px 0">From collection — coach to complete</div>`}
+              </div>`).join('')}
+          </div>`).join('')}
+
+        <div class="card perf-card">
+          <div class="perf-card-head"><small>Publish</small></div>
+          <p class="muted" style="font-size:12.5px;margin:0 0 10px">
+            These coaching rules are <strong>provisional</strong> and under review by qualified S&amp;C staff.
+            Publishing records that <strong>you</strong> reviewed this programme — it is not a medical or
+            professional approval, and CoachEasier does not provide one.
+          </p>
+          <label style="display:flex;gap:9px;align-items:flex-start;font-size:13px;cursor:pointer">
+            <input type="checkbox" ${_perfAuthor.ack ? 'checked' : ''} onchange="_perfAuthor.ack = this.checked"
+              style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+            <span>I have reviewed this programme and I am satisfied it is appropriate for this athlete.</span>
+          </label>
+          <div class="wk-start-row">
+            <button class="btn primary wk-big" type="button" ${_perfAuthor.busy || !_perfAuthor.ack ? 'disabled' : ''}
+              onclick="perfPublishDraft()">${_perfAuthor.busy ? 'Publishing…' : 'Publish programme'}</button>
+          </div>
+        </div>`;
+    }
+
+    function perfContextLabel(c) {
+      return ({ youth_u16: 'Under-16 safeguards', youth_u18: 'Under-18 safeguards',
+                adult: 'Adult programming', unknown: 'Conservative — context unconfirmed' })[c] || String(c || '');
+    }
+
+    function perfAssignHtml() {
+      const programmeId = _perfAuthor.assignProgrammeId;
+      const meta = _perfAssign.programmes.find(p => p.programmeId === programmeId);
+      const athleteUserId = _perfAuthor.athleteUserId || meta?.athleteUserId;
+      const a = _perfAssign.athletes.find(x => x.userId === athleteUserId);
+      const occupied = _perfAssign.assignments.filter(x =>
+        x.athleteUserId === athleteUserId && ['scheduled', 'active', 'paused'].includes(x.status));
+      return `
+        <div class="perf-page-head" style="margin-top:14px">
+          <div><h2>Assign programme</h2><p class="muted">${esc(meta?.title || 'Programme')} → ${esc(a?.name || 'athlete')}</p></div>
+          <span class="status available">Published</span>
+        </div>
+        <div class="card perf-card">
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--muted)">Start date
+            <input type="date" value="${esc(_perfAuthor.startDate || perfToday())}"
+              onchange="_perfAuthor.startDate = this.value"
+              style="display:block;margin-top:5px;min-height:42px;width:190px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);font-size:14px;padding:0 10px">
+          </label>
+          <p class="muted" style="font-size:12.5px;margin:10px 0 0">
+            Week 1 begins on this date. The athlete sees each session on its own training day — nothing is
+            shifted automatically if a session is missed.
+          </p>
+          ${occupied.length ? `
+            <div style="margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:11px;background:var(--panel-2)">
+              <strong style="font-size:13px">${esc(a?.name || 'This athlete')} already has a programme</strong>
+              <div class="muted" style="font-size:12.5px;margin-top:4px">
+                ${esc(occupied[0].programmeTitle || 'Current programme')} · ${esc(occupied[0].status)}
+              </div>
+              <p class="muted" style="font-size:12.5px;margin:8px 0 0">
+                Nothing is overwritten silently. Choose what should happen to it:
+              </p>
+              <div class="wk-ex-actions" style="margin-top:10px">
+                <button class="btn ${_perfAuthor.intent === 'replace' ? 'primary' : 'ghost'}" type="button"
+                  onclick="_perfAuthor.intent='replace';renderPerformance()">Replace it</button>
+                <button class="btn ghost" type="button" onclick="perfResetAuthoring()">Keep current — cancel</button>
+              </div>
+            </div>` : ''}
+          <div class="wk-start-row">
+            <button class="btn primary wk-big" type="button"
+              ${_perfAuthor.busy || (occupied.length && _perfAuthor.intent !== 'replace') ? 'disabled' : ''}
+              onclick="perfConfirmAssign()">${_perfAuthor.busy ? 'Assigning…' : 'Assign programme'}</button>
+          </div>
+        </div>`;
+    }
+
+    /**
+     * SC8 — the ATHLETE's own programme. Their assignment and nothing else:
+     * the server sends a player only their own record, and this renders it.
+     * No other athlete, no coach notes, no health data.
+     */
+    function perfProgrammeViewHtml() {
+      if (!_perfWkMod) return perfAssignLoadingHtml('My Programme');
+      if (!_perfAssign.loaded) { perfLoadAssignments(); return perfAssignLoadingHtml('My Programme'); }
+      if (_perfAssign.error === 'not_entitled') return perfAssignErrorHtml('My Programme');
+      const today = perfToday();
+      const current = perfCurrentAssignment();
+      if (!current) {
+        return `
+          <div class="perf-page-head"><div><h2>My Programme</h2><p class="muted">Strength &amp; conditioning</p></div></div>
+          <div class="card perf-card">
+            <strong class="perf-card-title">No programme assigned</strong>
+            <p class="muted" style="font-size:13px;margin:8px 0 0">
+              When your coach assigns you a strength &amp; conditioning programme it appears here, with every
+              session laid out week by week.</p>
+            <p class="muted" style="font-size:12.5px;margin:10px 0 0">
+              In the meantime you can complete your athlete profile and browse the exercise library.</p>
+          </div>`;
+      }
+      const status = _perfWkMod.effectiveStatus(current, today);
+      const pos = _perfWkMod.programmePosition(current, today);
+      const totalWeeks = _perfWkMod.programmeWeekCount(current);
+      const plan = status === 'active' ? _perfWkMod.weekPlan(current, today) : [];
+      const pct = pos && totalWeeks ? Math.min(100, Math.round(((pos.week - 1) / totalWeeks) * 100)) : 0;
+      const notes = {
+        scheduled: `This programme starts on ${esc(current.startDate)}. Nothing to do until then.`,
+        paused: 'Your coach has paused this programme, so there are no sessions right now. Your completed workouts are all still saved.',
+        completed: 'This programme has finished. Your workout history is kept in full.',
+        replaced: 'Your coach has replaced this programme with a newer one.',
+        cancelled: 'This assignment was cancelled.',
+      }[status];
       return `
         <div class="perf-page-head">
-          <div>
-            <h2>Programmes</h2>
-            <p class="muted">Structured training blocks across the season.</p>
-          </div>
-          <button class="btn primary" type="button" onclick="perfComingSoon('The programme builder')">New programme</button>
+          <div><h2>My Programme</h2><p class="muted">${esc(current.programmeTitle || 'Programme')}</p></div>
+          ${perfAssignStatusPill(current)}
         </div>
-        <div class="grid perf-grid-3">
-          ${PERF_SAMPLE_PROGRAMMES.map(p => `
-            <div class="card perf-card perf-programme-card">
-              <div class="perf-card-head">
-                <small>${esc(p.focus)}</small>
-                ${statusPill(p.status)}
+        <div class="card perf-card">
+          <div class="perf-card-head">
+            <small>${esc(current.groupName || '')}${current.developmentContextSnapshot?.context ? ` · ${esc(perfContextLabel(current.developmentContextSnapshot.context))}` : ''}</small>
+            <span class="pill">v${current.versionNumber ?? 1}</span>
+          </div>
+          <strong class="perf-card-title">${esc(current.programmeTitle || 'Programme')}</strong>
+          ${status === 'active' && pos ? `
+            <div style="margin-top:10px">
+              <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700">
+                <span>Week ${pos.week} of ${totalWeeks}</span><span class="muted">${pct}%</span>
               </div>
-              <strong class="perf-card-title">${esc(p.name)}</strong>
-              <p class="muted" style="font-size:12px;margin:4px 0 12px">${p.athleteCount} athletes · ${p.sessionsPerWeek}×/week · ${p.weeks} weeks</p>
-              ${p.status === 'active' ? `
-                <small class="muted" style="display:block;margin-bottom:6px">Week ${p.currentWeek} of ${p.weeks}</small>
-                ${perfMeter(((p.currentWeek - 1) / p.weeks) * 100)}`
-              : p.status === 'draft' ? '<small class="muted">Not started — awaiting first assignment</small>'
-              : `<small class="muted">Finished — full block completed</small>${perfMeter(100)}`}
-            </div>`).join('')}
-        </div>`;
+              ${perfMeter(pct)}
+            </div>` : ''}
+          <small class="muted" style="display:block;margin-top:8px">
+            Started ${esc(current.startDate)}${current.endDate ? ` · ends ${esc(current.endDate)}` : ''}
+          </small>
+          ${notes ? `<p class="muted" style="font-size:12.5px;margin:10px 0 0">${notes}</p>` : ''}
+        </div>
+        ${plan.length ? `
+          <div class="perf-group-title">This week</div>
+          <div class="card perf-card">
+            ${plan.map(s2 => `
+              <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)">
+                <div style="min-width:0">
+                  <strong style="font-size:13.5px">${esc(s2.title)}</strong>
+                  ${s2.isToday ? '<span class="status available" style="margin-left:7px">Today</span>' : ''}
+                  <div class="muted" style="font-size:12px;margin-top:2px">
+                    ${esc(s2.day)}${s2.estimatedMinutes ? ` · ${s2.estimatedMinutes} min` : ''}${s2.rugbyRelation && s2.rugbyRelation !== 'none' ? ` · ${esc(String(s2.rugbyRelation).replace(/_/g, ' '))}` : ''}
+                  </div>
+                </div>
+                ${s2.isToday ? `<button class="btn primary" type="button" onclick="setPerfTab('workouts')">Open</button>` : ''}
+              </div>`).join('')}
+          </div>` : ''}`;
+    }
+
+    function perfProgrammesHtml() {
+      if (!_perfWkMod) return perfAssignLoadingHtml('Programmes');
+      if (_perfAuthor.step) return perfAuthoringHtml();
+      if (!_perfAssign.loaded) { perfLoadAssignments(); return perfAssignLoadingHtml('Programmes'); }
+      if (_perfAssign.error) return perfAssignErrorHtml('Programmes');
+      const list = [..._perfAssign.programmes].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+      const pill = p => ({ draft: '<span class="status no-reply">Draft</span>',
+                           published: '<span class="status available">Published</span>',
+                           archived: '<span class="pill">Archived</span>' }[p.status] || '');
+      return `
+        <div class="perf-page-head">
+          <div><h2>Programmes</h2><p class="muted">Structured S&amp;C programmes you have authored for athletes in your scope.</p></div>
+          <button class="btn primary" type="button" onclick="perfStartAuthoring()">New programme</button>
+        </div>
+        ${list.length ? `<div class="grid perf-grid-3">${list.map(p => `
+          <div class="card perf-card">
+            <div class="perf-card-head"><small>${esc(p.athleteName || 'Template')}</small>${pill(p)}</div>
+            <strong class="perf-card-title">${esc(p.title)}</strong>
+            <small class="muted" style="display:block;margin-top:4px">
+              ${esc(perfLabelGoal(p.goal))}${p.phase ? ` · ${esc(perfLabelPhase(p.phase))}` : ''}
+              ${p.publishedVersion ? ` · v${p.publishedVersion}` : ''}
+            </small>
+            <div class="perf-ex-chips" style="margin-top:8px">
+              <span class="pill">${p.assignmentCount} assignment${p.assignmentCount === 1 ? '' : 's'}</span>
+              ${p.requiresReview ? '<span class="status maybe">Coach review required</span>' : ''}
+            </div>
+            ${p.status === 'published' && p.athleteUserId ? `
+              <div class="wk-ex-actions" style="margin-top:12px">
+                <button class="btn ghost" type="button" onclick="perfOpenAssign('${esc(p.programmeId)}')">Assign</button>
+              </div>` : ''}
+          </div>`).join('')}</div>`
+        : `<div class="card perf-card">
+             <strong class="perf-card-title">No programmes yet</strong>
+             <p class="muted" style="font-size:13px;margin:8px 0 0">
+               Create a programme for an athlete: CoachEasier builds a structured draft from their profile
+               using the deterministic coaching rules, and you review and edit it before anything is published.</p>
+             <div class="wk-start-row"><button class="btn primary wk-big" type="button" onclick="perfStartAuthoring()">New programme</button></div>
+           </div>`}`;
+    }
+
+    function perfLabelGoal(g) {
+      return String(g || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'General';
+    }
+    function perfLabelPhase(p) {
+      return String(p || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     }
 
     // ═══ SC7 — WORKOUT EXECUTION (UI layer) ══════════════════════════════════
@@ -31659,10 +32253,16 @@
       // control — this is: a directly invoked perfWkStart() must not fabricate
       // a session in production.
       if (!demo) { _wkView = null; renderPerformance(); return; }
+      // A real workout is built from the PINNED snapshot: its exercise
+      // definitions come from the assignment, so a later catalogue edit can
+      // never change what the athlete was actually asked to do.
+      const catalogue = demo.assignment?.snapshot
+        ? _perfWkMod.catalogueFromSnapshot(demo.assignment.snapshot)
+        : _perfWkMod.getCatalogue();
       let session = _perfWkMod.createWorkoutSession({
         athleteId: state.currentUserId || 'local-athlete',
         programme: demo.programme, sessionNode: demo.sessionNode,
-        catalogue: _perfWkMod.getCatalogue(), meta: demo.meta, now: perfWkNow(),
+        catalogue, meta: demo.meta, now: perfWkNow(),
       });
       session = _perfWkMod.startWorkout(session, perfWkNow());
       if (withReadiness && Object.keys(_wkReadiness).length) {
@@ -31975,27 +32575,158 @@
      * one either. Real assignment tooling is a later milestone; until it
      * exists, production honestly reports no programme.
      */
+    /**
+     * SC8 — the athlete's REAL assignment data, server-owned.
+     *
+     * `_perfAssign` mirrors what /api/publish?resource=performance returned for
+     * THIS identity: a player receives only their own assignments, a coach
+     * receives only their scoped athletes'. The browser never decides who may
+     * see what — it renders what the server was willing to send.
+     */
+    let _perfAssign = { loaded: false, loading: false, error: null, capacity: null,
+                        athletes: [], programmes: [], assignments: [], entitlement: null };
+
+    async function perfLoadAssignments(force = false) {
+      if (_perfAssign.loading) return _perfAssign;
+      if (_perfAssign.loaded && !force) return _perfAssign;
+      _perfAssign.loading = true;
+      try {
+        const res = await fetch('/api/publish?resource=performance');
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 402) {
+          // Not entitled is a DIFFERENT answer from "no programmes", and is
+          // reported as itself rather than as an empty list.
+          _perfAssign = { loaded: true, loading: false, error: 'not_entitled', capacity: null,
+                          athletes: [], programmes: [], assignments: [], entitlement: null };
+        } else if (!res.ok || data.ok === false) {
+          _perfAssign = { ..._perfAssign, loaded: true, loading: false, error: data.error || 'load_failed' };
+        } else {
+          _perfAssign = {
+            loaded: true, loading: false, error: null, capacity: data.capacity || null,
+            athletes: data.athletes || [], programmes: data.programmes || [],
+            assignments: data.assignments || [], entitlement: data.entitlement || null,
+          };
+          // Cross-device: an athlete signing in on a new phone gets their own
+          // profile back. A device that already holds one keeps its copy and
+          // re-publishes, so a newer local edit is never overwritten by an
+          // older server read.
+          if (data.capacity === 'player') perfAdoptServerProfile(data.profile);
+        }
+      } catch (e) {
+        _perfAssign = { ..._perfAssign, loaded: true, loading: false, error: 'offline' };
+      }
+      renderPerformance();
+      return _perfAssign;
+    }
+
+    /** Today's date as the assignment calendar understands it. */
+    function perfToday() { return new Date().toISOString().slice(0, 10); }
+
+    /**
+     * The athlete's LIVE assignment today, or null. Server data only — a
+     * paused, ended, cancelled or not-yet-started assignment is not live, and
+     * the module (not this file) decides which is which.
+     */
+    function perfLiveAssignment() {
+      if (!_perfWkMod) return null;
+      const today = perfToday();
+      return (_perfAssign.assignments || [])
+        .filter(a => a && a.snapshot && _perfWkMod.isLiveToday(a, today))
+        .sort((a, b) => String(b.startDate).localeCompare(String(a.startDate)))[0] || null;
+    }
+
+    /** The athlete's current assignment whatever its state — for honest status. */
+    function perfCurrentAssignment() {
+      if (!_perfWkMod) return null;
+      const rank = { active: 0, scheduled: 1, paused: 2, completed: 3, replaced: 4, cancelled: 5, draft: 6 };
+      return (_perfAssign.assignments || [])
+        .filter(a => a && a.snapshot)
+        .sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9)
+          || String(b.startDate).localeCompare(String(a.startDate)))[0] || null;
+    }
+
+    /**
+     * THE assignment gate (SC8 rewrite of the SC7 seam).
+     *
+     * A REAL assignment always wins. The demo fixture survives only as a
+     * development convenience on a local demo host, and only when the athlete
+     * has no real programme — so a production athlete can never be shown a
+     * fabricated session, and a developer with a real assignment sees the real
+     * one rather than the demo.
+     */
     function perfWkAssignment() {
+      const live = perfLiveAssignment();
+      if (live) {
+        const today = _perfWkMod.sessionForDate(live, perfToday());
+        if (!today) return null;                     // rest day — honestly empty
+        return {
+          isDemo: false,
+          assignmentId: live.assignmentId,
+          programme: null,                            // pinned snapshot, not a live programme
+          programmeVersionId: live.programmeVersionId,
+          sessionNode: today.session,
+          assignment: live,
+          weekNumber: today.weekNumber,
+          meta: {
+            programmeVersionId: live.programmeVersionId,
+            assignmentId: live.assignmentId,
+            programmeTitle: live.programmeTitle || '',
+            phase: today.phase?.phaseType || null,
+            week: today.weekNumber,
+            matchContext: { md: today.dayNode?.rugbyRelation || 'none', matchDay: null },
+            // Carried onto the workout so SC6 exposures record the context the
+            // athlete actually trained under, not today's lookup.
+            developmentContext: live.developmentContextSnapshot?.context || 'unknown',
+          },
+        };
+      }
+      // An athlete who has ANY real assignment record never sees the fixture,
+      // even on a demo host: a paused, scheduled or finished real programme is
+      // still their programme, and a demo workout would misrepresent it.
+      if (perfCurrentAssignment()) return null;
       if (!_isLocalDemoHost()) return null;
+      // Demo is dev-only AND second in line.
       return _perfWkMod.getDemoAssignment();
     }
 
     function perfWkNoAssignmentHtml(wstate) {
       const historyCount = wstate.history.length;
+      // An athlete WITH a programme is never told they have none. Rest days,
+      // paused programmes and not-yet-started ones each say what is actually
+      // true, so "no session today" is never mistaken for "no coach".
+      const current = perfCurrentAssignment();
+      const status = current && _perfWkMod ? _perfWkMod.effectiveStatus(current, perfToday()) : null;
+      const title = !current ? 'No programme assigned'
+        : status === 'active' ? 'Rest day'
+        : status === 'paused' ? 'Programme paused'
+        : status === 'scheduled' ? 'Programme starts soon'
+        : 'Programme finished';
+      const detail = !current
+        ? `When your coach assigns a strength &amp; conditioning programme, today's session will appear here
+           with every set, load and rest period ready to log.`
+        : status === 'active'
+          ? `No session is scheduled for today on <strong>${esc(current.programmeTitle || 'your programme')}</strong>.
+             Rest is part of the plan — your next session is on its own day.`
+        : status === 'paused'
+          ? `Your coach has paused <strong>${esc(current.programmeTitle || 'your programme')}</strong>, so there are no
+             sessions right now. Everything you have already logged is saved.`
+        : status === 'scheduled'
+          ? `<strong>${esc(current.programmeTitle || 'Your programme')}</strong> starts on
+             <strong>${esc(current.startDate)}</strong>. Nothing to do until then.`
+          : `<strong>${esc(current.programmeTitle || 'Your programme')}</strong> has finished. Your workout history is kept in full.`;
       return `
         <div class="perf-page-head">
-          <div><h2>Today's Workout</h2><p class="muted">Strength &amp; conditioning</p></div>
+          <div><h2>Today's Workout</h2><p class="muted">${current ? esc(current.programmeTitle || 'Your programme') : 'Strength &amp; conditioning'}</p></div>
           ${perfWkSyncPill(wstate)}
         </div>
         <div class="card perf-card wk-today-card">
-          <strong class="perf-card-title">No programme assigned</strong>
-          <p class="muted" style="font-size:13px;margin:8px 0 0">
-            When your coach assigns a strength &amp; conditioning programme, today's
-            session will appear here with every set, load and rest period ready to log.
-          </p>
+          <strong class="perf-card-title">${esc(title)}</strong>
+          <p class="muted" style="font-size:13px;margin:8px 0 0">${detail}</p>
+          ${current ? `<div class="wk-ex-actions" style="margin-top:12px">
+            <button class="btn ghost" type="button" onclick="setPerfTab('programme')">See my programme</button></div>` : `
           <p class="muted" style="font-size:12.5px;margin:10px 0 0">
             In the meantime you can browse the exercise library and complete your athlete profile.
-          </p>
+          </p>`}
         </div>
         ${historyCount ? `
           <div class="perf-page-head" style="margin-top:20px"><div><h2 style="font-size:17px">History</h2></div>
@@ -32007,20 +32738,24 @@
       const demo = perfWkAssignment();
       if (!demo) return perfWkNoAssignmentHtml(wstate);
       const sess = demo.sessionNode;
+      const real = !demo.isDemo;
       const exCount = sess.blocks.reduce((n, b) => n + b.prescriptions.length, 0);
       const historyCount = wstate.history.length;
       return `
         <div class="perf-page-head">
-          <div><h2>Today's Workout</h2><p class="muted">${esc(demo.programme.title)} · Pre-season · Week ${demo.meta.week}</p></div>
+          <div><h2>Today's Workout</h2><p class="muted">${esc(real ? (demo.assignment.programmeTitle || 'Your programme') : demo.programme.title)}${demo.meta.week ? ` · Week ${demo.meta.week}` : ''}</p></div>
           ${perfWkSyncPill(wstate)}
         </div>
         <div class="card perf-card wk-today-card">
-          <div class="perf-card-head"><small>${esc(sess.purpose)} session</small><span class="pill">${demo.meta.matchContext.md} · match ${esc(demo.meta.matchContext.matchDay)}</span></div>
+          <div class="perf-card-head"><small>${esc(sess.purpose)} session</small>${real
+            ? (demo.meta.matchContext.md && demo.meta.matchContext.md !== 'none'
+                ? `<span class="pill">${esc(String(demo.meta.matchContext.md).replace(/_/g, ' '))}</span>` : '')
+            : `<span class="pill">${demo.meta.matchContext.md} · match ${esc(demo.meta.matchContext.matchDay)}</span>`}</div>
           <strong class="perf-card-title">${esc(sess.title)}</strong>
           <div class="perf-ex-chips" style="margin-top:8px">
             <span class="pill">~${sess.estimatedMinutes} min</span>
             <span class="pill">${exCount} exercises</span>
-            <span class="pill">Demo assignment</span>
+            ${real ? '' : '<span class="pill">Demo assignment</span>'}
           </div>
           <p class="muted" style="font-size:12.5px;margin:10px 0 0">${esc(sess.objective)}</p>
           <div class="wk-start-row">

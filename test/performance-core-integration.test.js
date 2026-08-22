@@ -104,10 +104,20 @@ test('4. club/team switch clears workout context but keeps the athlete\'s own pr
 
 // ── 2. Demo assignment containment ───────────────────────────────────────────
 
-function assignmentScope(hostname) {
+function assignmentScope(hostname, { live = null } = {}) {
+  // SC8: the gate resolves a REAL assignment first and only then considers the
+  // demo fixture, so the harness must supply both seams.
   const body = `"use strict";
     const location = { hostname: ${JSON.stringify(hostname)} };
-    const _perfWkMod = { getDemoAssignment: () => ({ isDemo: true, programme: { title: 'Pre-Season Strength (Demo)' } }) };
+    const perfToday = () => '2026-08-24';
+    const perfLiveAssignment = () => (${JSON.stringify(live)});
+    // SC8: any real assignment record suppresses the demo, not only a live one.
+    const perfCurrentAssignment = () => (${JSON.stringify(live)});
+    const _perfWkMod = {
+      getDemoAssignment: () => ({ isDemo: true, programme: { title: 'Pre-Season Strength (Demo)' } }),
+      sessionForDate: () => ({ session: { kind: 'session', title: 'Real session' }, weekNumber: 1,
+        phase: { phaseType: 'pre_season' }, dayNode: { rugbyRelation: 'none' } }),
+    };
     ${extractFn(html, '_isLocalDemoHost')}
     ${extractFn(html, 'perfWkAssignment')}
     return perfWkAssignment();`;
@@ -119,6 +129,15 @@ test('5. demo assignment exists ONLY on a local demo host', () => {
   assert.ok(assignmentScope('127.0.0.1'));
   assert.equal(assignmentScope('coacheasier.com'), null, 'production must never see a fabricated assignment');
   assert.equal(assignmentScope('app.vercel.app'), null);
+});
+
+test('5b. SC8 — a REAL assignment outranks the demo, even on a demo host', () => {
+  const live = { assignmentId: 'a-real', programmeVersionId: 'pg@v1', programmeTitle: 'Real Programme', snapshot: {} };
+  const onDemoHost = assignmentScope('localhost', { live });
+  assert.equal(onDemoHost.isDemo, false, 'the athlete gets their real programme, not the fixture');
+  assert.equal(onDemoHost.assignmentId, 'a-real');
+  const inProd = assignmentScope('coacheasier.com', { live });
+  assert.equal(inProd.isDemo, false, 'and production serves the real assignment');
 });
 
 test('6. production Today view is an honest empty state, not a fake coach assignment', () => {
@@ -226,7 +245,10 @@ test('15. the player route is gated by the same list setSection() enforces', () 
 
 test('16. an athlete sees only athlete surfaces — never roster, programming or coach tools', () => {
   const allowed = new Function('return ' + constLiteral('PERF_PLAYER_TAB_IDS'))();
-  assert.deepEqual(allowed, ['profile', 'workouts', 'library', 'settings']);
+  // SC8 adds 'programme' — the athlete's OWN assigned programme. It is not the
+  // coach 'programmes' library: perfProgrammeViewHtml renders one assignment,
+  // the athlete's, and cannot enumerate athletes (see test 16b).
+  assert.deepEqual(allowed, ['programme', 'profile', 'workouts', 'library', 'settings']);
   for (const forbidden of ['athletes', 'programmes', 'analytics', 'tools', 'dashboard']) {
     assert.ok(!allowed.includes(forbidden), forbidden + ' is a coach/club surface');
   }
@@ -237,7 +259,15 @@ test('17. a stored coach tab cannot open a coach surface inside the player shell
   assert.match(render, /const tabs = asPlayer \? PERF_TABS\.filter\(t => PERF_PLAYER_TAB_IDS\.includes\(t\.id\)\) : PERF_TABS;/);
   assert.match(render, /tabs\.some\(t => t\.id === state\.activePerformanceTab\)/,
     'the active tab is validated against the ALLOWED set, then falls back');
-  assert.match(render, /\(asPlayer \? 'workouts' : 'dashboard'\)/);
+  assert.match(render, /\(asPlayer \? 'programme' : 'dashboard'\)/);
+});
+
+test('17b. the athlete programme page renders ONE assignment, never a roster', () => {
+  const view = extractFn(html, 'perfProgrammeViewHtml');
+  assert.match(view, /perfCurrentAssignment\(\)/, 'it renders the athlete\'s own current assignment');
+  assert.ok(!/_perfAssign\.athletes/.test(view), 'an athlete surface may never enumerate athletes');
+  assert.ok(!/perfStartAuthoring|create_assignment|publish_programme/.test(view),
+    'an athlete cannot author, publish or assign');
 });
 
 test('18. Performance renders into the player shell for athletes (Medical\'s dual-host pattern)', () => {

@@ -92,17 +92,26 @@ test('3. development category is per group — one club can hold both at once', 
 test('4. NO Performance surface reads the club-wide roster', () => {
   const names = [...html.matchAll(/\n    (?:async )?function (perf[A-Za-z0-9_]*|renderPerformance)\(/g)].map(m => m[1]);
   assert.ok(names.length > 100, 'sanity: found the Performance surface (' + names.length + ' functions)');
-  const source = names.map(extractFn).join('\n');
+  // Comments may NAME the banned reads (they document why we avoid them);
+  // executable code may not. Strip line comments before checking.
+  const source = names.map(extractFn).join('\n')
+    .split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
   for (const banned of ['state.players', 'canonicalVisiblePlayers', '_adminData.members', 'state.medicalRecords']) {
     assert.equal(source.split(banned).length - 1, 0,
       `Performance must not read ${banned} — club-wide data would cross group boundaries`);
   }
 });
 
-test('5. the Athletes screen is isolated sample data, not production roster', () => {
+test('5. the Athletes screen reads SERVER-SCOPED athletes, never the club roster', () => {
+  // SC8 wires this screen to real data — but only through the server, which
+  // filters by the caller's own operational scope. The old sample fixture is
+  // gone; what replaced it is stricter, not looser.
   const athletes = extractFn('perfAthletesHtml');
-  assert.match(athletes, /PERF_SAMPLE_ATHLETES/, 'coach roster access stays disabled rather than wired unsafely');
-  assert.ok(!/state\.players/.test(athletes));
+  assert.match(athletes, /_perfAssign\.athletes/, 'athletes come from the scoped server payload');
+  assert.ok(!/PERF_SAMPLE_ATHLETES/.test(athletes), 'sample data no longer backs the real view');
+  const code = athletes.split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
+  assert.ok(!/state\.players/.test(code), 'the club-wide roster is never read');
+  assert.ok(!/canonicalVisiblePlayers/.test(code));
 });
 
 test('6. when a roster IS wired later, Core\'s scoped accessor is the only safe source', () => {

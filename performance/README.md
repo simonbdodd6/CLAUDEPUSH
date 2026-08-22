@@ -113,3 +113,41 @@ performance/
    belongs in `index.html` (UI) or `api/` (server), not here.
 3. **Club branding wins.** Performance uses the standard CoachEasier tokens;
    never hard-code club colours.
+
+## SC8 — Coach assignment & player delivery
+
+The milestone that made the engine a product: a coach authors a programme for a
+real athlete, publishes it, and assigns it; the athlete opens Performance and
+trains it. The demo fixture is no longer the production source of Today.
+
+| Layer | Module | Owns |
+|---|---|---|
+| Types | `types/assignment.js` | Statuses, lifecycle vocabulary, schema version |
+| Domain | `domain/authoring-profile.js` | The athlete projection a coach may read (programming inputs only) |
+| Domain | `domain/programme-assignment.js` | Lifecycle, calendar resolution, conflicts, validation, SC6 review seam, snapshot rehydration |
+| Domain | `domain/blueprint-to-programme.js` | SC5 blueprint → SC4 draft version (decides nothing) |
+| Server | `api/_performanceStore.js` | `performance:<clubId>` — programmes + assignments, allow-listed, audited |
+| Server | `api/publish.js` → `performanceHandler` | Entitlement, scope, player self-access, ops |
+| Client | `index.html` (`perf*` authoring + `perfWkAssignment`) | Rendering, and only rendering |
+
+Contracts worth not breaking:
+
+1. **Assignments are server-owned.** localStorage holds the in-flight workout and
+   history, never an assignment.
+2. **Assignments pin an immutable snapshot.** Workouts are built from it, so a
+   later programme or exercise edit cannot rewrite what an athlete did.
+3. **Context is captured at assignment time.** A later group change never
+   rewrites history.
+4. **Nothing auto-publishes, auto-assigns or auto-progresses.** Every step is a
+   coach decision; SC6 suggestions stay `pending`.
+5. **No AI, and no invented loads.** Prescriptions are sets/reps/effort until SC6
+   earns a real load from real evidence.
+6. **Scope is enforced on the server.** A coach cannot enumerate, assign to, or
+   act on an athlete outside their operational scope.
+7. **Authoring uses the ATHLETE's server profile, never the coach's device.**
+   Only a minimised projection travels — wellness, pain detail and health data
+   are never uploaded, so a programming tool cannot hold them.
+
+See `docs/athlete-profile-sync.md`, `docs/programme-assignment.md`, `docs/programme-authoring.md`,
+`docs/assignment-permissions.md`, `docs/player-programme-delivery.md` and
+`docs/progression-approval.md`.

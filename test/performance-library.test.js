@@ -185,8 +185,9 @@ test('13. premium entitlement gate unchanged', () => {
   assert.match(fn, /renderUpgradePrompt\('performance'\)/);
 });
 
-test('14. SC1/SC2 tab contract unchanged by SC3', () => {
+test('14. SC1/SC2 tab contract still holds (SC3 unchanged; SC8 added one athlete screen)', () => {
   const m = html.match(/const PERF_TABS = \[([\s\S]*?)\];/);
   const ids = [...m[1].matchAll(/id: "([a-z]+)"/g)].map(x => x[1]);
-  assert.deepEqual(ids, ['dashboard', 'profile', 'athletes', 'programmes', 'workouts', 'library', 'analytics', 'tools', 'settings']);
+  assert.deepEqual(ids, ['dashboard', 'programme', 'profile', 'athletes', 'programmes', 'workouts', 'library', 'analytics', 'tools', 'settings']);
+  assert.ok(ids.includes('library'), 'the exercise library screen is untouched by SC8');
 });

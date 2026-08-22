@@ -32,6 +32,13 @@ import { effectiveAccessScope, resolveEligibility, resolvePlayerGroup,
 import {
   loadMedicalRecord, activeCases, upsertCase, resolveCase, projectPlayer,
 } from './_medicalStore.js';
+import {
+  loadPerformanceRecord, programmeById, assignmentById, assignmentsForAthlete,
+  occupyingAssignments, saveProgrammeDraft, publishProgramme, createAssignmentRecord,
+  updateAssignmentStatus, reviewProgression, projectAssignmentForPlayer,
+  projectAssignmentForCoach, saveAuthoringProfile, authoringProfileFor,
+} from './_performanceStore.js';
+import { loadTeams } from './_identityStore.js';
 import { canonicalRole } from './_permissions.js';
 import { load, save } from './_lib.js';
 import { auditLog, requestIp } from './_security.js';
@@ -1752,6 +1759,264 @@ async function matchdayTeamsHandler(req, res) {
 // ── Club structure sub-resource (RC4.7 Phase C) ───────────────────────────
 // GET  ?resource=structure — hierarchy + member/staff counts (staff only).
 // POST ?resource=structure — administration ops, club-wide admins only.
+// ── PERFORMANCE (SC8) — programmes and athlete assignments ──────────────────
+//
+// AUTHORISATION, in one place:
+//   · A PLAYER reads their OWN assignments and nothing else. The athlete id is
+//     taken from the SESSION, never from the request, so changing an id in a
+//     URL cannot reach another athlete.
+//   · A COACH reads and writes only inside their own operational scope. The
+//     athlete must resolve to a group the caller actually holds — client-side
+//     hiding is presentation, this is the boundary.
+//   · Both require the club to be entitled to Performance. Core clubs get 402
+//     rather than a silent empty list, so the gate is never mistaken for
+//     "no data".
+
+const PERFORMANCE_ENTITLED_PLANS = ['pro', 'enterprise'];
+
+/** The club's Performance entitlement, read from the tenant record. */
+async function performanceEntitlement(clubId) {
+  const teams = await loadTeams();
+  const team = (teams || []).find(t => String(t?.id || '') === String(clubId || '')) || null;
+  const plan = String(team?.plan || 'trial');
+  const planStatus = String(team?.planStatus || 'active');
+  const entitled = PERFORMANCE_ENTITLED_PLANS.includes(plan) && planStatus === 'active';
+  return { plan, planStatus, entitled };
+}
+
+/**
+ * Resolve the athlete a coach names, INSIDE the caller's scope.
+ * Returns the membership plus its group context, or throws 403/404. A coach
+ * scoped to Seniors asking for a U18 athlete gets the same answer as if the
+ * athlete did not exist to them: refused.
+ */
+function resolveScopedAthlete(session, structure, members, athleteUserId) {
+  const id = String(athleteUserId || '');
+  if (!id) { const e = new Error('Athlete required'); e.status = 400; throw e; }
+  const member = members.find(m => String(m.userId || '') === id && m.status === 'active');
+  if (!member) { const e = new Error('Unknown athlete for this club'); e.status = 404; throw e; }
+  const allowed = operationalGroupsFor(session.teamMember, structure, { as: 'staff' });
+  const scope = effectiveAccessScope(session.teamMember);
+  const athleteGroupId = String(member.playerGroupId || '');
+  if (!scope.clubWide) {
+    if (!athleteGroupId || !allowed.some(g => g.id === athleteGroupId)) {
+      const e = new Error('That athlete is outside your coaching scope'); e.status = 403; throw e;
+    }
+  }
+  const group = (structure.groups || []).find(g => g.id === athleteGroupId) || null;
+  return { member, groupId: athleteGroupId, groupName: group?.name || '', group };
+}
+
+/** Athlete ids the caller may see at all — the enumeration boundary. */
+function scopedAthleteIds(session, structure, members) {
+  const scope = effectiveAccessScope(session.teamMember);
+  const active = members.filter(m => m.status === 'active' && canonicalRole(m) === 'player');
+  if (scope.clubWide) return new Set(active.map(m => String(m.userId)));
+  const allowed = new Set(operationalGroupsFor(session.teamMember, structure, { as: 'staff' }).map(g => g.id));
+  return new Set(active.filter(m => allowed.has(String(m.playerGroupId || ''))).map(m => String(m.userId)));
+}
+
+async function performanceHandler(req, res) {
+  let session;
+  try {
+    session = await requireTenantSession(req);
+  } catch (error) { return sendAuthError(res, error); }
+
+  const clubId = session.teamId;
+  const actor = { userId: String(session.user?.id || '') };
+  const capacity = canonicalRole(session.teamMember) === 'player' ? 'player' : 'staff';
+
+  const ent = await performanceEntitlement(clubId);
+  if (!ent.entitled) {
+    return res.status(402).json({ ok: false, error: 'Performance is not enabled for this club', code: 'performance_not_entitled' });
+  }
+
+  const [record, members, structure] = await Promise.all([
+    loadPerformanceRecord(clubId),
+    loadTeamMembers(),
+    loadClubStructure(clubId),
+  ]);
+  const mine = members.filter(m => String(m.teamId) === String(clubId));
+
+  // ── PLAYER ────────────────────────────────────────────────────────────────
+  // Own assignments only, projected. No programme library, no other athlete,
+  // no coach notes about them.
+  if (capacity === 'player') {
+    if (req.method === 'POST') {
+      // The ONLY write a player may make: their own authoring profile. The
+      // athlete id comes from the session, so a forged athleteUserId in the
+      // body cannot overwrite anyone else's record.
+      if (String(req.body?.op || '') !== 'save_athlete_profile') {
+        return res.status(403).json({ ok: false, error: 'Players cannot author or assign programmes' });
+      }
+      try {
+        const saved = await saveAuthoringProfile(clubId, actor.userId, req.body?.profile || {}, actor);
+        await auditLog('performance_profile_saved', {
+          athleteUserId: actor.userId, changedBy: actor.userId, teamId_club: clubId, ip: requestIp(req),
+        });
+        return res.status(200).json({ ok: true, profile: saved.profile });
+      } catch (error) {
+        return res.status(error?.status || 400).json({ ok: false, error: error?.message || 'Could not save profile' });
+      }
+    }
+    if (req.method !== 'GET') {
+      return res.status(403).json({ ok: false, error: 'Players cannot author or assign programmes' });
+    }
+    const own = assignmentsForAthlete(record, actor.userId).map(projectAssignmentForPlayer);
+    // Their own profile, so it follows them to a new device.
+    return res.status(200).json({
+      ok: true, capacity: 'player', assignments: own,
+      profile: authoringProfileFor(record, actor.userId),
+    });
+  }
+
+  // ── COACH / STAFF ─────────────────────────────────────────────────────────
+  if (!can(session, PERM.PUBLISH_TRAINING)) {
+    return res.status(403).json({ ok: false, error: 'Not authorized to author programmes' });
+  }
+
+  if (req.method === 'GET') {
+    const visible = scopedAthleteIds(session, structure, mine);
+
+    // ?athleteProfile=<userId> — the authoring projection for ONE athlete.
+    // Scope is re-checked here, so a direct id in the query is refused exactly
+    // as it would be on a write.
+    const wantProfile = String(req.query?.athleteProfile || '').trim();
+    if (wantProfile) {
+      try {
+        resolveScopedAthlete(session, structure, mine, wantProfile);
+      } catch (error) {
+        return res.status(error.status || 403).json({ ok: false, error: error.message });
+      }
+      return res.status(200).json({ ok: true, athleteUserId: wantProfile,
+        profile: authoringProfileFor(record, wantProfile) });
+    }
+
+    const roster = await readScoped(rosterKey(clubId), 'roster', clubId);
+    const groupName = id => (structure.groups || []).find(g => g.id === id)?.name || '';
+    const athletes = mine
+      .filter(m => m.status === 'active' && canonicalRole(m) === 'player' && visible.has(String(m.userId)))
+      .map(m => {
+        const p = (roster?.players || []).find(x => String(x.userId || '') === String(m.userId)) || null;
+        const gid = String(m.playerGroupId || '');
+        const group = (structure.groups || []).find(g => g.id === gid) || null;
+        return {
+          userId: String(m.userId), memberId: m.id, name: p?.name || 'Player',
+          position: p?.position || '', groupId: gid, groupName: groupName(gid),
+          // Structured squad classification only — never health information.
+          developmentCategory: group?.developmentCategory || 'unknown',
+          // Whether a programme CAN be generated — a status, not the content.
+          profileComplete: authoringProfileFor(record, String(m.userId))?.profileComplete === true,
+        };
+      });
+    // Assignments are filtered by the SAME visibility set, so a scoped coach
+    // cannot read another group's assignment even by listing.
+    const assignments = (record.assignments || [])
+      .filter(a => visible.has(String(a.athleteUserId)))
+      .map(projectAssignmentForCoach);
+    const programmes = (record.programmes || [])
+      .filter(p => !p.athleteUserId || visible.has(String(p.athleteUserId)))
+      .map(p => ({
+        programmeId: p.programmeId, title: p.title, goal: p.goal, phase: p.phase,
+        athleteUserId: p.athleteUserId, athleteName: p.athleteName, status: p.status,
+        source: p.source, publishedVersion: p.publishedVersion, requiresReview: p.requiresReview,
+        updatedAt: p.updatedAt, createdBy: p.createdBy,
+        assignmentCount: (record.assignments || []).filter(a => a.programmeId === p.programmeId).length,
+      }));
+    return res.status(200).json({ ok: true, capacity: 'staff', entitlement: ent, athletes, programmes, assignments });
+  }
+
+  if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });
+
+  const op = String(req.body?.op || '');
+  const b = req.body || {};
+  try {
+    let result;
+    let auditDetail = {};
+
+    if (op === 'save_draft' || op === 'publish_programme' || op === 'create_assignment') {
+      // Every authoring op names an athlete; resolve them in scope FIRST so an
+      // out-of-scope id fails before anything is written.
+      if (b.athleteUserId) resolveScopedAthlete(session, structure, mine, b.athleteUserId);
+    }
+
+    if (op === 'save_athlete_profile') {
+      // An athlete's profile is theirs. A coach may read the projection to
+      // author with it; they may never author the athlete's own data.
+      return res.status(403).json({ ok: false, error: 'Only the athlete can update their Performance profile' });
+    }
+
+    if (op === 'save_draft') {
+      result = await saveProgrammeDraft(clubId, b, actor);
+      auditDetail = { programmeId: result.programme.programmeId };
+      return await finishPerformance(res, req, session, 'performance_draft_saved', auditDetail, { programme: result.programme });
+    }
+
+    if (op === 'publish_programme') {
+      const wrapper = programmeById(record, b.programmeId);
+      if (wrapper?.athleteUserId) resolveScopedAthlete(session, structure, mine, wrapper.athleteUserId);
+      result = await publishProgramme(clubId, b.programmeId, b, actor);
+      return await finishPerformance(res, req, session, 'performance_programme_published',
+        { programmeId: b.programmeId, versionNumber: b.versionNumber }, { programme: result.programme });
+    }
+
+    if (op === 'create_assignment') {
+      const scoped = resolveScopedAthlete(session, structure, mine, b.athleteUserId);
+      const roster = await readScoped(rosterKey(clubId), 'roster', clubId);
+      const player = (roster?.players || []).find(x => String(x.userId || '') === String(b.athleteUserId)) || null;
+      result = await createAssignmentRecord(clubId, {
+        ...b,
+        // Server-owned context: taken from the membership and structure, never
+        // from the request body, and frozen onto the assignment.
+        athleteMemberId: scoped.member.id,
+        athleteName: player?.name || '',
+        groupId: scoped.groupId, groupName: scoped.groupName,
+        developmentContextSnapshot: b.developmentContextSnapshot || {
+          context: scoped.group?.developmentCategory || 'unknown', source: 'group', youthSafeguards: true,
+        },
+        entitlementSnapshot: { plan: ent.plan, planStatus: ent.planStatus },
+      }, actor);
+      return await finishPerformance(res, req, session, 'performance_assignment_created', {
+        assignmentId: result.assignment.assignmentId, athleteUserId: b.athleteUserId,
+        groupId: scoped.groupId, programmeId: b.programmeId, versionNumber: b.versionNumber,
+        replaced: result.replaced,
+      }, { assignment: result.assignment, replaced: result.replaced });
+    }
+
+    if (['pause', 'resume', 'end', 'cancel'].includes(op)) {
+      const target = assignmentById(record, b.assignmentId);
+      if (!target) return res.status(404).json({ ok: false, error: 'Unknown assignment' });
+      resolveScopedAthlete(session, structure, mine, target.athleteUserId);
+      result = await updateAssignmentStatus(clubId, b.assignmentId, op, b, actor);
+      return await finishPerformance(res, req, session, `performance_assignment_${op}`, {
+        assignmentId: b.assignmentId, athleteUserId: target.athleteUserId, groupId: target.groupId,
+      }, { assignment: result.assignment });
+    }
+
+    if (op === 'review_progression') {
+      const target = assignmentById(record, b.assignmentId);
+      if (!target) return res.status(404).json({ ok: false, error: 'Unknown assignment' });
+      resolveScopedAthlete(session, structure, mine, target.athleteUserId);
+      result = await reviewProgression(clubId, b.assignmentId, b, actor);
+      return await finishPerformance(res, req, session, 'performance_progression_reviewed', {
+        assignmentId: b.assignmentId, outcome: b.outcome, athleteUserId: target.athleteUserId,
+      }, { assignment: result.assignment });
+    }
+
+    return res.status(400).json({ ok: false, error: 'Unknown performance operation' });
+  } catch (error) {
+    return res.status(error?.status || 400).json({ ok: false, error: error?.message || 'Performance change failed', code: error?.code });
+  }
+}
+
+/** One audit shape for every Performance mutation. */
+async function finishPerformance(res, req, session, action, detail, payload) {
+  await auditLog(action, {
+    ...detail, changedBy: session.user?.id, teamId_club: session.teamId, ip: requestIp(req),
+  });
+  return res.status(200).json({ ok: true, ...payload });
+}
+
 async function structureHandler(req, res) {
   if (req.method === 'GET') {
     let session;
@@ -1858,6 +2123,7 @@ export default async function handler(req, res) {
   if (String(req.query?.resource || '') === 'matchday-teams') return matchdayTeamsHandler(req, res);
   if (String(req.query?.resource || '') === 'roster') return rosterHandler(req, res);
   if (String(req.query?.resource || '') === 'medical') return medicalHandler(req, res);
+  if (String(req.query?.resource || '') === 'performance') return performanceHandler(req, res);
   if (String(req.query?.resource || '') === 'club')   return clubHandler(req, res);
   if (String(req.query?.resource || '') === 'availability-check') return availabilityCheckHandler(req, res);
   if (String(req.query?.resource || '') === 'appearance-adjustments') return appearanceAdjustmentsHandler(req, res);

@@ -117,12 +117,16 @@ test('11. progression preview is display-only and labelled pending', () => {
   assert.ok(!previews.includes('applyPlanToProgrammeDraft'), 'preview never mutates programmes');
 });
 
-test('12. premium gate still guards the section; tabs unchanged', () => {
+test('12. premium gate still guards the section; the tab registry is explicit', () => {
   const fn = extractFn(html, 'renderPerformance');
   assert.match(fn, /if \(!canUseFeature\('performance'\)\)/);
   const m = html.match(/const PERF_TABS = \[([\s\S]*?)\];/);
   const ids = [...m[1].matchAll(/id: "([a-z]+)"/g)].map(x => x[1]);
-  assert.deepEqual(ids, ['dashboard', 'profile', 'athletes', 'programmes', 'workouts', 'library', 'analytics', 'tools', 'settings']);
+  // SC8 adds 'programme' — the ATHLETE's own assigned programme, distinct from
+  // the coach 'programmes' library. Both are listed here; which of them a given
+  // viewer may reach is decided by PERF_PLAYER_TAB_IDS, not by this registry.
+  assert.deepEqual(ids, ['dashboard', 'programme', 'profile', 'athletes', 'programmes',
+                         'workouts', 'library', 'analytics', 'tools', 'settings']);
 });
 
 test('13. Core screens never touch the workout namespace', () => {

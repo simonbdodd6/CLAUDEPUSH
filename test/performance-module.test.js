@@ -100,11 +100,14 @@ test('8. render() wires renderPerformance through safeRender', () => {
 
 // SC2 adds the "My Profile" tab (athlete profile + onboarding) after
 // Dashboard — the exact-list assertion moves from 8 to 9 tabs.
-test('9. PERF_TABS declares the 9 screens in order (8 SC1 + profile from SC2)', () => {
+test('9. PERF_TABS declares the 10 screens in order (8 SC1 + profile from SC2 + programme from SC8)', () => {
   const m = html.match(/const PERF_TABS = \[([\s\S]*?)\];/);
-  assert.ok(m, 'PERF_TABS found');
+  assert.ok(m, 'PERF_TABS present');
   const ids = [...m[1].matchAll(/id: "([a-z]+)"/g)].map(x => x[1]);
-  assert.deepEqual(ids, ['dashboard', 'profile', 'athletes', 'programmes', 'workouts', 'library', 'analytics', 'tools', 'settings']);
+  // 'programme' (SC8) is the ATHLETE's own assigned programme; 'programmes'
+  // remains the coach library. Which of them a viewer reaches is decided by
+  // PERF_PLAYER_TAB_IDS, not by this registry.
+  assert.deepEqual(ids, ['dashboard', 'programme', 'profile', 'athletes', 'programmes', 'workouts', 'library', 'analytics', 'tools', 'settings']);
 });
 
 test('10. renderPerformance gates on canUseFeature', () => {

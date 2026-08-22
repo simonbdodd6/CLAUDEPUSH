@@ -123,7 +123,10 @@ test('8. the op is club-administration: same gate, same audit, controlled input'
   const publish = await readFile(new URL('../api/publish.js', import.meta.url), 'utf8');
   assert.match(publish, /op === 'set_group_development_category'/);
   assert.match(publish, /setGroupDevelopmentCategory\(session\.teamId, b\.groupId, b\.developmentCategory\)/);
-  const post = publish.slice(publish.indexOf("const op = String(req.body?.op"));
+  // Anchor on the STRUCTURE handler: other resources (SC8 Performance) declare
+  // their own `op` too, so a bare indexOf would land in the wrong handler.
+  const structure = publish.slice(publish.indexOf('async function structureHandler'));
+  const post = structure.slice(structure.indexOf("const op = String(req.body?.op"));
   assert.match(post.slice(0, 2000), /Unknown structure operation/,
     'the op list stays a closed set — anything else is refused');
   assert.match(publish, /requireClubManage\(req, PERM\.MANAGE_TEAMS\)/);
