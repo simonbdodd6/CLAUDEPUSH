@@ -263,6 +263,18 @@ function ctx(operational, activeView = 'coach', members = [], players = []) {
     const CE_INITIAL_GROUP_ID = 'grp_initial';
     let _trainingSchedule = null, _trainingScheduleAttempted = false,
         _trainingPubState = {}, _trainingPubLoadedAt = 0, _publishedStateLoadedAt = 0;
+    // Match Centre detach machinery (fixture/draft identity fix 51b44de7) and
+    // Performance detach machinery (selected-group isolation a1461ba1).
+    // setOperationalGroup() grew these AFTER this harness was written, which is
+    // why every test that called it died on a ReferenceError before asserting.
+    // Inert stubs — this suite exercises the ACCESS-SCOPE boundary only, and
+    // the real setOperationalGroup still runs against them.
+    let _mcSheetFixtureId = '';
+    function matchCentreFixtureId() { return ''; }
+    function mcFlushDraftNow() {}
+    function mcDetachFixture() {}
+    let _perfAssign = { loaded: true, athletes: [] };
+    let _perfAuthor = { step: null };
     ${fn('captureTrainingState')}
     ${fn('stashTrainingState')}
     ${fn('adoptTrainingState')}

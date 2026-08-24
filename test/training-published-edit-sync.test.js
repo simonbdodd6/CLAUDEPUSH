@@ -26,7 +26,11 @@ function extractFn(source, name) {
 // setTimeout is shadowed to run the debounced sync synchronously so the test is
 // deterministic; syncSessionsToServer is spied to count server pushes.
 function buildHarness({ coach = true } = {}) {
-  const names = ['syncPublishedSessionEdit', 'addTimeBlock', 'removeTimeBlock', 'updateTimeBlock', 'autopilotDuplicateSession'];
+  // trainingPlannedStartTime is extracted REAL, not stubbed: addTimeBlock grew a
+  // dependency on it (group-specific opening time, 7247036f) after this harness
+  // was written, and a fake would hide what the product actually does.
+  const names = ['trainingPlannedStartTime', 'syncPublishedSessionEdit', 'addTimeBlock',
+                 'removeTimeBlock', 'updateTimeBlock', 'autopilotDuplicateSession'];
   const fns = names.map(n => extractFn(html, n)).join('\n\n');
   const body = `
     let _publishedEditSyncTimer = null;
@@ -56,6 +60,17 @@ function buildHarness({ coach = true } = {}) {
     function canI() { return ${coach}; }
     const setTimeout = (fn) => { fn(); return 1; };   // run debounced sync synchronously
     const clearTimeout = () => {};
+    // addTimeBlock also queues a focus callback that reaches into the DOM to put
+    // the coach into the block they just added. Shadowing setTimeout above runs
+    // that callback synchronously, so it needs a document — in a browser it runs
+    // 40ms later against a real one. querySelector returns null, so the guarded
+    // focus/autosize is skipped: presentation only, and not what this suite
+    // measures (which is whether an edit reaches the server).
+    const document = { querySelector: () => null };
+    // trainingPlannedStartTime consults the group's own schedule. Null means
+    // "this group's schedule has not loaded", so it returns '' — deterministic,
+    // and the same answer the product gives before a schedule arrives.
+    let _trainingSchedule = null, _trainingScheduleGroupId = '';
     ${fns}
     return { state, spy: _spy, addTimeBlock, removeTimeBlock, updateTimeBlock, autopilotDuplicateSession };
   `;

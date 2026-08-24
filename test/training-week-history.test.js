@@ -72,6 +72,17 @@ function ctx(initial = {}) {
     function notify() {}
     function showToast() {}
     function syncPublishedSessionEdit() {}
+    // addTimeBlock gained two dependencies after this harness was written.
+    //
+    // 1. trainingPlannedStartTime (7247036f) — a new block on an EMPTY session
+    //    opens at the planned group start time instead of a hard-coded 19:45.
+    //    Extracted REAL below, with the schedule this suite already declares,
+    //    so a dated block gets its slot's true opening time (slot_tue1 -> 19:00).
+    // 2. a focus callback that reaches into the DOM to put the coach into the
+    //    block they just added. Presentation only; querySelector returns null so
+    //    the guarded focus is skipped.
+    let _trainingScheduleGroupId = '';
+    const document = { querySelector: () => null };
     ${src.match(/const AVAIL_DAY_INDEX = \{[^}]*\};/)[0]}
     ${fn('availWeekStart')}
     ${fn('availAddDays')}
@@ -79,6 +90,8 @@ function ctx(initial = {}) {
     ${fn('availTrainingEventId')}
     ${fn('availabilityEventsForWeek')}
     ${fn('availDatedWeekLabel')}
+    ${fn('trainingGroupParam')}
+    ${fn('trainingPlannedStartTime')}
     ${fn('trainingViewedWeek')}
     ${fn('trainingIsCurrentWeek')}
     ${fn('trainingShiftWeek')}
