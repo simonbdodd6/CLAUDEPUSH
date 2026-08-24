@@ -87,6 +87,84 @@ export function authoringProfileFrom(profile, { now = new Date(0) } = {}) {
   };
 }
 
+// ── Minors gate on the restriction signals (interim) ────────────────────────
+//
+// Every field in `restrictions` is derived from the athlete's pain or health
+// sections:
+//
+//   trainingRestricted      ← pain.trainingRestricted
+//   hasMovementRestrictions ← health.movementsToAvoid
+//   restrictionsKnown       ← whether pain.present was answered at all
+//
+// An athlete fills those sections in to describe how they feel, not to send
+// their coach a message, and they never consented to a coach seeing any of it.
+// The consent design that would give this a proper basis is blocked on legal
+// review for minors, so until that lands ALL THREE are withheld for U16 and
+// U18 athletes. The line is categorical — "no pain- or health-derived field
+// reaches a coach of a minor" — rather than a per-field judgement about how
+// much each one leaks.
+//
+// This is an INTERIM measure, not the final position. When athlete-initiated
+// sharing exists, this gate is replaced by that consent — not loosened.
+//
+// FAIL CLOSED: the signal travels only when the athlete is POSITIVELY resolved
+// as an adult. An unknown age band, an unresolved membership or a youth squad
+// classification all suppress it. Over-suppression costs a coach one review
+// prompt; under-suppression discloses a minor's pain-derived data.
+
+/** SC2 age bands that mean a minor. */
+export const YOUTH_AGE_BANDS = ['under_16', '16_17'];
+/** SC2 age bands that positively mean an adult. */
+export const ADULT_AGE_BANDS = ['18_20', '21_29', '30_34', '35_plus'];
+/** Structured squad classifications that mean a youth squad. */
+export const YOUTH_DEVELOPMENT_CATEGORIES = ['youth_u16', 'youth_u18'];
+
+/**
+ * May the restriction signal be shown to a coach for this athlete?
+ *
+ * Age band is the athlete's OWN evidence and is the primary source — the same
+ * precedence SC5 already applies, where athlete age outranks squad context.
+ * The squad's structured developmentCategory is a second, independent veto: an
+ * athlete sitting in a youth squad is withheld even if their band says adult,
+ * because for a minors gate the conservative composition is "either says
+ * youth" rather than "the more authoritative one wins".
+ *
+ * Group NAMES are never consulted — only the stored classification.
+ */
+export function restrictionSignalAllowed({ ageBand = null, developmentCategory = null } = {}) {
+  if (YOUTH_DEVELOPMENT_CATEGORIES.includes(developmentCategory)) return false;
+  return ADULT_AGE_BANDS.includes(ageBand);
+}
+
+/**
+ * Fields withheld together. `coachRestrictionCount` is deliberately NOT here:
+ * it counts restrictions the COACH themselves recorded, so it is their own
+ * data coming back to them, not the athlete's disclosure.
+ */
+export const GATED_RESTRICTION_FIELDS = [
+  'trainingRestricted', 'hasMovementRestrictions', 'restrictionsKnown',
+];
+
+/**
+ * Apply the gate to a projection. Every KEY is preserved and forced to false
+ * rather than deleted, so the projection's shape never varies by athlete —
+ * a missing key would itself be a signal.
+ *
+ * `restrictionsKnown: false` is the honest value once the rest is withheld:
+ * from the coach's side no restriction information IS available, and SC5's
+ * `restrictions_unknown` warning ("confirm before loading") is then exactly
+ * the right prompt — ask the athlete rather than read their form.
+ */
+export function gateRestrictionSignal(profile, { developmentCategory = null } = {}) {
+  if (!profile) return profile;
+  if (restrictionSignalAllowed({ ageBand: profile.personal?.ageBand ?? null, developmentCategory })) {
+    return profile;
+  }
+  const restrictions = { ...(profile.restrictions || {}) };
+  for (const field of GATED_RESTRICTION_FIELDS) restrictions[field] = false;
+  return { ...profile, restrictions };
+}
+
 /** Fields a coach's authoring tool may ever see. Anything else is a leak. */
 export const AUTHORING_PROFILE_FIELDS = [
   'kind', 'schemaVersion', 'sport', 'personal', 'rugby', 'training',

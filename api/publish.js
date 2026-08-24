@@ -40,6 +40,7 @@ import {
 } from './_performanceStore.js';
 import { loadTeams } from './_identityStore.js';
 import { canonicalRole } from './_permissions.js';
+import { gateRestrictionSignal } from '../performance/domain/authoring-profile.js';
 import { load, save } from './_lib.js';
 import { auditLog, requestIp } from './_security.js';
 import { findDuplicate } from '../src/fixture-import.js';
@@ -1883,13 +1884,21 @@ async function performanceHandler(req, res) {
     // as it would be on a write.
     const wantProfile = String(req.query?.athleteProfile || '').trim();
     if (wantProfile) {
+      let scopedAthlete;
       try {
-        resolveScopedAthlete(session, structure, mine, wantProfile);
+        scopedAthlete = resolveScopedAthlete(session, structure, mine, wantProfile);
       } catch (error) {
         return res.status(error.status || 403).json({ ok: false, error: error.message });
       }
-      return res.status(200).json({ ok: true, athleteUserId: wantProfile,
-        profile: authoringProfileFor(record, wantProfile) });
+      // MINORS GATE (interim). The restriction signal is pain-derived and the
+      // athlete never consented to a coach seeing it; consent is blocked on
+      // legal review for minors. Withheld here, on the SERVER, from the only
+      // response that carries it — a client cannot restore what was never
+      // sent. The squad classification comes from the structure record
+      // resolved above, never from a group's name.
+      const gated = gateRestrictionSignal(authoringProfileFor(record, wantProfile),
+        { developmentCategory: scopedAthlete.group?.developmentCategory || null });
+      return res.status(200).json({ ok: true, athleteUserId: wantProfile, profile: gated });
     }
 
     const roster = await readScoped(rosterKey(clubId), 'roster', clubId);
