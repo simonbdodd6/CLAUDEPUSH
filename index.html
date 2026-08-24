@@ -19227,7 +19227,10 @@
       trainingSchedulePump();
     }
     function trainingScheduleAdd() {
-      trainingScheduleSave({ action: 'add', slot: { day: 'Wed', startTime: '19:00' } })
+      // A new training night starts with no time: the coach sets it. Sending a
+      // default here would have made the server-side change pointless, because
+      // the invented value arrived as an explicit one.
+      trainingScheduleSave({ action: 'add', slot: { day: 'Wed', startTime: '' } })
         .then(r => { if (r) showToast('Training night added ✓'); });
     }
     function trainingScheduleToggle(slotId, active) {

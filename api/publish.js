@@ -753,7 +753,11 @@ function sanitiseScheduleSlot(raw, index = 0) {
   return {
     id:            s(raw?.id || `slot_${Date.now().toString(36)}_${index}`, 40),
     day:           SCHEDULE_DAYS.has(day) ? day : 'Tue',
-    startTime:     hhmm(raw?.startTime) || '19:00',
+    // No invented time. Training scheduling asks for a day and a start time;
+    // a slot whose start time is missing or malformed is stored empty rather
+    // than defaulted to an evening nobody chose. Every display already filters
+    // empties, so an absent time renders as absent.
+    startTime:     hhmm(raw?.startTime),
     endTime:       hhmm(raw?.endTime),
     venue:         s(raw?.venue, 120),
     arrivalTime:   hhmm(raw?.arrivalTime),

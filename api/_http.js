@@ -15,9 +15,19 @@ export function setCors(res, req) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
+/**
+ * The shared operational secret, read from the Authorization header ONLY.
+ *
+ * This used to fall back to `req.query.secret`. A secret in a URL travels into
+ * server access logs, proxy logs, browser history and Referer headers, and into
+ * whatever third-party scheduler holds the URL. It gates the cron dispatcher and
+ * the production account-recovery actions, so it is worth keeping out of URLs.
+ *
+ * Callers must send `Authorization: Bearer <secret>`.
+ */
 export function readSecret(req) {
   const authorization = String(req.headers?.authorization || '');
-  return authorization.replace(/^Bearer\s+/i, '').trim() || req.query?.secret || '';
+  return authorization.replace(/^Bearer\s+/i, '').trim();
 }
 
 // ── Notification deep-link routing ─────────────────────────────────────────

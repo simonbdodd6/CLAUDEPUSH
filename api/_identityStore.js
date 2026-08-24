@@ -250,8 +250,66 @@ export async function loadTeams() {
   return [DEFAULT_TEAM, ...teams];
 }
 
+/**
+ * Persist the tenant list.
+ *
+ * PRODUCTION GUARD. loadTeams() prepends DEFAULT_TEAM outside a production
+ * runtime as a dev convenience, "in memory only". That is true of the deployed
+ * runtime but NOT of a script run from a laptop: a local load -> mutate -> save
+ * against the production store persisted the placeholder for real, which is how
+ * the phantom `boitsfort-rfc` tenant came to exist. It made an unknown team code
+ * resolve and offered an anonymous join onto a club with no owner.
+ *
+ * So the guard is on the WRITE, where the damage happens, and it keys off the
+ * DATA rather than the caller: if the stored list does not already contain the
+ * placeholder, a save that introduces it is scaffolding leaking toward
+ * production and is refused.
+ *
+ * It THROWS rather than silently dropping the record. A caller that quietly
+ * "succeeded" while writing something different from what it passed is how a
+ * corruption goes unnoticed; a loud failure is recoverable.
+ *
+ * Development is unaffected: there, the placeholder is legitimately present in
+ * what loadTeams() returned, so writing it back is a no-op re-save.
+ */
+/**
+ * The tenant list EXACTLY as stored — never seeded.
+ *
+ * loadTeams() prepends DEFAULT_TEAM outside a production runtime as a read-time
+ * convenience. That is safe to read and unsafe to write back: a caller that
+ * loads, mutates and saves persists the placeholder for real. Every mutating
+ * path therefore reads through here, so the convenience can never be committed.
+ *
+ * THIS is the correct entry point for any load -> mutate -> save, including
+ * one-off scripts. loadTeams() is for reads.
+ */
+export async function loadStoredTeams() {
+  const teams = await kvGet(TEAMS_KEY);
+  return Array.isArray(teams) ? teams : [];
+}
+
 export async function saveTeams(teams) {
-  await kvSet(TEAMS_KEY, Array.isArray(teams) ? teams : []);
+  const next = Array.isArray(teams) ? teams : [];
+  const introducesPlaceholder = next.some(team => team?.id === DEFAULT_TEAM.id);
+  if (introducesPlaceholder) {
+    const stored = Array.isArray(await kvGet(TEAMS_KEY)) ? await kvGet(TEAMS_KEY) : [];
+    const alreadyStored = stored.some(team => team?.id === DEFAULT_TEAM.id);
+    // A store that already holds real tenants but NOT the placeholder is a
+    // production-shaped store, whatever the runtime claims. An EMPTY store is a
+    // fresh dev/test one, where seeding it is the documented behaviour
+    // (createClub persists whatever loadTeams returned) -- so that is allowed.
+    const productionShaped = stored.length > 0 && !alreadyStored;
+    if (productionShaped) {
+      const error = new Error(
+        `Refusing to persist the ${DEFAULT_TEAM.id} development placeholder into a store that already ` +
+        `holds ${stored.length} real tenant(s) and does not contain it. This almost always means a local ` +
+        `script called loadTeams() without a production runtime (set NODE_ENV=production) and is about ` +
+        `to save the injected scaffolding back into production.`);
+      error.code = 'default_team_write_blocked';
+      throw error;
+    }
+  }
+  await kvSet(TEAMS_KEY, next);
 }
 
 // Update only billing-relevant fields on a team record.
@@ -259,7 +317,7 @@ export async function saveTeams(teams) {
 // (id, name, teamCode, createdAt). Used by the Stripe webhook handler.
 export async function updateTeamBilling(teamId, fields = {}) {
   const BILLING_FIELDS = new Set(['plan', 'planStatus', 'trialEndsAt', 'stripeCustomerId', 'stripeSubscriptionId']);
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const team = teams.find(t => t.id === String(teamId || ''));
   if (!team) { const e = new Error('Team not found'); e.status = 404; throw e; }
   Object.keys(fields).filter(k => BILLING_FIELDS.has(k)).forEach(k => { team[k] = fields[k]; });
@@ -1479,6 +1537,8 @@ export async function resolveSession(token = '') {
   // Identity & Permissions: every session carries its computed permission set
   // (single source: _permissions.js) and the user's full membership list so
   // clients can offer team switching without a second fetch.
+  // READ through loadTeams: the session payload needs every team this user can
+  // reach, including the development placeholder in a dev runtime.
   const teams = await loadTeams();
 
   // Resolve plan fields for the session's team; auto-downgrade expired trials.
@@ -1492,7 +1552,15 @@ export async function resolveSession(token = '') {
     if (currentTeam) {
       currentTeam.plan = 'core';
       currentTeam.planStatus = 'active';
-      await saveTeams(teams);
+      // WRITE against the STORED list. Persisting `teams` would commit the
+      // read-time placeholder alongside the downgrade; a team that exists only
+      // as a dev convenience has nothing real to downgrade, so it is skipped.
+      const stored = await loadStoredTeams();
+      const idx = stored.findIndex(t => t.id === session.teamId);
+      if (idx >= 0) {
+        stored[idx] = { ...stored[idx], plan: 'core', planStatus: 'active' };
+        await saveTeams(stored);
+      }
     }
   }
 
@@ -1656,7 +1724,7 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
     }
     record = await kvGet(signupRecordKey(idem));
     if (!record) {
-      const teamsNow = await loadTeams();
+      const teamsNow = await loadStoredTeams();
       let newTeamId = teamSlug(club);
       while (teamsNow.some(t => t.id === newTeamId)) {
         newTeamId = `${teamSlug(club)}-${randomBytes(2).toString('hex')}`;
@@ -1703,7 +1771,7 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
   // creating the user first and then refusing the name would burn the email
   // — the person could never start a fresh signup under a free name.
   {
-    const teamsNow = await loadTeams();
+    const teamsNow = await loadStoredTeams();
     const ours = ids.teamId ? teamsNow.find(t => t.id === ids.teamId) : null;
     if (!ours && clubNameTaken(teamsNow, club, ids.teamId)) throw clubNameTakenError();
   }
@@ -1746,7 +1814,7 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
   }
 
   // ── Ensure TEAM ─────────────────────────────────────────────────────────
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   let team = ids.teamId ? teams.find(t => t.id === ids.teamId) || null : null;
   if (!team) {
     if (clubNameTaken(teams, club, ids.teamId)) throw clubNameTakenError();
@@ -1856,7 +1924,7 @@ export async function provisionClub({ clubName, adminEmail, adminName = '', firs
     const e = new Error('A valid first-administrator email is required'); e.status = 400; throw e;
   }
 
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   // Same ONE duplicate-name policy as createClub — a single definition.
   if (clubNameTaken(teams, club)) throw clubNameTakenError();
   // Stable tenant id from the club name; collision-proofed, never overwrites.

@@ -86,6 +86,7 @@ const {
   createClub,
   createSession,
   loadTeams,
+  loadStoredTeams,
   saveTeams,
   loadTeamMembers,
   saveTeamMembers,
@@ -149,7 +150,7 @@ test('create_checkout: reuses existing stripeCustomerId without creating another
   kv.clear(); stripeCallLog = [];
   const { session, team } = await makeHeadCoachSession('reuse-cus');
   // Pre-set a customer ID.
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.stripeCustomerId = 'cus_existing_abc';
   await saveTeams(teams);
@@ -172,7 +173,7 @@ test('create_checkout: persists new stripeCustomerId to team record after creati
 
   await callIdentity('create_checkout', session.token);
 
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   assert.equal(stored.stripeCustomerId, 'cus_mock123', 'stripeCustomerId should be persisted from Stripe response');
 });
@@ -230,7 +231,7 @@ test('create_checkout: missing STRIPE_PRO_PRICE_ID → 503', async () => {
 test('create_billing_portal: with stripeCustomerId → 200, portalUrl present', async () => {
   kv.clear(); stripeCallLog = [];
   const { session, team } = await makeHeadCoachSession('portal-ok');
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.stripeCustomerId = 'cus_portal_test';
   await saveTeams(teams);
@@ -263,7 +264,7 @@ test('create_billing_portal: no stripeCustomerId → 409 (no billing account)', 
 test('create_checkout: active Pro team → 409, no Stripe call made', async () => {
   kv.clear(); stripeCallLog = [];
   const { session, team } = await makeHeadCoachSession('already-pro');
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.plan = 'pro'; stored.planStatus = 'active';
   stored.stripeCustomerId = 'cus_already'; stored.stripeSubscriptionId = 'sub_already';

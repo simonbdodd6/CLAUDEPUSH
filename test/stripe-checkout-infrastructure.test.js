@@ -44,6 +44,7 @@ const {
   createClub,
   createSession,
   loadTeams,
+  loadStoredTeams,
   saveTeams,
   loadTeamMembers,
   saveTeamMembers,
@@ -187,7 +188,7 @@ test('create_checkout: trial team → 503 when STRIPE_SECRET_KEY not set', async
 test('create_checkout: core team → 503 when STRIPE_SECRET_KEY not set', async () => {
   kv.clear();
   const { session, team } = await makeAdminSession('core');
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.plan = 'core'; stored.planStatus = 'active';
   await saveTeams(teams);
@@ -201,7 +202,7 @@ test('create_checkout: core team → 503 when STRIPE_SECRET_KEY not set', async 
 test('create_checkout: active Pro team → 409 (already subscribed)', async () => {
   kv.clear();
   const { session, team } = await makeAdminSession('pro');
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.plan = 'pro'; stored.planStatus = 'active';
   stored.stripeCustomerId = 'cus_test'; stored.stripeSubscriptionId = 'sub_test';
@@ -217,7 +218,7 @@ test('create_checkout: active Pro team → 409 (already subscribed)', async () =
 test('create_checkout: legacy team without plan fields → 503 (not blocked, Stripe unconfigured)', async () => {
   kv.clear();
   const { session, team } = await makeAdminSession('legacy');
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   delete stored.plan; delete stored.planStatus;
   delete stored.trialEndsAt; delete stored.stripeCustomerId;

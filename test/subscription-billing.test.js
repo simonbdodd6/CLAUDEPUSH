@@ -37,6 +37,7 @@ const {
   createClub,
   resolveSession,
   loadTeams,
+  loadStoredTeams,
   saveTeams,
 } = await import('../api/_identityStore.js');
 
@@ -96,7 +97,7 @@ test('expired trial auto-downgrades to plan: core on session resolve', async () 
   const { session, team } = await createClub(COACH);
 
   // Backdate the trialEndsAt to simulate expiry
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.trialEndsAt = new Date(Date.now() - 1000).toISOString(); // 1 second ago
   await saveTeams(teams);
@@ -112,7 +113,7 @@ test('trial downgrade is written back to Redis (persisted)', async () => {
   kv.clear();
   const { session, team } = await createClub(COACH);
 
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.trialEndsAt = new Date(Date.now() - 1000).toISOString();
   await saveTeams(teams);
@@ -133,7 +134,7 @@ test('pro club with past trialEndsAt is not downgraded', async () => {
   const { session, team } = await createClub(COACH);
 
   // Set to pro with a past trialEndsAt
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.plan = 'pro';
   stored.planStatus = 'active';
@@ -154,7 +155,7 @@ test('legacy team without plan fields defaults to trial in session response', as
   const { session, team } = await createClub(COACH);
 
   // Strip billing fields to simulate a team created before Phase 1
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   delete stored.plan;
   delete stored.planStatus;

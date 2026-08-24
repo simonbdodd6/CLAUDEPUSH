@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { kvConfigured, kvGet, kvLrange } from './_kv.js';
 import { key } from './_keys.js';
-import { requireTenantRole } from './_tenant.js';
+import { requireSession, isPlatformAdmin } from './_identityStore.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -314,8 +314,27 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return json(res, 200, { ok: true });
   if (req.method !== 'GET') return json(res, 405, { ok: false, error: 'Method not allowed' });
 
+  // PLATFORM ADMIN ONLY.
+  //
+  // This endpoint reads GLOBAL, unscoped keys -- identity:users,
+  // identity:team_members, identity:player_profiles, chat:convs and the message
+  // list of every conversation -- plus repository state (branch, recent commits,
+  // open PRs). None of that is one club's data, so "any coach or admin" was the
+  // wrong gate: with a second club on the platform it would have let a coach at
+  // one club enumerate another club's conversations and participants.
+  //
+  // Platform authority is a user-record fact (user.platformRole), never derived
+  // from a club membership -- the same check that gates club provisioning in
+  // identity.js. The endpoint is additionally excluded from deployment by
+  // .vercelignore and returns 404 in production; this is defence in depth, so
+  // that restoring the file cannot restore the exposure with it.
   try {
-    await requireTenantRole(req, ['coach', 'admin']);
+    const sessionContext = await requireSession(req);
+    if (!isPlatformAdmin(sessionContext?.user)) {
+      const error = new Error('Not authorized');
+      error.status = 403;
+      throw error;
+    }
   } catch (error) {
     return authError(res, error);
   }

@@ -67,6 +67,7 @@ const { default: identityHandler } = await import('../api/identity.js');
 const {
   createClub,
   loadTeams,
+  loadStoredTeams,
   saveTeams,
   SESSION_COOKIE,
 } = await import('../api/_identityStore.js');
@@ -112,7 +113,7 @@ async function makeTeamWithSubscription(suffix, { customerId = null, subscriptio
     email: `webhook${suffix}@phase5.test`,
     password: 'WebhookPass1!',
   });
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === created.team.id);
   if (customerId) stored.stripeCustomerId = customerId;
   if (subscriptionId) stored.stripeSubscriptionId = subscriptionId;
@@ -138,7 +139,7 @@ test('checkout.session.completed → sets plan:pro, persists customerId and subs
   assert.equal(res.body.ok, true);
   assert.equal(res.body.received, true);
 
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   assert.equal(stored.plan, 'pro');
   assert.equal(stored.planStatus, 'active');
@@ -178,7 +179,7 @@ test('customer.subscription.updated → updates planStatus by Stripe status', as
     subscriptionId: 'sub_update_test',
   });
   // Ensure team starts as pro/active
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.plan = 'pro'; stored.planStatus = 'active';
   await saveTeams(teams);
@@ -209,7 +210,7 @@ test('customer.subscription.deleted → plan:core, planStatus:canceled, subscrip
     customerId: 'cus_del_test',
     subscriptionId: 'sub_del_test',
   });
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   stored.plan = 'pro'; stored.planStatus = 'active';
   await saveTeams(teams);
@@ -252,7 +253,7 @@ test('checkout.session.completed is idempotent (processing same event twice yiel
   assert.equal(res1.statusCode, 200);
   assert.equal(res2.statusCode, 200);
 
-  const teams = await loadTeams();
+  const teams = await loadStoredTeams();
   const stored = teams.find(t => t.id === team.id);
   assert.equal(stored.plan, 'pro');
   assert.equal(stored.stripeCustomerId, 'cus_idempotent');
@@ -329,7 +330,7 @@ test('stripeStatusToPlanStatus maps all known Stripe statuses', async () => {
 
     await sendWebhook({ id: eventId, type: 'customer.subscription.updated' });
 
-    const teams = await loadTeams();
+    const teams = await loadStoredTeams();
     const stored = teams.find(t => t.id === team.id);
     assert.equal(
       stored.planStatus, expectedPlanStatus,
