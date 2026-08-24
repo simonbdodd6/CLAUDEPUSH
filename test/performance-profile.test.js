@@ -274,6 +274,10 @@ test('17. Core screens never touch the Performance profile namespace', () => {
 
 test('18. Performance entitlement gate unchanged', () => {
   const fn = extractFn(html, 'renderPerformance');
+  // THE GATE is what this test guards, and it is untouched.
   assert.match(fn, /if \(!canUseFeature\('performance'\)\)/);
-  assert.match(fn, /renderUpgradePrompt\('performance'\)/);
+  // What a gated club is TOLD changed when the upgrade CTAs were removed:
+  // an honest unavailable notice instead of an "Upgrade to Pro" prompt.
+  assert.match(fn, /renderUnavailableNotice\('performance'\)/);
+  assert.doesNotMatch(fn, /renderUpgradePrompt|upgradeFromFeature/, 'no upgrade route remains');
 });

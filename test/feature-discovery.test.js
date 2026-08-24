@@ -21,7 +21,7 @@
  * 13.  renderDiscoveryCards returns empty-state message when no features match
  * 14.  renderFeatureDiscovery includes all filter buttons
  * 15.  renderFeatureDiscovery returns empty string for non-coaches
- * 16.  featureCardClick calls settingsUpgradeToPro for locked features with permission
+ * 16.  featureCardClick offers NO upgrade route for a locked feature — it says so plainly
  * 17.  featureCardClick shows admin message for locked features without permission
  * 18.  All discovery functions are present in index.html
  */
@@ -96,11 +96,9 @@ function buildScope({
     'function isCoach() { return ' + String(isCoachVal) + '; }\n' +
     'function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }\n' +
     'function canI(perm) { return (_myPermissions || []).includes(perm); }\n' +
-    'function settingsUpgradeToPro() { if (typeof upgradeLog !== "undefined") upgradeLog.push(true); }\n' +
     'function showToast(msg) { if (typeof toastLog !== "undefined") toastLog.push(msg); }\n' +
     'function setSection(view, sec) { if (typeof navLog !== "undefined") navLog.push({ view, sec }); }\n' +
     'function recordFeatureUsage() {}\n' +
-    'function upgradeFromFeature(id) { if (typeof upgradeLog !== "undefined") upgradeLog.push(true); }\n' +
     extractConst(html, 'PLAN_LEVEL') + '\n' +
     extractFn(html, 'planLevel') + '\n' +
     extractConst(html, 'FEATURE_REGISTRY') + '\n' +
@@ -113,7 +111,7 @@ function buildScope({
     extractFn(html, 'isProTeam') + '\n' +
     extractFn(html, 'isEnterpriseTeam') + '\n' +
     extractFn(html, 'canUseFeature') + '\n' +
-    extractFn(html, 'renderUpgradePrompt') + '\n' +
+    extractFn(html, 'renderUnavailableNotice') + '\n' +
     extractFn(html, 'discoveryFilteredFeatures') + '\n' +
     extractFn(html, 'groupFeaturesByCategory') + '\n' +
     extractFn(html, 'renderFeatureCard') + '\n' +
@@ -312,35 +310,37 @@ test('renderFeatureDiscovery returns empty string for non-coaches', () => {
 
 // ── 16. featureCardClick → upgrade for locked feature with permission ──────────
 
-test('featureCardClick calls settingsUpgradeToPro for locked feature when user has manage_subscriptions', () => {
-  const upgradeLog = [];
-  const toastLog = [];
-  const scope = buildScope({
-    teamPlan: 'core', teamPlanStatus: 'active',
-    permissions: ['manage_subscriptions'],
-    isCoachVal: true,
-    toastLog, upgradeLog,
-  });
-  scope.featureCardClick('ai_intelligence'); // locked on core plan
-  assert.equal(upgradeLog.length, 1, 'Should call settingsUpgradeToPro once');
-  assert.equal(toastLog.length, 0, 'Should not show toast when upgrade flow is triggered');
+// UPDATED when the upgrade CTAs were removed. This used to assert that a
+// locked feature launched settingsUpgradeToPro() -> create_checkout. There is
+// no public Pro tier and no checkout a club can complete, so holding
+// manage_subscriptions no longer buys anything: every coach gets the same
+// honest answer. The gate is unchanged; only the response to it changed.
+test('featureCardClick offers no upgrade route for a locked feature, even with manage_subscriptions', () => {
+  for (const permissions of [['manage_subscriptions'], ['view_squad']]) {
+    const toastLog = [];
+    const scope = buildScope({
+      teamPlan: 'core', teamPlanStatus: 'active', permissions, isCoachVal: true, toastLog,
+    });
+    scope.featureCardClick('ai_intelligence');            // locked on core
+    assert.equal(toastLog.length, 1, 'says something, once');
+    assert.match(toastLog[0], /not available for this club/i, 'and says it honestly');
+    assert.doesNotMatch(toastLog[0], /upgrade/i, 'no upgrade verb');
+  }
 });
 
 // ── 17. featureCardClick → admin toast for locked feature without permission ───
 
-test('featureCardClick shows admin toast for locked feature without manage_subscriptions', () => {
-  const upgradeLog = [];
+test('featureCardClick names the feature it cannot open, and advertises no tier', () => {
   const toastLog = [];
   const scope = buildScope({
-    teamPlan: 'core', teamPlanStatus: 'active',
-    permissions: ['view_squad'],
-    isCoachVal: true,
-    toastLog, upgradeLog,
+    teamPlan: 'core', teamPlanStatus: 'active', permissions: ['view_squad'], isCoachVal: true, toastLog,
   });
-  scope.featureCardClick('advanced_analytics'); // locked on core plan
-  assert.equal(upgradeLog.length, 0, 'Should not call settingsUpgradeToPro without permission');
-  assert.equal(toastLog.length, 1, 'Should show one toast message');
-  assert.ok(toastLog[0].toLowerCase().includes('admin'), 'Toast should mention admin');
+  scope.featureCardClick('advanced_analytics');           // locked on core
+  assert.equal(toastLog.length, 1, 'one message');
+  assert.match(toastLog[0], /Advanced Analytics/, 'names the feature');
+  for (const banned of [/upgrade/i, /\bPro\b/, /\bEnterprise\b/, /£|\$|€/]) {
+    assert.doesNotMatch(toastLog[0], banned, `must not mention ${banned}`);
+  }
 });
 
 // ── 18. All discovery functions present in index.html ─────────────────────────

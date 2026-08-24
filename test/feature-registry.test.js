@@ -25,8 +25,8 @@
  * 18.  getAvailableFeatures('pro') includes all pro-minimum active features
  * 19.  getAvailableFeatures('core') excludes all premium features
  * 20.  planLevel hierarchy: core < pro < enterprise
- * 21.  renderUpgradePrompt pulls displayName from registry
- * 22.  renderUpgradePrompt pulls upgradeMessage from registry
+ * 21.  renderUnavailableNotice pulls displayName from registry
+ * 22.  renderUnavailableNotice pulls upgradeMessage from registry
  * 23.  Phase 7 feature-gates still pass: canUseFeature calls return correct values
  * 24.  All Phase 8 helpers are defined in index.html source
  */
@@ -117,10 +117,10 @@ function buildScope({ teamPlan = null, teamPlanStatus = null, permissions = [], 
     extractFn(html, 'isProTeam') + '\n' +
     extractFn(html, 'isEnterpriseTeam') + '\n' +
     extractFn(html, 'canUseFeature') + '\n' +
-    extractFn(html, 'renderUpgradePrompt') + '\n' +
+    extractFn(html, 'renderUnavailableNotice') + '\n' +
     'return { FEATURE_REGISTRY, PLAN_LEVEL, planLevel, getFeature, getAllFeatures, ' +
     '         getLockedFeatures, getAvailableFeatures, isProTeam, isEnterpriseTeam, ' +
-    '         canUseFeature, renderUpgradePrompt };\n';
+    '         canUseFeature, renderUnavailableNotice };\n';
 
   return new Function(body)();
 }
@@ -347,23 +347,29 @@ test('planLevel hierarchy: trial = core < pro < enterprise', () => {
   assert.equal(planLevel('unknown'),    0, 'Unknown plans default to level 0');
 });
 
-// ── 21. renderUpgradePrompt pulls displayName from registry ───────────────────
+// ── 21. renderUnavailableNotice pulls displayName from registry ───────────────────
 
-test('renderUpgradePrompt uses displayName from registry', () => {
+test('renderUnavailableNotice uses displayName from registry', () => {
   for (const f of allFeatures) {
-    const html = coreScope.renderUpgradePrompt(f.id);
+    const html = coreScope.renderUnavailableNotice(f.id);
     assert.ok(html.includes(f.displayName),
-      f.id + ': renderUpgradePrompt should include displayName "' + f.displayName + '"');
+      f.id + ': renderUnavailableNotice should include displayName "' + f.displayName + '"');
   }
 });
 
-// ── 22. renderUpgradePrompt pulls upgradeMessage from registry ────────────────
+// ── 22. renderUnavailableNotice pulls upgradeMessage from registry ────────────────
 
-test('renderUpgradePrompt uses upgradeMessage from registry', () => {
-  for (const f of allFeatures) {
-    const html = coreScope.renderUpgradePrompt(f.id);
-    assert.ok(html.includes(f.upgradeMessage),
-      f.id + ': renderUpgradePrompt should include upgradeMessage "' + f.upgradeMessage + '"');
+test('the unavailable notice names the feature and advertises nothing', () => {
+  // UPDATED with the removal of the upgrade CTAs. This used to assert that the
+  // prompt echoed each registry `upgradeMessage` -- copy like "Upgrade to Pro
+  // to store up to 100 training clips". Those strings advertise a tier nobody
+  // can buy, so the notice no longer renders them. The registry field is left
+  // in place (inert) and `minimumPlan`, which drives the gate, is untouched.
+  for (const f of coreScope.FEATURE_REGISTRY.filter(x => !x.comingSoon).slice(0, 6)) {
+    const html = coreScope.renderUnavailableNotice(f.id);
+    assert.ok(html.includes(f.displayName), `${f.id}: names the feature`);
+    assert.ok(/not available for this club/i.test(html), `${f.id}: states the fact`);
+    assert.ok(!/Upgrade/i.test(html), `${f.id}: no upgrade verb`);
   }
 });
 

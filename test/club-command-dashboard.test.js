@@ -230,47 +230,30 @@ test('full dashboard: renders all card values', () => {
 
 // ── 3. Trial team ─────────────────────────────────────────────────────────────
 
-test('trial team: shows trial remaining card and Pro upgrade button', () => {
+// ── 3+4. Commercial cards — REMOVED with the upgrade CTAs ──────────────────
+//
+// These asserted a Subscription card, a "Trial Remaining" countdown, an
+// "Upgrade to Pro" button and a "Manage billing" button on the club command
+// dashboard. There is no public Pro tier, no pricing page and no checkout a
+// club can complete, so every one of them advertised something nobody can buy.
+// The dashboard now renders none of it, on any plan. Plan state itself
+// (state.teamPlan / teamPlanStatus) and every entitlement gate are untouched.
+
+test('the dashboard advertises no plan, tier or upgrade — on trial or on pro', () => {
   const farFuture = new Date(Date.now() + 8 * 86400000).toISOString();
-
-  const { renderClubCommandDashboard } = buildScope({
-    teamPlan: 'trial',
-    teamPlanStatus: 'active',
-    trialEndsAt: farFuture,
-    permissions: ['manage_subscriptions'],
-  });
-  const out = renderClubCommandDashboard();
-
-  // Trial Remaining card (shown only on trial)
-  assert.ok(out.includes('Trial Remaining'), 'Should render Trial Remaining card');
-
-  // Subscription card shows trial copy
-  assert.ok(out.includes('free trial'), 'Subscription card should mention free trial');
-  assert.ok(out.includes('Upgrade to Pro'), 'Should show Upgrade to Pro button');
-
-  // Plan badge
-  assert.ok(out.includes('Trial'), 'Should show Trial badge');
-});
-
-// ── 4. Pro team ───────────────────────────────────────────────────────────────
-
-test('pro team: shows Pro badge, no upgrade prompt, billing button', () => {
-  const { renderClubCommandDashboard } = buildScope({
-    teamPlan: 'pro',
-    teamPlanStatus: 'active',
-    permissions: ['manage_subscriptions'],
-  });
-  const out = renderClubCommandDashboard();
-
-  assert.ok(out.includes('>Pro<'), 'Should show Pro badge');
-  assert.ok(out.includes('all features unlocked'), 'Should confirm all features unlocked');
-  assert.ok(out.includes('Manage billing'), 'Pro team should see billing button');
-
-  // Should NOT show upgrade prompt
-  assert.ok(!out.includes('Upgrade to Pro'), 'Pro team must not see Upgrade to Pro button');
-
-  // Trial Remaining card must be absent
-  assert.ok(!out.includes('Trial Remaining'), 'Trial card must not appear for Pro team');
+  for (const [plan, extra] of [['trial', { trialEndsAt: farFuture }], ['pro', {}], ['core', {}]]) {
+    const { renderClubCommandDashboard } = buildScope({
+      teamPlan: plan, teamPlanStatus: 'active', permissions: ['manage_subscriptions'], ...extra,
+    });
+    const out = renderClubCommandDashboard();
+    for (const banned of [/Upgrade to Pro/i, /Upgrade before trial/i, /Trial Remaining/i,
+                          /Manage billing/i, /all features unlocked/i, /Ask your admin to upgrade/i,
+                          /upgradeFromFeature|settingsUpgradeToPro/]) {
+      assert.ok(!banned.test(out), `${plan}: dashboard must not contain ${banned}`);
+    }
+    // It still renders — the rest of the dashboard is unaffected.
+    assert.ok(out.length > 200, `${plan}: dashboard still renders its real cards`);
+  }
 });
 
 // ── 5. No upcoming fixture ────────────────────────────────────────────────────

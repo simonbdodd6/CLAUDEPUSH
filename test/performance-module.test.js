@@ -113,7 +113,9 @@ test('9. PERF_TABS declares the 10 screens in order (8 SC1 + profile from SC2 + 
 test('10. renderPerformance gates on canUseFeature', () => {
   const fn = extractFn(html, 'renderPerformance');
   assert.match(fn, /if \(!canUseFeature\('performance'\)\)/);
-  assert.match(fn, /renderUpgradePrompt\('performance'\)/);
+  // The GATE is unchanged. What a gated club is TOLD changed when the upgrade
+  // CTAs were removed: an honest unavailable notice, not an upsell.
+  assert.match(fn, /renderUnavailableNotice\('performance'\)/);
 });
 
 test('11. all 8 screen builders exist', () => {

@@ -182,7 +182,9 @@ test('12. Core screens never touch library namespaces', () => {
 test('13. premium entitlement gate unchanged', () => {
   const fn = extractFn(html, 'renderPerformance');
   assert.match(fn, /if \(!canUseFeature\('performance'\)\)/);
-  assert.match(fn, /renderUpgradePrompt\('performance'\)/);
+  // The GATE is unchanged. What a gated club is TOLD changed when the upgrade
+  // CTAs were removed: an honest unavailable notice, not an upsell.
+  assert.match(fn, /renderUnavailableNotice\('performance'\)/);
 });
 
 test('14. SC1/SC2 tab contract still holds (SC3 unchanged; SC8 added one athlete screen)', () => {

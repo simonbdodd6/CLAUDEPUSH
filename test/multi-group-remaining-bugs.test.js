@@ -56,29 +56,38 @@ test('the club-setup checklist shows in Seniors and never in U18/Women\'s', () =
 });
 
 // ── COMMERCIAL 4-7: no visible Pro/trial/subscription UI in the beta ──────
-test('BETA_HIDE_COMMERCIAL is ON and every commercial surface is behind it', () => {
-  assert.match(src, /const BETA_HIDE_COMMERCIAL = true;/, 'flag is on for the Core Beta');
-  assert.match(fn('renderUpgradePrompt'), /if \(BETA_HIDE_COMMERCIAL\) return '';/,
-    'every upgrade nudge (AI Intelligence, video, analytics, push) renders nothing');
-  // The command dashboard's Subscription + Trial cards render via one gated const.
-  const cards = src.indexOf("const _commercialCards = BETA_HIDE_COMMERCIAL ? '' : `");
-  assert.ok(cards > 0, 'Subscription/Trial cards gated');
-  const cardsEnd = src.indexOf('`;', cards);
-  const block = src.slice(cards, cardsEnd);
-  for (const needle of ['Subscription', 'Trial Remaining', 'Upgrade to Pro', 'Upgrade before trial']) {
-    assert.ok(block.includes(needle), `${needle} lives inside the gated block`);
+// UPDATED when the upgrade CTAs were deleted. This used to check that every
+// commercial surface sat BEHIND the BETA_HIDE_COMMERCIAL flag. They are now
+// removed outright, which is the stronger guarantee: flipping the flag can no
+// longer surface an upgrade CTA, because there is none left to surface.
+test('no commercial surface exists to be gated — the CTAs are gone, not hidden', () => {
+  assert.match(src, /const BETA_HIDE_COMMERCIAL = true;/, 'the flag itself is untouched');
+  for (const gone of ['Upgrade before trial', 'Ask your admin to upgrade',
+                      '_commercialCards', '_planStatusCard', 'btn-upgrade-pro',
+                      'function upgradeFromFeature(', 'function settingsUpgradeToPro(',
+                      'function renderUpgradePrompt(']) {
+    assert.ok(!src.includes(gone), `${gone} must no longer exist anywhere in the app`);
   }
-  // The Settings plan/trial card is gated the same way.
-  assert.match(src, /\$\{BETA_HIDE_COMMERCIAL \? '' : _planStatusCard\}/, 'Settings plan card gated');
-  const plan = src.indexOf('const _planStatusCard = `');
-  const planBlock = src.slice(plan, src.indexOf('`;', plan));
-  assert.ok(planBlock.includes('Upgrade to Pro') || planBlock.includes('planBadge'),
-    'the Upgrade button lives inside the gated settings card');
-  // Video library copy loses its upsell tail in beta.
-  assert.match(src, /BETA_HIDE_COMMERCIAL \? 'Save up to 10 training clips\.' :/,
-    'video library copy is neutral in beta');
-  // The feature-discovery page was already hidden in the beta shell.
+  // "Upgrade to Pro" survives ONLY as inert FEATURE_REGISTRY copy, which
+  // nothing renders any more. It must never appear as a control again.
+  assert.doesNotMatch(src, />\s*Upgrade to Pro\s*</, 'never as button/link text');
+  assert.doesNotMatch(src, /onclick="[^"]*[Uu]pgrade/, 'never wired to a click handler');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/[^\n]*$/gm, '');
+  for (const line of code.split('\n').filter(l => /Upgrade to Pro/.test(l))) {
+    assert.match(line, /upgradeMessage:/, `only inert registry copy may mention it: ${line.trim().slice(0, 70)}`);
+  }
+  // What replaced the upsell: an honest statement, naming no tier.
+  assert.match(src, /function renderUnavailableNotice\s*\(/, 'an honest unavailable notice exists');
+  const notice = fn('renderUnavailableNotice');
+  assert.match(notice, /not available for this club/i);
+  assert.doesNotMatch(notice, /Upgrade|\bPro\b|\bEnterprise\b|price|waitlist/i, 'it sells nothing');
+  // Video library copy carries no upsell tail on any plan.
+  assert.doesNotMatch(src, /Upgrade to Pro for unlimited storage/);
+  // The feature-discovery page remains hidden in the beta shell.
   assert.match(src, /\$\{_betaUI \? "" : renderFeatureDiscovery\(\)\}/);
+  // The GATE is untouched -- only what a gated club is told has changed.
+  assert.match(src, /function canUseFeature\s*\(/);
+  assert.match(src, /const SECTION_FEATURE_MAP = \{ performance: 'performance' \};/);
 });
 
 // ── MATCH CENTRE 8-17: the working fixture follows the operating group ────

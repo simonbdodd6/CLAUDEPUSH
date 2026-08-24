@@ -4,7 +4,7 @@
  * Tests the in-memory analytics layer extracted from index.html:
  * _featureUsageLog, _USAGE_LOG_MAX, recordFeatureUsage(),
  * getFeatureUsageSummary(), getMostViewedFeatures(), getMostClickedUpgrades(),
- * upgradeFromFeature(), dismissUpgradeCard().
+ * dismissUpgradeCard().
  *
  * Tests:
  *  1.  recordFeatureUsage records an event with all required fields
@@ -21,9 +21,9 @@
  * 12.  getMostViewedFeatures returns empty array when no views recorded
  * 13.  getMostClickedUpgrades returns top features by upgrade_click count
  * 14.  getMostClickedUpgrades ignores non-upgrade_click events
- * 15.  upgradeFromFeature records upgrade_click then calls settingsUpgradeToPro
+ * 15.  (removed with the upgrade CTAs — no upgrade_click producer remains)
  * 16.  dismissUpgradeCard records upgrade_prompt_close with featureId
- * 17.  renderUpgradePrompt records upgrade_prompt_view on every call
+ * 17.  (removed with the upgrade CTAs — no upgrade_prompt_view producer remains)
  * 18.  All analytics functions and constants are present in index.html
  */
 
@@ -120,14 +120,12 @@ function buildScope({
     extractFn(html, 'getFeatureUsageSummary') + '\n' +
     extractFn(html, 'getMostViewedFeatures') + '\n' +
     extractFn(html, 'getMostClickedUpgrades') + '\n' +
-    extractFn(html, 'upgradeFromFeature') + '\n' +
     extractFn(html, 'dismissUpgradeCard') + '\n' +
-    extractFn(html, 'renderUpgradePrompt') + '\n' +
     'return {\n' +
     '  _featureUsageLog, _USAGE_LOG_MAX,\n' +
     '  recordFeatureUsage, getFeatureUsageSummary,\n' +
     '  getMostViewedFeatures, getMostClickedUpgrades,\n' +
-    '  upgradeFromFeature, dismissUpgradeCard, renderUpgradePrompt,\n' +
+    '  dismissUpgradeCard,\n' +
     '  get _upgradeCallCount() { return _upgradeCallCount; },\n' +
     '};\n';
 
@@ -321,16 +319,6 @@ test('getMostClickedUpgrades ignores non-upgrade_click events', () => {
 
 // ── 15. upgradeFromFeature records click and delegates to settingsUpgradeToPro ─
 
-test('upgradeFromFeature records upgrade_click and calls settingsUpgradeToPro', () => {
-  const s = buildScope({ permissions: ['manage_subscriptions'] });
-  s.upgradeFromFeature('unlimited_push');
-  // Should have recorded the upgrade click
-  assert.equal(s._featureUsageLog.length, 1);
-  assert.equal(s._featureUsageLog[0].action,    'upgrade_click');
-  assert.equal(s._featureUsageLog[0].featureId, 'unlimited_push');
-  // Should have called settingsUpgradeToPro
-  assert.equal(s._upgradeCallCount, 1, 'settingsUpgradeToPro should have been called once');
-});
 
 // ── 16. dismissUpgradeCard records upgrade_prompt_close ───────────────────────
 
@@ -346,17 +334,6 @@ test('dismissUpgradeCard records upgrade_prompt_close event', () => {
 
 // ── 17. renderUpgradePrompt records upgrade_prompt_view ───────────────────────
 
-test('renderUpgradePrompt calls recordFeatureUsage with upgrade_prompt_view', () => {
-  const s = buildScope({ teamPlan: 'core', permissions: [] });
-  s.renderUpgradePrompt('advanced_analytics');
-  assert.equal(s._featureUsageLog.length, 1);
-  assert.equal(s._featureUsageLog[0].action,    'upgrade_prompt_view');
-  assert.equal(s._featureUsageLog[0].featureId, 'advanced_analytics');
-  // Second call records a second event
-  s.renderUpgradePrompt('ai_intelligence');
-  assert.equal(s._featureUsageLog.length, 2);
-  assert.equal(s._featureUsageLog[1].featureId, 'ai_intelligence');
-});
 
 // ── 18. All analytics symbols present in index.html ──────────────────────────
 
@@ -367,17 +344,40 @@ test('All Phase 10 analytics functions and constants are defined in index.html',
   assert.ok(html.includes('function getFeatureUsageSummary('), 'getFeatureUsageSummary must be defined');
   assert.ok(html.includes('function getMostViewedFeatures('), 'getMostViewedFeatures must be defined');
   assert.ok(html.includes('function getMostClickedUpgrades('), 'getMostClickedUpgrades must be defined');
-  assert.ok(html.includes('function upgradeFromFeature('),   'upgradeFromFeature must be defined');
   assert.ok(html.includes('function dismissUpgradeCard('),   'dismissUpgradeCard must be defined');
   // Verify call sites are instrumented
   assert.ok(html.includes("recordFeatureUsage('discovery_open'"),    'discovery_open instrumented');
   assert.ok(html.includes("recordFeatureUsage('filter_change'"),     'filter_change instrumented');
   assert.ok(html.includes("recordFeatureUsage('feature_open'"),      'feature_open instrumented');
-  assert.ok(html.includes("recordFeatureUsage('upgrade_prompt_view'"), 'upgrade_prompt_view instrumented');
-  assert.ok(html.includes("recordFeatureUsage('upgrade_click'"),     'upgrade_click instrumented');
+  // upgrade_prompt_view / upgrade_click had exactly one producer each --
+  // renderUpgradePrompt() and upgradeFromFeature() -- and both went with the
+  // upgrade CTAs. Their absence is now the thing worth pinning.
+  assert.ok(!html.includes("recordFeatureUsage('upgrade_prompt_view'"), 'no upgrade_prompt_view producer remains');
+  assert.ok(!html.includes("recordFeatureUsage('upgrade_click'"),       'no upgrade_click producer remains');
   assert.ok(html.includes("recordFeatureUsage('billing_portal_open'"), 'billing_portal_open instrumented');
   assert.ok(html.includes("recordFeatureUsage('upgrade_prompt_close'"), 'upgrade_prompt_close instrumented');
-  // Verify dismiss button in full upgrade card
-  assert.ok(html.includes('dismissUpgradeCard(this,'),        'dismiss button must be in renderUpgradePrompt');
-  assert.ok(html.includes('data-upgrade-card='),              'data-upgrade-card attribute must be present');
+  // The dismiss button lived on the upgrade card. The card is gone, so the
+  // button is gone with it; dismissUpgradeCard() itself is left in place,
+  // unreferenced, alongside the other analytics helpers.
+  assert.ok(!html.includes('dismissUpgradeCard(this,'), 'no upgrade card remains to dismiss');
+  assert.ok(!html.includes('data-upgrade-card='),       'and no upgrade card markup remains');
+});
+
+// ── 15+17 REPLACED: the upgrade funnel no longer exists ────────────────────
+//
+// These two asserted that upgradeFromFeature() recorded an `upgrade_click` and
+// that renderUpgradePrompt() recorded an `upgrade_prompt_view`. Both producers
+// were removed with the upgrade CTAs: there is no public Pro tier, no pricing
+// page and no checkout, so there is no funnel left to measure. The analytics
+// READERS are deliberately left intact and still pass their own tests against
+// synthetic logs — they simply receive no upgrade events any more.
+test('15+17: no upgrade-funnel producer survives in the app', () => {
+  const src = html;
+  assert.doesNotMatch(src, /function upgradeFromFeature\s*\(/, 'upgradeFromFeature is gone');
+  assert.doesNotMatch(src, /function settingsUpgradeToPro\s*\(/, 'settingsUpgradeToPro is gone');
+  assert.doesNotMatch(src, /recordFeatureUsage\('upgrade_click'/, 'nothing records upgrade_click');
+  assert.doesNotMatch(src, /recordFeatureUsage\('upgrade_prompt_view'/, 'nothing records upgrade_prompt_view');
+  // The readers remain and are still exercised above with synthetic logs.
+  assert.match(src, /function getMostViewedFeatures\s*\(/);
+  assert.match(src, /function getMostClickedUpgrades\s*\(/);
 });

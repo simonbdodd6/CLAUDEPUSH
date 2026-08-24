@@ -6112,7 +6112,7 @@
     // Returns '' if not applicable; locked card if on Core plan; brief if Pro + flag enabled.
     function renderWeeklyBriefSlot() {
       if (!canUseFeature('ai_intelligence')) {
-        return isCoach() ? `<div class="home-ai-slot">${renderUpgradePrompt('ai_intelligence', { compact: true })}</div>` : '';
+        return isCoach() ? `<div class="home-ai-slot">${renderUnavailableNotice('ai_intelligence', { compact: true })}</div>` : '';
       }
       if (!state.features?.aiWeeklyBrief || !canI('ai_intelligence')) return '';
 
@@ -11333,7 +11333,7 @@
         // destination would arrive at a screen whose upgrade prompt has
         // deliberately been suppressed — a dead end. Hide the entry instead.
         // When commercial discovery returns, the locked entry comes back with
-        // it and renderUpgradePrompt does its job. Demo hosts always see the
+        // it and renderUnavailableNotice does its job. Demo hosts always see the
         // section so the module stays drivable locally.
         const feat = SECTION_FEATURE_MAP[id];
         if (feat && BETA_HIDE_COMMERCIAL && !canUseFeature(feat) && !_isLocalDemoHost()) return false;
@@ -12828,35 +12828,10 @@
       const planLabel = isPro ? 'Pro' : isEnt ? 'Enterprise' : onTrial ? 'Trial' : 'Core';
       const planCol   = isPro ? 'var(--accent)' : isEnt ? '#B8964A' : onTrial ? '#fbbf24' : 'var(--muted)';
 
-      const canManage = canI('manage_subscriptions');
-      // Core Beta: no commercial surfaces — the Subscription and Trial cards
-      // render only when the beta flag is lifted.
-      const _commercialCards = BETA_HIDE_COMMERCIAL ? '' : `<!-- Subscription Status -->
-        <div class="card" style="padding:14px 16px">
-          ${cardHead('Subscription', `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.06);color:${planCol}">${esc(planLabel)}</span>`)}
-          ${isPro ? `
-            <div style="font-size:13px;color:var(--ink);margin-bottom:8px">You're on the <strong>Pro plan</strong> — all features unlocked.</div>
-            ${canManage ? `<button class="btn" type="button" onclick="settingsManageBilling()" style="font-size:12px;min-height:30px;padding:0 12px">Manage billing</button>` : ''}
-          ` : isEnt ? `
-            <div style="font-size:13px;color:var(--ink)">You're on the <strong>Enterprise plan</strong>.</div>
-          ` : onTrial ? `
-            <div style="font-size:13px;color:var(--ink);margin-bottom:8px">${daysLeft !== null ? `<strong>${daysLeft}</strong> day${daysLeft !== 1 ? 's' : ''} left in your free trial.` : 'Free trial active.'}</div>
-            ${canManage ? `<button class="btn primary" type="button" onclick="upgradeFromFeature('dashboard_sub')" style="font-size:12px;min-height:30px;padding:0 12px">Upgrade to Pro</button>` : `<span class="muted" style="font-size:12px">Ask your admin to upgrade</span>`}
-          ` : `
-            <div style="font-size:13px;color:var(--ink);margin-bottom:8px">You're on the <strong>Core plan</strong>. Unlock AI, video and more.</div>
-            ${canManage ? `<button class="btn primary" type="button" onclick="upgradeFromFeature('dashboard_sub')" style="font-size:12px;min-height:30px;padding:0 12px">Upgrade to Pro</button>` : `<span class="muted" style="font-size:12px">Ask your admin to upgrade</span>`}
-          `}
-        </div>
-
-        ${onTrial && daysLeft !== null ? `
-        <!-- Trial Remaining (only when on trial) -->
-        <div class="card" style="padding:14px 16px;border-color:rgba(251,191,36,0.3)">
-          ${cardHead('Trial Remaining', `<span style="font-size:11px;font-weight:700;color:#fbbf24">${daysLeft}d</span>`)}
-          ${bigNum(daysLeft, `day${daysLeft !== 1 ? 's' : ''} remaining`, 'var(--ink)')}
-          ${progressBar(Math.min(100, Math.max(0, 100 - (daysLeft / 14) * 100)), '#fbbf24')}
-          ${canManage ? `<button class="btn" type="button" onclick="upgradeFromFeature('trial_banner')" style="font-size:12px;min-height:30px;padding:0 12px;border-color:rgba(251,191,36,0.5);color:#fbbf24">Upgrade before trial ends</button>` : `<span class="muted" style="font-size:12px">Ask your admin to upgrade to Pro</span>`}
-        </div>
-        ` : ''}`;
+      // Core Beta has no commercial surfaces. The Subscription and Trial
+      // cards, and the upgrade CTAs they carried, are gone: there is no public
+      // Pro tier, no pricing and no checkout, so advertising one was selling
+      // something nobody can buy. Plan/entitlement logic is untouched.
 
       // ── Card builder helpers ──────────────────────────────────────────────────
       function cardHead(label, aside) {
@@ -12958,7 +12933,6 @@
             : `<p class="muted" style="font-size:13px;margin:0">No activity yet today.</p>`}
         </div>
 
-        ${_commercialCards}
 
       </div>`;
     }
@@ -15417,11 +15391,11 @@
         <div class="grid two-col${BETA_SIMPLE_UI ? ' beta-hidden' : ''}">
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-              <div><h2 style="margin:0">Club video library</h2><p class="muted" style="margin-top:2px">${canUseFeature('unlimited_videos') ? 'Upload up to 100 × 120-second training clips.' : BETA_HIDE_COMMERCIAL ? 'Save up to 10 training clips.' : 'Save up to 10 training clips. Upgrade to Pro for unlimited storage.'}</p></div>
+              <div><h2 style="margin:0">Club video library</h2><p class="muted" style="margin-top:2px">${canUseFeature('unlimited_videos') ? 'Upload up to 100 × 120-second training clips.' : 'Save up to 10 training clips.'}</p></div>
               <span class="pill">${(state.clubVideos||[]).length}/${canUseFeature('unlimited_videos') ? 100 : 10}</span>
             </div>
             ${!(state.clubVideos||[]).length ? `<p class="muted" style="font-size:12px;margin-bottom:14px">Save training clips here — reference them during sessions or share with coaches.</p>` : ''}
-            ${!canUseFeature('unlimited_videos') && (state.clubVideos||[]).length >= 10 ? `<div style="margin-bottom:12px">${renderUpgradePrompt('unlimited_videos', { compact: true })}</div>` : ''}
+            ${!canUseFeature('unlimited_videos') && (state.clubVideos||[]).length >= 10 ? `<div style="margin-bottom:12px">${renderUnavailableNotice('unlimited_videos', { compact: true })}</div>` : ''}
             <div class="video-grid">
               ${(state.clubVideos||[]).map(v=>`
                 <div class="video-card">
@@ -15463,7 +15437,7 @@
         </div>
 
         <!-- Advanced analytics — Pro feature placeholder (hidden in commercial Beta) -->
-        ${(!BETA_SIMPLE_UI && !canUseFeature('advanced_analytics')) ? renderUpgradePrompt('advanced_analytics') : ''}`;
+        ${(!BETA_SIMPLE_UI && !canUseFeature('advanced_analytics')) ? renderUnavailableNotice('advanced_analytics') : ''}`;
 
       // Freshly-painted blocks size to their own content, so a finished block
       // is as tall as what is written in it and nothing more.
@@ -19352,43 +19326,14 @@
       const plan        = state.teamPlan       || 'trial';
       const planStatus  = state.teamPlanStatus  || 'active';
       const daysLeft    = trialDaysRemaining();
-      const planBadge   = (() => {
-        if (plan === 'pro' && planStatus === 'active')   return { label: 'Pro plan',            color: 'var(--accent)',  text: 'You are on the Pro plan.' };
-        if (plan === 'pro' && planStatus === 'past_due') return { label: 'Pro · payment issue', color: '#fbbf24',       text: 'Your Pro subscription has a payment issue — update your billing details to avoid disruption.' };
-        if (plan === 'pro' && planStatus === 'canceled') return { label: 'Pro canceled',         color: '#f87171',       text: 'Your Pro subscription has been canceled. You are now on the Core plan.' };
-        if (plan === 'pro' && planStatus === 'paused')   return { label: 'Pro paused',           color: '#fbbf24',       text: 'Your Pro subscription is paused.' };
-        if (plan === 'trial') {
-          if (daysLeft === null)  return { label: 'Trial',              color: 'var(--muted)', text: 'You are on a free trial of CoachEasier.' };
-          if (daysLeft === 0)     return { label: 'Trial ended',        color: '#fbbf24',      text: 'Your free trial has ended. You are now on the Core plan.' };
-          if (daysLeft <= 7)      return { label: `${daysLeft}d trial`, color: '#fbbf24',      text: `You have ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left in your CoachEasier free trial.` };
-          return { label: `${daysLeft}d trial`, color: 'var(--muted)', text: `You have ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left in your CoachEasier free trial.` };
-        }
-        return { label: 'Core plan', color: 'var(--muted)', text: 'You are on the Core plan.' };
-      })();
 
-      // Core Beta: the plan/trial/upgrade card is hidden until there is
-      // something to sell. Plans and billing logic stay intact underneath.
-      const _planStatusCard = `
-          <!-- Plan status -->
-          <div class="card" style="border-color:rgba(255,255,255,0.07)">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-              <div>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                  <h2 style="margin:0">Subscription</h2>
-                  <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(255,255,255,0.06);color:${planBadge.color}">${esc(planBadge.label)}</span>
-                </div>
-                <p class="muted" style="font-size:12px;margin:0">${esc(planBadge.text)}</p>
-              </div>
-              ${canI('manage_subscriptions') ? (plan === 'pro'
-                ? `<button id="btn-manage-billing" class="btn" type="button" onclick="settingsManageBilling()" style="min-height:36px;font-size:12px;white-space:nowrap;flex-shrink:0">Manage Billing</button>`
-                : `<button id="btn-upgrade-pro" class="btn primary" type="button" onclick="settingsUpgradeToPro()" style="min-height:36px;font-size:12px;white-space:nowrap;flex-shrink:0">Upgrade to Pro</button>`
-              ) : ''}
-            </div>
-          </div>`;
+      // The Subscription card (plan badge, trial countdown, "Upgrade to Pro"
+      // and "Manage Billing") is removed for the same reason as the dashboard
+      // cards above: nothing is on sale. state.teamPlan / teamPlanStatus and
+      // every entitlement gate still work exactly as before.
+
       el.innerHTML = `
         <div style="display:grid;gap:16px;max-width:620px">
-
-          ${BETA_HIDE_COMMERCIAL ? '' : _planStatusCard}
 
           ${_betaUI ? "" : renderFeatureDiscovery()}
 
@@ -19469,7 +19414,7 @@
             ${toggle('emailEnabled', 'Email notifications', 'Applies to reminder emails (account emails always send)')}
             ${toggle('matchReminders', 'Match reminders', 'Availability chasers for match day')}
             ${toggle('trainingReminders', 'Training reminders', 'Availability chasers for training sessions')}
-            ${!canUseFeature('unlimited_push') ? `<div style="margin-top:12px">${renderUpgradePrompt('unlimited_push', { compact: true })}</div>` : ''}
+            ${!canUseFeature('unlimited_push') ? `<div style="margin-top:12px">${renderUnavailableNotice('unlimited_push', { compact: true })}</div>` : ''}
           </div>
 
           <!-- Teams → Training schedule (RC4.10C) -->
@@ -19624,22 +19569,6 @@
         if (!res.ok) throw new Error(data.error || 'Failed');
         showToast(`Signed out of ${data.revoked} other device${data.revoked === 1 ? '' : 's'} ✓`);
       } catch(e) { showToast(e.message || 'Failed'); }
-    }
-
-    async function settingsUpgradeToPro() {
-      const btn = document.getElementById('btn-upgrade-pro');
-      if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
-      try {
-        const res = await fetch('/api/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'create_checkout' }) });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) throw new Error(data.error || 'Could not start checkout');
-        if (data.checkoutUrl) { window.location.href = data.checkoutUrl; return; }
-        throw new Error('No checkout URL returned — please try again');
-      } catch(e) {
-        showToast(e.message || 'Could not start checkout — try again');
-        if (btn) { btn.disabled = false; btn.textContent = 'Upgrade to Pro'; }
-      }
     }
 
     async function settingsManageBilling() {
@@ -31409,7 +31338,7 @@
               <p>Programmes, workouts, athlete monitoring and performance analytics — built into CoachEasier.</p>
             </div>
           </div>
-          ${renderUpgradePrompt('performance')}
+          ${renderUnavailableNotice('performance')}
           <div class="grid perf-grid-3" style="margin-top:4px">
             ${PERF_TABS.filter(t => t.id !== 'settings').map(t => `
               <div class="card perf-locked-tile">
@@ -34946,39 +34875,28 @@
         .map(function(e) { return { featureId: e[0], clicks: e[1] }; });
     }
 
-    function upgradeFromFeature(featureId) {
-      recordFeatureUsage('upgrade_click', featureId || null);
-      settingsUpgradeToPro();
-    }
-
     function dismissUpgradeCard(btn, featureId) {
       recordFeatureUsage('upgrade_prompt_close', featureId || null);
       const card = (btn && btn.closest) ? (btn.closest('[data-upgrade-card]') || btn.parentElement) : null;
       if (card) card.style.display = 'none';
     }
 
-    function renderUpgradePrompt(featureName, { compact = false } = {}) {
-      if (BETA_HIDE_COMMERCIAL) return '';
-      recordFeatureUsage('upgrade_prompt_view', featureName);
+    /**
+     * An honest "not available" notice for a feature this club cannot use.
+     *
+     * This replaced renderUpgradePrompt(), which advertised a Pro tier with an
+     * "Upgrade to Pro" button. There is no public Pro tier, no pricing page and
+     * no checkout a club can complete, so that prompt offered something nobody
+     * could buy. This states the fact and stops: no tier name, no price, no
+     * waitlist, no "coming soon" — the tone of "No programme assigned".
+     */
+    function renderUnavailableNotice(featureName, { compact = false } = {}) {
       const feature = getFeature(featureName);
       const name = feature ? feature.displayName : featureName;
-      const msg  = feature ? feature.upgradeMessage : 'Available on the Pro plan. Upgrade to unlock all premium features.';
-      const upgradeBtn = canI('manage_subscriptions')
-        ? `<button class="btn primary" type="button" onclick="upgradeFromFeature('${featureName}')" style="font-size:12px;min-height:32px;padding:0 14px;flex-shrink:0">Upgrade to Pro</button>`
-        : `<span class="muted" style="font-size:12px">Ask your admin to upgrade</span>`;
-      if (compact) {
-        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(143,107,42,0.05);border-radius:8px;border:1px solid rgba(143,107,42,0.18)">
-          <span style="font-size:13px;font-weight:600;flex:1;color:var(--ink)">${esc(name)}</span>
-          <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(143,107,42,0.15);color:#B8964A;flex-shrink:0">PRO</span>
-          ${upgradeBtn}
-        </div>`;
-      }
-      return `<div class="card" data-upgrade-card="${featureName}" style="position:relative;text-align:center;padding:32px 20px;border-color:rgba(143,107,42,0.2)">
-        <button onclick="dismissUpgradeCard(this,'${featureName}')" type="button" style="position:absolute;top:8px;right:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px;line-height:1" aria-label="Dismiss">&times;</button>
-        <div style="width:44px;height:44px;margin:0 auto 14px;border-radius:50%;background:rgba(143,107,42,0.12);display:flex;align-items:center;justify-content:center;font-size:20px;color:#B8964A">◆</div>
-        <strong style="font-size:15px;display:block;margin-bottom:6px">${esc(name)}</strong>
-        <p class="muted" style="font-size:13px;margin:0 0 16px">${esc(msg)}</p>
-        ${upgradeBtn}
+      if (compact) return `<p class="muted" style="font-size:12px;margin:0">${esc(name)} is not available for this club.</p>`;
+      return `<div class="card">
+        <strong style="display:block;font-size:14px">${esc(name)} is not available for this club</strong>
+        <p class="muted" style="font-size:13px;margin:8px 0 0">Speak to your club administrator if you think this is wrong.</p>
       </div>`;
     }
 
@@ -35082,8 +35000,8 @@
       if (!f) return;
       if (f.comingSoon) { showToast(esc(f.displayName) + ' — coming soon to CoachEasier'); return; }
       if (!canUseFeature(id)) {
-        if (canI('manage_subscriptions')) { upgradeFromFeature(id); }
-        else { showToast('Ask your admin to upgrade to unlock ' + esc(f.displayName)); }
+        // No upgrade path is offered because none exists to offer.
+        showToast(esc(f.displayName) + ' is not available for this club');
         return;
       }
       recordFeatureUsage('feature_open', id);

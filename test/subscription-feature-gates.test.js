@@ -90,7 +90,7 @@ function extractConst(source, name) {
 // extracted functions contain backtick template literals that would prematurely
 // close an outer template literal. Use string concatenation instead.
 // Phase 8: includes PLAN_LEVEL, FEATURE_REGISTRY, and registry helpers since
-// canUseFeature() and renderUpgradePrompt() now read from the registry.
+// canUseFeature() and renderUnavailableNotice() now read from the registry.
 function buildScope({ teamPlan = null, teamPlanStatus = null, permissions = [], isCoach = false } = {}) {
   const stateJson = JSON.stringify({ teamPlan, teamPlanStatus });
   const permsJson = JSON.stringify(permissions);
@@ -102,9 +102,7 @@ function buildScope({ teamPlan = null, teamPlanStatus = null, permissions = [], 
     'function isCoach() { return ' + String(isCoach) + '; }\n' +
     'function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }\n' +
     'function canI(perm) { if (_myPermissions === null) return isCoach(); return _myPermissions.includes(perm); }\n' +
-    'function settingsUpgradeToPro() {}\n' +
     'function recordFeatureUsage() {}\n' +
-    'function upgradeFromFeature(id) { settingsUpgradeToPro(); }\n' +
     extractConst(html, 'PLAN_LEVEL') + '\n' +
     'const BETA_HIDE_COMMERCIAL = false;\n' +
     extractFn(html, 'planLevel') + '\n' +
@@ -117,8 +115,8 @@ function buildScope({ teamPlan = null, teamPlanStatus = null, permissions = [], 
     extractFn(html, 'isProTeam') + '\n' +
     extractFn(html, 'isEnterpriseTeam') + '\n' +
     extractFn(html, 'canUseFeature') + '\n' +
-    extractFn(html, 'renderUpgradePrompt') + '\n' +
-    'return { isProPlan, isProTeam, isEnterpriseTeam, canUseFeature, renderUpgradePrompt };\n';
+    extractFn(html, 'renderUnavailableNotice') + '\n' +
+    'return { isProPlan, isProTeam, isEnterpriseTeam, canUseFeature, renderUnavailableNotice };\n';
 
   return new Function(body)();
 }
@@ -191,50 +189,49 @@ test('Enterprise team can use all premium features', () => {
   }
 });
 
-// ── 10. renderUpgradePrompt full card ─────────────────────────────────────────
+// ── 10-13. The unavailable notice — UPDATED when the upgrade CTAs were removed ─
+//
+// These four used to assert an "Upgrade to Pro" button, a PRO badge and an
+// "ask your admin to upgrade" fallback. There is no public Pro tier, no pricing
+// page and no checkout a club can complete, so every one of those advertised
+// something nobody could buy. The gate itself is unchanged — canUseFeature and
+// minimumPlan are untouched — only what an ungated feature SAYS has changed.
 
-test('renderUpgradePrompt renders feature name and upgrade message from registry (full card)', () => {
-  const { renderUpgradePrompt } = buildScope({ teamPlan: 'core', teamPlanStatus: 'active', permissions: [] });
-  const html = renderUpgradePrompt('advanced_analytics');
-  assert.ok(html.includes('Advanced Analytics'), 'Should include human-readable feature name');
-  // Phase 8: message comes from the registry upgradeMessage field
-  assert.ok(html.includes('Unlock detailed performance data'), 'Should include registry upgradeMessage');
-  assert.ok(html.includes('card'), 'Should use card layout class');
+test('renderUnavailableNotice names the feature and states plainly that it is unavailable', () => {
+  const { renderUnavailableNotice } = buildScope({ teamPlan: 'core', teamPlanStatus: 'active', permissions: [] });
+  const html = renderUnavailableNotice('advanced_analytics');
+  assert.ok(html.includes('Advanced Analytics'), 'names the feature');
+  assert.ok(/not available for this club/i.test(html), 'states the fact');
+  assert.ok(html.includes('card'), 'uses the ordinary card layout');
 });
 
-// ── 11. renderUpgradePrompt compact mode ─────────────────────────────────────
-
-test('renderUpgradePrompt compact mode renders inline layout', () => {
-  const { renderUpgradePrompt } = buildScope({ teamPlan: 'core', teamPlanStatus: 'active', permissions: [] });
-  const full    = renderUpgradePrompt('ai_intelligence');
-  const compact = renderUpgradePrompt('ai_intelligence', { compact: true });
-  assert.ok(compact.length < full.length, 'Compact should be shorter than full');
-  assert.ok(compact.includes('AI Intelligence'), 'Compact should include feature name');
-  assert.ok(compact.includes('PRO'), 'Compact should include PRO badge');
+test('renderUnavailableNotice compact mode renders inline layout', () => {
+  const { renderUnavailableNotice } = buildScope({ teamPlan: 'core', teamPlanStatus: 'active', permissions: [] });
+  const full    = renderUnavailableNotice('ai_intelligence');
+  const compact = renderUnavailableNotice('ai_intelligence', { compact: true });
+  assert.ok(compact.length < full.length, 'compact is shorter than full');
+  assert.ok(compact.includes('AI Intelligence'), 'compact still names the feature');
 });
 
-// ── 12. renderUpgradePrompt shows Upgrade button when user can manage subs ───
-
-test('renderUpgradePrompt shows Upgrade to Pro button when manage_subscriptions held', () => {
-  const { renderUpgradePrompt } = buildScope({
-    teamPlan: 'core', teamPlanStatus: 'active',
-    permissions: ['manage_subscriptions'],
-  });
-  const html = renderUpgradePrompt('unlimited_videos');
-  assert.ok(html.includes('Upgrade to Pro'), 'Should show upgrade button');
-  assert.ok(html.includes('upgradeFromFeature('), 'Should route through upgradeFromFeature wrapper');
+test('renderUnavailableNotice offers NO upgrade CTA — with or without manage_subscriptions', () => {
+  for (const permissions of [['manage_subscriptions'], ['view_squad'], []]) {
+    const { renderUnavailableNotice } = buildScope({ teamPlan: 'core', teamPlanStatus: 'active', permissions });
+    for (const html of [renderUnavailableNotice('unlimited_videos'),
+                        renderUnavailableNotice('unlimited_videos', { compact: true })]) {
+      assert.ok(!/Upgrade/i.test(html), `no upgrade verb (permissions: ${permissions.join(',') || 'none'})`);
+      assert.ok(!/upgradeFromFeature|settingsUpgradeToPro|create_checkout/.test(html), 'no checkout route');
+      assert.ok(!/<button/i.test(html), 'no call to action at all');
+    }
+  }
 });
 
-// ── 13. renderUpgradePrompt shows admin message when no manage_subscriptions ──
-
-test('renderUpgradePrompt shows admin message when user lacks manage_subscriptions', () => {
-  const { renderUpgradePrompt } = buildScope({
-    teamPlan: 'core', teamPlanStatus: 'active',
-    permissions: ['view_squad'],
-  });
-  const html = renderUpgradePrompt('unlimited_push');
-  assert.ok(html.includes('admin'), 'Should mention asking admin when no billing permission');
-  assert.ok(!html.includes('settingsUpgradeToPro()'), 'Should NOT show upgrade button');
+test('renderUnavailableNotice names no tier, no price and no waitlist', () => {
+  const { renderUnavailableNotice } = buildScope({ teamPlan: 'core', teamPlanStatus: 'active', permissions: ['manage_subscriptions'] });
+  const html = renderUnavailableNotice('unlimited_push');
+  for (const banned of [/\bPro\b/, /\bEnterprise\b/, /\bCore plan\b/, /£|\$|€/, /per month|\/mo\b/i,
+                        /waitlist/i, /coming soon/i, /trial/i]) {
+    assert.ok(!banned.test(html), `must not mention ${banned}`);
+  }
 });
 
 // ── 14. Core features default to accessible ───────────────────────────────────
@@ -253,7 +250,7 @@ test('Core features are not blocked by canUseFeature', () => {
 // ── 15. All helper functions are present in the HTML source ───────────────────
 
 test('All Phase 7 helpers are present in index.html', () => {
-  for (const name of ['isProTeam', 'isEnterpriseTeam', 'canUseFeature', 'renderUpgradePrompt']) {
+  for (const name of ['isProTeam', 'isEnterpriseTeam', 'canUseFeature', 'renderUnavailableNotice']) {
     assert.ok(html.includes(`function ${name}(`), `${name} must be defined in index.html`);
   }
   // All 4 premium feature keys must appear inside canUseFeature
@@ -264,5 +261,5 @@ test('All Phase 7 helpers are present in index.html', () => {
   assert.ok(html.includes("canUseFeature('ai_intelligence')"), 'AI gate must be applied in renderWeeklyBriefSlot');
   assert.ok(html.includes("canUseFeature('unlimited_videos')"), 'Video limit gate must be applied');
   assert.ok(html.includes("canUseFeature('advanced_analytics')"), 'Analytics locked card must be applied');
-  assert.ok(html.includes("canUseFeature('unlimited_push')"), 'Push upgrade prompt must be applied');
+  assert.ok(html.includes("canUseFeature('unlimited_push')"), 'Push limit gate must be applied');
 });

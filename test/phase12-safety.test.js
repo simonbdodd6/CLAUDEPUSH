@@ -200,7 +200,7 @@ function buildSettingsScope({ buildInfo = { sha: 'abc1234', env: 'production', b
     function lastSyncLabel() { return 'Just now'; }
     function loadSettingsData() {}
     function renderFeatureDiscovery() { return ''; }
-    function renderUpgradePrompt() { return ''; }
+    function renderUnavailableNotice() { return ''; }
     const DAY_LABELS = { mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', sat:'Saturday', sun:'Sunday' };
     // Notification API stub for node environment
     const Notification = { permission: 'granted' };
