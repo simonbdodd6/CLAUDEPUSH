@@ -57,6 +57,7 @@ export {
 // an SC2 profile. Coach authoring consumes this and never a full profile.
 export {
   authoringProfileFrom, authoringProfileUsable, missingAuthoringInputs,
+  restrictionSignalAllowed,
   engineInputFromAuthoringProfile, AUTHORING_PROFILE_VERSION,
   FORBIDDEN_PROFILE_SECTIONS,
 } from '../domain/authoring-profile.js';

@@ -87,6 +87,62 @@ export function authoringProfileFrom(profile, { now = new Date(0) } = {}) {
   };
 }
 
+// ── Minors gate on the restriction signal (interim) ─────────────────────────
+//
+// `restrictions.trainingRestricted` is derived from the athlete's pain section.
+// An athlete sets it to describe how they feel, not to send their coach a
+// message, and they never consented to a coach seeing it. The consent design
+// that would give it a proper basis is blocked on legal review for minors, so
+// until that lands the signal is withheld for U16 and U18 athletes.
+//
+// This is an INTERIM measure, not the final position. When athlete-initiated
+// sharing exists, this gate is replaced by that consent — not loosened.
+//
+// FAIL CLOSED: the signal travels only when the athlete is POSITIVELY resolved
+// as an adult. An unknown age band, an unresolved membership or a youth squad
+// classification all suppress it. Over-suppression costs a coach one review
+// prompt; under-suppression discloses a minor's pain-derived data.
+
+/** SC2 age bands that mean a minor. */
+export const YOUTH_AGE_BANDS = ['under_16', '16_17'];
+/** SC2 age bands that positively mean an adult. */
+export const ADULT_AGE_BANDS = ['18_20', '21_29', '30_34', '35_plus'];
+/** Structured squad classifications that mean a youth squad. */
+export const YOUTH_DEVELOPMENT_CATEGORIES = ['youth_u16', 'youth_u18'];
+
+/**
+ * May the restriction signal be shown to a coach for this athlete?
+ *
+ * Age band is the athlete's OWN evidence and is the primary source — the same
+ * precedence SC5 already applies, where athlete age outranks squad context.
+ * The squad's structured developmentCategory is a second, independent veto: an
+ * athlete sitting in a youth squad is withheld even if their band says adult,
+ * because for a minors gate the conservative composition is "either says
+ * youth" rather than "the more authoritative one wins".
+ *
+ * Group NAMES are never consulted — only the stored classification.
+ */
+export function restrictionSignalAllowed({ ageBand = null, developmentCategory = null } = {}) {
+  if (YOUTH_DEVELOPMENT_CATEGORIES.includes(developmentCategory)) return false;
+  return ADULT_AGE_BANDS.includes(ageBand);
+}
+
+/**
+ * Apply the gate to a projection. The KEY is preserved and forced to false
+ * rather than deleted, so the projection's shape never varies by athlete —
+ * a missing key would itself be a signal.
+ */
+export function gateRestrictionSignal(profile, { developmentCategory = null } = {}) {
+  if (!profile) return profile;
+  if (restrictionSignalAllowed({ ageBand: profile.personal?.ageBand ?? null, developmentCategory })) {
+    return profile;
+  }
+  return {
+    ...profile,
+    restrictions: { ...(profile.restrictions || {}), trainingRestricted: false },
+  };
+}
+
 /** Fields a coach's authoring tool may ever see. Anything else is a leak. */
 export const AUTHORING_PROFILE_FIELDS = [
   'kind', 'schemaVersion', 'sport', 'personal', 'rugby', 'training',

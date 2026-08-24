@@ -31275,7 +31275,18 @@
               ${dev.safeguardsActive ? '<span class="pill">Safeguards active</span>' : ''}
             </div>
             <strong class="perf-card-title">${esc(PERF_CONTEXT_LABELS[dev.context] || PERF_CONTEXT_LABELS.unknown)}</strong>
-            <small class="muted" style="display:block;margin-top:5px">${esc(syncLine)} · your coach sees only your training inputs, never your wellness or health notes</small>
+            <small class="muted" style="display:block;margin-top:5px">${esc(syncLine)}</small>
+            <small class="muted" style="display:block;margin-top:6px;line-height:1.6">
+              Your coach can see the answers they need to build your programme: your position,
+              level, experience, equipment, training days and goals.
+              ${_perfWkMod.restrictionSignalAllowed({ ageBand: p.personal?.ageBand,
+                  developmentCategory: perfTeamDevelopmentCategory() })
+                ? `They can also see whether you have said your training is currently limited &mdash;
+                   not what the problem is.`
+                : `They cannot see whether your training is limited.`}
+              Your wellness check-ins and anything you write about pain stay on this device:
+              your coach never sees them, and they will not follow you to a new phone.
+            </small>
             <small class="muted" style="display:block;margin-top:5px">
               Your age evidence: ${esc(PERF_OPT_LABEL[p.personal.ageBand] || 'not provided')} ·
               Squad classification: ${esc(developmentCategoryLabel(teamCat))}

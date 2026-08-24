@@ -34,14 +34,16 @@ const { authoringProfileFrom, authoringProfileUsable, missingAuthoringInputs,
         engineInputFromAuthoringProfile, FORBIDDEN_PROFILE_SECTIONS } = await import('../performance/domain/authoring-profile.js');
 const { createEmptyProfile } = await import('../performance/domain/athlete-profile.js');
 
-const CLUB = 'club-p', OTHER = 'club-o', SEN = 'g-sen', U18 = 'g-u18';
+const CLUB = 'club-p', OTHER = 'club-o', SEN = 'g-sen', U18 = 'g-u18', U16 = 'g-u16';
 const MEMBERS = [
   { id: 'm1', teamId: CLUB, userId: 'u-sen-player', role: 'player', status: 'active', playerGroupId: SEN },
   { id: 'm2', teamId: CLUB, userId: 'u-u18-player', role: 'player', status: 'active', playerGroupId: U18 },
+  { id: 'm8', teamId: CLUB, userId: 'u-u16-player', role: 'player', status: 'active', playerGroupId: U16 },
   { id: 'm3', teamId: CLUB, userId: 'u-sen-coach', role: 'coach', status: 'active', accessProfile: 'coach',
     accessScope: { clubWide: false, groups: [{ groupId: SEN, role: 'coach', status: 'active' }], teams: [] } },
   { id: 'm4', teamId: CLUB, userId: 'u-u18-coach', role: 'coach', status: 'active', accessProfile: 'coach',
-    accessScope: { clubWide: false, groups: [{ groupId: U18, role: 'coach', status: 'active' }], teams: [] } },
+    accessScope: { clubWide: false, groups: [{ groupId: U18, role: 'coach', status: 'active' },
+                                             { groupId: U16, role: 'coach', status: 'active' }], teams: [] } },
   { id: 'm5', teamId: CLUB, userId: 'u-admin', role: 'admin', status: 'active', isOwner: true },
   { id: 'm6', teamId: CLUB, userId: 'u-medic', role: 'medical', status: 'active' },
   { id: 'm7', teamId: OTHER, userId: 'u-other-coach', role: 'coach', status: 'active', accessProfile: 'coach' },
@@ -55,11 +57,13 @@ function seed({ plan = 'pro' } = {}) {
   kv.set('app:identity:users', JSON.stringify(MEMBERS.map(m => ({ id: m.userId, email: `${m.userId}@t.test`, displayName: m.userId }))));
   kv.set(`app:structure:${CLUB}`, JSON.stringify({ version: 1,
     groups: [{ id: SEN, name: 'Seniors', developmentCategory: 'adult', status: 'active' },
-             { id: U18, name: 'U18', developmentCategory: 'youth_u18', status: 'active' }],
+             { id: U18, name: 'U18', developmentCategory: 'youth_u18', status: 'active' },
+             { id: U16, name: 'U16', developmentCategory: 'youth_u16', status: 'active' }],
     teams: [{ id: 't1', groupId: SEN, name: 'Prem', status: 'active' }] }));
   kv.set(`app:roster:${CLUB}`, JSON.stringify({ players: [
     { id: 'p1', userId: 'u-sen-player', name: 'Senior Player', position: 'LOCK' },
-    { id: 'p2', userId: 'u-u18-player', name: 'U18 Player', position: 'WING' }] }));
+    { id: 'p2', userId: 'u-u18-player', name: 'U18 Player', position: 'WING' },
+    { id: 'p3', userId: 'u-u16-player', name: 'U16 Player', position: 'CENTRE' }] }));
 }
 const cookies = new Map();
 async function login(userId) {
@@ -308,4 +312,96 @@ test('19. an unentitled club cannot read or write profiles', async () => {
   assert.equal((await call('u-sen-player')).code, 402);
   assert.equal((await saveOwn('u-sen-player', fullProfile())).code, 402);
   assert.equal((await call('u-sen-coach', { query: { athleteProfile: 'u-sen-player' } })).code, 402);
+});
+
+// ── Minors gate on the restriction signal (interim) ──────────────────────────
+//
+// The signal is pain-derived and unconsented. Until the consent design clears
+// legal review for minors it is withheld from coaches of U16 and U18 athletes,
+// SERVER-side, in the only response that carries it.
+
+/** A profile whose owner has said their training is restricted. */
+function restrictedProfile(ageBand) {
+  const p = fullProfile();
+  p.personal.dateOfBirth = null;
+  p.personal.ageBand = ageBand;
+  p.pain.trainingRestricted = true;
+  return p;
+}
+const readProfile = (coach, athlete) => call(coach, { query: { athleteProfile: athlete } });
+
+test('20. GATE — a U18 athlete\'s restriction signal never reaches their coach', async () => {
+  seed(); await login('u-u18-player'); await login('u-u18-coach');
+  await saveOwn('u-u18-player', restrictedProfile('16_17'));
+  const r = await readProfile('u-u18-coach', 'u-u18-player');
+  assert.equal(r.code, 200);
+  assert.equal(r.body.profile.restrictions.trainingRestricted, false, 'withheld');
+  // The athlete's OWN stored record still holds it — nothing was destroyed.
+  const stored = store.authoringProfileFor(await store.loadPerformanceRecord(CLUB), 'u-u18-player');
+  assert.equal(stored.restrictions.trainingRestricted, true, 'the athlete\'s own record is intact');
+});
+
+test('21. GATE — a U16 athlete\'s signal is withheld too', async () => {
+  seed(); await login('u-u16-player'); await login('u-u18-coach');
+  await saveOwn('u-u16-player', restrictedProfile('under_16'));
+  const r = await readProfile('u-u18-coach', 'u-u16-player');
+  assert.equal(r.code, 200);
+  assert.equal(r.body.profile.restrictions.trainingRestricted, false);
+});
+
+test('22. ADULTS UNAFFECTED — the signal and its review prompt still work', async () => {
+  seed(); await login('u-sen-player'); await login('u-sen-coach');
+  await saveOwn('u-sen-player', restrictedProfile('21_29'));
+  const r = await readProfile('u-sen-coach', 'u-sen-player');
+  assert.equal(r.body.profile.restrictions.trainingRestricted, true, 'an adult is unchanged');
+  // ...and it still drives the SC5 review flag the coach relies on.
+  const input = engineInputFromAuthoringProfile(r.body.profile, { teamCategory: 'adult' });
+  assert.equal(input.hasActiveRestriction, true);
+});
+
+test('23. FAIL CLOSED — an unresolved age band withholds it, even in an adult squad', async () => {
+  seed(); await login('u-sen-player'); await login('u-sen-coach');
+  await saveOwn('u-sen-player', restrictedProfile('unknown'));
+  const r = await readProfile('u-sen-coach', 'u-sen-player');
+  assert.equal(r.body.profile.restrictions.trainingRestricted, false,
+    'we withhold unless the athlete is POSITIVELY resolved as an adult');
+  const input = engineInputFromAuthoringProfile(r.body.profile, { teamCategory: 'adult' });
+  assert.equal(input.hasActiveRestriction, false, 'and no review prompt is raised from it');
+});
+
+test('24. a forged client request cannot restore the signal', async () => {
+  seed(); await login('u-u18-player'); await login('u-u18-coach');
+  await saveOwn('u-u18-player', restrictedProfile('16_17'));
+  // Every shape a client could try: query flags, body, headers.
+  for (const query of [{ athleteProfile: 'u-u18-player', trainingRestricted: 'true' },
+                       { athleteProfile: 'u-u18-player', includeRestrictions: '1' },
+                       { athleteProfile: 'u-u18-player', ageBand: '21_29' },
+                       { athleteProfile: 'u-u18-player', developmentCategory: 'adult' }]) {
+    const r = await call('u-u18-coach', { query });
+    assert.equal(r.body.profile.restrictions.trainingRestricted, false, JSON.stringify(query));
+  }
+  // The gate reads the SERVER's structure record, so a forged group cannot move
+  // the athlete into an adult squad.
+  const r = await call('u-u18-coach', { method: 'POST', body: {
+    op: 'save_athlete_profile', athleteUserId: 'u-u18-player',
+    profile: { restrictions: { trainingRestricted: true } } } });
+  assert.equal(r.code, 403, 'a coach still cannot write an athlete profile at all');
+});
+
+test('25. gating changes NO other projection field', async () => {
+  seed(); await login('u-u18-player'); await login('u-sen-player'); await login('u-admin');
+  const p = restrictedProfile('16_17');
+  await saveOwn('u-u18-player', p);
+  const gated = (await readProfile('u-admin', 'u-u18-player')).body.profile;
+  const stored = store.authoringProfileFor(await store.loadPerformanceRecord(CLUB), 'u-u18-player');
+  assert.deepEqual(Object.keys(gated).sort(), Object.keys(stored).sort(), 'same shape');
+  for (const k of Object.keys(stored)) {
+    if (k === 'restrictions') continue;
+    assert.deepEqual(gated[k], stored[k], `${k} must be identical`);
+  }
+  assert.deepEqual(
+    { ...gated.restrictions, trainingRestricted: null },
+    { ...stored.restrictions, trainingRestricted: null },
+    'the other restriction fields are identical');
+  assert.ok('trainingRestricted' in gated.restrictions, 'the key survives, so shape never varies');
 });
