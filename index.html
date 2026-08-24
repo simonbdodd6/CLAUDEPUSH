@@ -31482,7 +31482,45 @@
     }
 
     // ── Dashboard ─────────────────────────────────────────────────────────────
+    /**
+     * An HONEST Performance hub for production.
+     *
+     * The dashboard below is still SC1 presentation material: invented
+     * athletes, invented readiness and adherence figures, and a hard-coded
+     * date. Rendering it for a real club would show fabricated people as
+     * though they were that club's own squad — the same objection that keeps
+     * the demo workout out of production. Until squad-wide reporting is built
+     * on real assignment data, production gets an empty state in the tone the
+     * rest of Performance already uses ("No programme assigned"), and the
+     * surfaces that DO carry real data are one tap away.
+     */
+    function perfDashboardEmptyHtml() {
+      return `
+        <div class="training-hero perf-hero">
+          <div>
+            <div class="eyebrow">CoachEasier Performance</div>
+            <h1>Performance Hub</h1>
+            <p>Strength &amp; conditioning for the group you are viewing.</p>
+          </div>
+        </div>
+        <div class="card perf-card">
+          <strong class="perf-card-title">No squad reporting yet</strong>
+          <p class="muted" style="font-size:13px;margin:8px 0 0">
+            Squad-wide readiness and adherence reporting is still being built, so there is
+            nothing to show here rather than an estimate. Your athletes and their programmes
+            are live now.</p>
+          <div class="wk-ex-actions" style="margin-top:12px">
+            <button class="btn primary" type="button" onclick="setPerfTab('athletes')">View athletes</button>
+            <button class="btn ghost" type="button" onclick="setPerfTab('programmes')">Programmes</button>
+          </div>
+        </div>`;
+    }
+
     function perfDashboardHtml() {
+      // Sample material is a development fixture, not a club's work. Same host
+      // rule as installDemoSquad and the demo workout assignment — one helper,
+      // _isLocalDemoHost(), and this returns BEFORE any sample data is read.
+      if (!_isLocalDemoHost()) return perfDashboardEmptyHtml();
       const today = PERF_SAMPLE_TODAY;
       const donePct = Math.round((today.completedCount / today.assignedCount) * 100);
       const active = PERF_SAMPLE_PROGRAMMES.filter(p => p.status === 'active');
@@ -31609,15 +31647,16 @@
     }
     function perfAthletesHtml() {
       if (!_perfWkMod) return perfAssignLoadingHtml('Athletes');
-      // REAL athletes, and only the ones Core's operational scope allows: this
-      // list is whatever /api/publish?resource=performance was willing to send
-      // for this coach. state.players is deliberately never consulted — it is
+      // REAL athletes, and only the ones Core's operational scope allows: the
+      // source is whatever /api/publish?resource=performance was willing to
+      // send for this coach, narrowed to the group they are VIEWING by the one
+      // shared helper. state.players is deliberately never consulted — it is
       // club-wide on every coach's device, so reading it here would show a
       // Seniors coach the U18 squad.
       if (!_perfAssign.loaded) { perfLoadAssignments(); return perfAssignLoadingHtml('Athletes'); }
       if (_perfAssign.error) return perfAssignErrorHtml('Athletes');
       const today = perfToday();
-      const rows = _perfAssign.athletes.map(a => {
+      const rows = perfScopedAthletes().map(a => {
         const mine = _perfAssign.assignments.filter(x => x.athleteUserId === a.userId);
         const live = mine.find(x => _perfWkMod && _perfWkMod.isLiveToday(x, today));
         const current = live || mine.find(x => ['scheduled', 'paused'].includes(x.status)) || null;
@@ -31652,8 +31691,11 @@
                   ${current.status === 'paused' ? 'Resume' : 'Pause'}</button>` : ''}
             </div>
           </div>`).join('')}</div>`
-        : `<div class="card perf-card"><strong class="perf-card-title">No athletes in your scope</strong>
-             <p class="muted" style="font-size:13px;margin:8px 0 0">Athletes appear here once they are members of a group you coach.</p></div>`}`;
+        : `<div class="card perf-card"><strong class="perf-card-title">${operationalGroupName()
+               ? `No athletes in ${esc(operationalGroupName())}` : 'No athletes in your scope'}</strong>
+             <p class="muted" style="font-size:13px;margin:8px 0 0">${operationalGroupName()
+               ? 'Switch group at the top of the page to see another squad. Athletes appear here once they are members of the group you are viewing.'
+               : 'Athletes appear here once they are members of a group you coach.'}</p></div>`}`;
     }
 
     function perfDevCategoryLabel(code) {
@@ -31870,10 +31912,13 @@
     }
 
     function perfPickAthleteHtml() {
-      const list = _perfAssign.athletes;
+      // Same scoping contract as the Athletes screen — one helper, not a
+      // second ad-hoc filter, so the two surfaces can never disagree.
+      const list = perfScopedAthletes();
+      const groupLabel = operationalGroupName();
       return `
         <div class="perf-page-head" style="margin-top:14px">
-          <div><h2>New programme</h2><p class="muted">Choose the athlete this programme is for.</p></div>
+          <div><h2>New programme</h2><p class="muted">Choose the athlete this programme is for${groupLabel ? ` — showing ${esc(groupLabel)}` : ''}.</p></div>
         </div>
         ${list.length ? `<div class="grid perf-grid-3">${list.map(a => `
           <button class="card perf-card" type="button" style="text-align:left;cursor:pointer;font-family:inherit"
@@ -31883,7 +31928,9 @@
             <strong class="perf-card-title">${esc(a.name)}</strong>
             <small class="muted" style="display:block;margin-top:3px">${esc(a.position || 'Position not set')}</small>
           </button>`).join('')}</div>`
-        : '<div class="card perf-card"><span class="muted">No athletes in your coaching scope.</span></div>'}`;
+        : `<div class="card perf-card"><span class="muted">${groupLabel
+             ? `No athletes in ${esc(groupLabel)}. Switch group at the top of the page to see another squad.`
+             : 'No athletes in your coaching scope.'}</span></div>`}`;
     }
 
     function perfGenerateHtml() {
@@ -32601,6 +32648,39 @@
      */
     let _perfAssign = { loaded: false, loading: false, error: null, capacity: null,
                         athletes: [], programmes: [], assignments: [], entitlement: null };
+
+    /**
+     * THE athlete set for every coach Performance surface.
+     *
+     * `_perfAssign.athletes` is the server's ACCESS-SCOPE answer: every athlete
+     * this coach is authorised to reach. For a club-wide coach that is the
+     * WHOLE club — correct as a security boundary, wrong as a view. Rendering
+     * it raw is what put the Seniors squad on screen while the topbar read
+     * "Viewing: U18", and buried the U18 athlete the coach was looking for
+     * among every other group's players.
+     *
+     * The effective set is the INTERSECTION of:
+     *   A. the athlete belongs to the selected operational group, AND
+     *   B. the athlete is inside the coach's server-authorised scope.
+     *
+     * B is the server's and is already applied to the input — this helper only
+     * ever NARROWS, so a client-selected group can never reach an athlete the
+     * session did not already grant. Membership is read from the server-
+     * projected `groupId`; group NAMES are never parsed, so a Seniors group
+     * labelled "U18" stays Seniors.
+     */
+    function perfScopedAthletes() {
+      const rows = _perfAssign.athletes || [];
+      const gid = String(state.operationalGroupId || '');
+      // No group in force → the scope answer, unchanged.
+      if (!gid) return rows;
+      // UNKNOWN ≠ LEGACY (the d8abe940 rule). A club whose athletes carry no
+      // group at all is genuinely pre-structure and keeps its full list; the
+      // moment ANY athlete carries a group, an athlete without one is not
+      // "everyone's" — it is unresolved, and fails closed.
+      if (!rows.some(a => String(a.groupId || ''))) return rows;
+      return rows.filter(a => String(a.groupId || '') === gid);
+    }
 
     async function perfLoadAssignments(force = false) {
       if (_perfAssign.loading) return _perfAssign;
@@ -34145,6 +34225,12 @@
       state.performanceProfile = null;
       state.performanceLibrary = null;
       state.performanceWorkout = null;
+      // The SERVER-scoped Performance answer is identity-scoped too: it holds
+      // the athletes, programmes and assignments THIS coach was authorised to
+      // see. Left behind on a shared device, the next identity would render
+      // the previous coach's squad until their own fetch landed.
+      _perfAssign = { loaded: false, loading: false, error: null, capacity: null,
+                      athletes: [], programmes: [], assignments: [], entitlement: null };
       chatSetUnreadTotal(0);
     }
 
@@ -34373,6 +34459,17 @@
         const mcCurrent = matchCentreFixtureId();
         if (mcCurrent && String(_mcSheetFixtureId ?? '\u0000') === mcCurrent) mcFlushDraftNow();
         mcDetachFixture();
+      }
+      // PERFORMANCE crosses no group boundary either. The scoped athlete list
+      // is invalidated so the next render refetches: an athlete added to the
+      // group a moment ago must appear without a logout or cache clear, and a
+      // programme being authored for the OUTGOING group's athlete must not sit
+      // inside the incoming group's shell (the Match Centre rule above).
+      if (state.operationalGroupId !== groupId) {
+        _perfAssign = { ..._perfAssign, loaded: false, loading: false };
+        _perfAuthor = { step: null, athleteUserId: null, draft: null, provenance: null, athleteProfile: null,
+                        programmeId: null, weeks: 4, ack: false, busy: false, error: null,
+                        startDate: null, intent: 'assign', assignProgrammeId: null };
       }
       state.operationalGroupId = groupId;
       syncTrainingStateToGroup();

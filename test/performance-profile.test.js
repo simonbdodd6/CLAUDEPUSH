@@ -223,7 +223,11 @@ test('13. athlete list: programme decision data only — no sensitive data', () 
   // and the server projection (performance-assignment-api test 6) enforces it
   // rather than the browser merely declining to render it.
   const list = extractFn(html, 'perfAthletesHtml');
-  assert.match(list, /_perfAssign\.athletes/, 'athletes come from the scoped server payload');
+  // The list now reaches that payload through the shared scoping helper, which
+  // narrows it to the group being viewed. Both halves stay pinned.
+  assert.match(list, /perfScopedAthletes\(\)/, 'athletes come through the shared scoping helper');
+  assert.match(extractFn(html, 'perfScopedAthletes'), /_perfAssign\.athletes/,
+    'and that helper reads the scoped server payload');
   assert.match(list, /perfDevCategoryLabel/, 'development category shown as a category');
   assert.match(list, /No programme assigned/, 'assignment status shown honestly');
   for (const banned of ['wellnessLog', 'pain.', 'health.', 'injuryHistory', 'physioInstructions',

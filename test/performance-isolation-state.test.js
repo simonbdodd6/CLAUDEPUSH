@@ -107,7 +107,14 @@ test('5. the Athletes screen reads SERVER-SCOPED athletes, never the club roster
   // filters by the caller's own operational scope. The old sample fixture is
   // gone; what replaced it is stricter, not looser.
   const athletes = extractFn('perfAthletesHtml');
-  assert.match(athletes, /_perfAssign\.athletes/, 'athletes come from the scoped server payload');
+  // The screen reads the ONE shared scoping helper, which narrows the scoped
+  // server payload to the group being viewed. Both halves are pinned: the
+  // helper is what the screen calls, and the helper's only source is the
+  // server payload — never the club-wide roster.
+  assert.match(athletes, /perfScopedAthletes\(\)/, 'athletes come through the shared scoping helper');
+  const scoped = extractFn('perfScopedAthletes');
+  assert.match(scoped, /_perfAssign\.athletes/, 'and that helper reads the scoped server payload');
+  assert.match(scoped, /state\.operationalGroupId/, 'narrowed by the selected operational group');
   assert.ok(!/PERF_SAMPLE_ATHLETES/.test(athletes), 'sample data no longer backs the real view');
   const code = athletes.split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
   assert.ok(!/state\.players/.test(code), 'the club-wide roster is never read');
@@ -175,19 +182,36 @@ test('D. identity switch leaves nothing person-scoped behind', () => {
   const body = `"use strict";
     let _chatConversations, _chatLastPoll, _chatFeedPaintedFor, _groupRecipients,
         _trainingSchedule, _trainingScheduleAttempted, _trainingScheduleQueue,
-        _trainingScheduleGroupId, _myPlatformRole;
+        _trainingScheduleGroupId, _myPlatformRole,
+        // Group context (added with the Player Home isolation fix) and the
+        // server-scoped Performance payload: both are identity-scoped and both
+        // are cleared by the real function, so the harness must declare them.
+        _myOperational, _perfAssign;
     function chatSetUnreadTotal() {}
     ${extractFn('resetIdentityScopedState')}
-    resetIdentityScopedState(); return state;`;
-  const after = new Function('state', body)({
+    _perfAssign = { loaded: true, athletes: [{ userId: 'other-coachs-athlete' }],
+                    programmes: [{ programmeId: 'pg-1' }], assignments: [{ assignmentId: 'pa-1' }] };
+    _myOperational = { staff: { groups: [{ id: 'grp_seniors' }] } };
+    resetIdentityScopedState();
+    return { state, perfAssign: _perfAssign, myOperational: _myOperational };`;
+  const out = new Function('state', body)({
     performanceProfile: { profile: {} }, performanceLibrary: { favourites: ['x'] },
     performanceWorkout: { stateVersion: 1, active: { workoutSessionId: 'w' }, history: [{}] },
     performanceSettings: { units: 'kg' },
   });
+  const after = out.state;
   assert.equal(after.performanceProfile, null);
   assert.equal(after.performanceLibrary, null);
   assert.equal(after.performanceWorkout, null);
   assert.ok(after.performanceSettings, 'device preference kept');
+  // The SERVER-scoped coach payload is identity-scoped too: the next person on
+  // a shared device must not inherit the previous coach's athlete list.
+  assert.equal(out.perfAssign.loaded, false, 'the Performance payload is marked unloaded');
+  assert.deepEqual(out.perfAssign.athletes, [], 'no athlete survives the identity switch');
+  assert.deepEqual(out.perfAssign.programmes, [], 'no programme survives');
+  assert.deepEqual(out.perfAssign.assignments, [], 'no assignment survives');
+  assert.equal(out.myOperational, null, 'and the group context is cleared with it');
+  assert.equal(after.operationalGroupId, null);
 });
 
 test('E. club switch clears club-derived workout context', () => {

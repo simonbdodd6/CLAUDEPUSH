@@ -57,7 +57,11 @@ function runIdentityReset(state) {
   const body = `"use strict";
     let _chatConversations, _chatLastPoll, _chatFeedPaintedFor, _groupRecipients,
         _trainingSchedule, _trainingScheduleAttempted, _trainingScheduleQueue,
-        _trainingScheduleGroupId, _myPlatformRole;
+        _trainingScheduleGroupId, _myPlatformRole,
+        // Group context (added with the Player Home isolation fix) and the
+        // server-scoped Performance payload: both are identity-scoped and both
+        // are cleared by the real function, so the harness must declare them.
+        _myOperational, _perfAssign;
     function chatSetUnreadTotal() {}
     ${extractFn(html, 'resetIdentityScopedState')}
     resetIdentityScopedState();

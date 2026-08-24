@@ -176,7 +176,12 @@ test('10. NO Performance surface reads the club-wide roster', () => {
 
 test('11. the coach athlete list comes from the server, scoped', () => {
   const athletes = extractFn('perfAthletesHtml');
-  assert.match(athletes, /_perfAssign\.athletes/);
+  // Server-owned, then narrowed to the group being viewed by the one shared
+  // helper — the seam that keeps Athletes and the New Programme picker in step.
+  assert.match(athletes, /perfScopedAthletes\(\)/);
+  const scoped = extractFn('perfScopedAthletes');
+  assert.match(scoped, /_perfAssign\.athletes/, 'the helper reads the scoped server payload');
+  assert.match(extractFn('perfPickAthleteHtml'), /perfScopedAthletes\(\)/, 'and the picker uses the same helper');
   assert.match(athletes, /perfLoadAssignments\(\)/);
   assert.ok(!/PERF_SAMPLE_ATHLETES/.test(athletes), 'sample data is gone from the real view');
 });

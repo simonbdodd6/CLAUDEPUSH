@@ -411,6 +411,11 @@ function switchHarness(initialState, targetGid) {
     function matchCentreFixtureId() { return ''; }
     function mcFlushDraftNow() {}
     function mcDetachFixture() {}
+    // Performance detach machinery (selected-group isolation fix): the switch
+    // invalidates the scoped athlete payload and drops any in-flight authoring.
+    // Inert here — this suite exercises the TRAINING partition only.
+    let _perfAssign = { loaded: true, athletes: [] };
+    let _perfAuthor = { step: null };
     ${fn('captureTrainingState')}
     ${fn('stashTrainingState')}
     ${fn('adoptTrainingState')}
@@ -512,6 +517,11 @@ test('dual-role capacity switch swaps training state too — coach work never en
     function matchCentreFixtureId() { return ''; }
     function mcFlushDraftNow() {}
     function mcDetachFixture() {}
+    // Performance detach machinery (selected-group isolation fix): the switch
+    // invalidates the scoped athlete payload and drops any in-flight authoring.
+    // Inert here — this suite exercises the TRAINING partition only.
+    let _perfAssign = { loaded: true, athletes: [] };
+    let _perfAuthor = { step: null };
     ${fn('operationalCapacity')}
     ${fn('operationalGroups')}
     ${fn('captureTrainingState')}
