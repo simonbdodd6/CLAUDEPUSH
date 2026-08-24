@@ -8417,96 +8417,54 @@
     }
 
     /**
-     * Minimal, VALUES-ONLY .xlsx reader — no dependency, no formula
-     * evaluation, no macros: an xlsx is a zip of XML, so the first sheet and
-     * the shared-string table are inflated with the browser's own
-     * DecompressionStream and read as text. Cell <f> (formula) nodes are
-     * ignored entirely; only cached <v>/<t> values are taken. Returns null
-     * when the browser cannot inflate, so the caller can say so honestly.
+     * THE spreadsheet reader, shared by every importer in Core (squad import
+     * and the training planner). SheetJS is loaded once, on demand, from the
+     * CSP-allow-listed origin in vercel.json — never bundled, never loaded
+     * unless someone actually imports a workbook.
+     *
+     * This replaced a hand-rolled zip walk that could not read files written
+     * by Excel itself: Excel streams every entry with general-purpose bit 3
+     * set, so the local file header carries compSize/uncompSize of 0 and the
+     * real sizes trail in a data descriptor. The old reader skipped exactly
+     * those entries, found no worksheet, and told the user their BROWSER
+     * could not open .xlsx files — which was never true. Rather than grow a
+     * second zip implementation (data descriptors, then zip64, then workbook
+     * ordering, then date formats), Core now has one reader.
+     */
+    let _sheetJsPromise = null;
+    function ensureSheetJS() {
+      if (typeof XLSX !== 'undefined') return Promise.resolve();
+      if (!_sheetJsPromise) {
+        _sheetJsPromise = new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+          s.onload = resolve;
+          s.onerror = () => reject(new Error('SheetJS load failed'));
+          document.head.appendChild(s);
+        }).catch(e => { _sheetJsPromise = null; throw e; });   // a failed load may be retried
+      }
+      return _sheetJsPromise;
+    }
+
+    /**
+     * Read the FIRST sheet of a workbook as a grid of strings.
+     *
+     * Values only. `sheet_to_json` returns each cell's cached value; formula
+     * TEXT is never returned and nothing from the file is ever evaluated,
+     * which is the same guarantee the previous reader made. The sheet is
+     * chosen by WORKBOOK ORDER (`SheetNames[0]`), not by filename — the old
+     * reader picked `xl/worksheets/sheet1.xml`, which is not reliably the
+     * sheet the author sees first.
      */
     async function xlsxParse(buffer) {
-      if (typeof DecompressionStream !== 'function') return null;
-      const bytes = new Uint8Array(buffer);
-      const dv = new DataView(buffer);
-      const dec = new TextDecoder();
-      // Walk local file headers (PK\x03\x04) — enough for files written by
-      // Excel/Numbers/Sheets, which never use zip64 for a small sheet.
-      const files = {};
-      for (let i = 0; i + 4 < bytes.length; i++) {
-        if (!(bytes[i] === 0x50 && bytes[i + 1] === 0x4b && bytes[i + 2] === 0x03 && bytes[i + 3] === 0x04)) continue;
-        const method = dv.getUint16(i + 8, true);
-        let compSize = dv.getUint32(i + 18, true);
-        let uncompSize = dv.getUint32(i + 22, true);
-        const nameLen = dv.getUint16(i + 26, true);
-        const extraLen = dv.getUint16(i + 28, true);
-        const nameStart = i + 30;
-        const name = dec.decode(bytes.subarray(nameStart, nameStart + nameLen));
-        const dataStart = nameStart + nameLen + extraLen;
-        if (!compSize && !uncompSize) continue;           // streamed entry: skip
-        const data = bytes.subarray(dataStart, dataStart + compSize);
-        if (name.endsWith('.xml')) files[name] = { method, data };
-        i = dataStart + compSize - 1;
-      }
-      const inflate = async entry => {
-        if (!entry) return '';
-        if (entry.method === 0) return dec.decode(entry.data);           // stored
-        const ds = new DecompressionStream('deflate-raw');
-        const stream = new Blob([entry.data]).stream().pipeThrough(ds);
-        return new Response(stream).text();
-      };
-      const sheetName = Object.keys(files).find(n => /^xl\/worksheets\/sheet1\.xml$/.test(n))
-        || Object.keys(files).find(n => /^xl\/worksheets\/.+\.xml$/.test(n));
-      if (!sheetName) return null;
-      const [sheetXml, sharedXml] = await Promise.all([
-        inflate(files[sheetName]),
-        inflate(files['xl/sharedStrings.xml']),
-      ]);
-      const shared = [];
-      String(sharedXml || '').replace(/<si>([\s\S]*?)<\/si>/g, (_m, si) => {
-        let out = '';
-        si.replace(/<t[^>]*>([\s\S]*?)<\/t>/g, (_x, t) => { out += t; return ''; });
-        shared.push(xmlUnescape(out));
-        return '';
-      });
-      const grid = [];
-      String(sheetXml || '').replace(/<row[^>]*>([\s\S]*?)<\/row>/g, (_m, rowXml) => {
-        const cells = [];
-        rowXml.replace(/<c([^>]*)>([\s\S]*?)<\/c>|<c([^>]*)\/>/g, (_c, attrs, inner) => {
-          const a = attrs || '';
-          const ref = (a.match(/r="([A-Z]+)\d+"/) || [])[1] || '';
-          const type = (a.match(/t="([^"]+)"/) || [])[1] || '';
-          let value = '';
-          if (inner) {
-            if (type === 'inlineStr') {
-              const m = inner.match(/<t[^>]*>([\s\S]*?)<\/t>/);
-              value = m ? xmlUnescape(m[1]) : '';
-            } else {
-              // Only the cached VALUE is read — <f> formula text is ignored.
-              const m = inner.match(/<v>([\s\S]*?)<\/v>/);
-              const raw = m ? m[1] : '';
-              value = type === 's' ? (shared[Number(raw)] ?? '') : xmlUnescape(raw);
-            }
-          }
-          cells.push({ col: colIndexFromRef(ref), value: String(value) });
-          return '';
-        });
-        const row = [];
-        cells.forEach((c, i) => { row[c.col >= 0 ? c.col : i] = c.value; });
-        for (let i = 0; i < row.length; i++) if (row[i] === undefined) row[i] = '';
-        grid.push(row);
-        return '';
-      });
-      return grid;
-    }
-    function xmlUnescape(v) {
-      return String(v).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
-        .replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_m, d) => String.fromCharCode(+d)).replace(/&amp;/g, '&');
-    }
-    function colIndexFromRef(ref) {
-      if (!ref) return -1;
-      let n = 0;
-      for (const ch of ref) n = n * 26 + (ch.charCodeAt(0) - 64);
-      return n - 1;
+      await ensureSheetJS();
+      const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+      // Cached values only — a cell's formula text is never returned, and
+      // nothing in the workbook is evaluated.
+      const name = wb.SheetNames[0];
+      if (!name) return null;
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', blankrows: true, raw: false });
+      return rows.map(r => (r || []).map(c => String(c ?? '')));
     }
 
     // The canonical sheet. Headings are matched case/space-insensitively and
@@ -8645,10 +8603,21 @@
         const isXlsx = /\.xlsx$/i.test(file.name);
         let rows = null;
         if (isXlsx) {
-          rows = await xlsxParse(await file.arrayBuffer());
-          if (!rows) {
+          // The reader is fetched on demand, so the honest failure here is a
+          // reader that could not be LOADED (offline, or the CDN blocked).
+          // The old message blamed the user's browser, which was never true:
+          // the browser inflated fine, the bespoke zip walk did not.
+          try {
+            rows = await xlsxParse(await file.arrayBuffer());
+          } catch (loadErr) {
+            console.warn('[trainingImportFile] spreadsheet reader unavailable', loadErr);
             _trainingImport = { sessionId, fileName: file.name, kind: 'xlsx',
-              plan: { ok: false, errors: ['This browser cannot open .xlsx files. In Excel choose File → Save As → CSV, then import that.'], blocks: [], columns: [], ignored: [], usable: 0 } };
+              plan: { ok: false, errors: ['The spreadsheet reader could not be loaded — check your connection and try again, or in Excel choose File → Save As → CSV and import that.'], blocks: [], columns: [], ignored: [], usable: 0 } };
+            return;
+          }
+          if (!rows || !rows.length) {
+            _trainingImport = { sessionId, fileName: file.name, kind: 'xlsx',
+              plan: { ok: false, errors: ['That workbook has no readable sheet. Check the first sheet has your plan in it.'], blocks: [], columns: [], ignored: [], usable: 0 } };
             return;
           }
         } else {
@@ -10675,15 +10644,7 @@
           const text = await file.text();
           rows = parseCSV(text);
         } else {
-          if (typeof XLSX === 'undefined') {
-            await new Promise((resolve, reject) => {
-              const s = document.createElement('script');
-              s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
-              s.onload = resolve;
-              s.onerror = () => reject(new Error('SheetJS load failed'));
-              document.head.appendChild(s);
-            });
-          }
+          await ensureSheetJS();   // one loader, shared with the training-planner import
           const buf = await file.arrayBuffer();
           const wb  = XLSX.read(new Uint8Array(buf), { type: 'array' });
           const ws  = wb.Sheets[wb.SheetNames[0]];

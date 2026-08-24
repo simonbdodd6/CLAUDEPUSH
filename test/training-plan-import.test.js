@@ -7,7 +7,8 @@
  * no locked rows.
  *
  * Pinned here: a real (quote/newline-safe) CSV parser; a values-only .xlsx
- * reader built on the browser's own DecompressionStream — NO dependency, and
+ * reader built on Core's ONE shared SheetJS loader (see the data-descriptor
+ * regression below for why the previous hand-rolled zip walk was replaced), and
  * formulas are never evaluated; preview/cancel/parse-failure mutate nothing;
  * Append and Replace behave explicitly (Replace confirms first); a
  * spreadsheet can never carry club/team/group/scope/user identity into the
@@ -274,20 +275,26 @@ test('20+21+24+25: imported blocks are native — same shape, same persistence, 
 
 test('27+30: nothing from a file is executed — xlsx reads cached values only, never formulas', () => {
   const x = fn('xlsxParse');
-  assert.match(x, /DecompressionStream/, 'uses the browser\'s own inflate — no dependency');
-  assert.match(x, /<v>/, 'reads cached values');
+  // sheet_to_json returns each cell's CACHED VALUE; formula text is never
+  // returned and nothing in the file is evaluated. Same guarantee as before,
+  // now carried by the shared reader instead of a bespoke one.
+  assert.match(x, /sheet_to_json/, 'values are read through the workbook reader');
   assert.doesNotMatch(x, /eval\(|new Function|innerHTML/, 'no execution path for file content');
   assert.match(x, /formula/i, 'formula handling is documented as ignored');
   // Authorization/tenant code is not touched by import at all.
   assert.doesNotMatch(fn('trainingImportApply'), /accessScope|teamId|groupId/, 'import cannot reach authorization inputs');
 });
 
-test('28: .xlsx is attempted natively and degrades honestly when the browser cannot inflate', () => {
+test('28: .xlsx is read as a workbook and degrades honestly when the READER cannot load', () => {
   const file = fn('trainingImportFile');
   assert.match(file, /\\\.xlsx\$\/i/, 'xlsx recognised by extension');
   assert.match(file, /await xlsxParse\(await file\.arrayBuffer\(\)\)/, 'binary is parsed as a workbook, never as CSV text');
-  assert.match(file, /Save As → CSV/, 'honest fallback message when the browser cannot open it');
   assert.doesNotMatch(file, /csvParse\(await file\.text\(\)\)[\s\S]{0,80}xlsx/, 'binary is never fed to the CSV parser');
+  // The reader is fetched on demand, so the only honest xlsx-side failure is a
+  // reader that could not be LOADED. It must never again blame the browser.
+  assert.match(file, /reader could not be loaded/i, 'names the real failure');
+  assert.doesNotMatch(file, /This browser cannot open/i,
+    'the browser was never the problem — a real Excel file failed on a parser defect');
 });
 
 test('29: the import panel is phone-friendly (no fixed wide layout; preview scrolls in its own box)', () => {
@@ -302,4 +309,73 @@ test('the downloadable template matches the canonical columns exactly', () => {
   assert.match(t, /TRAINING_IMPORT_FIELDS\.map\(f => f\.label\)/, 'headings come from the one field definition');
   assert.match(t, /coacheasier-training-plan-template\.csv/);
   assert.doesNotMatch(t, /fetch\(|\/api\//, 'generated in the browser — no server endpoint');
+});
+
+
+// ── REGRESSION: Excel-authored .xlsx (data descriptors) ────────────────────
+//
+// PRODUCTION BUG. A genuine Excel-authored workbook ("training BRC 26-27.xlsx",
+// 17,710 bytes) failed with "This browser cannot open .xlsx files… Save As CSV",
+// while CSV imported fine and DecompressionStream was available all along.
+//
+// Cause: the reader walked LOCAL FILE HEADERS and skipped any entry whose
+// header carried compSize/uncompSize of 0 —
+//     if (!compSize && !uncompSize) continue;   // "streamed entry: skip"
+// Excel sets general-purpose bit 3 on EVERY entry (flag 0x0808) and puts the
+// real sizes in a trailing data descriptor, leaving zeros in the header. So
+// every entry was skipped, no worksheet was found, and the reader returned null.
+// Files from Numbers/Sheets/LibreOffice store sizes inline, which is why this
+// survived testing.
+//
+// The fix is not a better zip walk (next: zip64, then workbook ordering, then
+// date formats) — it is to stop having a second zip implementation at all.
+
+test('R1: the bespoke local-file-header zip walk is gone', () => {
+  const x = fn('xlsxParse');
+  assert.doesNotMatch(x, /0x50|0x4b|PK\\x03/, 'no hand-rolled zip signature scan');
+  assert.doesNotMatch(x, /compSize|uncompSize|nameLen|extraLen|dataStart/, 'no local-header field arithmetic');
+  assert.doesNotMatch(x, /DecompressionStream/, 'no second inflate implementation');
+  // The exact line that caused the bug must not exist anywhere in the app.
+  assert.doesNotMatch(src, /streamed entry: skip/, 'the skip that dropped every Excel entry is gone');
+  assert.doesNotMatch(src, /!compSize && !uncompSize/, 'zero-size entries are no longer silently dropped');
+});
+
+test('R2: one reader, one loader — the planner and the squad import share it', () => {
+  assert.match(src, /function ensureSheetJS\s*\(/, 'a single shared loader exists');
+  // Exactly one place fetches the library.
+  const srcTags = (src.match(/cdn\.sheetjs\.com/g) || []).length;
+  assert.equal(srcTags, 1, `the CDN URL appears once, not per-importer (found ${srcTags})`);
+  assert.match(fn('xlsxParse'), /ensureSheetJS\(\)/, 'the planner reader uses the shared loader');
+  assert.match(fn('importPlayersFromFile'), /ensureSheetJS\(\)/, 'the squad import uses the same loader');
+  assert.doesNotMatch(fn('importPlayersFromFile'), /createElement\('script'\)/, 'no duplicated loader block');
+});
+
+test('R3: the origin the loader uses is CSP allow-listed', async () => {
+  const vercel = await readFile(new URL('../vercel.json', import.meta.url), 'utf8');
+  const csp = JSON.parse(vercel).headers.flatMap(h => h.headers).find(h => /content-security-policy/i.test(h.key))?.value || '';
+  assert.match(csp, /script-src[^;]*https:\/\/cdn\.sheetjs\.com/, 'script-src permits the reader origin');
+});
+
+test('R4: the sheet is chosen by WORKBOOK ORDER, never by filename', () => {
+  const x = fn('xlsxParse');
+  assert.match(x, /SheetNames\[0\]/, 'first sheet as the workbook defines it');
+  assert.doesNotMatch(x, /sheet1\.xml|worksheets\//, 'never picks a sheet by file path');
+  // The failing workbook had five sheets; xl/worksheets/sheet1.xml is not
+  // reliably the one the author sees first.
+});
+
+test('R5: a loader failure is reported as such, and never as a browser limitation', () => {
+  const file = fn('trainingImportFile');
+  assert.match(file, /catch \(loadErr\)/, 'a failed load is caught rather than surfacing as "unreadable file"');
+  assert.match(file, /check your connection/i, 'the message names the actual remedy');
+  assert.match(file, /no readable sheet/i, 'an empty workbook is a distinct, honest message');
+  assert.doesNotMatch(src, /This browser cannot open \.xlsx/, 'the false claim is gone from the app entirely');
+});
+
+test('R6: the CSV path and the manual planner are untouched by this change', () => {
+  const file = fn('trainingImportFile');
+  assert.match(file, /csvParse\(await file\.text\(\)\)/, 'CSV still parsed as text');
+  assert.match(fn('csvParse'), /"/, 'the quote-aware CSV parser is unchanged');
+  // Import remains preview-then-apply, writing ordinary planner state.
+  assert.match(fn('trainingImportApply'), /state\.trainingBlocks\[sessionId\]/);
 });
