@@ -5161,6 +5161,10 @@
        the primary identity above; this is a small, single credit, not a badge
        repeated on every card. */
     .ce-powered-mark { width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; opacity: 0.9; }
+    /* Shown ONLY when a club logo has taken the sidebar tile, so the product
+       mark survives in the most prominent brand position without ever sitting
+       beside its own CE tile. */
+    .brand-ce-mark { width: 14px; height: 14px; vertical-align: -2px; margin-right: 6px; opacity: .95; flex-shrink: 0; }
 
     /* RC4.10F — persistent product mark, top-right of the shared header.
        Colours are LITERAL CoachEasier values, never var(--accent)/var(--brand),
@@ -5307,7 +5311,7 @@
       <div class="brand">
         <span class="brand-mark"><img src="/brand/svg/coacheasier-mark.svg" alt="" width="38" height="38" onerror="this.parentNode.textContent='CE'"></span>
         <div>
-          <strong>CoachEasier</strong>
+          <strong><img id="brandCeMark" class="brand-ce-mark" src="/brand/svg/coacheasier-mark.svg" alt="" width="14" height="14" hidden onerror="this.remove()">CoachEasier</strong>
           <p id="sidebarClubName"></p>
         </div>
       </div>
@@ -19765,9 +19769,13 @@
        '--page-glow', '--page-wash', '--bubble-mine'].forEach(v => {
         if (vars[v]) root.style.setProperty(v, vars[v]); else root.style.removeProperty(v);
       });
-      // Club badge in the sidebar identity block (shows on every screen). A club
-      // logo replaces the tile entirely (multi-tenant identity wins); with no club
-      // logo the CoachEasier metallic CE mark shows on the brand ink tile.
+      // Club badge in the sidebar identity block (shows on every screen). The
+      // club logo takes the tile — multi-tenant identity leads — but it must not
+      // ERASE the product. When it does take the tile, a small CoachEasier mark
+      // appears beside the "CoachEasier" wordmark directly underneath, so the
+      // most prominent brand position always carries both identities. With no
+      // club logo the CE tile is already the product mark, and the companion
+      // stays hidden rather than showing CoachEasier twice.
       const badge = document.querySelector('.brand-mark');
       if (badge) {
         badge.style.cssText = state.clubLogo
@@ -19776,6 +19784,8 @@
         const markImg = badge.querySelector('img');
         if (markImg) markImg.style.display = state.clubLogo ? 'none' : '';
       }
+      const ceMark = document.getElementById('brandCeMark');
+      if (ceMark) ceMark.hidden = !state.clubLogo;
       // Logo beside the shared page title (Overview, Availability, Training, Members,
       // Medical, Settings — every page that uses the topbar). Match Centre & Messages
       // render their own badge inline. Hidden when no logo → plain title fallback.
