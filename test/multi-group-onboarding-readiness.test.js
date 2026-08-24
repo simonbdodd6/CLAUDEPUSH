@@ -233,7 +233,14 @@ const FIXTURES = [
   { id: 'fx_u18', opposition: 'U18 Cup', groupId: U18 },
   { id: 'fx_wom', opposition: "Women's Derby", groupId: WOM },
 ];
-function playerFixturesFor(playingGid) {
+// A club that predates groups entirely: no fixture carries a groupId. This is
+// the ONLY shape for which "keep the whole list" is the right answer.
+const PRE_STRUCTURE_FIXTURES = [
+  { id: 'fx_a', opposition: 'Mons' },
+  { id: 'fx_b', opposition: 'Old Rivals' },
+  { id: 'fx_c', opposition: 'Kituro' },
+];
+function playerFixturesFor(playingGid, fixtures = FIXTURES) {
   return new Function(`
     const state = { fixtures: arguments[0] };
     const _myOperational = { player: { groups: arguments[1] ? [{ id: arguments[1] }] : [] } };
@@ -241,15 +248,39 @@ function playerFixturesFor(playingGid) {
     ${fn('fixtureBelongsToGroup')}
     ${fn('playerContextFixtures')}
     return playerContextFixtures().map(f => f.id);
-  `)(FIXTURES, playingGid);
+  `)(fixtures, playingGid);
 }
 
 test('PLAYER FIXTURES: each player sees their PLAYING group\'s season — legacy stays Seniors', () => {
   assert.deepEqual(playerFixturesFor(SEN), ['fx_legacy', 'fx_sen'], 'Seniors inherit the uploaded season');
   assert.deepEqual(playerFixturesFor(U18), ['fx_u18'], 'U18 never sees Seniors legacy fixtures');
   assert.deepEqual(playerFixturesFor(WOM), ['fx_wom']);
-  assert.deepEqual(playerFixturesFor(''), ['fx_legacy', 'fx_sen', 'fx_u18', 'fx_wom'],
-    'a pre-structure club keeps the full legacy list');
+});
+
+// UPDATED at 69ee109f (player-home group isolation). This assertion used to
+// expect the WHOLE list here, because the resolver failed OPEN when it had no
+// player group. That was the production defect: a U18 player, or any player
+// rendered before their session payload landed, was shown the Seniors season.
+//
+// The distinction the old assertion missed is that its own fixture set is NOT
+// a pre-structure club — three of its four fixtures carry a groupId. UNKNOWN ≠
+// LEGACY: in a club that HAS groups, an unresolved player group means unknown,
+// and unknown must show nothing group-specific rather than everything. The
+// genuine pre-structure case is covered immediately below, unchanged in intent.
+test('PLAYER FIXTURES: in a GROUPED club, an unresolved player group shows nothing', () => {
+  assert.deepEqual(playerFixturesFor(''), [],
+    'no resolved playing group in a grouped club → fail closed, never the whole season');
+  assert.deepEqual(playerFixturesFor('grp_not_a_real_group'), [],
+    'an unknown group is unknown, not a licence for the full list');
+});
+
+test('PLAYER FIXTURES: a genuinely pre-structure club keeps its full legacy list', () => {
+  // No fixture carries a groupId, so there is no group boundary to enforce and
+  // nothing to leak. A club upgrading to groups must not lose its season.
+  assert.deepEqual(playerFixturesFor('', PRE_STRUCTURE_FIXTURES), ['fx_a', 'fx_b', 'fx_c'],
+    'pre-structure club, no player group → the whole list is correct');
+  assert.deepEqual(playerFixturesFor(SEN, PRE_STRUCTURE_FIXTURES), ['fx_a', 'fx_b', 'fx_c'],
+    'and a grouped player in that club still sees it');
 });
 
 test('PLAYER FIXTURES: the page renders through the playing-group filter, never coach context', () => {
