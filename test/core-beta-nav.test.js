@@ -126,6 +126,10 @@ function buildNavScope({ entitled = true } = {}) {
     function canUseFeature() { return ${entitled}; }
     ${extractFn('allowedCoachSections')}
     ${extractFn('playerSectionsFor')}
+    // The nav BETA marker: pulled from real source (list + helper) so this
+    // harness keeps tracking the product rather than a copy that can drift.
+    ${src.match(/const NAV_BETA_IDS = \[[^\]]*\];/)[0]}
+    ${extractFn('navBetaBadge')}
     ${extractFn('renderNav')}
     renderNav();
     return document.getElementById('coachNav').innerHTML;

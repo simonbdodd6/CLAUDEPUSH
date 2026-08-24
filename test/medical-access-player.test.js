@@ -240,6 +240,10 @@ function renderPlayerNav(perms) {
     function canUseFeature() { return false; }
     ${fn('allowedCoachSections')}
     ${fn('playerSectionsFor')}
+    // The nav BETA marker: taken from real source so this harness keeps
+    // tracking the product rather than a copy that can drift.
+    ${src.match(/const NAV_BETA_IDS = \[[^\]]*\];/)[0]}
+    ${fn('navBetaBadge')}
     ${fn('renderNav')}
     renderNav();
     return { playerNav: document.getElementById('playerNav').innerHTML,

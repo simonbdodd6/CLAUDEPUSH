@@ -2645,6 +2645,19 @@
       padding-left: 11px; border-left: 0;
     }
     nav button.active svg { opacity: 1; color: var(--brand-2); }
+    /* BETA marker for pre-release sections. Subordinate to the label by size,
+       weight and colour — it reads as a status, never as a second nav item.
+       Pushed to the right so labels stay left-aligned in the column. */
+    .nav-beta {
+      margin-left: auto; padding: 1px 5px; border-radius: 999px;
+      font-size: 8.5px; font-weight: 800; letter-spacing: .07em; line-height: 1.5;
+      text-transform: uppercase; color: var(--brand-2);
+      background: var(--brand-soft); border: 1px solid var(--brand-line);
+      flex-shrink: 0;
+    }
+    /* On the active item the badge takes that item's own colour, so it stays
+       legible whichever active treatment the shell is using. */
+    nav button.active .nav-beta { color: inherit; }
     nav button.active::before {
       content: ''; position: absolute; left: -13px; top: 50%; transform: translateY(-50%);
       width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--brand-2);
@@ -11087,6 +11100,17 @@
     }
 
     // ─── NAV ─────────────────────────────────────────────────────────────────
+    /**
+     * BETA marker for pre-release navigation entries. Display only: it changes
+     * no section id, no route and no entitlement — a coach or player who can
+     * see the entry sees the same entry, labelled honestly as beta. Kept as a
+     * one-line list so a section leaving beta is a one-word edit.
+     */
+    const NAV_BETA_IDS = ['performance'];
+    function navBetaBadge(id) {
+      return NAV_BETA_IDS.includes(id) ? '<span class="nav-beta">Beta</span>' : '';
+    }
+
     function renderNav() {
       const user = currentUser();
       // ── Dynamic club name in sidebar ───────────────────────────────────────
@@ -11105,7 +11129,7 @@
         : coachSections;
       document.getElementById("coachNav").innerHTML = allowedCoachSections(_navSections)
         .map(([id, label]) =>
-        `<button type="button" class="${state.activeView==="coach" && state.activeCoachSection===id ? "active" : ""}" onclick="setSection('coach','${id}')">${icon(SECTION_ICONS[id] || 'home')}${label}</button>`
+        `<button type="button" class="${state.activeView==="coach" && state.activeCoachSection===id ? "active" : ""}" onclick="setSection('coach','${id}')">${icon(SECTION_ICONS[id] || 'home')}${label}${navBetaBadge(id)}</button>`
       ).join("");
       // Multi-team switcher — only when this identity belongs to >1 team.
       const switcherHost = document.getElementById('teamSwitcher');
@@ -11127,7 +11151,7 @@
         const badge = id === 'availability' && _pendingCount > 0
           ? ` <span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;font-size:9px;font-weight:800;border-radius:999px;background:#dc2626;color:#fff;line-height:1;vertical-align:middle;margin-left:3px">${_pendingCount}</span>`
           : '';
-        return `<button type="button" class="${state.activeView==="player" && state.activePlayerSection===id ? "active" : ""}" onclick="setSection('player','${id}')">${icon(SECTION_ICONS[id] || 'calendar')}${label}${badge}</button>`;
+        return `<button type="button" class="${state.activeView==="player" && state.activePlayerSection===id ? "active" : ""}" onclick="setSection('player','${id}')">${icon(SECTION_ICONS[id] || 'calendar')}${label}${navBetaBadge(id)}${badge}</button>`;
       }).join("") +
         // Account is a main player nav item (opens the account menu, not a section)
         `<button type="button" onclick="openPlayerAccountMenu()" aria-label="Account and sign out">${icon('user')}Account</button>`;

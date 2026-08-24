@@ -147,6 +147,10 @@ function buildNavScope({ users = [], currentUserId = '' } = {}) {
     function canUseFeature() { return false; }
     ${extractFn(html, 'allowedCoachSections')}
     ${extractFn(html, 'playerSectionsFor')}
+    // The nav BETA marker: pulled from real source (list + helper) so this
+    // harness keeps tracking the product rather than a copy that can drift.
+    ${html.match(/const NAV_BETA_IDS = \[[^\]]*\];/)[0]}
+    ${extractFn(html, 'navBetaBadge')}
     ${extractFn(html, 'renderNav')}
     return { renderNav };
   `;
