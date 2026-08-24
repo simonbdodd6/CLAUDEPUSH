@@ -102,17 +102,25 @@ async function call(handler, method, query, body, token) {
 const sessionFor = (userId, role) => store.createSession({ userId, teamId: CLUB, role });
 
 // ── FORM 1-3: Arrival / From / Until are gone from the card ───────────────
-test('the schedule card renders Day/Start/End/Venue only — no Arrival, From or Until', () => {
+// UPDATED: End time joined Arrival, From and Until. Scheduling is day + start
+// time; the finish time was one more thing to fill in that nothing displayed
+// except the form itself. Same contract as the earlier removals — the field
+// stays in the record and the server sanitiser still carries it, so an older
+// slot keeps its stored value and no migration runs.
+test('the schedule card renders Day/Start/Venue only — no End, Arrival, From or Until', () => {
   const card = fn('renderTrainingScheduleCard');
-  assert.ok(!card.includes("'arrivalTime'"), 'Arrival input removed');
-  assert.ok(!card.includes("'effectiveFrom'"), 'From input removed');
-  assert.ok(!card.includes("'effectiveTo'"), 'Until input removed');
-  assert.ok(!/>Arrival</.test(card) && !/>From</.test(card) && !/>Until</.test(card), 'labels removed');
-  for (const kept of ["'day'", "'startTime'", "'endTime'", "'venue'"]) {
+  for (const [field, label] of [["'endTime'", 'End'], ["'arrivalTime'", 'Arrival'],
+                                ["'effectiveFrom'", 'From'], ["'effectiveTo'", 'Until']]) {
+    assert.ok(!card.includes(field), `${label} input removed`);
+    assert.ok(!new RegExp(`>${label}<`).test(card), `${label} label removed`);
+  }
+  assert.ok(!card.includes('s.endTime'), 'and no read-only End value is shown either');
+  for (const kept of ["'day'", "'startTime'", "'venue'"]) {
     assert.ok(card.includes(kept), `${kept} field kept`);
   }
   // Older records keep their fields — the server sanitiser still carries them.
   const serverSrc = fs.readFileSync(new URL('../api/publish.js', import.meta.url), 'utf8');
+  assert.match(serverSrc, /endTime:\s*hhmm\(raw\?\.endTime\)/, 'stored end time survives reads');
   assert.match(serverSrc, /arrivalTime:\s*hhmm\(raw\?\.arrivalTime\)/, 'stored arrival survives reads');
   assert.match(serverSrc, /effectiveFrom: isoDate\(raw\?\.effectiveFrom\)/, 'stored from/until survive reads');
 });

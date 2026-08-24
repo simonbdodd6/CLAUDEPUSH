@@ -16497,9 +16497,11 @@
 
       const sessionCard = (item) => {
         const isTonight  = tonightId && String(item.id) === String(tonightId);
-        const start      = item.startTime || item.time || '';
-        const end        = item.endTime || '';
-        const timeStr    = [start, end].filter(Boolean).join('–');
+        // Start time only. Finish time is no longer collected, and a stored
+        // one from an older session is not shown either — a range that appears
+        // on some sessions and not others reads as missing data rather than as
+        // a deliberate simplification. No finish time is ever inferred.
+        const timeStr    = item.startTime || item.time || '';
         const leadCoach  = item.coachName || item.leadCoach || '';
         const objectives = String(item.focus || item.objectives || '').trim();
         const blocks     = item.published ? ((state.trainingBlocks || {})[item.id] || []) : [];
@@ -19264,7 +19266,6 @@
                 ${Object.entries(SCHEDULE_DAY_LABEL).map(([d, label]) => `<option value="${d}" ${s.day === d ? 'selected' : ''}>${label}</option>`).join('')}
               </select>` : ro(SCHEDULE_DAY_LABEL[s.day])}</label>
             <label style="${lbl}">Start${canEdit ? `<input type="time" value="${esc(s.startTime)}" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','startTime',this.value)">` : ro(s.startTime)}</label>
-            <label style="${lbl}">End${canEdit ? `<input type="time" value="${esc(s.endTime)}" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','endTime',this.value)">` : ro(s.endTime)}</label>
             <label style="${lbl}">Venue${canEdit ? `<input value="${esc(s.venue)}" placeholder="e.g. Main pitch" style="${inp}" onchange="trainingScheduleUpdateField('${esc(s.id)}','venue',this.value)">` : ro(s.venue)}</label>
           </div>
           ${canEdit ? `
@@ -19278,7 +19279,7 @@
       return `
         <div class="card" id="training-schedule-card">
           <h2 style="margin-bottom:4px">Teams · Training schedule</h2>
-          <p class="muted" style="font-size:12px;margin:0 0 12px">Your club's recurring training nights — day, start and end time, and venue.</p>
+          <p class="muted" style="font-size:12px;margin:0 0 12px">Your club's recurring training nights — day, start time and venue.</p>
           ${slots.length ? slots.map(slotCard).join('') : `<p class="muted" style="font-size:12.5px">No training nights configured yet.</p>`}
           ${canEdit ? `<button class="btn" type="button" style="min-height:38px;font-size:12.5px" onclick="trainingScheduleAdd()">+ Add training night</button>` : ''}
           ${extra ? `<p class="muted" style="font-size:11.5px;margin:10px 0 0;line-height:1.5">
@@ -23516,7 +23517,6 @@
             ['Date',     dateLabel],
             ['Location', p.location || '—'],
             ['Start',    p.startTime || '—'],
-            ['End',      p.endTime   || '—'],
             ['Coach',    p.coachName || '—'],
             ['Focus',    p.focus     || '—'],
           ].map(([k,v]) =>
@@ -25736,7 +25736,10 @@
       const id = 'sess_' + Date.now();
       const session = {
         id, type: 'Training', title,
-        date: g('ts-date'), startTime: g('ts-start'), endTime: g('ts-end'),
+        // Finish time is no longer collected. The key is left ABSENT rather
+        // than written blank or guessed from a duration — normalizeState
+        // coerces it to '' on load, and every display filters empties.
+        date: g('ts-date'), startTime: g('ts-start'),
         location: g('ts-location'), ageGrade: g('ts-agegrade'),
         squad: g('ts-squad'), coachName: g('ts-coach'),
         focus: g('ts-notes'),
@@ -25919,7 +25922,6 @@
                 '</div>' +
                 '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">' +
                   '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Start time<input id="ts-start" type="time" style="' + INP + '"></label>' +
-                  '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Finish time<input id="ts-end" type="time" style="' + INP + '"></label>' +
                   '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Location<input id="ts-location" style="' + INP + '"' + TSAUTO + ' placeholder="Training ground"></label>' +
                 '</div>' +
                 '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">' +
