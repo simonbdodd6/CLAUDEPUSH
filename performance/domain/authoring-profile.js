@@ -87,13 +87,22 @@ export function authoringProfileFrom(profile, { now = new Date(0) } = {}) {
   };
 }
 
-// ── Minors gate on the restriction signal (interim) ─────────────────────────
+// ── Minors gate on the restriction signals (interim) ────────────────────────
 //
-// `restrictions.trainingRestricted` is derived from the athlete's pain section.
-// An athlete sets it to describe how they feel, not to send their coach a
-// message, and they never consented to a coach seeing it. The consent design
-// that would give it a proper basis is blocked on legal review for minors, so
-// until that lands the signal is withheld for U16 and U18 athletes.
+// Every field in `restrictions` is derived from the athlete's pain or health
+// sections:
+//
+//   trainingRestricted      ← pain.trainingRestricted
+//   hasMovementRestrictions ← health.movementsToAvoid
+//   restrictionsKnown       ← whether pain.present was answered at all
+//
+// An athlete fills those sections in to describe how they feel, not to send
+// their coach a message, and they never consented to a coach seeing any of it.
+// The consent design that would give this a proper basis is blocked on legal
+// review for minors, so until that lands ALL THREE are withheld for U16 and
+// U18 athletes. The line is categorical — "no pain- or health-derived field
+// reaches a coach of a minor" — rather than a per-field judgement about how
+// much each one leaks.
 //
 // This is an INTERIM measure, not the final position. When athlete-initiated
 // sharing exists, this gate is replaced by that consent — not loosened.
@@ -128,19 +137,32 @@ export function restrictionSignalAllowed({ ageBand = null, developmentCategory =
 }
 
 /**
- * Apply the gate to a projection. The KEY is preserved and forced to false
+ * Fields withheld together. `coachRestrictionCount` is deliberately NOT here:
+ * it counts restrictions the COACH themselves recorded, so it is their own
+ * data coming back to them, not the athlete's disclosure.
+ */
+export const GATED_RESTRICTION_FIELDS = [
+  'trainingRestricted', 'hasMovementRestrictions', 'restrictionsKnown',
+];
+
+/**
+ * Apply the gate to a projection. Every KEY is preserved and forced to false
  * rather than deleted, so the projection's shape never varies by athlete —
  * a missing key would itself be a signal.
+ *
+ * `restrictionsKnown: false` is the honest value once the rest is withheld:
+ * from the coach's side no restriction information IS available, and SC5's
+ * `restrictions_unknown` warning ("confirm before loading") is then exactly
+ * the right prompt — ask the athlete rather than read their form.
  */
 export function gateRestrictionSignal(profile, { developmentCategory = null } = {}) {
   if (!profile) return profile;
   if (restrictionSignalAllowed({ ageBand: profile.personal?.ageBand ?? null, developmentCategory })) {
     return profile;
   }
-  return {
-    ...profile,
-    restrictions: { ...(profile.restrictions || {}), trainingRestricted: false },
-  };
+  const restrictions = { ...(profile.restrictions || {}) };
+  for (const field of GATED_RESTRICTION_FIELDS) restrictions[field] = false;
+  return { ...profile, restrictions };
 }
 
 /** Fields a coach's authoring tool may ever see. Anything else is a leak. */

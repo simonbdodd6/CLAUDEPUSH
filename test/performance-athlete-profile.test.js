@@ -326,8 +326,12 @@ function restrictedProfile(ageBand) {
   p.personal.dateOfBirth = null;
   p.personal.ageBand = ageBand;
   p.pain.trainingRestricted = true;
+  p.pain.present = true;                       // → restrictionsKnown
+  p.health.movementsToAvoid = ['deep_knee_flexion'];  // → hasMovementRestrictions
   return p;
 }
+/** The three fields withheld together for minors. */
+const GATED = ['trainingRestricted', 'hasMovementRestrictions', 'restrictionsKnown'];
 const readProfile = (coach, athlete) => call(coach, { query: { athleteProfile: athlete } });
 
 test('20. GATE — a U18 athlete\'s restriction signal never reaches their coach', async () => {
@@ -335,7 +339,7 @@ test('20. GATE — a U18 athlete\'s restriction signal never reaches their coach
   await saveOwn('u-u18-player', restrictedProfile('16_17'));
   const r = await readProfile('u-u18-coach', 'u-u18-player');
   assert.equal(r.code, 200);
-  assert.equal(r.body.profile.restrictions.trainingRestricted, false, 'withheld');
+  for (const f of GATED) assert.equal(r.body.profile.restrictions[f], false, `${f} withheld`);
   // The athlete's OWN stored record still holds it — nothing was destroyed.
   const stored = store.authoringProfileFor(await store.loadPerformanceRecord(CLUB), 'u-u18-player');
   assert.equal(stored.restrictions.trainingRestricted, true, 'the athlete\'s own record is intact');
@@ -346,14 +350,14 @@ test('21. GATE — a U16 athlete\'s signal is withheld too', async () => {
   await saveOwn('u-u16-player', restrictedProfile('under_16'));
   const r = await readProfile('u-u18-coach', 'u-u16-player');
   assert.equal(r.code, 200);
-  assert.equal(r.body.profile.restrictions.trainingRestricted, false);
+  for (const f of GATED) assert.equal(r.body.profile.restrictions[f], false, f);
 });
 
 test('22. ADULTS UNAFFECTED — the signal and its review prompt still work', async () => {
   seed(); await login('u-sen-player'); await login('u-sen-coach');
   await saveOwn('u-sen-player', restrictedProfile('21_29'));
   const r = await readProfile('u-sen-coach', 'u-sen-player');
-  assert.equal(r.body.profile.restrictions.trainingRestricted, true, 'an adult is unchanged');
+  for (const f of GATED) assert.equal(r.body.profile.restrictions[f], true, `${f} unchanged for an adult`);
   // ...and it still drives the SC5 review flag the coach relies on.
   const input = engineInputFromAuthoringProfile(r.body.profile, { teamCategory: 'adult' });
   assert.equal(input.hasActiveRestriction, true);
@@ -363,8 +367,8 @@ test('23. FAIL CLOSED — an unresolved age band withholds it, even in an adult 
   seed(); await login('u-sen-player'); await login('u-sen-coach');
   await saveOwn('u-sen-player', restrictedProfile('unknown'));
   const r = await readProfile('u-sen-coach', 'u-sen-player');
-  assert.equal(r.body.profile.restrictions.trainingRestricted, false,
-    'we withhold unless the athlete is POSITIVELY resolved as an adult');
+  for (const f of GATED) assert.equal(r.body.profile.restrictions[f], false,
+    `${f}: withheld unless the athlete is POSITIVELY resolved as an adult`);
   const input = engineInputFromAuthoringProfile(r.body.profile, { teamCategory: 'adult' });
   assert.equal(input.hasActiveRestriction, false, 'and no review prompt is raised from it');
 });
@@ -376,9 +380,11 @@ test('24. a forged client request cannot restore the signal', async () => {
   for (const query of [{ athleteProfile: 'u-u18-player', trainingRestricted: 'true' },
                        { athleteProfile: 'u-u18-player', includeRestrictions: '1' },
                        { athleteProfile: 'u-u18-player', ageBand: '21_29' },
-                       { athleteProfile: 'u-u18-player', developmentCategory: 'adult' }]) {
+                       { athleteProfile: 'u-u18-player', developmentCategory: 'adult' },
+                       { athleteProfile: 'u-u18-player', hasMovementRestrictions: 'true' },
+                       { athleteProfile: 'u-u18-player', restrictionsKnown: 'true' }]) {
     const r = await call('u-u18-coach', { query });
-    assert.equal(r.body.profile.restrictions.trainingRestricted, false, JSON.stringify(query));
+    for (const f of GATED) assert.equal(r.body.profile.restrictions[f], false, `${f} ${JSON.stringify(query)}`);
   }
   // The gate reads the SERVER's structure record, so a forged group cannot move
   // the athlete into an adult squad.
@@ -399,9 +405,7 @@ test('25. gating changes NO other projection field', async () => {
     if (k === 'restrictions') continue;
     assert.deepEqual(gated[k], stored[k], `${k} must be identical`);
   }
-  assert.deepEqual(
-    { ...gated.restrictions, trainingRestricted: null },
-    { ...stored.restrictions, trainingRestricted: null },
-    'the other restriction fields are identical');
-  assert.ok('trainingRestricted' in gated.restrictions, 'the key survives, so shape never varies');
+  assert.equal(gated.restrictions.coachRestrictionCount, stored.restrictions.coachRestrictionCount,
+    'a coach\'s own recorded restrictions survive — they are not the athlete\'s disclosure');
+  for (const f of GATED) assert.ok(f in gated.restrictions, `${f}: the key survives, so shape never varies`);
 });

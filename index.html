@@ -31281,11 +31281,13 @@
               level, experience, equipment, training days and goals.
               ${_perfWkMod.restrictionSignalAllowed({ ageBand: p.personal?.ageBand,
                   developmentCategory: perfTeamDevelopmentCategory() })
-                ? `They can also see whether you have said your training is currently limited &mdash;
-                   not what the problem is.`
-                : `They cannot see whether your training is limited.`}
-              Your wellness check-ins and anything you write about pain stay on this device:
-              your coach never sees them, and they will not follow you to a new phone.
+                ? `They can also see whether you have said your training is currently limited, and
+                   whether there are movements you are avoiding &mdash; but not what the problem is,
+                   and not which movements.`
+                : `They cannot see whether your training is limited, or whether there are movements
+                   you are avoiding.`}
+              Your wellness check-ins, and anything you write about pain or injuries, stay on this
+              device: your coach never sees them, and they will not follow you to a new phone.
             </small>
             <small class="muted" style="display:block;margin-top:5px">
               Your age evidence: ${esc(PERF_OPT_LABEL[p.personal.ageBand] || 'not provided')} ·
