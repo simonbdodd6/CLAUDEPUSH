@@ -20990,13 +20990,74 @@
           ${scope.clubWide ? '' : rows}
           ${medicalRow}
           ${scope.derived ? `<p class="muted" style="font-size:11.5px;margin:8px 2px 0">Currently using the default access for their role. Choosing above sets it explicitly.</p>` : ''}
+        </div>
+        ${playerGroupBlock(member, name, activeGroups)}`;
+    }
+
+    /**
+     * WHERE THIS MEMBER PLAYS — the other capacity.
+     *
+     * Access is what someone may DO; this is whether they are also a playing
+     * member of the club, and it is exactly `member.playerGroupId`. A club
+     * physio or a coach who also plays is ONE membership holding both, so this
+     * is offered on the staff profile: it is the supported way to add playing
+     * membership to an existing person without deleting them, duplicating them
+     * or sending a fresh invitation. Choosing a group changes no role and no
+     * permission. The squad they can be picked for is DERIVED from the group
+     * (see memberEligibility), so there is no separate team to choose.
+     */
+    function playerGroupBlock(member, name, activeGroups) {
+      if (!canI('assign_access')) return '';
+      const current = String(member.playerGroupId || '').trim();
+      const inp = 'min-height:38px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);padding:0 9px;font-size:13px;width:100%;box-sizing:border-box';
+      return `
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+          <div class="ce-ahead">Plays for</div>
+          <p class="muted" style="font-size:11.5px;margin:0 0 8px">Whether ${esc(name)} is also a playing member. This does not change their role or what they can access.</p>
+          <select style="${inp}" aria-label="Playing group" onchange="adminSetPlayerGroup('${esc(member.id)}',this.value,'${esc(name)}')">
+            <option value="" ${current ? '' : 'selected'}>Not a playing member</option>
+            ${activeGroups.map(g => `<option value="${esc(g.id)}" ${current === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}
+          </select>
+          ${current && !activeGroups.some(g => g.id === current)
+            ? `<p class="muted" style="font-size:11.5px;margin:8px 2px 0">Their stored group is no longer active — choose a current one.</p>` : ''}
         </div>`;
+    }
+
+    /**
+     * Add or withdraw PLAYER capacity on an EXISTING member. One field on the
+     * membership they already hold: no new account, no duplicate membership,
+     * no invitation, and their club role, medical access and history are all
+     * left exactly as they are. The server re-validates the group against this
+     * club's structure and refuses anything else.
+     */
+    async function adminSetPlayerGroup(memberId, groupId, name) {
+      const member = (_adminData.members || []).find(m => m.id === memberId);
+      if (!member) return;
+      const groups = (_adminData.structure?.groups || []);
+      const current = String(member.playerGroupId || '').trim();
+      const next = String(groupId || '').trim();
+      if (next === current) { render(); return; }
+      const nextName = groups.find(g => g.id === next)?.name || 'that group';
+      const currentName = groups.find(g => g.id === current)?.name || 'their group';
+      const ok = next
+        ? await ceConfirm(`Add ${name} to ${nextName} as a player?`,
+            `They keep their account, their club role and every access they already have — this adds playing membership of ${nextName}.`,
+            { confirmLabel: 'Add as player' })
+        : await ceConfirm(`Remove ${name} from ${currentName}?`,
+            'They stop being a playing member. Their account, club role, medical access and history are untouched.',
+            { confirmLabel: 'Remove playing membership', danger: true });
+      if (!ok) { render(); return; }
+      await adminAction({ action: 'set_player_group', memberId, groupId: next },
+        next ? `${name} now plays for ${nextName}` : `${name} is no longer a playing member`);
+      render();
     }
 
     function renderEligibilitySection(member, user) {
       const st = _adminData.structure;
       if (!st || !canI('manage_players')) return '';
-      if (String(member.role || '').toLowerCase() !== 'player') return '';
+      // The capacity, not the role name: a club physio who also plays is
+      // pickable for their group's squads exactly like any other player.
+      if (!membershipPlays(member)) return '';
       const options = structureActiveTeamOptions();
       if (!options.length) return '';
 

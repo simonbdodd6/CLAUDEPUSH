@@ -74,7 +74,18 @@ test('access and eligibility are rendered as SEPARATE sections', () => {
   assert.match(elig, /Can be picked for/, 'eligibility headed separately');
   assert.match(elig, /does not change what they can see or manage/i,
     'states explicitly that eligibility is not permission');
-  assert.match(elig, /role \|\| ''\)\.toLowerCase\(\) !== 'player'/, 'eligibility only applies to players');
+  // Eligibility applies to PLAYERS — asked through the canonical capacity
+  // helper (api/_accessScope.js isPlayingMember), not by reading the role
+  // name. A club physio who also plays is pickable for their group's squads;
+  // a physio who does not play still gets nothing.
+  assert.match(elig, /if \(!membershipPlays\(member\)\) return '';/,
+    'eligibility follows the player CAPACITY');
+  const plays = fn('membershipPlays');
+  const capacity = new Function(`${plays} return membershipPlays;`)();
+  assert.equal(capacity({ role: 'player' }), true, 'an ordinary player: eligible');
+  assert.equal(capacity({ role: 'medical', playerGroupId: 'grp-sen' }), true, 'a playing physio: eligible');
+  assert.equal(capacity({ role: 'medical' }), false, 'a physio who does not play: not eligible');
+  assert.equal(capacity({ role: 'coach' }), false, 'a coach who does not play: not eligible');
 });
 
 test('permission controls use plain language, never developer terminology', () => {

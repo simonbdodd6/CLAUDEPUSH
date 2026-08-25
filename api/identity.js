@@ -39,6 +39,7 @@ import {
   setMemberAccessScope,
   setMedicalAccess,
   setMemberRole,
+  setPlayerGroup,
   setPlayerEligibility,
   removeScopedGrant,
   setStaffLevel,
@@ -594,6 +595,32 @@ export default async function handler(req, res) {
           session.user.id, session.teamId);
         await auditLog('medical_access_changed', {
           memberId, enabled: req.body?.medicalAccess === true,
+          changedBy: session.user.id, teamId: session.teamId, ip: requestIp(req),
+        });
+        return res.status(200).json({ ok: true, teamMember: result.teamMember });
+      }
+      // RC4.7 D1a — add (or withdraw) PLAYER capacity on an EXISTING member.
+      //
+      // The capacity a person holds is `playerGroupId`; the permissions they
+      // hold are separate and untouched here. This is the supported way to make
+      // an existing member — a club physio, a coach — also a player, without
+      // deleting them, duplicating them, or sending a fresh invitation.
+      //
+      // Gated exactly like set_medical_access, the other "add a capacity to
+      // someone else" action: ASSIGN_ACCESS *and* club-wide scope. A scoped
+      // coach cannot use it, and no one can grant it to themselves unless they
+      // already administer the whole club. The group id is validated against
+      // THIS club's structure inside setPlayerGroup, so a foreign or archived
+      // group is refused rather than written.
+      if (action === 'set_player_group') {
+        const session = await requireClubManage(req, PERM.ASSIGN_ACCESS);
+        const memberId = String(req.body?.memberId || '');
+        const result = await setPlayerGroup(memberId, req.body?.groupId, session.user.id, session.teamId);
+        await auditLog('player_group_changed', {
+          memberId,
+          affectedUserId: result.teamMember.userId,
+          groupId: result.teamMember.playerGroupId || null,
+          cleared: !result.teamMember.playerGroupId,
           changedBy: session.user.id, teamId: session.teamId, ip: requestIp(req),
         });
         return res.status(200).json({ ok: true, teamMember: result.teamMember });

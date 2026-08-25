@@ -4,7 +4,7 @@ import {
   accessProfileRank, ACCESS_PROFILES, PERM,
 } from './_permissions.js';
 import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope, effectiveEligibility, playerGroupIdOf,
-         operationalGroupsFor, defaultOperationalGroup } from './_accessScope.js';
+         isPlayingMember, operationalGroupsFor, defaultOperationalGroup } from './_accessScope.js';
 import { loadClubStructure, groupById, teamById, activeTeams, activeGroups } from './_structureStore.js';
 import { key } from './_keys.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
@@ -784,7 +784,13 @@ async function ensureTeamMember({ teamId = DEFAULT_TEAM.id, userId, role = 'play
 }
 
 async function ensurePlayerProfile({ teamMember, user, invite = null, position = '', phone = '' }) {
-  if (teamMember.role !== 'player') return null;
+  // THE capacity question (api/_accessScope.js): a person has a player profile
+  // because they PLAY — a playerGroupId, or a club role of 'player'. Reading
+  // the role name alone denied a profile to a dual-role member, e.g. the club
+  // physio who also plays. The invite path already guards on role === 'player'
+  // before calling here, so this widens nothing that existed; it lets the
+  // player-group assignment path reuse this one profile shape.
+  if (!isPlayingMember(teamMember)) return null;
   const profiles = await loadPlayerProfiles();
   let profile = profiles.find(item => item.teamMemberId === teamMember.id) ||
     profiles.find(item => item.teamId === teamMember.teamId && item.userId === user.id);
@@ -2408,8 +2414,18 @@ export async function setMedicalAccess(memberId, enabled, changedBy, expectedTea
 
 /**
  * RC4.7 D1a — set a member's PLAYER GROUP (where they play). Independent of
- * staff access: changing it never touches accessScope, medical or profile.
+ * staff access: changing it never touches accessScope, medical or role.
  * Pass '' to clear it (a player becoming staff-only).
+ *
+ * This is how an EXISTING member gains player capacity without being deleted
+ * or reinvited: one field on the membership they already hold. Their account,
+ * membership id, history, medical access and staff access all stay exactly as
+ * they are — a capacity is added, never a permission.
+ *
+ * Assigning a group also ensures the player profile every playing member has
+ * (roster identity, legacyPlayerId, availability history). Clearing the group
+ * deliberately KEEPS that profile: it carries history that cannot be
+ * reconstructed, the same reason preserveDualRolePlayerState exists.
  */
 export async function setPlayerGroup(memberId, groupId, changedBy, expectedTeamId) {
   const members = await loadTeamMembers();
@@ -2430,7 +2446,16 @@ export async function setPlayerGroup(memberId, groupId, changedBy, expectedTeamI
   member.accessChangedBy = changedBy || member.accessChangedBy || null;
   member.accessChangedAt = nowIso();
   await saveTeamMembers(members);
-  return { teamMember: member };
+
+  let playerProfile = null;
+  if (next) {
+    const users = await loadUsers();
+    const user = users.find(u => String(u.id) === String(member.userId));
+    // No account behind the membership is a data-integrity state, not a
+    // reason to fail the assignment — the capacity is still correct.
+    if (user) playerProfile = await ensurePlayerProfile({ teamMember: member, user });
+  }
+  return { teamMember: member, playerProfile };
 }
 
 /**
