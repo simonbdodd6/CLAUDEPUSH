@@ -16262,8 +16262,23 @@
       const _gid = state.operationalGroupId;
       const _staffInScope = u => {
         if (!_gid || !_acc) return true;
-        if ((_acc.clubWideStaffIds || []).includes(String(u.id))) return true;
-        return ((_acc.groupStaffIds || {})[_gid] || []).includes(String(u.id));
+        const id = String(u.id);
+        if ((_acc.clubWideStaffIds || []).includes(id)) return true;
+        const byGroup = _acc.groupStaffIds || {};
+        if ((byGroup[_gid] || []).includes(id)) return true;
+        // A staff member with NO coaching scope in ANY group — the club
+        // physio, a medic, an analyst — belongs to the CLUB, not to one group.
+        // They were never scoped INTO Seniors, so they are not scoped OUT of
+        // it, and filtering them by group hid them under EVERY group at once.
+        // Because the Members row is the only way to open a member's editor,
+        // that made their record unreachable and uncorrectable.
+        //
+        // VISIBILITY ONLY. Nobody joins a group and nobody gains a permission:
+        // the server still refuses this identity every group (see
+        // assertOperationalGroup). Scoped staff are untouched — they appear in
+        // at least one group, so this branch never fires for them, and a
+        // Seniors-only assistant is still not shown under U18.
+        return !Object.values(byGroup).some(ids => (ids || []).includes(id));
       };
       // Staff rows open the member editor for CLUB-WIDE admins only (the
       // server refuses everyone else anyway — this just avoids dead ends).
