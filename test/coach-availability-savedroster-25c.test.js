@@ -34,7 +34,7 @@ function extractFn(name) {
   return src.slice(start, i + 1);
 }
 function buildScope(initialPlayers = []) {
-  const fns = ['syncIdentityStateToLocalRoster', 'liveAvailabilityEntryKeys', 'liveAvailabilityPlayerKeys'].map(extractFn).join('\n');
+  const fns = ['membershipPlays', 'syncIdentityStateToLocalRoster', 'liveAvailabilityEntryKeys', 'liveAvailabilityPlayerKeys'].map(extractFn).join('\n');
   const body = `
     "use strict";
     const state = { players: ${JSON.stringify(initialPlayers)}, users: [] };

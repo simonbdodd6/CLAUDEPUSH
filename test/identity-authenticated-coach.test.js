@@ -43,6 +43,7 @@ function clientScope({ users = [], currentUserId = '', sessionPayload = null } =
     ${extractFn('currentUser')}
     ${extractFn('canonicalPlayerIdForUser')}
     ${extractFn('ensureCanonicalPlayerRecord')}
+    ${extractFn('membershipPlays')}
     ${extractFn('hydrateSessionPlayerRecord')}
     function loadPublishedStateForPlayer() { return Promise.resolve(); }
     function loadCoachDraft() { return Promise.resolve(); }

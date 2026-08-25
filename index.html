@@ -6518,8 +6518,13 @@
       return invite?.token ? `inv-${String(invite.token).slice(-8)}` : null;
     }
 
-    function canonicalPlayerIdForUser(user) {
-      if (!user || user.role !== 'player') return null;
+    // `plays` carries the membership's PLAYER capacity (membershipPlays) so a
+    // dual-role member — a club physio or coach who also plays — still has a
+    // canonical player id. Their role name alone never says so, and without an
+    // id there is no roster record and therefore no Player Profile.
+    function canonicalPlayerIdForUser(user, plays) {
+      const playing = String(user?.role || '').toLowerCase() === 'player' || plays === true;
+      if (!user || !playing) return null;
       const nameKey = canonicalIdentityNameKey(user.name || user.displayName);
       if (nameKey === 'simontestplayer') return 'inv-YxnjxnQa';
       if (isPermanentPlayerUserId(user.id)) return user.id;
@@ -6560,9 +6565,14 @@
     // server hydration runs — while Messages keep working because chat resolves
     // the player server-side via the session cookie. Returns true only when a
     // brand-new record was created (fresh client) so the caller can re-hydrate.
-    function hydrateSessionPlayerRecord(targetState, sessionUser) {
-      if (!targetState || !sessionUser || sessionUser.role !== 'player') return false;
-      const canonicalId = canonicalPlayerIdForUser(sessionUser);
+    // `plays` carries the membership's PLAYER capacity (membershipPlays) for
+    // the dual-role case: a club physio or coach who also plays needs this
+    // record just as much as a plain player, and their role name alone never
+    // says so. Purely additive — it can only ever widen the old role check.
+    function hydrateSessionPlayerRecord(targetState, sessionUser, plays) {
+      const playing = String(sessionUser?.role || '').toLowerCase() === 'player' || plays === true;
+      if (!targetState || !sessionUser || !playing) return false;
+      const canonicalId = canonicalPlayerIdForUser(sessionUser, playing);
       if (!canonicalId) return false;
       targetState.players = targetState.players || [];
       const had = targetState.players.some(p =>
@@ -7417,7 +7427,46 @@
       return chosen || ownPlayerRecordForUser(user) || EMPTY_PLAYER;
     }
     function currentUser()  { return canonicalAccountForUserId(state.currentUserId) || state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
-    function isCoach()      { const r = currentUser()?.role; return r === "coach" || r === "admin" || r === "medical"; }
+
+    /**
+     * THE TWO CAPACITIES, client side — the mirror of api/_accessScope.js
+     * isPlayingMember(). Where a person PLAYS is their membership's
+     * playerGroupId, or a club role of 'player'.
+     *
+     * It is NOT "their role is not a staff role". MEDICAL is a PERMISSION —
+     * one extra page — and granting it must never cost someone their roster
+     * record, their profile or their portal. A club physio who also plays
+     * holds both capacities on one membership, exactly as a coach who plays
+     * does. An unknown membership answers false: capacity fails CLOSED.
+     */
+    function membershipPlays(member, fallbackRole = '') {
+      if (String(member?.playerGroupId || '').trim()) return true;
+      return String(member?.role || fallbackRole || '').toLowerCase() === 'player';
+    }
+
+    /**
+     * The shell an identity LANDS in. Coaching roles run a team and land in
+     * the coach shell — including dual-role members, who switch to the player
+     * view themselves. Medical is not a coaching capacity, so a medical member
+     * who also PLAYS lands in their own portal, where Medical already appears
+     * in their navigation (playerSectionsFor). A medical member who does not
+     * play is staff-only and keeps exactly today's shell.
+     */
+    function landingViewFor(role, member) {
+      const r = String(role || member?.role || '').toLowerCase();
+      if (r === 'coach' || r === 'admin') return 'coach';
+      if (r === 'medical' && !membershipPlays(member, r)) return 'coach';
+      return 'player';
+    }
+
+    function isCoach() {
+      const r = currentUser()?.role;
+      if (r === "coach" || r === "admin") return true;
+      // Medical alone is not a coach shell for someone who plays. Before the
+      // server has spoken (_myMembership null) this is today's answer, so an
+      // offline/first-paint client never loses access it used to have.
+      return r === "medical" && !membershipPlays(_myMembership, r);
+    }
     function statusLabel(s) { const t = (s||"no-reply").replaceAll("-", " "); return t.charAt(0).toUpperCase() + t.slice(1); }
     const _AVATAR_COLORS = ['#4f46e5','#7c3aed','#db2777','#dc2626','#d97706','#16a34a','#0891b2','#4338ca','#b45309','#7e22ce'];
     function playerAvatarColor(key) { let h=0; for(let i=0;i<key.length;i++) h=(h*31+key.charCodeAt(i))&0x7fffffff; return _AVATAR_COLORS[h%_AVATAR_COLORS.length]; }
@@ -10934,9 +10983,15 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.ok === false) { const err = new Error(data.error || 'login failed'); err.status = res.status; throw err; }
         const isStaffLogin = ['coach','admin','medical'].includes(data.user.role);
-        if (!isStaffLogin) {
+        // Capacity, not role name: someone who PLAYS gets their own roster
+        // record even when they also hold a staff role. Without this a club
+        // physio who plays had no record on their own device at all, so their
+        // Player Profile resolved to the empty player.
+        const playsHere = membershipPlays(data.teamMember, data.user.role);
+        if (!isStaffLogin || playsHere) {
           applyApprovedIdentityLocally(data);
-        } else {
+        }
+        if (isStaffLogin) {
           const staffName = data.user.displayName || data.user.email || data.user.id;
           const existingUser = state.users.find(u => u.id === data.user.id);
           if (!existingUser) {
@@ -10952,8 +11007,8 @@
         // not this account's. Staff logins also start with no preview selected.
         if (String(state.currentUserId || '') !== String(data.user.id)) resetIdentityScopedState();
         state.currentUserId = data.user.id;
-        state.activeView = isStaffLogin ? 'coach' : 'player';
-        if (isStaffLogin) {
+        state.activeView = landingViewFor(data.user.role, data.teamMember);
+        if (state.activeView === 'coach') {
           state.activeCoachSection = state.activeCoachSection || 'overview';
           // See above: never inherit the player-only 'coach' placeholder.
           if (!state.selectedChatId || state.selectedChatId === 'coach') state.selectedChatId = 'squad';
@@ -11401,9 +11456,14 @@
         const data = await res.json();
         if (!data.ok) return showToast('Dev login failed: ' + (data.error || 'unknown'));
         const isStaff = ['coach','admin','medical'].includes(data.user?.role || data.teamMember?.role);
-        if (!isStaff) {
+        // See loginIdentityAccount: PLAYING is a capacity of its own, so a
+        // member who plays keeps their own roster record whatever staff role
+        // they also hold.
+        const playsHere = membershipPlays(data.teamMember, data.user?.role);
+        if (!isStaff || playsHere) {
           applyApprovedIdentityLocally(data);
-        } else {
+        }
+        if (isStaff) {
           // Staff: upsert state.users with correct role — never add to state.players
           const staffName = data.user?.displayName || data.user?.email || userId;
           const existingUser = state.users.find(u => u.id === data.user.id);
@@ -11420,8 +11480,8 @@
         adoptIdentityPayload(data);
         if (String(state.currentUserId || '') !== String(userId)) resetIdentityScopedState();
         state.currentUserId = userId;
-        state.activeView = isStaff ? 'coach' : 'player';
-        if (isStaff) {
+        state.activeView = landingViewFor(data.user?.role, data.teamMember);
+        if (state.activeView === 'coach') {
           state.activeCoachSection = state.activeCoachSection || 'overview';
           state.selectedChatId = state.selectedChatId || 'squad';
         } else {
@@ -11500,8 +11560,10 @@
       if (!u) return;
       state.currentUserId = u.id;
       const isStaff = ['coach','admin','medical'].includes(u.role);
-      state.activeView = isStaff ? 'coach' : 'player';
-      if (!isStaff) {
+      // Same capacity rule as login: medical is a permission, so a switched-to
+      // account that PLAYS opens in the player portal, not the coach shell.
+      state.activeView = landingViewFor(u.role, u);
+      if (state.activeView === 'player') {
         const canonicalPlayerId = u.playerId || canonicalPlayerIdForUser(u);
         state.selectedPlayerId = canonicalPlayerId;
         state.selectedMessagePlayerId = canonicalPlayerId;
@@ -11585,10 +11647,17 @@
       const usersById = new Map(users.map(user => [String(user.id || ''), user]));
       // Build set of staff user IDs from server team_members and local state.users.
       // Profiles for staff accounts must never be treated as player roster entries.
+      // STAFF-ONLY, though: a member who also PLAYS (membershipPlays — a
+      // playerGroupId, or a player role) keeps their roster projection. Judging
+      // this by role name alone is what removed a player's own record the moment
+      // they were made medical staff.
+      const playingUserIds = new Set(
+        teamMembers.filter(m => membershipPlays(m)).map(m => String(m.userId || '')).filter(Boolean)
+      );
       const staffUserIds = new Set([
         ...teamMembers.filter(m => ['coach','admin','medical'].includes(m.role)).map(m => String(m.userId || '')),
         ...state.users.filter(u => ['coach','admin','medical'].includes(u.role)).map(u => String(u.id || '')),
-      ]);
+      ].filter(id => id && !playingUserIds.has(id)));
       let changed = false;
 
       profiles.forEach(profile => {
@@ -34218,6 +34287,13 @@
      */
     let _myOperational = null;
     let _myMemberships = [];     // [{teamId, teamName, role, current}]
+    /**
+     * THIS identity's membership of the CURRENT club, exactly as stored. The
+     * capacity questions (membershipPlays / landingViewFor / isCoach) read
+     * playerGroupId from here rather than guessing from a role name. Null
+     * until a session or login response has been adopted.
+     */
+    let _myMembership = null;
 
     /** The capacity the current view implies: where you play vs where you administer. */
     /**
@@ -34523,6 +34599,9 @@
       // each capacity. The client adopts that answer rather than re-deriving
       // the rules, so the UI can never offer a group the API would refuse.
       if (d?.operational !== undefined) { _myOperational = d.operational; resolveOperationalGroup(); }
+      // The stored membership answers "which capacities do I hold here?".
+      // Medical is a permission on it, never a replacement for it.
+      if (d?.teamMember !== undefined) _myMembership = d.teamMember || null;
       if (Array.isArray(d?.memberships)) _myMemberships = d.memberships;
       if (d?.teamPlan       !== undefined) state.teamPlan       = d.teamPlan;
       if (d?.teamPlanStatus !== undefined) state.teamPlanStatus = d.teamPlanStatus;
@@ -35168,7 +35247,8 @@
             // same availability / training state as Safari instead of "no squad".
             if (state.currentUserId === sid) {
               const restoredUser = state.users.find(u => u.id === sid);
-              if (hydrateSessionPlayerRecord(state, restoredUser)) {
+              if (hydrateSessionPlayerRecord(state, restoredUser,
+                    membershipPlays(d.teamMember, role))) {
                 saveState('Player identity hydrated');
                 _playerAvailFetched = false;       // re-fetch availability for the resolved player
                 _publishedStateLoadedAt = 0;       // re-hydrate published sessions / squad

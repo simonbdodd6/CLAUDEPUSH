@@ -33,6 +33,9 @@ function extractFn(name) {
 // plus faithful stubs for the small identity helpers they call.
 function buildScope(initialPlayers = []) {
   const fns = [
+    // Capacity helper the reconciliation consults: a member who PLAYS keeps
+    // their roster projection whatever staff role they also hold.
+    'membershipPlays',
     'syncIdentityStateToLocalRoster',
     'liveAvailabilityEntryKeys',
     'liveAvailabilityPlayerKeys',
