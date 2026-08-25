@@ -27,7 +27,7 @@ import {
   setGroupStatus, setTeamStatus, activeGroups, INITIAL_GROUP_ID,
   setGroupDevelopmentCategory,
 } from './_structureStore.js';
-import { effectiveAccessScope, resolveEligibility, resolvePlayerGroup,
+import { effectiveAccessScope, resolveEligibility, resolvePlayerGroup, isPlayingMember,
          operationalGroupsFor, defaultOperationalGroup, assertOperationalGroup } from './_accessScope.js';
 import {
   loadMedicalRecord, activeCases, upsertCase, resolveCase, projectPlayer,
@@ -1800,6 +1800,12 @@ function resolveScopedAthlete(session, structure, members, athleteUserId) {
   if (!id) { const e = new Error('Athlete required'); e.status = 400; throw e; }
   const member = members.find(m => String(m.userId || '') === id && m.status === 'active');
   if (!member) { const e = new Error('Unknown athlete for this club'); e.status = 404; throw e; }
+  // Capacity, not merely membership. A staff member who does not play is not
+  // an athlete, so nothing may be authored or assigned FOR them — a club-wide
+  // coach reached the scope check below unconditionally and could otherwise
+  // programme for another coach. Same predicate the enumeration uses, so the
+  // two can never disagree about who is an athlete.
+  if (!isPlayingMember(member)) { const e = new Error('Unknown athlete for this club'); e.status = 404; throw e; }
   const allowed = operationalGroupsFor(session.teamMember, structure, { as: 'staff' });
   const scope = effectiveAccessScope(session.teamMember);
   const athleteGroupId = String(member.playerGroupId || '');
@@ -1815,7 +1821,11 @@ function resolveScopedAthlete(session, structure, members, athleteUserId) {
 /** Athlete ids the caller may see at all — the enumeration boundary. */
 function scopedAthleteIds(session, structure, members) {
   const scope = effectiveAccessScope(session.teamMember);
-  const active = members.filter(m => m.status === 'active' && canonicalRole(m) === 'player');
+  // WHO IS AN ATHLETE is a capacity question, not a role one. isPlayingMember
+  // is Core's canonical answer: an explicit playerGroupId OR the player role.
+  // Asking canonicalRole === 'player' made a coach who also plays invisible,
+  // because a coach is head_coach/assistant/manager whatever else is true.
+  const active = members.filter(m => m.status === 'active' && isPlayingMember(m));
   if (scope.clubWide) return new Set(active.map(m => String(m.userId)));
   const allowed = new Set(operationalGroupsFor(session.teamMember, structure, { as: 'staff' }).map(g => g.id));
   return new Set(active.filter(m => allowed.has(String(m.playerGroupId || ''))).map(m => String(m.userId)));
@@ -1908,7 +1918,7 @@ async function performanceHandler(req, res) {
     const roster = await readScoped(rosterKey(clubId), 'roster', clubId);
     const groupName = id => (structure.groups || []).find(g => g.id === id)?.name || '';
     const athletes = mine
-      .filter(m => m.status === 'active' && canonicalRole(m) === 'player' && visible.has(String(m.userId)))
+      .filter(m => m.status === 'active' && isPlayingMember(m) && visible.has(String(m.userId)))
       .map(m => {
         const p = (roster?.players || []).find(x => String(x.userId || '') === String(m.userId)) || null;
         const gid = String(m.playerGroupId || '');
@@ -1936,7 +1946,23 @@ async function performanceHandler(req, res) {
         updatedAt: p.updatedAt, createdBy: p.createdBy,
         assignmentCount: (record.assignments || []).filter(a => a.programmeId === p.programmeId).length,
       }));
-    return res.status(200).json({ ok: true, capacity: 'staff', entitlement: ent, athletes, programmes, assignments });
+    // THE CALLER'S OWN ATHLETE DATA, kept separate from their coaching list.
+    //
+    // One person can hold two capacities: they coach one group and play in
+    // another. `athletes`/`assignments` above are their COACHING subjects. A
+    // staff member's own programme is not in there — and must never be read
+    // out of there, because that list holds other people. `self` is resolved
+    // from the SESSION, so it can only ever be the caller.
+    //
+    // A staff member who does not play simply has an empty self block: no
+    // profile, no assignments. That is the honest answer, not another
+    // athlete's data by accident.
+    const self = {
+      assignments: assignmentsForAthlete(record, actor.userId).map(projectAssignmentForPlayer),
+      profile: authoringProfileFor(record, actor.userId),
+    };
+    return res.status(200).json({ ok: true, capacity: 'staff', entitlement: ent,
+                                  athletes, programmes, assignments, self });
   }
 
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });

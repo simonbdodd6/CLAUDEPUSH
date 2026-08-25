@@ -32643,18 +32643,40 @@
             loaded: true, loading: false, error: null, capacity: data.capacity || null,
             athletes: data.athletes || [], programmes: data.programmes || [],
             assignments: data.assignments || [], entitlement: data.entitlement || null,
+            // The caller's OWN athlete data. For a player the whole payload is
+            // already theirs; for staff the server sends it separately, because
+            // `assignments` there holds the people they COACH.
+            self: data.self || null,
           };
           // Cross-device: an athlete signing in on a new phone gets their own
           // profile back. A device that already holds one keeps its copy and
           // re-publishes, so a newer local edit is never overwritten by an
           // older server read.
-          if (data.capacity === 'player') perfAdoptServerProfile(data.profile);
+          // A player's own profile arrives at the top level; a staff member's
+          // arrives in `self`, so a coach who also plays gets theirs back on a
+          // new device exactly as an athlete does.
+          perfAdoptServerProfile(data.capacity === 'player' ? data.profile : data.self?.profile);
         }
       } catch (e) {
         _perfAssign = { ..._perfAssign, loaded: true, loading: false, error: 'offline' };
       }
       renderPerformance();
       return _perfAssign;
+    }
+
+    /**
+     * MY OWN assignments — never the ones I coach.
+     *
+     * For a player the server's payload is entirely their own. For STAFF,
+     * `_perfAssign.assignments` is the coaching list: every scoped athlete's
+     * assignment. Reading that as "mine" would have shown a coach another
+     * athlete's programme and workout inside their own My Programme and
+     * Workouts tabs — surfaces the coach shell offers. A dual-role member who
+     * coaches and plays makes that concrete, so own-data reads go through here.
+     */
+    function perfSelfAssignments() {
+      if (_perfAssign.capacity === 'player') return _perfAssign.assignments || [];
+      return _perfAssign.self?.assignments || [];
     }
 
     /** Today's date as the assignment calendar understands it. */
@@ -32668,7 +32690,7 @@
     function perfLiveAssignment() {
       if (!_perfWkMod) return null;
       const today = perfToday();
-      return (_perfAssign.assignments || [])
+      return perfSelfAssignments()
         .filter(a => a && a.snapshot && _perfWkMod.isLiveToday(a, today))
         .sort((a, b) => String(b.startDate).localeCompare(String(a.startDate)))[0] || null;
     }
@@ -32677,7 +32699,7 @@
     function perfCurrentAssignment() {
       if (!_perfWkMod) return null;
       const rank = { active: 0, scheduled: 1, paused: 2, completed: 3, replaced: 4, cancelled: 5, draft: 6 };
-      return (_perfAssign.assignments || [])
+      return perfSelfAssignments()
         .filter(a => a && a.snapshot)
         .sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9)
           || String(b.startDate).localeCompare(String(a.startDate)))[0] || null;
