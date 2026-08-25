@@ -1955,8 +1955,28 @@ async function performanceHandler(req, res) {
 
     if (op === 'save_athlete_profile') {
       // An athlete's profile is theirs. A coach may read the projection to
-      // author with it; they may never author the athlete's own data.
-      return res.status(403).json({ ok: false, error: 'Only the athlete can update their Performance profile' });
+      // author with it; they may never author ANOTHER athlete's data.
+      //
+      // But a staff member may save their OWN. The coach Performance shell
+      // offers them "My Profile", "My Programme" and "Workouts" — the athlete
+      // surfaces — so refusing every staff write meant a coach could complete
+      // their own profile and have it silently kept on one device while the
+      // UI reported it saved. The id comes from the SESSION, exactly as it
+      // does for a player, so this cannot reach anyone else's record: naming
+      // someone else in the body is still refused below.
+      const target = String(req.body?.athleteUserId || '').trim();
+      if (target && target !== actor.userId) {
+        return res.status(403).json({ ok: false, error: 'Only the athlete can update their Performance profile' });
+      }
+      try {
+        const saved = await saveAuthoringProfile(clubId, actor.userId, req.body?.profile || {}, actor);
+        await auditLog('performance_profile_saved', {
+          athleteUserId: actor.userId, changedBy: actor.userId, teamId_club: clubId, ip: requestIp(req),
+        });
+        return res.status(200).json({ ok: true, profile: saved.profile });
+      } catch (error) {
+        return res.status(error?.status || 400).json({ ok: false, error: error?.message || 'Could not save profile' });
+      }
     }
 
     if (op === 'save_draft') {

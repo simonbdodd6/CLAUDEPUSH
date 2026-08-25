@@ -409,3 +409,81 @@ test('25. gating changes NO other projection field', async () => {
     'a coach\'s own recorded restrictions survive — they are not the athlete\'s disclosure');
   for (const f of GATED) assert.ok(f in gated.restrictions, `${f}: the key survives, so shape never varies`);
 });
+
+
+// ── 26-31: A COACH MAY SAVE THEIR OWN PROFILE ─────────────────────────────
+//
+// PRODUCTION BUG. A head coach completed their own Performance profile and it
+// never reached the server: app:performance:<club> stayed absent entirely.
+//
+// The staff branch refused every `save_athlete_profile` with "Only the athlete
+// can update their Performance profile". That rule exists to stop a coach
+// authoring SOMEONE ELSE's profile, and it should — but it was written as
+// "staff may not save any profile", including their own. Meanwhile the coach
+// Performance shell offers the full PERF_TABS, which includes "My Profile",
+// "My Programme" and "Workouts": the product invites a coach to build their own
+// athlete profile and then declined to keep it. The client maps the 403 to
+// _perfProfileSync = 'error', so the screen reported "Saved on this device".
+//
+// The athlete id comes from the SESSION for staff exactly as it does for a
+// player, so a coach still cannot reach another athlete's record.
+
+test('26. a coach can save their OWN Performance profile', async () => {
+  seed(); await login('u-sen-coach');
+  const r = await saveOwn('u-sen-coach', fullProfile());
+  assert.equal(r.code, 200, 'a staff member may persist their own profile');
+  assert.equal(r.body.profile.athleteUserId, 'u-sen-coach', 'stored under their own id');
+  assert.equal(r.body.profile.clubId, CLUB, 'and their own club');
+});
+
+test('27. an owner/admin can save their own profile too', async () => {
+  seed(); await login('u-admin');
+  const r = await saveOwn('u-admin', fullProfile());
+  assert.equal(r.code, 200);
+  assert.equal(r.body.profile.athleteUserId, 'u-admin');
+});
+
+test('28. a coach still CANNOT write another athlete\'s profile', async () => {
+  seed(); await login('u-sen-coach');
+  const forged = await call('u-sen-coach', { method: 'POST', body: {
+    op: 'save_athlete_profile', athleteUserId: 'u-sen-player',
+    profile: authoringProfileFrom(fullProfile(), { now: new Date('2026-08-22') }) } });
+  assert.equal(forged.code, 403, 'naming another athlete is refused');
+  assert.match(String(forged.body.error), /Only the athlete/);
+  // …and nothing was written for that athlete.
+  const stored = await call('u-sen-coach', { query: { athleteProfile: 'u-sen-player' } });
+  assert.equal(stored.code, 200);
+  assert.equal(stored.body.profile, null, 'the target athlete still has no profile');
+});
+
+test('29. a coach saving their own profile writes ONLY their own record', async () => {
+  seed(); await login('u-sen-player'); await login('u-sen-coach');
+  await saveOwn('u-sen-player', fullProfile());          // the athlete saves first
+  const before = await call('u-sen-coach', { query: { athleteProfile: 'u-sen-player' } });
+  await saveOwn('u-sen-coach', fullProfile());           // now the coach saves theirs
+  const after = await call('u-sen-coach', { query: { athleteProfile: 'u-sen-player' } });
+  assert.deepEqual(after.body.profile, before.body.profile,
+    "the athlete's stored profile is untouched by the coach saving their own");
+});
+
+test('30. the coach\'s own saved profile carries no pain, health or wellness data', async () => {
+  seed(); await login('u-sen-coach');
+  const r = await saveOwn('u-sen-coach', fullProfile());
+  const raw = JSON.stringify(r.body.profile);
+  for (const banned of ['left knee', 'sore after match', 'ACL rupture', 'deep_knee_flexion',
+                        'physio', 'no deep squats', 'wellness', 'weightKg', 'heightCm']) {
+    assert.equal(raw.includes(banned), false, `${banned} must never enter the projection`);
+  }
+  // The restriction FLAGS are present but gated exactly as for any athlete.
+  assert.ok(r.body.profile.restrictions, 'restriction flags exist');
+});
+
+test('31. another club\'s coach still cannot save into this club', async () => {
+  seed(); await login('u-other-coach'); await login('u-admin');
+  const r = await saveOwn('u-other-coach', fullProfile());
+  // Their session resolves to OTHER, so anything they write lands there — and
+  // this club's record must not gain a profile from it.
+  const here = await call('u-admin', { query: { athleteProfile: 'u-other-coach' } });
+  assert.notEqual(here.code, 200, 'a foreign athlete id is not resolvable in this club');
+  assert.equal(r.code === 200 ? r.body.profile.clubId : OTHER, OTHER, 'written to their OWN club, never ours');
+});
