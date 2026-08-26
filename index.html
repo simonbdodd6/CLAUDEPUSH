@@ -5262,6 +5262,23 @@
     }
     .mc-side-btn + .mc-side-btn { border-left: 1px solid var(--line); }
     .mc-side-btn.on { background: var(--brand-soft); color: var(--brand-2); }
+    /* THE TEAM BEING PICKED — stated once, prominently, above the pitch.
+       The <h1> is the FIXTURE and reads identically for both sides, so the
+       team name previously appeared only in 12.5px buttons and an 11px pill.
+       This is the line a coach cannot miss. */
+    .mc-team-heading {
+      display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+      margin: 0 0 10px; padding: 0;
+      font-size: 20px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase;
+      color: var(--brand-2, var(--accent)); line-height: 1.15;
+    }
+    .mc-team-heading .mc-team-heading-sub {
+      font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: none;
+      color: var(--muted);
+    }
+    .mc-team-heading.is-unset { color: var(--muted); }
+    @media (max-width: 640px) { .mc-team-heading { font-size: 17px; } }
+
     .mc-pitch-sidetag {
       position: absolute; top: 8px; left: 10px; z-index: 5;
       font-size: 11px; font-weight: 800; letter-spacing: .03em;
@@ -9193,6 +9210,32 @@
         })
         .catch(() => {});
     }
+    /**
+     * ORDER OF SIDES WITHIN A GROUP — deterministic, never insertion order.
+     *
+     * The club structure carries no ordering field (a team is
+     * {id, groupId, name, ageGrade, genderCategory, status}), so sides were
+     * listed in the order they happen to sit in the store and the default was
+     * whichever came first. Boitsfort stores Seniors as
+     * ["Premier development", "Premier"] — team_initial is the club's original
+     * auto-created team, later renamed — so the DEFAULT TEAM WAS PREMIER
+     * DEVELOPMENT while the coach believed they were picking the first XV.
+     *
+     * The narrowest rule that fixes that without inventing a data model: a
+     * DEVELOPMENT side ranks after its senior counterpart; everything else
+     * keeps its stored order (the sort is stable, so ties never move). Matching
+     * is whole-word, so "Devon" is not a development side.
+     *
+     * Presentation only. This decides display order and therefore the default
+     * selection — never eligibility, never permission, never which group a team
+     * belongs to. If a club ever needs a hand-arranged order, an explicit
+     * ordering field on the team record is the right home for it and this
+     * helper becomes its fallback.
+     */
+    function mcSideRank(team) {
+      return /\b(development|dev|devs)\b/i.test(String(team?.name || '')) ? 1 : 0;
+    }
+
     function matchCentreSides() {
       if (typeof _mcTeams !== 'undefined' && _mcTeams) {
         const groups = _mcTeams.groups || [];
@@ -9200,7 +9243,8 @@
         const gid = opGroup && groups.some(g => String(g.id) === opGroup) ? opGroup
           : (groups.length === 1 ? String(groups[0].id) : '');
         if (!gid) return [];
-        return (_mcTeams.teams || []).filter(t => String(t.groupId) === gid);
+        return (_mcTeams.teams || []).filter(t => String(t.groupId) === gid)
+          .sort((a, b) => mcSideRank(a) - mcSideRank(b));
       }
       const st = (typeof _adminData !== 'undefined' && _adminData?.structure) || null;
       if (!st) return [];
@@ -9209,7 +9253,8 @@
       const gid = opGroup && activeGroups.some(g => g.id === opGroup) ? opGroup
         : (activeGroups.length === 1 ? activeGroups[0].id : '');
       if (!gid) return [];
-      return (st.teams || []).filter(t => t.status === 'active' && t.groupId === gid);
+      return (st.teams || []).filter(t => t.status === 'active' && t.groupId === gid)
+        .sort((a, b) => mcSideRank(a) - mcSideRank(b));
     }
     function matchCentreSidesActive() {
       const sides = matchCentreSides();
@@ -9248,6 +9293,10 @@
       if (id === matchCentreSideId()) return true;
       mcFlushDraftNow();                 // the outgoing side keeps its work
       state.matchCentre = { ...(state.matchCentre || {}), sideId: id, published: false };
+      // Transitional until the incoming side's own draft hydrates — nothing may
+      // be saved in this window, so the cleared sheet below can never overwrite
+      // the incoming side's stored draft with emptiness.
+      _mcSheetSideId = matchCentreFixtureId() ? null : id;
       state.formationNames = {};
       state.benchPlayers   = Array(8).fill('');
       state.fphotoIds      = {};
@@ -9332,6 +9381,7 @@
         // so the sheet stays put and is persisted under its new fixture key.
         state.matchCentre = { ...(state.matchCentre || {}), fixtureId: id };
         _mcSheetFixtureId = id;                 // the work is now this fixture's
+        _mcSheetSideId = matchCentreSideId();   // ...under the side it was built in
         const fx = matchCentreSelectedFixture();
         if (fx) mcApplyFixtureDisplay(fx);
         saveState('Match fixture linked');
@@ -9354,6 +9404,7 @@
       // Transitional until the incoming fixture's own draft hydrates; the
       // unlinked workspace ('') is immediately live — there is nothing to load.
       _mcSheetFixtureId = id ? null : '';
+      _mcSheetSideId     = id ? null : matchCentreSideId();
       state.fphotoIds      = {};
       const fx = matchCentreSelectedFixture();
       if (fx) mcApplyFixtureDisplay(fx); else mcClearFixtureDisplay();
@@ -9382,6 +9433,17 @@
     let _mcSheetFixtureId = String((state.matchCentre || {}).fixtureId || '');
 
     /**
+     * WHICH SIDE the in-memory sheet belongs to — the exact counterpart of
+     * _mcSheetFixtureId, with the same three states (a side id, '' for a
+     * sideless club, null while transitional). Premier and Premier Development
+     * share a fixture, so the fixture binding alone cannot tell them apart:
+     * without this, a sheet built under one side could be written under the
+     * other whenever the effective side changed beneath it (matchCentreSideId()
+     * falls back to sides[0], and the sides list arrives asynchronously).
+     */
+    let _mcSheetSideId = String((state.matchCentre || {}).sideId || '');
+
+    /**
      * Drop the Match Centre fixture context entirely — used when the
      * OPERATIONAL GROUP changes (or a restored selection turns out to belong
      * to another group). The selection, display fields, sheet and binding are
@@ -9398,6 +9460,7 @@
       state.benchPlayers   = Array(8).fill('');
       state.fphotoIds      = {};
       _mcSheetFixtureId = '';
+      _mcSheetSideId    = '';
     }
 
     /**
@@ -9499,6 +9562,7 @@
         // stored draft exists (adopted below) or not (legitimately empty and
         // ready for new work). Saves/flushes are unlocked from here on.
         _mcSheetFixtureId = String(id);
+        _mcSheetSideId    = side;
         if (dRes.ok) {
           const { draft } = await dRes.json();
           // Only this fixture's (and side's) own draft may hydrate this sheet —
@@ -9534,6 +9598,9 @@
       // what stops navigation writing empty sheets over stored drafts, and a
       // group-switch leftover sheet being filed under another group's fixture.
       if (String(_mcSheetFixtureId ?? '\u0000') !== matchCentreFixtureId()) return;
+      // ...and under the SIDE it was built in. Premier and Premier Development
+      // share the fixture, so the fixture check alone cannot separate them.
+      if (String(_mcSheetSideId ?? '\u0000') !== matchCentreSideId()) return;
       const mc = state.matchCentre || {};
       try {
         await fetch('/api/publish', {
@@ -9542,7 +9609,7 @@
           body: JSON.stringify({
             type: 'draft',
             data: { ...mc, formationNames: state.formationNames || {}, benchPlayers: state.benchPlayers || [],
-                    fixtureId: matchCentreFixtureId(), sideId: matchCentreSideId() },
+                    fixtureId: matchCentreFixtureId(), sideId: String(_mcSheetSideId ?? '') },
           }),
         });
       } catch (e) { console.warn('[saveCoachDraft]', e); }
@@ -9584,6 +9651,7 @@
         // The adopted sheet belongs to the draft's OWN stored fixture (or the
         // anonymous workspace) — stored identity, never inference.
         _mcSheetFixtureId = String(draft.fixtureId || '');
+        _mcSheetSideId    = String(draft.sideId || '');
         saveState('Coach draft loaded');
         render();
         const now = matchCentreFixtureId();
@@ -15946,6 +16014,10 @@
           ⚠️ Also selected for ${esc(_mcOtherSide?.teamName || 'the other team')} (${esc(mcFx?.opposition || 'this fixture')}):
           <strong>${_placedDupes.map(esc).join(', ')}</strong> — nothing has been changed on either sheet.
         </div>` : ''}
+        <h2 class="mc-team-heading${mcSide ? '' : ' is-unset'}" id="mc-team-heading">
+          <span>${mcSide ? esc(mcSide.name) : 'Select a team'}</span>
+          ${mcFx ? `<span class="mc-team-heading-sub">vs ${esc(mcFx.opposition)}${mcFx.date ? ' · ' + esc(mcFixtureDateLabel(mcFx.date)) : ''}</span>` : ''}
+        </h2>
         <div class="mcx2-board">
 
           <!-- LEFT — the pitch (dominant) -->

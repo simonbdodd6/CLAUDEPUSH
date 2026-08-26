@@ -93,6 +93,7 @@ function client(server) {
     function isCoach() { return true; }
     let _coachDraftSaveTimer = null;
     let _mcOtherSide = null;
+    ${fn('mcSideRank')}
     ${fn('matchCentreSides')}
     ${fn('matchCentreSidesActive')}
     ${fn('matchCentreSideId')}
@@ -156,6 +157,7 @@ test('with one active team (or no structure) the side dimension is OFF', () => {
   const c = new Function(`
     const state = { matchCentre: {}, operationalGroupId: 'grp_seniors' };
     const _adminData = { structure: arguments[0] };
+    ${fn('mcSideRank')}
     ${fn('matchCentreSides')}
     ${fn('matchCentreSidesActive')}
     ${fn('matchCentreSideId')}
@@ -261,6 +263,7 @@ test('the other side\'s names surface only for the exact fixture+side context', 
     let _mcOtherSide = arguments[0];
     // single-group harness: the group context passes fixtures through
     function contextFixtures() { return state.fixtures || []; }
+    ${fn('mcSideRank')}
     ${fn('matchCentreSides')}
     ${fn('matchCentreSidesActive')}
     ${fn('matchCentreSideId')}
@@ -311,7 +314,16 @@ test('the export filename and pitch tag identify the side', () => {
 });
 
 test('draft and squad payloads always carry the side', () => {
-  assert.match(fn('saveCoachDraft'), /sideId: matchCentreSideId\(\)/);
+  // The DRAFT stamps the side the sheet is BOUND to (_mcSheetSideId), not a
+  // fresh lookup: Premier and Premier Development share a fixture, so a sheet
+  // must be filed under the side it was actually built in. The guard above it
+  // refuses the write when the two disagree.
+  const draft = fn('saveCoachDraft');
+  assert.match(draft, /sideId: String\(_mcSheetSideId \?\? ''\)/, 'the draft carries the BOUND side');
+  assert.match(draft, /_mcSheetSideId \?\? '\\u0000'\) !== matchCentreSideId\(\)\) return;/,
+    'and refuses to save when the sheet belongs to a different side');
+  // Publishing is an explicit, synchronous act by the coach on the side they
+  // are looking at, so it reads the live selection — unchanged.
   assert.match(fn('syncSquadToServer'), /sideId: matchCentreSideId\(\)/);
 });
 
@@ -366,6 +378,7 @@ test('scoped team metadata still respects the operational group client-side', ()
   const api = new Function(`
     const state = { operationalGroupId: arguments[1] };
     let _mcTeams = arguments[0];
+    ${fn('mcSideRank')}
     ${fn('matchCentreSides')}
     return matchCentreSides();
   `);

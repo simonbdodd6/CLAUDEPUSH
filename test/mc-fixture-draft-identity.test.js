@@ -106,6 +106,12 @@ function mcHarness({ matchCentre = {}, formationNames = {}, benchPlayers = [], c
     function mcRefreshPublishedForFixture() {}
     function mcHydrateSelectedFixture() {}          // async hydration NOT landing — the transitional window
     let _mcSheetFixtureId = ${JSON.stringify(seed)};
+    // The sheet is also bound to its SIDE (Premier vs Premier Development share
+    // a fixture). This harness exercises the sideless path, so both the binding
+    // and the live side are '' — the guard is satisfied and fixture behaviour
+    // is unchanged.
+    let _mcSheetSideId = '';
+    function matchCentreSideId() { return ''; }
     ${fn('matchCentreSelectedFixture')}
     ${fn('matchCentreFixtureId')}
     ${fn('matchCentreHasSquadWork')}
