@@ -1988,6 +1988,100 @@ export function isPlatformAdmin(user) {
   return String(user?.platformRole || '') === 'platform_admin';
 }
 
+export const PLATFORM_ADMIN_ROLE = 'platform_admin';
+
+/**
+ * Who currently holds platform authority.
+ *
+ * There is no separate platform-admin store to keep in step: the USER RECORD
+ * is the canonical representation, so this is a projection of it and can
+ * never disagree with isPlatformAdmin(). Only the small identifying fields
+ * an administrator needs to recognise a colleague travel — never password
+ * material, never tokens, never club data.
+ */
+export async function listPlatformAdmins() {
+  const users = await loadUsers();
+  return users.filter(isPlatformAdmin).map(u => ({
+    id: u.id,
+    email: u.email || '',
+    displayName: u.displayName || u.firstName || '',
+    grantedAt: u.platformRoleGrantedAt || null,
+    grantedBy: u.platformRoleGrantedBy || null,
+  }));
+}
+
+/**
+ * Grant platform administration to an EXISTING identity.
+ *
+ * Platform authority is deliberately not an invitation, a membership or a
+ * club role: it is one field on one user record, so a grant here creates no
+ * club, no membership, no ownership and no access to anybody's data. The
+ * person keeps exactly the clubs they already had.
+ *
+ * The target must already have an account. This module never mints
+ * credentials, and inventing a shell account from an email address would be
+ * a second identity system — so an unknown address is refused with an
+ * instruction rather than silently creating something to attach the role to.
+ *
+ * Idempotent: granting to someone who already holds it writes nothing and
+ * reports that it was already in place.
+ */
+export async function grantPlatformAdmin({ email, actorUserId } = {}) {
+  const normalized = normalizeEmail(email);
+  if (!EMAIL_RE.test(normalized)) {
+    const e = new Error('A valid email address is required'); e.status = 400; throw e;
+  }
+  const users = await loadUsers();
+  const user = users.find(u => normalizeEmail(u.email) === normalized);
+  if (!user) {
+    const e = new Error('No CoachEasier account uses that email address — ask them to sign in once, then grant access');
+    e.status = 404; e.code = 'account_not_found'; throw e;
+  }
+  if (isPlatformAdmin(user)) {
+    return { user: publicUser(user), alreadyGranted: true };
+  }
+  user.platformRole = PLATFORM_ADMIN_ROLE;
+  user.platformRoleGrantedAt = nowIso();
+  user.platformRoleGrantedBy = String(actorUserId || '');
+  delete user.platformRoleRevokedAt;
+  delete user.platformRoleRevokedBy;
+  await saveUsers(users);
+  return { user: publicUser(user), alreadyGranted: false };
+}
+
+/**
+ * Remove platform administration from an identity.
+ *
+ * THE LAST ADMINISTRATOR IS PROTECTED, on the server. A platform with nobody
+ * able to provision a club — or to grant the role back — could only be
+ * recovered by editing the database by hand, which is exactly the situation
+ * this whole capability exists to end. The count is taken from the stored
+ * records at the moment of the write, so two concurrent revocations cannot
+ * race the platform down to zero.
+ *
+ * Revoking touches ONLY the platform field. Memberships, ownership, club
+ * plans and the account itself are left exactly as they are: the person stops
+ * being a platform administrator and stays whoever they were at their club.
+ */
+export async function revokePlatformAdmin({ userId, actorUserId } = {}) {
+  const targetId = String(userId || '').trim();
+  if (!targetId) { const e = new Error('A platform administrator is required'); e.status = 400; throw e; }
+  const users = await loadUsers();
+  const user = users.find(u => String(u.id) === targetId);
+  if (!user || !isPlatformAdmin(user)) {
+    const e = new Error('That person is not a platform administrator'); e.status = 404; throw e;
+  }
+  if (users.filter(isPlatformAdmin).length <= 1) {
+    const e = new Error('The last platform administrator cannot be removed — grant it to someone else first');
+    e.status = 400; e.code = 'last_platform_admin'; throw e;
+  }
+  delete user.platformRole;
+  user.platformRoleRevokedAt = nowIso();
+  user.platformRoleRevokedBy = String(actorUserId || '');
+  await saveUsers(users);
+  return { user: publicUser(user) };
+}
+
 /**
  * Provision a NEW customer club: an isolated tenant plus a single-use
  * head-coach invitation for its first administrator. Unlike createClub (the

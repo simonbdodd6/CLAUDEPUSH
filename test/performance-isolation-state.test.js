@@ -183,10 +183,11 @@ test('D. identity switch leaves nothing person-scoped behind', () => {
     let _chatConversations, _chatLastPoll, _chatFeedPaintedFor, _groupRecipients,
         _trainingSchedule, _trainingScheduleAttempted, _trainingScheduleQueue,
         _trainingScheduleGroupId, _myPlatformRole,
-        // Group context (added with the Player Home isolation fix) and the
-        // server-scoped Performance payload: both are identity-scoped and both
-        // are cleared by the real function, so the harness must declare them.
-        _myOperational, _perfAssign;
+        // Group context (added with the Player Home isolation fix), the
+        // server-scoped Performance payload, and the platform-administrator
+        // list: all identity-scoped, all cleared by the real function, so the
+        // harness must declare them.
+        _myOperational, _perfAssign, _platformAdmins;
     function chatSetUnreadTotal() {}
     ${extractFn('resetIdentityScopedState')}
     _perfAssign = { loaded: true, athletes: [{ userId: 'other-coachs-athlete' }],

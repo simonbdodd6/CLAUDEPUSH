@@ -9,6 +9,9 @@ import {
   createClub,
   provisionClub,
   isPlatformAdmin,
+  listPlatformAdmins,
+  grantPlatformAdmin,
+  revokePlatformAdmin,
   createEmailVerificationToken,
   destroyAllSessionsForUser,
   requireSession,
@@ -249,6 +252,15 @@ export default async function handler(req, res) {
         if (!result) return res.status(401).json({ ok: false, error: 'No active session' });
         return res.status(200).json({ ok: true, ...result });
       }
+      // Who holds platform authority. Platform administrators only — the
+      // caller is resolved from their session cookie, never from the query.
+      if (req.query?.action === 'platform_admins') {
+        const viewer = await resolveSessionFromRequest(req).catch(() => null);
+        if (!isPlatformAdmin(viewer?.user)) {
+          return res.status(403).json({ ok: false, error: 'Platform administrators only' });
+        }
+        return res.status(200).json({ ok: true, admins: await listPlatformAdmins() });
+      }
       const tenant = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
       if (req.query?.teamId) assertSameTenant(tenant, req.query.teamId);
       const state = await listIdentityState(tenant.teamId);
@@ -358,6 +370,40 @@ export default async function handler(req, res) {
           team: { id: result.team.id, name: result.team.name, teamCode: result.team.teamCode,
                   plan: result.team.plan, planStatus: result.team.planStatus },
           adminEmail: result.invite.email, inviteUrl });
+      }
+      // ── PLATFORM ADMINISTRATION ───────────────────────────────────────────
+      // Granting and revoking platform authority. The caller is resolved from
+      // their SESSION on every call — a role named in the body or the query is
+      // never read, so a club owner, club admin, player or anonymous request
+      // is refused here regardless of what the client believes about itself.
+      if (action === 'grant_platform_admin' || action === 'revoke_platform_admin') {
+        const actor = await resolveSessionFromRequest(req).catch(() => null);
+        if (!isPlatformAdmin(actor?.user)) {
+          return res.status(403).json({ ok: false, error: 'Platform administrators only' });
+        }
+        await enforceRateLimit(action, requestIp(req), { limit: 20, windowMs: 60 * 60 * 1000 });
+
+        if (action === 'grant_platform_admin') {
+          const result = await grantPlatformAdmin({
+            email: req.body?.email, actorUserId: actor.user.id });
+          // An idempotent replay is not a change, so it is not audited as one.
+          if (!result.alreadyGranted) {
+            await auditLog('platform_admin_granted', {
+              targetUserId: result.user.id, targetEmail: result.user.email,
+              changedBy: actor.user.id, ip: requestIp(req),
+            });
+          }
+          return res.status(200).json({ ok: true, alreadyGranted: result.alreadyGranted,
+            admin: result.user, admins: await listPlatformAdmins() });
+        }
+
+        const result = await revokePlatformAdmin({
+          userId: req.body?.userId, actorUserId: actor.user.id });
+        await auditLog('platform_admin_revoked', {
+          targetUserId: result.user.id, targetEmail: result.user.email,
+          changedBy: actor.user.id, ip: requestIp(req),
+        });
+        return res.status(200).json({ ok: true, admins: await listPlatformAdmins() });
       }
       if (action === 'claim_invite') {
         // SECURITY: throttle claims (mirrors login) so the invite-claim path can't

@@ -20767,7 +20767,122 @@
             server records exactly what is chosen.</p>
           <button class="btn primary" id="pa-create-btn" style="margin-top:12px;font-size:13px" onclick="platformProvisionClub()">Create club</button>
           <div id="pa-result" style="margin-top:10px"></div>
+        </div>
+        ${renderPlatformAdminsCard()}`;
+    }
+
+    // ── PLATFORM ADMIN: who else holds platform authority ───────────────────
+    // Platform administration is NOT a club role: it grants nothing inside any
+    // club, and revoking it leaves every membership and ownership untouched.
+    // The list loads lazily on first render; the server refuses anyone who is
+    // not a platform administrator, so this card is presentation only.
+    let _platformAdmins = { loaded: false, loading: false, error: null, rows: [] };
+
+    async function loadPlatformAdmins(force = false) {
+      if (_platformAdmins.loading) return;
+      if (_platformAdmins.loaded && !force) return;
+      _platformAdmins.loading = true;
+      try {
+        const res = await fetch('/api/identity?action=platform_admins');
+        const data = await res.json().catch(() => ({}));
+        _platformAdmins = res.ok && data.ok !== false
+          ? { loaded: true, loading: false, error: null, rows: data.admins || [] }
+          : { loaded: true, loading: false, error: data.error || 'Could not load', rows: [] };
+      } catch {
+        _platformAdmins = { loaded: true, loading: false, error: 'offline', rows: [] };
+      }
+      render();
+    }
+
+    function renderPlatformAdminsCard() {
+      if (_myPlatformRole !== 'platform_admin') return '';
+      if (!_platformAdmins.loaded && !_platformAdmins.loading) loadPlatformAdmins();
+      const inp = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
+      const lbl = 'display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted);text-align:left;margin-top:10px';
+      const rows = _platformAdmins.rows;
+      const onlyOne = rows.length === 1;
+      const list = !_platformAdmins.loaded
+        ? '<p class="muted" style="font-size:12.5px;margin:0">Loading…</p>'
+        : _platformAdmins.error
+          ? `<p class="muted" style="font-size:12.5px;margin:0">Could not load the list — ${esc(_platformAdmins.error)}.</p>`
+          : rows.map(a => `
+              <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 11px;background:var(--panel-2);border-radius:9px;margin-bottom:7px">
+                <div style="min-width:0">
+                  <div style="font-weight:700;font-size:13px">${esc(a.displayName || a.email || 'Platform administrator')}</div>
+                  <div class="muted" style="font-size:11.5px">${esc(a.email || '')}${
+                    String(a.id) === String(state.currentUserId || '') ? ' · <strong>You</strong>' : ''}</div>
+                </div>
+                ${onlyOne
+                  ? '<span class="muted" style="font-size:11px">Only administrator</span>'
+                  : `<button class="btn ghost" type="button" style="font-size:11.5px;padding:5px 10px;color:#f87171"
+                      onclick="platformRevokeAdmin('${esc(a.id)}','${esc(a.displayName || a.email || 'this person')}')">Remove</button>`}
+              </div>`).join('');
+      return `
+        <div class="card" style="margin-top:14px">
+          <h2 style="margin-bottom:4px">Platform administrators</h2>
+          <p class="muted" style="font-size:12.5px;margin:0 0 12px">
+            Everyone who can provision new clubs and manage this list. Platform administration is
+            separate from any club: it grants nothing inside a club, and removing it leaves a
+            person's own clubs, memberships and ownership exactly as they are.</p>
+          ${list}
+          ${onlyOne && _platformAdmins.loaded && !_platformAdmins.error ? `
+            <p class="muted" style="font-size:11.5px;margin:2px 0 0">
+              The last platform administrator cannot be removed — add someone else first.</p>` : ''}
+          <label style="${lbl}">Add by email<input id="pa-admin-add-email" type="email"
+            placeholder="cofounder@example.com" autocapitalize="none" style="${inp}"></label>
+          <p class="muted" style="font-size:11.5px;margin:6px 0 0">
+            They need a CoachEasier account already — ask them to sign in once, then add them here.</p>
+          <button class="btn primary" id="pa-admin-add-btn" style="margin-top:10px;font-size:13px"
+            onclick="platformGrantAdmin()">Add platform administrator</button>
         </div>`;
+    }
+
+    async function platformGrantAdmin() {
+      const email = document.getElementById('pa-admin-add-email')?.value.trim();
+      if (!email) return showToast('Enter their email address first');
+      const btn = document.getElementById('pa-admin-add-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'grant_platform_admin', email }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not add them');
+        _platformAdmins = { loaded: true, loading: false, error: null, rows: data.admins || [] };
+        const el = document.getElementById('pa-admin-add-email');
+        if (el) el.value = '';
+        showToast(data.alreadyGranted
+          ? `${data.admin?.email || 'They'} already had platform access`
+          : `${data.admin?.email || 'They'} can now provision clubs ✓`);
+        render();
+      } catch (e) {
+        showToast(e.message || 'Could not add them');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Add platform administrator'; }
+      }
+    }
+
+    async function platformRevokeAdmin(userId, who) {
+      const ok = await ceConfirm(`Remove platform access for ${who}?`,
+        'They stop being able to provision clubs or manage platform administrators. Their own clubs, '
+        + 'memberships and ownership are not affected, and their account stays exactly as it is.',
+        { confirmLabel: 'Remove access', danger: true });
+      if (!ok) return;
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'revoke_platform_admin', userId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not remove them');
+        _platformAdmins = { loaded: true, loading: false, error: null, rows: data.admins || [] };
+        showToast(`Platform access removed from ${who}`);
+        // Removing your OWN access takes effect immediately: re-read the
+        // session so the platform surfaces disappear rather than linger.
+        if (String(userId) === String(state.currentUserId || '')) await checkServerSession();
+        render();
+      } catch (e) { showToast(e.message || 'Could not remove them'); }
     }
 
     async function platformProvisionClub() {
@@ -34480,6 +34595,9 @@
       _trainingScheduleQueue = null;
       _trainingScheduleGroupId = '';
       _myPlatformRole = '';
+      // The platform-administrator list is only ever visible to a platform
+      // administrator, so it must not survive into the next identity.
+      _platformAdmins = { loaded: false, loading: false, error: null, rows: [] };
       // The operational context belongs to the PERSON, not the device. Left
       // behind, the next identity renders the previous one's group until the
       // session payload lands — the window in which a U18 player could still
