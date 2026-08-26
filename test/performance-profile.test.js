@@ -184,7 +184,11 @@ test('10. wizard UI: progress, back/continue/skip, validation, review edit links
   assert.match(next, /_perfObError = "Please answer/, 'validation message');
   const body = extractFn(html, 'perfObStepBody');
   assert.match(body, /perfObGoto\('\$\{stepId\}','review'\)/, 'review rows link back to their step');
-  assert.match(body, /no programme has been generated yet/i, 'no false generation claim');
+  // The done screen must stay honest about generation: SC8 made programme
+  // building real, so the claim is now "the coach can build from this, and it
+  // appears once assigned" — never that a programme already exists.
+  assert.match(body, /it will appear in My Programme once they assign it/i, 'no false generation claim');
+  assert.doesNotMatch(body, /when programme building arrives/i, 'stale pre-SC8 copy removed');
 });
 
 test('11. wellness entries are capped snapshots, never permanent profile edits', () => {

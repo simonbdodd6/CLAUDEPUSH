@@ -12,7 +12,15 @@ function extractFn(name) {
   let start = html.indexOf('    function ' + name + '(');
   if (start === -1) start = html.indexOf('    async function ' + name + '(');
   if (start === -1) throw new Error('missing ' + name);
-  let i = start, d = 0, seen = false;
+  // Skip the PARAMETER list first: a destructured default ({ quiet = true })
+  // would otherwise be mistaken for the function body's opening brace.
+  let i = html.indexOf('(', start), d = 0;
+  while (i < html.length) {
+    if (html[i] === '(') d++;
+    else if (html[i] === ')') { d--; if (d === 0) break; }
+    i++;
+  }
+  d = 0; let seen = false;
   while (i < html.length) {
     if (html[i] === '{') { d++; seen = true; }
     else if (html[i] === '}') { d--; if (seen && d === 0) return html.slice(start, i + 1); }
@@ -263,4 +271,232 @@ test('19. no AI, diagnosis or rehabilitation language enters the SC8 surface', (
   }
   // It should say the opposite about AI.
   assert.match(extractFn('perfGenerateHtml'), /No AI is involved/);
+});
+
+// ── Profile sync on completion ──────────────────────────────────────────────
+// The defect these exist to prevent: an athlete completes the whole wizard
+// with "Continue" and "Finish setup", never touches "Skip for now", and their
+// profile stays on the device — the server keeps profile:null, so the coach's
+// generate step refuses forever with "ask them to finish onboarding". The
+// completion path must publish the authoring projection exactly as the skip
+// path always has, and a stranded device must self-heal on the next load.
+
+const { authoringProfileFrom, authoringProfileUsable, FORBIDDEN_PROFILE_SECTIONS } =
+  await import('../performance/domain/authoring-profile.js');
+
+const literal = re => {
+  const m = html.match(re);
+  if (!m) throw new Error(`literal ${re} not found`);
+  return m[0];
+};
+
+/** A completed SC2 profile, deliberately carrying data that must NOT sync. */
+function completedProfile() {
+  return {
+    personal: { ageBand: 'adult_18_39', dateOfBirth: null },
+    rugby: { primaryPosition: 'flanker', playingLevel: 'club', seasonPhase: 'in_season', matchDay: 'Sat' },
+    training: { experience: 'intermediate', preferredSessionMinutes: 45, techConfidence: 'confident' },
+    schedule: { availableDays: ['Mon', 'Wed', 'Fri'], rugbyDays: [], matchDay: 'Sat', maxSessionMinutes: 60 },
+    equipment: { locations: ['full_gym'], items: ['barbell'] },
+    goals: [{ type: 'strength', importance: 4 }],
+    sharing: { consentAcceptedAt: '2026-08-26T00:00:00.000Z' },
+    pain: { present: true, area: 'left knee', note: 'sore after match' },
+    health: { injuryHistory: [{ what: 'ACL 2024' }], physioInstructions: 'no deep squats' },
+    wellnessLog: [{ sleep: 2 }],
+    body: { weightKg: 104, heightCm: 188 },
+    status: 'draft',
+  };
+}
+
+/**
+ * The REAL wizard/sync/adopt functions from index.html in one scope, with the
+ * DOM, network and storage stubbed. `posts` records every successful
+ * save_athlete_profile POST body.
+ */
+function syncShell({ profile = completedProfile(), completedAt = null, step = 'review',
+                     fetchImpl = null } = {}) {
+  const posts = [];
+  const build = new Function('state', 'posts', 'authoringProfileFrom', 'fetchImpl', `
+    let _perfObError = '', _perfObShowDone = false, _perfObReturn = null, _perfProfileSync = 'device';
+    const _perfWkMod = { authoringProfileFrom };
+    const fetch = fetchImpl || ((url, opts) => {
+      posts.push({ url, body: JSON.parse(opts.body) });
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true }) });
+    });
+    const saveState = () => {}; const render = () => {};
+    const renderPerformance = () => {}; const showToast = () => {};
+    ${literal(/const PERF_OB_STEPS = \[[\s\S]*?\];/)}
+    ${literal(/const PERF_REQUIRED_PATHS = \[[\s\S]*?\];/)}
+    ${literal(/const PERF_STEP_REQUIRED = \{[\s\S]*?\};/)}
+    ${extractFn('perfIsAnswered')}
+    ${extractFn('perfGetPath')}
+    ${extractFn('perfMissingRequired')}
+    ${extractFn('perfStepComplete')}
+    function perfObEnsure() { return state.performanceProfile; }
+    function perfObStepIndex(s) { return PERF_OB_STEPS.findIndex(x => x.id === s); }
+    function perfObCommitWellness() {}
+    function perfInitialProfileState() {
+      return { profile: null, onboarding: { step: 'welcome', startedAt: null, completedAt: null, skippedSteps: [] } };
+    }
+    function perfEmptyProfile() {
+      return { personal: {}, rugby: {}, training: {},
+               equipment: { locations: [], items: [] },
+               schedule: { availableDays: [], rugbyDays: [] }, goals: [] };
+    }
+    ${extractFn('perfObResolveReturn')}
+    ${extractFn('perfPublishAuthoringProfile')}
+    ${extractFn('perfAdoptServerProfile')}
+    ${extractFn('perfObNext')}
+    ${extractFn('perfObSkip')}
+    ${extractFn('perfObSubmit')}
+    return { perfObSubmit, perfObNext, perfObSkip, perfAdoptServerProfile,
+             setReturn: v => { _perfObReturn = v; },
+             setSync: v => { _perfProfileSync = v; },
+             getSync: () => _perfProfileSync,
+             getShowDone: () => _perfObShowDone };
+  `);
+  const state = { currentUserId: 'u-self', performanceProfile: profile === null ? null : {
+    profile, onboarding: { step, startedAt: 'x', completedAt, skippedSteps: [] } } };
+  return { posts, state, api: build(state, posts, authoringProfileFrom, fetchImpl) };
+}
+const tick = () => new Promise(r => setTimeout(r, 0));
+
+test('20. "Finish setup" publishes the authoring projection — exactly one POST', async () => {
+  const { posts, state, api } = syncShell();
+  api.perfObSubmit();
+  await tick();
+  assert.equal(posts.length, 1, 'one completion = one profile sync');
+  assert.equal(posts[0].body.op, 'save_athlete_profile');
+  assert.match(posts[0].url, /resource=performance/);
+  assert.equal(state.performanceProfile.profile.status, 'active', 'local completion behaviour kept');
+  assert.ok(state.performanceProfile.onboarding.completedAt, 'completion still recorded locally');
+  assert.equal(api.getSync(), 'synced');
+});
+
+test('21. the completion payload is the minimised projection — usable, no health data', async () => {
+  const { posts, api } = syncShell();
+  api.perfObSubmit();
+  await tick();
+  const sent = posts[0].body.profile;
+  assert.equal(sent.kind, 'authoring_profile');
+  assert.equal(authoringProfileUsable(sent), true, 'the server copy can drive generation');
+  assert.equal(sent.profileComplete, true);
+  const json = JSON.stringify(sent);
+  for (const secret of ['left knee', 'sore after match', 'ACL 2024', 'no deep squats', '104', '188']) {
+    assert.ok(!json.includes(secret), `must not sync "${secret}"`);
+  }
+  for (const section of FORBIDDEN_PROFILE_SECTIONS) {
+    assert.ok(!json.includes(`"${section}":`), `must not sync a "${section}" section`);
+  }
+});
+
+test('22. mid-onboarding Continue does not POST; an edit to a completed profile re-syncs once', async () => {
+  // Continue during first-run onboarding: the one sync happens at completion.
+  const first = syncShell({ step: 'rugby' });
+  first.api.perfObNext();
+  await tick();
+  assert.equal(first.posts.length, 0, 'no POST per wizard step');
+
+  // An edit jump on an ALREADY-COMPLETED profile re-syncs when it resolves.
+  const edit = syncShell({ step: 'goals', completedAt: '2026-08-20T00:00:00.000Z' });
+  edit.api.setReturn('profile');
+  edit.api.perfObNext();
+  await tick();
+  assert.equal(edit.posts.length, 1, 'a finished edit re-syncs the projection');
+  assert.equal(edit.posts[0].body.op, 'save_athlete_profile');
+
+  // The same edit jump before completion does not sync — submit will.
+  const preEdit = syncShell({ step: 'goals', completedAt: null });
+  preEdit.api.setReturn('review');
+  preEdit.api.perfObNext();
+  await tick();
+  assert.equal(preEdit.posts.length, 0, 'review-stage edits wait for completion');
+});
+
+test('23. "Skip for now" still publishes, unchanged', async () => {
+  const { posts, api } = syncShell({ step: 'readiness' });
+  api.perfObSkip();
+  await tick();
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].body.op, 'save_athlete_profile');
+});
+
+test('24. SELF-HEAL — a stranded completed profile publishes on the next load', async () => {
+  // Server has nothing; this device holds a COMPLETED profile (the athlete
+  // finished onboarding before completion synced). The load path repairs it.
+  const { posts, api } = syncShell({ completedAt: '2026-08-20T00:00:00.000Z', step: 'done' });
+  api.perfAdoptServerProfile(null);
+  await tick();
+  assert.equal(posts.length, 1, 'the stranded profile is published');
+  assert.equal(authoringProfileUsable(posts[0].body.profile), true,
+    'the healed server copy is generation-ready');
+});
+
+test('25. SELF-HEAL guards: no completed profile, no POST; no storm while pending', async () => {
+  // Mid-onboarding local profile → nothing to heal yet.
+  const incomplete = syncShell({ completedAt: null, step: 'schedule' });
+  incomplete.api.perfAdoptServerProfile(null);
+  await tick();
+  assert.equal(incomplete.posts.length, 0, 'an unfinished profile is not synced');
+
+  // No local profile at all → nothing is sent.
+  const empty = syncShell({ profile: null });
+  empty.api.perfAdoptServerProfile(null);
+  await tick();
+  assert.equal(empty.posts.length, 0, 'an untouched device sends nothing');
+
+  // A publish already in flight is never doubled.
+  const pending = syncShell({ completedAt: '2026-08-20T00:00:00.000Z', step: 'done' });
+  pending.api.setSync('pending');
+  pending.api.perfAdoptServerProfile(null);
+  await tick();
+  assert.equal(pending.posts.length, 0, 'one request at a time');
+});
+
+test('26. existing server-profile behaviour is preserved', async () => {
+  const serverProfile = authoringProfileFrom(completedProfile(), { now: new Date('2026-08-26') });
+
+  // Device already has a profile → the local (newer) copy re-publishes.
+  const both = syncShell({ completedAt: '2026-08-20T00:00:00.000Z', step: 'done' });
+  both.api.perfAdoptServerProfile(serverProfile);
+  await tick();
+  assert.equal(both.posts.length, 1, 'local working draft re-publishes over the older read');
+
+  // Fresh device → the server copy is adopted, nothing is posted.
+  const fresh = syncShell({ profile: null });
+  fresh.api.perfAdoptServerProfile(serverProfile);
+  await tick();
+  assert.equal(fresh.posts.length, 0, 'adoption is a read, not a write');
+  assert.equal(fresh.state.performanceProfile.profile.rugby.primaryPosition, 'flanker');
+  assert.equal(fresh.api.getSync(), 'synced');
+});
+
+test('27. offline completion stays local-first and never claims a server save', async () => {
+  const { posts, state, api } = syncShell({
+    fetchImpl: () => Promise.reject(new Error('offline')) });
+  api.perfObSubmit();
+  await tick();
+  assert.equal(posts.length, 0);
+  assert.equal(api.getSync(), 'error', 'sync status reports the truth');
+  assert.equal(state.performanceProfile.profile.status, 'active', 'the local completion is kept');
+  assert.equal(api.getShowDone(), true, 'the athlete still finishes onboarding');
+});
+
+test('28. coach surfaces show whether the athlete profile is ready', () => {
+  for (const name of ['perfAthletesHtml', 'perfPickAthleteHtml']) {
+    const fn = extractFn(name);
+    assert.match(fn, /a\.profileComplete \? '✓ Profile complete' : 'Waiting for athlete profile'/,
+      `${name} renders the server-sent readiness state`);
+  }
+});
+
+test('29. ticking the review acknowledgement actually enables Publish', () => {
+  // The checkbox set _perfAuthor.ack without re-rendering, so the Publish
+  // button — rendered disabled while unticked — stayed disabled forever and
+  // no coach could publish through the review screen at all.
+  const review = extractFn('perfReviewHtml');
+  assert.match(review, /onchange="_perfAuthor\.ack = this\.checked; renderPerformance\(\)"/,
+    'the acknowledgement re-renders so the disabled state follows it');
+  assert.match(review, /_perfAuthor\.busy \|\| !_perfAuthor\.ack \? 'disabled' : ''/,
+    'the button is still gated on the acknowledgement');
 });

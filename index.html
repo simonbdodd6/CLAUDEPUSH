@@ -30969,7 +30969,21 @@
      * re-publishes instead, so the newer edit wins rather than the older read.
      */
     function perfAdoptServerProfile(serverProfile) {
-      if (!serverProfile || !_perfWkMod) return;
+      if (!_perfWkMod) return;
+      if (!serverProfile) {
+        // SELF-HEAL — an athlete who completed onboarding before completion
+        // synced (only "Skip for now" used to publish) has a finished profile
+        // on this device and nothing on the server, so their coach cannot
+        // build. Publish it now. Guards: only a COMPLETED profile is sent, one
+        // request at a time, and an untouched device (no local profile) sends
+        // nothing. A failed attempt retries on the next Performance load —
+        // there is no loop, because a publish never triggers another load.
+        if (state.performanceProfile?.profile && state.performanceProfile?.onboarding?.completedAt
+            && _perfProfileSync !== 'pending') {
+          perfPublishAuthoringProfile();
+        }
+        return;
+      }
       if (state.performanceProfile?.profile) { perfPublishAuthoringProfile(); return; }
       const ps = perfInitialProfileState();
       const p = perfEmptyProfile(state.currentUserId || null, new Date().toISOString());
@@ -31016,6 +31030,7 @@
       }
       _perfObError = "";
       if (step === "readiness") perfObCommitWellness();
+      const finishingEdit = !!_perfObReturn;
       if (_perfObReturn) perfObResolveReturn(ps);
       else {
         const i = perfObStepIndex(step);
@@ -31023,6 +31038,11 @@
       }
       profile.updatedAt = new Date().toISOString();
       saveState("Saved");
+      // An edit to an already-completed profile re-syncs the projection, so
+      // the server copy the coach builds from never goes stale. Mid-onboarding
+      // steps do NOT publish here — completion (perfObSubmit) sends the one
+      // finished profile instead of a POST per wizard step.
+      if (finishingEdit && ps.onboarding.completedAt) perfPublishAuthoringProfile();
       render();
     }
     function perfObSkip() {
@@ -31051,6 +31071,11 @@
       _perfObError = "";
       _perfObShowDone = true;
       saveState("Profile complete");
+      // The coach's generate step reads the SERVER copy of this profile, so
+      // finishing setup must publish the authoring projection — previously
+      // only "Skip for now" did, leaving a diligent athlete's completed
+      // profile stranded on this device and their coach unable to build.
+      perfPublishAuthoringProfile();
       render();
     }
     function perfDoneDismiss() {
@@ -31353,7 +31378,7 @@
           <div class="perf-ob-done">
             <div class="perf-ob-done-mark">✓</div>
             <h2>Profile saved</h2>
-            <p class="muted">Your Performance profile is ready and you can update it any time. When programme building arrives, it will use exactly what you've shared — <strong>no programme has been generated yet</strong>.</p>
+            <p class="muted">Your Performance profile is ready and you can update it any time. Your coach can now use exactly what you've shared to build your programme — <strong>it will appear in My Programme once they assign it</strong>.</p>
             <div class="perf-ob-nav" style="justify-content:center">
               <button class="btn primary" type="button" onclick="perfDoneDismiss()">View my profile</button>
             </div>
@@ -31866,6 +31891,7 @@
             </div>
             <strong class="perf-card-title">${esc(a.name)}</strong>
             <small class="muted" style="display:block;margin-top:3px">${esc(a.position || 'Position not set')}</small>
+            <small class="muted" style="display:block;margin-top:2px">${a.profileComplete ? '✓ Profile complete' : 'Waiting for athlete profile'}</small>
             <div style="margin-top:10px;font-size:12.5px">
               ${current
                 ? `<strong>${esc(current.programmeTitle || 'Programme')}</strong>
@@ -32117,6 +32143,7 @@
               <span class="pill">${esc(perfDevCategoryLabel(a.developmentCategory))}</span></div>
             <strong class="perf-card-title">${esc(a.name)}</strong>
             <small class="muted" style="display:block;margin-top:3px">${esc(a.position || 'Position not set')}</small>
+            <small class="muted" style="display:block;margin-top:2px">${a.profileComplete ? '✓ Profile complete' : 'Waiting for athlete profile'}</small>
           </button>`).join('')}</div>`
         : `<div class="card perf-card"><span class="muted">${groupLabel
              ? `No athletes in ${esc(groupLabel)}. Switch group at the top of the page to see another squad.`
@@ -32234,7 +32261,7 @@
             professional approval, and CoachEasier does not provide one.
           </p>
           <label style="display:flex;gap:9px;align-items:flex-start;font-size:13px;cursor:pointer">
-            <input type="checkbox" ${_perfAuthor.ack ? 'checked' : ''} onchange="_perfAuthor.ack = this.checked"
+            <input type="checkbox" ${_perfAuthor.ack ? 'checked' : ''} onchange="_perfAuthor.ack = this.checked; renderPerformance()"
               style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
             <span>I have reviewed this programme and I am satisfied it is appropriate for this athlete.</span>
           </label>

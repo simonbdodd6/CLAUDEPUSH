@@ -487,3 +487,83 @@ test('31. another club\'s coach still cannot save into this club', async () => {
   assert.notEqual(here.code, 200, 'a foreign athlete id is not resolvable in this club');
   assert.equal(r.code === 200 ? r.body.profile.clubId : OTHER, OTHER, 'written to their OWN club, never ours');
 });
+
+// ── The whole seam, joined up ───────────────────────────────────────────────
+// Every earlier test covers one link. This one walks the previously broken
+// NEW-PLAYER journey end to end, with the REAL generator feeding the REAL API:
+// no profile → completion sync → coach sees ready → generate → publish →
+// assign → the player retrieves their programme.
+
+const { generateBlueprint } = await import('../performance/domain/programme-blueprint.js');
+const { programmeDraftFromBlueprint } = await import('../performance/domain/blueprint-to-programme.js');
+const { publishProgrammeVersion, snapshotForProgrammeAssignment } =
+  await import('../performance/domain/programme-versioning.js');
+const { validateProgrammeVersion } = await import('../performance/domain/programme.js');
+const { getCatalogue } = await import('../performance/services/exercise-catalogue.js');
+const { COLLECTIONS } = await import('../performance/services/exercise-collections-catalogue.js');
+
+test('32. E2E — a new player completes their profile and ends up with a programme', async () => {
+  seed(); await login('u-sen-player'); await login('u-sen-coach');
+
+  // BEFORE: the server has no profile — the coach sees "waiting" and the
+  // generate gate refuses, exactly as production did for every new player.
+  let coachView = await call('u-sen-coach');
+  assert.equal(coachView.code, 200);
+  assert.equal(coachView.body.athletes.find(a => a.userId === 'u-sen-player').profileComplete, false);
+  const empty = await call('u-sen-coach', { query: { athleteProfile: 'u-sen-player' } });
+  assert.equal(authoringProfileUsable(empty.body.profile), false, 'generation is blocked before sync');
+
+  // THE FIX: completing onboarding publishes the projection (perfObSubmit now
+  // sends exactly this op with exactly this payload — pinned by the UI tests).
+  const athlete = fullProfile({ position: 'flanker', experience: 'intermediate' });
+  athlete.personal.dateOfBirth = '1998-05-05';   // an adult Seniors athlete
+  const synced = await saveOwn('u-sen-player', athlete);
+  assert.equal(synced.code, 200);
+
+  // The coach's list now says so.
+  coachView = await call('u-sen-coach');
+  assert.equal(coachView.body.athletes.find(a => a.userId === 'u-sen-player').profileComplete, true,
+    'the athlete reads as ready in the coach list');
+
+  // GENERATE from the server projection — the seam no test previously walked.
+  const ap = (await call('u-sen-coach', { query: { athleteProfile: 'u-sen-player' } })).body.profile;
+  assert.equal(authoringProfileUsable(ap), true);
+  const input = engineInputFromAuthoringProfile(ap, { teamCategory: 'adult' });
+  const blueprint = generateBlueprint(input, { catalogue: getCatalogue() });
+  assert.ok(blueprint.frequency > 0, 'the rules produce real sessions');
+  const built = programmeDraftFromBlueprint(blueprint, {
+    catalogue: getCatalogue(), athleteName: 'Senior Player', athleteUserId: 'u-sen-player',
+    author: 'u-sen-coach', weeks: 4, schedule: ap.schedule, now: '2026-08-26T00:00:00.000Z',
+  });
+  const check = validateProgrammeVersion(built.programme.versions[0],
+    { catalogue: getCatalogue(), collections: COLLECTIONS });
+  assert.equal(check.ok, true, `generated programme is valid: ${JSON.stringify(check.errors || [])}`);
+
+  // PUBLISH and ASSIGN through the real API, as the coach UI does.
+  const draft = await call('u-sen-coach', { method: 'POST', body: {
+    op: 'save_draft', athleteUserId: 'u-sen-player', title: built.programme.title,
+    programme: built.programme, provenance: built.provenance,
+    requiresReview: built.provenance?.requiresReview === true } });
+  assert.equal(draft.code, 200, JSON.stringify(draft.body));
+  const programmeId = draft.body.programme.programmeId;
+  publishProgrammeVersion(built.programme, 1, { actor: 'u-sen-coach', now: '2026-08-26T00:00:00.000Z' });
+  const published = await call('u-sen-coach', { method: 'POST', body: {
+    op: 'publish_programme', programmeId, versionNumber: 1,
+    programme: built.programme, reviewAcknowledged: true } });
+  assert.equal(published.code, 200, JSON.stringify(published.body));
+  const snapshot = snapshotForProgrammeAssignment(built.programme, 1,
+    { catalogue: getCatalogue(), now: '2026-08-26T00:00:00.000Z' });
+  const assigned = await call('u-sen-coach', { method: 'POST', body: {
+    op: 'create_assignment', programmeId, athleteUserId: 'u-sen-player',
+    programmeVersionId: snapshot.programmeVersionId, versionNumber: snapshot.versionNumber,
+    snapshot, startDate: '2026-09-01' } });
+  assert.equal(assigned.code, 200, JSON.stringify(assigned.body));
+
+  // AND THE PLAYER GETS IT: their own read returns the pinned programme.
+  const mine = await call('u-sen-player');
+  assert.equal(mine.code, 200);
+  assert.equal(mine.body.assignments.length, 1);
+  assert.equal(mine.body.assignments[0].programmeTitle, built.programme.title);
+  assert.ok(mine.body.assignments[0].snapshot, 'the player trains from the pinned snapshot');
+  assert.equal(mine.body.assignments[0].status, 'scheduled');
+});
