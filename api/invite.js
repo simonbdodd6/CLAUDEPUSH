@@ -395,7 +395,19 @@ export default async function handler(req, res) {
       const clubConfig = (await kvGet(key(`club:${session.teamId}`))) || null;
       const teamName = clubConfig?.clubName || DEFAULT_TEAM.name;
       const message = inviteEmail({ name: invite.name, teamName, url });
-      emailDelivery = await sendTransactionalEmail({ to: invite.email, ...message });
+      // THE INVITE IS ALREADY PERSISTED AND VALID. sendTransactionalEmail
+      // THROWS when the provider rejects a send (e.g. an unverified sender
+      // domain), which used to surface as a 500 — so the coach was told the
+      // invitation failed while a working link sat in the store, unseen and
+      // uncopyable. Delivery is reported honestly instead: the link is always
+      // returned, and only the provider's HTTP status is recorded (never the
+      // key, the recipient or the payload).
+      try {
+        emailDelivery = await sendTransactionalEmail({ to: invite.email, ...message });
+      } catch (mailError) {
+        emailDelivery = { ok: false, sent: false, reason: 'delivery_failed',
+                          status: mailError?.status || 502 };
+      }
       invite.emailDelivery = emailDelivery;
       if (emailDelivery.sent) invite.emailSentAt = new Date().toISOString();
       await kvSet(INVITES_KEY, trimmed);
@@ -448,7 +460,16 @@ export default async function handler(req, res) {
       const teamName = clubConfig?.clubName || DEFAULT_TEAM.name;
       const url = inviteUrl(req, invite.token);
       const message = inviteEmail({ name: invite.name, teamName, url });
-      const emailDelivery = await sendTransactionalEmail({ to: invite.email, ...message });
+      // Same contract as creation: a rejected send is reported, never thrown.
+      // The invite is untouched and still claimable, so the coach keeps the
+      // link and can copy it instead.
+      let emailDelivery;
+      try {
+        emailDelivery = await sendTransactionalEmail({ to: invite.email, ...message });
+      } catch (mailError) {
+        emailDelivery = { ok: false, sent: false, reason: 'delivery_failed',
+                          status: mailError?.status || 502 };
+      }
       invite.emailDelivery = emailDelivery;
       if (emailDelivery.sent) invite.emailSentAt = new Date().toISOString();
       await kvSet(INVITES_KEY, invites);

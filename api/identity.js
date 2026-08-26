@@ -346,7 +346,7 @@ export default async function handler(req, res) {
         await enforceRateLimit('provision_club', requestIp(req), { limit: 10, windowMs: 60 * 60 * 1000 });
         const result = await provisionClub(req.body || {});
         await auditLog('club_provisioned', {
-          teamId: result.team.id, clubName: result.team.name,
+          teamId: result.team.id, clubName: result.team.name, plan: result.team.plan,
           adminEmail: result.invite.email, provisionedBy: provisioner.user.id, ip: requestIp(req),
         });
         const host = req.headers?.['x-forwarded-host'] || req.headers?.host;
@@ -355,7 +355,8 @@ export default async function handler(req, res) {
           ? `${proto}://${host}/?inv=${encodeURIComponent(result.invite.token)}`
           : `/?inv=${encodeURIComponent(result.invite.token)}`;
         return res.status(201).json({ ok: true,
-          team: { id: result.team.id, name: result.team.name, teamCode: result.team.teamCode },
+          team: { id: result.team.id, name: result.team.name, teamCode: result.team.teamCode,
+                  plan: result.team.plan, planStatus: result.team.planStatus },
           adminEmail: result.invite.email, inviteUrl });
       }
       if (action === 'claim_invite') {

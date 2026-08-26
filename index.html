@@ -19322,7 +19322,13 @@
       try {
         const res = await fetch('/api/publish?resource=training-schedule'
           + (gid ? `&group=${encodeURIComponent(gid)}` : ''));
-        if (!res.ok) return null;
+        // A FAILED FETCH MUST NOT LATCH. The card renders "Loading…" while
+        // _trainingSchedule is null, and ensureTrainingSchedule() refuses to
+        // retry once _trainingScheduleAttempted is set — so one dropped
+        // request (offline, a 500, a cold start) pinned the Settings card on
+        // "Loading…" for the rest of the session. Releasing the latch lets
+        // the next render try again; the success path is untouched.
+        if (!res.ok) { _trainingScheduleAttempted = false; return null; }
         const data = await res.json();
         if (trainingGroupParam() !== gid) {
           // Stale reply (incl. pre-adoption unstamped): discard it and chase
@@ -19335,7 +19341,7 @@
         _trainingScheduleGroupId = gid;
         render();
         return _trainingSchedule;
-      } catch { return null; }
+      } catch { _trainingScheduleAttempted = false; return null; }
     }
 
     async function trainingScheduleSave(body) {
@@ -20720,6 +20726,23 @@
     // Rendered ONLY when the session payload carries platformRole
     // 'platform_admin' — invisible to every normal club user, and the server
     // independently refuses anyone else.
+    //
+    // The plan list MIRRORS the server's PROVISIONABLE_PLANS (api/_identityStore.js)
+    // and is presentation only: the server validates the value it is sent and
+    // refuses anything else, so editing this list in a console changes nothing.
+    // Enterprise is absent on both sides — its features are still coming soon.
+    const PROVISIONING_PLAN_OPTIONS = [
+      ['trial', 'Trial — 30 days, then Core'],
+      ['core',  'Core — base features'],
+      ['pro',   'Pro — includes Performance'],
+    ];
+    const PROVISIONING_PLAN_DEFAULT = 'trial';
+    /** The plan the SERVER reported back, named in the admin's own words. */
+    function planLabelFor(plan) {
+      const id = String(plan || '').toLowerCase();
+      return (PROVISIONING_PLAN_OPTIONS.find(([p]) => p === id)?.[1] || id || 'unknown').split(' — ')[0];
+    }
+
     function renderPlatformAdminCard() {
       if (_myPlatformRole !== 'platform_admin') return '';
       const inp = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
@@ -20733,6 +20756,15 @@
             else up with the self-service tools.</p>
           <label style="${lbl}">Club name<input id="pa-club-name" placeholder="Example Rugby Club" style="${inp}"></label>
           <label style="${lbl}">First administrator email<input id="pa-admin-email" type="email" placeholder="admin@example.com" autocapitalize="none" style="${inp}"></label>
+          <label style="${lbl}">Plan
+            <select id="pa-plan" style="${inp}">
+              ${PROVISIONING_PLAN_OPTIONS.map(([id, label]) =>
+                `<option value="${esc(id)}" ${id === PROVISIONING_PLAN_DEFAULT ? 'selected' : ''}>${esc(label)}</option>`).join('')}
+            </select>
+          </label>
+          <p class="muted" style="font-size:11.5px;margin:6px 0 0">
+            The tier this club starts on. Administrative choice — no billing is taken here, and the
+            server records exactly what is chosen.</p>
           <button class="btn primary" id="pa-create-btn" style="margin-top:12px;font-size:13px" onclick="platformProvisionClub()">Create club</button>
           <div id="pa-result" style="margin-top:10px"></div>
         </div>`;
@@ -20741,6 +20773,7 @@
     async function platformProvisionClub() {
       const name = document.getElementById('pa-club-name')?.value.trim();
       const email = document.getElementById('pa-admin-email')?.value.trim();
+      const plan = document.getElementById('pa-plan')?.value || PROVISIONING_PLAN_DEFAULT;
       if (!name)  return showToast('Enter the club name first');
       if (!email) return showToast("Enter the first administrator's email");
       const btn = document.getElementById('pa-create-btn');
@@ -20748,7 +20781,7 @@
       try {
         const res = await fetch('/api/identity', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'provision_club', clubName: name, adminEmail: email }),
+          body: JSON.stringify({ action: 'provision_club', clubName: name, adminEmail: email, plan }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not create the club');
@@ -20756,7 +20789,9 @@
         if (out) out.innerHTML = `
           <div style="border:1.5px solid #16a34a;border-radius:11px;padding:12px;background:rgba(22,163,74,0.06)">
             <strong style="font-size:13px">✓ ${esc(data.team.name)} created</strong>
-            <div class="muted" style="font-size:11.5px;margin:4px 0 8px">Club id: ${esc(data.team.id)} · send this invitation to ${esc(data.adminEmail)}:</div>
+            <div class="muted" style="font-size:11.5px;margin:4px 0 8px">Club id: ${esc(data.team.id)} ·
+              Plan: <strong>${esc(planLabelFor(data.team?.plan))}</strong> ·
+              send this invitation to ${esc(data.adminEmail)}:</div>
             <div style="display:flex;gap:8px;align-items:center">
               <input value="${esc(data.inviteUrl)}" readonly id="pa-invite-link" onfocus="this.select()"
                 style="flex:1;min-width:0;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--ink)">

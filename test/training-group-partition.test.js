@@ -612,3 +612,54 @@ test('the per-group stash survives normalisation and dies with a club switch', (
   assert.match(fn('normalizeState'), /trainingByGroup/, 'normalizeState preserves the stash');
   assert.match(fn('resetTeamScopedState'), /trainingByGroup = \{\}/, 'club switch clears it');
 });
+
+// ── CLIENT — a failed schedule fetch must not latch the card on "Loading…" ──
+// renderTrainingScheduleCard() shows "Loading…" while _trainingSchedule is
+// null, and ensureTrainingSchedule() refuses to retry once
+// _trainingScheduleAttempted is set. A single dropped request therefore used
+// to pin the Settings card on "Loading…" for the whole session; the fetch must
+// release the latch on every failure path so the next render tries again.
+function latchHarness({ ok = true, throws = false } = {}) {
+  return new Function(`
+    const outcome = arguments[0];
+    let _trainingSchedule = null, _trainingScheduleAttempted = true, _trainingScheduleGroupId = '';
+    let rendered = 0;
+    function render() { rendered++; }
+    function trainingGroupParam() { return 'grp_initial'; }
+    async function fetch() {
+      if (outcome.throws) throw new Error('offline');
+      if (!outcome.ok) return { ok: false, status: 500, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => ({ slots: [{ id: 'slot_tue', day: 'Tue' }] }) };
+    }
+    ${fn('loadTrainingSchedule')}
+    return loadTrainingSchedule().then(result => ({
+      result, attempted: _trainingScheduleAttempted, sched: _trainingSchedule, rendered }));
+  `)({ ok, throws });
+}
+
+test('a failed training-schedule fetch releases the retry latch; success is unchanged', async () => {
+  const failed = await latchHarness({ ok: false });
+  assert.equal(failed.result, null, 'a failed read returns null, as before');
+  assert.equal(failed.sched, null, 'and stores nothing');
+  assert.equal(failed.attempted, false, 'the latch is RELEASED so the next render retries');
+
+  const offline = await latchHarness({ throws: true });
+  assert.equal(offline.result, null);
+  assert.equal(offline.attempted, false, 'a thrown fetch releases the latch too');
+
+  const ok = await latchHarness({ ok: true });
+  assert.deepEqual(ok.sched, { slots: [{ id: 'slot_tue', day: 'Tue' }] }, 'success still adopts the schedule');
+  assert.equal(ok.attempted, true, 'a successful read leaves the latch set — no refetch loop');
+  assert.equal(ok.rendered, 1, 'and re-renders exactly once');
+});
+
+test('ensureTrainingSchedule retries after a released latch, and never double-fetches', () => {
+  const ensure = fn('ensureTrainingSchedule');
+  assert.match(ensure, /if \(_trainingSchedule \|\| _trainingScheduleAttempted\) return;/,
+    'one in-flight attempt at a time');
+  const load = fn('loadTrainingSchedule');
+  assert.match(load, /if \(!res\.ok\) \{ _trainingScheduleAttempted = false; return null; \}/,
+    'HTTP failure releases the latch');
+  assert.match(load, /catch \{ _trainingScheduleAttempted = false; return null; \}/,
+    'network failure releases the latch');
+});

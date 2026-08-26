@@ -25,6 +25,32 @@ const EMAIL_VERIFICATION_TTL_MS = 1000 * 60 * 60 * 24;
 const PASSWORD_ALGO = 'scrypt';
 const SCRYPT_KEY_LENGTH = 64;
 
+/**
+ * The actor recorded on records a PLATFORM administrator created, as opposed
+ * to anything a club's own staff can mint. Only provisionClub writes it, and
+ * only claimInvite reads it — see applyFounderOwnership.
+ */
+const PLATFORM_PROVISIONING_ACTOR = 'platform-provisioning';
+
+/**
+ * The plans a platform administrator may START a club on.
+ *
+ * These are the EXISTING plan values, unchanged in meaning: 'trial' is the
+ * 30-day evaluation that expires into 'core', 'core' is the steady-state
+ * base tier, and 'pro' is the paid tier that entitles Performance
+ * (PERFORMANCE_ENTITLED_PLANS in api/publish.js). Nothing here alters what a
+ * plan grants — it only lets provisioning name one instead of always
+ * starting at trial and needing a database edit afterwards.
+ *
+ * 'enterprise' is deliberately NOT provisionable. It is a real level, but
+ * every enterprise-only feature in the registry is still `comingSoon` and no
+ * billing path produces one, so starting a customer there would promise a
+ * tier the product cannot yet deliver. Its server-side meaning is untouched.
+ */
+export const PROVISIONABLE_PLANS = ['trial', 'core', 'pro'];
+/** Omitting the plan must behave exactly as provisioning did before. */
+export const DEFAULT_PROVISIONED_PLAN = 'trial';
+
 export const DEFAULT_TEAM = {
   id: 'boitsfort-rfc',
   name: 'Boitsfort RFC',
@@ -1214,6 +1240,9 @@ export async function claimInvite(input = {}) {
   if (invite.playerGroupId) {
     await applyInvitePlayerGroup(member, String(invite.playerGroupId));
   }
+  // A platform-provisioned club's first administrator IS its owner. No-op for
+  // every ordinary invite.
+  await applyFounderOwnership(member, invite);
   if (isGroup) {
     // Keep the link open; just track usage.
     invite.acceptedCount = (invite.acceptedCount || 0) + 1;
@@ -1297,6 +1326,53 @@ async function applyInvitePlayerGroup(member, groupId) {
   if (current === group.id) return;                     // already correct
   live.playerGroupId = group.id;
   live.accessChangedBy = 'invite';
+  live.accessChangedAt = nowIso();
+  await saveTeamMembers(members);
+  Object.assign(member, live);
+}
+
+/**
+ * A platform-provisioned club's FIRST administrator becomes its owner.
+ *
+ * A self-service founder is stamped `isOwner` + `accessProfile: 'full'` by
+ * createClub, so every owner protection (an owner cannot be downgraded,
+ * removed or deleted) applies to them from the first request. A provisioned
+ * club had no such member: its founder arrived through an ordinary invite
+ * claim and read as a plain head coach, leaving the club with NO owner and
+ * those protections covering nobody.
+ *
+ * The grant is deliberately narrow, and every condition is server-side:
+ *   · the invite must carry the server-authored founder marker — /api/invite
+ *     builds its own record and never copies these fields, so no coach or
+ *     admin can mint a founder invite;
+ *   · the club must not already have an active owner, so a stale founder
+ *     invite can never mint a second owner beside the real one;
+ *   · the claimer must be active staff in THAT club (the membership is
+ *     resolved from the invite's own teamId), so ownership cannot cross clubs.
+ * Anything else — every ordinary coach, admin, medical and player invite —
+ * returns without touching the membership.
+ */
+function isFounderInvite(invite = {}) {
+  return invite?.founderInvite === true &&
+    String(invite?.createdBy || '') === PLATFORM_PROVISIONING_ACTOR;
+}
+
+async function applyFounderOwnership(member, invite) {
+  if (!isFounderInvite(invite)) return;
+  const members = await loadTeamMembers();
+  const live = members.find(m => m.id === member.id);
+  if (!live || live.status !== 'active') return;
+  // Ownership is a STAFF fact. The provisioning invite is always head coach,
+  // so this only ever fails closed on a malformed record.
+  if (live.role === 'player') return;
+  const ownerExists = members.some(m =>
+    String(m.teamId) === String(live.teamId) && m.status === 'active' &&
+    m.id !== live.id && isClubOwner(m));
+  if (ownerExists) return;
+  if (live.isOwner === true && accessProfileOf(live) === 'full') return;
+  live.isOwner = true;
+  live.accessProfile = 'full';
+  live.accessChangedBy = PLATFORM_PROVISIONING_ACTOR;
   live.accessChangedAt = nowIso();
   await saveTeamMembers(members);
   Object.assign(member, live);
@@ -1922,12 +1998,33 @@ export function isPlatformAdmin(user) {
  * record; structure synthesizes lazily under the club's OWN name, and every
  * other surface begins empty.
  */
-export async function provisionClub({ clubName, adminEmail, adminName = '', firstTeamName = '' } = {}) {
+export async function provisionClub({ clubName, adminEmail, adminName = '', firstTeamName = '', plan } = {}) {
   const club = String(clubName || '').trim().slice(0, 80);
   if (!club) { const e = new Error('Club name is required'); e.status = 400; throw e; }
   const normalized = normalizeEmail(adminEmail);
   if (!EMAIL_RE.test(normalized)) {
     const e = new Error('A valid first-administrator email is required'); e.status = 400; throw e;
+  }
+  // The commercial tier this club starts on. Validated BEFORE anything is
+  // written, so a bad value creates no club, no invite and no team id — and
+  // an unknown string is refused rather than quietly becoming some default.
+  // Omitting it keeps today's behaviour exactly (see PROVISIONABLE_PLANS).
+  //
+  // The value must be an actual STRING. Coercing whatever arrives would let
+  // `plan: ["pro"]` smuggle a tier through String() — case and surrounding
+  // whitespace are normalised (the same house rule as roles and emails), but
+  // the type is not guessed at.
+  const planOmitted = plan === undefined || plan === null || plan === '';
+  if (!planOmitted && typeof plan !== 'string') {
+    const e = new Error(`plan must be one of: ${PROVISIONABLE_PLANS.join(', ')}`);
+    e.status = 400; throw e;
+  }
+  const requestedPlan = planOmitted
+    ? DEFAULT_PROVISIONED_PLAN
+    : plan.trim().toLowerCase();
+  if (!PROVISIONABLE_PLANS.includes(requestedPlan)) {
+    const e = new Error(`plan must be one of: ${PROVISIONABLE_PLANS.join(', ')}`);
+    e.status = 400; throw e;
   }
 
   const teams = await loadStoredTeams();
@@ -1948,9 +2045,14 @@ export async function provisionClub({ clubName, adminEmail, adminName = '', firs
     sport: 'Rugby',
     teamCode,
     createdAt,
-    plan: 'trial',
+    plan: requestedPlan,
     planStatus: 'active',
-    trialEndsAt: new Date(new Date(createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    // The 30-day timer belongs to a TRIAL and nothing else. resolveSession
+    // auto-downgrades an expired trial to core; carrying a stale expiry on a
+    // club that is already core or pro would be a date that means nothing.
+    trialEndsAt: requestedPlan === 'trial'
+      ? new Date(new Date(createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      : null,
     stripeCustomerId: null,
     stripeSubscriptionId: null,
   };
@@ -1973,7 +2075,15 @@ export async function provisionClub({ clubName, adminEmail, adminName = '', firs
     teamId,
     createdAt:  nowIso(),
     expiresAt:  new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-    createdBy:  'platform-provisioning',
+    createdBy:  PLATFORM_PROVISIONING_ACTOR,
+    // THE FOUNDER MARKER. Self-service clubs stamp their creator as the club
+    // owner directly (createClub below); a provisioned club has no member at
+    // all until this invite is claimed, so ownership has to travel on the
+    // invite. Server-authored on both ends: nothing in a request body can set
+    // it, because /api/invite builds its own record and never copies this
+    // field. Claiming it is what makes the first administrator the OWNER —
+    // see applyFounderOwnership.
+    founderInvite: true,
     acceptedAt: null,
   };
   invites.push(invite);
