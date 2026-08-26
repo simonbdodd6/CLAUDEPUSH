@@ -363,3 +363,80 @@ test('D2: a side from another group can never be selected or ordered in', () => 
   assert.equal(ids.includes('team_ef1af39d'), false, 'no U16 team appears under Seniors');
   assert.deepEqual(ids.sort(), ['team_f9113560', 'team_initial'].sort());
 });
+
+// ════ E — THE MATCHDAY INSTRUCTION HEADING NAMES THE TEAM ══════════════════
+//
+// A/B (ordering + default) are pinned by A1–A7 above; G/H (side binding and
+// group isolation) by C1–C11 and D1–D2. These pin the instruction card, which
+// is the first thing a coach reads on an empty sheet.
+
+/** Evaluate the instruction card's own template fragment with a given side. */
+function instructionHeading(mcSide) {
+  const marker = 'Pick your matchday squad';
+  const i = src.indexOf(marker);
+  assert.ok(i > 0, 'the instruction card exists');
+  const open = src.lastIndexOf('<strong', i);
+  const close = src.indexOf('</strong>', i) + '</strong>'.length;
+  const fragment = src.slice(open, close);
+  // The fragment IS template-literal source (nested backticks included), so it
+  // is spliced back verbatim — escaping would break its own interpolation.
+  const html = new Function('mcSide', 'esc', 'return `' + fragment + '`;')(
+    mcSide, v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])));
+  return { html, text: html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() };
+}
+
+test('E1: with Premier selected the instruction names Premier', () => {
+  const { text } = instructionHeading({ id: 'team_f9113560', name: 'Premier' });
+  assert.equal(text, 'Premier — Pick your matchday squad');
+});
+
+test('E2: with Premier development selected the instruction names Premier development', () => {
+  const { text } = instructionHeading({ id: 'team_initial', name: 'Premier development' });
+  assert.equal(text, 'Premier development — Pick your matchday squad');
+});
+
+test('E3: switching side changes the instruction — no stale team name', () => {
+  const a = instructionHeading({ name: 'Premier' }).text;
+  const b = instructionHeading({ name: 'Premier development' }).text;
+  const back = instructionHeading({ name: 'Premier' }).text;
+  assert.notEqual(a, b, 'the two sides read differently');
+  assert.equal(back, a, 'switching back restores the original');
+  assert.match(b, /^Premier development —/);
+});
+
+test('E4: the team name is DERIVED, never hard-coded', () => {
+  const marker = src.indexOf('Pick your matchday squad');
+  const open = src.lastIndexOf('<strong', marker);
+  const fragment = src.slice(open, src.indexOf('</strong>', marker));
+  assert.match(fragment, /mcSide/, 'it reads the selected-side state');
+  assert.match(fragment, /esc\(mcSide\.name\)/, 'and renders that side\'s real name');
+  assert.doesNotMatch(fragment, /'Premier'|"Premier"|>Premier</, 'no team name is written into the markup');
+  // An invented club/team name flows straight through.
+  assert.equal(instructionHeading({ name: 'Vets XV' }).text, 'Vets XV — Pick your matchday squad');
+});
+
+test('E5: with no side resolved the instruction stays clean — no dangling dash', () => {
+  const { text } = instructionHeading(null);
+  assert.equal(text, 'Pick your matchday squad');
+  assert.doesNotMatch(text, /—/, 'nothing dangles when there is no team');
+});
+
+test('E6: the team name is visually prominent within the instruction', () => {
+  const { html } = instructionHeading({ name: 'Premier' });
+  assert.match(html, /class="mc-hint-team"/, 'the team name is its own styled element');
+  const css = src.slice(src.indexOf('.mc-hint-team'), src.indexOf('.mc-hint-team') + 400);
+  assert.match(css, /font-weight:\s*900/, 'heavier than the surrounding sentence');
+  assert.match(css, /color:\s*var\(--brand-2/, 'and carries the brand accent');
+  const strongCss = src.slice(src.indexOf('.mc-empty-hint strong'), src.indexOf('.mc-empty-hint strong') + 300);
+  assert.match(strongCss, /text-transform:\s*uppercase/, 'the line reads as a heading');
+});
+
+test('E7: the prominent pitch heading is still there — both surfaces, one source', () => {
+  const body = strip(fn('renderMatchday'));
+  assert.match(body, /<h2 class="mc-team-heading\$\{/, 'the pitch heading survives');
+  assert.equal((body.match(/matchCentreSelectedSide\(\)/g) || []).length, 1,
+    'still exactly ONE selected-side resolution feeding every surface');
+  const hintAt = body.indexOf('Pick your matchday squad');
+  const headAt = body.indexOf('mc-team-heading');
+  assert.ok(hintAt > 0 && headAt > 0 && hintAt < headAt, 'instruction card sits above the pitch heading');
+});

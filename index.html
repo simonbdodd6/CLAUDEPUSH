@@ -5262,6 +5262,17 @@
     }
     .mc-side-btn + .mc-side-btn { border-left: 1px solid var(--line); }
     .mc-side-btn.on { background: var(--brand-soft); color: var(--brand-2); }
+    /* The first line a coach reads on an empty sheet says WHICH squad they are
+       about to pick. Same selected-side state as the pitch heading; the team
+       name carries the accent and the heavier weight so it reads first. Sits on
+       the existing line — no extra height. */
+    .mc-empty-hint strong {
+      text-transform: uppercase; letter-spacing: .045em;
+    }
+    .mc-empty-hint .mc-hint-team {
+      font-weight: 900; color: var(--brand-2, var(--accent));
+    }
+
     /* THE TEAM BEING PICKED — stated once, prominently, above the pitch.
        The <h1> is the FIXTURE and reads identically for both sides, so the
        team name previously appeared only in 12.5px buttons and an 11px pill.
@@ -16005,7 +16016,7 @@
         <div class="mc-empty-hint" style="display:flex;align-items:center;gap:12px;padding:14px 16px;margin-bottom:14px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,rgba(52,211,153,0.07),transparent)">
           <div style="font-size:26px;line-height:1">🏉</div>
           <div style="min-width:0">
-            <strong style="display:block;font-size:14px;color:var(--ink)">Pick your matchday squad</strong>
+            <strong style="display:block;font-size:14px;color:var(--ink)">${mcSide ? `<span class="mc-hint-team">${esc(mcSide.name)}</span> — ` : ''}Pick your matchday squad</strong>
             <span style="font-size:12.5px;color:var(--muted)">Tap any position on the pitch to add a player, or choose from the Available list — 15 starters and up to 8 on the bench.</span>
           </div>
         </div>` : ''}
