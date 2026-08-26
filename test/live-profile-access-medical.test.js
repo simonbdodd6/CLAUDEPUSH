@@ -256,6 +256,129 @@ test('a player sees only the controls that apply to them', () => {
   assert.match(branch, /whole-club administrator/i, 'non-admin staff get a pointer, not controls');
 });
 
+// ── 3b. STAFF ACCESS LABELS MIRROR THE SERVER (Problem 3) ──────────────────
+// The displayed profile must be the server's derivation —
+// ROLE_DEFAULT_PROFILE[canonicalRole(member)] — never staffLevel alone.
+// staffLevel defaulting to 'head' made every staff role WITHOUT one (medical,
+// snc, analyst) read "Full access", and a stale staffLevel left on an admin
+// understated them as "Coach access". Display-only: no permission changes.
+const perms = await import('../api/_permissions.js');
+const LABEL_EXTRAS = [
+  constFromSrc('ACCESS_PROFILE_LABELS'),
+  constFromSrc('DEFAULT_PROFILE_BY_LEVEL'),
+  constFromSrc('ROLE_DEFAULT_ACCESS_PROFILE'),
+];
+const labelScope = () => scope(['isStaffMember', 'accessProfileFor'], {}, LABEL_EXTRAS);
+
+test('roles with no default profile are never labelled Full access', () => {
+  const { accessProfileFor } = labelScope();
+  for (const role of ['medical', 'snc', 'analyst']) {
+    const got = accessProfileFor({ role, status: 'active' });
+    assert.notEqual(got, 'full', `${role} must not read Full access`);
+    assert.equal(got, 'limited', `${role} is role-scoped`);
+  }
+  // The server really does grant them only a handful of permissions.
+  assert.equal(perms.permissionsFor({ status: 'active', role: 'medical' }).size, 3);
+  assert.equal(perms.permissionsFor({ status: 'active', role: 'snc' }).size, 3);
+  assert.equal(perms.permissionsFor({ status: 'active', role: 'analyst' }).size, 2);
+});
+
+test('a stale staffLevel never rewrites a non-coach role', () => {
+  const { accessProfileFor } = labelScope();
+  // An admin promoted from assistant coach keeps the old staffLevel on the
+  // record; the server ignores it (canonicalRole only reads it for 'coach').
+  assert.equal(accessProfileFor({ role: 'admin', staffLevel: 'assistant' }), 'full');
+  assert.equal(accessProfileFor({ role: 'admin', staffLevel: 'manager' }), 'full');
+  assert.equal(accessProfileFor({ role: 'dor', staffLevel: 'assistant' }), 'full');
+  assert.equal(accessProfileFor({ role: 'dor', staffLevel: 'manager' }), 'full');
+  // And the server agrees these members really hold everything.
+  assert.equal(perms.permissionsFor({ status: 'active', role: 'admin', staffLevel: 'assistant' }).size,
+    perms.ALL_PERMISSIONS.length);
+});
+
+test('capacity pairs keep their labels: player+medical plays, player+coach coaches', () => {
+  const { accessProfileFor } = labelScope();
+  assert.equal(accessProfileFor({ role: 'player', playerGroupId: 'g-sen', medicalAccess: true }), 'player');
+  assert.equal(accessProfileFor({ role: 'coach', staffLevel: 'assistant', playerGroupId: 'g-u18' }), 'coach');
+  assert.equal(accessProfileFor({ role: 'owner' }), 'full', 'owner role stays full');
+  assert.equal(accessProfileFor({ role: 'medical', isOwner: true }), 'full', 'owner flag stays full');
+});
+
+test('an explicit access profile always wins, whatever the role', () => {
+  const { accessProfileFor } = labelScope();
+  for (const explicit of ['full', 'coach', 'manager']) {
+    assert.equal(accessProfileFor({ role: 'medical', accessProfile: explicit }), explicit);
+    assert.equal(accessProfileFor({ role: 'coach', staffLevel: 'head', accessProfile: explicit }), explicit);
+  }
+});
+
+test('the label mirrors ROLE_DEFAULT_PROFILE∘canonicalRole for every role', () => {
+  const { accessProfileFor } = labelScope();
+  for (const role of perms.ROLES) {
+    const member = { role, status: 'active' };
+    const server = perms.accessProfileOf(member); // full | coach | manager | null
+    const client = accessProfileFor(member);
+    if (server) {
+      assert.equal(client, server, `${role}: display matches the server profile`);
+    } else if (['player', 'parent', 'guest'].includes(role)) {
+      assert.equal(client, 'player', `${role}: non-staff read Player access`);
+    } else {
+      assert.equal(client, 'limited', `${role}: no profile is never shown as one`);
+    }
+  }
+  // The legacy 'coach' role in every staffLevel state, including unknown ones,
+  // which the server canonicalises to head_coach → full.
+  for (const staffLevel of ['head', 'assistant', 'manager', undefined, 'HEAD', 'senior']) {
+    const member = { role: 'coach', staffLevel, status: 'active' };
+    assert.equal(accessProfileFor(member), perms.accessProfileOf(member),
+      `coach staffLevel=${staffLevel}`);
+  }
+});
+
+test('the label calculation is pure display — no request, no mutation, no grant', () => {
+  // Source proof: the function reads; it never writes, never talks to anyone.
+  const body = fn('accessProfileFor');
+  for (const forbidden of ['fetch(', 'saveState', 'adminSetAccessProfile', 'adminAction']) {
+    assert.equal(body.includes(forbidden), false, `accessProfileFor must not call ${forbidden}`);
+  }
+  assert.equal(/member\??\.\w+\s*=[^=]/.test(body), false, 'never assigns to the member');
+
+  // Runtime proof: a frozen member, a fetch trip-wire, and identical
+  // permission sets before and after the label is computed.
+  const { accessProfileFor } = labelScope();
+  const member = Object.freeze({ role: 'medical', status: 'active', medicalAccess: true,
+    accessScope: Object.freeze({ clubWide: false, groups: [], teams: [] }) });
+  const snapshot = JSON.stringify(member);
+  const before = [...perms.permissionsFor({ ...member })].sort();
+  const origFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = () => { calls++; return Promise.resolve({}); };
+  try {
+    assert.equal(accessProfileFor(member), 'limited');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+  assert.equal(calls, 0, 'no network request');
+  assert.equal(JSON.stringify(member), snapshot, 'member untouched');
+  assert.deepEqual([...perms.permissionsFor({ ...member })].sort(), before,
+    'the permission set is identical after the label calculation');
+});
+
+test('the access UI never presents Full access for a member with no profile', () => {
+  const access = fn('renderAccessSection');
+  // The selector shows an explicit placeholder instead of silently defaulting
+  // to its first option ("Full access") when no profile matches.
+  assert.match(access, /ACCESS_PROFILE_LABELS\[profile\] \? '' : `<option value="" disabled selected>\$\{esc\(ROLE_ACCESS_LABEL\)\}<\/option>`/,
+    'placeholder option for the no-profile state');
+  // The read-only label and summary fall back to the role-scoped wording,
+  // never to a profile the server does not derive.
+  assert.match(access, /ACCESS_PROFILE_LABELS\[profile\] \|\| ROLE_ACCESS_LABEL/);
+  assert.match(access, /ACCESS_PROFILE_SUMMARY\[profile\] \|\| ROLE_ACCESS_SUMMARY/);
+  assert.match(src, /ROLE_ACCESS_LABEL = 'Limited access'/);
+  // 'limited' is a display state, never an assignable profile.
+  assert.equal(src.includes("limited: '"), false, 'limited is not in ACCESS_PROFILE_LABELS');
+});
+
 // ── 4. MEDICAL = ACTIVE CASES ──────────────────────────────────────────────
 test('a healthy player is not a medical case; a recorded injury makes one', () => {
   const { hasActiveMedicalCase } = scope(['normalizeMedicalRecord', 'hasActiveMedicalCase'], {});

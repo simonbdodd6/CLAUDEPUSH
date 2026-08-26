@@ -20589,6 +20589,17 @@
       manager: 'Assigned teams: membership and invitations, availability, fixtures and logistics, operational messages and reports, player deletion. No access assignment, coaching notes or medical.',
     };
     const DEFAULT_PROFILE_BY_LEVEL = { head: 'full', assistant: 'coach', manager: 'manager' };
+    // Mirror of api/_permissions.js ROLE_DEFAULT_PROFILE over canonicalRole:
+    // the default profile comes from the canonical ROLE. staffLevel refines
+    // only the legacy 'coach' role, so a stale staffLevel left on an admin or
+    // DoR never understates them, and a role with no default profile
+    // (medical, snc, analyst) is never shown as Full access.
+    const ROLE_DEFAULT_ACCESS_PROFILE = { owner: 'full', dor: 'full', admin: 'full', head_coach: 'full', assistant: 'coach', manager: 'manager' };
+    // Shown for STAFF whose role carries no access profile at all — the server
+    // grants exactly the role's own permissions. Deliberately NOT in
+    // ACCESS_PROFILE_LABELS: it is a state, never an assignable profile.
+    const ROLE_ACCESS_LABEL = 'Limited access';
+    const ROLE_ACCESS_SUMMARY = 'The tools of their staff role only — such as medical, training or reports, plus messages. No member management, no club-wide settings and no access assignment.';
     // RC4.7 — the shared-squad model: a player is eligible for every active
     // team in their group, so there is nothing to pick. Flip to true to expose
     // the per-player picker again when a club needs separate squads.
@@ -20847,7 +20858,15 @@
       // 'head', so every ordinary player was labelled "Full access" even though
       // the server grants them nothing. Display now matches the server.
       if (!isStaffMember(member)) return 'player';
-      return DEFAULT_PROFILE_BY_LEVEL[String(member?.staffLevel || 'head').toLowerCase()] || 'coach';
+      // Problem 3 — mirror api/_permissions.js accessProfileOf: the default is
+      // ROLE_DEFAULT_PROFILE[canonicalRole(member)], never staffLevel alone.
+      // staffLevel picks the profile only for the legacy 'coach' role (an
+      // unknown level canonicalises to head_coach → full, as the server does);
+      // every other role maps by NAME, and a role with no default profile
+      // (medical, snc, analyst) is role-scoped — 'limited', never 'full'.
+      const role = String(member?.role || '').toLowerCase();
+      if (role === 'coach') return DEFAULT_PROFILE_BY_LEVEL[String(member?.staffLevel || 'head').toLowerCase()] || 'full';
+      return ROLE_DEFAULT_ACCESS_PROFILE[role] || 'limited';
     }
 
     /**
@@ -20900,12 +20919,13 @@
             ${(canAssign && isStaffMember(member)) ? `
               <select aria-label="Access level for ${esc(user.displayName || user.email || 'this member')}" style="${inputStyle};min-height:30px;font-size:11px;width:auto"
                 onchange="adminSetAccessProfile('${esc(member.id)}',this.value,'${esc(user.displayName || '')}','${esc(profile)}')">
+                ${ACCESS_PROFILE_LABELS[profile] ? '' : `<option value="" disabled selected>${esc(ROLE_ACCESS_LABEL)}</option>`}
                 ${Object.entries(ACCESS_PROFILE_LABELS).map(([id, label]) =>
                   `<option value="${id}" ${profile === id ? 'selected' : ''}>${label}</option>`).join('')}
               </select>`
-            : `<span style="font-size:12px;font-weight:700">${esc(profile === 'player' ? PLAYER_ACCESS_LABEL : (ACCESS_PROFILE_LABELS[profile] || PLAYER_ACCESS_LABEL))}</span>`}
+            : `<span style="font-size:12px;font-weight:700">${esc(profile === 'player' ? PLAYER_ACCESS_LABEL : (ACCESS_PROFILE_LABELS[profile] || ROLE_ACCESS_LABEL))}</span>`}
           </div>
-          <p class="muted" style="font-size:11.5px;line-height:1.5;margin:8px 0 0">${esc(profile === 'player' ? PLAYER_ACCESS_SUMMARY : (ACCESS_PROFILE_SUMMARY[profile] || ''))}</p>
+          <p class="muted" style="font-size:11.5px;line-height:1.5;margin:8px 0 0">${esc(profile === 'player' ? PLAYER_ACCESS_SUMMARY : (ACCESS_PROFILE_SUMMARY[profile] || ROLE_ACCESS_SUMMARY))}</p>
           <div class="muted" style="font-size:11px;margin-top:6px">
             Assigned teams: <strong>${assigned.length ? esc(assigned.join(', ')) : '—'}</strong>
             ${member.isOwner ? ' · <strong>Club owner</strong>' : ''}
