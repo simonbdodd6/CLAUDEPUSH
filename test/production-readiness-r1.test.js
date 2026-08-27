@@ -212,7 +212,16 @@ test('19+20: robots.txt keeps the authenticated app out of search results', () =
 test('21: the SPA is unchanged — same single entry point, no new routing architecture', () => {
   assert.equal(vercel.outputDirectory, '.', 'static serving unchanged');
   assert.equal(vercel.rewrites.length, 4, 'exactly the two new page routes plus the two existing API rewrites');
-  assert.ok(!vercel.routes && !vercel.redirects, 'no new routing mechanism introduced');
+  assert.ok(!vercel.routes, 'no new routing mechanism introduced');
+  // H2 added `redirects`, but only as a deny rule: each one refuses to serve a
+  // server-side file and sends the request to the branded 404 page. That is not
+  // a route into the app, so the invariant this test guards — one entry point,
+  // no new navigable pages — still holds. Assert it directly rather than by the
+  // absence of the key, which no longer means what it did when this was written.
+  for (const r of vercel.redirects || []) {
+    assert.equal(r.destination, '/404.html',
+      `redirect ${r.source} adds a reachable route instead of denying one`);
+  }
   // Public signup stays closed: nothing here touches the flag or its gate.
   assert.doesNotMatch(privacy + terms + robots, /PUBLIC_CLUB_SIGNUP/);
 });

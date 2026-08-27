@@ -1,4 +1,63 @@
-# mission-control is a work-in-progress feature not yet ready for deployment
+# What gets UPLOADED to Vercel — and therefore what can be served.
+#
+# vercel.json sets "outputDirectory": ".", so the repository root IS the site:
+# every uploaded file is also reachable as a static asset. Production was
+# serving api/_identityStore.js, test/**, lib/**, the design/architecture
+# markdown and the internal engine directories as raw source because of this.
+#
+# This list is an ALLOW-LIST, not a deny-list: "/*" excludes every top-level
+# entry, and only the entries below are added back. A new document, engine or
+# script added to the repository is therefore private by default and cannot be
+# published by forgetting to add it here — which is the property a deny-list
+# cannot give us.
+#
+# Note "/*" is anchored to the root, so re-including a directory re-includes
+# all of its contents; there is no need to list files inside it.
+/*
+
+# --- the app the browser loads -------------------------------------------
+!/index.html
+!/sw.js
+!/manifest.json
+!/404.html
+!/privacy.html
+!/terms.html
+!/robots.txt
+!/icon.svg
+!/brand
+
+# --- ES modules imported at runtime by index.html (and by api/*.js) -------
+!/performance
+!/season-intelligence
+!/src
+
+# --- serverless functions ------------------------------------------------
+# Must be uploaded: Vercel builds api/**/*.js into functions. Being uploaded
+# also makes the source statically reachable, so vercel.json additionally
+# refuses to serve /api/*.js as a file.
+!/api
+
+# --- needed by the build, not by the browser -----------------------------
+# package.json/package-lock.json install the function dependencies and
+# build-inject.js stamps the version into index.html ("build" script).
+# Vercel already declines to serve package.json; vercel.json covers the rest.
+!/package.json
+!/package-lock.json
+!/build-inject.js
+!/vercel.json
+
+# --- internal files that live inside the re-included directories ---------
+# Re-including a directory re-includes everything in it, and these are the
+# parts the browser never loads: design documentation, and the Node CLI/API
+# entry points for the season engine. Nothing imports them (checked), so
+# excluding them costs nothing and keeps the published set to what runs.
+performance/README.md
+performance/docs/
+brand/README.md
+season-intelligence/season-api.js
+season-intelligence/season-cli.js
+
+# --- work in progress, deliberately not deployed (pre-existing) ----------
+# Listed after the re-includes above so these still win.
 api/mission-control.js
 mission-control/
-test/mission-control-dashboard.test.js
