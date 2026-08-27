@@ -14591,17 +14591,24 @@
                   </div>
                   ${sessionCardsHTML || `<p class="muted">Nothing scheduled this week. Use Next › to look ahead.</p>`}
                 </div>
-                ${selected ? `
+                ${opPlayers.length === 0 ? `
+                <div class="avail-request-cta" style="margin-top:14px;padding:22px 16px;text-align:center;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)">
+                  <div style="font-size:28px;opacity:.5;margin-bottom:8px" aria-hidden="true">👥</div>
+                  <h3 style="margin:0 0 6px;font-size:15px;color:var(--ink)">No players yet</h3>
+                  <p class="muted" style="font-size:13px;line-height:1.5;margin:0 auto;max-width:330px">
+                    ${canI('manage_players')
+                      ? 'Add your players to start managing availability.'
+                      : 'Availability opens up once your club administrator has added players.'}</p>
+                  ${canI('manage_players') ? `
+                    <button class="btn primary" type="button" style="margin-top:14px;min-height:44px;font-weight:800;padding:0 22px"
+                      onclick="openInvitePlayersModal()">Invite players</button>` : ''}
+                </div>`
+                : selected ? `
                 <div class="avail-request-cta" style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
-                  ${opPlayers.length > 0
-                    ? `<button class="btn primary" type="button" onclick="sendAvailabilityRequest('${selected.id}')" style="width:100%;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;line-height:1.2;font-weight:800">
-                        <span style="font-size:15px">Request Availability</span>
-                        <span style="font-size:11px;font-weight:600;opacity:.85">${esc(selected.title || selected.id)} • ${esc(selected.date || 'Date to be confirmed')}</span>
-                      </button>`
-                    : `<button class="btn primary" type="button" disabled style="width:100%;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;line-height:1.2;font-weight:800;opacity:.55;cursor:not-allowed">
-                        <span style="font-size:15px">Request Availability</span>
-                        <span style="font-size:11px;font-weight:600;opacity:.85">No active players available</span>
-                      </button>`}
+                  <button class="btn primary" type="button" onclick="sendAvailabilityRequest('${selected.id}')" style="width:100%;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;line-height:1.2;font-weight:800">
+                    <span style="font-size:15px">Request Availability</span>
+                    <span style="font-size:11px;font-weight:600;opacity:.85">${esc(selected.title || selected.id)} • ${esc(selected.date || 'Date to be confirmed')}</span>
+                  </button>
                   <button class="btn ghost" type="button" onclick="sendAllAvailabilityRequests()" style="width:100%;min-height:44px;font-size:13px;font-weight:700">Ask All Sessions</button>
                 </div>` : ''}
               </div>

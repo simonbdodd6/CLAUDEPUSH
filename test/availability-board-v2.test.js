@@ -117,3 +117,86 @@ test('position order: jersey number, else forwards before backs, unknown last', 
   assert.ok(availabilityPositionOrder({ position: 'Prop' }) < availabilityPositionOrder({ position: 'Wing' }), 'forwards before backs');
   assert.equal(availabilityPositionOrder({ position: '' }), 99, 'unknown last');
 });
+
+// ── ZERO-PLAYER ONBOARDING ──────────────────────────────────────────────────
+// A brand-new club used to reach a dead end here: the only action was a
+// DISABLED "Request Availability" button reading "No active players
+// available", with nothing explaining what to do or anywhere to go. A coach
+// setting their club up for the first time was simply stuck.
+//
+// With no players the board now shows a real empty state that says what is
+// missing and hands the coach the EXISTING invitation flow — the same
+// openInvitePlayersModal() the Members page uses. Nothing about the populated
+// board changes, and viewing the page still writes nothing.
+
+test('a club with no players gets an explanatory empty state, not a dead end', () => {
+  // The dead end is gone for good.
+  assert.ok(!render.includes('No active players available'),
+    'the disabled dead-end button is removed');
+  assert.ok(!/disabled[^>]*>\s*<span style="font-size:15px">Request Availability/.test(render),
+    'no disabled Request Availability button remains');
+
+  // The empty state is keyed on the operating group's players being empty.
+  assert.ok(render.includes('${opPlayers.length === 0 ?'),
+    'the empty state is chosen by the zero-player case');
+  assert.ok(render.includes('No players yet'), 'states plainly what is missing');
+  assert.ok(render.includes('Add your players to start managing availability.'),
+    'says what to do about it');
+});
+
+test('the empty state offers the EXISTING invitation flow, not a new one', () => {
+  assert.ok(render.includes('Invite players'), 'a primary call to action');
+  assert.ok(render.includes('onclick="openInvitePlayersModal()"'),
+    'reuses the Members invitation modal');
+  // It must not invent its own invite mechanics.
+  for (const invented of ['/api/invite', 'fetch(', 'createInvite', 'inviteToken']) {
+    assert.ok(!render.includes(invented),
+      `the board must not implement invitations itself (${invented})`);
+  }
+  // The same modal the Members page opens — one journey, not two.
+  assert.ok(html.includes('async function openInvitePlayersModal()'),
+    'the existing modal is what is being reused');
+  const membersUses = (html.match(/onclick="openInvitePlayersModal\(\)"/g) || []).length;
+  assert.ok(membersUses >= 2, 'Members and Availability share the one invite entry point');
+});
+
+test('a coach who cannot add players is not shown an action they cannot use', () => {
+  // Both the copy and the button are gated on the same permission the server
+  // requires to create an invitation (PERM.MANAGE_PLAYERS).
+  assert.ok(render.includes("canI('manage_players')"),
+    'the CTA is gated on the invite permission');
+  assert.ok(render.includes('Availability opens up once your club administrator has added players.'),
+    'a read-only coach gets an honest explanation instead');
+  // The button itself sits inside the permission branch.
+  const emptyState = render.slice(render.indexOf('${opPlayers.length === 0 ?'),
+                                  render.indexOf(': selected ? `'));
+  const btn = emptyState.indexOf('Invite players');
+  const gate = emptyState.indexOf("canI('manage_players') ? `");
+  assert.ok(gate !== -1 && gate < btn, 'the button is rendered only for a permitted coach');
+});
+
+test('a populated club keeps exactly the availability behaviour it had', () => {
+  // The request actions are unchanged and still reached when players exist.
+  assert.ok(render.includes(": selected ? `"), 'populated clubs still branch on the selected session');
+  assert.ok(render.includes(`onclick="sendAvailabilityRequest('\${selected.id}')"`),
+    'Request Availability still sends for the selected session');
+  assert.ok(render.includes('onclick="sendAllAvailabilityRequests()"'), 'Ask All Sessions retained');
+  assert.ok(render.includes('Date to be confirmed'), 'the session subtitle is unchanged');
+  // The board itself is untouched.
+  assert.ok(render.includes('playerRows(boardRows)'), 'the squad list still renders');
+  assert.ok(render.includes('Live Response Board'), 'the board heading is unchanged');
+});
+
+test('viewing the board creates nothing — no player, no invitation, no write', () => {
+  // Rendering is pure: it must not persist or send anything.
+  for (const sideEffect of ['saveState(', 'kvSet(', 'appendClubInvite', 'ensurePlayerProfile',
+                            "method: 'POST'", 'sendAvailabilityRequest(' + "'" ]) {
+    if (sideEffect === "sendAvailabilityRequest('") continue;   // only as an onclick, below
+    assert.ok(!render.includes(sideEffect),
+      `rendering must not ${sideEffect} — viewing is read-only`);
+  }
+  // Requests are only ever wired to a click, never invoked during render.
+  const calls = render.match(/(?<!onclick=")sendAvailabilityRequest\(/g) || [];
+  assert.equal(calls.length, 0, 'availability requests only happen on an explicit click');
+  assert.ok(!render.includes('openInvitePlayersModal();'), 'the invite modal only opens on click');
+});
