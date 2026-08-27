@@ -2,17 +2,17 @@
   "outputDirectory": ".",
   "redirects": [
     {
-      "source": "/api/:file(.*\\.js)",
+      "source": "/api/:file(.*\\.js.*)",
       "destination": "/404.html",
       "permanent": false
     },
     {
-      "source": "/build-inject.js",
+      "source": "/:file(build-inject\\.js.*)",
       "destination": "/404.html",
       "permanent": false
     },
     {
-      "source": "/vercel.json",
+      "source": "/:file(vercel\\.json.*)",
       "destination": "/404.html",
       "permanent": false
     }

@@ -91,6 +91,22 @@ test('H2-1: every server module in api/ is refused as a static file', () => {
   assert.deepEqual(served, [], `these would still download as source: ${served.join(', ')}`);
 });
 
+test('H2-2b: a trailing slash or dot-segment does not walk around the block', () => {
+  // Production served /api/invite.js in full for a trailing slash: the edge
+  // network resolved the path to the file while "/api/:file(.*\\.js)" — which
+  // ends at the extension — did not match it. Anything containing .js under
+  // api/ must be refused however the path is decorated.
+  for (const suffix of ['/', '/./', '//', '/x/..']) {
+    for (const f of ['invite.js', '_identityStore.js', '_keys.js', '_security.js']) {
+      assert.ok(isBlocked(`/api/${f}${suffix}`),
+        `/api/${f}${suffix} walks around the block`);
+    }
+  }
+  for (const p of ['/build-inject.js/', '/vercel.json/', '/build-inject.js/./', '/vercel.json//']) {
+    assert.ok(isBlocked(p), `${p} walks around the block`);
+  }
+});
+
 test('H2-2: the block is a pattern over api/, not a list of known filenames', () => {
   // A module added tomorrow must be covered without touching vercel.json.
   for (const invented of ['/api/_futureStore.js', '/api/_secrets.js', '/api/brand-new.js']) {
