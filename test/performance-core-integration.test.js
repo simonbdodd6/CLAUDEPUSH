@@ -62,7 +62,8 @@ function runIdentityReset(state) {
         // server-scoped Performance payload, and the platform-administrator
         // list: all identity-scoped, all cleared by the real function, so the
         // harness must declare them.
-        _myOperational, _perfAssign, _platformAdmins, _platformClubs, _platformPlanEditing;
+        _myOperational, _perfAssign, _platformAdmins, _platformClubs, _platformPlanEditing,
+        _founderRepairs;
     function chatSetUnreadTotal() {}
     ${extractFn(html, 'resetIdentityScopedState')}
     resetIdentityScopedState();

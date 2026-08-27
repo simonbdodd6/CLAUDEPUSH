@@ -20769,7 +20769,83 @@
           <div id="pa-result" style="margin-top:10px"></div>
         </div>
         ${renderPlatformClubsCard()}
+        ${renderFounderRepairsCard()}
         ${renderPlatformAdminsCard()}`;
+    }
+
+    // ── PLATFORM ADMIN: historical founder ownership ────────────────────────
+    // Provisioning grants ownership at claim time, but only for clubs claimed
+    // since that fix shipped. A club provisioned before it has a founder who
+    // never became the owner. The SERVER derives who that was from the
+    // provisioning invitation it wrote itself — this card only ever names a
+    // club, and shows nothing when there is nothing to repair.
+    let _founderRepairs = { loaded: false, loading: false, error: null, rows: [] };
+
+    async function loadFounderRepairs(force = false) {
+      if (_founderRepairs.loading) return;
+      if (_founderRepairs.loaded && !force) return;
+      _founderRepairs.loading = true;
+      try {
+        const res = await fetch('/api/identity?action=platform_founder_repairs');
+        const data = await res.json().catch(() => ({}));
+        _founderRepairs = res.ok && data.ok !== false
+          ? { loaded: true, loading: false, error: null, rows: data.repairs || [] }
+          : { loaded: true, loading: false, error: data.error || 'Could not load', rows: [] };
+      } catch {
+        _founderRepairs = { loaded: true, loading: false, error: 'offline', rows: [] };
+      }
+      render();
+    }
+
+    function renderFounderRepairsCard() {
+      if (_myPlatformRole !== 'platform_admin') return '';
+      if (!_founderRepairs.loaded && !_founderRepairs.loading) loadFounderRepairs();
+      const rows = _founderRepairs.rows;
+      const body = !_founderRepairs.loaded
+        ? '<p class="muted" style="font-size:12.5px;margin:0">Loading…</p>'
+        : _founderRepairs.error
+          ? `<p class="muted" style="font-size:12.5px;margin:0">Could not load the list — ${esc(_founderRepairs.error)}.</p>`
+          : !rows.length
+            ? '<p class="muted" style="font-size:12.5px;margin:0">No historical founder ownership repairs are currently required.</p>'
+            : rows.map(r => `
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 11px;background:var(--panel-2);border-radius:9px;margin-bottom:7px">
+                  <div style="min-width:0">
+                    <div style="font-weight:700;font-size:13px">${esc(r.clubName)}</div>
+                    <div class="muted" style="font-size:11.5px">Founder: ${esc(r.founderName || r.founderEmail || r.founderUserId)}${
+                      r.founderName && r.founderEmail ? ` · ${esc(r.founderEmail)}` : ''}</div>
+                  </div>
+                  <button class="btn ghost" type="button" style="font-size:11.5px;padding:5px 10px"
+                    onclick="platformRepairFounder('${esc(r.teamId)}','${esc(r.clubName)}','${esc(r.founderName || r.founderEmail || 'the founder')}')">Repair ownership</button>
+                </div>`).join('');
+      return `
+        <div class="card" style="margin-top:14px">
+          <h2 style="margin-bottom:4px">Founder ownership repairs</h2>
+          <p class="muted" style="font-size:12.5px;margin:0 0 12px">
+            Clubs provisioned before ownership was granted automatically, where the original
+            founder is still active but was never recorded as the owner.</p>
+          ${body}
+        </div>`;
+    }
+
+    async function platformRepairFounder(teamId, clubName, who) {
+      const ok = await ceConfirm(`Make ${who} the owner of ${clubName}?`,
+        `This records ${who} as the club owner of ${clubName} and gives them Full Access there, `
+        + `which is what provisioning grants today. Nothing else changes: no other member, `
+        + `no club settings, and no invitations.`,
+        { confirmLabel: 'Repair ownership' });
+      if (!ok) return;
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'repair_founder_ownership', teamId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not repair ownership');
+        _founderRepairs = { loaded: true, loading: false, error: null, rows: data.repairs || [] };
+        showToast(data.unchanged ? `${clubName} already has an owner`
+                                 : `${who} now owns ${clubName} ✓`);
+        render();
+      } catch (e) { showToast(e.message || 'Could not repair ownership'); }
     }
 
     // ── PLATFORM ADMIN: an existing club's plan ─────────────────────────────
@@ -34709,6 +34785,7 @@
       _platformAdmins = { loaded: false, loading: false, error: null, rows: [] };
       _platformClubs = { loaded: false, loading: false, error: null, rows: [] };
       _platformPlanEditing = '';
+      _founderRepairs = { loaded: false, loading: false, error: null, rows: [] };
       // The operational context belongs to the PERSON, not the device. Left
       // behind, the next identity renders the previous one's group until the
       // session payload lands — the window in which a U18 player could still

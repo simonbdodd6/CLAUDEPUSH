@@ -14,6 +14,8 @@ import {
   revokePlatformAdmin,
   listPlatformClubs,
   changeClubPlan,
+  listFounderOwnershipRepairs,
+  repairFounderOwnership,
   createEmailVerificationToken,
   destroyAllSessionsForUser,
   requireSession,
@@ -272,6 +274,15 @@ export default async function handler(req, res) {
         }
         return res.status(200).json({ ok: true, clubs: await listPlatformClubs() });
       }
+      // Clubs whose historical provisioned founder never received the
+      // ownership a claim grants today. Platform administrators only.
+      if (req.query?.action === 'platform_founder_repairs') {
+        const viewer = await resolveSessionFromRequest(req).catch(() => null);
+        if (!isPlatformAdmin(viewer?.user)) {
+          return res.status(403).json({ ok: false, error: 'Platform administrators only' });
+        }
+        return res.status(200).json({ ok: true, repairs: await listFounderOwnershipRepairs() });
+      }
       const tenant = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
       if (req.query?.teamId) assertSameTenant(tenant, req.query.teamId);
       const state = await listIdentityState(tenant.teamId);
@@ -439,6 +450,31 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, unchanged: result.unchanged,
           previousPlan: result.previousPlan, club: result.club,
           clubs: await listPlatformClubs() });
+      }
+      // Repair a historical provisioned founder's ownership. The body names a
+      // CLUB and nothing else: the founder is re-derived server-side from the
+      // provisioning invitation, so a supplied user id is never the authority.
+      if (action === 'repair_founder_ownership') {
+        const actor = await resolveSessionFromRequest(req).catch(() => null);
+        if (!isPlatformAdmin(actor?.user)) {
+          return res.status(403).json({ ok: false, error: 'Platform administrators only' });
+        }
+        await enforceRateLimit(action, requestIp(req), { limit: 30, windowMs: 60 * 60 * 1000 });
+        const result = await repairFounderOwnership({
+          teamId: req.body?.teamId, actorUserId: actor.user.id });
+        // A club that was already correctly owned changed nothing, so it is
+        // not recorded as a repair.
+        if (!result.unchanged) {
+          await auditLog('founder_ownership_repaired', {
+            teamId_club: result.teamId, clubName: result.clubName,
+            repairedUserId: result.founderUserId,
+            changedBy: actor.user.id, ip: requestIp(req),
+          });
+        }
+        return res.status(200).json({ ok: true, unchanged: result.unchanged,
+          teamId: result.teamId, clubName: result.clubName,
+          founderUserId: result.founderUserId,
+          repairs: await listFounderOwnershipRepairs() });
       }
       if (action === 'claim_invite') {
         // SECURITY: throttle claims (mirrors login) so the invite-claim path can't

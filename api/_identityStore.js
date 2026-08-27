@@ -2171,6 +2171,155 @@ export async function changeClubPlan({ teamId, plan, actorUserId } = {}) {
 }
 
 /**
+ * THE HISTORICAL FOUNDER of a provisioned club, derived from evidence only.
+ *
+ * bdde5790 made the claim itself grant ownership, but only for invites
+ * carrying the `founderInvite` marker it introduced. A club provisioned and
+ * claimed BEFORE that release has an active founder who never became the
+ * owner, so its owner protections cover nobody.
+ *
+ * Both facts needed to repair that were already being persisted, by the
+ * server, long before the marker existed:
+ *
+ *   · `createdBy === 'platform-provisioning'` says the invite was minted by
+ *     PROVISIONING. Every ordinary invite records the session user's id
+ *     instead (api/invite.js), and no request body can reach the field, so
+ *     this is not something a club can fake its way into.
+ *   · `acceptedBy` is the id of the person who actually claimed it, written
+ *     by claimInvite at the moment of the claim.
+ *
+ * So the founder is READ, never guessed: no email matching, no "first staff
+ * member", no earliest-joined heuristic. Anything less than exact evidence
+ * returns a reason instead of a user, and the caller refuses.
+ *
+ * Returns { userId } on success, or { reason } describing why not:
+ *   not_provisioned  — no provisioning invite for this club (self-created,
+ *                      legacy, or its invite aged out of the shared list)
+ *   never_claimed    — provisioned, but the invitation was never accepted
+ *   ambiguous        — several accepted provisioning invites disagree
+ */
+function resolveProvisionedFounder(teamId, invites = []) {
+  const id = String(teamId || '');
+  const provisioning = invites.filter(i =>
+    i && String(i.teamId || '') === id &&
+    String(i.createdBy || '') === PLATFORM_PROVISIONING_ACTOR);
+  if (!provisioning.length) return { reason: 'not_provisioned' };
+  const claimed = [...new Set(provisioning
+    .filter(i => String(i.status || '') === 'accepted' && String(i.acceptedBy || '').trim())
+    .map(i => String(i.acceptedBy)))];
+  if (!claimed.length) return { reason: 'never_claimed' };
+  // Two different people cannot both be "the" founder. Refuse rather than pick.
+  if (claimed.length > 1) return { reason: 'ambiguous' };
+  return { userId: claimed[0] };
+}
+
+/**
+ * Clubs whose historical founder can be given the ownership the claim would
+ * grant today. A club appears ONLY when every one of these is true:
+ *
+ *   · provisioning evidence exists and names exactly one claimant
+ *   · that person is an ACTIVE member of that same club
+ *   · they are staff there (ownership is a staff fact — mirrors the claim path)
+ *   · the club has no other active owner
+ *   · they are not already owner with Full Access
+ *
+ * Anything else is simply absent from the list: there is no "force" variant,
+ * because a club that fails these tests is one where the right answer is not
+ * known, and inventing one is the failure mode this whole surface avoids.
+ */
+export async function listFounderOwnershipRepairs() {
+  const [invites, members, users, teams] = await Promise.all([
+    loadInvites(), loadTeamMembers(), loadUsers(), loadStoredTeams(),
+  ]);
+  const out = [];
+  for (const team of teams) {
+    const found = resolveProvisionedFounder(team.id, invites);
+    if (!found.userId) continue;
+    const active = members.filter(m => String(m.teamId) === String(team.id) && m.status === 'active');
+    const founder = active.find(m => String(m.userId) === found.userId);
+    if (!founder) continue;                       // left, removed, or never active
+    if (String(founder.role || '') === 'player') continue;
+    if (active.some(m => m.id !== founder.id && isClubOwner(m))) continue;   // already owned
+    if (founder.isOwner === true && accessProfileOf(founder) === 'full') continue;
+    const user = users.find(u => String(u.id) === found.userId) || {};
+    out.push({
+      teamId: team.id,
+      clubName: team.name || team.id,
+      founderUserId: found.userId,
+      founderName: user.displayName || user.firstName || '',
+      founderEmail: user.email || '',
+      currentlyOwner: founder.isOwner === true,
+      currentAccessProfile: accessProfileOf(founder) || null,
+      reason: 'provisioned_founder_missing_ownership',
+    });
+  }
+  return out.sort((a, b) => a.clubName.localeCompare(b.clubName));
+}
+
+/**
+ * Give a historical provisioned founder the ownership their claim would grant
+ * today — and nothing else.
+ *
+ * The caller names a CLUB. It may not name a person: the founder is re-derived
+ * here from the same evidence the listing used, so a request that supplies
+ * somebody else's user id cannot redirect ownership, and a club id from one
+ * tenant cannot reach a member of another (the founder must be an active
+ * member of the named club).
+ *
+ * Writes exactly two fields, on exactly one membership. Plan, structure,
+ * invitations, billing, every other member and every other club are not read
+ * for writing and not touched. Idempotent: a club that is already correctly
+ * owned reports `unchanged` and writes nothing.
+ */
+export async function repairFounderOwnership({ teamId, actorUserId } = {}) {
+  const id = String(teamId || '').trim();
+  if (!id) { const e = new Error('A club is required'); e.status = 400; throw e; }
+  const teams = await loadStoredTeams();
+  const team = teams.find(t => String(t.id) === id);
+  if (!team) { const e = new Error('Unknown club'); e.status = 404; throw e; }
+
+  const invites = await loadInvites();
+  const found = resolveProvisionedFounder(id, invites);
+  if (!found.userId) {
+    const messages = {
+      not_provisioned: 'This club was not created by platform provisioning, so it has no founder invitation to repair from',
+      never_claimed:   'That club\'s founder invitation was never accepted, so there is nobody to make the owner',
+      ambiguous:       'That club has more than one accepted founder invitation — the original founder cannot be identified',
+    };
+    const e = new Error(messages[found.reason] || 'The original founder cannot be identified for that club');
+    e.status = 400; e.code = found.reason; throw e;
+  }
+
+  const members = await loadTeamMembers();
+  const active = members.filter(m => String(m.teamId) === id && m.status === 'active');
+  const founder = active.find(m => String(m.userId) === found.userId);
+  if (!founder) {
+    const e = new Error('That club\'s founder is no longer an active member, so ownership cannot be repaired');
+    e.status = 400; e.code = 'founder_not_active'; throw e;
+  }
+  if (String(founder.role || '') === 'player') {
+    const e = new Error('That club\'s founder is no longer staff there, so ownership cannot be repaired');
+    e.status = 400; e.code = 'founder_not_staff'; throw e;
+  }
+  // A club that already has an owner is not missing one. Never a second.
+  const otherOwner = active.find(m => m.id !== founder.id && isClubOwner(m));
+  if (otherOwner) {
+    const e = new Error('That club already has an owner — nothing to repair');
+    e.status = 400; e.code = 'owner_exists'; throw e;
+  }
+  if (founder.isOwner === true && accessProfileOf(founder) === 'full') {
+    return { unchanged: true, teamId: id, clubName: team.name || team.id, founderUserId: found.userId };
+  }
+
+  founder.isOwner = true;
+  founder.accessProfile = 'full';
+  founder.accessChangedBy = String(actorUserId || '') || PLATFORM_PROVISIONING_ACTOR;
+  founder.accessChangedAt = nowIso();
+  await saveTeamMembers(members);
+  return { unchanged: false, teamId: id, clubName: team.name || team.id, founderUserId: found.userId };
+}
+
+/**
  * Provision a NEW customer club: an isolated tenant plus a single-use
  * head-coach invitation for its first administrator. Unlike createClub (the
  * founder self-signup), no user account is created here — the first admin

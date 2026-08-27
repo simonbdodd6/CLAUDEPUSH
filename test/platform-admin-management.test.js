@@ -42,6 +42,7 @@ const { default: identityHandler } = await import('../api/identity.js');
 const { default: publishHandler } = await import('../api/publish.js');
 const store = await import('../api/_identityStore.js');
 const { isPlatformAdmin } = store;
+const { isClubOwner } = await import('../api/_permissions.js');
 
 const CLUB = 'kestrel-rfc';
 /**
@@ -689,4 +690,354 @@ test('X11. the Existing clubs card is platform-gated and free of commerce', asyn
   assert.match(fn, /plan and feature entitlement/i, 'states the consequence');
   assert.match(fn, /action: 'change_club_plan', teamId: clubId, plan: next/,
     'sends only the club and the plan');
+});
+
+// ── HISTORICAL FOUNDER OWNERSHIP REPAIR ─────────────────────────────────────
+// bdde5790 grants ownership when a provisioned founder CLAIMS, but only for
+// invites carrying the founderInvite marker it introduced. A club provisioned
+// and claimed before that has an active founder who never became the owner.
+//
+// The repair reads, it does not guess. Both facts it needs were already being
+// written by the server long before the marker existed: an invite whose
+// `createdBy` is 'platform-provisioning' (ordinary invites record the session
+// user's id, and no request body can reach the field), and `acceptedBy` — the
+// id claimInvite stamped when that person actually accepted it. Anything less
+// than exact evidence is refused rather than approximated.
+
+const repairs = token => identityGet({ action: 'platform_founder_repairs' }, token);
+const repair = (teamId, token, extra = {}) =>
+  identity({ action: 'repair_founder_ownership', teamId, ...extra }, token);
+const invites = () => JSON.parse(kv.get('ce:invites') || '[]');
+const memberFor = (teamId, userId) =>
+  members().find(m => m.teamId === teamId && m.userId === userId) || null;
+
+const HIST = 'oldfield-rfc';          // provisioned + claimed BEFORE the fix
+/**
+ * A world containing a historical provisioned club whose founder claimed the
+ * invitation but never received ownership — exactly the pre-bdde5790 shape:
+ * the provisioning marker is present, the founderInvite flag is NOT.
+ */
+async function seedHistorical({ founderActive = true, founderRole = 'coach' } = {}) {
+  seed();
+  kv.set('app:identity:teams', JSON.stringify([
+    { id: CLUB, name: 'Kestrel RFC', plan: 'core', planStatus: 'active', teamCode: 'KESTR11',
+      createdAt: '2026-01-01T00:00:00.000Z', signupSource: 'self_service' },
+    { id: HIST, name: 'Oldfield RFC', plan: 'trial', planStatus: 'active', teamCode: 'OLDFI22',
+      createdAt: '2026-02-02T00:00:00.000Z' },
+  ]));
+  const us = users();
+  us.push({ id: 'u-hist-founder', email: 'founder@oldfield.test', displayName: 'Fran Founder' });
+  us.push({ id: 'u-hist-coach',   email: 'coach@oldfield.test',   displayName: 'Other Coach' });
+  kv.set('app:identity:users', JSON.stringify(us));
+  const ms = members();
+  if (founderActive) {
+    ms.push({ id: 'm-hist-founder', teamId: HIST, userId: 'u-hist-founder', role: founderRole,
+      staffLevel: founderRole === 'coach' ? 'head' : null, status: 'active',
+      joinedAt: '2026-02-03T00:00:00.000Z', approvedBy: 'invite',
+      ...(founderRole === 'player' ? { playerGroupId: 'grp_initial' } : {}) });
+  }
+  ms.push({ id: 'm-hist-coach', teamId: HIST, userId: 'u-hist-coach', role: 'coach',
+    staffLevel: 'assistant', status: 'active', joinedAt: '2026-02-04T00:00:00.000Z' });
+  kv.set('app:identity:team_members', JSON.stringify(ms));
+  // The historical provisioning invite: marker present, founderInvite absent.
+  kv.set('ce:invites', JSON.stringify([
+    { token: 'tok-hist', role: 'coach', staffLevel: 'head', scope: { clubWide: true },
+      email: 'founder@oldfield.test', name: 'Fran Founder', teamId: HIST,
+      status: 'accepted', acceptedAt: '2026-02-03T00:00:00.000Z', acceptedBy: 'u-hist-founder',
+      createdAt: '2026-02-02T00:00:00.000Z', createdBy: 'platform-provisioning' },
+    // An ORDINARY staff invite for the same club — must never confer ownership.
+    { token: 'tok-ord', role: 'coach', staffLevel: 'assistant', email: 'coach@oldfield.test',
+      name: 'Other Coach', teamId: HIST, status: 'accepted',
+      acceptedAt: '2026-02-04T00:00:00.000Z', acceptedBy: 'u-hist-coach',
+      createdAt: '2026-02-03T00:00:00.000Z', createdBy: 'u-hist-founder' },
+  ]));
+  // seed() cleared the store, so any earlier session token is gone with it.
+  // Hand back a live platform-admin session so callers cannot reuse a dead one.
+  return sessionFor('u-simon');
+}
+
+test('Y1. a historical provisioned club with no owner appears as a candidate', async () => {
+  const simon = await seedHistorical();
+  const r = await repairs(simon.token);
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  assert.equal(r.body.repairs.length, 1, 'exactly one candidate');
+  const c = r.body.repairs[0];
+  assert.equal(c.teamId, HIST);
+  assert.equal(c.clubName, 'Oldfield RFC');
+  assert.equal(c.founderUserId, 'u-hist-founder', 'identified from acceptedBy, not by guessing');
+  assert.equal(c.founderEmail, 'founder@oldfield.test');
+  assert.equal(c.currentlyOwner, false);
+  assert.equal(c.reason, 'provisioned_founder_missing_ownership');
+  // The projection carries no credentials and no unrelated personal data.
+  const raw = JSON.stringify(r.body);
+  for (const leak of ['passwordHash', 'passwordSalt', 'ce_session', 'token', 'stripe', 'playerGroupId']) {
+    assert.equal(raw.toLowerCase().includes(leak.toLowerCase()), false, `must not expose ${leak}`);
+  }
+});
+
+test('Y2+Y3+Y4+Y5+Y6. repairing sets exactly two fields and nothing else moves', async () => {
+  const simon = await seedHistorical();
+  const founderBefore = { ...memberFor(HIST, 'u-hist-founder') };
+  const othersBefore = JSON.stringify(members().filter(m => m.userId !== 'u-hist-founder'));
+  const teamsBefore = JSON.stringify(teams());
+  const invitesBefore = kv.get('ce:invites');
+  const usersBefore = JSON.stringify(users());
+
+  const r = await repair(HIST, simon.token);
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  assert.equal(r.body.unchanged, false);
+  assert.equal(r.body.founderUserId, 'u-hist-founder');
+
+  // Y2: the founder is now owner with Full Access.
+  const after = memberFor(HIST, 'u-hist-founder');
+  assert.equal(after.isOwner, true);
+  assert.equal(after.accessProfile, 'full');
+  assert.equal(isClubOwner(after), true);
+
+  // Y3: every OTHER field on that membership is byte-identical.
+  const ignored = new Set(['isOwner', 'accessProfile', 'accessChangedBy', 'accessChangedAt']);
+  for (const k of Object.keys(founderBefore)) {
+    if (ignored.has(k)) continue;
+    assert.deepEqual(after[k], founderBefore[k], `${k} must be untouched`);
+  }
+  assert.equal(after.role, 'coach');
+  assert.equal(after.joinedAt, '2026-02-03T00:00:00.000Z');
+
+  // Y4/Y5/Y6: club plan, other memberships, invitations, users — all identical.
+  assert.equal(JSON.stringify(teams()), teamsBefore, 'no club record changed');
+  assert.equal(JSON.stringify(members().filter(m => m.userId !== 'u-hist-founder')), othersBefore,
+    'no other membership changed');
+  assert.equal(kv.get('ce:invites'), invitesBefore, 'no invitation changed');
+  assert.equal(JSON.stringify(users()), usersBefore, 'no user record changed');
+});
+
+test('Y7+Y8. the repair is audited once, and repeating it is a no-op', async () => {
+  const simon = await seedHistorical();
+  await repair(HIST, simon.token);
+  const entries = audits().filter(e => e.event === 'founder_ownership_repaired');
+  assert.equal(entries.length, 1, 'exactly one audit entry');
+  assert.equal(entries[0].teamId_club, HIST);
+  assert.equal(entries[0].clubName, 'Oldfield RFC');
+  assert.equal(entries[0].repairedUserId, 'u-hist-founder');
+  assert.equal(entries[0].changedBy, 'u-simon');
+  assert.match(String(entries[0].at), /^\d{4}-\d{2}-\d{2}T/);
+  const raw = JSON.stringify(entries);
+  for (const secret of ['passwordHash', 'ce_session', simon.token, 'tok-hist']) {
+    assert.equal(raw.includes(secret), false, 'audit carries no credential or token');
+  }
+
+  // Y8: a second call changes nothing and adds no second audit entry.
+  const snapshot = JSON.stringify(members());
+  const again = await repair(HIST, simon.token);
+  assert.equal(again.code, 200, JSON.stringify(again.body));
+  assert.equal(again.body.unchanged, true, 'reported as a no-op');
+  assert.equal(JSON.stringify(members()), snapshot, 'membership byte-identical');
+  assert.equal(audits().filter(e => e.event === 'founder_ownership_repaired').length, 1);
+  // …and it is no longer offered.
+  assert.equal((await repairs(simon.token)).body.repairs.length, 0);
+});
+
+test('Y9+Y10+Y11. owned clubs, self-created clubs and ordinary invites are never candidates', async () => {
+  const simon = await seedHistorical();
+
+  // Y10: Kestrel is self-created (signupSource) and has an owner — never listed.
+  // Y11: Oldfield's ORDINARY assistant-coach invite must not make him a candidate.
+  const listed = (await repairs(simon.token)).body.repairs;
+  assert.deepEqual(listed.map(c => c.teamId), [HIST], 'only the provisioned club');
+  assert.equal(listed[0].founderUserId, 'u-hist-founder', 'not the ordinary invitee');
+  assert.notEqual(listed[0].founderUserId, 'u-hist-coach');
+
+  // Attempting the self-created club by hand is refused on its evidence.
+  const selfMade = await repair(CLUB, simon.token);
+  assert.equal(selfMade.code, 400, JSON.stringify(selfMade.body));
+  assert.equal(selfMade.body.code, 'not_provisioned');
+
+  // Y9: once Oldfield HAS an owner, it stops being a candidate and is refused.
+  const ms = members();
+  ms.find(m => m.id === 'm-hist-coach').isOwner = true;
+  kv.set('app:identity:team_members', JSON.stringify(ms));
+  assert.deepEqual((await repairs(simon.token)).body.repairs, []);
+  const owned = await repair(HIST, simon.token);
+  assert.equal(owned.code, 400, JSON.stringify(owned.body));
+  assert.equal(owned.body.code, 'owner_exists');
+  // The existing owner keeps ownership; no second owner was made.
+  assert.equal(memberFor(HIST, 'u-hist-coach').isOwner, true);
+  assert.notEqual(memberFor(HIST, 'u-hist-founder').isOwner, true);
+});
+
+test('Y12+Y13. ambiguous and missing founder evidence are refused, not approximated', async () => {
+  // Y12: two accepted provisioning invites naming DIFFERENT claimants.
+  let simon = await seedHistorical();
+  const list = invites();
+  list.push({ ...list[0], token: 'tok-hist-2', acceptedBy: 'u-hist-coach' });
+  kv.set('ce:invites', JSON.stringify(list));
+  assert.deepEqual((await repairs(simon.token)).body.repairs, [], 'not offered when ambiguous');
+  const ambiguous = await repair(HIST, simon.token);
+  assert.equal(ambiguous.code, 400, JSON.stringify(ambiguous.body));
+  assert.equal(ambiguous.body.code, 'ambiguous');
+  assert.notEqual(memberFor(HIST, 'u-hist-founder').isOwner, true, 'nobody was made owner');
+
+  // Y13a: never claimed — a pending invitation names no claimant.
+  simon = await seedHistorical();
+  const pending = invites();
+  pending[0] = { ...pending[0], status: 'pending', acceptedBy: undefined, acceptedAt: null };
+  kv.set('ce:invites', JSON.stringify(pending));
+  assert.deepEqual((await repairs(simon.token)).body.repairs, []);
+  const never = await repair(HIST, simon.token);
+  assert.equal(never.code, 400);
+  assert.equal(never.body.code, 'never_claimed');
+
+  // Y13b: the invitation aged out of the shared list entirely — no evidence.
+  simon = await seedHistorical();
+  kv.set('ce:invites', JSON.stringify(invites().filter(i => i.token !== 'tok-hist')));
+  assert.deepEqual((await repairs(simon.token)).body.repairs, []);
+  const gone = await repair(HIST, simon.token);
+  assert.equal(gone.code, 400);
+  assert.equal(gone.body.code, 'not_provisioned');
+  assert.notEqual(memberFor(HIST, 'u-hist-founder').isOwner, true);
+});
+
+test('Y14. a founder who is no longer active — or no longer staff — is refused', async () => {
+  // Gone from the club entirely.
+  let simon = await seedHistorical({ founderActive: false });
+  assert.deepEqual((await repairs(simon.token)).body.repairs, []);
+  const absent = await repair(HIST, simon.token);
+  assert.equal(absent.code, 400, JSON.stringify(absent.body));
+  assert.equal(absent.body.code, 'founder_not_active');
+
+  // Present but archived.
+  simon = await seedHistorical();
+  const ms = members();
+  ms.find(m => m.id === 'm-hist-founder').status = 'archived';
+  kv.set('app:identity:team_members', JSON.stringify(ms));
+  assert.deepEqual((await repairs(simon.token)).body.repairs, []);
+  assert.equal((await repair(HIST, simon.token)).body.code, 'founder_not_active');
+
+  // Present and active, but now only a player — ownership is a staff fact.
+  simon = await seedHistorical({ founderRole: 'player' });
+  assert.deepEqual((await repairs(simon.token)).body.repairs, []);
+  const asPlayer = await repair(HIST, simon.token);
+  assert.equal(asPlayer.code, 400);
+  assert.equal(asPlayer.body.code, 'founder_not_staff');
+  assert.notEqual(memberFor(HIST, 'u-hist-founder').isOwner, true);
+});
+
+test('Y15-Y19. only a platform admin may list or run a repair', async () => {
+  await seedHistorical();
+  const before = JSON.stringify(members());
+  for (const [label, token] of [
+    ['club owner', (await sessionFor('u-owner')).token],
+    ['club admin', (await sessionFor('u-admin', CLUB, 'admin')).token],
+    ['player',     (await sessionFor('u-player', CLUB, 'player')).token],
+    ['anonymous',  ''],
+  ]) {
+    const l = await repairs(token);
+    assert.equal(l.code, 403, `${label} listing: ${JSON.stringify(l.body)}`);
+    const r = await repair(HIST, token);
+    assert.equal(r.code, 403, `${label} repair: ${JSON.stringify(r.body)}`);
+    assert.match(String(r.body.error), /Platform administrators only/i);
+  }
+  assert.equal(JSON.stringify(members()), before, 'no refusal changed anything');
+  // Y19: the platform admin is allowed.
+  const simon = await sessionFor('u-simon');
+  assert.equal((await repair(HIST, simon.token)).code, 200);
+});
+
+test('Y20+Y21+Y22. forged role, forged user and forged club cannot redirect ownership', async () => {
+  await seedHistorical();
+  const owner = await sessionFor('u-owner');
+  // Y20: forged authority in body and query is ignored.
+  const forgedRole = await identity({ action: 'repair_founder_ownership', teamId: HIST,
+    platformRole: 'platform_admin', isPlatformAdmin: true,
+    user: { platformRole: 'platform_admin' } }, owner.token);
+  assert.equal(forgedRole.code, 403, JSON.stringify(forgedRole.body));
+  const viaQuery = await call(identityHandler, { method: 'GET',
+    query: { action: 'platform_founder_repairs', platformRole: 'platform_admin' }, token: owner.token });
+  assert.equal(viaQuery.code, 403);
+
+  // Y21: a PLATFORM ADMIN naming somebody else cannot redirect the grant — the
+  // founder is re-derived from the invitation, so the body's ids are inert.
+  const simon = await sessionFor('u-simon');
+  const r = await repair(HIST, simon.token, {
+    userId: 'u-hist-coach', founderUserId: 'u-owner', targetUserId: 'u-player' });
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  assert.equal(r.body.founderUserId, 'u-hist-founder', 'the invitation decided, not the body');
+  assert.equal(memberFor(HIST, 'u-hist-founder').isOwner, true);
+  assert.notEqual(memberFor(HIST, 'u-hist-coach').isOwner, true, 'the named coach gained nothing');
+  assert.equal(memberFor(CLUB, 'u-owner').isOwner, true, "Kestrel's own owner is unchanged");
+  assert.notEqual(memberFor(CLUB, 'u-player')?.isOwner, true);
+
+  // Y22: exactly one owner in the repaired club.
+  const owners = members().filter(m => m.teamId === HIST && m.status === 'active' && isClubOwner(m));
+  assert.equal(owners.length, 1, 'never a second owner');
+  assert.equal(owners[0].userId, 'u-hist-founder');
+});
+
+test('Y23. a repair grants the platform admin no access to the club', async () => {
+  const simon = await seedHistorical();
+  await repair(HIST, simon.token);
+  // Simon still has no membership anywhere, and still cannot read the club.
+  assert.deepEqual(members().filter(m => m.userId === 'u-simon'), []);
+  const simonAtHist = await store.createSession({ userId: 'u-simon', teamId: HIST, role: 'coach' });
+  const structure = await publish('GET', { resource: 'structure' }, null, simonAtHist.token);
+  assert.ok(structure.code === 401 || structure.code === 403,
+    `repairing is not club access — got HTTP ${structure.code}`);
+});
+
+test('Y24+Y25+Y26. provisioning, platform-admin management and Change Plan still work', async () => {
+  const simon = await seedHistorical();
+
+  // Y24: provisioning a new club, on a chosen plan, is unaffected — and the
+  // club it creates is immediately correct, so it is never a repair candidate.
+  const prov = await identity({ action: 'provision_club', clubName: 'Newer RFC',
+    adminEmail: 'first@newer.test', plan: 'pro' }, simon.token);
+  assert.equal(prov.code, 201, JSON.stringify(prov.body));
+  assert.equal(prov.body.team.plan, 'pro');
+  const claimed = await identity({ action: 'claim_invite',
+    token: decodeURIComponent(String(prov.body.inviteUrl).split('inv=')[1]),
+    email: 'first@newer.test', name: 'New Founder', password: 'longEnough123' });
+  assert.equal(claimed.code, 201, JSON.stringify(claimed.body));
+  const newFounder = members().find(m => m.teamId === prov.body.team.id);
+  assert.equal(newFounder.isOwner, true, 'the claim still grants ownership itself');
+  assert.equal(
+    (await repairs(simon.token)).body.repairs.some(c => c.teamId === prov.body.team.id), false,
+    'a correctly-owned new club is never a candidate');
+
+  // Y25: platform-admin management intact, incl. last-admin protection.
+  assert.equal((await identityGet({ action: 'platform_admins' }, simon.token)).code, 200);
+  const lastAdmin = await revoke('u-simon', simon.token);
+  assert.equal(lastAdmin.code, 400);
+  assert.match(String(lastAdmin.body.error), /last platform administrator/i);
+
+  // Y26: Change Plan intact, and a repair does not disturb a plan.
+  const planBefore = teamById(HIST).plan;
+  await repair(HIST, simon.token);
+  assert.equal(teamById(HIST).plan, planBefore, 'repair leaves the plan alone');
+  const changed = await changePlan(HIST, 'pro', simon.token);
+  assert.equal(changed.code, 200, JSON.stringify(changed.body));
+  assert.equal(teamById(HIST).plan, 'pro');
+  assert.equal(memberFor(HIST, 'u-hist-founder').isOwner, true, 'and ownership survives a plan change');
+});
+
+test('Y27. the repair card is platform-gated and names only a club', async () => {
+  const html = await (await import('node:fs/promises')).readFile(
+    new URL('../index.html', import.meta.url), 'utf8');
+  const card = html.slice(html.indexOf('function renderFounderRepairsCard'),
+                          html.indexOf('async function platformRepairFounder'));
+  assert.match(card, /_myPlatformRole !== 'platform_admin'/, 'hidden from everyone else');
+  assert.match(card, /No historical founder ownership repairs are currently required/,
+    'honest empty state');
+  const fnStart = html.indexOf('async function platformRepairFounder');
+  const fn = html.slice(fnStart, html.indexOf('\n    // ──', fnStart));
+  assert.match(fn, /ceConfirm\(/, 'explicit confirmation');
+  assert.match(fn, /club owner of \$\{clubName\}/, 'names the club');
+  assert.match(fn, /Full Access/, 'states what is granted');
+  // The request names a club and nothing else — no user id is sent.
+  assert.match(fn, /action: 'repair_founder_ownership', teamId/);
+  assert.equal(/founderUserId:|userId:/.test(fn), false, 'the client never names the person');
+  // No language implying plan, billing or entitlement changes.
+  for (const forbidden of ['plan', 'billing', 'Performance', 'entitle', 'Upgrade']) {
+    assert.equal(card.includes(forbidden) || fn.includes(forbidden), false,
+      `must not mention ${forbidden}`);
+  }
 });
