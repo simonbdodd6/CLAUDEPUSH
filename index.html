@@ -29940,6 +29940,13 @@
       // messages, typing and conversations). Gate the timer itself, so no render
       // path can resurrect it.
       if (typeof _serverAuthState !== 'undefined' && _serverAuthState === 'anon') return;
+      // Never poll a HIDDEN tab. Same reasoning as the sign-out gate above: the
+      // visibilitychange handler stops the timer when the tab is hidden, but a
+      // render() while hidden (build-drift check, availability tick, push) would
+      // walk the `!_chatPollTimer && state.selectedChatId` restart path and
+      // resurrect it. Gating the timer itself is what makes "hidden ⇒ not
+      // polling" hold. The handler restarts polling on return.
+      if (document.hidden) return;
       // Seed the poll cursor so the first tick only fetches NEW messages.
       // renderCoachMessages / renderPlayerMessages already called chatFetchMessages(convId, 0)
       // to load the full history; without this the first 2500ms tick re-fetches everything,
@@ -37428,8 +37435,22 @@
         refreshLiveAvailability();
       }
     }
+    // The 2.5s thread poll (chatStartPolling) had no visibility gate of its own,
+    // unlike bgPollUnread above, whose chatBackgroundPollAllowed() checks
+    // document.hidden. A tab left open on Messages therefore kept issuing its
+    // messages+typing request PAIR forever while hidden — throttled by the browser
+    // to roughly one tick per 100s, but never stopped. In production that idle
+    // background traffic was the largest single source of /api/chat invocations
+    // (222/hour against 14/hour for /api/cron), arriving in the tell-tale pairs
+    // even with nobody using the app. Stop on hide; restart on return through the
+    // SAME guarded call the render paths use, so the sign-out gate, section
+    // changes and the no-duplicate-timer rule all keep behaving as before.
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) { bgPollUnread(); refreshAvailabilityOnReturn(); }
+      if (document.hidden) { chatStopPolling(); return; }
+      bgPollUnread(); refreshAvailabilityOnReturn();
+      const inMessages = (state.activeView === 'coach' && state.activeCoachSection === 'messages') ||
+                         (state.activeView === 'player' && state.activePlayerSection === 'messages');
+      if (inMessages && !_chatPollTimer && state.selectedChatId) chatStartPolling(state.selectedChatId);
     });
     window.addEventListener('focus', refreshAvailabilityOnReturn);
 
