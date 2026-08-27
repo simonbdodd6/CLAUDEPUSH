@@ -1,4 +1,6 @@
 import { kvGet, kvSet, kvSetNX } from './_kv.js';
+import { findInviteByToken, persistInvite, appendClubInvite, loadAllInvites,
+         listClubInvites } from './_inviteStore.js';
 import {
   permissionsFor, canonicalRole, accessProfileOf, isClubOwner,
   accessProfileRank, ACCESS_PROFILES, PERM,
@@ -16,7 +18,8 @@ const PLAYER_PROFILES_KEY = key('identity:player_profiles');
 const SESSIONS_KEY = key('identity:sessions');
 const PASSWORD_RESETS_KEY = key('identity:password_resets');
 const EMAIL_VERIFICATIONS_KEY = key('identity:email_verifications');
-const INVITES_KEY = 'ce:invites';
+// Invitations live one-list-per-club in api/_inviteStore.js. The old shared
+// list is still read there for links minted before the split.
 
 export const SESSION_COOKIE = 'ce_session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
@@ -517,12 +520,13 @@ export async function createJoinRequest(input = {}) {
   return { user: publicUser(user), team, teamMember: member };
 }
 
+/**
+ * Every invitation the platform holds. Genuinely platform-wide callers only —
+ * the founder-evidence lookup and the migration. A club-facing read must go
+ * through listClubInvites(teamId) so it can only ever see its own.
+ */
 async function loadInvites() {
-  return (await kvGet(INVITES_KEY)) || [];
-}
-
-async function saveInvites(invites) {
-  await kvSet(INVITES_KEY, Array.isArray(invites) ? invites : []);
+  return loadAllInvites();
 }
 
 async function ensureLegacyCompatibilityTeamRecords(teamId = DEFAULT_TEAM.id) {
@@ -1102,8 +1106,10 @@ export async function loginUser(input = {}) {
 export async function claimInvite(input = {}) {
   const token = String(input.token || '').trim();
   if (!token) throw new Error('Invite token is required');
-  const invites = await loadInvites();
-  const invite = invites.find(item => item.token === token);
+  // A claim carries only a token, so the store resolves which club owns it —
+  // the invitation's OWN teamId, never anything the claimer supplied.
+  const located = await findInviteByToken(token);
+  const invite = located?.invite || null;
   if (!invite) {
     const error = new Error('Invite not found or expired');
     error.status = 404;
@@ -1127,7 +1133,7 @@ export async function claimInvite(input = {}) {
   }
   if (invite.expiresAt && new Date(invite.expiresAt).getTime() <= Date.now()) {
     invite.status = 'expired';
-    await saveInvites(invites);
+    await persistInvite(located);
     const error = new Error('This invite link has expired');
     error.status = 410;
     throw error;
@@ -1261,7 +1267,7 @@ export async function claimInvite(input = {}) {
     invite.email = email;
     invite.name = name || invite.name;
   }
-  await saveInvites(invites);
+  await persistInvite(located);
   const session = await createSession({ userId: user.id, teamId: member.teamId, role: member.role });
   return { user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, invite, session };
 }
@@ -2394,7 +2400,6 @@ export async function provisionClub({ clubName, adminEmail, adminName = '', firs
   // club-wide scope: the claim stamps it via the existing scoped-invite
   // machinery, so the first administrator is unambiguously club-wide from
   // the moment they join — no reliance on legacy scope derivation.
-  const invites = await loadInvites();
   const invite = {
     token:      randomBytes(24).toString('base64url'),
     name:       String(adminName || '').trim().slice(0, 80),
@@ -2417,8 +2422,7 @@ export async function provisionClub({ clubName, adminEmail, adminName = '', firs
     founderInvite: true,
     acceptedAt: null,
   };
-  invites.push(invite);
-  await saveInvites(invites);
+  await appendClubInvite(teamId, invite);
   return { team, invite };
 }
 

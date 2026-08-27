@@ -55,6 +55,8 @@ import {
   verifyEmailToken,
 } from './_identityStore.js';
 import { appBaseUrl, emailVerificationEmail, passwordResetEmail, sendTransactionalEmail } from './_email.js';
+import { listClubInvites, findInviteByToken, persistInvite,
+         migrateLegacyInvites } from './_inviteStore.js';
 import { setCors, readSecret } from './_http.js';
 import { randomBytes } from 'node:crypto';
 import { kvConfigured, kvGet, kvSet } from './_kv.js';
@@ -212,12 +214,14 @@ function sendError(res, error, fallbackStatus = 400) {
 // RC4.9B — after a permanent deletion, any still-unclaimed invitation for that
 // person must stop working, or the deleted member could simply re-join through
 // an old link. Claimed invites keep their record (audit history) untouched.
-const IDENTITY_INVITES_KEY = 'ce:invites';
 async function revokeInvitesForDeletedMember(member = {}, displayName = '', memberEmail = '') {
-  const invites = (await kvGet(IDENTITY_INVITES_KEY)) || [];
+  // Only ever this member's OWN club: the store scopes the read, so a deletion
+  // in one club can no longer walk another club's pending invitations.
+  const invites = await listClubInvites(member.teamId);
   if (!Array.isArray(invites) || !invites.length) return 0;
   const name = String(displayName || '').trim().toLowerCase();
   const email = String(memberEmail || '').trim().toLowerCase();
+  const changed = [];
   let revoked = 0;
   invites.forEach(invite => {
     if (!invite || invite.teamId !== member.teamId) return;
@@ -228,9 +232,13 @@ async function revokeInvitesForDeletedMember(member = {}, displayName = '', memb
     invite.status = 'revoked';
     invite.revokedAt = new Date().toISOString();
     invite.revokedReason = 'member_deleted';
+    changed.push(invite);
     revoked++;
   });
-  if (revoked) await kvSet(IDENTITY_INVITES_KEY, invites);
+  for (const invite of changed) {
+    await persistInvite({ invite, teamId: member.teamId,
+      source: (await findInviteByToken(invite.token))?.source });
+  }
   return revoked;
 }
 
@@ -450,6 +458,26 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, unchanged: result.unchanged,
           previousPlan: result.previousPlan, club: result.club,
           clubs: await listPlatformClubs() });
+      }
+      // Copy pre-namespace invitations into the club each one names. Platform
+      // administrators only, explicitly invoked, and safe to run repeatedly —
+      // the legacy list is never modified, so this can be rehearsed with
+      // dryRun before anything is written.
+      if (action === 'migrate_invites') {
+        const actor = await resolveSessionFromRequest(req).catch(() => null);
+        if (!isPlatformAdmin(actor?.user)) {
+          return res.status(403).json({ ok: false, error: 'Platform administrators only' });
+        }
+        await enforceRateLimit(action, requestIp(req), { limit: 10, windowMs: 60 * 60 * 1000 });
+        const report = await migrateLegacyInvites({ dryRun: req.body?.dryRun === true });
+        if (!report.dryRun && report.migrated) {
+          await auditLog('invites_migrated', {
+            migrated: report.migrated, alreadyMigrated: report.alreadyMigrated,
+            skipped: report.skipped.length, clubs: Object.keys(report.clubs).length,
+            changedBy: actor.user.id, ip: requestIp(req),
+          });
+        }
+        return res.status(200).json({ ok: true, report });
       }
       // Repair a historical provisioned founder's ownership. The body names a
       // CLUB and nothing else: the founder is re-derived server-side from the

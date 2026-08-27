@@ -58,6 +58,22 @@ const { default: chatHandler } = await import('../api/chat.js');
 const { default: inviteHandler } = await import('../api/invite.js');
 const { default: pushHandler } = await import('../api/push.js');
 const { operationalGroupsFor, resolveEligibility, effectiveAccessScope } = await import('../api/_accessScope.js');
+
+/**
+ * Every invitation, wherever it lives. Invitations are stored one list per
+ * club now (api/_inviteStore.js); the pre-namespace global list is still read
+ * so records created before the split are visible too.
+ */
+function allStoredInvites(map) {
+  const out = [];
+  for (const [k, v] of map) {
+    if (!/^app:invites:/.test(k)) continue;
+    try { out.push(...(JSON.parse(v) || [])); } catch {}
+  }
+  try { out.push(...(JSON.parse(map.get('ce:invites') || '[]') || [])); } catch {}
+  return out;
+}
+
 const { createSession, claimInvite, SESSION_COOKIE, DEFAULT_TEAM } = idStore;
 
 const CLUB = DEFAULT_TEAM.id;
@@ -361,9 +377,12 @@ test('INVITES: a scoped head coach cannot mint a combination beyond their own au
 });
 
 function seedInvite(inv) {
-  const invites = JSON.parse(kv.get('ce:invites') || '[]');
-  invites.push({ status: 'pending', createdAt: new Date().toISOString(), teamId: CLUB, ...inv });
-  kv.set('ce:invites', JSON.stringify(invites));
+  // Seeded as a pre-namespace record: the legacy list is still read, so this
+  // is exactly the shape of an invitation created before invitations were
+  // split per club.
+  const legacy = JSON.parse(kv.get('ce:invites') || '[]');
+  legacy.push({ status: 'pending', createdAt: new Date().toISOString(), teamId: CLUB, ...inv });
+  kv.set('ce:invites', JSON.stringify(legacy));
 }
 const memberOf = uid => JSON.parse(kv.get('app:identity:team_members'))
   .filter(m => m.teamId === CLUB && m.userId === uid);
@@ -493,7 +512,7 @@ test('DRY RUN: create U18 + Women\'s with four teams, invite and upgrade — eve
   assert.equal((await mk('New Wom Player', 'player', { playerGroupId: womid })).code, 201);
   assert.equal((await mk('New U18 Coach', 'coach', { scope: { groupId: u18id } })).code, 201);
   assert.equal((await mk('New Wom Coach', 'coach', { scope: { groupId: womid } })).code, 201);
-  const pending = JSON.parse(kv.get('ce:invites')).filter(i => i.status === 'pending');
+  const pending = allStoredInvites(kv).filter(i => i.status === 'pending');
   assert.equal(pending.length, 4);
   const tokenOf = name => pending.find(i => i.name === name).token;
   const claims = [

@@ -27,6 +27,14 @@ globalThis.fetch = async (_url, options = {}) => {
   const [command, ...args] = parsed;
   let result = null;
   if (command === 'GET') result = kv.has(args[0]) ? kv.get(args[0]) : null;
+  // SCAN, as the real KV client supports it (api/_kv.js kvScanKeys):
+  // MATCH-filtered so key-space sweeps behave as they do in production.
+  if (command === 'SCAN') {
+    const at = args.indexOf('MATCH');
+    const pat = at >= 0 ? String(args[at + 1]) : '*';
+    const re = new RegExp('^' + pat.split('*').map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
+    result = ['0', [...kv.keys()].filter(k => re.test(k))];
+  }
   if (command === 'SET') {
     kv.set(args[0], args[1]);
     result = 'OK';
@@ -57,6 +65,22 @@ const { default: chatHandler } = await import('../api/chat.js');
 const { default: subscribeHandler } = await import('../api/subscribe.js');
 const { default: availabilityHandler } = await import('../api/availability.js');
 const { dmConvId } = await import('../src/chat-state.js');
+
+
+/**
+ * Every invitation, wherever it lives. Invitations are stored one list per
+ * club now (api/_inviteStore.js); the pre-namespace global list is still read
+ * so records created before the split are visible too.
+ */
+function allStoredInvites(map) {
+  const out = [];
+  for (const [k, v] of map) {
+    if (!/^app:invites:/.test(k)) continue;
+    try { out.push(...(JSON.parse(v) || [])); } catch {}
+  }
+  try { out.push(...(JSON.parse(map.get('ce:invites') || '[]') || [])); } catch {}
+  return out;
+}
 
 function apiRes() {
   return {
@@ -183,7 +207,7 @@ test('coach invite to claimed player creates one permanent userId across auth ch
     profile.email === 'registered.player@example.com'
   ));
 
-  const acceptedInvites = JSON.parse(kv.get('ce:invites'));
+  const acceptedInvites = allStoredInvites(kv);
   assert.equal(acceptedInvites[0].status, 'accepted');
   assert.equal(acceptedInvites[0].acceptedBy, playerUserId);
   assert.equal(acceptedInvites[0].name, 'Test Registered Player');

@@ -142,7 +142,7 @@ test('with a single group the invite needs no explicit choice', async () => {
   const cookie = await ownerCookie();
   const r = await invite(cookie, { name: 'New Senior', role: 'player' });
   created(r);
-  const stored = JSON.parse(kv.get('ce:invites'))[0];
+  const stored = JSON.parse(kv.get('app:invites:boitsfort-test'))[0];
   assert.equal(stored.playerGroupId, SEN, 'inferred, because there is only one answer');
 });
 
@@ -155,7 +155,7 @@ test('with two groups the invite MUST name one — no silent default', async () 
   const missing = await invite(cookie, { name: 'Ambiguous', role: 'player' });
   assert.equal(missing.code, 400);
   assert.match(missing.body.error, /Choose which group/);
-  assert.equal(JSON.parse(kv.get('ce:invites')).length, 0, 'nothing was created');
+  assert.equal(JSON.parse(kv.get('app:invites:boitsfort-test') || '[]').length, 0, 'nothing was created');
 });
 
 test('a U18 invite stores U18; a Seniors invite stores Seniors', async () => {
@@ -166,7 +166,7 @@ test('a U18 invite stores U18; a Seniors invite stores Seniors', async () => {
   created(await invite(cookie, { name: 'Young', role: 'player', playerGroupId: u18Id }));
   created(await invite(cookie, { name: 'Older', role: 'player', playerGroupId: SEN }));
 
-  const stored = JSON.parse(kv.get('ce:invites'));
+  const stored = JSON.parse(kv.get('app:invites:boitsfort-test'));
   assert.equal(stored.find(i => i.name === 'Young').playerGroupId, u18Id);
   assert.equal(stored.find(i => i.name === 'Older').playerGroupId, SEN);
 });
@@ -193,7 +193,7 @@ test('an unknown, archived, foreign or team id is refused', async () => {
   assert.equal(archived.code, 400);
   assert.match(archived.body.error, /archived/);
 
-  assert.equal(JSON.parse(kv.get('ce:invites')).length, 0, 'no invite survived a refusal');
+  assert.equal(JSON.parse(kv.get('app:invites:boitsfort-test') || '[]').length, 0, 'no invite survived a refusal');
 });
 
 // ── CLAIM ──────────────────────────────────────────────────────────────────
@@ -243,7 +243,7 @@ test('a staff invite creates no player group and no playing eligibility', async 
   const r = await invite(cookie, { name: 'U18 Coach', role: 'coach', staffLevel: 'head',
     scope: { level: 'group', groupId: u18Id } });
   created(r);
-  const stored = JSON.parse(kv.get('ce:invites')).find(i => i.name === 'U18 Coach');
+  const stored = JSON.parse(kv.get('app:invites:boitsfort-test')).find(i => i.name === 'U18 Coach');
   assert.equal(stored.playerGroupId, undefined, 'staff invites never carry a player group');
   assert.equal(stored.scope.groupId, u18Id, 'staff scope is the separate concept');
 });
@@ -275,7 +275,7 @@ test('resend preserves the group; revoke changes no membership', async () => {
   // Resend rewrites nothing about the invite's target group.
   const r = res();
   await inviteHandler({ method: 'PATCH', headers: { cookie }, body: { token, action: 'resend' }, query: {} }, r);
-  assert.equal(JSON.parse(kv.get('ce:invites')).find(i => i.token === token).playerGroupId, u18Id);
+  assert.equal(JSON.parse(kv.get('app:invites:boitsfort-test')).find(i => i.token === token).playerGroupId, u18Id);
 
   const d = res();
   await inviteHandler({ method: 'DELETE', headers: { cookie }, body: { token }, query: {} }, d);

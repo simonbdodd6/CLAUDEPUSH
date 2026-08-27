@@ -46,6 +46,14 @@ globalThis.fetch = async (url, options = {}) => {
   const [command, ...args] = parsed;
   let result = null;
   if (command === 'GET')  result = kv.has(args[0]) ? kv.get(args[0]) : null;
+  // SCAN, as the real KV client supports it (api/_kv.js kvScanKeys):
+  // MATCH-filtered so key-space sweeps behave as they do in production.
+  if (command === 'SCAN') {
+    const at = args.indexOf('MATCH');
+    const pat = at >= 0 ? String(args[at + 1]) : '*';
+    const re = new RegExp('^' + pat.split('*').map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
+    result = ['0', [...kv.keys()].filter(k => re.test(k))];
+  }
   if (command === 'SET') { kv.set(args[0], args[1]); result = 'OK'; }
   if (command === 'DEL') { kv.delete(args[0]); result = 1; }
   if (command === 'INCR') { const n = Number(kv.get(args[0]) || 0) + 1; kv.set(args[0], String(n)); result = n; }

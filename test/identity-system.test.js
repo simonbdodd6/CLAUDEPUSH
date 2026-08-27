@@ -20,6 +20,14 @@ globalThis.fetch = async (url, options = {}) => {
   const [command, ...args] = parsed;
   let result = null;
   if (command === 'GET') result = store.has(args[0]) ? store.get(args[0]) : null;
+  // SCAN, as the real KV client supports it (api/_kv.js kvScanKeys):
+  // MATCH-filtered so key-space sweeps behave as they do in production.
+  if (command === 'SCAN') {
+    const at = args.indexOf('MATCH');
+    const pat = at >= 0 ? String(args[at + 1]) : '*';
+    const re = new RegExp('^' + pat.split('*').map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
+    result = ['0', [...store.keys()].filter(k => re.test(k))];
+  }
   if (command === 'SET') { store.set(args[0], args[1]); result = 'OK'; }
   return { ok: true, json: async () => ({ result }) };
 };
@@ -46,6 +54,22 @@ const {
 const { default: identityHandler } = await import('../api/identity.js');
 const { default: inviteHandler } = await import('../api/invite.js');
 const { dmConvId, filterCoachDmPlayers } = await import('../src/chat-state.js');
+
+
+/**
+ * Every invitation, wherever it lives. Invitations are stored one list per
+ * club now (api/_inviteStore.js); the pre-namespace global list is still read
+ * so records created before the split are visible too.
+ */
+function allStoredInvites(map) {
+  const out = [];
+  for (const [k, v] of map) {
+    if (!/^app:invites:/.test(k)) continue;
+    try { out.push(...(JSON.parse(v) || [])); } catch {}
+  }
+  try { out.push(...(JSON.parse(map.get('ce:invites') || '[]') || [])); } catch {}
+  return out;
+}
 
 function apiReq(method, { query = {}, body = {}, headers = {} } = {}) {
   return { method, query, body, headers };
@@ -241,7 +265,7 @@ test('coach invite claim creates permanent player account profile and login sess
   assert.equal(claimed.playerProfile.userId, claimed.user.id);
   assert.equal(claimed.playerProfile.legacyPlayerId, `inv-${'InviteToken1'.slice(-8)}`);
   assert.equal(typeof claimed.session.token, 'string');
-  const invites = JSON.parse(store.get('ce:invites'));
+  const invites = allStoredInvites(store);
   assert.equal(invites[0].status, 'accepted');
   assert.equal(invites[0].acceptedBy, claimed.user.id);
 });
@@ -272,9 +296,15 @@ test('coach invite email sends secure expiring link when email provider is confi
   const valid = await callApi(inviteHandler, 'GET', { query: { token } });
   assert.equal(valid.statusCode, 200);
 
-  const invites = JSON.parse(store.get('ce:invites'));
-  invites[0].expiresAt = '2020-01-01T00:00:00.000Z';
-  store.set('ce:invites', JSON.stringify(invites));
+  // Expire it where it actually lives — its own club's list.
+  for (const [k, v] of store) {
+    if (!/^app:invites:/.test(k)) continue;
+    const list = JSON.parse(v);
+    const hit = list.find(i => i.token === token);
+    if (!hit) continue;
+    hit.expiresAt = '2020-01-01T00:00:00.000Z';
+    store.set(k, JSON.stringify(list));
+  }
   const expired = await callApi(inviteHandler, 'GET', { query: { token } });
   assert.equal(expired.statusCode, 410);
 });

@@ -13,6 +13,29 @@ export function legacyKey(name) {
   return `${LEGACY_PREFIX}:${name}`;
 }
 
+// ─── INVITATIONS ────────────────────────────────────────────────────────────
+// Invitations were the last store still living in ONE flat, un-prefixed list
+// (`ce:invites`) shared by every club. That list is trimmed to a fixed length
+// on write, so a busy club's new invitations evicted another club's pending
+// ones and a legitimate link stopped resolving — a cross-tenant fault, not a
+// capacity one. The per-club key below gives each tenant its own list and its
+// own cap, exactly as availability and publish are already namespaced.
+export function invitesKey(teamId) {
+  return key(`invites:${teamId}`);
+}
+
+// The pre-namespace global list. Still READ so links created before the split
+// keep working; see api/_inviteStore.js for the precedence rule.
+export function legacyInvitesKey() {
+  return legacyKey('invites');
+}
+
+// Matches every club's invitation list, for the token lookup that arrives
+// without a club and for the platform-wide migration.
+export function invitesKeyPattern() {
+  return key('invites:*');
+}
+
 export function availabilityKey(sessionId) {
   return key(`availability:${sessionId}`);
 }

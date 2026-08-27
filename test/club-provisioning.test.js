@@ -42,6 +42,22 @@ const { default: inviteHandler } = await import('../api/invite.js');
 const store = await import('../api/_identityStore.js');
 const { effectiveAccessScope } = await import('../api/_accessScope.js');
 
+
+/**
+ * Every invitation, wherever it lives. Invitations are stored one list per
+ * club now (api/_inviteStore.js); the pre-namespace global list is still read
+ * so records created before the split are visible too.
+ */
+function allStoredInvites(map) {
+  const out = [];
+  for (const [k, v] of map) {
+    if (!/^app:invites:/.test(k)) continue;
+    try { out.push(...(JSON.parse(v) || [])); } catch {}
+  }
+  try { out.push(...(JSON.parse(map.get('ce:invites') || '[]') || [])); } catch {}
+  return out;
+}
+
 const BOIT = 'boitsfort';
 function seed() {
   kv.clear();
@@ -137,7 +153,7 @@ test('Club A starts empty (no Boitsfort members/fixtures/training/medical) and i
   const clubA = a.body.team.id;
 
   // 11: the invitation is tenant-scoped to Club A.
-  const invite = JSON.parse(kv.get('ce:invites')).find(i => i.teamId === clubA);
+  const invite = allStoredInvites(kv).find(i => i.teamId === clubA);
   assert.ok(invite && invite.role === 'coach' && invite.staffLevel === 'head', 'head-coach invite for Club A');
   assert.equal(invite.email, 'clubadmin@a.test');
 
@@ -171,7 +187,7 @@ test('Club A\'s admin manages Club A only; Boitsfort admins never see Club A', a
   const platform = await sessionFor('u-platform');
   const a = await provision(platform.token, 'Club A', 'clubadmin@a.test');
   const b = await provision(platform.token, 'Club B', 'clubadmin@b.test');
-  const invA = JSON.parse(kv.get('ce:invites')).find(i => i.teamId === a.body.team.id);
+  const invA = allStoredInvites(kv).find(i => i.teamId === a.body.team.id);
   const claimA = await store.claimInvite({ token: invA.token, name: 'Admin A', email: 'clubadmin@a.test', password: 'realPassword12' });
 
   // 13+17: admin A manages Club A — creates a group via the shipped flow.
@@ -200,7 +216,7 @@ test('a Club A player invite claims into Club A only, and Boitsfort is byte-iden
   const platform = await sessionFor('u-platform');
   const a = await provision(platform.token, 'Club A', 'clubadmin@a.test');
   const clubA = a.body.team.id;
-  const invA = JSON.parse(kv.get('ce:invites')).find(i => i.teamId === clubA);
+  const invA = allStoredInvites(kv).find(i => i.teamId === clubA);
   const claimA = await store.claimInvite({ token: invA.token, name: 'Admin A', email: 'clubadmin@a.test', password: 'realPassword12' });
   const g = await publish('POST', { resource: 'structure' }, { op: 'create_group', name: 'U16' }, claimA.session.token);
 

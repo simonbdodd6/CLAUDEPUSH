@@ -17,6 +17,8 @@
 //   → revokes / removes the invite
 
 import { kvGet, kvSet } from './_kv.js';
+import { listClubInvites, appendClubInvite, findInviteByToken, persistInvite,
+         MAX_INVITES_PER_CLUB } from './_inviteStore.js';
 import { key } from './_keys.js';
 import { setCors } from './_http.js';
 import { DEFAULT_TEAM, clubInviteVerificationState, emailVerificationRequiredError } from './_identityStore.js';
@@ -27,7 +29,8 @@ import { loadClubStructure, groupById, teamById } from './_structureStore.js';
 import { effectiveAccessScope, getAccessibleGroups, canManageGroup, canManageTeam } from './_accessScope.js';
 import { randomBytes } from 'node:crypto';
 
-const INVITES_KEY = 'ce:invites';
+// Invitations live in api/_inviteStore.js, one list per club. Nothing in this
+// route reads or writes the old shared list directly any more.
 const APP_URL     = process.env.APP_URL || 'https://www.coacheasier.com';
 const INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 
@@ -205,8 +208,8 @@ export default async function handler(req, res) {
 
     if (token) {
       // Validate a specific token
-      const invites = (await kvGet(INVITES_KEY)) || [];
-      const invite  = invites.find(i => i.token === token);
+      const found = await findInviteByToken(token);
+      const invite = found?.invite || null;
       if (!invite) {
         return res.status(404).json({ valid: false, error: 'Invite not found or expired' });
       }
@@ -241,7 +244,7 @@ export default async function handler(req, res) {
     } catch (error) {
       return sendAuthError(res, error);
     }
-    const invites = (await kvGet(INVITES_KEY)) || [];
+    const invites = await listClubInvites(session.teamId);
     const mine = invites.filter(invite => inviteTeamId(invite) === session.teamId);
     const structure = mine.some(i => i.scope) ? await loadClubStructure(session.teamId) : null;
     const withLabels = [];
@@ -294,7 +297,7 @@ export default async function handler(req, res) {
       } catch (error) { return sendAuthError(res, error); }
       const groupStaffLevel = ['head', 'assistant', 'manager'].includes(String(req.body?.staffLevel || '').toLowerCase())
         ? String(req.body.staffLevel).toLowerCase() : null;
-      const invites = (await kvGet(INVITES_KEY)) || [];
+      const invites = await listClubInvites(session.teamId);
       const scopeFingerprint = JSON.stringify(linkScope ?? null);
       let invite = invites.find(i => inviteTeamId(i) === session.teamId && i.kind === 'group'
         && (i.role || 'player') === groupRole && i.status !== 'revoked'
@@ -322,8 +325,7 @@ export default async function handler(req, res) {
           try { invite.playerGroupId = await resolvePlayerGroupForInvite(session, req.body); }
           catch (error) { return sendAuthError(res, error); }
         }
-        invites.unshift(invite);
-        await kvSet(INVITES_KEY, invites.slice(0, 200));
+        await appendClubInvite(session.teamId, invite);
         await auditLog('invite_group_created', { createdBy: session.user.id, teamId: session.teamId, role: groupRole, scoped: Boolean(linkScope), ip: requestIp(req) });
       }
       return res.status(200).json({ ok: true, token: invite.token, url: inviteUrl(req, invite.token), group: true, role: invite.role });
@@ -381,11 +383,9 @@ export default async function handler(req, res) {
       acceptedAt: null,
     };
 
-    const invites = (await kvGet(INVITES_KEY)) || [];
-    invites.unshift(invite);
-    // Keep last 200 invites
-    const trimmed = invites.slice(0, 200);
-    await kvSet(INVITES_KEY, trimmed);
+    // One list per club, so this club's newest invitations can only ever
+    // displace its OWN oldest — never another club's pending link.
+    await appendClubInvite(session.teamId, invite);
 
     const url = inviteUrl(req, token);
     let emailDelivery = { ok: true, sent: false, skipped: true, reason: email ? 'email_not_requested' : 'missing_recipient' };
@@ -410,7 +410,7 @@ export default async function handler(req, res) {
       }
       invite.emailDelivery = emailDelivery;
       if (emailDelivery.sent) invite.emailSentAt = new Date().toISOString();
-      await kvSet(INVITES_KEY, trimmed);
+      await persistInvite({ invite, teamId: session.teamId });
     }
     console.log(`[invite] Created ${normRole} invite for "${name.trim()}" — ${token}`);
     await auditLog('invite_created', {
@@ -437,17 +437,19 @@ export default async function handler(req, res) {
     const { token, action } = req.body || {};
     if (!token) return res.status(400).json({ error: 'token required' });
 
-    const invites = (await kvGet(INVITES_KEY)) || [];
-    const idx     = invites.findIndex(i => i.token === token);
-    if (idx < 0) return res.status(404).json({ error: 'Invite not found' });
+    // The token names no club, so the record is resolved from the stores and
+    // the SESSION's tenancy is re-checked against the club the record itself
+    // names — the same wall as before, now without a shared list.
+    const found = await findInviteByToken(token);
+    if (!found) return res.status(404).json({ error: 'Invite not found' });
     try {
-      assertSameTenant(session, inviteTeamId(invites[idx]));
+      assertSameTenant(session, inviteTeamId(found.invite));
     } catch (error) {
       return sendAuthError(res, error);
     }
 
     if (action === 'resend') {
-      const invite = invites[idx];
+      const invite = found.invite;
       if (invite.status !== 'pending') return res.status(400).json({ error: 'Only pending invites can be re-sent' });
       if (inviteExpired(invite)) return res.status(410).json({ error: 'Invite has expired — create a new one' });
       if (!invite.email) return res.status(400).json({ error: 'Invite has no email address — copy the link instead' });
@@ -472,17 +474,17 @@ export default async function handler(req, res) {
       }
       invite.emailDelivery = emailDelivery;
       if (emailDelivery.sent) invite.emailSentAt = new Date().toISOString();
-      await kvSet(INVITES_KEY, invites);
+      await persistInvite(found);
       await auditLog('invite_resent', { token: invite.token.slice(-8), email: invite.email, by: session.user.id, ip: requestIp(req) });
       return res.status(200).json({ ok: true, invite, emailDelivery });
     }
 
-    invites[idx].status     = 'accepted';
-    invites[idx].acceptedAt = new Date().toISOString();
-    await kvSet(INVITES_KEY, invites);
+    found.invite.status     = 'accepted';
+    found.invite.acceptedAt = new Date().toISOString();
+    await persistInvite(found);
 
-    console.log(`[invite] Accepted: ${invites[idx].name} (${invites[idx].role})`);
-    return res.status(200).json({ ok: true, invite: invites[idx] });
+    console.log(`[invite] Accepted: ${found.invite.name} (${found.invite.role})`);
+    return res.status(200).json({ ok: true, invite: found.invite });
   }
 
   // ── DELETE: revoke an invite ───────────────────────────────────────────────
@@ -496,22 +498,21 @@ export default async function handler(req, res) {
     const { token } = req.body || {};
     if (!token) return res.status(400).json({ error: 'token required' });
 
-    const invites = (await kvGet(INVITES_KEY)) || [];
-    const idx     = invites.findIndex(i => i.token === token);
-    if (idx < 0) return res.status(404).json({ error: 'Invite not found' });
+    const found = await findInviteByToken(token);
+    if (!found) return res.status(404).json({ error: 'Invite not found' });
     try {
-      assertSameTenant(session, inviteTeamId(invites[idx]));
+      assertSameTenant(session, inviteTeamId(found.invite));
     } catch (error) {
       return sendAuthError(res, error);
     }
 
     // Soft-revoke (keep record for audit, just change status)
-    invites[idx].status = 'revoked';
-    invites[idx].revokedAt = new Date().toISOString();
-    invites[idx].revokedBy = session.user.id;
-    await kvSet(INVITES_KEY, invites);
+    found.invite.status = 'revoked';
+    found.invite.revokedAt = new Date().toISOString();
+    found.invite.revokedBy = session.user.id;
+    await persistInvite(found);
 
-    console.log(`[invite] Revoked: ${invites[idx].name} (${invites[idx].role})`);
+    console.log(`[invite] Revoked: ${found.invite.name} (${found.invite.role})`);
     return res.status(200).json({ ok: true });
   }
 

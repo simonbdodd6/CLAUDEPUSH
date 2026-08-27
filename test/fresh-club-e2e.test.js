@@ -64,6 +64,22 @@ const store = await import('../api/_identityStore.js');
 const { permissionsFor, isClubOwner, accessProfileOf, PERM } = await import('../api/_permissions.js');
 const { INITIAL_GROUP_ID, INITIAL_TEAM_ID } = await import('../api/_structureStore.js');
 
+
+/**
+ * Every invitation, wherever it lives. Invitations are stored one list per
+ * club now (api/_inviteStore.js); the pre-namespace global list is still read
+ * so records created before the split are visible too.
+ */
+function allStoredInvites(map) {
+  const out = [];
+  for (const [k, v] of map) {
+    if (!/^app:invites:/.test(k)) continue;
+    try { out.push(...(JSON.parse(v) || [])); } catch {}
+  }
+  try { out.push(...(JSON.parse(map.get('ce:invites') || '[]') || [])); } catch {}
+  return out;
+}
+
 /** An EMPTY world plus the single platform administrator production has. */
 function emptyWorld() {
   kv.clear();
@@ -266,7 +282,7 @@ test('4. a successful send still reports success, and an unconfigured mailer is 
     assert.equal(ok.code, 201, JSON.stringify(ok.body));
     assert.equal(ok.body.emailDelivery.ok, true);
     assert.equal(ok.body.emailDelivery.sent, true, 'a real send is reported as sent');
-    const stored = JSON.parse(kv.get('ce:invites')).find(i => i.token === ok.body.token);
+    const stored = allStoredInvites(kv).find(i => i.token === ok.body.token);
     assert.ok(stored.emailSentAt, 'the send is recorded on the invite');
   } finally { delete process.env.RESEND_API_KEY; }
 
@@ -345,7 +361,7 @@ test('7. a forged founder marker in a request body is ignored', async () => {
     founderInvite: true, createdBy: 'platform-provisioning', isOwner: true,
     accessProfile: 'full' }, club.token);
   assert.equal(hostile.code, 201, JSON.stringify(hostile.body));
-  const stored = JSON.parse(kv.get('ce:invites')).find(i => i.token === hostile.body.token);
+  const stored = allStoredInvites(kv).find(i => i.token === hostile.body.token);
   assert.equal(stored.founderInvite, undefined, 'the marker is not accepted from a body');
   assert.notEqual(stored.createdBy, 'platform-provisioning', 'createdBy is the real actor');
 
@@ -388,12 +404,13 @@ test('9. a stale founder invite can never mint a SECOND owner', async () => {
   // Provision, then hand-issue a duplicate founder-marked invite the way a
   // replayed provisioning would, and claim it with a different person.
   const club = await freshClub('Single RFC', 'founder@single.test');
-  const invites = JSON.parse(kv.get('ce:invites'));
+  const invites = allStoredInvites(kv);
   const original = invites.find(i => i.founderInvite === true);
   assert.ok(original, 'the provisioning invite carries the marker');
-  invites.push({ ...original, token: 'DUPLICATE_FOUNDER_TOKEN', email: 'second@single.test',
+  const legacy = JSON.parse(kv.get('ce:invites') || '[]');
+  legacy.push({ ...original, token: 'DUPLICATE_FOUNDER_TOKEN', email: 'second@single.test',
     status: 'pending', acceptedAt: null, acceptedBy: undefined });
-  kv.set('ce:invites', JSON.stringify(invites));
+  kv.set('ce:invites', JSON.stringify(legacy));
 
   const claim = await identity({ action: 'claim_invite', token: 'DUPLICATE_FOUNDER_TOKEN',
     email: 'second@single.test', name: 'Second Person', password: 'longEnough123' });
@@ -519,7 +536,7 @@ test('14. an unknown or unsupported plan is REFUSED, and creates nothing', async
 
   // NOTHING survives a refusal: no club, no team id, no orphan invitation.
   assert.equal(JSON.parse(kv.get('app:identity:teams')).length, before, 'no club created');
-  const invites = JSON.parse(kv.get('ce:invites'));
+  const invites = allStoredInvites(kv);
   assert.equal(invites.filter(i => /^(bad|ent)@/.test(String(i.email))).length, 0, 'no invite minted');
 });
 

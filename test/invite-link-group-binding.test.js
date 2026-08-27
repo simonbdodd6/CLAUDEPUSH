@@ -37,6 +37,22 @@ globalThis.fetch = async (_url, options = {}) => {
 const { default: inviteHandler } = await import('../api/invite.js');
 const store = await import('../api/_identityStore.js');
 
+
+/**
+ * Every invitation, wherever it lives. Invitations are stored one list per
+ * club now (api/_inviteStore.js); the pre-namespace global list is still read
+ * so records created before the split are visible too.
+ */
+function allStoredInvites(map) {
+  const out = [];
+  for (const [k, v] of map) {
+    if (!/^app:invites:/.test(k)) continue;
+    try { out.push(...(JSON.parse(v) || [])); } catch {}
+  }
+  try { out.push(...(JSON.parse(map.get('ce:invites') || '[]') || [])); } catch {}
+  return out;
+}
+
 const src = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 function fn(name) {
   let start = src.indexOf(`function ${name}(`);
@@ -131,7 +147,7 @@ const PROD_LINKS = [U18, WOM, SEN].map((gid, i) => ({
   createdBy: 'u-owner', acceptedAt: null, acceptedCount: 0,
   scope: { groupId: gid }, playerGroupId: gid,
 }));
-const invitesNow = () => JSON.parse(kv.get('ce:invites') || '[]');
+const invitesNow = () => allStoredInvites(kv);
 async function post(body) {
   const { token } = await store.createSession({ userId: 'u-owner', teamId: CLUB, role: 'coach' });
   const res = { statusCode: 200, body: null, headers: {},

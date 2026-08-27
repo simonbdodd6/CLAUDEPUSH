@@ -39,6 +39,14 @@ globalThis.fetch = async (url, options = {}) => {
   const [command, ...args] = parsed;
   let result = null;
   if (command === 'GET')   result = store.has(args[0]) ? store.get(args[0]) : null;
+  // SCAN, as the real KV client supports it (api/_kv.js kvScanKeys):
+  // MATCH-filtered so key-space sweeps behave as they do in production.
+  if (command === 'SCAN') {
+    const at = args.indexOf('MATCH');
+    const pat = at >= 0 ? String(args[at + 1]) : '*';
+    const re = new RegExp('^' + pat.split('*').map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
+    result = ['0', [...store.keys()].filter(k => re.test(k))];
+  }
   if (command === 'SET') { store.set(args[0], args[1]); result = 'OK'; }
   if (command === 'LPUSH') {
     const list = lists.get(args[0]) || [];
@@ -186,9 +194,11 @@ test('expired invite token returns 410', async () => {
   const token = created.payload.token;
 
   // Backdate expiry
-  const invites = JSON.parse(store.get('ce:invites'));
+  // Invitations are stored per club now (api/_inviteStore.js); this club's
+  // list is where an invite the API just created actually lives.
+  const invites = JSON.parse(store.get('app:invites:boitsfort-rfc'));
   invites[0].expiresAt = '2020-01-01T00:00:00.000Z';
-  store.set('ce:invites', JSON.stringify(invites));
+  store.set('app:invites:boitsfort-rfc', JSON.stringify(invites));
 
   const expired = await callApi(inviteHandler, 'GET', { query: { token } });
   assert.equal(expired.statusCode, 410);
@@ -508,7 +518,7 @@ test('coach creates ONE permanent group invite link (idempotent, never expires)'
   const second = await callApi(inviteHandler, 'POST', { headers, body: { group: true } });
   assert.equal(second.payload.token, token, 'returns the same permanent group link');
 
-  const groupInvite = JSON.parse(store.get('ce:invites')).find(i => i.token === token);
+  const groupInvite = JSON.parse(store.get('app:invites:boitsfort-rfc')).find(i => i.token === token);
   assert.equal(groupInvite.kind, 'group');
   assert.equal(groupInvite.expiresAt, null, 'group link never expires');
 });

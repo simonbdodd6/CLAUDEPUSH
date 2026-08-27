@@ -41,6 +41,22 @@ const { default: inviteHandler } = await import('../api/invite.js');
 const store = await import('../api/_identityStore.js');
 const { resolvePlayerGroup } = await import('../api/_accessScope.js');
 
+
+/**
+ * Every invitation, wherever it lives. Invitations are stored one list per
+ * club now (api/_inviteStore.js); the pre-namespace global list is still read
+ * so records created before the split are visible too.
+ */
+function allStoredInvites(map) {
+  const out = [];
+  for (const [k, v] of map) {
+    if (!/^app:invites:/.test(k)) continue;
+    try { out.push(...(JSON.parse(v) || [])); } catch {}
+  }
+  try { out.push(...(JSON.parse(map.get('ce:invites') || '[]') || [])); } catch {}
+  return out;
+}
+
 const src = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 function fn(name) {
   let start = src.indexOf(`function ${name}(`);
@@ -143,7 +159,7 @@ test('a Seniors-scoped coach cannot mint a U18 player link', async () => {
   const senCoach = await sessionFor('u-senc');
   const r = await inviteApi(u18LinkBody, senCoach.token);
   assert.equal(r.code, 403, JSON.stringify(r.body));
-  assert.equal(JSON.parse(kv.get('ce:invites')).length, 0, 'nothing written');
+  assert.equal(allStoredInvites(kv).length, 0, 'nothing written');
 });
 
 test('the invite cannot escape its club or group', async () => {
@@ -152,7 +168,7 @@ test('the invite cannot escape its club or group', async () => {
   const forged = await inviteApi({ group: true, playerGroupId: 'grp_of_other_club', scope: { groupId: 'grp_of_other_club' } }, coach.token);
   assert.equal([403, 404].includes(forged.code), true, 'unknown/foreign group refused');
   const link = await inviteApi(u18LinkBody, coach.token);
-  const invite = JSON.parse(kv.get('ce:invites')).find(i => i.token === link.body.token);
+  const invite = allStoredInvites(kv).find(i => i.token === link.body.token);
   assert.equal(invite.teamId, CLUB, 'tenant-bound');
   assert.equal(invite.playerGroupId, U18, 'group-bound');
 });
