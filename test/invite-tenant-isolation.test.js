@@ -546,3 +546,138 @@ test('UI-7. no ordinary user can run the migration, however they ask', async () 
   assert.equal(JSON.stringify([kv.get('ce:invites'), clubList(A), clubList(B)]), before,
     'no refusal moved anything');
 });
+
+// ── INVITATION TOKENS MUST NEVER REACH A LOG ────────────────────────────────
+// An invitation token is a single-use account-claim credential: anyone holding
+// one can create an account and join the club it names. Creation used to write
+// the WHOLE live token to the server log, next to the invitee's name, so every
+// pending invitation sat in the log stream as usable takeover material — while
+// the audit trail beside it already recorded only the last 8 characters.
+//
+// The log now carries that same short reference. Eight base64url characters is
+// 48 bits of a ~192-bit token, and it is not even secret: it is already stored
+// in the open as the claimed player's `legacyPlayerId` (`inv-<last8>`). It
+// identifies an invitation; it cannot be used to claim one.
+
+/** Run `fn` with every console channel captured. */
+async function withCapturedConsole(fn) {
+  const lines = [];
+  const real = {};
+  for (const level of ['log', 'warn', 'error', 'info', 'debug']) {
+    real[level] = console[level];
+    console[level] = (...args) => lines.push(args.map(a =>
+      typeof a === 'string' ? a : (() => { try { return JSON.stringify(a); } catch { return String(a); } })()
+    ).join(' '));
+  }
+  try { return { result: await fn(), output: lines.join('\n') }; }
+  finally { for (const level of Object.keys(real)) console[level] = real[level]; }
+}
+
+test('LOG-1. creating an invitation never writes the live token to any log', async () => {
+  seed();
+  const a = await sessionFor('u-a', A);
+  const { result, output } = await withCapturedConsole(() =>
+    invite({ name: 'Logged Player', role: 'player', email: 'lp@alpha.test', sendEmail: false }, a.token));
+
+  assert.equal(result.body.ok, true, JSON.stringify(result.body));
+  const token = result.body.token;
+  assert.ok(token && token.length >= 24, 'a real token was issued');
+
+  // THE ASSERTION THAT MATTERS: the whole credential is absent from the logs.
+  assert.equal(output.includes(token), false,
+    'the full invitation token must never appear in console output');
+  // Nor may a long prefix, which would leave too little to guess.
+  assert.equal(output.includes(token.slice(0, 16)), false, 'no long token prefix is logged');
+  assert.equal(output.includes(token.slice(0, -8)), false, 'no all-but-the-last-8 form is logged');
+
+  // The line is still there and still useful.
+  assert.match(output, /\[invite\] Created player invite/, 'operational logging is preserved');
+});
+
+test('LOG-2. only the established short reference is logged, and it is not a credential', async () => {
+  seed();
+  const a = await sessionFor('u-a', A);
+  const { result, output } = await withCapturedConsole(() =>
+    invite({ name: 'Ref Player', role: 'player', sendEmail: false }, a.token));
+  const token = result.body.token;
+
+  // The short reference is the SAME one the audit trail and the claimed
+  // player's legacyPlayerId already use — nothing new is disclosed.
+  const last8 = token.slice(-8);
+  assert.ok(output.includes(`inv-${last8}`), 'the short reference is logged for correlation');
+  // …and it is a small, non-reversible fraction of the token.
+  assert.equal(last8.length, 8);
+  assert.ok(token.length - last8.length >= 16, 'the great majority of the token is never logged');
+
+  // Claiming still requires the WHOLE token — the logged fragment is useless.
+  const withFragment = await identity({ action: 'claim_invite', token: last8,
+    email: 'ref@alpha.test', name: 'Ref Player', password: 'longEnough123' });
+  assert.ok(withFragment.code >= 400, `the logged fragment cannot claim (HTTP ${withFragment.code})`);
+  const withPrefixStripped = await identity({ action: 'claim_invite', token: `inv-${last8}`,
+    email: 'ref@alpha.test', name: 'Ref Player', password: 'longEnough123' });
+  assert.ok(withPrefixStripped.code >= 400, 'nor does the log line pasted verbatim');
+});
+
+test('LOG-3. resend and revoke log no token either, and still behave as before', async () => {
+  seed();
+  const a = await sessionFor('u-a', A);
+  const created = await invite({ name: 'Cycle Player', role: 'player',
+    email: 'cp@alpha.test', sendEmail: false }, a.token);
+  const token = created.body.token;
+
+  const resend = await withCapturedConsole(() => call(inviteHandler, { method: 'PATCH',
+    body: { token, action: 'resend' }, token: a.token }));
+  assert.equal(resend.result.code, 200, JSON.stringify(resend.result.body));
+  assert.equal(resend.output.includes(token), false, 'resend logs no token');
+
+  const revoke = await withCapturedConsole(() => call(inviteHandler, { method: 'DELETE',
+    body: { token }, token: a.token }));
+  assert.equal(revoke.result.code, 200, JSON.stringify(revoke.result.body));
+  assert.equal(revoke.output.includes(token), false, 'revoke logs no token');
+  assert.match(revoke.output, /\[invite\] Revoked/, 'revoke still logs operationally');
+  // Behaviour is untouched: the invitation really is revoked.
+  assert.equal(clubList(A).find(i => i.token === token).status, 'revoked');
+  assert.equal((await validate(token)).code, 410, 'a revoked link still refuses');
+});
+
+test('LOG-4. the token the caller receives is unchanged, and still claims', async () => {
+  seed();
+  const a = await sessionFor('u-a', A);
+  const created = await invite({ name: 'Whole Player', role: 'player',
+    email: 'wp@alpha.test', sendEmail: false }, a.token);
+  const token = created.body.token;
+
+  // Unchanged shape: the fix touched logging only, never token generation.
+  assert.match(token, /^[A-Za-z0-9_-]{24,}$/, 'still a base64url token of full length');
+  assert.equal(created.body.url.includes(token), true, 'the invite URL still carries it whole');
+  assert.equal(clubList(A).find(i => i.token === token) !== undefined, true, 'stored whole');
+
+  // And the real token still works end to end.
+  assert.equal((await validate(token)).code, 200);
+  const claimed = await identity({ action: 'claim_invite', token,
+    email: 'wp@alpha.test', name: 'Whole Player', password: 'longEnough123' });
+  assert.equal(claimed.code, 201, JSON.stringify(claimed.body));
+  assert.equal(claimed.body.teamMember.teamId, A);
+  // The claimed player's legacyPlayerId is the very reference the log prints,
+  // which is why logging it discloses nothing new.
+  assert.equal(claimed.body.playerProfile.legacyPlayerId, `inv-${token.slice(-8)}`);
+});
+
+test('LOG-5. the audit trail is intact — and still carries no whole token', async () => {
+  seed();
+  const a = await sessionFor('u-a', A);
+  const created = await invite({ name: 'Audited Player', role: 'player',
+    email: 'ap@alpha.test', sendEmail: false }, a.token);
+  const token = created.body.token;
+  await call(inviteHandler, { method: 'PATCH', body: { token, action: 'resend' }, token: a.token });
+
+  const events = audits().map(e => e.event);
+  assert.ok(events.includes('invite_created'), 'invite_created still audited');
+  assert.ok(events.includes('invite_resent'), 'invite_resent still audited');
+  // The resend audit keeps its established short reference — not weakened.
+  const resent = audits().find(e => e.event === 'invite_resent');
+  assert.equal(resent.token, token.slice(-8), 'audit still records the last 8, as before');
+  // No audit record anywhere carries the whole credential.
+  assert.equal(JSON.stringify(audits()).includes(token), false,
+    'the full token appears in no audit record');
+});

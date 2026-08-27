@@ -412,7 +412,13 @@ export default async function handler(req, res) {
       if (emailDelivery.sent) invite.emailSentAt = new Date().toISOString();
       await persistInvite({ invite, teamId: session.teamId });
     }
-    console.log(`[invite] Created ${normRole} invite for "${name.trim()}" — ${token}`);
+    // NEVER the whole token: it is a single-use account-claim credential, and a
+    // log line is not a place to keep one. The last 8 characters are the same
+    // reference the audit trail uses (invite_resent, below) and are already
+    // stored in the open as the claimed player's legacyPlayerId (`inv-<last8>`),
+    // so this correlates a log entry to an invitation without carrying anything
+    // that could be used to claim it.
+    console.log(`[invite] Created ${normRole} invite for "${name.trim()}" — ref inv-${token.slice(-8)}`);
     await auditLog('invite_created', {
       createdBy: session.user.id,
       role: normRole,
