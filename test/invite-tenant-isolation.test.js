@@ -48,6 +48,7 @@ const A = 'alpha-rfc', B = 'bravo-rfc';
 const clubKey = id => `app:invites:${id}`;
 const clubList = id => JSON.parse(kv.get(clubKey(id)) || '[]');
 const legacyList = () => JSON.parse(kv.get('ce:invites') || '[]');
+const audits = () => { try { return JSON.parse(kv.get('app:identity:audit_log') || '[]'); } catch { return []; } };
 
 function seed() {
   kv.clear();
@@ -412,4 +413,136 @@ test('Q. only a platform admin may migrate, and it grants no club access', async
   await identity({ action: 'migrate_invites' }, admin.token);
   const members = JSON.parse(kv.get('app:identity:team_members'));
   assert.deepEqual(members.filter(m => m.userId === 'u-plat'), [], 'no membership created');
+});
+
+// ── THE PLATFORM-ADMIN MIGRATION CARD ───────────────────────────────────────
+// The migration already existed as an endpoint; this is the surface that lets
+// a platform administrator run it without developer tooling. The card decides
+// NOTHING: it asks the existing endpoint to run, with dryRun true or false,
+// and renders whatever report comes back. Every judgement about which
+// invitation belongs to which club stays on the server.
+
+const html = await (await import('node:fs/promises'))
+  .readFile(new URL('../index.html', import.meta.url), 'utf8');
+const cardSrc = html.slice(html.indexOf('function renderInviteMigrationCard'),
+                           html.indexOf('function renderPlatformClubsCard'));
+const runSrc = html.slice(html.indexOf('async function inviteMigrationRun'),
+                          html.indexOf('async function inviteMigrationConfirm'));
+const confirmSrc = html.slice(html.indexOf('async function inviteMigrationConfirm'),
+                              html.indexOf('function inviteSkipReasonLabel'));
+
+test('UI-1. the card is platform-admin gated and offered nowhere else', () => {
+  assert.match(cardSrc, /_myPlatformRole !== 'platform_admin'/, 'hidden from everyone else');
+  // Rendered from exactly one place — the platform-admin area.
+  assert.equal((html.match(/renderInviteMigrationCard\(\)/g) || []).length, 2,
+    'defined once, rendered once');
+  const composed = html.slice(html.indexOf('${renderPlatformClubsCard()}') - 200,
+                              html.indexOf('${renderPlatformAdminsCard()}') + 40);
+  assert.match(composed, /renderInviteMigrationCard\(\)/, 'sits with the other platform tools');
+});
+
+test('UI-2. the request carries only "run it" — never a club, person or token', () => {
+  assert.match(runSrc, /action: 'migrate_invites', dryRun/, 'the one instruction it sends');
+  for (const forbidden of ['clubId', 'teamId', 'userId', 'founderUserId', 'token:']) {
+    assert.equal(runSrc.includes(forbidden), false,
+      `the UI must not send ${forbidden} as a migration instruction`);
+  }
+  // No client-side privilege check standing in for the server's.
+  assert.equal(/isPlatformAdmin\s*\(/.test(runSrc), false, 'no client-side authorization');
+});
+
+test('UI-3. the real migration is offered only after a dry run that found work', () => {
+  assert.match(cardSrc, /const dryDone = !!report && report\.dryRun === true;/);
+  assert.match(cardSrc, /const nothingToDo = dryDone && Number\(report\.migrated \|\| 0\) === 0;/);
+  assert.match(cardSrc, /const offerMigrate = dryDone && !nothingToDo && !m\.completed;/);
+  assert.match(cardSrc, /\$\{offerMigrate \? `/, 'the button is conditional on that');
+  // And it always confirms first.
+  assert.match(confirmSrc, /ceConfirm\(/);
+  assert.match(confirmSrc, /This will migrate the invitations identified by the dry run/);
+  assert.match(confirmSrc, /if \(!ok\) return;/, 'cancel returns before any request');
+  const afterGuard = confirmSrc.slice(confirmSrc.indexOf('if (!ok) return;'));
+  assert.match(afterGuard, /inviteMigrationRun\(false\)/, 'only a confirmed run writes');
+});
+
+test('UI-4. the report is rendered from the server\'s own fields, and nothing invented', () => {
+  const reportSrc = html.slice(html.indexOf('function inviteMigrationReportHtml'),
+                               html.indexOf('function renderInviteMigrationCard'));
+  for (const field of ['report.scanned', 'report.migrated', 'report.alreadyMigrated',
+                       'report.skipped', 'report.clubs', 'report.dryRun']) {
+    assert.ok(reportSrc.includes(field), `renders ${field}`);
+  }
+  // A dry run must never read as though it changed something.
+  assert.match(reportSrc, /Dry run — no data changed/);
+  assert.match(reportSrc, /Would be moved/);
+  assert.match(cardSrc, /Nothing needs migrating/, 'an empty dry run says so plainly');
+  assert.match(cardSrc, /legacy store is kept/i, 'states the backup guarantee');
+  // Only the reasons the server actually returns are translated.
+  const reasons = html.slice(html.indexOf('function inviteSkipReasonLabel'),
+                             html.indexOf('function inviteMigrationReportHtml'));
+  assert.match(reasons, /missing_team/);
+  assert.match(reasons, /missing_token/);
+  assert.match(reasons, /rather than guessed at/i);
+});
+
+test('UI-5. a dry run reports without touching a single stored invitation', async () => {
+  seedLegacy();
+  kv.set('app:identity:users', JSON.stringify([...JSON.parse(kv.get('app:identity:users')),
+    { id: 'u-plat', email: 'p@ce.test', displayName: 'P', platformRole: 'platform_admin' }]));
+  const admin = await store.createSession({ userId: 'u-plat', teamId: A, role: 'coach' });
+  const before = JSON.stringify([kv.get('ce:invites'), clubList(A), clubList(B)]);
+
+  const r = await identity({ action: 'migrate_invites', dryRun: true }, admin.token);
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  const rep = r.body.report;
+  assert.equal(rep.dryRun, true);
+  assert.equal(rep.scanned, 3, 'every legacy record was examined');
+  assert.equal(rep.migrated, 2, 'and two WOULD move');
+  assert.deepEqual(rep.skipped, [{ token: 'legacy-orphan', reason: 'missing_team' }]);
+  // Nothing at all was written.
+  assert.equal(JSON.stringify([kv.get('ce:invites'), clubList(A), clubList(B)]), before,
+    'a dry run changes no stored invitation');
+  // No audit entry either — nothing happened to record.
+  assert.equal(audits().filter(e => e.event === 'invites_migrated').length, 0);
+});
+
+test('UI-6. confirming runs the same endpoint for real; the report reflects the writes', async () => {
+  seedLegacy();
+  kv.set('app:identity:users', JSON.stringify([...JSON.parse(kv.get('app:identity:users')),
+    { id: 'u-plat', email: 'p@ce.test', displayName: 'P', platformRole: 'platform_admin' }]));
+  const admin = await store.createSession({ userId: 'u-plat', teamId: A, role: 'coach' });
+  await identity({ action: 'migrate_invites', dryRun: true }, admin.token);
+
+  const r = await identity({ action: 'migrate_invites', dryRun: false }, admin.token);
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  const rep = r.body.report;
+  assert.equal(rep.dryRun, false);
+  assert.equal(rep.migrated, 2);
+  assert.deepEqual(clubList(A).map(i => i.token), ['legacy-a']);
+  assert.deepEqual(clubList(B).map(i => i.token), ['legacy-b']);
+  // The unattributable record is still skipped, and still works.
+  assert.deepEqual(rep.skipped, [{ token: 'legacy-orphan', reason: 'missing_team' }]);
+  assert.equal((await validate('legacy-orphan')).code, 200, 'the skipped link still resolves');
+  // The legacy store is intact as a backup.
+  assert.equal(legacyList().length, 3);
+  assert.equal(audits().filter(e => e.event === 'invites_migrated').length, 1, 'audited once');
+});
+
+test('UI-7. no ordinary user can run the migration, however they ask', async () => {
+  seedLegacy();
+  const owner = await sessionFor('u-a', A);        // a club owner with Full Access
+  const before = JSON.stringify([kv.get('ce:invites'), clubList(A), clubList(B)]);
+  for (const [label, body, token] of [
+    ['club owner dry run',  { action: 'migrate_invites', dryRun: true }, owner.token],
+    ['club owner migrate',  { action: 'migrate_invites', dryRun: false }, owner.token],
+    ['forged role',         { action: 'migrate_invites', dryRun: false,
+                              platformRole: 'platform_admin', isPlatformAdmin: true,
+                              user: { platformRole: 'platform_admin' } }, owner.token],
+    ['anonymous',           { action: 'migrate_invites', dryRun: false }, ''],
+  ]) {
+    const r = await identity(body, token);
+    assert.equal(r.code, 403, `${label}: ${JSON.stringify(r.body)}`);
+    assert.match(String(r.body.error), /Platform administrators only/i);
+  }
+  assert.equal(JSON.stringify([kv.get('ce:invites'), clubList(A), clubList(B)]), before,
+    'no refusal moved anything');
 });

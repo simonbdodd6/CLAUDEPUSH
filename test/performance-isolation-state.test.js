@@ -188,7 +188,7 @@ test('D. identity switch leaves nothing person-scoped behind', () => {
         // list: all identity-scoped, all cleared by the real function, so the
         // harness must declare them.
         _myOperational, _perfAssign, _platformAdmins, _platformClubs, _platformPlanEditing,
-        _founderRepairs;
+        _founderRepairs, _inviteMigration;
     function chatSetUnreadTotal() {}
     ${extractFn('resetIdentityScopedState')}
     _perfAssign = { loaded: true, athletes: [{ userId: 'other-coachs-athlete' }],

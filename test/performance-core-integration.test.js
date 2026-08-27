@@ -63,7 +63,7 @@ function runIdentityReset(state) {
         // list: all identity-scoped, all cleared by the real function, so the
         // harness must declare them.
         _myOperational, _perfAssign, _platformAdmins, _platformClubs, _platformPlanEditing,
-        _founderRepairs;
+        _founderRepairs, _inviteMigration;
     function chatSetUnreadTotal() {}
     ${extractFn(html, 'resetIdentityScopedState')}
     resetIdentityScopedState();

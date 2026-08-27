@@ -20770,6 +20770,7 @@
         </div>
         ${renderPlatformClubsCard()}
         ${renderFounderRepairsCard()}
+        ${renderInviteMigrationCard()}
         ${renderPlatformAdminsCard()}`;
     }
 
@@ -20846,6 +20847,146 @@
                                  : `${who} now owns ${clubName} ✓`);
         render();
       } catch (e) { showToast(e.message || 'Could not repair ownership'); }
+    }
+
+    // ── PLATFORM ADMIN: invitation storage ──────────────────────────────────
+    // Invitations used to share one list across every club; each club now has
+    // its own. Records created before that change still work exactly as they
+    // did — this tool copies them into their club's storage so they benefit
+    // from the per-club limit too.
+    //
+    // ALL of the thinking lives on the server (api/_inviteStore.js). This card
+    // never decides which invitation belongs to which club, and never names a
+    // club, a person or a token: it asks the existing endpoint to run, with
+    // dryRun true or false, and renders whatever report comes back.
+    let _inviteMigration = { busy: false, error: null, report: null, completed: false };
+
+    /** Ask the server to run the migration. `dryRun` changes nothing. */
+    async function inviteMigrationRun(dryRun) {
+      _inviteMigration = { ..._inviteMigration, busy: true, error: null };
+      render();
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          // The ONLY instruction: run, and whether to write. Nothing that could
+          // steer which records move.
+          body: JSON.stringify({ action: 'migrate_invites', dryRun }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'The migration could not be run');
+        _inviteMigration = { busy: false, error: null, report: data.report || null,
+                             completed: !dryRun };
+        showToast(dryRun ? 'Dry run complete — nothing was changed'
+                         : `Invitations migrated ✓`);
+      } catch (e) {
+        _inviteMigration = { ..._inviteMigration, busy: false,
+                             error: e.message || 'The migration could not be run' };
+      }
+      render();
+    }
+
+    async function inviteMigrationConfirm() {
+      const ok = await ceConfirm('Migrate invitations?',
+        'This will migrate the invitations identified by the dry run into club-specific storage. '
+        + 'Invitations that cannot be safely attributed to a club will remain in the legacy store. '
+        + 'The legacy store is kept either way, as a backup. Continue?',
+        { confirmLabel: 'Migrate invitations' });
+      if (!ok) return;                       // Cancel writes nothing at all.
+      await inviteMigrationRun(false);
+    }
+
+    /** Plain language for the reasons the server actually returns. */
+    function inviteSkipReasonLabel(reason) {
+      return ({
+        missing_team: 'No club recorded on the invitation — left in the legacy store rather than guessed at',
+        missing_token: 'No invitation token, so the record cannot be identified',
+      })[reason] || reason;
+    }
+
+    function inviteMigrationReportHtml(report) {
+      if (!report) return '';
+      const dry = report.dryRun === true;
+      const moved = Number(report.migrated || 0);
+      const line = (label, value) => `
+        <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0">
+          <span class="muted" style="font-size:12px">${esc(label)}</span>
+          <strong style="font-size:12.5px">${esc(String(value))}</strong>
+        </div>`;
+      // Group the skipped records by the reason the SERVER gave.
+      const byReason = {};
+      for (const s of (report.skipped || [])) {
+        const r = String(s?.reason || 'unknown');
+        byReason[r] = (byReason[r] || 0) + 1;
+      }
+      const clubs = Object.entries(report.clubs || {});
+      return `
+        <div style="margin-top:12px;padding:11px 12px;background:var(--panel-2);border-radius:10px">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">
+            ${dry ? 'Dry run — no data changed' : 'Migration complete'}
+          </div>
+          <div style="margin-top:8px">
+            ${line('Invitations in the legacy store', report.scanned ?? 0)}
+            ${line(dry ? 'Would be moved' : 'Moved into club storage', moved)}
+            ${line('Already in club storage', report.alreadyMigrated ?? 0)}
+            ${line('Left in the legacy store', (report.skipped || []).length)}
+          </div>
+          ${Object.keys(byReason).length ? `
+            <div style="margin-top:8px;border-top:1px solid var(--line);padding-top:8px">
+              <div class="muted" style="font-size:11.5px;font-weight:700;margin-bottom:4px">Why some were left alone</div>
+              ${Object.entries(byReason).map(([reason, count]) => `
+                <div class="muted" style="font-size:11.5px;line-height:1.5">
+                  <strong>${esc(String(count))}</strong> — ${esc(inviteSkipReasonLabel(reason))}
+                </div>`).join('')}
+            </div>` : ''}
+          ${clubs.length ? `
+            <div style="margin-top:8px;border-top:1px solid var(--line);padding-top:8px">
+              <div class="muted" style="font-size:11.5px;font-weight:700;margin-bottom:4px">By club</div>
+              ${clubs.map(([id, c]) => `
+                <div class="muted" style="font-size:11.5px;line-height:1.5">
+                  ${esc(id)} — ${esc(String(c?.migrated ?? 0))} ${dry ? 'to move' : 'moved'},
+                  ${esc(String(c?.alreadyMigrated ?? 0))} already there
+                </div>`).join('')}
+            </div>` : ''}
+        </div>`;
+    }
+
+    function renderInviteMigrationCard() {
+      if (_myPlatformRole !== 'platform_admin') return '';
+      const m = _inviteMigration;
+      const report = m.report;
+      const dryDone = !!report && report.dryRun === true;
+      const nothingToDo = dryDone && Number(report.migrated || 0) === 0;
+      // The real migration is offered ONLY after a dry run that found work.
+      const offerMigrate = dryDone && !nothingToDo && !m.completed;
+      return `
+        <div class="card" style="margin-top:14px">
+          <h2 style="margin-bottom:4px">Invitation storage</h2>
+          <p class="muted" style="font-size:12.5px;margin:0 0 8px">
+            CoachEasier now stores invitations separately for each club. This tool moves older
+            invitations from the legacy shared store into their club-specific storage.</p>
+          <ul class="muted" style="font-size:11.5px;line-height:1.6;margin:0 0 12px;padding-left:18px">
+            <li>A dry run only reports — it does not change anything.</li>
+            <li>Only invitations that can be safely attributed to a club are moved.</li>
+            <li>An invitation with no known club is skipped, never guessed at.</li>
+            <li>The legacy store is kept afterwards, as a backup.</li>
+          </ul>
+          ${m.error ? `
+            <p style="font-size:12.5px;margin:0 0 10px;color:#f87171">${esc(m.error)}</p>` : ''}
+          ${inviteMigrationReportHtml(report)}
+          ${nothingToDo && !m.completed ? `
+            <p class="muted" style="font-size:12px;margin:10px 0 0">
+              Nothing needs migrating — every invitation is already in its club's storage.</p>` : ''}
+          ${m.completed ? `
+            <p class="muted" style="font-size:12px;margin:10px 0 0">
+              Migration completed. The legacy store has been left intact as a backup.</p>` : ''}
+          <div class="wk-ex-actions" style="margin-top:12px">
+            <button class="btn ghost" type="button" id="im-dry-btn" ${m.busy ? 'disabled' : ''}
+              onclick="inviteMigrationRun(true)">${m.busy ? 'Working…' : 'Dry run'}</button>
+            ${offerMigrate ? `
+              <button class="btn primary" type="button" id="im-run-btn" ${m.busy ? 'disabled' : ''}
+                onclick="inviteMigrationConfirm()">Migrate invitations</button>` : ''}
+          </div>
+        </div>`;
     }
 
     // ── PLATFORM ADMIN: an existing club's plan ─────────────────────────────
@@ -34786,6 +34927,7 @@
       _platformClubs = { loaded: false, loading: false, error: null, rows: [] };
       _platformPlanEditing = '';
       _founderRepairs = { loaded: false, loading: false, error: null, rows: [] };
+      _inviteMigration = { busy: false, error: null, report: null, completed: false };
       // The operational context belongs to the PERSON, not the device. Left
       // behind, the next identity renders the previous one's group until the
       // session payload lands — the window in which a U18 player could still
