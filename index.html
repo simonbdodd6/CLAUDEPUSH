@@ -20768,7 +20768,115 @@
           <button class="btn primary" id="pa-create-btn" style="margin-top:12px;font-size:13px" onclick="platformProvisionClub()">Create club</button>
           <div id="pa-result" style="margin-top:10px"></div>
         </div>
+        ${renderPlatformClubsCard()}
         ${renderPlatformAdminsCard()}`;
+    }
+
+    // ── PLATFORM ADMIN: an existing club's plan ─────────────────────────────
+    // The last operation that used to need a database edit. Administering a
+    // club's plan is NOT membership of it: this surface shows a club's name
+    // and commercial state and nothing else about it. The server refuses
+    // anyone who is not a platform administrator, so this card is
+    // presentation only, and every change is confirmed before it is sent.
+    let _platformClubs = { loaded: false, loading: false, error: null, rows: [] };
+    let _platformPlanEditing = '';          // club id whose plan control is open
+
+    async function loadPlatformClubs(force = false) {
+      if (_platformClubs.loading) return;
+      if (_platformClubs.loaded && !force) return;
+      _platformClubs.loading = true;
+      try {
+        const res = await fetch('/api/identity?action=platform_clubs');
+        const data = await res.json().catch(() => ({}));
+        _platformClubs = res.ok && data.ok !== false
+          ? { loaded: true, loading: false, error: null, rows: data.clubs || [] }
+          : { loaded: true, loading: false, error: data.error || 'Could not load', rows: [] };
+      } catch {
+        _platformClubs = { loaded: true, loading: false, error: 'offline', rows: [] };
+      }
+      render();
+    }
+
+    function renderPlatformClubsCard() {
+      if (_myPlatformRole !== 'platform_admin') return '';
+      if (!_platformClubs.loaded && !_platformClubs.loading) loadPlatformClubs();
+      const inp = 'min-height:38px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 10px;font-size:13px;box-sizing:border-box';
+      const rows = _platformClubs.rows;
+      const body = !_platformClubs.loaded
+        ? '<p class="muted" style="font-size:12.5px;margin:0">Loading…</p>'
+        : _platformClubs.error
+          ? `<p class="muted" style="font-size:12.5px;margin:0">Could not load the list — ${esc(_platformClubs.error)}.</p>`
+          : !rows.length
+            ? '<p class="muted" style="font-size:12.5px;margin:0">No clubs yet — provision one above.</p>'
+            : rows.map(c => {
+                const open = _platformPlanEditing === c.id;
+                return `
+                <div style="padding:9px 11px;background:var(--panel-2);border-radius:9px;margin-bottom:7px">
+                  <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+                    <div style="min-width:0">
+                      <div style="font-weight:700;font-size:13px">${esc(c.name)}</div>
+                      <div class="muted" style="font-size:11.5px">${esc(c.id)} · ${esc(planLabelFor(c.plan))}${
+                        c.planStatus && c.planStatus !== 'active' ? ` · ${esc(c.planStatus)}` : ''}</div>
+                    </div>
+                    <button class="btn ghost" type="button" style="font-size:11.5px;padding:5px 10px"
+                      onclick="platformTogglePlanEditor('${esc(c.id)}')">${open ? 'Cancel' : 'Change plan'}</button>
+                  </div>
+                  ${open ? `
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:9px">
+                      <select id="pc-plan-${esc(c.id)}" style="${inp}">
+                        ${PROVISIONING_PLAN_OPTIONS.map(([id, label]) =>
+                          `<option value="${esc(id)}" ${id === c.plan ? 'selected' : ''}>${esc(label)}</option>`).join('')}
+                      </select>
+                      <button class="btn primary" type="button" style="font-size:12px;padding:6px 12px"
+                        onclick="platformChangeClubPlan('${esc(c.id)}','${esc(c.name)}')">Confirm plan change</button>
+                    </div>` : ''}
+                </div>`;
+              }).join('');
+      return `
+        <div class="card" style="margin-top:14px">
+          <h2 style="margin-bottom:4px">Existing clubs</h2>
+          <p class="muted" style="font-size:12.5px;margin:0 0 12px">
+            Every CoachEasier club and the plan it is on. Changing a plan changes what the club can
+            use — it takes no payment and touches nothing else about the club.</p>
+          ${body}
+        </div>`;
+    }
+
+    function platformTogglePlanEditor(clubId) {
+      _platformPlanEditing = _platformPlanEditing === clubId ? '' : clubId;
+      render();
+    }
+
+    async function platformChangeClubPlan(clubId, clubName) {
+      const club = (_platformClubs.rows || []).find(c => c.id === clubId);
+      const next = document.getElementById(`pc-plan-${clubId}`)?.value || '';
+      if (!next) return;
+      if (club && club.plan === next) {
+        showToast(`${clubName} is already on ${planLabelFor(next)}`);
+        _platformPlanEditing = '';
+        render();
+        return;
+      }
+      const ok = await ceConfirm(`Change ${clubName} to ${planLabelFor(next)}?`,
+        `This changes the club's CoachEasier plan and feature entitlement. Current plan: `
+        + `${planLabelFor(club?.plan)}. New plan: ${planLabelFor(next)}. No payment is taken here, `
+        + `and the club's members, teams and data are not affected.`,
+        { confirmLabel: 'Confirm plan change' });
+      if (!ok) return;
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'change_club_plan', teamId: clubId, plan: next }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not change the plan');
+        _platformClubs = { loaded: true, loading: false, error: null, rows: data.clubs || [] };
+        _platformPlanEditing = '';
+        showToast(data.unchanged
+          ? `${clubName} is already on ${planLabelFor(data.club?.plan)}`
+          : `${clubName} moved to ${planLabelFor(data.club?.plan)} ✓`);
+        render();
+      } catch (e) { showToast(e.message || 'Could not change the plan'); }
     }
 
     // ── PLATFORM ADMIN: who else holds platform authority ───────────────────
@@ -34595,9 +34703,12 @@
       _trainingScheduleQueue = null;
       _trainingScheduleGroupId = '';
       _myPlatformRole = '';
-      // The platform-administrator list is only ever visible to a platform
-      // administrator, so it must not survive into the next identity.
+      // The platform-administrator list and the club/plan list are only ever
+      // visible to a platform administrator, so neither may survive into the
+      // next identity.
       _platformAdmins = { loaded: false, loading: false, error: null, rows: [] };
+      _platformClubs = { loaded: false, loading: false, error: null, rows: [] };
+      _platformPlanEditing = '';
       // The operational context belongs to the PERSON, not the device. Left
       // behind, the next identity renders the previous one's group until the
       // session payload lands — the window in which a U18 player could still

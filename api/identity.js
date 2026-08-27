@@ -12,6 +12,8 @@ import {
   listPlatformAdmins,
   grantPlatformAdmin,
   revokePlatformAdmin,
+  listPlatformClubs,
+  changeClubPlan,
   createEmailVerificationToken,
   destroyAllSessionsForUser,
   requireSession,
@@ -261,6 +263,15 @@ export default async function handler(req, res) {
         }
         return res.status(200).json({ ok: true, admins: await listPlatformAdmins() });
       }
+      // The clubs whose PLAN a platform administrator may change. A minimal
+      // commercial projection — never a club's members or content.
+      if (req.query?.action === 'platform_clubs') {
+        const viewer = await resolveSessionFromRequest(req).catch(() => null);
+        if (!isPlatformAdmin(viewer?.user)) {
+          return res.status(403).json({ ok: false, error: 'Platform administrators only' });
+        }
+        return res.status(200).json({ ok: true, clubs: await listPlatformClubs() });
+      }
       const tenant = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
       if (req.query?.teamId) assertSameTenant(tenant, req.query.teamId);
       const state = await listIdentityState(tenant.teamId);
@@ -404,6 +415,30 @@ export default async function handler(req, res) {
           changedBy: actor.user.id, ip: requestIp(req),
         });
         return res.status(200).json({ ok: true, admins: await listPlatformAdmins() });
+      }
+      // Change an EXISTING club's plan. Platform administrators only, resolved
+      // from the session; the body may name only the club and the plan, and
+      // both are validated server-side before anything is written.
+      if (action === 'change_club_plan') {
+        const actor = await resolveSessionFromRequest(req).catch(() => null);
+        if (!isPlatformAdmin(actor?.user)) {
+          return res.status(403).json({ ok: false, error: 'Platform administrators only' });
+        }
+        await enforceRateLimit(action, requestIp(req), { limit: 30, windowMs: 60 * 60 * 1000 });
+        const result = await changeClubPlan({
+          teamId: req.body?.teamId, plan: req.body?.plan, actorUserId: actor.user.id });
+        // Selecting the plan a club already holds is not a change, so it is
+        // neither written nor audited as one.
+        if (!result.unchanged) {
+          await auditLog('club_plan_changed', {
+            teamId_club: result.club.id, clubName: result.club.name,
+            previousPlan: result.previousPlan, newPlan: result.plan,
+            changedBy: actor.user.id, ip: requestIp(req),
+          });
+        }
+        return res.status(200).json({ ok: true, unchanged: result.unchanged,
+          previousPlan: result.previousPlan, club: result.club,
+          clubs: await listPlatformClubs() });
       }
       if (action === 'claim_invite') {
         // SECURITY: throttle claims (mirrors login) so the invite-claim path can't

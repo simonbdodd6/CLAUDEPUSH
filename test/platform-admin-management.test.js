@@ -418,3 +418,275 @@ test('W. the admin surface is platform-gated in the client, and never public', a
   assert.equal((html.match(/renderPlatformAdminsCard\(\)/g) || []).length, 2,
     'defined once and rendered from exactly one place');
 });
+
+// ── CHANGING AN EXISTING CLUB'S PLAN ────────────────────────────────────────
+// The last operation that required editing the database by hand. It reuses the
+// provisioning vocabulary exactly — trial/core/pro — and changes only what a
+// plan is: entitlement reads the same field it always did and simply observes
+// the new value. Administering a club's plan is emphatically NOT membership of
+// that club, and these tests hold that line too.
+
+const { PROVISIONABLE_PLANS, TRIAL_PERIOD_MS } = store;
+const teams = () => JSON.parse(kv.get('app:identity:teams') || '[]');
+const teamById = id => teams().find(t => t.id === id) || null;
+const changePlan = (teamId, plan, token) =>
+  identity({ action: 'change_club_plan', teamId, plan }, token);
+
+/** Two clubs with different plans, so isolation has something to prove. */
+function seedClubs() {
+  seed();
+  kv.set('app:identity:teams', JSON.stringify([
+    { id: CLUB, name: 'Kestrel RFC', plan: 'core', planStatus: 'active', trialEndsAt: null,
+      createdAt: '2026-01-01T00:00:00.000Z', teamCode: 'KESTR11',
+      stripeCustomerId: null, stripeSubscriptionId: null },
+    { id: 'other-rfc', name: 'Other RFC', plan: 'trial', planStatus: 'active',
+      trialEndsAt: '2026-12-01T00:00:00.000Z', createdAt: '2026-02-02T00:00:00.000Z',
+      teamCode: 'OTHER22', stripeCustomerId: 'cus_x', stripeSubscriptionId: 'sub_x' },
+  ]));
+}
+/** The server's own entitlement answer for a club, as api/publish.js reads it. */
+async function performanceFor(token) {
+  const r = await publish('GET', { resource: 'performance' }, null, token);
+  return { code: r.code, entitled: r.code === 200, reason: r.body?.code || null };
+}
+
+test('X1. a platform admin lists the clubs, and sees commercial state ONLY', async () => {
+  seedClubs();
+  const simon = await sessionFor('u-simon');
+  const r = await identityGet({ action: 'platform_clubs' }, simon.token);
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.clubs.map(c => c.id).sort(), ['kestrel-rfc', 'other-rfc']);
+  const kestrel = r.body.clubs.find(c => c.id === CLUB);
+  assert.deepEqual(Object.keys(kestrel).sort(),
+    ['createdAt', 'id', 'name', 'plan', 'planStatus', 'trialEndsAt'],
+    'the projection is exactly the commercial fields');
+  // Nothing about the club's PEOPLE or content is reachable here.
+  const raw = JSON.stringify(r.body);
+  for (const leak of ['u-player', 'u-owner', 'playerGroupId', 'stripeCustomerId', 'teamCode',
+                      'medical', 'members', 'players']) {
+    assert.equal(raw.includes(leak), false, `the listing must not carry ${leak}`);
+  }
+});
+
+test('X2. changing a club to PRO entitles Performance; trialEndsAt is cleared', async () => {
+  seedClubs();
+  const simon = await sessionFor('u-simon');
+  const owner = await sessionFor('u-owner');
+  assert.equal((await performanceFor(owner.token)).entitled, false, 'core to begin with');
+
+  const r = await changePlan(CLUB, 'pro', simon.token);
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  assert.equal(r.body.unchanged, false);
+  assert.equal(r.body.previousPlan, 'core');
+  assert.equal(r.body.club.plan, 'pro');
+
+  const stored = teamById(CLUB);
+  assert.equal(stored.plan, 'pro');
+  assert.equal(stored.planStatus, 'active');
+  assert.equal(stored.trialEndsAt, null, 'a paying club carries no trial expiry');
+
+  // Entitlement simply observes the new plan — a fresh session, no cache.
+  const after = await sessionFor('u-owner');
+  const perf = await performanceFor(after.token);
+  assert.equal(perf.entitled, true, `Performance must open on pro: ${JSON.stringify(perf)}`);
+  const payload = await identityGet({ action: 'session' }, after.token);
+  assert.equal(payload.body.teamPlan, 'pro');
+});
+
+test('X3. moving to CORE and back to TRIAL follows the existing plan semantics', async () => {
+  seedClubs();
+  const simon = await sessionFor('u-simon');
+  await changePlan(CLUB, 'pro', simon.token);
+
+  // pro → core: unentitled again, still no expiry.
+  const toCore = await changePlan(CLUB, 'core', simon.token);
+  assert.equal(toCore.code, 200, JSON.stringify(toCore.body));
+  assert.equal(toCore.body.previousPlan, 'pro');
+  assert.equal(teamById(CLUB).plan, 'core');
+  assert.equal(teamById(CLUB).trialEndsAt, null);
+  const owner = await sessionFor('u-owner');
+  const perf = await performanceFor(owner.token);
+  assert.equal(perf.entitled, false);
+  assert.equal(perf.code, 402);
+  assert.equal(perf.reason, 'performance_not_entitled');
+
+  // core → trial: a FRESH trial on the existing 30-day policy, not a stale date.
+  const before = Date.now();
+  const toTrial = await changePlan(CLUB, 'trial', simon.token);
+  assert.equal(toTrial.code, 200, JSON.stringify(toTrial.body));
+  const ends = new Date(teamById(CLUB).trialEndsAt).getTime();
+  assert.ok(ends >= before + TRIAL_PERIOD_MS - 5000 && ends <= Date.now() + TRIAL_PERIOD_MS + 5000,
+    'the trial runs the same period provisioning uses');
+  assert.equal(teamById(CLUB).plan, 'trial');
+  assert.equal((await performanceFor(await sessionFor('u-owner').then(s => s.token))).entitled, false,
+    'trial is still not entitled');
+});
+
+test('X4. selecting the plan a club already has writes nothing and audits nothing', async () => {
+  seedClubs();
+  const simon = await sessionFor('u-simon');
+  const before = JSON.stringify(teamById(CLUB));
+
+  const r = await changePlan(CLUB, 'core', simon.token);     // already core
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  assert.equal(r.body.unchanged, true, 'reported as a no-op');
+  assert.equal(r.body.previousPlan, 'core');
+  assert.equal(JSON.stringify(teamById(CLUB)), before, 'the record is byte-identical');
+  assert.equal(audits().filter(e => e.event === 'club_plan_changed').length, 0,
+    'a no-op is never audited as a change');
+
+  // Case and padding normalise, and a genuine change after it still audits once.
+  const shouty = await changePlan(CLUB, '  PRO  ', simon.token);
+  assert.equal(shouty.code, 200, JSON.stringify(shouty.body));
+  assert.equal(teamById(CLUB).plan, 'pro');
+  assert.equal(audits().filter(e => e.event === 'club_plan_changed').length, 1);
+});
+
+test('X5. only a PLATFORM admin may change a plan — everyone else is refused', async () => {
+  seedClubs();
+  const before = JSON.stringify(teams());
+  const cases = [
+    ['club owner', (await sessionFor('u-owner')).token],
+    ['club admin', (await sessionFor('u-admin', CLUB, 'admin')).token],
+    ['player',     (await sessionFor('u-player', CLUB, 'player')).token],
+    ['anonymous',  ''],
+  ];
+  for (const [label, token] of cases) {
+    const r = await changePlan(CLUB, 'pro', token);
+    assert.equal(r.code, 403, `${label}: ${JSON.stringify(r.body)}`);
+    assert.match(String(r.body.error), /Platform administrators only/i);
+    const l = await identityGet({ action: 'platform_clubs' }, token);
+    assert.equal(l.code, 403, `${label} listing: ${JSON.stringify(l.body)}`);
+  }
+  // Forged authority in the body or the query is ignored.
+  const owner = await sessionFor('u-owner');
+  const forged = await identity({ action: 'change_club_plan', teamId: CLUB, plan: 'pro',
+    platformRole: 'platform_admin', isPlatformAdmin: true,
+    user: { platformRole: 'platform_admin' } }, owner.token);
+  assert.equal(forged.code, 403, JSON.stringify(forged.body));
+  const viaQuery = await call(identityHandler, { method: 'GET',
+    query: { action: 'platform_clubs', platformRole: 'platform_admin' }, token: owner.token });
+  assert.equal(viaQuery.code, 403);
+  assert.equal(JSON.stringify(teams()), before, 'no refusal changed any club');
+});
+
+test('X6. an invalid plan is refused before any write', async () => {
+  seedClubs();
+  const simon = await sessionFor('u-simon');
+  const before = JSON.stringify(teams());
+
+  for (const bad of ['enterprise', 'unlimited', 'free', '', '  ', 'pro; drop', ['pro'], 42, true, {}]) {
+    const r = await changePlan(CLUB, bad, simon.token);
+    assert.equal(r.code, 400, `plan ${JSON.stringify(bad)}: ${JSON.stringify(r.body)}`);
+    assert.match(String(r.body.error), /plan must be one of/i);
+  }
+  assert.equal(PROVISIONABLE_PLANS.includes('enterprise'), false, 'enterprise stays unselectable');
+  assert.equal(JSON.stringify(teams()), before, 'no partial state from any refusal');
+
+  // An unknown club is refused too, and changes nothing.
+  const unknown = await changePlan('no-such-club', 'pro', simon.token);
+  assert.equal(unknown.code, 404, JSON.stringify(unknown.body));
+  assert.equal(JSON.stringify(teams()), before);
+});
+
+test('X7. changing one club changes only that club — everything else is byte-identical', async () => {
+  seedClubs();
+  const simon = await sessionFor('u-simon');
+  const otherBefore = JSON.stringify(teamById('other-rfc'));
+  const membersBefore = JSON.stringify(members());
+  const usersBefore = JSON.stringify(users());
+  const invitesBefore = kv.get('ce:invites');
+
+  await changePlan(CLUB, 'pro', simon.token);
+
+  assert.equal(JSON.stringify(teamById('other-rfc')), otherBefore,
+    "the other club's record is untouched, including its Stripe ids and trial");
+  assert.equal(JSON.stringify(members()), membersBefore, 'no membership altered');
+  assert.equal(JSON.stringify(users()), usersBefore, 'no user record altered');
+  assert.equal(kv.get('ce:invites'), invitesBefore, 'no invitation altered');
+  // Ownership of the changed club is exactly as it was.
+  assert.deepEqual(members().filter(m => m.isOwner).map(m => m.userId), ['u-owner']);
+  // The changed club kept every non-commercial field it had.
+  const kestrel = teamById(CLUB);
+  assert.equal(kestrel.name, 'Kestrel RFC');
+  assert.equal(kestrel.teamCode, 'KESTR11');
+  assert.equal(kestrel.createdAt, '2026-01-01T00:00:00.000Z');
+  // The other club's entitlement is unaffected in its own right.
+  assert.equal(teamById('other-rfc').plan, 'trial');
+});
+
+test('X8. administering a plan grants NO membership of the club', async () => {
+  seedClubs();
+  const simon = await sessionFor('u-simon');
+  await changePlan(CLUB, 'pro', simon.token);
+
+  // Simon has no membership anywhere, and changing a plan created none.
+  assert.deepEqual(members().filter(m => m.userId === 'u-simon'), []);
+  // So he still cannot read that club's data, even now that it is entitled.
+  const simonAtClub = await store.createSession({ userId: 'u-simon', teamId: CLUB, role: 'coach' });
+  const structure = await publish('GET', { resource: 'structure' }, null, simonAtClub.token);
+  assert.ok(structure.code === 401 || structure.code === 403,
+    `platform authority is not club access — got HTTP ${structure.code}`);
+  const perf = await publish('GET', { resource: 'performance' }, null, simonAtClub.token);
+  assert.ok(perf.code === 401 || perf.code === 403,
+    `and not Performance access either — got HTTP ${perf.code}`);
+});
+
+test('X9. every real plan change is audited with both plans; no secrets travel', async () => {
+  seedClubs();
+  const simon = await sessionFor('u-simon');
+  await changePlan(CLUB, 'pro', simon.token);
+  await changePlan(CLUB, 'trial', simon.token);
+
+  const entries = audits().filter(e => e.event === 'club_plan_changed');
+  assert.equal(entries.length, 2, 'one entry per real change');
+  const latest = entries[0];
+  assert.equal(latest.teamId_club, CLUB);
+  assert.equal(latest.clubName, 'Kestrel RFC');
+  assert.equal(latest.previousPlan, 'pro');
+  assert.equal(latest.newPlan, 'trial');
+  assert.equal(latest.changedBy, 'u-simon');
+  assert.match(String(latest.at), /^\d{4}-\d{2}-\d{2}T/);
+  const raw = JSON.stringify(entries);
+  for (const secret of ['passwordHash', 'passwordSalt', 'ce_session', simon.token, 'cus_x', 'sub_x']) {
+    assert.equal(raw.includes(secret), false, `audit must not carry ${String(secret).slice(0, 12)}`);
+  }
+});
+
+test('X10. provisioning a NEW club still behaves exactly as before', async () => {
+  seedClubs();
+  const simon = await sessionFor('u-simon');
+  for (const [plan, entitled] of [['pro', true], ['trial', false], ['core', false]]) {
+    const r = await identity({ action: 'provision_club', clubName: `Regression ${plan} RFC`,
+      adminEmail: `${plan}@regression.test`, plan }, simon.token);
+    assert.equal(r.code, 201, `${plan}: ${JSON.stringify(r.body)}`);
+    assert.equal(r.body.team.plan, plan);
+    const stored = teamById(r.body.team.id);
+    assert.equal(stored.plan, plan);
+    assert.equal(stored.planStatus, 'active');
+    // Trial keeps its deadline; core and pro carry none — unchanged behaviour.
+    if (plan === 'trial') assert.ok(stored.trialEndsAt); else assert.equal(stored.trialEndsAt, null);
+    assert.equal(PROVISIONABLE_PLANS.includes(plan), true);
+    assert.equal(entitled, plan === 'pro', 'sanity: only pro is entitled');
+  }
+});
+
+test('X11. the Existing clubs card is platform-gated and free of commerce', async () => {
+  const html = await (await import('node:fs/promises')).readFile(
+    new URL('../index.html', import.meta.url), 'utf8');
+  const card = html.slice(html.indexOf('function renderPlatformClubsCard'),
+                          html.indexOf('function platformTogglePlanEditor'));
+  assert.match(card, /_myPlatformRole !== 'platform_admin'/, 'hidden from everyone else');
+  assert.match(card, /PROVISIONING_PLAN_OPTIONS/, 'reuses the one plan vocabulary');
+  for (const forbidden of ['Upgrade', '/month', 'per month', 'Buy ', 'Checkout', 'Subscribe']) {
+    assert.equal(card.includes(forbidden), false, `no commercial surface: ${forbidden}`);
+  }
+  assert.equal(/[$€£]\s?\d/.test(card), false, 'no prices on an internal admin card');
+  // The change is confirmed, states the consequence, and names both plans.
+  const fn = html.slice(html.indexOf('async function platformChangeClubPlan'),
+                        html.indexOf('async function platformChangeClubPlan') + 2200);
+  assert.match(fn, /ceConfirm\(/, 'never a one-click silent change');
+  assert.match(fn, /plan and feature entitlement/i, 'states the consequence');
+  assert.match(fn, /action: 'change_club_plan', teamId: clubId, plan: next/,
+    'sends only the club and the plan');
+});

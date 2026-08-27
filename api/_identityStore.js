@@ -48,6 +48,12 @@ const PLATFORM_PROVISIONING_ACTOR = 'platform-provisioning';
  * tier the product cannot yet deliver. Its server-side meaning is untouched.
  */
 export const PROVISIONABLE_PLANS = ['trial', 'core', 'pro'];
+/**
+ * How long a trial runs. ONE definition: createClub, provisionClub and
+ * changeClubPlan all express the same policy, so a club put onto a trial gets
+ * the same 30 days however it got there.
+ */
+export const TRIAL_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
 /** Omitting the plan must behave exactly as provisioning did before. */
 export const DEFAULT_PROVISIONED_PLAN = 'trial';
 
@@ -1923,7 +1929,7 @@ export async function createClub({ clubName, teamName, sport, name, email, passw
       signupSource: 'self_service',
       plan: 'trial',
       planStatus: 'active',
-      trialEndsAt: new Date(new Date(ids.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      trialEndsAt: new Date(new Date(ids.createdAt).getTime() + TRIAL_PERIOD_MS).toISOString(),
       stripeCustomerId: null,
       stripeSubscriptionId: null,
     };
@@ -2083,6 +2089,88 @@ export async function revokePlatformAdmin({ userId, actorUserId } = {}) {
 }
 
 /**
+ * The clubs a platform administrator may administer the PLAN of.
+ *
+ * Deliberately the narrowest projection that still lets someone identify the
+ * right club: its name, its commercial state and when it was created. No
+ * member, player, medical, availability, message, fixture or Performance
+ * data is reachable through this surface — administering a club's plan is not
+ * membership of it, and this listing is where that line is drawn.
+ *
+ * Reads the STORED tenants, so the dev-only placeholder team that loadTeams()
+ * prepends outside production never appears as an administrable club.
+ */
+export async function listPlatformClubs() {
+  const teams = await loadStoredTeams();
+  return teams.map(t => ({
+    id: t.id,
+    name: t.name || t.id,
+    plan: String(t.plan || DEFAULT_PROVISIONED_PLAN),
+    planStatus: String(t.planStatus || 'active'),
+    trialEndsAt: t.trialEndsAt || null,
+    createdAt: t.createdAt || null,
+  })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Change an EXISTING club's plan — the last operation that still required
+ * editing the database by hand.
+ *
+ * Same plan vocabulary as provisioning (PROVISIONABLE_PLANS), validated the
+ * same way and BEFORE anything is written, so a bad value leaves no partial
+ * state. What a plan MEANS is untouched: entitlement is read elsewhere, from
+ * this same field, and simply observes the new value.
+ *
+ * The write goes through updateTeamBilling, whose field allow-list is what
+ * guarantees this cannot reach a club's name, structure, members, ownership
+ * or Stripe identifiers — only the commercial fields it is meant to move.
+ *
+ * trialEndsAt follows the plan rather than lingering: a club moved ONTO a
+ * trial starts a fresh one, and a club moved to core or pro carries no expiry
+ * at all, so resolveSession's expired-trial downgrade can never later pull a
+ * paying club back to core on the strength of a stale date.
+ *
+ * Idempotent: selecting the plan a club already has writes nothing and says
+ * so, rather than manufacturing a change (and an audit entry) out of a no-op.
+ */
+export async function changeClubPlan({ teamId, plan, actorUserId } = {}) {
+  if (!plan || typeof plan !== 'string') {
+    const e = new Error(`plan must be one of: ${PROVISIONABLE_PLANS.join(', ')}`);
+    e.status = 400; throw e;
+  }
+  const requestedPlan = plan.trim().toLowerCase();
+  if (!PROVISIONABLE_PLANS.includes(requestedPlan)) {
+    const e = new Error(`plan must be one of: ${PROVISIONABLE_PLANS.join(', ')}`);
+    e.status = 400; throw e;
+  }
+  const id = String(teamId || '').trim();
+  if (!id) { const e = new Error('A club is required'); e.status = 400; throw e; }
+  const teams = await loadStoredTeams();
+  const team = teams.find(t => String(t.id) === id);
+  if (!team) { const e = new Error('Unknown club'); e.status = 404; throw e; }
+
+  const previousPlan = String(team.plan || DEFAULT_PROVISIONED_PLAN);
+  if (previousPlan === requestedPlan) {
+    return { unchanged: true, previousPlan, plan: requestedPlan,
+             club: { id: team.id, name: team.name || team.id, plan: previousPlan,
+                     planStatus: String(team.planStatus || 'active'),
+                     trialEndsAt: team.trialEndsAt || null } };
+  }
+
+  const updated = await updateTeamBilling(id, {
+    plan: requestedPlan,
+    planStatus: 'active',
+    trialEndsAt: requestedPlan === 'trial'
+      ? new Date(Date.now() + TRIAL_PERIOD_MS).toISOString()
+      : null,
+  });
+  return { unchanged: false, previousPlan, plan: requestedPlan,
+           club: { id: updated.id, name: updated.name || updated.id, plan: updated.plan,
+                   planStatus: updated.planStatus, trialEndsAt: updated.trialEndsAt || null },
+           changedBy: String(actorUserId || '') };
+}
+
+/**
  * Provision a NEW customer club: an isolated tenant plus a single-use
  * head-coach invitation for its first administrator. Unlike createClub (the
  * founder self-signup), no user account is created here — the first admin
@@ -2145,7 +2233,7 @@ export async function provisionClub({ clubName, adminEmail, adminName = '', firs
     // auto-downgrades an expired trial to core; carrying a stale expiry on a
     // club that is already core or pro would be a date that means nothing.
     trialEndsAt: requestedPlan === 'trial'
-      ? new Date(new Date(createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      ? new Date(new Date(createdAt).getTime() + TRIAL_PERIOD_MS).toISOString()
       : null,
     stripeCustomerId: null,
     stripeSubscriptionId: null,
