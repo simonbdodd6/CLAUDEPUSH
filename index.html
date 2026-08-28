@@ -10689,7 +10689,19 @@
       // already-selected member is hidden — not just the exact name string.
       // Staff (Coach/Admin/Medical) live in state.players for the Members page
       // but are never selectable as match-day players.
-      return canonicalVisiblePlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus || 'active') !== 'archived' && !placed.has(mcPersonKey(p.name)));
+      //
+      // The pool is the OPERATING GROUP's players — the identical rule the
+      // match sheet itself uses (`matchdayPlayers`, whose comment already
+      // states "A U18 coach can never pick a Seniors player from here").
+      // This picker was still reading canonicalVisiblePlayers(), the whole
+      // club, so it was a second and wider definition of who may be selected:
+      // opening the picker on a U18 fixture — or searching a senior's name in
+      // it — offered players from every other group. operationalPlayers() is
+      // the authoritative rule and carries the behaviour that matters here:
+      // single-group and pre-structure clubs still see the full roster, and
+      // it fails CLOSED while the membership list is still loading rather
+      // than briefly showing the whole club.
+      return operationalPlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus || 'active') !== 'archived' && !placed.has(mcPersonKey(p.name)));
     }
     let _mcPickTarget = null;
     function mcEnsurePicker() {

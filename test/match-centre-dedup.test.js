@@ -103,11 +103,21 @@ test('two members with different display names can both be selected', () => {
 
 // ── Structural: pool dedup + ID-based exclusion (no duplicate records offered) ─
 test('the Match Centre pool + picker are canonical (deduped) and exclude by person', () => {
-  assert.ok(html.includes('canonicalVisiblePlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus'), 'render uses the deduped pool and excludes staff');
+  // Both pools are built on the SAME canonical, deduped roster, and both drop
+  // staff and archived members. They differ only in scope, and they must not:
+  // the sheet was already restricted to the operating group while the picker
+  // still read the whole club, which is how a senior appeared in a U18 search.
+  // Both now go through operationalPlayers(), which is itself built on
+  // canonicalVisiblePlayers() — so dedup is unchanged.
+  assert.ok(html.includes("operationalPlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus"),
+    'render uses the deduped, group-scoped pool and excludes staff');
   assert.ok(html.includes('matchdayPlayers.filter(p => !_seenPersons.has(mcPersonKey(p.name)))'), 'available excludes by person key');
   const picker = extractFn(html, 'mcComputeAvailable');
-  assert.ok(picker.includes('canonicalVisiblePlayers()') && picker.includes('mcPersonKey'), 'picker pool deduped + excluded by person');
+  assert.ok(picker.includes('operationalPlayers()') && picker.includes('mcPersonKey'),
+    'picker pool deduped + excluded by person, from the operating group');
   assert.ok(picker.includes('isRosterPlayerRecord(p)'), 'picker pool excludes staff (coach/admin/medical) records');
+  assert.ok(extractFn(html, 'operationalPlayers').includes('canonicalVisiblePlayers()'),
+    'the scoped pool is still the canonical deduped roster underneath');
 });
 
 // ── Structural: clicking a bench player opens the picker, NOT a login box ─────
