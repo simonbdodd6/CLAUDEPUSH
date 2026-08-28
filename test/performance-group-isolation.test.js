@@ -171,22 +171,32 @@ test('H3: the coach athlete list is never widened — the helper only ever filte
 
 // ── Dashboard: gated, not labelled ────────────────────────────────────────
 
-test('DASH1: the Dashboard refuses sample data off a local demo host', () => {
+test('DASH1: the Dashboard refuses sample data outside explicit development', () => {
   const body = fn('perfDashboardHtml');
   // The gate is the FIRST statement, so no sample constant is read in production.
+  // It is now perfDemoDataAllowed() rather than _isLocalDemoHost(): the hostname
+  // alone admitted capacitor://localhost and any other localhost-shaped origin.
   const firstStatement = body.slice(body.indexOf('{') + 1).split('\n').filter(l => l.trim() && !l.trim().startsWith('//'))[0];
-  assert.match(firstStatement, /if \(!_isLocalDemoHost\(\)\) return perfDashboardEmptyHtml\(\);/,
+  assert.match(firstStatement, /if \(!perfDemoDataAllowed\(\)\) return perfDashboardEmptyHtml\(\);/,
     'production returns the empty state before any sample data is touched');
 });
 
-test('DASH2: it reuses the EXISTING host helper — no second implementation', () => {
-  // Exactly one definition of the rule exists in the file.
-  const defs = (src.match(/function _isLocalDemoHost\s*\(/g) || []).length;
-  assert.equal(defs, 1, 'one host helper, not two');
-  // …and it is the same helper the demo squad and the demo workout use.
+test('DASH2: one rule for fabricated Performance data — no second implementation', () => {
+  // Exactly one definition of each helper exists in the file.
+  assert.equal((src.match(/function _isLocalDemoHost\s*\(/g) || []).length, 1, 'one host helper, not two');
+  assert.equal((src.match(/function perfDemoDataAllowed\s*\(/g) || []).length, 1,
+    'one demo-data rule, not two');
+  // EVERY Performance path that can render a fixture goes through that one rule.
+  for (const f of ['perfDashboardHtml', 'perfAnalyticsHtml', 'perfWkAssignment']) {
+    assert.match(fn(f), /perfDemoDataAllowed\(\)/, `${f} must use the shared demo-data rule`);
+  }
+  // installDemoSquad is a manual console action, not a Performance render path,
+  // and keeps the hostname helper it has always used.
   assert.match(fn('installDemoSquad'), /_isLocalDemoHost\(\)/);
-  assert.match(fn('perfWkAssignment'), /_isLocalDemoHost\(\)/);
-  assert.match(fn('perfDashboardHtml'), /_isLocalDemoHost\(\)/);
+  // The Performance rule is STRICTER than the host helper, not a copy of it.
+  const rule = fn('perfDemoDataAllowed');
+  assert.match(rule, /_devLoginEnabled/, 'requires the server-declared development deployment');
+  assert.match(rule, /Capacitor|cordova/, 'refuses a native runtime');
 });
 
 test('DASH3: the production empty state invents no athlete, figure or date', () => {

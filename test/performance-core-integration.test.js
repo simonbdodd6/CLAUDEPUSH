@@ -110,11 +110,15 @@ test('4. club/team switch clears workout context but keeps the athlete\'s own pr
 
 // ── 2. Demo assignment containment ───────────────────────────────────────────
 
-function assignmentScope(hostname, { live = null } = {}) {
+function assignmentScope(hostname, { live = null, devLogin = true } = {}) {
   // SC8: the gate resolves a REAL assignment first and only then considers the
   // demo fixture, so the harness must supply both seams.
   const body = `"use strict";
-    const location = { hostname: ${JSON.stringify(hostname)} };
+    const location = { hostname: ${JSON.stringify(hostname)}, protocol: 'http:' };
+    // Fabricated material now ALSO requires the server to declare a development
+    // deployment (DEV_LOGIN) and a non-native runtime — a hostname alone admitted
+    // capacitor://localhost. These cases model a normal dev browser.
+    const window = { _devLoginEnabled: ${JSON.stringify(devLogin)} };
     const perfToday = () => '2026-08-24';
     const perfLiveAssignment = () => (${JSON.stringify(live)});
     // SC8: any real assignment record suppresses the demo, not only a live one.
@@ -124,17 +128,21 @@ function assignmentScope(hostname, { live = null } = {}) {
       sessionForDate: () => ({ session: { kind: 'session', title: 'Real session' }, weekNumber: 1,
         phase: { phaseType: 'pre_season' }, dayNode: { rugbyRelation: 'none' } }),
     };
-    ${extractFn(html, '_isLocalDemoHost')}
+    ${extractFn(html, 'perfDemoDataAllowed')}
     ${extractFn(html, 'perfWkAssignment')}
     return perfWkAssignment();`;
   return new Function(body)();
 }
 
-test('5. demo assignment exists ONLY on a local demo host', () => {
+test('5. demo assignment exists ONLY in explicit local development', () => {
   assert.ok(assignmentScope('localhost'), 'available for development');
   assert.ok(assignmentScope('127.0.0.1'));
   assert.equal(assignmentScope('coacheasier.com'), null, 'production must never see a fabricated assignment');
   assert.equal(assignmentScope('app.vercel.app'), null);
+  // The stricter half: a local hostname is no longer sufficient on its own —
+  // the deployment must declare itself a development one.
+  assert.equal(assignmentScope('localhost', { devLogin: false }), null,
+    'localhost without the explicit development switch gets no fixture');
 });
 
 test('5b. SC8 — a REAL assignment outranks the demo, even on a demo host', () => {

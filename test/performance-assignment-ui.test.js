@@ -38,14 +38,18 @@ test('1. a REAL assignment always beats the demo fixture', () => {
   assert.ok(liveIdx > -1, 'the gate consults real assignments');
   assert.ok(demoIdx > -1);
   assert.ok(liveIdx < demoIdx, 'the real assignment is resolved FIRST');
-  assert.match(gate, /if \(!_isLocalDemoHost\(\)\) return null;/, 'demo remains local-only');
+  // The gate is now perfDemoDataAllowed(), which is STRICTER than the old
+  // hostname test: it also requires the server-declared development deployment
+  // and refuses a native runtime, so a packaged capacitor://localhost build can
+  // never be handed a fabricated workout.
+  assert.match(gate, /if \(!perfDemoDataAllowed\(\)\) return null;/, 'demo remains development-only');
 });
 
 test('2. production with no assignment is still an honest empty state', () => {
   const gate = extractFn('perfWkAssignment');
   // Off a demo host, with no live assignment, the gate returns null.
   const scope = new Function(`
-    const _isLocalDemoHost = () => false;
+    const perfDemoDataAllowed = () => false;
     const perfLiveAssignment = () => null;
     const perfCurrentAssignment = () => null;
     const _perfWkMod = { getDemoAssignment: () => ({ isDemo: true }) };
@@ -58,7 +62,7 @@ test('2. production with no assignment is still an honest empty state', () => {
 test('3. a rest day inside a live programme yields no session, not a substitute', () => {
   const gate = extractFn('perfWkAssignment');
   const out = new Function(`
-    const _isLocalDemoHost = () => true;   // even on a demo host...
+    const perfDemoDataAllowed = () => true;   // even in development...
     const live = { assignmentId: 'a1', programmeVersionId: 'v1', snapshot: {} };
     const perfLiveAssignment = () => live;
     const perfCurrentAssignment = () => live;
@@ -72,7 +76,7 @@ test('3. a rest day inside a live programme yields no session, not a substitute'
 test('4. a live assignment produces a non-demo session from the pinned snapshot', () => {
   const gate = extractFn('perfWkAssignment');
   const out = new Function(`
-    const _isLocalDemoHost = () => false;
+    const perfDemoDataAllowed = () => false;
     const live = { assignmentId: 'a1', programmeVersionId: 'pg@v1', programmeTitle: 'Pre-Season', snapshot: { k: 1 } };
     const perfLiveAssignment = () => live;
     const perfCurrentAssignment = () => live;
@@ -106,7 +110,7 @@ test('6b. an athlete WITH a programme never sees the demo, even on a demo host',
   assert.match(gate, /if \(perfCurrentAssignment\(\)\) return null;/,
     'a paused, scheduled or finished real programme still suppresses the fixture');
   const out = new Function(`
-    const _isLocalDemoHost = () => true;
+    const perfDemoDataAllowed = () => true;
     const perfLiveAssignment = () => null;                 // paused: not live
     const perfCurrentAssignment = () => ({ assignmentId: 'a1', status: 'paused' });
     const _perfWkMod = { getDemoAssignment: () => ({ isDemo: true }) };

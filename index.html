@@ -31819,6 +31819,48 @@
     // SC1 ships structure only — no workout engine logic.
 
     // Sample data — lockstep with performance/services/performance-data.js.
+    /**
+     * May FABRICATED Performance material be rendered right now?
+     *
+     * Sample athletes, readiness scores, adherence figures and squad averages are
+     * development fixtures. Shown to a real club they are indistinguishable from
+     * that club's own data — invented names, invented injury statuses, invented
+     * PBs — so the bar for rendering them is deliberately high and fails CLOSED.
+     *
+     * Three independent conditions, ALL required:
+     *
+     *  1. The SERVER declares this a development deployment. window._devLoginEnabled
+     *     comes from /api/config's devLogin, i.e. the DEV_LOGIN environment
+     *     variable, which DEPLOY.md requires never to be set in production and
+     *     which the post-deploy smoke check asserts is false. A packaged app or a
+     *     preview URL cannot assert this about itself — only the deployment can.
+     *  2. Not a native runtime. Native app schemes (capacitor:, ionic:, file:) are
+     *     refused, AND the runtime itself is asked (window.Capacitor / cordova) —
+     *     because Capacitor on Android serves from http://localhost, which no
+     *     protocol or hostname test can distinguish from a developer's machine.
+     *     This is the invariant that matters most:
+     *     PACKAGED APP != DEVELOPMENT DEMO.
+     *  3. A genuinely local host, as a third and last line.
+     *
+     * Hostname alone used to be the whole test, which is why capacitor://localhost
+     * and any future localhost-shaped origin would have qualified. Hostname is now
+     * the weakest of three signals rather than the only one.
+     */
+    function perfDemoDataAllowed() {
+      try {
+        if (window._devLoginEnabled !== true) return false;
+        // A native runtime is never a development browser, whatever its origin
+        // looks like. Capacitor injects window.Capacitor; Android in particular
+        // serves from http://localhost, which protocol and hostname alone cannot
+        // tell apart from a developer's own machine. Asking the runtime closes
+        // that last gap without taking a dependency on it.
+        if (typeof window.Capacitor !== 'undefined' || typeof window.cordova !== 'undefined') return false;
+        const proto = String(location.protocol || '');
+        if (proto !== 'http:' && proto !== 'https:') return false;
+        return ['localhost', '127.0.0.1', '0.0.0.0'].indexOf(location.hostname) !== -1;
+      } catch { return false; }
+    }
+
     const PERF_SAMPLE_ATHLETES = [
       { id: 'ath-01', completion: 100, name: 'Tom Bradshaw',    position: 'Loosehead Prop',    jersey: 1,  programme: 'Pre-Season Strength', adherence: 92, readiness: 84, trainingStatus: 'full',        lastSession: '2026-08-02' },
       { id: 'ath-02', completion: 85, name: 'Callum Reid',     position: 'Hooker',            jersey: 2,  programme: 'Pre-Season Strength', adherence: 88, readiness: 78, trainingStatus: 'full',        lastSession: '2026-08-02' },
@@ -32951,10 +32993,13 @@
     }
 
     function perfDashboardHtml() {
-      // Sample material is a development fixture, not a club's work. Same host
-      // rule as installDemoSquad and the demo workout assignment — one helper,
-      // _isLocalDemoHost(), and this returns BEFORE any sample data is read.
-      if (!_isLocalDemoHost()) return perfDashboardEmptyHtml();
+      // Sample material is a development fixture, not a club's work. The gate was
+      // _isLocalDemoHost(), which tests the hostname ALONE — so any origin spelled
+      // "localhost", including a packaged capacitor://localhost build, would have
+      // been served invented athletes. perfDemoDataAllowed() additionally requires
+      // the SERVER to declare a development deployment and refuses native app
+      // schemes. This returns BEFORE any sample data is read.
+      if (!perfDemoDataAllowed()) return perfDashboardEmptyHtml();
       const today = PERF_SAMPLE_TODAY;
       const donePct = Math.round((today.completedCount / today.assignedCount) * 100);
       const active = PERF_SAMPLE_PROGRAMMES.filter(p => p.status === 'active');
@@ -34238,7 +34283,9 @@
       // even on a demo host: a paused, scheduled or finished real programme is
       // still their programme, and a demo workout would misrepresent it.
       if (perfCurrentAssignment()) return null;
-      if (!_isLocalDemoHost()) return null;
+      // Same strict rule as the dashboard and analytics: a packaged build or a
+      // preview deployment must never be handed a fabricated workout.
+      if (!perfDemoDataAllowed()) return null;
       // Demo is dev-only AND second in line.
       return _perfWkMod.getDemoAssignment();
     }
@@ -34818,14 +34865,47 @@
     }
 
     // ── Analytics ─────────────────────────────────────────────────────────────
+    /**
+     * Analytics with nothing invented in it. States plainly that squad trend
+     * reporting needs measurement data, rather than filling the space with numbers
+     * nobody recorded, and points at the surfaces that DO hold real data.
+     */
+    function perfAnalyticsEmptyHtml() {
+      return `
+        <div class="perf-page-head">
+          <div>
+            <h2>Analytics</h2>
+            <p class="muted">Squad performance trends.</p>
+          </div>
+        </div>
+        <div class="card perf-card">
+          <strong class="perf-card-title">No squad trends yet</strong>
+          <p class="muted" style="font-size:13px;margin:8px 0 0">
+            Squad-wide strength, speed and readiness trends need measurement data
+            recorded over time. None has been collected for this club yet, so there is
+            nothing to chart rather than an estimate. Your athletes, their programmes
+            and their completed workouts are live now.</p>
+          <div class="wk-ex-actions" style="margin-top:12px">
+            <button class="btn primary" type="button" onclick="setPerfTab('athletes')">View athletes</button>
+            <button class="btn ghost" type="button" onclick="setPerfTab('programmes')">Programmes</button>
+          </div>
+        </div>`;
+    }
+
     function perfAnalyticsHtml() {
+      // This had NO environment gate at all: PERF_SAMPLE_METRICS rendered for every
+      // entitled club in production, labelled only by a "Preview — sample data"
+      // pill. A squad average back squat of 142 kg and a wellness score of 78 are
+      // not this club's numbers, and a pill beside them does not make them honest —
+      // a coach reading a dashboard reads the figures.
+      if (!perfDemoDataAllowed()) return perfAnalyticsEmptyHtml();
       return `
         <div class="perf-page-head">
           <div>
             <h2>Analytics</h2>
             <p class="muted">Squad performance trends across the block.</p>
           </div>
-          <span class="pill">Preview — sample data</span>
+          <span class="pill">Sample data — development only</span>
         </div>
         <div class="grid perf-grid-3">
           ${PERF_SAMPLE_METRICS.map(m => `
