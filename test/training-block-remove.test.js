@@ -29,12 +29,26 @@ function extractFn(name) {
 function buildScope(trainingBlocks) {
   const state = { trainingBlocks, schedule: [] };
   const noop = () => {};
+  // removeTimeBlock now removes just its own ROW instead of re-rendering the
+  // whole app (a full render cost the coach their place in whatever field they
+  // were editing), so the scope needs the DOM it reaches for. renderTraining is
+  // the fallback used only when the LAST block goes and the empty state has to
+  // come back.
+  const removed = [];
+  const document = {
+    querySelector: sel => {
+      const m = sel.match(/data-block-id="([^"]+)"/);
+      return m ? { remove() { removed.push(m[1]); } } : null;
+    },
+  };
+  const CSS = { escape: v => String(v) };
   const factory = new Function(
     'state', 'saveState', 'showToast', 'render', 'syncPublishedSessionEdit',
+    'document', 'CSS', 'renderTraining',
     extractFn('removeTimeBlock') + '\n' + extractFn('updateTimeBlock') + '\n' +
     'return { removeTimeBlock, updateTimeBlock };'
   );
-  return { ...factory(state, noop, noop, noop, noop), state };
+  return { ...factory(state, noop, noop, noop, noop, document, CSS, noop), state, removed };
 }
 
 test('Session 2: a NUMERIC-id block is removed (the reported bug)', () => {

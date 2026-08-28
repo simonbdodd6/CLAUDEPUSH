@@ -71,6 +71,12 @@ function ctx(initial = {}) {
     function render() { calls.renders++; }
     function notify() {}
     function showToast() {}
+    let _tbSeq = 0;
+    const requestAnimationFrame = f => f();
+    const CSS = { escape: v => String(v) };
+    function trainingBlockRowHTML(sid, b) { return '<tr data-block-id="' + b.id + '"></tr>'; }
+    function renderTraining() {}
+    function tbAutosize() {}
     function syncPublishedSessionEdit() {}
     // addTimeBlock gained two dependencies after this harness was written.
     //

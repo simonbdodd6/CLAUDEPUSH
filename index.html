@@ -1759,8 +1759,12 @@
     /* No transition on min-height: autosize neutralises min-height to measure
        the text, and an animating value made every measurement read the old
        editing floor — blocks then never compacted. */
+    /* One height, focused or not. The old rule tripled a block's min-height on
+       :focus (40 -> 132), so every click into a field grew the page ~92px and
+       every blur shrank it back — the planner appeared to breathe while a coach
+       worked. A block still gets all the room it needs: tbAutosize grows it to
+       its content as the coach types. */
     .training-gs-table textarea.tb-auto { min-height:40px; overflow:hidden; }
-    .training-gs-table textarea.tb-auto:focus { min-height:132px; overflow:auto; }
     .gs-time-input { width:84px; border:2px solid var(--line); border-radius:7px; padding:8px 10px; font-size:15px; font-weight:800; color:var(--accent); text-align:center; background:var(--panel-2); }
     .gs-time-input:focus { outline:none; border-color:var(--accent); background:var(--panel); }
     .gs-sm-input { width:100%; border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:13px; background:var(--panel-2); color:var(--ink); }
@@ -2391,7 +2395,6 @@
          is what made finished blocks big empty rectangles on mobile. */
       .training-gs-table td textarea:not(.tb-auto) { min-height: 92px !important; height: auto !important; }
       .training-gs-table td textarea.tb-auto { min-height: 44px; }
-      .training-gs-table td textarea.tb-auto:focus { min-height: 140px; }
       .training-gs-table td[data-label=""] { text-align: right; padding-top: 2px; }
     }
 
@@ -8406,6 +8409,16 @@
             coach:  { ...(prev.coach  || {}), status: data.coach?.status  || 'draft' },
             player: { ...(prev.player || {}), status: data.player?.status || 'draft' },
           };
+          // This fires 700ms after a keystroke, then waits on the network, so
+          // it lands WHILE the coach is still working — and render() replaces
+          // the planner's DOM, taking the focused field (and, on a phone, the
+          // keyboard) with it. That is why a value had to be typed two or three
+          // times before it stuck, and only on already-published sessions.
+          // The render only refreshes publish-status badges, so it can simply
+          // wait: skip it while the coach has focus inside the planner, and let
+          // the next natural render pick the badges up.
+          if (document.activeElement && document.getElementById('coach-training')
+              ?.contains(document.activeElement)) return;
           render();
         } catch { /* offline — status refreshes on next load */ }
       }, 700);
@@ -9010,6 +9023,9 @@
       return HHMM.test(t) ? t : '';
     }
 
+    // Monotonic tie-breaker for block ids created within the same millisecond.
+    let _tbSeq = 0;
+
     function addTimeBlock(sessionId) {
       state.trainingBlocks = state.trainingBlocks || {};
       const blocks = state.trainingBlocks[sessionId] = state.trainingBlocks[sessionId] || [];
@@ -9021,26 +9037,58 @@
       // time follows the PLANNED GROUP's own schedule (was hard-coded 19:45,
       // which is why a U18 session inherited the Seniors evening).
       const time = /^\d{1,2}:\d{2}$/.test(lastTime) ? addMins(lastTime, 30) : trainingPlannedStartTime(sessionId);
-      const id = "tb" + Date.now();
-      blocks.push({ id, time, activity: "", tag: "General" });
-      notify("Time block added");
+      // Date.now() alone collides when two blocks are added inside the same
+      // millisecond (a double-tap, or a fast "add three blocks"), and two rows
+      // sharing an id means editing one edits the other.
+      const id = "tb" + Date.now() + "-" + (_tbSeq++).toString(36);
+      const block = { id, time, activity: "", tag: "General" };
+      blocks.push(block);
+
+      // Append ONE row rather than calling notify(), which rebuilt the entire
+      // application (~44ms) and, because render() replaces innerHTML, blew away
+      // whatever field the coach was in — the reason a half-typed value seemed
+      // to vanish and had to be entered again. The table only has to be built
+      // from scratch for the FIRST block, when the empty state is on screen.
+      const tbody = document.querySelector(`#coach-training .training-gs-table tbody`);
+      if (tbody && blocks.length > 1) {
+        tbody.insertAdjacentHTML('beforeend', trainingBlockRowHTML(sessionId, block));
+      } else {
+        renderTraining();
+      }
+      saveState('Time block added');
+      showToast('Time block added');
       syncPublishedSessionEdit(sessionId);
-      // Put the coach straight into the new block (it is already on screen,
-      // directly under the control they just tapped).
-      setTimeout(() => {
-        const el = document.querySelector(`#coach-training textarea.tb-auto[oninput*="'${id}','activity'"]`);
-        if (el) { el.focus({ preventScroll: false }); tbAutosize(el, true); }
-      }, 40);
+
+      // Put the coach in the new block AND bring it into view. Without the
+      // scroll the row was created below the fold while the "+ Add block"
+      // button jumped ~400px down the page, so the click looked like it had
+      // done nothing at all.
+      requestAnimationFrame(() => {
+        const row = document.querySelector(`#coach-training tr[data-block-id="${CSS.escape(String(id))}"]`);
+        const el = row && row.querySelector('textarea.tb-auto');
+        if (!el) return;
+        tbAutosize(el);
+        row.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+        el.focus({ preventScroll: true });
+      });
     }
 
+    // The single floor a planner block sits at, focused or not. It matches the
+    // CSS min-height so JS and CSS can never disagree about a block's size.
+    const TB_MIN_HEIGHT = 40;
+
     /**
-     * Size a planner textarea to the text it actually holds. `editing` gives
-     * the block being worked on a comfortable floor; every other block sits
-     * at its content height, so a finished block is never a big empty box.
-     * The measurement neutralises min-height first — otherwise a focused
-     * block would measure its own floor and stay tall after blur.
+     * Size a planner textarea to the text it actually holds.
+     *
+     * This used to take an `editing` flag and give the focused block a 132px
+     * floor while every other block sat at 40 — which, together with the
+     * matching CSS :focus rule, meant the page grew ~92px on every click into a
+     * field and shrank again on blur. A coach moving between four fields in a
+     * block saw the page height change eight times. The block now has ONE
+     * height that depends only on its text, so focus changes nothing and the
+     * layout stays where the coach left it.
      */
-    function tbAutosize(el, editing) {
+    function tbAutosize(el) {
       if (!el) return;
       const prevMin = el.style.minHeight;
       el.style.minHeight = '0px';
@@ -9049,38 +9097,72 @@
       el.style.height = '0px';
       const content = el.scrollHeight || 0;
       el.style.minHeight = prevMin;
-      el.style.height = Math.max(content, editing ? 132 : 40) + 'px';
+      el.style.height = Math.max(content, TB_MIN_HEIGHT) + 'px';
     }
     /**
-     * Recompact a block the coach has just left. Deferred one tick so the
-     * measurement happens after the browser has dropped the focus styling —
-     * measuring during the blur event returns the editing height and the
-     * block stays tall.
-     */
-    function tbBlur(el) { setTimeout(() => tbAutosize(el), 0); }
-
-    /**
-     * Size every planner block after a render (compact = content height).
-     * Deferred a tick: measured during the render pass the layout is not
-     * settled and a block can keep a stale editing height.
+     * Size every planner block after a render.
+     *
+     * Two passes, both inside the same frame: once synchronously, and once on
+     * the next animation frame for the stacked mobile row, whose cells are not
+     * laid out yet at the first measurement. There used to be a THIRD pass at
+     * 150ms — long after the browser had painted — so the whole table visibly
+     * jumped a moment after every render. That was the flicker.
      */
     function trainingAutosizeBlocks() {
-      const size = () => document.querySelectorAll('#coach-training textarea.tb-auto')
-        .forEach(el => tbAutosize(el, document.activeElement === el));
+      const size = () => document.querySelectorAll('#coach-training textarea.tb-auto').forEach(tbAutosize);
       size();
-      setTimeout(size, 0);
-      // One more pass once fonts/labels have settled: a first measurement can
-      // land while the stacked mobile row is still being laid out, leaving a
-      // block taller than its text.
-      setTimeout(size, 150);
+      requestAnimationFrame(size);
     }
+    /**
+     * One planner row. Extracted from renderTraining so that ADDING a block can
+     * append a single row to the table instead of re-rendering the whole app —
+     * see addTimeBlock. Both paths share this markup, so a row can never differ
+     * depending on how it arrived on screen.
+     *
+     * `data-block-id` is what lets add/remove find their own row without a
+     * render.
+     */
+    function trainingBlockRowHTML(sessId, b) {
+      const ta = (field, placeholder, value, size, extra = '') => `
+                    <textarea class="tb-auto"
+                      oninput="updateTimeBlock('${sessId}','${b.id}','${field}',this.value);tbAutosize(this)"
+                      placeholder="${placeholder}"${extra}
+                      style="font-size:${size}px;line-height:1.5;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${String(value || "").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>`;
+      return `
+                <tr data-block-id="${esc(String(b.id))}">
+                  <td data-label="Time" style="vertical-align:middle">
+                    <input class="gs-time-input" value="${esc(String(b.time || ''))}"
+                      oninput="updateTimeBlock('${sessId}','${b.id}','time',this.value)"
+                      placeholder="19:45"
+                      style="width:84px;font-size:15px;padding:8px 10px">
+                  </td>
+                  <td data-label="Activity" style="vertical-align:top">${ta('activity', 'Short title (e.g. Ruck drill)', b.activity, 14)}
+                  </td>
+                  <td data-label="Key Focus" style="vertical-align:top">${ta('keyFocus', 'Key coaching points, cues and targets — write as much as you need…', b.keyFocus, 14)}
+                  </td>
+                  <td data-label="Lead Coach" style="vertical-align:top">${ta('coach', 'Lead coach, assistants, responsibilities…', b.coach, 13,
+                      `\n                      name="session-plan-coach" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"\n                      data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore`)}
+                  </td>
+                  <td data-label="" style="vertical-align:middle">
+                    <button class="btn ghost" type="button" style="padding:0 10px;min-height:36px;color:var(--muted)" onclick="removeTimeBlock('${sessId}','${b.id}')">✕</button>
+                  </td>
+                </tr>`;
+    }
+
     function removeTimeBlock(sessionId, blockId) {
       if (!state.trainingBlocks?.[sessionId]) return;
       // Compare ids as strings: the onclick passes a string, but a block's stored
       // id may be a number (legacy/server-shaped data). A strict !== would never
       // match a numeric id, so the block could not be removed (or edited) below.
       state.trainingBlocks[sessionId] = state.trainingBlocks[sessionId].filter(b=>String(b.id)!==String(blockId));
-      saveState('Block removed'); showToast('Block removed'); render();
+      saveState('Block removed'); showToast('Block removed');
+      // Remove just this row. A full render() here cost the coach their place
+      // in whatever field they were editing, exactly as adding one did. The
+      // last block is the exception: its removal has to bring back the empty
+      // state, which means rebuilding the card.
+      const row = document.querySelector(`#coach-training tr[data-block-id="${CSS.escape(String(blockId))}"]`);
+      if (row && state.trainingBlocks[sessionId].length) row.remove();
+      else renderTraining();
       syncPublishedSessionEdit(sessionId);
     }
     function updateTimeBlock(sessionId, blockId, field, val) {
@@ -15579,41 +15661,7 @@
               <th style="width:36px"></th>
             </tr></thead>
             <tbody>
-              ${blocks.map(b=>`
-                <tr>
-                  <td data-label="Time" style="vertical-align:middle">
-                    <input class="gs-time-input" value="${b.time}"
-                      oninput="updateTimeBlock('${sessId}','${b.id}','time',this.value)"
-                      placeholder="19:45"
-                      style="width:84px;font-size:15px;padding:8px 10px">
-                  </td>
-                  <td data-label="Activity" style="vertical-align:top">
-                    <textarea class="tb-auto"
-                      oninput="updateTimeBlock('${sessId}','${b.id}','activity',this.value);tbAutosize(this,true)"
-                      onfocus="tbAutosize(this,true)" onblur="tbBlur(this)"
-                      placeholder="Short title (e.g. Ruck drill)"
-                      style="font-size:14px;line-height:1.5;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${b.activity.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
-                  </td>
-                  <td data-label="Key Focus" style="vertical-align:top">
-                    <textarea class="tb-auto"
-                      oninput="updateTimeBlock('${sessId}','${b.id}','keyFocus',this.value);tbAutosize(this,true)"
-                      onfocus="tbAutosize(this,true)" onblur="tbBlur(this)"
-                      placeholder="Key coaching points, cues and targets — write as much as you need…"
-                      style="font-size:14px;line-height:1.5;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${(b.keyFocus||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
-                  </td>
-                  <td data-label="Lead Coach" style="vertical-align:top">
-                    <textarea class="tb-auto"
-                      oninput="updateTimeBlock('${sessId}','${b.id}','coach',this.value);tbAutosize(this,true)"
-                      onfocus="tbAutosize(this,true)" onblur="tbBlur(this)"
-                      placeholder="Lead coach, assistants, responsibilities…"
-                      name="session-plan-coach" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                      data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore
-                      style="font-size:13px;line-height:1.5;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${(b.coach||"").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>
-                  </td>
-                  <td data-label="" style="vertical-align:middle">
-                    <button class="btn ghost" type="button" style="padding:0 10px;min-height:36px;color:var(--muted)" onclick="removeTimeBlock('${sessId}','${b.id}')">✕</button>
-                  </td>
-                </tr>`).join("")}
+              ${blocks.map(b => trainingBlockRowHTML(sessId, b)).join("")}
             </tbody>
           </table></div>
           <!-- THE add control lives immediately under the last block (which is

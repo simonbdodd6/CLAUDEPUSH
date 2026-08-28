@@ -51,6 +51,12 @@ function buildHarness({ coach = true } = {}) {
     function render() {}
     function notify() {}
     function showToast() {}
+    let _tbSeq = 0;
+    const requestAnimationFrame = f => f();
+    const CSS = { escape: v => String(v) };
+    function trainingBlockRowHTML(sid, b) { return '<tr data-block-id="' + b.id + '"></tr>'; }
+    function renderTraining() {}
+    function tbAutosize() {}
     function autopilotReceipt() {}
     async function syncSessionsToServer() { _spy.sync++; }
     // RC4.10A: every planner edit refreshes the session revision so published
