@@ -4387,11 +4387,34 @@
 
     /* ══════════════════════════════════════════════════════════════════════
        LIGHT THEME (Beta) — Apple / Linear / Notion light aesthetic.
-       Appended last so it wins the cascade over the dark redesign layers.
+
+       Everything above this point is the dark "MIDNIGHT STADIUM" system. This
+       section converts it to light, and used to do so unconditionally: it was
+       simply appended last and won the cascade, which is why the dark design
+       had become unreachable however the app was configured.
+
+       Every rule from here on that carries a light colour is now prefixed
+       `html:not([data-theme="dark"])`, so it applies in Light and System-light
+       and steps aside in Dark, letting the dark system underneath show through.
+       Two consequences worth knowing:
+
+         · The prefix adds the same constant specificity (0,1,1) to every scoped
+           rule, so the order in which these rules resolve against EACH OTHER is
+           unchanged. Each selector in a list is prefixed individually for that
+           reason — :is() would take its most specific argument and break it.
+         · With no attribute set at all (JavaScript disabled, or the very first
+           paint) the app is LIGHT, which is what every existing user has.
+           Dark is only ever reached by an explicit data-theme="dark".
+
+       Rules here that are token-driven (var(--panel, #fff)), purely geometric,
+       or carry a colour that is right on BOTH canvases — white text on the
+       brand gradient, the amber chips, the black tag on the green pitch — are
+       deliberately NOT scoped, because they need no theme to be correct.
+
        Presentation only: keeps the premium brand-gradient buttons, the club
        logo and all accent colours; flips the canvas/surfaces/text to light.
        ══════════════════════════════════════════════════════════════════════ */
-    :root {
+    html:not([data-theme="dark"]) {
       /* Warm, soft light palette — paper-white surfaces on a warm light-grey canvas */
       --page:        #f3f4f6;
       --panel:       #ffffff;
@@ -4424,7 +4447,7 @@
 
     /* Canvas — warm white → light grey, with a subtle club-colour wash (very low
        opacity, club-driven via --brand-soft). No dark texture. */
-    body {
+    html:not([data-theme="dark"]) body {
       background:
         radial-gradient(1500px 980px at 86% -12%, var(--page-wash), transparent 62%),
         radial-gradient(1250px 860px at -10% 108%, var(--page-wash), transparent 58%),
@@ -4432,80 +4455,74 @@
       background-attachment: fixed !important;
       color: var(--ink);
     }
-    body::before { display: none !important; }
-    .app-shell { background: transparent !important; }
+    html:not([data-theme="dark"]) body::before { display: none !important; }
+    html:not([data-theme="dark"]) .app-shell { background: transparent !important; }
 
     /* Surfaces — white, elevation-not-borders. Soft shadow, generous radius. */
-    .card, .msg-card, .home-attn-item, .rehab-card, .stat-card, .training-stat,
-    .mc-kpi, .med-stat, .pkg-card, .ptm-card, .glass-card, .srv-panel, .mc-header,
-    .msg-hero, .training-hero {
+    html:not([data-theme="dark"]) .card, html:not([data-theme="dark"]) .msg-card, html:not([data-theme="dark"]) .home-attn-item, html:not([data-theme="dark"]) .rehab-card, html:not([data-theme="dark"]) .stat-card, html:not([data-theme="dark"]) .training-stat, html:not([data-theme="dark"]) .mc-kpi, html:not([data-theme="dark"]) .med-stat, html:not([data-theme="dark"]) .pkg-card, html:not([data-theme="dark"]) .ptm-card, html:not([data-theme="dark"]) .glass-card, html:not([data-theme="dark"]) .srv-panel, html:not([data-theme="dark"]) .mc-header, html:not([data-theme="dark"]) .msg-hero, html:not([data-theme="dark"]) .training-hero {
       background: #ffffff !important;
       border: 1px solid var(--line) !important;
       border-radius: 18px !important;
       box-shadow: var(--sheen), 0 1px 2px rgba(22,28,45,0.04), 0 20px 44px -26px rgba(22,28,45,0.20) !important;
       color: var(--ink) !important;
     }
-    .card:hover, .msg-card:hover, .home-attn-item:hover, .rehab-card:hover,
-    .stat-card:hover, .training-stat:hover, .med-stat:hover {
+    html:not([data-theme="dark"]) .card:hover, html:not([data-theme="dark"]) .msg-card:hover, html:not([data-theme="dark"]) .home-attn-item:hover, html:not([data-theme="dark"]) .rehab-card:hover, html:not([data-theme="dark"]) .stat-card:hover, html:not([data-theme="dark"]) .training-stat:hover, html:not([data-theme="dark"]) .med-stat:hover {
       box-shadow: var(--sheen), 0 2px 6px rgba(22,28,45,0.06), 0 30px 60px -28px rgba(22,28,45,0.26) !important;
       border-color: var(--line-2) !important;
     }
     /* Hero panels: white with a faint club-colour wash, no dark gradient */
-    .msg-hero, .training-hero {
+    html:not([data-theme="dark"]) .msg-hero, html:not([data-theme="dark"]) .training-hero {
       background: radial-gradient(150% 130% at 100% -25%, var(--brand-soft), transparent 60%), #ffffff !important;
     }
-    .msg-hero::after, .training-hero::after { opacity: .35; }
+    html:not([data-theme="dark"]) .msg-hero::after, html:not([data-theme="dark"]) .training-hero::after { opacity: .35; }
     /* Inner separators / quiet rows → faint, not dark */
-    .row { border: 0 !important; background: var(--panel-2) !important; border-radius: 12px !important; }
-    .row:hover { background: rgba(22,28,45,0.05) !important; }
-    hr, .divider { border-color: var(--line) !important; }
+    html:not([data-theme="dark"]) .row { border: 0 !important; background: var(--panel-2) !important; border-radius: 12px !important; }
+    html:not([data-theme="dark"]) .row:hover { background: rgba(22,28,45,0.05) !important; }
+    html:not([data-theme="dark"]) hr, html:not([data-theme="dark"]) .divider { border-color: var(--line) !important; }
     /* Text → dark on light (headings, labels, body, list/table cells) */
-    .workspace, .section, .card { color: var(--ink); }
-    .card h1, .card h2, .card h3, .card h4, .card h5, .card h6, .card strong, .card label,
-    .card p, .card li, .card dt, .card dd, .card td, .card th,
-    .workspace > h1, .workspace > h2, .workspace h1, .workspace h2, .workspace h3, .workspace h4,
-    .msg-hero h1, .msg-hero h2, .training-hero h1, .training-hero h2 { color: var(--ink); }
-    .card .muted, .muted { color: var(--muted) !important; }
+    html:not([data-theme="dark"]) .workspace, html:not([data-theme="dark"]) .section, html:not([data-theme="dark"]) .card { color: var(--ink); }
+    html:not([data-theme="dark"]) .card h1, html:not([data-theme="dark"]) .card h2, html:not([data-theme="dark"]) .card h3, html:not([data-theme="dark"]) .card h4, html:not([data-theme="dark"]) .card h5, html:not([data-theme="dark"]) .card h6, html:not([data-theme="dark"]) .card strong, html:not([data-theme="dark"]) .card label, html:not([data-theme="dark"]) .card p, html:not([data-theme="dark"]) .card li, html:not([data-theme="dark"]) .card dt, html:not([data-theme="dark"]) .card dd, html:not([data-theme="dark"]) .card td, html:not([data-theme="dark"]) .card th, html:not([data-theme="dark"]) .workspace > h1, html:not([data-theme="dark"]) .workspace > h2, html:not([data-theme="dark"]) .workspace h1, html:not([data-theme="dark"]) .workspace h2, html:not([data-theme="dark"]) .workspace h3, html:not([data-theme="dark"]) .workspace h4, html:not([data-theme="dark"]) .msg-hero h1, html:not([data-theme="dark"]) .msg-hero h2, html:not([data-theme="dark"]) .training-hero h1, html:not([data-theme="dark"]) .training-hero h2 { color: var(--ink); }
+    html:not([data-theme="dark"]) .card .muted, html:not([data-theme="dark"]) .muted { color: var(--muted) !important; }
 
     /* Inputs — white fields, dark text */
-    input, select, textarea {
+    html:not([data-theme="dark"]) input, html:not([data-theme="dark"]) select, html:not([data-theme="dark"]) textarea {
       background: #ffffff !important;
       border: 1px solid rgba(20,30,55,0.16) !important;
       color: var(--ink) !important;
     }
-    input::placeholder, textarea::placeholder { color: var(--faint) !important; }
-    select option { background: #ffffff; color: var(--ink); }
+    html:not([data-theme="dark"]) input::placeholder, html:not([data-theme="dark"]) textarea::placeholder { color: var(--faint) !important; }
+    html:not([data-theme="dark"]) select option { background: #ffffff; color: var(--ink); }
 
     /* Sidebar — light, but club-owned: a soft wash of the club primary over white so
        the persistent left rail reads as THE club on every screen. Low alpha over white
        keeps nav text fully legible whatever the club colour. */
-    .sidebar {
+    html:not([data-theme="dark"]) .sidebar {
       background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.05) 0%, rgba(var(--accent-rgb), 0.13) 100%), #ffffff !important;
       border-right: 1px solid var(--accent-line) !important;
       color: var(--ink) !important;
     }
     /* RC4.6A — the identity block (crest + club name) becomes a small club header card. */
-    .brand {
+    html:not([data-theme="dark"]) .brand {
       background: rgba(var(--accent-rgb), 0.09) !important;
       border: 1px solid var(--accent-line) !important;
       border-radius: 13px !important;
       padding: 11px 12px !important;
     }
-    .brand strong { color: var(--ink) !important; }
-    .brand p, .sidebar-card p { color: var(--muted) !important; }
+    html:not([data-theme="dark"]) .brand strong { color: var(--ink) !important; }
+    html:not([data-theme="dark"]) .brand p, html:not([data-theme="dark"]) .sidebar-card p { color: var(--muted) !important; }
     /* The club name is the identity — make it read clearly, not as a faint subtitle. */
-    #sidebarClubName { color: var(--ink) !important; font-weight: 700 !important; font-size: 12.5px !important; margin-top: 3px !important; }
-    .sidebar-card { background: #f2f6fc !important; border: 1px solid rgba(20,30,55,0.08) !important; color: var(--ink) !important; }
-    .sidebar-card strong { color: var(--ink) !important; }
+    html:not([data-theme="dark"]) #sidebarClubName { color: var(--ink) !important; font-weight: 700 !important; font-size: 12.5px !important; margin-top: 3px !important; }
+    html:not([data-theme="dark"]) .sidebar-card { background: #f2f6fc !important; border: 1px solid rgba(20,30,55,0.08) !important; color: var(--ink) !important; }
+    html:not([data-theme="dark"]) .sidebar-card strong { color: var(--ink) !important; }
     /* Top of every content page (Overview, Availability, Training, Members, Medical,
        Settings) gains a restrained club band — the club owns the page header. */
-    .topbar { background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.06), transparent) !important; border-bottom: 1px solid var(--accent-line) !important; }
+    html:not([data-theme="dark"]) .topbar { background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.06), transparent) !important; border-bottom: 1px solid var(--accent-line) !important; }
     /* One primary card carries the club — the Overview "Set up your club" hero card. */
-    .ob-card { border-top: 2px solid var(--accent) !important; }
-    nav button { color: var(--muted) !important; }
-    nav button:not(.active):hover { background: rgba(20,30,55,0.05) !important; color: var(--ink) !important; }
-    nav button.active { background: var(--brand-soft) !important; color: var(--brand) !important; border-left-color: var(--brand) !important; }
-    nav button.active svg { color: var(--brand) !important; }
+    html:not([data-theme="dark"]) .ob-card { border-top: 2px solid var(--accent) !important; }
+    html:not([data-theme="dark"]) nav button { color: var(--muted) !important; }
+    html:not([data-theme="dark"]) nav button:not(.active):hover { background: rgba(20,30,55,0.05) !important; color: var(--ink) !important; }
+    html:not([data-theme="dark"]) nav button.active { background: var(--brand-soft) !important; color: var(--brand) !important; border-left-color: var(--brand) !important; }
+    html:not([data-theme="dark"]) nav button.active svg { color: var(--brand) !important; }
 
     /* ═══ RC3 mobile navigation polish (≤980px) ══════════════════════════════════
        On phones/tablets the sidebar nav collapses to a grid. The layered desktop
@@ -4551,49 +4568,48 @@
       nav button.active::before { display: none !important; }
     }
 
-    .view-switch { background: rgba(20,30,55,0.05) !important; border: 1px solid rgba(20,30,55,0.08) !important; }
-    .view-switch button { color: var(--muted) !important; }
+    html:not([data-theme="dark"]) .view-switch { background: rgba(20,30,55,0.05) !important; border: 1px solid rgba(20,30,55,0.08) !important; }
+    html:not([data-theme="dark"]) .view-switch button { color: var(--muted) !important; }
     .view-switch button.active { color: #ffffff !important; }
-    .auth-panel { background: #f2f6fc !important; border-color: rgba(20,30,55,0.08) !important; }
-    .auth-panel input { background: #ffffff !important; border-color: rgba(20,30,55,0.14) !important; color: var(--ink) !important; }
-    .auth-panel label, .auth-panel small { color: var(--muted) !important; }
-    .auth-panel strong { color: var(--ink) !important; }
+    html:not([data-theme="dark"]) .auth-panel { background: #f2f6fc !important; border-color: rgba(20,30,55,0.08) !important; }
+    html:not([data-theme="dark"]) .auth-panel input { background: #ffffff !important; border-color: rgba(20,30,55,0.14) !important; color: var(--ink) !important; }
+    html:not([data-theme="dark"]) .auth-panel label, html:not([data-theme="dark"]) .auth-panel small { color: var(--muted) !important; }
+    html:not([data-theme="dark"]) .auth-panel strong { color: var(--ink) !important; }
 
     /* Topbar */
-    .topbar h1, #pageTitle { color: var(--ink) !important; }
+    html:not([data-theme="dark"]) .topbar h1, html:not([data-theme="dark"]) #pageTitle { color: var(--ink) !important; }
 
     /* Secondary buttons readable on light; the premium brand-gradient .primary is kept */
-    .btn:not(.primary) { background: #ffffff !important; border: 1px solid rgba(20,30,55,0.14) !important; color: var(--ink) !important; }
-    .btn:not(.primary):hover { background: #f2f5fb !important; border-color: rgba(20,30,55,0.22) !important; }
+    html:not([data-theme="dark"]) .btn:not(.primary) { background: #ffffff !important; border: 1px solid rgba(20,30,55,0.14) !important; color: var(--ink) !important; }
+    html:not([data-theme="dark"]) .btn:not(.primary):hover { background: #f2f5fb !important; border-color: rgba(20,30,55,0.22) !important; }
     .btn.primary { background: var(--brand-grad) !important; color: #ffffff !important; border: 1px solid transparent !important; box-shadow: var(--glow-brand) !important; }
     .btn.primary:hover { filter: brightness(1.06); }
 
     /* Chat / Messages — light shell, WhatsApp-light bubbles */
-    .chat-shell, .chat-list, .chat-window { background: #ffffff !important; }
-    .chat-list { border-right: 1px solid rgba(20,30,55,0.08) !important; }
-    .chat-list-head, .chat-search-bar, .chat-header, .chat-composer { border-color: rgba(20,30,55,0.08) !important; }
+    html:not([data-theme="dark"]) .chat-shell, html:not([data-theme="dark"]) .chat-list, html:not([data-theme="dark"]) .chat-window { background: #ffffff !important; }
+    html:not([data-theme="dark"]) .chat-list { border-right: 1px solid rgba(20,30,55,0.08) !important; }
+    html:not([data-theme="dark"]) .chat-list-head, html:not([data-theme="dark"]) .chat-search-bar, html:not([data-theme="dark"]) .chat-header, html:not([data-theme="dark"]) .chat-composer { border-color: rgba(20,30,55,0.08) !important; }
     .chat-list-head h2, .chat-header h2 { color: var(--ink) !important; }
-    .chat-feed { background: #eef2f9 !important; }
-    .chat-bubble { background: #ffffff !important; color: var(--ink) !important; box-shadow: 0 1px 2px rgba(20,30,55,0.12) !important; }
+    html:not([data-theme="dark"]) .chat-feed { background: #eef2f9 !important; }
+    html:not([data-theme="dark"]) .chat-bubble { background: #ffffff !important; color: var(--ink) !important; box-shadow: 0 1px 2px rgba(20,30,55,0.12) !important; }
     .chat-bubble-wrap.mine .chat-bubble { background: var(--bubble-mine) !important; color: #ffffff !important; }
-    .chat-composer { background: #ffffff !important; }
-    .chat-contact:hover { background: rgba(20,30,55,0.04) !important; }
+    html:not([data-theme="dark"]) .chat-composer { background: #ffffff !important; }
+    html:not([data-theme="dark"]) .chat-contact:hover { background: rgba(20,30,55,0.04) !important; }
     /* RC3 Batch A: touch press feedback for non-<button> clickables. Real
        <button>s already scale on :active globally; conversation rows (div variant)
        and member <tr>s do not, and a transform on a table row is unsafe, so these
        acknowledge the tap with a background press instead. */
-    .chat-contact:active { background: rgba(20,30,55,0.09) !important; }
+    html:not([data-theme="dark"]) .chat-contact:active { background: rgba(20,30,55,0.09) !important; }
 
     /* Data tables / rows — light cells, dark text */
-    .member-row td, .member-row:hover td { background: #ffffff !important; color: var(--ink) !important; border-color: rgba(20,30,55,0.07) !important; }
-    .member-row:hover td { background: #f6f8fc !important; }
-    .member-row:active td { background: #e9eef7 !important; }
+    html:not([data-theme="dark"]) .member-row td, html:not([data-theme="dark"]) .member-row:hover td { background: #ffffff !important; color: var(--ink) !important; border-color: rgba(20,30,55,0.07) !important; }
+    html:not([data-theme="dark"]) .member-row:hover td { background: #f6f8fc !important; }
+    html:not([data-theme="dark"]) .member-row:active td { background: #e9eef7 !important; }
     thead th, table th { color: var(--muted) !important; }
-    tbody td { color: var(--ink); border-color: rgba(20,30,55,0.07) !important; }
+    html:not([data-theme="dark"]) tbody td { color: var(--ink); border-color: rgba(20,30,55,0.07) !important; }
 
     /* Dropdown menus / popovers / sheets that hardcode dark backgrounds */
-    .menu, .dropdown, .popover, .ctx-menu, .sheet, .modal-card, .ptm-card,
-    .chat-new-msg-dialog, .picker-menu, .dd-menu {
+    html:not([data-theme="dark"]) .menu, html:not([data-theme="dark"]) .dropdown, html:not([data-theme="dark"]) .popover, html:not([data-theme="dark"]) .ctx-menu, html:not([data-theme="dark"]) .sheet, html:not([data-theme="dark"]) .modal-card, html:not([data-theme="dark"]) .ptm-card, html:not([data-theme="dark"]) .chat-new-msg-dialog, html:not([data-theme="dark"]) .picker-menu, html:not([data-theme="dark"]) .dd-menu {
       background: #ffffff !important;
       border: 1px solid rgba(20,30,55,0.10) !important;
       color: var(--ink) !important;
@@ -4601,8 +4617,8 @@
     }
 
     /* Members — light row cards (overrides the dark player-db-table gradient) */
-    .player-db-table tbody td, .member-row td, .member-row:hover td { background: #ffffff !important; color: var(--ink) !important; border-color: var(--line) !important; }
-    .member-row:hover td, .player-db-table tbody tr:hover td { background: #f7f8fb !important; }
+    html:not([data-theme="dark"]) .player-db-table tbody td, html:not([data-theme="dark"]) .member-row td, html:not([data-theme="dark"]) .member-row:hover td { background: #ffffff !important; color: var(--ink) !important; border-color: var(--line) !important; }
+    html:not([data-theme="dark"]) .member-row:hover td, html:not([data-theme="dark"]) .player-db-table tbody tr:hover td { background: #f7f8fb !important; }
     thead th, table th, .player-db-table thead th { color: var(--muted) !important; }
     tbody td { color: var(--ink); border-color: var(--line) !important; }
 
@@ -4647,7 +4663,7 @@
       }
       .member-row:last-child { border-bottom: 0 !important; }
       .member-row:active td { background: transparent !important; }
-      .member-row:active { background: #eef1f7 !important; }
+      html:not([data-theme="dark"]) .member-row:active { background: #eef1f7 !important; }
 
       /* default: hide every cell + kill the stacked ::before captions */
       .member-row td { display: none !important; padding: 0 !important; border: 0 !important; background: transparent !important; border-radius: 0 !important; }
@@ -4677,22 +4693,18 @@
     }
 
     /* Dropdown menus / popovers / sheets that hardcode dark backgrounds */
-    .menu, .dropdown, .popover, .ctx-menu, .sheet, .modal-card, .ptm-card,
-    .chat-new-msg-dialog, .picker-menu, .dd-menu, .chat-ctx-menu, .srv-panel {
+    html:not([data-theme="dark"]) .menu, html:not([data-theme="dark"]) .dropdown, html:not([data-theme="dark"]) .popover, html:not([data-theme="dark"]) .ctx-menu, html:not([data-theme="dark"]) .sheet, html:not([data-theme="dark"]) .modal-card, html:not([data-theme="dark"]) .ptm-card, html:not([data-theme="dark"]) .chat-new-msg-dialog, html:not([data-theme="dark"]) .picker-menu, html:not([data-theme="dark"]) .dd-menu, html:not([data-theme="dark"]) .chat-ctx-menu, html:not([data-theme="dark"]) .srv-panel {
       background: #ffffff !important;
       border: 1px solid var(--line-2) !important;
       color: var(--ink) !important;
       box-shadow: var(--shadow-lift) !important;
     }
-    .chat-ctx-menu button:hover, .ed-hcell:hover, .tl-row:hover, .mctl-row:hover { background: rgba(22,28,45,0.05) !important; }
-    .ed-hcell { background: rgba(22,28,45,0.025) !important; border-color: var(--line) !important; }
-    select option { background: #ffffff !important; color: var(--ink) !important; }
+    html:not([data-theme="dark"]) .chat-ctx-menu button:hover, html:not([data-theme="dark"]) .ed-hcell:hover, html:not([data-theme="dark"]) .tl-row:hover, html:not([data-theme="dark"]) .mctl-row:hover { background: rgba(22,28,45,0.05) !important; }
+    html:not([data-theme="dark"]) .ed-hcell { background: rgba(22,28,45,0.025) !important; border-color: var(--line) !important; }
+    html:not([data-theme="dark"]) select option { background: #ffffff !important; color: var(--ink) !important; }
 
     /* ── MATCH CENTRE — light dashboard panels; the GREEN PITCH + its magnets stay ── */
-    .mcx2-card, .mcx2-pool, .mcx2-benchrow, .mc7-benchrow, .mcx2-board > .mcx2-card,
-    .mc-header, .mc-detail-row, .mc-kpi, .mc-hero, .fixture-hero,
-    .mc-team-grid > .card:first-child,
-    .mc-team-grid > :nth-child(3) .card, .mc-team-grid > :nth-child(2) > .card:last-child {
+    html:not([data-theme="dark"]) .mcx2-card, html:not([data-theme="dark"]) .mcx2-pool, html:not([data-theme="dark"]) .mcx2-benchrow, html:not([data-theme="dark"]) .mc7-benchrow, html:not([data-theme="dark"]) .mcx2-board > .mcx2-card, html:not([data-theme="dark"]) .mc-header, html:not([data-theme="dark"]) .mc-detail-row, html:not([data-theme="dark"]) .mc-kpi, html:not([data-theme="dark"]) .mc-hero, html:not([data-theme="dark"]) .fixture-hero, html:not([data-theme="dark"]) .mc-team-grid > .card:first-child, html:not([data-theme="dark"]) .mc-team-grid > :nth-child(3) .card, html:not([data-theme="dark"]) .mc-team-grid > :nth-child(2) > .card:last-child {
       background: #ffffff !important;
       border: 1px solid var(--line) !important;
       color: var(--ink) !important;
@@ -4701,39 +4713,39 @@
     .mcx2-card-head, .mcx2-card-head strong, .mcx2-card strong, .mcx2-bjname,
     .mcx2-rowname, .fixture-hero h1, .mc-hero h1 { color: var(--ink) !important; }
     .mcx2-chip-player, .squad-player-drag, .mcx2-brow.set { background: var(--panel-2) !important; border: 1px solid var(--line) !important; color: var(--ink) !important; }
-    .mcx2-chip-player:hover, .squad-player-drag:hover { background: rgba(22,28,45,0.05) !important; }
-    .mcx2-row:hover { background: rgba(22,28,45,0.04) !important; }
-    .mcx2-rownum { background: rgba(22,28,45,0.06) !important; color: var(--ink) !important; }
-    .mcx2-binput { background: #ffffff !important; border: 1px solid var(--line-2) !important; color: var(--ink) !important; }
+    html:not([data-theme="dark"]) .mcx2-chip-player:hover, html:not([data-theme="dark"]) .squad-player-drag:hover { background: rgba(22,28,45,0.05) !important; }
+    html:not([data-theme="dark"]) .mcx2-row:hover { background: rgba(22,28,45,0.04) !important; }
+    html:not([data-theme="dark"]) .mcx2-rownum { background: rgba(22,28,45,0.06) !important; color: var(--ink) !important; }
+    html:not([data-theme="dark"]) .mcx2-binput { background: #ffffff !important; border: 1px solid var(--line-2) !important; color: var(--ink) !important; }
     .mc-detail-label, .mcx2-rowpos, .mcx2-ppos { color: var(--muted) !important; }
     /* bench tiles in the side rail → light (jersey magnets ON the pitch keep their look) */
     .bench-slot { background: var(--panel-2) !important; border: 1px solid var(--line) !important; }
-    .bench-slot input { background: #ffffff !important; border: 1px solid var(--line-2) !important; color: var(--ink) !important; }
-    .fixture-hero .pill { background: rgba(22,28,45,0.05) !important; border-color: var(--line) !important; color: var(--muted) !important; }
+    html:not([data-theme="dark"]) .bench-slot input { background: #ffffff !important; border: 1px solid var(--line-2) !important; color: var(--ink) !important; }
+    html:not([data-theme="dark"]) .fixture-hero .pill { background: rgba(22,28,45,0.05) !important; border-color: var(--line) !important; color: var(--muted) !important; }
     /* UNTOUCHED (intentionally): .pitch-big / #matchday-pitch (green turf), .pitch-line,
        .pitch-inner, .slot-photo / .slot-num / .slot-name-input, .jrsy-* (player magnets
        on the green pitch), status dots, and the brand-gradient buttons. */
 
     /* Match Centre status chips → light cards (status colours kept on the value) */
-    .mc10-chip { background: #ffffff !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-sm) !important; }
+    html:not([data-theme="dark"]) .mc10-chip { background: #ffffff !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-sm) !important; }
     .mc10-chip-val { color: var(--ink) !important; }
-    .mc10-chip-val.v-ready  { color: #0f9d6b !important; }
-    .mc10-chip-val.v-almost { color: #c77d10 !important; }
-    .mc10-chip-val.v-build  { color: #dc2626 !important; }
+    html:not([data-theme="dark"]) .mc10-chip-val.v-ready  { color: #0f9d6b !important; }
+    html:not([data-theme="dark"]) .mc10-chip-val.v-almost { color: #c77d10 !important; }
+    html:not([data-theme="dark"]) .mc10-chip-val.v-build  { color: #dc2626 !important; }
 
     /* Chat window header → light, dark title */
-    .chat-header { background: #ffffff !important; border-bottom: 1px solid var(--line) !important; }
+    html:not([data-theme="dark"]) .chat-header { background: #ffffff !important; border-bottom: 1px solid var(--line) !important; }
     .chat-header h2, .chat-header strong, .chat-header-main strong, .chat-header-main h2 { color: var(--ink) !important; }
     .chat-header small, .chat-header .muted { color: var(--muted) !important; }
 
     /* Toasts stay legible on light */
-    .toast { background: #ffffff !important; color: var(--ink) !important; border: 1px solid var(--line-2) !important; box-shadow: var(--shadow-lift) !important; }
+    html:not([data-theme="dark"]) .toast { background: #ffffff !important; color: var(--ink) !important; border: 1px solid var(--line-2) !important; box-shadow: var(--shadow-lift) !important; }
     /* RC3 Batch A: the generic light-toast border above erases the success/error
        tint, so on the shipped (light) theme a success and a failure looked
        identical. Restore an unmistakable read — coloured left accent + tint —
        and win the cascade over the !important border above. */
     .toast.toast-success { border: 1px solid rgba(16,163,74,0.45) !important; border-left: 4px solid #16a34a !important; }
-    .toast.toast-error   { border: 1px solid rgba(220,38,38,0.45) !important; border-left: 4px solid #dc2626 !important; background: #fef4f4 !important; color: #7f1d1d !important; }
+    html:not([data-theme="dark"]) .toast.toast-error { border: 1px solid rgba(220,38,38,0.45) !important; border-left: 4px solid #dc2626 !important; background: #fef4f4 !important; color: #7f1d1d !important; }
 
     /* Weekly Availability card (Overview) */
     .wa-card { display:grid; gap:14px; }
@@ -4788,11 +4800,11 @@
     .avail-summary .msg-kpi { border-top:3px solid var(--line); }
     .avail-summary .msg-kpi.available    { border-top-color:var(--green); }
     .avail-summary .msg-kpi.maybe        { border-top-color:var(--amber); }
-    .avail-summary .msg-kpi.unavailable  { border-top-color:#dc2626; }
+    .avail-summary .msg-kpi.unavailable  { border-top-color:var(--red); }
     .avail-summary .msg-kpi.chase        { border-top-color:var(--muted); }
     .avail-summary .msg-kpi.available strong   { color:var(--green); }
     .avail-summary .msg-kpi.maybe strong       { color:var(--amber); }
-    .avail-summary .msg-kpi.unavailable strong { color:#dc2626; }
+    .avail-summary .msg-kpi.unavailable strong { color:var(--red); }
     .avail-summary .msg-kpi.chase strong       { color:var(--muted); }
     .msg-board-list { max-height:560px; overflow-y:auto; padding:8px; display:grid; gap:6px; }
 
@@ -5312,7 +5324,7 @@
        Colours are LITERAL CoachEasier values, never var(--accent)/var(--brand),
        so a club's custom palette can never recolour or wash out the platform
        signature. Lighter than the page title: this is a signature, not a heading. */
-    .ce-topmark {
+    html:not([data-theme="dark"]) .ce-topmark {
       display: inline-flex; align-items: center; gap: 7px;
       padding: 5px 10px; border-radius: 999px;
       background: rgba(143,107,42,0.07);
@@ -5473,6 +5485,59 @@
       .tw-nav-btn { padding: 0 10px; font-size: 12px; }
     }
   </style>
+  <script>
+  /* ── Appearance, resolved before the first paint ─────────────────────────────
+     This has to run in <head>, synchronously, ahead of any markup: if the
+     attribute arrived later the app would paint light and then flip, which is
+     the flash every themed site is judged on.
+
+     One saved value, three choices. 'light' and 'dark' are literal; 'system'
+     follows the OS and is re-resolved whenever the OS changes (the listener is
+     attached with the rest of the app, in initAppearance).
+
+     The DEFAULT — for anyone who has never chosen — is LIGHT, because light is
+     what every existing user has been using. Dark is opt-in; nobody is moved
+     into it by this build, and no account is consulted, so a coach's own device
+     decides its own appearance.
+
+     The stored value is deliberately NOT part of the app state blob: it must be
+     readable at this point in the document, long before the state, the session
+     or any API call exists. localStorage can throw outright (Safari private
+     mode, storage disabled), so every access is guarded and the failure mode is
+     the default appearance, never a broken page. */
+  (function () {
+    var KEY = 'coacheasier-appearance';
+    var THEME_COLOR = { light: '#f3f4f6', dark: '#090d14' };
+    function stored() {
+      try {
+        var v = localStorage.getItem(KEY);
+        return (v === 'light' || v === 'dark' || v === 'system') ? v : null;
+      } catch (e) { return null; }          // storage unavailable → the default
+    }
+    function systemPrefersDark() {
+      try { return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches); }
+      catch (e) { return false; }
+    }
+    function resolve(pref) {
+      if (pref === 'dark')  return 'dark';
+      if (pref === 'system') return systemPrefersDark() ? 'dark' : 'light';
+      return 'light';                        // 'light', and anything unset
+    }
+    window.CE_APPEARANCE_KEY = KEY;
+    window.CE_APPEARANCE_THEME_COLOR = THEME_COLOR;
+    window.ceAppearancePreference = function () { return stored() || 'light'; };
+    window.ceResolveAppearance = resolve;
+    window.ceApplyAppearance = function (pref) {
+      var mode = resolve(pref || window.ceAppearancePreference());
+      document.documentElement.setAttribute('data-theme', mode);
+      // Keep the mobile browser chrome and the PWA status bar with the app.
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', THEME_COLOR[mode]);
+      return mode;
+    };
+    window.ceApplyAppearance();
+  })();
+  </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
 <body>
@@ -14020,7 +14085,7 @@
       el.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(5px)';
       el.addEventListener('click', e => { if (e.target === el) el.remove(); });
       el.innerHTML = `
-        <div style="background:#fff;border-radius:20px;padding:26px;max-width:470px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.45);max-height:92vh;overflow-y:auto">
+        <div style="background:var(--panel);color:var(--ink);border-radius:20px;padding:26px;max-width:470px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.45);max-height:92vh;overflow-y:auto">
           <div class="eyebrow" style="color:var(--accent)">Weekly Availability</div>
           <h2 style="margin:3px 0 4px;font-size:20px;color:var(--ink)">Edit schedule</h2>
           <p class="muted" style="font-size:13px;margin:0 0 4px">Pick the day and hour the weekly availability reminder is sent. It goes out once during that hour.</p>
@@ -20057,6 +20122,18 @@
         </div>`;
     }
 
+    /** The three appearances Settings offers. System follows the device. */
+    const APPEARANCE_CHOICES = [
+      { id: 'light',  label: 'Light',  icon: '☀️' },
+      { id: 'dark',   label: 'Dark',   icon: '🌙' },
+      { id: 'system', label: 'System', icon: '💻' },
+    ];
+    const APPEARANCE_HINT = {
+      light:  'Always light, whatever this device is set to.',
+      dark:   'Always dark, whatever this device is set to.',
+      system: 'Follows this device — light by day, dark at night if your device does.',
+    };
+
     function renderSettings() {
       const el = document.getElementById('coach-settings');
       if (!el) return;
@@ -20076,6 +20153,14 @@
       if (typeof ensureAdminData === 'function') ensureAdminData();
       const prefs = _settingsPrefs || {};
       const prefOn = k => prefs[k] !== false;
+      // Appearance reads from the device, not from _settingsPrefs — it is not an
+      // account setting. typeof-guarded like _betaUI above so the isolated render
+      // harnesses, which evaluate renderSettings on its own, still work: without
+      // the tables there is simply no Appearance card to draw.
+      const appearancePref = (typeof ceAppearancePreference === 'function')
+        ? ceAppearancePreference() : 'light';
+      const appearanceChoices = (typeof APPEARANCE_CHOICES !== 'undefined') ? APPEARANCE_CHOICES : [];
+      const appearanceHint    = (typeof APPEARANCE_HINT    !== 'undefined') ? APPEARANCE_HINT    : {};
       const inputStyle = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
       const labelStyle = 'display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--muted);text-align:left';
       const rowStyle = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);flex-wrap:wrap';
@@ -20174,6 +20259,29 @@
               <p class="muted" style="font-size:11px;margin:4px 0 0">Changes here save automatically and apply your branding across the app.</p>
             </div>
           </div>
+
+          <!-- Appearance — a DEVICE preference, saved locally (see setAppearance) -->
+          ${!appearanceChoices.length ? '' : `
+          <div class="card">
+            <h2 style="margin-bottom:4px">Appearance</h2>
+            <p class="muted" style="font-size:12px;margin-bottom:12px">How CoachEasier looks on this device. Saved here, not to your account, so each of your devices can differ.</p>
+            <div role="radiogroup" aria-label="Appearance" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+              ${appearanceChoices.map(c => {
+                const on = appearancePref === c.id;
+                return `<button type="button" role="radio" aria-checked="${on}"
+                  onclick="setAppearance('${c.id}')"
+                  style="display:grid;gap:5px;justify-items:center;padding:12px 8px;min-height:74px;cursor:pointer;
+                         border-radius:11px;font-size:12.5px;font-weight:700;
+                         border:1px solid ${on ? 'var(--accent)' : 'var(--line)'};
+                         background:${on ? 'var(--accent-soft)' : 'var(--panel-2)'};
+                         color:${on ? 'var(--ink)' : 'var(--muted)'}">
+                  <span aria-hidden="true" style="font-size:17px;line-height:1">${c.icon}</span>
+                  <span>${c.label}</span>
+                </button>`;
+              }).join('')}
+            </div>
+            <p class="muted" style="font-size:11px;margin:10px 0 0">${esc(appearanceHint[appearancePref] || '')}</p>
+          </div>`}
 
           <!-- Notifications -->
           <div class="card">
@@ -20529,6 +20637,46 @@
         showToast(e.message || 'Could not open billing portal — try again');
         if (btn) { btn.disabled = false; btn.textContent = 'Manage Billing'; }
       }
+    }
+
+    /**
+     * Appearance — Light / Dark / System.
+     *
+     * The preference is a DEVICE choice, not an account one, so it is stored in
+     * localStorage rather than through /api/identity like the notification
+     * preferences below. That is not a shortcut: the value has to be readable in
+     * <head> before the first paint (see the boot script), which is long before
+     * a session or any API response exists, and a coach who signs in on the
+     * clubhouse laptop and their own phone should not have one screen dictate
+     * the other. No endpoint changes, and appearance never leaves the device.
+     *
+     * Reading and writing both go through the helpers the boot script defined,
+     * so there is ONE definition of how a preference resolves to a mode.
+     */
+    function setAppearance(pref) {
+      if (pref !== 'light' && pref !== 'dark' && pref !== 'system') return;
+      try { localStorage.setItem(CE_APPEARANCE_KEY, pref); }
+      catch (e) { showToast('⚠️ Could not save appearance on this device'); }
+      ceApplyAppearance(pref);
+      if (typeof renderSettings === 'function') renderSettings();
+    }
+
+    /**
+     * Follow the OS while the preference is 'system'.
+     *
+     * Attached once, and it re-reads the stored preference on every change
+     * rather than closing over it — so choosing Light or Dark later makes this
+     * listener inert without needing to be removed.
+     */
+    function initAppearance() {
+      if (typeof window === 'undefined' || !window.matchMedia) return;
+      var mq;
+      try { mq = window.matchMedia('(prefers-color-scheme: dark)'); } catch (e) { return; }
+      var follow = function () {
+        if (ceAppearancePreference() === 'system') ceApplyAppearance('system');
+      };
+      if (mq.addEventListener) mq.addEventListener('change', follow);
+      else if (mq.addListener) mq.addListener(follow);   // older WebKit
     }
 
     async function settingsTogglePref(key) {
@@ -20915,7 +21063,7 @@
       el.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(5px)';
       el.addEventListener('click', e => { if (e.target === el) el.remove(); });
       el.innerHTML = `
-        <div style="background:#fff;border-radius:20px;padding:26px;max-width:380px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.45);animation:fadeUp 0.22s ease both">
+        <div style="background:var(--panel);color:var(--ink);border-radius:20px;padding:26px;max-width:380px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.45);animation:fadeUp 0.22s ease both">
           <div style="display:flex;align-items:center;gap:13px;margin-bottom:18px">
             <div style="width:48px;height:48px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;flex-shrink:0">${esc(initials)}</div>
             <div style="min-width:0">
@@ -37742,7 +37890,7 @@
       el.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(5px)';
       el.addEventListener('click', e => { if (e.target === el) el.remove(); });
       el.innerHTML = `
-        <div style="background:#fff;border-radius:20px;padding:28px;max-width:440px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.45);animation:fadeUp 0.24s ease both;max-height:92vh;overflow-y:auto">
+        <div style="background:var(--panel);color:var(--ink);border-radius:20px;padding:28px;max-width:440px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.45);animation:fadeUp 0.24s ease both;max-height:92vh;overflow-y:auto">
           <div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">${esc(state.clubName || 'Your club')}</div>
           <h2 style="margin:4px 0 4px;font-size:21px;color:var(--ink)">Invite your squad</h2>
           <p style="color:var(--muted);font-size:13.5px;margin:0 0 18px">Share one link. Every player registers themselves and joins ${esc(state.clubName || 'your club')} automatically — no adding players one by one.</p>
@@ -37793,9 +37941,11 @@
           <a class="btn" href="${esc(mail)}" style="display:flex;align-items:center;justify-content:center;gap:7px;min-height:42px;text-decoration:none">✉️ Email</a>
         </div>
         <div style="display:flex;flex-direction:column;align-items:center;gap:9px;padding:18px;background:var(--panel-2);border-radius:14px">
+          <!-- The white quiet zone is part of the QR code, not the theme: scanners
+               need the light margin, so this one stays white in dark mode too. -->
           <img src="${esc(qr)}" alt="Invite QR code" width="170" height="170" style="border-radius:10px;background:#fff;padding:8px"
             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-          <div style="display:none;width:170px;height:170px;align-items:center;justify-content:center;border:2px dashed var(--line);border-radius:10px;color:var(--muted);font-size:12px;text-align:center;padding:12px;background:#fff">QR code<br>(scan the invite link)</div>
+          <div style="display:none;width:170px;height:170px;align-items:center;justify-content:center;border:2px dashed var(--line);border-radius:10px;color:var(--muted);font-size:12px;text-align:center;padding:12px;background:var(--panel-2)">QR code<br>(scan the invite link)</div>
           <div style="font-size:11.5px;color:var(--muted)">Players can scan this to join</div>
         </div>`;
     }
@@ -37804,7 +37954,7 @@
     function showInviteModal(invite) {
       const isGroup = !!invite.group;
       const club = esc(invite.teamName || state.clubName || 'the team');
-      const fieldCss = 'background:#fff;border:1px solid var(--line-2);border-radius:9px;padding:11px 12px;color:var(--ink);font-size:14px;width:100%;box-sizing:border-box';
+      const fieldCss = 'background:var(--panel-2);border:1px solid var(--line-2);border-radius:9px;padding:11px 12px;color:var(--ink);font-size:14px;width:100%;box-sizing:border-box';
       const labelCss = 'font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:6px;margin-top:12px';
       const nameFields = isGroup
         ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px">
@@ -37822,7 +37972,7 @@
       el.id = 'invite-modal';
       el.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(5px)';
       el.innerHTML = `
-        <div style="background:#fff;border-radius:20px;padding:30px;max-width:440px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.5);animation:fadeUp 0.24s ease both;max-height:92vh;overflow-y:auto">
+        <div style="background:var(--panel);color:var(--ink);border-radius:20px;padding:30px;max-width:440px;width:100%;box-shadow:0 30px 80px -18px rgba(15,23,42,0.5);animation:fadeUp 0.24s ease both;max-height:92vh;overflow-y:auto">
           <div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">${club}</div>
           <h2 id="invite-modal-title" style="margin:4px 0 4px;font-size:22px;color:var(--ink)">${isGroup ? 'Join your squad' : 'Welcome to ' + club}</h2>
           <p id="invite-modal-sub" style="color:var(--muted);font-size:13.5px;margin:0 0 6px">Create your CoachEasier account — you'll be logged in straight away.<br>
@@ -38438,6 +38588,11 @@
       if (inMessages && !_chatPollTimer && state.selectedChatId) chatStartPolling(state.selectedChatId);
     });
     window.addEventListener('focus', refreshAvailabilityOnReturn);
+
+    // Appearance is already applied (the <head> boot script did it before the
+    // first paint). This only attaches the OS listener, so a coach on System
+    // follows their device when it switches at sunset.
+    initAppearance();
 
     document.addEventListener('keydown', event => {
       const target = event.target;
