@@ -259,7 +259,7 @@ test('1+2: both routes are offered — the manual planner is untouched and impor
   assert.match(panel, /Import CSV \/ Excel/);
   assert.match(src, /\$\{trainingImportPanelHTML\(sessId\)\}/, 'mounted in the planner');
   // The manual affordances still exist exactly as before.
-  assert.match(src, /onclick="addTimeBlock\('\$\{sessId\}'\)"/, 'manual Add block still there');
+  assert.match(src, /onclick="addTimeBlock\('\$\{sessId\}'\)/, 'manual Add block still there');
   assert.match(fn('addTimeBlock'), /activity: ""/, '7247036 empty-block behaviour intact');
   assert.match(fn('trainingPlannedStartTime'), /_trainingScheduleGroupId !== trainingGroupParam/, 'group-time rule intact');
 });

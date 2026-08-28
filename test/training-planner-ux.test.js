@@ -114,7 +114,7 @@ test('6: every block is sized to its own content after a render, inside one fram
 test('3+13: exactly ONE "+ Add block" control, directly after the blocks (reachable on a phone)', () => {
   const plannerStart = src.indexOf('const twNav = `');
   const planner = src.slice(plannerStart, src.indexOf('// ─── MATCH CENTRE', plannerStart));
-  const adds = planner.match(/onclick="addTimeBlock\('\$\{sessId\}'\)"/g) || [];
+  const adds = planner.match(/onclick="addTimeBlock\('\$\{sessId\}'\)/g) || [];
   assert.equal(adds.length, 2, 'one after the blocks table + one in the empty state (never two at once)');
   const tableEnd = planner.indexOf('</table></div>');
   const addAfterTable = planner.indexOf('addTimeBlock', tableEnd);

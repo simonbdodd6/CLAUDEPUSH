@@ -1766,6 +1766,11 @@
        its content as the coach types. */
     .training-gs-table textarea.tb-auto { min-height:40px; overflow:hidden; }
     .gs-time-input { width:84px; border:2px solid var(--line); border-radius:7px; padding:8px 10px; font-size:15px; font-weight:800; color:var(--accent); text-align:center; background:var(--panel-2); }
+    /* The planner's save-state chip. Updated by tpSavePing via a direct
+       textContent write — never a render — so telling the coach "saved" can
+       never cost them the field they are typing in. */
+    .tp-save-chip { font-size:11px; font-weight:600; color:var(--muted); white-space:nowrap; display:inline-flex; align-items:center; }
+    .tp-save-chip.err { color:#dc2626; font-weight:800; }
     .gs-time-input:focus { outline:none; border-color:var(--accent); background:var(--panel); }
     .gs-sm-input { width:100%; border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:13px; background:var(--panel-2); color:var(--ink); }
     .player-photo-wrap { position:relative; width:36px; height:36px; flex-shrink:0; }
@@ -7215,6 +7220,10 @@
       return next;
     }
 
+    // Whether the most recent device save landed — read by the planner's
+    // status chip so it can never claim "Saved" over a failed write.
+    let _lastDeviceSaveOk = true;
+
     function saveState(message = "Saved in this browser") {
       try {
         state.meta = {
@@ -7239,6 +7248,7 @@
         // Roster changes ride along with every save — debounced, coach-only,
         // and skipped when the fingerprint is unchanged.
         try { queueRosterSync(); } catch {}
+        _lastDeviceSaveOk = true;
         return true;
       } catch (e) {
         console.error("CoachEasier save failed", e);
@@ -7250,6 +7260,7 @@
           window._saveFailToastAt = Date.now();
           showToast('⚠️ Could not save on this device — storage may be full. Recent changes may be lost on refresh.');
         }
+        _lastDeviceSaveOk = false;
         return false;
       }
     }
@@ -9023,6 +9034,85 @@
       return HHMM.test(t) ? t : '';
     }
 
+    // ── Save-state chip ─────────────────────────────────────────────────────
+    // The planner already saves every keystroke to this device (updateTimeBlock
+    // -> saveState). What was missing was the coach being TOLD so. The chip is
+    // that answer, and it must stay honest and cheap: it reads the outcome of
+    // the save that just ran (_lastDeviceSaveOk) and updates by direct DOM
+    // write only — a render here would destroy the field being typed in, which
+    // is the exact bug fee78190 removed.
+    let _tpSaveAt = null;
+    function _tpSaveChipText() {
+      if (!_lastDeviceSaveOk) return '\u26a0 Not saved \u2014 device storage full';
+      if (!_tpSaveAt) return '\u2713 Saves to this device as you type';
+      const hh = String(_tpSaveAt.getHours()).padStart(2, '0');
+      const mm = String(_tpSaveAt.getMinutes()).padStart(2, '0');
+      return `\u2713 Saved ${hh}:${mm} \u00b7 on this device`;
+    }
+    function tpSavePing() {
+      _tpSaveAt = new Date();
+      const el = document.getElementById('tp-save-chip');
+      if (!el) return;
+      el.textContent = _tpSaveChipText();
+      el.classList.toggle('err', !_lastDeviceSaveOk);
+    }
+
+    // ── Download PDF ────────────────────────────────────────────────────────
+    // A genuine PDF document (src/session-pdf.js — dependency-free writer),
+    // not window.print() of the dark app shell. Lazy-imported like the other
+    // src/ modules so the main bundle pays nothing until first use.
+    let _SessionPdfMod = null;
+    let _tpPdfBusy = false;
+    async function trainingDownloadPdf(sessionId) {
+      if (_tpPdfBusy) return;
+      const sess = (state.schedule || []).find(x => x.id === sessionId);
+      const blocks = (state.trainingBlocks || {})[sessionId] || [];
+      if (!sess || !blocks.length) return showToast('Add blocks to the plan first');
+      _tpPdfBusy = true;
+      const btn = document.getElementById('tp-pdf-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Preparing\u2026'; }
+      try {
+        if (!_SessionPdfMod) _SessionPdfMod = await import('./src/session-pdf.js');
+        const group = (operationalGroups() || []).find(g => g.id === state.operationalGroupId);
+        const now = new Date();
+        const generatedOn = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+        const bytes = _SessionPdfMod.buildSessionPdf({
+          clubName:     state.clubName || '',
+          groupName:    group?.name || '',
+          sessionTitle: sess.title || coachTrainingSessionLabel(sess),
+          sessionLabel: [sess.date, sess.startTime].filter(Boolean).join(' '),
+          venue:        sess.venue || sess.location || '',
+          preparedBy:   currentUser()?.name || '',
+          generatedOn,
+          statuses: canI('publish_training') ? ['coach', 'player'].map(aud => ({
+            audience:    aud === 'coach' ? 'Coaches' : 'Players',
+            status:      trainingAudienceStatus(sessionId, aud),
+            publishedAt: String(_trainingPubState[sessionId]?.[aud]?.publishedAt || '').slice(0, 10),
+          })) : [],
+          blocks: blocks.map(b => ({
+            time: b.time || '', activity: b.activity || '',
+            keyFocus: b.keyFocus || b.tag || '', coach: b.coach || '',
+          })),
+        });
+        const name = _SessionPdfMod.sessionPdfFilename({
+          clubName: state.clubName, sessionTitle: sess.title || sessionId,
+          dateISO: now.toISOString().slice(0, 10),
+        });
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+        const a = Object.assign(document.createElement('a'), { href: url, download: name });
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        showToast('Session plan PDF downloaded \u2713');
+      } catch (e) {
+        console.warn('[trainingDownloadPdf]', e);
+        showToast("Couldn't create the PDF \u2014 please try again");
+      } finally {
+        _tpPdfBusy = false;
+        const b2 = document.getElementById('tp-pdf-btn');
+        if (b2) { b2.disabled = false; b2.textContent = 'Download PDF'; }
+      }
+    }
+
     // Monotonic tie-breaker for block ids created within the same millisecond.
     let _tbSeq = 0;
 
@@ -9125,14 +9215,14 @@
     function trainingBlockRowHTML(sessId, b) {
       const ta = (field, placeholder, value, size, extra = '') => `
                     <textarea class="tb-auto"
-                      oninput="updateTimeBlock('${sessId}','${b.id}','${field}',this.value);tbAutosize(this)"
+                      oninput="updateTimeBlock('${sessId}','${b.id}','${field}',this.value);tbAutosize(this);tpSavePing()"
                       placeholder="${placeholder}"${extra}
                       style="font-size:${size}px;line-height:1.5;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;resize:vertical;font-family:inherit;box-sizing:border-box">${String(value || "").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</textarea>`;
       return `
                 <tr data-block-id="${esc(String(b.id))}">
                   <td data-label="Time" style="vertical-align:middle">
                     <input class="gs-time-input" value="${esc(String(b.time || ''))}"
-                      oninput="updateTimeBlock('${sessId}','${b.id}','time',this.value)"
+                      oninput="updateTimeBlock('${sessId}','${b.id}','time',this.value);tpSavePing()"
                       placeholder="19:45"
                       style="width:84px;font-size:15px;padding:8px 10px">
                   </td>
@@ -9144,7 +9234,7 @@
                       `\n                      name="session-plan-coach" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"\n                      data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore`)}
                   </td>
                   <td data-label="" style="vertical-align:middle">
-                    <button class="btn ghost" type="button" style="padding:0 10px;min-height:36px;color:var(--muted)" onclick="removeTimeBlock('${sessId}','${b.id}')">✕</button>
+                    <button class="btn ghost" type="button" style="padding:0 10px;min-height:36px;color:var(--muted)" onclick="removeTimeBlock('${sessId}','${b.id}');tpSavePing()">✕</button>
                   </td>
                 </tr>`;
     }
@@ -15637,6 +15727,10 @@
               <p class="muted" style="margin-top:3px">Write your own start times, activities, lead coach and key focus for each block.</p>
             </div>
             <div style="display:grid;gap:8px;justify-items:end">
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+                <span id="tp-save-chip" class="tp-save-chip${_lastDeviceSaveOk ? '' : ' err'}">${_tpSaveChipText()}</span>
+                ${blocks.length ? `<button class="btn" type="button" id="tp-pdf-btn" style="font-size:12px" onclick="trainingDownloadPdf('${sessId}')">Download PDF</button>` : ''}
+              </div>
               ${(twCurrent && canI('publish_training')) ? `
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 ${trainingAudienceBadge(sessId, 'coach')}
@@ -15669,12 +15763,12 @@
                phone the old position meant scrolling the whole plan to add the
                next one. One button only — no duplicate CTAs. -->
           <div style="margin-top:10px">
-            <button class="btn" type="button" style="width:100%;max-width:320px" onclick="addTimeBlock('${sessId}')">+ Add block</button>
+            <button class="btn" type="button" style="width:100%;max-width:320px" onclick="addTimeBlock('${sessId}');tpSavePing()">+ Add block</button>
           </div>` : `<div style="padding:24px 0;text-align:center">
             <div style="font-size:30px;margin-bottom:8px;opacity:.5">📋</div>
             <p style="font-size:14px;font-weight:600;color:var(--ink);margin:0 0 4px">No session plan yet</p>
             <p class="muted" style="font-size:12px;margin:0 0 14px">Add time blocks to build your coaching plan — warm-up, drills, set piece, match review and more.</p>
-            <button class="btn primary" type="button" style="font-size:13px;margin-bottom:10px" onclick="addTimeBlock('${sessId}')">+ Add block</button>
+            <button class="btn primary" type="button" style="font-size:13px;margin-bottom:10px" onclick="addTimeBlock('${sessId}');tpSavePing()">+ Add block</button>
             ${autopilotOn() && ((state.lastWeekTrainingBlocks || {})[state.trainingActiveSession] || []).length ? `
             <button class="btn primary" type="button" onclick="autopilotDuplicateSession('${esc(state.trainingActiveSession)}')" style="font-size:13px">
               ⧉ Duplicate last week's plan (${((state.lastWeekTrainingBlocks || {})[state.trainingActiveSession] || []).length} blocks)
