@@ -30647,7 +30647,10 @@
       const host = document.getElementById('chatGroupSwitch');
       if (!host) return;
       const html = operationalGroupSwitcherHTML();
-      host.innerHTML = html;
+      // Refilled on every contact-list refresh — including the 5s unread poll,
+      // which is the worst possible moment to replace a control the coach has
+      // open. Same safe applier as the page-title switcher.
+      applyGroupSwitcherHTML(host, html);
       host.style.display = html ? 'flex' : 'none';
     }
 
@@ -35649,20 +35652,72 @@
      * Shown only when there is a real choice: a single accessible group is
      * selected silently, which is exactly today's Seniors-only club.
      */
-    function renderOperationalGroupSwitcher() {
-      const host = document.getElementById('opGroupSwitcher');
+    /**
+     * Put switcher markup into its host WITHOUT destroying the <select> the
+     * coach may be holding open.
+     *
+     * Both switcher hosts used to assign host.innerHTML on EVERY render. That
+     * replaces the <select> with a brand-new element even when the markup is
+     * character-for-character identical — and a native <select> removed from
+     * the document while its dropdown is open has that dropdown dismissed by
+     * the browser, with NO change event: the coach's pending selection is
+     * silently discarded and focus falls to <body>. Renders arrive from
+     * ordinary in-flight work (admin data, publication state, roster sync, the
+     * chat unread poll), so whether a switch "took" depended on whether one
+     * happened to land during the second the list was open. That is the
+     * reported "about three clicks".
+     *
+     * Two rules fix it, both about leaving a live control alone:
+     *   1. If the markup has not changed, do not touch the DOM at all. Only the
+     *      selected value can have moved, so set that in place.
+     *   2. If it HAS changed but the coach is currently in the control, defer
+     *      until they leave it — a changing group list must never yank the
+     *      dropdown out from under an open selection either.
+     */
+    function applyGroupSwitcherHTML(host, html) {
       if (!host) return;
+      if (!html) {
+        if (host.innerHTML !== '') { host.innerHTML = ''; delete host.dataset.ceSwitcher; }
+        return;
+      }
+      const live = host.querySelector('select');
+      if (host.dataset.ceSwitcher === html && live) {
+        // Same options — never rebuild. Keep the shown value honest in case
+        // the group changed from somewhere other than this control.
+        const want = String(state.operationalGroupId || '');
+        if (want && live.value !== want) live.value = want;
+        return;
+      }
+      // The coach is in the control right now: rebuilding would close their
+      // dropdown. Re-apply when they leave it.
+      if (live && document.activeElement === live) {
+        if (!live.dataset.ceDeferred) {
+          live.dataset.ceDeferred = '1';
+          live.addEventListener('blur', () => renderOperationalGroupSwitcher(), { once: true });
+        }
+        return;
+      }
+      host.innerHTML = html;
+      host.dataset.ceSwitcher = html;
+    }
+
+    /** Markup for the page-title switcher ("Viewing"). Empty when there is no real choice. */
+    function operationalGroupSwitcherLabelHTML() {
       const groups = operationalGroups();
       // Players never choose — their group is where they play.
-      if (state.activeView === 'player' || groups.length < 2) { host.innerHTML = ''; return; }
-      host.innerHTML =
-        '<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted)">Viewing' +
+      if (state.activeView === 'player' || groups.length < 2) return '';
+      return '<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted)">Viewing' +
         '<select onchange="setOperationalGroup(this.value)" aria-label="Operational group" ' +
         'style="min-height:32px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);' +
         'color:var(--ink);font-size:12px;font-weight:700;padding:0 8px;max-width:160px">' +
         groups.map(g => '<option value="' + esc(g.id) + '"' +
           (g.id === state.operationalGroupId ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') +
         '</select></label>';
+    }
+
+    function renderOperationalGroupSwitcher() {
+      applyGroupSwitcherHTML(document.getElementById('opGroupSwitcher'),
+                             operationalGroupSwitcherLabelHTML());
     }
 
     /**

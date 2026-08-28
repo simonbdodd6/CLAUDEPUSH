@@ -331,9 +331,18 @@ test('CLIENT — dual role swaps group on view switch, never merges', () => {
 test('CLIENT — a player is offered no choice at all', () => {
   const c = ctx(dual, 'player'); c.resolveOperationalGroup();
   assert.deepEqual(c.operationalGroups().map(g => g.name), ['Seniors'], 'exactly their own group');
-  const switcher = fn('renderOperationalGroupSwitcher');
-  assert.match(switcher, /state\.activeView === 'player' \|\| groups\.length < 2/,
+  // The guard now lives in the markup builder (renderOperationalGroupSwitcher
+  // delegates to it, so a live control is never rebuilt out from under an open
+  // dropdown). Same guarantee, asserted where it is enforced — and both
+  // switcher hosts share the one builder, so neither can drift.
+  assert.match(fn('operationalGroupSwitcherLabelHTML'),
+    /state\.activeView === 'player' \|\| groups\.length < 2/,
     'never rendered for a player, nor when there is no real choice');
+  assert.match(fn('operationalGroupSwitcherHTML'),
+    /state\.activeView === 'player' \|\| groups\.length < 2/,
+    'the Match Centre / Messages switcher applies the same guard');
+  assert.match(fn('renderOperationalGroupSwitcher'), /operationalGroupSwitcherLabelHTML\(\)/,
+    'the renderer takes its markup from that guarded builder');
 });
 
 test('CLIENT — zero accessible groups does not guess', () => {
