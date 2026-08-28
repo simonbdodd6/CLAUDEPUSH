@@ -616,6 +616,66 @@ async function handleGet(req, res) {
     return ok(res, { groupId: gid, groupName: group.name, recipients, count: recipients.length });
   }
 
+  if (action === 'dm_candidates') {
+    // WHO MAY I DIRECT-MESSAGE? — server-authoritative, for every role.
+    //
+    // The server already permits a player to create a DIRECT conversation
+    // (see create_conv: players are restricted to DMs, not forbidden them),
+    // but there was no way for a player to learn WHO. GET /api/identity is
+    // gated on MANAGE_PLAYERS and group_recipients is staff-only, so a player
+    // could only ever hold a DM their coach had started first. This is the
+    // missing half: a minimal, club-scoped answer resolved from memberships,
+    // never from anything the client supplies.
+    //
+    // A player is offered the STAFF who serve their playing group — the same
+    // rule the coach-side directory applies in reverse, so nobody gains reach
+    // they did not already have. Staff keep their existing broader directory
+    // and are answered here too, so one code path serves both.
+    //
+    // The projection is deliberately thin: id, name and role. No email, no
+    // phone — a DM list must not become a way to harvest staff contact
+    // details.
+    if (!sessionContext?.user?.id) return err(res, 401, 'Authentication required');
+    const teamId = tenantTeamId(sessionContext);
+    const [members, users, structure] = await Promise.all([
+      loadTeamMembers(), loadUsers(), loadClubStructure(teamId),
+    ]);
+    const meUserId = String(sessionContext.user.id);
+    const active = members.filter(m => m.teamId === teamId && m.status === 'active');
+    const myMember = sessionContext.teamMember
+      || active.find(m => String(m.userId) === meUserId) || null;
+    const STAFF_ROLES = ['coach', 'admin', 'medical'];
+    const isStaffMember = m => STAFF_ROLES.includes(String(m.role || '').toLowerCase());
+
+    // The group this caller PLAYS in. Staff who do not play resolve to '',
+    // which simply means no group narrowing is applied to them below.
+    const myPlayingGroup = myMember ? (resolvePlayerGroup(myMember, structure).groupId || '') : '';
+
+    const seen = new Set();
+    const candidates = active
+      .filter(isStaffMember)
+      .filter(m => String(m.userId || '') && String(m.userId) !== meUserId)
+      .filter(m => {
+        // A player only reaches staff who operate their own group. Club-wide
+        // staff (whose operational scope covers every group) pass naturally,
+        // because their group list contains it.
+        if (isStaffSession(sessionContext)) return true;      // staff keep the full staff directory
+        if (!myPlayingGroup) return true;                     // pre-structure club: unchanged behaviour
+        const theirs = operationalGroupsFor(m, structure, { as: 'staff' }) || [];
+        return theirs.some(g => g.id === myPlayingGroup);
+      })
+      .filter(m => { const u = String(m.userId); if (seen.has(u)) return false; seen.add(u); return true; })
+      .map(m => {
+        const u = users.find(x => String(x.id) === String(m.userId));
+        return {
+          userId: String(m.userId),
+          name: (u && (u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email)) || 'Staff',
+          role: String(m.role || '').toLowerCase(),
+        };
+      });
+    return ok(res, { candidates, count: candidates.length });
+  }
+
   if (action === 'presence') {
     // Authenticated, same-club only: presence must not let anyone probe the
     // online status of arbitrary user ids across the app. Ids outside the

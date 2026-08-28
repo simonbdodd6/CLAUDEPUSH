@@ -29076,8 +29076,53 @@
       } catch (e) { /* best-effort — never block Messages on the staff directory */ }
     }
     // Debounced refresh when the coach opens Messages; re-render if staff changed.
+    /**
+     * Who this PLAYER may direct-message, answered by the server.
+     *
+     * A player has no access to GET /api/identity (MANAGE_PLAYERS) and none to
+     * group_recipients (staff only), so their device could never learn who
+     * their coach is: playerCoachParticipantId() searched a state.users that
+     * had no staff in it, returned '', and the pre-seeded "Coach" contact was
+     * left with an EMPTY id. A player could therefore only ever hold a DM that
+     * their coach had started first. The server has always permitted a player
+     * to CREATE a direct conversation (create_conv restricts players to DMs
+     * rather than forbidding them) — discovery was the missing half.
+     *
+     * Merged into state.users in the same staff shape loadStaffDirectory uses,
+     * so every existing DM path (chatStaffDmCandidates, chatStartStaffDm,
+     * playerCoachParticipantId) works unchanged for players.
+     */
+    async function chatLoadDmCandidates() {
+      try {
+        const res = await fetch('/api/chat?action=dm_candidates');
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        (Array.isArray(data.candidates) ? data.candidates : []).forEach(c => {
+          const id = String(c.userId || '');
+          if (!id) return;
+          const existing = (state.users || []).find(u => String(u.id) === id);
+          if (existing) {
+            if (existing.role !== c.role) existing.role = c.role;
+            if (!existing.name) existing.name = c.name;
+          } else {
+            state.users.push({ id, role: c.role, name: c.name, email: '', phone: '', pin: '', _staff: true });
+          }
+        });
+      } catch { /* offline — the player keeps whatever contacts they already had */ }
+    }
+
     async function chatEnsureStaffDirectory() {
-      if (!isCoach()) return;
+      // A PLAYER gets the server's answer to "who may I message?" instead of
+      // the coach directory, which their session is not entitled to read.
+      if (!isCoach()) {
+        const now = Date.now();
+        if (now - _staffDirLoadedAt < 30000) return;
+        _staffDirLoadedAt = now;
+        const before = (state.users || []).length;
+        await chatLoadDmCandidates();
+        if ((state.users || []).length !== before) render();
+        return;
+      }
       const now = Date.now();
       if (now - _staffDirLoadedAt < 30000) return;
       _staffDirLoadedAt = now;
@@ -29177,6 +29222,15 @@
 
     function chatCoachDmPickerPlayers() {
       const me = chatMe();
+      // A PLAYER composes to STAFF only — the same set the server authorised in
+      // dm_candidates, and the same rule their contact list already follows
+      // ("team channels plus their own coach DM"). They never receive the
+      // roster, so a player cannot compose to another player from here.
+      if (!isCoach()) {
+        const q = String(_chatNewDmQuery || '').trim().toLowerCase();
+        return chatStaffDmCandidates(me.id).filter(s =>
+          !q || [s.name, s.position].some(v => String(v || '').toLowerCase().includes(q)));
+      }
       // The picker offers the OPERATING group's players (full club only for a
       // pre-structure legacy club) — a group coach composes to their own
       // group; existing threads with anyone remain in the list regardless.
@@ -29237,7 +29291,7 @@
 
     function chatBindNewDmRows(root = document) {
       root.querySelectorAll('[data-chat-new-dm-player]').forEach(row => {
-        row.addEventListener('click', () => chatStartCoachDm(row.dataset.chatNewDmPlayer));
+        row.addEventListener('click', () => chatStartDmWith(row.dataset.chatNewDmPlayer));
       });
     }
 
@@ -29256,7 +29310,8 @@
     }
 
     function chatOpenNewDmPicker() {
-      if (!isCoach()) return;
+      // Players open this too — their candidate list is the staff the server
+      // authorised in dm_candidates, not the roster.
       _chatNewDmOpen = true;
       chatLoadStateModule().then(() => {
         chatRenderNewDmPicker();
@@ -29312,6 +29367,23 @@
           if (res.ok && data.ok !== false) await chatFetchConversations();
         } catch (e) { console.warn('[chatStartStaffDm]', e); }
       }
+    }
+
+    /**
+     * Open a DM with the chosen person, by role. A coach goes through the
+     * roster-aware path; a player's only candidates are staff, so they take
+     * the staff path directly — the SAME chatStartStaffDm the coach uses for
+     * coach-to-coach DMs, which creates the conversation through create_conv.
+     * One conversation-creation path, not two.
+     */
+    async function chatStartDmWith(targetId) {
+      if (isCoach()) return chatStartCoachDm(targetId);
+      const staff = chatStaffDmCandidates(chatMe().id)
+        .find(s => String(s.id) === String(targetId));
+      // Anything not in the server-authorised candidate list is refused here,
+      // and would be refused by the server too.
+      if (!staff) return showToast('Member not found');
+      return chatStartStaffDm(staff);
     }
 
     async function chatStartCoachDm(playerId) {
@@ -30826,10 +30898,14 @@
               <!-- Ahead of the conversation controls; the mobile composer is a
                    separate element at the foot of the thread and is unaffected. -->
               ${ceProductMarkHtml()}
-              ${mode==='coach'?`<button class="chat-new-msg-btn" type="button" onclick="chatOpenNewDmPicker()" title="New message"><span>+</span><span>New</span></button>`:''}
+              <!-- Players get this too: the server permits them to create a
+                   direct conversation, and without the control they had no way
+                   to start one (they could only ever reply to a DM the coach
+                   had opened). Their picker offers STAFF only. -->
+              <button class="chat-new-msg-btn" type="button" onclick="chatOpenNewDmPicker()" title="New message"><span>+</span><span>New</span></button>
             </div>
           </div>
-          ${mode==='coach'?`<div id="chatNewDmPicker">${chatNewDmPickerHtml()}</div>`:''}
+          <div id="chatNewDmPicker">${chatNewDmPickerHtml()}</div>
           ${mode==='coach'?`<div class="chat-group-switch" id="chatGroupSwitch" style="padding:8px 14px 0;display:none;justify-content:flex-end"></div>`:''}
           <div class="chat-search-bar">
             <!-- Contenteditable element (NOT an <input>) so the browser/password manager cannot show saved login/email/password autofill. -->
@@ -30949,6 +31025,13 @@
     function renderPlayerMessages() {
       const el = document.getElementById('player-messages');
       if (!el) return;
+      // Learn who this player may message. Without it their device has no staff
+      // at all: playerCoachParticipantId() returns '', the pre-seeded "Coach"
+      // contact carries an EMPTY id, and the New Message picker has nobody to
+      // offer — so a player could only ever hold a DM their coach started
+      // first. The equivalent call for coaches lives in renderCoachMessages,
+      // which a player never reaches.
+      chatEnsureStaffDirectory();
       // Sync canonical player identity once per session. When changed, update the DM conversation
       // ID and refresh the sidebar in-place — do NOT call renderPlayerMessages() recursively,
       // which would do a full DOM rebuild + forced scroll every time the player opens Messages.
