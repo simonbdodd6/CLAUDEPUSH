@@ -32,7 +32,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const html = await readFile(join(__dirname, '..', 'index.html'), 'utf8');
 
 function extractFn(source, name) {
-  const start = source.indexOf('    function ' + name + '(');
+  let start = source.indexOf('    function ' + name + '(');
+  if (start === -1) start = source.indexOf('    async function ' + name + '(');
   if (start === -1) throw new Error('function ' + name + ' not found in index.html');
   let i = start;
   while (i < source.length && source[i] !== '(') i++;
@@ -132,6 +133,7 @@ function buildScope({
     extractFn(html, 'liveAvailabilityPlayerKeys') + '\n' +
     extractFn(html, 'resolvedAnswerFor') + '\n' +
     extractFn(html, 'sessionRows') + '\n' +
+    extractFn(html, 'availabilityNonResponders') + '\n' +
     extractConst(html, 'PLAYER_LIFECYCLE_LABELS') + '\n' +
     extractFn(html, 'playerIsArchived') + '\n' +
     extractFn(html, 'activeRosterPlayers') + '\n' +
@@ -150,7 +152,7 @@ function buildScope({
     extractFn(html, 'overviewAvailabilityContext') + '\n' +
     extractFn(html, 'getNeedsAttentionItems') + '\n' +
     'return { overviewAvailabilityContext, getNeedsAttentionItems, overviewAnswerMap,\n' +
-    '         overviewAvailableCount, overviewRoster, sessionRows };\n';
+    '         overviewAvailableCount, overviewRoster, sessionRows, availabilityNonResponders };\n';
 
   return new Function(body)();
 }
@@ -461,4 +463,72 @@ test('the Overview keeps no private opinion about availability', () => {
   assert.ok(!/state\.players/.test(region),
     'the Overview must not read the club-wide roster');
   assert.match(region, /sessionRows\(/, 'it must read the shared, server-resolved rows');
+});
+
+// ── 6. The card and the button it offers ──────────────────────────────────────
+
+test('"Chase all" is about exactly the players the card counted', () => {
+  // The card's CTA is chaseAllNonResponders(). If the two disagree, a correct
+  // number leads to a toast claiming a different one.
+  const club  = named(77, 'p');
+  const group = club.slice(0, 57);
+  const scope = buildScope({
+    clubPlayers: club,
+    groupPlayers: group,
+    schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' },
+               { id: 'thu', title: 'Thursday', type: 'Training' }],
+    availabilityRequests: [{ id: 'r1', sessionId: 'tue', status: 'sent' }],
+    resolvedAvailability: serverAnswers(group.slice(0, 46), 'tue', 'available'),
+  });
+
+  const item    = scope.getNeedsAttentionItems().find(i => /replied/.test(i.text));
+  const toChase = scope.availabilityNonResponders([
+    { id: 'tue' }, { id: 'thu' }]);
+
+  assert.match(item.text, /^11 players haven't replied$/);
+  assert.equal(toChase.length, 11, 'the button must target the same eleven');
+  assert.equal(item.cta, 'Chase all');
+  assert.match(item.action, /chaseAllNonResponders\(\)/);
+});
+
+test('nobody is chased when the whole group has answered', () => {
+  const group = named(9, 'p');
+  const outstanding = buildScope({
+    clubPlayers: group,
+    schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }],
+    resolvedAvailability: serverAnswers(group, 'tue', 'maybe'),
+  }).availabilityNonResponders([{ id: 'tue' }]);
+
+  assert.equal(outstanding.length, 0, '"maybe" is an answer');
+});
+
+test('an archived player is never chased', () => {
+  const group = [
+    { id: 'p1', name: 'A' },
+    { id: 'p2', name: 'B', lifecycleStatus: 'archived' },
+  ];
+  const outstanding = buildScope({
+    clubPlayers: group,
+    schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }],
+  }).availabilityNonResponders([{ id: 'tue' }]);
+
+  assert.deepEqual(outstanding.map(p => p.id), ['p1']);
+});
+
+test('the chase button holds no availability opinion of its own', () => {
+  // chaseAllNonResponders() sends real reminders, so it is not executed here.
+  // What matters is that it does not recompute who is outstanding: the last
+  // time it did, it used the device-only field and sessions.some(...) and so
+  // reported a different number from the card that led the coach to it.
+  const body = extractFn(html, 'chaseAllNonResponders')
+    .split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+
+  assert.match(body, /availabilityNonResponders\(sessions\)/,
+    'it must ask the shared helper');
+  assert.ok(!/sessionKey\(/.test(body),
+    'reading per-session fields here is a second opinion about availability');
+  assert.ok(!/sessions\.some\(/.test(body),
+    'sessions.some(...) counts one player once per session');
+  assert.ok(!/state\.players/.test(body),
+    'the chase follows the operating group, not the whole club');
 });

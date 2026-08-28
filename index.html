@@ -7929,6 +7929,32 @@
       }
       return best;
     }
+    /**
+     * The players in the operating group who have answered NO session yet.
+     *
+     * Answering any session is answering: the earlier form asked
+     * sessions.some(...), which counted one player once per unanswered
+     * session and inflated the Overview's chase count well past the squad
+     * size. It also read only the device's per-session field, so anyone who
+     * replied through the server was chased anyway. sessionRows() settles
+     * both — it resolves server-first over the operating group.
+     *
+     * The Overview's "N players haven't replied" card and the Chase all
+     * button behind it both call this, so the number a coach reads is the
+     * number the button is about.
+     */
+    function availabilityNonResponders(sessions) {
+      const roster   = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
+      const answered = new Set();
+      (sessions || []).forEach(sess => {
+        (sessionRows(String(sess.id)) || []).forEach(r => {
+          const st = r && r.status;
+          if (st && st !== 'no-reply') answered.add(String(r.player && r.player.id));
+        });
+      });
+      return roster.filter(p => !answered.has(String(p.id)));
+    }
+
     function sessionRows(id)  {
       const key = sessionKey(id);
       const rKey = sessionReasonKey(id);
@@ -12632,15 +12658,7 @@
         //    non-responder. sessionRows() resolves server-first.
         //  · sessions.some(...) then counted one player once per unanswered
         //    session. Answering any session is answering.
-        const opRoster = overviewRoster();
-        const answered = new Set();
-        sessions.forEach(sess => {
-          (sessionRows(String(sess.id)) || []).forEach(r => {
-            const st = r && r.status;
-            if (st && st !== 'no-reply') answered.add(String(r.player && r.player.id));
-          });
-        });
-        const nonResponders = opRoster.filter(p => !answered.has(String(p.id)));
+        const nonResponders = availabilityNonResponders(sessions);
         if (nonResponders.length > 0) {
           const preview = nonResponders.slice(0, 3).map(p => (p.name || '').split(' ')[0]).join(' · ')
             + (nonResponders.length > 3 ? ` +${nonResponders.length - 3}` : '');
@@ -15718,12 +15736,12 @@
       if (!isCoach()) return showToast("Only coaches can send reminders");
       const sessions = state.schedule || [];
       if (!sessions.length) return;
-      // Identify players who haven't replied to at least one session
-      const noReplyIds = new Set(
-        operationalPlayers()
-          .filter(p => sessions.some(s => (p[sessionKey(s.id)] || 'no-reply') === 'no-reply'))
-          .map(p => p.id)
-      );
+      // The same set the Overview's "N players haven't replied" card counts —
+      // so the toast cannot claim a different number from the card that sent
+      // the coach here. (Recipients are chosen server-side from
+      // audience:'no-reply'; this set decides whether there is anyone to
+      // chase and what we tell the coach.)
+      const noReplyIds = new Set(availabilityNonResponders(sessions).map(p => p.id));
       if (!noReplyIds.size) return showToast('Everyone has replied ✓');
       const titles = sessions.map(s => s.title).join(', ');
       const body = `Please confirm your availability for: ${titles} in CoachEasier.`;

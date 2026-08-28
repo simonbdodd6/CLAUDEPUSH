@@ -322,8 +322,15 @@ test('AVAILABILITY BOARD: rows, counts, chase lists and the inline switcher are 
   assert.match(v2, /const opPlayers\s+= operationalPlayers\(\)/, 'summary counts');
   assert.equal(/state\.players\.length/.test(v2), false, 'no whole-club count remains on the board');
   assert.match(v2, /operationalGroupSwitcherHTML\(\)/, 'inline switcher in the board header');
+  // The chase list is now computed once, in availabilityNonResponders(), and
+  // shared with the Overview card whose "N players haven't replied" number the
+  // Chase all button acts on — so the group scoping is asserted where it lives.
   const chase = fn('chaseAllNonResponders');
-  assert.match(chase, /operationalPlayers\(\)/, 'chase list follows the group');
+  assert.match(chase, /availabilityNonResponders\(sessions\)/, 'chase list comes from the shared helper');
+  assert.equal(/state\.players/.test(chase), false, 'no whole-club roster in the chase');
+  const chaseSet = fn('availabilityNonResponders');
+  assert.match(chaseSet, /operationalPlayers\(\)/, 'chase list follows the group');
+  assert.equal(/state\.players/.test(chaseSet), false, 'and never the whole club');
   assert.match(chase, /group:\s+state\.operationalGroupId \|\| undefined/, 'chase push names the group');
   assert.match(fn('remindNonResponders'), /group:\s+state\.operationalGroupId \|\| undefined/, 'session reminder too');
   assert.match(fn('sendPushToPlayers'), /_pushGroup/, 'the shared push helper is group-stamped');
