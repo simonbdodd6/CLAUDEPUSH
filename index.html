@@ -12559,8 +12559,10 @@
       const tonightId   = getTonightSessionId();
       const tonightSess = tonightId ? sessions.find(s => s.id === tonightId) : null;
       const tonightBlks = tonightId ? ((state.trainingBlocks || {})[tonightId] || []) : [];
-      const tonightKey  = tonightId ? sessionKey(tonightId) : null;
-      const tonightCon  = tonightKey ? state.players.filter(p => p[tonightKey] === 'available').length : 0;
+      // Group-scoped and server-resolved, like every other availability figure:
+      // state.players is club-wide, and the per-session field misses any answer
+      // recorded on the server.
+      const tonightCon  = tonightId ? overviewAvailableCount(tonightId) : 0;
 
       // ── CRITICAL ──────────────────────────────────────────────────────────────
       if (phase.msLeft > 0 && phase.msLeft < 86400000 && !mc.published) {
@@ -12620,9 +12622,25 @@
       // Non-responders — only after request sent
       const requestEverSent = (state.availabilityRequests || []).some(r => r.status === 'sent');
       if (requestEverSent) {
-        const nonResponders = state.players.filter(p =>
-          sessions.some(s => (p[sessionKey(s.id)] || 'no-reply') === 'no-reply')
-        );
+        // Two defects met here and inflated this number badly on a real club:
+        //
+        //  · state.players is the WHOLE CLUB on every coach's device, so a
+        //    senior coach was counting the youth and women's squads as their
+        //    own non-responders. The population is the operating group.
+        //  · p[sessionKey(s.id)] reads only the device's per-session field, so
+        //    every player who answered through the SERVER still counted as a
+        //    non-responder. sessionRows() resolves server-first.
+        //  · sessions.some(...) then counted one player once per unanswered
+        //    session. Answering any session is answering.
+        const opRoster = overviewRoster();
+        const answered = new Set();
+        sessions.forEach(sess => {
+          (sessionRows(String(sess.id)) || []).forEach(r => {
+            const st = r && r.status;
+            if (st && st !== 'no-reply') answered.add(String(r.player && r.player.id));
+          });
+        });
+        const nonResponders = opRoster.filter(p => !answered.has(String(p.id)));
         if (nonResponders.length > 0) {
           const preview = nonResponders.slice(0, 3).map(p => (p.name || '').split(' ')[0]).join(' · ')
             + (nonResponders.length > 3 ? ` +${nonResponders.length - 3}` : '');
@@ -12633,7 +12651,7 @@
         }
       }
       // Availability not sent this week
-      if (!requestEverSent && state.players.length > 0) {
+      if (!requestEverSent && overviewRoster().length > 0) {
         items.push({ score:45, level:'warning', icon:'',
           text:'Availability not requested this week',
           detail:'Players haven\'t been asked to confirm yet.',
@@ -13222,8 +13240,9 @@
       } else if (tonight && tonight !== 'game') {
         const atTime = tonightTimeMatch ? ` at ${esc(tonightTimeMatch)}` : '';
         situation = `You coach tonight${atTime}.`;
-        const tonightKey = sessionKey(tonight);
-        const confirmed  = players.filter(p => p[tonightKey] === 'available').length;
+        // Group-scoped already, but the per-session field alone misses every
+        // answer recorded on the server. Same source as the Overview cards.
+        const confirmed  = overviewAvailableCount(tonight);
         situationSub = confirmed ? `${confirmed} confirmed` : 'Check availability.';
         situationColor = 'var(--blue,#60a5fa)';
       } else if (injuredPlayers.length >= 3) {
@@ -13375,22 +13394,89 @@
     // Presentation-only summary of club state. Reads existing helpers and state
     // fields — no new business logic, no AI, no Stripe changes.
 
+    /** The players the Overview is about: the operating group, minus archives. */
+    function overviewRoster() {
+      return operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
+    }
+
+    /** How many of that roster answered `available` for one session or fixture. */
+    function overviewAvailableCount(id) {
+      const roster = overviewRoster();
+      const map = overviewAnswerMap(id, roster);
+      return roster.filter(p => map[p.id] === 'available').length;
+    }
+
+    /**
+     * The answers for ONE session or fixture, from the source the Availability
+     * board and Match Centre already use.
+     *
+     * sessionRows(id) resolves each player's answer server-first
+     * (resolvedAnswerFor) and only falls back to the device's per-session field.
+     * The Overview was reading two OTHER sources instead:
+     *
+     *   · the per-session field alone (p[sessionKey(id)]), which is blank for
+     *     every player who answered through the server — so a squad that HAD
+     *     replied showed as entirely unanswered; and
+     *   · state.fixtureAvailability for the fixture card, a device-local map
+     *     written ONLY by a coach tapping the local fixture board and never by
+     *     the server, so on a real club it is simply empty.
+     *
+     * Both produced 0 available / 0 maybe / 0 unavailable beside a full "no
+     * reply" count while the Availability screen showed the real answers. There
+     * is one authoritative answer per player per session; the Overview now reads
+     * it rather than keeping a third and fourth opinion.
+     *
+     * The medical override is preserved from fixtureAvailabilitySummary: a
+     * player whose trainingStatus is 'unavailable' counts unavailable whatever
+     * they replied.
+     */
+    function overviewAnswerMap(id, roster) {
+      const map = {};
+      roster.forEach(p => { map[p.id] = 'no-reply'; });
+      // No group filter is needed here: sessionRows() is already built from
+      // operationalPlayers(), so it cannot return another group's player. The
+      // counts read `roster`, so an archived row would be ignored regardless.
+      (sessionRows(String(id)) || []).forEach(r => {
+        const pid = String(r && r.player && r.player.id || '');
+        if (pid) map[pid] = r.status || 'no-reply';
+      });
+      roster.forEach(p => {
+        if (p.trainingStatus === 'unavailable') map[p.id] = 'unavailable';
+      });
+      return map;
+    }
+
+    /** Counts for one answer map, with "no reply" derived by subtraction. */
+    function overviewAnswerCounts(roster, map) {
+      const n = v => roster.filter(p => map[p.id] === v).length;
+      const total       = roster.length;
+      const available   = n('available');
+      const maybe       = n('maybe');
+      const unavailable = n('unavailable');
+      // Any answer that is not one of the three is still "no reply" to a coach,
+      // and the four must add up.
+      const noReply     = Math.max(0, total - available - maybe - unavailable);
+      return { total, available, maybe, unavailable, noReply, responded: total - noReply,
+               availPct:     total ? Math.round(available / total * 100) : 0,
+               respondedPct: total ? Math.round((total - noReply) / total * 100) : 0 };
+    }
+
     /**
      * The ONE availability reading the Overview shows. The snapshot card and
      * the donut both call this, so those two can never disagree with each
      * other or with the Availability board.
      *
      * "Relevant" follows the coach's day: tonight's session if there is one,
-     * otherwise the next fixture. Fixtures answer through
-     * fixtureAvailabilitySummary, so the medical override still applies;
-     * sessions read the same per-session keys the Availability board writes.
+     * otherwise the next fixture. Both answer through overviewAnswerMap, which
+     * reads sessionRows() — the same server-resolved answers the Availability
+     * board and the Match Centre show — and keeps the medical override.
      *
      * Nothing here is estimated, projected or filled in. A squad that has not
      * replied reads as "no reply", and a club with no players reads as empty
      * rather than as a row of zeroes pretending to be information.
      */
     function overviewAvailabilityContext() {
-      const roster = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
+      const roster = overviewRoster();
       const none   = { kind: 'none', label: '', total: 0, available: 0, maybe: 0,
                        unavailable: 0, noReply: 0, responded: 0, availPct: 0,
                        respondedPct: 0, warnings: [] };
@@ -13399,21 +13485,8 @@
       const tonightId   = getTonightSessionId();
       const tonightSess = tonightId ? (state.schedule || []).find(s => s.id === tonightId) : null;
       if (tonightSess) {
-        const key   = sessionKey(tonightId);
-        const count = v => roster.filter(p => (p[key] || 'no-reply') === v).length;
-        const total       = roster.length;
-        const available   = count('available');
-        const maybe       = count('maybe');
-        const unavailable = count('unavailable');
-        // Derived by subtraction, never counted separately: any answer the
-        // roster carries that is not one of the three above is still "no
-        // reply" as far as the coach is concerned, and the four must add up.
-        const noReply     = Math.max(0, total - available - maybe - unavailable);
-        return { kind: 'session', label: tonightSess.title || 'Training', total,
-                 available, maybe, unavailable, noReply, responded: total - noReply,
-                 availPct:     Math.round(available / total * 100),
-                 respondedPct: Math.round((total - noReply) / total * 100),
-                 warnings: [] };
+        const c = overviewAnswerCounts(roster, overviewAnswerMap(tonightId, roster));
+        return { kind: 'session', label: tonightSess.title || 'Training', ...c, warnings: [] };
       }
 
       const todayIso = new Date().toISOString().slice(0, 10);
@@ -13421,13 +13494,14 @@
         .find(f => (!f.date || f.date >= todayIso) && f.status !== 'cancelled' && f.status !== 'completed');
       if (!nextFx) return none;
 
-      const s = fixtureAvailabilitySummary(nextFx.id, roster);
-      if (!s.total) return none;
-      return { kind: 'fixture', label: 'vs ' + (nextFx.opposition || 'TBC'), total: s.total,
-               available: s.available, maybe: s.maybe, unavailable: s.unavailable,
-               noReply: s.noReply, responded: s.responded, availPct: s.availPct,
-               respondedPct: Math.round(s.responded / s.total * 100),
-               warnings: s.warnings || [] };
+      // The Match Centre reads this fixture's answers as sessionRows(fixture.id) —
+      // a dated fixture IS its own availability session. Read the same thing, so
+      // the Overview and the Match Centre can never disagree about who is
+      // available for the very same match.
+      const map = overviewAnswerMap(nextFx.id, roster);
+      const c   = overviewAnswerCounts(roster, map);
+      return { kind: 'fixture', label: 'vs ' + (nextFx.opposition || 'TBC'), ...c,
+               warnings: fixturePositionWarnings(map, roster) || [] };
     }
 
     /**
@@ -13495,7 +13569,7 @@
      * place to do the work.
      */
     function renderClubCommandDashboard() {
-      const roster   = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
+      const roster   = overviewRoster();
       const todayIso = new Date().toISOString().slice(0, 10);
 
       // ── 1. Upcoming fixture ──────────────────────────────────────────────
@@ -13588,7 +13662,16 @@
       const critical = (av.warnings || []).filter(w => w.severity === 'critical').length;
       const warning  = (av.warnings || []).filter(w => w.severity === 'warning').length;
 
-      const availabilityBody = av.kind === 'none' ? availEmpty : `
+      // Nobody has answered yet. "0 Available · 0 Maybe · 0 Unavailable · 0%"
+      // is arithmetically true and reads as a broken placeholder, which is how
+      // this card was reported. Say the real thing instead: the squad exists,
+      // the answers do not.
+      const availNoReplies = av.kind !== 'none' && av.responded === 0;
+      const noRepliesBody  = `<p class="ovw-empty"><strong>No responses yet</strong>${
+        esc(av.label)} — none of the ${av.total} player${av.total === 1 ? ' has' : 's have'} replied.${
+        canI('publish_training') ? ' Send an availability request to ask them.' : ''}</p>`;
+
+      const availabilityBody = av.kind === 'none' ? availEmpty : availNoReplies ? noRepliesBody : `
         <div>
           <div class="ovw-meta" style="margin-bottom:12px">${esc(av.label)}</div>
           <div class="ovw-stat-row">
@@ -13607,7 +13690,7 @@
               : `<span class="muted">${av.noReply} still to reply</span>`}
         </div>`;
 
-      const squadAvailBody = av.kind === 'none' ? availEmpty : `
+      const squadAvailBody = av.kind === 'none' ? availEmpty : availNoReplies ? noRepliesBody : `
         <div class="ovw-donut-wrap">
           ${overviewDonutSvg(av, 96)}
           <div class="ovw-legend" style="flex:1;min-width:0">
@@ -13661,7 +13744,7 @@
         <div class="ovw-row">
           ${card('Upcoming fixture', '', fixtureBody, "setSection('coach','fixtures')", 'Upcoming fixture — open Fixtures')}
           ${card('Training', tonightSess ? '<span class="ovw-pill" style="background:var(--accent-soft);color:var(--accent)">Tonight</span>' : '', trainingBody, "setSection('coach','training')", 'Training — open Training')}
-          ${card('Availability', av.kind !== 'none' ? `<span style="font-size:12px;font-weight:800;color:var(--status-available)">${av.availPct}%</span>` : '', availabilityBody, "setSection('coach','message')", 'Availability — open Availability')}
+          ${card('Availability', av.kind !== 'none' && !availNoReplies ? `<span style="font-size:12px;font-weight:800;color:var(--status-available)">${av.availPct}%</span>` : '', availabilityBody, "setSection('coach','message')", 'Availability — open Availability')}
         </div>
         <div class="ovw-row" style="margin-top:14px">
           ${card('Recent activity', '', activityBody, null, null)}
@@ -14398,9 +14481,10 @@
         contextRight = `${esc(matchCountdownStr())} · vs ${esc(mc.opposition || 'TBC')}`;
       }
 
-      // All-clear sentence built from real numbers
-      const tonightConfirmed = tonightId
-        ? state.players.filter(p => (p[sessionKey(tonightId)] || 'no-reply') === 'available').length : 0;
+      // All-clear sentence built from real numbers — from the same authoritative
+      // source as the Availability card beneath it, not the club-wide roster and
+      // not the device-only per-session field.
+      const tonightConfirmed = tonightId ? overviewAvailableCount(tonightId) : 0;
       const allClearText = tonightSess
         ? `You're set for tonight — ${tonightConfirmed} confirmed${tonightSess.published ? ', plan published' : ''}.`
         : mc.published

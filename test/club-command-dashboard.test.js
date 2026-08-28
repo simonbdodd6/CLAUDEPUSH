@@ -93,6 +93,7 @@ function buildScope({
   stubTonightId = null,
   stubUnread = 0,
   stubReceipts = [],
+  resolvedAvailability = {},
 } = {}) {
   const stateObj = {
     players, schedule, fixtures, messages, matchCentre, masterFeed,
@@ -111,6 +112,9 @@ function buildScope({
     'function setSection() {}\n' +
     'function operationalGroups() { return _groups; }\n' +
     'function operationalPlayers() { return state.players || []; }\n' +
+    // The server-resolved availability model, exactly as loadAvailability sets it:
+    // { <player identifier>: { <sessionId>: {response, reason, respondedAt} } }.
+    'let _resolvedAvailability = ' + JSON.stringify(resolvedAvailability) + ';\n' +
     'function canI(perm) { return _myPerms.includes(perm); }\n' +
     'function esc(s) { return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }\n' +
     // Real helpers — these are what turn state into the displayed numbers
@@ -118,6 +122,11 @@ function buildScope({
     extractFn(html, 'fixtureBelongsToGroup') + '\n' +
     extractFn(html, 'contextFixtures') + '\n' +
     extractFn(html, 'sessionKey') + '\n' +
+    extractFn(html, 'sessionReasonKey') + '\n' +
+    extractFn(html, 'normalizeSessionId') + '\n' +
+    extractFn(html, 'liveAvailabilityPlayerKeys') + '\n' +
+    extractFn(html, 'resolvedAnswerFor') + '\n' +
+    extractFn(html, 'sessionRows') + '\n' +
     extractConst(html, 'PLAYER_LIFECYCLE_LABELS') + '\n' +
     extractFn(html, 'playerIsArchived') + '\n' +
     extractFn(html, 'activeRosterPlayers') + '\n' +
@@ -135,13 +144,18 @@ function buildScope({
     extractFn(html, 'selectionStarterCount') + '\n' +
     extractFn(html, 'selectionBenchCount') + '\n' +
     // The functions under test
+    extractFn(html, 'overviewRoster') + '\n' +
+    extractFn(html, 'overviewAvailableCount') + '\n' +
+    extractFn(html, 'overviewAnswerMap') + '\n' +
+    extractFn(html, 'overviewAnswerCounts') + '\n' +
     extractFn(html, 'overviewAvailabilityContext') + '\n' +
     extractFn(html, 'overviewDonutSvg') + '\n' +
     extractFn(html, 'overviewLegendRow') + '\n' +
     extractFn(html, 'renderClubCommandDashboard') + '\n' +
     extractConst(html, 'OVW_ACTION_ICON') + '\n' +
     extractFn(html, 'renderOverviewQuickActions') + '\n' +
-    'return { renderClubCommandDashboard, renderOverviewQuickActions, overviewAvailabilityContext };\n';
+    'return { renderClubCommandDashboard, renderOverviewQuickActions, overviewAvailabilityContext,\n' +
+    '         overviewAnswerMap, overviewAvailableCount, overviewRoster };\n';
 
   return new Function(body)();
 }
@@ -560,4 +574,70 @@ test('a linked card advertises that it opens something', () => {
   assert.ok(activity && !activity.slice(0, 400).includes('ovw-open'),
     'a card that opens nothing must not pretend otherwise');
   assert.ok(out.includes('ovw-open'), 'linked cards need an affordance');
+});
+
+// ── 9. A squad that has not answered yet ──────────────────────────────────────
+// "0 Available · 0 Maybe · 0 Unavailable · 0 of 57 replied · 0%" is
+// arithmetically true and reads as a broken placeholder — that is exactly how
+// this card was reported from a live club. A real squad with no answers gets a
+// sentence, not a row of zeroes.
+
+test('a squad with no answers yet is told so, not shown zeroes', () => {
+  const out = buildScope({
+    players: Array.from({ length: 57 }, (_, i) => ({ id: 'p' + i, name: 'P ' + i })),
+    fixtures: [{ id: 'fx1', opposition: 'Acton Town', date: iso(6) }],
+  }).renderClubCommandDashboard();
+
+  assert.ok(out.includes('No responses yet'), 'the zero-reply state must be stated');
+  assert.match(out, /none of the 57 players have replied/,
+    'the real squad size is still reported — it is a known number');
+  assert.ok(!/0 of 57 replied/.test(out), 'must not present the placeholder reading');
+  assert.ok(!/>0<\/b><span>Available/.test(out), 'must not draw three zeroes as a reading');
+  assert.ok(!out.includes('<svg'), 'no donut may be drawn from nothing');
+});
+
+test('one answer is enough to switch from the sentence to the figures', () => {
+  const players = Array.from({ length: 10 }, (_, i) => ({ id: 'p' + i, name: 'P ' + i }));
+  const out = buildScope({
+    players,
+    fixtures: [{ id: 'fx1', opposition: 'Acton Town', date: iso(6) }],
+    resolvedAvailability: { p0: { fx1: { response: 'available', respondedAt: '2026-08-27T10:00:00.000Z' } } },
+  }).renderClubCommandDashboard();
+
+  assert.ok(!out.includes('No responses yet'), 'there IS a response now');
+  assert.ok(out.includes('<svg'), 'the donut is drawn once there is something to draw');
+  assert.match(out, /1 of 10 replied/);
+  assert.match(out, /<span>Available<\/span>[\s\S]*?<b>1</, 'the one answer is shown as one');
+});
+
+test('the availability figures come from the resolved answers, not the device fields', () => {
+  // The live defect: answers arrive through the server and the local player
+  // records stay blank, so a card reading p[sessionKey(id)] showed nothing.
+  const players = Array.from({ length: 6 }, (_, i) => ({ id: 'p' + i, name: 'P ' + i }));
+  const av = buildScope({
+    players,
+    schedule: [{ id: 'tue', type: 'Training', title: 'Tuesday Session' }],
+    stubTonightId: 'tue',
+    resolvedAvailability: {
+      p0: { tue: { response: 'available',   respondedAt: '2026-08-27T10:00:00.000Z' } },
+      p1: { tue: { response: 'available',   respondedAt: '2026-08-27T10:00:00.000Z' } },
+      p2: { tue: { response: 'maybe',       respondedAt: '2026-08-27T10:00:00.000Z' } },
+      p3: { tue: { response: 'unavailable', respondedAt: '2026-08-27T10:00:00.000Z' } },
+    },
+  }).overviewAvailabilityContext();
+
+  assert.deepEqual(
+    { available: av.available, maybe: av.maybe, unavailable: av.unavailable, noReply: av.noReply },
+    { available: 2, maybe: 1, unavailable: 1, noReply: 2 });
+});
+
+test('the card header shows no percentage when there is no percentage to show', () => {
+  const out = buildScope({
+    players: Array.from({ length: 57 }, (_, i) => ({ id: 'p' + i, name: 'P ' + i })),
+    schedule: [{ id: 'tue', type: 'Training', title: 'Tuesday Session' }],
+    stubTonightId: 'tue',
+  }).renderClubCommandDashboard();
+
+  assert.ok(out.includes('No responses yet'));
+  assert.ok(!/>0%</.test(out), '0% beside "No responses yet" reads as a broken card');
 });
