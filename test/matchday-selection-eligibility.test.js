@@ -74,6 +74,7 @@ function club({ group = U18, adminLoaded = true, members = null, placed = [], en
     function mcPersonKey(n) { return String(n || '').trim().toLowerCase(); }
     // Already-placed players come from the DOM in the real app.
     const document = { querySelectorAll: () => placedIn.map(v => ({ value: v })) };
+    ${fn('clubUsesPlayerGroups')}
     ${fn('operationalPlayers')}
     ${fn('mcComputeAvailable')}
     // Exactly the filter mcRenderPickerList applies to the pool.

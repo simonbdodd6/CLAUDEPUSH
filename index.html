@@ -11107,10 +11107,39 @@
       p.mediaConsent=!p.mediaConsent; saveState('Consent updated'); showToast(`Media consent ${p.mediaConsent?'granted':'revoked'} for ${p.name}`); render();
     }
     function showAddPlayerForm() { state.showAddPlayer=!state.showAddPlayer; saveState(); render(); }
+    /**
+     * Add a ROSTER RECORD — a name on the squad list, and nothing more.
+     *
+     * This has never created an account. It writes a row into state.players,
+     * fabricates an @player.test address when none is given, and syncs the
+     * roster blob; there is no user, no credential and no membership, so the
+     * person it names cannot log in. Only the invitation flow creates an
+     * account (api/_identityStore claimInvite).
+     *
+     * THE GUARD BELOW is the part that matters. Because the record carries no
+     * membership, it can never be matched to a player group, and
+     * operationalPlayers() filters by group the moment ANY membership carries
+     * one. So in a club that has started using groups this function used to
+     * report "added to squad" and produce something that appeared on no screen
+     * at all — not Members, not Availability, not Match Centre — and could not
+     * be repaired afterwards, because "Plays for" (adminSetPlayerGroup) needs a
+     * membership id and there is none.
+     *
+     * Worse, the failure was DELAYED: in a brand-new club the records showed
+     * normally, then vanished together the first time a real player claimed an
+     * invite and switched the roster into group mode.
+     *
+     * Refusing here is not a lost capability — in that club the write produced
+     * nothing usable. Where it still works (a club whose memberships carry no
+     * group yet) it behaves exactly as before.
+     */
     function addPlayer() {
       const g = id => document.getElementById(id)?.value.trim() || '';
       const name = g('apName'), pos = g('apPos'), phone = g('apPhone'), email = g('apEmail');
       if (!name) return showToast("Player name required");
+      if (clubUsesPlayerGroups()) {
+        return showToast('Your club uses player groups — a manual record cannot join one. Send them the player invite link instead.');
+      }
       const id = "p"+Date.now();
       const nameParts = name.trim().split(/\s+/);
       const player = {
@@ -11133,7 +11162,10 @@
         archivedDate: null, membershipPlanId: '', consentFormSignedAt: null, transferHistory: [], documentIds: [],
       };
       upsertCanonicalPlayerRecord(player);
-      state.showAddPlayer=false; notify(`${name} added to squad`);
+      state.showAddPlayer=false;
+      // Say what was actually made. "Added to squad" read as onboarding, and a
+      // coach reasonably expected the player to be able to sign in.
+      notify(`${name} added to the squad list — send them the invite link so they can sign in`);
       flushRosterSync();   // persist to the server immediately so a quick refresh keeps the new member
     }
     function exportMembersCSV() {
@@ -17036,18 +17068,17 @@
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
             <h2 style="margin:0;font-size:19px;color:var(--ink)">Members</h2>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add player</button>
-              <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Player invite link</button>
-              <button class="btn" type="button" onclick="openCoachGroupInviteModal()">Coach / Staff invite link</button>
+              <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Invite players</button>
+              <button class="btn" type="button" onclick="openCoachGroupInviteModal()">Invite coaches / staff</button>
               ${canI('manage_teams') ? `<button class="btn" type="button" onclick="setSection('coach','admin')"
                 title="Club structure, staff access and member permissions">Club Admin →</button>` : ''}
             </div>
           </div>
-          <p class="muted" style="font-size:12.5px;margin:2px 0 0">Share a link — players and staff register themselves and join automatically. Or add a player manually.</p>
+          <p class="muted" style="font-size:12.5px;margin:2px 0 0">Share a link. Players and staff register themselves, sign in and join the right group automatically.</p>
 
           <!-- ── Invite & Access panel (ordered below the squad list) ── -->
           <div class="card" style="order:5;padding:0;overflow:hidden">
-            <details class="srv-panel" id="invite-access-panel" ontoggle="if(this.open) loadInviteList()">
+            <details class="srv-panel" id="invite-access-panel" ${state.showAddPlayer ? 'open' : ''} ontoggle="if(this.open) loadInviteList()">
               <summary>More options</summary>
               <div class="srv-panel-body" style="padding-top:4px">
 
@@ -17092,6 +17123,25 @@
                 </div>
                 <div id="inv-result"></div>
 
+                <!-- ── Squad list record — administrative, NOT onboarding ──
+                     Deliberately here and not in the header: it sat beside
+                     "Invite players" looking like the same job, and a coach
+                     could not tell that one creates an account and the other
+                     does not. Hidden entirely once the club uses player groups,
+                     where the record it writes could never be seen. -->
+                ${clubUsesPlayerGroups() ? '' : `
+                <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line)">
+                  <h4 style="margin:0 0 6px;font-size:14px;color:var(--ink)">Add a name to the squad list</h4>
+                  <p class="muted" style="font-size:12.5px;margin:0 0 10px">
+                    For someone you want on the list before they register — a trialist, or a player with no email.
+                    <strong>This does not create a login.</strong> They still need the invite link to sign in,
+                    see their availability or receive messages.
+                  </p>
+                  <button class="btn" type="button" onclick="showAddPlayerForm()">
+                    ${state.showAddPlayer ? 'Cancel' : '+ Add squad list record'}
+                  </button>
+                </div>`}
+
                 <!-- Fallback: team code for bulk sharing -->
                 <details style="margin-top:18px">
                   <summary style="font-size:12px;font-weight:700;color:var(--faint);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
@@ -17116,21 +17166,33 @@
             </details>
           </div>
 
-          <!-- Pending account join requests -->
+          <!-- Pending account join requests — shown only when there are some.
+               This is an approval INBOX, not a way to add anyone: it is the
+               only route by which someone who signed up with the team code
+               becomes a member. Empty, it was permanent clutter at the top of
+               the page. The Overview still raises "N players waiting for
+               approval" and a Pending joins stat, both of which route here, so
+               nothing becomes undiscoverable. -->
+          ${_identityPendingRequests.length === 0 ? '' : `
           <div class="card" style="padding:0;overflow:hidden">
-            <details class="srv-panel" ${_identityPendingRequests.length > 0 ? 'open' : ''} ontoggle="if(this.open) loadIdentityRequests()">
+            <details class="srv-panel" open ontoggle="if(this.open) loadIdentityRequests()">
               <summary>Pending joins${_identityPendingRequests.length > 0 ? ` <strong style="color:var(--accent)">(${_identityPendingRequests.length})</strong>` : ''}</summary>
               <div class="srv-panel-body" style="padding-top:0">
                 <p class="muted" style="font-size:13px;margin-bottom:12px">Approve players who joined with the team code.</p>
                 <div id="identity-requests-panel">${identityRequestsHtml()}</div>
               </div>
             </details>
-          </div>
+          </div>`}
 
-          <!-- Add player panel (toggled) -->
-          ${state.showAddPlayer ? `
+          <!-- Squad list record form (toggled from More options). Gated on the
+               SAME predicate as its trigger and as addPlayer(): state.showAddPlayer
+               is persisted, so a coach who left the form open before their club
+               started using groups would otherwise return to a form that can
+               only ever refuse. -->
+          ${state.showAddPlayer && !clubUsesPlayerGroups() ? `
           <div class="add-player-panel">
-            <h3 style="margin:0 0 14px">Add player</h3>
+            <h3 style="margin:0 0 4px">Add a name to the squad list</h3>
+            <p class="muted" style="font-size:12.5px;margin:0 0 14px">No account is created. Send them the invite link when you want them to sign in.</p>
             <div class="add-player-grid">
               <label>Full name *<input id="apName" placeholder="Simon Dodd"></label>
               <label>Position<select id="apPos">
@@ -17145,7 +17207,7 @@
               <label>Jersey #<input id="apJerseyNum" placeholder="1–23" style="width:80px"></label>
             </div>
             <div style="display:flex;gap:8px;margin-top:14px">
-              <button class="btn primary" type="button" onclick="addPlayer()">Add to squad</button>
+              <button class="btn primary" type="button" onclick="addPlayer()">Add to squad list</button>
               <button class="btn" type="button" onclick="showAddPlayerForm()">Cancel</button>
             </div>
           </div>` : ""}
@@ -17154,13 +17216,12 @@
           ${members.length === 0 ? `
           <div class="card" style="padding:36px 24px;text-align:center">
             <div style="font-size:40px;margin-bottom:14px;opacity:.55">👥</div>
-            <h2 style="margin:0 0 8px;font-size:18px">Add your players</h2>
+            <h2 style="margin:0 0 8px;font-size:18px">Invite your players</h2>
             <p style="font-size:14px;color:var(--muted);margin:0 auto 22px;max-width:420px">
-              Invite players with a group invite link or your team code, or add them manually.
+              Share one link. Every player registers themselves, gets their own login and joins the right group.
             </p>
             <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-              <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Player invite link</button>
-              <button class="btn" type="button" onclick="showAddPlayerForm()">+ Add player</button>
+              <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Invite players</button>
             </div>
           </div>` : `
           <div class="members-search-bar">
@@ -36152,6 +36213,26 @@
     }
 
     /**
+     * Has this club started placing players into groups?
+     *
+     * The membership is the authority on where someone plays — the server says
+     * so in as many words (api/publish.js: "playerGroupId on the MEMBERSHIP is
+     * the authority — never a team name, age text or roster label"). A club
+     * whose memberships carry no group at all is pre-structure, and every
+     * squad surface still shows the full roster.
+     *
+     * This matters beyond the filter below: a roster record with no membership
+     * — the kind "+ Add player" writes — can never be matched to a group, so
+     * the moment this turns true such a record drops out of Members,
+     * Availability and Match Centre at once. addPlayer() asks the same
+     * question before writing one, which is why it lives here rather than
+     * inline: the two must never disagree.
+     */
+    function clubUsesPlayerGroups() {
+      return (_adminData.members || []).some(m => m.playerGroupId);
+    }
+
+    /**
      * Rows for the OPERATIONAL roster: the current group only, using the
      * membership's playerGroupId as the authority. Club administration keeps
      * its own club-wide view — this is deliberately the narrower one.
@@ -36177,7 +36258,7 @@
       // full roster (legacy behaviour). The moment memberships carry player
       // groups, the pool follows the OPERATING group — including for a
       // single-group coach, whose club may hold groups they never see.
-      if (!members.some(m => m.playerGroupId)) return rows;
+      if (!clubUsesPlayerGroups()) return rows;
       const groupOf = p => members.find(m =>
         m.status === 'active' && String(m.userId) === String(p.userId || ''))?.playerGroupId || '';
       return rows.filter(p => String(groupOf(p)) === gid);
