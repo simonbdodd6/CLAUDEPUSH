@@ -14166,11 +14166,11 @@
               <article><span>Maybe/injured</span><strong>${maybe.length + rows.filter(({status})=>status==="injured").length}</strong></article>
             </div>
             <div class="training-player-list">
-              ${rows.map(({player, status, attendanceRate}) => `
+              ${rows.map(({player, status, attendanceRate}) => { const att = playerAttendanceValue(player); return `
                 <button class="${selectedPlayer.id===player.id?"active":""}" type="button" onclick="setMessagePlayer('${player.id}')">
-                  <div><strong>${player.name}</strong><span>${attendanceRate}% yearly attendance</span></div>
+                  <div><strong>${player.name}</strong><span>${att === null ? 'No attendance data' : `${att}% yearly attendance`}</span></div>
                   <span class="status ${status}">${statusLabel(status)}</span>
-                </button>`).join("")}
+                </button>`; }).join("")}
             </div>
           </div>`;
 
@@ -14248,7 +14248,7 @@
                 <span class="status ${selectedStatus}">${statusLabel(selectedStatus)}</span>
               </div>
               <div class="training-metrics">
-                <article><span>Year attendance</span><strong>${selectedPlayer.attendance}%</strong></article>
+                <article><span>Year attendance</span><strong>${attendanceLabel(playerAttendanceValue(selectedPlayer))}</strong></article>
                 <article><span>Recent replies</span><strong>${selectedPlayer.history.filter(h=>h!=="no-reply").length}/${selectedPlayer.history.length}</strong></article>
                 <article><span>Position</span><strong>${selectedPlayer.position}</strong></article>
               </div>
@@ -14450,6 +14450,7 @@
         const isInjury   = reason === 'injury';
         const reasonText = reason && reason !== 'injury' ? REASON_LABELS[reason] || reason : '';
         const repliedTs  = fmtRespondedAt(respondedAt);
+        const att        = playerAttendanceValue(player);
         return `<button class="msg-player-row ${selectedPlayer.id===player.id ? "active" : ""}" type="button" onclick="openPlayerAvailabilityPopup('${player.id}')">
           <span class="msg-player-main">
             <span style="min-width:0">
@@ -14457,7 +14458,7 @@
               <small>${esc(player.position)}${isInjury ? ' · <span style="color:#f87171;font-weight:700">⚠ Injury</span>' : reasonText ? ' · ' + esc(reasonText) : ''}</small>
               ${repliedTs && status !== 'no-reply' ? `<small style="color:var(--muted);font-size:10px">${esc(repliedTs)}</small>` : ''}
             </span>
-            <span class="msg-attendance-chip">${attendanceRate || 0}%</span>
+            <span class="msg-attendance-chip">${attendanceLabel(att)}</span>
           </span>
           <span class="msg-chip ${isInjury ? 'unavailable' : (status || 'no-reply')}">${isInjury ? '⚠ Injury' : statusLabel(status)}</span>
         </button>`;
@@ -16231,6 +16232,45 @@
     //    with the first term > match only via position. Name always beats position.
     //  · Ties keep the original roster order (stable). Empty query restores it.
     // Presentation only — no data changes, row click/handlers untouched.
+    /**
+     * A player's attendance as a NUMBER, or null when the record carries none.
+     *
+     * Roster records reach the client three ways and only one of them
+     * guarantees this field. mergeRosterMember() coerces it (`Number(... || 0)`),
+     * but that runs ONLY when two rows are deduped into one; a unique player is
+     * pushed through as `{ ...player }` untouched. normalizeState() defaults
+     * `history` and `blockedDates` and not `attendance`. loadRosterFromServer()
+     * adopts the server rows verbatim — api/publish.js stores the roster as an
+     * opaque blob and never names the field, so a row is only ever as complete
+     * as whatever was published. A record therefore legitimately arrives with
+     * no `attendance` key at all.
+     *
+     * `${p.attendance}%` then printed "undefined%", and because
+     * `undefined >= 80` and `undefined >= 60` are BOTH false the bar fell
+     * through to red — a missing value displayed as the worst possible one.
+     *
+     * Absence is not zero. A club that has never tracked attendance has no
+     * data, and defaulting to 0 here would assert a measured 0% that nobody
+     * recorded. Callers render null as "—" with a neutral bar. A real 0 is
+     * data and still renders as 0%.
+     */
+    function playerAttendanceValue(player = {}) {
+      const raw = player?.attendance;
+      if (raw === null || raw === undefined || raw === '') return null;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    /** "72%", or "—" when the record carries no attendance at all. */
+    function attendanceLabel(value) {
+      return value === null ? '\u2014' : `${value}%`;
+    }
+
+    /** Bar width, clamped so a corrupt or out-of-range value cannot overflow its track. */
+    function attendanceBarWidth(value) {
+      return value === null ? 0 : Math.max(0, Math.min(100, value));
+    }
+
     function membersFilterRows(q) {
       const query = String(q || '').trim().toLowerCase();
       const terms = query.split(/\s+/).filter(Boolean);
@@ -16538,7 +16578,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${members.map((p, i) => `<tr class="member-row" data-name="${(p.name||'').toLowerCase().replace(/"/g,'&quot;')}" data-pos="${(p.position||'').toLowerCase().replace(/"/g,'&quot;')}" data-order="${i}" onclick="playerOpenDetail('${p.id}')" style="cursor:pointer">
+                ${members.map((p, i) => { const att = playerAttendanceValue(p); return `<tr class="member-row" data-name="${(p.name||'').toLowerCase().replace(/"/g,'&quot;')}" data-pos="${(p.position||'').toLowerCase().replace(/"/g,'&quot;')}" data-order="${i}" onclick="playerOpenDetail('${p.id}')" style="cursor:pointer">
                   <td style="padding-left:18px">
                     <div style="display:flex;align-items:center;gap:9px">
                       <div class="player-photo-wrap">
@@ -16548,7 +16588,7 @@
                           <input type="file" accept="image/*" style="display:none" onclick="event.stopPropagation()" onchange="savePlayerPhoto('${p.id}',this)">
                         </label>
                       </div>
-                      <div><strong style="font-size:13px">${p.name}</strong><div style="font-size:12px;color:var(--muted)">${p.email||""}</div><div class="mrow-mmeta">${p.position ? p.position : '—'} · ${p.attendance}%</div></div>
+                      <div><strong style="font-size:13px">${p.name}</strong><div style="font-size:12px;color:var(--muted)">${p.email||""}</div><div class="mrow-mmeta">${p.position ? p.position : '—'} · ${attendanceLabel(att)}</div></div>
                     </div>
                   </td>
                   <td data-label="Position"><span class="pill" style="font-size:11px">${p.position}</span></td>
@@ -16563,8 +16603,8 @@
                   </td>
                   <td data-label="Attendance">
                     <div style="display:flex;align-items:center;gap:8px">
-                      <div class="history-bar" style="width:60px"><span style="width:${p.attendance}%;background:${p.attendance>=80?'var(--green)':p.attendance>=60?'var(--amber)':'var(--red)'}"></span></div>
-                      <span style="font-size:12px;font-weight:700;color:${p.attendance>=80?'var(--ink)':p.attendance>=60?'var(--amber)':'var(--red)'}">${p.attendance}%</span>
+                      <div class="history-bar" style="width:60px"><span style="width:${attendanceBarWidth(att)}%;background:${att === null ? 'transparent' : att>=80?'var(--green)':att>=60?'var(--amber)':'var(--red)'}"></span></div>
+                      <span style="font-size:12px;font-weight:700;color:${att === null ? 'var(--muted)' : att>=80?'var(--ink)':att>=60?'var(--amber)':'var(--red)'}">${attendanceLabel(att)}</span>
                     </div>
                   </td>
                   <td data-label="Media consent">
@@ -16582,7 +16622,7 @@
                         : `<button class="btn ghost" type="button" style="padding:0 11px;min-height:36px;font-size:12px;color:var(--red)" onclick="event.stopPropagation();archivePlayer('${p.id}')">Archive</button>`}
                     </div>
                   </td>
-                </tr>`).join("")}
+                </tr>`; }).join("")}
               </tbody>
             </table></div>
             ${archivedCount > 0 ? `<div style="padding:10px 18px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
@@ -17987,6 +18027,7 @@
       const medNotes = (state.medicalNotes || {})[p.id] || {};
       const logs = (state.treatmentLogs || []).filter(l => l.playerId === p.id);
       const regLabel = REGISTRATION_LABELS[p.registrationStatus] || REGISTRATION_LABELS.unregistered;
+      const att = playerAttendanceValue(p);
 
       const field = (label, id, val, type='text', extra='') =>
         `<div style="margin-bottom:10px">
@@ -18103,8 +18144,8 @@
         <div class="card" style="margin-bottom:14px">
           <h3 style="font-size:13px;font-weight:800;margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Availability</h3>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-            <div class="history-bar" style="flex:1;max-width:200px"><span style="width:${p.attendance}%;background:${p.attendance>=80?'var(--green)':p.attendance>=60?'#d97706':'#dc2626'}"></span></div>
-            <span style="font-size:14px;font-weight:800">${p.attendance}%</span>
+            <div class="history-bar" style="flex:1;max-width:200px"><span style="width:${attendanceBarWidth(att)}%;background:${att === null ? 'transparent' : att>=80?'var(--green)':att>=60?'#d97706':'#dc2626'}"></span></div>
+            <span style="font-size:14px;font-weight:800;${att === null ? 'color:var(--muted)' : ''}">${attendanceLabel(att)}</span>
             <span class="muted" style="font-size:12px">attendance</span>
           </div>
           ${p.history && p.history.length ? `<div class="muted" style="font-size:12px">${p.history.length} session record${p.history.length !== 1 ? 's' : ''}</div>` : `<p class="muted" style="font-size:12px;margin:0">No availability history yet.</p>`}
@@ -28247,13 +28288,16 @@
     function renderPlayerAttendance() {
       const player = getPlayer();
       if (!player.id) { document.getElementById("player-attendance").innerHTML = noSquadMsg(); return; }
+      const att = playerAttendanceValue(player);
       document.getElementById("player-attendance").innerHTML = `
         <div class="grid two-col">
           <div class="card">
             <h2>Attendance</h2>
             <div style="margin-top:18px">
-              <div class="history-bar"><span style="width:${player.attendance}%"></span></div>
-              <p style="margin-top:7px"><strong>${player.attendance}%</strong> training attendance this season</p>
+              <div class="history-bar"><span style="width:${attendanceBarWidth(att)}%"></span></div>
+              ${att === null
+                ? `<p style="margin-top:7px" class="muted">No training attendance recorded this season yet.</p>`
+                : `<p style="margin-top:7px"><strong>${attendanceLabel(att)}</strong> training attendance this season</p>`}
             </div>
           </div>
           <div class="card">

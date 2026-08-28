@@ -119,3 +119,220 @@ test('a manual add persists to the server immediately (flush, not only the 2s de
   assert.ok(!/setTimeout/.test(flush), 'flush is immediate (no debounce)');
   assert.ok(flush.includes('if (!isCoach()) return;'), 'coach-only, like the debounced sync');
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Members attendance — "undefined%" and a red bar for a record with no value.
+//
+// The Members table interpolated `${p.attendance}%` with no guard. A roster
+// record legitimately arrives WITHOUT that key: mergeRosterMember() coerces it
+// but only runs when two rows are deduped, normalizeState() defaults `history`
+// and `blockedDates` and not `attendance`, and loadRosterFromServer() (the very
+// wholesale adoption this file exists for) takes the server rows verbatim —
+// api/publish.js stores the roster as an opaque blob and never names the field.
+//
+// The bar was red for the same reason the text said "undefined": both
+// `undefined >= 80` and `undefined >= 60` are false, so the colour ternary fell
+// through to its worst branch. One missing field, two wrong pixels.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function attendanceScope() {
+  const src = [
+    'playerAttendanceValue', 'attendanceLabel', 'attendanceBarWidth',
+  ].map(n => extractFn(html, n)).join('\n');
+  const scope = {};
+  new Function('scope', `${src}\n Object.assign(scope, { playerAttendanceValue, attendanceLabel, attendanceBarWidth });`)(scope);
+  return scope;
+}
+
+test('a real attendance value renders as its own percentage', () => {
+  const { playerAttendanceValue, attendanceLabel, attendanceBarWidth } = attendanceScope();
+  for (const n of [0, 37, 59, 60, 79, 80, 100]) {
+    assert.equal(playerAttendanceValue({ attendance: n }), n);
+    assert.equal(attendanceLabel(n), `${n}%`);
+    assert.equal(attendanceBarWidth(n), n, 'the bar must be drawn at the real value');
+  }
+});
+
+test('a genuine zero is data, and still reads as 0%', () => {
+  const { playerAttendanceValue, attendanceLabel } = attendanceScope();
+  // Nearly every record-creation path seeds attendance: 0. Zero is a measured
+  // value, not an absence — collapsing it to "—" would hide real data.
+  assert.equal(playerAttendanceValue({ attendance: 0 }), 0);
+  assert.equal(attendanceLabel(0), '0%');
+});
+
+test('a record with no attendance never renders undefined, NaN or null', () => {
+  const { playerAttendanceValue, attendanceLabel } = attendanceScope();
+  const missing = [
+    { name: 'no key at all' },
+    { name: 'explicit undefined', attendance: undefined },
+    { name: 'explicit null', attendance: null },
+    { name: 'empty string', attendance: '' },
+    { name: 'not a number', attendance: 'n/a' },
+    { name: 'NaN', attendance: NaN },
+    { name: 'Infinity', attendance: Infinity },
+  ];
+  for (const player of missing) {
+    const value = playerAttendanceValue(player);
+    assert.equal(value, null, `${player.name} must resolve to "no data"`);
+    const label = attendanceLabel(value);
+    assert.equal(label, '—', `${player.name} must render an em dash`);
+    assert.ok(!/undefined|NaN|null/.test(label), `${player.name} leaked a JS value into the UI`);
+  }
+});
+
+test('a missing value draws no bar, rather than a full-width red one', () => {
+  const { playerAttendanceValue, attendanceBarWidth } = attendanceScope();
+  assert.equal(attendanceBarWidth(playerAttendanceValue({})), 0);
+  // The reported symptom: undefined failed both threshold tests, so the colour
+  // ternary chose red — a missing value shown as the worst possible score.
+  const att = playerAttendanceValue({});
+  const barColour = att === null ? 'transparent' : att >= 80 ? 'green' : att >= 60 ? 'amber' : 'red';
+  assert.equal(barColour, 'transparent', 'absence must not be graded');
+});
+
+test('a corrupt or out-of-range value cannot overflow its track', () => {
+  const { attendanceBarWidth } = attendanceScope();
+  assert.equal(attendanceBarWidth(150), 100);
+  assert.equal(attendanceBarWidth(-20), 0);
+});
+
+test('the Members table and player detail no longer interpolate attendance raw', () => {
+  // Source-level pin: the two surfaces a coach reaches by clicking a member row.
+  const table = html.slice(html.indexOf('class="player-db-table"'), html.indexOf('</tbody>', html.indexOf('class="player-db-table"')));
+  assert.ok(!/\$\{p\.attendance\}/.test(table), 'Members table still prints a raw attendance value');
+  assert.ok(table.includes('attendanceLabel(att)'), 'Members table must use the guarded label');
+  assert.ok(table.includes('attendanceBarWidth(att)'), 'Members bar must use the clamped width');
+
+  const detail = extractFn(html, 'renderPlayerDetail');
+  assert.ok(!/\$\{p\.attendance\}/.test(detail), 'player detail still prints a raw attendance value');
+  assert.ok(detail.includes('attendanceLabel(att)'), 'player detail must use the guarded label');
+});
+
+test('the canonical merge preserves an attendance value it is given', () => {
+  // The stated suspicion was that the canonical merge dropped the field. It does
+  // not — this pins that it keeps preserving it, so the real fix is not masking
+  // a regression here later.
+  const merge = html.slice(html.indexOf('    function mergeRosterMember('));
+  const line = merge.slice(0, merge.indexOf('return merged;'))
+    .split('\n').find(l => l.includes('merged.attendance'));
+  assert.ok(line, 'mergeRosterMember must still set attendance');
+  assert.match(line, /Number\(/, 'and must still coerce it to a number');
+  // Both sides are consulted, so a value on either record survives the merge.
+  assert.ok(line.includes('preferred.attendance') && line.includes('other.attendance'),
+    'the merge must consult both records');
+});
+
+test('the fix touches attendance only — no other member field changed shape', () => {
+  const table = html.slice(html.indexOf('class="player-db-table"'), html.indexOf('</tbody>', html.indexOf('class="player-db-table"')));
+  // Fields that share the row must still be read straight off the record.
+  for (const field of ['p.name', 'p.position', 'p.mediaConsent', 'p.id']) {
+    assert.ok(table.includes(field), `${field} must still be rendered from the record`);
+  }
+  // And the row is still keyed and scoped exactly as before.
+  assert.ok(table.includes('playerOpenDetail('), 'row click-through unchanged');
+});
+
+test('team/club scoping is untouched by the attendance fix', () => {
+  // The Members list still comes from operationalPlayers(), which is what
+  // applies group scoping; the fix must not have moved that.
+  const render = extractFn(html, 'renderPlayers');
+  assert.ok(render.includes('operationalPlayers()'), 'Members must still source its list from the scoped helper');
+  const scoping = extractFn(html, 'operationalPlayers');
+  assert.ok(scoping.includes('state.operationalGroupId'), 'group scoping unchanged');
+  assert.ok(!/attendance/.test(scoping), 'the fix must not have leaked into scoping');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Attendance safety, completed — renderMessageCenter and renderPlayerAttendance.
+//
+// These two carried the same unguarded pattern as the Members table. The player
+// view was the worse of the pair: `width:${player.attendance}%` produces the
+// CSS declaration "width:undefined%", which the browser DISCARDS as invalid —
+// leaving a block-level span at auto width, i.e. a FULL bar, in the accent
+// colour (.history-bar span defaults to var(--accent)). A player with no
+// recorded attendance was shown a complete gold bar claiming a perfect season.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('the message centre renders attendance through the shared helpers', () => {
+  const fn = extractFn(html, 'renderMessageCenter');
+  assert.ok(!/\$\{attendanceRate\}/.test(fn), 'player list still prints a raw rate');
+  assert.ok(!/\$\{selectedPlayer\.attendance\}/.test(fn), 'metric tile still prints a raw value');
+  assert.ok(fn.includes('playerAttendanceValue(player)'), 'list row must resolve through the helper');
+  assert.ok(fn.includes('attendanceLabel(playerAttendanceValue(selectedPlayer))'),
+    'metric tile must resolve through the helper');
+});
+
+test('the player attendance view renders through the shared helpers', () => {
+  const fn = extractFn(html, 'renderPlayerAttendance');
+  assert.ok(!/\$\{player\.attendance\}/.test(fn), 'player view still prints a raw value');
+  assert.ok(fn.includes('playerAttendanceValue(player)'), 'must resolve through the helper');
+  assert.ok(fn.includes('attendanceBarWidth(att)'), 'bar must use the clamped width');
+  assert.ok(fn.includes('attendanceLabel(att)'), 'figure must use the guarded label');
+});
+
+test('a missing value can never leave the player bar at auto width', () => {
+  const { playerAttendanceValue, attendanceBarWidth } = attendanceScope();
+  const fn = extractFn(html, 'renderPlayerAttendance');
+  // The width expression must always emit a NUMBER, so the declaration is
+  // valid CSS and the browser cannot fall back to auto (= full bar).
+  const width = attendanceBarWidth(playerAttendanceValue({}));
+  assert.equal(width, 0);
+  assert.equal(typeof width, 'number');
+  assert.ok(!/width:\$\{[^}]*\.attendance\}/.test(fn),
+    'a raw value could render "width:undefined%", which the browser drops');
+});
+
+test('both completed surfaces obey the established attendance rules', () => {
+  const { playerAttendanceValue, attendanceLabel, attendanceBarWidth } = attendanceScope();
+  const cases = [
+    { in: { attendance: 74 },        label: '74%', width: 74 },
+    { in: { attendance: 0 },         label: '0%',  width: 0  },   // genuine zero is data
+    { in: {},                        label: '—',   width: 0  },
+    { in: { attendance: null },      label: '—',   width: 0  },
+    { in: { attendance: undefined }, label: '—',   width: 0  },
+    { in: { attendance: '' },        label: '—',   width: 0  },
+    { in: { attendance: 'n/a' },     label: '—',   width: 0  },
+    { in: { attendance: NaN },       label: '—',   width: 0  },
+    { in: { attendance: 150 },       label: '150%', width: 100 }, // shown real, bar clamped
+  ];
+  for (const c of cases) {
+    const value = playerAttendanceValue(c.in);
+    assert.equal(attendanceLabel(value), c.label, `label for ${JSON.stringify(c.in)}`);
+    assert.equal(attendanceBarWidth(value), c.width, `bar for ${JSON.stringify(c.in)}`);
+    assert.ok(!/undefined|NaN|null/.test(attendanceLabel(value)), 'no JS value may reach the UI');
+  }
+});
+
+test('no render site anywhere still interpolates a raw attendance value', () => {
+  // Whole-file sweep: the guarantee is only worth having if it is exhaustive.
+  // buildPlayerDetailHtml and openPlayerAvailabilityPopup use their own older
+  // guards (`|| 0` and a typeof test) — neither can emit undefined%, so they
+  // are safe and deliberately left alone; this pins that nothing UNGUARDED
+  // remains.
+  const script = html.slice(html.indexOf('<script>'), html.lastIndexOf('</script>'));
+  const raw = [...script.matchAll(/\$\{\s*(?:p|player|selectedPlayer)\.attendance\s*\}/g)];
+  const offenders = raw.filter(m => {
+    const around = script.slice(Math.max(0, m.index - 200), m.index);
+    return !/typeof\s+player\.attendance|\*|\/\//.test(around);
+  });
+  assert.equal(offenders.length, 0,
+    `unguarded attendance interpolation still present: ${offenders.map(o => o[0]).join(', ')}`);
+  assert.ok(!/\$\{attendanceRate\}/.test(script), 'raw attendanceRate interpolation still present');
+});
+
+test('the LIVE messaging surface reads absence as "—", not a measured 0%', () => {
+  // renderMessageCenter() returns renderMessageCenterV2() on its FIRST line, so
+  // its own body — including the two attendance sites there — is unreachable.
+  // The surface a coach actually sees is V2's player row, which used
+  // `attendanceRate || 0`: never "undefined%", but it asserted a 0% nobody
+  // measured. Same helper, same rule as the Members table.
+  const v1 = extractFn(html, 'renderMessageCenter');
+  assert.match(v1.split('\n')[1] || '', /return renderMessageCenterV2\(\)/,
+    'V1 is expected to be dead — if this changes, its body needs re-checking');
+
+  const v2 = extractFn(html, 'renderMessageCenterV2');
+  assert.ok(!/\$\{attendanceRate \|\| 0\}%/.test(v2), 'live chip still asserts a measured 0%');
+  assert.ok(v2.includes('playerAttendanceValue(player)'), 'live chip must resolve through the helper');
+  assert.ok(v2.includes('attendanceLabel(att)'), 'live chip must use the guarded label');
+});
