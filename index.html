@@ -20028,7 +20028,126 @@
           <div class="card">
             <button class="btn" type="button" onclick="settingsSignOut()" style="width:100%;min-height:44px;font-size:13px">Sign out</button>
           </div>
+
+          <!-- H4 — self-service account deletion (App Store requirement).
+               A quiet, honest card: the destructive ceremony lives in the
+               modal, not here. -->
+          <div class="card" style="border-color:rgba(220,38,38,0.25)">
+            <h3 style="font-size:13px;font-weight:800;margin:0 0 4px;color:#dc2626">Delete account</h3>
+            <p class="muted" style="font-size:12.5px;margin:0 0 12px;line-height:1.55">Permanently deletes your CoachEasier account and signs you out everywhere. Your club's shared records stay with the club.</p>
+            <button class="btn" type="button" onclick="settingsDeleteAccountOpen()"
+              style="min-height:44px;font-size:13px;color:#dc2626;border-color:rgba(220,38,38,0.4)">Delete my account…</button>
+          </div>
         </div>`;
+    }
+
+    /**
+     * H4 — Delete my account. A two-step ceremony in one modal (explanation ->
+     * typed DELETE + password -> deleting -> done/failed), reusing the app's
+     * ce-modal look. Deliberately NOT ceDialog: this flow needs two inputs,
+     * a busy state and an error state that ceDialog does not model.
+     *
+     * On success the server has already revoked every session and cleared the
+     * cookie; this device's stored state is wiped BEFORE the success screen is
+     * shown, so a refresh or back-button cannot resurrect the account from
+     * localStorage. On failure the copy says plainly that the account has NOT
+     * been deleted.
+     */
+    function settingsDeleteAccountOpen() {
+      document.getElementById('ce-modal-overlay')?.remove();
+      const overlay = document.createElement('div');
+      overlay.id = 'ce-modal-overlay';
+      overlay.className = 'ce-modal-overlay';
+      overlay.innerHTML = `
+        <div class="ce-modal" role="dialog" aria-modal="true" aria-labelledby="del-acct-title">
+          <h3 id="del-acct-title" style="color:#dc2626">Delete your account?</h3>
+          <div id="del-acct-body">
+            <p style="margin:0 0 10px">This permanently deletes your CoachEasier account. It cannot be undone.</p>
+            <ul style="margin:0 0 10px;padding-left:18px;font-size:13px;line-height:1.65;color:var(--muted)">
+              <li>Your login, profile and personal details are deleted.</li>
+              <li>You are removed from your club and signed out of every device.</li>
+              <li>Your club's shared records — sessions, fixtures, messages and availability history — stay with the club, no longer linked to your name.</li>
+            </ul>
+            <p class="muted" style="margin:0;font-size:12.5px">If you run a club, you may need to hand over your responsibilities first — we'll tell you if so.</p>
+          </div>
+          <div class="ce-modal-actions">
+            <button type="button" id="del-acct-cancel">Cancel</button>
+            <button type="button" id="del-acct-next" class="ce-confirm danger">Continue</button>
+          </div>
+        </div>`;
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.querySelector('#del-acct-cancel').onclick = close;
+      overlay.querySelector('#del-acct-next').onclick = () => settingsDeleteAccountConfirmStep(overlay);
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.querySelector('#del-acct-cancel')?.focus(), 30);
+    }
+
+    function settingsDeleteAccountConfirmStep(overlay) {
+      const me = (state.users || []).find(u => u.id === state.currentUserId) || {};
+      const hasPassword = me.passwordSet !== false;   // unknown -> ask; server is authoritative
+      overlay.querySelector('.ce-modal').innerHTML = `
+        <h3 style="color:#dc2626">Confirm deletion</h3>
+        <div id="del-acct-body">
+          <p style="margin:0 0 12px;font-size:13.5px">Type <strong>DELETE</strong> to confirm${hasPassword ? ', and enter your password' : ''}.</p>
+          <input id="del-acct-confirm" type="text" placeholder="Type DELETE" autocomplete="off" autocapitalize="characters">
+          ${hasPassword ? `<input id="del-acct-password" type="password" placeholder="Your password" autocomplete="current-password">` : ''}
+          <p id="del-acct-error" style="display:none;margin:10px 0 0;font-size:12.5px;font-weight:700;color:#dc2626"></p>
+        </div>
+        <div class="ce-modal-actions">
+          <button type="button" id="del-acct-cancel">Cancel</button>
+          <button type="button" id="del-acct-go" class="ce-confirm danger" disabled>Permanently delete my account</button>
+        </div>`;
+      const goBtn = overlay.querySelector('#del-acct-go');
+      const confirmEl = overlay.querySelector('#del-acct-confirm');
+      const pwEl = overlay.querySelector('#del-acct-password');
+      const gate = () => {
+        goBtn.disabled = confirmEl.value.trim().toUpperCase() !== 'DELETE' || (pwEl && !pwEl.value);
+      };
+      confirmEl.oninput = gate; if (pwEl) pwEl.oninput = gate;
+      overlay.querySelector('#del-acct-cancel').onclick = () => overlay.remove();
+      goBtn.onclick = () => settingsDeleteAccountExecute(overlay);
+      setTimeout(() => confirmEl.focus(), 30);
+    }
+
+    async function settingsDeleteAccountExecute(overlay) {
+      const goBtn = overlay.querySelector('#del-acct-go');
+      const errEl = overlay.querySelector('#del-acct-error');
+      const confirm = overlay.querySelector('#del-acct-confirm')?.value || '';
+      const currentPassword = overlay.querySelector('#del-acct-password')?.value || '';
+      goBtn.disabled = true;
+      goBtn.textContent = 'Deleting\u2026';
+      errEl.style.display = 'none';
+      try {
+        const res = await fetch('/api/identity', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete_account', confirm, currentPassword }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.deleted) {
+          throw new Error(data.error || 'Something went wrong. Your account has NOT been deleted.');
+        }
+        // The account is gone and every session is revoked. Wipe this device's
+        // stored copy BEFORE showing success — refresh/back cannot bring the
+        // account back from localStorage (same keys clearDeviceState clears).
+        try {
+          Object.keys(window.localStorage)
+            .filter(k => k.startsWith('coach-eye') || k.startsWith('_push'))
+            .forEach(k => window.localStorage.removeItem(k));
+        } catch {}
+        overlay.querySelector('.ce-modal').innerHTML = `
+          <h3>Your account has been deleted</h3>
+          <p style="margin:0 0 14px;font-size:13.5px;line-height:1.6">Everything personal has been removed and you are signed out on every device. Thanks for being part of your club\u2019s season.</p>
+          <div class="ce-modal-actions">
+            <button type="button" class="ce-confirm" onclick="window.location.replace('/')">Back to CoachEasier</button>
+          </div>`;
+      } catch (e) {
+        // Honest failure: the account still exists, and the copy says so.
+        goBtn.disabled = false;
+        goBtn.textContent = 'Permanently delete my account';
+        errEl.textContent = (e && e.message) ? e.message : 'Something went wrong. Your account has NOT been deleted.';
+        errEl.style.display = 'block';
+      }
     }
 
     async function settingsUpdateProfile() {
@@ -20504,6 +20623,12 @@
             style="width:100%;min-height:46px;font-weight:700;color:#dc2626;border-color:rgba(220,38,38,0.32)">Sign out</button>
           <button class="btn" type="button" onclick="document.getElementById('player-account-menu')?.remove()"
             style="width:100%;min-height:42px;margin-top:8px;font-size:13px">Close</button>
+          <!-- H4 — a player's ONLY account surface is this menu, so the
+               deletion route has to live here as well as in coach Settings.
+               Quiet by design: it is a link, not a third button competing
+               with Sign out. -->
+          <button type="button" onclick="document.getElementById('player-account-menu')?.remove();settingsDeleteAccountOpen()"
+            style="display:block;width:100%;margin-top:14px;background:none;border:0;cursor:pointer;font:inherit;font-size:12px;color:var(--muted);text-decoration:underline;min-height:44px">Delete my account</button>
         </div>`;
       document.body.appendChild(el);
     }

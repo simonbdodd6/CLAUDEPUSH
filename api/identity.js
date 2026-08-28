@@ -37,6 +37,7 @@ import {
   rejectJoinRequest,
   removeTeamMember,
   permanentlyDeleteTeamMember,
+  deleteOwnAccount,
   resetPasswordWithToken,
   resolveSessionFromRequest,
   restoreTeamMember,
@@ -829,6 +830,31 @@ export default async function handler(req, res) {
       }
       // ── Self-service account management (Settings) — any authenticated user.
       // Password/email changes re-verify the CURRENT password server-side.
+      if (action === 'delete_account') {
+        // H4 self-service account deletion. Identity comes ONLY from the
+        // authenticated session — nothing in the request body can name a user,
+        // so there is no id to manipulate. The store enforces the destructive
+        // confirmation (the word DELETE, plus the password when one is set)
+        // and refuses atomically while any club would be stranded.
+        const session = await requireSession(req);
+        // Five attempts an hour blunts using this endpoint as a password
+        // oracle, while a genuinely stuck user is not locked out for long.
+        await enforceRateLimit('delete_account', session.user.id, { limit: 5, windowMs: 60 * 60 * 1000 });
+        const result = await deleteOwnAccount(session.user.id, {
+          currentPassword: req.body?.currentPassword,
+          confirm: req.body?.confirm,
+        });
+        // Ids and counts only — the account is gone; its email does not
+        // belong in a retained log entry.
+        await auditLog('account_deleted', {
+          userId: result.userId,
+          clubsLeft: result.clubsLeft,
+          sessionsRevoked: result.sessionsRevoked,
+          ip: requestIp(req),
+        });
+        res.setHeader('Set-Cookie', clearSessionCookie());
+        return res.status(200).json({ ok: true, deleted: true, ...result });
+      }
       if (action === 'change_password') {
         const session = await requireSession(req);
         const result = await changePassword(session.user.id, {

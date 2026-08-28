@@ -1,4 +1,4 @@
-import { kvGet, kvSet, kvSetNX } from './_kv.js';
+import { kvGet, kvSet, kvSetNX, kvDel, kvScanKeys } from './_kv.js';
 import { findInviteByToken, persistInvite, appendClubInvite, loadAllInvites,
          listClubInvites } from './_inviteStore.js';
 import {
@@ -3070,6 +3070,203 @@ export async function permanentlyDeleteTeamMember(memberId, deletedBy, expectedT
     memberId, userId, teamId,
     accountDeleted, profileAnonymised, sessionsRevoked,
     deletedAt: member.deletedAt,
+  };
+}
+
+/**
+ * Self-service account deletion — the H4 App Store requirement.
+ *
+ * Same data policy as permanentlyDeleteTeamMember (the admin path), applied to
+ * EVERY club the caller belongs to, plus the personal stores only the account
+ * owner can speak for (push subscriptions, chat read-cursors, roster rows the
+ * user claimed). Shared club records — sessions, fixtures, availability
+ * history, messages, medical cases — are deliberately retained: they are the
+ * club's records, and the anonymised profile ("Removed member") is what keeps
+ * them coherent without carrying the person's identity.
+ *
+ * The caller can only ever be the authenticated session user: the handler
+ * passes session.user.id and nothing from the request body names an identity.
+ *
+ * Refuses — with a per-club explanation and NO partial changes — while any
+ * active membership would strand a club: the club owner, the last full-access
+ * administrator, or the last head coach cannot self-delete (identical guards
+ * to the admin path), and a platform administrator must hand over platform
+ * control first. Confirmation: the literal word DELETE always, plus the
+ * account password whenever one is set — an account without a password (some
+ * invite-claimed accounts) cannot be locked out of deletion by a check it can
+ * never pass.
+ */
+export async function deleteOwnAccount(userId, { currentPassword, confirm } = {}) {
+  const users = await loadUsers();
+  const user = users.find(u => u.id === userId);
+  if (!user) { const e = new Error('Account not found'); e.status = 404; throw e; }
+
+  if (isPlatformAdmin(user)) {
+    const e = new Error('Platform administrators cannot delete their own account. Transfer platform access first.');
+    e.status = 400; throw e;
+  }
+  if (String(confirm || '').trim().toUpperCase() !== 'DELETE') {
+    const e = new Error('Type DELETE to confirm you want to permanently delete this account');
+    e.status = 400; throw e;
+  }
+  if (user.passwordHash && user.passwordSalt) {
+    requireCurrentPassword(user, currentPassword);
+  }
+
+  const members = await loadTeamMembers();
+  const mine = members.filter(m => m.userId === userId);
+  const active = mine.filter(m => m.status === 'active');
+  const teams = await loadTeams();
+  const clubNameOf = teamId => {
+    const team = teams.find(t => t.id === teamId);
+    return team?.clubName || team?.name || teamId;
+  };
+
+  // ── Guards first, atomically: either every club allows this, or nothing
+  //    at all is modified. Same rules as the admin deletion path.
+  const blockers = [];
+  for (const member of active) {
+    const clubName = clubNameOf(member.teamId);
+    if (isClubOwner(member)) {
+      blockers.push(`${clubName}: you are the club owner — the owner account cannot be deleted`);
+      continue;
+    }
+    if (accessProfileOf(member) === 'full' && fullAccessMembers(members, member.teamId).length <= 1) {
+      blockers.push(`${clubName}: you are the last administrator with full access`);
+      continue;
+    }
+    if (staffLevelOf(member) === 'head' && await countActiveHeadCoaches(members, member.teamId) <= 1) {
+      blockers.push(`${clubName}: you are the last head coach or club administrator`);
+    }
+  }
+  if (blockers.length) {
+    const e = new Error('Your account cannot be deleted yet. ' + blockers.join('. ') +
+      '. Hand these responsibilities to someone else in the club first, or contact support@coacheasier.com.');
+    e.status = 400; e.code = 'deletion_blocked'; e.blockers = blockers;
+    throw e;
+  }
+
+  const deletedAt = nowIso();
+  const teamIds = [...new Set(mine.map(m => m.teamId).filter(Boolean))];
+  const displayName = user.displayName || user.name ||
+    [user.firstName, user.lastName].filter(Boolean).join(' ') || '';
+  const email = user.email || '';
+
+  // 1. Every membership row -> terminal state (retained, like the admin path,
+  //    so historical rows referencing the membership still resolve safely).
+  mine.forEach(member => {
+    member.status = 'deleted';
+    member.deletedAt = deletedAt;
+    member.deletedBy = userId;               // self
+    member.role = 'player';
+    delete member.staffLevel;
+  });
+  if (mine.length) await saveTeamMembers(members);
+
+  // 2. Player profiles -> anonymised in place. Capture the roster identifiers
+  //    first — a claimed roster row is matched by userId OR the invite-derived
+  //    legacyPlayerId, and the profile is where that id lives.
+  const profiles = await loadPlayerProfiles();
+  const legacyIds = new Set();
+  let profilesAnonymised = 0;
+  profiles.forEach(profile => {
+    if (profile.userId !== userId) return;
+    if (profile.legacyPlayerId) legacyIds.add(String(profile.legacyPlayerId));
+    profile.displayName = 'Removed member';
+    profile.email = '';
+    profile.phone = '';
+    profile.anonymisedAt = deletedAt;
+    profilesAnonymised++;
+  });
+  if (profilesAnonymised) await savePlayerProfiles(profiles);
+
+  // 3. The user's claimed roster rows are removed from each club's roster —
+  //    the same end state the admin deletion flow reaches. Coach-typed rows
+  //    that were never claimed carry no account identity and are left alone.
+  const ownsRow = row => String(row?.userId || '') === userId ||
+    String(row?.id || '') === userId ||
+    (row?.legacyPlayerId && legacyIds.has(String(row.legacyPlayerId))) ||
+    (row?.id && legacyIds.has(String(row.id)));
+  let rosterRowsRemoved = 0;
+  for (const teamId of teamIds) {
+    const rosterKey = key(`roster:${teamId}`);
+    const record = await kvGet(rosterKey);
+    if (!record || !Array.isArray(record.players)) continue;
+    const kept = record.players.filter(row => !ownsRow(row));
+    if (kept.length !== record.players.length) {
+      rosterRowsRemoved += record.players.length - kept.length;
+      await kvSet(rosterKey, { ...record, players: kept, updatedAt: deletedAt });
+    }
+  }
+
+  // 4. Pending invitations matching this identity are revoked in every club
+  //    (RC4.9B: a deleted member must not re-join through an old link).
+  //    Claimed invites keep their record — audit history, never touched.
+  let invitesRevoked = 0;
+  for (const teamId of teamIds) {
+    const invites = await listClubInvites(teamId);
+    for (const invite of (Array.isArray(invites) ? invites : [])) {
+      if (!invite || invite.status !== 'pending') continue;
+      const matchesEmail = invite.email && email &&
+        String(invite.email).toLowerCase() === email.toLowerCase();
+      const matchesName = displayName &&
+        String(invite.name || '').trim().toLowerCase() === displayName.trim().toLowerCase();
+      if (!matchesEmail && !matchesName) continue;
+      invite.status = 'revoked';
+      invite.revokedAt = deletedAt;
+      invite.revokedReason = 'account_deleted';
+      await persistInvite({ invite, teamId,
+        source: (await findInviteByToken(invite.token))?.source });
+      invitesRevoked++;
+    }
+  }
+
+  // 5. Push subscriptions are the user's own devices — every one goes.
+  let pushRemoved = 0;
+  try {
+    const subsKey = key('subscriptions');
+    const subs = await kvGet(subsKey);
+    if (Array.isArray(subs)) {
+      const kept = subs.filter(s => !(String(s?.userId || '') === userId ||
+        (s?.legacyPlayerId && legacyIds.has(String(s.legacyPlayerId))) ||
+        (s?.playerId && legacyIds.has(String(s.playerId)))));
+      pushRemoved = subs.length - kept.length;
+      if (pushRemoved) await kvSet(subsKey, kept);
+    }
+  } catch { /* push cleanup is best-effort — nothing identity-critical lives there */ }
+
+  // 6. Chat read-cursors (tiny identity-keyed timestamps) — swept clean.
+  //    Messages themselves are retained; the anonymised profile is how the
+  //    sender renders from now on.
+  try {
+    const readKeys = await kvScanKeys(key('chat:read:*'));
+    for (const k of (readKeys || [])) {
+      if (String(k).endsWith(`:${userId}`)) await kvDel(k);
+    }
+  } catch { /* best-effort hygiene */ }
+
+  // 7. The login account itself.
+  await saveUsers(users.filter(u => u.id !== userId));
+
+  // 8. Every live session — the account must not stay signed in anywhere.
+  const sessions = await loadSessions();
+  const keptSessions = sessions.filter(s => s.userId !== userId);
+  const sessionsRevoked = sessions.length - keptSessions.length;
+  if (sessionsRevoked) await saveSessions(keptSessions);
+
+  // 9. Outstanding reset/verification tokens are dead letters now.
+  const resets = await loadPasswordResets();
+  const keptResets = resets.filter(r => r.userId !== userId);
+  if (keptResets.length !== resets.length) await savePasswordResets(keptResets);
+  const verifications = await loadEmailVerifications();
+  const keptVer = verifications.filter(v => v.userId !== userId);
+  if (keptVer.length !== verifications.length) await saveEmailVerifications(keptVer);
+
+  return {
+    userId, deletedAt,
+    clubsLeft: teamIds.length,
+    membershipsDeleted: mine.length,
+    profilesAnonymised, rosterRowsRemoved, invitesRevoked, pushRemoved, sessionsRevoked,
   };
 }
 
