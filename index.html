@@ -7280,6 +7280,127 @@
       state.masterFeed = state.masterFeed.slice(0, 30);
     }
 
+    // ─── H3 PRODUCTION ERROR MONITORING ──────────────────────────────────────
+    // Before this, a production failure was invisible: no window.onerror, no
+    // unhandledrejection handler, and a failed fetch surfaced (at best) as a
+    // toast the coach read and we never saw. This is the smallest reporter
+    // that changes that.
+    //
+    // What it reports: genuinely unexpected failures only — uncaught errors,
+    // unhandled promise rejections, and 5xx / network failures from our own
+    // API. What it deliberately ignores: 401/403 (auth working), 404/410
+    // (missing or expired), 400/409/422/429 (the server correctly refusing
+    // input). Recording those would bury a real incident in routine noise.
+    //
+    // What it never sends: any query string or fragment. The server strips
+    // them again in _errorLog.js, but the client does not send them in the
+    // first place — an invitation link is `/?inv=<token>`, and H1 (f8859e47)
+    // exists precisely because that token once reached a log.
+    const ERROR_REPORT_LIMIT = 8;          // per page load; a loop must not flood
+    let _errorsReported = 0;
+    const _errorSeen = new Set();
+    // Anonymous per-load correlation id. Lets several reports from one broken
+    // session be grouped. Not a user id and never stored with one.
+    const _errorRef = Math.random().toString(36).slice(2, 10);
+
+    /** Current location as a bare path — never the query string or hash. */
+    function errorSafeRoute() {
+      try { return location.pathname + (state?.activeView ? `#${state.activeView}` : ''); }
+      catch { return ''; }
+    }
+
+    async function reportClientError(kind, detail = {}) {
+      try {
+        if (_errorsReported >= ERROR_REPORT_LIMIT) return;
+        // Collapse repeats: one broken render can fire the same error endlessly.
+        const fingerprint = `${kind}:${detail.message || ''}:${detail.source || ''}:${detail.line || ''}`;
+        if (_errorSeen.has(fingerprint)) return;
+        _errorSeen.add(fingerprint);
+        _errorsReported++;
+        await fetch('/api/config?report=1', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // keepalive so a report survives the page being torn down by the
+          // very failure we are reporting.
+          keepalive: true,
+          body: JSON.stringify({
+            kind,
+            message: String(detail.message || '').slice(0, 300),
+            route: errorSafeRoute(),
+            source: String(detail.source || '').split(/[?#]/)[0],
+            line: detail.line ?? null,
+            stack: String(detail.stack || ''),
+            ...(detail.status ? { status: detail.status } : {}),
+            agent: navigator.userAgent || '',
+            ref: _errorRef,
+          }),
+        });
+      } catch { /* never let the reporter raise — that is how you get a loop */ }
+    }
+
+    window.addEventListener('error', event => {
+      // Resource load failures (img/script) arrive here with no `error` object
+      // and are not application faults; ignore them.
+      if (!event?.error && !event?.message) return;
+      reportClientError('uncaught', {
+        message: event.message || String(event.error),
+        source: event.filename || '',
+        line: event.lineno || null,
+        stack: event.error?.stack || '',
+      });
+    });
+
+    window.addEventListener('unhandledrejection', event => {
+      const reason = event?.reason;
+      reportClientError('unhandled_rejection', {
+        message: (reason && (reason.message || String(reason))) || 'Unhandled promise rejection',
+        stack: reason?.stack || '',
+      });
+    });
+
+    /**
+     * Watch our OWN API for failures. Wraps fetch as a pass-through: the
+     * caller's promise, result and errors are returned untouched, and the
+     * reporting sits in a try/catch of its own — a fault in monitoring must
+     * never become a fault in the app.
+     */
+    (function monitorApiFailures() {
+      const realFetch = window.fetch;
+      if (typeof realFetch !== 'function') return;
+      window.fetch = function (input, init) {
+        const url = (() => {
+          try { return typeof input === 'string' ? input : (input && input.url) || ''; }
+          catch { return ''; }
+        })();
+        const isOwnApi = typeof url === 'string' && url.includes('/api/');
+        const promise = realFetch.apply(this, arguments);
+        if (!isOwnApi) return promise;
+        // Never report the reporter's own request — that is a feedback loop.
+        if (url.includes('report=1')) return promise;
+        return promise.then(response => {
+          try {
+            if (response && response.status >= 500) {
+              reportClientError('api_failure', {
+                message: `API ${response.status} on ${String(url).split(/[?#]/)[0]}`,
+                source: String(url).split(/[?#]/)[0],
+                status: response.status,
+              });
+            }
+          } catch {}
+          return response;
+        }, error => {
+          try {
+            reportClientError('api_failure', {
+              message: `Network failure on ${String(url).split(/[?#]/)[0]}: ${error?.message || 'request failed'}`,
+              source: String(url).split(/[?#]/)[0],
+              status: 599,               // synthetic: request never reached us
+            });
+          } catch {}
+          throw error;                   // the caller's error path is unchanged
+        });
+      };
+    })();
+
     // ─── PUSH NOTIFICATIONS ──────────────────────────────────────────────────
     let swRegistration = null;
     let pushSubscription = null;
@@ -20024,6 +20145,19 @@
             </details>
           </div>` : ''}
 
+          <!-- H3 — production health. Gated on the same permission the server
+               enforces for the read (PERM.REPORTS), so what the UI offers and
+               what the API allows can never drift apart. Deliberately NOT
+               inside the developer diagnostics panel: that is off by default,
+               and an error log nobody can find is not monitoring. -->
+          ${canI('reports') ? `
+          <div class="card">
+            <h3 style="font-size:13px;font-weight:800;margin:0 0 4px">Production health</h3>
+            <p class="muted" style="font-size:12.5px;margin:0 0 12px;line-height:1.55">Unexpected failures the app has reported, newest first. Nothing listed is the healthy answer.</p>
+            <button class="btn" type="button" id="err-log-btn" onclick="settingsLoadErrorLog()" style="min-height:44px;font-size:13px">Check for errors</button>
+            <div id="err-log-out" style="margin-top:10px"></div>
+          </div>` : ''}
+
           <!-- Sign out — kept available for normal operation -->
           <div class="card">
             <button class="btn" type="button" onclick="settingsSignOut()" style="width:100%;min-height:44px;font-size:13px">Sign out</button>
@@ -20147,6 +20281,48 @@
         goBtn.textContent = 'Permanently delete my account';
         errEl.textContent = (e && e.message) ? e.message : 'Something went wrong. Your account has NOT been deleted.';
         errEl.style.display = 'block';
+      }
+    }
+
+    /**
+     * H3 — read back the recorded production errors. Staff-only: the server
+     * gates this on the same reports permission as the activity log, so an
+     * unauthorised caller gets a 403 no matter what the UI offers.
+     */
+    async function settingsLoadErrorLog() {
+      const out = document.getElementById('err-log-out');
+      const btn = document.getElementById('err-log-btn');
+      if (!out) return;
+      if (btn) { btn.disabled = true; btn.textContent = 'Checking\u2026'; }
+      out.innerHTML = '<p class="muted" style="font-size:12px;margin:0">Checking\u2026</p>';
+      try {
+        const res = await fetch('/api/config?errors=1&limit=25');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not read the error log');
+        const errors = Array.isArray(data.errors) ? data.errors : [];
+        if (!errors.length) {
+          out.innerHTML = `<p class="muted" style="font-size:12.5px;margin:0">No errors recorded \u2713 <span style="opacity:.7">(this deployment: ${esc(data.version || '—')})</span></p>`;
+          return;
+        }
+        const KIND = { uncaught: 'App error', unhandled_rejection: 'Unhandled rejection',
+                       api_failure: 'API failure', app_error: 'App error' };
+        out.innerHTML = `
+          <p class="muted" style="font-size:12px;margin:0 0 8px">${errors.length} recorded \u00b7 newest first</p>
+          <div style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto">
+            ${errors.map(e => `
+              <div style="border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--panel-2)">
+                <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:3px">
+                  <strong style="font-size:12px;color:#dc2626">${esc(KIND[e.kind] || e.kind || 'Error')}${e.status ? ` \u00b7 ${esc(String(e.status))}` : ''}</strong>
+                  <span class="muted" style="font-size:11px">${esc(String(e.at || '').replace('T', ' ').slice(0, 16))}${e.version ? ` \u00b7 ${esc(e.version)}` : ''}</span>
+                </div>
+                <div style="font-size:12.5px;line-height:1.45;overflow-wrap:anywhere">${esc(e.message || '')}</div>
+                ${e.route ? `<div class="muted" style="font-size:11px;margin-top:3px;overflow-wrap:anywhere">${esc(e.route)}</div>` : ''}
+              </div>`).join('')}
+          </div>`;
+      } catch (e) {
+        out.innerHTML = `<p style="font-size:12.5px;margin:0;color:#dc2626;font-weight:700">${esc(e.message || 'Could not read the error log')}</p>`;
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Check for errors'; }
       }
     }
 
