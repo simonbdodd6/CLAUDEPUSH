@@ -144,8 +144,17 @@ test('OVERVIEW: the working match state follows its fixture\'s group; unlinked =
 test('OVERVIEW: every variant reads through the context helpers', () => {
   for (const fname of ['renderClubCommandDashboard', 'renderExecutiveDashboard']) {
     const body = fn(fname);
-    assert.match(body, /contextMatchCentre\(\)/, `${fname} match state`);
     assert.equal(/state\.fixtures/.test(body), false, `${fname} has no raw fixture read`);
+    // Match state, IF the variant shows any, must come through the group-aware
+    // reader. The command centre reports the next fixture and the squad picked
+    // for it and shows no Match Centre working state at all, so it reads none —
+    // which is a stronger guarantee than routing it, not a weaker one. What
+    // must never happen is a RAW read, and that is what this checks.
+    assert.equal(/state\.matchCentre/.test(body), false,
+      `${fname} must not read the working match state directly`);
+    if (/matchCentre/i.test(body)) {
+      assert.match(body, /contextMatchCentre\(\)/, `${fname} match state`);
+    }
   }
   assert.match(fn('upcomingFixtures'), /contextFixtures\(\)/);
   assert.match(fn('autopilotFillMatchFromFixture'), /contextFixtures\(\)/, 'autopilot adopts in-group fixtures only');

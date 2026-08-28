@@ -1,19 +1,19 @@
 /**
- * Phase 11 — Club Command Dashboard.
+ * Overview command centre — renderClubCommandDashboard() and
+ * renderOverviewQuickActions().
  *
- * Tests the renderClubCommandDashboard() function in isolation.
- * The function is presentation-only: it reads state and calls existing
- * helpers — no mutations, no business logic. All complex helpers
- * (getTonightSessionId, chatUnreadTotal, getTodayReceipts) are stubbed.
+ * Both are presentation-only: they read state and call existing helpers, and
+ * mutate nothing. The harness below runs them in isolation against real
+ * extracted helpers, so what these tests pin is the behaviour the browser
+ * gets, not a reimplementation of it.
  *
- * Tests:
- *  1.  Empty dashboard — no players, no schedule, no fixtures, no messages
- *  2.  Full dashboard — squad, training, fixture, messages, medical flags
- *  3.  Trial team — trial card and countdown visible
- *  4.  Pro team — Pro badge and billing button visible
- *  5.  No upcoming fixture — shows empty-state copy
- *  6.  No unread messages — shows "All caught up"
- *  7.  No medical issues — shows "All players fit"
+ * The card set is: upcoming fixture · training · availability (row 1), then
+ * recent activity · squad availability · messages (row 2), then quick actions.
+ *
+ * The load-bearing rule throughout is that nothing may be invented. Every
+ * number must trace to state, an absent value must produce an empty state
+ * rather than a zero dressed up as information, and no placeholder from a
+ * design mock may ever reach production.
  */
 
 import test from 'node:test';
@@ -64,7 +64,6 @@ function extractConst(source, name) {
       i++;
     }
   } else {
-    // Primitive value (number, string without braces/brackets) — read to ';'
     while (i < source.length && source[i] !== ';') i++;
     i++;
   }
@@ -73,230 +72,492 @@ function extractConst(source, name) {
 }
 
 // ── Scope builder ─────────────────────────────────────────────────────────────
-// Extracts real helper functions from index.html and wires up a minimal state
-// and set of stubs so renderClubCommandDashboard() can run in isolation.
-//
-// Stubbed (require side-effects or module-level vars):
-//   getTonightSessionId  — returned via stubTonightId
-//   chatUnreadTotal      — returned via stubUnread
-//   getTodayReceipts     — returned via stubReceipts
-//   setSection           — no-op
-//   settingsManageBilling — no-op
-//   upgradeFromFeature    — no-op (records calls)
-//
-// Real (pure state reads):
-//   sessionKey, matchCentrePhase, matchCountdownStr, getInjuredNoReturnDate,
-//   trialDaysRemaining, isTrialActive, isProTeam, isEnterpriseTeam
+// Stubbed (module-level state or side effects): getTonightSessionId,
+// chatUnreadTotal, getTodayReceipts, setSection, canI, esc, operationalGroups.
+// Everything that decides what a NUMBER is — availability, position warnings,
+// selection counts, fixture ordering and group ownership — is the real code.
 
 function buildScope({
-  teamPlan = null,
-  teamPlanStatus = null,
-  trialEndsAt = null,
   players = [],
   schedule = [],
   fixtures = [],
   messages = [],
   matchCentre = {},
-  medicalNotes = {},
   masterFeed = [],
-  autopilotReceipts = [],
-  availabilityRequests = [],
   trainingBlocks = {},
-  permissions = ['manage_subscriptions'],
-  // Stubs
+  squadSelections = [],
+  fixtureAvailability = {},
+  permissions = ['reports', 'publish_training', 'manage_fixtures', 'messaging', 'manage_players', 'publish_squads'],
+  groups = [],
+  operationalGroupId = null,
   stubTonightId = null,
   stubUnread = 0,
   stubReceipts = [],
 } = {}) {
   const stateObj = {
-    teamPlan, teamPlanStatus, trialEndsAt,
-    players, schedule, fixtures, messages,
-    matchCentre, medicalNotes, masterFeed,
-    autopilotReceipts, availabilityRequests, trainingBlocks,
+    players, schedule, fixtures, messages, matchCentre, masterFeed,
+    trainingBlocks, squadSelections, fixtureAvailability, operationalGroupId,
   };
-  const permsJson = JSON.stringify(permissions);
 
   const body =
     '"use strict";\n' +
     'const state = ' + JSON.stringify(stateObj) + ';\n' +
-    'const _myPerms = ' + permsJson + ';\n' +
+    'const _myPerms = ' + JSON.stringify(permissions) + ';\n' +
+    'const _groups = ' + JSON.stringify(groups) + ';\n' +
     // Stubs
     'function getTonightSessionId() { return ' + JSON.stringify(stubTonightId) + '; }\n' +
     'function chatUnreadTotal() { return ' + JSON.stringify(stubUnread) + '; }\n' +
     'function getTodayReceipts() { return ' + JSON.stringify(stubReceipts) + '; }\n' +
     'function setSection() {}\n' +
-    // The beta hides commercial cards; this harness pins the underlying
-    // cards, so run with the flag OFF (the hiding itself is pinned in
-    // multi-group-remaining-bugs).
-    'const BETA_HIDE_COMMERCIAL = false;\n' +
-    // Group-context helpers: this harness models a single-group club, so the
-    // context resolvers pass everything through unchanged.
-    'function operationalGroups() { return []; }\n' +
+    'function operationalGroups() { return _groups; }\n' +
     'function operationalPlayers() { return state.players || []; }\n' +
-    'function contextFixtures() { return state.fixtures || []; }\n' +
-    'function contextMatchCentre() { return state.matchCentre || {}; }\n' +
-    'const CE_INITIAL_GROUP_ID = "grp_initial";\n' +
-    'function settingsManageBilling() {}\n' +
-    'let _upgradeCallCount = 0;\n' +
-    'function upgradeFromFeature() { _upgradeCallCount++; }\n' +
-    'function recordFeatureUsage() {}\n' +
     'function canI(perm) { return _myPerms.includes(perm); }\n' +
-    'function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }\n' +
-    // Real helpers
+    'function esc(s) { return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }\n' +
+    // Real helpers — these are what turn state into the displayed numbers
+    extractConst(html, 'CE_INITIAL_GROUP_ID') + '\n' +
+    extractFn(html, 'fixtureBelongsToGroup') + '\n' +
+    extractFn(html, 'contextFixtures') + '\n' +
     extractFn(html, 'sessionKey') + '\n' +
-    extractFn(html, 'matchCentrePhase') + '\n' +
-    extractFn(html, 'matchCountdownStr') + '\n' +
-    extractFn(html, 'getInjuredNoReturnDate') + '\n' +
-    extractFn(html, 'trialDaysRemaining') + '\n' +
-    extractFn(html, 'isTrialActive') + '\n' +
-    extractConst(html, 'PLAN_LEVEL') + '\n' +
-    extractFn(html, 'planLevel') + '\n' +
-    extractFn(html, 'isProTeam') + '\n' +
-    extractFn(html, 'isEnterpriseTeam') + '\n' +
-    // Phase 17 player lifecycle helpers (needed by renderClubCommandDashboard)
     extractConst(html, 'PLAYER_LIFECYCLE_LABELS') + '\n' +
     extractFn(html, 'playerIsArchived') + '\n' +
-    // The function under test
+    extractFn(html, 'activeRosterPlayers') + '\n' +
+    extractConst(html, 'rugbySlots') + '\n' +
+    extractFn(html, 'positionSlotNumber') + '\n' +
+    extractFn(html, 'fixturePositionWarnings') + '\n' +
+    extractFn(html, 'fixtureAvailabilitySummary') + '\n' +
+    extractConst(html, 'HOME_AWAY_LABEL') + '\n' +
+    extractFn(html, 'normalizeFixture') + '\n' +
+    extractFn(html, 'fixtureSortByDate') + '\n' +
+    extractFn(html, 'fixtureCountdown') + '\n' +
+    extractFn(html, 'fixtureDisplayStatus') + '\n' +
+    extractFn(html, 'fixtureTypeStyle') + '\n' +
+    extractFn(html, 'selectionFindForFixture') + '\n' +
+    extractFn(html, 'selectionStarterCount') + '\n' +
+    extractFn(html, 'selectionBenchCount') + '\n' +
+    // The functions under test
+    extractFn(html, 'overviewAvailabilityContext') + '\n' +
+    extractFn(html, 'overviewDonutSvg') + '\n' +
+    extractFn(html, 'overviewLegendRow') + '\n' +
     extractFn(html, 'renderClubCommandDashboard') + '\n' +
-    'return { renderClubCommandDashboard, _get: function(k) { return eval(k); } };\n';
+    extractConst(html, 'OVW_ACTION_ICON') + '\n' +
+    extractFn(html, 'renderOverviewQuickActions') + '\n' +
+    'return { renderClubCommandDashboard, renderOverviewQuickActions, overviewAvailabilityContext };\n';
 
   return new Function(body)();
 }
 
-// ── 1. Empty dashboard ────────────────────────────────────────────────────────
+const iso = days => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
 
-test('empty dashboard: shows all empty states', () => {
-  const { renderClubCommandDashboard } = buildScope();
-  const out = renderClubCommandDashboard();
-
-  assert.ok(out.includes('No players added yet'), 'Availability empty state missing');
-  assert.ok(out.includes('No sessions scheduled yet'), 'Training empty state missing');
-  assert.ok(out.includes('No upcoming fixtures'), 'Fixture empty state missing');
-  assert.ok(out.includes('All caught up'), 'Messages empty state missing');
-  assert.ok(out.includes('All players fit'), 'Medical empty state missing');
-  assert.ok(out.includes('No activity yet today'), 'Activity empty state missing');
-});
-
-// ── 2. Full dashboard ─────────────────────────────────────────────────────────
-
-test('full dashboard: renders all card values', () => {
-  const tonightSessId = 'tue';
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const futureDate = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
-
-  const players = [
-    { id: 'p1', trainingTuesday: 'available' },
-    { id: 'p2', trainingTuesday: 'available' },
-    { id: 'p3', trainingTuesday: 'unavailable' },
-  ];
-  const schedule = [
-    { id: 'tue', type: 'Training', title: 'Tuesday Session', date: 'Tue 19:00', published: true, publishedAt: todayIso },
-  ];
-  const fixtures = [
-    { id: 'fx1', opposition: 'Acton Town', date: futureDate, time: '15:00', venue: 'Home' },
-  ];
-
-  const { renderClubCommandDashboard } = buildScope({
-    players,
-    schedule,
-    fixtures,
-    trainingBlocks: { tue: ['block1', 'block2'] },
-    stubTonightId: tonightSessId,
+/** A populated club: 6 players, a fixture next week, tonight's session. */
+function fullClub(extra = {}) {
+  return buildScope({
+    players: [
+      { id: 'p1', name: 'A One',   position: 'Hooker',     trainingTuesday: 'available' },
+      { id: 'p2', name: 'B Two',   position: 'Scrum-half', trainingTuesday: 'available' },
+      { id: 'p3', name: 'C Three', position: 'Fly-half',   trainingTuesday: 'maybe' },
+      { id: 'p4', name: 'D Four',  position: 'Lock',       trainingTuesday: 'unavailable' },
+      { id: 'p5', name: 'E Five',  position: 'Prop' },
+      { id: 'p6', name: 'F Six',   position: 'Wing',       trainingTuesday: 'available' },
+    ],
+    schedule: [{ id: 'tue', type: 'Training', title: 'Tuesday Session', date: 'Tue 19:00', published: true }],
+    fixtures: [{ id: 'fx1', opposition: 'Acton Town', date: iso(7), kickoffTime: '15:00', venue: 'Memorial Ground', type: 'League', homeAway: 'home' }],
+    trainingBlocks: { tue: ['b1', 'b2'] },
+    stubTonightId: 'tue',
     stubUnread: 3,
-    stubReceipts: ['Tuesday Session published', 'Availability request sent (1)'],
+    stubReceipts: ['Tuesday Session published'],
+    ...extra,
   });
+}
 
-  const out = renderClubCommandDashboard();
+// ── 1. Empty states ───────────────────────────────────────────────────────────
 
-  // Availability
-  assert.ok(out.includes('67%'), 'Should show 67% availability (2/3)');
-  assert.ok(out.includes('/ 3'), 'Should show total of 3 players');
-  assert.ok(out.match(/1\s*unavailable/), 'Should show 1 unavailable');
+test('empty club: every card shows a real empty state, not a zero', () => {
+  const out = buildScope().renderClubCommandDashboard();
 
-  // Training
-  assert.ok(out.includes('Tuesday Session'), 'Should show session title');
-  assert.ok(out.includes('Published'), 'Should show Published badge');
-  assert.ok(out.includes('2 blocks'), 'Should show block count');
+  assert.ok(out.includes('No fixture scheduled'),   'fixture empty state missing');
+  assert.ok(out.includes('No sessions scheduled'),  'training empty state missing');
+  assert.ok(out.includes('No players yet'),         'availability empty state missing');
+  assert.ok(out.includes('All caught up'),          'messages empty state missing');
+  assert.ok(out.includes('Nothing yet today'),      'activity empty state missing');
 
-  // Fixture
-  assert.ok(out.includes('Acton Town'), 'Should show opposition name');
-
-  // Messages
-  assert.ok(out.includes('>3<'), 'Should show 3 unread messages');
-
-  // Activity
-  assert.ok(out.includes('Tuesday Session published'), 'Should include receipt');
+  // An empty club must not be shown a donut of nothing.
+  assert.ok(!out.includes('<svg'), 'no donut should be drawn with no responses');
+  assert.ok(!/\b0%/.test(out), 'must not present 0% as if it were a reading');
 });
 
-// ── 3. Trial team ─────────────────────────────────────────────────────────────
+test('empty states adapt to what the viewer may actually do', () => {
+  const canAdd = buildScope({ permissions: ['manage_fixtures', 'publish_training', 'manage_players'] })
+    .renderClubCommandDashboard();
+  assert.match(canAdd, /Add your next match|import a season list/i);
 
-// ── 3+4. Commercial cards — REMOVED with the upgrade CTAs ──────────────────
-//
-// These asserted a Subscription card, a "Trial Remaining" countdown, an
-// "Upgrade to Pro" button and a "Manage billing" button on the club command
-// dashboard. There is no public Pro tier, no pricing page and no checkout a
-// club can complete, so every one of them advertised something nobody can buy.
-// The dashboard now renders none of it, on any plan. Plan state itself
-// (state.teamPlan / teamPlanStatus) and every entitlement gate are untouched.
+  const readOnly = buildScope({ permissions: [] }).renderClubCommandDashboard();
+  assert.ok(!/Add your next match/i.test(readOnly), 'must not invite an action the viewer cannot take');
+  assert.match(readOnly, /will appear here once/i, 'read-only viewer still gets an explanation');
+});
 
-test('the dashboard advertises no plan, tier or upgrade — on trial or on pro', () => {
-  const farFuture = new Date(Date.now() + 8 * 86400000).toISOString();
-  for (const [plan, extra] of [['trial', { trialEndsAt: farFuture }], ['pro', {}], ['core', {}]]) {
-    const { renderClubCommandDashboard } = buildScope({
-      teamPlan: plan, teamPlanStatus: 'active', permissions: ['manage_subscriptions'], ...extra,
-    });
-    const out = renderClubCommandDashboard();
-    for (const banned of [/Upgrade to Pro/i, /Upgrade before trial/i, /Trial Remaining/i,
-                          /Manage billing/i, /all features unlocked/i, /Ask your admin to upgrade/i,
-                          /upgradeFromFeature|settingsUpgradeToPro/]) {
-      assert.ok(!banned.test(out), `${plan}: dashboard must not contain ${banned}`);
+// ── 2. Real data renders ──────────────────────────────────────────────────────
+
+test('upcoming fixture renders from real fixture data', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  assert.ok(out.includes('vs Acton Town'),   'opposition missing');
+  assert.ok(out.includes('KO 15:00'),        'kick-off missing');
+  assert.ok(out.includes('Memorial Ground'), 'venue missing');
+  assert.ok(out.includes('League'),          'competition type missing');
+  assert.ok(out.includes('Home'),            'home/away missing');
+});
+
+test('a past fixture is never presented as upcoming', () => {
+  const out = buildScope({ fixtures: [{ id: 'old', opposition: 'Old Team', date: '2020-01-01' }] })
+    .renderClubCommandDashboard();
+  assert.ok(out.includes('No fixture scheduled'), 'should fall back to the empty state');
+  assert.ok(!out.includes('Old Team'), 'a 2020 fixture must not be shown as next');
+});
+
+test('training renders from real schedule data', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  assert.ok(out.includes('Tuesday Session'), 'session title missing');
+  assert.ok(out.includes('Tue 19:00'),       'session time missing');
+  assert.ok(out.includes('2 blocks planned'), 'planned block count missing');
+  assert.ok(out.includes('Published'),       'published state missing');
+  assert.ok(out.includes('Tonight'),         "tonight's session should be marked as tonight");
+});
+
+test('an unpublished session reads as a draft, never as published', () => {
+  const out = buildScope({
+    schedule: [{ id: 'tue', type: 'Training', title: 'Session', date: 'Tue 19:00', published: false }],
+    stubTonightId: 'tue',
+  }).renderClubCommandDashboard();
+  assert.ok(out.includes('Draft'), 'draft badge missing');
+  assert.ok(!out.includes('>Published<'), 'must not claim published');
+});
+
+test('availability renders the four recorded answers from real data', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  // 6 players: 3 available, 1 maybe, 1 unavailable, 1 never answered.
+  assert.ok(out.includes('Available'),   'available row missing');
+  assert.ok(out.includes('Maybe'),       'maybe row missing');
+  assert.ok(out.includes('Unavailable'), 'unavailable row missing');
+  assert.ok(out.includes('No reply'),    'no-reply row missing');
+
+  const { available, maybe, unavailable, noReply, total } = fullClub().overviewAvailabilityContext();
+  assert.equal(total, 6);
+  assert.equal(available, 3);
+  assert.equal(maybe, 1);
+  assert.equal(unavailable, 1);
+  assert.equal(noReply, 1);
+  assert.equal(available + maybe + unavailable + noReply, total, 'the four answers must account for the whole squad');
+});
+
+test('the availability reading and the donut cannot disagree', () => {
+  const scope = fullClub();
+  const ctx = scope.overviewAvailabilityContext();
+  const out = scope.renderClubCommandDashboard();
+  // Both cards are rendered from the one context object, so the donut's
+  // aria-label carries exactly the counts the legend lists.
+  assert.ok(out.includes(`${ctx.available} available, ${ctx.maybe} maybe, ${ctx.unavailable} unavailable, ${ctx.noReply} no reply`),
+    'donut description must match the availability reading');
+});
+
+test('messages count renders from the real unread total', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  assert.ok(out.includes('3 new'), 'unread badge missing');
+  assert.ok(out.includes('unread messages waiting'), 'unread line missing');
+});
+
+test('legacy coach messages are counted alongside chat unreads', () => {
+  const out = buildScope({
+    stubUnread: 2,
+    messages: [{ unread: true, to: 'Coach' }, { unread: true, to: 'Coach' }, { unread: false, to: 'Coach' }],
+  }).renderClubCommandDashboard();
+  assert.ok(out.includes('4 new'), 'should be 2 chat + 2 legacy = 4');
+});
+
+test('no unread messages: shows all-caught-up and no count', () => {
+  const out = buildScope({ messages: [], stubUnread: 0 }).renderClubCommandDashboard();
+  assert.ok(out.includes('All caught up'));
+  assert.ok(!/\d+ unread message/.test(out), 'must not show a count when there is none');
+});
+
+// ── 3. Recent activity is never fabricated ────────────────────────────────────
+
+test('recent activity shows only real receipts and feed entries', () => {
+  const out = buildScope({
+    stubReceipts: ['Tuesday Session published', 'Availability request sent'],
+    masterFeed: [{ event: 'Squad published', detail: 'vs Acton Town' }],
+  }).renderClubCommandDashboard();
+  assert.ok(out.includes('Tuesday Session published'));
+  assert.ok(out.includes('Availability request sent'));
+  assert.ok(out.includes('Squad published'));
+});
+
+test('recent activity is never padded to fill the card', () => {
+  const one = buildScope({ stubReceipts: ['Only thing that happened'] }).renderClubCommandDashboard();
+  const items = (one.match(/ovw-feed-item/g) || []).length;
+  assert.equal(items, 1, 'one real event must render as exactly one row');
+
+  const none = buildScope({ stubReceipts: [], masterFeed: [] }).renderClubCommandDashboard();
+  assert.ok(none.includes('Nothing yet today'), 'no events must produce the empty state');
+  assert.equal((none.match(/ovw-feed-item/g) || []).length, 0);
+});
+
+// ── 4. Nothing invented, nothing broken ───────────────────────────────────────
+
+test('no undefined, null or NaN reaches the page in any state', () => {
+  const scopes = [
+    buildScope(),
+    fullClub(),
+    buildScope({ players: [{ id: 'p1' }] }),
+    buildScope({ fixtures: [{ id: 'f' }] }),                                   // fixture with no fields at all
+    buildScope({ fixtures: [{ id: 'f', opposition: 'X', date: iso(3) }], squadSelections: [{ id: 's', fixtureId: 'f', status: 'draft' }] }),
+    buildScope({ schedule: [{ id: 'tue' }], stubTonightId: 'tue' }),           // session with no title or date
+    buildScope({ players: [{ id: 'p1', lifecycleStatus: 'archived' }] }),      // whole roster archived
+    buildScope({ masterFeed: [{}], stubReceipts: [''] }),                      // empty feed entries
+  ];
+  for (const [i, scope] of scopes.entries()) {
+    const out = scope.renderClubCommandDashboard();
+    for (const bad of ['undefined', 'NaN', 'null']) {
+      assert.ok(!out.includes(bad), `scope ${i}: "${bad}" reached the page`);
     }
-    // It still renders — the rest of the dashboard is unaffected.
-    assert.ok(out.length > 200, `${plan}: dashboard still renders its real cards`);
+    assert.ok(!/\bNaN%|undefined%/.test(out), `scope ${i}: broken percentage`);
   }
 });
 
-// ── 5. No upcoming fixture ────────────────────────────────────────────────────
-
-test('no upcoming fixture: shows empty-state in fixture card', () => {
-  // All fixtures are in the past
-  const { renderClubCommandDashboard } = buildScope({
-    fixtures: [
-      { id: 'fx1', opposition: 'Old Team', date: '2020-01-01', time: '15:00', venue: 'Away' },
-    ],
-    matchCentre: {}, // no kickoffDate
-  });
-  const out = renderClubCommandDashboard();
-
-  assert.ok(out.includes('No upcoming fixtures'), 'Fixture empty state must appear');
-  assert.ok(!out.includes('Old Team'), 'Past fixture must not appear');
+test('percentages are only shown when there is something to divide by', () => {
+  const out = buildScope({ players: [] }).renderClubCommandDashboard();
+  assert.ok(!/%/.test(out.replace(/width:\s*\d+%/g, '')), 'no percentage may be quoted for an empty squad');
 });
 
-// ── 6. No unread messages ─────────────────────────────────────────────────────
-
-test('no unread messages: shows all-caught-up state', () => {
-  const { renderClubCommandDashboard } = buildScope({
-    messages: [],
-    stubUnread: 0,
-  });
-  const out = renderClubCommandDashboard();
-
-  assert.ok(out.includes('All caught up'), 'Should show all-caught-up when no messages');
-  assert.ok(!out.match(/\d+ unread message/), 'Must not show a message count when zero');
+test('a whole-roster-archived club is treated as having no players', () => {
+  const ctx = buildScope({
+    players: [{ id: 'p1', lifecycleStatus: 'archived' }, { id: 'p2', _archived: true }],
+    schedule: [{ id: 'tue', type: 'Training', title: 'S', date: 'Tue 19:00' }],
+    stubTonightId: 'tue',
+  }).overviewAvailabilityContext();
+  assert.equal(ctx.kind, 'none');
+  assert.equal(ctx.total, 0);
 });
 
-// ── 7. No medical issues ──────────────────────────────────────────────────────
+test('no placeholder from a design mock is present in the shipped markup', () => {
+  const out = fullClub().renderClubCommandDashboard() + fullClub().renderOverviewQuickActions();
+  for (const invented of ['Northfield', 'Ashcombe', 'Riverside Field', 'Attack Patterns',
+                          '23 available', '3 maybe', '2 unavailable', 'Lorem', 'placeholder']) {
+    assert.ok(!out.includes(invented), `mock data "${invented}" reached production`);
+  }
+});
 
-test('no medical issues: shows all-players-fit state', () => {
-  const { renderClubCommandDashboard } = buildScope({
-    players: [
-      { id: 'p1', status: 'fit' },
-      { id: 'p2', status: 'fit' },
-    ],
-    medicalNotes: {},
-  });
-  const out = renderClubCommandDashboard();
+test('the command centre advertises no plan, tier or upgrade', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  for (const banned of [/Upgrade to Pro/i, /Trial Remaining/i, /Manage billing/i,
+                        /all features unlocked/i, /upgradeFromFeature|settingsUpgradeToPro/]) {
+    assert.ok(!banned.test(out), `must not contain ${banned}`);
+  }
+});
 
-  assert.ok(out.includes('All players fit'), 'Medical card should show all-fit state');
-  assert.ok(!out.includes('injured'), 'Must not show injury count when zero');
+// ── 5. Squad selection state is reported, not invented ────────────────────────
+
+test('squad state reflects the real selection record', () => {
+  const fx = { id: 'fx1', opposition: 'Acton Town', date: iso(5) };
+  const none = buildScope({ fixtures: [fx] }).renderClubCommandDashboard();
+  assert.ok(none.includes('No squad selected'), 'absent selection must say so');
+
+  const draft = buildScope({ fixtures: [fx], squadSelections: [{ id: 's1', fixtureId: 'fx1', status: 'draft', starters: { 'Hooker': 'p1' }, bench: ['p2'] }] })
+    .renderClubCommandDashboard();
+  assert.ok(draft.includes('Draft squad'), 'draft state missing');
+
+  const pub = buildScope({ fixtures: [fx], squadSelections: [{ id: 's1', fixtureId: 'fx1', status: 'published', starters: { 'Hooker': 'p1' }, bench: ['p2'] }] })
+    .renderClubCommandDashboard();
+  assert.ok(pub.includes('Squad published'), 'published state missing');
+  assert.ok(!pub.includes('Draft squad'), 'published squad must not also read as draft');
+});
+
+// ── 6. Quick actions — existing actions only, correctly gated ─────────────────
+
+test('quick actions route to existing handlers only', () => {
+  const out = fullClub().renderOverviewQuickActions();
+  assert.ok(out.includes('sendAvailabilityNow()'),        'availability request action missing');
+  assert.ok(out.includes("setSection('coach','training')"), 'training action missing');
+  assert.ok(out.includes('fixtureAddOpen()'),             'add fixture action missing');
+  assert.ok(out.includes("setSection('coach','messages')"), 'message action missing');
+  // Every handler named here must actually exist in the app.
+  for (const fn of ['sendAvailabilityNow', 'fixtureAddOpen', 'fixtureImportOpen', 'setSection']) {
+    assert.ok(html.includes('function ' + fn + '('), `quick action calls ${fn}, which does not exist`);
+  }
+});
+
+test('the season importers keep an entry point', () => {
+  // These were previously reachable only from the fixtures card the command
+  // centre replaced. The file type is fixed when the modal opens, so both
+  // kinds must be offered or Excel import becomes unreachable.
+  const out = fullClub().renderOverviewQuickActions();
+  assert.ok(out.includes("fixtureImportOpen('csv')"),  'CSV import lost its entry point');
+  assert.ok(out.includes("fixtureImportOpen('xlsx')"), 'Excel import lost its entry point');
+});
+
+test('quick actions are gated on the same permission as the screen they lead to', () => {
+  const cases = [
+    ['reports',          'sendAvailabilityNow()'],
+    ['publish_training', "setSection('coach','training')"],
+    ['manage_fixtures',  'fixtureAddOpen()'],
+    ['messaging',        "setSection('coach','messages')"],
+  ];
+  for (const [perm, handler] of cases) {
+    const withPerm = buildScope({ permissions: [perm] }).renderOverviewQuickActions();
+    assert.ok(withPerm.includes(handler), `${perm} should offer ${handler}`);
+
+    const without = buildScope({ permissions: cases.map(c => c[0]).filter(p => p !== perm) })
+      .renderOverviewQuickActions();
+    assert.ok(!without.includes(handler), `${handler} must be withheld without ${perm}`);
+  }
+});
+
+test('a member with no permissions is offered no actions at all', () => {
+  assert.equal(buildScope({ permissions: [] }).renderOverviewQuickActions(), '');
+});
+
+// ── 7. Group (team) switching ─────────────────────────────────────────────────
+
+test('switching group changes the fixture the Overview reports', () => {
+  const groups = [{ id: 'grp_initial', name: 'Seniors' }, { id: 'grp_u18', name: 'U18' }];
+  const fixtures = [
+    { id: 'f1', opposition: 'Seniors Opponent', date: iso(4), groupId: 'grp_initial' },
+    { id: 'f2', opposition: 'U18 Opponent',     date: iso(4), groupId: 'grp_u18' },
+  ];
+  const seniors = buildScope({ groups, fixtures, operationalGroupId: 'grp_initial' }).renderClubCommandDashboard();
+  assert.ok(seniors.includes('Seniors Opponent'), 'Seniors fixture missing in Seniors context');
+  assert.ok(!seniors.includes('U18 Opponent'),    'U18 fixture leaked into Seniors Overview');
+
+  const u18 = buildScope({ groups, fixtures, operationalGroupId: 'grp_u18' }).renderClubCommandDashboard();
+  assert.ok(u18.includes('U18 Opponent'),      'U18 fixture missing in U18 context');
+  assert.ok(!u18.includes('Seniors Opponent'), 'Seniors fixture leaked into U18 Overview');
+});
+
+test('a group with no fixtures of its own shows the empty state, not another group\'s match', () => {
+  const out = buildScope({
+    groups: [{ id: 'grp_initial', name: 'Seniors' }, { id: 'grp_women', name: "Women's" }],
+    fixtures: [{ id: 'f1', opposition: 'Seniors Opponent', date: iso(4), groupId: 'grp_initial' }],
+    operationalGroupId: 'grp_women',
+  }).renderClubCommandDashboard();
+  assert.ok(out.includes('No fixture scheduled'));
+  assert.ok(!out.includes('Seniors Opponent'));
+});
+
+// ── 8. Layout contract ────────────────────────────────────────────────────────
+
+test('the command centre renders the seven blocks in the intended order', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  const order = ['Upcoming fixture', 'Training', 'Availability',
+                 'Recent activity', 'Squad availability', 'Messages'];
+  let cursor = -1;
+  for (const label of order) {
+    const at = out.indexOf('>' + label + '<');
+    assert.ok(at > -1, `card "${label}" is missing`);
+    assert.ok(at > cursor, `card "${label}" is out of order`);
+    cursor = at;
+  }
+  assert.equal((out.match(/class="ovw-row"/g) || []).length, 2, 'expected exactly two card rows');
+  assert.ok(fullClub().renderOverviewQuickActions().includes('Quick actions'), 'quick actions block missing');
+});
+
+test('every card is reachable by keyboard, and links to the screen that owns it', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  const links = out.match(/class="ovw-card is-link"[^>]*/g) || [];
+  assert.ok(links.length >= 5, 'expected the linked cards to be interactive');
+  for (const l of links) {
+    assert.ok(l.includes('role="button"'), 'a clickable card must be announced as a button');
+    assert.ok(l.includes('tabindex="0"'),  'a clickable card must be focusable');
+    assert.ok(l.includes('onkeydown'),     'a clickable card must respond to Enter/Space');
+    assert.ok(l.includes('aria-label='),   'a clickable card must be labelled');
+  }
+});
+
+test('the layout cannot scroll sideways on a phone', () => {
+  // Every grid track is minmax(0, 1fr): a 1fr track sizes to its content and a
+  // long opponent name would widen it, pushing the page sideways.
+  const css = html.slice(html.indexOf('OVERVIEW COMMAND CENTRE'), html.indexOf('AVAILABILITY — large session cards'));
+  assert.ok(css.includes('.ovw-row { display: grid; gap: 14px; grid-template-columns: repeat(3, minmax(0, 1fr)); }'),
+    'card row must use minmax(0,1fr) tracks');
+  assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.ovw-row\s*{\s*grid-template-columns: minmax\(0, 1fr\)/,
+    'cards must stack to a single column on a phone');
+  assert.match(css, /@media \(max-width: 1100px\)[\s\S]*\.ovw-row\s*{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/,
+    'cards must fall to two columns on a tablet');
+  assert.ok(css.includes('overflow-wrap: anywhere'), 'long unbroken names must wrap inside the card');
+  assert.ok(css.includes('min-width: 0'), 'cards must be allowed to shrink below their content width');
+  // Quick actions must stay thumb-sized rather than shrinking to fit.
+  assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.ovw-action\s*{\s*min-height: 52px/,
+    'quick actions must stay tappable on a phone');
+});
+
+test('the command centre reuses the shared status palette', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  for (const token of ['var(--status-available)', 'var(--status-maybe)',
+                       'var(--status-unavailable)', 'var(--status-noreply)']) {
+    assert.ok(out.includes(token), `${token} should come from the shared palette`);
+  }
+  // No new hard-coded availability colours — those would drift from the rest
+  // of the app the first time the palette changes.
+  assert.ok(!/#10b981|#fbbf24|#f87171/.test(out), 'availability colours must not be hard-coded');
+});
+
+// ── 9. Visual refinement — the reference's lessons, pinned ────────────────────
+
+test('availability is read as three figures, not scanned down a list', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  const stats = out.match(/<div class="ovw-stat">/g) || [];
+  assert.equal(stats.length, 3, 'expected Available / Maybe / Unavailable side by side');
+  for (const label of ['Available', 'Maybe', 'Unavailable']) {
+    assert.match(out, new RegExp('<b[^>]*>\\d+</b><span>' + label + '</span>'),
+      `${label} must show its count above its word`);
+  }
+  // The fourth answer is real but secondary — it belongs in the footer, not
+  // as a fourth column competing with the three that need acting on.
+  assert.match(out, /still to reply|Everyone has replied|position warning/,
+    'no-reply / warning state must still be reported');
+});
+
+test('the donut carries the squad total it is drawn from', () => {
+  const scope = fullClub();
+  const ctx = scope.overviewAvailabilityContext();
+  const out = scope.renderClubCommandDashboard();
+  assert.match(out, new RegExp('>' + ctx.total + '</text>'), 'donut centre must show the real total');
+  assert.ok(out.includes('>Squad</text>'), 'and say what the total counts');
+  // The legend beside it lists every answer, so the ring is never the only
+  // way to read the numbers.
+  assert.ok((out.match(/class="ovw-leg"/g) || []).length >= 3, 'donut needs its legend');
+});
+
+test('an empty squad draws no donut and quotes no total', () => {
+  const out = buildScope().renderClubCommandDashboard();
+  assert.ok(!out.includes('<svg'), 'no ring for a club with no answers');
+  assert.ok(!out.includes('</text>'), 'and no figure in the middle of one');
+});
+
+test('gold is used once per card at most, and never as decoration', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  const rules = (out.match(/class="ovw-accent-rule"/g) || []).length;
+  assert.ok(rules <= 1, `accent rule used ${rules} times — it marks a subject, it does not decorate`);
+  // Card surfaces and borders stay on the neutral tokens.
+  assert.ok(!/class="ovw-card[^"]*"[^>]*style="[^"]*--accent/.test(out),
+    'cards must not be re-skinned in the brand colour');
+});
+
+test('quick actions are one strip, labelled and titled, not a grid of tiles', () => {
+  const out = fullClub().renderOverviewQuickActions();
+  assert.ok(out.includes('ovw-actions-card'), 'actions belong in a single container');
+  assert.equal((out.match(/class="ovw-actions"/g) || []).length, 1, 'exactly one strip');
+  const buttons = out.match(/class="ovw-action"/g) || [];
+  assert.equal(buttons.length, 6, 'every permitted action is offered');
+  // Each keeps an explanation without spending a line on it.
+  assert.equal((out.match(/title="/g) || []).length, buttons.length, 'each action explains itself on hover');
+  assert.equal((out.match(/ovw-action-icon/g) || []).length, buttons.length, 'each action carries its icon');
+  assert.ok(out.includes('aria-hidden="true"'), 'icons are decorative and hidden from screen readers');
+});
+
+test('a linked card advertises that it opens something', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  // Recent activity is the one card that leads nowhere, so it must NOT.
+  const cards = out.split('class="ovw-card');
+  const activity = cards.find(c => c.includes('>Recent activity<'));
+  assert.ok(activity && !activity.slice(0, 400).includes('ovw-open'),
+    'a card that opens nothing must not pretend otherwise');
+  assert.ok(out.includes('ovw-open'), 'linked cards need an affordance');
 });

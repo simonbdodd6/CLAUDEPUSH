@@ -505,14 +505,23 @@ test('fixture creation and import are audited', async () => {
 });
 
 // ── Client surface ──────────────────────────────────────────────────────────
-test('Overview renders a Fixtures card with entry, import and Match Centre link', () => {
+test('Overview offers fixture entry and both importers, gated on the fixtures permission', () => {
+  // These lived on renderOverviewFixturesCard until the Overview command
+  // centre replaced it. Entry and the two importers moved to Quick actions and
+  // the fixture itself is now a card; what this test protects is unchanged —
+  // a coach can still start a fixture and import a season list FROM the
+  // Overview, and only with manage_fixtures.
   const src = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(src, /function renderOverviewFixturesCard\(/, 'Overview fixtures card exists');
-  const fn = src.slice(src.indexOf('function renderOverviewFixturesCard'), src.indexOf('function fixtureImportOpen'));
-  assert.match(fn, /Add fixture/, 'Add fixture action');
-  assert.match(fn, /Import CSV/, 'Import CSV action');
-  assert.match(fn, /Import Excel/, 'Import Excel action');
-  assert.match(fn, /View all in Match Centre/, 'Match Centre link');
+  const qa = src.slice(src.indexOf('function renderOverviewQuickActions'));
+  const fn = qa.slice(0, qa.indexOf('\n    }') + 6);
+
+  assert.match(fn, /fixtureAddOpen\(\)/, 'Add fixture action');
+  assert.match(fn, /fixtureImportOpen\('csv'\)/, 'Import CSV action');
+  assert.match(fn, /fixtureImportOpen\('xlsx'\)/, 'Import Excel action');
   assert.match(fn, /canI\('manage_fixtures'\)/, 'actions gated on the fixtures permission, matching the API');
-  assert.match(fn, /No fixtures yet/i, 'empty state');
+
+  // The fixture card carries the destination and the empty state.
+  const card = src.slice(src.indexOf('function renderClubCommandDashboard'));
+  assert.match(card, /setSection\('coach','(fixtures|matchday)'\)/, 'fixture card routes to the fixture screens');
+  assert.match(card, /No fixture scheduled/i, 'empty state');
 });

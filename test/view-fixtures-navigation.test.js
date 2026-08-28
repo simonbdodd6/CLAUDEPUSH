@@ -37,11 +37,15 @@ function fn(name) {
 }
 
 // ─── 1. Static: stable named target, no one-arg setSection anywhere ─────────
-test('the Match Week card button targets setSection(\'coach\',\'fixtures\')', () => {
-  // The card is built in a JS string, so the onclick quotes are escaped (\').
-  const btn = src.match(/onclick="setSection\([^"]*\)">View fixtures</);
-  assert.ok(btn, 'the View fixtures button exists');
-  assert.match(btn[0], /setSection\(\\'coach\\',\\'fixtures\\'\)/, 'named view + section, not a bare section');
+test('the Overview fixture card targets setSection(\'coach\',\'fixtures\')', () => {
+  // This guarded the Match Week card, whose "View fixtures" button was the one
+  // place a bare setSection('fixtures') had shipped — it corrupted activeView
+  // and stranded the coach on a blank screen. The command centre replaced that
+  // card; the same navigation now lives on the Upcoming fixture card, so the
+  // guarantee is re-pinned where it moved to rather than dropped.
+  const card = src.match(/card\('Upcoming fixture'[^\n]*/);
+  assert.ok(card, 'the Overview upcoming-fixture card exists');
+  assert.match(card[0], /setSection\('coach','fixtures'\)/, 'named view + section, not a bare section');
 });
 
 test('no one-argument setSection() call ships anywhere in the bundle', () => {

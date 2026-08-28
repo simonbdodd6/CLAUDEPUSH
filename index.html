@@ -2749,6 +2749,140 @@
     .mctl-row { border-radius: 12px; transition: background .15s ease, transform .15s ease; }
     .mctl-row:hover { background: rgba(255,255,255,0.04); transform: translateX(2px); }
 
+    /* ── OVERVIEW COMMAND CENTRE ─────────────────────────────────────────────
+       The coach's operational snapshot: two rows of cards and an action bar.
+       Built entirely on the existing card/token system — no new colour
+       language. Availability colours come from the shared status palette, so a
+       green here means exactly what it means on Availability, Members and
+       Medical.
+
+       Every grid track is minmax(0, 1fr), not 1fr: a long opponent or session
+       name must wrap inside its card, never widen the track and push the page
+       sideways. That is what keeps the phone layout free of horizontal scroll.
+       The Overview is the one .home-wrap screen, so widening it here affects
+       nothing else. */
+    .home-wrap { max-width: 1180px; }
+
+    .ovw-row { display: grid; gap: 14px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .ovw-card {
+      display: flex; flex-direction: column; gap: 11px; min-width: 0;
+      padding: 18px 20px 16px; border: 1px solid var(--line); border-radius: var(--r);
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      box-shadow: var(--shadow);
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+    .ovw-card.is-link { cursor: pointer; }
+    .ovw-card.is-link:hover { transform: translateY(-2px); border-color: var(--brand-line); box-shadow: var(--shadow-lift); }
+    .ovw-card.is-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .ovw-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .ovw-label { font-size: 10.5px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; color: var(--faint); }
+    .ovw-title { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); line-height: 1.25; overflow-wrap: anywhere; }
+    .ovw-title.lg { font-size: 20px; letter-spacing: -0.03em; }
+    .ovw-meta { font-size: 12.5px; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
+    .ovw-empty { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.5; }
+    .ovw-empty strong { display: block; color: var(--ink); font-size: 13.5px; font-weight: 700; margin-bottom: 3px; }
+    .ovw-pillrow { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ovw-pill {
+      display: inline-flex; align-items: center; font-size: 10px; font-weight: 800;
+      padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .06em;
+    }
+    .ovw-foot {
+      margin-top: auto; padding-top: 11px; border-top: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px;
+    }
+    .ovw-big { font-size: 27px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+
+    /* Three answers, side by side, read in one glance rather than scanned down
+       a list. The reference puts the NUMBER first and the word underneath; at
+       this size the count is legible before the label is read, which is the
+       whole point of the card. Tabular figures stop the columns shifting as
+       counts change between renders. */
+    .ovw-stat-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+    .ovw-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .ovw-stat b {
+      font-size: 26px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05;
+      font-variant-numeric: tabular-nums;
+    }
+    .ovw-stat span {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* A card carrying ONE figure earns the middle of its own space. */
+    .ovw-centred {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; text-align: center; gap: 3px; padding: 6px 0 2px;
+    }
+    .ovw-centred .ovw-big { font-size: 34px; }
+
+    /* The one place gold appears inside a card: a short rule under the thing
+       the card is actually about. Restraint is the point — the accent marks
+       the subject, it does not decorate the container. */
+    .ovw-accent-rule {
+      width: 30px; height: 2.5px; border-radius: 2px; background: var(--accent);
+      margin: 1px 0 3px;
+    }
+
+    /* Quiet "this opens something" mark, in place of the reference's decorative
+       corner button. It moves on hover so the affordance is felt, not read. */
+    .ovw-open { color: var(--faint); font-size: 15px; line-height: 1; transition: transform .18s ease, color .18s ease; }
+    .ovw-card.is-link:hover .ovw-open { color: var(--accent); transform: translateX(2px); }
+    .ovw-countdown { text-align: right; flex-shrink: 0; }
+    .ovw-countdown b { display: block; font-size: 20px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1; }
+    .ovw-countdown span { font-size: 10px; color: var(--muted); }
+
+    /* Availability legend — the same four answers, in the same order, wherever
+       availability is shown. "No reply" is neutral, never amber. */
+    .ovw-legend { display: grid; gap: 7px; }
+    .ovw-leg { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+    .ovw-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .ovw-leg b { margin-left: auto; color: var(--ink); font-size: 13.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+    .ovw-donut-wrap { display: flex; align-items: center; gap: 16px; }
+    .ovw-donut { flex-shrink: 0; }
+    .ovw-donut-hole { font-size: 11px; color: var(--muted); line-height: 1.3; }
+    .ovw-donut-hole b { display: block; font-size: 19px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+    .ovw-feed { display: grid; gap: 8px; }
+    .ovw-feed-item { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--ink); line-height: 1.4; }
+    .ovw-feed-item .ovw-feed-mark { flex-shrink: 0; color: var(--green); font-weight: 800; }
+    .ovw-feed-item span.muted { color: var(--muted); }
+
+    .ovw-actions-card {
+      border: 1px solid var(--line); border-radius: var(--r); background: var(--panel);
+      box-shadow: var(--shadow); padding: 15px 20px 17px;
+      display: flex; flex-direction: column; gap: 11px;
+    }
+    .ovw-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+    .ovw-action {
+      display: inline-flex; align-items: center; gap: 8px; min-height: 40px;
+      padding: 0 15px; border: 1px solid var(--line-2); border-radius: 10px;
+      background: var(--panel); color: var(--ink); font: inherit; font-size: 13px; font-weight: 650;
+      letter-spacing: -0.01em; cursor: pointer; white-space: nowrap;
+      transition: border-color .15s ease, background .15s ease, transform .15s ease;
+    }
+    .ovw-action:hover { border-color: var(--brand-line); background: var(--panel-2); transform: translateY(-1px); }
+    .ovw-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .ovw-action-icon { color: var(--accent); display: inline-flex; flex-shrink: 0; }
+    .ovw-action-icon svg { display: block; }
+
+    /* Tablet: three across is too tight before the sidebar collapses. */
+    @media (max-width: 1100px) {
+      .ovw-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    /* Phone: one card per row, in priority order — fixture, training,
+       availability first. Actions stay full-width and thumb-sized. */
+    @media (max-width: 720px) {
+      .ovw-row     { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+      .ovw-actions { flex-direction: column; }
+      .ovw-action  { min-height: 52px; width: 100%; justify-content: flex-start; font-size: 14px; }
+      .ovw-actions-card { padding: 14px 16px 16px; }
+      .ovw-card    { padding: 16px 17px 15px; }
+      .ovw-donut-wrap { gap: 14px; }
+      .ovw-stat b  { font-size: 24px; }
+      .ovw-centred .ovw-big { font-size: 30px; }
+    }
+
     /* ── AVAILABILITY — large session cards ──────────────────────────────────── */
     .msg-hero, .training-hero {
       background: linear-gradient(135deg, rgba(143,107,42,0.10), rgba(255,255,255,0.02));
@@ -12918,175 +13052,363 @@
     // Presentation-only summary of club state. Reads existing helpers and state
     // fields — no new business logic, no AI, no Stripe changes.
 
-    function renderClubCommandDashboard() {
-      const players      = operationalPlayers();
-      const activePlayers = players.filter(function(p) { return p.id && !playerIsArchived(p); });
+    /**
+     * The ONE availability reading the Overview shows. The snapshot card and
+     * the donut both call this, so those two can never disagree with each
+     * other or with the Availability board.
+     *
+     * "Relevant" follows the coach's day: tonight's session if there is one,
+     * otherwise the next fixture. Fixtures answer through
+     * fixtureAvailabilitySummary, so the medical override still applies;
+     * sessions read the same per-session keys the Availability board writes.
+     *
+     * Nothing here is estimated, projected or filled in. A squad that has not
+     * replied reads as "no reply", and a club with no players reads as empty
+     * rather than as a row of zeroes pretending to be information.
+     */
+    function overviewAvailabilityContext() {
+      const roster = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
+      const none   = { kind: 'none', label: '', total: 0, available: 0, maybe: 0,
+                       unavailable: 0, noReply: 0, responded: 0, availPct: 0,
+                       respondedPct: 0, warnings: [] };
+      if (!roster.length) return none;
 
-      // ── Availability ──────────────────────────────────────────────────────────
       const tonightId   = getTonightSessionId();
-      const tonightSess = tonightId ? (state.schedule || []).find(function(s) { return s.id === tonightId; }) : null;
-      const availKey    = sessionKey(tonightId || 'game');
-      const avail       = activePlayers.filter(function(p) { return p[availKey] === 'available'; }).length;
-      const unavail     = activePlayers.filter(function(p) { return p[availKey] === 'unavailable'; }).length;
-      const noReply     = activePlayers.filter(function(p) { return (p[availKey] || 'no-reply') === 'no-reply'; }).length;
-      const totalPl     = activePlayers.length;
-      const availPct    = totalPl ? Math.round(avail / totalPl * 100) : 0;
-      const availLabel  = tonightSess ? (tonightSess.title || 'Training') : 'Next Match';
-      const availCol    = availPct >= 70 ? 'var(--accent)' : availPct >= 40 ? '#fbbf24' : '#f87171';
+      const tonightSess = tonightId ? (state.schedule || []).find(s => s.id === tonightId) : null;
+      if (tonightSess) {
+        const key   = sessionKey(tonightId);
+        const count = v => roster.filter(p => (p[key] || 'no-reply') === v).length;
+        const total       = roster.length;
+        const available   = count('available');
+        const maybe       = count('maybe');
+        const unavailable = count('unavailable');
+        // Derived by subtraction, never counted separately: any answer the
+        // roster carries that is not one of the three above is still "no
+        // reply" as far as the coach is concerned, and the four must add up.
+        const noReply     = Math.max(0, total - available - maybe - unavailable);
+        return { kind: 'session', label: tonightSess.title || 'Training', total,
+                 available, maybe, unavailable, noReply, responded: total - noReply,
+                 availPct:     Math.round(available / total * 100),
+                 respondedPct: Math.round((total - noReply) / total * 100),
+                 warnings: [] };
+      }
 
-      // ── Upcoming Training ─────────────────────────────────────────────────────
-      const sessions     = state.schedule || [];
-      const tonightBlks  = tonightId ? ((state.trainingBlocks || {})[tonightId] || []).length : 0;
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const nextFx   = fixtureSortByDate(contextFixtures().map(normalizeFixture).filter(Boolean))
+        .find(f => (!f.date || f.date >= todayIso) && f.status !== 'cancelled' && f.status !== 'completed');
+      if (!nextFx) return none;
 
-      // ── Upcoming Fixture ──────────────────────────────────────────────────────
-      const mc        = contextMatchCentre();
-      const todayIso  = new Date().toISOString().slice(0, 10);
-      const phase     = matchCentrePhase();
-      const mcActive  = !!(mc.kickoffDate && mc.kickoffDate >= todayIso);
-      const nextFx    = contextFixtures()
-        .filter(function(f) { return f.date && f.date >= todayIso; })
-        .sort(function(a, b) { return a.date > b.date ? 1 : -1; })[0] || null;
+      const s = fixtureAvailabilitySummary(nextFx.id, roster);
+      if (!s.total) return none;
+      return { kind: 'fixture', label: 'vs ' + (nextFx.opposition || 'TBC'), total: s.total,
+               available: s.available, maybe: s.maybe, unavailable: s.unavailable,
+               noReply: s.noReply, responded: s.responded, availPct: s.availPct,
+               respondedPct: Math.round(s.responded / s.total * 100),
+               warnings: s.warnings || [] };
+    }
 
-      // ── Unread Messages ───────────────────────────────────────────────────────
-      const legacyUnread = (state.messages || []).filter(function(m) { return m.unread && m.to === 'Coach'; }).length;
-      const totalUnread  = chatUnreadTotal() + legacyUnread;
+    /**
+     * Availability donut: four stroke-dasharray arcs on one circle, so the
+     * ring is always exactly as complete as the answers are — a squad that is
+     * half unanswered shows a half-grey ring, not a full one.
+     *
+     * Only ever called with a non-zero total (an empty squad gets the empty
+     * state instead), which is what keeps every number in here finite. The
+     * track circle underneath means a single-segment donut still reads as a
+     * ring rather than as a broken shape.
+     */
+    function overviewDonutSvg(ctx, size) {
+      size = size || 104;
+      const mid = size / 2;
+      const r   = mid - 9;
+      const c   = 2 * Math.PI * r;
+      let offset = 0;
+      const arcs = [
+        ['var(--status-available)',   ctx.available],
+        ['var(--status-maybe)',       ctx.maybe],
+        ['var(--status-unavailable)', ctx.unavailable],
+        ['var(--status-noreply)',     ctx.noReply],
+      ].filter(seg => seg[1] > 0).map(seg => {
+        const len = c * (seg[1] / ctx.total);
+        const el  = `<circle cx="${mid}" cy="${mid}" r="${r}" fill="none" stroke="${seg[0]}"
+            stroke-width="9" stroke-dasharray="${len.toFixed(2)} ${(c - len).toFixed(2)}"
+            stroke-dashoffset="${(-offset).toFixed(2)}"></circle>`;
+        offset += len;
+        return el;
+      }).join('');
+      return `<svg class="ovw-donut" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"
+          role="img" aria-label="${ctx.available} available, ${ctx.maybe} maybe, ${ctx.unavailable} unavailable, ${ctx.noReply} no reply">
+          <circle cx="${mid}" cy="${mid}" r="${r}" fill="none" stroke="var(--line)" stroke-width="9"></circle>
+          <g transform="rotate(-90 ${mid} ${mid})">${arcs}</g>
+          <text x="${mid}" y="${mid - 3}" text-anchor="middle" dominant-baseline="central"
+            style="font-size:20px;font-weight:800;fill:var(--ink);font-variant-numeric:tabular-nums">${ctx.total}</text>
+          <text x="${mid}" y="${mid + 13}" text-anchor="middle" dominant-baseline="central"
+            style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;fill:var(--faint)">Squad</text>
+        </svg>`;
+    }
 
-      // ── Medical ───────────────────────────────────────────────────────────────
-      const medNotes     = state.medicalNotes || {};
-      const injuredCount = players.filter(function(p) {
-        return (p.status === 'injured') || (p.game === 'injured') ||
-               (typeof p.medical === 'string' && p.medical.trim().length > 0);
-      }).length;
-      const flaggedCount = Object.values(medNotes).filter(function(n) { return n && n.condition && String(n.condition).trim(); }).length;
-      const noReturnCount = getInjuredNoReturnDate().length;
-      const medTotal     = injuredCount + flaggedCount;
-
-      // ── Recent Activity ───────────────────────────────────────────────────────
-      const receipts    = getTodayReceipts();
-      const recentFeed  = (state.masterFeed || []).slice(0, 3);
-      const activityItems = receipts.slice(0, 3).map(function(r) {
-        return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink)"><span style="color:var(--accent);flex-shrink:0">✓</span>${esc(r)}</div>`;
-      }).concat(
-        recentFeed.slice(0, Math.max(0, 3 - receipts.length)).map(function(f) {
-          return `<div style="font-size:12px;color:var(--ink)">${esc(f.event || '')}${f.detail ? `<span class="muted"> · ${esc(f.detail)}</span>` : ''}</div>`;
-        })
-      );
-
-      // ── Subscription ──────────────────────────────────────────────────────────
-      const isPro     = isProTeam();
-      const isEnt     = isEnterpriseTeam();
-      const onTrial   = isTrialActive();
-      const daysLeft  = trialDaysRemaining();
-      const planLabel = isPro ? 'Pro' : isEnt ? 'Enterprise' : onTrial ? 'Trial' : 'Core';
-      const planCol   = isPro ? 'var(--accent)' : isEnt ? '#B8964A' : onTrial ? '#fbbf24' : 'var(--muted)';
-
-      // Core Beta has no commercial surfaces. The Subscription and Trial
-      // cards, and the upgrade CTAs they carried, are gone: there is no public
-      // Pro tier, no pricing and no checkout, so advertising one was selling
-      // something nobody can buy. Plan/entitlement logic is untouched.
-
-      // ── Card builder helpers ──────────────────────────────────────────────────
-      function cardHead(label, aside) {
-        return `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted)">${esc(label)}</span>
-          ${aside || ''}
+    /** Availability legend row — one recorded answer, its colour and its count. */
+    function overviewLegendRow(label, colour, n, total) {
+      const pct = total ? Math.round(n / total * 100) : 0;
+      return `<div class="ovw-leg">
+          <span class="ovw-dot" style="background:${colour}"></span>
+          <span>${esc(label)}</span>
+          <b>${n}<span style="font-weight:600;color:var(--faint);font-size:11px"> ${pct}%</span></b>
         </div>`;
+    }
+
+    /**
+     * The Overview command centre — two rows that answer "what is happening
+     * with my team?" without the coach opening anything.
+     *
+     *   Row 1, act on today:  Upcoming fixture · Training · Availability
+     *   Row 2, context:       Recent activity · Squad availability · Messages
+     *
+     * Every value is read from state another screen already owns. This
+     * function computes nothing the product does not already know, and where
+     * there is no data it renders an empty state rather than a zero dressed
+     * up as information. Each card is a link to the screen that owns its
+     * subject, so the Overview stays a snapshot and never becomes a second
+     * place to do the work.
+     */
+    function renderClubCommandDashboard() {
+      const roster   = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
+      const todayIso = new Date().toISOString().slice(0, 10);
+
+      // ── 1. Upcoming fixture ──────────────────────────────────────────────
+      const nextFx = fixtureSortByDate(contextFixtures().map(normalizeFixture).filter(Boolean))
+        .find(f => (!f.date || f.date >= todayIso) && f.status !== 'cancelled' && f.status !== 'completed');
+
+      let fixtureBody;
+      if (!nextFx) {
+        fixtureBody = `<p class="ovw-empty"><strong>No fixture scheduled</strong>${
+          canI('manage_fixtures')
+            ? 'Add your next match or import a season list to start match week.'
+            : 'Your next match will appear here once it is added.'}</p>`;
+      } else {
+        const fxDate = nextFx.date
+          ? new Date(nextFx.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+          : 'Date TBC';
+        const cd     = fixtureCountdown(nextFx);
+        const stat   = fixtureDisplayStatus(nextFx);
+        const type   = fixtureTypeStyle(nextFx.type);
+        const ha     = HOME_AWAY_LABEL[nextFx.homeAway] || '';
+        const meta   = [fxDate, nextFx.kickoffTime ? 'KO ' + nextFx.kickoffTime : '', nextFx.venue || '']
+          .filter(Boolean).map(esc).join(' · ');
+
+        // Squad state for THIS fixture — the selection screen owns it; the
+        // Overview only reports where it has got to.
+        const sel = selectionFindForFixture(nextFx.id);
+        let squadLine;
+        if (!sel) {
+          squadLine = `<span class="muted">No squad selected</span>`;
+        } else if (sel.status === 'published') {
+          squadLine = `<span style="color:var(--status-available);font-weight:700">Squad published</span>
+            <span class="muted">${selectionStarterCount(sel)} starters · ${selectionBenchCount(sel)} bench</span>`;
+        } else {
+          squadLine = `<span style="color:var(--status-maybe);font-weight:700">Draft squad</span>
+            <span class="muted">${selectionStarterCount(sel)} starters · ${selectionBenchCount(sel)} bench</span>`;
+        }
+
+        fixtureBody = `
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+            <div style="min-width:0">
+              <div class="ovw-pillrow" style="margin-bottom:6px">
+                <span class="ovw-pill" style="background:${type.bg};color:${type.color}">${esc(nextFx.type || 'Fixture')}</span>
+                ${ha ? `<span class="ovw-pill" style="background:${nextFx.homeAway === 'home' ? 'var(--status-available-soft)' : 'var(--status-noreply-soft)'};color:${nextFx.homeAway === 'home' ? 'var(--status-available)' : 'var(--status-noreply)'}">${esc(ha)}</span>` : ''}
+                <span class="ovw-pill" style="background:${stat.bg};color:${stat.color}">${esc(stat.label)}</span>
+              </div>
+              <div class="ovw-title lg">vs ${esc(nextFx.opposition || 'TBC')}</div>
+              ${nextFx.competition ? `<div class="ovw-meta" style="margin-top:1px">${esc(nextFx.competition)}</div>` : ''}
+              <div class="ovw-meta" style="margin-top:4px">${meta}</div>
+            </div>
+            ${cd ? `<div class="ovw-countdown"><b>${esc(cd)}</b><span>to kick-off</span></div>` : ''}
+          </div>
+          <div class="ovw-foot">${squadLine}</div>`;
       }
-      function bigNum(n, label, color) {
-        return `<div style="font-size:22px;font-weight:700;color:${color || 'var(--ink)'}">
-          ${n}<span style="font-size:13px;font-weight:400;color:var(--muted)"> ${esc(label)}</span>
+
+      // ── 2. Training ──────────────────────────────────────────────────────
+      // session.date is free text ("Tuesday 19:00"), so there is no reliable
+      // chronological order to promise. Tonight's session is knowable and is
+      // labelled as such; anything else is honestly labelled "Scheduled".
+      const sessions    = (state.schedule || []).filter(Boolean);
+      const tonightId   = getTonightSessionId();
+      const tonightSess = tonightId ? sessions.find(s => s.id === tonightId) : null;
+      const shownSess   = tonightSess || sessions[0] || null;
+      const sessBlocks  = shownSess ? ((state.trainingBlocks || {})[shownSess.id] || []).length : 0;
+
+      const trainingBody = !shownSess
+        ? `<p class="ovw-empty"><strong>No sessions scheduled</strong>${
+            canI('publish_training')
+              ? 'Add your training nights and the plan will show up here.'
+              : 'Training sessions will appear here once they are scheduled.'}</p>`
+        : `<div>
+             <div class="ovw-title">${esc(shownSess.title || shownSess.type || 'Training')}</div>
+             <div class="ovw-accent-rule"></div>
+           </div>
+           <div class="ovw-meta">${esc(shownSess.date || 'Time to be confirmed')}${
+             sessBlocks ? ` · ${sessBlocks} block${sessBlocks === 1 ? '' : 's'} planned` : ''}</div>
+           <div class="ovw-pillrow">
+             <span class="ovw-pill" style="background:${shownSess.published ? 'var(--status-available-soft)' : 'var(--status-maybe-soft)'};color:${shownSess.published ? 'var(--status-available)' : 'var(--status-maybe)'}">${shownSess.published ? 'Published' : 'Draft'}</span>
+           </div>
+           ${sessions.length > 1 ? `<div class="ovw-foot"><span class="muted">${sessions.length} sessions scheduled</span></div>` : ''}`;
+
+      // ── 3 & 5. Availability (shared reading) ─────────────────────────────
+      const av = overviewAvailabilityContext();
+      const availEmpty = !roster.length
+        ? `<p class="ovw-empty"><strong>No players yet</strong>${
+            canI('manage_players')
+              ? 'Invite your players and their answers will appear here.'
+              : 'Availability appears once players have been added.'}</p>`
+        : `<p class="ovw-empty"><strong>Nothing to respond to</strong>Availability shows here once a session or fixture is scheduled.</p>`;
+
+      const critical = (av.warnings || []).filter(w => w.severity === 'critical').length;
+      const warning  = (av.warnings || []).filter(w => w.severity === 'warning').length;
+
+      const availabilityBody = av.kind === 'none' ? availEmpty : `
+        <div>
+          <div class="ovw-meta" style="margin-bottom:12px">${esc(av.label)}</div>
+          <div class="ovw-stat-row">
+            <div class="ovw-stat"><b style="color:var(--status-available)">${av.available}</b><span>Available</span></div>
+            <div class="ovw-stat"><b style="color:var(--status-maybe)">${av.maybe}</b><span>Maybe</span></div>
+            <div class="ovw-stat"><b style="color:var(--status-unavailable)">${av.unavailable}</b><span>Unavailable</span></div>
+          </div>
+        </div>
+        <div class="ovw-foot">
+          ${critical || warning
+            ? `<span style="color:${critical ? 'var(--status-unavailable)' : 'var(--status-maybe)'};font-weight:700">${
+                critical ? `${critical} critical position warning${critical === 1 ? '' : 's'}`
+                         : `${warning} position warning${warning === 1 ? '' : 's'}`}</span>`
+            : av.noReply === 0
+              ? `<span style="color:var(--status-available);font-weight:700">Everyone has replied</span>`
+              : `<span class="muted">${av.noReply} still to reply</span>`}
         </div>`;
-      }
-      function allClearLine(text) {
-        return `<div style="display:flex;align-items:center;gap:8px"><span style="color:var(--accent)">✓</span><span class="muted" style="font-size:13px">${esc(text)}</span></div>`;
-      }
-      function progressBar(pct, color) {
-        return `<div style="height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin:6px 0 8px">
-          <div style="height:100%;width:${Math.min(100, Math.max(0, pct))}%;background:${color || 'var(--accent)'};border-radius:2px;transition:width 0.3s"></div>
+
+      const squadAvailBody = av.kind === 'none' ? availEmpty : `
+        <div class="ovw-donut-wrap">
+          ${overviewDonutSvg(av, 96)}
+          <div class="ovw-legend" style="flex:1;min-width:0">
+            ${overviewLegendRow('Available',   'var(--status-available)',   av.available,   av.total)}
+            ${overviewLegendRow('Maybe',       'var(--status-maybe)',       av.maybe,       av.total)}
+            ${overviewLegendRow('Unavailable', 'var(--status-unavailable)', av.unavailable, av.total)}
+            ${av.noReply ? overviewLegendRow('No reply', 'var(--status-noreply)', av.noReply, av.total) : ''}
+          </div>
+        </div>
+        <div class="ovw-foot">
+          <span class="muted">${av.responded} of ${av.total} replied</span>
+          <span style="font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums">${av.respondedPct}%</span>
         </div>`;
+
+      // ── 4. Recent activity ───────────────────────────────────────────────
+      // Today's receipts first (things this coach actually did), then the
+      // shared feed. Never padded: three real entries or fewer, or an empty
+      // state. Nothing is synthesised to fill the card.
+      const receipts = (getTodayReceipts() || []).filter(Boolean);
+      const feed     = (state.masterFeed || []).filter(f => f && (f.event || f.detail));
+      const activity = receipts.slice(0, 3).map(r =>
+          `<div class="ovw-feed-item"><span class="ovw-feed-mark">✓</span><span>${esc(r)}</span></div>`)
+        .concat(feed.slice(0, Math.max(0, 3 - Math.min(3, receipts.length))).map(f =>
+          `<div class="ovw-feed-item"><span>${esc(f.event || '')}${f.detail ? `<span class="muted"> · ${esc(f.detail)}</span>` : ''}</span></div>`));
+
+      const activityBody = activity.length
+        ? `<div class="ovw-feed">${activity.join('')}</div>`
+        : `<p class="ovw-empty"><strong>Nothing yet today</strong>Squad selections, published plans and availability requests show up here as they happen.</p>`;
+
+      // ── 6. Messages ──────────────────────────────────────────────────────
+      const legacyUnread = (state.messages || []).filter(m => m && m.unread && m.to === 'Coach').length;
+      const unread       = chatUnreadTotal() + legacyUnread;
+      const messagesBody = unread
+        ? `<div class="ovw-centred">
+             <div class="ovw-big" style="color:var(--status-unavailable)">${unread}</div>
+             <div class="ovw-meta">unread message${unread === 1 ? '' : 's'} waiting</div>
+           </div>`
+        : `<div class="ovw-centred">
+             <div class="ovw-big" style="color:var(--status-available)">0</div>
+             <div class="ovw-meta">All caught up — nothing from your squad.</div>
+           </div>`;
+
+      // ── Assembly ─────────────────────────────────────────────────────────
+      const card = (label, aside, body, action, ariaLabel) => `
+        <div class="ovw-card${action ? ' is-link' : ''}"${action ? ` role="button" tabindex="0" onclick="${action}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${action}}" aria-label="${esc(ariaLabel || label)}"` : ''}>
+          <div class="ovw-head"><span class="ovw-label">${esc(label)}</span>${aside || (action ? '<span class="ovw-open" aria-hidden="true">&rsaquo;</span>' : '')}</div>
+          ${body}
+        </div>`;
+
+      return `
+        <div class="ovw-row">
+          ${card('Upcoming fixture', '', fixtureBody, "setSection('coach','fixtures')", 'Upcoming fixture — open Fixtures')}
+          ${card('Training', tonightSess ? '<span class="ovw-pill" style="background:var(--accent-soft);color:var(--accent)">Tonight</span>' : '', trainingBody, "setSection('coach','training')", 'Training — open Training')}
+          ${card('Availability', av.kind !== 'none' ? `<span style="font-size:12px;font-weight:800;color:var(--status-available)">${av.availPct}%</span>` : '', availabilityBody, "setSection('coach','message')", 'Availability — open Availability')}
+        </div>
+        <div class="ovw-row" style="margin-top:14px">
+          ${card('Recent activity', '', activityBody, null, null)}
+          ${card('Squad availability', '', squadAvailBody, "setSection('coach','message')", 'Squad availability — open Availability')}
+          ${card('Messages', unread ? `<span class="ovw-pill" style="background:var(--status-unavailable-soft);color:var(--status-unavailable)">${unread} new</span>` : '', messagesBody, "setSection('coach','messages')", 'Messages — open Messages')}
+        </div>`;
+    }
+
+    /**
+     * Quick actions — the four things a coach starts from the Overview.
+     *
+     * Each one is an EXISTING action reached by its existing entry point; none
+     * of them is new behaviour and none of them is a second implementation of
+     * work that lives on another screen. Each is gated on the same permission
+     * that gates the screen it leads to (SECTION_PERM_MAP), so a member who
+     * cannot reach Training is never offered "Plan training" here. The gate is
+     * presentational only — every underlying action keeps its own check.
+     */
+    // Line icons for the action strip. Inline because the app ships as one
+    // file and must not fetch an icon set; 14px on a 2.2 stroke to sit level
+    // with 13px text. Gold here is the only accent in the strip.
+    const OVW_ACTION_ICON = {
+      availability: '<path d="M9 11l3 3 8-8"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+      training:     '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M8 12h8M8 16h5"/>',
+      fixture:      '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M12 14v5M9.5 16.5h5"/>',
+      message:      '<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7A8.4 8.4 0 0 1 4 11.5a8.5 8.5 0 0 1 8.5-8.5 8.5 8.5 0 0 1 8.5 8.5z"/>',
+      importFile:   '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/>',
+    };
+
+    /**
+     * Quick actions — the handful of things a coach starts from the Overview.
+     *
+     * Each is an EXISTING action reached by its existing entry point; none is
+     * new behaviour and none duplicates work that lives on another screen.
+     * Each is gated on the same permission that gates the screen it leads to
+     * (SECTION_PERM_MAP), so a member who cannot reach Training is never
+     * offered "Plan training". The gate is presentational only — every
+     * underlying action keeps its own check.
+     *
+     * Presented as one quiet strip rather than a second grid of tiles: the
+     * cards above carry the information, and the actions must not compete
+     * with them for attention.
+     */
+    function renderOverviewQuickActions() {
+      const actions = [];
+      if (canI('reports'))          actions.push(['Request availability', 'availability', 'Ask the squad to reply', 'sendAvailabilityNow()']);
+      if (canI('publish_training')) actions.push(['Plan training', 'training', "Build this week's session", "setSection('coach','training')"]);
+      if (canI('manage_fixtures'))  actions.push(['Add fixture', 'fixture', 'Put the next match in', 'fixtureAddOpen()']);
+      if (canI('messaging'))        actions.push(['Message team', 'message', 'Send the squad a note', "setSection('coach','messages')"]);
+      // The season importers were previously reachable ONLY from the Overview
+      // fixtures card the command centre replaced, and the file type is fixed
+      // when the modal opens (it drives the file picker's accept filter), so
+      // both kinds are offered here. Without these two the import feature
+      // would have no entry point left anywhere in the app.
+      if (canI('manage_fixtures')) {
+        actions.push(['Import CSV', 'importFile', 'Season list from a .csv', "fixtureImportOpen('csv')"]);
+        actions.push(['Import Excel', 'importFile', 'Season list from a .xlsx', "fixtureImportOpen('xlsx')"]);
       }
-
-      return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:12px;margin-top:4px">
-
-        <!-- Team Availability -->
-        <div class="card" style="padding:14px 16px;cursor:pointer" onclick="setSection('coach','message')">
-          ${cardHead('Team Availability', totalPl ? `<span style="font-size:11px;font-weight:700;color:${availCol}">${availPct}%</span>` : '')}
-          ${totalPl ? `
-            ${bigNum(avail, `/ ${totalPl} · ${availLabel}`)}
-            ${progressBar(availPct, availCol)}
-            <div style="display:flex;gap:10px">
-              ${noReply ? `<span class="muted" style="font-size:12px">${noReply} no reply</span>` : ''}
-              ${unavail ? `<span style="font-size:12px;color:#f87171">${unavail} unavailable</span>` : ''}
-              ${!noReply && !unavail ? `<span style="font-size:12px;color:var(--green)">All responded ✓</span>` : ''}
-            </div>
-          ` : `<p class="muted" style="font-size:13px;margin:0">No players added yet.</p>`}
-        </div>
-
-        <!-- Upcoming Training -->
-        <div class="card" style="padding:14px 16px;cursor:pointer" onclick="setSection('coach','training')">
-          ${cardHead('Upcoming Training')}
-          ${tonightSess ? `
-            <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">${esc(tonightSess.title || 'Training')}</div>
-            <div class="muted" style="font-size:12px;margin-bottom:8px">${esc(tonightSess.date || '')}${tonightBlks ? ` · ${tonightBlks} block${tonightBlks !== 1 ? 's' : ''}` : ''}</div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;${tonightSess.published ? 'background:rgba(52,211,153,0.15);color:#34d399' : 'background:rgba(251,191,36,0.15);color:#fbbf24'}">${tonightSess.published ? 'Published' : 'Draft'}</span>
-              ${avail ? `<span class="muted" style="font-size:12px">${avail} confirmed</span>` : ''}
-            </div>
-          ` : sessions.length ? `
-            <div style="display:grid;gap:6px">
-              ${sessions.slice(0, 2).map(function(s) {
-                return `<div style="font-size:13px;color:var(--ink)">${esc(s.title || s.type || 'Session')}<span class="muted"> · ${esc(s.date || '')}</span></div>`;
-              }).join('')}
-            </div>
-          ` : `<p class="muted" style="font-size:13px;margin:0">No sessions scheduled yet.</p>`}
-        </div>
-
-        <!-- Upcoming Fixture -->
-        <div class="card" style="padding:14px 16px;cursor:pointer" onclick="setSection('coach','matchday')">
-          ${cardHead('Upcoming Fixture')}
-          ${mcActive ? `
-            <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">vs ${esc(mc.opposition || 'TBC')}</div>
-            <div class="muted" style="font-size:12px;margin-bottom:6px">${esc(mc.kickoffDate || '')}${mc.kickoffTime ? ' · ' + esc(mc.kickoffTime) : ''}${mc.venue ? ' · ' + esc(mc.venue) : ''}</div>
-            <div style="display:flex;align-items:center;gap:8px">
-              ${phase.msLeft > 0 ? `<span style="font-size:11px;color:#fbbf24;font-weight:600">${esc(matchCountdownStr())}</span>` : ''}
-              ${mc.published ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(52,211,153,0.15);color:#34d399">Squad live</span>` : ''}
-            </div>
-          ` : nextFx ? `
-            <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">vs ${esc(nextFx.opposition || 'TBC')}</div>
-            <div class="muted" style="font-size:12px">${esc(nextFx.date || '')}${nextFx.time ? ' · ' + esc(nextFx.time) : ''}${nextFx.venue ? ' · ' + esc(nextFx.venue) : ''}</div>
-          ` : `${allClearLine('No upcoming fixtures.')}`}
-        </div>
-
-        <!-- Unread Messages -->
-        <div class="card" style="padding:14px 16px;cursor:pointer" onclick="setSection('coach','messages')">
-          ${cardHead('Messages', totalUnread ? `<span style="font-size:11px;font-weight:700;min-width:20px;padding:1px 6px;border-radius:10px;background:#f87171;color:#fff">${totalUnread}</span>` : '')}
-          ${totalUnread ? `
-            ${bigNum(totalUnread, `unread message${totalUnread !== 1 ? 's' : ''}`, '#f87171')}
-          ` : allClearLine('All caught up')}
-        </div>
-
-        <!-- Medical Status -->
-        <div class="card" style="padding:14px 16px;cursor:pointer" onclick="setSection('coach','medical')">
-          ${cardHead('Medical', medTotal ? `<span style="font-size:11px;font-weight:700;color:${injuredCount ? '#f87171' : '#fbbf24'}">${medTotal} flagged</span>` : '')}
-          ${medTotal || noReturnCount ? `
-            ${bigNum(medTotal, `player${medTotal !== 1 ? 's' : ''} flagged`, injuredCount ? '#f87171' : '#fbbf24')}
-            <div style="display:flex;flex-direction:column;gap:3px;margin-top:6px">
-              ${injuredCount ? `<span class="muted" style="font-size:12px">${injuredCount} injured</span>` : ''}
-              ${flaggedCount ? `<span class="muted" style="font-size:12px">${flaggedCount} condition noted</span>` : ''}
-              ${noReturnCount ? `<span style="font-size:12px;color:#fbbf24">${noReturnCount} without return date</span>` : ''}
-            </div>
-          ` : allClearLine('All players fit')}
-        </div>
-
-        <!-- Recent Activity -->
-        <div class="card" style="padding:14px 16px">
-          ${cardHead('Recent Activity')}
-          ${activityItems.length ? `<div style="display:flex;flex-direction:column;gap:5px">${activityItems.join('')}</div>`
-            : `<p class="muted" style="font-size:13px;margin:0">No activity yet today.</p>`}
-        </div>
-
-
-      </div>`;
+      if (!actions.length) return '';
+      const icon = key => `<span class="ovw-action-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${OVW_ACTION_ICON[key] || ''}</svg></span>`;
+      return `
+        <div class="ovw-actions-card">
+          <span class="ovw-label">Quick actions</span>
+          <div class="ovw-actions">
+            ${actions.map(a => `
+            <button type="button" class="ovw-action" onclick="${a[3]}" title="${esc(a[2])}">
+              ${icon(a[1])}<span class="ovw-action-label">${esc(a[0])}</span>
+            </button>`).join('')}
+          </div>
+        </div>`;
     }
 
     // ═══ WEEKLY AVAILABILITY AUTOMATION ═══════════════════════════════════════
@@ -13344,38 +13666,6 @@
         .filter(f => !f.date || f.date >= today)
         .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
         .slice(0, limit);
-    }
-
-    function renderOverviewFixturesCard() {
-      const canManage = canI('manage_fixtures');
-      const next = upcomingFixtures(3);
-      const row = f => `
-        <div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
-          <div style="min-width:0">
-            <strong style="font-size:13px">${esc(f.opposition)}</strong>
-            <span class="muted" style="font-size:11px;margin-left:6px">${esc(HOME_AWAY_LABEL[f.homeAway] || '—')}</span>
-            <div class="muted" style="font-size:11.5px">${esc([f.venue, f.competition].filter(Boolean).join(' · ') || '—')}</div>
-          </div>
-          <div style="text-align:right;white-space:nowrap">
-            <strong style="font-size:12.5px">${esc(f.date || 'Date TBC')}</strong>
-            <div class="muted" style="font-size:11.5px">${esc(f.time || 'KO TBC')}</div>
-          </div>
-        </div>`;
-      return `
-        <div class="card" style="margin-bottom:14px">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-            <h2 style="margin:0;font-size:16px">Fixtures</h2>
-            <button class="btn ghost" type="button" style="font-size:12px;padding:3px 10px" onclick="setSection('coach','matchday')">View all in Match Centre →</button>
-          </div>
-          ${next.length ? next.map(row).join('')
-            : `<p class="muted" style="font-size:12.5px;margin:6px 0 10px">No fixtures yet — add your first match or import a season list.</p>`}
-          ${canManage ? `
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-            <button class="btn primary" type="button" onclick="fixtureAddOpen()" style="min-height:38px;font-size:12.5px">+ Add fixture</button>
-            <button class="btn" type="button" onclick="fixtureImportOpen('csv')" style="min-height:38px;font-size:12.5px">Import CSV</button>
-            <button class="btn" type="button" onclick="fixtureImportOpen('xlsx')" style="min-height:38px;font-size:12.5px">Import Excel</button>
-          </div>` : ''}
-        </div>`;
     }
 
     // ── Manual fixture entry ────────────────────────────────────────────────
@@ -13748,7 +14038,6 @@
       }
       const phase  = matchCentrePhase();
       const mc     = state.matchCentre || {};
-      const nextFx = fixtureGetNext(contextFixtures());
       // The Match Centre working state points at ONE fixture; its Overview
       // cards belong to the group that fixture plays in. Operating another
       // group must not surface the Seniors match here. A legacy mc with no
@@ -13839,14 +14128,8 @@
             </div>
           </div>` : ''}
 
-          <!-- ── Fixtures (RC4.10B) — entry and import are reachable from Overview ── -->
-          ${renderOverviewFixturesCard()}
-
-          <!-- ── Club Command Dashboard — leads the page (Today at a glance) ──────── -->
-          <div class="mctl-section-label">Today at a glance</div>
-          ${renderClubCommandDashboard()}
-
-          <!-- ── NOW ───────────────────────────────────────────── -->
+          <!-- ── NOW ── An urgent item outranks any snapshot, so what needs
+               doing stays above the cards. Unchanged list, unchanged actions. -->
           ${nowItems.length ? `
           <div class="mctl-section-label">Now</div>
           <div class="home-attn-list">
@@ -13863,6 +14146,18 @@
               </div>`).join('')}
           </div>` : `
           <div class="mctl-allclear"><span class="mctl-allclear-icon">✓</span><span>${allClearText}</span></div>`}
+
+          <!-- ── COMMAND CENTRE ───────────────────────────────────────────────
+               Row 1: upcoming fixture · training · availability.
+               Row 2: recent activity · squad availability · messages.
+               The standalone Match-week, squad-status, next-fixture-availability
+               and Match-Centre cards that used to sit lower down all said the
+               same things these cards say; they are folded in rather than
+               repeated. Fixture entry and import moved to Quick actions. ── -->
+          <div class="mctl-section-label">Today at a glance</div>
+          ${renderClubCommandDashboard()}
+
+          ${renderOverviewQuickActions()}
 
           <!-- ── THIS WEEK ─────────────────────────────────────── -->
           ${weekItems.length ? `
@@ -13882,156 +14177,6 @@
             <summary>Done today <span class="muted">(${receipts.length})</span></summary>
             ${receipts.map(r => `<div class="mctl-receipt"><span class="mctl-tick">✓</span>${esc(r)}</div>`).join('')}
           </details>` : ''}
-
-          <!-- ── NEXT FIXTURE (Match Week card) ───────────────── -->
-          ${nextFx ? (() => {
-            const fxDate   = nextFx.date ? new Date(nextFx.date + 'T12:00:00').toLocaleDateString('en-GB',{ weekday:'short', day:'numeric', month:'short' }) : '';
-            const fxCd     = fixtureCountdown(nextFx);
-            const fxHa     = { home:'Home', away:'Away', neutral:'Neutral' }[nextFx.homeAway] || '';
-            const fxStatus = fixtureDisplayStatus(nextFx);
-            const fxType   = fixtureTypeStyle(nextFx.type);
-            return `
-            <div class="mctl-section-label">Match week</div>
-            <div class="card" role="button" tabindex="0" onclick="setSection('coach','fixtures')" style="cursor:pointer">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
-                <div style="min-width:0">
-                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
-                    <span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.06em;background:${fxType.bg};color:${fxType.color}">${esc(nextFx.type || 'Fixture')}</span>
-                    ${fxHa ? `<span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.06em;background:${nextFx.homeAway==='home'?'rgba(52,211,153,0.12)':'rgba(148,163,184,0.1)'};color:${nextFx.homeAway==='home'?'#34d399':'#94a3b8'}">${fxHa}</span>` : ''}
-                    <span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.06em;background:${fxStatus.bg};color:${fxStatus.color}">${fxStatus.label}</span>
-                  </div>
-                  <div style="font-size:17px;font-weight:800;letter-spacing:-0.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">vs ${esc(nextFx.opposition || 'TBC')}</div>
-                  ${nextFx.competition ? `<div style="font-size:12px;color:var(--muted);margin-top:1px">${esc(nextFx.competition)}</div>` : ''}
-                  <div style="font-size:12px;color:var(--muted);margin-top:4px">${[fxDate, nextFx.kickoffTime ? 'KO ' + esc(nextFx.kickoffTime) : '', nextFx.venue ? '' + esc(nextFx.venue) : ''].filter(Boolean).join(' · ')}</div>
-                </div>
-                ${fxCd ? `
-                <div style="text-align:right;flex-shrink:0">
-                  <div style="font-size:22px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1">${fxCd}</div>
-                  <div style="font-size:10px;color:var(--muted);margin-top:2px">until kick-off</div>
-                </div>` : ''}
-              </div>
-            </div>`;
-          })() : ''}
-
-          <!-- ── SQUAD STATUS (for next fixture) ───────────────── -->
-          ${nextFx ? (() => {
-            const nextSel = selectionFindForFixture(nextFx.id);
-            if (!nextSel) {
-              return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px">
-                <span style="font-size:13px;color:var(--muted)">No squad selected yet</span>
-                <button class="btn primary" type="button" onclick="selectionGoCreate('${esc(nextFx.id)}')">+ Select squad</button>
-              </div>`;
-            }
-            const isPub    = nextSel.status === 'published';
-            const stCount  = selectionStarterCount(nextSel);
-            const bCount   = selectionBenchCount(nextSel);
-            const annSt    = isPub ? selectionAnnouncementStatus(nextSel) : null;
-            const notAnn   = annSt && annSt.status === 'not_announced';
-            return `<div class="card" style="padding:12px 16px">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-                <div>
-                  <div style="font-size:13px;font-weight:700;${isPub?'color:#34d399':'color:#f59e0b'}">${isPub?'✓ Squad published':'Draft squad saved'}</div>
-                  <div class="muted" style="font-size:11px;margin-top:2px">${stCount}/15 starters · ${bCount}/8 bench</div>
-                </div>
-                <button class="btn${isPub?'':' primary'}" type="button" onclick="selectionGoEdit('${esc(nextSel.id)}')">${isPub?'View squad':'Complete &amp; publish'}</button>
-              </div>
-              ${isPub && annSt ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px">
-                <span style="font-size:12px;font-weight:600;color:${annSt.color}">${annSt.label}</span>
-                ${notAnn ? `<button class="btn" type="button" style="font-size:12px;padding:4px 12px" onclick="selectionGoEdit('${esc(nextSel.id)}')">Announce</button>` : ''}
-              </div>` : ''}
-            </div>`;
-          })() : ''}
-
-          <!-- Phase 18 — Next fixture availability widget -->
-          ${isCoach() ? (() => {
-            const _today    = new Date().toISOString().slice(0,10);
-            const _upcoming = fixtureSortByDate(contextFixtures().map(normalizeFixture).filter(Boolean))
-              .find(f => (f.date >= _today || !f.date) && f.status !== 'cancelled' && f.status !== 'completed');
-            if (!_upcoming) return '';
-            const _summ   = fixtureAvailabilitySummary(_upcoming.id, state.players);
-            const _crit   = _summ.warnings.filter(w => w.severity === 'critical').length;
-            const _warn   = _summ.warnings.filter(w => w.severity === 'warning').length;
-            const _days   = fixtureCountdownDays(_upcoming.date);
-            const _daysStr = _days === null ? '' : _days === 0 ? 'Today' : _days === 1 ? 'Tomorrow' : _days + ' days away';
-            const _border  = _crit > 0 ? ';border-color:rgba(248,113,113,0.3)' : _warn > 0 ? ';border-color:rgba(251,191,36,0.3)' : '';
-            const _warnLine = _crit > 0
-              ? '<div style="margin-top:6px;font-size:12px;color:#f87171;font-weight:600">' + _crit + ' critical position warning' + (_crit>1?'s':'') + '</div>'
-              : _warn > 0
-              ? '<div style="margin-top:6px;font-size:12px;color:#fbbf24;font-weight:600">⚠ ' + _warn + ' position warning' + (_warn>1?'s':'') + '</div>'
-              : '';
-            return '<div class="card" style="padding:12px 16px' + _border + '">' +
-              '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">' +
-                '<div>' +
-                  '<div style="font-size:13px;font-weight:700">Availability — vs ' + esc(_upcoming.opposition||'TBC') + '</div>' +
-                  '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + _daysStr + '</div>' +
-                '</div>' +
-                '<button class="btn" type="button" style="font-size:12px" onclick="setSection(\'coach\',\'fixtures\')">View fixtures</button>' +
-              '</div>' +
-              '<div style="display:flex;gap:10px;font-size:12px;flex-wrap:wrap">' +
-                '<span style="color:#34d399;font-weight:700">' + _summ.available + ' available</span>' +
-                '<span style="color:#fbbf24">' + _summ.maybe + ' maybe</span>' +
-                '<span style="color:#f87171">' + _summ.unavailable + ' unavailable</span>' +
-                '<span style="color:#94a3b8">' + _summ.noReply + ' no reply</span>' +
-              '</div>' +
-              _warnLine +
-            '</div>';
-          })() : ''}
-
-          ${/* Phase 20 — Match Centre overview widget */ isCoach() ? (() => {
-            const mc    = state.matchCentre || {};
-            const key   = matchKey();
-            const events = (state.matchEvents || {})[key] || [];
-            const score  = matchComputeScore(events);
-            const status = (state.matchStatus || {})[key] || 'pre';
-            const hasMatch = mcInGroup && (mc.kickoffDate || mc.opposition);
-            const statusColors = { pre:'#60a5fa', live:'#34d399', ht:'#fbbf24', ft:'#94a3b8' };
-            const sColor = statusColors[status] || '#60a5fa';
-            const kickoffDisplay = mc.kickoffDate
-              ? new Date(mc.kickoffDate + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short' })
-              : '';
-            const pastMatches = Object.entries(state.matchEvents || {})
-              .filter(([k,evs]) => {
-                const s = (state.matchStatus||{})[k];
-                return s === 'ft' && evs.length > 0;
-              });
-            const lastResult = pastMatches.length > 0
-              ? (() => {
-                  const [lKey, lEvs] = pastMatches[pastMatches.length - 1];
-                  const lScore = matchComputeScore(lEvs);
-                  return { score: lScore, key: lKey };
-                })()
-              : null;
-            return '<div class="card" style="margin-bottom:14px">' +
-              '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
-                '<div style="font-size:13px;font-weight:700">Match Centre</div>' +
-                '<button class="btn" style="font-size:12px" onclick="setSection(\'coach\',\'matchday\')">Open →</button>' +
-              '</div>' +
-              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
-                '<div style="background:var(--panel-2);border-radius:10px;padding:12px">' +
-                  '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Next match</div>' +
-                  (hasMatch
-                    ? '<div style="font-size:14px;font-weight:800">vs ' + esc(mc.opposition||'TBC') + '</div>' +
-                      (kickoffDisplay ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + kickoffDisplay + (mc.kickoffTime?' · '+esc(mc.kickoffTime):'') + '</div>' : '') +
-                      '<div style="margin-top:6px;display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + sColor + '1a;color:' + sColor + '">' + MATCH_STATUS_LABELS[status] + '</div>'
-                    : '<div style="font-size:12px;color:var(--muted)">No match configured</div>') +
-                '</div>' +
-                '<div style="background:var(--panel-2);border-radius:10px;padding:12px">' +
-                  '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Last result</div>' +
-                  (lastResult
-                    ? '<div style="font-size:22px;font-weight:900">' +
-                        '<span style="color:' + (lastResult.score.us>lastResult.score.them?'#34d399':lastResult.score.us<lastResult.score.them?'#f87171':'#fbbf24') + '">' + lastResult.score.us + '</span>' +
-                        '<span style="color:var(--muted);font-size:14px;margin:0 4px">–</span>' +
-                        '<span style="color:#f87171">' + lastResult.score.them + '</span>' +
-                      '</div>'
-                    : '<div style="font-size:12px;color:var(--muted)">No results yet</div>') +
-                '</div>' +
-              '</div>' +
-            '</div>';
-          })() : ''}
-
-          <!-- Lower Phase-24 dashboard removed from the Beta overview: the page
-               ends after the Match Centre area. _renderCommandDashboard() is
-               retained for the full build. -->
 
           <!-- ── Weekly Availability — automation card, moved below the command
                sections so Overview leads as a coach command page. Unchanged card +
