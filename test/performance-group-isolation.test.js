@@ -190,9 +190,12 @@ test('DASH2: one rule for fabricated Performance data — no second implementati
   for (const f of ['perfDashboardHtml', 'perfAnalyticsHtml', 'perfWkAssignment']) {
     assert.match(fn(f), /perfDemoDataAllowed\(\)/, `${f} must use the shared demo-data rule`);
   }
-  // installDemoSquad is a manual console action, not a Performance render path,
-  // and keeps the hostname helper it has always used.
-  assert.match(fn('installDemoSquad'), /_isLocalDemoHost\(\)/);
+  // installDemoSquad now shares the SAME rule: it replaces a real club's roster
+  // with fabricated players and persists it, and the hostname helper admitted
+  // every packaged origin (capacitor:// on iOS, http://localhost on Android).
+  const installer = fn('installDemoSquad').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  assert.match(installer, /perfDemoDataAllowed\(\)/, 'the demo squad uses the shared rule too');
+  assert.ok(!/_isLocalDemoHost\(\)/.test(installer), 'and no longer the hostname-only helper');
   // The Performance rule is STRICTER than the host helper, not a copy of it.
   const rule = fn('perfDemoDataAllowed');
   assert.match(rule, /_devLoginEnabled/, 'requires the server-declared development deployment');

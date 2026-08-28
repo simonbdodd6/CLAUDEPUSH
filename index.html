@@ -6023,7 +6023,11 @@
     // ---------------------------------------------------------------------------
     // Loads a 30-player rugby squad into LOCAL browser state so the V18 Match
     // Centre drag/drop/search/swap/pick can be exercised without real data.
-    //  • Runs ONLY on localhost / 127.0.0.1 (never on a deployed domain).
+    //  • Runs ONLY in an explicitly permitted DEVELOPMENT environment, decided by
+    //    perfDemoDataAllowed(): the server must declare a development deployment
+    //    (DEV_LOGIN), the runtime must not be native (Capacitor/Cordova/ionic:/
+    //    file:), and the host must be local. A localhost-shaped origin is NOT
+    //    sufficient on its own — that is how a packaged app would have qualified.
     //  • Never written to any server/DB: while active, the roster sync (push AND
     //    pull) is short-circuited, so this lives purely in memory + this browser's
     //    localStorage. No API, auth, or production-data change.
@@ -6068,7 +6072,21 @@
       return ['localhost', '127.0.0.1', '0.0.0.0'].indexOf(location.hostname) !== -1;
     }
     function installDemoSquad() {
-      if (!_isLocalDemoHost()) { console.warn('[demo] installDemoSquad is localhost-only; ignored on', location.hostname); return; }
+      // This REPLACES state.players, the Match Centre fixture, the starting XV
+      // and the bench with fabricated content, then saveState()s it — so on a
+      // real club's device it overwrites their squad with invented players.
+      // The guard was _isLocalDemoHost(), which tests the hostname ALONE, so
+      // every packaged origin qualified: capacitor://localhost (iOS),
+      // http://localhost (Android) and ionic://localhost all passed it.
+      //
+      // perfDemoDataAllowed() is the rule the Performance fixtures already use,
+      // and the boundary is identical — "an explicitly permitted development
+      // environment" is not a Performance-specific question. Reused rather than
+      // restated, so there is ONE definition of that boundary and not two.
+      if (!perfDemoDataAllowed()) {
+        console.warn('[demo] installDemoSquad is development-only; ignored.');
+        return;
+      }
       // Players (all available for selection)
       state.players = DEMO_SQUAD_V18.map((p, i) => ({ id: 'demo-' + (i + 1), name: p.name, position: p.pos, game: 'available' }));
       // A fixture + match session so the Match Centre + availability populate
@@ -38208,7 +38226,10 @@
     // TEMPORARY DEMO SQUAD FOR LOCAL V18 TESTING ONLY — auto-install on ?demo
     // (localhost only). Runs after the initial roster load so the demo wins.
     try {
-      if (_isLocalDemoHost() && /(?:[?&#])demo\b/i.test(location.search + location.hash)) {
+      // Gated here as well as inside installDemoSquad: a link carrying ?demo must
+      // not even schedule the install outside development, and the installer
+      // refuses independently if it is ever reached another way.
+      if (perfDemoDataAllowed() && /(?:[?&#])demo\b/i.test(location.search + location.hash)) {
         setTimeout(installDemoSquad, 450);
       }
     } catch (e) { /* ignore */ }
