@@ -405,6 +405,33 @@ function sanitiseSquad(raw) {
     ? raw.benchPlayers.map(n => String(n || ''))
     : [];
   const matchMinutes = sanitiseMatchMinutes(raw.matchMinutes);
+  // ── WHO those names meant (identity pass) ───────────────────────────────
+  // Resolved by the client at publish time from its own club roster, using the
+  // canonical identity substitutions and season statistics already use. Stored
+  // ALONGSIDE the names, never instead of them: the names are the historical
+  // display and every sheet published before this build has only them.
+  //
+  // Shape mirrors the names exactly — an object keyed by slot, and an array by
+  // bench index — so a reader can pair them positionally without a second
+  // model. Only the durable form is accepted: a key must look like "id:<x>",
+  // which is what playerMatchKey produces. An unresolved "nm:<name>" is
+  // deliberately NOT storable, because freezing a guess is worse than leaving
+  // the entry to the existing safe name resolution.
+  const personKey = v => {
+    const k = String(v || '').trim();
+    return /^id:[A-Za-z0-9._:-]{1,80}$/.test(k) ? k : '';
+  };
+  const formationKeys = raw.formationKeys && typeof raw.formationKeys === 'object' && !Array.isArray(raw.formationKeys)
+    ? Object.fromEntries(
+        Object.entries(raw.formationKeys)
+          .slice(0, 30)
+          .map(([k, v]) => [String(k).slice(0, 8), personKey(v)])
+          .filter(([, v]) => v)
+      )
+    : {};
+  const benchKeys = Array.isArray(raw.benchKeys)
+    ? raw.benchKeys.slice(0, 30).map(personKey)
+    : [];
   return {
     published:     Boolean(raw.published),
     publishedAt:   raw.publishedAt  || null,
@@ -439,6 +466,8 @@ function sanitiseSquad(raw) {
     // Absent means the rugby default; it is never inferred from anything else.
     matchMinutes,
     substitutions: sanitiseSubstitutions(raw.substitutions, matchMinutes),
+    formationKeys,
+    benchKeys,
   };
 }
 
@@ -1478,6 +1507,10 @@ function seasonSheetProjection(squad) {
   return {
     formationNames: (squad && typeof squad.formationNames === 'object') ? squad.formationNames : {},
     benchPlayers:   Array.isArray(squad?.benchPlayers) ? squad.benchPlayers : [],
+    // Absent on every sheet published before the identity pass — absent stays
+    // absent, and the aggregation falls back to resolving the name.
+    formationKeys:  (squad && typeof squad.formationKeys === 'object') ? squad.formationKeys : {},
+    benchKeys:      Array.isArray(squad?.benchKeys) ? squad.benchKeys : [],
     substitutions:  Array.isArray(squad?.substitutions) ? squad.substitutions : [],
     matchMinutes:   Number.isInteger(squad?.matchMinutes) ? squad.matchMinutes : DEFAULT_MATCH_MINUTES,
   };

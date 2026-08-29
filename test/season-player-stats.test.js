@@ -452,7 +452,11 @@ test('SERVER: tactical notes never leave the club', async () => {
   assert.ok(!body.includes('private note'), 'nor the announcement');
   const sheet0 = (await seasonRead('u-coach', { group: SEN })).body.sheets[0];
   assert.deepEqual(Object.keys(sheet0).sort(),
-    ['benchPlayers', 'date', 'fixtureId', 'formationNames', 'matchMinutes', 'opposition', 'sideId', 'substitutions', 'teamName'],
+    // benchKeys/formationKeys are the identity pass: WHO each name meant,
+    // resolved at publish time. They are part of the minimum precisely because
+    // without them a rename orphans the history they describe.
+    ['benchKeys', 'benchPlayers', 'date', 'fixtureId', 'formationKeys', 'formationNames',
+     'matchMinutes', 'opposition', 'sideId', 'substitutions', 'teamName'],
     'exactly the minimum a season statistic needs');
 });
 

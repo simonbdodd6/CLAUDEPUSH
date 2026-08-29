@@ -235,8 +235,12 @@ test('the allow-list holds exactly the two identity fields plus display data', a
   } });
   const shape = r.body.squad;
   assert.deepEqual(Object.keys(shape).sort(), [
-    'announcement', 'arrivalTime', 'benchPlayers', 'competition', 'fixtureId', 'formationNames',
+    'announcement', 'arrivalTime', 'benchKeys', 'benchPlayers', 'competition', 'fixtureId',
+    'formationKeys', 'formationNames',
     'gamePlan', 'kickoffDate', 'kickoffTime', 'kit',
+    // The identity pass: WHO each sheet name meant, resolved at publish time
+    // and stored ALONGSIDE the names so a rename cannot orphan the history.
+    // Sanitised in place like everything else; nothing unknown gets through.
     // The substitution pass: full time lives with the match because the fixture
     // model carries no duration, and the events live with the sheet they are
     // about. Both are sanitised in place, like everything else here.

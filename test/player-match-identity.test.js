@@ -163,7 +163,13 @@ test('appearances no longer read squadSelections', () => {
   const src = extractFn(html, 'appearancesCalculated');
   assert.ok(!/squadSelections/.test(src), 'the empty, unreachable source is gone');
   assert.ok(!/status !== 'published'/.test(src), 'the selection status model went with it');
-  assert.match(src, /mcPersonKey\(name\)/, 'names resolve through the canonical identity');
+  // The call now lives in a `collect(name, stored)` helper that prefers the
+  // identity the sheet STORED and falls back to resolving the name. The
+  // invariant is unchanged — the canonical resolver is what turns a name into
+  // an identity — so the assertion follows the call rather than a parameter name.
+  assert.match(src, /mcPersonKey\(clean\)/, 'names resolve through the canonical identity');
+  assert.match(src, /String\(stored \|\| ''\)\.trim\(\) \|\| mcPersonKey\(clean\)/,
+    'and a stored identity is preferred to re-resolving the name');
   assert.match(src, /formationNames|benchPlayers/, 'it reads match sheets');
 });
 

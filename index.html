@@ -19474,11 +19474,20 @@
         const fx = fxById[sheet.fixtureId];
         if (seen.has(fx.id)) return;
         seen.add(fx.id);
+        // Same identity preference as the counting above: the key the sheet
+        // stored, else the name resolved now. Without this, a renamed player's
+        // per-match list would disagree with their own appearance count.
+        const fKeys = (sheet.formationKeys && typeof sheet.formationKeys === 'object') ? sheet.formationKeys : {};
+        const bKeys = Array.isArray(sheet.benchKeys) ? sheet.benchKeys : [];
         const keys = new Set();
-        [...Object.values(sheet.formationNames || {}),
-         ...(Array.isArray(sheet.benchPlayers) ? sheet.benchPlayers : [])]
-          .map(n => String(n || '').trim()).filter(Boolean)
-          .forEach(name => { const k = mcPersonKey(name); if (k) keys.add(k); });
+        const collect = (name, stored) => {
+          const clean = String(name || '').trim();
+          if (!clean) return;
+          const k = String(stored || '').trim() || mcPersonKey(clean);
+          if (k) keys.add(k);
+        };
+        Object.entries(sheet.formationNames || {}).forEach(([slot, n]) => collect(n, fKeys[slot]));
+        (Array.isArray(sheet.benchPlayers) ? sheet.benchPlayers : []).forEach((n, i) => collect(n, bKeys[i]));
         if (!keys.size) return;
         matches.push({
           fixtureId: fx.id, date: fx.date || '', opposition: fx.opposition || '',
@@ -19581,19 +19590,33 @@
 
         // WHO WAS ON THE SHEET. Resolved through the canonical identity, so a
         // renamed player or a recreated roster row is still the same person.
+        // WHO WAS ON THE SHEET.
+        //
+        // A sheet published since the identity pass carries the durable key
+        // each name meant, resolved when it was published. That key is used in
+        // preference to the name, which is why renaming a player no longer
+        // orphans their history: the sheet still knows who they are even when
+        // the name on it no longer matches the roster.
+        //
+        // A sheet published BEFORE that pass has no keys, and an entry that
+        // could not be resolved at publish time has none either. Both fall back
+        // to resolving the name — the existing, safe behaviour, which leaves a
+        // genuinely unknown name unresolved rather than guessing.
+        const formationKeys = (sheet.formationKeys && typeof sheet.formationKeys === 'object') ? sheet.formationKeys : {};
+        const benchKeys = Array.isArray(sheet.benchKeys) ? sheet.benchKeys : [];
         const people = [];
         const seen = new Set();
-        const add = (name, role) => {
+        const add = (name, role, stored) => {
           const clean = String(name || '').trim();
           if (!clean) return;
-          const key = mcPersonKey(clean);
+          const key = String(stored || '').trim() || mcPersonKey(clean);
           if (!key || seen.has(key)) return;
           seen.add(key);
           if (key.startsWith('nm:')) unresolved.add(clean);
           people.push({ key, role });
         };
-        Object.values(sheet.formationNames || {}).forEach(n => add(n, 'starter'));
-        (Array.isArray(sheet.benchPlayers) ? sheet.benchPlayers : []).forEach(n => add(n, 'bench'));
+        Object.entries(sheet.formationNames || {}).forEach(([slot, n]) => add(n, 'starter', formationKeys[slot]));
+        (Array.isArray(sheet.benchPlayers) ? sheet.benchPlayers : []).forEach((n, i) => add(n, 'bench', benchKeys[i]));
         if (!people.length) return;
 
         // The match's events, chronological, and only ones this sheet can mean.
@@ -36734,16 +36757,60 @@
       } catch(e) { console.warn('[syncSessionsToServer]', e); return false; }
     }
 
+    /**
+     * THE SHEET'S DURABLE IDENTITIES, resolved at publish time.
+     *
+     * A team sheet names its players as text, which is a record of what was
+     * written, not of who was written. Rename a player and the sheet's own
+     * history stops resolving to them — their season appearances become
+     * "unresolved" and, correctly but uselessly, are credited to nobody.
+     *
+     * So publishing now also stores WHO each name meant, resolved once against
+     * the roster as it stands at that moment, using the canonical identity the
+     * substitutions and the season aggregation already use. The names stay
+     * exactly as they are: they are the historical display, and every existing
+     * sheet depends on them.
+     *
+     * A name is recorded ONLY when it resolves to a durable identity. An
+     * unresolved name ("nm:…") is deliberately left out rather than stored,
+     * because storing it would freeze a guess; leaving it absent keeps the
+     * existing, safe name-resolution behaviour for that entry.
+     *
+     * Nothing is fuzzy-matched, nothing crosses a group, and nothing reaches
+     * another club: findPlayerByName is an exact, case-insensitive match against
+     * this device's own club roster, and two players sharing a name resolve to
+     * whichever the roster returns — the same one the sheet already meant.
+     */
+    function sheetPersonKeys(formationNames, benchPlayers) {
+      const durable = name => {
+        const key = mcPersonKey(String(name || '').trim());
+        return (key && !key.startsWith('nm:')) ? key : '';
+      };
+      const formationKeys = {};
+      Object.entries(formationNames || {}).forEach(([slot, name]) => {
+        const key = durable(name);
+        if (key) formationKeys[String(slot)] = key;
+      });
+      const benchKeys = (Array.isArray(benchPlayers) ? benchPlayers : []).map(durable);
+      return { formationKeys, benchKeys };
+    }
+
     async function syncSquadToServer() {
       if (!isCoach()) return;
       const mc = state.matchCentre || {};
+      const formationNames = state.formationNames || {};
+      const benchPlayers = state.benchPlayers || [];
+      const { formationKeys, benchKeys } = sheetPersonKeys(formationNames, benchPlayers);
       try {
         await fetch('/api/publish', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'squad',
-            data: { ...mc, formationNames: state.formationNames || {}, benchPlayers: state.benchPlayers || [],
+            data: { ...mc, formationNames, benchPlayers,
+                    // Who those names meant, so a later rename cannot orphan
+                    // this match. Names are kept untouched alongside.
+                    formationKeys, benchKeys,
                     fixtureId: matchCentreFixtureId(), sideId: matchCentreSideId() },
           }),
         });
