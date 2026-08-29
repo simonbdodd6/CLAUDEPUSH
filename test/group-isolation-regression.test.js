@@ -64,6 +64,7 @@ function poolHarness({ gid, loaded, members, rows, canManage = true }) {
     function canI() { return ${JSON.stringify(canManage)}; }
     function ensureAdminData() { calls.ensure++; }
     ${fn('clubUsesPlayerGroups')}
+    ${fn('playerGroupIdOf')}
     ${fn('operationalPlayers')}
     return { pool: operationalPlayers().map(p => p.name), calls };
   `)();

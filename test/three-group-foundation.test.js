@@ -348,6 +348,7 @@ function clientPool(groupId, memberCount) {
     function operationalGroups() { return [
       { id: '${SEN}', name: 'Seniors' }, { id: '${U18}', name: 'U18' }, { id: '${WOM}', name: "Women's" }]; }
     ${fn('clubUsesPlayerGroups')}
+    ${fn('playerGroupIdOf')}
     ${fn('operationalPlayers').replace('canonicalVisiblePlayers()', '_players')}
     return operationalPlayers();
   `)(groupId, players, members);

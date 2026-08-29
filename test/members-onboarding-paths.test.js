@@ -79,6 +79,7 @@ function buildScope({ members = [], players = [], groupId = 'grp_a', form = {} }
     function canonicalVisiblePlayers() { return state.players; }
     const document = { getElementById: id => ({ value: _f[id] || '' }) };
     ${extractFn(html, 'clubUsesPlayerGroups')}
+    ${extractFn(html, 'playerGroupIdOf')}
     ${extractFn(html, 'operationalPlayers')}
     ${extractFn(html, 'upsertCanonicalPlayerRecord')}
     ${extractFn(html, 'addPlayer')}

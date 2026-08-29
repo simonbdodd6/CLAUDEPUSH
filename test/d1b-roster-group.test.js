@@ -285,6 +285,7 @@ function ctx(operational, activeView = 'coach', members = [], players = []) {
     ${fn('setOperationalGroup')}
     ${fn('operationalGroupName')}
     ${fn('clubUsesPlayerGroups')}
+    ${fn('playerGroupIdOf')}
     ${fn('operationalPlayers')}
     return { state, operationalGroups, resolveOperationalGroup, setOperationalGroup,
              operationalPlayers, operationalGroupName,

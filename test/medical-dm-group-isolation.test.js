@@ -61,6 +61,7 @@ function buildMedicalScope(gid) {
     let _sharedMedical = { loaded: false, cases: [], players: [] };
     function canonicalVisiblePlayers() { return state.players; }
     ${fn('clubUsesPlayerGroups')}
+    ${fn('playerGroupIdOf')}
     ${fn('operationalPlayers')}
     ${fn('medicalPlayers')}
     return medicalPlayers();
@@ -93,6 +94,7 @@ test('Medical: legacy club (no grouped memberships) and player view keep the ful
     let _sharedMedical = { loaded: false, cases: [], players: [] };
     function canonicalVisiblePlayers() { return state.players; }
     ${fn('clubUsesPlayerGroups')}
+    ${fn('playerGroupIdOf')}
     ${fn('operationalPlayers')}
     ${fn('medicalPlayers')}
     return medicalPlayers();

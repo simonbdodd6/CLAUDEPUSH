@@ -16946,6 +16946,74 @@
       const empty = document.getElementById('members-search-empty');
       if (empty) empty.style.display = (query && shown === 0) ? 'block' : 'none';
     }
+    /**
+     * "N players are not in any group" — the Members warning, and its remedy.
+     *
+     * Nothing is guessed and nothing is assigned automatically: the coach picks
+     * the group, and the pick goes through the SAME set_player_group action the
+     * member profile's "Plays for" control uses, which the server re-validates
+     * against this club's structure and its ASSIGN_ACCESS permission.
+     *
+     * Renders nothing at all when there is nothing to report, so a healthy club
+     * sees no warning.
+     */
+    function renderUnassignedPlayersCard() {
+      if (!canI('assign_access')) return '';
+      const { assignable, unlinked, total } = unassignedRosterPlayers();
+      if (!total) return '';
+
+      const groups = activePlayerGroups();
+      const sel = 'min-height:38px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);padding:0 9px;font-size:13px;max-width:210px';
+      // The name can shrink; the control wraps as a whole rather than breaking
+      // "Plays for" across two lines, which is what it did at 390px.
+      const row = inner => `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--line)">${inner}</div>`;
+      const nameCell = 'flex:1 1 150px;min-width:0';
+
+      const assignableRows = assignable.map(({ player, memberId }) => row(`
+        <div style="${nameCell}">
+          <strong style="font-size:13px">${esc(player.name || 'Unnamed player')}</strong>
+          ${player.email && !/@player\.test$/i.test(player.email)
+            ? `<div class="muted" style="font-size:11.5px">${esc(player.email)}</div>` : ''}
+        </div>
+        <label style="display:flex;align-items:center;gap:7px;flex:0 0 auto;white-space:nowrap;font-size:12px;font-weight:700;color:var(--muted)">
+          Plays for
+          <select style="${sel}" aria-label="Playing group for ${esc(player.name || 'this player')}"
+            onchange="adminSetPlayerGroup('${esc(memberId)}',this.value,'${esc(player.name || 'This player')}')">
+            <option value="" selected>Choose a group…</option>
+            ${groups.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}
+          </select>
+        </label>`)).join('');
+
+      // No membership means no field to set: offering a group picker here would
+      // be a control that cannot work. The honest remedy for a record with no
+      // account is to invite the person properly, or clear the leftover row.
+      const unlinkedRows = unlinked.map(({ player }) => row(`
+        <div style="${nameCell}">
+          <strong style="font-size:13px">${esc(player.name || 'Unnamed player')}</strong>
+          <div class="muted" style="font-size:11.5px">No account — a squad-list record only, so it cannot join a group.</div>
+        </div>
+        ${isCoach() ? `<button class="btn" type="button" style="min-height:32px;font-size:12px;padding:0 11px"
+          onclick="removePlayerFromSquad('${esc(player.id)}')">Remove from list</button>` : ''}`)).join('');
+
+      // The amber accent needs !important: BOTH theme layers set
+      // .card { border: ... !important }, so a plain inline border-left is
+      // inert. It is what marks this card as needing attention rather than
+      // reading as one more panel.
+      return `
+        <div class="card" style="border-left:3px solid var(--status-maybe) !important">
+          <h3 style="margin:0 0 4px;font-size:15px;color:var(--ink)">
+            ${total} player${total === 1 ? ' is' : 's are'} not in any group
+          </h3>
+          <p class="muted" style="font-size:12.5px;margin:0 0 4px">
+            ${total === 1 ? 'This player does' : 'These players do'} not appear in Members, Availability or Match Centre
+            for any group. Choose where ${total === 1 ? 'they play' : 'each of them plays'} — nothing is assigned automatically.
+          </p>
+          ${assignable.length && !groups.length
+            ? `<p class="muted" style="font-size:12px;margin:8px 0 0">Your club has no active groups to assign to — add one in Club Admin first.</p>` : ''}
+          ${assignableRows}${unlinkedRows}
+        </div>`;
+    }
+
     function renderPlayers() {
       // Kick off a background sync of accepted invites each time this page renders
       if (isCoach()) loadInviteList().catch(()=>{});
@@ -17075,6 +17143,20 @@
             </div>
           </div>
           <p class="muted" style="font-size:12.5px;margin:2px 0 0">Share a link. Players and staff register themselves, sign in and join the right group automatically.</p>
+
+          <!-- ── Players in no group ────────────────────────────────────────
+               The server already counts these on the group-scoped roster read
+               ("unassigned", api/publish.js) but the client never asked for that
+               read, so nobody ever saw them. They are invisible on every
+               group-scoped surface — Members, Availability, Match Centre — until
+               a group is chosen, which is why this sits above the squad list
+               rather than inside More options.
+
+               Shown ONLY when there is something to report AND the viewer holds
+               the permission the assignment itself requires (assign_access, the
+               same gate as set_player_group), so nobody is warned about a
+               problem they cannot fix. -->
+          ${renderUnassignedPlayersCard()}
 
           <!-- ── Invite & Access panel (ordered below the squad list) ── -->
           <div class="card" style="order:5;padding:0;overflow:hidden">
@@ -36253,15 +36335,85 @@
         ensureAdminData();
         return [];
       }
-      const members = _adminData.members || [];
       // A pre-structure club has no grouped memberships at all — keep the
       // full roster (legacy behaviour). The moment memberships carry player
       // groups, the pool follows the OPERATING group — including for a
       // single-group coach, whose club may hold groups they never see.
       if (!clubUsesPlayerGroups()) return rows;
-      const groupOf = p => members.find(m =>
-        m.status === 'active' && String(m.userId) === String(p.userId || ''))?.playerGroupId || '';
-      return rows.filter(p => String(groupOf(p)) === gid);
+      return rows.filter(p => String(playerGroupIdOf(p)) === gid);
+    }
+
+    /**
+     * WHERE THIS PLAYER PLAYS — the one client-side answer.
+     *
+     * The membership carries it, and only an ACTIVE membership counts: a
+     * pending join request is not yet a member of anything, and treating it as
+     * one would let an unapproved person into a squad.
+     *
+     * This is the rule the server applies on the group-scoped roster read
+     * (api/publish.js rosterHandler), and it is deliberately the ONLY place the
+     * client answers the question. operationalPlayers() filters by it and
+     * unassignedRosterPlayers() is its exact complement, so the list of players
+     * "not in a group" can never disagree with the list of players a group can
+     * see.
+     */
+    function playerGroupIdOf(player) {
+      const uid = String(player?.userId || '');
+      if (!uid) return '';                       // no account behind the record
+      return (_adminData.members || []).find(m =>
+        m.status === 'active' && String(m.userId) === uid)?.playerGroupId || '';
+    }
+
+    /** The ACTIVE membership behind a roster row, or null — what "Plays for" needs. */
+    function activeMembershipFor(player) {
+      const uid = String(player?.userId || '');
+      if (!uid) return null;
+      return (_adminData.members || []).find(m =>
+        m.status === 'active' && String(m.userId) === uid) || null;
+    }
+
+    /**
+     * Roster players who belong to NO group — the client's reading of the count
+     * the server already reports as `unassigned`.
+     *
+     * They are invisible everywhere: Members, Availability and Match Centre all
+     * read operationalPlayers(), which keeps only players whose membership names
+     * the operating group. Until someone chooses a group for them they are on no
+     * screen at all, which is why this had to become visible.
+     *
+     * FAIL CLOSED while the membership list is loading, for the same reason
+     * operationalPlayers() does: an empty _adminData.members is indistinguishable
+     * from "nobody has a group", and mid-load that would report the ENTIRE squad
+     * as unassigned — and invite the coach to act on it.
+     *
+     * Returns two kinds, because only one of them can be repaired here:
+     *   · assignable — an active membership with no playerGroupId. "Plays for"
+     *     sets it (set_player_group), exactly as it does on a member's profile.
+     *   · unlinked  — a roster row with no account behind it at all, left by the
+     *     old "+ Add player", the CSV import or a Match Centre sheet reconcile.
+     *     There is no membership to set a group on, so no picker is offered.
+     */
+    function unassignedRosterPlayers() {
+      if (!_adminData.loaded) return { assignable: [], unlinked: [], total: 0 };
+      // A club with no grouped memberships shows its whole roster everywhere —
+      // nobody is hidden, so there is nothing to warn about.
+      if (!clubUsesPlayerGroups()) return { assignable: [], unlinked: [], total: 0 };
+      const rows = canonicalVisiblePlayers()
+        .filter(p => p && p.id && !playerIsArchived(p) && !playerGroupIdOf(p));
+      const assignable = [], unlinked = [];
+      rows.forEach(p => {
+        const member = activeMembershipFor(p);
+        if (member) { assignable.push({ player: p, memberId: member.id }); return; }
+        // Someone whose membership exists but is NOT active is waiting on the
+        // Pending joins inbox, which is where they get approved. They have an
+        // account, so calling them a leftover record here would be wrong — and
+        // offering to delete their roster row would be worse. They belong to
+        // that workflow, not this one.
+        const uid = String(p.userId || '');
+        if (uid && (_adminData.members || []).some(m => String(m.userId) === uid)) return;
+        unlinked.push({ player: p });
+      });
+      return { assignable, unlinked, total: assignable.length + unlinked.length };
     }
 
     function operationalCapacity() {
