@@ -236,8 +236,14 @@ test('the allow-list holds exactly the two identity fields plus display data', a
   const shape = r.body.squad;
   assert.deepEqual(Object.keys(shape).sort(), [
     'announcement', 'arrivalTime', 'benchPlayers', 'competition', 'fixtureId', 'formationNames',
-    'gamePlan', 'kickoffDate', 'kickoffTime', 'kit', 'opposition', 'published', 'publishedAt',
+    'gamePlan', 'kickoffDate', 'kickoffTime', 'kit',
+    // The substitution pass: full time lives with the match because the fixture
+    // model carries no duration, and the events live with the sheet they are
+    // about. Both are sanitised in place, like everything else here.
+    'matchMinutes',
+    'opposition', 'published', 'publishedAt',
     'sideId',   // the dual-team pass: boundary-validated like fixtureId
+    'substitutions',
     'venue',
   ]);
   assert.equal(shape.fixtureId, MONS, 'preserved');

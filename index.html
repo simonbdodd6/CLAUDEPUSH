@@ -9562,6 +9562,341 @@
       saveCoachDraftDebounced();
       render();
     }
+    // ═══════════════════════════════════════════════════════════════════════
+    //  SUBSTITUTIONS — the playing-time foundation
+    //
+    //  WHAT THIS IS NOT: state.subPlan (just below) is a pre-match planning
+    //  scratchpad — free-typed names, a minute that may literally be "?", no
+    //  fixture, no group, no server. It is hidden in the commercial Beta and is
+    //  left exactly as it is. These are RECORDED EVENTS: what actually happened,
+    //  attached to a fixture, a side and a durable person.
+    //
+    //  IDENTITY. A match sheet identifies its players by NAME
+    //  (state.formationNames / state.benchPlayers), which is not an identity.
+    //  Match Day already solves this with mcPersonKey(), which resolves a sheet
+    //  name to "id:<userId or roster id>" — preferring the durable MEMBERSHIP
+    //  userId — and only falls back to "nm:<name>" for a name matching no
+    //  roster player. That existing key is what an event stores, so no second
+    //  identity system is introduced. The display name is stored alongside it as
+    //  a snapshot, so a sheet still reads correctly after someone is renamed.
+    //
+    //  SCOPE. Events live on state.matchCentre and travel with the match record,
+    //  which the server keys per fixture AND side and validates against the
+    //  club (assertFixtureBelongsToClub / assertSideBelongsToClub /
+    //  assertFixtureSideCoherence). A U18 substitution therefore cannot be read
+    //  or written under Seniors: it is stored under a fixture that belongs to
+    //  one group, and the squad it names is drawn from operationalPlayers().
+    // ═══════════════════════════════════════════════════════════════════════
+
+    const MATCH_MINUTES_DEFAULT = 80;
+    const MATCH_MINUTES_MAX     = 200;
+
+    /** Full time for the selected match. The fixture model carries no duration,
+     *  so this is stored with the match record and defaults to a rugby 80. */
+    function matchFullTimeMinutes() {
+      const n = Number((state.matchCentre || {}).matchMinutes);
+      return (Number.isInteger(n) && n >= 1 && n <= MATCH_MINUTES_MAX) ? n : MATCH_MINUTES_DEFAULT;
+    }
+
+    /** Recorded substitutions for the selected match, chronological. */
+    function matchSubstitutions() {
+      const subs = (state.matchCentre || {}).substitutions;
+      if (!Array.isArray(subs)) return [];
+      return subs.slice().sort((a, b) =>
+        (Number(a.minute) - Number(b.minute)) || String(a.at || '').localeCompare(String(b.at || '')));
+    }
+
+    /**
+     * WHO IS IN THIS MATCH — the sheet, resolved to people.
+     *
+     * Reads the same two arrays the sheet itself draws (formationNames and
+     * benchPlayers) and nothing else, so a substitution can only ever involve
+     * someone actually named on THIS fixture's team sheet. A blank slot, or a
+     * name that resolves to no roster player, simply is not in the squad.
+     */
+    function matchSquadPeople() {
+      const seen = new Set();
+      const out = [];
+      const add = (name, role, slot) => {
+        const clean = String(name || '').trim();
+        if (!clean) return;
+        const key = mcPersonKey(clean);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        out.push({ key, name: clean, role, slot });
+      };
+      rugbySlots.forEach(([label]) => add((state.formationNames || {})[label], 'starter', label));
+      (state.benchPlayers || []).forEach((name, i) => add(name, 'bench', String(i + 16)));
+      return out;
+    }
+
+    /**
+     * Is this substitution recordable? Returns a reason it is not, or null.
+     *
+     * Deliberately only the states this match model can actually represent:
+     * both players named, both on THIS sheet, not the same person, a minute
+     * inside the match, the player coming off actually on the pitch at that
+     * minute, and the player coming on not already on it.
+     */
+    function substitutionProblem({ offKey, onKey, minute }, existing, people, fullTime) {
+      if (!offKey) return 'Choose the player coming off';
+      if (!onKey)  return 'Choose the player coming on';
+      if (offKey === onKey) return 'A player cannot replace themselves';
+      const off = people.find(p => p.key === offKey);
+      const on  = people.find(p => p.key === onKey);
+      if (!off) return 'That player is not on this team sheet';
+      if (!on)  return 'That player is not on this team sheet';
+      // Minute 0 is legitimate (a change before kick-off), so the ABSENCE of a
+      // value has to be rejected distinctly: Number(null) and Number('') are
+      // both 0, which would file an unanswered field as a 0th-minute event.
+      const m = matchMinuteValue(minute);
+      if (m === null || m < 0 || m > fullTime) return `Minute must be between 0 and ${fullTime}`;
+      // On the pitch is a fact about a moment, not about the starting XV: a
+      // replacement who came on at 40 can be replaced again at 60.
+      const onPitch = key => matchPersonOnPitchAt(key, m, existing, people);
+      if (!onPitch(offKey)) return `${off.name} is not on the pitch at ${m}'`;
+      if (onPitch(onKey))   return `${on.name} is already on the pitch at ${m}'`;
+      return null;
+    }
+
+    /**
+     * A minute, or null if one was not really given.
+     *
+     * Number(null) and Number('') are both 0, and 0 is a legitimate minute — so
+     * coercing here would turn an empty field into a real 0th-minute event.
+     */
+    function matchMinuteValue(raw) {
+      if (typeof raw === 'number') return Number.isInteger(raw) ? raw : null;
+      if (typeof raw === 'string' && raw.trim() !== '') {
+        const n = Number(raw.trim());
+        return Number.isInteger(n) ? n : null;
+      }
+      return null;
+    }
+
+    /** Was this person on the pitch at `minute`, given the events so far? */
+    function matchPersonOnPitchAt(key, minute, subs, people) {
+      const person = people.find(p => p.key === key);
+      let on = !!person && person.role === 'starter';
+      (subs || [])
+        .slice()
+        .sort((a, b) => Number(a.minute) - Number(b.minute))
+        .forEach(s => {
+          // An event AT this minute has already happened by the time the next
+          // one is recorded, so <= is the honest reading.
+          if (Number(s.minute) > minute) return;
+          if (s.offKey === key) on = false;
+          if (s.onKey === key)  on = true;
+        });
+      return on;
+    }
+
+    /**
+     * MINUTES PLAYED, per person, for this match.
+     *
+     * Starters are on from 0. A replacement is on from the minute they came on.
+     * Anyone still on at the whistle plays to full time. A player can come on,
+     * go off and come on again — the intervals simply add up.
+     *
+     * Returns { key: minutes }. Nothing is estimated: a match with no recorded
+     * substitutions gives every starter full time and every replacement zero,
+     * which is exactly what the record says happened.
+     */
+    function matchMinutesByPerson(people, subs, fullTime) {
+      const events = (subs || []).slice().sort((a, b) =>
+        (Number(a.minute) - Number(b.minute)) || String(a.at || '').localeCompare(String(b.at || '')));
+      const out = {};
+      (people || []).forEach(person => {
+        let total = 0;
+        let onSince = person.role === 'starter' ? 0 : null;
+        events.forEach(s => {
+          const m = Number(s.minute);
+          if (s.offKey === person.key && onSince !== null) { total += Math.max(0, m - onSince); onSince = null; }
+          else if (s.onKey === person.key && onSince === null) { onSince = m; }
+        });
+        if (onSince !== null) total += Math.max(0, fullTime - onSince);
+        out[person.key] = Math.min(total, fullTime);
+      });
+      return out;
+    }
+
+    /** Persist the match record — the same fixture+side scoped write Publish uses. */
+    /**
+     * The Substitutions panel — compact, inside Match Centre, below the pitch.
+     *
+     * Shown only for a selected fixture: an unlinked sheet has no match for an
+     * event to belong to. Every player offered comes from THIS sheet
+     * (matchSquadPeople), so the pickers cannot reach another group's squad.
+     */
+    function renderSubstitutionsPanel() {
+      if (!isCoach()) return '';
+      const fixtureId = matchCentreFixtureId();
+      const people    = matchSquadPeople();
+      const subs      = matchSubstitutions();
+      const fullTime  = matchFullTimeMinutes();
+
+      if (!fixtureId) {
+        return `<div class="card" style="margin-top:14px">
+          <h3 style="margin:0 0 4px;font-size:15px">Substitutions</h3>
+          <p class="muted" style="font-size:12.5px;margin:0">Choose a fixture above and substitutions are recorded against that match.</p>
+        </div>`;
+      }
+      if (people.length < 2) {
+        return `<div class="card" style="margin-top:14px">
+          <h3 style="margin:0 0 4px;font-size:15px">Substitutions</h3>
+          <p class="muted" style="font-size:12.5px;margin:0">Pick your team sheet first — substitutions are recorded between players named on it.</p>
+        </div>`;
+      }
+
+      // An unread match record is not an empty one. Saying so beats showing a
+      // blank list the coach might reasonably add to.
+      if (_mcMatchRecordLoadedFor !== fixtureId) {
+        return `<div class="card" style="margin-top:14px">
+          <h3 style="margin:0 0 4px;font-size:15px">Substitutions</h3>
+          <p class="muted" style="font-size:12.5px;margin:0">Loading this match…</p>
+        </div>`;
+      }
+
+      const minutes = matchMinutesByPerson(people, subs, fullTime);
+      const opt = p => `<option value="${esc(p.key)}">${esc(p.name)}${p.role === 'bench' ? ' (bench)' : ''}</option>`;
+      const inp = 'min-height:40px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 9px;font-size:13px;width:100%;box-sizing:border-box';
+
+      const list = subs.length
+        ? subs.map(sub => `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)">
+              <strong style="font-size:13px;font-variant-numeric:tabular-nums;color:var(--accent);flex:0 0 auto;min-width:38px">${Number(sub.minute)}'</strong>
+              <span style="flex:1 1 auto;min-width:0;font-size:13px">${esc(sub.offName || 'Unknown')} <span class="muted">→</span> <strong>${esc(sub.onName || 'Unknown')}</strong></span>
+              <button class="btn ghost" type="button" aria-label="Remove this substitution"
+                style="flex:0 0 auto;min-height:32px;padding:0 10px;font-size:12px;color:var(--red)"
+                onclick="substitutionRemove('${esc(sub.id)}')">Remove</button>
+            </div>`).join('')
+        : `<p class="muted" style="font-size:12.5px;margin:10px 0 0">No substitutions recorded yet.</p>`;
+
+      // Minutes are shown for everyone on the sheet, because a starter who was
+      // never replaced has played the full match and that is the answer too.
+      const mins = people.map(p => `
+        <div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:3px 0">
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</span>
+          <strong style="font-variant-numeric:tabular-nums;flex:0 0 auto">${minutes[p.key] || 0}'</strong>
+        </div>`).join('');
+
+      return `
+        <div class="card" style="margin-top:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="min-width:0">
+              <h3 style="margin:0;font-size:15px">Substitutions</h3>
+              <!-- The "Substitute plan" disclosure above is a pre-match intention
+                   list. This is the record of what happened, and it is what match
+                   minutes are counted from — so the difference is stated rather
+                   than left for a manager to work out from two similar names. -->
+              <p class="muted" style="font-size:11.5px;margin:2px 0 0">What actually happened — this is what match minutes are counted from.</p>
+            </div>
+            <label style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap">
+              Full time
+              <input type="number" inputmode="numeric" min="1" max="${MATCH_MINUTES_MAX}" value="${fullTime}"
+                aria-label="Match length in minutes"
+                style="${inp};width:74px" onchange="substitutionsSetFullTime(this.value)">
+              min
+            </label>
+          </div>
+
+          <div style="display:grid;gap:8px;margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+            <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Off
+              <select id="subEventOff" style="${inp}"><option value="">Player coming off…</option>${people.map(opt).join('')}</select></label>
+            <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">On
+              <select id="subEventOn" style="${inp}"><option value="">Player coming on…</option>${people.map(opt).join('')}</select></label>
+            <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Minute
+              <input id="subEventMin" type="number" inputmode="numeric" min="0" max="${fullTime}" placeholder="55" style="${inp}"></label>
+            <button class="btn primary" type="button" style="align-self:end;min-height:40px" onclick="substitutionAdd()">Record</button>
+          </div>
+
+          ${list}
+
+          <details style="margin-top:14px">
+            <summary style="font-size:12.5px;font-weight:700;cursor:pointer;color:var(--muted)">Minutes played (${people.length})</summary>
+            <div style="margin-top:8px">${mins}</div>
+          </details>
+        </div>`;
+    }
+
+    function substitutionsPersist(message) {
+      saveState(message);
+      syncSquadToServer().catch(() => {});
+      render();
+    }
+
+    /**
+     * Record a substitution.
+     *
+     * Refuses unless the sheet is bound to its fixture. saveCoachDraft and
+     * syncSquadToServer share that guard, and for the same reason: an unbound
+     * sheet has no fixture to be filed under, so an event recorded against it
+     * would land on whatever fixture happened to be selected next.
+     */
+    function substitutionAdd() {
+      if (!isCoach()) return showToast('Only coaches can record substitutions');
+      const fixtureId = matchCentreFixtureId();
+      if (!fixtureId) return showToast('Choose the fixture first — a substitution belongs to one match');
+      if (String(_mcSheetFixtureId ?? '\u0000') !== fixtureId) return showToast('Loading this fixture — try again in a moment');
+      if (_mcMatchRecordLoadedFor !== fixtureId) return showToast('Still loading this match — try again in a moment');
+
+      const g = id => document.getElementById(id);
+      const offKey = g('subEventOff')?.value || '';
+      const onKey  = g('subEventOn')?.value  || '';
+      const minute = parseInt(g('subEventMin')?.value, 10);
+
+      const people   = matchSquadPeople();
+      const fullTime = matchFullTimeMinutes();
+      const existing = matchSubstitutions();
+      const problem  = substitutionProblem({ offKey, onKey, minute }, existing, people, fullTime);
+      if (problem) return showToast(problem);
+
+      const off = people.find(p => p.key === offKey);
+      const on  = people.find(p => p.key === onKey);
+      state.matchCentre = {
+        ...(state.matchCentre || {}),
+        substitutions: [...existing, {
+          id: 'sub_' + Date.now().toString(36),
+          minute,
+          offKey, onKey,
+          // Snapshots, so the record still reads correctly after a rename.
+          offName: off.name, onName: on.name,
+          at: new Date().toISOString(),
+        }],
+      };
+      substitutionsPersist('Substitution recorded');
+      showToast(`${minute}' ${off.name} → ${on.name}`);
+    }
+
+    async function substitutionRemove(id) {
+      if (!isCoach()) return showToast('Only coaches can change substitutions');
+      if (_mcMatchRecordLoadedFor !== matchCentreFixtureId()) return showToast('Still loading this match — try again in a moment');
+      const sub = matchSubstitutions().find(s => s.id === id);
+      if (!sub) return;
+      const ok = await ceConfirm(`Remove ${sub.minute}' ${sub.offName} → ${sub.onName}?`,
+        'The match minutes for both players are recalculated.', { confirmLabel: 'Remove', danger: true });
+      if (!ok) return;
+      state.matchCentre = {
+        ...(state.matchCentre || {}),
+        substitutions: matchSubstitutions().filter(s => s.id !== id),
+      };
+      substitutionsPersist('Substitution removed');
+    }
+
+    /** Full time for this match — stored with the match, because the fixture has none. */
+    function substitutionsSetFullTime(value) {
+      if (!isCoach()) return;
+      if (_mcMatchRecordLoadedFor !== matchCentreFixtureId()) return showToast('Still loading this match — try again in a moment');
+      const n = parseInt(value, 10);
+      if (!Number.isInteger(n) || n < 1 || n > MATCH_MINUTES_MAX) return showToast('Enter a match length between 1 and ' + MATCH_MINUTES_MAX);
+      const subs = matchSubstitutions();
+      if (subs.some(s => Number(s.minute) > n)) {
+        return showToast('A recorded substitution is later than that — remove it first');
+      }
+      state.matchCentre = { ...(state.matchCentre || {}), matchMinutes: n };
+      substitutionsPersist('Match length set');
+    }
+
     function addSubPlan() {
       const min=document.getElementById("subMin")?.value, on=document.getElementById("subOn")?.value.trim(), off=document.getElementById("subOff")?.value.trim(), reason=document.getElementById("subReason")?.value.trim();
       if (!on||!off) return showToast("Enter both player names");
@@ -9978,6 +10313,16 @@
      * belongs to the fixture it was persisted with.
      */
     let _mcSheetFixtureId = String((state.matchCentre || {}).fixtureId || '');
+    /**
+     * The fixture whose stored MATCH RECORD has actually been read, or null.
+     *
+     * Substitutions are cleared the moment the sheet binds to a new fixture, so
+     * the previous match's events are never misattributed. Until the read lands
+     * an empty list is a display placeholder, NOT a fact — and writing while it
+     * is showing would push a record containing only the new event, destroying
+     * the ones the server holds. Every write therefore waits for this.
+     */
+    let _mcMatchRecordLoadedFor = null;
 
     /**
      * WHICH SIDE the in-memory sheet belongs to — the exact counterpart of
@@ -10110,6 +10455,11 @@
         // ready for new work). Saves/flushes are unlocked from here on.
         _mcSheetFixtureId = String(id);
         _mcSheetSideId    = side;
+        // Drop the previous match's events immediately. The read below fills in
+        // this fixture's own; until it does, showing none is a placeholder, and
+        // the flag keeps it from being mistaken for an empty match record.
+        _mcMatchRecordLoadedFor = null;
+        state.matchCentre = { ...(state.matchCentre || {}), substitutions: [], matchMinutes: MATCH_MINUTES_DEFAULT };
         if (dRes.ok) {
           const { draft } = await dRes.json();
           // Only this fixture's (and side's) own draft may hydrate this sheet —
@@ -10127,7 +10477,19 @@
           // Published is a per-fixture(+side) fact read from the scoped
           // record — not the player-facing pointer, which only Publish moves.
           const { squad } = await sRes.json();
-          state.matchCentre = { ...(state.matchCentre || {}), published: Boolean(squad && squad.published) };
+          // Substitutions and full time come from THIS fixture's own record and
+          // are replaced outright, never merged: a sheet carrying the previous
+          // fixture's events would attribute them to this match. A fixture with
+          // no stored record legitimately has none.
+          state.matchCentre = {
+            ...(state.matchCentre || {}),
+            published:     Boolean(squad && squad.published),
+            substitutions: Array.isArray(squad && squad.substitutions) ? squad.substitutions : [],
+            matchMinutes:  Number.isInteger(squad && squad.matchMinutes) ? squad.matchMinutes : MATCH_MINUTES_DEFAULT,
+          };
+          // The read landed. A fixture with no stored record answers `null`,
+          // which is still an answer: it genuinely has no events yet.
+          _mcMatchRecordLoadedFor = String(id);
         }
         const fx = matchCentreSelectedFixture();
         if (fx) mcApplyFixtureDisplay(fx);   // real fixture data wins for display
@@ -16813,6 +17175,12 @@
             </div>
           </details>
         </div>
+
+        <!-- ── Substitutions — recorded events, the playing-time foundation ──
+             Below the team sheet, because an event is about the sheet above it.
+             Not to be confused with the hidden pre-match "sub plan" scratchpad
+             in the planning grid: that is an intention, this is what happened. -->
+        ${renderSubstitutionsPanel()}
 
         <!-- ── V10 · secondary actions (below the pitch — must not compete with it) ── -->
         <div class="mc10-actions">

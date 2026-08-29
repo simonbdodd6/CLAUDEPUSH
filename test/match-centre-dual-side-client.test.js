@@ -117,6 +117,7 @@ function client(server) {
     ${fn('mcFlushDraftNow')}
     ${fn('mcApplyFixtureDisplay')}
     ${fn('mcClearFixtureDisplay')}
+    const MATCH_MINUTES_DEFAULT = 80;
     ${fn('mcHydrateSelectedFixture')}
     ${fn('mcRefreshPublishedForFixture')}
     ${fn('setMatchCentreFixture')}

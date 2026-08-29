@@ -338,6 +338,60 @@ async function assertFixtureBelongsToClub(teamId, fixtureId) {
   return id;
 }
 
+/** Rugby's full match, and the ceiling a stored value is clamped to. */
+const DEFAULT_MATCH_MINUTES = 80;
+const MAX_MATCH_MINUTES = 200;          // extra time + a wide margin, never unbounded
+const MAX_SUBSTITUTIONS = 40;           // 8 bench + rolling/blood subs, generously
+
+/**
+ * Substitution events for one match sheet.
+ *
+ * A sheet identifies its players BY NAME (formationNames / benchPlayers), so an
+ * event carries BOTH: the durable person key the client already uses for match
+ * identity (mcPersonKey → "id:<userId or roster id>", falling back to "nm:<name>"
+ * when a name matches no roster player) AND the name as displayed at the time.
+ * The key is what season playing time will aggregate on; the name is a snapshot
+ * so a historical sheet still reads correctly after a rename.
+ *
+ * Everything is bounded: a fixed set of fields, capped lengths, a capped array,
+ * and a minute clamped to the match length. Nothing here authorises anything —
+ * the fixture, side and tenant were already validated at the request boundary.
+ */
+function sanitiseSubstitutions(raw, matchMinutes) {
+  if (!Array.isArray(raw)) return [];
+  const cap = str => String(str || '').slice(0, 120);
+  const out = [];
+  for (const s of raw.slice(0, MAX_SUBSTITUTIONS)) {
+    if (!s || typeof s !== 'object') continue;
+    // Minute 0 is legitimate, so an ABSENT minute must be rejected distinctly:
+    // Number(null) and Number('') are both 0, which would store an unanswered
+    // field as a real 0th-minute event.
+    const rawMinute = s.minute;
+    const givenMinute = typeof rawMinute === 'number'
+      || (typeof rawMinute === 'string' && rawMinute.trim() !== '');
+    const minute = givenMinute ? Number(rawMinute) : NaN;
+    if (!Number.isInteger(minute) || minute < 0 || minute > matchMinutes) continue;
+    const offKey = cap(s.offKey), onKey = cap(s.onKey);
+    if (!offKey || !onKey || offKey === onKey) continue;
+    out.push({
+      id:      String(s.id || '').slice(0, 40) || `sub_${out.length}`,
+      minute,
+      offKey,  onKey,
+      offName: cap(s.offName),
+      onName:  cap(s.onName),
+      at:      String(s.at || '').slice(0, 40),
+    });
+  }
+  // Chronological, with the recording order breaking ties on the same minute.
+  return out.sort((a, b) => a.minute - b.minute || String(a.at).localeCompare(String(b.at)));
+}
+
+function sanitiseMatchMinutes(raw) {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_MATCH_MINUTES) return DEFAULT_MATCH_MINUTES;
+  return n;
+}
+
 function sanitiseSquad(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const formationNames = raw.formationNames && typeof raw.formationNames === 'object'
@@ -350,6 +404,7 @@ function sanitiseSquad(raw) {
   const benchPlayers = Array.isArray(raw.benchPlayers)
     ? raw.benchPlayers.map(n => String(n || ''))
     : [];
+  const matchMinutes = sanitiseMatchMinutes(raw.matchMinutes);
   return {
     published:     Boolean(raw.published),
     publishedAt:   raw.publishedAt  || null,
@@ -373,6 +428,17 @@ function sanitiseSquad(raw) {
     // Development. Same contract as fixtureId: boundary-validated, absent on
     // every legacy record, and absent stays absent.
     sideId:        String(raw.sideId || ''),
+    // ── Substitutions (playing-time foundation) ─────────────────────────────
+    // The match record is the only place these can live: it is already keyed
+    // per fixture AND side, already tenant-checked and coherence-checked at the
+    // boundary, and already gated on PUBLISH_SQUADS. A separate store would
+    // have had to re-earn all four.
+    //
+    // The fixture model carries no DURATION, so full time is stored here with
+    // the match it describes rather than invented as a new fixture field.
+    // Absent means the rugby default; it is never inferred from anything else.
+    matchMinutes,
+    substitutions: sanitiseSubstitutions(raw.substitutions, matchMinutes),
   };
 }
 
