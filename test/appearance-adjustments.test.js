@@ -152,29 +152,52 @@ function extractFn(name) {
   for (let b = i; b < src.length; b++) { if (src[b] === '{') depth++; else if (src[b] === '}') { depth--; if (depth === 0) { i = b; break; } } }
   return src.slice(start, i + 1);
 }
-const { appearanceSeasonId, appearancesCalculated, appearanceVerifiedTotal } = new Function(`"use strict";
+// UPDATED for the identity reconciliation. appearancesCalculated used to take
+// state.squadSelections and key by the ROSTER ROW id. Both were wrong for a
+// season total: squadSelections is written only by an unreachable screen and
+// never reaches a server (so it was empty for every player in every club), and
+// the roster row id disagrees with the key substitutions use for anyone holding
+// an account. It now takes MATCH SHEETS and keys by the canonical identity, so
+// appearances and minutes can be added together.
+//
+// The invariants that still apply are unchanged and still asserted below: only
+// COMPLETED fixtures count, one sheet counts per fixture, and season derivation
+// is untouched. "Draft never counts" moved to the caller — a sheet handed to
+// this function is by definition the published record for that fixture.
+const { appearanceSeasonId, appearancesCalculated, appearanceVerifiedTotal, playerMatchKey, mcPersonKey } =
+  new Function(`"use strict";
+  const state = { players: [
+    { id: 'p1', name: 'One Player',   userId: 'u1' },
+    { id: 'p2', name: 'Two Player',   userId: 'u2' },
+    { id: 'p3', name: 'Three Player' },
+  ] };
+  function findPlayerByName(n) { const w = String(n || '').trim().toLowerCase();
+    return state.players.find(p => String(p.name || '').trim().toLowerCase() === w) || null; }
+  ${extractFn('playerMatchKey')}
+  ${extractFn('mcPersonKey')}
   ${extractFn('appearanceSeasonId')}
   ${extractFn('appearancesCalculated')}
   ${extractFn('appearanceVerifiedTotal')}
-  return { appearanceSeasonId, appearancesCalculated, appearanceVerifiedTotal };
+  return { appearanceSeasonId, appearancesCalculated, appearanceVerifiedTotal, playerMatchKey, mcPersonKey };
 `)();
 
-test('calculated appearances: published selections on completed fixtures only, once per fixture', () => {
+test('calculated appearances: completed fixtures only, once per fixture, canonical identity', () => {
   const fixtures = [
     { id: 'f1', opposition: 'Old Boys', date: '2025-09-06', status: 'completed' },
     { id: 'f2', opposition: 'Harbour',  date: '2025-09-13', status: 'completed' },
     { id: 'f3', opposition: 'Future',   date: '2025-09-20', status: 'scheduled' },
   ];
-  const sels = [
-    { fixtureId: 'f1', status: 'published', starters: { FH: 'p1', SH: 'p2' }, bench: ['p3', '', ''] },
-    { fixtureId: 'f2', status: 'draft',     starters: { FH: 'p1' }, bench: [] },          // draft → never counts
-    { fixtureId: 'f3', status: 'published', starters: { FH: 'p1' }, bench: [] },          // fixture not completed → never counts
+  const sheets = [
+    { fixtureId: 'f1', formationNames: { '10': 'One Player', '9': 'Two Player' }, benchPlayers: ['Three Player', '', ''] },
+    { fixtureId: 'f1', formationNames: { '10': 'One Player' }, benchPlayers: [] },   // second sheet for f1 → never double-counts
+    { fixtureId: 'f3', formationNames: { '10': 'One Player' }, benchPlayers: [] },   // fixture not completed → never counts
   ];
-  const { byPlayer, matches } = appearancesCalculated(fixtures, sels, '2025-08-01', '2026-05-31');
-  assert.deepEqual(byPlayer, { p1: 1, p2: 1, p3: 1 });
-  assert.equal(matches.length, 1);
+  const { byPlayer, matches } = appearancesCalculated(fixtures, sheets, '2025-08-01', '2026-05-31');
+  // Keyed by the DURABLE identity where there is one, the roster id otherwise.
+  assert.deepEqual(byPlayer, { 'id:u1': 1, 'id:u2': 1, 'id:p3': 1 });
+  assert.equal(matches.length, 1, 'one completed fixture, counted once');
   assert.equal(matches[0].seasonId, '2025-26');
-  assert.deepEqual(matches[0].playerIds.sort(), ['p1', 'p2', 'p3']);
+  assert.deepEqual(matches[0].playerIds.sort(), ['id:p3', 'id:u1', 'id:u2']);
 });
 
 test('verified total combines calculated + adjustments without touching calculated', () => {
@@ -192,7 +215,10 @@ test('season id derivation: inside window uses season years, outside falls back 
 });
 
 test('audit trail separates calculated from adjustments; correction form is admin-gated', () => {
-  assert.match(src, /Calculated — completed Match Centre selections/, 'calculated section labelled');
+  // "selections" named the retired state.squadSelections model; appearances now
+  // come from published Match Centre TEAM SHEETS. The label follows the model —
+  // the separation this test guards is unchanged.
+  assert.match(src, /Calculated — completed Match Centre team sheets/, 'calculated section labelled');
   assert.match(src, /Historical adjustments \(/, 'adjustments section labelled');
   assert.match(src, /canI\('manage_teams'\) \? `\s*\n?\s*<details/, 'correction form behind manage_teams');
   assert.match(src, /never overwritten/i, 'no-overwrite principle stated in UI copy');

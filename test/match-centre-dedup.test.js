@@ -40,6 +40,7 @@ function buildScope(players) {
     'const rugbySlots = ' + rugbySlots + ';\n' +
     'const state = { players: ' + JSON.stringify(players) + ', formationNames: {}, benchPlayers: Array(8).fill(""), fphotoIds: {} };\n' +
     extractFn(html, 'findPlayerByName') + '\n' +
+    extractFn(html, 'playerMatchKey') + '\n' +
     extractFn(html, 'mcPersonKey') + '\n' +
     extractFn(html, '_mcRemovePersonElsewhere') + '\n' +
     extractFn(html, '_mcSetTarget') + '\n' +

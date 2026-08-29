@@ -84,6 +84,7 @@ function buildMatch({ starters = 15, bench = 3, players = null, matchCentre = {}
       const want = String(n || '').trim().toLowerCase();
       return state.players.find(p => String(p.name || '').trim().toLowerCase() === want) || null;
     }
+    ${extractFn(html, 'playerMatchKey')}
     ${extractFn(html, 'mcPersonKey')}
     ${extractFn(html, 'matchFullTimeMinutes')}
     ${extractFn(html, 'matchSubstitutions')}

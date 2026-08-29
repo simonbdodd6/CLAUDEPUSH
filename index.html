@@ -11024,11 +11024,41 @@
     // A stable person key: collapse linked-duplicate records (shared userId) and
     // identical display names to one key, so the same member can't be selected in
     // two places. Falls back to the normalised name for unresolved/guest entries.
+    /**
+     * THE CANONICAL MATCH IDENTITY — one answer to "which player is this?".
+     *
+     * Everything a season total will ever aggregate — appearances, starts,
+     * bench appearances, substitutions on and off, minutes — must agree about
+     * who a player is, or the totals cannot be added together.
+     *
+     * The durable MEMBERSHIP userId is preferred, because that is what survives
+     * a roster row being recreated (a rebuild, an import, a Match Centre sheet
+     * reconcile). The roster row id is the fallback for a record with no account
+     * behind it — a trialist, a pre-registration name — and it is a real answer,
+     * not a guess. Neither present means we do not know, and "" is returned
+     * rather than something invented.
+     *
+     * Returns "id:<userId or roster id>", or "" when the player is unknown.
+     */
+    function playerMatchKey(player) {
+      const durable = String(player?.userId || '').trim();
+      if (durable) return 'id:' + durable;
+      const rosterId = String(player?.id || '').trim();
+      return rosterId ? 'id:' + rosterId : '';
+    }
+
+    /**
+     * A match SHEET names players as text, so this is the bridge from a written
+     * name to the canonical identity. A name matching no roster player keeps a
+     * name key ("nm:…") — honest about being unresolved, and never collapsed
+     * into somebody else's identity.
+     */
     function mcPersonKey(name) {
       const norm = String(name || "").trim().toLowerCase();
       if (!norm) return "";
       const p = findPlayerByName(name);
-      return p ? ("id:" + (p.userId || p.id)) : ("nm:" + norm);
+      const key = p ? playerMatchKey(p) : '';
+      return key || ("nm:" + norm);
     }
     // Clear this person from every slot/bench EXCEPT `except` (one person, one place).
     function _mcRemovePersonElsewhere(personKey, except) {
@@ -19367,7 +19397,7 @@
     }
 
     // ─── APPEARANCES (RC4.8A) ────────────────────────────────────────────────
-    // Source of truth: completed Match Centre selections (published squads on
+    // Source of truth: completed Match Centre TEAM SHEETS (published squads on
     // fixtures marked completed). Authorised club admins may record separate,
     // audited historical adjustments (pre-CoachEasier matches, imported legacy
     // records, approved corrections) via /api/publish?resource=appearance-adjustments.
@@ -19385,35 +19415,116 @@
       return d.slice(0, 4);
     }
 
-    /** Pure: appearance counts from completed Match Centre selections.
-     *  Returns { byPlayer: {playerId: count}, matches: [{fixtureId, date,
-     *  opposition, seasonId, playerIds}] }. A player counts once per completed
-     *  fixture when they appear in the published selection (starters or bench). */
-    function appearancesCalculated(fixtures, squadSelections, seasonStart, seasonEnd) {
+    /**
+     * Pure: appearances from completed matches, keyed by the CANONICAL identity.
+     *
+     * ── What changed, and why ──────────────────────────────────────────────
+     * This used to read state.squadSelections and key by the roster row id.
+     * Both were wrong for a season total:
+     *
+     *   · squadSelections is written ONLY by the Selection screen, which no
+     *     code path can reach (see the deprecation note on selectionCreate) and
+     *     which never reaches the server. It is empty on every device, so this
+     *     function returned {} for every player in every club — a confident
+     *     zero with no source behind it.
+     *   · the roster row id is not durable. It is regenerated whenever a roster
+     *     row is recreated, and it disagrees with the key substitutions already
+     *     use for anyone who has an account: `p1` versus `id:u1`. Two halves of
+     *     the same season total could never have been added together.
+     *
+     * It now takes MATCH SHEETS — the same {formationNames, benchPlayers} shape
+     * the published Match Centre record stores — and resolves each written name
+     * through mcPersonKey, exactly as substitutions do. Appearances and minutes
+     * therefore agree about who a player is.
+     *
+     * Deliberately SOURCE-AGNOSTIC: the caller supplies the sheets. Fetching a
+     * season of them is the next build's job, not this function's.
+     *
+     * `sheets`: [{ fixtureId, formationNames, benchPlayers }]
+     * Returns { byPlayer: {personKey: count}, matches: [...], unresolved: [...] }
+     * where `unresolved` names players written on a sheet who match no roster
+     * record — counted honestly, never folded into somebody else's total.
+     */
+    function appearancesCalculated(fixtures, sheets, seasonStart, seasonEnd) {
       const byPlayer = {};
       const matches = [];
+      const unresolved = new Set();
       const fxById = {};
       (fixtures || []).forEach(f => { if (f && f.id) fxById[f.id] = f; });
       const seenFixtures = new Set();
-      (squadSelections || []).forEach(sel => {
-        if (!sel || sel.status !== 'published') return;
-        const fx = fxById[sel.fixtureId];
-        if (!fx || fx.status !== 'completed') return;
-        if (seenFixtures.has(fx.id)) return; // one selection counts per fixture
+      (sheets || []).forEach(sheet => {
+        if (!sheet) return;
+        const fx = fxById[sheet.fixtureId];
+        if (!fx || fx.status !== 'completed') return;   // an appearance is a match PLAYED
+        if (seenFixtures.has(fx.id)) return;            // one sheet counts per fixture
         seenFixtures.add(fx.id);
-        const ids = new Set([
-          ...Object.values(sel.starters || {}).filter(Boolean),
-          ...(Array.isArray(sel.bench) ? sel.bench.filter(Boolean) : []),
-        ]);
-        if (!ids.size) return;
-        ids.forEach(pid => { byPlayer[pid] = (byPlayer[pid] || 0) + 1; });
+        const names = [
+          ...Object.values(sheet.formationNames || {}),
+          ...(Array.isArray(sheet.benchPlayers) ? sheet.benchPlayers : []),
+        ].map(n => String(n || '').trim()).filter(Boolean);
+        const keys = new Set();
+        names.forEach(name => {
+          const key = mcPersonKey(name);
+          if (!key) return;
+          if (key.startsWith('nm:')) unresolved.add(name);   // named, but not identified
+          keys.add(key);
+        });
+        if (!keys.size) return;
+        keys.forEach(k => { byPlayer[k] = (byPlayer[k] || 0) + 1; });
         matches.push({
           fixtureId: fx.id, date: fx.date || '', opposition: fx.opposition || '',
           seasonId: appearanceSeasonId(fx.date, seasonStart, seasonEnd),
-          playerIds: [...ids],
+          playerIds: [...keys],
         });
       });
-      return { byPlayer, matches };
+      return { byPlayer, matches, unresolved: [...unresolved] };
+    }
+
+    /**
+     * LEGACY BRIDGE — which stored adjustments belong to this player?
+     *
+     * Appearance adjustments are real, server-persisted, tenant-scoped, audited
+     * records (api/publish.js appearance_adj:<teamId>). They predate the
+     * canonical identity and store whichever id the admin screen held at the
+     * time, which was the ROSTER ROW id. Those records must survive untouched:
+     * they are the only appearance data that has ever existed in production.
+     *
+     * So nothing is migrated and nothing is rewritten. Resolution happens at
+     * READ time, anchored on the player record itself — which carries both its
+     * roster id and its durable userId, so the mapping is deterministic and
+     * needs no guessing:
+     *
+     *     an adjustment belongs to this player when its playerId equals the
+     *     player's roster id, their userId, or their canonical key.
+     *
+     * FAIL CLOSED: an adjustment whose playerId matches no current roster
+     * record is NOT attributed to anyone. It stays in the store, and
+     * appearanceUnresolvedAdjustments() reports it so a human can decide.
+     * Guessing by name is exactly how one player's history would be credited
+     * to another.
+     */
+    function appearanceAdjustmentsFor(player, adjustments) {
+      if (!player) return [];
+      const mine = new Set([
+        String(player.id || '').trim(),
+        String(player.userId || '').trim(),
+        playerMatchKey(player),
+      ].filter(Boolean));
+      return (adjustments || []).filter(a => mine.has(String(a?.playerId || '').trim()));
+    }
+
+    /**
+     * Stored adjustments that match no current roster record — reported, never
+     * silently dropped and never attributed by guesswork. A player who left the
+     * club, or a record from before a rebuild, lands here.
+     */
+    function appearanceUnresolvedAdjustments(players, adjustments) {
+      const known = new Set();
+      (players || []).forEach(p => {
+        [String(p.id || '').trim(), String(p.userId || '').trim(), playerMatchKey(p)]
+          .filter(Boolean).forEach(k => known.add(k));
+      });
+      return (adjustments || []).filter(a => !known.has(String(a?.playerId || '').trim()));
     }
 
     /** Pure: verified total = calculated count + sum of adjustment amounts. */
@@ -19553,10 +19664,19 @@
 
         <!-- APPEARANCES CARD (RC4.8A) -->
         ${(() => {
-          const calc = appearancesCalculated(state.fixtures, state.squadSelections, state.seasonStart, state.seasonEnd);
-          const calcCount = calc.byPlayer[p.id] || 0;
-          const playerMatches = calc.matches.filter(mt => mt.playerIds.includes(p.id));
-          const adjs = (_appearanceAdjustments || []).filter(a => a.playerId === p.id);
+          // NO SEASON-WIDE SOURCE YET. Appearances are counted from published
+          // Match Centre sheets on completed fixtures, and the client only ever
+          // holds the CURRENT fixture's sheet — a season's worth needs a read
+          // this screen cannot make today. Rather than print a confident 0 with
+          // nothing behind it (which is what the old squadSelections path did
+          // for every player in every club), the calculated figure is shown as
+          // not yet available. Adjustments are real data and are shown in full.
+          const calc = appearancesCalculated(state.fixtures, [], state.seasonStart, state.seasonEnd);
+          const personKey = playerMatchKey(p);
+          const calcCount = calc.byPlayer[personKey] || 0;
+          const calcAvailable = false;
+          const playerMatches = calc.matches.filter(mt => mt.playerIds.includes(personKey));
+          const adjs = appearanceAdjustmentsFor(p, _appearanceAdjustments || []);
           const verified = appearanceVerifiedTotal(calcCount, adjs);
           const adjSum = adjs.reduce((s, a) => s + (Number.isInteger(a?.amount) ? a.amount : 0), 0);
           const seasonDefault = appearanceSeasonId(new Date().toISOString(), state.seasonStart, state.seasonEnd);
@@ -19570,17 +19690,19 @@
         <div class="card" style="margin-bottom:14px">
           ${sectionTitle('Appearances')}
           <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-            ${metric(verified, 'Verified total', 'var(--accent)')}
-            ${metric(calcCount, 'From Match Centre', 'var(--fg)')}
+            ${metric(calcAvailable ? verified : (adjSum || 0), 'Recorded total', 'var(--accent)')}
+            ${metric(calcAvailable ? calcCount : '—', 'From Match Centre', 'var(--fg)')}
             ${metric((adjSum > 0 ? '+' : '') + adjSum, 'Adjustments', adjSum ? (adjSum > 0 ? 'var(--accent)' : '#dc2626') : 'var(--muted)')}
           </div>
           <details>
             <summary style="font-size:12px;font-weight:700;cursor:pointer;color:var(--muted);padding:4px 0">Audit trail</summary>
             <div style="margin-top:8px">
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Calculated — completed Match Centre selections (${playerMatches.length})</div>
-              ${playerMatches.length
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Calculated — completed Match Centre team sheets (${playerMatches.length})</div>
+              ${!calcAvailable
+                ? '<p class="muted" style="font-size:12px;margin:2px 0 8px">Match Centre appearances are not counted yet — see Season statistics, the next build.</p>'
+                : playerMatches.length
                 ? playerMatches.map(mt => `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px"><span>vs ${esc(mt.opposition || 'TBC')}</span><span class="muted">${esc(mt.seasonId)} · ${esc(mt.date || '')}</span></div>`).join('')
-                : '<p class="muted" style="font-size:12px;margin:2px 0 8px">No completed Match Centre selections yet.</p>'}
+                : '<p class="muted" style="font-size:12px;margin:2px 0 8px">No completed Match Centre team sheets yet.</p>'}
               <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:12px 0 4px">Historical adjustments (${adjs.length})</div>
               ${_appearanceAdjustments === null
                 ? '<p class="muted" style="font-size:12px;margin:2px 0">Loading adjustments…</p>'
@@ -28899,6 +29021,28 @@
       render();
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    //  DEPRECATED — the Selection screen and state.squadSelections.
+    //
+    //  UNREACHABLE, and provably so. `state.activeCoachSection = 'selection'`
+    //  is set in exactly two places (selectionGoCreate / selectionGoEdit) and
+    //  NOTHING calls either. The section is absent from BETA_NAV_IDS, absent
+    //  from notificationDestination's deep-link allow-list, and git history
+    //  shows it never had a sidebar entry. The "+ Create squad" button below is
+    //  inside the screen it would create work for, so it can only be pressed by
+    //  somebody already there — which nothing can arrange.
+    //
+    //  It also never reaches a server: no api/*.js mentions squadSelections, so
+    //  it lives in one device's localStorage and nowhere else.
+    //
+    //  MATCH CENTRE IS AUTHORITATIVE. It builds the squad, publishes it per
+    //  fixture and side, and carries the substitutions. This subsystem is kept
+    //  only because deleting a closed loop is riskier than leaving it closed —
+    //  but it must never become a second answer to "who played?". It no longer
+    //  feeds appearances (see appearancesCalculated), and a test pins it as
+    //  unreachable so that wiring it up is a deliberate decision with the
+    //  identity question answered first, not an accident.
+    // ═══════════════════════════════════════════════════════════════════════
     function selectionCreate(fixtureId) {
       const fx  = (state.fixtures || []).find(f => f.id === fixtureId);
       const now = new Date().toISOString();
