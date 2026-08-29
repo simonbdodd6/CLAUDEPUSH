@@ -173,9 +173,13 @@ const { appearanceSeasonId, appearancesCalculated, appearanceVerifiedTotal, play
   ] };
   function findPlayerByName(n) { const w = String(n || '').trim().toLowerCase();
     return state.players.find(p => String(p.name || '').trim().toLowerCase() === w) || null; }
+  ${(() => { const i = src.indexOf('    const MATCH_MINUTES_DEFAULT '); return src.slice(i, src.indexOf(';', i) + 1); })()}
   ${extractFn('playerMatchKey')}
   ${extractFn('mcPersonKey')}
   ${extractFn('appearanceSeasonId')}
+  ${extractFn('fixtureHasBeenPlayed')}
+  ${extractFn('matchMinuteValue')}
+  ${extractFn('seasonPlayerStats')}
   ${extractFn('appearancesCalculated')}
   ${extractFn('appearanceVerifiedTotal')}
   return { appearanceSeasonId, appearancesCalculated, appearanceVerifiedTotal, playerMatchKey, mcPersonKey };
@@ -185,7 +189,10 @@ test('calculated appearances: completed fixtures only, once per fixture, canonic
   const fixtures = [
     { id: 'f1', opposition: 'Old Boys', date: '2025-09-06', status: 'completed' },
     { id: 'f2', opposition: 'Harbour',  date: '2025-09-13', status: 'completed' },
-    { id: 'f3', opposition: 'Future',   date: '2025-09-20', status: 'scheduled' },
+    // Genuinely in the future. "Played" is now the shared date-based rule
+    // (fixtureHasBeenPlayed), because nothing ever writes 'completed' to the
+    // server — so a past date counts however the record is labelled.
+    { id: 'f3', opposition: 'Future',   date: '2099-09-20', status: 'scheduled' },
   ];
   const sheets = [
     { fixtureId: 'f1', formationNames: { '10': 'One Player', '9': 'Two Player' }, benchPlayers: ['Three Player', '', ''] },
@@ -194,7 +201,12 @@ test('calculated appearances: completed fixtures only, once per fixture, canonic
   ];
   const { byPlayer, matches } = appearancesCalculated(fixtures, sheets, '2025-08-01', '2026-05-31');
   // Keyed by the DURABLE identity where there is one, the roster id otherwise.
-  assert.deepEqual(byPlayer, { 'id:u1': 1, 'id:u2': 1, 'id:p3': 1 });
+  //
+  // 'Three Player' is on the BENCH and no substitution brought them on, so they
+  // have a bench appearance but NOT an appearance — being named is not playing.
+  // That is the season model's rule and it is stricter than the old count,
+  // which credited anyone written on the sheet.
+  assert.deepEqual(byPlayer, { 'id:u1': 1, 'id:u2': 1, 'id:p3': 0 });
   assert.equal(matches.length, 1, 'one completed fixture, counted once');
   assert.equal(matches[0].seasonId, '2025-26');
   assert.deepEqual(matches[0].playerIds.sort(), ['id:p3', 'id:u1', 'id:u2']);

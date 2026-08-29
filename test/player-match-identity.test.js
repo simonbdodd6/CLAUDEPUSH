@@ -53,6 +53,8 @@ function extractFn(source, name) {
   throw new Error('function ' + name + ' — no closing brace');
 }
 
+const extractConst = (src, n) => { const i = src.indexOf('    const ' + n + ' '); return src.slice(i, src.indexOf(';', i) + 1); };
+
 const ROSTER = [
   { id: 'p1', name: 'Tom Harris',  userId: 'u1' },   // an account
   { id: 'p2', name: 'Ben Coyle'                 },   // roster row only
@@ -65,9 +67,13 @@ function scope(players = ROSTER) {
     const state = { players: ${JSON.stringify(players)} };
     function findPlayerByName(n) { const w = String(n || '').trim().toLowerCase();
       return state.players.find(p => String(p.name || '').trim().toLowerCase() === w) || null; }
+    ${extractConst(html, 'MATCH_MINUTES_DEFAULT')}
     ${extractFn(html, 'playerMatchKey')}
     ${extractFn(html, 'mcPersonKey')}
     ${extractFn(html, 'appearanceSeasonId')}
+    ${extractFn(html, 'fixtureHasBeenPlayed')}
+    ${extractFn(html, 'matchMinuteValue')}
+    ${extractFn(html, 'seasonPlayerStats')}
     ${extractFn(html, 'appearancesCalculated')}
     ${extractFn(html, 'appearanceAdjustmentsFor')}
     ${extractFn(html, 'appearanceUnresolvedAdjustments')}
@@ -80,7 +86,9 @@ function scope(players = ROSTER) {
 
 const FIXTURES = [
   { id: 'f1', opposition: 'Mons',   date: '2025-09-06', status: 'completed' },
-  { id: 'f2', opposition: 'Future', date: '2026-05-01', status: 'scheduled' },
+  // Genuinely in the future: "played" is now the shared date-based rule, so a
+  // date already past would count however it is labelled.
+  { id: 'f2', opposition: 'Future', date: '2099-05-01', status: 'scheduled' },
 ];
 
 // ── 1. One canonical identity ────────────────────────────────────────────────
@@ -294,13 +302,17 @@ test('the live Appearances card no longer prints a sourceless zero', () => {
   assert.match(card, /appearanceAdjustmentsFor\(p, _appearanceAdjustments/,
     'adjustments resolve through the bridge');
   assert.match(card, /playerMatchKey\(p\)/, 'and the calculated side keys canonically');
-  // Pin the VALUE, not merely its presence: the branch text survives a flip.
-  // There is no season-wide source yet (the client holds only the current
-  // fixture's sheet), so the calculated figure must not claim to be measured.
-  assert.match(card, /const calcAvailable = false;/,
-    'the card must not claim a Match Centre count it has no source for');
-  assert.match(card, /not counted yet/, 'and must say so');
-  assert.match(card, /calcAvailable \? calcCount : '—'/, 'showing an em dash, not a 0');
+  // UPDATED: the previous build hard-coded calcAvailable=false because there
+  // was no season-wide source. There is one now (the server's season-sheets
+  // read), so the flag is DERIVED from whether that read landed. The invariant
+  // this test exists to protect is unchanged and still asserted: the card must
+  // never show a calculated number it cannot source.
+  assert.match(card, /const calcAvailable = !!season && !season\.denied;/,
+    'availability is derived from the season read, never assumed');
+  assert.match(card, /if \(_seasonSheets === null\) loadSeasonSheets\(\);/,
+    'and the read is what supplies it');
+  assert.match(card, /calcAvailable \? calcCount : '—'/, 'an em dash, never a 0, before it lands');
+  assert.match(card, /No completed team-sheet data yet/, 'and an honest empty state after it does');
 });
 
 // ── 6. Nothing protected moved ───────────────────────────────────────────────

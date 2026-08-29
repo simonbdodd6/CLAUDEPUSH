@@ -1445,6 +1445,113 @@ async function trainingHandler(req, res) {
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
+// ── Season team sheets sub-resource (season statistics foundation) ───────
+// READ-ONLY. The authoritative source for season playing time: the published
+// Match Centre team sheets a club has actually stored, one per fixture (and
+// per side). Nothing here is derived from a client's device.
+//
+// WHY A NEW SUB-RESOURCE. `?type=squad&fixture=` answers exactly one named
+// fixture, so a season needed N round-trips and the client had no way to know
+// which fixtures to ask about. This answers the season in one authorised read.
+// It is folded into api/publish.js like every other sub-resource, so it costs
+// no serverless function (the Hobby ceiling is 12 and we are at 11).
+//
+// WHAT COUNTS AS PLAYED. A fixture's stored `status` cannot answer this: the
+// fixtures resource accepts only 'create' and 'import', so nothing ever writes
+// 'completed' to the server — the coach's "Mark complete" button updates their
+// own device and is overwritten by the next fixtures sync. The product already
+// has ONE definition, in fixtureDisplayStatus: a fixture reads as Completed
+// when its status says so OR its date has passed. That rule is mirrored here
+// rather than invented, and cancelled/postponed fixtures are excluded.
+
+/** Has this match been played? Mirrors the client's fixtureDisplayStatus rule. */
+function fixtureHasBeenPlayed(fx, todayIso) {
+  const status = String(fx?.status || '').toLowerCase();
+  if (status === 'cancelled' || status === 'postponed') return false;
+  if (status === 'completed') return true;
+  const date = String(fx?.date || '');
+  return !!date && date < todayIso;
+}
+
+/** The minimum a season statistic needs. Tactical notes never leave the club. */
+function seasonSheetProjection(squad) {
+  return {
+    formationNames: (squad && typeof squad.formationNames === 'object') ? squad.formationNames : {},
+    benchPlayers:   Array.isArray(squad?.benchPlayers) ? squad.benchPlayers : [],
+    substitutions:  Array.isArray(squad?.substitutions) ? squad.substitutions : [],
+    matchMinutes:   Number.isInteger(squad?.matchMinutes) ? squad.matchMinutes : DEFAULT_MATCH_MINUTES,
+  };
+}
+
+async function seasonSheetsHandler(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Reading any fixture's team sheet already requires PUBLISH_SQUADS (see the
+  // squad GET). A season of them is the same data, so it is the same gate —
+  // deliberately not the broader REPORTS, which managers, medical, S&C and
+  // analysts also hold.
+  let session;
+  try { session = await requireTenantPermission(req, PERM.PUBLISH_SQUADS); }
+  catch (error) { return sendAuthError(res, error); }
+
+  const structure = await loadClubStructure(session.teamId);
+
+  // The GROUP is authorised against the caller's own staff scope, so a forged
+  // ?group= cannot reach another squad's season. Omitting it is not a way to
+  // read everything: without a group the club's fixtures are answered as they
+  // already are by the fixtures resource, which every active member may read.
+  const requested = String(req.query?.group || '').trim();
+  let group = null;
+  if (requested) {
+    try { group = assertOperationalGroup(session, structure, requested, { as: 'staff' }); }
+    catch (error) { return res.status(error.status || 403).json({ ok: false, error: error.message }); }
+  }
+
+  const { club, fixtures } = await readClubFixtures(session.teamId);
+  const seasonStart = String(club?.seasonStart || '');
+  const seasonEnd   = String(club?.seasonEnd   || '');
+  const todayIso    = new Date().toISOString().slice(0, 10);
+
+  const inSeason = fx => {
+    if (!seasonStart || !seasonEnd) return true;      // no season configured → the whole record
+    const d = String(fx?.date || '');
+    return !d || (d >= seasonStart && d <= seasonEnd);
+  };
+
+  const mine = fixtures
+    .filter(fx => !group || fixtureGroupOf(fx) === group.id)
+    .filter(fx => fixtureHasBeenPlayed(fx, todayIso))
+    .filter(inSeason);
+
+  const sheets = [];
+  let withoutSheet = 0;
+  for (const fx of mine) {
+    const published = await publishedSheetsForFixture(session.teamId, fx.id);
+    if (!published.length) { withoutSheet++; continue; }
+    for (const sheet of published) {
+      sheets.push({
+        fixtureId:  String(fx.id),
+        sideId:     String(sheet.sideId || ''),
+        teamName:   String(sheet.teamName || ''),
+        date:       String(fx.date || ''),
+        opposition: String(fx.opposition || ''),
+        ...seasonSheetProjection(sheet.squad),
+      });
+    }
+  }
+
+  return res.status(200).json({
+    ok: true,
+    sheets,
+    // Honest accounting, so the client never has to guess why a total is small:
+    // matches played, and how many of them nobody ever published a sheet for.
+    playedFixtures: mine.length,
+    fixturesWithoutSheet: withoutSheet,
+    season: { start: seasonStart, end: seasonEnd },
+    ...(group ? { group: { id: group.id, name: group.name } } : {}),
+  });
+}
+
 // ── Appearance adjustments sub-resource (RC4.8A admin corrections) ────────
 // The source of truth for appearances remains completed Match Centre
 // selections, calculated client-side. Authorised club admins may record
@@ -2252,6 +2359,7 @@ export default async function handler(req, res) {
   if (String(req.query?.resource || '') === 'club')   return clubHandler(req, res);
   if (String(req.query?.resource || '') === 'availability-check') return availabilityCheckHandler(req, res);
   if (String(req.query?.resource || '') === 'appearance-adjustments') return appearanceAdjustmentsHandler(req, res);
+  if (String(req.query?.resource || '') === 'season-sheets') return seasonSheetsHandler(req, res);
   if (String(req.query?.resource || '') === 'training') return trainingHandler(req, res);
   if (String(req.query?.resource || '') === 'fixtures') return fixturesHandler(req, res);
   if (String(req.query?.resource || '') === 'training-schedule') return trainingScheduleHandler(req, res);

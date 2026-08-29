@@ -138,6 +138,7 @@ function buildScope({
     extractFn(html, 'normalizeFixture') + '\n' +
     extractFn(html, 'fixtureSortByDate') + '\n' +
     extractFn(html, 'fixtureCountdown') + '\n' +
+    extractFn(html, 'fixtureHasBeenPlayed') + '\n' +
     extractFn(html, 'fixtureDisplayStatus') + '\n' +
     extractFn(html, 'fixtureTypeStyle') + '\n' +
     extractFn(html, 'selectionFindForFixture') + '\n' +

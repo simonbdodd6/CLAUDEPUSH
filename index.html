@@ -19446,38 +19446,216 @@
      * record — counted honestly, never folded into somebody else's total.
      */
     function appearancesCalculated(fixtures, sheets, seasonStart, seasonEnd) {
-      const byPlayer = {};
-      const matches = [];
-      const unresolved = new Set();
       const fxById = {};
       (fixtures || []).forEach(f => { if (f && f.id) fxById[f.id] = f; });
-      const seenFixtures = new Set();
-      (sheets || []).forEach(sheet => {
-        if (!sheet) return;
+      const today = new Date().toISOString().slice(0, 10);
+      // ONE definition of "played", shared with the fixture badge and with the
+      // server's season read. This used to test `fx.status === 'completed'` on
+      // its own, which no longer matches either of them: nothing writes that
+      // status to the server (the fixtures API accepts only create and import),
+      // so the strict test answered "no match was ever played" for every club.
+      const played = (sheets || []).filter(sheet => {
+        const fx = sheet && fxById[sheet.fixtureId];
+        return !!fx && fixtureHasBeenPlayed(fx, today);
+      });
+
+      // ONE implementation of the counting, too. seasonPlayerStats already
+      // resolves identity, de-duplicates fixtures and reports unresolved names;
+      // a second copy here is how appearances and minutes came to disagree in
+      // the first place. This adds only the per-match season breakdown, which
+      // the aggregation itself has no opinion about.
+      const stats = seasonPlayerStats(played);
+      const byPlayer = {};
+      Object.entries(stats.byPlayer).forEach(([key, row]) => { byPlayer[key] = row.appearances; });
+
+      const matches = [];
+      const seen = new Set();
+      played.forEach(sheet => {
         const fx = fxById[sheet.fixtureId];
-        if (!fx || fx.status !== 'completed') return;   // an appearance is a match PLAYED
-        if (seenFixtures.has(fx.id)) return;            // one sheet counts per fixture
-        seenFixtures.add(fx.id);
-        const names = [
-          ...Object.values(sheet.formationNames || {}),
-          ...(Array.isArray(sheet.benchPlayers) ? sheet.benchPlayers : []),
-        ].map(n => String(n || '').trim()).filter(Boolean);
+        if (seen.has(fx.id)) return;
+        seen.add(fx.id);
         const keys = new Set();
-        names.forEach(name => {
-          const key = mcPersonKey(name);
-          if (!key) return;
-          if (key.startsWith('nm:')) unresolved.add(name);   // named, but not identified
-          keys.add(key);
-        });
+        [...Object.values(sheet.formationNames || {}),
+         ...(Array.isArray(sheet.benchPlayers) ? sheet.benchPlayers : [])]
+          .map(n => String(n || '').trim()).filter(Boolean)
+          .forEach(name => { const k = mcPersonKey(name); if (k) keys.add(k); });
         if (!keys.size) return;
-        keys.forEach(k => { byPlayer[k] = (byPlayer[k] || 0) + 1; });
         matches.push({
           fixtureId: fx.id, date: fx.date || '', opposition: fx.opposition || '',
           seasonId: appearanceSeasonId(fx.date, seasonStart, seasonEnd),
           playerIds: [...keys],
         });
       });
-      return { byPlayer, matches, unresolved: [...unresolved] };
+      return { byPlayer, matches, unresolved: stats.unresolved };
+    }
+
+    // ─── SEASON TEAM SHEETS (the authoritative season source) ────────────────
+    // Loaded ONCE per group from the server's read-only season-sheets resource,
+    // which returns the published team sheets for matches that were played,
+    // inside the club's configured season. The client never decides which
+    // matches happened and never reconstructs a season from device state.
+    let _seasonSheets = null;          // null = not loaded | { ... } = loaded
+    let _seasonSheetsGroup = null;     // the group the loaded data belongs to
+    let _seasonSheetsLoading = false;
+
+    async function loadSeasonSheets(force) {
+      const gid = state.operationalGroupId || '';
+      if (_seasonSheetsLoading) return;
+      if (!force && _seasonSheets !== null && _seasonSheetsGroup === gid) return;
+      if (!canI('publish_squads')) { _seasonSheets = { sheets: [], denied: true }; return; }
+      _seasonSheetsLoading = true;
+      try {
+        const res = await fetch('/api/publish?resource=season-sheets'
+          + (gid ? '&group=' + encodeURIComponent(gid) : ''));
+        if (!res.ok) { _seasonSheets = null; return; }   // unknown ≠ empty
+        const data = await res.json();
+        _seasonSheets = {
+          sheets: Array.isArray(data.sheets) ? data.sheets : [],
+          playedFixtures: Number(data.playedFixtures) || 0,
+          fixturesWithoutSheet: Number(data.fixturesWithoutSheet) || 0,
+          season: data.season || null,
+        };
+        _seasonSheetsGroup = gid;
+        render();
+      } catch { _seasonSheets = null; }                  // unknown ≠ empty
+      finally { _seasonSheetsLoading = false; }
+    }
+
+    /**
+     * SEASON PLAYER STATISTICS — pure, deterministic, keyed by the canonical
+     * identity (playerMatchKey via mcPersonKey).
+     *
+     * Input is a collection of PUBLISHED team sheets for matches that were
+     * PLAYED, exactly as the server's season-sheets read returns them. Both
+     * filters are applied there, on server-owned data; nothing here infers
+     * whether a match happened.
+     *
+     * Each sheet contributes, per player:
+     *
+     *   started      → appearance + start, on the pitch from minute 0
+     *   on the bench → bench appearance; 0 minutes unless they came on
+     *   came on      → appearance + bench appearance + a substitution on,
+     *                  on the pitch from the minute they entered
+     *   went off     → a substitution off, off the pitch from that minute
+     *
+     * Minutes are the same arithmetic matchMinutesByPerson uses for one match:
+     * intervals opened and closed, summed, capped at the match. A player who
+     * comes on, goes off and comes on again simply adds up.
+     *
+     * A fixture is counted ONCE even if several sheets name it — a dual-side
+     * club publishes one sheet per side and a player appears in one of them,
+     * but a duplicate record must never inflate a total.
+     *
+     * Nothing is merged by name. A sheet name matching no roster record keeps
+     * its own "nm:" key and is reported in `unresolved`, so it is visible
+     * rather than quietly credited to somebody else.
+     */
+    function seasonPlayerStats(sheets) {
+      const byPlayer = {};
+      const unresolved = new Set();
+      const seenFixtures = new Set();
+      let fixturesCounted = 0;
+      let totalMatchMinutes = 0;
+
+      const blank = () => ({
+        appearances: 0, starts: 0, benchAppearances: 0,
+        subsOn: 0, subsOff: 0, minutes: 0,
+        // The minutes this player COULD have played: full time for each match
+        // they were named in. Accumulated per match rather than from a season
+        // average, so a player whose only match was 70 minutes is measured
+        // against 70 and not against the season's mean.
+        possibleMinutes: 0,
+      });
+      const rowFor = key => (byPlayer[key] = byPlayer[key] || blank());
+
+      (sheets || []).forEach(sheet => {
+        if (!sheet || typeof sheet !== 'object') return;
+        const fixtureId = String(sheet.fixtureId || '');
+        if (!fixtureId || seenFixtures.has(fixtureId)) return;   // never double-count
+        seenFixtures.add(fixtureId);
+        fixturesCounted++;
+
+        const fullTime = Number.isInteger(sheet.matchMinutes) && sheet.matchMinutes > 0
+          ? sheet.matchMinutes : MATCH_MINUTES_DEFAULT;
+        totalMatchMinutes += fullTime;
+
+        // WHO WAS ON THE SHEET. Resolved through the canonical identity, so a
+        // renamed player or a recreated roster row is still the same person.
+        const people = [];
+        const seen = new Set();
+        const add = (name, role) => {
+          const clean = String(name || '').trim();
+          if (!clean) return;
+          const key = mcPersonKey(clean);
+          if (!key || seen.has(key)) return;
+          seen.add(key);
+          if (key.startsWith('nm:')) unresolved.add(clean);
+          people.push({ key, role });
+        };
+        Object.values(sheet.formationNames || {}).forEach(n => add(n, 'starter'));
+        (Array.isArray(sheet.benchPlayers) ? sheet.benchPlayers : []).forEach(n => add(n, 'bench'));
+        if (!people.length) return;
+
+        // The match's events, chronological, and only ones this sheet can mean.
+        const onSheet = new Set(people.map(p => p.key));
+        const events = (Array.isArray(sheet.substitutions) ? sheet.substitutions : [])
+          .filter(e => e && typeof e === 'object')
+          // Minute 0 is legitimate, so an ABSENT minute must be rejected
+          // distinctly: Number(null) and Number('') are both 0, which would
+          // turn a missing field into a real 0th-minute substitution and wipe
+          // a starter's whole match. Same guard as the recorder's.
+          .filter(e => matchMinuteValue(e.minute) !== null)
+          .map(e => ({ minute: Math.max(0, Math.min(fullTime, matchMinuteValue(e.minute))),
+                       offKey: String(e.offKey || ''), onKey: String(e.onKey || ''),
+                       at: String(e.at || '') }))
+          // An event naming somebody not on this sheet cannot be about this
+          // match. Dropping it is safer than inventing a player for it.
+          .filter(e => (!e.offKey || onSheet.has(e.offKey)) && (!e.onKey || onSheet.has(e.onKey)))
+          .sort((a, b) => a.minute - b.minute || a.at.localeCompare(b.at));
+
+        people.forEach(person => {
+          const row = rowFor(person.key);
+          row.appearances += person.role === 'starter' ? 1 : 0;   // bench appearance decided below
+          if (person.role === 'starter') row.starts += 1;
+          else row.benchAppearances += 1;
+
+          let onSince = person.role === 'starter' ? 0 : null;
+          let played = person.role === 'starter';
+          let minutes = 0;
+          events.forEach(e => {
+            if (e.offKey === person.key && onSince !== null) {
+              minutes += Math.max(0, e.minute - onSince);
+              onSince = null;
+              row.subsOff += 1;
+            } else if (e.onKey === person.key && onSince === null) {
+              onSince = e.minute;
+              played = true;
+              row.subsOn += 1;
+            }
+          });
+          if (onSince !== null) minutes += Math.max(0, fullTime - onSince);
+          row.minutes += Math.min(minutes, fullTime);
+          row.possibleMinutes += fullTime;
+          // A replacement who came on has APPEARED; one who never left the
+          // bench has not, and their zero minutes say so honestly.
+          if (person.role === 'bench' && played) row.appearances += 1;
+        });
+      });
+
+      // Playing time as a share of the matches this player was NAMED IN — never
+      // of the whole season, which would punish a player for matches they were
+      // not selected for. Each match contributes its own full time.
+      Object.values(byPlayer).forEach(r => {
+        r.playingTimePct = r.possibleMinutes > 0
+          ? Math.round((r.minutes / r.possibleMinutes) * 100) : 0;
+      });
+
+      return {
+        byPlayer,
+        fixturesCounted,
+        totalMatchMinutes,
+        unresolved: [...unresolved],
+      };
     }
 
     /**
@@ -19664,18 +19842,19 @@
 
         <!-- APPEARANCES CARD (RC4.8A) -->
         ${(() => {
-          // NO SEASON-WIDE SOURCE YET. Appearances are counted from published
-          // Match Centre sheets on completed fixtures, and the client only ever
-          // holds the CURRENT fixture's sheet — a season's worth needs a read
-          // this screen cannot make today. Rather than print a confident 0 with
-          // nothing behind it (which is what the old squadSelections path did
-          // for every player in every club), the calculated figure is shown as
-          // not yet available. Adjustments are real data and are shown in full.
-          const calc = appearancesCalculated(state.fixtures, [], state.seasonStart, state.seasonEnd);
+          // THE SEASON SOURCE. Published Match Centre team sheets for matches
+          // that were played, read from the server for THIS group. The client
+          // never decides which matches happened.
+          //
+          // `null` means the read has not landed — which is not the same as a
+          // season with no matches, and must never be shown as zeros.
+          if (_seasonSheets === null) loadSeasonSheets();
+          const season = _seasonSheets;
+          const calcAvailable = !!season && !season.denied;
+          const seasonStats = calcAvailable ? seasonPlayerStats(season.sheets) : null;
           const personKey = playerMatchKey(p);
-          const calcCount = calc.byPlayer[personKey] || 0;
-          const calcAvailable = false;
-          const playerMatches = calc.matches.filter(mt => mt.playerIds.includes(personKey));
+          const mine = (seasonStats && seasonStats.byPlayer[personKey]) || null;
+          const calcCount = mine ? mine.appearances : 0;
           const adjs = appearanceAdjustmentsFor(p, _appearanceAdjustments || []);
           const verified = appearanceVerifiedTotal(calcCount, adjs);
           const adjSum = adjs.reduce((s, a) => s + (Number.isInteger(a?.amount) ? a.amount : 0), 0);
@@ -19692,17 +19871,31 @@
           <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
             ${metric(calcAvailable ? verified : (adjSum || 0), 'Recorded total', 'var(--accent)')}
             ${metric(calcAvailable ? calcCount : '—', 'From Match Centre', 'var(--fg)')}
+            ${metric(calcAvailable && mine ? mine.starts : '—', 'Starts', 'var(--fg)')}
+            ${metric(calcAvailable && mine ? mine.benchAppearances : '—', 'Bench', 'var(--fg)')}
+            ${metric(calcAvailable && mine ? mine.minutes + "'" : '—', 'Minutes', 'var(--fg)')}
+            ${metric(calcAvailable && mine ? mine.playingTimePct + '%' : '—', 'Playing time', 'var(--fg)')}
             ${metric((adjSum > 0 ? '+' : '') + adjSum, 'Adjustments', adjSum ? (adjSum > 0 ? 'var(--accent)' : '#dc2626') : 'var(--muted)')}
           </div>
           <details>
             <summary style="font-size:12px;font-weight:700;cursor:pointer;color:var(--muted);padding:4px 0">Audit trail</summary>
             <div style="margin-top:8px">
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Calculated — completed Match Centre team sheets (${playerMatches.length})</div>
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Calculated — completed Match Centre team sheets</div>
               ${!calcAvailable
-                ? '<p class="muted" style="font-size:12px;margin:2px 0 8px">Match Centre appearances are not counted yet — see Season statistics, the next build.</p>'
-                : playerMatches.length
-                ? playerMatches.map(mt => `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px"><span>vs ${esc(mt.opposition || 'TBC')}</span><span class="muted">${esc(mt.seasonId)} · ${esc(mt.date || '')}</span></div>`).join('')
-                : '<p class="muted" style="font-size:12px;margin:2px 0 8px">No completed Match Centre team sheets yet.</p>'}
+                ? `<p class="muted" style="font-size:12px;margin:2px 0 8px">${
+                    season && season.denied
+                      ? 'Season statistics need squad-publishing access.'
+                      : 'Loading this season\u2019s team sheets\u2026'}</p>`
+                : !season.sheets.length
+                ? `<p class="muted" style="font-size:12px;margin:2px 0 8px">No completed team-sheet data yet.${
+                    season.playedFixtures
+                      ? ` ${season.playedFixtures} match${season.playedFixtures === 1 ? '' : 'es'} played, none with a published team sheet.`
+                      : ''}</p>`
+                : !mine
+                ? '<p class="muted" style="font-size:12px;margin:2px 0 8px">Not named on any published team sheet this season.</p>'
+                : `<p class="muted" style="font-size:12px;margin:2px 0 8px">From ${season.sheets.length} published team sheet${season.sheets.length === 1 ? '' : 's'} across ${seasonStats.fixturesCounted} match${seasonStats.fixturesCounted === 1 ? '' : 'es'}${
+                    season.fixturesWithoutSheet ? ` (${season.fixturesWithoutSheet} played match${season.fixturesWithoutSheet === 1 ? '' : 'es'} had no team sheet published)` : ''}. Substitutions on ${mine.subsOn}, off ${mine.subsOff}.</p>`
+                }
               <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:12px 0 4px">Historical adjustments (${adjs.length})</div>
               ${_appearanceAdjustments === null
                 ? '<p class="muted" style="font-size:12px;margin:2px 0">Loading adjustments…</p>'
@@ -23521,12 +23714,37 @@
     // Pure helper: derives the display status from stored status + date.
     // Stored status 'scheduled' is resolved to 'Today', 'Upcoming', or 'Completed'
     // based on the fixture date so the labels are always current.
+    /**
+     * HAS THIS MATCH BEEN PLAYED? — one definition, shared.
+     *
+     * A fixture's stored `status` cannot answer this on its own: the fixtures
+     * API accepts only 'create' and 'import', so nothing ever writes 'completed'
+     * to the server. The coach's "Mark complete" button updates their own device
+     * and is overwritten by the next loadFixturesFromServer. The date is the
+     * durable fact, and the product has always shown it that way — this is the
+     * rule fixtureDisplayStatus below already used for its badge, extracted so
+     * the badge, the season statistics and the server's season read cannot
+     * drift apart. Mirrored server-side in fixtureHasBeenPlayed (api/publish.js).
+     *
+     * Cancelled and postponed are excluded whatever the date says: they were
+     * not played. (The badge alone used to call a past-dated postponement
+     * "Completed"; sharing this predicate fixes that too.)
+     */
+    function fixtureHasBeenPlayed(fx, todayIso) {
+      const status = String(fx?.status || '').toLowerCase();
+      if (status === 'cancelled' || status === 'postponed') return false;
+      if (status === 'completed') return true;
+      const date = String(fx?.date || '');
+      const today = todayIso || new Date().toISOString().slice(0, 10);
+      return !!date && date < today;
+    }
+
     function fixtureDisplayStatus(fx) {
       if (fx.status === 'cancelled') return { label: 'Cancelled', color: '#6b7280',  bg: 'rgba(107,114,128,0.15)' };
-      if (fx.status === 'completed') return { label: 'Completed', color: '#94a3b8',  bg: 'rgba(148,163,184,0.12)' };
+      if (fx.status === 'postponed') return { label: 'Postponed', color: '#f59e0b',  bg: 'rgba(245,158,11,0.15)'  };
       const today = new Date().toISOString().slice(0, 10);
+      if (fixtureHasBeenPlayed(fx, today)) return { label: 'Completed', color: '#94a3b8',  bg: 'rgba(148,163,184,0.12)' };
       if (!fx.date)          return { label: 'Upcoming',  color: '#60a5fa',  bg: 'rgba(96,165,250,0.12)'  };
-      if (fx.date < today)   return { label: 'Completed', color: '#94a3b8',  bg: 'rgba(148,163,184,0.12)' };
       if (fx.date === today) return { label: 'Today',     color: '#f59e0b',  bg: 'rgba(245,158,11,0.15)'  };
       return                        { label: 'Upcoming',  color: '#60a5fa',  bg: 'rgba(96,165,250,0.12)'  };
     }
@@ -37732,6 +37950,9 @@
         // Team-scoped local state must not bleed between clubs.
         resetTeamScopedState();
         _appearanceAdjustments = null; // adjustments are per-club — refetch after switch
+        // Season sheets are per GROUP: a Seniors season must never be shown
+        // under U18. Dropped on any switch and re-read for the new group.
+        _seasonSheets = null; _seasonSheetsGroup = null;
         _trainingPubState = {}; _trainingPubLoadedAt = 0; // training publication is per-club too
         _trainingSchedule = null;      // the training schedule is per-club too
         _trainingScheduleAttempted = false;
