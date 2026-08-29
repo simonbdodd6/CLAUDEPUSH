@@ -4692,6 +4692,35 @@
       .member-row td:last-child { display: none !important; }
     }
 
+    /* ═══ Season statistics — toolbar + compact mobile rows ══════════════════
+       The search field is a flex ITEM with min-width:0, so a long player list
+       can never squeeze it: it keeps its own basis and wraps to a full line
+       before it would shrink. The rows reuse the Members scan-list treatment —
+       .player-db-table already collapses to a block list ≤768px, where the
+       seven columns become a name plus a meta line, with minutes and playing
+       time kept on the right because they are what the screen is for. */
+    .season-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .srow-mmeta { display: none; }
+    @media (max-width: 768px) {
+      .season-toolbar .members-search-input { min-height: 44px !important; }
+      .season-row {
+        display: flex !important; align-items: center !important; gap: 10px !important;
+        min-height: 60px !important; padding: 9px 14px !important; margin: 0 !important;
+        border: 0 !important; border-bottom: 1px solid var(--line) !important;
+        border-radius: 0 !important; box-shadow: none !important; transform: none !important;
+        background: var(--panel, #fff) !important;
+      }
+      .season-row:last-child { border-bottom: 0 !important; }
+      .season-row td { display: none !important; padding: 0 !important; border: 0 !important; background: transparent !important; border-radius: 0 !important; }
+      .season-row td::before { display: none !important; }
+      .season-row td:first-child { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; padding-left: 0 !important; align-items: center; }
+      .season-row td:first-child strong { font-size: 15px !important; line-height: 1.25; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .season-row .srow-mmeta { display: block !important; font-size: 12px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .season-row td[data-label="Minutes"],
+      .season-row td[data-label="Time"] { display: block !important; flex: 0 0 auto !important; padding-right: 0 !important; text-align: right !important; }
+      .season-row td[data-label="Time"] { min-width: 40px; }
+    }
+
     /* Dropdown menus / popovers / sheets that hardcode dark backgrounds */
     html:not([data-theme="dark"]) .menu, html:not([data-theme="dark"]) .dropdown, html:not([data-theme="dark"]) .popover, html:not([data-theme="dark"]) .ctx-menu, html:not([data-theme="dark"]) .sheet, html:not([data-theme="dark"]) .modal-card, html:not([data-theme="dark"]) .ptm-card, html:not([data-theme="dark"]) .chat-new-msg-dialog, html:not([data-theme="dark"]) .picker-menu, html:not([data-theme="dark"]) .dd-menu, html:not([data-theme="dark"]) .chat-ctx-menu, html:not([data-theme="dark"]) .srv-panel {
       background: #ffffff !important;
@@ -17471,6 +17500,26 @@
         return;
       }
 
+      // ── SEASON STATISTICS view ──────────────────────────────────────────
+      // A view of Members, not a new section: the same page, the same player
+      // population and the same row-tap into the same profile. Placed after the
+      // detail branches so opening a player from the table behaves exactly as
+      // opening one from the squad list, and closing returns to this view.
+      if (_membersView === 'season' && canI('publish_squads')) {
+        document.getElementById("coach-players").innerHTML = `
+          <div style="display:grid;gap:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+              <h2 style="margin:0;font-size:19px;color:var(--ink)">Members</h2>
+            </div>
+            ${membersViewTabs('season')}
+            ${seasonStatsHtml()}
+          </div>`;
+        // Re-apply the live query the render just replaced, so a season read
+        // landing mid-search does not silently un-filter the list.
+        seasonApplySearch();
+        return;
+      }
+
       const schedSessions = state.schedule || [];
       const allMembers = operationalPlayers();
       // Use the SAME "archived" test as Match Centre (lifecycleStatus only). The old
@@ -17541,6 +17590,7 @@
             </div>
           </div>
           <p class="muted" style="font-size:12.5px;margin:2px 0 0">Share a link. Players and staff register themselves, sign in and join the right group automatically.</p>
+          ${membersViewTabs('squad')}
 
           <!-- ── Players in no group ────────────────────────────────────────
                The server already counts these on the group-scoped roster read
@@ -19391,8 +19441,6 @@
         injuries, alerts, returnToPlay, recentTreatment,
         // recent activity
         lastAvailabilityUpdate, lastMessage,
-        // statistics — future-ready placeholders (no backend)
-        stats: { matches: 0, starts: 0, bench: 0, minutes: 0, tries: 0, conversions: 0, penalties: 0 },
       };
     }
 
@@ -19511,7 +19559,7 @@
       const gid = state.operationalGroupId || '';
       if (_seasonSheetsLoading) return;
       if (!force && _seasonSheets !== null && _seasonSheetsGroup === gid) return;
-      if (!canI('publish_squads')) { _seasonSheets = { sheets: [], denied: true }; return; }
+      if (!canI('publish_squads')) { _seasonSheets = { sheets: [], denied: true }; _seasonSheetsGroup = gid; return; }
       _seasonSheetsLoading = true;
       try {
         const res = await fetch('/api/publish?resource=season-sheets'
@@ -19528,6 +19576,28 @@
         render();
       } catch { _seasonSheets = null; }                  // unknown ≠ empty
       finally { _seasonSheetsLoading = false; }
+    }
+
+    /**
+     * The season read FOR THE GROUP NOW IN FORCE, or null when there isn't one.
+     *
+     * _seasonSheets on its own cannot answer that: it holds whichever group was
+     * last read, and switching Seniors → U18 leaves Seniors' sheets sitting in
+     * it. Every consumer refetched only when it was null, so after a group
+     * switch the outgoing group's figures were shown under the incoming group
+     * and nothing ever corrected them — setOperationalGroup drops the Match
+     * Centre and Performance caches on a switch but never dropped this one.
+     *
+     * Asking through here makes a group mismatch mean exactly what a missing
+     * read means — unknown, never zero — and starts the read for the group
+     * actually being looked at. One guard, so a second one cannot disagree with
+     * it, and it covers every route that changes the group rather than only the
+     * switcher.
+     */
+    function currentSeasonSheets() {
+      const gid = state.operationalGroupId || '';
+      if (_seasonSheets === null || _seasonSheetsGroup !== gid) { loadSeasonSheets(); return null; }
+      return _seasonSheets;
     }
 
     /**
@@ -19682,6 +19752,287 @@
     }
 
     /**
+     * SEASON TABLE ROWS — the join, and nothing else.
+     *
+     * seasonPlayerStats() is the ONE aggregation and none of its arithmetic is
+     * repeated here. This answers only "which players does the table list, and
+     * what did the aggregation already say about each of them", joined on the
+     * same canonical identity (playerMatchKey) the sheets were published with.
+     * Nothing is matched by name.
+     *
+     * WHO IS LISTED. The operating group's roster — the identical population
+     * Members, Availability and Match Centre read — so a Seniors table can hold
+     * nobody but Seniors players. Archived players are dropped exactly as
+     * Members drops them, EXCEPT when they actually played: a player archived in
+     * March still played eight matches, and hiding those would make the table
+     * disagree with the season it claims to describe.
+     *
+     * A player the group knows who was never named on a sheet is listed with
+     * real zeros — they genuinely played nothing. That is only honest once the
+     * season read has landed, which is the caller's job to establish.
+     *
+     * `offSquad` counts identities the aggregation holds that this roster does
+     * not — someone who has left the club or moved on. They are never shown as
+     * squad members and never merged into anybody; they are counted, so a coach
+     * can see the table is not the whole story instead of silently losing the
+     * difference. Names that resolved to no player at all are NOT counted here:
+     * seasonPlayerStats already reports those separately as `unresolved`, and
+     * reporting one person twice is its own kind of wrong number.
+     */
+    function seasonTableRows(players, stats) {
+      const blank = { appearances: 0, starts: 0, benchAppearances: 0, subsOn: 0, subsOff: 0,
+                      minutes: 0, possibleMinutes: 0, playingTimePct: 0 };
+      const byPlayer = (stats && stats.byPlayer) || {};
+      const claimed = new Set();
+      const rows = [];
+      (players || []).forEach(p => {
+        const key = playerMatchKey(p);
+        const mine = (key && byPlayer[key]) || null;
+        if (mine) claimed.add(key);
+        // The SAME archived test Members uses (lifecycleStatus only) — one rule
+        // for both lists, so they can never disagree about who is in the squad.
+        const archived = (p.lifecycleStatus || 'active') === 'archived';
+        if (archived && !(mine && mine.appearances)) return;
+        rows.push({
+          id: String(p.id || ''), key, name: String(p.name || ''),
+          position: String(p.position || ''), archived,
+          ...blank, ...(mine || {}),
+        });
+      });
+      const offSquad = Object.keys(byPlayer)
+        .filter(k => !claimed.has(k) && !k.startsWith('nm:')).length;
+      return { rows, offSquad };
+    }
+
+    /**
+     * Season table ordering. Every comparison falls back to the player's name,
+     * so two players on identical figures keep a stable order between renders
+     * rather than swapping places each time the season read lands.
+     */
+    function seasonSortRows(rows, key, dir) {
+      const field = { appearances: 'appearances', starts: 'starts', bench: 'benchAppearances',
+                      minutes: 'minutes', pct: 'playingTimePct' }[key];
+      const sign = dir === 'asc' ? 1 : -1;
+      const byName = (a, b) =>
+        String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+      return [...(rows || [])].sort((a, b) => {
+        if (!field) return sign * byName(a, b);
+        return (sign * ((a[field] || 0) - (b[field] || 0))) || byName(a, b);
+      });
+    }
+
+    /**
+     * Does this player match what was typed? Deliberately the same rule the
+     * Members search applies — every term must appear, across name and position
+     * together — so a coach who has learned one search has learned both. Kept as
+     * ONE predicate that both the first render and live typing consult.
+     */
+    function seasonRowMatches(name, position, query) {
+      const terms = String(query || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+      if (!terms.length) return true;
+      const hay = (String(name || '') + ' ' + String(position || '')).toLowerCase();
+      return terms.every(t => hay.includes(t));
+    }
+
+    // ─── SEASON PLAYER STATISTICS — the coach-facing table ───────────────────
+    // It lives inside MEMBERS rather than behind a new sidebar entry because
+    // Members is already the club's list of people and already the route into a
+    // player's profile: the drill-down here is literally playerOpenDetail(), the
+    // same row tap Members has always had. So this adds a view, not a second
+    // player database, a second navigation item or a second set of figures.
+    //
+    // EVERY NUMBER comes from seasonPlayerStats() over the server's read-only,
+    // club-scoped, group-authorised, season-bounded team-sheet resource. Nothing
+    // on this screen counts anything.
+
+    /** Segmented Squad / Season stats control — the pattern the member detail already uses. */
+    function membersViewTabs(active) {
+      // Hidden without the permission the season read itself requires, so nobody
+      // is offered a tab that can only ever refuse them. setMembersView refuses
+      // it too: hiding the entry is never what enforces the boundary.
+      if (!canI('publish_squads')) return '';
+      const btn = (key, label) =>
+        `<button type="button" onclick="setMembersView('${key}')" aria-pressed="${active === key}"
+          style="appearance:none;cursor:pointer;font-size:13px;font-weight:700;padding:7px 14px;border-radius:9px;
+            background:${active === key ? 'var(--panel-2)' : 'transparent'};color:${active === key ? 'var(--fg)' : 'var(--muted)'};
+            border:1px solid ${active === key ? 'var(--line)' : 'transparent'}">${label}</button>`;
+      return `<div style="display:flex;gap:4px;padding:3px;border-radius:11px;background:var(--panel);border:1px solid var(--line);width:max-content;max-width:100%">
+        ${btn('squad', 'Squad')}${btn('season', 'Season stats')}</div>`;
+    }
+
+    function setMembersView(view) {
+      if (view === 'season' && !canI('publish_squads')) {
+        return showToast('Season statistics need squad-publishing access');
+      }
+      _membersView = view === 'season' ? 'season' : 'squad';
+      renderPlayers();
+    }
+
+    /** Sort key change. Direction follows the key: names read A→Z, figures read best-first. */
+    function seasonStatsSort(key) {
+      const allowed = ['minutes', 'appearances', 'starts', 'bench', 'pct', 'name'];
+      _seasonSort = allowed.includes(key) ? key : 'minutes';
+      _seasonSortDir = _seasonSort === 'name' ? 'asc' : 'desc';
+      renderPlayers();
+    }
+
+    /**
+     * Live search. Filters the rows already on the page instead of re-rendering:
+     * replacing the list under a focused input is what loses the caret mid-word,
+     * and the query is kept so a re-render from elsewhere (the season read
+     * landing) restores both the text and the filtering.
+     */
+    function seasonSearchInput(q) {
+      _seasonQuery = String(q || '');
+      seasonApplySearch();
+    }
+
+    function seasonApplySearch() {
+      const rows = Array.from(document.querySelectorAll('#coach-players .season-row'));
+      if (!rows.length) return;
+      let shown = 0;
+      rows.forEach(r => {
+        const ok = seasonRowMatches(r.getAttribute('data-name'), r.getAttribute('data-pos'), _seasonQuery);
+        r.style.display = ok ? '' : 'none';
+        if (ok) shown++;
+      });
+      const empty = document.getElementById('season-search-empty');
+      if (empty) empty.style.display = shown ? 'none' : '';
+    }
+
+    function seasonStatsHtml() {
+      const season = currentSeasonSheets();
+      const shell = body => `<div class="card" style="padding:26px 20px;text-align:center">${body}</div>`;
+      const note  = t => `<p class="muted" style="font-size:13px;margin:0;line-height:1.55">${t}</p>`;
+
+      if (season && season.denied) return shell(note('Season statistics need squad-publishing access.'));
+      // null is NOT an empty season. The read has not landed, or it failed —
+      // either way nobody has looked yet, and a zero would be a claim about a
+      // season nobody has read. Same distinction the Appearances card makes.
+      if (season === null) return shell(note('Loading this season’s team sheets…'));
+      // operationalPlayers() fails CLOSED while the membership list loads, so an
+      // empty roster mid-load means "not known yet", never "nobody plays here".
+      if (!_adminData.loaded && (canI('manage_players') || canI('manage_teams'))) {
+        ensureAdminData();
+        return shell(note('Loading the squad…'));
+      }
+
+      const stats = seasonPlayerStats(season.sheets);
+      const joined = seasonTableRows(operationalPlayers(), stats);
+      const sorted = seasonSortRows(joined.rows, _seasonSort, _seasonSortDir);
+
+      // COVERAGE — the accounting the server already does, said out loud. A
+      // season with matches nobody published a sheet for is a season with
+      // missing history; saying so is the difference between a small total and
+      // a wrong one.
+      const played  = season.playedFixtures;
+      const missing = season.fixturesWithoutSheet;
+      const plural  = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+      const coverage = played
+        ? `${plural(played, 'match', 'matches')} played · ${plural(stats.fixturesCounted, 'team sheet', 'team sheets')} counted`
+        : 'No matches played yet this season.';
+
+      const gaps = [];
+      if (missing) gaps.push(`${plural(missing, 'played match has', 'played matches have')} no published team sheet — those minutes are not counted here.`);
+      if (joined.offSquad) gaps.push(`${plural(joined.offSquad, 'player', 'players')} named on a team sheet ${joined.offSquad === 1 ? 'is' : 'are'} no longer in this squad, so they are not listed.`);
+      if (stats.unresolved.length) gaps.push(`${plural(stats.unresolved.length, 'name', 'names')} on a team sheet ${stats.unresolved.length === 1 ? 'matches' : 'match'} no player record and ${stats.unresolved.length === 1 ? 'was' : 'were'} not credited to anyone: ${stats.unresolved.map(esc).join(', ')}.`);
+      const gapsHtml = gaps.length
+        ? `<div style="margin-top:10px;padding:9px 12px;border-radius:9px;background:var(--accent-soft);border:1px solid var(--line)">
+             ${gaps.map(g => `<p class="muted" style="font-size:12px;margin:0;line-height:1.5">${g}</p>`).join('')}
+           </div>`
+        : '';
+
+      const header = `
+        <div>
+          <h3 style="margin:0 0 3px;font-size:15px;color:var(--ink)">Season statistics${operationalGroupName() ? ` · ${esc(operationalGroupName())}` : ''}</h3>
+          <p class="muted" style="font-size:12.5px;margin:0">Who has played, how much, and how often they started — from your published team sheets. ${esc(coverage)}</p>
+          ${gapsHtml}
+        </div>`;
+
+      if (!season.sheets.length) {
+        return `<div style="display:grid;gap:14px">${header}${shell(note(
+          `No completed team-sheet data yet.${played
+            ? ` ${plural(played, 'match has', 'matches have')} been played, none with a published team sheet.`
+            : ''} Publish a team sheet from Match Centre and it will be counted here.`))}</div>`;
+      }
+      if (!sorted.length) {
+        return `<div style="display:grid;gap:14px">${header}${shell(note(
+          'No players in this group yet. Invite players, or choose a group for players who have none.'))}</div>`;
+      }
+
+      // Playing time is rendered PLAIN, exactly as the player profile renders it.
+      // The profile's coloured percentages are the attendance ones (pctColor);
+      // playing time is deliberately not among them, because a squad player on
+      // 30% is not failing at anything — most of a squad is under half. Colouring
+      // it here would invent a judgement the product does not make, and would
+      // make the same number look poor in the table and neutral on the profile.
+      const SORTS = [['minutes', 'Minutes'], ['appearances', 'Appearances'], ['starts', 'Starts'],
+                     ['bench', 'Bench'], ['pct', 'Playing time'], ['name', 'Name (A–Z)']];
+
+      const row = r => `
+        <tr class="season-row" data-name="${esc(r.name.toLowerCase())}" data-pos="${esc(r.position.toLowerCase())}"
+            role="button" tabindex="0" style="cursor:pointer"
+            onclick="playerOpenDetail('${esc(r.id)}')"
+            onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();playerOpenDetail('${esc(r.id)}')}">
+          <td style="padding-left:18px">
+            <div style="display:flex;align-items:center;gap:9px;min-width:0">
+              <div style="width:32px;height:32px;border-radius:50%;background:${playerAvatarColor(String(r.id || r.name))};display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;flex-shrink:0">${esc(r.name.split(' ').map(w => w[0]).slice(0, 2).join(''))}</div>
+              <div style="min-width:0">
+                <strong style="font-size:13px">${esc(r.name)}</strong>${r.archived ? ' <span class="pill" style="font-size:10px">Archived</span>' : ''}
+                <div class="srow-mmeta">${r.appearances} app${r.appearances === 1 ? '' : 's'} · ${r.starts} start${r.starts === 1 ? '' : 's'} · ${r.benchAppearances} bench</div>
+              </div>
+            </div>
+          </td>
+          <td data-label="Apps"   style="text-align:right">${r.appearances}</td>
+          <td data-label="Starts" style="text-align:right">${r.starts}</td>
+          <td data-label="Bench"  style="text-align:right">${r.benchAppearances}</td>
+          <td data-label="Subs"   style="text-align:right;white-space:nowrap"
+              title="Came on ${r.subsOn}, went off ${r.subsOff}">${r.subsOn}↑ ${r.subsOff}↓</td>
+          <td data-label="Minutes" style="text-align:right;font-weight:800">${r.minutes}′</td>
+          <td data-label="Time" style="text-align:right;padding-right:18px;font-weight:700">${r.playingTimePct}%</td>
+        </tr>`;
+
+      return `
+        <div style="display:grid;gap:14px">
+          ${header}
+          <div class="season-toolbar">
+            <div class="members-search-bar" style="flex:1 1 220px;min-width:0">
+              <span class="members-search-ico" aria-hidden="true">⌕</span>
+              <input type="search" class="members-search-input" id="season-search" value="${esc(_seasonQuery)}"
+                placeholder="Search players by name or position…" aria-label="Search players"
+                oninput="seasonSearchInput(this.value)">
+            </div>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);flex:0 0 auto">Sort
+              <select aria-label="Sort players by" onchange="seasonStatsSort(this.value)"
+                style="min-height:40px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--ink);font-size:13px;font-weight:700;padding:0 8px;text-transform:none;letter-spacing:0">
+                ${SORTS.map(([k, l]) => `<option value="${k}" ${_seasonSort === k ? 'selected' : ''}>${l}</option>`).join('')}
+              </select>
+            </label>
+          </div>
+          <div class="card" style="padding:0;overflow:hidden">
+            <div id="season-search-empty" style="display:none;padding:22px 16px;text-align:center;color:var(--muted);font-size:13px">No players match your search.</div>
+            <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+              <table class="player-db-table" style="width:100%;min-width:660px;border-collapse:collapse">
+                <thead>
+                  <tr>
+                    <th style="padding-left:18px">Player</th>
+                    <th style="text-align:right">Apps</th>
+                    <th style="text-align:right">Starts</th>
+                    <th style="text-align:right">Bench</th>
+                    <th style="text-align:right" title="Substitutions on ↑ and off ↓">Subs</th>
+                    <th style="text-align:right">Min</th>
+                    <th style="text-align:right;padding-right:18px">Time</th>
+                  </tr>
+                </thead>
+                <tbody>${sorted.map(row).join('')}</tbody>
+              </table>
+            </div>
+          </div>
+          <p class="muted" style="font-size:11.5px;margin:0">Playing time is each player’s minutes as a share of the matches they were named in. Tap a player for their full profile.</p>
+        </div>`;
+    }
+
+    /**
      * LEGACY BRIDGE — which stored adjustments belong to this player?
      *
      * Appearance adjustments are real, server-persisted, tenant-scoped, audited
@@ -19803,12 +20154,6 @@
           <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:6px">${label}</div>
         </div>`;
 
-      const statCard = (value, label) =>
-        `<div style="background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px 10px;text-align:center">
-          <div style="font-size:22px;font-weight:900;color:var(--fg);line-height:1">${value}</div>
-          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:6px">${label}</div>
-        </div>`;
-
       const pctColor = v => v >= 80 ? 'var(--accent)' : v >= 60 ? '#d97706' : '#dc2626';
 
       const photoBlock = m.photo
@@ -19871,8 +20216,11 @@
           //
           // `null` means the read has not landed — which is not the same as a
           // season with no matches, and must never be shown as zeros.
-          if (_seasonSheets === null) loadSeasonSheets();
-          const season = _seasonSheets;
+          // Group-aware: _seasonSheets alone still holds the LAST group read,
+          // and this card refetched only when it was null — so after a group
+          // switch it showed the outgoing group's figures and never corrected
+          // itself. currentSeasonSheets() makes a mismatch read as unknown.
+          const season = currentSeasonSheets();
           const calcAvailable = !!season && !season.denied;
           const seasonStats = calcAvailable ? seasonPlayerStats(season.sheets) : null;
           const personKey = playerMatchKey(p);
@@ -20006,20 +20354,21 @@
           </div>
         </div>
 
-        <!-- STATISTICS (future-ready placeholders) -->
-        <div class="card" style="margin-bottom:14px">
-          ${sectionTitle('Season statistics')}
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:10px">
-            ${statCard(m.stats.matches, 'Matches')}
-            ${statCard(m.stats.starts, 'Starts')}
-            ${statCard(m.stats.bench, 'Bench')}
-            ${statCard(m.stats.minutes, 'Minutes')}
-            ${statCard(m.stats.tries, 'Tries')}
-            ${statCard(m.stats.conversions, 'Conv.')}
-            ${statCard(m.stats.penalties, 'Pens')}
-          </div>
-          <div style="font-size:11px;color:var(--muted);margin-top:10px">Match statistics tracking is coming soon.</div>
-        </div>
+        <!-- Where a second "Season statistics" card used to sit, printing
+             Matches 0 · Starts 0 · Bench 0 · Minutes 0 · Tries 0 · Conv. 0 ·
+             Pens 0 for every player at every moment. Those figures were a
+             hardcoded literal with no backend behind them, so a player with
+             eight appearances read zero here while the Appearances card
+             directly above read eight from the club's own published team
+             sheets — and the season table drills into THIS page, so the two
+             would have contradicted each other on sight.
+
+             The four fields that are genuinely tracked (matches, starts, bench,
+             minutes) are the Appearances card's, from the one aggregation. The
+             three that are not tracked at all (tries, conversions, penalties)
+             have no source to show, and inventing a zero for them is a claim
+             about a match nobody recorded. Match statistics are a later build;
+             until then the profile says only what the club can prove. -->
 
         <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
           <button class="btn" type="button" onclick="setMemberTab('edit')">Edit profile details</button>
@@ -30144,6 +30493,14 @@
     let _playerDetailId   = null;  // null = list | playerId = detail panel open
     let _memberTab        = 'overview'; // Phase 31 — 'overview' (Member Centre) | 'edit' (profile form)
     let _showArchivedPlayers = false; // show archived in Members list
+    // Season statistics view state. Presentation ONLY: no permission, no group
+    // and no figure is decided here — the tab is gated in membersViewTabs and
+    // setMembersView, the group comes from state.operationalGroupId, and every
+    // number comes from seasonPlayerStats over the server's season read.
+    let _membersView   = 'squad';    // 'squad' | 'season'
+    let _seasonSort    = 'minutes';  // minutes | appearances | starts | bench | pct | name
+    let _seasonSortDir = 'desc';
+    let _seasonQuery   = '';
 
     function chatLoadStateModule() {
       if (!_chatStatePromise) {

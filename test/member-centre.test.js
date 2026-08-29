@@ -126,9 +126,25 @@ test('medical: clean player reports fit and no flags', () => {
   assert.equal(m.hasMedical, false);
 });
 
-test('statistics are future-ready zero placeholders', () => {
+// REPLACED, and the contract it pinned is deliberately gone.
+//
+// When this was written there was no season-wide source, so a block of zeros
+// labelled "coming soon" was an honest placeholder. There IS a source now — the
+// club's own published team sheets, read back through seasonPlayerStats — and
+// the profile's Appearances card shows matches, starts, bench and minutes from
+// it. The placeholder sat directly underneath, printing 0 for all four for a
+// player the card above credited with eight appearances, and the season
+// statistics table drills into this very page: the two contradicted each other
+// on sight. Tries, conversions and penalties are not recorded anywhere at all,
+// so a zero for them was a claim about a match nobody kept.
+//
+// So the model no longer carries fabricated statistics, and the profile no
+// longer prints any. Match statistics are a later build; until then the page
+// says only what the club can prove.
+test('the model carries no fabricated statistics', () => {
   const m = memberCentreModel(basePlayer(), {});
-  assert.deepEqual(m.stats, { matches: 0, starts: 0, bench: 0, minutes: 0, tries: 0, conversions: 0, penalties: 0 });
+  assert.equal(m.stats, undefined, 'nothing invents a figure the club never recorded');
+  assert.ok(!Object.keys(m).some(k => /^(tries|conversions|penalties)$/.test(k)));
 });
 
 test('recent activity surfaces a matching master-feed entry', () => {

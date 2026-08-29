@@ -315,8 +315,19 @@ test('the live Appearances card no longer prints a sourceless zero', () => {
   // never show a calculated number it cannot source.
   assert.match(card, /const calcAvailable = !!season && !season\.denied;/,
     'availability is derived from the season read, never assumed');
-  assert.match(card, /if \(_seasonSheets === null\) loadSeasonSheets\(\);/,
-    'and the read is what supplies it');
+  // UPDATED AGAIN, and strengthened. The card asked `if (_seasonSheets === null)`
+  // — but _seasonSheets holds whichever GROUP was last read, so after a switch
+  // it was non-null and belonged to the wrong squad: the card never refetched
+  // and showed the outgoing group's figures under the incoming one. The read is
+  // still what supplies the number; it must now be the read for the group in
+  // force, and a mismatch is unknown for exactly the same reason a missing read
+  // is. The invariant this test protects is unchanged, and now covers the group.
+  assert.match(card, /const season = currentSeasonSheets\(\);/,
+    'the read is what supplies it — the one for the group in force');
+  const loader = extractFn(html, 'currentSeasonSheets');
+  assert.match(loader, /_seasonSheets === null \|\| _seasonSheetsGroup !== gid/,
+    'a wrong-group cache is as unknown as no cache at all');
+  assert.match(loader, /loadSeasonSheets\(\); return null;/, 'and it fetches the right one');
   assert.match(card, /calcAvailable \? calcCount : '—'/, 'an em dash, never a 0, before it lands');
   assert.match(card, /No completed team-sheet data yet/, 'and an honest empty state after it does');
 });
