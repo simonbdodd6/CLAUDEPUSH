@@ -8049,6 +8049,81 @@
       return roster.filter(p => !answered.has(String(p.id)));
     }
 
+    /**
+     * THE AVAILABILITY WEEK — one accessor, so nothing invents a second one.
+     *
+     * `state.schedule` IS the current availability week: it is what the board
+     * renders, what "Request Availability" asks about, what chaseAllNonResponders
+     * chases and what clearWeekAvailability clears. It is already group-scoped
+     * (the training partition swaps it on a group change), so a Seniors coach's
+     * week is Seniors' sessions.
+     *
+     * This exists so an individual reminder can never disagree with the group
+     * one about which week it is — the failure mode would be a coach chasing a
+     * player for a session the board is not even showing.
+     */
+    function availabilityWeekSessions() {
+      return state.schedule || [];
+    }
+
+    /**
+     * THIS WEEK'S AVAILABILITY, FOR ONE PLAYER — answered, outstanding, and
+     * whether there is anything to chase at all.
+     *
+     * Every answer comes from sessionRows(), the canonical server-first
+     * resolver the board itself renders from, so the profile can never claim a
+     * different reply from the Availability screen. Nothing is recomputed here
+     * and no new notion of "answered" is introduced: a status that is present
+     * and is not 'no-reply' is an answer, exactly as availabilityNonResponders
+     * decides it.
+     *
+     * A player who is not on the board for a session is NOT counted as
+     * outstanding for it. sessionRows() serves the operating group, so a player
+     * outside it yields no rows at all and reads as "nothing open" rather than
+     * as somebody ignoring every request — the fail-closed answer, and the one
+     * that stops a coach chasing a player who is not theirs to chase.
+     *
+     * AVAILABILITY, NOT ATTENDANCE. This counts REPLIES to availability
+     * requests. Whether the player then turned up is a different question the
+     * product answers elsewhere, and the two must not be conflated.
+     */
+    function playerAvailabilityWeek(player) {
+      const sessions = availabilityWeekSessions();
+      const pid = String(player && player.id || '');
+      const answered = [], outstanding = [];
+      if (pid) sessions.forEach(sess => {
+        const row = (sessionRows(String(sess.id)) || [])
+          .find(r => String(r.player && r.player.id || '') === pid);
+        if (!row) return;                       // not asked about this session
+        const st = row.status;
+        (st && st !== 'no-reply' ? answered : outstanding).push(sess);
+      });
+      const total = answered.length + outstanding.length;
+      return {
+        sessions, answered, outstanding, total,
+        answeredCount: answered.length,
+        complete: total > 0 && outstanding.length === 0,
+      };
+    }
+
+    /**
+     * CAN THIS PLAYER BE SENT A REMINDER, AND UNDER WHICH IDENTITY?
+     *
+     * The durable membership identity (userId) or nothing. A roster row with no
+     * account behind it — a trialist, a CSV import, a name reconciled off a
+     * match sheet — has no device and no inbox, so there is nowhere for a
+     * reminder to go. Saying so is the honest answer; sending into the void and
+     * reporting success is not.
+     *
+     * Deliberately NOT the roster id and deliberately NOT the display name.
+     * The server refuses a name for an individual send, and a roster id is not
+     * an account.
+     */
+    function availabilityReminderTarget(player) {
+      const userId = String(player && player.userId || '').trim();
+      return userId ? { ok: true, userId } : { ok: false, reason: 'no-account' };
+    }
+
     function sessionRows(id)  {
       const key = sessionKey(id);
       const rKey = sessionReasonKey(id);
@@ -16285,6 +16360,126 @@
       }
     }
 
+    // In-flight guard: one reminder per player at a time. The confirm dialog is
+    // awaited, so without this a second tap during the round trip queues a
+    // second identical send — the coach sees one dialog and the player gets two
+    // notifications.
+    const _availReminderInFlight = new Set();
+
+    /**
+     * REMIND ONE PLAYER about this week's availability.
+     *
+     * Reuses the group path's machinery entirely — /api/push for the
+     * notification and /api/chat for the message — with the audience narrowed
+     * to one durable identity. No parallel availability system, no new
+     * endpoint, and no second definition of the week or of "answered".
+     *
+     * WHO CAN BE TARGETED. The player is resolved from operationalPlayers(),
+     * the group-scoped roster that fails closed while memberships load, so a
+     * coach can only ever name somebody in the group they are operating. The
+     * server then re-decides it from the session alone: /api/push restricts
+     * delivery to ACTIVE members of the sender's own club and, when a group is
+     * named, to that group's players — asserted against the sender's staff
+     * scope. A forged id therefore reaches nobody rather than reaching someone
+     * else's player.
+     *
+     * WHAT IS REFUSED BEFORE ANYTHING IS SENT: no permission, a player outside
+     * the operating group, a week with nothing open, a player who has already
+     * replied to everything, and a player with no account to receive it. None
+     * of those sends, and none of them reports that it did.
+     */
+    async function requestPlayerAvailability(playerId) {
+      if (!isCoach()) return showToast('Only coaches can send availability requests');
+      // The SAME permission the server requires for a push send, asked here so
+      // an unentitled coach is told plainly instead of collecting a 403.
+      if (!canI('messaging')) return showToast('You do not have permission to send availability requests');
+
+      const id = String(playerId || '');
+      // The OPERATING group's roster — never state.players. This is the whole
+      // cross-group guarantee on the client side, and it fails closed while the
+      // membership list is still loading.
+      const player = operationalPlayers().find(p => String(p.id || '') === id);
+      if (!player) return showToast('That player is not in the group you are managing');
+
+      // CLAIM THE GUARD BEFORE THE FIRST await, NOT AFTER THE CONFIRM.
+      // Three fast taps all cleared this check and then all reached the send:
+      // the claim sat after `await ceConfirm`, so every click got there before
+      // any of them had claimed anything, and the player received three
+      // notifications. Nothing between the check and the claim may yield.
+      if (_availReminderInFlight.has(id)) return;
+      _availReminderInFlight.add(id);
+      renderPlayers();                       // the button disables from here
+      try {
+        const week = playerAvailabilityWeek(player);
+        const first = (player.name || 'This player').split(' ')[0];
+        if (!week.total) return showToast('No availability requests are open this week');
+        if (week.complete) return showToast(`${first} has already replied to all availability requests this week`);
+
+        const target = availabilityReminderTarget(player);
+        if (!target.ok) {
+          await ceConfirm(`${player.name} has no CoachEasier account`,
+            'There is no account or device to send a reminder to yet. Invite them from Members, and their availability requests will reach them once they sign in.',
+            { confirmLabel: 'OK' });
+          return;
+        }
+
+        const titles = week.outstanding.map(sess => sess.title || sess.id).join(', ');
+        if (!(await ceConfirm('Send availability reminder?',
+          `${player.name} will be asked to confirm their availability for ${titles}. Nobody else is notified.`,
+          { confirmLabel: 'Send reminder' }))) return;
+
+        const body = `Please confirm your availability for: ${titles} in CoachEasier.`;
+        const me = currentUser();
+        // The MESSAGE — a direct conversation, so a player with no push
+        // subscription still receives the request in their Messages tab. Same
+        // two calls the individual coach message already makes.
+        let messaged = false;
+        try {
+          await chatLoadStateModule();
+          const participantId = chatResolvePlayerParticipantId(player) || target.userId;
+          const convId = dmConvId(me.id, participantId);
+          const post = payload => fetch('/api/chat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          await post({ action: 'create_conv', id: convId, name: player.name || 'Direct message',
+            type: 'DIRECT', participants: [me.id, participantId] });
+          const sent = await post({ action: 'send', convId, senderId: me.id, senderName: me.name,
+            senderRole: me.role || 'coach', text: `Availability request — ${body}`, type: 'TEXT' });
+          messaged = sent.ok;
+        } catch { messaged = false; }
+
+        // The NOTIFICATION — audience 'individual', which the server refuses to
+        // carry without a durable id, so this can never widen into a broadcast.
+        const res = await fetch('/api/push', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: 'Availability request',
+            body,
+            tag: `avail-one-${id}-${Date.now()}`,
+            type: 'availability',
+            audience: 'individual',
+            targetUserId: target.userId,
+            group: state.operationalGroupId || undefined,
+            url: '/?to=availability',
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        const pushed = res.ok && Number(data.sent) > 0;
+
+        // TRUTHFUL FEEDBACK. "Sent" is only claimed for what actually left.
+        if (pushed) showToast(`Availability reminder sent to ${first} ✓`);
+        else if (messaged) showToast(`Availability request sent to ${first} in Messages — no push notifications on their device yet`);
+        else if (!res.ok) showToast(`Reminder not sent: ${data.error || 'HTTP ' + res.status}`);
+        else showToast(`Reminder not delivered — ${first} has no device or inbox set up yet`);
+      } catch (e) {
+        showToast('Reminder failed: ' + (e && e.message || 'network'));
+      } finally {
+        _availReminderInFlight.delete(id);
+        renderPlayers();
+      }
+    }
+
     async function sendInAppMessage() {
       if (!isCoach()) return showToast("Only coaches can send squad messages");
       const bodyEl     = document.getElementById("messageBody");
@@ -20207,6 +20402,54 @@
             ${metric(m.sessionsMissed, 'Missed', m.sessionsMissed ? '#dc2626' : 'var(--fg)')}
           </div>
         </div>
+
+        <!-- AVAILABILITY THIS WEEK — the one-player reminder -->
+        ${(() => {
+          // Deliberately its own card and NOT part of "Attendance & availability"
+          // above: that card is about turning up, this one is about replying.
+          // Folding a reply chase into an attendance panel is how the two come
+          // to be read as the same thing.
+          const week = playerAvailabilityWeek(p);
+          const sending = _availReminderInFlight.has(String(p.id || ''));
+          const target = availabilityReminderTarget(p);
+          const canSend = isCoach() && canI('messaging');
+          const label = sessArr => sessArr.map(x => esc(x.title || x.id)).join(', ');
+          let action = '';
+          if (!week.total) {
+            // TWO different nothings, and saying the wrong one is a false
+            // statement about the week. A player with no rows for a week that
+            // HAS sessions is not being asked about them — they are outside the
+            // group the requests went to (a roster record with no account can
+            // never be in one). Reporting that as "no sessions this week" told
+            // a coach the week was empty while three sessions sat on the board.
+            action = week.sessions.length
+              ? `<p class="muted" style="font-size:12.5px;margin:0">${esc((p.name || 'This player').split(' ')[0])} is not in the group these requests were sent to, so there is no availability to chase. Assign them a group from Members first.</p>`
+              : '<p class="muted" style="font-size:12.5px;margin:0">No sessions are scheduled this week.</p>';
+          } else if (week.complete) {
+            action = `<p style="font-size:12.5px;margin:0;font-weight:700;color:var(--accent)">✓ Replied to everything this week</p>`;
+          } else if (!canSend) {
+            action = `<p class="muted" style="font-size:12.5px;margin:0">Outstanding: ${label(week.outstanding)}.</p>`;
+          } else if (!target.ok) {
+            action = `<p class="muted" style="font-size:12.5px;margin:0">Outstanding: ${label(week.outstanding)}. ${esc((p.name || 'This player').split(' ')[0])} has no CoachEasier account yet, so there is nothing to send a reminder to.</p>`;
+          } else {
+            action = `
+              <p class="muted" style="font-size:12.5px;margin:0 0 10px">Waiting on: ${label(week.outstanding)}</p>
+              <button class="btn primary" type="button" ${sending ? 'disabled' : ''}
+                onclick="requestPlayerAvailability('${esc(String(p.id || ''))}')"
+                style="min-height:44px;font-size:13px;font-weight:700">
+                ${sending ? 'Sending…' : 'Request availability this week'}
+              </button>`;
+          }
+          return `
+        <div class="card" style="margin-bottom:14px">
+          ${sectionTitle('Availability this week')}
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <strong style="font-size:20px;color:var(--ink)">${week.total ? `${week.answeredCount} / ${week.total}` : '—'}</strong>
+            <span class="muted" style="font-size:12.5px">${week.total ? 'replied' : 'nothing to reply to'}</span>
+          </div>
+          ${action}
+        </div>`;
+        })()}
 
         <!-- APPEARANCES CARD (RC4.8A) -->
         ${(() => {

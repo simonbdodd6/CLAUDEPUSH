@@ -96,7 +96,21 @@ export default async function handler(req, res) {
 
   const { title, body, from, tag, type = 'message', sessionId = 'game', targetLabel, targetUserId, targetPlayerId, audience = 'all' } = req.body || {};
   if (!String(body || '').trim()) return res.status(400).json({ error: 'Message body required' });
-  if (!['all', 'no-reply'].includes(audience)) return res.status(400).json({ error: 'audience must be all or no-reply' });
+  if (!['all', 'no-reply', 'individual'].includes(audience)) {
+    return res.status(400).json({ error: 'audience must be all, no-reply or individual' });
+  }
+  // ── ONE named person, enforced here rather than trusted from the caller ───
+  // Naming a target has always NARROWED delivery, but omitting one silently
+  // widened it: a request whose target resolved to empty fell through to the
+  // whole club. A reminder meant for one player must never become a broadcast
+  // because an id was blank, so 'individual' makes the intent explicit and the
+  // server refuses to carry it without a DURABLE id. Display names are not
+  // accepted for it either — two players can share one, and a name is not an
+  // identity. Everything after this point (club isolation, group assertion,
+  // notification preferences) is unchanged and still applies.
+  if (audience === 'individual' && !String(targetUserId || targetPlayerId || '').trim()) {
+    return res.status(400).json({ error: 'audience individual requires targetUserId' });
+  }
 
   const allSubscriptions = await load();
 
@@ -111,8 +125,9 @@ export default async function handler(req, res) {
   const teamMembers = await loadTeamMembers();
   const clubSubscriptions = clubMemberSubscriptions(allSubscriptions, teamMembers, teamId);
 
-  // Case-insensitive label match so "Nick Player" finds "nick player" sub
-  const targetLower = targetLabel ? targetLabel.toLowerCase().trim() : null;
+  // Case-insensitive label match so "Nick Player" finds "nick player" sub.
+  // Never for an individual send — see the audience gate above.
+  const targetLower = (targetLabel && audience !== 'individual') ? targetLabel.toLowerCase().trim() : null;
   const targetId = String(targetUserId || targetPlayerId || '').trim();
   let subscriptions = targetLower || targetId
     ? clubSubscriptions.filter(item => {
