@@ -19,7 +19,9 @@ const src = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 // Workflow order: Overview → Availability → Training → Performance →
 // Match Centre → Messages → Members → Medical → Settings.
-const BETA_IDS = ['overview', 'message', 'training', 'performance', 'matchday', 'messages', 'players', 'medical', 'settings'];
+// Tactics sits beside Training in the workflow order (Build 9: the Tactics
+// Board is mounted as a coach section, gated on publish_training).
+const BETA_IDS = ['overview', 'message', 'training', 'tactics', 'performance', 'matchday', 'messages', 'players', 'medical', 'settings'];
 const HIDDEN_IDS = ['fixtures', 'selection', 'admin', 'club', 'reports', 'calendar', 'qa', 'beta', 'search'];
 
 function extractFn(name) {
@@ -54,7 +56,7 @@ test('BETA_SIMPLE_NAV is enabled on the Core Beta branch', () => {
     'beta navigation must be ON for the simplified beta');
 });
 
-test('BETA_NAV_IDS is exactly the 9 beta sections', () => {
+test('BETA_NAV_IDS is exactly the 10 beta sections', () => {
   const scope = new Function(`${extractArrayConst('BETA_NAV_IDS')} return BETA_NAV_IDS;`)();
   assert.deepEqual(scope, BETA_IDS);
 });
@@ -151,10 +153,10 @@ test('renderNav() hides advanced / club / automation sections from the sidebar',
   }
 });
 
-test('renderNav() renders exactly 9 coach buttons', () => {
+test('renderNav() renders exactly 10 coach buttons', () => {
   const html = buildNavScope();
   const count = (html.match(/setSection\('coach',/g) || []).length;
-  assert.equal(count, 9);
+  assert.equal(count, 10);
 });
 
 test('renderNav() renders the beta buttons in BETA_NAV_IDS (workflow) order', () => {
@@ -171,5 +173,7 @@ test('renderNav() drops ONLY Performance for an unentitled club', () => {
   const html = buildNavScope({ entitled: false });
   const order = [...html.matchAll(/setSection\('coach','([^']+)'\)/g)].map(m => m[1]);
   assert.deepEqual(order, BETA_IDS.filter(id => id !== 'performance'));
-  assert.equal(order.length, 8);
+  // Tactics is NOT entitlement-gated (absent from SECTION_FEATURE_MAP): it is a
+  // coach tool gated on publish_training, so it stays for an unentitled club.
+  assert.equal(order.length, 9);
 });

@@ -30,6 +30,7 @@
 !/performance
 !/season-intelligence
 !/src
+!/tactics
 
 # --- serverless functions ------------------------------------------------
 # Must be uploaded: Vercel builds api/**/*.js into functions. Being uploaded

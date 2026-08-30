@@ -662,7 +662,7 @@ test('the server gate on the season resource is unchanged', async () => {
 
 test('no new top-level navigation entry was created', () => {
   const nav = extractConst(html, 'BETA_NAV_IDS');
-  assert.equal(nav, `    const BETA_NAV_IDS = ["overview", "message", "training", "performance", "matchday", "messages", "players", "medical", "settings"];`);
+  assert.equal(nav, `    const BETA_NAV_IDS = ["overview", "message", "training", "tactics", "performance", "matchday", "messages", "players", "medical", "settings"];`);
   const sections = html.slice(html.indexOf('const coachSections = ['), html.indexOf('const BETA_SIMPLE_NAV'));
   assert.ok(!/season/i.test(sections), 'season statistics is a view of Members, not a section');
   assert.ok(!/season/i.test(extractConst(html, 'SECTION_PERM_MAP')));

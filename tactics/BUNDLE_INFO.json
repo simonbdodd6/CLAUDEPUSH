@@ -1,0 +1,11 @@
+{
+  "product": "Coach's Eye Tactics Board",
+  "artifact": "tactics-board.mjs",
+  "generated": true,
+  "note": "Built output copied from the standalone CoachEasier-Tactics-Board repository. Do not edit here \u2014 rebuild there (pnpm bundle) and copy again.",
+  "sourceRepo": "CoachEasier-Tactics-Board",
+  "sourceCommit": "6c3029ecfd8ca775a7af369016c7827794723cc6",
+  "sha256": "c4d962afbc633f686c69938e377c8b41a702f11fd77d92f3eb5856e04f8bccd4",
+  "bytes": 527696,
+  "builtAt": "2026-08-30T08:51:49Z"
+}

@@ -5662,6 +5662,7 @@
       <section id="coach-beta"        class="section"></section>
       <section id="coach-search"      class="section"></section>
       <section id="coach-performance" class="section"></section>
+      <section id="coach-tactics"     class="section"></section>
 
       <section id="player-home"         class="section"></section>
       <section id="player-availability" class="section"></section>
@@ -5703,6 +5704,7 @@
       ["message",   "Availability"],
       ["messages",  "Messages"],
       ["training",  "Training"],
+      ["tactics",   "Tactics"],
       ["performance", "Performance"],
       ["fixtures",  "Fixtures"],
       ["selection", "Selection"],
@@ -5728,14 +5730,14 @@
     // Workflow order: Overview → Availability → Training → Match Centre →
     // Messages → Members → Medical → Settings. In beta mode the sidebar renders
     // in THIS order (not coachSections order); labels are looked up from coachSections.
-    const BETA_NAV_IDS = ["overview", "message", "training", "performance", "matchday", "messages", "players", "medical", "settings"];
+    const BETA_NAV_IDS = ["overview", "message", "training", "tactics", "performance", "matchday", "messages", "players", "medical", "settings"];
 
     // Which permission gates each coach-shell section. Module-level so the nav,
     // the route guard and the tests all read ONE definition — a section that is
     // hidden must also be unreachable, and that can only be guaranteed if both
     // gates consult the same map. Sections absent from this map are ungated and
     // therefore staff-only (see allowedCoachSections).
-    const SECTION_PERM_MAP = { medical: 'medical_access', admin: 'manage_teams', club: 'manage_teams', fixtures: 'manage_teams', selection: 'publish_squads', message: 'reports', messages: 'messaging', training: 'publish_training', performance: 'publish_training', matchday: 'publish_squads', players: 'manage_players' };
+    const SECTION_PERM_MAP = { medical: 'medical_access', admin: 'manage_teams', club: 'manage_teams', fixtures: 'manage_teams', selection: 'publish_squads', message: 'reports', messages: 'messaging', training: 'publish_training', tactics: 'publish_training', performance: 'publish_training', matchday: 'publish_squads', players: 'manage_players' };
 
     // Sections whose sidebar VISIBILITY also depends on a premium entitlement.
     // This is presentation only: the section's own renderer keeps its
@@ -6681,6 +6683,7 @@
     const SECTION_ICONS = {
       overview: 'home', message: 'calcheck', messages: 'chat', training: 'clipboard',
       matchday: 'trophy', medical: 'medical', players: 'users', admin: 'shield',
+      tactics: 'clipboard',
       club: 'shield', settings: 'settings', performance: 'dumbbell',
       availability: 'calcheck', week: 'week', fixtures: 'calendar', selection: 'users',
     };
@@ -36926,6 +36929,86 @@
         </div>`;
     }
 
+    // ─── TACTICS BOARD (separate product, mounted here) ──────────────────────
+    // The board is its own repository, its own document model and its own build
+    // (CoachEasier-Tactics-Board). Core supplies a container and a HostContext;
+    // it does not own the board's data model and never reaches inside it.
+    //
+    // FRONTEND ONLY in this build: boards live in THIS browser's localStorage,
+    // namespaced by club (tb:board:<clubId>:…). No API route, no serverless
+    // function, no Redis. Hosted storage is a later build and lands behind the
+    // same PersistenceAdapter, with no change to Core beyond passing an adapter.
+    //
+    // SECURITY: only ids, display names and capability booleans cross the
+    // boundary — never a session token. Capabilities gate the board's UI only;
+    // authorization stays exactly where it is, in the API's permission checks.
+    let _tacticsInstance = null;
+    let _tacticsLoading  = false;
+
+    function tacticsHostContext() {
+      const u = currentUser() || {};
+      // One permission decides both today: the section is gated on
+      // publish_training, so everyone who can reach it can edit. If the gate is
+      // ever widened, the board correctly degrades to view-only on its own.
+      const canEdit = canI('publish_training');
+      const clubId  = String(state.teamId || 'club');
+      const groupId = state.operationalGroupId ? String(state.operationalGroupId) : null;
+      const ctx = {
+        contractVersion: 1,
+        user:  { id: String(u.id || 'unknown'), displayName: String(u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Coach') },
+        scope: { club: { id: clubId, name: String(state.clubName || 'My Club') } },
+        capabilities: {
+          createBoard: canEdit, editBoard: canEdit, deleteBoard: canEdit,
+          // Everything below needs host storage or host APIs that do not exist
+          // yet; the board hides each control while its adapter is absent.
+          shareToGroup: false, shareToTeam: false, manageClubTemplates: false,
+          attachToSession: false, attachToMatch: false, sendMessage: false,
+        },
+        navigation: {
+          exit: () => setSection('coach', 'training'),
+          setBoardRoute: () => {},   // Core owns the URL; the board keeps its route in memory
+        },
+      };
+      // operationalGroupName() is Core's own name for the current group.
+      if (groupId) ctx.scope.group = { id: groupId, name: String(operationalGroupName() || 'Group') };
+      if (state.seasonName) ctx.scope.season = String(state.seasonName);
+      return ctx;
+    }
+
+    function renderTactics() {
+      const el = document.getElementById('coach-tactics');
+      if (!el) return;
+      const active = state.activeView === 'coach' && state.activeCoachSection === 'tactics';
+      if (!active) {
+        // Leaving the section tears the board down: its animation loop,
+        // listeners and timers go with it, and a pending autosave is flushed.
+        if (_tacticsInstance) { try { _tacticsInstance.unmount(); } catch (e) { console.error('[tactics] unmount', e); } _tacticsInstance = null; }
+        el.innerHTML = '';
+        return;
+      }
+      if (_tacticsInstance || _tacticsLoading) return;   // render() runs often; mount once
+      _tacticsLoading = true;
+      el.innerHTML = '<p class="muted" style="padding:24px;text-align:center">Loading the tactics board…</p>';
+      // safeRender() swallows throws, so this reports its own failures.
+      import('/tactics/tactics-board.mjs')
+        .then(mod => {
+          if (state.activeCoachSection !== 'tactics') return;   // navigated away while loading
+          el.innerHTML = '';
+          const host = document.createElement('div');
+          host.style.height = 'min(78vh, 900px)';
+          host.style.minHeight = '480px';
+          el.appendChild(host);
+          _tacticsInstance = mod.mount(host, { host: tacticsHostContext() });
+        })
+        .catch(err => {
+          console.error('[tactics] could not load the tactics board', err);
+          el.innerHTML = '<div class="card" style="text-align:center;padding:28px 16px">'
+            + '<p style="font-weight:700;margin:0 0 6px">The tactics board could not load</p>'
+            + '<p class="muted" style="font-size:12px;margin:0">Reload the page to try again.</p></div>';
+        })
+        .finally(() => { _tacticsLoading = false; });
+    }
+
     function render() {
       // Wrap each section so one failing helper can't leave the page blank.
       // If a section element is empty after a throw, insert a minimal error card.
@@ -36972,6 +37055,7 @@
       safeRender('coach-performance',   () => renderPerformance());
       safeRender('player-performance',  () => renderPerformance());
       safeRender('coach-matchday',      () => renderMatchday());
+      safeRender('coach-tactics',       () => renderTactics());
       safeRender('coach-medical',       () => { if (state.activeView === 'coach') renderMedical(); });
       safeRender('coach-players',       () => renderPlayers());
       safeRender('coach-admin',         () => renderClubAdmin());
