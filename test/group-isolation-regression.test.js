@@ -198,7 +198,7 @@ function staffPanelNames(access, fxGroupId) {
     const CE_INITIAL_GROUP_ID = ${JSON.stringify(SEN)};
     function isCoach() { return true; }
     function esc(v) { return String(v == null ? '' : v); }
-    function _draftTimeAgo() { return ''; }
+    function timeAgo() { return ''; }
     const _MC_STAFF_ROLE_LABEL = { coach: 'Coach', admin: 'Admin', medical: 'Medical' };
     function matchCentreSideId() { return ''; }
     function matchCentreSelectedSide() { return null; }
@@ -236,7 +236,7 @@ test('staff panel with PENDING access ids shows NO other staff (fail closed), ne
     const CE_INITIAL_GROUP_ID = ${JSON.stringify(SEN)};
     function isCoach() { return true; }
     function esc(v) { return String(v == null ? '' : v); }
-    function _draftTimeAgo() { return ''; }
+    function timeAgo() { return ''; }
     const _MC_STAFF_ROLE_LABEL = { coach: 'Coach', admin: 'Admin', medical: 'Medical' };
     function matchCentreSideId() { return ''; }
     function matchCentreSelectedSide() { return null; }

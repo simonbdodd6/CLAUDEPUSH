@@ -399,7 +399,9 @@ function draftsPanel(selectedFixtureId, coachDraftsList, users) {
     const _coachDraftsList = arguments[1];
     function isCoach() { return true; }
     function esc(v) { return String(v == null ? '' : v); }
-    function _draftTimeAgo(iso) { return iso ? 'at ' + iso : ''; }
+    // Renamed: the draft-specific helper is now the product's single relative-time
+    // convention (timeAgo), shared with Recent activity. Same stub, current name.
+    function timeAgo(iso) { return iso ? 'at ' + iso : ''; }
     const _MC_STAFF_ROLE_LABEL = { coach: 'Coach', admin: 'Admin', medical: 'Medical' };
     function matchCentreSideId() { return ''; }          // sideless mode
     function matchCentreSelectedSide() { return null; }

@@ -2855,6 +2855,16 @@
     .ovw-feed-item { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--ink); line-height: 1.4; }
     .ovw-feed-item .ovw-feed-mark { flex-shrink: 0; color: var(--green); font-weight: 800; }
     .ovw-feed-item span.muted { color: var(--muted); }
+    /* Activity rows: the type is a WORD as well as a mark, so the kind of event
+       never depends on colour or glyph alone. Long names wrap rather than push
+       the card wide. */
+    .ovw-feed-text { min-width: 0; overflow-wrap: anywhere; }
+    .ovw-feed-what { display: inline-block; font-size: 10px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: .05em; color: var(--muted); background: var(--panel-2); border: 1px solid var(--line);
+      border-radius: 5px; padding: 0 5px; margin-right: 6px; vertical-align: 1px; white-space: nowrap; }
+    .ovw-feed-note { font-size: 11.5px; color: var(--muted); margin: 2px 0 0; }
+    .ovw-retry { appearance: none; background: none; border: 0; padding: 0; margin-left: 4px; cursor: pointer;
+      font: inherit; font-weight: 700; color: var(--accent); text-decoration: underline; }
 
     .ovw-actions-card {
       border: 1px solid var(--line); border-radius: var(--r); background: var(--panel);
@@ -8007,6 +8017,27 @@
     // guarantees the LATEST resolved response wins regardless of which raw/canonical
     // row or session-id alias the local state holds.
     let _resolvedAvailability = {};
+    // The group _resolvedAvailability was fetched for. null = never fetched.
+    let _resolvedAvailabilityGroup = null;
+
+    /**
+     * The resolved availability map, or null when we do not actually know it.
+     *
+     * `_resolvedAvailability` holds whichever group was read last and nothing
+     * refetches on a group switch, so after Seniors → U18 it still holds
+     * Seniors' answers. The availability BOARD survives that by intersection —
+     * it looks up the current group's players, who are absent from a stale map,
+     * so they read as no-reply rather than as somebody else. Anything that
+     * iterates the map itself has no such protection.
+     *
+     * A group mismatch, or a read that has never landed, therefore means
+     * UNKNOWN — never "nothing happened".
+     */
+    function currentResolvedAvailability() {
+      if (!_availLastSync) return null;
+      if (_resolvedAvailabilityGroup !== (state.operationalGroupId || '')) return null;
+      return _resolvedAvailability;
+    }
     function resolvedAnswerFor(player, sessionId) {
       const want = normalizeSessionId(sessionId);
       let mine = null;
@@ -10716,7 +10747,13 @@
         render();
       } catch (e) { console.warn('[loadCoachDraftsList]', e); }
     }
-    function _draftTimeAgo(iso) {
+    /**
+     * THE relative-time convention. Named for drafts once, now shared with
+     * Recent activity so the product has one way of saying "recently" rather
+     * than two that drift. Local-time throughout: the day boundary a coach
+     * cares about is theirs, not UTC's.
+     */
+    function timeAgo(iso) {
       if (!iso) return '';
       const t = Date.parse(iso); if (isNaN(t)) return '';
       const s = Math.max(0, (Date.now() - t) / 1000);
@@ -10778,7 +10815,7 @@
         .filter(_mcStaffInScope)
         .filter(u => { const k = String(u.id); if (seen.has(k)) return false; seen.add(k); return true; });
       const others = staff.filter(u => String(u.id) !== meId);
-      const mineUpdated = mine?.updatedAt ? `Updated ${_draftTimeAgo(mine.updatedAt)}` : 'Not saved yet';
+      const mineUpdated = mine?.updatedAt ? `Updated ${timeAgo(mine.updatedAt)}` : 'Not saved yet';
 
       const otherRows = others.map(u => {
         const d = draftByUser.get(String(u.id));
@@ -10787,7 +10824,7 @@
           return `<div class="mc-cmp-item"><div class="mc-cmp-item-main"><span class="mc-cmp-item-name">${esc(u.name)}</span><span class="mc-cmp-item-role">${label}</span></div><span class="mc-cmp-item-meta muted">No draft yet</span></div>`;
         }
         return `<div class="mc-cmp-item"><div class="mc-cmp-item-main"><span class="mc-cmp-item-name">${esc(u.name)}</span><span class="mc-cmp-item-role">${label}</span></div>
-          <div class="mc-cmp-item-right"><span class="mc-cmp-item-meta">Updated ${esc(_draftTimeAgo(d.updatedAt))}</span>
+          <div class="mc-cmp-item-right"><span class="mc-cmp-item-meta">Updated ${esc(timeAgo(d.updatedAt))}</span>
           <button class="btn" type="button" onclick="mcViewCoachDraft('${esc(String(u.id)).replace(/'/g, "\\'")}')">View</button></div></div>`;
       }).join('');
 
@@ -10818,7 +10855,7 @@
         String(x.userId) === String(userId) && String(x.fixtureId || '') === selectedFx &&
         String(x.sideId || '') === selectedSide);
       if (!d) { showToast('That draft is no longer available'); return; }
-      _mcOpenCompareViewer(`${d.coachName} · ${_MC_STAFF_ROLE_LABEL[d.role] || 'Staff'}`, `Updated ${_draftTimeAgo(d.updatedAt)} · Read-only`, d.squad);
+      _mcOpenCompareViewer(`${d.coachName} · ${_MC_STAFF_ROLE_LABEL[d.role] || 'Staff'}`, `Updated ${timeAgo(d.updatedAt)} · Read-only`, d.squad);
     }
     // Open the read-only viewer for the published squad. With a fixture
     // selected this is THAT fixture's scoped record (a coach capability);
@@ -13341,6 +13378,148 @@
     // Receipts: things completed today, derived from existing stores.
     // (availabilityRequests ids embed their creation timestamp; session
     // publishedAt is ISO.)
+    // ─── RECENT ACTIVITY ─────────────────────────────────────────────────────
+    // Only things the server can prove happened, AND when. Every entry carries a
+    // real stored timestamp; nothing is inferred, sampled or padded.
+    //
+    // WHAT WAS HERE BEFORE, and why none of it could stay:
+    //
+    //  · state.masterFeed — the shared "feed" — has NO timestamp field at all.
+    //    addMasterFeed writes the literal string time:"Just now", so an entry
+    //    written three weeks ago still reads "Just now" forever. It is also
+    //    device-local (it records this browser's own toasts, not the club's
+    //    activity) and carries no group, so a Seniors entry showed under U18.
+    //
+    //  · getTodayReceipts() mixes dated and undated facts. `state.matchCentre
+    //    .published` is a bare boolean with no date, so "Squad published" was
+    //    true permanently once a squad had ever been published.
+    //
+    // Both are left in place for the surfaces that still use them; neither
+    // feeds this card any more.
+    //
+    // COST. Nothing new is fetched for this. Every source below is already in
+    // memory from a read the coach's session has made — the group-scoped
+    // availability resolution and the admin roster — so the card costs a walk
+    // over the current group's players, not a scan.
+    const ACTIVITY_LIMIT = 6;
+
+    /**
+     * The activity feed for the group being operated.
+     *
+     * Returns { status, items, partial } where status is:
+     *   'loading' — no source has landed yet. NOT the same as nothing happening.
+     *   'error'   — a source was attempted and failed. Also not "nothing".
+     *   'ready'   — at least one source landed; items may legitimately be empty.
+     * `partial` marks a ready feed built from only some of its sources, so the
+     * card can say so instead of quietly under-reporting.
+     *
+     * IDENTITY. People are resolved through the roster by durable membership id
+     * (userId), and their name is read at render time — so a renamed player
+     * keeps their history and it is shown under the name they have now. No
+     * entry is ever matched by name.
+     *
+     * GROUP. Availability is walked over operationalPlayers() — the same
+     * intersection the availability board relies on — and membership activity
+     * is filtered by the same playerGroupIdOf() the rest of the product uses.
+     */
+    function recentActivity(nowIso) {
+      const now = nowIso || new Date().toISOString();
+      const resolved  = currentResolvedAvailability();
+      const availReady = resolved !== null;
+      const adminReady = !!_adminData.loaded;
+      const adminFailed = !!_adminData.attempted && !_adminData.loaded && !_adminData.loading;
+
+      if (!availReady && !adminReady) {
+        return { status: adminFailed ? 'error' : 'loading', items: [], partial: false };
+      }
+
+      const roster = operationalPlayers().filter(p => p && p.id);
+      const byUser = new Map();
+      roster.forEach(p => { const u = String(p.userId || ''); if (u) byUser.set(u, p); });
+      const items = [];
+      const push = (at, kind, text, key) => {
+        const t = Date.parse(at || '');
+        if (!Number.isFinite(t) || t > Date.parse(now) + 60000) return;  // no future receipts
+        items.push({ at: new Date(t).toISOString(), ms: t, kind, text, key: String(key || '') });
+      };
+
+      // 1 ── AVAILABILITY REPLIES. respondedAt is written by the server when the
+      //      player answers; it is the only timestamp in the product that proves
+      //      a player did something themselves.
+      if (availReady) {
+        const sessions = availabilityWeekSessions();
+        roster.forEach(p => {
+          sessions.forEach(sess => {
+            const ans = resolvedAnswerFor(p, String(sess.id));
+            if (!ans || !ans.respondedAt) return;
+            if (!ans.response || ans.response === 'no-reply') return;
+            push(ans.respondedAt, 'availability',
+              `${p.name || 'A player'} replied to ${sess.title || sess.id}`,
+              playerMatchKey(p) + ':' + sess.id);
+          });
+        });
+      }
+
+      // 2 ── SESSIONS PUBLISHED. publishedAt is stored on the session record and
+      //      state.schedule is already partitioned by group.
+      (state.schedule || []).forEach(sess => {
+        if (!sess || !sess.published || !sess.publishedAt) return;
+        push(sess.publishedAt, 'training', `${sess.title || 'Session'} published`, 'sess:' + sess.id);
+      });
+
+      // 3 ── PEOPLE JOINING. joinedAt/approvedAt are written by the server when a
+      //      membership is created or a join request approved. Filtered to the
+      //      operating group by the membership's own playerGroupId — the single
+      //      authority the whole product uses for where somebody plays.
+      if (adminReady) {
+        const gid = state.operationalGroupId || '';
+        (_adminData.members || []).forEach(m => {
+          if (!m || m.status !== 'active') return;
+          if (gid && String(m.playerGroupId || '') !== gid) return;
+          const who = byUser.get(String(m.userId || ''));
+          if (!who) return;                        // not on this group's roster
+          const at = m.approvedAt || m.joinedAt;
+          if (!at) return;
+          push(at, 'member', `${who.name || 'A player'} joined${operationalGroupName() ? ' ' + operationalGroupName() : ''}`,
+            'join:' + String(m.userId || ''));
+        });
+
+        // 4 ── PLAYERS UPDATING THEIR OWN PROFILE. Server-stamped, and the only
+        //      self-service action a player takes outside availability.
+        (_adminData.profiles || []).forEach(pr => {
+          if (!pr || !pr.detailsUpdatedAt) return;
+          const who = byUser.get(String(pr.userId || ''));
+          if (!who) return;                        // scopes it to this group
+          push(pr.detailsUpdatedAt, 'profile', `${who.name || 'A player'} updated their profile`,
+            'prof:' + String(pr.userId || ''));
+        });
+      }
+
+      // Newest first, with the entry KEY as the tie-breaker so two things
+      // stamped in the same millisecond keep a stable order between renders.
+      items.sort((a, b) => (b.ms - a.ms) || a.key.localeCompare(b.key));
+      return {
+        status: 'ready',
+        items: items.slice(0, ACTIVITY_LIMIT),
+        partial: !(availReady && adminReady),
+      };
+    }
+
+    // Once per group, and only for a coach who can already read the board. The
+    // Overview is a landing screen: it must not re-fetch on every render.
+    let _activityFetchedFor = null;
+    function ensureRecentActivity() {
+      const gid = state.operationalGroupId || '';
+      if (!isCoach()) return;
+      if (_activityFetchedFor === gid) return;
+      if (currentResolvedAvailability() !== null) { _activityFetchedFor = gid; return; }
+      _activityFetchedFor = gid;
+      ensureAdminData();
+      if (typeof refreshLiveAvailability === 'function') {
+        refreshLiveAvailability({ boardOnly: true }).catch(() => {});
+      }
+    }
+
     function getTodayReceipts() {
       const receipts = [];
       const today = new Date().toISOString().slice(0, 10);
@@ -14317,19 +14496,25 @@
         </div>`;
 
       // ── 4. Recent activity ───────────────────────────────────────────────
-      // Today's receipts first (things this coach actually did), then the
-      // shared feed. Never padded: three real entries or fewer, or an empty
-      // state. Nothing is synthesised to fill the card.
-      const receipts = (getTodayReceipts() || []).filter(Boolean);
-      const feed     = (state.masterFeed || []).filter(f => f && (f.event || f.detail));
-      const activity = receipts.slice(0, 3).map(r =>
-          `<div class="ovw-feed-item"><span class="ovw-feed-mark">✓</span><span>${esc(r)}</span></div>`)
-        .concat(feed.slice(0, Math.max(0, 3 - Math.min(3, receipts.length))).map(f =>
-          `<div class="ovw-feed-item"><span>${esc(f.event || '')}${f.detail ? `<span class="muted"> · ${esc(f.detail)}</span>` : ''}</span></div>`));
-
-      const activityBody = activity.length
-        ? `<div class="ovw-feed">${activity.join('')}</div>`
-        : `<p class="ovw-empty"><strong>Nothing yet today</strong>Squad selections, published plans and availability requests show up here as they happen.</p>`;
+      // Real, server-stamped events for the group being operated — see
+      // recentActivity(). Loading, failure and genuinely-empty are three
+      // different answers and are never collapsed into one another.
+      ensureRecentActivity();
+      const act = recentActivity();
+      const ACT_MARK = { availability: '↩', training: '▲', member: '＋', profile: '✎' };
+      const ACT_WHAT = { availability: 'Availability', training: 'Training', member: 'Squad', profile: 'Profile' };
+      const activityBody = act.status === 'loading'
+        ? `<p class="ovw-empty"><strong>Loading activity…</strong>Reading this group's recent replies and squad changes.</p>`
+        : act.status === 'error'
+        ? `<p class="ovw-empty"><strong>Activity unavailable</strong>Recent activity could not be loaded, so this is not a record of a quiet week. <button type="button" class="ovw-retry" onclick="_activityFetchedFor=null;ensureRecentActivity();render()">Try again</button></p>`
+        : act.items.length
+        ? `<div class="ovw-feed">${act.items.map(it => `
+            <div class="ovw-feed-item">
+              <span class="ovw-feed-mark" aria-hidden="true">${ACT_MARK[it.kind] || '•'}</span>
+              <span class="ovw-feed-text"><span class="ovw-feed-what">${esc(ACT_WHAT[it.kind] || 'Activity')}</span>${esc(it.text)}<span class="muted"> · ${esc(timeAgo(it.at))}</span></span>
+            </div>`).join('')}${
+            act.partial ? `<p class="ovw-feed-note">Squad changes are still loading.</p>` : ''}</div>`
+        : `<p class="ovw-empty"><strong>No recent activity</strong>Replies to availability, published sessions and players joining ${esc(operationalGroupName() || 'this group')} appear here.</p>`;
 
       // ── 6. Messages ──────────────────────────────────────────────────────
       const legacyUnread = (state.messages || []).filter(m => m && m.unread && m.to === 'Coach').length;
@@ -36914,6 +37099,10 @@
         // Source of truth for the coach board at render time (see sessionRows).
         const _prevResolvedSig = JSON.stringify(_resolvedAvailability);
         _resolvedAvailability = resolved;
+        // WHICH GROUP these answers belong to. The map is fetched per group but
+        // was never stamped, so nothing downstream could tell a Seniors read
+        // from a U18 one — see currentResolvedAvailability().
+        _resolvedAvailabilityGroup = state.operationalGroupId || '';
         const _resolvedChanged = JSON.stringify(resolved) !== _prevResolvedSig;
 
         // Patch state.players from the resolved model. Match each roster player by

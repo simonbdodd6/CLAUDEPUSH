@@ -124,7 +124,7 @@ function panelNames(access, fxGroupId, { linked = true, operationalGroupId = '' 
     }
     function matchCentreSelectedSide() { return null; }
     function mcFixtureDateLabel(d) { return String(d); }
-    ${fn('_draftTimeAgo')}
+    ${fn('timeAgo')}
     const _MC_STAFF_ROLE_LABEL = { coach: 'Coach', admin: 'Admin', medical: 'Medical' };
     ${fn('mcComparePanelHTML')}
     return mcComparePanelHTML();

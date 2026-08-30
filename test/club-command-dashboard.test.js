@@ -94,6 +94,15 @@ function buildScope({
   stubUnread = 0,
   stubReceipts = [],
   resolvedAvailability = {},
+  // Recent activity inputs. The defaults describe a club whose reads HAVE
+  // landed and where nothing has happened — so a dashboard test that says
+  // nothing about activity gets the honest empty state, not a loading one.
+  adminData = { members: [], profiles: [], loaded: true, loading: false, attempted: true },
+  availLastSync = '2026-08-30T12:00:00.000Z',
+  // '' not null: refreshLiveAvailability stamps `state.operationalGroupId || ''`,
+  // so a club with no group in force stamps the empty string, and the harness
+  // must match or currentResolvedAvailability() reads every scope as stale.
+  resolvedAvailabilityGroup = '',
 } = {}) {
   const stateObj = {
     players, schedule, fixtures, messages, matchCentre, masterFeed,
@@ -110,6 +119,17 @@ function buildScope({
     'function chatUnreadTotal() { return ' + JSON.stringify(stubUnread) + '; }\n' +
     'function getTodayReceipts() { return ' + JSON.stringify(stubReceipts) + '; }\n' +
     'function setSection() {}\n' +
+    // Recent activity's real collaborators. Stubbed only where they reach the
+    // NETWORK or the admin cache; the model itself is the real one, so a change
+    // to what counts as activity is felt here rather than silently missed.
+    'function isCoach() { return true; }\n' +
+    'function ensureAdminData() {}\n' +
+    'function refreshLiveAvailability() { return Promise.resolve(); }\n' +
+    'function operationalGroupName() { return "Seniors"; }\n' +
+    'const _adminData = ' + JSON.stringify(adminData) + ';\n' +
+    'let _availLastSync = ' + JSON.stringify(availLastSync) + ';\n' +
+    'let _resolvedAvailabilityGroup = ' + JSON.stringify(resolvedAvailabilityGroup) + ';\n' +
+    'let _activityFetchedFor = null;\n' +
     'function operationalGroups() { return _groups; }\n' +
     'function operationalPlayers() { return state.players || []; }\n' +
     // The server-resolved availability model, exactly as loadAvailability sets it:
@@ -144,6 +164,13 @@ function buildScope({
     extractFn(html, 'selectionFindForFixture') + '\n' +
     extractFn(html, 'selectionStarterCount') + '\n' +
     extractFn(html, 'selectionBenchCount') + '\n' +
+    extractFn(html, 'playerMatchKey') + '\n' +
+    extractFn(html, 'availabilityWeekSessions') + '\n' +
+    extractFn(html, 'currentResolvedAvailability') + '\n' +
+    extractFn(html, 'timeAgo') + '\n' +
+    extractConst(html, 'ACTIVITY_LIMIT') + '\n' +
+    extractFn(html, 'recentActivity') + '\n' +
+    extractFn(html, 'ensureRecentActivity') + '\n' +
     // The functions under test
     extractFn(html, 'overviewRoster') + '\n' +
     extractFn(html, 'overviewAvailableCount') + '\n' +
@@ -193,7 +220,10 @@ test('empty club: every card shows a real empty state, not a zero', () => {
   assert.ok(out.includes('No sessions scheduled'),  'training empty state missing');
   assert.ok(out.includes('No players yet'),         'availability empty state missing');
   assert.ok(out.includes('All caught up'),          'messages empty state missing');
-  assert.ok(out.includes('Nothing yet today'),      'activity empty state missing');
+  // Wording changed with the source: the card used to say "Nothing yet today"
+  // over device-local receipts, and now says "No recent activity" over the
+  // server-stamped feed. Same invariant — an empty state, never a zero.
+  assert.ok(out.includes('No recent activity'),     'activity empty state missing');
 
   // An empty club must not be shown a donut of nothing.
   assert.ok(!out.includes('<svg'), 'no donut should be drawn with no responses');
@@ -295,24 +325,47 @@ test('no unread messages: shows all-caught-up and no count', () => {
 
 // ── 3. Recent activity is never fabricated ────────────────────────────────────
 
-test('recent activity shows only real receipts and feed entries', () => {
+// These two used to drive the card through getTodayReceipts() and masterFeed.
+// Both were dropped as SOURCES because neither can carry a date — masterFeed has
+// no timestamp field at all (it writes the literal "Just now") and receipts mix
+// dated facts with undated ones. The INVARIANTS they protected are unchanged and
+// asserted below over the real source: a real event renders, and nothing is ever
+// padded. They are stronger now, because the event has to prove when it happened.
+test('recent activity renders real, server-stamped events', () => {
   const out = buildScope({
-    stubReceipts: ['Tuesday Session published', 'Availability request sent'],
-    masterFeed: [{ event: 'Squad published', detail: 'vs Acton Town' }],
+    players: [{ id: 'p1', name: 'Ana Silva', userId: 'u1' }],
+    schedule: [{ id: 'tue', type: 'Training', title: 'Tuesday Session', date: 'Tue 19:00',
+                 published: true, publishedAt: new Date(Date.now() - 90 * 60000).toISOString() }],
+    resolvedAvailability: { u1: { tue: { response: 'available', reason: '',
+                 respondedAt: new Date(Date.now() - 12 * 60000).toISOString() } } },
   }).renderClubCommandDashboard();
-  assert.ok(out.includes('Tuesday Session published'));
-  assert.ok(out.includes('Availability request sent'));
-  assert.ok(out.includes('Squad published'));
+  assert.ok(out.includes('Ana Silva replied to Tuesday Session'), 'the availability reply renders');
+  assert.ok(out.includes('Tuesday Session published'),            'the publication renders');
+  assert.ok(out.includes('12 min ago'), 'and each carries its own real elapsed time');
+  assert.ok(out.includes('1h ago'));
+  assert.ok(!out.includes('Just now'), 'no fabricated timestamp survives');
 });
 
 test('recent activity is never padded to fill the card', () => {
-  const one = buildScope({ stubReceipts: ['Only thing that happened'] }).renderClubCommandDashboard();
-  const items = (one.match(/ovw-feed-item/g) || []).length;
-  assert.equal(items, 1, 'one real event must render as exactly one row');
+  const one = buildScope({
+    schedule: [{ id: 'tue', type: 'Training', title: 'Only thing that happened',
+                 published: true, publishedAt: new Date(Date.now() - 60000).toISOString() }],
+  }).renderClubCommandDashboard();
+  assert.equal((one.match(/ovw-feed-item/g) || []).length, 1, 'one real event must render as exactly one row');
 
-  const none = buildScope({ stubReceipts: [], masterFeed: [] }).renderClubCommandDashboard();
-  assert.ok(none.includes('Nothing yet today'), 'no events must produce the empty state');
+  const none = buildScope().renderClubCommandDashboard();
+  assert.ok(none.includes('No recent activity'), 'no events must produce the empty state');
   assert.equal((none.match(/ovw-feed-item/g) || []).length, 0);
+});
+
+test('an unloaded club shows loading, never the empty state', () => {
+  // The distinction the old card could not make: nothing known yet is not the
+  // same as nothing happened, and must never render as a quiet week.
+  const out = buildScope({ availLastSync: null,
+    adminData: { members: [], profiles: [], loaded: false, loading: true, attempted: true },
+  }).renderClubCommandDashboard();
+  assert.ok(out.includes('Loading activity…'));
+  assert.ok(!out.includes('No recent activity'));
 });
 
 // ── 4. Nothing invented, nothing broken ───────────────────────────────────────

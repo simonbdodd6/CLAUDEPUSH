@@ -31,6 +31,9 @@ function makeRefresh(resolvedSequence) {
   const body = `"use strict";
     const calls = { render: 0, panels: 0, fetches: 0 };
     let _resolvedAvailability = {};
+    // refreshLiveAvailability now stamps which GROUP the map was fetched for,
+    // so a stale read can be told apart from a real one (currentResolvedAvailability).
+    let _resolvedAvailabilityGroup = null;
     let _availLastSync = null, _availRosterLinkedAt = 0;
     const state = { players: [{ name:'P', userId:'uid' }] };
     const document = { getElementById: () => null };
@@ -89,6 +92,7 @@ test('board-only tick does NOT trigger the heavier side-panel reloads', async ()
 function makeSessionRows(resolved, players) {
   const body = `"use strict";
     let _resolvedAvailability = ${JSON.stringify(resolved)};
+    let _resolvedAvailabilityGroup = null;
     function operationalPlayers(){ return canonicalVisiblePlayers(); }   // single-group harness: passthrough
     function canonicalVisiblePlayers(){ return ${JSON.stringify(players)}; }
     ${extractFn('sessionKey')}
