@@ -147,12 +147,25 @@ test('the model carries no fabricated statistics', () => {
   assert.ok(!Object.keys(m).some(k => /^(tries|conversions|penalties)$/.test(k)));
 });
 
-test('recent activity surfaces a matching master-feed entry', () => {
+// This used to assert that a masterFeed entry whose free-text `event` CONTAINED
+// the player's name became their "last availability update" — the mechanism
+// itself, fixture and all ({ event: 'Sam Rivers updated …', time: 'Just now' }).
+// A substring of a sentence decided whose activity it was, so two players called
+// Sam Jones shared a history and a rename detached a player from theirs.
+//
+// The invariant — a profile shows THIS player's recent activity — now lives in
+// test/player-profile-activity.test.js over recentActivity({ playerKey }), with
+// namesakes, renames and group isolation covered. What is asserted here is the
+// part that belongs at this layer: the model no longer carries activity at all,
+// so the name matching cannot quietly return.
+test('the profile model no longer models activity, and never reads masterFeed', () => {
   const m = memberCentreModel(basePlayer(), {
     masterFeed: [{ event: 'Sam Rivers updated Training session 1', time: 'Just now' }],
   });
-  assert.ok(m.lastAvailabilityUpdate);
-  assert.match(m.lastAvailabilityUpdate.event, /Sam Rivers/);
+  assert.equal(m.lastAvailabilityUpdate, undefined, 'the name-matched field is gone');
+  assert.equal(m.lastMessage, undefined);
+  assert.ok(!JSON.stringify(m).includes('Training session 1'),
+    'a device-local feed entry must not reach the model, however it is named');
 });
 
 test('purity: inputs are not mutated', () => {

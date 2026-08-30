@@ -291,7 +291,9 @@ test('no entry carries a reason, a message body or anything medical', () => {
 
 test('the activity model exposes only what it needs to render', () => {
   const a = world({ roster: [ANA], resolved: { u1: answer('tue', ago(9)) } }).recentActivity(NOW);
-  assert.deepEqual(Object.keys(a.items[0]).sort(), ['at', 'key', 'kind', 'ms', 'text']);
+  // `who` was added so a player profile can filter this feed by canonical
+  // identity instead of keeping a second, name-matched feed of its own.
+  assert.deepEqual(Object.keys(a.items[0]).sort(), ['at', 'key', 'kind', 'ms', 'text', 'who']);
 });
 
 // ───────────────────────────── time ──────────────────────────────────────────

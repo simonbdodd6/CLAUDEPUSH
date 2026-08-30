@@ -13387,11 +13387,14 @@
     //
     // WHAT WAS HERE BEFORE, and why none of it could stay:
     //
-    //  · state.masterFeed — the shared "feed" — has NO timestamp field at all.
+    //  · state.masterFeed — the shared "feed" — has no timestamp FIELD:
     //    addMasterFeed writes the literal string time:"Just now", so an entry
-    //    written three weeks ago still reads "Just now" forever. It is also
-    //    device-local (it records this browser's own toasts, not the club's
-    //    activity) and carries no group, so a Seniors entry showed under U18.
+    //    written three weeks ago still displayed "Just now" forever. (A real
+    //    millisecond stamp IS recoverable from the entry id — _tlIdTs does it
+    //    for the coach timeline — so the deeper objection is the next one.) It
+    //    is device-local: it records this browser's own toasts via notify(),
+    //    not the club's activity, and it carries no group, so a Seniors entry
+    //    showed under U18.
     //
     //  · getTodayReceipts() mixes dated and undated facts. `state.matchCentre
     //    .published` is a bare boolean with no date, so "Squad published" was
@@ -13405,6 +13408,12 @@
     // availability resolution and the admin roster — so the card costs a walk
     // over the current group's players, not a scan.
     const ACTIVITY_LIMIT = 6;
+    // The activity vocabulary, shared by the Overview card and the player
+    // profile so one kind of event never reads as two different things. The
+    // mark is decorative (aria-hidden); ACT_WHAT carries the meaning, so the
+    // type never depends on a glyph or a colour alone.
+    const ACT_MARK = { availability: '↩', training: '▲', member: '＋', profile: '✎' };
+    const ACT_WHAT = { availability: 'Availability', training: 'Training', member: 'Squad', profile: 'Profile' };
 
     /**
      * The activity feed for the group being operated.
@@ -13425,8 +13434,13 @@
      * intersection the availability board relies on — and membership activity
      * is filtered by the same playerGroupIdOf() the rest of the product uses.
      */
-    function recentActivity(nowIso) {
+    function recentActivity(nowIso, opts) {
       const now = nowIso || new Date().toISOString();
+      // ONE feed, two contexts. The player profile asks for the same events
+      // narrowed to one person rather than keeping a feed of its own — the
+      // profile's old one matched by NAME over a device-local list and could
+      // attribute a namesake's activity to the wrong player.
+      const onlyKey = String((opts && opts.playerKey) || '');
       const resolved  = currentResolvedAvailability();
       const availReady = resolved !== null;
       const adminReady = !!_adminData.loaded;
@@ -13440,11 +13454,22 @@
       const byUser = new Map();
       roster.forEach(p => { const u = String(p.userId || ''); if (u) byUser.set(u, p); });
       const items = [];
-      const push = (at, kind, text, key) => {
+      // `who` is the CANONICAL identity the event belongs to, or '' for an event
+      // that is nobody's in particular (a session being published is the coach's
+      // doing, not a player's). Filtering a profile on it is therefore exact, and
+      // an event with no owner can never be attributed to a person.
+      const push = (at, kind, who, subject, verb, key) => {
         const t = Date.parse(at || '');
         if (!Number.isFinite(t) || t > Date.parse(now) + 60000) return;  // no future receipts
-        items.push({ at: new Date(t).toISOString(), ms: t, kind, text, key: String(key || '') });
+        if (onlyKey && String(who || '') !== onlyKey) return;
+        // With a subject the line reads "Ana Silva replied to …"; without one —
+        // on her own profile, where the subject is the page — it reads
+        // "Replied to …". One phrasing built two ways, never two feeds.
+        const text = subject ? `${subject} ${verb}` : verb.charAt(0).toUpperCase() + verb.slice(1);
+        items.push({ at: new Date(t).toISOString(), ms: t, kind, text,
+                     who: String(who || ''), key: String(key || '') });
       };
+      const subjectFor = p => onlyKey ? '' : (p.name || 'A player');
 
       // 1 ── AVAILABILITY REPLIES. respondedAt is written by the server when the
       //      player answers; it is the only timestamp in the product that proves
@@ -13456,8 +13481,8 @@
             const ans = resolvedAnswerFor(p, String(sess.id));
             if (!ans || !ans.respondedAt) return;
             if (!ans.response || ans.response === 'no-reply') return;
-            push(ans.respondedAt, 'availability',
-              `${p.name || 'A player'} replied to ${sess.title || sess.id}`,
+            push(ans.respondedAt, 'availability', playerMatchKey(p), subjectFor(p),
+              `replied to ${sess.title || sess.id}`,
               playerMatchKey(p) + ':' + sess.id);
           });
         });
@@ -13467,7 +13492,10 @@
       //      state.schedule is already partitioned by group.
       (state.schedule || []).forEach(sess => {
         if (!sess || !sess.published || !sess.publishedAt) return;
-        push(sess.publishedAt, 'training', `${sess.title || 'Session'} published`, 'sess:' + sess.id);
+        // Nobody's personal activity: a publication is the coach's doing, so it
+        // carries no owner and never reaches a player's profile.
+        push(sess.publishedAt, 'training', '', String(sess.title || 'Session'),
+          'published', 'sess:' + sess.id);
       });
 
       // 3 ── PEOPLE JOINING. joinedAt/approvedAt are written by the server when a
@@ -13483,7 +13511,8 @@
           if (!who) return;                        // not on this group's roster
           const at = m.approvedAt || m.joinedAt;
           if (!at) return;
-          push(at, 'member', `${who.name || 'A player'} joined${operationalGroupName() ? ' ' + operationalGroupName() : ''}`,
+          push(at, 'member', playerMatchKey(who), subjectFor(who),
+            `joined${operationalGroupName() ? ' ' + operationalGroupName() : ''}`,
             'join:' + String(m.userId || ''));
         });
 
@@ -13493,8 +13522,8 @@
           if (!pr || !pr.detailsUpdatedAt) return;
           const who = byUser.get(String(pr.userId || ''));
           if (!who) return;                        // scopes it to this group
-          push(pr.detailsUpdatedAt, 'profile', `${who.name || 'A player'} updated their profile`,
-            'prof:' + String(pr.userId || ''));
+          push(pr.detailsUpdatedAt, 'profile', playerMatchKey(who), subjectFor(who),
+            'updated their profile', 'prof:' + String(pr.userId || ''));
         });
       }
 
@@ -14504,8 +14533,6 @@
       // different answers and are never collapsed into one another.
       ensureRecentActivity();
       const act = recentActivity();
-      const ACT_MARK = { availability: '↩', training: '▲', member: '＋', profile: '✎' };
-      const ACT_WHAT = { availability: 'Availability', training: 'Training', member: 'Squad', profile: 'Profile' };
       const activityBody = act.status === 'loading'
         ? `<p class="ovw-empty"><strong>Loading activity…</strong>Reading this group's recent replies and squad changes.</p>`
         : act.status === 'error'
@@ -19752,7 +19779,6 @@
       const schedule      = Array.isArray(ctx.schedule) ? ctx.schedule : [];
       const medicalNotes  = ctx.medicalNotes || {};
       const treatmentLogs = Array.isArray(ctx.treatmentLogs) ? ctx.treatmentLogs : [];
-      const masterFeed    = Array.isArray(ctx.masterFeed) ? ctx.masterFeed : [];
 
       const answeredVal  = s => s && s !== 'no-reply';
       const availableVal = s => s === 'available';
@@ -19785,12 +19811,23 @@
         ? `Target: ${med.returnTarget}`
         : (injuries.length ? 'Under review' : 'Fit — available');
 
-      // Recent activity — label-only (masterFeed carries relative-time strings).
-      const feedFor = masterFeed.filter(f => String(f.event || '').includes(p.name));
-      const lastAvailabilityUpdate =
-        feedFor.find(f => /updat|respond|availab/i.test(f.event)) || feedFor[0] || null;
-      const lastMessage = (history[0] && history[0] !== 'no-reply')
-        ? `Responded ${statusLabel(history[0])}` : '';
+      // Recent activity is NOT modelled here any more. It used to be
+      //   masterFeed.filter(f => f.event.includes(p.name))
+      // and the fatal part is the matching, not the feed: a SUBSTRING of a
+      // free-text sentence decided whose activity this was. Two players called
+      // Sam Jones shared one history, a rename detached a player from theirs,
+      // and a name occurring inside another sentence produced a false hit.
+      //
+      // The feed itself is unusable here for its own reasons: it is DEVICE-LOCAL
+      // (notify() records this browser's own toasts, so a player's actions never
+      // appear in it and another coach's device holds a different list) and it
+      // carries no group. Its displayed `time` is the frozen literal "Just now",
+      // though a real millisecond stamp is recoverable from the entry id — see
+      // _tlIdTs, which the coach timeline uses. Recoverable or not, a toast log
+      // from one laptop is not the club's activity.
+      //
+      // The card now reads the same server-stamped feed the Overview does,
+      // narrowed to this player's canonical identity — recentActivity({ playerKey }).
 
       const secondary = Array.isArray(p.secondaryPositions) && p.secondaryPositions.length
         ? p.secondaryPositions.filter(Boolean).join(', ') : '';
@@ -19822,8 +19859,7 @@
         sessionsAttended, sessionsMissed,
         // medical card
         injuries, alerts, returnToPlay, recentTreatment,
-        // recent activity
-        lastAvailabilityUpdate, lastMessage,
+
       };
     }
 
@@ -20513,7 +20549,6 @@
         schedule:      state.schedule,
         medicalNotes:  state.medicalNotes,
         treatmentLogs: state.treatmentLogs,
-        masterFeed:    state.masterFeed,
         captainId:     state.matchCentre?.captainId || state.matchCentre?.selection?.captainId || '',
       });
       const lc  = playerLifecycleInfo(p);
@@ -20747,24 +20782,33 @@
         </div>
 
         <!-- RECENT ACTIVITY -->
+        ${(() => {
+          // FOUR FIXED ROWS became a real feed. Two of those rows ("Last
+          // training attended", "Last match played") were hardcoded to the empty
+          // string, so they could only ever read "No record yet" — a permanent
+          // claim about data the product never computed. A third was labelled
+          // "Last message" but showed an availability status with no date. All
+          // three are gone rather than left saying nothing forever.
+          ensureRecentActivity();
+          const act = recentActivity(null, { playerKey: playerMatchKey(p) });
+          const first = (m.name || 'This player').split(' ')[0];
+          return `
         <div class="card" style="margin-bottom:14px">
           ${sectionTitle('Recent activity')}
-          <div style="display:flex;flex-direction:column;gap:0">
-            ${[
-              ['', 'Last availability update', m.lastAvailabilityUpdate ? `${esc(m.lastAvailabilityUpdate.event)}${m.lastAvailabilityUpdate.time ? ` · ${esc(m.lastAvailabilityUpdate.time)}` : ''}` : ''],
-              ['', 'Last message', m.lastMessage],
-              ['', 'Last training attended', ''],
-              ['', 'Last match played', ''],
-            ].map(([icon, label, val]) => `
-              <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">
-                <span style="font-size:18px;width:24px;text-align:center">${icon}</span>
-                <div style="flex:1;min-width:0">
-                  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">${label}</div>
-                  <div style="font-size:13px;color:${val ? 'var(--fg)' : 'var(--muted)'};font-weight:600;overflow-wrap:anywhere">${val ? val : 'No record yet'}</div>
-                </div>
-              </div>`).join('')}
-          </div>
-        </div>
+          ${act.status === 'loading'
+            ? `<p class="muted" style="font-size:13px;margin:0">Loading activity…</p>`
+            : act.status === 'error'
+            ? `<p class="muted" style="font-size:13px;margin:0">Activity could not be loaded, so this is not a record of a quiet spell. <button type="button" class="ovw-retry" onclick="_activityFetchedFor=null;ensureRecentActivity();renderPlayers()">Try again</button></p>`
+            : act.items.length
+            ? `<div class="ovw-feed">${act.items.map(it => `
+                <div class="ovw-feed-item">
+                  <span class="ovw-feed-mark" aria-hidden="true">${ACT_MARK[it.kind] || '•'}</span>
+                  <span class="ovw-feed-text"><span class="ovw-feed-what">${esc(ACT_WHAT[it.kind] || 'Activity')}</span>${esc(it.text)}<span class="muted"> · ${esc(timeAgo(it.at))}</span></span>
+                </div>`).join('')}${
+                act.partial ? `<p class="ovw-feed-note">Squad changes are still loading.</p>` : ''}</div>`
+            : `<p class="muted" style="font-size:13px;margin:0">No recent activity for ${esc(first)}.</p>`}
+        </div>`;
+        })()}
 
         <!-- COACH NOTES -->
         <div class="card" style="margin-bottom:14px">

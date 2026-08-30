@@ -169,6 +169,10 @@ function buildScope({
     extractFn(html, 'currentResolvedAvailability') + '\n' +
     extractFn(html, 'timeAgo') + '\n' +
     extractConst(html, 'ACTIVITY_LIMIT') + '\n' +
+    // Hoisted out of renderClubCommandDashboard so the player profile shares
+    // one activity vocabulary with the Overview rather than keeping its own.
+    extractConst(html, 'ACT_MARK') + '\n' +
+    extractConst(html, 'ACT_WHAT') + '\n' +
     extractFn(html, 'recentActivity') + '\n' +
     extractFn(html, 'ensureRecentActivity') + '\n' +
     // The functions under test
