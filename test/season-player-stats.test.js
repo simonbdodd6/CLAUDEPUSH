@@ -491,8 +491,15 @@ test('SERVER: the season window bounds what is returned', async () => {
 
 test('an unlanded read is never treated as an empty season', () => {
   const src = extractFn(html, 'loadSeasonSheets');
-  assert.match(src, /if \(!res\.ok\) \{ _seasonSheets = null; return; \}/, 'a failed read stays unknown');
-  assert.match(src, /catch \{ _seasonSheets = null; \}/, 'and so does a thrown one');
+  // Still null on failure — unknown is never empty. It now also records which
+  // group failed, so "still loading" and "came back an error" can be told apart.
+  assert.match(src, /if \(!res\.ok\) \{ _seasonSheets = null; _seasonSheetsFailed = gid; return; \}/,
+    'a failed read stays unknown');
+  assert.match(src, /catch \{ _seasonSheets = null; _seasonSheetsFailed = gid; \}/,
+    'and so does a thrown one');
+  // The invariant behind both: a failure yields UNKNOWN, never an empty season.
+  assert.ok(!/(?:!res\.ok|catch)[^}]*sheets: \[\]/.test(src),
+    'a failed read must never be turned into a season with no matches');
   assert.match(src, /canI\('publish_squads'\)/, 'the client asks only when it may');
 });
 

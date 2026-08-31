@@ -126,6 +126,9 @@ function scope(opts = {}) {
       { id: ${JSON.stringify(SEN)}, name: 'Seniors' }, { id: ${JSON.stringify(U18)}, name: 'U18' }] } };
     const _PERMS = ${JSON.stringify(perms)};
     let _seasonSheets = null, _seasonSheetsGroup = null, _seasonSheetsLoading = false;
+    // Records WHICH group's season read failed, so a permanently failing read
+    // can be told apart from one still in flight (both leave _seasonSheets null).
+    let _seasonSheetsFailed = null;
     let _membersView = 'squad', _seasonSort = 'minutes', _seasonSortDir = 'desc', _seasonQuery = '';
     let _renders = 0, _ensured = 0;
     let _toast = '';
@@ -396,8 +399,12 @@ test('a failed read is unknown, not an empty season', async () => {
 
 test('a thrown read is unknown too', async () => {
   const src = extractFn(html, 'loadSeasonSheets');
-  assert.match(src, /catch \{ _seasonSheets = null; \}/);
-  assert.match(src, /if \(!res\.ok\) \{ _seasonSheets = null; return; \}/);
+  // The failure branch now ALSO records which group failed. The invariant this
+  // protects — a failed read stays unknown (null), never an empty season — is
+  // unchanged and still asserted.
+  assert.match(src, /catch \{ _seasonSheets = null; _seasonSheetsFailed = gid; \}/);
+  assert.ok(!/catch \{[^}]*sheets: \[\]/.test(src), 'a failure must never become an empty season');
+  assert.match(src, /if \(!res\.ok\) \{ _seasonSheets = null; _seasonSheetsFailed = gid; return; \}/);
 });
 
 test('while the membership list is still loading, the roster is unknown — not empty', async () => {
