@@ -19973,6 +19973,9 @@
     let _seasonSheets = null;          // null = not loaded | { ... } = loaded
     let _seasonSheetsGroup = null;     // the group the loaded data belongs to
     let _seasonSheetsLoading = false;
+    // The group whose season read FAILED, or null. Distinct from _seasonSheets
+    // being null, which also covers "not asked yet".
+    let _seasonSheetsFailed = null;
 
     async function loadSeasonSheets(force) {
       const gid = state.operationalGroupId || '';
@@ -19983,7 +19986,12 @@
       try {
         const res = await fetch('/api/publish?resource=season-sheets'
           + (gid ? '&group=' + encodeURIComponent(gid) : ''));
-        if (!res.ok) { _seasonSheets = null; return; }   // unknown ≠ empty
+        // A FAILED read stays null — unknown is never empty — but it is recorded
+        // separately, because "we have not asked yet" and "we asked and it did
+        // not answer" are different things to tell a coach. Without this a
+        // permanently failing read displayed "Loading…" for ever, implying
+        // progress that was not happening.
+        if (!res.ok) { _seasonSheets = null; _seasonSheetsFailed = gid; return; }
         const data = await res.json();
         _seasonSheets = {
           sheets: Array.isArray(data.sheets) ? data.sheets : [],
@@ -19992,8 +20000,9 @@
           season: data.season || null,
         };
         _seasonSheetsGroup = gid;
+        _seasonSheetsFailed = null;
         render();
-      } catch { _seasonSheets = null; }                  // unknown ≠ empty
+      } catch { _seasonSheets = null; _seasonSheetsFailed = gid; }
       finally { _seasonSheetsLoading = false; }
     }
 
@@ -20017,6 +20026,26 @@
       const gid = state.operationalGroupId || '';
       if (_seasonSheets === null || _seasonSheetsGroup !== gid) { loadSeasonSheets(); return null; }
       return _seasonSheets;
+    }
+
+    /**
+     * Did the season read for THIS group actually fail?
+     *
+     * currentSeasonSheets() returning null means only "we do not have it" —
+     * which covers both a read still in flight and one that came back an error.
+     * A screen telling a coach "Loading…" indefinitely is its own small lie, so
+     * this separates the two. Scoped to the group, so a failure under Seniors
+     * does not describe U18.
+     */
+    function seasonSheetsFailed() {
+      // Deliberately NOT gated on _seasonSheetsLoading. Reading the card calls
+      // currentSeasonSheets(), which starts another attempt, so a retry is in
+      // flight on essentially every render — gating on it hid the failure
+      // permanently and the coach saw "Loading…" for ever. This says the LAST
+      // attempt failed, which is true while the next one runs; a success clears
+      // the flag and re-renders.
+      return _seasonSheetsFailed !== null
+        && _seasonSheetsFailed === (state.operationalGroupId || '');
     }
 
     /**
@@ -20048,6 +20077,23 @@
      * its own "nm:" key and is reported in `unresolved`, so it is visible
      * rather than quietly credited to somebody else.
      */
+    /**
+     * A fixture's date, as the product already writes it elsewhere.
+     *
+     * Parsed at MIDDAY deliberately. A fixture stores a plain 'YYYY-MM-DD' with
+     * no time, and `new Date('2026-08-24')` is parsed as UTC midnight — which in
+     * any timezone behind UTC renders as the 23rd. Midday is far enough from
+     * both boundaries that the day is the same everywhere the club might be.
+     */
+    function matchDateLabel(dateStr) {
+      // No format guard: every malformed input this could reject already yields
+      // an Invalid Date below, so a regex here would be a second rule that can
+      // only drift from the first. Proven by mutation — removing it changed no
+      // observable answer for any input.
+      const t = new Date(String(dateStr || '').slice(0, 10) + 'T12:00:00');
+      return isNaN(t.getTime()) ? '' : t.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    }
+
     function seasonPlayerStats(sheets) {
       const byPlayer = {};
       const unresolved = new Set();
@@ -20063,6 +20109,10 @@
         // average, so a player whose only match was 70 minutes is measured
         // against 70 and not against the season's mean.
         possibleMinutes: 0,
+        // The fixtures this player ACTUALLY PLAYED IN — not the ones they were
+        // named for. Recorded here rather than derived somewhere else so the
+        // count and the list can never disagree about the same match.
+        playedMatches: [],
       });
       const rowFor = key => (byPlayer[key] = byPlayer[key] || blank());
 
@@ -20151,6 +20201,16 @@
           // A replacement who came on has APPEARED; one who never left the
           // bench has not, and their zero minutes say so honestly.
           if (person.role === 'bench' && played) row.appearances += 1;
+          // `played` is THE test, and it is the same one the count above uses:
+          // true for every starter (it is initialised from the role) and for a
+          // replacement who came on, false only for a bench player who never
+          // left it. Being named on a sheet is not playing.
+          if (played) row.playedMatches.push({
+            fixtureId,
+            date:       String(sheet.date || ''),
+            opposition: String(sheet.opposition || ''),
+            role:       person.role,
+          });
         });
       });
 
@@ -20160,6 +20220,11 @@
       Object.values(byPlayer).forEach(r => {
         r.playingTimePct = r.possibleMinutes > 0
           ? Math.round((r.minutes / r.possibleMinutes) * 100) : 0;
+        // Newest first. A fixture carries a DATE and not a time, so two matches
+        // on one day tie — broken by fixture id so the answer cannot depend on
+        // the order the sheets happened to arrive in.
+        r.playedMatches.sort((a, b) =>
+          String(b.date).localeCompare(String(a.date)) || String(a.fixtureId).localeCompare(String(b.fixtureId)));
       });
 
       return {
@@ -20714,6 +20779,28 @@
             ${metric(calcAvailable && mine ? mine.playingTimePct + '%' : '—', 'Playing time', 'var(--fg)')}
             ${metric((adjSum > 0 ? '+' : '') + adjSum, 'Adjustments', adjSum ? (adjSum > 0 ? 'var(--accent)' : '#dc2626') : 'var(--muted)')}
           </div>
+          <!-- LAST MATCH — restored to this card rather than given its own.
+               The profile's old "Last match played" row was hardcoded empty and
+               was removed for having no trustworthy source; this reads the same
+               season aggregation as the figures directly above it, so the two
+               can never give a player different answers. -->
+          ${(() => {
+            const last = (mine && mine.playedMatches && mine.playedMatches[0]) || null;
+            const line = !calcAvailable
+              ? (season && season.denied
+                  ? 'Match history needs squad-publishing access.'
+                  : seasonSheetsFailed()
+                  ? 'Could not be loaded — this is not a record of no appearances.'
+                  : 'Loading…')
+              : !last
+              ? 'No match appearances yet'
+              : `${esc(matchDateLabel(last.date) || 'Date unknown')}${last.opposition ? ' · ' + esc(last.opposition) : ''}${last.role === 'bench' ? ' · came off the bench' : ''}`;
+            return `
+            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--line)">
+              <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Last match</span>
+              <span style="font-size:13px;font-weight:600;color:${calcAvailable && last ? 'var(--fg)' : 'var(--muted)'};overflow-wrap:anywhere;min-width:0">${line}</span>
+            </div>`;
+          })()}
           <details>
             <summary style="font-size:12px;font-weight:700;cursor:pointer;color:var(--muted);padding:4px 0">Audit trail</summary>
             <div style="margin-top:8px">
