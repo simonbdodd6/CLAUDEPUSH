@@ -191,9 +191,16 @@ test('an empty or malformed document does not throw', () => {
 const strip = src => src.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
 
 test('the panel looks up THIS occurrence, not the bare session id', () => {
-  const i = html.indexOf('<!-- ATTENDANCE — who actually turned up');
-  const panel = strip(html.slice(i, html.indexOf('<!-- Printable coach summary', i)));
-  assert.match(panel, /const occId = attendanceOccurrenceId\(sessId, sessObj && sessObj\.date\)/);
+  // The register moved into attendancePanelHtml so the Planner and History
+  // render ONE implementation; the invariants below are unchanged.
+  const panel = strip(extractFn(html, 'attendancePanelHtml'));
+  // The session is now a PARAMETER — the Planner passes the week's session,
+  // History passes a past one — so the register is derived the same way for
+  // both rather than reaching for the planner's variables.
+  assert.match(panel, /const occId = attendanceOccurrenceId\(sessId, sessionDate\)/);
+  const planner = extractFn(html, 'renderTraining');
+  assert.match(planner, /attendancePanelHtml\(sessId, sessObj && sessObj\.date\)/,
+    'and the Planner still supplies the session it is showing');
   assert.match(panel, /att\.sessions\[occId\]/);
   assert.ok(!/att\.sessions\[sessId\]/.test(panel), 'the bare id would be every Tuesday at once');
   assert.match(panel, /no date yet, so attendance cannot be recorded/, 'an undated session says so');

@@ -277,17 +277,18 @@ test('"mark rest present" fills blanks only, and asks first', () => {
 });
 
 test('opening a session records nothing', () => {
-  const i = html.indexOf('<!-- ATTENDANCE — who actually turned up');
-  const panel = html.slice(i, html.indexOf('<!-- Printable coach summary', i));
-  const code = strip(panel);
+  // The register moved into attendancePanelHtml so the Planner and History
+  // render ONE implementation; the invariants below are unchanged.
+  const code = strip(extractFn(html, 'attendancePanelHtml'));
   assert.ok(!/saveAttendance\(|attendanceMark\(/.test(code.replace(/onclick="[^"]*"/g, '')),
     'attendance is written only from a click, never while rendering');
   assert.match(code, /onclick="attendanceMark\(/, 'and a click is how it is written');
 });
 
 test('the panel shows three states and never pre-fills from availability', () => {
-  const i = html.indexOf('<!-- ATTENDANCE — who actually turned up');
-  const panel = strip(html.slice(i, html.indexOf('<!-- Printable coach summary', i)));
+  // The register moved into attendancePanelHtml so the Planner and History
+  // render ONE implementation; the invariants below are unchanged.
+  const panel = strip(extractFn(html, 'attendancePanelHtml'));
   assert.match(panel, /not recorded/);
   assert.match(panel, /Loading attendance…/);
   assert.match(panel, /could not be loaded/);

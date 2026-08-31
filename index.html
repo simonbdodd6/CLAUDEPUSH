@@ -16823,6 +16823,67 @@
     }
 
     let _trainingPubLoadedAt = 0;
+    /**
+     * THE ATTENDANCE REGISTER for one training occurrence — the only one.
+     *
+     * The Planner renders it for the session in view; History renders it for a
+     * past session. Same markup, same handlers, same canonical occurrence and
+     * the same server path — the two surfaces cannot disagree because there is
+     * one implementation and the caller merely says which session.
+     *
+     * ROSTER: today's group roster, PLUS anyone who already has a mark in this
+     * register. A membership carries no history of which group somebody was in
+     * on a past date (playerGroupId is a current value), so a historical squad
+     * cannot be reconstructed — and is not guessed. Including an already-marked
+     * player who has since moved on keeps their real record visible and
+     * correctable instead of orphaning it.
+     */
+    function attendancePanelHtml(sessId, sessionDate) {
+      if (!canI('publish_training')) return '';
+      const att = currentAttendance();
+      const occId = attendanceOccurrenceId(sessId, sessionDate);
+      const recs = att && !att.denied && occId ? (att.sessions[occId] || {}).marks || {} : {};
+      const group = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
+      const seen = new Set(group.map(p => playerMatchKey(p)).filter(Boolean));
+      const alsoMarked = canonicalVisiblePlayers().filter(p => {
+        const k = playerMatchKey(p);
+        return k && recs[k] && !seen.has(k);
+      });
+      const roster = group.concat(alsoMarked);
+      const counts = { present: 0, absent: 0, none: 0 };
+      roster.forEach(p => { const st = recs[playerMatchKey(p)];
+        counts[st === 'present' ? 'present' : st === 'absent' ? 'absent' : 'none'] += 1; });
+      const body = !att
+        ? (attendanceFailed()
+            ? `<p class="muted" style="font-size:13px;margin:0">Attendance could not be loaded — this is not a record of an empty session. <button type="button" class="ovw-retry" onclick="_attendanceFailed=null;loadAttendance(true)">Try again</button></p>`
+            : `<p class="muted" style="font-size:13px;margin:0">Loading attendance…</p>`)
+        : att.denied
+        ? `<p class="muted" style="font-size:13px;margin:0">Recording attendance needs training access.</p>`
+        : !occId
+        ? `<p class="muted" style="font-size:13px;margin:0">This session has no date yet, so attendance cannot be recorded against it.</p>`
+        : !roster.length
+        ? `<p class="muted" style="font-size:13px;margin:0">No players in this group yet.</p>`
+        : `<div class="att-list">${roster.map(p => {
+            const k = playerMatchKey(p);
+            const st = recs[k] || '';
+            const btn = (val, label) => `<button type="button" class="att-btn${st === val ? ' is-on att-' + val : ''}"
+              aria-pressed="${st === val}"
+              onclick="attendanceMark('${esc(sessId)}','${esc(k)}',${st === val ? 'null' : `'${val}'`},'${esc(String(sessionDate || ''))}')">${label}</button>`;
+            return `<div class="att-row">
+              <span class="att-name">${esc(p.name || 'Player')}</span>
+              <span class="att-actions">${btn('present', 'Present')}${btn('absent', 'Absent')}</span>
+            </div>`;
+          }).join('')}</div>
+          <p class="att-note">${counts.present} present · ${counts.absent} absent · ${counts.none} not recorded</p>`;
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <h3 style="margin:0;font-size:15px;color:var(--ink)">Attendance</h3>
+          ${att && !att.denied && roster.length && occId ? `<button class="btn" type="button" style="font-size:12px"
+            onclick="attendanceMarkAllPresent('${esc(sessId)}','${esc(String(sessionDate || ''))}')">Mark rest present</button>` : ''}
+        </div>
+        <p class="muted" style="font-size:12px;margin:0 0 10px">Who actually came. Separate from availability — nobody is marked present automatically.</p>
+        ${body}`;
+    }
     function renderTraining() {
       // Refresh each audience's publication status when the planner is opened,
       // so a colleague's publish shows up without a page reload.
@@ -16971,52 +17032,9 @@
           </div>`}
         </div>
 
-        <!-- ATTENDANCE — who actually turned up. Deliberately NOT the
-             availability board: an available player is not present until a
-             coach says so, and nothing here is pre-filled from an answer. -->
-        ${(() => {
-          if (!canI('publish_training')) return '';
-          const att = currentAttendance();
-          const roster = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
-          // THIS Tuesday's register, not every Tuesday's.
-          const occId = attendanceOccurrenceId(sessId, sessObj && sessObj.date);
-          const recs = att && !att.denied && occId ? (att.sessions[occId] || {}).marks || {} : {};
-          const counts = { present: 0, absent: 0, none: 0 };
-          roster.forEach(p => { const st = recs[playerMatchKey(p)];
-            counts[st === 'present' ? 'present' : st === 'absent' ? 'absent' : 'none'] += 1; });
-          const body = !att
-            ? (attendanceFailed()
-                ? `<p class="muted" style="font-size:13px;margin:0">Attendance could not be loaded — this is not a record of an empty session. <button type="button" class="ovw-retry" onclick="_attendanceFailed=null;loadAttendance(true)">Try again</button></p>`
-                : `<p class="muted" style="font-size:13px;margin:0">Loading attendance…</p>`)
-            : att.denied
-            ? `<p class="muted" style="font-size:13px;margin:0">Recording attendance needs training access.</p>`
-            : !occId
-            ? `<p class="muted" style="font-size:13px;margin:0">This session has no date yet, so attendance cannot be recorded against it.</p>`
-            : !roster.length
-            ? `<p class="muted" style="font-size:13px;margin:0">No players in this group yet.</p>`
-            : `<div class="att-list">${roster.map(p => {
-                const k = playerMatchKey(p);
-                const st = recs[k] || '';
-                const btn = (val, label) => `<button type="button" class="att-btn${st === val ? ' is-on att-' + val : ''}"
-                  aria-pressed="${st === val}"
-                  onclick="attendanceMark('${esc(sessId)}','${esc(k)}',${st === val ? 'null' : `'${val}'`})">${label}</button>`;
-                return `<div class="att-row">
-                  <span class="att-name">${esc(p.name || 'Player')}</span>
-                  <span class="att-actions">${btn('present', 'Present')}${btn('absent', 'Absent')}</span>
-                </div>`;
-              }).join('')}</div>
-              <p class="att-note">${counts.present} present · ${counts.absent} absent · ${counts.none} not recorded</p>`;
-          return `
-        <div class="card" style="margin-bottom:14px">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-            <h3 style="margin:0;font-size:15px;color:var(--ink)">Attendance</h3>
-            ${att && !att.denied && roster.length && occId ? `<button class="btn" type="button" style="font-size:12px"
-              onclick="attendanceMarkAllPresent('${esc(sessId)}','${esc(String(sessObj && sessObj.date || ''))}')">Mark rest present</button>` : ''}
-          </div>
-          <p class="muted" style="font-size:12px;margin:0 0 10px">Who actually came. Separate from availability — nobody is marked present automatically.</p>
-          ${body}
-        </div>`;
-        })()}
+        <!-- ATTENDANCE — one register, shared with History so a past
+             session opens exactly the same thing. -->
+        ${canI('publish_training') ? `<div class="card" style="margin-bottom:14px">${attendancePanelHtml(sessId, sessObj && sessObj.date)}</div>` : ''}
 
         <!-- Printable coach summary — kept for Training session 1 & 2; hidden for the
              Pre-game / Warm-up session, whose plan the main card above already shows.
@@ -20244,8 +20262,8 @@
      * screen claiming something the club's data does not say.
      */
     /** Set ONE player's attendance for a session (or clear it back to unrecorded). */
-    async function attendanceMark(sessionId, playerKey, status) {
-      const ok = await saveAttendance(sessionId, { [playerKey]: status });
+    async function attendanceMark(sessionId, playerKey, status, sessionDate) {
+      const ok = await saveAttendance(sessionId, { [playerKey]: status }, sessionDate);
       if (ok) renderTraining();
     }
 
@@ -20271,16 +20289,20 @@
       if (!(await ceConfirm('Mark the rest present?',
         `${blanks} player${blanks === 1 ? '' : 's'} with no attendance record will be marked present. Anyone already marked present or absent keeps that record.`,
         { confirmLabel: 'Mark ' + blanks + ' present' }))) return;
-      if (await saveAttendance(sessionId, marks)) { showToast(`${blanks} marked present ✓`); renderTraining(); }
+      if (await saveAttendance(sessionId, marks, sessionDate)) { showToast(`${blanks} marked present ✓`); renderTraining(); }
     }
 
-    async function saveAttendance(sessionId, marks) {
+    async function saveAttendance(sessionId, marks, sessionDate) {
       if (!canI('publish_training')) { showToast('You do not have permission to record attendance'); return false; }
       const gid = state.operationalGroupId || '';
       try {
         const res = await fetch('/api/publish?resource=attendance', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ group: gid || undefined, sessionId, marks }),
+          // Name the OCCURRENCE, not the recurring slot: for a PAST session the
+          // bare id ("tue") is nothing the server can place, while the dated id
+          // is exactly what it can prove from the slot table.
+          body: JSON.stringify({ group: gid || undefined,
+            sessionId: attendanceOccurrenceId(sessionId, sessionDate) || sessionId, marks }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
@@ -29995,6 +30017,14 @@
       return out;
     }
 
+    // Which History session has its register open. One at a time, and view
+    // state only — nothing about attendance is decided here.
+    let _historyOpenSession = null;
+    function trainingHistoryToggle(id) {
+      _historyOpenSession = (_historyOpenSession === id) ? null : id;
+      _renderTrainingHistory();
+    }
+
     function _renderTrainingHistory() {
       const el = document.getElementById('coach-training');
       // Is the attendance read even in? History is server-backed now, so this
@@ -30089,6 +30119,12 @@
                         (att.noRecord?'<span style="color:var(--muted)">'+att.noRecord+' not recorded</span>':'') +
                       '</div>' : '') +
                   '<div style="display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">' +
+                    // The register for THIS past session — the same one the
+                    // Planner opens, on the same canonical occurrence.
+                    (canI('publish_training')
+                      ? '<button class="btn" type="button" style="font-size:11px;padding:4px 11px;min-height:32px" onclick="trainingHistoryToggle(\''+esc(s.id)+'\')">' +
+                          (_historyOpenSession === s.id ? 'Close attendance' : 'Attendance') + '</button>'
+                      : '') +
                     '<button class="btn" type="button" style="font-size:11px;padding:4px 11px;min-height:32px" onclick="setTrainingSession(\''+s.id+'\');setTrainingTab(\'planner\')">Planner</button>' +
                     // Beta hides the Attendance / Notes tabs — hide their jump buttons too
                     // so History only offers destinations that exist. Non-Beta keeps all.
@@ -30096,6 +30132,10 @@
                       '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="setTrainingSession(\''+s.id+'\');setTrainingTab(\'attendance\')">Attendance</button>' +
                       '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="setTrainingSession(\''+s.id+'\');setTrainingTab(\'notes\')">Notes</button>') +
                   '</div>' +
+                  (_historyOpenSession === s.id
+                    ? '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">' +
+                        attendancePanelHtml(s.id, s.date) + '</div>'
+                    : '') +
                 '</div>';
               }).join('') +
             '</div>') +
