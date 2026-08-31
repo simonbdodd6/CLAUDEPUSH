@@ -1654,8 +1654,14 @@ function sanitiseAttendanceSession(raw) {
 
 function sanitiseAttendanceDoc(raw) {
   const out = {};
-  const src = (raw && typeof raw.sessions === 'object' && !Array.isArray(raw.sessions)) ? raw.sessions : {};
-  Object.entries(src).slice(0, ATT_MAX_SESSIONS).forEach(([sid, v]) => {
+  const all = (raw && typeof raw.sessions === 'object' && !Array.isArray(raw.sessions)) ? raw.sessions : {};
+  // When the cap bites, keep the MOST RECENT sessions. Insertion order would
+  // drop whatever was written last — the current season — and silently losing
+  // live data is far worse than losing the oldest history.
+  const src = Object.fromEntries(Object.entries(all).sort((a, b) =>
+    String((b[1] && b[1].date) || '').localeCompare(String((a[1] && a[1].date) || ''))
+    || String(a[0]).localeCompare(String(b[0]))).slice(0, ATT_MAX_SESSIONS));
+  Object.entries(src).forEach(([sid, v]) => {
     const id = String(sid).slice(0, 80);
     if (id) out[id] = sanitiseAttendanceSession(v);
   });
@@ -1688,8 +1694,13 @@ function attendanceHistoricalOccurrence(sessionId, slots, storedSessions, todayI
   // (1) an existing register is its own proof
   const existing = storedSessions && storedSessions[occId];
   if (existing && String(existing.date || '')) {
-    return { occurrenceId: occId, date: String(existing.date).slice(0, 10),
-             title: String(existing.title || ''), evidence: 'register' };
+    const d = String(existing.date).slice(0, 10);
+    // A register proves the session EXISTS. It does not turn a session that has
+    // not happened yet into history: a ledger entry is written when a session is
+    // created, which may be days before it takes place. Until its date arrives
+    // it stays reachable only through the current week's list, as before.
+    if (todayIso && d > todayIso) return null;
+    return { occurrenceId: occId, date: d, title: String(existing.title || ''), evidence: 'register' };
   }
 
   const m = /^(.*)-(\d{4})(\d{2})(\d{2})$/.exec(occId);
@@ -1711,6 +1722,46 @@ function attendanceHistoricalOccurrence(sessionId, slots, storedSessions, todayI
   const FULL = { Sun: 'Sunday', Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday',
                  Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday' };
   return { occurrenceId: occId, date, title: `${FULL[weekday]} Training`, evidence: 'schedule' };
+}
+
+/**
+ * THE SESSION LEDGER — proof that a session happened, kept in the store that
+ * already holds what happened AT it.
+ *
+ * An ad-hoc session reaches the server the moment it is created, with its own
+ * durable id and its date. What it does not survive is the weekly rollover: the
+ * group's session list is REPLACED on the next sync, so a week later nothing
+ * remembers the session existed and its attendance can never be recorded.
+ *
+ * Nothing is invented to fix that and no second store is introduced. A register
+ * with no marks already means exactly "this session happened; no attendance
+ * decisions were recorded" — the product's existing third state. So each session
+ * the server accepts is recorded as an empty register the first time it is seen.
+ * Thereafter it is proof in its own right (the rule the retrospective path
+ * already uses), History lists it like any other, and the canonical occurrence
+ * id makes it idempotent: one session can never produce two entries however
+ * many times the schedule is synced.
+ *
+ * Pure, and returns only what is NEW — an unchanged schedule costs no write.
+ */
+function attendanceLedgerAdditions(sessions, existingSessions, slots) {
+  const out = {};
+  (Array.isArray(sessions) ? sessions : []).forEach(sess => {
+    if (!sess || String(sess.type || 'Training') !== 'Training') return;
+    const occId = attendanceOccurrenceId(sess.id, sess.date, slots);
+    if (!occId) return;                                        // undated: no occurrence
+    if (existingSessions && existingSessions[occId]) return;    // already known
+    if (out[occId]) return;
+    out[occId] = {
+      date:  String(sess.date || '').slice(0, 10),
+      title: String(sess.title || '').slice(0, 120),
+      sourceSessionId: String(sess.id || '').slice(0, 80),
+      marks: {},
+      updatedAt: null,
+      updatedBy: '',
+    };
+  });
+  return out;
 }
 
 async function attendanceHandler(req, res) {
@@ -2933,6 +2984,22 @@ export default async function handler(req, res) {
       try { gid = await staffTrainingGroup(session, req.body?.group ?? req.query?.group); }
       catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
       await kvSet(sessionsGroupKey(session.teamId, gid), sessions);
+      // Note each session in the ledger the first time it is seen, so it can
+      // still be found after this list is replaced next week. Read-only when
+      // nothing is new, which is the common case.
+      try {
+        const slots = ((await readTrainingSchedule(session.teamId, gid)).record || {}).slots || [];
+        const doc = sanitiseAttendanceDoc(await kvGet(attendanceKey(session.teamId, gid)));
+        const additions = attendanceLedgerAdditions(sessions, doc.sessions, slots);
+        if (Object.keys(additions).length) {
+          await kvSet(attendanceKey(session.teamId, gid),
+            sanitiseAttendanceDoc({ sessions: { ...doc.sessions, ...additions } }));
+        }
+      } catch (e) {
+        // The schedule write has already succeeded and is what the coach asked
+        // for; failing to note the session must not fail their save.
+        console.error('[attendance ledger]', e && e.message);
+      }
       return res.status(200).json({ ok: true, sessions, groupId: gid });
     }
 

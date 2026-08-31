@@ -274,12 +274,34 @@ test('a FUTURE week\'s saved plan is planning, not history', () => {
 });
 
 test('empty structures do not create history — the rule is REAL activity', () => {
+  // An emptied plan and a blank note prove nothing: they are local artefacts of
+  // editing, not evidence a session took place.
   const c = ctx({
     trainingBlocks: { 'slot_tue1-20260804': [] },          // emptied plan
-    serverAttendance: { 'slot_thu1-20260806': { date: '2026-08-06', title: 'T', marks: {} } },  // never actually marked
     sessionNotes: { 'slot_tue1-20260811': { summary: '' } },
   });
   assert.deepEqual(c.trainingHistorySessions(), [], 'no synthetic sessions');
+});
+
+test('a FUTURE noted session is not history yet', () => {
+  // A ledger entry is written when a session is CREATED, which may be days
+  // before it happens. History is what has already taken place.
+  const c = ctx({ serverAttendance: {
+    'slot_tue1-20990105': { date: '2099-01-05', title: 'Next year', marks: {} } } });
+  assert.deepEqual(c.trainingHistorySessions(), [], 'planning is not history');
+});
+
+test('a SERVER register with no marks DOES make history — it is the proof', () => {
+  // This is the rule Build D sharpened. An unmarked register is not an empty
+  // structure: the server writes one when a session is created, so its existence
+  // is the club's own record that the session happened. Hiding it was what made
+  // an ad-hoc session nobody marked at the time unreachable for ever.
+  const c = ctx({ serverAttendance: {
+    'slot_thu1-20260806': { date: '2026-08-06', title: 'Skills night', marks: {} } } });
+  const hist = c.trainingHistorySessions();
+  assert.equal(hist.length, 1, 'the session appears so its register can be opened');
+  assert.equal(hist[0].id, 'slot_thu1-20260806');
+  assert.equal(hist[0].date, '2026-08-06');
 });
 
 test('the same slot on different dates is different history sessions', () => {
