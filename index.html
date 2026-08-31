@@ -16978,7 +16978,9 @@
           if (!canI('publish_training')) return '';
           const att = currentAttendance();
           const roster = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
-          const recs = att && !att.denied ? (att.sessions[sessId] || {}).marks || {} : {};
+          // THIS Tuesday's register, not every Tuesday's.
+          const occId = attendanceOccurrenceId(sessId, sessObj && sessObj.date);
+          const recs = att && !att.denied && occId ? (att.sessions[occId] || {}).marks || {} : {};
           const counts = { present: 0, absent: 0, none: 0 };
           roster.forEach(p => { const st = recs[playerMatchKey(p)];
             counts[st === 'present' ? 'present' : st === 'absent' ? 'absent' : 'none'] += 1; });
@@ -16988,6 +16990,8 @@
                 : `<p class="muted" style="font-size:13px;margin:0">Loading attendance…</p>`)
             : att.denied
             ? `<p class="muted" style="font-size:13px;margin:0">Recording attendance needs training access.</p>`
+            : !occId
+            ? `<p class="muted" style="font-size:13px;margin:0">This session has no date yet, so attendance cannot be recorded against it.</p>`
             : !roster.length
             ? `<p class="muted" style="font-size:13px;margin:0">No players in this group yet.</p>`
             : `<div class="att-list">${roster.map(p => {
@@ -17006,8 +17010,8 @@
         <div class="card" style="margin-bottom:14px">
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px">
             <h3 style="margin:0;font-size:15px;color:var(--ink)">Attendance</h3>
-            ${att && !att.denied && roster.length ? `<button class="btn" type="button" style="font-size:12px"
-              onclick="attendanceMarkAllPresent('${esc(sessId)}')">Mark rest present</button>` : ''}
+            ${att && !att.denied && roster.length && occId ? `<button class="btn" type="button" style="font-size:12px"
+              onclick="attendanceMarkAllPresent('${esc(sessId)}','${esc(String(sessObj && sessObj.date || ''))}')">Mark rest present</button>` : ''}
           </div>
           <p class="muted" style="font-size:12px;margin:0 0 10px">Who actually came. Separate from availability — nobody is marked present automatically.</p>
           ${body}
@@ -20158,6 +20162,30 @@
     let _attendanceFailed  = null;   // the group whose read failed
 
     /**
+     * THE ATTENDANCE OCCURRENCE IDENTITY — one Tuesday, not every Tuesday.
+     *
+     * Mirrors attendanceOccurrenceId in api/publish.js, which is the authority:
+     * the server derives this from the session record it holds and stores the
+     * register under it. The client needs the same answer only to READ the
+     * right register back, and a test pins the two implementations together.
+     *
+     * A recurring slot keeps ONE id for the current week — `tue` this week and
+     * `tue` again next week — so the register has to be the slot PLUS the day.
+     * Idempotent: an id already carrying its date is returned unchanged.
+     */
+    function attendanceOccurrenceId(sessionId, dateIso) {
+      const id = String(sessionId || '').trim();
+      if (!id) return '';
+      if (/-(\d{8})$/.test(id)) return id;
+      const d = String(dateIso || '').slice(0, 10);
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+      if (!m) return '';
+      const mo = Number(m[2]), day = Number(m[3]);
+      if (mo < 1 || mo > 12 || day < 1 || day > 31) return '';
+      return id + '-' + d.replace(/-/g, '');
+    }
+
+    /**
      * The attendance for the group NOW IN FORCE, or null when we do not have it.
      *
      * Same rule the season sheets and the availability map follow: a document
@@ -20214,10 +20242,11 @@
      * marked absent stays absent, and this only fills the blanks. Deliberate —
      * it is a button a coach presses, never something opening a session does.
      */
-    async function attendanceMarkAllPresent(sessionId) {
+    async function attendanceMarkAllPresent(sessionId, sessionDate) {
       const att = currentAttendance();
       if (!att) return showToast('Attendance is still loading');
-      const existing = (att.sessions[sessionId] || {}).marks || {};
+      const occId = attendanceOccurrenceId(sessionId, sessionDate);
+      const existing = (att.sessions[occId] || {}).marks || {};
       const roster = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
       const marks = {};
       roster.forEach(p => {
@@ -20243,7 +20272,10 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
         if (_attendance && _attendanceGroup === gid) {
-          _attendance.sessions = { ..._attendance.sessions, [sessionId]: data.session };
+          // Keyed by the id the SERVER derived, never one guessed here, so the
+          // screen and the stored register can never disagree about which
+          // occurrence was written.
+          _attendance.sessions = { ..._attendance.sessions, [data.occurrenceId || sessionId]: data.session };
         }
         return true;
       } catch (e) {

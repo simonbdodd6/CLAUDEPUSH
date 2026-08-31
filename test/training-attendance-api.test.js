@@ -100,8 +100,10 @@ test('a head coach records attendance, and the DATE comes from the stored sessio
   assert.deepEqual(res.body.session.marks, { 'id:u1': 'present', 'id:u2': 'absent' });
   assert.equal(res.body.session.date, '2026-08-04', 'from the session record, not the caller');
   assert.equal(res.body.session.title, 'Tuesday training');
+  // The register belongs to the slot PLUS the day, so next Tuesday gets its own.
+  assert.equal(res.body.occurrenceId, 'tue-20260804');
   const back = await read('u-head', SEN);
-  assert.deepEqual(back.body.sessions.tue.marks, { 'id:u1': 'present', 'id:u2': 'absent' });
+  assert.deepEqual(back.body.sessions['tue-20260804'].marks, { 'id:u1': 'present', 'id:u2': 'absent' });
 });
 
 test('a client cannot date its own history', async () => {
@@ -128,6 +130,78 @@ test('a second write merges rather than replacing the register', async () => {
 });
 
 // ───────────────────────── isolation ────────────────────────────────────────
+
+test('TWO TUESDAYS: the same recurring id on different dates stays two registers', async () => {
+  seed();
+  // Week 1 — the schedule sync stores this week's sessions; the current week's
+  // id is the slot's legacy one, `tue`.
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:ana': 'present', 'id:ben': 'absent' } });
+  // Week 2 — the next sync REPLACES the list. Same id, new date.
+  kv.set(`app:publish:${CLUB}:group:${SEN}:sessions`, JSON.stringify([
+    { id: 'tue', title: 'Tuesday training', date: '2026-08-11', type: 'Training' }]));
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:ana': 'absent', 'id:ben': 'present' } });
+
+  const all = (await read('u-head', SEN)).body.sessions;
+  assert.deepEqual(Object.keys(all).sort(), ['tue-20260804', 'tue-20260811'], 'two registers, one per Tuesday');
+  assert.deepEqual(all['tue-20260804'].marks, { 'id:ana': 'present', 'id:ben': 'absent' }, '4 Aug is intact');
+  assert.deepEqual(all['tue-20260811'].marks, { 'id:ana': 'absent', 'id:ben': 'present' }, '11 Aug is its own');
+  assert.equal(all['tue-20260804'].date, '2026-08-04', 'and its date was not overwritten');
+  assert.equal(all['tue-20260804'].sourceSessionId, 'tue', 'traceable to the slot it came from');
+});
+
+test('clearing a mark on one Tuesday leaves the other untouched', async () => {
+  seed();
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:ana': 'present' } });
+  kv.set(`app:publish:${CLUB}:group:${SEN}:sessions`, JSON.stringify([
+    { id: 'tue', title: 'Tuesday training', date: '2026-08-11', type: 'Training' }]));
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:ana': 'present' } });
+  // clear the SECOND Tuesday only
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:ana': null } });
+  const all = (await read('u-head', SEN)).body.sessions;
+  assert.deepEqual(all['tue-20260804'].marks, { 'id:ana': 'present' }, 'the first Tuesday is untouched');
+  assert.deepEqual(all['tue-20260811'].marks, {}, 'and the second is cleared');
+});
+
+test('a legacy register is lifted onto its own date, once, on read', async () => {
+  seed();
+  // A document written before the occurrence identity existed.
+  kv.set(`app:publish:${CLUB}:group:${SEN}:attendance`, JSON.stringify({ sessions: {
+    tue: { date: '2026-08-04', title: 'Tuesday training', marks: { 'id:ana': 'present' } } } }));
+  const first = (await read('u-head', SEN)).body.sessions;
+  assert.deepEqual(Object.keys(first), ['tue-20260804']);
+  assert.deepEqual(first['tue-20260804'].marks, { 'id:ana': 'present' });
+  const again = (await read('u-head', SEN)).body.sessions;
+  assert.deepEqual(again, first, 'reading twice changes nothing');
+});
+
+test('a legacy register with no date is preserved and reported, never guessed', async () => {
+  seed();
+  kv.set(`app:publish:${CLUB}:group:${SEN}:attendance`, JSON.stringify({ sessions: {
+    tue: { date: '', title: 'Undated', marks: { 'id:ana': 'present' } } } }));
+  const res = await read('u-head', SEN);
+  assert.deepEqual(Object.keys(res.body.sessions), ['tue'], 'left exactly where it was');
+  assert.deepEqual(res.body.unmigrated, ['tue'], 'and reported rather than silently dropped');
+  assert.deepEqual(res.body.sessions.tue.marks, { 'id:ana': 'present' }, 'losslessly');
+});
+
+test('an undated session cannot have attendance recorded against it', async () => {
+  seed();
+  kv.set(`app:publish:${CLUB}:group:${SEN}:sessions`, JSON.stringify([
+    { id: 'floating', title: 'Ad-hoc', date: '', type: 'Training' }]));
+  const res = await mark('u-head', { group: SEN, sessionId: 'floating', marks: { 'id:ana': 'present' } });
+  assert.equal(res.statusCode, 400);
+  assert.match(res.body.error, /no date/);
+});
+
+test('writing does not disturb a preserved un-migratable record', async () => {
+  seed();
+  kv.set(`app:publish:${CLUB}:group:${SEN}:attendance`, JSON.stringify({ sessions: {
+    orphan: { date: '', title: 'Undated', marks: { 'id:zz': 'present' } } } }));
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:ana': 'present' } });
+  const all = (await read('u-head', SEN)).body.sessions;
+  assert.deepEqual(all.orphan.marks, { 'id:zz': 'present' }, 'still there after an unrelated write');
+  assert.deepEqual(all['tue-20260804'].marks, { 'id:ana': 'present' });
+});
 
 test('a forged SESSION id is refused — attendance must belong to a real session', async () => {
   seed();
@@ -157,7 +231,7 @@ test('a U18 coach CAN record their own group, and sees only it', async () => {
   const res = await mark('u-u18c', { group: U18, sessionId: 'y-thu', marks: { 'id:u9': 'present' } });
   assert.equal(res.statusCode, 200);
   const mine = await read('u-u18c', U18);
-  assert.deepEqual(Object.keys(mine.body.sessions), ['y-thu'], 'no Seniors session appears');
+  assert.deepEqual(Object.keys(mine.body.sessions), ['y-thu-20260806'], 'no Seniors session appears');
 });
 
 test('attendance is stored per group — one group’s register is not the other’s', async () => {
@@ -165,8 +239,8 @@ test('attendance is stored per group — one group’s register is not the other
   await mark('u-head', { group: SEN, sessionId: 'tue',   marks: { 'id:u1': 'present' } });
   await mark('u-head', { group: U18, sessionId: 'y-thu', marks: { 'id:u9': 'absent'  } });
   const sen = await read('u-head', SEN), u18 = await read('u-head', U18);
-  assert.deepEqual(Object.keys(sen.body.sessions), ['tue']);
-  assert.deepEqual(Object.keys(u18.body.sessions), ['y-thu']);
+  assert.deepEqual(Object.keys(sen.body.sessions), ['tue-20260804']);
+  assert.deepEqual(Object.keys(u18.body.sessions), ['y-thu-20260806']);
   assert.ok(!JSON.stringify(sen.body).includes('id:u9'));
 });
 
@@ -184,11 +258,11 @@ test('another CLUB cannot read or write this club’s attendance', async () => {
   const write = await mark('u-out', { group: SEN, sessionId: 'tue', marks: { 'id:u1': 'absent' } });
   assert.notEqual(write.statusCode, 200, 'must not write into another club');
   const readRes = await read('u-out', SEN);
-  assert.notDeepEqual(readRes.body?.sessions?.tue?.marks, { 'id:u1': 'present' },
+  assert.notDeepEqual(readRes.body?.sessions?.['tue-20260804']?.marks, { 'id:u1': 'present' },
     'and must never see this club’s register');
   // this club's record is untouched
   const ours = await read('u-head', SEN);
-  assert.deepEqual(ours.body.sessions.tue.marks, { 'id:u1': 'present' });
+  assert.deepEqual(ours.body.sessions['tue-20260804'].marks, { 'id:u1': 'present' });
 });
 
 test('a forged teamId in the query changes nothing', async () => {
@@ -196,7 +270,7 @@ test('a forged teamId in the query changes nothing', async () => {
   await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:u1': 'present' } });
   const res = await call('u-head', 'GET', `resource=attendance&group=${SEN}&teamId=${OTHER}&team=${OTHER}`);
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body.sessions.tue.marks, { 'id:u1': 'present' }, 'still OUR club');
+  assert.deepEqual(res.body.sessions['tue-20260804'].marks, { 'id:u1': 'present' }, 'still OUR club');
 });
 
 // ───────────────────────── permissions ──────────────────────────────────────
@@ -277,8 +351,8 @@ test('nothing unknown survives a round trip', async () => {
   seed();
   await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:u1': 'present' } });
   const res = await read('u-head', SEN);
-  assert.deepEqual(Object.keys(res.body.sessions.tue).sort(),
-    ['date', 'marks', 'title', 'updatedAt', 'updatedBy']);
+  assert.deepEqual(Object.keys(res.body.sessions['tue-20260804']).sort(),
+    ['date', 'marks', 'sourceSessionId', 'title', 'updatedAt', 'updatedBy']);
 });
 
 test('attendance never touches availability records', async () => {
