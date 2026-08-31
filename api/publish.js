@@ -1662,6 +1662,57 @@ function sanitiseAttendanceDoc(raw) {
   return { sessions: out };
 }
 
+/**
+ * WAS THIS A REAL TRAINING SESSION? — asked of a PAST occurrence.
+ *
+ * The stored session list holds only the current week, so a past session is not
+ * in it. Nothing is invented to fill that gap; an occurrence is accepted only
+ * when the server can already PROVE it happened, from two kinds of evidence:
+ *
+ *  1. A register already exists for it. That register was written server-side
+ *     at the time, with the date taken from the session record then in force —
+ *     so its existence is proof, and its own date and title are the facts.
+ *
+ *  2. The group's training schedule contains the slot the occurrence is rooted
+ *     in, the date falls on that slot's WEEKDAY, inside the slot's effective
+ *     range, and is not in the future. A slot that runs on Tuesdays did have a
+ *     session on a past Tuesday; that is derivation, not invention.
+ *
+ * Anything else — an ad-hoc session nobody recorded, a Wednesday claimed for a
+ * Tuesday slot, a date before the slot existed, a future date — is refused.
+ */
+function attendanceHistoricalOccurrence(sessionId, slots, storedSessions, todayIso) {
+  const occId = attendanceOccurrenceId(sessionId, '', slots);
+  if (!occId) return null;                      // no date carried, nothing to place it on
+
+  // (1) an existing register is its own proof
+  const existing = storedSessions && storedSessions[occId];
+  if (existing && String(existing.date || '')) {
+    return { occurrenceId: occId, date: String(existing.date).slice(0, 10),
+             title: String(existing.title || ''), evidence: 'register' };
+  }
+
+  const m = /^(.*)-(\d{4})(\d{2})(\d{2})$/.exec(occId);
+  if (!m) return null;
+  const root = m[1];
+  const date = `${m[2]}-${m[3]}-${m[4]}`;
+  if (!todayIso || date > todayIso) return null;               // the future is planning
+
+  const slot = (Array.isArray(slots) ? slots : []).find(sl => sl && String(sl.id || '') === root);
+  if (!slot) return null;                                      // no slot: nothing to derive from
+  if (slot.effectiveFrom && date < slot.effectiveFrom) return null;
+  if (slot.effectiveTo   && date > slot.effectiveTo)   return null;
+
+  // Weekday WITHOUT a timezone: built and read in UTC, so the day cannot shift.
+  const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const weekday = DAY[new Date(Date.UTC(Number(m[2]), Number(m[3]) - 1, Number(m[4]))).getUTCDay()];
+  if (weekday !== String(slot.day || '')) return null;          // that slot did not run that day
+
+  const FULL = { Sun: 'Sunday', Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday',
+                 Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday' };
+  return { occurrenceId: occId, date, title: `${FULL[weekday]} Training`, evidence: 'schedule' };
+}
+
 async function attendanceHandler(req, res) {
   // The people who run training are the people who record who came to it.
   // Deliberately NOT a broad administrative permission, and deliberately the
@@ -1703,9 +1754,19 @@ async function attendanceHandler(req, res) {
   // forged or borrowed id filing attendance against another squad's session,
   // and it is where the date comes from — the stored record, not the caller.
   const groupSessions = (await kvGet(sessionsGroupKey(session.teamId, gid))) || [];
-  const target = (Array.isArray(groupSessions) ? groupSessions : [])
+  let target = (Array.isArray(groupSessions) ? groupSessions : [])
     .find(s => String(s?.id || '') === sessionId);
-  if (!target) return res.status(404).json({ error: 'That training session does not exist in this group' });
+  // A PAST session is not in the current week's list. Rather than refuse it, ask
+  // whether the server can already prove it happened — from a register it wrote
+  // itself, or from the slot the occurrence is rooted in. Exactly one path
+  // follows from here: the same canonicalisation, the same store, the same
+  // validation. Nothing forks.
+  if (!target) {
+    const past = attendanceHistoricalOccurrence(sessionId, slots, stored.sessions,
+      new Date().toISOString().slice(0, 10));
+    if (!past) return res.status(404).json({ error: 'That training session does not exist in this group' });
+    target = { id: sessionId, date: past.date, title: past.title };
+  }
 
   const marksIn = (req.body?.marks && typeof req.body.marks === 'object' && !Array.isArray(req.body.marks))
     ? req.body.marks : null;
