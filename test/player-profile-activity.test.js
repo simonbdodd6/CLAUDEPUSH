@@ -247,6 +247,70 @@ test('no reason, no answer, no medical detail reaches a profile entry', () => {
   assert.ok(!/injured|available|unavailable/i.test(a.items[0].text), 'the answer itself is not broadcast');
 });
 
+test('the feed cannot reach medical, notes or messaging state AT ALL', () => {
+  // The strongest form of the privacy guarantee, and the one that survives
+  // future edits: rather than checking that today's output happens to omit
+  // sensitive text, pin the SET OF SOURCES the feed is allowed to read. A new
+  // event type drawing on medical or messaging state — "marked injured",
+  // "messaged the coach" — then has to change this list deliberately rather
+  // than arriving by accident.
+  const fn = extractFn(html, 'recentActivity');
+  const code = fn.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+
+  const reads = [...new Set([...code.matchAll(/(?:state|_adminData)\.\w+/g)].map(m => m[0]))].sort();
+  assert.deepEqual(reads, [
+    '_adminData.attempted', '_adminData.loaded', '_adminData.loading',
+    '_adminData.members', '_adminData.profiles',
+    'state.operationalGroupId', 'state.schedule',
+  ], 'the complete set of state the activity feed may read');
+
+  for (const forbidden of [/medical/i, /injur/i, /treatment/i, /\bnotes\b/i,
+                           /state\.messages/, /chat/i, /\breason\b/i, /masterFeed/]) {
+    assert.ok(!forbidden.test(code), `activity must never reference ${forbidden}`);
+  }
+});
+
+test('a player carrying medical data and coach notes still yields a clean feed', () => {
+  // The profile MODEL holds injuries, alerts, return-to-play, treatment logs and
+  // coach notes — all rendered elsewhere on the same page. None may cross into
+  // the activity card.
+  const loaded = {
+    ...ANA,
+    medical: 'Grade 2 hamstring tear',
+    lifecycleStatus: 'injured',
+    game: 'injured',
+    notes: 'Struggling at home — handle carefully.',
+  };
+  const w = world({ roster: [loaded],
+    resolved: { u1: { tue: { response: 'injured', reason: 'physio said no contact', respondedAt: ago(20) } } },
+    profiles: [{ userId: 'u1', detailsUpdatedAt: ago(40),
+                 phone: '+32470000000', emergencyContact: 'Marie Silva' }],
+    members: [{ userId: 'u1', status: 'active', playerGroupId: SEN, joinedAt: ago(90) }] });
+  const a = forPlayer(w, loaded);
+  assert.equal(a.items.length, 3, 'the three real events still appear');
+
+  const rendered = JSON.stringify(a);
+  for (const secret of ['hamstring', 'Grade 2', 'physio', 'no contact', 'injured',
+                        'Struggling', 'handle carefully', '+32470000000', 'Marie Silva']) {
+    assert.ok(!rendered.includes(secret), `"${secret}" must not reach the activity feed`);
+  }
+  assert.deepEqual(a.items.map(i => i.text),
+    ['Replied to Tuesday training', 'Updated their profile', 'Joined Seniors']);
+});
+
+test('a profile update says only THAT it happened, never what changed', () => {
+  const w = world({ roster: [ANA],
+    profiles: [{ userId: 'u1', detailsUpdatedAt: ago(12),
+                 email: 'private@example.com', phone: '+32470111222',
+                 dateOfBirth: '1998-04-02', emergencyPhone: '+32470999888' }] });
+  const a = forPlayer(w, ANA);
+  assert.equal(a.items[0].text, 'Updated their profile');
+  const rendered = JSON.stringify(a);
+  for (const field of ['private@example.com', '+32470111222', '1998-04-02', '+32470999888']) {
+    assert.ok(!rendered.includes(field), `"${field}" must not reach the feed`);
+  }
+});
+
 test('an activity item exposes only what it needs to render', () => {
   const a = forPlayer(world({ roster: [ANA], resolved: { u1: answer('tue', ago(9)) } }), ANA);
   // `ms` is the parsed sort key; `at` is the ISO value rendered. Both are needed;
