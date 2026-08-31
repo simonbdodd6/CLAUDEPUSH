@@ -131,6 +131,50 @@ test('a second write merges rather than replacing the register', async () => {
 
 // ───────────────────────── isolation ────────────────────────────────────────
 
+test('the SLOT TABLE settles a session’s two names onto one register', async () => {
+  seed();
+  // A recurring slot answers to `slot_tue` and, for the legacy slots, to the
+  // availability session `tue`. The current week is generated under the second
+  // and every other week under the first.
+  kv.set(`app:publish:${CLUB}:group:${SEN}:training_schedule`, JSON.stringify({
+    slots: [{ id: 'slot_tue', day: 'Tue', startTime: '19:00', sessionId: 'tue', active: true }] }));
+
+  // Reached as the CURRENT week
+  const cur = await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:u1': 'present' } });
+  assert.equal(cur.body.occurrenceId, 'slot_tue-20260804', 'canonicalised onto the slot root');
+
+  // The SAME session reached as a PAST week
+  kv.set(`app:publish:${CLUB}:group:${SEN}:sessions`, JSON.stringify([
+    { id: 'slot_tue-20260804', title: 'Tuesday Training', date: '2026-08-04', type: 'Training' }]));
+  const past = await mark('u-head', { group: SEN, sessionId: 'slot_tue-20260804', marks: { 'id:u2': 'absent' } });
+  assert.equal(past.body.occurrenceId, 'slot_tue-20260804', 'the same register, not a second one');
+
+  const all = (await read('u-head', SEN)).body.sessions;
+  assert.deepEqual(Object.keys(all), ['slot_tue-20260804'], 'ONE register for one real session');
+  assert.deepEqual(all['slot_tue-20260804'].marks, { 'id:u1': 'present', 'id:u2': 'absent' });
+});
+
+test('a Build A record is lifted onto the canonical slot root, idempotently', async () => {
+  seed();
+  kv.set(`app:publish:${CLUB}:group:${SEN}:training_schedule`, JSON.stringify({
+    slots: [{ id: 'slot_tue', day: 'Tue', startTime: '19:00', sessionId: 'tue', active: true }] }));
+  // Written by Build A, before the slot table was consulted.
+  kv.set(`app:publish:${CLUB}:group:${SEN}:attendance`, JSON.stringify({ sessions: {
+    'tue-20260804': { date: '2026-08-04', title: 'Tuesday training', marks: { 'id:u1': 'present' } } } }));
+
+  const first = (await read('u-head', SEN)).body.sessions;
+  assert.deepEqual(Object.keys(first), ['slot_tue-20260804'], 'lifted onto the canonical root');
+  assert.deepEqual(first['slot_tue-20260804'].marks, { 'id:u1': 'present' }, 'losslessly');
+  const again = (await read('u-head', SEN)).body.sessions;
+  assert.deepEqual(again, first, 'reading twice changes nothing');
+});
+
+test('without a slot table nothing is invented — Build A behaviour stands', async () => {
+  seed();   // no training_schedule seeded for this group
+  const res = await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:u1': 'present' } });
+  assert.equal(res.body.occurrenceId, 'tue-20260804', 'no mapping available, so no root is guessed');
+});
+
 test('TWO TUESDAYS: the same recurring id on different dates stays two registers', async () => {
   seed();
   // Week 1 — the schedule sync stores this week's sessions; the current week's

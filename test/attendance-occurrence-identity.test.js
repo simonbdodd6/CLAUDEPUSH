@@ -43,16 +43,27 @@ function extractFn(source, name, indent = '    ') {
   throw new Error('no closing brace for ' + name);
 }
 
-const CLIENT = new Function(`"use strict"; ${extractFn(html, 'attendanceOccurrenceId')} return attendanceOccurrenceId;`)();
-const SERVER = new Function(`"use strict";
+const CLIENT = new Function(`"use strict";
+  const _trainingSchedule = { slots: [] };
+  ${extractFn(html, 'attendanceOccurrenceId')} return attendanceOccurrenceId;`)();
+// Build B gave the identity a SLOT TABLE, which maps a recurring slot's two
+// names onto one root. These tests deliberately supply NO slots: with no
+// mapping available the behaviour is exactly Build A's, which is the
+// compatibility guarantee. Slot-aware resolution is covered in
+// test/attendance-unified-source.test.js.
+const _SERVER = new Function(`"use strict";
   const ATT_DATED_RE = /-(\\d{8})$/;
+  ${extractFn(apiSrc, 'attendanceOccurrenceRoot', '')}
   ${extractFn(apiSrc, 'attendanceOccurrenceId', '')}
   return attendanceOccurrenceId;`)();
-const MIGRATE = new Function(`"use strict";
+const SERVER = (id, date) => _SERVER(id, date, []);
+const _MIGRATE = new Function(`"use strict";
   const ATT_DATED_RE = /-(\\d{8})$/;
+  ${extractFn(apiSrc, 'attendanceOccurrenceRoot', '')}
   ${extractFn(apiSrc, 'attendanceOccurrenceId', '')}
   ${extractFn(apiSrc, 'migrateAttendanceDoc', '')}
   return migrateAttendanceDoc;`)();
+const MIGRATE = doc => _MIGRATE(doc, []);
 
 // ───────────────────────── the identity itself ──────────────────────────────
 
@@ -100,8 +111,8 @@ test('the date is taken literally — no timezone, no clock', () => {
   }
   // String slicing cannot shift a day, so this holds anywhere on earth.
   const out = execFileSync(process.execPath, ['-e',
-    `const ATT_DATED_RE=/-(\\\\d{8})$/;\n${extractFn(apiSrc, 'attendanceOccurrenceId', '')}\n` +
-    `process.stdout.write(attendanceOccurrenceId('tue','2026-09-01'));`],
+    `const ATT_DATED_RE=/-(\\\\d{8})$/;\n${extractFn(apiSrc, 'attendanceOccurrenceRoot', '')}\n${extractFn(apiSrc, 'attendanceOccurrenceId', '')}\n` +
+    `process.stdout.write(attendanceOccurrenceId('tue','2026-09-01',[]));`],
     { env: { ...process.env, TZ: 'America/Los_Angeles' }, encoding: 'utf8' });
   assert.equal(out, 'tue-20260901', 'west of UTC the day must not slip');
 });

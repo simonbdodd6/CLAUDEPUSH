@@ -17348,17 +17348,18 @@
       // the KPIs above (the fixture's dated event when linked), so a player
       // who answered Available for Mons shows Available while Mons is
       // selected — never red because of training or some other fixture.
-      const _attBySession = state.trainingAttendance || {};
+      // Attendance comes from the SERVER register via the one aggregation, not
+      // from the device-local map this used to walk. Unknown stays unknown:
+      // attPct is null when the read has not landed, never 0%.
+      const _attSrc = currentAttendance();
       const _statusByPlayer = new Map(gameRows.map(r => [String(r.player.id), String(r.status || '')]));
       const _posRank = p => { const m = { prop:1, hooker:2, lock:4, flanker:6, 'no.8':8, 'number 8':8, 'scrum-half':9, 'fly-half':10, 'fly half':10, centre:12, wing:11, 'full-back':15, fullback:15 }; return m[String(p.position||'').toLowerCase().trim()] || 99; };
       const _availStats = available.map(p => {
         const match = mcAvailFilterBucket(_statusByPlayer.get(String(p.id)));
-        let attN = 0, attT = 0;
-        Object.keys(_attBySession).forEach(sid => {
-          const st = _attBySession[sid] && _attBySession[sid][p.id];
-          if (st != null && st !== '') { attT++; if (st === 'present' || st === 'attended' || st === true) attN++; }
-        });
-        const attPct = attT ? Math.round(attN / attT * 100) : null;
+        const _st = (_attSrc && !_attSrc.denied)
+          ? attendanceStats(_attSrc.sessions, playerMatchKey(p), state.seasonStart, state.seasonEnd)
+          : null;
+        const attPct = _st ? _st.attendancePct : null;
         return { p, match, attPct };
       });
       const _availSortKey = (_mcAvailSort === 'pos' || _mcAvailSort === 'training') ? _mcAvailSort : 'training';
@@ -20176,13 +20177,25 @@
     function attendanceOccurrenceId(sessionId, dateIso) {
       const id = String(sessionId || '').trim();
       if (!id) return '';
-      if (/-(\d{8})$/.test(id)) return id;
-      const d = String(dateIso || '').slice(0, 10);
+      const dated = /-(\d{8})$/.exec(id);
+      const bare = id.replace(/-(\d{8})$/, '');
+      // A recurring slot answers to TWO names — its own id (`slot_tue`) and, for
+      // the two legacy slots, the availability session it drives (`tue`). The
+      // current week is generated under the second and every other week under
+      // the first, so the same Tuesday would otherwise own two registers. The
+      // slot table settles it; no clock and no guessing.
+      const slots = (_trainingSchedule && _trainingSchedule.slots) || [];
+      const match = slots.find(sl => sl && String(sl.sessionId || '') === bare);
+      const root = match ? String(match.id || bare) : bare;
+      if (!root) return '';
+      const d = dated
+        ? dated[1].slice(0, 4) + '-' + dated[1].slice(4, 6) + '-' + dated[1].slice(6, 8)
+        : String(dateIso || '').slice(0, 10);
       const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
       if (!m) return '';
       const mo = Number(m[2]), day = Number(m[3]);
       if (mo < 1 || mo > 12 || day < 1 || day > 31) return '';
-      return id + '-' + d.replace(/-/g, '');
+      return root + '-' + d.replace(/-/g, '');
     }
 
     /**
@@ -29375,19 +29388,50 @@
       absent:   { color:'#dc2626', bg:'rgba(220,38,38,0.1)'    },
     };
 
-    function trainingAttendanceForSession(sessionId, players) {
-      const attMap   = ((state.trainingAttendance || {})[sessionId]) || {};
-      const active   = activeRosterPlayers(players);
-      const total    = active.length;
-      const present  = active.filter(p => attMap[p.id] === 'present').length;
-      const late     = active.filter(p => attMap[p.id] === 'late').length;
-      const excused  = active.filter(p => attMap[p.id] === 'excused').length;
-      const injured  = active.filter(p => attMap[p.id] === 'injured').length;
-      const absent   = active.filter(p => attMap[p.id] === 'absent').length;
+    /**
+     * ONE SESSION'S ATTENDANCE — read from the SERVER register, which is the
+     * only authority.
+     *
+     * This used to read state.trainingAttendance, a device-local map keyed by
+     * ROSTER id. That store still exists and is not deleted, but it is no longer
+     * consulted for a result: two devices disagreed, a rename broke the key, and
+     * the History tab reported "no records" for attendance the server held.
+     *
+     * `unknown` is the state that must not collapse into "nobody came": the read
+     * has not landed, or it failed. Callers render it as loading/unavailable.
+     *
+     * late / excused / injured are always 0 — the server records present or
+     * absent only. They are kept in the shape so the older (Beta-hidden) screens
+     * that read them keep working, and they are HONESTLY zero rather than
+     * inferred from anything.
+     */
+    function trainingAttendanceForSession(sessionId, players, sessionDate) {
+      const active = activeRosterPlayers(players);
+      const total  = active.length;
+      const blank  = { total, present: 0, late: 0, excused: 0, injured: 0, absent: 0,
+                       noRecord: total, attended: 0, pct: null, attMap: {}, unknown: true };
+      const att = currentAttendance();
+      if (!att || att.denied) return blank;
+      const occId = attendanceOccurrenceId(sessionId, sessionDate);
+      const marks = (occId && (att.sessions[occId] || {}).marks) || {};
+      // Roster row -> canonical durable identity. The register is keyed by the
+      // identity, never by the roster id and never by a name.
+      const attMap = {};
+      active.forEach(p => { const k = playerMatchKey(p); if (k && marks[k]) attMap[p.id] = marks[k]; });
+      const count = st => active.filter(p => attMap[p.id] === st).length;
+      const present  = count('present');
+      const absent   = count('absent');
       const noRecord = active.filter(p => !attMap[p.id]).length;
-      const attended = present + late;
-      const pct      = total > 0 ? Math.round(100 * attended / total) : 0;
-      return { total, present, late, excused, injured, absent, noRecord, attended, pct, attMap };
+      const recorded = present + absent;
+      return {
+        total, present, late: 0, excused: 0, injured: 0, absent, noRecord,
+        attended: present,
+        // Of the DECISIONS RECORDED, not of the squad — the same denominator
+        // attendanceStats uses, so History and the profile cannot disagree.
+        // null, never 0, when nothing was recorded.
+        pct: recorded > 0 ? Math.round(100 * present / recorded) : null,
+        recorded, attMap, unknown: false,
+      };
     }
 
     function playerAttendanceHistory(playerId, allAttendance, schedSessions) {
@@ -29883,10 +29927,18 @@
      * a session belongs in History iff REAL activity exists for it (a block,
      * an attendance record, or a note). Nothing synthetic is ever generated.
      */
-    function trainingSessionHasData(id) {
+    function trainingSessionHasData(id, date) {
       const hasBlocks = ((state.trainingBlocks || {})[id] || []).length > 0;
-      const hasAtt    = Object.keys(((state.trainingAttendance || {})[id] || {})).length > 0;
       const hasNotes  = Object.values((state.sessionNotes || {})[id] || {}).some(v => v);
+      // Attendance comes from the SERVER register for this occurrence — the
+      // device-local map is no longer consulted for whether a session happened.
+      const att = currentAttendance();
+      const occId = attendanceOccurrenceId(id, date);
+      // An UNDATED session cannot form an occurrence id, so its register (if the
+      // server holds one it could not lift) still sits under the bare id. It is
+      // real attendance and still proves the session happened.
+      const rec = att && !att.denied ? (att.sessions[occId || id] || {}) : {};
+      const hasAtt = Object.keys(rec.marks || {}).length > 0;
       return hasBlocks || hasAtt || hasNotes;
     }
 
@@ -29905,22 +29957,37 @@
       const seen = new Set();
       const today = availToday();
       const slotById = new Map((((_trainingSchedule || {}).slots) || []).map(s => [String(s.id), s]));
+      // Every register the SERVER holds is a session that genuinely happened —
+      // each one is self-describing (it stores its own date and title), so the
+      // history needs no separate session archive. Local blocks and notes still
+      // contribute sessions; local ATTENDANCE no longer does.
+      const att = currentAttendance();
+      const serverSessions = (att && !att.denied) ? att.sessions : {};
+      Object.entries(serverSessions).forEach(([occId, rec]) => {
+        const date = String((rec && rec.date) || '').slice(0, 10);
+        if (!date || date > today || seen.has(occId)) return;
+        if (!Object.keys((rec && rec.marks) || {}).length) return;   // nothing recorded
+        const slot = slotById.get(String(occId).replace(/-\d{8}$/, ''));
+        out.push({ id: occId, type: 'Training',
+                   title: String((rec && rec.title) || trainingOccurrenceTitle(date)), date,
+                   startTime: slot?.startTime || '', location: slot?.venue || '', dated: true });
+        seen.add(occId);
+      });
       const dataIds = new Set([
         ...Object.keys(state.trainingBlocks || {}),
-        ...Object.keys(state.trainingAttendance || {}),
         ...Object.keys(state.sessionNotes || {}),
       ]);
       for (const id of dataIds) {
         const date = trainingDateFromSessionId(id);
         if (!date || date > today) continue;               // future plans are not history
-        if (seen.has(id) || !trainingSessionHasData(id)) continue;
+        if (seen.has(id) || !trainingSessionHasData(id, date)) continue;
         const slot = slotById.get(String(id).replace(/-\d{8}$/, ''));
         out.push({ id, type: 'Training', title: trainingOccurrenceTitle(date), date,
                    startTime: slot?.startTime || '', location: slot?.venue || '', dated: true });
         seen.add(id);
       }
       for (const s of (state.schedule || [])) {
-        if (seen.has(s.id) || !trainingSessionHasData(s.id)) continue;
+        if (seen.has(s.id) || !trainingSessionHasData(s.id, s.date)) continue;
         out.push({ ...s, dated: false });
         seen.add(s.id);
       }
@@ -29930,6 +29997,9 @@
 
     function _renderTrainingHistory() {
       const el = document.getElementById('coach-training');
+      // Is the attendance read even in? History is server-backed now, so this
+      // decides whether "nothing here" means anything at all.
+      const _historyUnknown = currentAttendance() === null;
       if (!el) return;
       ensureTrainingSchedule();          // dated entries name their slot's time/venue
       const schedSessions = state.schedule || [];
@@ -29972,14 +30042,27 @@
         '</div>' +
         (shown.length === 0
           ? '<div class="card" style="text-align:center;padding:36px 20px">' +
-              '<div style="font-size:32px;margin-bottom:10px;opacity:.55">🗂️</div>' +
-              '<div style="font-weight:700;margin-bottom:6px">'+(sessionsWithData.length===0?'No session history yet':'No sessions in this period')+'</div>' +
-              '<div style="font-size:13px;color:var(--muted)">Record attendance or add session blocks to build your history.</div>' +
+              // THREE different nothings. History is built from the server's
+              // attendance registers, so a read that has not landed or came back
+              // an error is NOT an empty history — saying so would be the same
+              // confident lie the per-session cards already avoid.
+              (_historyUnknown
+                ? '<div style="font-size:32px;margin-bottom:10px;opacity:.55">⏳</div>' +
+                  '<div style="font-weight:700;margin-bottom:6px">'+(attendanceFailed()?'History unavailable':'Loading history…')+'</div>' +
+                  '<div style="font-size:13px;color:var(--muted)">'+(attendanceFailed()
+                    ? 'Attendance could not be loaded, so this is not a record of an empty history.'
+                    : 'Reading this group\'s attendance records.')+'</div>'
+                : '<div style="font-size:32px;margin-bottom:10px;opacity:.55">🗂️</div>' +
+                  '<div style="font-weight:700;margin-bottom:6px">'+(sessionsWithData.length===0?'No session history yet':'No sessions in this period')+'</div>' +
+                  '<div style="font-size:13px;color:var(--muted)">Record attendance or add session blocks to build your history.</div>') +
             '</div>'
           : '<div style="display:grid;gap:10px;margin-bottom:14px">' +
               shown.map(s => {           // already newest-first
-                const att = trainingAttendanceForSession(s.id, operationalPlayers());
-                const hasAtt    = Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0;
+                const att = trainingAttendanceForSession(s.id, operationalPlayers(), s.date);
+                // Three different answers, never collapsed: we do not know yet,
+                // nobody recorded anything, or here is what was recorded.
+                const attUnknown = att.unknown;
+                const hasAtt     = !attUnknown && att.recorded > 0;
                 const blocksCnt = ((state.trainingBlocks||{})[s.id]||[]).length;
                 const hasNotes  = Object.values((state.sessionNotes||{})[s.id]||{}).some(v=>v);
                 return '<div class="card training-history-card" style="padding:14px 16px">' +
@@ -29991,17 +30074,19 @@
                     (hasAtt?'<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(52,211,153,0.12);color:#34d399">'+att.pct+'%</span>':'') +
                   '</div>' +
                   '<div style="display:flex;gap:12px;font-size:12px;color:var(--muted)">' +
-                    (hasAtt?'<span>✓ '+att.attended+'/'+att.total+' players</span>':'<span>No attendance</span>') +
+                    (attUnknown
+                      ? '<span>'+(attendanceFailed()?'Attendance unavailable':'Loading attendance…')+'</span>'
+                      : hasAtt
+                        ? '<span>✓ '+att.present+' present of '+att.recorded+' recorded</span>'
+                        : '<span>Attendance not recorded</span>') +
                     (blocksCnt>0?'<span>'+blocksCnt+' block'+(blocksCnt!==1?'s':'')+'</span>':'') +
                     (hasNotes?'<span>Notes saved</span>':'') +
                   '</div>' +
-                  (hasAtt&&(att.present||att.late||att.excused||att.injured||att.absent)
+                  (hasAtt
                     ? '<div style="margin-top:8px;display:flex;gap:8px;font-size:11px;flex-wrap:wrap">' +
                         (att.present?'<span style="color:#34d399">'+att.present+' present</span>':'') +
-                        (att.late?'<span style="color:#fbbf24">'+att.late+' late</span>':'') +
-                        (att.excused?'<span style="color:#60a5fa">'+att.excused+' excused</span>':'') +
-                        (att.injured?'<span style="color:#f87171">'+att.injured+' injured</span>':'') +
                         (att.absent?'<span style="color:#dc2626">'+att.absent+' absent</span>':'') +
+                        (att.noRecord?'<span style="color:var(--muted)">'+att.noRecord+' not recorded</span>':'') +
                       '</div>' : '') +
                   '<div style="display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">' +
                     '<button class="btn" type="button" style="font-size:11px;padding:4px 11px;min-height:32px" onclick="setTrainingSession(\''+s.id+'\');setTrainingTab(\'planner\')">Planner</button>' +
@@ -30019,15 +30104,21 @@
               '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Player attendance summary (all time)</div>' +
               '<div>' +
                 activePlayers.map(p => {
-                  // The summary walks the HISTORY sessions (dated + legacy), so
-                  // attendance recorded under dated ids counts too.
-                  const hist = playerAttendanceHistory(p.id, state.trainingAttendance, sessionsWithData);
-                  if (hist.total===0) return '';
-                  const c = hist.pct>=75?'#34d399':hist.pct>=50?'#fbbf24':'#f87171';
+                  // THE SAME aggregation the player profile uses, over the same
+                  // server registers — so History and the profile cannot report
+                  // different attendance for the same player. Keyed by the
+                  // canonical identity, never the roster id.
+                  const _att = currentAttendance();
+                  const hist = (_att && !_att.denied)
+                    ? attendanceStats(_att.sessions, playerMatchKey(p), state.seasonStart, state.seasonEnd)
+                    : null;
+                  if (!hist || !hist.recorded) return '';
+                  const _pct = hist.attendancePct;
+                  const c = _pct>=75?'#34d399':_pct>=50?'#fbbf24':'#f87171';
                   return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">' +
                     '<div style="flex:1;font-size:13px;font-weight:600">'+esc(p.name)+'</div>' +
-                    '<div style="font-size:12px;color:var(--muted)">'+hist.attended+'/'+hist.total+' sessions</div>' +
-                    '<div style="font-size:13px;font-weight:800;color:'+c+';min-width:40px;text-align:right">'+hist.pct+'%</div>' +
+                    '<div style="font-size:12px;color:var(--muted)">'+hist.present+'/'+hist.recorded+' sessions</div>' +
+                    '<div style="font-size:13px;font-weight:800;color:'+c+';min-width:40px;text-align:right">'+_pct+'%</div>' +
                   '</div>';
                 }).filter(Boolean).join('') +
               '</div>' +

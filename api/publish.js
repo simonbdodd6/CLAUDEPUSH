@@ -1555,19 +1555,50 @@ const ATT_DATED_RE = /-(\d{8})$/;
  *
  * Returns '' when no stable occurrence can be formed — never a guess.
  */
-function attendanceOccurrenceId(sessionId, dateIso) {
+function attendanceOccurrenceRoot(sessionId, slots) {
+  const root = String(sessionId || '').trim().replace(ATT_DATED_RE, '');
+  if (!root) return '';
+  // A recurring slot is known by TWO names: its own id (`slot_tue`) and, for the
+  // two legacy slots only, the availability session it drives (`tue`). The
+  // current week is generated under the second and every other week under the
+  // first, so the same real Tuesday could otherwise produce `tue-20260901` and
+  // `slot_tue-20260901` — two registers for one session. The slot table is the
+  // mapping between the two names and settles it without guessing.
+  const match = (Array.isArray(slots) ? slots : []).find(sl => sl && String(sl.sessionId || '') === root);
+  return match ? String(match.id || root) : root;
+}
+
+/**
+ * THE ATTENDANCE OCCURRENCE IDENTITY — one training session, once.
+ *
+ * `<canonical slot root>-<YYYYMMDD>`, e.g. slot_tue-20260901. Every form the
+ * product can hand us converges on it:
+ *   tue                + 2026-09-01 -> slot_tue-20260901   (current week)
+ *   tue-20260901                    -> slot_tue-20260901   (a Build A record)
+ *   slot_tue-20260901               -> slot_tue-20260901   (any other week)
+ *   adhoc_x-20260901                -> adhoc_x-20260901    (no slot: unchanged)
+ *
+ * A date carried BY the id wins over the one passed in — the id is the harder
+ * fact, and it is what makes a past occurrence addressable at all.
+ *
+ * Returns '' when no stable occurrence can be formed — never a guess.
+ */
+function attendanceOccurrenceId(sessionId, dateIso, slots) {
   const id = String(sessionId || '').trim();
   if (!id) return '';
-  if (ATT_DATED_RE.test(id)) return id;              // already an occurrence
-  const d = String(dateIso || '').slice(0, 10);
+  const root = attendanceOccurrenceRoot(id, slots);
+  if (!root) return '';
+  const carried = ATT_DATED_RE.exec(id);
+  const d = carried
+    ? carried[1].slice(0, 4) + '-' + carried[1].slice(4, 6) + '-' + carried[1].slice(6, 8)
+    : String(dateIso || '').slice(0, 10);
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
-  if (!m) return '';                                 // undated: cannot be made stable
+  if (!m) return '';
   // Range-checked WITHOUT Date: parsing would drag in a timezone, and a day is
-  // exactly what must not shift here. Obvious nonsense (month 13, day 45) is
-  // refused so a corrupt date cannot mint a register no real day can match.
+  // exactly what must not shift here.
   const mo = Number(m[2]), day = Number(m[3]);
   if (mo < 1 || mo > 12 || day < 1 || day > 31) return '';
-  return id + '-' + d.replace(/-/g, '');
+  return root + '-' + d.replace(/-/g, '');
 }
 
 /**
@@ -1583,16 +1614,18 @@ function attendanceOccurrenceId(sessionId, dateIso) {
  *     and the legacy one is left in place — two registers are never merged
  *     merely because their old key matched.
  */
-function migrateAttendanceDoc(doc) {
+function migrateAttendanceDoc(doc, slots) {
   const src = (doc && doc.sessions) || {};
   const out = {};
   const carried = [];
+  // Canonical keys are settled first, so a legacy record can never displace one.
   Object.entries(src).forEach(([k, rec]) => {
-    if (ATT_DATED_RE.test(k)) out[k] = rec;           // already an occurrence
+    const derived = attendanceOccurrenceId(k, rec && rec.date, slots);
+    if (derived && derived === k) out[k] = rec;
   });
   Object.entries(src).forEach(([k, rec]) => {
-    if (ATT_DATED_RE.test(k)) return;
-    const derived = attendanceOccurrenceId(k, rec && rec.date);
+    const derived = attendanceOccurrenceId(k, rec && rec.date, slots);
+    if (derived && derived === k) return;                  // already canonical
     if (!derived || out[derived]) { out[k] = rec; carried.push(k); return; }
     out[derived] = rec;
   });
@@ -1645,11 +1678,14 @@ async function attendanceHandler(req, res) {
   try { gid = await staffTrainingGroup(session, req.body?.group ?? req.query?.group); }
   catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
 
+  // The slot table is what maps a session's two names onto one root, so the
+  // register for a Tuesday is the same register however the week was reached.
+  const slots = ((await readTrainingSchedule(session.teamId, gid)).record || {}).slots || [];
   const raw = sanitiseAttendanceDoc(await kvGet(attendanceKey(session.teamId, gid)));
   // Legacy registers are lifted onto their dated occurrence id on the way out,
   // so every consumer sees one identity scheme. The lift is derived from the
   // date each record already carries, and is idempotent.
-  const migrated = migrateAttendanceDoc(raw);
+  const migrated = migrateAttendanceDoc(raw, slots);
   const stored = { sessions: migrated.sessions };
 
   if (req.method === 'GET') {
@@ -1684,7 +1720,7 @@ async function attendanceHandler(req, res) {
   }
 
   // The register this write belongs to: the session PLUS the day it happened.
-  const occurrenceId = attendanceOccurrenceId(target.id || sessionId, target.date);
+  const occurrenceId = attendanceOccurrenceId(target.id || sessionId, target.date, slots);
   if (!occurrenceId) {
     return res.status(400).json({ error: 'That training session has no date, so its attendance cannot be recorded against a specific occurrence' });
   }
