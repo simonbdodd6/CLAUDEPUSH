@@ -1516,6 +1516,119 @@ function seasonSheetProjection(squad) {
   };
 }
 
+// ── TRAINING ATTENDANCE ──────────────────────────────────────────────────
+// Who ACTUALLY TURNED UP — a different fact from who said they could.
+// Availability is a player's answer beforehand; attendance is the coach's
+// record afterwards. Nothing here reads, writes or infers from availability,
+// and no historical availability was ever converted into an attendance record:
+// a club's attendance history starts empty and fills only as coaches record it.
+//
+// SELF-DESCRIBING, and it has to be. The group's session list
+// (publish:<team>:group:<gid>:sessions) carries only the CURRENT WEEK — the
+// client syncs state.schedule, which is one week, and each sync replaces the
+// last. Attendance keyed by session id alone would therefore lose the date of
+// every session older than a week, and a season figure would have nothing to
+// stand on. So each record stores the session's own date and title, captured
+// HERE from the stored session at the moment attendance is taken — never from
+// the client, which must not be able to date its own history.
+function attendanceKey(teamId, groupId) {
+  return key(`publish:${teamId}:group:${fxSeg(groupId)}:attendance`);
+}
+
+const ATT_PLAYER_KEY_RE = /^id:[A-Za-z0-9._:-]{1,80}$/;
+const ATT_STATUS = ['present', 'absent'];
+const ATT_MAX_SESSIONS = 400;      // a season of training, generously
+const ATT_MAX_MARKS    = 200;      // a squad, generously
+
+/** One session's stored attendance, sanitised. Unknown fields never survive. */
+function sanitiseAttendanceSession(raw) {
+  const marks = {};
+  const src = (raw && typeof raw.marks === 'object' && !Array.isArray(raw.marks)) ? raw.marks : {};
+  Object.entries(src).slice(0, ATT_MAX_MARKS).forEach(([k, v]) => {
+    if (ATT_PLAYER_KEY_RE.test(k) && ATT_STATUS.includes(String(v))) marks[k] = String(v);
+  });
+  return {
+    date:      String(raw?.date  || '').slice(0, 10),
+    title:     String(raw?.title || '').slice(0, 120),
+    marks,
+    updatedAt: raw?.updatedAt || null,
+    updatedBy: String(raw?.updatedBy || '').slice(0, 80),
+  };
+}
+
+function sanitiseAttendanceDoc(raw) {
+  const out = {};
+  const src = (raw && typeof raw.sessions === 'object' && !Array.isArray(raw.sessions)) ? raw.sessions : {};
+  Object.entries(src).slice(0, ATT_MAX_SESSIONS).forEach(([sid, v]) => {
+    const id = String(sid).slice(0, 80);
+    if (id) out[id] = sanitiseAttendanceSession(v);
+  });
+  return { sessions: out };
+}
+
+async function attendanceHandler(req, res) {
+  // The people who run training are the people who record who came to it.
+  // Deliberately NOT a broad administrative permission, and deliberately the
+  // same gate the training schedule itself uses — one answer to "may this
+  // person manage training", for reading and for writing alike.
+  let session;
+  try { session = await requireTenantPermission(req, PERM.PUBLISH_TRAINING); }
+  catch (error) { return sendAuthError(res, error); }
+
+  // The club comes from the session. The group is asserted against the
+  // caller's own staff scope, so a forged ?group= reaches nothing: a Seniors
+  // coach naming U18 is refused, exactly as the training write is.
+  let gid;
+  try { gid = await staffTrainingGroup(session, req.body?.group ?? req.query?.group); }
+  catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
+
+  const stored = sanitiseAttendanceDoc(await kvGet(attendanceKey(session.teamId, gid)));
+
+  if (req.method === 'GET') {
+    return res.status(200).json({ ok: true, groupId: gid, sessions: stored.sessions });
+  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const sessionId = String(req.body?.sessionId || '').trim().slice(0, 80);
+  if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
+
+  // The session must be one this GROUP actually has. That is what stops a
+  // forged or borrowed id filing attendance against another squad's session,
+  // and it is where the date comes from — the stored record, not the caller.
+  const groupSessions = (await kvGet(sessionsGroupKey(session.teamId, gid))) || [];
+  const target = (Array.isArray(groupSessions) ? groupSessions : [])
+    .find(s => String(s?.id || '') === sessionId);
+  if (!target) return res.status(404).json({ error: 'That training session does not exist in this group' });
+
+  const marksIn = (req.body?.marks && typeof req.body.marks === 'object' && !Array.isArray(req.body.marks))
+    ? req.body.marks : null;
+  if (!marksIn) return res.status(400).json({ error: 'marks must be an object' });
+
+  const entries = Object.entries(marksIn).slice(0, ATT_MAX_MARKS);
+  for (const [k, v] of entries) {
+    if (!ATT_PLAYER_KEY_RE.test(k)) return res.status(400).json({ error: 'marks must be keyed by durable player identity' });
+    if (v !== null && !ATT_STATUS.includes(String(v))) {
+      return res.status(400).json({ error: 'status must be present, absent or null' });
+    }
+  }
+
+  const existing = stored.sessions[sessionId] || { marks: {} };
+  const marks = { ...existing.marks };
+  // null CLEARS a mark — back to not-recorded, which is a real third state and
+  // must never collapse into "absent".
+  entries.forEach(([k, v]) => { if (v === null) delete marks[k]; else marks[k] = String(v); });
+
+  stored.sessions[sessionId] = {
+    date:      String(target.date  || '').slice(0, 10),
+    title:     String(target.title || '').slice(0, 120),
+    marks,
+    updatedAt: new Date().toISOString(),
+    updatedBy: String(session.user.id).slice(0, 80),
+  };
+  await kvSet(attendanceKey(session.teamId, gid), sanitiseAttendanceDoc(stored));
+  return res.status(200).json({ ok: true, groupId: gid, sessionId, session: stored.sessions[sessionId] });
+}
+
 async function seasonSheetsHandler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -2393,6 +2506,7 @@ export default async function handler(req, res) {
   if (String(req.query?.resource || '') === 'availability-check') return availabilityCheckHandler(req, res);
   if (String(req.query?.resource || '') === 'appearance-adjustments') return appearanceAdjustmentsHandler(req, res);
   if (String(req.query?.resource || '') === 'season-sheets') return seasonSheetsHandler(req, res);
+  if (String(req.query?.resource || '') === 'attendance') return attendanceHandler(req, res);
   if (String(req.query?.resource || '') === 'training') return trainingHandler(req, res);
   if (String(req.query?.resource || '') === 'fixtures') return fixturesHandler(req, res);
   if (String(req.query?.resource || '') === 'training-schedule') return trainingScheduleHandler(req, res);

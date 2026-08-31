@@ -2863,6 +2863,20 @@
       letter-spacing: .05em; color: var(--muted); background: var(--panel-2); border: 1px solid var(--line);
       border-radius: 5px; padding: 0 5px; margin-right: 6px; vertical-align: 1px; white-space: nowrap; }
     .ovw-feed-note { font-size: 11.5px; color: var(--muted); margin: 2px 0 0; }
+    /* Attendance rows: name left, two explicit choices right. The state is a
+       WORD and a pressed control, never colour alone. */
+    .att-list { display: grid; gap: 2px; }
+    .att-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+    .att-row:last-child { border-bottom: 0; }
+    .att-name { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+    .att-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .att-btn { appearance: none; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700;
+      min-height: 34px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--line);
+      background: var(--panel-2); color: var(--muted); }
+    .att-btn.is-on.att-present { background: var(--status-available, #16a34a); border-color: transparent; color: #fff; }
+    .att-btn.is-on.att-absent  { background: var(--status-unavailable, #dc2626); border-color: transparent; color: #fff; }
+    .att-note { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+    @media (max-width: 480px) { .att-btn { min-height: 40px; padding: 0 10px; } }
     .ovw-retry { appearance: none; background: none; border: 0; padding: 0; margin-left: 4px; cursor: pointer;
       font: inherit; font-weight: 700; color: var(--accent); text-decoration: underline; }
 
@@ -16957,6 +16971,49 @@
           </div>`}
         </div>
 
+        <!-- ATTENDANCE — who actually turned up. Deliberately NOT the
+             availability board: an available player is not present until a
+             coach says so, and nothing here is pre-filled from an answer. -->
+        ${(() => {
+          if (!canI('publish_training')) return '';
+          const att = currentAttendance();
+          const roster = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
+          const recs = att && !att.denied ? (att.sessions[sessId] || {}).marks || {} : {};
+          const counts = { present: 0, absent: 0, none: 0 };
+          roster.forEach(p => { const st = recs[playerMatchKey(p)];
+            counts[st === 'present' ? 'present' : st === 'absent' ? 'absent' : 'none'] += 1; });
+          const body = !att
+            ? (attendanceFailed()
+                ? `<p class="muted" style="font-size:13px;margin:0">Attendance could not be loaded — this is not a record of an empty session. <button type="button" class="ovw-retry" onclick="_attendanceFailed=null;loadAttendance(true)">Try again</button></p>`
+                : `<p class="muted" style="font-size:13px;margin:0">Loading attendance…</p>`)
+            : att.denied
+            ? `<p class="muted" style="font-size:13px;margin:0">Recording attendance needs training access.</p>`
+            : !roster.length
+            ? `<p class="muted" style="font-size:13px;margin:0">No players in this group yet.</p>`
+            : `<div class="att-list">${roster.map(p => {
+                const k = playerMatchKey(p);
+                const st = recs[k] || '';
+                const btn = (val, label) => `<button type="button" class="att-btn${st === val ? ' is-on att-' + val : ''}"
+                  aria-pressed="${st === val}"
+                  onclick="attendanceMark('${esc(sessId)}','${esc(k)}',${st === val ? 'null' : `'${val}'`})">${label}</button>`;
+                return `<div class="att-row">
+                  <span class="att-name">${esc(p.name || 'Player')}</span>
+                  <span class="att-actions">${btn('present', 'Present')}${btn('absent', 'Absent')}</span>
+                </div>`;
+              }).join('')}</div>
+              <p class="att-note">${counts.present} present · ${counts.absent} absent · ${counts.none} not recorded</p>`;
+          return `
+        <div class="card" style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            <h3 style="margin:0;font-size:15px;color:var(--ink)">Attendance</h3>
+            ${att && !att.denied && roster.length ? `<button class="btn" type="button" style="font-size:12px"
+              onclick="attendanceMarkAllPresent('${esc(sessId)}')">Mark rest present</button>` : ''}
+          </div>
+          <p class="muted" style="font-size:12px;margin:0 0 10px">Who actually came. Separate from availability — nobody is marked present automatically.</p>
+          ${body}
+        </div>`;
+        })()}
+
         <!-- Printable coach summary — kept for Training session 1 & 2; hidden for the
              Pre-game / Warm-up session, whose plan the main card above already shows.
              Beta: hidden entirely (secondary/advanced utility — auto-send + run sheet).
@@ -20085,6 +20142,163 @@
      * any timezone behind UTC renders as the 23rd. Midday is far enough from
      * both boundaries that the day is the same everywhere the club might be.
      */
+    // ─── TRAINING ATTENDANCE ─────────────────────────────────────────────────
+    // Who TURNED UP, which is not who said they could. Availability is the
+    // player's answer beforehand; attendance is the coach's record afterwards.
+    // Nothing here reads availability and nothing infers one from the other —
+    // an available player is not present until a coach says so, and an
+    // unavailable player who turns up is present.
+    //
+    // THREE states, and the third is load-bearing: present, absent, and NOT
+    // RECORDED. Not-recorded is not absence. A session nobody marked must never
+    // become a squad of absentees, so it contributes nothing to any total.
+    let _attendance        = null;   // null = unknown | { [sessionId]: {...} }
+    let _attendanceGroup   = null;
+    let _attendanceLoading = false;
+    let _attendanceFailed  = null;   // the group whose read failed
+
+    /**
+     * The attendance for the group NOW IN FORCE, or null when we do not have it.
+     *
+     * Same rule the season sheets and the availability map follow: a document
+     * belonging to another group is not this group's absence of data, it is our
+     * ignorance of this one. Seniors' attendance must never appear under U18.
+     */
+    function currentAttendance() {
+      const gid = state.operationalGroupId || '';
+      if (_attendance === null || _attendanceGroup !== gid) { loadAttendance(); return null; }
+      return _attendance;
+    }
+
+    /** Did the attendance read for THIS group come back an error? */
+    function attendanceFailed() {
+      return _attendanceFailed !== null && _attendanceFailed === (state.operationalGroupId || '');
+    }
+
+    async function loadAttendance(force) {
+      const gid = state.operationalGroupId || '';
+      if (_attendanceLoading) return;
+      if (!force && _attendance !== null && _attendanceGroup === gid) return;
+      if (!canI('publish_training')) { _attendance = { denied: true, sessions: {} }; _attendanceGroup = gid; return; }
+      _attendanceLoading = true;
+      try {
+        const res = await fetch('/api/publish?resource=attendance'
+          + (gid ? '&group=' + encodeURIComponent(gid) : ''));
+        if (!res.ok) { _attendance = null; _attendanceFailed = gid; return; }
+        const data = await res.json();
+        _attendance = { sessions: (data && typeof data.sessions === 'object') ? data.sessions : {} };
+        _attendanceGroup = gid;
+        _attendanceFailed = null;
+        render();
+      } catch { _attendance = null; _attendanceFailed = gid; }
+      finally { _attendanceLoading = false; }
+    }
+
+    /**
+     * Record attendance for ONE session. `marks` is { playerKey: 'present' |
+     * 'absent' | null }, where null clears back to not-recorded.
+     *
+     * Optimistic only after the server has agreed: the local copy is updated
+     * from the SERVER'S returned record, so a refused write cannot leave the
+     * screen claiming something the club's data does not say.
+     */
+    /** Set ONE player's attendance for a session (or clear it back to unrecorded). */
+    async function attendanceMark(sessionId, playerKey, status) {
+      const ok = await saveAttendance(sessionId, { [playerKey]: status });
+      if (ok) renderTraining();
+    }
+
+    /**
+     * Mark every player in the group present for this session, EXCEPT those a
+     * coach has already decided about. Corrections survive: someone already
+     * marked absent stays absent, and this only fills the blanks. Deliberate —
+     * it is a button a coach presses, never something opening a session does.
+     */
+    async function attendanceMarkAllPresent(sessionId) {
+      const att = currentAttendance();
+      if (!att) return showToast('Attendance is still loading');
+      const existing = (att.sessions[sessionId] || {}).marks || {};
+      const roster = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
+      const marks = {};
+      roster.forEach(p => {
+        const k = playerMatchKey(p);
+        if (k && !existing[k]) marks[k] = 'present';     // never overwrite a decision
+      });
+      const blanks = Object.keys(marks).length;
+      if (!blanks) return showToast('Everyone already has an attendance record');
+      if (!(await ceConfirm('Mark the rest present?',
+        `${blanks} player${blanks === 1 ? '' : 's'} with no attendance record will be marked present. Anyone already marked present or absent keeps that record.`,
+        { confirmLabel: 'Mark ' + blanks + ' present' }))) return;
+      if (await saveAttendance(sessionId, marks)) { showToast(`${blanks} marked present ✓`); renderTraining(); }
+    }
+
+    async function saveAttendance(sessionId, marks) {
+      if (!canI('publish_training')) { showToast('You do not have permission to record attendance'); return false; }
+      const gid = state.operationalGroupId || '';
+      try {
+        const res = await fetch('/api/publish?resource=attendance', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ group: gid || undefined, sessionId, marks }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+        if (_attendance && _attendanceGroup === gid) {
+          _attendance.sessions = { ..._attendance.sessions, [sessionId]: data.session };
+        }
+        return true;
+      } catch (e) {
+        showToast('Attendance not saved: ' + (e && e.message || 'network'));
+        return false;
+      }
+    }
+
+    /**
+     * SEASON ATTENDANCE for one player — the single aggregation, pure.
+     *
+     * DENOMINATOR, stated plainly: attendance % is present ÷ DECISIONS RECORDED
+     * FOR THIS PLAYER. A session where nobody was marked counts for nobody; a
+     * session where this player specifically was left unmarked counts for
+     * everyone else but not for them. The alternative — dividing by every
+     * session held — would quietly convert "we forgot to take the register"
+     * into "they did not come", which is the exact mistake this whole build
+     * exists to avoid.
+     *
+     * Identity is the canonical key, so a rename keeps the history and two
+     * players sharing a name never share one. A session is counted once
+     * however many times it appears.
+     */
+    function attendanceStats(sessions, playerKey, seasonStart, seasonEnd) {
+      const key = String(playerKey || '');
+      const out = { recorded: 0, present: 0, absent: 0, attendancePct: null, lastPresent: null };
+      if (!key) return out;
+      const presentDates = [];
+      // Sessions arrive as an OBJECT keyed by session id, so a session cannot
+      // appear twice and no de-duplication is possible or needed. (An explicit
+      // guard here was removed as unreachable — mutation could not distinguish
+      // it, which is what unreachable means.)
+      Object.entries(sessions || {}).forEach(([sessionId, rec]) => {
+        if (!rec || typeof rec !== 'object') return;
+        const sid = String(sessionId);
+        const date = String(rec.date || '').slice(0, 10);
+        // The club's configured season decides what belongs to this season. A
+        // session outside it is another season's business; one with no date
+        // cannot be placed and is left out rather than guessed into this one.
+        if (seasonStart && seasonEnd) { if (!date || date < seasonStart || date > seasonEnd) return; }
+        const status = (rec.marks || {})[key];
+        if (status !== 'present' && status !== 'absent') return;   // not recorded ≠ absent
+        out.recorded += 1;
+        if (status === 'present') { out.present += 1; presentDates.push({ date, title: String(rec.title || ''), sessionId: sid }); }
+        else out.absent += 1;
+      });
+      out.attendancePct = out.recorded > 0 ? Math.round((out.present / out.recorded) * 100) : null;
+      // LAST ATTENDED means last marked PRESENT. Absent is not attending, and
+      // not-recorded proves nothing either way.
+      presentDates.sort((a, b) => String(b.date).localeCompare(String(a.date))
+        || String(a.sessionId).localeCompare(String(b.sessionId)));
+      out.lastPresent = presentDates[0] || null;
+      return out;
+    }
+
     function matchDateLabel(dateStr) {
       // No format guard: every malformed input this could reject already yields
       // an Invalid Date below, so a regex here would be a second rule that can
@@ -20679,17 +20893,62 @@
           </div>
         </div>
 
-        <!-- ATTENDANCE CARD -->
+        <!-- ATTENDANCE CARD
+             This card used to present five figures under "Attendance &
+             availability", of which NONE was attendance. "Attended" counted the
+             times this player answered an availability request with "available"
+             and "Missed" counted the times they answered "unavailable" — so a
+             player who replied yes to everything and came to nothing read as
+             100% attended. Attendance is now a recorded fact and lives in its
+             own half of the card; the availability figures keep theirs, plainly
+             labelled as answers rather than turnout. -->
+        ${(() => {
+          const att = currentAttendance();
+          const stats = (att && !att.denied)
+            ? attendanceStats(att.sessions, playerMatchKey(p), state.seasonStart, state.seasonEnd)
+            : null;
+          const attBody = !att
+            ? (attendanceFailed()
+                ? '<p class="muted" style="font-size:12.5px;margin:0">Attendance could not be loaded — this is not a record of nothing attended.</p>'
+                : '<p class="muted" style="font-size:12.5px;margin:0">Loading attendance…</p>')
+            : att.denied
+            ? '<p class="muted" style="font-size:12.5px;margin:0">Attendance needs training access.</p>'
+            : !stats.recorded
+            ? '<p class="muted" style="font-size:12.5px;margin:0">No attendance recorded yet. Record it from a training session.</p>'
+            : `<div style="display:flex;gap:12px;flex-wrap:wrap">
+                 ${metric(stats.attendancePct + '%', 'Attendance', pctColor(stats.attendancePct))}
+                 ${metric(stats.present, 'Present', 'var(--accent)')}
+                 ${metric(stats.absent, 'Absent', stats.absent ? '#dc2626' : 'var(--fg)')}
+                 ${metric(stats.recorded, 'Recorded', 'var(--fg)')}
+               </div>
+               <p class="muted" style="font-size:11.5px;margin:8px 0 0">Of ${stats.recorded} session${stats.recorded === 1 ? '' : 's'} where attendance was taken. Sessions nobody recorded count for nobody.</p>`;
+          const last = stats && stats.lastPresent;
+          return `
         <div class="card" style="margin-bottom:14px">
-          ${sectionTitle('Attendance & availability')}
+          ${sectionTitle('Attendance')}
+          ${attBody}
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding-top:10px;margin-top:10px;border-top:1px solid var(--line)">
+            <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Last training attended</span>
+            <span style="font-size:13px;font-weight:600;color:${last ? 'var(--fg)' : 'var(--muted)'};overflow-wrap:anywhere;min-width:0">${
+              !att ? (attendanceFailed() ? 'Unavailable' : 'Loading…')
+              : att.denied ? '—'
+              : last ? `${esc(matchDateLabel(last.date) || 'Date unknown')}${last.title ? ' · ' + esc(last.title) : ''}`
+              : 'Not yet recorded present'}</span>
+          </div>
+        </div>
+
+        <!-- AVAILABILITY ANSWERS — what this player SAID, kept deliberately
+             apart from what they did. Neither overwrites the other. -->
+        <div class="card" style="margin-bottom:14px">
+          ${sectionTitle('Availability answers')}
           <div style="display:flex;gap:12px;flex-wrap:wrap">
             ${metric(m.trainingPct + '%', 'Training', pctColor(m.trainingPct))}
             ${metric(m.matchPct + '%', 'Match', pctColor(m.matchPct))}
-            ${metric(m.availabilityPct + '%', 'Availability', pctColor(m.availabilityPct))}
-            ${metric(m.sessionsAttended, 'Attended', 'var(--accent)')}
-            ${metric(m.sessionsMissed, 'Missed', m.sessionsMissed ? '#dc2626' : 'var(--fg)')}
+            ${metric(m.availabilityPct + '%', 'Replied', pctColor(m.availabilityPct))}
           </div>
-        </div>
+          <p class="muted" style="font-size:11.5px;margin:8px 0 0">How often this player said they were free — not whether they came.</p>
+        </div>`;
+        })()}
 
         <!-- AVAILABILITY THIS WEEK — the one-player reminder -->
         ${(() => {

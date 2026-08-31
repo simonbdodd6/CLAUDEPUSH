@@ -260,10 +260,16 @@ test('the card is availability, and says so — never attendance', () => {
   assert.ok(!/attendance/i.test(shown), 'replying is not turning up');
 });
 
-test('the card is separate from the attendance card, which is untouched', () => {
+test('the reminder is separate from the attendance card, which is untouched', () => {
+  // The card this once shared a title with ("Attendance & availability") has
+  // since been split: attendance became a recorded fact with its own card, and
+  // the availability percentages moved to "Availability answers". The invariant
+  // is unchanged and now holds more strongly — the one-player REMINDER lives in
+  // neither of them.
   const att = stripComments(html.slice(html.indexOf('<!-- ATTENDANCE CARD'), html.indexOf('<!-- AVAILABILITY THIS WEEK')));
-  assert.match(att, /Attendance & availability/);
-  assert.ok(!/requestPlayerAvailability/.test(att), 'the reminder did not get folded into attendance');
+  assert.match(att, /sectionTitle\('Attendance'\)/, 'attendance has its own card');
+  assert.match(att, /sectionTitle\('Availability answers'\)/, 'and answers have theirs');
+  assert.ok(!/requestPlayerAvailability/.test(att), 'the reminder did not get folded into either');
 });
 
 test('the button is a 44px touch target and disables while sending', () => {
