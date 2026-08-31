@@ -2272,6 +2272,8 @@
     .filter-pill.active { background:var(--accent); color:#060b12; border-color:var(--accent); }
 
     .consent-dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex-shrink:0; vertical-align:middle; margin-right:4px; }
+    /* Unknown is its own colour. Red said "refused", which one boolean cannot prove. */
+    .consent-dot.c-none { background: var(--line); border: 1px solid var(--muted); }
     .c-yes { background:#10b981; } .c-no { background:#ef4444; } .c-pending { background:#f59e0b; }
     .player-db-table { width:100%; border-collapse:collapse; font-size:13px; }
     .player-db-table th { padding:9px 12px; background:var(--panel-2); border-bottom:1px solid var(--line); color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; text-align:left; white-space:nowrap; }
@@ -7032,7 +7034,11 @@
       merged.history = Array.isArray(preferred.history) && preferred.history.length ? preferred.history : (Array.isArray(other.history) ? other.history : []);
       merged.blockedDates = Array.isArray(preferred.blockedDates) && preferred.blockedDates.length ? preferred.blockedDates : (Array.isArray(other.blockedDates) ? other.blockedDates : []);
       merged.medical = preferred.medical || other.medical || '';
-      merged.mediaConsent = Boolean(preferred.mediaConsent || other.mediaConsent);
+      // NEVER an OR. Merging a record that holds consent with one that does not
+      // used to produce consent — manufacturing a permission neither the player
+      // nor the coach ever recorded on the surviving record. The preferred
+      // record's own answer stands; the other's is not evidence about it.
+      merged.mediaConsent = Boolean(preferred.mediaConsent);
       merged.contractStatus = preferred.contractStatus || other.contractStatus || 'active';
       merged.legacyPlayerId = preferred.legacyPlayerId || other.legacyPlayerId ||
         (String(other.id || '') !== String(merged.id || '') ? other.id : '') || '';
@@ -11651,10 +11657,33 @@
 
     // ─── PLAYER DB HELPERS ───────────────────────────────────────────────────
     function setPlayerFilter(f) { state.playerFilter=f; saveState(); render(); }
+    /**
+     * MEDIA CONSENT — a coach's note that consent is held, and only that.
+     *
+     * The stored value is a boolean, so it has exactly two states while the real
+     * world has three: consent held, consent refused, and nobody has asked. It
+     * cannot tell the last two apart, and every label here now admits that
+     * rather than picking one and asserting it.
+     *
+     * Before this, one boolean carried three contradictory claims: `false` was
+     * coloured RED (refused), labelled "Pending" (not yet asked) and announced
+     * as "revoked" — three different facts from one bit that proves none of them.
+     *
+     * It is also DEVICE-LOCAL: nothing about media consent reaches the server
+     * (no field, no endpoint), so this is one browser's note and not a club
+     * record. The table says so, because a coach reading "Granted" would
+     * otherwise reasonably believe the club holds that consent.
+     */
     function toggleMediaConsent(id) {
       if (!isCoach()) return showToast("Only coaches can update consent");
       const p=state.players.find(p=>p.id===id); if (!p) return;
-      p.mediaConsent=!p.mediaConsent; saveState('Consent updated'); showToast(`Media consent ${p.mediaConsent?'granted':'revoked'} for ${p.name}`); render();
+      p.mediaConsent=!p.mediaConsent; saveState('Consent updated');
+      // "cleared", never "revoked": clearing the note is not proof the player
+      // withdrew anything, and the record cannot show that they did.
+      showToast(p.mediaConsent
+        ? `Media consent recorded for ${p.name} (this device)`
+        : `Media consent note cleared for ${p.name} (this device)`);
+      render();
     }
     function showAddPlayerForm() { state.showAddPlayer=!state.showAddPlayer; saveState(); render(); }
     /**
@@ -18294,9 +18323,11 @@
                     </div>
                   </td>
                   <td data-label="Media consent">
-                    <button type="button" onclick="event.stopPropagation();toggleMediaConsent('${p.id}')" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:${p.mediaConsent?"var(--accent)":"var(--red)"}">
-                      <span class="consent-dot ${p.mediaConsent?"c-yes":"c-no"}"></span>
-                      ${p.mediaConsent?"Granted":"Pending"}
+                    <button type="button" onclick="event.stopPropagation();toggleMediaConsent('${p.id}')"
+                      title="${p.mediaConsent ? 'A coach has recorded that consent is held. Saved on this device only.' : 'No consent is recorded. This does not mean it was refused — it may simply not have been asked.'}"
+                      style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:${p.mediaConsent?"var(--accent)":"var(--muted)"}">
+                      <span class="consent-dot ${p.mediaConsent?"c-yes":"c-none"}"></span>
+                      ${p.mediaConsent?"Recorded":"Not recorded"}
                     </button>
                   </td>
                   <td data-label="Contract">${playerLifecycleBadge(p)}${playerHasMedicalFlag(p)?'<span style="margin-left:4px;font-size:11px" title="Medical flag"></span>':''}</td>
@@ -18311,6 +18342,14 @@
                 </tr>`; }).join("")}
               </tbody>
             </table></div>
+            <!-- What the Media consent column actually is. Nothing about media
+                 consent reaches the server — there is no field and no endpoint —
+                 so it is a note on this browser, not a club record. A coach
+                 reading "Recorded" would otherwise reasonably believe the club
+                 holds that consent, and act on it. -->
+            <div style="padding:9px 18px;border-top:1px solid var(--line)">
+              <p class="muted" style="font-size:11.5px;margin:0">Media consent is a note saved on this device only — it is not shared with other coaches or stored with the club. “Not recorded” means no note exists here; it does not mean consent was refused.</p>
+            </div>
             ${archivedCount > 0 ? `<div style="padding:10px 18px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
               <span class="muted" style="font-size:12px">${archivedCount} archived player${archivedCount !== 1 ? 's' : ''}</span>
               <button class="btn ghost" type="button" style="font-size:12px;padding:3px 10px" onclick="_showArchivedPlayers=!_showArchivedPlayers;renderPlayers()">
