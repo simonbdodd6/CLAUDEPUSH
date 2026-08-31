@@ -1536,6 +1536,68 @@ function attendanceKey(teamId, groupId) {
 }
 
 const ATT_PLAYER_KEY_RE = /^id:[A-Za-z0-9._:-]{1,80}$/;
+const ATT_DATED_RE = /-(\d{8})$/;
+
+/**
+ * THE ATTENDANCE OCCURRENCE IDENTITY — one Tuesday, not every Tuesday.
+ *
+ * A recurring slot keeps ONE id for the week being viewed: the current week's
+ * training is `tue` this week and `tue` again next week (see
+ * availabilityEventsForWeek — `isCurrentWeek ? slot.sessionId : dated`). Keying
+ * a register by that id therefore reused it every week: the second Tuesday
+ * merged into the first and overwrote its stored date, so the earlier session's
+ * attendance was not merely unreachable, it was destroyed.
+ *
+ * The occurrence is the SLOT PLUS THE DAY IT HAPPENED, so the date the server
+ * already holds for that session is what makes it unique. Deterministic and
+ * idempotent: an id that already carries its own date is returned unchanged,
+ * so a dated session id is never dated twice.
+ *
+ * Returns '' when no stable occurrence can be formed — never a guess.
+ */
+function attendanceOccurrenceId(sessionId, dateIso) {
+  const id = String(sessionId || '').trim();
+  if (!id) return '';
+  if (ATT_DATED_RE.test(id)) return id;              // already an occurrence
+  const d = String(dateIso || '').slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  if (!m) return '';                                 // undated: cannot be made stable
+  // Range-checked WITHOUT Date: parsing would drag in a timezone, and a day is
+  // exactly what must not shift here. Obvious nonsense (month 13, day 45) is
+  // refused so a corrupt date cannot mint a register no real day can match.
+  const mo = Number(m[2]), day = Number(m[3]);
+  if (mo < 1 || mo > 12 || day < 1 || day > 31) return '';
+  return id + '-' + d.replace(/-/g, '');
+}
+
+/**
+ * Move any legacy register (keyed by the bare recurring id) onto its dated
+ * occurrence id, using THE DATE THE RECORD ITSELF STORES. That date was written
+ * server-side from the session record when attendance was taken, so the mapping
+ * is exact and needs no guessing.
+ *
+ * Deterministic, idempotent and lossless:
+ *   · a record already keyed by an occurrence id is untouched;
+ *   · a record with no usable date is LEFT WHERE IT IS rather than guessed;
+ *   · if the derived id is already present, the existing (dated) record wins
+ *     and the legacy one is left in place — two registers are never merged
+ *     merely because their old key matched.
+ */
+function migrateAttendanceDoc(doc) {
+  const src = (doc && doc.sessions) || {};
+  const out = {};
+  const carried = [];
+  Object.entries(src).forEach(([k, rec]) => {
+    if (ATT_DATED_RE.test(k)) out[k] = rec;           // already an occurrence
+  });
+  Object.entries(src).forEach(([k, rec]) => {
+    if (ATT_DATED_RE.test(k)) return;
+    const derived = attendanceOccurrenceId(k, rec && rec.date);
+    if (!derived || out[derived]) { out[k] = rec; carried.push(k); return; }
+    out[derived] = rec;
+  });
+  return { sessions: out, carried };
+}
 const ATT_STATUS = ['present', 'absent'];
 const ATT_MAX_SESSIONS = 400;      // a season of training, generously
 const ATT_MAX_MARKS    = 200;      // a squad, generously
@@ -1550,6 +1612,7 @@ function sanitiseAttendanceSession(raw) {
   return {
     date:      String(raw?.date  || '').slice(0, 10),
     title:     String(raw?.title || '').slice(0, 120),
+    sourceSessionId: String(raw?.sourceSessionId || '').slice(0, 80),
     marks,
     updatedAt: raw?.updatedAt || null,
     updatedBy: String(raw?.updatedBy || '').slice(0, 80),
@@ -1582,10 +1645,18 @@ async function attendanceHandler(req, res) {
   try { gid = await staffTrainingGroup(session, req.body?.group ?? req.query?.group); }
   catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
 
-  const stored = sanitiseAttendanceDoc(await kvGet(attendanceKey(session.teamId, gid)));
+  const raw = sanitiseAttendanceDoc(await kvGet(attendanceKey(session.teamId, gid)));
+  // Legacy registers are lifted onto their dated occurrence id on the way out,
+  // so every consumer sees one identity scheme. The lift is derived from the
+  // date each record already carries, and is idempotent.
+  const migrated = migrateAttendanceDoc(raw);
+  const stored = { sessions: migrated.sessions };
 
   if (req.method === 'GET') {
-    return res.status(200).json({ ok: true, groupId: gid, sessions: stored.sessions });
+    return res.status(200).json({ ok: true, groupId: gid, sessions: stored.sessions,
+      // Records that could not be given a stable occurrence identity — kept
+      // exactly as they are rather than guessed at. Empty in normal operation.
+      ...(migrated.carried.length ? { unmigrated: migrated.carried } : {}) });
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -1612,21 +1683,33 @@ async function attendanceHandler(req, res) {
     }
   }
 
-  const existing = stored.sessions[sessionId] || { marks: {} };
+  // The register this write belongs to: the session PLUS the day it happened.
+  const occurrenceId = attendanceOccurrenceId(target.id || sessionId, target.date);
+  if (!occurrenceId) {
+    return res.status(400).json({ error: 'That training session has no date, so its attendance cannot be recorded against a specific occurrence' });
+  }
+
+  const existing = stored.sessions[occurrenceId] || { marks: {} };
   const marks = { ...existing.marks };
   // null CLEARS a mark — back to not-recorded, which is a real third state and
   // must never collapse into "absent".
   entries.forEach(([k, v]) => { if (v === null) delete marks[k]; else marks[k] = String(v); });
 
-  stored.sessions[sessionId] = {
+  stored.sessions[occurrenceId] = {
     date:      String(target.date  || '').slice(0, 10),
     title:     String(target.title || '').slice(0, 120),
+    // The recurring session this occurrence came from, kept so a register can
+    // still be traced back to its slot without re-deriving it from the key.
+    sourceSessionId: String(target.id || sessionId).slice(0, 80),
     marks,
     updatedAt: new Date().toISOString(),
     updatedBy: String(session.user.id).slice(0, 80),
   };
+  // Anything the migration could not place keeps its own key untouched.
+  migrated.carried.forEach(k => { if (!stored.sessions[k] && raw.sessions[k]) stored.sessions[k] = raw.sessions[k]; });
   await kvSet(attendanceKey(session.teamId, gid), sanitiseAttendanceDoc(stored));
-  return res.status(200).json({ ok: true, groupId: gid, sessionId, session: stored.sessions[sessionId] });
+  return res.status(200).json({ ok: true, groupId: gid, sessionId, occurrenceId,
+    session: stored.sessions[occurrenceId] });
 }
 
 async function seasonSheetsHandler(req, res) {

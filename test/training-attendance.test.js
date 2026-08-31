@@ -254,7 +254,10 @@ test('the client asks for the training permission before it asks the server', ()
 test('the screen only claims what the server confirmed', () => {
   const save = strip(extractFn(html, 'saveAttendance'));
   assert.match(save, /if \(!res\.ok \|\| !data\.ok\) throw/);
-  assert.match(save, /\[sessionId\]: data\.session/, 'the local copy comes from the SERVER’s record');
+  // Keyed by the OCCURRENCE the server derived (slot + day), not the bare
+  // session id, which would be every Tuesday at once.
+  assert.match(save, /\[data\.occurrenceId \|\| sessionId\]: data\.session/,
+    'the local copy comes from the SERVER’s record, under the SERVER’s key');
   assert.ok(save.indexOf('throw') < save.indexOf('data.session'), 'a refused write updates nothing');
 });
 
