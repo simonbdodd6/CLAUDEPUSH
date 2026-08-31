@@ -60,11 +60,34 @@ function ctx(initial = {}) {
     trainingBlocks: {}, trainingAttendance: {}, sessionNotes: {}, players: [],
     ...structuredClone(initial),
   };
+  delete state.serverAttendance;
+  // The server register History now reads. Shaped exactly as the API returns it.
+  const serverAttendance = { sessions: (initial && initial.serverAttendance) || {} };
   const calls = { saves: 0, renders: 0 };
   return new Function(`
     const state = arguments[0];
     const calls = arguments[1];
     const _trainingSchedule = { slots: ${JSON.stringify(SLOTS)} };
+    // History reads the SERVER attendance register — the single authority —
+    // rather than the device-local state.trainingAttendance map it once used.
+    const _serverAttendance = arguments[2];
+    let _attendanceFailed = null;
+    function currentAttendance() { return _serverAttendance; }
+    function attendanceFailed() { return false; }
+    function playerMatchKey(p) {
+      const u = String((p && p.userId) || '').trim(); if (u) return 'id:' + u;
+      const r = String((p && p.id) || '').trim(); return r ? 'id:' + r : '';
+    }
+    function attendanceOccurrenceId(id, date) {
+      const t = String(id || '').trim(); if (!t) return '';
+      // NOTE the double backslashes: this source lives inside a template
+      // literal, where a lone \\d would collapse to a literal "d".
+      const dated = /-(\\d{8})$/.exec(t);
+      const root = t.replace(/-(\\d{8})$/, '');
+      const d = dated ? dated[1].slice(0,4)+'-'+dated[1].slice(4,6)+'-'+dated[1].slice(6,8)
+                      : String(date || '').slice(0,10);
+      return /^\\d{4}-\\d{2}-\\d{2}$/.test(d) ? root + '-' + d.replace(/-/g,'') : '';
+    }
     const _availTodayOverride = '${TODAY}';
     function availToday() { return _availTodayOverride; }
     function saveState() { calls.saves++; }
@@ -115,13 +138,13 @@ function ctx(initial = {}) {
     ${fn('removeTimeBlock')}
     function activeRosterPlayers(players) { return (players || []).filter(p => (p.lifecycleStatus || 'active') !== 'archived'); }
     ${fn('trainingAttendanceForSession')}
-    return { state, calls, availWeekStart, availabilityEventsForWeek,
+    return { state, calls, currentAttendance, attendanceOccurrenceId, availWeekStart, availabilityEventsForWeek,
              trainingViewedWeek, trainingIsCurrentWeek, trainingShiftWeek, trainingGoToThisWeek,
              trainingWeekOccurrences, trainingDateLabel, trainingMonthLabel,
              trainingDateFromSessionId, trainingOccurrenceTitle, trainingSessionHasData,
              trainingHistorySessions, setTrainingSession, addTimeBlock, updateTimeBlock,
              trainingAttendanceForSession };
-  `)(state, calls);
+  `)(state, calls, serverAttendance);
 }
 
 // ── FUTURE — dated occurrences from the real recurring slots ──────────────
@@ -219,7 +242,9 @@ test('opening a dated session follows it to its own week', () => {
 
 // ── HISTORY — reconstructed from real data, never synthesized ─────────────
 test('a dated session with attendance appears in History with its real date', () => {
-  const c = ctx({ trainingAttendance: { 'slot_tue1-20260804': { p1: 'present', p2: 'absent' } } });
+  // Attendance now comes from the SERVER register, which is self-describing.
+  const c = ctx({ serverAttendance: { 'slot_tue1-20260804': {
+    date: '2026-08-04', title: 'Tuesday Training', marks: { 'id:p1': 'present', 'id:p2': 'absent' } } } });
   const hist = c.trainingHistorySessions();
   assert.equal(hist.length, 1);
   assert.equal(hist[0].id, 'slot_tue1-20260804');
@@ -251,16 +276,16 @@ test('a FUTURE week\'s saved plan is planning, not history', () => {
 test('empty structures do not create history — the rule is REAL activity', () => {
   const c = ctx({
     trainingBlocks: { 'slot_tue1-20260804': [] },          // emptied plan
-    trainingAttendance: { 'slot_thu1-20260806': {} },      // never actually marked
+    serverAttendance: { 'slot_thu1-20260806': { date: '2026-08-06', title: 'T', marks: {} } },  // never actually marked
     sessionNotes: { 'slot_tue1-20260811': { summary: '' } },
   });
   assert.deepEqual(c.trainingHistorySessions(), [], 'no synthetic sessions');
 });
 
 test('the same slot on different dates is different history sessions', () => {
-  const c = ctx({ trainingAttendance: {
-    'slot_tue1-20260804': { p1: 'present' },
-    'slot_tue1-20260811': { p1: 'absent' },
+  const c = ctx({ serverAttendance: {
+    'slot_tue1-20260804': { date: '2026-08-04', title: 'T', marks: { 'id:p1': 'present' } },
+    'slot_tue1-20260811': { date: '2026-08-11', title: 'T', marks: { 'id:p1': 'absent' } },
   } });
   const hist = c.trainingHistorySessions();
   assert.equal(hist.length, 2, 'one per date — never merged');
@@ -271,14 +296,14 @@ test('one session with blocks AND attendance AND notes appears exactly once', ()
   const id = 'slot_tue1-20260804';
   const c = ctx({
     trainingBlocks: { [id]: [{ id: 'b1', time: '19:00', activity: 'Drill' }] },
-    trainingAttendance: { [id]: { p1: 'present' } },
+    serverAttendance: { [id]: { date: (/-(\d{8})$/.exec(id)||[,''])[1].replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3'), title: 'T', marks: { 'id:p1': 'present' } } },
     sessionNotes: { [id]: { summary: 'Solid' } },
   });
   assert.equal(c.trainingHistorySessions().length, 1, 'no duplicates across data sources');
 });
 
 test('legacy recurring sessions with data still appear — honestly undated', () => {
-  const c = ctx({ trainingAttendance: { tue: { p1: 'present' } } });
+  const c = ctx({ serverAttendance: { tue: { date: '', title: 'T', marks: { 'id:p1': 'present' } } } });
   const hist = c.trainingHistorySessions();
   assert.equal(hist.length, 1);
   assert.equal(hist[0].id, 'tue');
@@ -287,7 +312,8 @@ test('legacy recurring sessions with data still appear — honestly undated', ()
 
 test('dated and legacy sessions coexist, dated (newer) first', () => {
   const c = ctx({
-    trainingAttendance: { tue: { p1: 'present' }, 'slot_tue1-20260804': { p1: 'present' } },
+    serverAttendance: { tue: { date: '', title: 'T', marks: { 'id:p1': 'present' } },
+      'slot_tue1-20260804': { date: '2026-08-04', title: 'T', marks: { 'id:p1': 'present' } } },
   });
   assert.deepEqual(c.trainingHistorySessions().map(s => s.id), ['slot_tue1-20260804', 'tue'],
     'undated legacy entries sort last');
@@ -297,9 +323,9 @@ test('dated and legacy sessions coexist, dated (newer) first', () => {
 test('attendance loads for the right dated session and never leaks', () => {
   const c = ctx({
     players: [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }],
-    trainingAttendance: {
-      'slot_tue1-20260804': { p1: 'present', p2: 'absent' },
-      'slot_tue1-20260811': { p1: 'absent' },
+    serverAttendance: {
+      'slot_tue1-20260804': { date: '2026-08-04', title: 'T', marks: { 'id:p1': 'present', 'id:p2': 'absent' } },
+      'slot_tue1-20260811': { date: '2026-08-11', title: 'T', marks: { 'id:p1': 'absent' } },
     },
   });
   const a = c.trainingAttendanceForSession('slot_tue1-20260804', c.state.players);

@@ -48,10 +48,39 @@ function buildScope(extra = {}) {
 
   const stateRef = extra.state || { players: [], trainingAttendance: {}, sessionNotes: {}, schedule: [] };
 
+  // trainingAttendanceForSession now reads the SERVER attendance register — the
+  // single authority — instead of the device-local state.trainingAttendance map.
+  // `server` is { <occurrenceId>: { date, title, marks: { <playerKey>: status } } }.
+  const serverAtt = extra.server || {};
+
   const body = `
     "use strict";
     ${helperSrc}
     let state = ${JSON.stringify(stateRef)};
+    state.seasonStart = ''; state.seasonEnd = '';
+    let _trainingSchedule = { slots: [] };
+    let _attendance = ${extra.unloaded ? 'null' : `{ sessions: ${JSON.stringify(serverAtt)} }`};
+    let _attendanceGroup = ${extra.unloaded ? 'null' : "(state.operationalGroupId || '')"};
+    let _attendanceFailed = null;
+    function loadAttendance() {}
+    function playerMatchKey(p) {
+      const u = String((p && p.userId) || '').trim();
+      if (u) return 'id:' + u;
+      const r = String((p && p.id) || '').trim();
+      return r ? 'id:' + r : '';
+    }
+    function attendanceOccurrenceId(id, date) {
+      const s = String(id || '').trim(); if (!s) return '';
+      const dated = /-(\\d{8})$/.exec(s);
+      const root = s.replace(/-(\\d{8})$/, '');
+      const d = dated ? dated[1].slice(0,4)+'-'+dated[1].slice(4,6)+'-'+dated[1].slice(6,8)
+                      : String(date || '').slice(0,10);
+      return /^\\d{4}-\\d{2}-\\d{2}$/.test(d) ? root + '-' + d.replace(/-/g,'') : '';
+    }
+    function currentAttendance() {
+      if (_attendance === null || _attendanceGroup !== (state.operationalGroupId || '')) return null;
+      return _attendance;
+    }
     ${fnSrcs}
     return {
       trainingAttendanceForSession,
@@ -64,79 +93,79 @@ function buildScope(extra = {}) {
 
 // ── trainingAttendanceForSession ─────────────────────────────────────────────
 
-test('trainingAttendanceForSession: empty attendance returns all noRecord', () => {
-  const players = [
-    { id: 'p1', name: 'Alice' },
-    { id: 'p2', name: 'Bob' },
-  ];
-  const scope = buildScope({ state: { players, trainingAttendance: {}, schedule: [] } });
-  const result = scope.trainingAttendanceForSession('sess1', players);
+test('trainingAttendanceForSession: nothing recorded → all noRecord, and NO percentage', () => {
+  const players = [{ id: 'p1', name: 'Alice' }, { id: 'p2', name: 'Bob' }];
+  const scope = buildScope({ state: { players, schedule: [] }, server: {} });
+  const result = scope.trainingAttendanceForSession('sess1', players, '2026-09-01');
   assert.equal(result.total, 2);
   assert.equal(result.noRecord, 2);
   assert.equal(result.attended, 0);
-  assert.equal(result.pct, 0);
+  // Was 0% against the whole squad. A session nobody recorded is not a session
+  // nobody came to, so there is no percentage to show.
+  assert.equal(result.pct, null);
+  assert.equal(result.unknown, false, 'we KNOW nothing was recorded');
 });
 
-test('trainingAttendanceForSession: counts present and late as attended', () => {
-  const players = [
-    { id: 'p1', name: 'Alice' },
-    { id: 'p2', name: 'Bob' },
-    { id: 'p3', name: 'Carol' },
-    { id: 'p4', name: 'Dave' },
-    { id: 'p5', name: 'Eve' },
-  ];
-  const attMap = { p1: 'present', p2: 'late', p3: 'excused', p4: 'injured', p5: 'absent' };
-  const scope = buildScope({
-    state: { players, trainingAttendance: { sess1: attMap }, schedule: [] },
-  });
-  const r = scope.trainingAttendanceForSession('sess1', players);
-  assert.equal(r.present,  1);
-  assert.equal(r.late,     1);
-  assert.equal(r.excused,  1);
-  assert.equal(r.injured,  1);
+test('trainingAttendanceForSession: present and absent are the recorded states', () => {
+  const players = [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }, { id: 'p4' }, { id: 'p5' }];
+  // The server records present or absent only. late / excused / injured belonged
+  // to the device-local editor and are honestly 0 here rather than inferred.
+  const scope = buildScope({ state: { players, schedule: [] }, server: {
+    'sess1-20260901': { date: '2026-09-01', title: 'T', marks: {
+      'id:p1': 'present', 'id:p2': 'present', 'id:p5': 'absent' } } } });
+  const r = scope.trainingAttendanceForSession('sess1', players, '2026-09-01');
+  assert.equal(r.present,  2);
   assert.equal(r.absent,   1);
+  assert.equal(r.late,     0);
+  assert.equal(r.excused,  0);
+  assert.equal(r.injured,  0);
   assert.equal(r.attended, 2);
-  assert.equal(r.noRecord, 0);
-  assert.equal(r.pct, 40);
+  assert.equal(r.noRecord, 2, 'p3 and p4 were never marked — not absent');
+  assert.equal(r.recorded, 3);
+  assert.equal(r.pct, 67, 'of the DECISIONS recorded (2 of 3), not of the squad');
 });
 
 test('trainingAttendanceForSession: excludes archived players', () => {
-  const players = [
-    { id: 'p1', name: 'Alice' },
-    { id: 'p2', name: 'Bob', lifecycleStatus: 'archived' },
-  ];
-  const attMap = { p1: 'present', p2: 'present' };
-  const scope = buildScope({
-    state: { players, trainingAttendance: { s: attMap }, schedule: [] },
-  });
-  const r = scope.trainingAttendanceForSession('s', players);
+  const players = [{ id: 'p1', name: 'Alice' }, { id: 'p2', name: 'Bob', lifecycleStatus: 'archived' }];
+  const scope = buildScope({ state: { players, schedule: [] }, server: {
+    's-20260901': { date: '2026-09-01', title: 'T', marks: { 'id:p1': 'present', 'id:p2': 'present' } } } });
+  const r = scope.trainingAttendanceForSession('s', players, '2026-09-01');
   assert.equal(r.total,   1);
   assert.equal(r.present, 1);
   assert.equal(r.pct,     100);
 });
 
-test('trainingAttendanceForSession: 0 players → 0% pct', () => {
-  const scope = buildScope({ state: { players: [], trainingAttendance: {}, schedule: [] } });
-  const r = scope.trainingAttendanceForSession('s', []);
+test('trainingAttendanceForSession: no players → no percentage', () => {
+  const scope = buildScope({ state: { players: [], schedule: [] }, server: {} });
+  const r = scope.trainingAttendanceForSession('s', [], '2026-09-01');
   assert.equal(r.total, 0);
-  assert.equal(r.pct, 0);
+  assert.equal(r.pct, null, 'never 0% out of nothing');
 });
 
 test('trainingAttendanceForSession: unknown session returns empty attMap', () => {
   const players = [{ id: 'p1', name: 'Alice' }];
-  const scope = buildScope({ state: { players, trainingAttendance: {}, schedule: [] } });
-  const r = scope.trainingAttendanceForSession('no-such-session', players);
+  const scope = buildScope({ state: { players, schedule: [] }, server: {
+    'other-20260901': { date: '2026-09-01', title: 'T', marks: { 'id:p1': 'present' } } } });
+  const r = scope.trainingAttendanceForSession('no-such-session', players, '2026-09-01');
   assert.deepEqual(r.attMap, {});
   assert.equal(r.noRecord, 1);
 });
 
+test('trainingAttendanceForSession: a read that has not landed is UNKNOWN, not empty', () => {
+  const players = [{ id: 'p1' }];
+  const scope = buildScope({ state: { players, schedule: [] }, unloaded: true });
+  const r = scope.trainingAttendanceForSession('s', players, '2026-09-01');
+  assert.equal(r.unknown, true);
+  assert.equal(r.pct, null);
+  assert.equal(r.noRecord, 1, 'shown as unrecorded, never as absent');
+});
+
 test('trainingAttendanceForSession: pct rounds correctly', () => {
-  const players = Array.from({ length: 3 }, (_, i) => ({ id: 'p' + i, name: 'P' + i }));
-  const attMap = { p0: 'present', p1: 'absent', p2: 'absent' };
-  const scope = buildScope({
-    state: { players, trainingAttendance: { s: attMap }, schedule: [] },
-  });
-  const r = scope.trainingAttendanceForSession('s', players);
+  const players = Array.from({ length: 3 }, (_, i) => ({ id: 'p' + i }));
+  const scope = buildScope({ state: { players, schedule: [] }, server: {
+    's-20260901': { date: '2026-09-01', title: 'T', marks: {
+      'id:p0': 'present', 'id:p1': 'absent', 'id:p2': 'absent' } } } });
+  const r = scope.trainingAttendanceForSession('s', players, '2026-09-01');
   assert.equal(r.pct, 33); // Math.round(100 * 1/3)
 });
 
