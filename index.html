@@ -29959,9 +29959,11 @@
       // An UNDATED session cannot form an occurrence id, so its register (if the
       // server holds one it could not lift) still sits under the bare id. It is
       // real attendance and still proves the session happened.
-      const rec = att && !att.denied ? (att.sessions[occId || id] || {}) : {};
-      const hasAtt = Object.keys(rec.marks || {}).length > 0;
-      return hasBlocks || hasAtt || hasNotes;
+      const rec = att && !att.denied ? (att.sessions[occId || id] || null) : null;
+      // The register EXISTING is the fact, not whether anyone was marked in it.
+      // A session the server has recorded genuinely happened.
+      const known = !!rec;
+      return hasBlocks || known || hasNotes;
     }
 
     /**
@@ -29988,7 +29990,9 @@
       Object.entries(serverSessions).forEach(([occId, rec]) => {
         const date = String((rec && rec.date) || '').slice(0, 10);
         if (!date || date > today || seen.has(occId)) return;
-        if (!Object.keys((rec && rec.marks) || {}).length) return;   // nothing recorded
+        // A register with NO marks is not noise — it is the server saying this
+        // session happened and nobody recorded who came. Hiding it was what made
+        // an unrecorded ad-hoc session unreachable in the first place.
         const slot = slotById.get(String(occId).replace(/-\d{8}$/, ''));
         out.push({ id: occId, type: 'Training',
                    title: String((rec && rec.title) || trainingOccurrenceTitle(date)), date,
