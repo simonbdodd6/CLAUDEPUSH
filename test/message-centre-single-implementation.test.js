@@ -86,24 +86,33 @@ test('every live caller of renderMessageCenter still has something to call', () 
 });
 
 test('the deleted screen took nothing live with it', () => {
-  // Seven element ids existed ONLY in the deleted body. Every live lookup of
-  // them is null-guarded and has been dormant since V2 — this pins that they
-  // stay guarded, so the file cannot start throwing on an element it no longer
-  // renders.
-  const script = html;
+  // CONTRACT CHANGE (Build I). This listed five element ids the deleted body was
+  // the only renderer of, and pinned that every function still looking them up
+  // stayed null-safe. Three of those functions have since been deleted outright
+  // (applyTemplate, prefillCoachMessage, sendInAppMessage — see
+  // test/pre-v2-messaging-removed.test.js), so only the survivors are listed
+  // here. The invariant is unchanged: nothing may render these ids, and anything
+  // still looking one up must tolerate its absence.
   const orphans = {
-    messageBody:            ['applyTemplate', 'prefillCoachMessage', 'sendInAppMessage'],
-    messageAudience:        ['renderAudiencePicker', 'sendInAppMessage'],
+    messageAudience:        ['renderAudiencePicker'],
     'audience-picker-slot': ['renderAudiencePicker'],
     'live-templates-panel': ['loadLiveTemplates'],
     'live-log-panel':       ['loadLiveLog'],
   };
   for (const [id, fns] of Object.entries(orphans)) {
-    assert.ok(!new RegExp(`id="${id}"`).test(strip(script)), `${id} is no longer rendered anywhere`);
+    assert.ok(!new RegExp(`id="${id}"`).test(strip(html)), `${id} is no longer rendered anywhere`);
     for (const fn of fns) {
       const src = strip(extractFn(html, fn));
       assert.match(src, /if \(!\w+\) return|if \(\w+( && \w+)?\)|\w+ \? \w+\./,
         `${fn} must stay null-safe about ${id}`);
     }
+  }
+  // And the ids whose last reader went with the deleted functions are now
+  // unreferenced entirely — no markup, no lookup.
+  for (const id of ['messageBody', 'templateSelect', 'requestType', 'avail-debug-btn']) {
+    const code = strip(html);
+    assert.ok(!new RegExp(`id="${id}"`).test(code), `${id} must not be rendered`);
+    assert.ok(!code.includes(`getElementById('${id}')`) && !code.includes(`getElementById("${id}")`),
+      `${id} must not be looked up`);
   }
 });
