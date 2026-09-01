@@ -240,14 +240,25 @@ test('matchDetailsCollapsed defaults to true in defaultState', () => {
     'defaultState must default matchDetailsCollapsed to true');
 });
 
-test('individual message send resolves target from canonical roster', () => {
-  // The compose path must use canonicalVisiblePlayers() so the coach writes to
-  // the same conv id the player listens on (Bug 3).
-  const idx = src.lastIndexOf("audience === 'individual' && playerId");
-  assert.ok(idx !== -1, 'compose path must exist');
-  const block = src.slice(idx, idx + 1400);
+test('a coach DM resolves its target from the canonical roster', () => {
+  // CONTRACT CHANGE (Build I). This used to inspect the individual-send branch
+  // of sendInAppMessage(). That function had had no caller since V2 landed —
+  // its only one was the legacy message-centre body — and it has now been
+  // deleted for encoding the pre-group-isolation architecture. So this fix
+  // (Bug 3) was being asserted against a path nobody could run.
+  //
+  // The rule it protects is still real and now guards LIVE code: wherever the
+  // app turns a player into a DM conversation id, it must resolve through the
+  // canonical roster, so the coach writes to the exact id the player listens on.
+  // chatStartCoachDm() is where that happens today.
+  const start = src.indexOf('async function chatStartCoachDm(');
+  assert.ok(start !== -1, 'the live coach DM path must exist');
+  const block = src.slice(start, start + 1400);
   assert.ok(block.includes('canonicalVisiblePlayers()'),
-    'individual send must resolve target via canonicalVisiblePlayers()');
+    'a coach DM must resolve its target via canonicalVisiblePlayers()');
+  assert.ok(block.includes('chatResolvePlayerParticipantId('),
+    'and key the conversation on the canonical participant id');
+  assert.ok(block.includes('dmConvId('), 'which is what builds the conversation id');
 });
 
 test('no new API files referenced by the hotfix helpers', () => {

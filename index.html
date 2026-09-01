@@ -7803,7 +7803,6 @@
     }
 
     // ─── HELPERS ─────────────────────────────────────────────────────────────
-    function byStatus(s)  { return state.players.filter(p => p.game === s); }
     const EMPTY_PLAYER = { id:"", name:"—", position:"—", status:"no-reply", game:"no-reply",
       attendance:0, history:[], trainingTuesday:"no-reply", trainingThursday:"no-reply",
       phone:"", email:"", medical:"", blockedDates:[],
@@ -8539,11 +8538,6 @@
         }
         return res;
       } catch {}
-    }
-    function applyTemplate() {
-      const sel  = document.getElementById("templateSelect");
-      const body = document.getElementById("messageBody");
-      if (sel && body) body.value = sel.value;
     }
     function row(title, subtitle, right) {
       return `<div class="row"><div><strong>${title}</strong><small>${subtitle}</small></div><div>${right}</div></div>`;
@@ -15946,13 +15940,6 @@
         </div>`;
     }
 
-    function prefillCoachMessage(body) {
-      const textarea = document.getElementById("messageBody");
-      if (textarea) {
-        textarea.value = body;
-        textarea.focus();
-      }
-    }
 
     function renderAudiencePicker() {
       const slot     = document.getElementById('audience-picker-slot');
@@ -16154,17 +16141,6 @@
       overlay.addEventListener('click', e => { if (e.target === overlay) closePlayerAvailabilityPopup(); });
       document.addEventListener('keydown', _ceapKeyHandler);
       document.body.appendChild(overlay);
-    }
-
-    function getMessageRecipients(audience, playerId) {
-      if (audience === "individual") return state.players.filter(p => p.id === playerId);
-      if (audience === "available")  return byStatus("available");
-      if (audience === "no-reply") {
-        const selected = state.schedule.find(s => s.id === (state.messageDetail || "tue")) || state.schedule[0];
-        const k = selected ? sessionKey(selected.id) : "game";
-        return state.players.filter(p => (p[k] || "no-reply") === "no-reply");
-      }
-      return state.players;
     }
 
     function createCoachMessage({recipients, type, body, sessionId = "week"}) {
@@ -16557,78 +16533,19 @@
       }
     }
 
-    async function sendInAppMessage() {
-      if (!isCoach()) return showToast("Only coaches can send squad messages");
-      const bodyEl     = document.getElementById("messageBody");
-      const typeEl     = document.getElementById("requestType");
-      const audienceEl = document.getElementById("messageAudience");
-      const playerEl   = document.getElementById("messagePlayer");
-      const body       = bodyEl ? bodyEl.value.trim() : "";
-      if (!body) return showToast("Write a message before sending");
-      const type       = typeEl     ? typeEl.value     : "Announcement";
-      const audience   = audienceEl ? audienceEl.value : "squad";
-      const playerId   = playerEl   ? playerEl.value   : "";
-      const recipients = getMessageRecipients(audience, playerId);
-      const me = currentUser();
-
-      // Resolve targetLabel for individual sends
-      let targetLabel;
-      if (audience === 'individual' && playerId) {
-        const target = state.players.find(p => p.id === playerId);
-        if (target) targetLabel = target.name;
-      }
-
-      const created = createCoachMessage({ recipients, type, body });
-
-      // ── Write to Redis chat so players receive it in their Messages tab ──
-      try {
-        const post = (payload) => fetch('/api/chat', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (audience === 'individual' && playerId) {
-          await chatLoadStateModule();
-          // Resolve the target from the CANONICAL roster (same path chatStartCoachDm
-          // uses) so the coach always writes to the exact conversation ID the player
-          // listens on. Reading raw state.players here could pick an un-merged record
-          // whose participant ID differs from the canonical one → message invisible.
-          const target = canonicalVisiblePlayers().find(p =>
-            String(p.id || '') === String(playerId) ||
-            String(p.userId || '') === String(playerId) ||
-            String(chatResolvePlayerParticipantId(p)) === String(playerId)
-          ) || state.players.find(p => p.id === playerId);
-          const targetParticipantId = chatResolvePlayerParticipantId(target);
-          // Write to BOTH: canonical DM participant ID (permanent userId when available)
-          // AND squad channel (guaranteed fallback — every player sees squad)
-          const dmId = dmConvId(me.id, targetParticipantId || playerId);
-          await post({ action: 'create_conv', id: dmId, name: target?.name || 'Direct message',
-            type: 'DIRECT', participants: [me.id, targetParticipantId || playerId] });
-          await post({ action: 'send', convId: dmId, senderId: me.id, senderName: me.name,
-            senderRole: me.role || 'coach', text: body, type: 'TEXT' });
-          // Also write to squad so player always sees it (tagged with their name)
-          await post({ action: 'send', convId: 'squad', senderId: me.id, senderName: me.name,
-            senderRole: me.role || 'coach',
-            text: `${target?.name || 'Player'}: ${body}`, type: 'TEXT' });
-        } else {
-          // Squad / no-reply broadcast → write to squad channel
-          await post({ action: 'send', convId: 'squad', senderId: me.id, senderName: me.name,
-            senderRole: me.role || 'coach', text: `[${type}] ${body}`, type: 'TEXT' });
-        }
-      } catch(e) { console.warn('Chat write failed (offline?):', e); }
-
-      // ── Push notification ──
-      const pushType = type.toLowerCase().includes('availability') ? 'availability' : 'message';
-      sendPushToPlayers(`Coach — ${type}`, body, {
-        targetLabel,
-        audience: audience === 'no-reply' ? 'no-reply' : 'all',
-        type: pushType,
-        sessionId: state.messageDetail || 'game'
-      });
-
-      if (bodyEl) bodyEl.value = '';
-      showToast(`Message sent to ${created.length} player${created.length===1?'':'s'} ✓`);
-    }
+    // REMOVED (Build I): sendInAppMessage(), and with it getMessageRecipients()
+    // and byStatus(). This was the pre-V2 coach broadcast, and it was not merely
+    // dormant — it was unsafe. It sent to the hardcoded club-wide `squad`
+    // channel, which predates group isolation, so a U18 coach's message would
+    // have landed in Seniors' inbox. It pushed with audience:'all', a club-wide
+    // broadcast. And on an INDIVIDUAL send it copied the private direct message
+    // into that same club-wide channel, prefixed with the player's name.
+    //
+    // Its only caller was the legacy message-centre body deleted in the previous
+    // build, so nothing has run this since V2 landed. Coach messaging lives in
+    // the Messages section (renderCoachMessages + api/chat.js), which is
+    // group-scoped, permission-gated and covered by its own suites; the
+    // Availability board keeps its four request/chase paths unchanged.
 
     function toggleAutomation(id) {
       if (!isCoach()) return showToast("Only coaches can change automation rules");
