@@ -16768,7 +16768,7 @@
             const availBadge = sentForSession ? ` · <span style="color:${sAvail>=10?'var(--accent)':'var(--muted)'};">${sAvail} confirmed</span>` : '';
             return `
               <button class="session-card-tab ${sessId===s.id?"active":""}" type="button" onclick="setTrainingSession('${s.id}')">
-                <span class="sc-time">${esc(trainingDateLabel(s.date) || s.date || s.type || s.id)}</span>
+                <span class="sc-time">${esc(trainingDateLabel(s.date) || trainingDateLabel(trainingDateFromSessionId(trainingContentKey(s.id))) || s.date || s.type || s.id)}</span>
                 <strong>${esc(coachTrainingSessionLabel(s))}</strong>
                 <small style="color:var(--muted);font-size:11px;margin-top:3px;display:block">${sBlocks} block${sBlocks!==1?'s':''}${availBadge}${s.occurrence ? '' : ` · ${s.published ? '<span style="color:var(--green);font-weight:700">Published</span>' : 'Draft'}`}</small>
               </button>`;
@@ -16826,15 +16826,28 @@
             <p class="muted" style="font-size:12px;margin:0 0 14px">Add time blocks to build your coaching plan — warm-up, drills, set piece, match review and more.</p>
             <button class="btn primary" type="button" style="font-size:13px;margin-bottom:10px" onclick="addTimeBlock('${ck}');tpSavePing()">+ Add block</button>
             ${(() => {
-              if (!autopilotOn()) return '';
               const prevKey = trainingPreviousOccurrenceKey(sessId);
               const prev = (prevKey && (state.trainingBlocks || {})[prevKey] || []).length
                 ? (state.trainingBlocks || {})[prevKey]
                 : ((state.lastWeekTrainingBlocks || {})[sessId] || []);
-              return prev.length ? `
+              // The previous week's plan is FACT, not automation: seeing that
+              // it exists and reviewing it is always offered. Only the one-tap
+              // COPY belongs to the autopilot feature switch.
+              const prevNote = prev.length ? `
+            <p class="muted" style="font-size:12.5px;margin:0 0 10px">The previous week's plan (${prev.length} block${prev.length === 1 ? '' : 's'}) is kept under its own date.
+              <button type="button" class="btn ghost" style="font-size:12px;padding:2px 10px;min-height:32px" onclick="trainingShiftWeek(-1)">View previous week</button></p>` : '';
+              const dupBtn = (prev.length && autopilotOn()) ? `
             <button class="btn primary" type="button" onclick="autopilotDuplicateSession('${esc(sessId)}')" style="font-size:13px">
-              ⧉ Duplicate last week's plan (${prev.length} blocks)
+              ⧉ Duplicate previous week's plan (${prev.length} blocks)
             </button>` : '';
+              // Content saved before dated planning still lives under the
+              // session's old bare id. It is not shown here (its week is not
+              // recorded and is never guessed) — but it is NOT lost, and this
+              // is where a coach would otherwise conclude it was.
+              const legacy = (sessId !== ck && ((state.trainingBlocks || {})[sessId] || []).length) ? `
+            <p class="muted" style="font-size:12.5px;margin:10px 0 0">An earlier plan for this session, saved before dated planning, is kept in Training History.
+              <button type="button" class="btn ghost" style="font-size:12px;padding:2px 10px;min-height:32px" onclick="setTrainingTab('history')">Open History</button></p>` : '';
+              return prevNote + dupBtn + legacy;
             })()}
           </div>`}
         </div>
@@ -19176,10 +19189,12 @@
       const last = prev.length ? prev : ((state.lastWeekTrainingBlocks || {})[sessionId] || []);
       if (!last.length) return showToast('No previous plan stored for this session yet');
       state.trainingBlocks[trainingContentKey(sessionId)] = structuredClone(last).map(b => ({ ...b, id: 'blk' + Date.now() + Math.random().toString(16).slice(2, 6) }));
-      autopilotReceipt(`Training duplicated from last week — ${last.length} blocks`);
+      autopilotReceipt(`Training duplicated from the previous week — ${last.length} blocks`);
       saveState('Training duplicated');
       render();
-      showToast(`Last week's plan restored ✓ Edit the differences and publish.`);
+      // "copied", never "restored" — the previous week's plan was not lost,
+      // and this copy is a NEW occurrence's plan, independent of its source.
+      showToast(`Previous week's plan copied ✓ This week's copy is independent — edit and publish as normal.`);
       syncPublishedSessionEdit(sessionId);
     }
 
@@ -29909,14 +29924,27 @@
         ? String(slot.sessionId) : String(id);
     }
 
-    /** LAST week's occurrence key for a recurring session — '' when there is
-     *  none (not a slot, or the slot did not run last week). Read-only helper
-     *  for "duplicate last week's plan": dated keys persist across rollover,
-     *  so last week's plan is simply last week's key. */
+    /** The PREVIOUS week's occurrence key for a recurring session — '' when
+     *  there is none (not a slot's session). Read-only: dated keys persist
+     *  across rollover, so the previous plan is simply the previous key.
+     *
+     *  "Previous" is relative to the occurrence ITSELF, not to the clock: a
+     *  dated id carries its own date, so its previous occurrence is exactly
+     *  seven days earlier — pure string arithmetic, no clock at all. Only a
+     *  bare legacy id (which can only ever mean the current week) resolves
+     *  through today's week. Before this, a coach planning a future week was
+     *  offered the week before TODAY as "last week's plan" — the wrong
+     *  source, silently. */
     function trainingPreviousOccurrenceKey(sessionId) {
-      const id = String(sessionId || '').trim().replace(/-\d{8}$/, '');
+      const raw = String(sessionId || '').trim();
+      const dated = /^(.+)-(\d{8})$/.exec(raw);
+      if (dated) {
+        const iso = dated[2].slice(0, 4) + '-' + dated[2].slice(4, 6) + '-' + dated[2].slice(6, 8);
+        if (!trainingDateLabel(iso)) return '';          // malformed date: no claim
+        return dated[1] + '-' + availAddDays(iso, -7).replace(/-/g, '');
+      }
       const slots = (_trainingSchedule && _trainingSchedule.slots) || [];
-      const slot = slots.find(sl => sl && (String(sl.sessionId || '') === id || String(sl.id) === id));
+      const slot = slots.find(sl => sl && String(sl.sessionId || '') === raw);
       if (!slot) return '';
       const date = availSlotDateInWeek(slot, availAddDays(availWeekStart(availToday()), -7));
       return date ? String(slot.id) + '-' + date.replace(/-/g, '') : '';

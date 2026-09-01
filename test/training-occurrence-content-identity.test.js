@@ -70,6 +70,7 @@ function identity(today, slots = SLOTS) {
     ${fn('availWeekStart')}
     ${fn('availAddDays')}
     ${fn('availSlotDateInWeek')}
+    ${fn('trainingDateLabel')}
     ${fn('trainingContentKey')}
     ${fn('trainingProtocolId')}
     ${fn('trainingPreviousOccurrenceKey')}
@@ -123,10 +124,20 @@ test('the protocol mapping round-trips, and ONLY for the current week', () => {
   assert.equal(THIS_TUE.trainingProtocolId('tue'), 'tue', 'bare ids pass through');
 });
 
-test('last week’s occurrence key is derivable — the duplicate-last-week source', () => {
+test('the previous occurrence key is derivable — the duplicate source', () => {
   assert.equal(THIS_TUE.trainingPreviousOccurrenceKey('tue'), 'slot_tue-20260825');
   assert.equal(THIS_TUE.trainingPreviousOccurrenceKey('slot_thu-20260903'), 'slot_thu-20260827');
   assert.equal(THIS_TUE.trainingPreviousOccurrenceKey('sess_123'), '', 'ad-hoc sessions have no previous occurrence');
+  // CONTRACT SHARPENED (Build K): "previous" is relative to the occurrence
+  // ITSELF, not to the clock. Viewing a future week and asking for its
+  // previous plan must give THAT week's predecessor — the old code answered
+  // with the week before today (slot_tue-20260825 here), the wrong source.
+  assert.equal(THIS_TUE.trainingPreviousOccurrenceKey('slot_tue-20260915'), 'slot_tue-20260908',
+    'a future occurrence’s previous week is ITS previous week');
+  assert.equal(THIS_TUE.trainingPreviousOccurrenceKey('slot_tue-20260825'), 'slot_tue-20260818',
+    'a past occurrence’s previous week is its own too');
+  assert.equal(THIS_TUE.trainingPreviousOccurrenceKey('slot_x-99999999'), '',
+    'a malformed embedded date makes no claim');
 });
 
 // ═══════════════ H + I — AD-HOC, LEGACY AND FAIL-CLOSED CASES ══════════════
