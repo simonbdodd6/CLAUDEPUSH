@@ -15484,226 +15484,23 @@
     }
 
     // ─── MESSAGE CENTER ───────────────────────────────────────────────────────
+    /**
+     * The coach's message centre. A WRAPPER, deliberately kept: four live call
+     * sites hold this name — the render registry, refreshLiveAvailability(), and
+     * the board's filter and sort controls.
+     *
+     * It once held a second, older implementation of the same screen, 218 lines
+     * of it, sitting after this return and so unreachable from the moment V2
+     * landed. It was not harmless: two honesty fixes were applied to attendance
+     * sites inside it, in a body no coach could ever see, and it held the only
+     * markup for seven element ids that live code still looks up (messageBody,
+     * messageAudience, audience-picker-slot, avail-refresh-btn, avail-debug-btn,
+     * live-templates-panel, live-log-panel). Every one of those lookups is
+     * null-guarded and has been dormant since V2, so removing the body changes
+     * nothing that runs — it only stops the file claiming those screens exist.
+     */
     function renderMessageCenter() {
       return renderMessageCenterV2();
-      const selected       = coachSelectedEvent();
-      const key            = selected ? sessionKey(selected.id) : "game";
-      const rows           = selected ? sessionRows(selected.id) : [];
-      const available      = rows.filter(({status}) => status === "available");
-      const answered       = rows.filter(({status}) => status !== "no-reply");
-      const maybe          = rows.filter(({status}) => status === "maybe");
-      const selectedPlayer = state.players.find(p => p.id === state.selectedMessagePlayerId) || rows[0]?.player || EMPTY_PLAYER;
-      const selectedStatus = selectedPlayer[key] || "no-reply";
-      const trainingRegisters = state.schedule.filter(s => s.type === "Training").map(session => {
-        const rRows = sessionRows(session.id);
-        return {
-          session,
-          availableRows:    rRows.filter(({status}) => status === "available"),
-          notComingRows:    rRows.filter(({status}) => ["unavailable","injured","maybe"].includes(status)),
-          noReplyRows:      rRows.filter(({status}) => status === "no-reply")
-        };
-      });
-      const noReplyPlayers = state.players.filter(p => (p[key]||'no-reply') === 'no-reply');
-      // ── Shared blocks (used in both layouts) ────────────────────────────────
-      const templateCardCollapsed = state.templateCardCollapsed;
-
-      // templateCardHTML: slim pill when collapsed, full card when expanded
-      const templateCardHTML = templateCardCollapsed
-        ? `<div style="display:inline-flex;align-items:center;gap:8px;background:rgba(var(--accent-rgb), 0.1);border:1.5px solid var(--accent);border-radius:999px;padding:5px 12px 5px 10px">
-            <span style="font-size:13px"></span>
-            <strong style="font-size:13px;color:#10b981;white-space:nowrap">Template messages</strong>
-            <button class="btn" type="button" onclick="toggleTemplateCard()" style="font-size:11px;padding:2px 10px;border-radius:999px;white-space:nowrap;margin-left:2px">＋ New schedule</button>
-          </div>`
-        : `<div class="card">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-              <h2 style="margin:0">${state._editingScheduleId ? 'Edit schedule' : 'New scheduled message'}</h2>
-              <button class="btn" type="button" onclick="cancelScheduleForm()" style="font-size:12px;padding:4px 10px">✕ Cancel</button>
-            </div>
-            <p class="muted" style="font-size:13px;margin-bottom:16px">${state._editingScheduleId ? `Editing <strong>${esc(state.currentTemplateName)}</strong> — change anything below and save.` : 'Give it a name, write the message, pick which days and what time to send it.'} Use <code style="background:var(--panel-2);padding:1px 5px;border-radius:4px;font-size:11px;color:#94a3b8">{{first_name}}</code> for personalisation.</p>
-            <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:5px;margin-bottom:12px">Schedule name
-              <input id="tplName" placeholder="e.g. Sunday injury check" value="${esc(state.currentTemplateName||'')}" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px">
-            </label>
-            <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:5px;margin-bottom:14px">Message
-              <textarea id="availTpl" rows="4" style="font-size:13px;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-family:inherit;resize:vertical" placeholder="Type the message that will be sent…">${esc(state.availabilityTemplate||'')}</textarea>
-            </label>
-            <label style="font-size:12px;font-weight:700;color:var(--muted);display:block;margin-bottom:8px">Send automatically on</label>
-            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
-              ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => {
-                const active = (state.autoSendSchedule?.days||['Mon']).includes(d);
-                return `<button type="button" onclick="toggleScheduleDay('${d}')"
-                  style="padding:5px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid ${active?'var(--accent)':'var(--line)'};background:${active?'rgba(var(--accent-rgb), 0.1)':'var(--panel-2)'};color:${active?'var(--accent)':'var(--muted)'}">
-                  ${d}</button>`;
-              }).join('')}
-              <span style="display:flex;align-items:center;gap:6px;margin-left:4px">
-                <span style="font-size:12px;color:var(--muted)">at</span>
-                <input id="autoTime" type="time" value="${state.autoSendSchedule?.time||'09:00'}" style="padding:5px 8px;border:1.5px solid var(--line);border-radius:6px;font-size:13px">
-              </span>
-            </div>
-            <label style="font-size:12px;font-weight:700;color:var(--muted);display:block;margin-bottom:6px;margin-top:8px">Send to</label>
-            <div style="display:flex;gap:8px;margin-bottom:14px">
-              ${['all','no-reply'].map(a => {
-                const sel = (state.autoSendSchedule?.audience||'all') === a;
-                const label = a === 'all' ? 'Full squad' : 'No-reply only (chase up)';
-                return `<button type="button" onclick="setScheduleAudience('${a}')"
-                  style="flex:1;padding:7px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;text-align:center;
-                  border:1.5px solid ${sel?'var(--accent)':'var(--line)'};background:${sel?'rgba(var(--accent-rgb), 0.1)':'var(--panel-2)'};color:${sel?'var(--accent)':'var(--muted)'}">
-                  ${label}</button>`;
-              }).join('')}
-            </div>
-            ${(state.autoSendSchedule?.audience||'all') === 'no-reply' ? `<p class="muted" style="font-size:12px;margin:-8px 0 12px;padding:8px 12px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.22);border-radius:8px">Only sent to players who haven't responded to any availability check in the last 7 days. Good for Tuesday/Wednesday chase-ups.</p>` : ''}
-            <button class="btn primary" type="button" onclick="saveAvailabilityTemplate()" style="width:100%;margin-top:4px">${state._editingScheduleId ? 'Save changes' : 'Save &amp; activate'}</button>
-          </div>`;
-
-
-      // sendFormHTML: just the form fields, for use inside the collapsed accordion panel
-      const sendFormHTML = `
-            <p class="muted" style="font-size:13px;margin-bottom:14px">One-off push notification to the squad or an individual.</p>
-            <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:5px;margin-bottom:10px">Send to
-              <select id="messageAudience" onchange="renderAudiencePicker()" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px">
-                <option value="squad">Full squad — ${state.players.length} players</option>
-                <option value="no-reply">No-response players — ${noReplyPlayers.length} players</option>
-                <option value="individual">Individual player</option>
-              </select>
-            </label>
-            <div id="audience-picker-slot" style="margin-bottom:10px"></div>
-            <label style="font-size:12px;font-weight:700;color:var(--muted);display:grid;gap:5px;margin-bottom:14px">Message
-              <textarea id="messageBody" rows="4" style="font-size:13px;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-family:inherit;resize:vertical" placeholder="Type your message here…"></textarea>
-            </label>
-            <button class="btn primary" type="button" onclick="sendInAppMessage()" style="width:100%">Send now</button>`;
-
-      // sendCardHTML: full card with heading, for the expanded two-col layout
-      const sendCardHTML = `<div class="card">
-            <h2 style="margin-bottom:4px">Send a message</h2>
-            ${sendFormHTML}
-          </div>`;
-
-      const sessionDetailHTML = `<div class="card">
-            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">
-              <h2 style="margin:0">Session detail</h2>
-              <div style="display:flex;align-items:center;gap:8px">
-                <span id="avail-refresh-ts" style="font-size:11px;color:var(--muted)">Loading…</span>
-                <button id="avail-refresh-btn" class="btn" type="button" onclick="refreshLiveAvailability()" style="font-size:11px;padding:4px 10px">↺ Refresh</button>
-                ${location.search.includes('debugAvailability=1') ? `<button id="avail-debug-btn" class="btn" type="button" onclick="debugAvailabilityMatch()" style="font-size:11px;padding:4px 10px">Debug Availability Match</button>` : ''}
-              </div>
-            </div>
-            <p class="muted">Who is coming, who is not, who still needs chasing.</p>
-            <div class="session-tabs">
-              ${state.schedule.map(s => `<button class="${selected.id===s.id?"active":""}" type="button" onclick="openMessageDetail('${s.id}')">${s.title}</button>`).join("")}
-            </div>
-            <div class="session-detail-header">
-              <article><span>Available</span><strong>${available.length}/${rows.length}</strong></article>
-              <article><span>Answered</span><strong>${answered.length}/${rows.length}</strong></article>
-              <article><span>Response rate</span><strong>${percent(answered.length, rows.length)}%</strong></article>
-              <article><span>Maybe/injured</span><strong>${maybe.length + rows.filter(({status})=>status==="injured").length}</strong></article>
-            </div>
-            <div class="training-player-list">
-              ${rows.map(({player, status}) => { const att = playerAttendancePct(player); return `
-                <button class="${selectedPlayer.id===player.id?"active":""}" type="button" onclick="setMessagePlayer('${player.id}')">
-                  <div><strong>${player.name}</strong><span>${att === null ? 'No attendance data' : `${att}% yearly attendance`}</span></div>
-                  <span class="status ${status}">${statusLabel(status)}</span>
-                </button>`; }).join("")}
-            </div>
-          </div>`;
-
-
-
-      document.getElementById("coach-message").innerHTML = templateCardCollapsed ? `
-
-        <!-- ── COLLAPSED: slim strip, then session detail full-width ── -->
-        <div style="margin-bottom:14px">${templateCardHTML}</div>
-        <div style="margin-bottom:18px">${sessionDetailHTML}</div>
-
-        <!-- ── ACCORDION PANELS ── -->
-        <div class="card" style="padding:0;overflow:hidden">
-          <details class="srv-panel" open ontoggle="if(this.open) setTimeout(renderAudiencePicker,50)">
-            <summary>Send a message</summary>
-            <div class="srv-panel-body">${sendFormHTML}</div>
-          </details>
-          <details class="srv-panel" open ontoggle="if(this.open) loadLiveSchedules()">
-            <summary>Active schedules</summary>
-            <div id="live-schedules-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading…</p></div>
-          </details>
-          <details class="srv-panel" ontoggle="if(this.open) loadLiveTemplates()">
-            <summary>Message templates</summary>
-            <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to expand</p></div>
-          </details>
-          <details class="srv-panel" ontoggle="if(this.open) loadLiveLog()">
-            <summary>Delivery log</summary>
-            <div id="live-log-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to expand</p></div>
-          </details>
-        </div>
-
-
-      ` : `
-
-        <!-- ── EXPANDED: template + send side by side, session below ── -->
-        <div class="grid two-col" style="margin-bottom:18px">
-          ${templateCardHTML}
-          ${sendCardHTML}
-        </div>
-        <div class="grid two-col" style="margin-bottom:18px">
-          ${sessionDetailHTML}
-          <div class="card">
-            <h2>Training registers</h2>
-            <p class="muted">${trainingRegisters.map(r => r.session.title || r.session.id).join(' and ')} — availability split below.</p>
-            <div class="register-stack">
-              ${trainingRegisters.map(({session, availableRows, notComingRows, noReplyRows}) => `
-                <section class="register-card">
-                  <div class="register-head">
-                    <strong>${session.title}</strong>
-                    <span class="status available">${availableRows.length}/${state.players.length} coming</span>
-                  </div>
-                  <div class="mini-list">
-                    ${availableRows.slice(0,10).map(({player}) => `<button type="button" onclick="setMessagePlayer('${player.id}')"><span>${player.name}</span><small class="mini-status available">Available</small></button>`).join("") || "<p class='muted'>No one available yet.</p>"}
-                    ${availableRows.length > 10 ? `<p class="muted" style="font-size:11px;padding:4px 0 0">+${availableRows.length - 10} more</p>` : ''}
-                  </div>
-                  ${notComingRows.length > 0 ? `<div class="not-coming-panel">
-                    <div class="register-head"><strong>Not available</strong><span>${notComingRows.length}</span></div>
-                    <div class="mini-list">
-                      ${notComingRows.slice(0,10).map(({player,status}) => `<button type="button" onclick="setMessagePlayer('${player.id}')"><span>${player.name}</span><small class="mini-status ${status}">${statusLabel(status)}</small></button>`).join("")}
-                      ${notComingRows.length > 10 ? `<p class="muted" style="font-size:11px;padding:4px 0 0">+${notComingRows.length - 10} more</p>` : ''}
-                    </div>
-                  </div>` : ""}
-                  ${noReplyRows.length > 0 ? `<div class="needs-chasing-panel">
-                    <div class="register-head"><strong>Needs chasing</strong><span>${noReplyRows.length}</span></div>
-                    <div class="mini-list">
-                      ${noReplyRows.slice(0,10).map(({player}) => `<button type="button" onclick="setMessagePlayer('${player.id}')"><span>${player.name}</span><small class="mini-status no-reply">No reply</small></button>`).join("")}
-                      ${noReplyRows.length > 10 ? `<p class="muted" style="font-size:11px;padding:4px 0 0">+${noReplyRows.length - 10} more</p>` : ''}
-                    </div>
-                  </div>` : ""}
-                </section>`).join("")}
-            </div>
-            <div class="card" style="box-shadow:none;margin-top:14px">
-              <div class="compact-player-heading">
-                <strong>${selectedPlayer.name}</strong>
-                <span class="status ${selectedStatus}">${statusLabel(selectedStatus)}</span>
-              </div>
-              <div class="training-metrics">
-                <article><span>Year attendance</span><strong>${attendanceLabel(playerAttendancePct(selectedPlayer))}</strong></article>
-                <article><span>Recent replies</span><strong>${selectedPlayer.history.filter(h=>h!=="no-reply").length}/${selectedPlayer.history.length}</strong></article>
-                <article><span>Position</span><strong>${selectedPlayer.position}</strong></article>
-              </div>
-              <p class="muted" style="margin-top:9px">${selectedPlayer.medical || selectedPlayer.history.join(", ")}</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- ── DATA PANELS — bottom ── -->
-        <div class="card" style="margin-top:20px;padding:0;overflow:hidden">
-          <details class="srv-panel" open ontoggle="if(this.open) loadLiveSchedules()">
-            <summary>Active schedules</summary>
-            <div id="live-schedules-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading…</p></div>
-          </details>
-          <details class="srv-panel" ontoggle="if(this.open) loadLiveTemplates()">
-            <summary>Message templates</summary>
-            <div id="live-templates-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to expand</p></div>
-          </details>
-          <details class="srv-panel" ontoggle="if(this.open) loadLiveLog()">
-            <summary>Delivery log</summary>
-            <div id="live-log-panel" class="srv-panel-body"><p class="muted" style="font-size:13px;color:var(--muted)">Click to expand</p></div>
-          </details>
-        </div>
-`;
     }
 
     let availabilityBoardFilter = "all";
@@ -37948,8 +37745,13 @@
 
     // TEMP DIAGNOSTIC (Phase 25D): dump the coach roster ↔ API availability match
     // for the currently selected session. Console: window.debugAvailabilityMatch().
-    // Also wired to a "Debug Availability Match" button shown only with
-    // ?debugAvailability=1 in the URL. Read-only — mutates nothing.
+    // Read-only — mutates nothing.
+    //
+    // There was also a "Debug Availability Match" button gated on
+    // ?debugAvailability=1. Its markup lived in the OLD message-centre body and
+    // so has rendered nothing since V2 replaced that screen; the comment is
+    // corrected rather than the button restored, which would be a change to the
+    // live board. The console route above is the working one.
     async function debugAvailabilityMatch() {
       const sid = state.messageDetail || (state.schedule && state.schedule[0] && state.schedule[0].id) || 'game';
       console.log('%c[debugAvailabilityMatch] selected session = ' + sid, 'font-weight:bold;font-size:13px');
