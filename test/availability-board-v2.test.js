@@ -43,7 +43,13 @@ test('the board is a single squad list (not status columns)', () => {
 test('rows show name, position, attendance %, reply, last response time and a medical flag', () => {
   assert.ok(render.includes('${esc(player.name)}'), 'name');
   assert.ok(render.includes('${esc(player.position)}'), 'position (future-ready)');
-  assert.ok(render.includes('msg-attendance-chip') && render.includes('attendanceRate'), 'attendance %');
+  // CONTRACT CHANGE (Build G): the chip read `attendanceRate`, which sessionRows
+  // copied from the stale `player.attendance` field — the literal 0 every player
+  // is created with — so every row showed a fabricated 0%. The row model is
+  // availability only again; the chip resolves the RECORDED value itself.
+  assert.ok(render.includes('msg-attendance-chip') && render.includes('playerAttendancePct(player)'),
+    'attendance % comes from the recorded register');
+  assert.ok(!render.includes('attendanceRate'), 'and no longer rides on the availability row');
   assert.ok(render.includes('statusLabel(status)'), 'current reply');
   assert.ok(render.includes('fmtRespondedAt(respondedAt)'), 'last response time');
   assert.ok(render.includes('⚠ Injury'), 'medical / injury flag');
@@ -77,8 +83,14 @@ test('compact summary bar shows Available / Maybe / Unavailable / No Reply', () 
 // ── Filter + sort logic ───────────────────────────────────────────────────────
 // Concatenate (NOT a template literal) — the extracted functions contain their
 // own ${...} / backticks which a template literal here would wrongly interpolate.
-const logic = new Function(
+const buildLogic = new Function('ROWS',
   "let availabilityBoardFilter='all'; let availabilityBoardSort='attendance';\n" +
+  // sortAvailabilityRows now resolves each player's RECORDED attendance rather
+  // than reading a rate off the row. The fixture below still states the rate on
+  // the row; this stands in for the real accessor so the ORDERING contract is
+  // what is tested, not the register plumbing (which has its own suites).
+  "const playerAttendancePct = p => { const r = ROWS.find(x => x.player === p);" +
+  "  return r && r.attendanceRate !== undefined ? r.attendanceRate : null; };\n" +
   extractFn(html, 'availabilityGroupForPlayer') + '\n' +
   extractFn(html, 'availabilityPositionOrder') + '\n' +
   extractFn(html, 'availabilityRowMatchesFilter') + '\n' +
@@ -86,7 +98,7 @@ const logic = new Function(
   'return { setFilter: v => { availabilityBoardFilter = v; },' +
   '         setSort: v => { availabilityBoardSort = v; },' +
   '         availabilityRowMatchesFilter, sortAvailabilityRows, availabilityPositionOrder };'
-)();
+);
 
 const ROWS = [
   { player: { name: 'Alex', position: '10' }, status: 'available',   attendanceRate: 90, respondedAt: '2026-07-01T09:00:00Z' },
@@ -94,6 +106,8 @@ const ROWS = [
   { player: { name: 'Cal',  position: '12' }, status: 'maybe',       attendanceRate: 75, respondedAt: '2026-07-01T08:00:00Z' },
   { player: { name: 'Dan',  position: '4'  }, status: 'unavailable', attendanceRate: 50, respondedAt: '2026-07-01T07:00:00Z', reason: 'injury' },
 ];
+
+const logic = buildLogic(ROWS);
 
 test('quick filter keeps only the matching reply status', () => {
   const { setFilter, availabilityRowMatchesFilter } = logic;
@@ -105,6 +119,11 @@ test('quick filter keeps only the matching reply status', () => {
 });
 
 test('sort by position, attendance and response status', () => {
+  // CONTRACT CHANGE (Build G): the attendance sort no longer reads a rate off
+  // the row. It resolves each player's RECORDED attendance once, which is why
+  // the fixture now supplies it through playerAttendancePct rather than as a
+  // row field — and why this sort does something for the first time: every rate
+  // used to be the same fabricated 0, so it only ever sorted alphabetically.
   const { setSort, sortAvailabilityRows } = logic;
   setSort('position');   assert.deepEqual(sortAvailabilityRows(ROWS).map(r => r.player.name), ['Ben', 'Dan', 'Alex', 'Cal'], '1,4,10,12');
   setSort('attendance'); assert.deepEqual(sortAvailabilityRows(ROWS).map(r => r.player.name), ['Alex', 'Cal', 'Ben', 'Dan'], '90,75,60,50');

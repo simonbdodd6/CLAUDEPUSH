@@ -277,6 +277,10 @@ function mergeRosterPlayer(existing = {}, incoming = {}, context = {}) {
     const ov = other[k];
     merged[k] = (pv !== undefined && pv !== '') ? pv : (ov || '');
   });
+  // LEGACY FIELD, no longer read anywhere. `attendance` was written the
+  // literal 0 on every creation path and never computed; recorded attendance
+  // now comes from the server registers via playerAttendancePct(). The merge
+  // is kept so a stored row keeps its shape — no migration, nothing to lose.
   merged.attendance = Number(preferred.attendance || 0) || Number(other.attendance || 0) || 0;
   merged.history = Array.isArray(preferred.history) && preferred.history.length
     ? preferred.history
