@@ -239,15 +239,28 @@ test('a stale group read is unknown, never an empty attendance record', () => {
 
 test('a failed read is recorded, and never becomes an empty season', () => {
   const load = strip(extractFn(html, 'loadAttendance'));
-  assert.match(load, /if \(!res\.ok\) \{ _attendance = null; _attendanceFailed = gid; return; \}/);
-  assert.match(load, /catch \{ _attendance = null; _attendanceFailed = gid; \}/);
+  // The one-line form this used to match became a block when Build F started
+  // capturing the server's own explanation of a failure. The INVARIANT is
+  // unchanged and is what is asserted: a non-ok response clears the document to
+  // null (unknown) and stamps the failed group — it never fabricates a record.
+  assert.match(load, /if \(!res\.ok\) \{[\s\S]*?_attendance = null; _attendanceFailed = gid;/);
+  assert.match(load, /catch \{ _attendance = null; _attendanceFailed = gid;/);
   assert.match(load, /_attendanceFailed = null;/, 'a success clears it');
   assert.ok(!/_attendance = \{ sessions: \{\} \}/.test(load.replace(/denied: true[^\n]*/g, '')),
     'a failure must never be turned into an empty attendance document');
 });
 
 test('the client asks for the training permission before it asks the server', () => {
-  assert.match(strip(extractFn(html, 'loadAttendance')), /canI\('publish_training'\)/);
+  // Build F gave the READ a second legitimate caller — a player reading their
+  // own register — so the question "who is asking, and for what?" moved out of
+  // loadAttendance into attendanceReadScope(). The permission is still checked
+  // on the device before the request, and it is still the ONLY thing that
+  // unlocks the group register; the WRITE gate is untouched.
+  const load = strip(extractFn(html, 'loadAttendance'));
+  assert.match(strip(extractFn(html, 'attendanceReadScope')), /canI\('publish_training'\)/);
+  assert.match(load, /const scope = attendanceReadScope\(\);/);
+  assert.ok(load.indexOf('attendanceReadScope()') < load.indexOf('await fetch'), 'asked before the server is');
+  assert.match(load, /scope === 'group' && gid \? '&group='/, 'only a staff read names a group');
   assert.match(strip(extractFn(html, 'saveAttendance')), /canI\('publish_training'\)/);
 });
 

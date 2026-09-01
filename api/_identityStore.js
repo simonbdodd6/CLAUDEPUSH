@@ -376,6 +376,43 @@ export async function savePlayerProfiles(profiles) {
   await kvSet(PLAYER_PROFILES_KEY, Array.isArray(profiles) ? profiles : []);
 }
 
+// ── WHICH ROSTER ROWS BELONG TO ONE ACCOUNT ───────────────────────────────
+// A person can appear on a club roster under more than one identifier: their
+// permanent user id, or the invite-derived legacyPlayerId their row was created
+// with before they claimed an account. Account deletion has always had to
+// answer this ("which rows are this person's?"), and reading one's own record
+// asks exactly the same question — so it is asked in ONE place.
+//
+// Everything here is derived from SERVER-HELD records. A name is never an
+// identifier: two players share one, and matching on it would hand one
+// person another's record.
+
+/** The invite-derived ids the server itself has recorded against this account. */
+export function legacyPlayerIdsForUser(profiles = [], userId = '') {
+  const uid = String(userId || '').trim();
+  const out = new Set();
+  if (!uid) return out;
+  (Array.isArray(profiles) ? profiles : []).forEach(profile => {
+    if (String(profile?.userId || '') !== uid) return;
+    if (profile?.legacyPlayerId) out.add(String(profile.legacyPlayerId));
+  });
+  return out;
+}
+
+/**
+ * Does this roster row belong to this account? An empty userId owns NOTHING —
+ * without that guard a session-less caller would match every unclaimed row.
+ */
+export function rosterRowBelongsToUser(row, userId = '', legacyIds = new Set()) {
+  const uid = String(userId || '').trim();
+  if (!uid) return false;
+  const legacy = legacyIds instanceof Set ? legacyIds : new Set(legacyIds || []);
+  return String(row?.userId || '') === uid ||
+    String(row?.id || '') === uid ||
+    Boolean(row?.legacyPlayerId && legacy.has(String(row.legacyPlayerId))) ||
+    Boolean(row?.id && legacy.has(String(row.id)));
+}
+
 // Self-healing repair for the group-invite identity collision. Every player who
 // claimed the SAME reusable group invite was assigned legacyPlayerId =
 // inv-<groupToken8> — so distinct people shared ONE id, which collides roster
@@ -3167,11 +3204,10 @@ export async function deleteOwnAccount(userId, { currentPassword, confirm } = {}
   //    first — a claimed roster row is matched by userId OR the invite-derived
   //    legacyPlayerId, and the profile is where that id lives.
   const profiles = await loadPlayerProfiles();
-  const legacyIds = new Set();
+  const legacyIds = legacyPlayerIdsForUser(profiles, userId);
   let profilesAnonymised = 0;
   profiles.forEach(profile => {
     if (profile.userId !== userId) return;
-    if (profile.legacyPlayerId) legacyIds.add(String(profile.legacyPlayerId));
     profile.displayName = 'Removed member';
     profile.email = '';
     profile.phone = '';
@@ -3183,10 +3219,7 @@ export async function deleteOwnAccount(userId, { currentPassword, confirm } = {}
   // 3. The user's claimed roster rows are removed from each club's roster —
   //    the same end state the admin deletion flow reaches. Coach-typed rows
   //    that were never claimed carry no account identity and are left alone.
-  const ownsRow = row => String(row?.userId || '') === userId ||
-    String(row?.id || '') === userId ||
-    (row?.legacyPlayerId && legacyIds.has(String(row.legacyPlayerId))) ||
-    (row?.id && legacyIds.has(String(row.id)));
+  const ownsRow = row => rosterRowBelongsToUser(row, userId, legacyIds);
   let rosterRowsRemoved = 0;
   for (const teamId of teamIds) {
     const rosterKey = key(`roster:${teamId}`);

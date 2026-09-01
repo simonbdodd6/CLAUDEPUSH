@@ -321,10 +321,24 @@ test('a forged teamId in the query changes nothing', async () => {
 
 test('a PLAYER cannot mark attendance — not for themselves, not for anyone', async () => {
   seed();
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:u1': 'present', 'id:u2': 'absent' } });
   const res = await mark('u1', { group: SEN, sessionId: 'tue', marks: { 'id:u1': 'present' } });
   assert.equal(res.statusCode, 403);
+
+  // CONTRACT CHANGE (Build F — player attendance visibility). This assertion
+  // used to read "and cannot read the register either" (403). Attendance is the
+  // coach's record ABOUT a player, and a player could see their availability
+  // answers but never what was actually recorded of them — so a GET now falls
+  // through to a SELF read. What has NOT changed is the boundary: the WRITE is
+  // still 403, the caller still cannot reach the GROUP register, and the group
+  // comes from their own membership, so the ?group= named here is not read.
+  // The full contract is in test/player-attendance-visibility.test.js.
   const readRes = await read('u1', SEN);
-  assert.equal(readRes.statusCode, 403, 'and cannot read the register either');
+  assert.equal(readRes.statusCode, 200);
+  assert.equal(readRes.body.scope, 'self');
+  assert.deepEqual(readRes.body.sessions['tue-20260804'].marks, { 'id:u1': 'present' },
+    'their own mark only');
+  assert.ok(!JSON.stringify(readRes.body).includes('id:u2'), 'and never a squad-mate’s');
 });
 
 test('a medic, who manages no training, is refused', async () => {
