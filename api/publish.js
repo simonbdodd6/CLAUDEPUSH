@@ -20,7 +20,8 @@ import { kvGet, kvSet, kvDel, kvLpush, kvLrange, kvScanKeys } from './_kv.js';
 import { key, APP_PREFIX, LEGACY_PREFIX } from './_keys.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
-import { DEFAULT_TEAM, loadTeamMembers, loadUsers } from './_identityStore.js';
+import { DEFAULT_TEAM, loadTeamMembers, loadUsers,
+         loadPlayerProfiles, legacyPlayerIdsForUser, rosterRowBelongsToUser } from './_identityStore.js';
 import { requireTenantPermission, requireTenantSession, requireClubManage, assertSameTenant, can, PERM } from './_tenant.js';
 import {
   loadClubStructure, createGroup, createTeam, renameGroup, renameTeam,
@@ -1764,6 +1765,104 @@ function attendanceLedgerAdditions(sessions, existingSessions, slots) {
   return out;
 }
 
+// ── A PLAYER READING THEIR OWN ATTENDANCE ─────────────────────────────────
+// Attendance is the coach's record OF a player, so the player it is about may
+// read it. Nobody else's, and nothing else about the session.
+//
+// EVERY input to this path comes from the SESSION. The club, the group and the
+// identity are all resolved server-side, so a forged ?group=, a swapped player
+// id or an invented key reaches nothing: there is no parameter to forge.
+
+/**
+ * The attendance keys this account owns — the mirror of playerMatchKey() on the
+ * client, which files a mark under 'id:' + (userId || rosterId).
+ *
+ * Only identifiers the SERVER already holds against this account are included.
+ * Name keys ('nm:…') are deliberately excluded: a name is not an identity, and
+ * two players sharing one would read each other's register.
+ */
+async function attendanceOwnedKeys(teamId, userId) {
+  // No guard for an empty id here: `ids.delete('')` below removes it, and the
+  // caller refuses an empty key set outright. A second rule saying the same
+  // thing could only drift from the first — and mutation proved it changed no
+  // answer, which is what redundant means.
+  const uid = String(userId || '').trim();
+  const ids = new Set([uid]);
+  const legacyIds = legacyPlayerIdsForUser(await loadPlayerProfiles(), uid);
+  legacyIds.forEach(id => ids.add(String(id)));
+  const roster = (await readScoped(rosterKey(teamId), 'roster', teamId)) || null;
+  (roster?.players || []).forEach(row => {
+    if (rosterRowBelongsToUser(row, uid, legacyIds)) ids.add(String(row.id || ''));
+  });
+  // A roster row with no id would otherwise contribute the bare key 'id:'.
+  // Mutation cannot tell this line apart, because sanitiseAttendanceSession
+  // already refuses that key on the way into the store — but that rule lives in
+  // another function, and this one should be correct on its own terms.
+  ids.delete('');
+  return new Set([...ids].map(id => 'id:' + id));
+}
+
+/**
+ * One person's register, cut out of the group's.
+ *
+ * Only sessions where THIS person was actually marked survive, and each keeps
+ * a single mark under `selfKey` — so the client can run the one attendance
+ * aggregation over it unchanged, and there is nothing in the payload to learn
+ * about anybody else.
+ *
+ * Two owned keys disagreeing about one session is a genuine ambiguity in the
+ * stored data. It is reported, never resolved by picking a favourite: guessing
+ * would invent a fact about whether somebody turned up.
+ */
+function attendanceSelfProjection(sessions, ownedKeys, selfKey) {
+  const out = {};
+  const ambiguous = [];
+  Object.entries(sessions || {}).forEach(([sid, rec]) => {
+    if (!rec || typeof rec !== 'object') return;
+    const found = [...new Set(Object.entries(rec.marks || {})
+      .filter(([k]) => ownedKeys.has(k))
+      .map(([, v]) => String(v)))];
+    if (!found.length) return;
+    if (found.length > 1) { ambiguous.push(String(sid)); return; }
+    out[String(sid)] = {
+      date: rec.date || '', title: rec.title || '',
+      marks: { [selfKey]: found[0] },
+    };
+  });
+  return { sessions: out, ambiguous };
+}
+
+async function attendanceSelfHandler(req, res, staffError) {
+  let session;
+  try { session = await requireTenantSession(req); }
+  catch (error) { return sendAuthError(res, error); }
+
+  // Only someone who PLAYS has attendance of their own. A staff-only member
+  // who cannot run training is refused with the staff answer, unchanged.
+  if (!isPlayingMember(session.teamMember)) return sendAuthError(res, staffError);
+
+  // Their OWN group, from their OWN membership. ?group= is not read here at
+  // all — there is no parameter that could point this at another squad.
+  const structure = await loadClubStructure(session.teamId);
+  const { groupId } = resolvePlayerGroup(session.teamMember || {}, structure);
+  if (!groupId) {
+    return res.status(409).json({ ok: false, scope: 'self', error:
+      'Your training group has not been set, so your attendance cannot be identified.' });
+  }
+
+  const selfKey = 'id:' + String(session.user.id);
+  const ownedKeys = await attendanceOwnedKeys(session.teamId, session.user.id);
+
+  const slots = ((await readTrainingSchedule(session.teamId, groupId)).record || {}).slots || [];
+  const raw = sanitiseAttendanceDoc(await kvGet(attendanceKey(session.teamId, groupId)));
+  const migrated = migrateAttendanceDoc(raw, slots);
+  const mine = attendanceSelfProjection(migrated.sessions, ownedKeys, selfKey);
+  return res.status(200).json({
+    ok: true, scope: 'self', groupId, selfKey, sessions: mine.sessions,
+    ...(mine.ambiguous.length ? { ambiguous: mine.ambiguous } : {}),
+  });
+}
+
 async function attendanceHandler(req, res) {
   // The people who run training are the people who record who came to it.
   // Deliberately NOT a broad administrative permission, and deliberately the
@@ -1771,7 +1870,14 @@ async function attendanceHandler(req, res) {
   // person manage training", for reading and for writing alike.
   let session;
   try { session = await requireTenantPermission(req, PERM.PUBLISH_TRAINING); }
-  catch (error) { return sendAuthError(res, error); }
+  catch (error) {
+    // A player is not staff, but attendance is a record ABOUT them, so a READ
+    // falls through to the self path — which answers with their own register
+    // and nobody else's. Every WRITE stays staff-only: a player must never be
+    // able to mark themselves present.
+    if (req.method === 'GET') return attendanceSelfHandler(req, res, error);
+    return sendAuthError(res, error);
+  }
 
   // The club comes from the session. The group is asserted against the
   // caller's own staff scope, so a forged ?group= reaches nothing: a Seniors
