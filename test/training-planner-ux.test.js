@@ -114,8 +114,13 @@ test('6: every block is sized to its own content after a render, inside one fram
 test('3+13: exactly ONE "+ Add block" control, directly after the blocks (reachable on a phone)', () => {
   const plannerStart = src.indexOf('const twNav = `');
   const planner = src.slice(plannerStart, src.indexOf('// ─── MATCH CENTRE', plannerStart));
-  const adds = planner.match(/onclick="addTimeBlock\('\$\{sessId\}'\)/g) || [];
+  // CONTRACT CHANGE (occurrence-identity fix): the button passes the dated
+  // CONTENT key (ck) rather than the protocol id — the invariant this test
+  // protects (ONE control, under the blocks, never two at once) is unchanged.
+  const adds = planner.match(/onclick="addTimeBlock\('\$\{ck\}'\)/g) || [];
   assert.equal(adds.length, 2, 'one after the blocks table + one in the empty state (never two at once)');
+  assert.doesNotMatch(planner, /addTimeBlock\('\$\{sessId\}'\)/,
+    'no add control writes under the protocol id — that key changes meaning every Monday');
   const tableEnd = planner.indexOf('</table></div>');
   const addAfterTable = planner.indexOf('addTimeBlock', tableEnd);
   assert.ok(addAfterTable > tableEnd && addAfterTable - tableEnd < 600,
@@ -249,7 +254,10 @@ test('a blank first time never corrupts later blocks', () => {
 
 // ─── Persistence / ordering / focus ────────────────────────────────────────
 test('10+12: existing populated blocks render their stored content, in order, unchanged', () => {
-  assert.match(PLANNER, /blocks\.map\(b => trainingBlockRowHTML\(sessId, b\)\)/, 'rows come from the stored block list, in order');
+  // CONTRACT CHANGE (occurrence-identity fix): rows now carry the dated
+  // CONTENT key, so a keystroke edits the occurrence it belongs to. The
+  // rendering invariants below are byte-for-byte unchanged.
+  assert.match(PLANNER, /blocks\.map\(b => trainingBlockRowHTML\(ck, b\)\)/, 'rows come from the stored block list, in order');
   assert.match(PLANNER, /value="\$\{esc\(String\(b\.time \|\| ''\)\)\}"/, 'stored time rendered (escaped)');
   assert.match(PLANNER, /ta\('activity',/, 'stored activity rendered');
   assert.match(PLANNER, /ta\('keyFocus',/, 'stored key focus rendered');

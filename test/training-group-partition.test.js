@@ -417,6 +417,11 @@ function switchHarness(initialState, targetGid) {
     let _perfAssign = { loaded: true, athletes: [] };
     let _perfAuthor = { step: null };
     ${fn('captureTrainingState')}
+    // Build J: the owner of the live training state is resolved through
+    // trainingStateOwner() (fail-closed quarantine for an unprovable owner).
+    // The const is module-level in the app; the harness declares its own copy.
+    const TRAINING_UNOWNED_KEY = '_unowned';
+    ${fn('trainingStateOwner')}
     ${fn('stashTrainingState')}
     ${fn('adoptTrainingState')}
     ${fn('syncTrainingStateToGroup')}
@@ -525,6 +530,11 @@ test('dual-role capacity switch swaps training state too — coach work never en
     ${fn('operationalCapacity')}
     ${fn('operationalGroups')}
     ${fn('captureTrainingState')}
+    // Build J: the owner of the live training state is resolved through
+    // trainingStateOwner() (fail-closed quarantine for an unprovable owner).
+    // The const is module-level in the app; the harness declares its own copy.
+    const TRAINING_UNOWNED_KEY = '_unowned';
+    ${fn('trainingStateOwner')}
     ${fn('stashTrainingState')}
     ${fn('adoptTrainingState')}
     ${fn('syncTrainingStateToGroup')}

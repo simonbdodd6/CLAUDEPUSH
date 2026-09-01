@@ -6561,6 +6561,11 @@
         "Squad selection is being finalised. Check your player portal."
       ],
       trainingActiveSession: "tue",
+      // WHO OWNS the live training state. null = never resolved; written by
+      // syncTrainingStateToGroup on every group/capacity resolution. Absent on
+      // states saved before the group partition — trainingStateOwner() decides
+      // what an absent stamp means, and it never guesses a group.
+      trainingStateGroupId: null,
       trainingAttendance: {},
       sessionNotes: {},
       activeTrainingTab: 'planner',
@@ -7293,6 +7298,11 @@
       // Per-group stash of the training working state (schedule, blocks,
       // attendance, notes…) — the group partition's local half.
       next.trainingByGroup    = (typeof input.trainingByGroup === 'object' && input.trainingByGroup !== null) ? input.trainingByGroup : {};
+      // The owner stamp is normalised EXPLICITLY: a malformed value must become
+      // null (unknown) rather than survive as junk, because trainingStateOwner()
+      // fails closed on unknown — it must never be tricked into a real group.
+      next.trainingStateGroupId = (typeof input.trainingStateGroupId === 'string' && input.trainingStateGroupId)
+        ? input.trainingStateGroupId : null;
 
       // Ensure trainingBlocks has an entry for every schedule session
       next.schedule.forEach(s => {
@@ -8642,7 +8652,7 @@
       saveState();
       syncSessionsToServer().catch(() => {});
       render();
-      const blocks = (state.trainingBlocks || {})[id] || [];
+      const blocks = (state.trainingBlocks || {})[trainingContentKey(id)] || [];
       const title  = sess.title || 'Training session';
       const body   = blocks.length
         ? blocks.slice(0, 2).map(b => (b.time ? b.time + ': ' : '') + b.activity).join(' · ') + (blocks.length > 2 ? '…' : '')
@@ -8664,7 +8674,10 @@
     function trainingSessionPayload(sessionId) {
       const s = (state.schedule || []).find(x => x.id === sessionId);
       if (!s) return null;
-      return { ...s, blocks: (state.trainingBlocks || {})[sessionId] || [] };
+      // The published snapshot keeps the session's PROTOCOL identity (players
+      // read it under that id); its blocks come from where the plan actually
+      // lives — the dated occurrence key.
+      return { ...s, blocks: (state.trainingBlocks || {})[trainingContentKey(sessionId)] || [] };
     }
 
     function trainingAudienceStatus(sessionId, audience) {
@@ -8794,6 +8807,9 @@
     let _trainingRevisionTimer = null;
     function trainingMarkEdited(sessionId) {
       if (!canI('publish_training')) return;
+      // Block edits arrive under the dated CONTENT key; publish state and the
+      // payload are keyed by the session's PROTOCOL id. Resolve once here.
+      sessionId = trainingProtocolId(sessionId);
       if (!_trainingPubState[sessionId]) return;   // nothing published yet — nothing to go stale
       clearTimeout(_trainingRevisionTimer);
       _trainingRevisionTimer = setTimeout(async () => {
@@ -8988,7 +9004,13 @@
       (state.schedule || []).forEach(s => {
         s.published   = false;
         s.publishedAt = null;
-        if (state.trainingBlocks) state.trainingBlocks[s.id] = [];
+        // The plan lives under the dated occurrence key now; the bare id is
+        // cleared too so pre-fix legacy content honours this explicit reset.
+        if (state.trainingBlocks) {
+          state.trainingBlocks[s.id] = [];
+          const ck = trainingContentKey(s.id);
+          if (ck !== s.id) state.trainingBlocks[ck] = [];
+        }
       });
       // Reset match centre
       state.matchCentre = {
@@ -9456,7 +9478,13 @@
     let _tpPdfBusy = false;
     async function trainingDownloadPdf(sessionId) {
       if (_tpPdfBusy) return;
-      const sess = (state.schedule || []).find(x => x.id === sessionId);
+      // The button passes the CONTENT key. The schedule row lives under the
+      // protocol id; a dated occurrence with no row (a planned week) still
+      // prints, titled from its own date.
+      const pid = trainingProtocolId(sessionId);
+      const sess = (state.schedule || []).find(x => x.id === sessionId)
+        || (state.schedule || []).find(x => x.id === pid)
+        || { title: trainingOccurrenceTitle(trainingDateFromSessionId(sessionId)), date: trainingDateFromSessionId(sessionId) };
       const blocks = (state.trainingBlocks || {})[sessionId] || [];
       if (!sess || !blocks.length) return showToast('Add blocks to the plan first');
       _tpPdfBusy = true;
@@ -9664,7 +9692,9 @@
       // audiences flip to "changes not republished". Their snapshots are NOT
       // touched — an unpublished edit can never leak into a published view.
       trainingMarkEdited(sessionId);
-      const sess = (state.schedule || []).find(s => s.id === sessionId);
+      // The schedule row is a PROTOCOL-id record; edits arrive under the
+      // dated content key. Same resolution trainingMarkEdited applies.
+      const sess = (state.schedule || []).find(s => s.id === trainingProtocolId(sessionId));
       if (!sess || !sess.published || !isCoach()) return;
       clearTimeout(_publishedEditSyncTimer);
       _publishedEditSyncTimer = setTimeout(() => { syncSessionsToServer().catch(() => {}); }, 700);
@@ -11505,7 +11535,7 @@
     function sendTrainingSheet() {
       if (!isCoach()) return showToast("Only coaches can send training sheets");
       const sessId = state.trainingActiveSession || "tue";
-      const blocks = (state.trainingBlocks||{})[sessId] || [];
+      const blocks = (state.trainingBlocks||{})[trainingContentKey(sessId)] || [];
       if (!blocks.length) return showToast("Add blocks to your session plan first");
       const lines  = blocks.map(b => `${b.time} | ${b.activity}${b.keyFocus ? " | Focus: "+b.keyFocus : ""}${b.coach ? " | Coach: "+b.coach : ""}`);
       const body   = "Training rundown:\n" + lines.join("\n");
@@ -16687,11 +16717,16 @@
         availWeekStart(String(sess.date).slice(0, 10)) === twWeek));
       const rawId  = state.trainingActiveSession || (schedSessions[0]?.id ?? "tue");
       const sessId = schedSessions.find(s => s.id === rawId) ? rawId : (schedSessions[0]?.id ?? "tue");
-      const blocks    = (state.trainingBlocks||{})[sessId] || [];
+      // sessId is the PROTOCOL id (availability, publish, attendance panel);
+      // ck is where the plan CONTENT lives — the dated occurrence. Same value
+      // except for a recurring session in the current week, which is the case
+      // whose content used to change meaning every Monday.
+      const ck        = trainingContentKey(sessId);
+      const blocks    = (state.trainingBlocks||{})[ck] || [];
       const sessObj   = schedSessions.find(s=>s.id===sessId);
       const key       = sessionKey(sessId);
       const available = state.players.filter(p=>p[key]==="available");
-      const weekBlocks = schedSessions.reduce((n,s) => n + ((state.trainingBlocks||{})[s.id]?.length||0), 0);
+      const weekBlocks = schedSessions.reduce((n,s) => n + ((state.trainingBlocks||{})[trainingContentKey(s.id)]?.length||0), 0);
 
       const twNav = `
         <div class="tw-nav" role="group" aria-label="Training week">
@@ -16724,7 +16759,7 @@
         <!-- Session card tabs — this week's real sessions, or the viewed week's dated occurrences -->
         <div class="session-card-row">
           ${schedSessions.map(s => {
-            const sBlocks = (state.trainingBlocks||{})[s.id]?.length || 0;
+            const sBlocks = (state.trainingBlocks||{})[trainingContentKey(s.id)]?.length || 0;
             const sKey    = sessionKey(s.id);
             // Confirmed counts read the OPERATING group's players only — the
             // whole-club list would count another group's answers.
@@ -16750,7 +16785,7 @@
             <div style="display:grid;gap:8px;justify-items:end">
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
                 <span id="tp-save-chip" class="tp-save-chip${_lastDeviceSaveOk ? '' : ' err'}">${_tpSaveChipText()}</span>
-                ${blocks.length ? `<button class="btn" type="button" id="tp-pdf-btn" style="font-size:12px" onclick="trainingDownloadPdf('${sessId}')">Download PDF</button>` : ''}
+                ${blocks.length ? `<button class="btn" type="button" id="tp-pdf-btn" style="font-size:12px" onclick="trainingDownloadPdf('${ck}')">Download PDF</button>` : ''}
               </div>
               ${(twCurrent && canI('publish_training')) ? `
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -16764,7 +16799,7 @@
               ${twCurrent ? '' : `<span class="muted" style="font-size:11px">Planned week — publish opens when the week arrives</span>`}
             </div>
           </div>
-          ${trainingImportPanelHTML(sessId)}
+          ${trainingImportPanelHTML(ck)}
           ${blocks.length ? `
           <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:-4px -2px 0">
           <table class="training-gs-table" style="min-width:820px;table-layout:fixed;width:100%">
@@ -16776,7 +16811,7 @@
               <th style="width:36px"></th>
             </tr></thead>
             <tbody>
-              ${blocks.map(b => trainingBlockRowHTML(sessId, b)).join("")}
+              ${blocks.map(b => trainingBlockRowHTML(ck, b)).join("")}
             </tbody>
           </table></div>
           <!-- THE add control lives immediately under the last block (which is
@@ -16784,16 +16819,23 @@
                phone the old position meant scrolling the whole plan to add the
                next one. One button only — no duplicate CTAs. -->
           <div style="margin-top:10px">
-            <button class="btn" type="button" style="width:100%;max-width:320px" onclick="addTimeBlock('${sessId}');tpSavePing()">+ Add block</button>
+            <button class="btn" type="button" style="width:100%;max-width:320px" onclick="addTimeBlock('${ck}');tpSavePing()">+ Add block</button>
           </div>` : `<div style="padding:24px 0;text-align:center">
             <div style="font-size:30px;margin-bottom:8px;opacity:.5">📋</div>
             <p style="font-size:14px;font-weight:600;color:var(--ink);margin:0 0 4px">No session plan yet</p>
             <p class="muted" style="font-size:12px;margin:0 0 14px">Add time blocks to build your coaching plan — warm-up, drills, set piece, match review and more.</p>
-            <button class="btn primary" type="button" style="font-size:13px;margin-bottom:10px" onclick="addTimeBlock('${sessId}');tpSavePing()">+ Add block</button>
-            ${autopilotOn() && ((state.lastWeekTrainingBlocks || {})[state.trainingActiveSession] || []).length ? `
-            <button class="btn primary" type="button" onclick="autopilotDuplicateSession('${esc(state.trainingActiveSession)}')" style="font-size:13px">
-              ⧉ Duplicate last week's plan (${((state.lastWeekTrainingBlocks || {})[state.trainingActiveSession] || []).length} blocks)
-            </button>` : ''}
+            <button class="btn primary" type="button" style="font-size:13px;margin-bottom:10px" onclick="addTimeBlock('${ck}');tpSavePing()">+ Add block</button>
+            ${(() => {
+              if (!autopilotOn()) return '';
+              const prevKey = trainingPreviousOccurrenceKey(sessId);
+              const prev = (prevKey && (state.trainingBlocks || {})[prevKey] || []).length
+                ? (state.trainingBlocks || {})[prevKey]
+                : ((state.lastWeekTrainingBlocks || {})[sessId] || []);
+              return prev.length ? `
+            <button class="btn primary" type="button" onclick="autopilotDuplicateSession('${esc(sessId)}')" style="font-size:13px">
+              ⧉ Duplicate last week's plan (${prev.length} blocks)
+            </button>` : '';
+            })()}
           </div>`}
         </div>
 
@@ -19127,9 +19169,13 @@
 
     // 2. Training duplication — restore last week's plan for a session.
     function autopilotDuplicateSession(sessionId) {
-      const last = (state.lastWeekTrainingBlocks || {})[sessionId] || [];
+      // Last week's plan now lives under last week's own dated key — read it
+      // from there first; the legacy startNewWeek stash remains the fallback.
+      const prevKey = trainingPreviousOccurrenceKey(sessionId);
+      const prev = (prevKey && (state.trainingBlocks || {})[prevKey] || []);
+      const last = prev.length ? prev : ((state.lastWeekTrainingBlocks || {})[sessionId] || []);
       if (!last.length) return showToast('No previous plan stored for this session yet');
-      state.trainingBlocks[sessionId] = structuredClone(last).map(b => ({ ...b, id: 'blk' + Date.now() + Math.random().toString(16).slice(2, 6) }));
+      state.trainingBlocks[trainingContentKey(sessionId)] = structuredClone(last).map(b => ({ ...b, id: 'blk' + Date.now() + Math.random().toString(16).slice(2, 6) }));
       autopilotReceipt(`Training duplicated from last week — ${last.length} blocks`);
       saveState('Training duplicated');
       render();
@@ -29807,6 +29853,75 @@
       }).filter(e => e.type === 'training');
     }
 
+    /**
+     * WHERE A SESSION'S PLAN CONTENT LIVES — the dated occurrence key.
+     *
+     * The planner's blocks and notes used to be keyed by the session's
+     * PROTOCOL id. For a recurring slot the current week's protocol id is the
+     * bare legacy sessionId (`tue`) — availability compatibility — and every
+     * other week's is the dated `slot_<id>-<YYYYMMDD>`. Content keyed by the
+     * bare id therefore changed MEANING every Monday: last week's plan
+     * reappeared as this week's, last week's view (dated) found nothing, and
+     * a plan written ahead under a dated id vanished the moment its week
+     * became current and the planner switched to the bare id.
+     *
+     * Content is now addressed by the DATED occurrence identity in every
+     * week — the same `slot_<id>-<YYYYMMDD>` form the attendance registers
+     * already key on (attendanceOccurrenceId), so one occurrence has ONE
+     * identity across planning, attendance and history. The protocol ids are
+     * untouched: availability answers, publish targets and player views keep
+     * working exactly as before.
+     *
+     * Deterministic and clock-free given availToday(): the date comes from
+     * the slot's own weekday inside the current week (string arithmetic on
+     * ISO dates via Date.UTC — timezone cannot shift it). Fail closed: with
+     * no slot table, or an id that is not a recurring slot's (ad-hoc
+     * sessions, `game`, coach-created slugs), the id answers for itself —
+     * those identities are already durable and are deliberately unchanged.
+     */
+    function trainingContentKey(sessionId) {
+      const id = String(sessionId || '').trim();
+      if (!id || /-\d{8}$/.test(id)) return id;          // already an occurrence
+      const slots = (_trainingSchedule && _trainingSchedule.slots) || [];
+      const slot = slots.find(sl => sl && String(sl.sessionId || '') === id);
+      if (!slot) return id;                              // not a recurring slot: durable already
+      const date = availSlotDateInWeek(slot, availWeekStart(availToday()));
+      if (!date) return id;                              // no provable date: stay put
+      return String(slot.id) + '-' + date.replace(/-/g, '');
+    }
+
+    /**
+     * The inverse: the PROTOCOL id a dated occurrence answers to. Only the
+     * current week's occurrence of a legacy slot maps back to its bare
+     * sessionId (`slot_tue-20260901` → `tue` while 2026-09-01 is this week's
+     * Tuesday); everything else — other weeks, ad-hoc ids, non-legacy slots —
+     * is its own protocol id. Publish state and the schedule row are keyed by
+     * protocol id, so block edits made under the dated key still find them.
+     */
+    function trainingProtocolId(id) {
+      const m = /^(.+)-(\d{8})$/.exec(String(id || ''));
+      if (!m) return String(id || '');
+      const slots = (_trainingSchedule && _trainingSchedule.slots) || [];
+      const slot = slots.find(sl => sl && String(sl.id) === m[1] && sl.sessionId);
+      if (!slot) return String(id);
+      const iso = m[2].slice(0, 4) + '-' + m[2].slice(4, 6) + '-' + m[2].slice(6, 8);
+      return iso === availSlotDateInWeek(slot, availWeekStart(availToday()))
+        ? String(slot.sessionId) : String(id);
+    }
+
+    /** LAST week's occurrence key for a recurring session — '' when there is
+     *  none (not a slot, or the slot did not run last week). Read-only helper
+     *  for "duplicate last week's plan": dated keys persist across rollover,
+     *  so last week's plan is simply last week's key. */
+    function trainingPreviousOccurrenceKey(sessionId) {
+      const id = String(sessionId || '').trim().replace(/-\d{8}$/, '');
+      const slots = (_trainingSchedule && _trainingSchedule.slots) || [];
+      const slot = slots.find(sl => sl && (String(sl.sessionId || '') === id || String(sl.id) === id));
+      if (!slot) return '';
+      const date = availSlotDateInWeek(slot, availAddDays(availWeekStart(availToday()), -7));
+      return date ? String(slot.id) + '-' + date.replace(/-/g, '') : '';
+    }
+
     /** "18 Aug" (optionally "18 Aug 2026") from a strict ISO date, else ''. */
     function trainingDateLabel(iso, withYear) {
       const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '').trim());
@@ -38040,6 +38155,14 @@
       // until the switcher answers rather than let the server guess.
       const gid = trainingGroupParam();
       if (!gid && operationalGroups().length > 1) return;
+      // The list being written must be OWNED by the group it is written to.
+      // In a multi-group club a missing or different stamp means the live
+      // state is (or may be) another group's — sending it would replace the
+      // named group's server list with it wholesale. Refuse; the transition
+      // (syncTrainingStateToGroup, run by every group/capacity resolution)
+      // restores a provable owner, after which saves flow again. Returning
+      // false keeps every caller's "saved on this device only" toast honest.
+      if (gid && operationalGroups().length > 1 && state.trainingStateGroupId !== gid) return false;
       try {
         const res = await fetch('/api/publish', {
           method: 'POST',
@@ -38569,14 +38692,38 @@
       };
     }
 
+    // A quarantine shelf inside the per-group stash for training state whose
+    // owner cannot be proven. Never a real group id, never synced to the
+    // server, preserved losslessly for inspection/recovery.
+    const TRAINING_UNOWNED_KEY = '_unowned';
+
+    /**
+     * WHO OWNS the live training working state.
+     *
+     * Three answers, and the third is the fix:
+     *  - a recorded stamp: that group. The normal case.
+     *  - no stamp and the device has NEVER partitioned: the INITIAL group —
+     *    the documented pre-split migration rule (legacy data is production
+     *    Seniors'), unchanged.
+     *  - no stamp but per-group stashes EXIST: the owner is UNKNOWN. This
+     *    used to fall through to the initial group, which relabelled whatever
+     *    was live — observed as U18's week appearing as Seniors Tuesday, and
+     *    one wholesale sync away from overwriting Seniors' server list. An
+     *    unknown owner now quarantines instead: nothing is guessed, nothing
+     *    is written over a real group, nothing is lost.
+     */
+    function trainingStateOwner() {
+      if (typeof state.trainingStateGroupId === 'string' && state.trainingStateGroupId) {
+        return state.trainingStateGroupId;
+      }
+      const partitioned = Object.keys(state.trainingByGroup || {})
+        .some(k => k !== TRAINING_UNOWNED_KEY);
+      return partitioned ? TRAINING_UNOWNED_KEY : CE_INITIAL_GROUP_ID;
+    }
+
     function stashTrainingState() {
       state.trainingByGroup = state.trainingByGroup || {};
-      // The live training state is owned by the group recorded when it was
-      // adopted. A device that has never partitioned holds pre-split data,
-      // and legacy data belongs to the INITIAL group — never to whichever
-      // group happened to be selected when the split engaged.
-      const owner = state.trainingStateGroupId || CE_INITIAL_GROUP_ID;
-      state.trainingByGroup[owner] = captureTrainingState();
+      state.trainingByGroup[trainingStateOwner()] = captureTrainingState();
     }
 
     function adoptTrainingState(gid) {
@@ -38614,7 +38761,10 @@
     function syncTrainingStateToGroup() {
       const target = state.operationalGroupId;
       if (!target) return;
-      const owner = state.trainingStateGroupId || CE_INITIAL_GROUP_ID;
+      const owner = trainingStateOwner();
+      // Only a PROVEN owner short-circuits. An unknown owner can never equal a
+      // real group id, so unowned state always takes the stash-and-adopt path
+      // below — quarantined under TRAINING_UNOWNED_KEY, never adopted in place.
       if (owner === target) { state.trainingStateGroupId = target; return; }
       stashTrainingState();
       adoptTrainingState(target);
