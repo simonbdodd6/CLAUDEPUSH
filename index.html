@@ -11205,7 +11205,9 @@
       } catch(e) {
         showToast("Push unavailable offline — message saved locally");
       }
-      createCoachMessage({ recipients: state.players, type:"Availability request", body });
+      // The push above is group-scoped by the server; the local message rows
+      // must count the same audience, not the whole club.
+      createCoachMessage({ recipients: operationalPlayers(), type:"Availability request", body });
     }
 
     // ─── DRAG & DROP FORMATION ────────────────────────────────────────────────
@@ -16195,12 +16197,40 @@
       return created;
     }
 
+    /**
+     * THE CHANNEL AN AVAILABILITY REQUEST BELONGS TO.
+     *
+     * Mirrors the Messages UI's own audience rule exactly: a real multi-group
+     * context, or any non-initial group, means the OPERATING group's channel —
+     * `group:<gid>`, the conversation the server already restricts to that
+     * group's players and staff. Writing to the club-wide `squad` here sent a
+     * U18 availability request to every Seniors inbox.
+     *
+     * A legacy single-group club (one group, the initial one) keeps `squad`:
+     * for that club Squad IS the group's canonical channel — the one its
+     * players read, and the group channel is not even offered in its Messages
+     * UI. This is the same condition that decides which audience the coach's
+     * own Messages screen shows; the two must never disagree.
+     */
+    function availabilityChatChannel() {
+      const opGid = state.operationalGroupId;
+      if (opGid && (operationalGroups().length >= 2 || opGid !== CE_INITIAL_GROUP_ID)) {
+        return `group:${opGid}`;
+      }
+      return 'squad';
+    }
+
     async function sendAvailabilityRequest(sessionId) {
       if (!isCoach()) return showToast("Only coaches can send availability requests");
       const session = state.schedule.find(s => s.id === sessionId);
       if (!session) return;
-      if (!(state.players || []).length) return showToast('No players yet — invite players from the Members page first');
-      const playerCount = state.players.length;
+      // The audience is the OPERATING group's players — the same set the push
+      // reaches (the server asserts the group) and the same set the board
+      // shows. state.players is the whole club, so in a multi-group club the
+      // old confirm/toast counted players this request never reached.
+      const audience = operationalPlayers();
+      if (!audience.length) return showToast('No players in this group yet — invite or assign players from the Members page first');
+      const playerCount = audience.length;
       const whenText = session.date ? `on ${session.date}` : '— date to be confirmed';
       if (!(await ceConfirm('Send availability request?',
         `This will send a notification and message to all ${playerCount} players asking for their availability for ${session.title} ${whenText}.`,
@@ -16209,7 +16239,7 @@
       if (_sendBtn) { _sendBtn.disabled = true; _sendBtn.textContent = 'Sending…'; }
       const dateText = session.date || 'date to be confirmed';
       const body = `Please confirm your availability for ${session.title} (${dateText}) in CoachEasier.`;
-      const created = createCoachMessage({ recipients: state.players, type: "Availability request", body, sessionId });
+      const created = createCoachMessage({ recipients: audience, type: "Availability request", body, sessionId });
       state.availabilityRequests.unshift({
         id: `req-${Date.now()}`,
         sessionId,
@@ -16218,12 +16248,21 @@
         status:  "sent",
         messageIds: created.map(m => m.id)
       });
-      // Write to Redis squad chat so players see it in their Messages tab
+      // The chat copy goes to THIS GROUP'S channel so players see it in their
+      // Messages tab. It used to write the hardcoded club-wide 'squad' — the
+      // pre-group-isolation pattern — so a U18 request reached Seniors.
+      // availabilityChatChannel() answers 'squad' only where Squad IS the
+      // group's canonical channel (a legacy single-group club).
       try {
         const me = currentUser();
+        const convId = availabilityChatChannel();
+        if (convId !== 'squad') {
+          await chatLoadStateModule();
+          await chatEnsureGroupChannel(convId);   // idempotent; only operated groups
+        }
         await fetch('/api/chat', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'send', convId: 'squad',
+          body: JSON.stringify({ action: 'send', convId,
             senderId: me.id, senderName: me.name, senderRole: 'coach',
             text: `Availability request — ${session.title} (${dateText}): ${body}`,
             type: 'TEXT', isAutomated: false })
@@ -16238,14 +16277,16 @@
       if (!isCoach()) return showToast("Only coaches can send availability requests");
       const sessions = state.schedule || [];
       if (!sessions.length) return showToast('No sessions configured');
-      if (!(state.players || []).length) return showToast('No players yet — invite players from the Members page first');
-      if (!(await ceConfirm(`Send requests for all ${sessions.length} sessions?`, 'One combined notification goes to every player.', { confirmLabel: 'Send to squad' }))) return;
+      // Group audience, exactly as the single-session request above.
+      const audience = operationalPlayers();
+      if (!audience.length) return showToast('No players in this group yet — invite or assign players from the Members page first');
+      if (!(await ceConfirm(`Send requests for all ${sessions.length} sessions?`, 'One combined notification goes to every player in this group.', { confirmLabel: 'Send requests' }))) return;
       const titles = sessions.map(s => s.title).join(', ');
       const body = `Please confirm your availability for: ${titles} in CoachEasier.`;
       // Create messages for each session
       let totalCreated = 0;
       sessions.forEach(session => {
-        const created = createCoachMessage({ recipients: state.players, type: "Availability request", body, sessionId: session.id });
+        const created = createCoachMessage({ recipients: audience, type: "Availability request", body, sessionId: session.id });
         totalCreated += created.length;
         state.availabilityRequests.unshift({
           id:         `req-${session.id}-${Date.now()}`,
@@ -16258,7 +16299,7 @@
       });
       // One combined push for all sessions
       sendPushToPlayers(`Availability check — ${sessions.length} sessions`, body, { type: 'availability' });
-      showToast(`All session requests sent to ${state.players.length} players ✓`);
+      showToast(`All session requests sent to ${audience.length} players ✓`);
       render();
     }
 
