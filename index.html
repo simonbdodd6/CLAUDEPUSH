@@ -5686,7 +5686,6 @@
       <section id="player-medical"      class="section"></section>
       <section id="player-performance"  class="section"></section>
       <section id="player-fixtures"     class="section"></section>
-      <section id="player-attendance"   class="section" style="display:none"></section>
       <section id="player-messages"     class="section"></section>
     </main>
   </div>
@@ -7030,6 +7029,10 @@
         const pv = preferred[key], ov = other[key];
         merged[key] = (pv !== undefined && pv !== '') ? pv : (ov || '');
       });
+      // LEGACY FIELD, no longer read anywhere. `attendance` was written the
+      // literal 0 on every creation path and never computed; recorded attendance
+      // now comes from the server registers via playerAttendancePct(). The merge
+      // is kept so a stored row keeps its shape — no migration, nothing to lose.
       merged.attendance = Number(preferred.attendance || 0) || Number(other.attendance || 0) || 0;
       merged.history = Array.isArray(preferred.history) && preferred.history.length ? preferred.history : (Array.isArray(other.history) ? other.history : []);
       merged.blockedDates = Array.isArray(preferred.blockedDates) && preferred.blockedDates.length ? preferred.blockedDates : (Array.isArray(other.blockedDates) ? other.blockedDates : []);
@@ -8189,20 +8192,22 @@
       // The board serves the OPERATING group: its rows are the group's players
       // (the full club only in single-group/legacy contexts, where
       // operationalPlayers() falls through unchanged).
+      // A row is an AVAILABILITY answer and nothing else. It used to carry an
+      // `attendanceRate` copied from the stale roster field, which dragged the
+      // attendance model into every caller that only wanted to know who replied.
+      // The two surfaces that genuinely want attendance resolve it themselves.
       return operationalPlayers().map(p => {
         const live = resolvedAnswerFor(p, id);
         if (live) return {
           player:         p,
           status:         live.response,
           reason:         live.reason || '',
-          attendanceRate: p.attendance,
           respondedAt:    live.respondedAt || null,
         };
         return {
           player:         p,
           status:         p[key],
           reason:         p[rKey] || '',
-          attendanceRate: p.attendance,
           respondedAt:    p[key + 'RespondedAt'] || null,
         };
       });
@@ -8390,8 +8395,12 @@
       if (!session) { showToast('No session selected'); return; }
       const rows = sessionRows(session.id);
       const header = ['Name', 'Position', 'Status', 'Reason', 'Attendance %'].join(',');
-      const lines  = rows.map(({ player, status, reason, attendanceRate }) =>
-        [player.name, player.position || '', status, reason || '', attendanceRate || 0]
+      // An EMPTY cell where there is no recorded attendance. `|| 0` used to
+      // write a measured-looking zero into a spreadsheet, which is the hardest
+      // place of all to notice a fabricated number.
+      const lines  = rows.map(({ player, status, reason }) =>
+        [player.name, player.position || '', status, reason || '',
+         (v => v === null ? '' : v + '%')(playerAttendancePct(player))]
           .map(v => `"${String(v).replace(/"/g, '""')}"`)
           .join(',')
       );
@@ -11752,7 +11761,8 @@
       const rows = [['Name','Position','Email','Phone','Game status','Attendance']];
       state.players.forEach(p => rows.push([
         p.name || '', p.position || '', p.email || '', p.phone || '',
-        statusLabel(p.game), (p.attendance || 0) + '%'
+        // Empty, never a fabricated 0% — see playerAttendancePct.
+        statusLabel(p.game), (v => v === null ? '' : v + '%')(playerAttendancePct(p))
       ]));
       const csv  = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
       const blob = new Blob([csv], { type:'text/csv' });
@@ -15587,7 +15597,7 @@
               <article><span>Maybe/injured</span><strong>${maybe.length + rows.filter(({status})=>status==="injured").length}</strong></article>
             </div>
             <div class="training-player-list">
-              ${rows.map(({player, status, attendanceRate}) => { const att = playerAttendanceValue(player); return `
+              ${rows.map(({player, status}) => { const att = playerAttendancePct(player); return `
                 <button class="${selectedPlayer.id===player.id?"active":""}" type="button" onclick="setMessagePlayer('${player.id}')">
                   <div><strong>${player.name}</strong><span>${att === null ? 'No attendance data' : `${att}% yearly attendance`}</span></div>
                   <span class="status ${status}">${statusLabel(status)}</span>
@@ -15669,7 +15679,7 @@
                 <span class="status ${selectedStatus}">${statusLabel(selectedStatus)}</span>
               </div>
               <div class="training-metrics">
-                <article><span>Year attendance</span><strong>${attendanceLabel(playerAttendanceValue(selectedPlayer))}</strong></article>
+                <article><span>Year attendance</span><strong>${attendanceLabel(playerAttendancePct(selectedPlayer))}</strong></article>
                 <article><span>Recent replies</span><strong>${selectedPlayer.history.filter(h=>h!=="no-reply").length}/${selectedPlayer.history.length}</strong></article>
                 <article><span>Position</span><strong>${selectedPlayer.position}</strong></article>
               </div>
@@ -15734,16 +15744,23 @@
     function sortAvailabilityRows(list) {
       const byName = (a, b) => String(a.player?.name || '').localeCompare(String(b.player?.name || ''));
       const STATUS_ORDER = { available: 0, maybe: 1, 'no-reply': 2, unavailable: 3, injured: 3 };
-      return list.slice().sort((a, b) => {
-        if (availabilityBoardSort === 'position') {
-          return (availabilityPositionOrder(a.player) - availabilityPositionOrder(b.player)) || byName(a, b);
-        }
-        if (availabilityBoardSort === 'status') {
-          return ((STATUS_ORDER[a.status] ?? 4) - (STATUS_ORDER[b.status] ?? 4)) || byName(a, b);
-        }
-        // attendance — highest first
-        return (Number(b.attendanceRate || 0) - Number(a.attendanceRate || 0)) || byName(a, b);
-      });
+      if (availabilityBoardSort === 'position') {
+        return list.slice().sort((a, b) =>
+          (availabilityPositionOrder(a.player) - availabilityPositionOrder(b.player)) || byName(a, b));
+      }
+      if (availabilityBoardSort === 'status') {
+        return list.slice().sort((a, b) =>
+          ((STATUS_ORDER[a.status] ?? 4) - (STATUS_ORDER[b.status] ?? 4)) || byName(a, b));
+      }
+      // Attendance — highest first, and players with NO recorded attendance LAST
+      // rather than mixed in among the genuine zeroes. Until this read the real
+      // register every rate was the same fabricated 0, so "Sort: Attendance"
+      // only ever sorted alphabetically through the tiebreak below.
+      // Resolved once per player, not once per comparison.
+      const pct = new Map();
+      list.forEach(r => { if (!pct.has(r.player)) pct.set(r.player, playerAttendancePct(r.player)); });
+      const rank = r => { const v = pct.get(r.player); return (v === null || v === undefined) ? -1 : Number(v); };
+      return list.slice().sort((a, b) => (rank(b) - rank(a)) || byName(a, b));
     }
 
     function setAvailabilityBoardFilter(filter) {
@@ -15867,11 +15884,11 @@
       const injuryFlags    = opPlayers.filter(p => allSessionIds.some(id =>
         (resolvedAnswerFor(p, id) || {}).reason === 'injury' || p[sessionKey(id) + 'Reason'] === 'injury')).length;
 
-      const playerRows = list => list.map(({player, status, reason, attendanceRate, respondedAt}) => {
+      const playerRows = list => list.map(({player, status, reason, respondedAt}) => {
         const isInjury   = reason === 'injury';
         const reasonText = reason && reason !== 'injury' ? REASON_LABELS[reason] || reason : '';
         const repliedTs  = fmtRespondedAt(respondedAt);
-        const att        = playerAttendanceValue(player);
+        const att        = playerAttendancePct(player);
         return `<button class="msg-player-row ${selectedPlayer.id===player.id ? "active" : ""}" type="button" onclick="openPlayerAvailabilityPopup('${player.id}')">
           <span class="msg-player-main">
             <span style="min-width:0">
@@ -15879,7 +15896,7 @@
               <small>${esc(player.position)}${isInjury ? ' · <span style="color:#f87171;font-weight:700">⚠ Injury</span>' : reasonText ? ' · ' + esc(reasonText) : ''}</small>
               ${repliedTs && status !== 'no-reply' ? `<small style="color:var(--muted);font-size:10px">${esc(repliedTs)}</small>` : ''}
             </span>
-            <span class="msg-attendance-chip">${attendanceLabel(att)}</span>
+            <span class="msg-attendance-chip" title="${att === null ? esc(attendanceUnknownReason()) : 'Recorded training attendance this season'}">${attendanceLabel(att)}</span>
           </span>
           <span class="msg-chip ${isInjury ? 'unavailable' : (status || 'no-reply')}">${isInjury ? '⚠ Injury' : statusLabel(status)}</span>
         </button>`;
@@ -16187,7 +16204,7 @@
             </div>
           </div>
           <div class="training-metrics" style="padding:16px;gap:10px">
-            <article><span>Year attendance</span><strong>${player.attendance || 0}%</strong></article>
+            <article><span>Attendance</span><strong>${(a => a === null ? esc(attendanceUnknownReason()) : a + '%')(playerAttendancePct(player))}</strong></article>
             <article><span>Session replies</span><strong>${repliedCount}/${totalCount}</strong></article>
             <article><span>Position</span><strong>${esc(player.position || '—')}</strong></article>
             <article><span>This session</span><strong style="color:var(--${statusClass})">${statusLabel(statusClass)}</strong></article>
@@ -16271,8 +16288,13 @@
       }).filter(Boolean);
       const totalSessions = state.schedule.length;
 
-      // Season attendance (only if real numeric data)
-      const attendanceText = (typeof player.attendance === 'number' && player.attendance > 0) ? `${player.attendance}%` : 'No data yet';
+      // Season attendance, from the recorded registers. The old guard here
+      // ("only if a positive number") hid the fabricated 0 but would also have
+      // hidden a REAL 0% — a player who missed every register they were on.
+      // The authoritative value needs no such guard: null already means "no
+      // answer", and attendanceUnknownReason() says which kind.
+      const attPct = playerAttendancePct(player);
+      const attendanceText = attPct === null ? attendanceUnknownReason() : `${attPct}%`;
 
       // Contact (skip the auto-generated @player.test placeholder emails)
       const realEmail = player.email && !/@player\.test$/i.test(player.email) ? player.email : '';
@@ -17816,35 +17838,50 @@
     //  · Ties keep the original roster order (stable). Empty query restores it.
     // Presentation only — no data changes, row click/handlers untouched.
     /**
-     * A player's attendance as a NUMBER, or null when the record carries none.
+     * A player's RECORDED training attendance as a percentage, or null when
+     * there is no answer to give.
      *
-     * Roster records reach the client three ways and only one of them
-     * guarantees this field. mergeRosterMember() coerces it (`Number(... || 0)`),
-     * but that runs ONLY when two rows are deduped into one; a unique player is
-     * pushed through as `{ ...player }` untouched. normalizeState() defaults
-     * `history` and `blockedDates` and not `attendance`. loadRosterFromServer()
-     * adopts the server rows verbatim — api/publish.js stores the roster as an
-     * opaque blob and never names the field, so a row is only ever as complete
-     * as whatever was published. A record therefore legitimately arrives with
-     * no `attendance` key at all.
+     * THIS USED TO READ `player.attendance` — a roster field written the
+     * literal 0 on every creation path and NEVER computed by anything. So every
+     * surface below printed "0%": a fabricated statistic, in a club that had
+     * simply never taken a register, sitting beside the real attendance card.
+     * 0% is a fact — it means a register WAS taken and this player missed all of
+     * it. "Nobody has taken a register" is a different state entirely, and one
+     * boolean-shaped default cannot tell them apart.
      *
-     * `${p.attendance}%` then printed "undefined%", and because
-     * `undefined >= 80` and `undefined >= 60` are BOTH false the bar fell
-     * through to red — a missing value displayed as the worst possible one.
+     * It now reads the ONE authoritative source: the server-held registers,
+     * through the ONE aggregation, under the canonical durable identity. No new
+     * request — currentAttendance() is the cached document the coach's other
+     * attendance surfaces already read.
      *
-     * Absence is not zero. A club that has never tracked attendance has no
-     * data, and defaulting to 0 here would assert a measured 0% that nobody
-     * recorded. Callers render null as "—" with a neutral bar. A real 0 is
-     * data and still renders as 0%.
+     * NULL IS NOT ZERO, and callers must keep the two apart: null covers
+     * loading, a failed read, no training access and a genuinely empty
+     * register. attendanceUnknownReason() says WHICH.
      */
-    function playerAttendanceValue(player = {}) {
-      const raw = player?.attendance;
-      if (raw === null || raw === undefined || raw === '') return null;
-      const n = Number(raw);
-      return Number.isFinite(n) ? n : null;
+    function playerAttendancePct(player = {}) {
+      const att = currentAttendance();
+      if (!att || att.denied) return null;
+      const key = playerMatchKey(player);
+      if (!key) return null;                       // unresolved identity claims nothing
+      // A PLAYER's device holds a self-scoped register the server re-keyed to
+      // their own identity. It can answer for them and for nobody else.
+      if (att.scope === 'self' && key !== _attendanceSelfKey) return null;
+      return attendanceStats(att.sessions, key, state.seasonStart, state.seasonEnd).attendancePct;
     }
 
-    /** "72%", or "—" when the record carries no attendance at all. */
+    /**
+     * WHY there is no percentage. Four states that all render as "—" in a dense
+     * cell, kept distinct in the words beside it so a coach is never left to
+     * read "nothing recorded" into what is actually a failed read.
+     */
+    function attendanceUnknownReason() {
+      const att = currentAttendance();
+      if (!att) return attendanceFailed() ? 'Attendance unavailable' : 'Loading attendance…';
+      if (att.denied) return 'Attendance needs training access';
+      return 'No attendance recorded yet';
+    }
+
+    /** "72%", or "—" when there is no recorded attendance to report. */
     function attendanceLabel(value) {
       return value === null ? '\u2014' : `${value}%`;
     }
@@ -18293,7 +18330,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${members.map((p, i) => { const att = playerAttendanceValue(p); return `<tr class="member-row" data-name="${(p.name||'').toLowerCase().replace(/"/g,'&quot;')}" data-pos="${(p.position||'').toLowerCase().replace(/"/g,'&quot;')}" data-order="${i}" onclick="playerOpenDetail('${p.id}')" style="cursor:pointer">
+                ${members.map((p, i) => { const att = playerAttendancePct(p); return `<tr class="member-row" data-name="${(p.name||'').toLowerCase().replace(/"/g,'&quot;')}" data-pos="${(p.position||'').toLowerCase().replace(/"/g,'&quot;')}" data-order="${i}" onclick="playerOpenDetail('${p.id}')" style="cursor:pointer">
                   <td style="padding-left:18px">
                     <div style="display:flex;align-items:center;gap:9px">
                       <div class="player-photo-wrap">
@@ -18303,7 +18340,7 @@
                           <input type="file" accept="image/*" style="display:none" onclick="event.stopPropagation()" onchange="savePlayerPhoto('${p.id}',this)">
                         </label>
                       </div>
-                      <div><strong style="font-size:13px">${p.name}</strong><div style="font-size:12px;color:var(--muted)">${p.email||""}</div><div class="mrow-mmeta">${p.position ? p.position : '—'} · ${attendanceLabel(att)}</div></div>
+                      <div><strong style="font-size:13px">${p.name}</strong><div style="font-size:12px;color:var(--muted)">${p.email||""}</div><div class="mrow-mmeta" title="${att === null ? esc(attendanceUnknownReason()) : 'Recorded training attendance'}">${p.position ? p.position : '—'} · ${attendanceLabel(att)}</div></div>
                     </div>
                   </td>
                   <td data-label="Position"><span class="pill" style="font-size:11px">${p.position}</span></td>
@@ -18316,7 +18353,7 @@
                       return `<div style="display:flex;align-items:center;gap:7px"><span style="display:inline-flex;gap:5px">${dots}</span><span style="font-size:11px;color:var(--muted);font-weight:700">${replied}/3</span></div>`;
                     })()}
                   </td>
-                  <td data-label="Attendance">
+                  <td data-label="Attendance" title="${att === null ? esc(attendanceUnknownReason()) : 'Recorded training attendance this season'}">
                     <div style="display:flex;align-items:center;gap:8px">
                       <div class="history-bar" style="width:60px"><span style="width:${attendanceBarWidth(att)}%;background:${att === null ? 'transparent' : att>=80?'var(--green)':att>=60?'var(--amber)':'var(--red)'}"></span></div>
                       <span style="font-size:12px;font-weight:700;color:${att === null ? 'var(--muted)' : att>=80?'var(--ink)':att>=60?'var(--amber)':'var(--red)'}">${attendanceLabel(att)}</span>
@@ -19753,8 +19790,6 @@
       const medNotes = (state.medicalNotes || {})[p.id] || {};
       const logs = (state.treatmentLogs || []).filter(l => l.playerId === p.id);
       const regLabel = REGISTRATION_LABELS[p.registrationStatus] || REGISTRATION_LABELS.unregistered;
-      const att = playerAttendanceValue(p);
-
       const field = (label, id, val, type='text', extra='') =>
         `<div style="margin-bottom:10px">
           <label style="display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">${label}</label>
@@ -19866,14 +19901,16 @@
             </div>`).join('')}` : ''}
         </div>
 
-        <!-- Availability history -->
+        <!-- Availability history.
+             The bar that used to head this card was an ATTENDANCE figure,
+             labelled "attendance", inside a card titled Availability — the two
+             facts this product keeps deliberately apart, printed as one. It is
+             gone rather than corrected: this is the profile EDIT form, and the
+             Member Centre overview beside it already carries the authoritative
+             attendance card with its percentage, counts and honest states. A
+             second readout could only drift from the first. -->
         <div class="card" style="margin-bottom:14px">
           <h3 style="font-size:13px;font-weight:800;margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Availability</h3>
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-            <div class="history-bar" style="flex:1;max-width:200px"><span style="width:${attendanceBarWidth(att)}%;background:${att === null ? 'transparent' : att>=80?'var(--green)':att>=60?'#d97706':'#dc2626'}"></span></div>
-            <span style="font-size:14px;font-weight:800;${att === null ? 'color:var(--muted)' : ''}">${attendanceLabel(att)}</span>
-            <span class="muted" style="font-size:12px">attendance</span>
-          </div>
           ${p.history && p.history.length ? `<div class="muted" style="font-size:12px">${p.history.length} session record${p.history.length !== 1 ? 's' : ''}</div>` : `<p class="muted" style="font-size:12px;margin:0">No availability history yet.</p>`}
         </div>
 
@@ -31531,34 +31568,6 @@
     }
 
     // ─── PLAYER ATTENDANCE ───────────────────────────────────────────────────
-    function renderPlayerAttendance() {
-      const player = getPlayer();
-      if (!player.id) { document.getElementById("player-attendance").innerHTML = noSquadMsg(); return; }
-      const att = playerAttendanceValue(player);
-      document.getElementById("player-attendance").innerHTML = `
-        <div class="grid two-col">
-          <div class="card">
-            <h2>Attendance</h2>
-            <div style="margin-top:18px">
-              <div class="history-bar"><span style="width:${attendanceBarWidth(att)}%"></span></div>
-              ${att === null
-                ? `<p style="margin-top:7px" class="muted">No training attendance recorded this season yet.</p>`
-                : `<p style="margin-top:7px"><strong>${attendanceLabel(att)}</strong> training attendance this season</p>`}
-            </div>
-          </div>
-          <div class="card">
-            <h2>Availability history</h2>
-            <div class="list" style="margin-top:14px">
-              ${player.history.length ? player.history.map((h, i) => `
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)">
-                  <span style="font-size:13px;color:var(--muted)">Recent response ${i + 1}</span>
-                  <span class="status ${h}">${statusLabel(h)}</span>
-                </div>`).join('') : `<p class="muted" style="font-size:12px;padding:8px 0">No history yet — your replies to availability requests will appear here.</p>`}
-            </div>
-          </div>
-        </div>`;
-    }
-
     // ─── COACH / PLAYER MESSAGES ─────────────────────────────────────────────
     function chatInitials(name) {
       return String(name || "?").split(/\s+/).filter(Boolean).slice(0,2).map(w => w[0]).join("").toUpperCase() || "?";

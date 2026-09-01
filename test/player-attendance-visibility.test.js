@@ -470,10 +470,18 @@ test('a caller with no attendance of their own renders nothing at all', () => {
 
 test('there is still exactly ONE attendance aggregation, and the card uses it', () => {
   assert.equal(html.split('function attendanceStats(').length - 1, 1, 'one aggregation, not two');
+  // CONTRACT CHANGE (Build G). playerAttendancePct() was on this list as a name
+  // a SECOND aggregation might take. It now exists — but it is not one: it is a
+  // thin per-player accessor that calls attendanceStats() and returns its
+  // attendancePct, replacing a stale roster field that fabricated 0%. The rule
+  // this list protects is "one aggregation", and it is asserted directly below.
   for (const forbidden of ['function playerAttendanceStats(', 'function myAttendanceStats(',
-                           'function playerAttendancePct(']) {
+                           'function attendancePercent(']) {
     assert.ok(!html.includes(forbidden), forbidden + ' must not exist');
   }
+  const pct = stripComments(extractFn(html, 'playerAttendancePct'));
+  assert.match(pct, /return attendanceStats\(/, 'the accessor defers to the one aggregation');
+  assert.ok(!/present|absent|recorded|Math\.round/.test(pct), 'it counts nothing of its own');
   const src = stripComments(extractFn(html, 'myAttendanceCardHtml'));
   assert.match(src, /attendanceStats\(att\.sessions, key, state\.seasonStart, state\.seasonEnd\)/,
     'the player card reads the same aggregation the coach profile does');

@@ -121,92 +121,145 @@ test('a manual add persists to the server immediately (flush, not only the 2s de
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Members attendance — "undefined%" and a red bar for a record with no value.
+// Members attendance.
 //
-// The Members table interpolated `${p.attendance}%` with no guard. A roster
-// record legitimately arrives WITHOUT that key: mergeRosterMember() coerces it
-// but only runs when two rows are deduped, normalizeState() defaults `history`
-// and `blockedDates` and not `attendance`, and loadRosterFromServer() (the very
-// wholesale adoption this file exists for) takes the server rows verbatim —
-// api/publish.js stores the roster as an opaque blob and never names the field.
+// CONTRACT CHANGE (Build G). These tests were written for a different defect:
+// the Members table interpolated `${p.attendance}%` with no guard, printing
+// "undefined%" and — because `undefined >= 80` and `undefined >= 60` are BOTH
+// false — a RED bar. playerAttendanceValue() fixed that by reading the field
+// safely.
 //
-// The bar was red for the same reason the text said "undefined": both
-// `undefined >= 80` and `undefined >= 60` are false, so the colour ternary fell
-// through to its worst branch. One missing field, two wrong pixels.
+// It was reading the wrong thing. `player.attendance` is written the literal 0
+// on every creation path and is NEVER computed, so "safely" meant every player
+// in every club showed a measured-looking 0% — beside a real attendance system
+// that said something else. The helper is now playerAttendancePct(), reading the
+// server registers through attendanceStats() under the canonical identity.
+//
+// EVERY INVARIANT BELOW IS UNCHANGED and still asserted: absence never renders
+// undefined/NaN/null, absence draws no bar and is not graded red, values are
+// clamped, a genuine 0% is data and is shown. Only the SOURCE of the number
+// changed. Two tests are gone because their subject is gone:
+// renderPlayerAttendance() was a dead screen (no nav entry, no render registry,
+// no caller) whose only job was to draw the fabricated field, and it is removed
+// — test/attendance-no-fabricated-zero.test.js pins that it stays removed.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function attendanceScope() {
-  const src = [
-    'playerAttendanceValue', 'attendanceLabel', 'attendanceBarWidth',
-  ].map(n => extractFn(html, n)).join('\n');
-  const scope = {};
-  new Function('scope', `${src}\n Object.assign(scope, { playerAttendanceValue, attendanceLabel, attendanceBarWidth });`)(scope);
-  return scope;
+const SEASON = ['2026-07-01', '2027-06-30'];
+
+/**
+ * The three presentation helpers over an INJECTED register, so a case can be
+ * stated as "this is what the coach recorded" rather than as a roster field.
+ */
+function attendanceScope(sessions = {}, opts = {}) {
+  const src = ['playerAttendancePct', 'attendanceLabel', 'attendanceBarWidth',
+               'attendanceStats', 'playerMatchKey'].map(n => extractFn(html, n)).join('\n');
+  return new Function('cfg', `
+    "use strict";
+    const state = { seasonStart: '${SEASON[0]}', seasonEnd: '${SEASON[1]}' };
+    let _attendanceSelfKey = cfg.selfKey || '';
+    const currentAttendance = () => cfg.att;
+    const attendanceFailed = () => !!cfg.failed;
+    ${src}
+    return { playerAttendancePct, attendanceLabel, attendanceBarWidth };
+  `)({ att: opts.att === undefined ? { sessions } : opts.att, failed: opts.failed, selfKey: opts.selfKey });
 }
+const sess = (date, marks) => ({ date, title: 'Tuesday training', marks });
+const AMY = { id: 'user_amy', userId: 'user_amy', name: 'Amy Stone' };
 
 test('a real attendance value renders as its own percentage', () => {
-  const { playerAttendanceValue, attendanceLabel, attendanceBarWidth } = attendanceScope();
-  for (const n of [0, 37, 59, 60, 79, 80, 100]) {
-    assert.equal(playerAttendanceValue({ attendance: n }), n);
-    assert.equal(attendanceLabel(n), `${n}%`);
-    assert.equal(attendanceBarWidth(n), n, 'the bar must be drawn at the real value');
-  }
+  // 3 of 4 present = 75%.
+  const { playerAttendancePct, attendanceLabel, attendanceBarWidth } = attendanceScope({
+    s1: sess('2026-08-04', { 'id:user_amy': 'present' }),
+    s2: sess('2026-08-06', { 'id:user_amy': 'present' }),
+    s3: sess('2026-08-11', { 'id:user_amy': 'present' }),
+    s4: sess('2026-08-13', { 'id:user_amy': 'absent' }),
+  });
+  const v = playerAttendancePct(AMY);
+  assert.equal(v, 75);
+  assert.equal(attendanceLabel(v), '75%');
+  assert.equal(attendanceBarWidth(v), 75, 'the bar must be drawn at the real value');
 });
 
 test('a genuine zero is data, and still reads as 0%', () => {
-  const { playerAttendanceValue, attendanceLabel } = attendanceScope();
-  // Nearly every record-creation path seeds attendance: 0. Zero is a measured
-  // value, not an absence — collapsing it to "—" would hide real data.
-  assert.equal(playerAttendanceValue({ attendance: 0 }), 0);
+  // A register WAS taken and this player missed every session on it. That is a
+  // measured 0%, and it must survive — the whole point of removing the
+  // fabricated one is that a real one can now be believed.
+  const { playerAttendancePct, attendanceLabel, attendanceBarWidth } = attendanceScope({
+    s1: sess('2026-08-04', { 'id:user_amy': 'absent' }),
+    s2: sess('2026-08-06', { 'id:user_amy': 'absent' }),
+  });
+  assert.equal(playerAttendancePct(AMY), 0);
   assert.equal(attendanceLabel(0), '0%');
+  assert.equal(attendanceBarWidth(0), 0);
 });
 
 test('a record with no attendance never renders undefined, NaN or null', () => {
-  const { playerAttendanceValue, attendanceLabel } = attendanceScope();
-  const missing = [
-    { name: 'no key at all' },
-    { name: 'explicit undefined', attendance: undefined },
-    { name: 'explicit null', attendance: null },
-    { name: 'empty string', attendance: '' },
-    { name: 'not a number', attendance: 'n/a' },
-    { name: 'NaN', attendance: NaN },
-    { name: 'Infinity', attendance: Infinity },
+  const cases = [
+    ['no register at all',        attendanceScope({})],
+    ['marked for somebody else',  attendanceScope({ s1: sess('2026-08-04', { 'id:someone': 'present' }) })],
+    ['not recorded this session', attendanceScope({ s1: sess('2026-08-04', {}) })],
+    ['out of season',             attendanceScope({ s1: sess('2025-08-04', { 'id:user_amy': 'present' }) })],
+    ['read failed',               attendanceScope({}, { att: null, failed: true })],
+    ['still loading',             attendanceScope({}, { att: null })],
+    ['no training access',        attendanceScope({}, { att: { denied: true, sessions: {} } })],
   ];
-  for (const player of missing) {
-    const value = playerAttendanceValue(player);
-    assert.equal(value, null, `${player.name} must resolve to "no data"`);
-    const label = attendanceLabel(value);
-    assert.equal(label, '—', `${player.name} must render an em dash`);
-    assert.ok(!/undefined|NaN|null/.test(label), `${player.name} leaked a JS value into the UI`);
+  for (const [name, scope] of cases) {
+    const value = scope.playerAttendancePct(AMY);
+    assert.equal(value, null, `${name} must resolve to "no answer"`);
+    const label = scope.attendanceLabel(value);
+    assert.equal(label, '—', `${name} must render an em dash`);
+    assert.ok(!/undefined|NaN|null/.test(label), `${name} leaked a JS value into the UI`);
   }
 });
 
+test('a player with no resolvable identity claims nobody’s attendance', () => {
+  const { playerAttendancePct } = attendanceScope({ s1: sess('2026-08-04', { 'id:user_amy': 'present' }) });
+  for (const bad of [{}, { name: 'Amy Stone' }, { id: '' }, { id: '', userId: '' }]) {
+    assert.equal(playerAttendancePct(bad), null, JSON.stringify(bad));
+  }
+  // A NAME is never an identity — a namesake must not inherit the record.
+  assert.equal(playerAttendancePct({ id: 'user_other', name: 'Amy Stone' }), null);
+});
+
+test('a self-scoped register answers for its owner and for nobody else', () => {
+  // A PLAYER's device holds only their own marks, re-keyed by the server. The
+  // same helper on that device must refuse to answer about a squad-mate.
+  const sessions = { s1: sess('2026-08-04', { 'id:user_amy': 'present' }) };
+  const scope = attendanceScope({}, { att: { scope: 'self', sessions }, selfKey: 'id:user_amy' });
+  assert.equal(scope.playerAttendancePct(AMY), 100);
+  assert.equal(scope.playerAttendancePct({ id: 'user_ben', userId: 'user_ben' }), null);
+});
+
 test('a missing value draws no bar, rather than a full-width red one', () => {
-  const { playerAttendanceValue, attendanceBarWidth } = attendanceScope();
-  assert.equal(attendanceBarWidth(playerAttendanceValue({})), 0);
-  // The reported symptom: undefined failed both threshold tests, so the colour
+  const { playerAttendancePct, attendanceBarWidth } = attendanceScope({});
+  const att = playerAttendancePct(AMY);
+  assert.equal(attendanceBarWidth(att), 0);
+  // The original symptom: undefined failed both threshold tests, so the colour
   // ternary chose red — a missing value shown as the worst possible score.
-  const att = playerAttendanceValue({});
   const barColour = att === null ? 'transparent' : att >= 80 ? 'green' : att >= 60 ? 'amber' : 'red';
   assert.equal(barColour, 'transparent', 'absence must not be graded');
 });
 
 test('a corrupt or out-of-range value cannot overflow its track', () => {
-  const { attendanceBarWidth } = attendanceScope();
+  const { attendanceBarWidth } = attendanceScope({});
   assert.equal(attendanceBarWidth(150), 100);
   assert.equal(attendanceBarWidth(-20), 0);
 });
 
-test('the Members table and player detail no longer interpolate attendance raw', () => {
-  // Source-level pin: the two surfaces a coach reaches by clicking a member row.
+test('the Members table resolves attendance through the shared helpers', () => {
   const table = html.slice(html.indexOf('class="player-db-table"'), html.indexOf('</tbody>', html.indexOf('class="player-db-table"')));
   assert.ok(!/\$\{p\.attendance\}/.test(table), 'Members table still prints a raw attendance value');
   assert.ok(table.includes('attendanceLabel(att)'), 'Members table must use the guarded label');
   assert.ok(table.includes('attendanceBarWidth(att)'), 'Members bar must use the clamped width');
+  assert.ok(table.includes('playerAttendancePct(p)'), 'and the value must be the recorded one');
 
-  const detail = extractFn(html, 'renderPlayerDetail');
-  assert.ok(!/\$\{p\.attendance\}/.test(detail), 'player detail still prints a raw attendance value');
-  assert.ok(detail.includes('attendanceLabel(att)'), 'player detail must use the guarded label');
+  // The profile EDIT form no longer shows attendance at all: its "Availability"
+  // card used to head itself with an attendance bar, and the Member Centre
+  // overview beside it already carries the authoritative card.
+  const detail = extractFn(html, 'renderPlayerDetail')
+    .replace(/<!--[\s\S]*?-->/g, '')                     // the comment explaining the removal
+    .split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  assert.ok(!/attendance/i.test(detail), 'the edit form must not present attendance');
 });
 
 test('the canonical merge preserves an attendance value it is given', () => {
@@ -244,95 +297,41 @@ test('team/club scoping is untouched by the attendance fix', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Attendance safety, completed — renderMessageCenter and renderPlayerAttendance.
+// Attendance safety, completed — the live messaging surfaces.
 //
-// These two carried the same unguarded pattern as the Members table. The player
-// view was the worse of the pair: `width:${player.attendance}%` produces the
-// CSS declaration "width:undefined%", which the browser DISCARDS as invalid —
-// leaving a block-level span at auto width, i.e. a FULL bar, in the accent
-// colour (.history-bar span defaults to var(--accent)). A player with no
-// recorded attendance was shown a complete gold bar claiming a perfect season.
+// renderMessageCenter() returns renderMessageCenterV2() on its FIRST line, so
+// its own body is unreachable; V2's player row is what a coach actually sees.
+// It used `attendanceRate || 0` — never "undefined%", but it asserted a 0%
+// nobody measured. Same helper, same rule as the Members table.
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('the message centre renders attendance through the shared helpers', () => {
-  const fn = extractFn(html, 'renderMessageCenter');
-  assert.ok(!/\$\{attendanceRate\}/.test(fn), 'player list still prints a raw rate');
-  assert.ok(!/\$\{selectedPlayer\.attendance\}/.test(fn), 'metric tile still prints a raw value');
-  assert.ok(fn.includes('playerAttendanceValue(player)'), 'list row must resolve through the helper');
-  assert.ok(fn.includes('attendanceLabel(playerAttendanceValue(selectedPlayer))'),
-    'metric tile must resolve through the helper');
-});
-
-test('the player attendance view renders through the shared helpers', () => {
-  const fn = extractFn(html, 'renderPlayerAttendance');
-  assert.ok(!/\$\{player\.attendance\}/.test(fn), 'player view still prints a raw value');
-  assert.ok(fn.includes('playerAttendanceValue(player)'), 'must resolve through the helper');
-  assert.ok(fn.includes('attendanceBarWidth(att)'), 'bar must use the clamped width');
-  assert.ok(fn.includes('attendanceLabel(att)'), 'figure must use the guarded label');
-});
-
-test('a missing value can never leave the player bar at auto width', () => {
-  const { playerAttendanceValue, attendanceBarWidth } = attendanceScope();
-  const fn = extractFn(html, 'renderPlayerAttendance');
-  // The width expression must always emit a NUMBER, so the declaration is
-  // valid CSS and the browser cannot fall back to auto (= full bar).
-  const width = attendanceBarWidth(playerAttendanceValue({}));
-  assert.equal(width, 0);
-  assert.equal(typeof width, 'number');
-  assert.ok(!/width:\$\{[^}]*\.attendance\}/.test(fn),
-    'a raw value could render "width:undefined%", which the browser drops');
-});
-
-test('both completed surfaces obey the established attendance rules', () => {
-  const { playerAttendanceValue, attendanceLabel, attendanceBarWidth } = attendanceScope();
-  const cases = [
-    { in: { attendance: 74 },        label: '74%', width: 74 },
-    { in: { attendance: 0 },         label: '0%',  width: 0  },   // genuine zero is data
-    { in: {},                        label: '—',   width: 0  },
-    { in: { attendance: null },      label: '—',   width: 0  },
-    { in: { attendance: undefined }, label: '—',   width: 0  },
-    { in: { attendance: '' },        label: '—',   width: 0  },
-    { in: { attendance: 'n/a' },     label: '—',   width: 0  },
-    { in: { attendance: NaN },       label: '—',   width: 0  },
-    { in: { attendance: 150 },       label: '150%', width: 100 }, // shown real, bar clamped
-  ];
-  for (const c of cases) {
-    const value = playerAttendanceValue(c.in);
-    assert.equal(attendanceLabel(value), c.label, `label for ${JSON.stringify(c.in)}`);
-    assert.equal(attendanceBarWidth(value), c.width, `bar for ${JSON.stringify(c.in)}`);
-    assert.ok(!/undefined|NaN|null/.test(attendanceLabel(value)), 'no JS value may reach the UI');
-  }
-});
-
-test('no render site anywhere still interpolates a raw attendance value', () => {
-  // Whole-file sweep: the guarantee is only worth having if it is exhaustive.
-  // buildPlayerDetailHtml and openPlayerAvailabilityPopup use their own older
-  // guards (`|| 0` and a typeof test) — neither can emit undefined%, so they
-  // are safe and deliberately left alone; this pins that nothing UNGUARDED
-  // remains.
-  const script = html.slice(html.indexOf('<script>'), html.lastIndexOf('</script>'));
-  const raw = [...script.matchAll(/\$\{\s*(?:p|player|selectedPlayer)\.attendance\s*\}/g)];
-  const offenders = raw.filter(m => {
-    const around = script.slice(Math.max(0, m.index - 200), m.index);
-    return !/typeof\s+player\.attendance|\*|\/\//.test(around);
-  });
-  assert.equal(offenders.length, 0,
-    `unguarded attendance interpolation still present: ${offenders.map(o => o[0]).join(', ')}`);
-  assert.ok(!/\$\{attendanceRate\}/.test(script), 'raw attendanceRate interpolation still present');
-});
-
-test('the LIVE messaging surface reads absence as "—", not a measured 0%', () => {
-  // renderMessageCenter() returns renderMessageCenterV2() on its FIRST line, so
-  // its own body — including the two attendance sites there — is unreachable.
-  // The surface a coach actually sees is V2's player row, which used
-  // `attendanceRate || 0`: never "undefined%", but it asserted a 0% nobody
-  // measured. Same helper, same rule as the Members table.
+test('the live messaging chip reads the recorded register, not a roster field', () => {
   const v1 = extractFn(html, 'renderMessageCenter');
   assert.match(v1.split('\n')[1] || '', /return renderMessageCenterV2\(\)/,
     'V1 is expected to be dead — if this changes, its body needs re-checking');
 
   const v2 = extractFn(html, 'renderMessageCenterV2');
   assert.ok(!/\$\{attendanceRate \|\| 0\}%/.test(v2), 'live chip still asserts a measured 0%');
-  assert.ok(v2.includes('playerAttendanceValue(player)'), 'live chip must resolve through the helper');
+  assert.ok(v2.includes('playerAttendancePct(player)'), 'live chip must resolve the recorded value');
   assert.ok(v2.includes('attendanceLabel(att)'), 'live chip must use the guarded label');
+  assert.ok(v2.includes('attendanceUnknownReason()'), 'and must say WHY when there is no figure');
+});
+
+test('no render site anywhere still reads the stale roster field', () => {
+  // Whole-file sweep: the guarantee is only worth having if it is exhaustive.
+  const script = html.slice(html.indexOf('<script>'), html.lastIndexOf('</script>'));
+  const stripped = script.split('\n')
+    .filter(l => !l.trim().startsWith('//') && !l.trim().startsWith('*') && !l.trim().startsWith('/*'))
+    .join('\n');
+  for (const pattern of [/\$\{\s*(?:p|player|selectedPlayer)\.attendance\s*\}/,
+                         /\battendanceLabel\(\s*(?:p|player|selectedPlayer)\.attendance/,
+                         /\bplayerAttendanceValue\b/,
+                         /\$\{attendanceRate\}/]) {
+    assert.ok(!pattern.test(stripped), `still present: ${pattern}`);
+  }
+  // The field itself is left in the data model on purpose (no migration), but
+  // the only places that may still NAME it are the writers and the merge.
+  const reads = [...stripped.matchAll(/(?:\bp|\bplayer|\bselectedPlayer|\bpreferred|\bother)\.attendance\b/g)];
+  assert.deepEqual([...new Set(reads.map(m => m[0]))].sort(), ['other.attendance', 'preferred.attendance'],
+    'only the shape-preserving merge may still read the legacy field');
 });
