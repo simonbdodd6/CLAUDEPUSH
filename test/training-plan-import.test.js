@@ -257,9 +257,14 @@ test('1+2: both routes are offered — the manual planner is untouched and impor
   const panel = fn('trainingImportPanelHTML');
   assert.match(panel, /Plan manually/);
   assert.match(panel, /Import CSV \/ Excel/);
-  assert.match(src, /\$\{trainingImportPanelHTML\(sessId\)\}/, 'mounted in the planner');
-  // The manual affordances still exist exactly as before.
-  assert.match(src, /onclick="addTimeBlock\('\$\{sessId\}'\)/, 'manual Add block still there');
+  // CONTRACT CHANGE (occurrence-identity fix): the planner passes the dated
+  // CONTENT key (ck) so imported blocks land on the occurrence being viewed —
+  // the bare protocol id changed meaning every Monday. Mounting, both routes
+  // and the manual affordances are otherwise exactly as before.
+  assert.match(src, /\$\{trainingImportPanelHTML\(ck\)\}/, 'mounted in the planner');
+  assert.match(src, /onclick="addTimeBlock\('\$\{ck\}'\)/, 'manual Add block still there');
+  assert.ok(!/trainingImportPanelHTML\(sessId\)/.test(src),
+    'no import mount writes under the protocol id');
   assert.match(fn('addTimeBlock'), /activity: ""/, '7247036 empty-block behaviour intact');
   assert.match(fn('trainingPlannedStartTime'), /_trainingScheduleGroupId !== trainingGroupParam/, 'group-time rule intact');
 });

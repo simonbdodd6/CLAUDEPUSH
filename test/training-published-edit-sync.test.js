@@ -64,6 +64,13 @@ function buildHarness({ coach = true } = {}) {
     // published snapshot. (The schedule push above no longer carries blocks.)
     function trainingMarkEdited() { _spy.markEdited++; }
     function canI() { return ${coach}; }
+    // Build J occurrence-identity helpers. This harness drives every edit with
+    // protocol ids directly ('tue'/'thu'), so identity resolution is inert here:
+    // passthrough stands in for the real slot-table lift, which has its own
+    // suite (training-occurrence-content-identity.test.js).
+    function trainingProtocolId(id) { return id; }
+    function trainingContentKey(id) { return id; }
+    function trainingPreviousOccurrenceKey() { return ''; }
     const setTimeout = (fn) => { fn(); return 1; };   // run debounced sync synchronously
     const clearTimeout = () => {};
     // addTimeBlock also queues a focus callback that reaches into the DOM to put
