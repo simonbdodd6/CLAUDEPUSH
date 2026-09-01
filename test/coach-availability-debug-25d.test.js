@@ -70,7 +70,30 @@ test('output rows carry every requested field', async () => {
   }
 });
 
-test('exposed on window and gated debug button is wired to ?debugAvailability=1', () => {
+test('exposed on window — the console is how this diagnostic is reached', () => {
   assert.match(src, /window\.debugAvailabilityMatch\s*=\s*debugAvailabilityMatch/, 'assigned to window');
-  assert.match(src, /location\.search\.includes\('debugAvailability=1'\)[\s\S]{0,200}onclick="debugAvailabilityMatch\(\)"[\s\S]{0,80}Debug Availability Match/, 'gated button wired');
+});
+
+test('the ?debugAvailability=1 BUTTON is gone, and this file no longer claims it exists', () => {
+  // CONTRACT CHANGE (cleanup build). This used to assert that a gated button was
+  // wired to the diagnostic. It passed — but the markup it matched lived inside
+  // the OLD message-centre implementation, 218 lines sitting after an
+  // unconditional `return renderMessageCenterV2();`. That body has been
+  // unreachable since V2 landed, so ?debugAvailability=1 has rendered no button
+  // for just as long, and this assertion was green about a screen nobody could
+  // open. Deleting the dead body is what surfaced it.
+  //
+  // The button is NOT restored here: putting it on the live V2 board is a change
+  // to a coach-facing surface, not a cleanup. The diagnostic itself is untouched
+  // and still reachable exactly as the tests above drive it.
+  // Comments legitimately still NAME the button (they explain why it is gone);
+  // what must not survive is markup that renders it.
+  const code = src.split('\n')
+    .filter(l => !l.trim().startsWith('//') && !l.trim().startsWith('*') && !l.trim().startsWith('/*'))
+    .join('\n').replace(/<!--[\s\S]*?-->/g, '');
+  assert.ok(!/debugAvailability=1'\)/.test(code), 'no gated button markup remains');
+  assert.ok(!code.includes('avail-debug-btn'), 'and no orphaned button id');
+  assert.ok(!/onclick="debugAvailabilityMatch\(\)"/.test(code), 'nothing in the DOM calls it');
+  // The function is intact — this build removed a caller, not the capability.
+  assert.match(src, /async function debugAvailabilityMatch\(\)/);
 });

@@ -307,8 +307,9 @@ test('team/club scoping is untouched by the attendance fix', () => {
 
 test('the live messaging chip reads the recorded register, not a roster field', () => {
   const v1 = extractFn(html, 'renderMessageCenter');
-  assert.match(v1.split('\n')[1] || '', /return renderMessageCenterV2\(\)/,
-    'V1 is expected to be dead — if this changes, its body needs re-checking');
+  assert.match(v1.split('\n').find(l => l.trim().startsWith('return')) || '',
+    /return renderMessageCenterV2\(\)/,
+    'renderMessageCenter delegates — if this changes, V2 stops being the only surface');
 
   const v2 = extractFn(html, 'renderMessageCenterV2');
   assert.ok(!/\$\{attendanceRate \|\| 0\}%/.test(v2), 'live chip still asserts a measured 0%');
