@@ -15797,7 +15797,10 @@
                  clear of the week navigator and response filters below. -->
             <div class="avail-head-row">
               <h2>Availability</h2>
-              <div style="display:flex;align-items:center;gap:10px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end">
+                ${(canI('messaging') && state.operationalGroupId && operationalGroups().length) ? `
+                <button class="btn ghost" type="button" style="font-size:12px;min-height:38px;white-space:nowrap"
+                  onclick="availabilityMessageGroup()">✉ Message this group</button>` : ''}
                 ${operationalGroupSwitcherHTML()}
                 ${ceProductMarkHtml()}
               </div>
@@ -16218,6 +16221,25 @@
         return `group:${opGid}`;
       }
       return 'squad';
+    }
+
+    /**
+     * One tap from the Availability board to THIS group's conversation.
+     *
+     * The destination is availabilityChatChannel() — the same canonical answer
+     * the availability-request write uses — so the button and the request can
+     * never point at different audiences. Navigation only: nothing is sent,
+     * nothing is created here (renderCoachMessages ensures the group channel
+     * idempotently on arrival, exactly as it does for every other entry).
+     */
+    function availabilityMessageGroup() {
+      // Multi-group with no group chosen: there is no "this group" yet — the
+      // button is not rendered in that state, and a stray call goes nowhere
+      // rather than falling through to the club-wide squad channel.
+      if (!state.operationalGroupId || !operationalGroups().length) return;
+      if (!canI('messaging')) return showToast('You do not have permission to open Messages');
+      state.selectedChatId = availabilityChatChannel();
+      setSection('coach', 'messages');
     }
 
     async function sendAvailabilityRequest(sessionId) {
