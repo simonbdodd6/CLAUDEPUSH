@@ -176,7 +176,24 @@ export function resolveAvailabilityForIdentity(bySession = {}, identity = {}) {
   );
   for (const [sessionId, store] of Object.entries(bySession)) {
     if (!store || typeof store !== 'object') continue;
-    const entry = Object.values(store).find(matches);
+    // ONE person can be held as SEVERAL records in one session store — an
+    // invite-era entry (keyed inv-…) and the authenticated write (keyed
+    // user_…) both match the same identity. `.find()` returned whichever was
+    // INSERTED first, so a stale contradictory record (often the older
+    // invite entry) beat the player's newest answer: the player's own device
+    // showed their fresh reply while every coach read resolved the stale one.
+    // The documented contract (the client merge fixed the same defect in
+    // dedupeRosterPlayers) is RECENCY: the newest-stamped answer wins; a
+    // stamped answer always beats an unstamped one; with no stamps at all,
+    // the first match stands as before.
+    let entry = null;
+    for (const candidate of Object.values(store)) {
+      if (!candidate || !matches(candidate)) continue;
+      if (!entry) { entry = candidate; continue; }
+      const a = String(candidate.respondedAt || '');
+      const b = String(entry.respondedAt || '');
+      if (a && (!b || a > b)) entry = candidate;
+    }
     if (entry) out[sessionId] = { response: entry.response, reason: entry.reason || '', respondedAt: entry.respondedAt || null };
   }
   return out;

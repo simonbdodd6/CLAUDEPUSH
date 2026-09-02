@@ -330,6 +330,22 @@ export default async function handler(req, res) {
     }
     const writeGroup = await playerGroupForIdentity(writeTeamId, identity);
     const responses = await loadGroupAvailability(writeTeamId, writeGroup, sessionId);
+    // ONE canonical answer per person per session. The same person can be
+    // stored under several keys (an invite-era inv-… record beside the
+    // authenticated user_… key); leaving the siblings in place kept a stale
+    // contradictory answer alive for every reader that matched it first.
+    // This write IS the person's current answer — remove every other record
+    // that belongs to the same identity before writing the canonical one.
+    // Lazy cleanup, same pattern as the legacy-key migration: no job, the
+    // store heals on the player's next answer.
+    for (const [k, v] of Object.entries(responses)) {
+      if (k === identity.key || !v || typeof v !== 'object') continue;
+      const same =
+        (identity.userId         && v.userId         === identity.userId) ||
+        (identity.playerId       && v.playerId       === identity.playerId) ||
+        (identity.legacyPlayerId && v.legacyPlayerId === identity.legacyPlayerId);
+      if (same) delete responses[k];
+    }
     responses[identity.key] = {
       response,
       reason: safeReason,
