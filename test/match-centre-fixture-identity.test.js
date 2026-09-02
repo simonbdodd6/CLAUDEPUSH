@@ -371,6 +371,11 @@ function mc(matchCentre, formationNames = {}, benchPlayers = []) {
     function mcHydrateSelectedFixture() {}           // async loads exercised elsewhere
     function mcRefreshPublishedForFixture() {}
     ${fn('setMatchCentreFixture')}
+    // Build N: the picker now labels each fixture with its team. This harness
+    // tests picker STRUCTURE (stable ids, never-disabled), not label text —
+    // the real fixtureTeamLabel has its own suites (multi-team-fixtures,
+    // fixture-navigation); a passthrough keeps this one focused.
+    function fixtureTeamLabel() { return ''; }
     ${fn('matchCentreFixturePicker')}
     return { state, toasts, matchCentreFixtureId, matchCentreHasSquadWork,
              setMatchCentreFixture, matchCentreFixturePicker };

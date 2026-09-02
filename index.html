@@ -10232,7 +10232,7 @@
             <button type="button" class="mc-fixnav-btn" id="mc-fixture-prev" ${prevOk ? '' : 'disabled'}
               onclick="mcFixtureNav(-1)" aria-label="Previous fixture">‹ Prev</button>
             <span class="mc-fixnav-label" id="mc-fixture-current">${current
-              ? esc(current.opposition) + esc(label(current.date))
+              ? (t => t ? esc(t) + ' · ' : '')(fixtureTeamLabel(current)) + esc(current.opposition) + esc(label(current.date))
               : 'Not linked'}</span>
             <button type="button" class="mc-fixnav-btn" id="mc-fixture-next" ${nextOk ? '' : 'disabled'}
               onclick="mcFixtureNav(1)" aria-label="Next fixture">Next ›</button>
@@ -10242,7 +10242,7 @@
             onchange="setMatchCentreFixture(this.value)"
             style="min-height:38px;max-width:100%;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);font-size:13px;font-weight:700;padding:0 10px;box-sizing:border-box">
             <option value="" ${selected ? '' : 'selected'}>Not linked</option>
-            ${fixtures.map(f => `<option value="${esc(f.id)}" ${f.id === selected ? 'selected' : ''}>${esc(f.opposition)}${esc(label(f.date))}</option>`).join('')}
+            ${fixtures.map(f => `<option value="${esc(f.id)}" ${f.id === selected ? 'selected' : ''}>${(t => t ? esc(t) + ' · ' : '')(fixtureTeamLabel(f))}${esc(f.opposition)}${esc(label(f.date))}</option>`).join('')}
           </select>
           ${(() => {
             // Segmented TEAM control — only when this group truly has two or
@@ -10472,6 +10472,16 @@
       // as empty within seconds in production.
       if ((current || hasWork) && String(_mcSheetFixtureId ?? '\u0000') === current) mcFlushDraftNow();
       state.matchCentre = { ...(state.matchCentre || {}), fixtureId: id, published: false };
+      // The incoming fixture brings its OWN team: a U18 Second fixture must
+      // open on the U18 Second sheet, not on whichever side ranked first.
+      // Only a side this coach genuinely operates is adopted (the same rule
+      // setMatchCentreSide enforces); the coach can still switch sides after.
+      {
+        const _fxSide = String(((state.fixtures || []).find(f => String(f?.id || '') === id) || {}).sideId || '');
+        if (_fxSide && matchCentreSidesActive().some(t => String(t.id) === _fxSide)) {
+          state.matchCentre.sideId = _fxSide;
+        }
+      }
       state.formationNames = {};
       state.benchPlayers   = Array(8).fill('');
       // Transitional until the incoming fixture's own draft hydrates; the
@@ -14983,6 +14993,9 @@
     let _fixtureAddBusy = false;
     function fixtureAddOpen() {
       if (!canI('manage_fixtures')) return showToast('You do not have permission to add fixtures');
+      // The Team field offers the operating group's REAL teams (the server
+      // resolves an exact name to its canonical id). Free text stays valid.
+      ensureMatchCentreTeams();
       document.getElementById('fixture-add-modal')?.remove();
       const inp = 'width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);padding:0 12px;font-size:14px;box-sizing:border-box';
       const lbl = 'display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)';
@@ -15005,7 +15018,8 @@
                   <option value="">Not set</option><option value="home">Home</option>
                   <option value="away">Away</option><option value="neutral">Neutral</option>
                 </select></label>
-              <label style="${lbl}">Team<input id="fx-team" style="${inp}" placeholder="e.g. 1st XV"></label>
+              <label style="${lbl}">Team<input id="fx-team" list="fx-team-options" style="${inp}" placeholder="e.g. 1st XV">
+                <datalist id="fx-team-options">${matchCentreSides().map(t => `<option value="${esc(t.name)}"></option>`).join('')}</datalist></label>
             </div>
             <label style="${lbl}">Venue<input id="fx-venue" style="${inp}"></label>
             <label style="${lbl}">Competition<input id="fx-comp" style="${inp}"></label>
@@ -24969,6 +24983,12 @@
         // The PLAYER GROUP this fixture belongs to; '' on legacy records,
         // which belong to the club's initial group by the compatibility rule.
         groupId:           fx.groupId           || '',
+        // WHICH TEAM plays it. `team` is the display text the coach typed or
+        // imported; `sideId` is the canonical club-structure team, validated
+        // server-side. Both were previously dropped here, which is why two
+        // same-day fixtures for two teams were indistinguishable on screen.
+        team:              fx.team              || '',
+        sideId:            fx.sideId            || '',
         date:              fx.date              || '',
         kickoffTime:       fx.kickoffTime       || fx.time || '',
         meetTime:          fx.meetTime          || '',
@@ -24989,6 +25009,19 @@
         updatedAt:         fx.updatedAt         || '',
         createdBy:         fx.createdBy         || '',
       };
+    }
+
+    /** The TEAM a fixture belongs to, for display: the canonical side's name
+     *  when the fixture carries one and the structure knows it, else the
+     *  free-text team, else ''. Never invents a name. */
+    function fixtureTeamLabel(fx) {
+      const sid = String(fx?.sideId || '').trim();
+      if (sid) {
+        const side = matchCentreSides().find(t => String(t.id) === sid)
+          || (((_adminData || {}).structure || {}).teams || []).find(t => String(t.id) === sid);
+        if (side && side.name) return String(side.name);
+      }
+      return String(fx?.team || '').trim();
     }
 
     // Pure helper: derives the display status from stored status + date.
@@ -25105,6 +25138,17 @@
       const draft = {
         ..._fixtureDraft,
         opposition:  opp,
+        // Team: keep the canonical sideId ONLY while the name still reads as
+        // that side's; a changed name drops the stale id rather than letting a
+        // "U18 1st" id sit under a "U18 2nd" label. The device-local edit
+        // cannot re-validate against the server, so it never invents an id.
+        ...(() => {
+          const team = document.getElementById('fx-team')?.value?.trim() || '';
+          const keep = String(_fixtureDraft.sideId || '');
+          const side = keep && matchCentreSides().find(t => String(t.id) === keep);
+          const sameName = side && String(side.name || '').trim().toLowerCase() === team.toLowerCase();
+          return { team, sideId: sameName ? keep : '' };
+        })(),
         type:        document.getElementById('fx-type')?.value        || 'Friendly',
         competition: document.getElementById('fx-competition')?.value?.trim() || '',
         homeAway:    document.getElementById('fx-homeaway')?.value    || '',
@@ -25219,6 +25263,10 @@
             </label>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Team
+              <input id="fx-team" list="fx-team-options-edit" style="${INP}" value="${esc(fixtureTeamLabel(_fixtureDraft) || _fixtureDraft.team || '')}" placeholder="e.g. 1st XV">
+              <datalist id="fx-team-options-edit">${matchCentreSides().map(t => `<option value="${esc(t.name)}"></option>`).join('')}</datalist>
+            </label>
             <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Competition
               <input id="fx-competition" style="${INP}" value="${esc(_fixtureDraft.competition||'')}" placeholder="e.g. Ulster Senior Cup">
             </label>
@@ -25280,7 +25328,9 @@
               <span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.06em;background:${status.bg};color:${status.color}">${status.label}</span>
               ${fx.syncStatus !== 'manual' ? `<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:rgba(167,139,250,0.1);color:#a78bfa;border:1px solid rgba(167,139,250,0.3)" title="Source: ${esc(fx.sourceType)}">⟳ synced</span>` : ''}
             </div>
-            <!-- Opposition headline -->
+            <!-- Opposition headline — WHICH team plays it comes first, because
+                 two teams' fixtures can share a date and must never read as one -->
+            ${(() => { const _tl = fixtureTeamLabel(fx); return _tl ? `<div style="font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);margin-bottom:2px">${esc(_tl)}</div>` : ''; })()}
             <div style="font-size:19px;font-weight:800;letter-spacing:-0.02em;margin-bottom:${fx.competition?'2px':'8px'}">vs ${esc(fx.opposition || 'TBC')}</div>
             ${fx.competition ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px">${esc(fx.competition)}</div>` : ''}
             <!-- Date / time meta -->
@@ -31391,6 +31441,7 @@
       const player   = getPlayer();
       const sched    = state.schedule || [];
       const fixtures = playerContextFixtures();
+      const teamTag  = fx => { const t = fixtureTeamLabel(fx); return t ? `<span style="font-size:10px;font-weight:800;padding:2px 6px;border-radius:999px;background:rgba(var(--accent-rgb),0.12);color:var(--accent)">${esc(t)}</span>` : ''; };
       document.getElementById("player-fixtures").innerHTML = `
         <div style="max-width:560px;margin:0 auto;display:grid;gap:14px">
         <div class="card">
@@ -31472,7 +31523,10 @@
             return `<div style="padding:11px 0;border-bottom:1px solid var(--line)">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
                 <div>
-                  <strong style="font-size:14px">vs ${esc(f.opposition)}</strong>
+                  <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                    <strong style="font-size:14px">vs ${esc(f.opposition)}</strong>
+                    ${teamTag(f)}
+                  </div>
                   <div class="muted" style="font-size:12px;margin-top:2px">${[fDate, f.kickoffTime||f.time, f.venue, haLabel].filter(Boolean).join(' · ')}</div>
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">

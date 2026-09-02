@@ -731,6 +731,12 @@ export function sanitiseFixtureRecord(fx) {
     // legacy record, which by the documented compatibility rule belongs to
     // the club's INITIAL group — never guessed onto a newer group.
     groupId:       s(fx?.groupId, 40),
+    // The CANONICAL club-structure team this fixture belongs to — the same
+    // side identity the Match Centre's per-side sheets already use. Optional:
+    // '' on every legacy record and on any club that runs one team per group.
+    // Boundary-validated at create/import (an active team IN the fixture's
+    // group, or refused); the free-text `team` above stays as display text.
+    sideId:        s(fx?.sideId, 40),
     arrivalTime:   hhmm(fx?.arrivalTime),
     meetingPoint:  s(fx?.meetingPoint, 160),
     notes:         s(fx?.notes, 1000),
@@ -1095,9 +1101,42 @@ async function fixturesHandler(req, res) {
     }
   }
 
+  // ── CANONICAL TEAM (side) for fixture writes ─────────────────────────────
+  // A fixture may name the club-structure team it belongs to. An explicit
+  // sideId must be an ACTIVE team in the asserted group — anything else is
+  // refused, never silently dropped. With no explicit sideId, a free-text
+  // team name that matches exactly ONE active team in the group (case- and
+  // whitespace-insensitive) adopts that team's id: deterministic, and the
+  // same rule a human applies reading the import sheet. No match keeps the
+  // text as display-only, exactly as before — nothing is ever guessed.
+  const resolveFixtureSide = async (fx) => {
+    const structure = await loadClubStructure(session.teamId);
+    const inGroup = (structure?.teams || [])
+      .filter(t => t.status === 'active' && String(t.groupId) === fixtureGroup);
+    const explicit = String(fx.sideId || '').trim();
+    if (explicit) {
+      const side = inGroup.find(t => String(t.id) === explicit);
+      if (!side) {
+        const e = new Error('That team does not play in this group');
+        e.status = 400;
+        throw e;
+      }
+      return { sideId: side.id, team: fx.team || side.name };
+    }
+    const nameKey = String(fx.team || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (nameKey) {
+      const matches = inGroup.filter(t =>
+        String(t.name || '').trim().toLowerCase().replace(/\s+/g, ' ') === nameKey);
+      if (matches.length === 1) return { sideId: matches[0].id, team: fx.team };
+    }
+    return { sideId: '', team: fx.team };
+  };
+
   // ── Single manual fixture ───────────────────────────────────────────────
   if (action === 'create') {
     const incoming = sanitiseFixtureRecord({ ...(req.body?.fixture || {}), groupId: fixtureGroup });
+    try { Object.assign(incoming, await resolveFixtureSide(incoming)); }
+    catch (error) { return res.status(error.status || 400).json({ error: error.message }); }
     if (!incoming.opposition) return res.status(400).json({ error: 'Opponent is required' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(incoming.date)) return res.status(400).json({ error: 'A valid date is required' });
     if (req.body?.fixture?.time && !incoming.time) return res.status(400).json({ error: 'Kick-off time must be HH:MM' });
@@ -1145,6 +1184,12 @@ async function fixturesHandler(req, res) {
       // Every imported fixture belongs to the asserted group context — a
       // season upload is one group's season.
       const fixture = sanitiseFixtureRecord({ ...(raw?.fixture || raw || {}), groupId: fixtureGroup });
+      try { Object.assign(fixture, await resolveFixtureSide(fixture)); }
+      catch (error) {
+        summary.errors++;
+        details.push({ opposition: fixture.opposition || '(none)', outcome: 'error', reason: error.message });
+        continue;
+      }
       if (!fixture.opposition || !/^\d{4}-\d{2}-\d{2}$/.test(fixture.date)) {
         summary.errors++;
         details.push({ opposition: fixture.opposition || '(none)', outcome: 'error', reason: 'missing opponent or date' });
