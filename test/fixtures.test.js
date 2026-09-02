@@ -129,7 +129,11 @@ test('normalizeFixture: fills all missing fields with safe defaults', () => {
   assert.equal(out.venue,            '');
   assert.equal(out.homeAway,         '');
   assert.equal(out.competition,      '');
-  assert.equal(out.type,             'Friendly');
+  // CONTRACT CHANGE (Build P): the default was 'Friendly', which painted a
+  // competition nobody entered onto every server fixture (the server model
+  // has no type field at all). Absence is now absence; display sites state
+  // an honest fallback instead of inventing one.
+  assert.equal(out.type,             '');
   assert.equal(out.notes,            '');
   assert.equal(out.status,           'scheduled');
   assert.equal(out.sourceType,       'manual');
