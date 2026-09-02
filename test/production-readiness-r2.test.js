@@ -136,13 +136,19 @@ test('16+17: Permissions-Policy denies capabilities the app verifiably does not 
 
 // ─── 18–22: accessibility ──────────────────────────────────────────────────
 test('18: every control the audit flagged now has an accessible name', () => {
-  // The Club Admin fixture form (the audit\'s headline five)…
-  for (const [id, label] of [['adm-fx-opp', 'Opposition'], ['adm-fx-date', 'Fixture date'],
-                             ['adm-fx-time', 'Kick-off time'], ['adm-fx-venue', 'Venue'],
-                             ['adm-fx-homeaway', 'Home or away']]) {
-    const el = src.match(new RegExp(`<(?:input|select) id="${id}"[^>]*>`));
-    assert.ok(el, `${id} exists`);
-    assert.match(el[0], new RegExp(`aria-label="${label}"`), `${id} labelled "${label}"`);
+  // CONTRACT CHANGE (Build T): the audit's headline five — the Club Admin
+  // inline fixture row (adm-fx-*) — were REMOVED entirely, replaced by the
+  // canonical add/import buttons. A control that no longer exists needs no
+  // label; the audit's intent (no unnamed control) is re-pinned against the
+  // replacements, whose visible text IS their accessible name.
+  assert.ok(!/id="adm-fx-/.test(src), 'the flagged inline row is gone, not unlabelled');
+  const adminStart = src.indexOf('function renderClubAdmin');
+  const adminSlice = src.slice(adminStart, adminStart + 30000);
+  for (const btn of ['fixtureAddOpen()', "fixtureImportOpen('csv')", "fixtureImportOpen('xlsx')"]) {
+    const at = adminSlice.indexOf(btn);
+    assert.ok(at > -1, btn + ' replacement exists');
+    const tag = adminSlice.slice(adminSlice.lastIndexOf('<button', at), adminSlice.indexOf('</button>', at));
+    assert.match(tag, />\s*[^<\s]/, btn + ' has visible text (its accessible name)');
   }
   // …plus the club identity fields, session title, staff level, access level,
   // the weekly-automation day/time pickers and the fixture-import mapping.
@@ -158,13 +164,9 @@ test('18: every control the audit flagged now has an accessible name', () => {
 });
 
 test('19+20+21: labels are additive — ids, handlers and values are untouched', () => {
-  // The fixture form still reads and clears exactly the same ids.
-  assert.match(src, /\['adm-fx-opp','adm-fx-date','adm-fx-time','adm-fx-venue','adm-fx-homeaway'\]/,
-    'the handler id list is unchanged');
-  assert.match(src, /date: v\('adm-fx-date'\), time: v\('adm-fx-time'\)/, 'date/time handlers unchanged');
-  // aria-label was ADDED to each control; no value/onchange was rewritten.
-  const opp = src.match(/<input id="adm-fx-opp"[^>]*>/)[0];
-  assert.match(opp, /placeholder="Opposition \*"/, 'existing placeholder kept');
+  // CONTRACT CHANGE (Build T): the adm-fx-* row and its handler are gone —
+  // those pins moved with them. The surviving R2 subjects stay pinned.
+  assert.ok(!src.includes("adminAddFixture"), 'the legacy handler was removed with its row');
   const access = src.match(/<select aria-label="Access level for[^>]*>/)[0];
   assert.doesNotMatch(access, /value=/, 'no value injected');
   assert.match(src, /onchange="adminSetAccessProfile\('\$\{esc\(member\.id\)\}',this\.value/, 'its handler is intact');
