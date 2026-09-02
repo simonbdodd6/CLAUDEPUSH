@@ -8529,8 +8529,23 @@
         null;
     }
 
+    /** Snapshot ONE session's fields on a set of records; returns a restore
+     *  function. Used so an auth-rejected write can put back exactly what was
+     *  there — the UI must never keep claiming an answer the server refused. */
+    function captureAvailabilityFields(records, key) {
+      const fields = [key, key + 'Reason', key + 'RespondedAt'];
+      const saved = records.map(rec => ({
+        rec, values: fields.map(f => [f, Object.prototype.hasOwnProperty.call(rec, f), rec[f]]),
+      }));
+      return () => {
+        saved.forEach(({ rec, values }) => {
+          values.forEach(([f, had, v]) => { if (had) rec[f] = v; else delete rec[f]; });
+        });
+      };
+    }
+
     let _availAuthPromptedAt = 0; // one auth prompt per burst, not one per session
-    async function saveAvailabilityResponseToServer(sessionId, response, reason) {
+    async function saveAvailabilityResponseToServer(sessionId, response, reason, revert) {
       // 'injured' is a legacy local-only status — map to unavailable + reason:injury for server.
       const sendResponse = response === 'injured' ? 'unavailable' : response;
       const sendReason   = response === 'injured' ? 'injury'     : (reason || '');
@@ -8547,6 +8562,12 @@
           body: JSON.stringify({ response: sendResponse, reason: sendReason, sessionId })
         });
         if (res.status === 401 || res.status === 403) {
+          // The server REFUSED this write — the just-applied local value is a
+          // claim of persistence that did not happen. Put back what was there
+          // before the tap, so the card tells the truth (the persisted state
+          // remains authoritative). Offline stays different by design: a
+          // network failure keeps the local answer for later.
+          if (typeof revert === 'function') { revert(); saveState('Availability revert — not signed in'); render(); }
           if (Date.now() - _availAuthPromptedAt > 4000) {
             _availAuthPromptedAt = Date.now();
             showToast('Not saved — your session has expired. Please log in again.');
@@ -18975,9 +18996,10 @@
       // group's coach board.
       availEventsForViewedWeek().forEach(session => {
         const k = sessionKey(session.id);
+        const _revert = captureAvailabilityFields([player, ...liveRecords], k);
         availabilityApplyToRecord(player, k, 'available', '');
         liveRecords.forEach(rec => availabilityApplyToRecord(rec, k, 'available', ''));
-        saveAvailabilityResponseToServer(session.id, 'available', '');
+        saveAvailabilityResponseToServer(session.id, 'available', '', _revert);
       });
       if (player.history[0] !== 'available') player.history.unshift('available');
       player.history = player.history.slice(0, 5);
@@ -18992,6 +19014,8 @@
       // _availReasonOpenByKey, so this never touches any picker or other session.
       const player    = getPlayer();
       const sessionId = keyToSessionId(key);
+      const _priorRecords = [player, ...findLiveAvailabilityRecords(state.players, player)];
+      const _revert = captureAvailabilityFields(_priorRecords, key);
       availabilityApplyToRecord(player, key, status, reason);
       // getPlayer() returns a shallow copy; update EVERY matching state.players
       // record so the change survives the next render()/hydration AND the coach
@@ -19004,7 +19028,7 @@
       addMasterFeed(`${player.name} updated ${sessionTitle(sessionId)}`, statusLabel(status));
       upsertAvailabilityResponseMessage(player, sessionId, status);
       // POST to server so coach sees it in real time; authenticated users do not need push enabled.
-      saveAvailabilityResponseToServer(sessionId, status, reason);
+      saveAvailabilityResponseToServer(sessionId, status, reason, _revert);
       saveState("Player availability saved");
       render();
       showToast(reason ? `Saved — ${REASON_LABELS[reason] || 'reason noted'}` : "Availability saved");
