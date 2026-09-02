@@ -23478,7 +23478,10 @@
       const rowStyle = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);flex-wrap:wrap';
       const smallBtn = 'min-height:34px;padding:0 12px;font-size:12px;font-weight:700;border-radius:8px';
 
-      const fixtures = state.fixtures || [];
+      // Same boundary as the Fixtures screen: the admin card listed the whole
+      // club's fixtures whatever group was operating. adminAddFixture already
+      // stamps the operating groupId, so what is added here stays visible.
+      const fixtures = contextFixtures();
 
       el.innerHTML = `
         <div style="display:grid;gap:16px;max-width:760px">
@@ -25384,7 +25387,13 @@
       if (!el) return;
 
       const today      = new Date().toISOString().slice(0, 10);
-      const allNorm    = (state.fixtures || []).map(normalizeFixture).filter(Boolean);
+      // THE GROUP BOUNDARY. This list read raw state.fixtures — the whole
+      // club — so operating U18 still showed the Seniors schedule. Every
+      // other fixture surface (Overview, Match Centre picker, player views)
+      // already reads contextFixtures(); the Fixtures screen now does too.
+      // Legacy semantics are inherited: no group in force → the full list,
+      // and a fixture without a groupId belongs to the initial group.
+      const allNorm    = contextFixtures().map(normalizeFixture).filter(Boolean);
       const sorted     = fixtureSortByDate(allNorm);
 
       // Apply filter
