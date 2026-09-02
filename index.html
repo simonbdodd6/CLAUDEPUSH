@@ -15152,8 +15152,12 @@
                   <option value="">Not set</option><option value="home">Home</option>
                   <option value="away">Away</option><option value="neutral">Neutral</option>
                 </select></label>
-              <label style="${lbl}">Team<input id="fx-team" list="fx-team-options" style="${inp}" placeholder="e.g. 1st XV">
-                <datalist id="fx-team-options">${matchCentreSides().map(t => `<option value="${esc(t.name)}"></option>`).join('')}</datalist></label>
+              <label style="${lbl}">Team${(sides => sides.length ? `
+                <select id="fx-team" style="${inp}">
+                  <option value="">— No team —</option>
+                  ${sides.map(t => `<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('')}
+                </select>` : `
+                <input id="fx-team" style="${inp}" placeholder="e.g. 1st XV">`)(matchCentreSides())}</label>
             </div>
             <label style="${lbl}">Venue<input id="fx-venue" style="${inp}"></label>
             <label style="${lbl}">Competition<input id="fx-comp" style="${inp}"></label>
@@ -23479,8 +23483,9 @@
       const smallBtn = 'min-height:34px;padding:0 12px;font-size:12px;font-weight:700;border-radius:8px';
 
       // Same boundary as the Fixtures screen: the admin card listed the whole
-      // club's fixtures whatever group was operating. adminAddFixture already
-      // stamps the operating groupId, so what is added here stays visible.
+      // club's fixtures whatever group was operating. Creation goes through
+      // the canonical fixtureAddOpen modal, which stamps the operating
+      // groupId — so what is added here stays visible on this schedule.
       const fixtures = contextFixtures();
 
       el.innerHTML = `
@@ -23536,19 +23541,18 @@
                 <button class="btn" style="${smallBtn};color:#f87171;border-color:rgba(248,113,113,0.3)" type="button"
                   onclick="adminRemoveFixture('${esc(f.id)}')">Remove</button>
               </div>`).join('') : `<p class="muted" style="font-size:12px;padding:8px 0">No fixtures yet — add your first match below and it will appear in the Match Centre automatically.</p>`}
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:12px">
-              <input id="adm-fx-opp" placeholder="Opposition *" aria-label="Opposition" style="${inputStyle}">
-              <input id="adm-fx-date" type="date" aria-label="Fixture date" style="${inputStyle}">
-              <input id="adm-fx-time" type="time" aria-label="Kick-off time" style="${inputStyle}">
-              <input id="adm-fx-venue" placeholder="Venue" aria-label="Venue" style="${inputStyle}">
-              <select id="adm-fx-homeaway" aria-label="Home or away" style="${inputStyle}">
-                <option value="">Home / Away</option>
-                <option value="home">Home</option>
-                <option value="away">Away</option>
-                <option value="neutral">Neutral</option>
-              </select>
-              <button class="btn primary" type="button" style="min-height:38px;font-size:12px" onclick="adminAddFixture()">+ Add fixture</button>
-            </div>
+            ${canI('manage_fixtures') ? `
+            <!-- ONE canonical creation path. The old inline row here wrote a
+                 device-local fixture through the legacy club-config channel —
+                 no Team, no competition, no server record. These buttons open
+                 the same server-backed modal and importer the Overview quick
+                 actions use: the operating group is stamped automatically and
+                 a chosen Team resolves to its canonical side. -->
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+              <button class="btn primary" type="button" style="min-height:38px;font-size:12px" onclick="fixtureAddOpen()">+ Add fixture</button>
+              <button class="btn" type="button" style="min-height:38px;font-size:12px" onclick="fixtureImportOpen('csv')">Import CSV</button>
+              <button class="btn" type="button" style="min-height:38px;font-size:12px" onclick="fixtureImportOpen('xlsx')">Import Excel</button>
+            </div>` : ''}
           </div>
 
           <!-- Players -->
@@ -23663,20 +23667,6 @@
       saveState('Schedule updated');
       syncSessionsToServer().catch(() => {});
       adminSaveClub();
-    }
-
-    function adminAddFixture() {
-      const v = id => document.getElementById(id)?.value?.trim() || '';
-      const opposition = v('adm-fx-opp');
-      if (!opposition) { showToast('Enter the opposition first'); return; }
-      state.fixtures = state.fixtures || [];
-      state.fixtures.push({ id: 'fx' + Date.now().toString(36), opposition, date: v('adm-fx-date'), time: v('adm-fx-time'), venue: v('adm-fx-venue'), homeAway: v('adm-fx-homeaway') || '', groupId: state.operationalGroupId || '' });
-      saveState('Fixture added');
-      ['adm-fx-opp','adm-fx-date','adm-fx-time','adm-fx-venue','adm-fx-homeaway'].forEach(id => { const el = document.getElementById(id); if (el) el.value = el.tagName === 'SELECT' ? '' : ''; });
-      renderClubAdmin();
-      saveClubConfigToServer().then(saved =>
-        showToast(saved ? `Fixture vs ${opposition} added ✓` : `⚠️ Fixture saved on this device — server sync failed`)
-      ).catch(() => {});
     }
 
     async function adminRemoveFixture(id) {
@@ -25435,8 +25425,12 @@
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
             <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Team
-              <input id="fx-team" list="fx-team-options-edit" style="${INP}" value="${esc(fixtureTeamLabel(_fixtureDraft) || _fixtureDraft.team || '')}" placeholder="e.g. 1st XV">
-              <datalist id="fx-team-options-edit">${matchCentreSides().map(t => `<option value="${esc(t.name)}"></option>`).join('')}</datalist>
+              ${((sides, cur) => (sides.length && (!cur || sides.some(t => String(t.name).trim().toLowerCase() === cur.trim().toLowerCase()))) ? `
+              <select id="fx-team" style="${INP}">
+                <option value="">— No team —</option>
+                ${sides.map(t => `<option value="${esc(t.name)}"${String(t.name).trim().toLowerCase() === cur.trim().toLowerCase() ? ' selected' : ''}>${esc(t.name)}</option>`).join('')}
+              </select>` : `
+              <input id="fx-team" style="${INP}" value="${esc(cur)}" placeholder="e.g. 1st XV">`)(matchCentreSides(), fixtureTeamLabel(_fixtureDraft) || _fixtureDraft.team || '')}
             </label>
             <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Competition
               <input id="fx-competition" style="${INP}" value="${esc(_fixtureDraft.competition||'')}" placeholder="e.g. Ulster Senior Cup">
@@ -25554,7 +25548,13 @@
           <!-- Header -->
           <div style="display:flex;justify-content:space-between;align-items:center">
             <h2 style="margin:0;font-size:20px;font-weight:800;letter-spacing:-0.02em">Fixtures</h2>
-            ${isCoach() && _fixtureEditId === null ? `<button class="btn primary" type="button" onclick="fixtureCreateNew()">+ Add fixture</button>` : ''}
+            ${isCoach() && _fixtureEditId === null ? `
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+              ${canI('manage_fixtures') ? `
+              <button class="btn" type="button" onclick="fixtureImportOpen('csv')" style="font-size:12px">Import CSV</button>
+              <button class="btn" type="button" onclick="fixtureImportOpen('xlsx')" style="font-size:12px">Import Excel</button>` : ''}
+              <button class="btn primary" type="button" onclick="fixtureAddOpen()">+ Add fixture</button>
+            </div>` : ''}
           </div>
 
           <!-- Availability board (Phase 18) -->
@@ -25579,7 +25579,7 @@
               <div style="font-size:32px;margin-bottom:10px"></div>
               <div style="font-weight:700;margin-bottom:6px">${allNorm.length === 0 ? 'No fixtures yet' : 'No fixtures match this filter'}</div>
               <div class="muted" style="font-size:13px;margin-bottom:${allNorm.length===0&&isCoach()?'16px':'0'}">${allNorm.length === 0 ? 'Add your first fixture to track your season.' : 'Try a different filter above.'}</div>
-              ${allNorm.length === 0 && isCoach() ? `<button class="btn primary" type="button" onclick="fixtureCreateNew()">+ Add first fixture</button>` : ''}
+              ${allNorm.length === 0 && isCoach() ? `<button class="btn primary" type="button" onclick="fixtureAddOpen()">+ Add first fixture</button>` : ''}
             </div>` : ''}
 
           <!-- Fixture cards -->

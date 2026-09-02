@@ -184,25 +184,17 @@ test('Club Admin fixtures card reads the operating context (wiring)', () => {
   assert.ok(!/const fixtures = state\.fixtures/.test(admin), 'the raw read is gone');
 });
 
-test('adminAddFixture stamps the OPERATING group onto what it creates', () => {
-  const scope = new Function(`
-    "use strict";
-    const state = { operationalGroupId: ${JSON.stringify(U18)}, fixtures: [] };
-    const vals = { 'adm-fx-opp': 'Kituro U18', 'adm-fx-date': '2026-10-03', 'adm-fx-time': '11:00',
-                   'adm-fx-venue': 'Home', 'adm-fx-homeaway': 'home' };
-    const document = { getElementById: id => id in vals
-      ? { value: vals[id], tagName: 'INPUT' } : { value: '', tagName: 'INPUT' } };
-    function showToast() {}
-    function saveState() {}
-    function renderClubAdmin() {}
-    function saveClubConfigToServer() { return Promise.resolve(true); }
-    ${fn('adminAddFixture')}
-    adminAddFixture();
-    return state.fixtures;
-  `)();
-  assert.equal(scope.length, 1);
-  assert.equal(scope[0].groupId, U18, 'created in the operating group — visible on its own schedule');
-  assert.equal(scope[0].opposition, 'Kituro U18');
+test('Club Admin exposes the CANONICAL creation and import paths (Build T)', () => {
+  // The legacy inline add-row (device-local, team-less, legacy sync channel)
+  // is gone; the card now opens the server-backed modal and importer that
+  // stamp the operating group and resolve the chosen Team to its side.
+  const admin = extractFn(html, 'renderClubAdmin');
+  assert.ok(admin.includes('fixtureAddOpen()'), 'canonical add modal reachable from Club Admin');
+  assert.ok(admin.includes("fixtureImportOpen('csv')"), 'CSV import reachable');
+  assert.ok(admin.includes("fixtureImportOpen('xlsx')"), 'Excel import reachable');
+  assert.ok(!admin.includes('adminAddFixture'), 'the legacy device-local add path is gone');
+  assert.ok(!admin.includes('adm-fx-opp'), 'and its inline row with it');
+  assert.ok(!html.includes('function adminAddFixture('), 'the dead function is removed, not parked');
 });
 
 test('sideId semantics untouched: a fixture with a sideId still resolves its canonical team name', () => {
