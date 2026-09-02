@@ -1133,6 +1133,74 @@ async function fixturesHandler(req, res) {
   };
 
   // ── Single manual fixture ───────────────────────────────────────────────
+  // ── UPDATE / DELETE: one existing fixture, addressed by its id ──────────
+  // The record's OWN group is the authority: the caller must operate it (a
+  // legacy record without a groupId belongs to the initial group by the
+  // documented compatibility rule — asserted, never stamped). groupId is
+  // immutable through an edit; team/side changes revalidate against the
+  // fixture's group exactly as creation does.
+  if (action === 'update' || action === 'delete') {
+    const id = String(req.body?.fixture?.id || req.body?.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'fixture id is required' });
+    const idx = fixtures.findIndex(f => String(f.id) === id);
+    if (idx < 0) return res.status(404).json({ error: 'No such fixture' });
+    const existingFx = fixtures[idx];
+    {
+      const structure = await loadClubStructure(session.teamId);
+      const ownGroup = String(existingFx.groupId || '').trim() || INITIAL_GROUP_ID;
+      try { assertOperationalGroup(session, structure, ownGroup, { as: 'staff' }); }
+      catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
+    }
+
+    if (action === 'delete') {
+      const next = fixtures.filter((_, i) => i !== idx);
+      await writeClubFixtures(session.teamId, club, next);
+      return res.status(200).json({ ok: true, deleted: id, count: next.length });
+    }
+
+    const patch = req.body?.fixture || {};
+    const requestedGroup = String(patch.groupId ?? req.body?.groupId ?? '').trim();
+    if (requestedGroup && requestedGroup !== String(existingFx.groupId || '').trim()) {
+      return res.status(400).json({ error: 'A fixture cannot change group through an edit' });
+    }
+
+    // Team/side: untouched unless the edit names them. The same text keeps
+    // the same canonical side; a change resolves against the FIXTURE's group.
+    let sideFields = { team: existingFx.team || '', sideId: existingFx.sideId || '' };
+    if (patch.team !== undefined || patch.sideId !== undefined) {
+      const teamText = String(patch.team ?? existingFx.team ?? '').trim();
+      const explicit = String(patch.sideId ?? '').trim();
+      const sameText = teamText.toLowerCase() === String(existingFx.team || '').trim().toLowerCase();
+      if (!explicit && sameText) {
+        sideFields = { team: teamText, sideId: existingFx.sideId || '' };
+      } else {
+        fixtureGroup = String(existingFx.groupId || '').trim();
+        try { sideFields = { team: teamText, ...(await resolveFixtureSide({ team: teamText, sideId: explicit })) }; }
+        catch (error) { return res.status(error.status || 400).json({ error: error.message }); }
+      }
+    }
+
+    const EDITABLE = ['opposition', 'date', 'time', 'venue', 'competition', 'homeAway', 'status',
+                      'arrivalTime', 'meetingPoint', 'notes', 'externalId', 'referee', 'transportNotes'];
+    const edited = {};
+    for (const f of EDITABLE) if (patch[f] !== undefined) edited[f] = patch[f];
+    const merged = sanitiseFixtureRecord({
+      ...existingFx, ...edited, ...sideFields,
+      id: existingFx.id,
+      groupId: existingFx.groupId || '',
+      createdAt: existingFx.createdAt || '',
+      updatedAt: new Date().toISOString(),
+    });
+    if (patch.opposition !== undefined && !merged.opposition) return res.status(400).json({ error: 'Opponent is required' });
+    if (patch.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(merged.date)) return res.status(400).json({ error: 'A valid date is required' });
+    if (patch.time !== undefined && String(patch.time || '') && !merged.time) return res.status(400).json({ error: 'Kick-off time must be HH:MM' });
+
+    const next = fixtures.slice();
+    next[idx] = merged;
+    await writeClubFixtures(session.teamId, club, next);
+    return res.status(200).json({ ok: true, fixture: merged, count: next.length });
+  }
+
   if (action === 'create') {
     const incoming = sanitiseFixtureRecord({ ...(req.body?.fixture || {}), groupId: fixtureGroup });
     try { Object.assign(incoming, await resolveFixtureSide(incoming)); }
@@ -1247,7 +1315,7 @@ async function fixturesHandler(req, res) {
     return res.status(200).json({ ok: true, summary, details, count: working.length });
   }
 
-  return res.status(400).json({ error: "action must be 'create' or 'import'" });
+  return res.status(400).json({ error: "action must be 'create', 'import', 'update' or 'delete'" });
 }
 
 // ── Training publication sub-resource (RC4.10A two audiences) ─────────────
@@ -2390,6 +2458,13 @@ async function clubHandler(req, res) {
     const existing = (await kvGet(clubKey(session.teamId))) || null;
     const record = {
       ...club,
+      // FIXTURES ARE NOT THE CLUB CONFIG'S TO WRITE. The canonical fixtures
+      // resource (create/import/update/delete) is their only writer once a
+      // club record exists — a settings save from a device holding a stale
+      // fixtures array must neither clobber nor wipe them. A brand-new club
+      // record may still seed from the payload (legacy first-run clients).
+      fixtures: Array.isArray(existing?.fixtures) ? existing.fixtures
+               : (Array.isArray(club.fixtures) ? club.fixtures : []),
       // Keep an existing weekly schedule if a save doesn't carry one, and always
       // carry the cron-managed automation diagnostics (debug) forward so a coach
       // schedule edit can't wipe the "last automation check / result" fields.
