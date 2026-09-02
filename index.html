@@ -8684,8 +8684,26 @@
       if (!s) return null;
       // The published snapshot keeps the session's PROTOCOL identity (players
       // read it under that id); its blocks come from where the plan actually
-      // lives — the dated occurrence key.
-      return { ...s, blocks: (state.trainingBlocks || {})[trainingContentKey(sessionId)] || [] };
+      // lives — the dated occurrence key. That occurrence key travels WITH the
+      // publication: publications persist across weeks under the protocol id,
+      // so a reader must be able to prove WHICH dated occurrence a snapshot
+      // belongs to — without it, last week's published Thursday could be
+      // adopted as this week's.
+      return { ...s,
+        occurrenceKey: trainingContentKey(sessionId),
+        blocks: (state.trainingBlocks || {})[trainingContentKey(sessionId)] || [] };
+    }
+
+    /** The session tab's one-word status. 'Published' when the legacy player
+     *  flag is set OR either RC4.10A audience holds a publication (stale
+     *  counts — something IS published; the badges carry the detail). Without
+     *  this, publishing to coaches left the tab saying "Draft" on every
+     *  device, the author's included. */
+    function trainingSessionTabStatus(s) {
+      if (s && s.published) return 'Published';
+      const pub = _trainingPubState[s?.id] || {};
+      const has = a => pub[a] && pub[a].status && pub[a].status !== 'draft';
+      return (has('coach') || has('player')) ? 'Published' : 'Draft';
     }
 
     function trainingAudienceStatus(sessionId, audience) {
@@ -8706,6 +8724,32 @@
       return `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:${label.bg};color:${label.fg}">${who}: ${esc(label.text)}${esc(when)}</span>`;
     }
 
+    /** Adopt published COACH plans into the dated content keys the planner
+     *  reads. Returns true when anything was adopted. Pure state-in/state-out
+     *  apart from state.trainingBlocks; guards documented at the call site. */
+    function trainingAdoptCoachPlans(sessions) {
+      let adopted = false;
+      const weekStartIso = availWeekStart(availToday());
+      (Array.isArray(sessions) ? sessions : []).forEach(s => {
+        if (!s || !Array.isArray(s.blocks) || !s.blocks.length) return;
+        // Only sessions in the CURRENT week's planner — the schedule rows are
+        // this week's protocol ids, so a retired session's old publication
+        // can never re-enter the planner through adoption.
+        if (!(state.schedule || []).some(row => row && row.id === s.id)) return;
+        const ck = trainingContentKey(s.id);
+        const belongs = s.occurrenceKey
+          ? String(s.occurrenceKey) === ck
+          : String(s.publishedAt || '').slice(0, 10) >= weekStartIso;
+        if (!belongs) return;
+        const local = (state.trainingBlocks || {})[ck];
+        if (Array.isArray(local) && local.length) return;   // never clobber local work
+        state.trainingBlocks = state.trainingBlocks || {};
+        state.trainingBlocks[ck] = s.blocks;
+        adopted = true;
+      });
+      return adopted;
+    }
+
     async function loadTrainingPublicationState() {
       if (!canI('publish_training')) return;
       // Publication state is per GROUP — stamp the request with the operating
@@ -8724,6 +8768,19 @@
           _trainingPubState[s.id] = _trainingPubState[s.id] || {};
           _trainingPubState[s.id].coach = { status: s.status, publishedAt: s.publishedAt, publishedBy: s.publishedBy };
         });
+        // THE OTHER COACH'S VIEW. The server has returned the full published
+        // staff plan (blocks included) for every session — until now the
+        // client kept the status fields and discarded the blocks, so a
+        // colleague's published plan rendered as "0 blocks · Draft" on every
+        // device but the author's. Adopt each published plan into the dated
+        // content key the planner reads, under two guards:
+        //   · the publication must belong to THIS week's occurrence — proven
+        //     by its own occurrenceKey, or (legacy records without one) by
+        //     being published during the current week, which is the only week
+        //     the planner allows publishing from;
+        //   · local work is never clobbered — a device that already holds
+        //     blocks for the occurrence keeps its own richer draft.
+        if (trainingAdoptCoachPlans(data.sessions || [])) saveState('Published staff plan loaded');
         const pres = await fetch(`/api/publish?resource=training&audience=player${gq}`);
         if (pres.ok) {
           const pdata = await pres.json();
@@ -16909,7 +16966,7 @@
               <button class="session-card-tab ${sessId===s.id?"active":""}" type="button" onclick="setTrainingSession('${s.id}')">
                 <span class="sc-time">${esc(trainingDateLabel(s.date) || trainingDateLabel(trainingDateFromSessionId(trainingContentKey(s.id))) || s.date || s.type || s.id)}</span>
                 <strong>${esc(coachTrainingSessionLabel(s))}</strong>
-                <small style="color:var(--muted);font-size:11px;margin-top:3px;display:block">${sBlocks} block${sBlocks!==1?'s':''}${availBadge}${s.occurrence ? '' : ` · ${s.published ? '<span style="color:var(--green);font-weight:700">Published</span>' : 'Draft'}`}</small>
+                <small style="color:var(--muted);font-size:11px;margin-top:3px;display:block">${sBlocks} block${sBlocks!==1?'s':''}${availBadge}${s.occurrence ? '' : ` · ${trainingSessionTabStatus(s) === 'Published' ? '<span style="color:var(--green);font-weight:700">Published</span>' : 'Draft'}`}</small>
               </button>`;
           }).join("")}
         </div>
