@@ -112,6 +112,9 @@ function client(server, initialState = {}) {
     const _adminData = { structure: null };
     let _mcOtherSide = null;
     ${fn('matchCentreSides')}
+    // Build N: the picker labels fixtures with their team; the label helper
+    // reads matchCentreSides (extracted above) with an _adminData fallback.
+    ${fn('fixtureTeamLabel')}
     ${fn('matchCentreSidesActive')}
     ${fn('matchCentreSideId')}
     ${fn('matchCentreSelectedSide')}

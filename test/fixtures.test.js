@@ -168,6 +168,9 @@ test('normalizeFixture: preserves all set fields unchanged', () => {
   const input = {
     id: 'fx_full', opposition: 'Watermael', date: '2026-09-01',
     groupId: 'grp_u18',   // 3-group foundation: fixtures carry their player group
+    // Build N (multi-team fixtures): a fixture also names WHICH team plays it —
+    // `team` is display text, `sideId` the canonical club-structure team.
+    team: 'U18 1st XV', sideId: 'team_u18_1',
     kickoffTime: '15:00', meetTime: '13:30', venue: 'Stade des 3 Tilleuls',
     homeAway: 'home', competition: 'Belgian Division 3', type: 'League',
     notes: 'Travel by coach', status: 'scheduled',

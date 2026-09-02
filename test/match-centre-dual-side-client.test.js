@@ -95,6 +95,9 @@ function client(server) {
     let _mcOtherSide = null;
     ${fn('mcSideRank')}
     ${fn('matchCentreSides')}
+    // Build N: the picker labels fixtures with their team; the label helper
+    // reads matchCentreSides (extracted above) with an _adminData fallback.
+    ${fn('fixtureTeamLabel')}
     ${fn('matchCentreSidesActive')}
     ${fn('matchCentreSideId')}
     ${fn('matchCentreSelectedSide')}
@@ -160,6 +163,8 @@ test('with one active team (or no structure) the side dimension is OFF', () => {
     const _adminData = { structure: arguments[0] };
     ${fn('mcSideRank')}
     ${fn('matchCentreSides')}
+    // Build N: the picker labels fixtures with their team.
+    ${fn('fixtureTeamLabel')}
     ${fn('matchCentreSidesActive')}
     ${fn('matchCentreSideId')}
     return { sides: matchCentreSidesActive(), id: matchCentreSideId() };
@@ -266,6 +271,8 @@ test('the other side\'s names surface only for the exact fixture+side context', 
     function contextFixtures() { return state.fixtures || []; }
     ${fn('mcSideRank')}
     ${fn('matchCentreSides')}
+    // Build N: the picker labels fixtures with their team.
+    ${fn('fixtureTeamLabel')}
     ${fn('matchCentreSidesActive')}
     ${fn('matchCentreSideId')}
     ${fn('matchCentreSelectedFixture')}
@@ -381,6 +388,8 @@ test('scoped team metadata still respects the operational group client-side', ()
     let _mcTeams = arguments[0];
     ${fn('mcSideRank')}
     ${fn('matchCentreSides')}
+    // Build N: the picker labels fixtures with their team.
+    ${fn('fixtureTeamLabel')}
     return matchCentreSides();
   `);
   const teams = { groups: [{ id: 'g1', name: 'Seniors' }, { id: 'g2', name: 'U18' }],
