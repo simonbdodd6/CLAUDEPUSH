@@ -23357,6 +23357,13 @@
             </div>
           </div>
 
+          <!-- Club structure: groups and teams. The SAME card Settings shows —
+               one implementation, two doors. Club Admin without it was a
+               club-wide screen whose only named team was the legacy club-wide
+               "Team name", which is why arriving here from U18 read as
+               "always the senior team" with no way to reach U18's teams. -->
+          ${(typeof renderClubStructureCard === 'function' ? renderClubStructureCard() : '')}
+
           <!-- Training schedule -->
           <div class="card">
             <h2 style="margin-bottom:4px">Training schedule</h2>
@@ -23686,7 +23693,15 @@
         .includes(String(state.currentUserId || ''))
         || !(_adminData.structureAccess?.clubWideStaffIds || []).length;
       const counts = _adminData.counts || { groups: {}, teams: {} };
-      const groups = structureGroupsSorted();
+      // The group the coach is OPERATING comes first and is marked, so
+      // arriving from U18 shows U18's teams at the top instead of whichever
+      // group sorts first alphabetically (which is how "Club Admin always
+      // opens on the senior team" read in practice). Ordering and a label
+      // only: visibility and edit rights are unchanged — the server-derived
+      // structure and _canEditStructure still decide everything.
+      const opGid = String(state.operationalGroupId || '');
+      const groups = structureGroupsSorted()
+        .sort((a, b) => (String(b.id) === opGid ? 1 : 0) - (String(a.id) === opGid ? 1 : 0));
       const pill = (text, tone) => `<span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:999px;background:${tone};color:#fff">${esc(text)}</span>`;
 
       const groupRows = groups.map(g => {
@@ -23698,7 +23713,7 @@
             <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap">
               <div style="min-width:0">
                 <div style="font-weight:800;font-size:14px;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-                  ${esc(g.name)} ${archived ? pill('Archived', 'var(--muted)') : ''}
+                  ${esc(g.name)} ${archived ? pill('Archived', 'var(--muted)') : ''}${String(g.id) === opGid ? ' ' + pill('Operating', 'var(--accent)') : ''}
                 </div>
                 <div class="muted" style="font-size:11.5px;margin-top:3px">
                   ${gc.members} ${gc.members === 1 ? 'member' : 'members'} · ${teams.filter(t => t.status === 'active').length} ${teams.filter(t => t.status === 'active').length === 1 ? 'team' : 'teams'}
@@ -39059,7 +39074,19 @@
       // D1b — the SERVER decides which groups this identity may operate in, in
       // each capacity. The client adopts that answer rather than re-deriving
       // the rules, so the UI can never offer a group the API would refuse.
-      if (d?.operational !== undefined) { _myOperational = d.operational; resolveOperationalGroup(); }
+      if (d?.operational !== undefined) {
+        // The server's answer can CHANGE the group in force (first load,
+        // restored device, membership edit). Every group-scoped screen reads
+        // state.operationalGroupId at render time, so a change that arrives
+        // after first paint must repaint — this is the "Overview stayed on
+        // Seniors until I refreshed" symptom, fixed at the one shared source.
+        // Same-answer payloads (session polls) change nothing and skip the
+        // render, so no mid-edit repaint is ever triggered by a quiet poll.
+        const _beforeGid = state.operationalGroupId;
+        _myOperational = d.operational;
+        resolveOperationalGroup();
+        if (state.operationalGroupId !== _beforeGid) render();
+      }
       // The stored membership answers "which capacities do I hold here?".
       // Medical is a permission on it, never a replacement for it.
       if (d?.teamMember !== undefined) _myMembership = d.teamMember || null;
