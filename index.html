@@ -23672,9 +23672,7 @@
     async function adminRemoveFixture(id) {
       const fx = (state.fixtures || []).find(f => f.id === id);
       if (!(await ceConfirm(`Remove the fixture vs ${fx?.opposition || 'this opponent'}?`, '', { confirmLabel: 'Remove fixture', danger: true }))) return;
-      state.fixtures = (state.fixtures || []).filter(f => f.id !== id);
-      saveState('Fixture removed');
-      saveClubConfigToServer().catch(() => {});
+      if (!(await fixtureServerDelete(id))) return;   // one canonical delete — see fixtureServerDelete
       showToast(`Fixture vs ${fx?.opposition || 'opponent'} removed`);
       renderClubAdmin();
     }
@@ -25265,13 +25263,6 @@
 
     // ── CRUD functions ────────────────────────────────────────────────────────────
 
-    function fixtureCreateNew() {
-      _fixtureEditId = 'new';
-      _fixtureDraft  = { type: 'Friendly', homeAway: 'home', status: 'scheduled',
-                         sourceType: 'manual', syncStatus: 'manual' };
-      renderCoachFixtures();
-    }
-
     function fixtureEdit(id) {
       const fx = (state.fixtures || []).find(f => f.id === id);
       if (!fx) return;
@@ -25286,54 +25277,85 @@
       renderCoachFixtures();
     }
 
-    function fixtureSaveForm() {
+    let _fixtureSaveBusy = false;
+    async function fixtureSaveForm() {
+      // THE CANONICAL EDIT. This used to write state.fixtures and saveState()
+      // only — a device-local change whose persistence depended on an
+      // unrelated settings save racing the next server refresh. The edit now
+      // goes through the fixtures resource: the server validates, preserves
+      // the fixture's group, revalidates any side change against that group,
+      // and what renders afterwards is what the server accepted.
+      if (_fixtureSaveBusy) return;
       const opp = document.getElementById('fx-opposition')?.value?.trim();
       if (!opp) { showToast('Opposition is required'); return; }
-      const now   = new Date().toISOString();
-      const draft = {
-        ..._fixtureDraft,
+      const editId = _fixtureEditId;
+      if (!editId || editId === 'new') return;   // creation lives in fixtureAddOpen
+      // Team: keep the canonical sideId ONLY while the name still reads as
+      // that side's; a changed name drops the stale id rather than letting a
+      // "U18 1st" id sit under a "U18 2nd" label. The device-local edit
+      // cannot re-validate against the server, so it never invents an id —
+      // the SERVER re-resolves the name against the fixture's own group.
+      const teamFields = (() => {
+        const team = document.getElementById('fx-team')?.value?.trim() || '';
+        const keep = String(_fixtureDraft.sideId || '');
+        const side = keep && matchCentreSides().find(t => String(t.id) === keep);
+        const sameName = side && String(side.name || '').trim().toLowerCase() === team.toLowerCase();
+        return { team, sideId: sameName ? keep : '' };
+      })();
+      const patch = {
+        id:          editId,
         opposition:  opp,
-        // Team: keep the canonical sideId ONLY while the name still reads as
-        // that side's; a changed name drops the stale id rather than letting a
-        // "U18 1st" id sit under a "U18 2nd" label. The device-local edit
-        // cannot re-validate against the server, so it never invents an id.
-        ...(() => {
-          const team = document.getElementById('fx-team')?.value?.trim() || '';
-          const keep = String(_fixtureDraft.sideId || '');
-          const side = keep && matchCentreSides().find(t => String(t.id) === keep);
-          const sameName = side && String(side.name || '').trim().toLowerCase() === team.toLowerCase();
-          return { team, sideId: sameName ? keep : '' };
-        })(),
-        type:        document.getElementById('fx-type')?.value        || 'Friendly',
+        ...teamFields,
         competition: document.getElementById('fx-competition')?.value?.trim() || '',
         homeAway:    document.getElementById('fx-homeaway')?.value    || '',
         date:        document.getElementById('fx-date')?.value        || '',
-        kickoffTime: document.getElementById('fx-kickofftime')?.value || '',
-        meetTime:    document.getElementById('fx-meettime')?.value    || '',
+        time:        document.getElementById('fx-kickofftime')?.value || '',
         venue:       document.getElementById('fx-venue')?.value?.trim()      || '',
         notes:       document.getElementById('fx-notes')?.value?.trim()      || '',
-        updatedAt:   now,
-        sourceType:  _fixtureDraft.sourceType  || 'manual',
-        syncStatus:  _fixtureDraft.syncStatus  || 'manual',
       };
-
-      const fixtures = [...(state.fixtures || [])];
-      if (_fixtureEditId === 'new') {
-        draft.id        = 'fx_' + Date.now().toString(36);
-        draft.createdAt = now;
-        draft.createdBy = state.currentUserId || '';
-        fixtures.push(draft);
-        showToast('Fixture added ✓');
-      } else {
-        const idx = fixtures.findIndex(f => f.id === _fixtureEditId);
-        if (idx >= 0) { fixtures[idx] = { ...fixtures[idx], ...draft }; showToast('Fixture saved ✓'); }
+      _fixtureSaveBusy = true;
+      try {
+        const res = await fetch('/api/publish?resource=fixtures', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update', fixture: patch }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          // Honest failure: nothing was written anywhere — the form stays
+          // open with the coach's values, and the list still shows the
+          // server's truth.
+          showToast(data.error || 'Could not save the fixture');
+          return;
+        }
+        _fixtureEditId = null;
+        _fixtureDraft  = {};
+        await loadFixturesFromServer(true);
+        renderCoachFixtures();
+        showToast('Fixture saved ✓');
+      } catch {
+        showToast("We couldn't connect. Check your internet connection and try again.");
+      } finally {
+        _fixtureSaveBusy = false;
       }
+    }
 
-      state.fixtures = fixtures;
-      _fixtureEditId = null;
-      _fixtureDraft  = {};
-      saveState('Fixture saved');
-      renderCoachFixtures();
+    /** ONE canonical fixture delete, used by the Fixtures screen and Club
+     *  Admin alike. Server-first: nothing disappears locally unless the
+     *  server actually removed it. Returns true on success. */
+    async function fixtureServerDelete(id) {
+      try {
+        const res = await fetch('/api/publish?resource=fixtures', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', id: String(id) }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || 'Could not delete the fixture'); return false; }
+        await loadFixturesFromServer(true);
+        return true;
+      } catch {
+        showToast("We couldn't connect. Check your internet connection and try again.");
+        return false;
+      }
     }
 
     async function fixtureDelete(id) {
@@ -25342,21 +25364,27 @@
       const norm = normalizeFixture(fx);
       const label = norm.opposition ? `vs ${norm.opposition}` : 'this fixture';
       if (!(await ceConfirm(`Delete ${label}?`, 'This cannot be undone.', { confirmLabel: 'Delete', danger: true }))) return;
-      state.fixtures = (state.fixtures || []).filter(f => f.id !== id);
+      if (!(await fixtureServerDelete(id))) return;
       if (_fixtureEditId === id) { _fixtureEditId = null; _fixtureDraft = {}; }
-      saveState('Fixture deleted');
       showToast('Fixture deleted');
       renderCoachFixtures();
     }
 
-    function fixtureMarkStatus(id, newStatus) {
-      const fixtures = [...(state.fixtures || [])];
-      const idx = fixtures.findIndex(f => f.id === id);
-      if (idx < 0) return;
-      fixtures[idx] = { ...fixtures[idx], status: newStatus, updatedAt: new Date().toISOString() };
-      state.fixtures = fixtures;
-      saveState('Fixture status updated');
-      renderCoachFixtures();
+    async function fixtureMarkStatus(id, newStatus) {
+      // Same canonical path as an edit: the status is a stored server field,
+      // and a mark that the server refused must not pretend to stick.
+      try {
+        const res = await fetch('/api/publish?resource=fixtures', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update', fixture: { id: String(id), status: String(newStatus) } }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || 'Could not update the fixture'); return; }
+        await loadFixturesFromServer(true);
+        renderCoachFixtures();
+      } catch {
+        showToast("We couldn't connect. Check your internet connection and try again.");
+      }
     }
 
     function fixtureSetFilter(f) {
@@ -25415,12 +25443,8 @@
             <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Opposition *
               <input id="fx-opposition" style="${INP}" value="${esc(_fixtureDraft.opposition||'')}" placeholder="e.g. Anderlecht RFC">
             </label>
-            <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Type
-              <select id="fx-type" style="${INP}">
-                ${['League','Friendly','Cup','Training Match'].map(t =>
-                  `<option value="${t}"${_fixtureDraft.type===t?' selected':''}>${t}</option>`
-                ).join('')}
-              </select>
+            <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Competition
+              <input id="fx-competition" style="${INP}" value="${esc(_fixtureDraft.competition||'')}" placeholder="e.g. Ulster Senior Cup">
             </label>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
@@ -25431,9 +25455,6 @@
                 ${sides.map(t => `<option value="${esc(t.name)}"${String(t.name).trim().toLowerCase() === cur.trim().toLowerCase() ? ' selected' : ''}>${esc(t.name)}</option>`).join('')}
               </select>` : `
               <input id="fx-team" style="${INP}" value="${esc(cur)}" placeholder="e.g. 1st XV">`)(matchCentreSides(), fixtureTeamLabel(_fixtureDraft) || _fixtureDraft.team || '')}
-            </label>
-            <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Competition
-              <input id="fx-competition" style="${INP}" value="${esc(_fixtureDraft.competition||'')}" placeholder="e.g. Ulster Senior Cup">
             </label>
             <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Home / Away
               <select id="fx-homeaway" style="${INP}">
@@ -40008,7 +40029,10 @@
             time:       state.matchCentre?.kickoffTime || '',
             venue:      state.matchCentre?.venue || '',
           },
-          fixtures: state.fixtures || [],
+          // Fixtures deliberately NOT sent: the canonical fixtures resource
+          // is their only writer, and the server carries the stored list
+          // forward — a stale device's settings save can no longer clobber
+          // (or wipe) the club's fixtures.
           seasonStart: state.seasonStart || '',
           seasonEnd: state.seasonEnd || '',
           matchDay: state.matchDayDefault || '',
