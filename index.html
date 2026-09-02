@@ -2774,6 +2774,14 @@
     .home-wrap { max-width: 1180px; }
 
     .ovw-row { display: grid; gap: 14px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .ovw-fixlist { display: grid; gap: 8px; }
+    .ovw-fixrow { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+      padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px;
+      background: var(--panel-2); color: var(--ink); cursor: pointer; min-height: 44px; }
+    .ovw-fixrow:hover { border-color: var(--accent); }
+    .ovw-fixrow-main { min-width: 0; flex: 1; display: grid; gap: 3px; }
+    .ovw-fixrow-top { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+    .ovw-fixrow-opp { font-weight: 800; font-size: 13.5px; overflow-wrap: anywhere; min-width: 0; }
     .ovw-card {
       display: flex; flex-direction: column; gap: 11px; min-width: 0;
       padding: 18px 20px 16px; border: 1px solid var(--line); border-radius: var(--r);
@@ -13456,10 +13464,17 @@
             cta:'Finish squad →', action:`setSection('coach','matchday')` });
         }
       }
-      if (mc.kickoffDate && (!String(mc.opposition || '').trim() || !String(mc.venue || '').trim())) {
+      // The linked CANONICAL fixture is the authority on these details — the
+      // Match Centre copy can predate a later edit or an autopilot link, and
+      // this card used to nag "venue missing" for a fixture that had one.
+      const mcFxRec = mc.fixtureId
+        ? (state.fixtures || []).find(f => String(f?.id || '') === String(mc.fixtureId)) : null;
+      const mcOppKnown   = String(mc.opposition || (mcFxRec && mcFxRec.opposition) || '').trim();
+      const mcVenueKnown = String(mc.venue || (mcFxRec && mcFxRec.venue) || '').trim();
+      if (mc.kickoffDate && (!mcOppKnown || !mcVenueKnown)) {
         items.push({ score:38, level:'info', icon:'',
           text:'Match details missing',
-          detail:[!String(mc.opposition || '').trim() ? 'opposition' : '', !String(mc.venue || '').trim() ? 'venue' : ''].filter(Boolean).join(' · '),
+          detail:[!mcOppKnown ? 'opposition' : '', !mcVenueKnown ? 'venue' : ''].filter(Boolean).join(' · '),
           cta:'Complete →', action:`setSection('coach','matchday')` });
       }
 
@@ -14483,9 +14498,21 @@
       const roster   = overviewRoster();
       const todayIso = new Date().toISOString().slice(0, 10);
 
-      // ── 1. Upcoming fixture ──────────────────────────────────────────────
-      const nextFx = fixtureSortByDate(contextFixtures().map(normalizeFixture).filter(Boolean))
-        .find(f => (!f.date || f.date >= todayIso) && f.status !== 'cancelled' && f.status !== 'completed');
+      // ── 1. Upcoming fixture(s) ───────────────────────────────────────────
+      // A group can field several teams (U18 First / U18 Second), so several
+      // fixtures can be genuinely upcoming at once — the old single .find()
+      // silently hid every fixture but one. All group-relevant upcoming
+      // fixtures are computed; one keeps the rich card, several become
+      // compact rows (capped at 3), each opening ITS OWN Match Centre — the
+      // Build N side adoption then lands on that fixture's team sheet.
+      const upcomingFx = fixtureSortByDate(contextFixtures().map(normalizeFixture).filter(Boolean))
+        .filter(f => (!f.date || f.date >= todayIso) && f.status !== 'cancelled' && f.status !== 'completed');
+      const nextFx = upcomingFx[0] || null;
+      // The pill states the canonical COMPETITION; an explicit device-entered
+      // type stands in; an unknown competition says so rather than inventing
+      // "Friendly" (the server model has no type field, so every imported
+      // fixture used to wear that fabricated label).
+      const fxCompLabel = f => f.competition || f.type || 'Competition not set';
 
       let fixtureBody;
       if (!nextFx) {
@@ -14501,7 +14528,9 @@
         const stat   = fixtureDisplayStatus(nextFx);
         const type   = fixtureTypeStyle(nextFx.type);
         const ha     = HOME_AWAY_LABEL[nextFx.homeAway] || '';
-        const meta   = [fxDate, nextFx.kickoffTime ? 'KO ' + nextFx.kickoffTime : '', nextFx.venue || '']
+        // Venue is stated honestly in BOTH directions: shown when it exists,
+        // named as missing when it does not — never silently omitted.
+        const meta   = [fxDate, nextFx.kickoffTime ? 'KO ' + nextFx.kickoffTime : '', nextFx.venue || 'Venue not set']
           .filter(Boolean).map(esc).join(' · ');
 
         // Squad state for THIS fixture — the selection screen owns it; the
@@ -14522,7 +14551,8 @@
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
             <div style="min-width:0">
               <div class="ovw-pillrow" style="margin-bottom:6px">
-                <span class="ovw-pill" style="background:${type.bg};color:${type.color}">${esc(nextFx.type || 'Fixture')}</span>
+                ${(t => t ? `<span class="ovw-pill" style="background:var(--accent-soft);color:var(--accent)">${esc(t)}</span>` : '')(fixtureTeamLabel(nextFx))}
+                <span class="ovw-pill" style="background:${type.bg};color:${type.color}">${esc(fxCompLabel(nextFx))}</span>
                 ${ha ? `<span class="ovw-pill" style="background:${nextFx.homeAway === 'home' ? 'var(--status-available-soft)' : 'var(--status-noreply-soft)'};color:${nextFx.homeAway === 'home' ? 'var(--status-available)' : 'var(--status-noreply)'}">${esc(ha)}</span>` : ''}
                 <span class="ovw-pill" style="background:${stat.bg};color:${stat.color}">${esc(stat.label)}</span>
               </div>
@@ -14533,6 +14563,32 @@
             ${cd ? `<div class="ovw-countdown"><b>${esc(cd)}</b><span>to kick-off</span></div>` : ''}
           </div>
           <div class="ovw-foot">${squadLine}</div>`;
+
+        if (upcomingFx.length > 1) {
+          const rows = upcomingFx.slice(0, 3).map(f => {
+            const rDate = f.date
+              ? new Date(f.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+              : 'Date TBC';
+            const rHa = HOME_AWAY_LABEL[f.homeAway] || '';
+            const tl  = fixtureTeamLabel(f);
+            return `
+              <button type="button" class="ovw-fixrow"
+                onclick="event.stopPropagation();setMatchCentreFixture('${esc(String(f.id))}');setSection('coach','matchday')"
+                aria-label="Open ${esc(tl ? tl + ' ' : '')}fixture vs ${esc(f.opposition || 'TBC')} in Match Centre">
+                <span class="ovw-fixrow-main">
+                  <span class="ovw-fixrow-top">
+                    ${tl ? `<span class="ovw-pill" style="background:var(--accent-soft);color:var(--accent)">${esc(tl)}</span>` : ''}
+                    <span class="ovw-fixrow-opp">vs ${esc(f.opposition || 'TBC')}</span>
+                    ${rHa ? `<span class="ovw-pill" style="background:${f.homeAway === 'home' ? 'var(--status-available-soft)' : 'var(--status-noreply-soft)'};color:${f.homeAway === 'home' ? 'var(--status-available)' : 'var(--status-noreply)'}">${esc(rHa)}</span>` : ''}
+                  </span>
+                  <span class="ovw-meta">${esc(fxCompLabel(f))} · ${esc(rDate)}${f.kickoffTime ? ' · KO ' + esc(f.kickoffTime) : ''} · ${esc(f.venue || 'Venue not set')}</span>
+                </span>
+                <span class="ovw-open" aria-hidden="true">&rsaquo;</span>
+              </button>`;
+          }).join('');
+          fixtureBody = `<div class="ovw-fixlist">${rows}</div>${
+            upcomingFx.length > 3 ? `<div class="ovw-foot"><span class="muted">${upcomingFx.length - 3} more in Fixtures</span></div>` : ''}`;
+        }
       }
 
       // ── 2. Training ──────────────────────────────────────────────────────
@@ -14657,7 +14713,7 @@
 
       return `
         <div class="ovw-row">
-          ${card('Upcoming fixture', '', fixtureBody, "setSection('coach','fixtures')", 'Upcoming fixture — open Fixtures')}
+          ${card('Upcoming fixture', upcomingFx.length > 1 ? `<span class="ovw-pill" style="background:var(--accent-soft);color:var(--accent)">${upcomingFx.length}</span>` : '', fixtureBody, "setSection('coach','fixtures')", 'Upcoming fixture — open Fixtures')}
           ${card('Training', tonightSess ? '<span class="ovw-pill" style="background:var(--accent-soft);color:var(--accent)">Tonight</span>' : '', trainingBody, "setSection('coach','training')", 'Training — open Training')}
           ${card('Availability', av.kind !== 'none' && !availNoReplies ? `<span style="font-size:12px;font-weight:800;color:var(--status-available)">${av.availPct}%</span>` : '', availabilityBody, "setSection('coach','message')", 'Availability — open Availability')}
         </div>
@@ -15170,7 +15226,13 @@
     function fixtureImportBuild() {
       if (!_fxImport) return;
       _fxImport.built = FixtureImport.buildImportRows(_fxImport.rows, _fxImport.mapping, {
-        dayFirst: true, defaultTeam: state.teamName || '',
+        // A row with no Team cell used to inherit the club-wide legacy
+        // teamName — stamping "Seniors" onto a U18 group's import. In a real
+        // group context the honest default is NO team (the server then
+        // resolves nothing rather than the wrong thing); only a legacy
+        // structureless club keeps the old fallback.
+        dayFirst: true,
+        defaultTeam: (state.operationalGroupId && operationalGroups().length) ? '' : (state.teamName || ''),
       });
       const existing = state.fixtures || [];
       _fxImport.built.forEach(r => {
@@ -25010,7 +25072,11 @@
         venue:             fx.venue             || '',
         homeAway:          fx.homeAway          || '',
         competition:       fx.competition       || '',
-        type:              fx.type              || 'Friendly',
+        // No fabricated default. The server fixture model has no `type` at
+        // all, so 'Friendly' here painted a competition nobody entered onto
+        // every imported fixture. Competition is the canonical field; an
+        // explicit device-entered type survives as itself.
+        type:              fx.type              || '',
         notes:             fx.notes             || '',
         status:            fx.status            || 'scheduled',
         // Future-proofing for Phase 14 external import
@@ -25337,7 +25403,7 @@
           <div class="card" style="${isEditing ? 'border-color:rgba(96,165,250,0.35);' : ''}position:relative">
             <!-- Badges row -->
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">
-              <span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.06em;background:${typeStyle.bg};color:${typeStyle.color}">${esc(fx.type)}</span>
+              ${(fx.competition || fx.type) ? `<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.06em;background:${typeStyle.bg};color:${typeStyle.color}">${esc(fx.competition || fx.type)}</span>` : ''}
               ${haLabel ? `<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.06em;background:${haAlpha};color:${haColor}">${haLabel}</span>` : ''}
               <span style="flex:1"></span>
               <span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.06em;background:${status.bg};color:${status.color}">${status.label}</span>

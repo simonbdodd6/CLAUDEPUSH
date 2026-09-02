@@ -152,7 +152,11 @@ test('OVERVIEW: every variant reads through the context helpers', () => {
     // must never happen is a RAW read, and that is what this checks.
     assert.equal(/state\.matchCentre/.test(body), false,
       `${fname} must not read the working match state directly`);
-    if (/matchCentre/i.test(body)) {
+    // Build P: the fixture rows OPEN the Match Centre through the one
+    // canonical selection path (setMatchCentreFixture) — a write-route, not a
+    // read. The raw-read prohibitions above still hold verbatim; only the
+    // name-sniff below must not confuse the selection call with state access.
+    if (/matchCentre/i.test(body.replace(/setMatchCentreFixture/g, ''))) {
       assert.match(body, /contextMatchCentre\(\)/, `${fname} match state`);
     }
   }

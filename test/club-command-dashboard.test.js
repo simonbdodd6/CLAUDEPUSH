@@ -155,6 +155,14 @@ function buildScope({
     extractFn(html, 'fixturePositionWarnings') + '\n' +
     extractFn(html, 'fixtureAvailabilitySummary') + '\n' +
     extractConst(html, 'HOME_AWAY_LABEL') + '\n' +
+    // Real side-name resolution (Build P): the fixture card labels each row
+    // with the canonical team name. matchCentreSides guards both of its data
+    // sources with typeof checks, so it degrades to [] here unless a test
+    // provides adminData.structure — and fixtureTeamLabel then falls back to
+    // the fixture's own team text, exactly as in the browser.
+    extractFn(html, 'mcSideRank') + '\n' +
+    extractFn(html, 'matchCentreSides') + '\n' +
+    extractFn(html, 'fixtureTeamLabel') + '\n' +
     extractFn(html, 'normalizeFixture') + '\n' +
     extractFn(html, 'fixtureSortByDate') + '\n' +
     extractFn(html, 'fixtureCountdown') + '\n' +
