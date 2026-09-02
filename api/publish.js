@@ -1319,6 +1319,10 @@ function playerBlock(b = {}) {
 function coachSessionSnapshot(s = {}) {
   return {
     id:         str(s.id, 60),
+    // The dated occurrence this publication belongs to. Publications persist
+    // across weeks under the protocol id, so readers use this to prove a
+    // snapshot is THIS week's plan rather than a survivor from a past week.
+    occurrenceKey: str(s.occurrenceKey, 80),
     title:      str(s.title, 200),
     theme:      str(s.theme || s.focus, 500),
     type:       str(s.type, 60) || 'Training',
@@ -1340,6 +1344,7 @@ function coachSessionSnapshot(s = {}) {
 function playerSessionSnapshot(s = {}) {
   return {
     id:        str(s.id, 60),
+    occurrenceKey: str(s.occurrenceKey, 80),   // dated occurrence — see coachSessionSnapshot
     title:     str(s.title, 200),
     theme:     str(s.theme || s.focus, 500),
     type:      str(s.type, 60) || 'Training',
