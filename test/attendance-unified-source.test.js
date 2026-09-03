@@ -114,9 +114,15 @@ test('nothing in the read path touches state.trainingAttendance', () => {
   assert.ok(!/state\.trainingAttendance/.test(hist));
 });
 
-test('History and the player profile use the SAME aggregation', () => {
-  const summary = html.slice(html.indexOf('Player attendance summary'), html.indexOf('Player attendance summary') + 1400);
-  assert.match(strip(summary), /attendanceStats\(_att\.sessions, playerMatchKey\(p\)/);
+test('there is ONE per-player aggregation, and History no longer runs its own', () => {
+  // Build AB: History's competing "(all time)" card is gone — the canonical
+  // summary lives on Training → Attendance, and History only points there.
+  // The aggregation itself remains single and un-forked for its other
+  // consumers (player profile, Match Centre, playerAttendancePct).
+  assert.ok(!/attendanceStats\(/.test(strip(extractFn(html, '_renderTrainingHistory'))),
+    'History renders no per-player aggregation of its own');
+  const pointer = html.slice(html.indexOf('Player attendance summary'), html.indexOf('Player attendance summary') + 700);
+  assert.match(strip(pointer), /setTrainingTab\(\\'summary\\'\)/, 'History points at the canonical tab');
   assert.equal(html.split('function attendanceStats(').length - 1, 1, 'one aggregation, not two');
 });
 
