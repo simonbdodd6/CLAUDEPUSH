@@ -277,8 +277,13 @@ test('the local store is preserved, never deleted', () => {
 test('the legacy local editor is not reachable from any Beta surface', () => {
   // Its tab is excluded from the Beta tab bar, and History's jump button is
   // behind the same flag — so nothing a Beta coach can press writes locally.
+  // (Build AA added the READ-ONLY summary tab, id 'summary' — deliberately not
+  // the legacy 'attendance' id, which still names the local editor.)
   const bar = strip(extractFn(html, '_trainingTabBar'));
-  assert.match(bar, /\['planner','Planner'\],\['history','History'\]/, 'Beta shows only Planner + History');
+  assert.match(bar, /\['planner','Planner'\],\['summary','Attendance'\],\['history','History'\]/,
+    'Beta shows Planner + read-only Attendance summary + History');
+  const betaList = bar.slice(bar.indexOf('? ['), bar.indexOf(': ['));
+  assert.ok(!/\['attendance'/.test(betaList), 'the legacy editor id stays out of Beta');
   // Inside History, every jump to the legacy editor must sit behind the flag.
   const hist = extractFn(html, '_renderTrainingHistory');
   const jump = hist.indexOf("setTrainingTab(\\'attendance\\')");
