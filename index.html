@@ -25449,12 +25449,21 @@
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
             <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Team
-              ${((sides, cur) => (sides.length && (!cur || sides.some(t => String(t.name).trim().toLowerCase() === cur.trim().toLowerCase()))) ? `
+              ${((sides, cur) => {
+                if (!sides.length) return `<input id="fx-team" style="${INP}" value="${esc(cur)}" placeholder="e.g. 1st XV">`;
+                const match = name => String(name).trim().toLowerCase() === cur.trim().toLowerCase();
+                const known = !cur || sides.some(t => match(t.name));
+                // A stored text naming NO side (the pre-groups 'Seniors' stamp
+                // this club's early U18 imports carried) stays visible and
+                // selected — but the group's real teams are offered right
+                // beside it, so the correction is one tap, not a retype.
+                return `
               <select id="fx-team" style="${INP}">
                 <option value="">— No team —</option>
-                ${sides.map(t => `<option value="${esc(t.name)}"${String(t.name).trim().toLowerCase() === cur.trim().toLowerCase() ? ' selected' : ''}>${esc(t.name)}</option>`).join('')}
-              </select>` : `
-              <input id="fx-team" style="${INP}" value="${esc(cur)}" placeholder="e.g. 1st XV">`)(matchCentreSides(), fixtureTeamLabel(_fixtureDraft) || _fixtureDraft.team || '')}
+                ${known ? '' : `<option value="${esc(cur)}" selected>${esc(cur)} (not a team in this group)</option>`}
+                ${sides.map(t => `<option value="${esc(t.name)}"${match(t.name) ? ' selected' : ''}>${esc(t.name)}</option>`).join('')}
+              </select>`;
+              })(matchCentreSides(), fixtureTeamLabel(_fixtureDraft) || _fixtureDraft.team || '')}
             </label>
             <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Home / Away
               <select id="fx-homeaway" style="${INP}">

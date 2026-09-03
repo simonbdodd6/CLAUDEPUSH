@@ -215,9 +215,23 @@ test('EDIT: the form remembers which team the fixture already has — U18 Second
   assert.doesNotMatch(first[0], / selected/, 'and only that team');
 });
 
-test('EDIT: free text that matches no side keeps the text input with its value', () => {
-  const out = renderEditForm({ team: 'Barbarians Select', sideId: '' });
-  assert.ok(/<input id="fx-team"[^>]*value="Barbarians Select"/.test(out), 'free text preserved, not lost to a select');
+test('EDIT: text matching no side keeps its value AND offers the group\'s real teams (repair path)', () => {
+  // CONTRACT CHANGE (Build W): this fell back to a bare text input, which
+  // made repairing the production 'Seniors'-stamped U18 fixtures a retype.
+  // The select now preserves the unmatched text as the selected option and
+  // offers the group's actual teams beside it — one tap to correct.
+  const out = renderEditForm({ team: 'Seniors', sideId: '' });
+  assert.ok(/<select id="fx-team"/.test(out), 'a select, not a dead-end input');
+  assert.ok(/<option value="Seniors" selected>Seniors \(not a team in this group\)<\/option>/.test(out),
+    'the stored text is preserved, selected, and honestly labelled');
+  assert.ok(out.includes('U18 First') && out.includes('U18 Second'), 'the real teams are one tap away');
+});
+
+test('EDIT: saving without touching the unmatched text sends it unchanged (no silent rewrite)', () => {
+  const out = renderEditForm({ team: 'Seniors', sideId: '' });
+  // the selected option's value IS the stored text — an untouched save
+  // round-trips 'Seniors' and the server's same-text rule keeps sideId ''.
+  assert.match(out, /<option value="Seniors" selected>/);
 });
 
 test('the edit form still keeps a canonical sideId only while the name matches (Build N rule intact)', () => {
