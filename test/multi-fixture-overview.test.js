@@ -148,6 +148,16 @@ function buildScope({
     extractFn(html, 'recentActivity') + '\n' +
     extractFn(html, 'ensureRecentActivity') + '\n' +
     extractFn(html, 'overviewRoster') + '\n' +
+    // Build Y: the count maps tonight through the board's event identity.
+    'let _trainingSchedule = null; let _trainingScheduleGroupId = ""; let _trainingScheduleAttempted = false;\n' +
+    'function ensureTrainingSchedule() {}\n' +
+    'const AVAIL_DAY_INDEX = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };\n' +
+    extractFn(html, 'availWeekStart') + '\n' +
+    extractFn(html, 'availAddDays') + '\n' +
+    extractFn(html, 'availToday') + '\n' +
+    extractFn(html, 'availSlotDateInWeek') + '\n' +
+    extractFn(html, 'availTrainingEventId') + '\n' +
+    extractFn(html, 'tonightAvailabilityEventId') + '\n' +
     extractFn(html, 'overviewAvailableCount') + '\n' +
     extractFn(html, 'overviewAnswerMap') + '\n' +
     extractFn(html, 'overviewAnswerCounts') + '\n' +
