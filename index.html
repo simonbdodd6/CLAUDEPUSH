@@ -8113,13 +8113,32 @@
      */
     function availabilityNonResponders(sessions) {
       const roster   = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
+      // Answering ANY of this week's canonical occurrences is answering. The
+      // passed schedule rows carry bare protocol ids — but a group whose
+      // slots have no legacy sessionId keeps its answers under the DATED
+      // occurrence ids (production U18: 53 answers under the dated Thursday,
+      // 1 under bare `thu`; the bare-only read chased 60 of 61 players). The
+      // current week's canonical training event ids are added by the SAME
+      // rule the board and tonightAvailabilityEventId use:
+      // slot.sessionId (legacy) or the dated occurrence id.
+      ensureTrainingSchedule();
+      const ids = new Set((sessions || []).map(s => String((s && s.id) || '')).filter(Boolean));
+      const slots = (_trainingSchedule && _trainingSchedule.slots) || [];
+      if (slots.length) {
+        const weekStart = availWeekStart(availToday());
+        for (const slot of slots) {
+          const date = availSlotDateInWeek(slot, weekStart);
+          if (!date) continue;
+          ids.add(String(slot.sessionId || '') || availTrainingEventId(slot, date));
+        }
+      }
       const answered = new Set();
-      (sessions || []).forEach(sess => {
-        (sessionRows(String(sess.id)) || []).forEach(r => {
+      for (const id of ids) {
+        (sessionRows(id) || []).forEach(r => {
           const st = r && r.status;
           if (st && st !== 'no-reply') answered.add(String(r.player && r.player.id));
         });
-      });
+      }
       return roster.filter(p => !answered.has(String(p.id)));
     }
 
