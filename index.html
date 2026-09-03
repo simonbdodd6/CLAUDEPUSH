@@ -16961,6 +16961,7 @@
       if ((typeof BETA_SIMPLE_UI !== 'undefined' && BETA_SIMPLE_UI) && (_tab === 'dashboard' || _tab === 'attendance' || _tab === 'notes')) _tab = 'planner';
       if (_tab === 'dashboard')  { _renderTrainingDashboard();  return; }
       if (_tab === 'attendance') { _renderTrainingAttendance(); return; }
+      if (_tab === 'summary')    { _renderTrainingAttendanceSummary(); return; }
       if (_tab === 'notes')      { _renderTrainingNotes();      return; }
       if (_tab === 'history')    { _renderTrainingHistory();    return; }
 
@@ -20523,6 +20524,85 @@
         || String(a.sessionId).localeCompare(String(b.sessionId)));
       out.lastPresent = presentDates[0] || null;
       return out;
+    }
+
+    /**
+     * SESSIONS HELD — the occurrences a season summary may count, from the
+     * group's register document and nothing else.
+     *
+     * A session is held when the register can PROVE it: the record resolves to
+     * a canonical dated occurrence (attendanceOccurrenceId — the identity the
+     * registers are stored under) and that date has passed. The session ledger
+     * writes an empty register the moment a session is CREATED, days before it
+     * happens, so a future-dated entry is planning, not history, and stays out
+     * of everyone's denominator until its day arrives.
+     *
+     * Counted ONCE however many names the session answers to. The server's
+     * migration keeps a legacy record (bare `tue`) beside its dated twin rather
+     * than merging them; here the canonical records claim their identity first,
+     * so a legacy twin can never add a second session — and a legacy record
+     * with NO twin is lifted onto the dated identity its own stored date
+     * proves, exactly as the server lifts it on read.
+     *
+     * A record with no provable date is excluded rather than guessed into the
+     * season, and the configured season bounds apply the same way they do in
+     * attendanceStats: outside them is another season's business.
+     */
+    function attendanceHeldSessions(sessions, todayIso, seasonStart, seasonEnd) {
+      const src = (sessions && typeof sessions === 'object' && !Array.isArray(sessions)) ? sessions : {};
+      const held = new Map();
+      const consider = (key, rec, wantCanonical) => {
+        if (!rec || typeof rec !== 'object') return;
+        const occId = attendanceOccurrenceId(key, rec.date);
+        if (!occId) return;                              // no provable date: cannot be held
+        if ((occId === key) !== wantCanonical) return;
+        if (held.has(occId)) return;                     // one session, one entry
+        const ymd = /-(\d{8})$/.exec(occId)[1];
+        const date = ymd.slice(0, 4) + '-' + ymd.slice(4, 6) + '-' + ymd.slice(6, 8);
+        if (todayIso && date > todayIso) return;         // ledgered ahead: not held yet
+        if (seasonStart && seasonEnd && (date < seasonStart || date > seasonEnd)) return;
+        held.set(occId, { occurrenceId: occId, date, title: String(rec.title || ''),
+          marks: (rec.marks && typeof rec.marks === 'object' && !Array.isArray(rec.marks)) ? rec.marks : {} });
+      };
+      Object.entries(src).forEach(([k, r]) => consider(k, r, true));
+      Object.entries(src).forEach(([k, r]) => consider(k, r, false));
+      return [...held.values()].sort((a, b) => a.date.localeCompare(b.date)
+        || a.occurrenceId.localeCompare(b.occurrenceId));
+    }
+
+    /**
+     * THE SEASON SUMMARY — one row per player of the roster given, against the
+     * ONE denominator every row shares: the sessions actually held.
+     *
+     * Three recorded truths per player, and they always sum to the sessions
+     * held: PRESENT and ABSENT are decisions a coach recorded (the register's
+     * own two states, never reinterpreted), and NOT RECORDED is the remainder —
+     * held sessions where nobody decided anything about this player. Missing
+     * data stays missing: it is never presence, never absence, and availability
+     * answers play no part anywhere in this file's inputs.
+     *
+     * Identity is the canonical durable key (playerMatchKey), so a rename keeps
+     * the history and namesakes never share a row. A roster row with no
+     * resolvable identity gets no row at all — nothing to aggregate on is not
+     * a player with zero attendance.
+     */
+    function attendanceSeasonSummary(sessions, roster, todayIso, seasonStart, seasonEnd) {
+      const held = attendanceHeldSessions(sessions, todayIso, seasonStart, seasonEnd);
+      const rows = [];
+      (Array.isArray(roster) ? roster : []).forEach(p => {
+        const key = playerMatchKey(p);
+        if (!key) return;
+        let present = 0, absent = 0;
+        held.forEach(h => {
+          const st = h.marks[key];
+          if (st === 'present') present += 1;
+          else if (st === 'absent') absent += 1;
+        });
+        rows.push({ id: String(p.id), name: String(p.name || 'Player'), key,
+                    held: held.length, present, absent,
+                    notRecorded: held.length - present - absent });
+      });
+      return { held, rows };
     }
 
     /**
@@ -29923,12 +30003,14 @@
 
     function _trainingTabBar() {
       const act = state.activeTrainingTab || 'planner';
-      // Beta: Dashboard / Attendance / Notes are hidden — only Planner + History
-      // (plan today, review past sessions) remain. The functions are retained.
+      // Beta: Dashboard / the legacy Attendance editor / Notes are hidden —
+      // Planner, the read-only Attendance summary and History remain. The
+      // hidden functions are retained. 'summary' is a NEW id: 'attendance'
+      // still names the legacy device-local editor, which stays out of Beta.
       const _betaUI = (typeof BETA_SIMPLE_UI !== 'undefined') && BETA_SIMPLE_UI;
       const TABS = _betaUI
-        ? [['planner','Planner'],['history','History']]
-        : [['dashboard','Dashboard'],['planner','Planner'],['attendance','Attendance'],['notes','Notes'],['history','History']];
+        ? [['planner','Planner'],['summary','Attendance'],['history','History']]
+        : [['dashboard','Dashboard'],['planner','Planner'],['attendance','Attendance'],['summary','Summary'],['notes','Notes'],['history','History']];
       return '<div style="display:flex;gap:0;flex-wrap:wrap;margin-bottom:16px;border-bottom:2px solid var(--line)">' +
         TABS.map(([id, label]) => {
           const isAct = act === id;
@@ -30596,6 +30678,102 @@
               '</div>' +
             '</div>'
           : '');
+    }
+
+    /**
+     * BUILD AA — the read-only season attendance summary.
+     *
+     * One table over the ONE canonical source: the group's server-held
+     * registers (currentAttendance), aggregated by attendanceSeasonSummary —
+     * sessions held, attended, absent, not recorded, per player of the
+     * operating group. Absent stays its own column because it is a decision a
+     * coach recorded; filing it under "not recorded" would mislabel a fact.
+     *
+     * Deliberately NOT here: percentages, rankings, charts, exports. Rows are
+     * alphabetical — a register, not a league table — and the scope line
+     * claims only what the data proves ("recorded for N sessions"), never a
+     * full season the register cannot vouch for.
+     *
+     * READ-ONLY. Opening this screen fetches the same GET the other attendance
+     * surfaces share and writes nothing, creates nothing, repairs nothing.
+     */
+    function _renderTrainingAttendanceSummary() {
+      const el = document.getElementById('coach-training');
+      if (!el) return;
+      const att = currentAttendance();   // triggers the (read-only) load when missing
+      const roster = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
+
+      const note = t => '<div class="card" style="text-align:center;padding:36px 20px">' + t + '</div>';
+      let body;
+      if (!canI('publish_training')) {
+        body = note('<p class="muted" style="font-size:13px;margin:0">The attendance summary needs training access.</p>');
+      } else if (!att) {
+        body = note(attendanceFailed()
+          ? '<p class="muted" style="font-size:13px;margin:0">Attendance could not be loaded — this is not a record of an empty history. '
+            + '<button type="button" class="ovw-retry" onclick="_attendanceFailed=null;loadAttendance(true)">Try again</button></p>'
+          : '<p class="muted" style="font-size:13px;margin:0">Loading attendance…</p>');
+      } else if (att.denied) {
+        body = note('<p class="muted" style="font-size:13px;margin:0">The attendance summary needs training access.</p>');
+      } else {
+        const summary = attendanceSeasonSummary(att.sessions, roster, availToday(),
+          state.seasonStart, state.seasonEnd);
+        const rows = summary.rows.slice().sort((a, b) => a.name.localeCompare(b.name));
+        const n = summary.held.length;
+        if (!rows.length) {
+          body = note('<p class="muted" style="font-size:13px;margin:0">No players in this group yet.</p>');
+        } else if (!n) {
+          body = note('<div style="font-size:30px;margin-bottom:8px;opacity:.5">📋</div>' +
+            '<p style="font-size:14px;font-weight:700;margin:0 0 4px">No training attendance recorded yet</p>' +
+            '<p class="muted" style="font-size:12.5px;margin:0">Sessions appear here once they have been held and their register exists. Nothing is ever counted from availability answers.</p>');
+        } else {
+          const first = summary.held[0], last = summary.held[n - 1];
+          const range = n === 1
+            ? trainingDateLabel(first.date, true)
+            : trainingDateLabel(first.date, true) + ' – ' + trainingDateLabel(last.date, true);
+          const th = align => 'padding:7px 8px;font-size:10.5px;font-weight:800;letter-spacing:.05em;' +
+            'text-transform:uppercase;color:var(--muted);border-bottom:1.5px solid var(--line);' +
+            'text-align:' + align + ';white-space:nowrap';
+          const td = 'padding:9px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;text-align:right';
+          body =
+            '<div class="card" style="padding:16px 18px">' +
+              '<p class="muted" style="font-size:12.5px;margin:0 0 12px">Attendance recorded for ' +
+                n + ' session' + (n === 1 ? '' : 's') + (range ? ' · ' + esc(range) : '') + '</p>' +
+              '<div style="overflow-x:auto">' +
+              '<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:360px">' +
+                '<thead><tr>' +
+                  '<th style="' + th('left') + '">Player</th>' +
+                  '<th style="' + th('right') + '">Sessions</th>' +
+                  '<th style="' + th('right') + '">Attended</th>' +
+                  '<th style="' + th('right') + '">Absent</th>' +
+                  '<th style="' + th('right') + '">Not recorded</th>' +
+                '</tr></thead><tbody>' +
+                rows.map(r =>
+                  '<tr>' +
+                    '<td style="' + td + ';text-align:left;font-weight:600">' + esc(r.name) + '</td>' +
+                    '<td style="' + td + '">' + r.held + '</td>' +
+                    '<td style="' + td + '">' + r.present + '</td>' +
+                    '<td style="' + td + ';color:' + (r.absent ? 'var(--ink)' : 'var(--muted)') + '">' + r.absent + '</td>' +
+                    '<td style="' + td + ';color:var(--muted)">' + r.notRecorded + '</td>' +
+                  '</tr>').join('') +
+              '</tbody></table></div>' +
+              '<p class="muted" style="font-size:11.5px;margin:12px 0 0">Not recorded means no register decision was taken for that player — it is not an absence. Availability answers play no part here.</p>' +
+            '</div>';
+        }
+      }
+
+      el.innerHTML =
+        '<div class="training-hero">' +
+          '<div><div class="eyebrow">Training Centre</div><h1>Attendance</h1>' +
+          '<p>Who actually came to training — from the recorded registers only.</p></div>' +
+          '<div class="training-hero-stats">' +
+            '<div class="training-stat"><span class="lbl">Sessions</span><strong>' +
+              (att && !att.denied ? attendanceHeldSessions(att.sessions, availToday(), state.seasonStart, state.seasonEnd).length : '—') +
+              '</strong><small>recorded</small></div>' +
+            '<div class="training-stat"><span class="lbl">Players</span><strong>' + roster.length + '</strong><small>in group</small></div>' +
+          '</div>' +
+        '</div>' +
+        _trainingTabBar() +
+        body;
     }
 
     // ─── PHASE 18 — FIXTURE AVAILABILITY ────────────────────────────────────
