@@ -8215,15 +8215,20 @@
       // The two surfaces that genuinely want attendance resolve it themselves.
       return operationalPlayers().map(p => {
         const live = resolvedAnswerFor(p, id);
+        // A row's status is ALWAYS one of the four canonical states. A player
+        // with no answer anywhere used to surface the raw undefined field —
+        // the exact-match buckets then dropped them from every bucket AND
+        // counted them as "answered" (status !== 'no-reply'). Absence has one
+        // spelling, normalized here at the single row source.
         if (live) return {
           player:         p,
-          status:         live.response,
+          status:         live.response || 'no-reply',
           reason:         live.reason || '',
           respondedAt:    live.respondedAt || null,
         };
         return {
           player:         p,
-          status:         p[key],
+          status:         p[key] || 'no-reply',
           reason:         p[rKey] || '',
           respondedAt:    p[key + 'RespondedAt'] || null,
         };
