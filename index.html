@@ -20600,7 +20600,14 @@
         });
         rows.push({ id: String(p.id), name: String(p.name || 'Player'), key,
                     held: held.length, present, absent,
-                    notRecorded: held.length - present - absent });
+                    notRecorded: held.length - present - absent,
+                    // THE rate (Build AC): attended ÷ sessions HELD, whole
+                    // percent — never ÷ decisions recorded, which is the
+                    // competing denominator Build AB retired. With nothing
+                    // held there is nothing to rate: null, which renders as
+                    // "—". A REAL 0% (held sessions, attended none) survives.
+                    attendanceRate: held.length > 0
+                      ? Math.round((present / held.length) * 100) : null });
       });
       return { held, rows };
     }
@@ -30731,13 +30738,14 @@
               '<p class="muted" style="font-size:12.5px;margin:0 0 12px">Attendance recorded for ' +
                 n + ' session' + (n === 1 ? '' : 's') + (range ? ' · ' + esc(range) : '') + '</p>' +
               '<div style="overflow-x:auto">' +
-              '<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:360px">' +
+              '<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:420px">' +
                 '<thead><tr>' +
                   '<th style="' + th('left') + '">Player</th>' +
                   '<th style="' + th('right') + '">Sessions</th>' +
                   '<th style="' + th('right') + '">Attended</th>' +
                   '<th style="' + th('right') + '">Absent</th>' +
                   '<th style="' + th('right') + '">Not recorded</th>' +
+                  '<th style="' + th('right') + '">Attendance rate</th>' +
                 '</tr></thead><tbody>' +
                 rows.map(r =>
                   '<tr>' +
@@ -30746,9 +30754,13 @@
                     '<td style="' + td + '">' + r.present + '</td>' +
                     '<td style="' + td + ';color:' + (r.absent ? 'var(--ink)' : 'var(--muted)') + '">' + r.absent + '</td>' +
                     '<td style="' + td + ';color:var(--muted)">' + r.notRecorded + '</td>' +
+                    // Attended ÷ sessions held, through the shared label so a
+                    // null (nothing held) is "—", never a fabricated 0%.
+                    // Neutral on purpose: information, not a judgement.
+                    '<td style="' + td + ';font-weight:700">' + attendanceLabel(r.attendanceRate) + '</td>' +
                   '</tr>').join('') +
               '</tbody></table></div>' +
-              '<p class="muted" style="font-size:11.5px;margin:12px 0 0">Not recorded means no register decision was taken for that player — it is not an absence. Availability answers play no part here.</p>' +
+              '<p class="muted" style="font-size:11.5px;margin:12px 0 0">Not recorded means no register decision was taken for that player — it is not an absence. Attendance rate is attended ÷ sessions held. Availability answers play no part here.</p>' +
             '</div>';
         }
       }

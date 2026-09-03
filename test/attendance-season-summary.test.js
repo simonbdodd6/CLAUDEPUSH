@@ -403,10 +403,135 @@ test('the summary tab exists and renders the canonical aggregation', () => {
   // the scope is stated from the data, never claimed as a full season
   assert.match(fn, /recorded/i);
   assert.ok(!/Season attendance/i.test(fn), 'no unprovable "season" claim');
-  // no ranking, no percentages, no performance colouring
-  assert.ok(!/attendancePct|%/.test(fn.replace(/width:\s*\d+%|max-width:\s*\d+%|1%/g, '')),
-    'no percentages on this surface');
-  assert.ok(!/sort\([^)]*present/.test(fn), 'rows are not ranked by attendance');
+  // Build AC added ONE percentage: the canonical rate (attended ÷ held),
+  // rendered through the shared attendanceLabel. Still no ranking, no
+  // performance colouring, and no decisions-recorded figure.
+  assert.ok(!/attendancePct/.test(fn), 'the decisions-recorded percentage stays out');
+  assert.ok(!/sort\([^)]*present|sort\([^)]*attendanceRate/.test(fn), 'rows are not ranked by attendance');
+});
+
+// ───────────────────────── the attendance rate (Build AC) ───────────────────
+// ONE formula: attended ÷ sessions HELD × 100, rounded to a whole percent
+// (the codebase's documented convention — attendanceStats, attendanceLabel).
+// NEVER attended ÷ decisions recorded: that was History's competing
+// denominator, and removing it was the whole point of Build AB.
+
+const eightHeld = marksFor => {
+  // Eight held Tuesdays; marksFor(i) says what ANA's mark is on session i.
+  const sessions = {};
+  for (let i = 0; i < 8; i++) {
+    const day = String(4 + i * 7).padStart(2, '0');   // 4,11,18,25 Aug + 1,8,15,22 (adjusted below)
+    const date = i < 4 ? `2026-08-${day}` : `2026-07-${String(7 + (i - 4) * 7).padStart(2, '0')}`;
+    const marks = {};
+    const st = marksFor(i);
+    if (st) marks['id:u1'] = st;
+    sessions[`slot_tue-${date.replace(/-/g, '')}`] = reg(date, marks);
+  }
+  return sessions;
+};
+
+test('the rate is attended ÷ sessions HELD — and the old denominator would lie', () => {
+  // 8 held; Ana present at 5, UNMARKED at 3. Decisions recorded = 5, so the
+  // retired History framing would have said 5/5 = 100%. The truth the coach
+  // needs is 5 of the 8 sessions that happened: 63% (Math.round(62.5)).
+  const w = makeWorld({ sessions: eightHeld(i => (i < 5 ? 'present' : null)) });
+  const r = rowOf(summarise(w, [ANA]), ANA);
+  assert.equal(r.held, 8);
+  assert.equal(r.present, 5);
+  assert.equal(r.notRecorded, 3);
+  assert.equal(r.attendanceRate, 63, 'attended ÷ held, whole-percent rounding');
+  assert.notEqual(r.attendanceRate, 100, 'the decisions-recorded denominator is dead');
+});
+
+test('an absence and a blank cost the denominator identically', () => {
+  // 5 present + 3 ABSENT is the same rate as 5 present + 3 unmarked: the
+  // denominator is what happened, not what was decided.
+  const absent  = makeWorld({ sessions: eightHeld(i => (i < 5 ? 'present' : 'absent')) });
+  const blank   = makeWorld({ sessions: eightHeld(i => (i < 5 ? 'present' : null)) });
+  assert.equal(rowOf(summarise(absent, [ANA]), ANA).attendanceRate, 63);
+  assert.equal(rowOf(summarise(blank,  [ANA]), ANA).attendanceRate, 63);
+});
+
+test('perfect attendance is 100% and total non-attendance is a REAL 0%', () => {
+  const all = makeWorld({ sessions: eightHeld(() => 'present') });
+  assert.equal(rowOf(summarise(all, [ANA]), ANA).attendanceRate, 100);
+  // 8 sessions genuinely held, Ana recorded at none of them: 0% is a fact
+  // here, and must stay distinct from the null of "nothing was ever held".
+  const none = makeWorld({ sessions: eightHeld(i => (i % 2 ? 'absent' : null)) });
+  const r = rowOf(summarise(none, [ANA]), ANA);
+  assert.equal(r.present, 0);
+  assert.equal(r.attendanceRate, 0, 'a real zero, from real sessions');
+});
+
+test('no sessions held → the rate is null, never a fabricated 0%', () => {
+  const empty = makeWorld({ sessions: {} });
+  assert.equal(rowOf(summarise(empty, [ANA]), ANA).attendanceRate, null);
+  // future-only history: ledgered sessions that have not happened yet
+  const futureOnly = makeWorld({ sessions: {
+    'slot_tue-20260908': reg('2026-09-08', {}) } });
+  assert.equal(rowOf(summarise(futureOnly, [ANA]), ANA).attendanceRate, null,
+    'a session that has not happened cannot make a denominator');
+});
+
+test('future sessions do not dilute the rate', () => {
+  const sessions = eightHeld(i => (i < 5 ? 'present' : null));
+  sessions['slot_tue-20260908'] = reg('2026-09-08', {});
+  sessions['slot_tue-20260915'] = reg('2026-09-15', {});
+  const r = rowOf(summarise(makeWorld({ sessions }), [ANA]), ANA);
+  assert.equal(r.held, 8, 'still eight held');
+  assert.equal(r.attendanceRate, 63, 'not 50 — the future is planning');
+});
+
+test('a bare legacy twin cannot halve the rate', () => {
+  const w = makeWorld({ sessions: {
+    'tue': reg('2026-09-01', { 'id:u1': 'present' }),
+    'slot_tue-20260901': reg('2026-09-01', { 'id:u1': 'present' }) } });
+  const r = rowOf(summarise(w, [ANA]), ANA);
+  assert.equal(r.held, 1);
+  assert.equal(r.attendanceRate, 100, 'one Tuesday, one attendance, 100%');
+});
+
+test('availability-shaped values buy no rate', () => {
+  const w = makeWorld({ sessions: {
+    'slot_tue-20260901': reg('2026-09-01', { 'id:u1': 'available', 'id:u2': 'present' }) } });
+  const s = summarise(w, [ANA, BEN]);
+  assert.equal(rowOf(s, ANA).attendanceRate, 0, 'available is not attended');
+  assert.equal(rowOf(s, BEN).attendanceRate, 100);
+});
+
+test('the rate survives a rename and stays personal between namesakes', () => {
+  const sessions = eightHeld(i => (i < 5 ? 'present' : null));
+  const renamed = { ...ANA, name: 'Ana Marie Silva-Fernandes' };
+  assert.equal(rowOf(summarise(makeWorld({ sessions }), [renamed]), renamed).attendanceRate, 63);
+  const twinA = { id: 'pA', name: 'Sam Jones', userId: 'uA' };
+  const twinB = { id: 'pB', name: 'Sam Jones', userId: 'uB' };
+  const tw = makeWorld({ sessions: {
+    'slot_tue-20260901': reg('2026-09-01', { 'id:uA': 'present' }) } });
+  const s = summarise(tw, [twinA, twinB]);
+  assert.equal(rowOf(s, twinA).attendanceRate, 100);
+  assert.equal(rowOf(s, twinB).attendanceRate, 0);
+});
+
+test('each group\'s rate stands on its own sessions', () => {
+  const w = makeWorld({ operatingGroup: 'g_u18', loadedGroup: 'g_u18',
+    sessions: eightHeld(i => (i < 5 ? 'present' : null)) });
+  assert.equal(rowOf(summarise(w, [ANA]), ANA).attendanceRate, 63);
+  w.setGroup('g_seniors');
+  assert.equal(w.currentAttendance(), null, 'U18 sessions cannot price a Seniors rate');
+  w.adopt({ sessions: { 'slot_thu-20260827': reg('2026-08-27', { 'id:u2': 'present' }) } }, 'g_seniors');
+  assert.equal(rowOf(summarise(w, [BEN]), BEN).attendanceRate, 100,
+    'one Seniors session held, attended — not diluted by eight U18 ones');
+});
+
+test('the renderer prints the canonical rate through the shared label', () => {
+  const fn = strip(extractFn(html, '_renderTrainingAttendanceSummary'));
+  assert.match(fn, /Attendance rate/, 'the column exists');
+  assert.match(fn, /attendanceLabel\(r\.attendanceRate\)/,
+    'rendered via the shared null→"—" label, never ad-hoc');
+  assert.ok(!/attendancePct/.test(fn), 'the decisions-recorded figure has no place here');
+  // History still computes no rate of its own
+  assert.ok(!/attendanceRate|attendanceStats\(/.test(strip(extractFn(html, '_renderTrainingHistory'))),
+    'the retired History aggregation stays retired');
 });
 
 test('one aggregation of each kind — nothing was duplicated to build this', () => {
