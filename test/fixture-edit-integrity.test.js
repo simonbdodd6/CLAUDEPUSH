@@ -175,6 +175,45 @@ test('12: a LEGACY fixture (no groupId) is editable by an initial-group operator
   assert.equal(u.code, 403, 'a U18-scoped coach does not operate the initial group');
 });
 
+test('THE PRODUCTION REPAIR: a U18 fixture stamped team="Seniors" (pre-Build-P import) is corrected by one edit', async () => {
+  // The real incident: fx_3laifwx-style records — groupId=U18, sideId='',
+  // team='Seniors' from the old club-wide import default. The user's repair
+  // is an ordinary edit setting Team to the group's real first team.
+  kv.set(`app:club:${CLUB}`, JSON.stringify({ ...JSON.parse(kv.get(`app:club:${CLUB}`)), fixtures: [
+    ...stored(),
+    { id: 'fx_stale', opposition: 'ANDE', date: '2026-09-05', groupId: U18, sideId: '', team: 'Seniors', homeAway: 'home' },
+  ] }));
+  const r = await call('u-u18-c', { action: 'update', fixture: { id: 'fx_stale', team: 'U18 First' } });
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  const fx = storedById('fx_stale');
+  assert.equal(fx.team, 'U18 First', 'the label is corrected');
+  assert.equal(fx.sideId, 'team_u18_1', 'the canonical side is ADOPTED from the name');
+  assert.equal(fx.groupId, U18, 'the group never moved');
+  assert.equal(fx.opposition, 'ANDE', 'nothing else changed');
+  // An untouched save (same stale text) is harmless: text kept, no side invented.
+  kv.set(`app:club:${CLUB}`, JSON.stringify({ ...JSON.parse(kv.get(`app:club:${CLUB}`)), fixtures: [
+    ...stored().filter(f => f.id !== 'fx_stale'),
+    { id: 'fx_stale2', opposition: 'DEND', date: '2026-09-12', groupId: U18, sideId: '', team: 'Seniors', homeAway: 'away' },
+  ] }));
+  const same = await call('u-u18-c', { action: 'update', fixture: { id: 'fx_stale2', team: 'Seniors', venue: 'Away ground' } });
+  assert.equal(same.code, 200);
+  const fx2 = storedById('fx_stale2');
+  assert.equal(fx2.team, 'Seniors', 'unchanged text stays (honest storage)');
+  assert.equal(fx2.sideId, '', 'and no side is ever guessed from it');
+  assert.equal(fx2.groupId, U18, 'the display text NEVER affects grouping');
+});
+
+test('a team text matching NO side in the group keeps the text, adopts nothing, moves nothing', async () => {
+  const r = await call('u-u18-c', { action: 'update', fixture: { id: 'fx_u18a', team: 'U18 2' } });
+  assert.equal(r.code, 200);
+  const fx = storedById('fx_u18a');
+  assert.equal(fx.team, 'U18 2', 'free text kept');
+  assert.equal(fx.sideId, '', 'no exact-unique match, no id');
+  assert.equal(fx.groupId, U18);
+  await call('u-u18-c', { action: 'update', fixture: { id: 'fx_u18a', team: 'U18 First' } });   // restore
+  assert.equal(storedById('fx_u18a').sideId, 'team_u18_1');
+});
+
 test('status marks persist as ordinary edits', async () => {
   const r = await call('u-u18-c', { action: 'update', fixture: { id: 'fx_u18b', status: 'cancelled' } });
   assert.equal(r.code, 200);
