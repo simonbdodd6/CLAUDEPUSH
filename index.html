@@ -14409,9 +14409,29 @@
     }
 
     /** How many of that roster answered `available` for one session or fixture. */
+    /** The availability EVENT id where tonight's answers actually live — the
+     *  board's own current-week rule. A legacy slot (sessionId set) answers
+     *  under its bare id; a slot without one answers under the DATED
+     *  occurrence id. Counting the bare schedule id against such a group read
+     *  an almost-empty store: production U18 held 48 available under
+     *  slot_…-20260903 while bare `thu` held 1 — and Overview said 1. */
+    function tonightAvailabilityEventId(sessionId) {
+      const sid = String(sessionId || '');
+      if (!sid || sid === 'game') return sid;
+      ensureTrainingSchedule();
+      const slots = (_trainingSchedule && _trainingSchedule.slots) || [];
+      const today = availToday();
+      const weekStart = availWeekStart(today);
+      for (const slot of slots) {
+        if (availSlotDateInWeek(slot, weekStart) !== today) continue;
+        return String(slot.sessionId || '') || availTrainingEventId(slot, today);
+      }
+      return sid;
+    }
+
     function overviewAvailableCount(id) {
       const roster = overviewRoster();
-      const map = overviewAnswerMap(id, roster);
+      const map = overviewAnswerMap(tonightAvailabilityEventId(id), roster);
       return roster.filter(p => map[p.id] === 'available').length;
     }
 
@@ -14494,7 +14514,9 @@
       const tonightId   = getTonightSessionId();
       const tonightSess = tonightId ? (state.schedule || []).find(s => s.id === tonightId) : null;
       if (tonightSess) {
-        const c = overviewAnswerCounts(roster, overviewAnswerMap(tonightId, roster));
+        // Same canonical occurrence the Availability board counts — see
+        // tonightAvailabilityEventId. The label stays the session's own.
+        const c = overviewAnswerCounts(roster, overviewAnswerMap(tonightAvailabilityEventId(tonightId), roster));
         return { kind: 'session', label: tonightSess.title || 'Training', ...c, warnings: [] };
       }
 
@@ -25179,7 +25201,36 @@
           || (((_adminData || {}).structure || {}).teams || []).find(t => String(t.id) === sid);
         if (side && side.name) return String(side.name);
       }
-      return String(fx?.team || '').trim();
+      const text = String(fx?.team || '').trim();
+      const gid  = String(fx?.groupId || '').trim();
+      // STALE CROSS-GROUP TEXT. The pre-groups importer stamped the club-wide
+      // "Seniors" onto other groups' fixtures; displaying it as-is labelled
+      // U18 fixtures SENIORS. The fixture's own group is the authority:
+      //   · text naming an IN-GROUP team → that team (canonical casing);
+      //   · text naming ANOTHER group (or another group's team) → provably
+      //     stale — resolve to the group's default (first-ranked) side, the
+      //     exact side the Match Centre already opens this fixture on;
+      //   · anything else (free text, no structure, no group) → unchanged.
+      // Display-only: the stored record is never touched.
+      if (text && gid) {
+        const st = (typeof _mcTeams !== 'undefined' && _mcTeams && Array.isArray(_mcTeams.teams)) ? _mcTeams
+          : ((typeof _adminData !== 'undefined' && _adminData && _adminData.structure) || null);
+        if (st) {
+          const ci = s => String(s || '').trim().toLowerCase();
+          const teams = (st.teams || []).filter(t => t && (t.status === undefined || t.status === 'active'));
+          const inGroup = teams.filter(t => String(t.groupId) === gid);
+          const own = inGroup.find(t => ci(t.name) === ci(text));
+          if (own) return String(own.name);
+          const crossGroup =
+            (st.groups || []).some(g => g && String(g.id) !== gid && ci(g.name) === ci(text)) ||
+            teams.some(t => String(t.groupId) !== gid && ci(t.name) === ci(text));
+          if (crossGroup && inGroup.length) {
+            const def = inGroup.slice().sort((a, b) => mcSideRank(a) - mcSideRank(b))[0];
+            return String(def.name);
+          }
+        }
+      }
+      return text;
     }
 
     // Pure helper: derives the display status from stored status + date.
@@ -25468,7 +25519,7 @@
                 ${known ? '' : `<option value="${esc(cur)}" selected>${esc(cur)} (not a team in this group)</option>`}
                 ${sides.map(t => `<option value="${esc(t.name)}"${match(t.name) ? ' selected' : ''}>${esc(t.name)}</option>`).join('')}
               </select>`;
-              })(matchCentreSides(), fixtureTeamLabel(_fixtureDraft) || _fixtureDraft.team || '')}
+              })(matchCentreSides(), _fixtureDraft.team || fixtureTeamLabel(_fixtureDraft) || '')}
             </label>
             <label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Home / Away
               <select id="fx-homeaway" style="${INP}">
