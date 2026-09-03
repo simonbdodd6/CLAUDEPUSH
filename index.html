@@ -30653,29 +30653,21 @@
                 '</div>';
               }).join('') +
             '</div>') +
+        // BUILD AB — History no longer aggregates per player. Its own
+        // "(all time)" per-player card used to render here: the same
+        // registers as Training → Attendance but a DIFFERENT framing (present
+        // ÷ decisions recorded, a percentage, zero-record players hidden, the
+        // club-wide roster) — two denominators one tap apart. The canonical
+        // summary is the Attendance tab; History keeps its per-session detail
+        // and simply points there. Same visibility condition as the old card,
+        // so the empty state stays clean.
         (activePlayers.length>0 && sessionsWithData.filter(s=>s.type==='Training').length>0
-          ? '<div class="card" style="margin-bottom:14px">' +
-              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Player attendance summary (all time)</div>' +
-              '<div>' +
-                activePlayers.map(p => {
-                  // THE SAME aggregation the player profile uses, over the same
-                  // server registers — so History and the profile cannot report
-                  // different attendance for the same player. Keyed by the
-                  // canonical identity, never the roster id.
-                  const _att = currentAttendance();
-                  const hist = (_att && !_att.denied)
-                    ? attendanceStats(_att.sessions, playerMatchKey(p), state.seasonStart, state.seasonEnd)
-                    : null;
-                  if (!hist || !hist.recorded) return '';
-                  const _pct = hist.attendancePct;
-                  const c = _pct>=75?'#34d399':_pct>=50?'#fbbf24':'#f87171';
-                  return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">' +
-                    '<div style="flex:1;font-size:13px;font-weight:600">'+esc(p.name)+'</div>' +
-                    '<div style="font-size:12px;color:var(--muted)">'+hist.present+'/'+hist.recorded+' sessions</div>' +
-                    '<div style="font-size:13px;font-weight:800;color:'+c+';min-width:40px;text-align:right">'+_pct+'%</div>' +
-                  '</div>';
-                }).filter(Boolean).join('') +
+          ? '<div class="card" style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+              '<div style="flex:1 1 220px;min-width:0">' +
+                '<div style="font-size:13px;font-weight:700">Player attendance summary</div>' +
+                '<div class="muted" style="font-size:12px;margin-top:2px">Sessions held, attended and not recorded for every player live on the Attendance tab.</div>' +
               '</div>' +
+              '<button class="btn" type="button" style="font-size:12px;white-space:nowrap;min-height:34px" onclick="setTrainingTab(\'summary\')">Open Attendance</button>' +
             '</div>'
           : '');
     }
