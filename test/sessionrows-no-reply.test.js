@@ -51,6 +51,8 @@ function world({ players = [], resolved = {}, group = 'grp_u18' } = {}) {
     // availabilityNonResponders filters archived players; none of these
     // synthetic rosters archive anyone, so the check is a truthful constant.
     'function playerIsArchived() { return false; }\n' +
+    'let _trainingSchedule = null;\n' +
+    'function ensureTrainingSchedule() {}\n' +
     fn('sessionKey') + '\n' +
     fn('sessionReasonKey') + '\n' +
     fn('normalizeSessionId') + '\n' +
