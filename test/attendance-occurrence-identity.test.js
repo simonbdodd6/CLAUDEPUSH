@@ -199,7 +199,10 @@ test('the panel looks up THIS occurrence, not the bare session id', () => {
   // both rather than reaching for the planner's variables.
   assert.match(panel, /const occId = attendanceOccurrenceId\(sessId, sessionDate\)/);
   const planner = extractFn(html, 'renderTraining');
-  assert.match(planner, /attendancePanelHtml\(sessId, sessObj && sessObj\.date\)/,
+  // Build AG: the Planner still supplies the session it is showing — resolved
+  // through trainingAttendanceOccurrence first, because production's stored
+  // current-week rows can carry junk dates the resolver rightly refuses.
+  assert.match(planner, /trainingAttendanceOccurrence\(sessId, sessObj && sessObj\.date\)/,
     'and the Planner still supplies the session it is showing');
   assert.match(panel, /att\.sessions\[occId\]/);
   assert.ok(!/att\.sessions\[sessId\]/.test(panel), 'the bare id would be every Tuesday at once');

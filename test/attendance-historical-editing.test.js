@@ -363,10 +363,14 @@ test('a NON-canonical historical id still resolves to the one register', () => {
 
 test('History and the Planner render the SAME register function', () => {
   assert.equal(html.split('function attendancePanelHtml(').length - 1, 1, 'one implementation');
+  // Build AG: the Planner resolves the row through trainingAttendanceOccurrence
+  // first (stored current-week rows can carry junk dates), then hands the SAME
+  // panel the resolved identity; an unresolvable row falls through unchanged.
   const planner = extractFn(html, 'renderTraining');
-  assert.match(planner, /attendancePanelHtml\(sessId, sessObj && sessObj\.date\)/);
+  assert.match(planner, /trainingAttendanceOccurrence\(sessId, sessObj && sessObj\.date\)/);
+  assert.match(planner, /attendancePanelHtml\(_r \? _r\.id : sessId, _r \? _r\.date : \(sessObj && sessObj\.date\)\)/);
   const hist = extractFn(html, '_renderTrainingHistory');
-  assert.match(hist, /attendancePanelHtml\(s\.id, s\.date\)/);
+  assert.match(hist, /attendancePanelHtml\(s\.id, s\.date\)/, 'History derives nothing');
 });
 
 test('the write names the OCCURRENCE, so a past session can be placed', () => {
