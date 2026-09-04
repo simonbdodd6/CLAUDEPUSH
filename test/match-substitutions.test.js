@@ -394,6 +394,13 @@ function seed() {
     { id: SENIORS_FX, opposition: 'Mons',  date: '2026-08-22', status: 'scheduled', groupId: 'grp_sen' },
     { id: U18_FX,     opposition: 'Kituro', date: '2026-08-22', status: 'scheduled', groupId: 'grp_u18' },
   ] }));
+  // A fixture's groupId is boundary-validated against the club structure when
+  // it is created, so a structurally valid club must hold these groups — and
+  // the squad paths now assert the OPERATOR against that same structure.
+  kv.set(`app:structure:${CLUB}`, JSON.stringify({ version: 1, groups: [
+    { id: 'grp_sen', name: 'Seniors', type: 'general', status: 'active' },
+    { id: 'grp_u18', name: 'U18', type: 'age-grade', status: 'active' },
+  ], teams: [] }));
   kv.set(`app:club:${OTHER}`, JSON.stringify({ clubName: 'Rival', fixtures: [
     { id: FOREIGN_FX, opposition: 'Elsewhere', date: '2026-08-22', status: 'scheduled' },
   ] }));
