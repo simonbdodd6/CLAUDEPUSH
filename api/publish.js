@@ -153,6 +153,42 @@ async function assertFixtureSideCoherence(teamId, fixtureId, sideId) {
 }
 
 /**
+ * The caller must OPERATE the group a fixture plays in — the operator-side
+ * twin of assertFixtureSideCoherence. Coherence pins a sheet to its fixture's
+ * group; this pins the COACH to it, so a Seniors-scoped coach cannot read,
+ * publish or withdraw a U18 fixture's sheet however well-formed the request.
+ * Ownership is the fixture's stored groupId (fixtureGroupOf, with its
+ * documented legacy rule) — never a query parameter, body field or team name.
+ * '' names no fixture and makes no claim: the unlinked club-wide slot is
+ * gated separately by assertWholeClubSquadAuthority.
+ */
+async function assertFixtureOperationalGroup(session, fixtureId) {
+  if (!fixtureId) return;
+  const { fixtures } = await readClubFixtures(session.teamId);
+  const fx = fixtures.find(f => String(f?.id || '') === String(fixtureId));
+  if (!fx) { const e = new Error('Unknown fixture for this club'); e.status = 404; throw e; }
+  const structure = await loadClubStructure(session.teamId);
+  assertOperationalGroup(session, structure, fixtureGroupOf(fx), { as: 'staff' });
+}
+
+/**
+ * The unlinked (no-fixture) squad paths write the CLUB-WIDE player-facing
+ * slot — the record every group's players read. Whoever publishes to it or
+ * withdraws it must hold authority over EVERY active group: club-wide staff
+ * always qualify, and a scoped coach qualifies only in a one-group club —
+ * which is exactly the legacy world these sideless paths still serve.
+ */
+async function assertWholeClubSquadAuthority(session) {
+  const structure = await loadClubStructure(session.teamId);
+  const mine = new Set(operationalGroupsFor(session.teamMember, structure, { as: 'staff' }).map(g => g.id));
+  if (!activeGroups(structure).every(g => mine.has(g.id))) {
+    const e = new Error('Only staff operating every group can change the club-wide team sheet');
+    e.status = 403;
+    throw e;
+  }
+}
+
+/**
  * Every player-facing published sheet for ONE fixture: each published
  * side-scoped record (labelled with its real team name), then the legacy
  * sideless record as an explicitly UNASSIGNED sheet — it is never
@@ -2141,14 +2177,18 @@ async function seasonSheetsHandler(req, res) {
 
   // The GROUP is authorised against the caller's own staff scope, so a forged
   // ?group= cannot reach another squad's season. Omitting it is not a way to
-  // read everything: without a group the club's fixtures are answered as they
-  // already are by the fixtures resource, which every active member may read.
+  // read everything either: without a group the season is answered for the
+  // groups the caller OPERATES — club-wide staff get the whole club, a
+  // group-scoped coach exactly their groups. The sheets carry line-ups,
+  // substitutions and minutes, which the fixtures resource never exposes.
   const requested = String(req.query?.group || '').trim();
   let group = null;
   if (requested) {
     try { group = assertOperationalGroup(session, structure, requested, { as: 'staff' }); }
     catch (error) { return res.status(error.status || 403).json({ ok: false, error: error.message }); }
   }
+  const operable = new Set(
+    operationalGroupsFor(session.teamMember, structure, { as: 'staff' }).map(g => g.id));
 
   const { club, fixtures } = await readClubFixtures(session.teamId);
   const seasonStart = String(club?.seasonStart || '');
@@ -2162,7 +2202,7 @@ async function seasonSheetsHandler(req, res) {
   };
 
   const mine = fixtures
-    .filter(fx => !group || fixtureGroupOf(fx) === group.id)
+    .filter(fx => group ? fixtureGroupOf(fx) === group.id : operable.has(fixtureGroupOf(fx)))
     .filter(fx => fixtureHasBeenPlayed(fx, todayIso))
     .filter(inSeason);
 
@@ -3036,6 +3076,7 @@ export default async function handler(req, res) {
         requestedFixture = await assertFixtureBelongsToClub(session.teamId, req.query?.fixture);
         requestedSide    = await assertSideBelongsToClub(session.teamId, req.query?.side);
         await assertFixtureSideCoherence(session.teamId, requestedFixture, requestedSide);
+        await assertFixtureOperationalGroup(session, requestedFixture);
       } catch (error) {
         return res.status(error.status || 400).json({ error: error.message });
       }
@@ -3158,6 +3199,7 @@ export default async function handler(req, res) {
           asked = await assertFixtureBelongsToClub(session.teamId, req.query?.fixture);
           askedSide = await assertSideBelongsToClub(session.teamId, req.query?.side);
           await assertFixtureSideCoherence(session.teamId, asked, askedSide);
+          await assertFixtureOperationalGroup(session, asked);
         } catch (error) {
           return res.status(error.status || 400).json({ error: error.message });
         }
@@ -3229,6 +3271,7 @@ export default async function handler(req, res) {
         draft.fixtureId = await assertFixtureBelongsToClub(session.teamId, draft.fixtureId);
         draft.sideId    = await assertSideBelongsToClub(session.teamId, draft.sideId);
         await assertFixtureSideCoherence(session.teamId, draft.fixtureId, draft.sideId);
+        await assertFixtureOperationalGroup(session, draft.fixtureId);
       } catch (error) {
         return res.status(error.status || 400).json({ error: error.message });
       }
@@ -3283,6 +3326,10 @@ export default async function handler(req, res) {
         squad.fixtureId = await assertFixtureBelongsToClub(session.teamId, squad.fixtureId);
         squad.sideId    = await assertSideBelongsToClub(session.teamId, squad.sideId);
         await assertFixtureSideCoherence(session.teamId, squad.fixtureId, squad.sideId);
+        // The operator boundary: a fixture-linked sheet needs its group's
+        // coach; the unlinked club-wide slot needs authority over every group.
+        if (squad.fixtureId) await assertFixtureOperationalGroup(session, squad.fixtureId);
+        else await assertWholeClubSquadAuthority(session);
       } catch (error) {
         return res.status(error.status || 400).json({ error: error.message });
       }
@@ -3346,6 +3393,8 @@ export default async function handler(req, res) {
         asked = await assertFixtureBelongsToClub(session.teamId, req.body?.fixtureId || req.query?.fixture);
         askedSide = await assertSideBelongsToClub(session.teamId, req.body?.sideId || req.query?.side);
         await assertFixtureSideCoherence(session.teamId, asked, askedSide);
+        if (asked) await assertFixtureOperationalGroup(session, asked);
+        else await assertWholeClubSquadAuthority(session);
       } catch (error) {
         return res.status(error.status || 400).json({ error: error.message });
       }

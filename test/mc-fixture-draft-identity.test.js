@@ -269,6 +269,13 @@ async function seedClub() {
     { id: 'm-c', teamId: 'boitsfort', userId: 'u-coach', role: 'coach', staffLevel: 'head', isOwner: true, status: 'active', accessProfile: 'full' }]));
   kv.set('app:identity:users', JSON.stringify([{ id: 'u-coach', email: 'c@b.test', displayName: 'Coach' }]));
   kv.set('app:club:boitsfort', JSON.stringify({ clubName: 'Boitsfort', fixtures: ALL_FIXTURES }));
+  // Fixture groupIds are boundary-validated against the structure at creation,
+  // and the squad/draft paths assert the OPERATOR against it too — so the
+  // seeded club must actually hold the groups its fixtures play in.
+  kv.set('app:structure:boitsfort', JSON.stringify({ version: 1, groups: [
+    { id: SEN, name: 'Seniors', type: 'general', status: 'active' },
+    { id: U18, name: 'U18', type: 'age-grade', status: 'active' },
+  ], teams: [] }));
   kv.set('app:club:other-club', JSON.stringify({ clubName: 'Other', fixtures: [{ id: 'fx_foreign', opposition: 'X', date: '2026-09-01' }] }));
   return store.createSession({ userId: 'u-coach', teamId: 'boitsfort', role: 'coach' });
 }
