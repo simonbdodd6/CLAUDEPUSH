@@ -4341,9 +4341,98 @@
       .mcx2-bjname { font-size: 12.5px !important; }
     }
 
+    /* ═══════════════════════════════════════════════════════════════════════════
+       BUILD AH — TEAM SHEET NAME PLATES WRAP, NEVER CLIP.
+       The plates were <input> elements: an input renders ONE line and hard-clips
+       anything wider than its box, so "Adrian Trabada da Silva" lost its surname
+       on screen and in the exported graphic. The plates are SPANS now — same
+       classes, same picker behaviour — and these rules let a long name wrap to
+       a second line while short names keep the exact single-line look. The
+       clamp is a last-resort bound for absurd input; real rugby names fit in
+       two lines at every breakpoint. Same typography, no blanket shrinking.
+       ═══════════════════════════════════════════════════════════════════════════ */
+    .j12-name, .mcx2-bjname {
+      white-space: normal !important;
+      overflow-wrap: anywhere;
+      display: -webkit-box !important; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+      overflow: hidden;
+      line-height: 1.18;
+      align-items: center; justify-content: center;
+      min-height: calc(1.18em + 8px);            /* one-line plates keep their height */
+      cursor: pointer; user-select: none;
+    }
+    /* the desktop plate gains a little width — the tightest slot gap (17.5% of
+       a ~950px pitch ≈ 166px) leaves ample room, and two lines × 15 characters
+       covers every real surname without touching the font size */
+    .mc12-pitch .j12-name { width: 108px; }
+    /* empty plates keep the old placeholder look */
+    .j12-name.is-empty, .mcx2-bjname.is-empty {
+      color: rgba(255,255,255,0.42) !important; font-weight: 600 !important;
+    }
+    .mcx2-bjname.is-empty { color: var(--faint) !important; }
+    .j12-name:focus-visible, .mcx2-bjname:focus-visible {
+      outline: none; border-color: #34d399 !important; box-shadow: 0 0 0 2px rgba(52,211,153,0.35) !important;
+    }
+    /* Two renditions of every name travel in the plate: the full name, and
+       the team-sheet compact form (first-name initial + FULL surname — the
+       convention every printed sheet uses). Wide plates show the full name;
+       the narrow mobile pitch shows the compact one. Nothing is ever
+       abbreviated on the surname side, and the title tooltip always carries
+       the complete name. */
+    .pn-compact { display: none; }
+    /* LONG names only: fill-then-break, so a surname wider than one line packs
+       the plate instead of claiming a clipped third line. Normal names keep
+       clean word-boundary wrapping ("Tom / Brown", never "Tom Brow / n"). */
+    .j12-name.pn-long, .mcx2-bjname.pn-long { word-break: break-all; }
+    /* VERY long full names (>24 chars) render their compact team-sheet form at
+       EVERY width — two 108px lines hold up to ~24 characters, so beyond that
+       the full form cannot avoid a clipped third line even on desktop. */
+    .pn-xl .pn-full { display: none; }
+    .pn-xl .pn-compact { display: inline; }
+    /* long bench names: one modest step so three lines always suffice */
+    .mcx2-bjname.pn-long { font-size: 11px !important; font-weight: 700 !important; }
+    /* the lock/No.8 triangle is the pitch's densest spot: with two-line
+       plates the No.8 shirt needs a little more air below the locks — on
+       wide layouts only (the mobile pitch is taller per row already) */
+    @media (min-width: 601px) {
+      .mc12-pitch .mc12-slot[data-slot="8"] { margin-top: 20px; }
+    }
+    /* the stacked tablet band ran a 560px pitch — too short for two-line
+       plates in that same triangle */
+    @media (min-width: 601px) and (max-width: 1040px) {
+      .mc12-pitch.mcx2-pitch, #matchday-pitch.mc12-pitch { min-height: 850px !important; }
+    }
+    /* The bench sits in its own grid with nothing below to collide with, so
+       it may take a third line for a pathological unbroken surname. */
+    .mcx2-bjname { -webkit-line-clamp: 3; }
+    @media (max-width: 600px) {
+      /* mobile slots sit ~63px apart at 390px: 62px is the widest plate that
+         cannot overlap its same-row neighbour; the compact form + fill-break
+         wrapping do the rest */
+      .mc12-pitch .j12-name { width: 62px; }
+      .j12-name .pn-full, .mcx2-bjname .pn-full { display: none; }
+      .j12-name .pn-compact, .mcx2-bjname .pn-compact { display: inline; }
+      /* LONG compact names only (>14 chars) step down one size on the narrow
+         pitch so two lines hold the whole surname — normal names keep the
+         standard type. Targeted, never a blanket shrink. The long-name plate
+         also trades its side padding and heavy weight for characters: bold-800
+         glyphs at 62px were the difference between two lines and a clipped
+         third. */
+      .mc12-pitch .j12-name.pn-long {
+        font-size: 9px !important; font-weight: 700 !important;
+        padding: 3px 2px !important; letter-spacing: -0.02em;
+      }
+      .mcx2-bjname.pn-long { font-size: 10.5px !important; font-weight: 700 !important; }
+      /* a touch more vertical air for the dense lock/No.8 midfield rows */
+      .mc12-pitch.mcx2-pitch, #matchday-pitch.mc12-pitch { min-height: 700px !important; }
+      /* the No.8 plate and the scrum-half's shirt meet corner-to-corner at
+         390px — ease the 9 down a few pixels (huge clearance below it) */
+      .mc12-pitch .mc12-slot[data-slot="9"] { margin-top: 10px; }
+    }
+
     /* Match Centre bug fix — the selected player's name renders ABOVE the status
        tick / clear button so it is never covered (hover shows the full name via
-       the input's title). Presentation only. */
+       the plate's title). Presentation only. */
     .mc12-pitch .j12-name, .mcx2-bjname { position: relative; z-index: 4; }
     .mc12-pitch .mc12-slot .j12-tick, .mcx2-bjersey .j3-tick { z-index: 3; }
     .mc12-pitch .mc12-slot .jrsy-clear, .mcx2-bjersey .jrsy-clear { z-index: 6; }
@@ -10206,11 +10295,15 @@
     }
     function removeSubPlan(id) { state.subPlan=(state.subPlan||[]).filter(s=>s.id!==id); saveState(); showToast('Sub plan removed'); render(); }
     function exportFormation() {
-      const pitch = document.getElementById("matchday-pitch");
+      // Build AH: capture the WRAP, not just the pitch — the bench row lives
+      // beneath the pitch, so the old pitch-only capture exported a team sheet
+      // with no replacements on it at all. A solid backdrop replaces the
+      // transparent gap between the pitch and the bench card.
+      const pitch = document.querySelector(".mcx2-pitch-wrap") || document.getElementById("matchday-pitch");
       if (!pitch) return showToast("Pitch not found");
       if (typeof html2canvas === "undefined") return showToast("Export library loading — try again in a moment");
       showToast("Generating graphic…");
-      html2canvas(pitch, { scale:2, useCORS:true, allowTaint:true, backgroundColor:null }).then(canvas => {
+      html2canvas(pitch, { scale:2, useCORS:true, allowTaint:true, backgroundColor:"#0b0d12" }).then(canvas => {
         const link = document.createElement("a");
         const _clubSlug = (state.clubName || 'team').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
         // The export IS the selected fixture's sheet, so its name says which
@@ -11372,6 +11465,21 @@
      * name key ("nm:…") — honest about being unresolved, and never collapsed
      * into somebody else's identity.
      */
+    /**
+     * Build AH — the COMPACT plate form of a name: first-name initial + full
+     * surname(s), the standard team-sheet convention ("A. Trabada da Silva").
+     * Used only where the plate is physically narrow (mobile pitch markers,
+     * via a CSS media toggle); surnames are NEVER abbreviated or dropped, and
+     * short names stay exactly as written. Pure formatting — the stored name,
+     * the title tooltip and every identity key keep the full string.
+     */
+    function mcPlateCompactName(name) {
+      const full = String(name || '').trim();
+      const words = full.split(/\s+/);
+      if (full.length <= 12 || words.length < 2) return full;
+      return words[0][0].toUpperCase() + '. ' + words.slice(1).join(' ');
+    }
+
     function mcPersonKey(name) {
       const norm = String(name || "").trim().toLowerCase();
       if (!norm) return "";
@@ -11411,11 +11519,10 @@
       if (name.trim()) _mcRemovePersonElsewhere(mcPersonKey(name), t);
     }
     function _mcCurrentName(t) {
-      if (t.type === 'slot') {
-        const el = document.querySelector('#matchday-pitch .j3-slot[data-slot="' + t.label + '"] .j12-name');
-        if (el) return el.value || "";
-        return (state.formationNames || {})[t.label] || "";
-      }
+      // Build AH: state only. The DOM-first read existed for typed-but-unsaved
+      // input values; the plates have been readonly (and are spans now), so
+      // the canonical selection state is always exactly what is displayed.
+      if (t.type === 'slot') return (state.formationNames || {})[t.label] || "";
       return (state.benchPlayers || [])[t.idx] || "";
     }
     function _mcParseSource(src) {
@@ -11503,8 +11610,11 @@
     // ─── Click-a-jersey quick picker ──────────────────────────────────────────
     function mcComputeAvailable() {
       const placed = new Set();
-      document.querySelectorAll('#matchday-pitch .j12-name').forEach(i => { const v = (i.value || '').trim(); if (v) placed.add(mcPersonKey(v)); });
-      document.querySelectorAll('#coach-matchday .mcx2-bjname').forEach(i => { const v = (i.value || '').trim(); if (v) placed.add(mcPersonKey(v)); });
+      // Build AH: the placed set reads the CANONICAL selection state, not the
+      // DOM. The plates used to be readonly inputs whose .value mirrored this
+      // state exactly; they are spans now, and the state was always the truth.
+      Object.values(state.formationNames || {}).forEach(v => { const n = String(v || '').trim(); if (n) placed.add(mcPersonKey(n)); });
+      (state.benchPlayers || []).forEach(v => { const n = String(v || '').trim(); if (n) placed.add(mcPersonKey(n)); });
       // Canonical pool (deduped) excluded by PERSON, so every record of an
       // already-selected member is hidden — not just the exact name string.
       // Staff (Coach/Admin/Medical) live in state.players for the Members page
@@ -17703,6 +17813,7 @@
                 const inputVal   = slotName.replace(/"/g,"&quot;");
                 const slotPlayer = findPlayerByName(slotName);
                 const inj        = slotName && slotPlayer && (slotPlayer.game === 'injured' || slotPlayer.medical);
+                const compactName = mcPlateCompactName(slotName);
                 return `<div class="slot-big j3-slot mc12-slot${slotName?' filled':''}${inj?' inj':''}" data-slot="${label}" style="left:${x}%;top:${y}%"
                   ondragover="handleSlotDragover(event);this.classList.add('drag-over')"
                   ondragleave="this.classList.remove('drag-over');stopMatchdayAutoScroll()"
@@ -17718,8 +17829,15 @@
                     <span class="j12-num">${label}</span>
                     ${slotName ? `<span class="j12-tick ${inj?'inj':'ok'}" aria-hidden="true">${inj?'!':'✓'}</span>` : ''}
                   </div>
-                  <input class="slot-name-input j12-name" value="${inputVal}" placeholder="Add player" title="${inputVal}"
-                    readonly data-pslot="${label}" onclick="mcOpenPicker(event)" aria-label="Pick player for ${esc(RUGBY_POS[label] || label)}">
+                  <!-- Build AH: a SPAN, not an <input>. Inputs cannot wrap, so
+                       long names were hard-clipped at the plate edge — on
+                       screen and in the exported graphic. A span wraps to two
+                       lines; and with no input at all, browser/password
+                       autofill is impossible by construction. -->
+                  <span class="slot-name-input j12-name${slotName ? '' : ' is-empty'}${compactName.length > 14 ? ' pn-long' : ''}${slotName.length > 24 ? ' pn-xl' : ''}" title="${inputVal}"
+                    role="button" tabindex="0" data-pslot="${label}" onclick="mcOpenPicker(event)"
+                    onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();mcOpenPicker(event);}"
+                    aria-label="Pick player for ${esc(RUGBY_POS[label] || label)}">${slotName ? `<span class="pn-full">${esc(slotName)}</span><span class="pn-compact">${esc(compactName)}</span>` : 'Add player'}</span>
                   <span class="j12-pos">${esc(RUGBY_POS[label] || '')}</span>
                   ${slotName ? `<button class="jrsy-clear" type="button" title="Clear" onclick="clearFormationSlot('${label}')">×</button>` : ''}
                 </div>`;
@@ -17743,8 +17861,10 @@
                       <span class="j3-num">${i+16}</span>
                       ${bn?`<span class="j3-tick ${binj?'inj':'ok'}" aria-hidden="true">${binj?'!':'✓'}</span>`:''}
                     </div>
-                    <input class="slot-name-input mcx2-bjname" value="${(name||"").replace(/"/g,"&quot;")}" placeholder="—" title="${(name||"").replace(/"/g,"&quot;")}"
-                      readonly data-bench="${i}" onclick="mcOpenPicker(event)" aria-label="Pick bench player ${i+16}">
+                    <span class="slot-name-input mcx2-bjname${bn ? '' : ' is-empty'}${mcPlateCompactName(bn).length > 14 ? ' pn-long' : ''}${bn.length > 24 ? ' pn-xl' : ''}" title="${(name||"").replace(/"/g,"&quot;")}"
+                      role="button" tabindex="0" data-bench="${i}" onclick="mcOpenPicker(event)"
+                      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();mcOpenPicker(event);}"
+                      aria-label="Pick bench player ${i+16}">${bn ? `<span class="pn-full">${esc(bn)}</span><span class="pn-compact">${esc(mcPlateCompactName(bn))}</span>` : '—'}</span>
                     ${bn?`<button class="jrsy-clear sm" type="button" title="Clear" onclick="clearBenchSlot(${i})">×</button>`:''}
                   </div>`;
                 }).join("")}

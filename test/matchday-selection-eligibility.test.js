@@ -60,7 +60,11 @@ function club({ group = U18, adminLoaded = true, members = null, placed = [], en
   ];
   return new Function('roster', 'membersIn', 'groupIn', 'loadedIn', 'placedIn', 'entitledIn', `
     "use strict";
-    const state = { operationalGroupId: groupIn, players: roster, users: [] };
+    const state = { operationalGroupId: groupIn, players: roster, users: [],
+      // Build AH: placement lives in CANONICAL state (the plates are spans
+      // now, so there is no DOM value to read — and there never needed to be).
+      formationNames: Object.fromEntries(placedIn.map((v, i) => [String(i + 1), v])),
+      benchPlayers: [] };
     const _adminData = { loaded: loadedIn, members: membersIn };
     let ensureCalls = 0;
     function canI() { return entitledIn; }
@@ -72,8 +76,6 @@ function club({ group = U18, adminLoaded = true, members = null, placed = [], en
       return Boolean(player.id && player.name) && !['coach','admin','medical staff'].includes(position);
     }
     function mcPersonKey(n) { return String(n || '').trim().toLowerCase(); }
-    // Already-placed players come from the DOM in the real app.
-    const document = { querySelectorAll: () => placedIn.map(v => ({ value: v })) };
     ${fn('clubUsesPlayerGroups')}
     ${fn('playerGroupIdOf')}
     ${fn('operationalPlayers')}
