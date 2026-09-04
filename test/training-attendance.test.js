@@ -48,7 +48,14 @@ function extractFn(source, name) {
 }
 const strip = src => src.split('\n').filter(l => !l.trim().startsWith('//') && !l.trim().startsWith('*')).join('\n');
 
-const AGG = new Function(`"use strict"; ${extractFn(html, 'attendanceStats')} return attendanceStats;`)();
+// Build AD: the rate inside attendanceStats divides by sessions HELD, so the
+// canonical enumeration and the occurrence identity ride along. No slots: the
+// bare fixture ids date themselves through their stored dates.
+const AGG = new Function(`"use strict";
+  let _trainingSchedule = { slots: [] };
+  ${extractFn(html, 'attendanceOccurrenceId')}
+  ${extractFn(html, 'attendanceHeldSessions')}
+  ${extractFn(html, 'attendanceStats')} return attendanceStats;`)();
 const LABEL = new Function(`"use strict"; ${extractFn(html, 'matchDateLabel')} return matchDateLabel;`)();
 
 const SEASON = ['2026-07-01', '2027-06-30'];
@@ -63,21 +70,29 @@ test('present, absent and NOT RECORDED are three different things', () => {
   const a = AGG(s, 'id:u1', ...SEASON);
   assert.deepEqual({ recorded: a.recorded, present: a.present, absent: a.absent },
     { recorded: 2, present: 1, absent: 1 });
-  assert.equal(a.attendancePct, 50, 'present ÷ decisions recorded FOR THIS PLAYER');
+  // Build AD: the COUNTS above are still decisions; the RATE divides by the
+  // three sessions HELD — the unmarked third dilutes it, exactly as it does
+  // on the canonical Training → Attendance table.
+  assert.equal(a.attendancePct, 33, 'present ÷ sessions HELD');
 });
 
-test('a session nobody recorded counts for nobody', () => {
+test('a session nobody recorded counts for nobody — in the COUNTS', () => {
   const a = AGG({ s1: sess('2026-08-04', {}) }, 'id:u1', ...SEASON);
   assert.deepEqual({ recorded: a.recorded, present: a.present, absent: a.absent },
     { recorded: 0, present: 0, absent: 0 });
-  assert.equal(a.attendancePct, null, 'no denominator means no percentage — never 0%');
+  // Build AD: the session still HAPPENED, so the rate prices it — a held
+  // session attended by nobody on record is 0%, the same answer the
+  // canonical table gives. The counts above stay honest about "no decision".
+  assert.equal(a.held, 1);
+  assert.equal(a.attendancePct, 0, 'held but not attended on record');
 });
 
 test('an unmarked player is not absent, even when others were marked', () => {
   const s = { s1: sess('2026-08-04', { 'id:u2': 'present', 'id:u3': 'absent' }) };
   const a = AGG(s, 'id:u1', ...SEASON);
-  assert.equal(a.recorded, 0);
-  assert.equal(a.attendancePct, null);
+  assert.equal(a.recorded, 0, 'no decision was taken about them');
+  assert.equal(a.absent, 0, 'and unmarked is NOT absent');
+  assert.equal(a.attendancePct, 0, 'but the held session prices their rate (Build AD)');
 });
 
 test('a percentage is null, never zero, when nothing is recorded', () => {
@@ -114,10 +129,11 @@ test('the four availability/attendance combinations stay independent', () => {
     const a = AGG({ s1: sess('2026-08-04', { 'id:u1': mark }) }, 'id:u1', ...SEASON);
     assert.deepEqual({ present: a.present, absent: a.absent, pct: a.attendancePct }, want, label);
   }
-  // E: no availability answer + not recorded → not recorded
+  // E: no availability answer + not recorded → not recorded in the COUNTS;
+  // the held session still prices the rate (Build AD).
   const e = AGG({ s1: sess('2026-08-04', {}) }, 'id:u1', ...SEASON);
   assert.equal(e.recorded, 0, 'E: nothing said, nothing recorded, nothing claimed');
-  assert.equal(e.attendancePct, null);
+  assert.equal(e.attendancePct, 0, 'one session held, none attended on record');
 });
 
 test('the profile keeps availability and attendance in separate cards', () => {

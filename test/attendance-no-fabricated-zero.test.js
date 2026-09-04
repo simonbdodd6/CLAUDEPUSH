@@ -54,14 +54,19 @@ const BEN = { id: 'user_ben', userId: 'user_ben', name: 'Amy Stone' };   // a NA
 /** The presentation helpers over an injected register. */
 function scope({ sessions = {}, att, failed = false, selfKey = '' } = {}) {
   const src = ['playerAttendancePct', 'attendanceUnknownReason', 'attendanceLabel',
-               'attendanceBarWidth', 'attendanceStats', 'playerMatchKey']
+               'attendanceBarWidth', 'attendanceStats', 'playerMatchKey',
+               // Build AD: the rate divides by sessions HELD, so the canonical
+               // enumeration (and the identity it rests on) ride along.
+               'attendanceHeldSessions', 'attendanceOccurrenceId']
     .map(n => extractFn(html, n)).join('\n');
   return new Function('cfg', `
     "use strict";
     const state = { seasonStart: '${SEASON[0]}', seasonEnd: '${SEASON[1]}' };
     let _attendanceSelfKey = cfg.selfKey;
+    let _trainingSchedule = { slots: [] };
     const currentAttendance = () => cfg.att;
     const attendanceFailed = () => cfg.failed;
+    const availToday = () => '2026-09-04';
     ${src}
     return { playerAttendancePct, attendanceUnknownReason, attendanceLabel, attendanceBarWidth };
   `)({ att: att === undefined ? { sessions } : att, failed, selfKey });
@@ -179,7 +184,8 @@ test('a self-scoped register answers only for its owner', () => {
   // day a server that projects differently. The device must refuse to read it
   // rather than rely on the payload being clean.
   const sessions = { s1: sess('2026-08-04', { 'id:user_amy': 'present', 'id:user_ben': 'absent' }) };
-  const s = scope({ att: { scope: 'self', sessions }, selfKey: 'id:user_amy' });
+  // (Build AD: a self document carries the server's held count beside it.)
+  const s = scope({ att: { scope: 'self', held: 1, sessions }, selfKey: 'id:user_amy' });
   assert.equal(s.playerAttendancePct(AMY), 100);
   assert.equal(s.playerAttendancePct(BEN), null, 'a player device cannot answer about a squad-mate');
   // On a COACH's device the same document is the group's, and both resolve.
@@ -312,11 +318,12 @@ test('every surface branches on NULL, never on falsiness — a real 0% must surv
   assert.match(table, /att === null/, 'the Members cell too');
   assert.ok(!/att \|\| 0/.test(table));
 
-  // The player's own card (Build F) states the same rule in its own idiom: it
-  // never reaches a percentage unless something was actually RECORDED, so a
-  // genuine 0% is shown and an empty register says so in words.
+  // The player's own card states the same rule in its own idiom: it never
+  // reaches a percentage unless sessions were actually HELD (Build AD moved
+  // the gate from decisions recorded to the canonical denominator), so a
+  // genuine 0% is shown and a truly empty history says so in words.
   const mine = strip(extractFn(html, 'myAttendanceCardHtml'));
-  assert.match(mine, /!stats\.recorded/, 'the player card gates on what was recorded');
+  assert.match(mine, /!stats\.held/, 'the player card gates on what was held');
   assert.ok(!/attendancePct \|\| 0|!pct/.test(mine), 'and never defaults the figure');
 });
 

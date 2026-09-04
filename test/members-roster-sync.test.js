@@ -152,13 +152,18 @@ const SEASON = ['2026-07-01', '2027-06-30'];
  */
 function attendanceScope(sessions = {}, opts = {}) {
   const src = ['playerAttendancePct', 'attendanceLabel', 'attendanceBarWidth',
-               'attendanceStats', 'playerMatchKey'].map(n => extractFn(html, n)).join('\n');
+               'attendanceStats', 'playerMatchKey',
+               // Build AD: the rate divides by sessions HELD, so the canonical
+               // enumeration and the occurrence identity ride along.
+               'attendanceHeldSessions', 'attendanceOccurrenceId'].map(n => extractFn(html, n)).join('\n');
   return new Function('cfg', `
     "use strict";
     const state = { seasonStart: '${SEASON[0]}', seasonEnd: '${SEASON[1]}' };
     let _attendanceSelfKey = cfg.selfKey || '';
+    let _trainingSchedule = { slots: [] };
     const currentAttendance = () => cfg.att;
     const attendanceFailed = () => !!cfg.failed;
+    const availToday = () => '2026-09-04';
     ${src}
     return { playerAttendancePct, attendanceLabel, attendanceBarWidth };
   `)({ att: opts.att === undefined ? { sessions } : opts.att, failed: opts.failed, selfKey: opts.selfKey });
@@ -194,10 +199,11 @@ test('a genuine zero is data, and still reads as 0%', () => {
 });
 
 test('a record with no attendance never renders undefined, NaN or null', () => {
+  // Nothing HELD, or no answer at all: these resolve to null and an em dash.
+  // (Build AD moved "held but unmarked" out of this list — see below: a held
+  // session prices everyone's rate, so those cases are now a REAL 0%.)
   const cases = [
     ['no register at all',        attendanceScope({})],
-    ['marked for somebody else',  attendanceScope({ s1: sess('2026-08-04', { 'id:someone': 'present' }) })],
-    ['not recorded this session', attendanceScope({ s1: sess('2026-08-04', {}) })],
     ['out of season',             attendanceScope({ s1: sess('2025-08-04', { 'id:user_amy': 'present' }) })],
     ['read failed',               attendanceScope({}, { att: null, failed: true })],
     ['still loading',             attendanceScope({}, { att: null })],
@@ -210,6 +216,17 @@ test('a record with no attendance never renders undefined, NaN or null', () => {
     assert.equal(label, '—', `${name} must render an em dash`);
     assert.ok(!/undefined|NaN|null/.test(label), `${name} leaked a JS value into the UI`);
   }
+  // A session that HAPPENED prices the rate even where no decision was taken
+  // about this player — the canonical denominator, same as Training →
+  // Attendance. 0%, never null, and never a leaked JS value.
+  for (const [name, scope] of [
+    ['marked for somebody else',  attendanceScope({ s1: sess('2026-08-04', { 'id:someone': 'present' }) })],
+    ['not recorded this session', attendanceScope({ s1: sess('2026-08-04', {}) })],
+  ]) {
+    const value = scope.playerAttendancePct(AMY);
+    assert.equal(value, 0, `${name}: a held session is in the denominator (Build AD)`);
+    assert.equal(scope.attendanceLabel(value), '0%');
+  }
 });
 
 test('a player with no resolvable identity claims nobody’s attendance', () => {
@@ -218,14 +235,19 @@ test('a player with no resolvable identity claims nobody’s attendance', () => 
     assert.equal(playerAttendancePct(bad), null, JSON.stringify(bad));
   }
   // A NAME is never an identity — a namesake must not inherit the record.
-  assert.equal(playerAttendancePct({ id: 'user_other', name: 'Amy Stone' }), null);
+  // Their own identity resolves, so they get their OWN answer for the held
+  // session: a real 0% (Build AD), and never Amy's 100%.
+  const namesake = playerAttendancePct({ id: 'user_other', name: 'Amy Stone' });
+  assert.equal(namesake, 0);
+  assert.notEqual(namesake, 100, 'the record stays with its owner');
 });
 
 test('a self-scoped register answers for its owner and for nobody else', () => {
   // A PLAYER's device holds only their own marks, re-keyed by the server. The
   // same helper on that device must refuse to answer about a squad-mate.
   const sessions = { s1: sess('2026-08-04', { 'id:user_amy': 'present' }) };
-  const scope = attendanceScope({}, { att: { scope: 'self', sessions }, selfKey: 'id:user_amy' });
+  // (Build AD: a self document carries the server's held count beside it.)
+  const scope = attendanceScope({}, { att: { scope: 'self', held: 1, sessions }, selfKey: 'id:user_amy' });
   assert.equal(scope.playerAttendancePct(AMY), 100);
   assert.equal(scope.playerAttendancePct({ id: 'user_ben', userId: 'user_ben' }), null);
 });
