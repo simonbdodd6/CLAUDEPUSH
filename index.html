@@ -17122,7 +17122,15 @@
 
         <!-- ATTENDANCE — one register, shared with History so a past
              session opens exactly the same thing. -->
-        ${canI('publish_training') ? `<div class="card" style="margin-bottom:14px">${attendancePanelHtml(sessId, sessObj && sessObj.date)}</div>` : ''}
+        ${canI('publish_training') ? `<div class="card" style="margin-bottom:14px">${
+          // BUILD AG — the ONE derivation site. The stored current-week rows
+          // can carry junk dates ("" / "19.45"), which left the panel unable
+          // to name an occurrence and recording inert in production. Resolve
+          // the row to its slot's date in this week; an unresolvable row
+          // falls through unchanged and the panel keeps its honest refusal.
+          (() => { const _r = trainingAttendanceOccurrence(sessId, sessObj && sessObj.date);
+                   return attendancePanelHtml(_r ? _r.id : sessId, _r ? _r.date : (sessObj && sessObj.date)); })()
+        }</div>` : ''}
 
         <!-- Printable coach summary — kept for Training session 1 & 2; hidden for the
              Pre-game / Warm-up session, whose plan the main card above already shows.
@@ -20346,6 +20354,58 @@
       const mo = Number(m[2]), day = Number(m[3]);
       if (mo < 1 || mo > 12 || day < 1 || day > 31) return '';
       return root + '-' + d.replace(/-/g, '');
+    }
+
+    /**
+     * BUILD AG — the CURRENT-WEEK planner row, resolved to a recordable
+     * occurrence.
+     *
+     * Production's stored current-week rows are legacy seeds whose date field
+     * holds junk — Seniors carries the TIME "19.45", U18 carries "" — so the
+     * attendance panel derived no occurrence and recording was inert for
+     * every group (the store held zero keys). Nothing was wrong with the
+     * resolver: it refuses to guess, and must keep refusing.
+     *
+     * This derives what the row cannot say, from facts the product already
+     * holds, and ONLY at the planner boundary (History never derives — a past
+     * card must not be re-addressable to this week):
+     *
+     *   · a valid ISO stored date is kept exactly as before;
+     *   · a dated id answers for itself;
+     *   · otherwise the row maps to its SLOT — by the stored sessionId link,
+     *     or (for the two legacy seeds, tue/thu) by their weekday — and takes
+     *     that slot's date in the CURRENT week via availSlotDateInWeek, the
+     *     same date algorithm availability lives by. The returned identity is
+     *     the SLOT's, so U18 (whose slots carry sessionId '') lands on the
+     *     dated occurrence its availability events already use rather than
+     *     minting a second, bare-rooted identity.
+     *
+     * Unknown ids, the legacy `game` row, an ambiguous weekday (two slots on
+     * one day): null — a refusal, never a guess. The slot table read here is
+     * the group-scoped cache (_trainingSchedule), so U18 derives from U18
+     * slots and Seniors from Seniors', never each other's.
+     */
+    function trainingAttendanceOccurrence(sessionId, storedDate) {
+      const id = String(sessionId || '').trim();
+      if (!id) return null;
+      const iso = String(storedDate || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(iso) && trainingDateLabel(iso)) {
+        return { id, date: iso };                       // the row knows its date
+      }
+      if (/-\d{8}$/.test(id)) return { id, date: '' };  // a dated id carries its own
+      const slots = ((_trainingSchedule && _trainingSchedule.slots) || [])
+        .filter(sl => sl && sl.active !== false);
+      let slot = slots.find(sl => String(sl.sessionId || '') === id) || null;
+      if (!slot) {
+        const day = { tue: 'Tue', thu: 'Thu' }[id];     // the two legacy seeds only
+        if (!day) return null;
+        const daySlots = slots.filter(sl => String(sl.day || '') === day);
+        if (daySlots.length !== 1) return null;         // none, or ambiguous: refuse
+        slot = daySlots[0];
+      }
+      const date = availSlotDateInWeek(slot, availWeekStart(availToday()));
+      if (!date) return null;
+      return { id: String(slot.id), date };
     }
 
     /**

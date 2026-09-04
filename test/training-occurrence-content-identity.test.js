@@ -299,8 +299,10 @@ test('G: availability event ids are byte-for-byte unchanged — answers keep wor
 });
 
 test('G: the attendance panel and register identity are untouched', () => {
-  assert.match(strip(fn('renderTraining')), /attendancePanelHtml\(sessId, sessObj && sessObj\.date\)/,
-    'attendance still keys off the protocol id + date, which lifts to the same occurrence');
+  // Build AG: the planner resolves the row (junk stored dates) before the
+  // panel; the identity it lifts to is the SAME canonical occurrence.
+  assert.match(strip(fn('renderTraining')), /trainingAttendanceOccurrence\(sessId, sessObj && sessObj\.date\)/,
+    'attendance keys off the resolved occurrence, which lifts to the same identity');
   assert.equal(html.split('function attendanceOccurrenceId(').length - 1, 1,
     'exactly the one client implementation — none added by this fix');
 });

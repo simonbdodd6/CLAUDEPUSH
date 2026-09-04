@@ -20,4 +20,18 @@ html = html.replace(
 
 writeFileSync('index.html', html);
 
-console.log(`[build-inject] ${env} @ ${sha} (${branch}) — ${buildTime}`);
+// BUILD AG — the service worker's SW_VERSION is the deploy lever: a changed
+// value makes the new worker install (skipWaiting), claim the open windows
+// and refresh each one ONCE, so installed PWAs pick up the current bundle.
+// It used to be a hand-edited constant and sat unchanged across ~13 deploys,
+// leaving installed PWAs on weeks-old builds. Stamping it here — with the
+// deploy sha AND the build time, so even a redeploy of the same sha pulls
+// the lever — makes every production deploy reach every installed device.
+let sw = readFileSync('sw.js', 'utf8');
+sw = sw.replace(
+  /const SW_VERSION = '[^']*';/,
+  `const SW_VERSION = '${sha}.${buildTime}';`
+);
+writeFileSync('sw.js', sw);
+
+console.log(`[build-inject] ${env} @ ${sha} (${branch}) — ${buildTime} · sw ${sha}.${buildTime}`);
