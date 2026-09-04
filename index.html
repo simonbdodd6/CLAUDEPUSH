@@ -28901,6 +28901,57 @@
       saveState('medical');
     }
 
+    /** Does THIS roster row carry any medical signal of its own — a record or
+     *  note keyed to its id, or a roster injury flag? Decides which twin
+     *  survives deduplication, so it must see every signal the dashboard
+     *  summary reads; missing one would let the collapse orphan an injury. */
+    function medicalRowCarriesCase(p, medRecords, medNotes) {
+      const r = (medRecords || {})[p.id] || {};
+      const n = (medNotes || {})[p.id] || {};
+      return Boolean(
+        String(r.currentInjury || '').trim() || String(r.severity || '').trim() ||
+        String(r.dateInjured || '').trim() || String(r.clearanceStatus || '').trim() ||
+        String(n.condition || '').trim() || String(n.notes || '').trim() ||
+        String(p.medical || '').trim() || p.game === 'injured' ||
+        ['unavailable', 'modified', 'gymOnly', 'noContact'].includes(p.trainingStatus)
+      );
+    }
+
+    /**
+     * BUILD AE — ONE Medical row per person.
+     *
+     * The roster can hold TWO records for one human: the hand-added legacy row
+     * (which an injury may be keyed against) and the account-linked row that
+     * arrived with their invite or Medical access. Both carry the same durable
+     * userId, so the page showed the same player twice — one row Available,
+     * one row Injured.
+     *
+     * Rows sharing a non-empty userId collapse to ONE, and the survivor is
+     * the row that carries medical signals — so the injury is never orphaned
+     * by its healthy twin. Two signal-carrying rows are deliberately left
+     * uncollapsed: visible duplication is better than hiding a medical
+     * record. Rows without a userId are their own identity — two unlinked
+     * namesakes are two people, never merged by name.
+     */
+    function medicalCanonicalPlayers(rows, medRecords, medNotes) {
+      const byUser = new Map();
+      (rows || []).forEach(p => {
+        const uid = String(p?.userId || '').trim();
+        if (!uid) return;
+        if (!byUser.has(uid)) byUser.set(uid, []);
+        byUser.get(uid).push(p);
+      });
+      const drop = new Set();
+      byUser.forEach(twins => {
+        if (twins.length < 2) return;
+        const carrying = twins.filter(p => medicalRowCarriesCase(p, medRecords, medNotes));
+        if (carrying.length > 1) return;               // two records: hide neither
+        const keep = carrying[0] || twins[0];
+        twins.forEach(p => { if (p !== keep) drop.add(p); });
+      });
+      return (rows || []).filter(p => !drop.has(p));
+    }
+
     function medicalPlayers() {
       // GROUP context (coach view): the caseload roster follows the OPERATING
       // group, mirroring the &group= that loadMedicalFromServer fetches with.
@@ -28911,8 +28962,10 @@
       const rows = state.activeView !== 'player' && typeof operationalPlayers === 'function'
         ? operationalPlayers()
         : (Array.isArray(state.players) ? state.players : []);
-      if (Array.isArray(rows) && rows.length) return rows;
-      return (typeof _sharedMedical === 'object' && _sharedMedical.players) || [];
+      const src = (Array.isArray(rows) && rows.length)
+        ? rows
+        : ((typeof _sharedMedical === 'object' && _sharedMedical.players) || []);
+      return medicalCanonicalPlayers(src, state.medicalRecords, state.medicalNotes);
     }
 
     function _renderMedicalDashboard() {
