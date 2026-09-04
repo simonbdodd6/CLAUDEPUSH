@@ -129,14 +129,17 @@ test('clicking a bench player opens the squad picker (never login)', () => {
   assert.ok(!/welcomeLogin|loginWithForm|loginAs\(|loginIdentityAccount|devLogin/.test(open), 'it never triggers any login flow');
 });
 
-// ── Structural: name inputs are READONLY → browser shows no login/email autofill
-test('pitch + bench name inputs are readonly (no credential autofill) + open the picker', () => {
-  assert.ok(html.includes('readonly data-pslot="${label}" onclick="mcOpenPicker(event)"'), 'slot input readonly + click-to-pick');
-  assert.ok(html.includes('readonly data-bench="${i}" onclick="mcOpenPicker(event)"'), 'bench input readonly + click-to-pick');
-  // readonly fields are never editable, so the password manager cannot offer
-  // saved login/email/password — and there is no oninput typing path to trigger it.
-  assert.ok(!/class="slot-name-input j12-name"[^>]*oninput=/.test(html), 'slot name input has no typing handler');
-  assert.ok(!/class="slot-name-input mcx2-bjname"[^>]*oninput=/.test(html), 'bench name input has no typing handler');
+// ── Structural: name plates are NOT inputs → credential autofill is impossible
+// (Build AH strengthened this: the plates used to be readonly <input>s; they
+// are SPANS now — nothing for a password manager to even consider — and spans
+// can wrap, which is what fixed the clipped long names.)
+test('pitch + bench name plates are spans (no credential autofill) + open the picker', () => {
+  assert.ok(html.includes('data-pslot="${label}" onclick="mcOpenPicker(event)"'), 'slot plate click-to-pick');
+  assert.ok(html.includes('data-bench="${i}" onclick="mcOpenPicker(event)"'), 'bench plate click-to-pick');
+  assert.ok(!/<input[^>]*class="slot-name-input j12-name/.test(html), 'the slot plate is not an input');
+  assert.ok(!/<input[^>]*class="slot-name-input mcx2-bjname/.test(html), 'the bench plate is not an input');
+  assert.match(html, /<span class="slot-name-input j12-name/, 'slot plate is a span');
+  assert.match(html, /<span class="slot-name-input mcx2-bjname/, 'bench plate is a span');
 });
 
 // ── Regression: a moved/removed player must NOT snap back (no index-default) ──
