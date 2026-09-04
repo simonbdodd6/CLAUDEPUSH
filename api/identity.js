@@ -650,10 +650,13 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, ...result, invitesRevoked });
       }
       // RC4.9C — assign or change a member's ACCESS PROFILE (full/coach/manager).
-      // Requires ASSIGN_ACCESS, which only Full Access holders and the club owner
-      // have. Granting Full Access additionally requires an explicit confirmation.
+      // Requires ASSIGN_ACCESS *and* club-wide scope, like every other
+      // access-administration action: profile and scope are independent, so a
+      // group-scoped member whose profile derives 'full' (a legacy head coach)
+      // must not hand out club-wide access from inside one group.
+      // Granting Full Access additionally requires an explicit confirmation.
       if (action === 'set_access_profile') {
-        const session = await requireTenantPermission(req, PERM.ASSIGN_ACCESS);
+        const session = await requireClubManage(req, PERM.ASSIGN_ACCESS);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
         const memberId = String(req.body?.memberId || '');
         const nextProfile = String(req.body?.accessProfile || '').toLowerCase();

@@ -197,6 +197,41 @@ test('the last full-access administrator cannot be downgraded, and the owner can
   assert.equal(ok.statusCode, 200, 'a non-final admin may be downgraded');
 });
 
+test('a group-scoped head coach cannot assign access profiles', async () => {
+  // The dangerous configuration: a LEGACY head coach (no explicit
+  // accessProfile → derives 'full' → holds ASSIGN_ACCESS) whose stored
+  // accessScope names ONE group. Profile and scope are independent, so
+  // without a club-wide gate this member could mint a club-wide Full
+  // Access accomplice — the escalation _tenant.js documents as forbidden:
+  // access administration is club-level, exactly like set_member_access.
+  kv.clear(); _t = 0;
+  const A = await club('Alpha');
+  const scoped = await joinPlayer(A.team.id, 'Scoped Head');
+  const list = members();
+  const m = list.find(x => x.userId === scoped.user.id);
+  m.role = 'coach'; m.staffLevel = 'head';
+  m.accessScope = { clubWide: false, groups: [{ groupId: 'grp_initial' }], teams: [] };
+  saveMembers(list);
+  const session = await store.createSession({ userId: scoped.user.id, teamId: A.team.id, role: 'coach' });
+
+  const target = await joinPlayer(A.team.id, 'Target Person');
+  const targetMember = memberOf(target.user.id);
+
+  const r = await call({ action: 'set_access_profile', memberId: targetMember.id, accessProfile: 'full', confirmFullAccess: true }, ck(session));
+  assert.equal(r.statusCode, 403, JSON.stringify(r.body));
+  assert.match(r.body.error, /club-wide/i);
+  assert.equal(memberOf(target.user.id).accessProfile, undefined, 'target profile untouched');
+
+  // The same member with a CLUB-WIDE stored scope is a legitimate admin
+  // and keeps the capability — the gate tests scope, not the profile model.
+  const widened = members();
+  widened.find(x => x.userId === scoped.user.id).accessScope =
+    { clubWide: true, groups: [], teams: [] };
+  saveMembers(widened);
+  const ok = await call({ action: 'set_access_profile', memberId: targetMember.id, accessProfile: 'manager' }, ck(session));
+  assert.equal(ok.statusCode, 200, JSON.stringify(ok.body));
+});
+
 // ── 3. Player deletion is gated on the PERMISSION, per assigned team ────────
 async function deletablePlayer(teamId, name) {
   const p = await joinPlayer(teamId, name);
