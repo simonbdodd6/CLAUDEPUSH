@@ -17463,7 +17463,7 @@
       const _availStats = available.map(p => {
         const match = mcAvailFilterBucket(_statusByPlayer.get(String(p.id)));
         const _st = (_attSrc && !_attSrc.denied)
-          ? attendanceStats(_attSrc.sessions, playerMatchKey(p), state.seasonStart, state.seasonEnd)
+          ? attendanceStats(_attSrc.sessions, playerMatchKey(p), state.seasonStart, state.seasonEnd, availToday())
           : null;
         const attPct = _st ? _st.attendancePct : null;
         return { p, match, attPct };
@@ -17901,9 +17901,13 @@
       const key = playerMatchKey(player);
       if (!key) return null;                       // unresolved identity claims nothing
       // A PLAYER's device holds a self-scoped register the server re-keyed to
-      // their own identity. It can answer for them and for nobody else.
+      // their own identity. It can answer for them and for nobody else — and
+      // its projection omits sessions they were never marked on, so the
+      // denominator is the count the SERVER sent, never one derived from a
+      // deliberately partial document.
       if (att.scope === 'self' && key !== _attendanceSelfKey) return null;
-      return attendanceStats(att.sessions, key, state.seasonStart, state.seasonEnd).attendancePct;
+      return attendanceStats(att.sessions, key, state.seasonStart, state.seasonEnd,
+        availToday(), att.scope === 'self' ? Number(att.held) : undefined).attendancePct;
     }
 
     /**
@@ -20404,7 +20408,11 @@
           render();
           return;
         }
-        _attendance = { scope, sessions: (data && typeof data.sessions === 'object') ? data.sessions : {} };
+        _attendance = { scope, sessions: (data && typeof data.sessions === 'object') ? data.sessions : {},
+          // Self scope only: the held-session COUNT the server computed over
+          // the full document — the canonical rate's denominator, which this
+          // deliberately partial projection cannot derive for itself.
+          ...(scope === 'self' && Number.isFinite(Number(data?.held)) ? { held: Number(data.held) } : {}) };
         _attendanceGroup = gid;
         _attendanceFailed = null;
         _attendanceReason = '';
@@ -20482,21 +20490,24 @@
     /**
      * SEASON ATTENDANCE for one player — the single aggregation, pure.
      *
-     * DENOMINATOR, stated plainly: attendance % is present ÷ DECISIONS RECORDED
-     * FOR THIS PLAYER. A session where nobody was marked counts for nobody; a
-     * session where this player specifically was left unmarked counts for
-     * everyone else but not for them. The alternative — dividing by every
-     * session held — would quietly convert "we forgot to take the register"
-     * into "they did not come", which is the exact mistake this whole build
-     * exists to avoid.
+     * TWO kinds of answer, kept apart on purpose (Build AD):
+     *   · the COUNTS — recorded / present / absent — are facts about
+     *     DECISIONS: a session where this player was left unmarked adds to
+     *     none of them, and `recorded` remains exactly "decisions taken about
+     *     this player".
+     *   · the RATE — attendancePct — is attended ÷ sessions HELD, the one
+     *     denominator every surface shares with Training → Attendance. It
+     *     used to divide by decisions recorded, which read "we forgot the
+     *     register" as "perfect attendance": 5 present with 3 unmarked showed
+     *     100% here beside 63% on the canonical table.
      *
      * Identity is the canonical key, so a rename keeps the history and two
      * players sharing a name never share one. A session is counted once
      * however many times it appears.
      */
-    function attendanceStats(sessions, playerKey, seasonStart, seasonEnd) {
+    function attendanceStats(sessions, playerKey, seasonStart, seasonEnd, todayIso, heldCount) {
       const key = String(playerKey || '');
-      const out = { recorded: 0, present: 0, absent: 0, attendancePct: null, lastPresent: null };
+      const out = { recorded: 0, present: 0, absent: 0, held: 0, attendancePct: null, lastPresent: null };
       if (!key) return out;
       const presentDates = [];
       // Sessions arrive as an OBJECT keyed by session id, so a session cannot
@@ -20517,7 +20528,27 @@
         if (status === 'present') { out.present += 1; presentDates.push({ date, title: String(rec.title || ''), sessionId: sid }); }
         else out.absent += 1;
       });
-      out.attendancePct = out.recorded > 0 ? Math.round((out.present / out.recorded) * 100) : null;
+      // THE RATE (Build AD): ONE definition on every surface — attended ÷
+      // sessions HELD, the same denominator Training → Attendance shows. It
+      // used to divide by decisions recorded, so 5 present with 3 unmarked
+      // read 100% here and 63% on the canonical table. The decision COUNTS
+      // above are untouched: recorded/present/absent stay facts about
+      // decisions, and the denominator is carried openly as `held`.
+      //
+      // A caller holding the FULL document leaves heldCount undefined and the
+      // canonical enumeration runs here. A SELF-scoped reader cannot (their
+      // projection deliberately omits sessions they were never marked on —
+      // the privacy contract), so they pass the server's own count; anything
+      // unusable resolves to zero held, which answers null — an unknown
+      // denominator is an unknown rate, never a fabricated one.
+      const heldSessions = attendanceHeldSessions(sessions, todayIso, seasonStart, seasonEnd);
+      out.held = heldCount === undefined
+        ? heldSessions.length
+        : (Number.isFinite(heldCount) && heldCount >= 0 ? heldCount : 0);
+      const presentHeld = heldSessions.reduce((n, h) => n + (h.marks[key] === 'present' ? 1 : 0), 0);
+      // min: a clock straddling UTC midnight could briefly count today's mark
+      // against a denominator the server dated yesterday — never above 100.
+      out.attendancePct = out.held > 0 ? Math.min(100, Math.round((presentHeld / out.held) * 100)) : null;
       // LAST ATTENDED means last marked PRESENT. Absent is not attending, and
       // not-recorded proves nothing either way.
       presentDates.sort((a, b) => String(b.date).localeCompare(String(a.date))
@@ -20631,7 +20662,8 @@
       // The key is the SERVER'S, never the device's. No key, no claim.
       const key = _attendanceSelfKey;
       const stats = (att && !att.denied && key)
-        ? attendanceStats(att.sessions, key, state.seasonStart, state.seasonEnd)
+        ? attendanceStats(att.sessions, key, state.seasonStart, state.seasonEnd,
+            availToday(), att.scope === 'self' ? Number(att.held) : undefined)
         : null;
       const label = 'font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)';
       const metric = (value, name, color) => `
@@ -20651,7 +20683,9 @@
         last = failed ? 'Unavailable' : 'Loading…';
       } else if (att.denied) {
         return '';   // not a playing member: there is no "your attendance" to show
-      } else if (!stats.recorded) {
+      } else if (!stats.held) {
+        // Nothing HELD is nothing to rate — the same null the canonical
+        // table shows, never a fabricated figure either way.
         body = note('No attendance recorded yet — your coach has not taken a register you were on.');
         last = 'Not yet recorded present';
       } else {
@@ -20662,7 +20696,7 @@
             ${metric(stats.absent, 'Absent', stats.absent ? '#dc2626' : 'var(--ink)')}
             ${metric(stats.recorded, 'Recorded', 'var(--ink)')}
           </div>
-          <p class="muted" style="font-size:11.5px;margin:9px 0 0">Of ${stats.recorded} session${stats.recorded === 1 ? '' : 's'} where attendance was taken. Sessions nobody recorded count for nobody.</p>`;
+          <p class="muted" style="font-size:11.5px;margin:9px 0 0">Of ${stats.held} training session${stats.held === 1 ? '' : 's'} held — the same rate your coaches see. A session with no record for you still counts in that total.</p>`;
         last = stats.lastPresent
           ? `${esc(matchDateLabel(stats.lastPresent.date) || 'Date unknown')}${stats.lastPresent.title ? ' · ' + esc(stats.lastPresent.title) : ''}`
           : 'Not yet recorded present';
@@ -21286,7 +21320,7 @@
         ${(() => {
           const att = currentAttendance();
           const stats = (att && !att.denied)
-            ? attendanceStats(att.sessions, playerMatchKey(p), state.seasonStart, state.seasonEnd)
+            ? attendanceStats(att.sessions, playerMatchKey(p), state.seasonStart, state.seasonEnd, availToday())
             : null;
           const attBody = !att
             ? (attendanceFailed()
@@ -21294,7 +21328,7 @@
                 : '<p class="muted" style="font-size:12.5px;margin:0">Loading attendance…</p>')
             : att.denied
             ? '<p class="muted" style="font-size:12.5px;margin:0">Attendance needs training access.</p>'
-            : !stats.recorded
+            : !stats.held
             ? '<p class="muted" style="font-size:12.5px;margin:0">No attendance recorded yet. Record it from a training session.</p>'
             : `<div style="display:flex;gap:12px;flex-wrap:wrap">
                  ${metric(stats.attendancePct + '%', 'Attendance', pctColor(stats.attendancePct))}
@@ -21302,7 +21336,7 @@
                  ${metric(stats.absent, 'Absent', stats.absent ? '#dc2626' : 'var(--fg)')}
                  ${metric(stats.recorded, 'Recorded', 'var(--fg)')}
                </div>
-               <p class="muted" style="font-size:11.5px;margin:8px 0 0">Of ${stats.recorded} session${stats.recorded === 1 ? '' : 's'} where attendance was taken. Sessions nobody recorded count for nobody.</p>`;
+               <p class="muted" style="font-size:11.5px;margin:8px 0 0">Of ${stats.held} training session${stats.held === 1 ? '' : 's'} held — the same denominator as Training → Attendance. A session with no record for this player still counts in that total.</p>`;
           const last = stats && stats.lastPresent;
           return `
         <div class="card" style="margin-bottom:14px">

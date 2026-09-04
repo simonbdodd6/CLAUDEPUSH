@@ -67,6 +67,7 @@ function world({ sessions = {}, denied = false, loaded = true, failed = false,
     ${extractFn(html, 'attendanceOccurrenceId')}
     ${extractFn(html, 'currentAttendance')}
     ${extractFn(html, 'attendanceFailed')}
+    ${extractFn(html, 'attendanceHeldSessions')}
     ${extractFn(html, 'attendanceStats')}
     ${extractFn(html, 'trainingAttendanceForSession')}
     return { trainingAttendanceForSession, attendanceStats, attendanceOccurrenceId,

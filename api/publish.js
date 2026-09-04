@@ -1883,6 +1883,41 @@ function attendanceLedgerAdditions(sessions, existingSessions, slots) {
   return out;
 }
 
+/**
+ * SESSIONS HELD — the denominator of the canonical attendance rate, counted
+ * over a MIGRATED document (Build AD).
+ *
+ * Mirrors attendanceHeldSessions in index.html, which staff clients run over
+ * the full document their GET returns. A PLAYER's projection deliberately
+ * omits sessions they were never marked on (see attendanceSelfProjection —
+ * the privacy contract), so their device cannot enumerate this. The count is
+ * computed HERE and travels as a NUMBER: no dates, no titles, no marks —
+ * nothing about anybody else, only how many sessions their group has held.
+ * A test pins this and the client enumeration together, exactly as the two
+ * attendanceOccurrenceId implementations are pinned.
+ *
+ * On a migrated document every placeable session sits under its dated key
+ * (migrateAttendanceDoc lifts what can be lifted; what remains bare has no
+ * provable date, or is a legacy twin of a dated record — neither is a second
+ * session). So: dated keys with a real calendar date, not in the future, and
+ * inside the configured season when one is configured.
+ */
+function attendanceHeldCount(sessions, todayIso, seasonStart, seasonEnd) {
+  let held = 0;
+  Object.keys(sessions || {}).forEach(k => {
+    const m = /^.*-(\d{8})$/.exec(String(k));
+    if (!m) return;                                          // no dated identity: not provably held
+    const d = m[1];
+    const mo = Number(d.slice(4, 6)), day = Number(d.slice(6, 8));
+    if (mo < 1 || mo > 12 || day < 1 || day > 31) return;
+    const date = d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6, 8);
+    if (todayIso && date > todayIso) return;                 // ledgered ahead: not held yet
+    if (seasonStart && seasonEnd && (date < seasonStart || date > seasonEnd)) return;
+    held += 1;
+  });
+  return held;
+}
+
 // ── A PLAYER READING THEIR OWN ATTENDANCE ─────────────────────────────────
 // Attendance is the coach's record OF a player, so the player it is about may
 // read it. Nobody else's, and nothing else about the session.
@@ -1975,8 +2010,15 @@ async function attendanceSelfHandler(req, res, staffError) {
   const raw = sanitiseAttendanceDoc(await kvGet(attendanceKey(session.teamId, groupId)));
   const migrated = migrateAttendanceDoc(raw, slots);
   const mine = attendanceSelfProjection(migrated.sessions, ownedKeys, selfKey);
+  // The canonical rate's denominator (Build AD): counted over the FULL
+  // migrated document, before the projection strips sessions this player was
+  // never marked on. The same season the client applies bounds it here.
+  const { club } = await readClubFixtures(session.teamId);
+  const held = attendanceHeldCount(migrated.sessions,
+    new Date().toISOString().slice(0, 10),
+    String(club?.seasonStart || ''), String(club?.seasonEnd || ''));
   return res.status(200).json({
-    ok: true, scope: 'self', groupId, selfKey, sessions: mine.sessions,
+    ok: true, scope: 'self', groupId, selfKey, held, sessions: mine.sessions,
     ...(mine.ambiguous.length ? { ambiguous: mine.ambiguous } : {}),
   });
 }

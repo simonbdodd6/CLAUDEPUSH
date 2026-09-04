@@ -391,9 +391,13 @@ function card({ att = { scope: 'self', sessions: {} }, selfKey = 'id:user_amy',
     "use strict";
     const state = { seasonStart: '${SEASON[0]}', seasonEnd: '${SEASON[1]}', operationalGroupId: '' };
     let _attendance = cfg.att, _attendanceSelfKey = cfg.selfKey, _attendanceReason = cfg.reason;
+    let _trainingSchedule = { slots: [] };
     const currentAttendance = () => cfg.att;
     const attendanceFailed = () => cfg.failed;
+    const availToday = () => '2026-09-04';
     const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    ${extractFn(html, 'attendanceOccurrenceId')}
+    ${extractFn(html, 'attendanceHeldSessions')}
     ${extractFn(html, 'attendanceStats')}
     ${extractFn(html, 'matchDateLabel')}
     ${extractFn(html, 'myAttendanceCardHtml')}
@@ -442,7 +446,9 @@ test('no server-issued key means unavailable — never an empty register', () =>
 });
 
 test('a real register shows the coach’s four figures and the last day attended', () => {
-  const out = card({ att: { scope: 'self', sessions: {
+  // Build AD: the server sends the held count beside the projection — here 3,
+  // matching her three marked sessions, so the rate is 2 of 3 held.
+  const out = card({ att: { scope: 'self', held: 3, sessions: {
     'tue-20260804': sess('2026-08-04', { 'id:user_amy': 'present' }),
     'thu-20260806': sess('2026-08-06', { 'id:user_amy': 'absent' }, 'Thursday training'),
     'tue-20260811': sess('2026-08-11', { 'id:user_amy': 'present' }) } } });
@@ -450,9 +456,29 @@ test('a real register shows the coach’s four figures and the last day attended
   assert.match(out, />2<[\s\S]*?Present/);
   assert.match(out, />1<[\s\S]*?Absent/);
   assert.match(out, />3<[\s\S]*?Recorded/);
-  assert.match(out, /Of 3 sessions where attendance was taken/);
+  assert.match(out, /Of 3 training sessions held/, 'the denominator is named, and it is sessions held');
   assert.match(out, /Last training attended/);
   assert.match(out, /11 Aug · Tuesday training/, 'last PRESENT, not last recorded');
+});
+
+test('the rate divides by the sessions HELD, not by the player’s own marks', () => {
+  // Eight held, marked present at five: the projection alone would say 100%.
+  // The card must say 63% — the same number the coach's canonical table shows.
+  const sessions = {};
+  ['2026-07-07', '2026-07-14', '2026-07-21', '2026-07-28', '2026-08-04'].forEach(d => {
+    sessions['tue-' + d.replace(/-/g, '')] = sess(d, { 'id:user_amy': 'present' });
+  });
+  const out = card({ att: { scope: 'self', held: 8, sessions } });
+  assert.match(out, />63%</, 'attended ÷ held');
+  assert.ok(!/>100%</.test(out), 'the decisions-recorded rate is dead');
+  assert.match(out, /Of 8 training sessions held/);
+});
+
+test('a self document with no server count states no rate at all', () => {
+  const out = card({ att: { scope: 'self', sessions: {
+    'tue-20260804': sess('2026-08-04', { 'id:user_amy': 'present' }) } } });
+  assert.ok(!/\d+%/.test(out), 'an unknown denominator is an unknown rate');
+  assert.match(out, /No attendance recorded yet/);
 });
 
 test('the card says, in the player’s own portal, that this is not their availability', () => {
@@ -483,8 +509,10 @@ test('there is still exactly ONE attendance aggregation, and the card uses it', 
   assert.match(pct, /return attendanceStats\(/, 'the accessor defers to the one aggregation');
   assert.ok(!/present|absent|recorded|Math\.round/.test(pct), 'it counts nothing of its own');
   const src = stripComments(extractFn(html, 'myAttendanceCardHtml'));
-  assert.match(src, /attendanceStats\(att\.sessions, key, state\.seasonStart, state\.seasonEnd\)/,
+  assert.match(src, /attendanceStats\(att\.sessions, key, state\.seasonStart, state\.seasonEnd,/,
     'the player card reads the same aggregation the coach profile does');
+  assert.match(src, /att\.scope === 'self' \? Number\(att\.held\)/,
+    'and hands it the server’s held count — the projection cannot know the denominator');
   assert.ok(!/state\.trainingAttendance/.test(src), 'never the device-local store');
   assert.ok(!/state\.players/.test(src), 'and never the club-wide roster');
   assert.ok(!/player\.attendance|\.attendance\b/.test(src.replace(/attendanceStats|attendanceFailed|_attendance\w*|myAttendanceCardHtml/g, '')),
@@ -495,7 +523,11 @@ test('the player and the coach cannot disagree — same sessions, same figures',
   // The coach aggregates the GROUP register under the player's key; the player
   // aggregates the SELF register the server cut for them. Same function, same
   // answer — that is what "one source of truth" has to mean here.
-  const agg = new Function(`"use strict"; ${extractFn(html, 'attendanceStats')} return attendanceStats;`)();
+  const agg = new Function(`"use strict";
+    let _trainingSchedule = { slots: [] };
+    ${extractFn(html, 'attendanceOccurrenceId')}
+    ${extractFn(html, 'attendanceHeldSessions')}
+    ${extractFn(html, 'attendanceStats')} return attendanceStats;`)();
   const group = {
     'tue-20260804': sess('2026-08-04', { 'id:user_amy': 'present', 'id:user_amy2': 'absent' }),
     'thu-20260806': sess('2026-08-06', { 'id:user_amy': 'absent', 'id:user_amy2': 'present' }),
@@ -503,7 +535,16 @@ test('the player and the coach cannot disagree — same sessions, same figures',
   const self = {
     'tue-20260804': sess('2026-08-04', { 'id:user_amy': 'present' }),
     'thu-20260806': sess('2026-08-06', { 'id:user_amy': 'absent' }) };
-  assert.deepEqual(agg(self, 'id:user_amy', ...SEASON), agg(group, 'id:user_amy', ...SEASON));
+  const TODAY = '2026-09-04';
+  const coachView = agg(group, 'id:user_amy', ...SEASON, TODAY);
+  // Build AD: the self projection is deliberately partial (unmarked sessions
+  // do not travel), so the player's reader passes the held count the SERVER
+  // computed over the full document — and the two views become identical,
+  // three-session denominator included.
+  const playerView = agg(self, 'id:user_amy', ...SEASON, TODAY, coachView.held);
+  assert.equal(coachView.held, 3, 'the denominator counts the unmarked session too');
+  assert.equal(coachView.attendancePct, 33, '1 of 3 held — not 1 of 2 decisions');
+  assert.deepEqual(playerView, coachView);
 });
 
 test('the device can never override the server’s attendance', () => {
@@ -555,4 +596,94 @@ test('a server answer with no key is not cached — the client stays able to ret
   assert.equal(good._attendanceGroup, 'g1');
   assert.equal(good._attendanceFailed, null);
   assert.equal(good._attendanceSelfKey, 'id:user_amy');
+});
+
+// ═══════════════ BUILD AD — THE HELD COUNT TRAVELS, THE SESSIONS DO NOT ════
+// A player's rate divides by sessions HELD (the canonical denominator), but
+// their projection deliberately omits sessions they were never marked on. The
+// server therefore sends the held COUNT — a number, never dates, titles or
+// anybody's marks — mirroring the client's attendanceHeldSessions the same way
+// attendanceOccurrenceId is already mirrored and pinned client/server.
+
+test('the self read carries the group\'s held count — a number, not the sessions', async () => {
+  seed();
+  kv.set(`app:publish:${CLUB}:group:${SEN}:sessions`, JSON.stringify([
+    { id: 'tue', title: 'Tuesday training', date: '2026-08-04', type: 'Training' },
+    { id: 'thu', title: 'Thursday training', date: '2026-08-06', type: 'Training' }]));
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:user_amy': 'present' } });
+  await mark('u-head', { group: SEN, sessionId: 'thu', marks: { 'id:user_amy2': 'absent' } });
+  const res = await read('user_amy');
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.held, 2, 'two sessions were held');
+  assert.deepEqual(Object.keys(res.body.sessions), ['tue-20260804'],
+    'the unmarked session STILL does not travel');
+  assert.ok(!JSON.stringify(res.body).includes('Thursday'), 'the privacy contract stands');
+});
+
+test('a future-dated register is ledgered, not held', async () => {
+  seed();
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:user_amy': 'present' } });
+  const doc = JSON.parse(kv.get(`app:${'publish'}:${CLUB}:group:${SEN}:attendance`));
+  doc.sessions['adhoc_camp-20990101'] = { date: '2099-01-01', title: 'Future camp', marks: {} };
+  kv.set(`app:publish:${CLUB}:group:${SEN}:attendance`, JSON.stringify(doc));
+  const res = await read('user_amy');
+  assert.equal(res.body.held, 1, 'the future is planning, not history');
+});
+
+test('a bare legacy record and its dated twin are counted once', async () => {
+  seed();
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:user_amy': 'present' } });
+  const key = `app:publish:${CLUB}:group:${SEN}:attendance`;
+  const doc = JSON.parse(kv.get(key));
+  // the pre-migration shape: the same Tuesday under its bare legacy name
+  doc.sessions['tue'] = { date: '2026-08-04', title: 'Tuesday training',
+    marks: { 'id:user_amy2': 'absent' } };
+  kv.set(key, JSON.stringify(doc));
+  const res = await read('user_amy');
+  assert.equal(res.body.held, 1, 'one Tuesday however many names it answers to');
+});
+
+test('the configured season bounds the held count', async () => {
+  seed();
+  kv.set(`app:club:${CLUB}`, JSON.stringify({ clubName: 'Riverside',
+    seasonStart: '2026-07-01', seasonEnd: '2027-06-30', fixtures: [] }));
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:user_amy': 'present' } });
+  const key = `app:publish:${CLUB}:group:${SEN}:attendance`;
+  const doc = JSON.parse(kv.get(key));
+  doc.sessions['slot_old-20260505'] = { date: '2026-05-05', title: 'Last season', marks: {} };
+  kv.set(key, JSON.stringify(doc));
+  const res = await read('user_amy');
+  assert.equal(res.body.held, 1, 'another season is another season\'s business');
+});
+
+test('the client and the server agree on the held count over one document', async () => {
+  seed();
+  kv.set(`app:publish:${CLUB}:group:${SEN}:sessions`, JSON.stringify([
+    { id: 'tue', title: 'Tuesday training', date: '2026-08-04', type: 'Training' },
+    { id: 'thu', title: 'Thursday training', date: '2026-08-06', type: 'Training' }]));
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:user_amy': 'present' } });
+  await mark('u-head', { group: SEN, sessionId: 'thu', marks: { 'id:user_amy2': 'present' } });
+  // the COACH read returns the full migrated document — the client enumerates it
+  const coach = await read('u-head', '&group=' + SEN);
+  const CLIENT = new Function('cfg', `
+    "use strict";
+    let _trainingSchedule = { slots: [] };
+    ${extractFn(html, 'attendanceOccurrenceId')}
+    ${extractFn(html, 'attendanceHeldSessions')}
+    return attendanceHeldSessions(cfg.sessions, cfg.today, '', '').length;
+  `)({ sessions: coach.body.sessions, today: new Date().toISOString().slice(0, 10) });
+  const self = await read('user_amy');
+  assert.equal(self.body.held, CLIENT,
+    'one enumeration rule, mirrored — the twins must never drift');
+});
+
+test('an unplaceable legacy record is in nobody\'s denominator', async () => {
+  seed();
+  await mark('u-head', { group: SEN, sessionId: 'tue', marks: { 'id:user_amy': 'present' } });
+  const key = `app:publish:${CLUB}:group:${SEN}:attendance`;
+  const doc = JSON.parse(kv.get(key));
+  doc.sessions['mystery'] = { date: '', title: 'Undated', marks: { 'id:user_amy': 'present' } };
+  kv.set(key, JSON.stringify(doc));
+  const res = await read('user_amy');
+  assert.equal(res.body.held, 1, 'no provable date, no place in the denominator');
 });
