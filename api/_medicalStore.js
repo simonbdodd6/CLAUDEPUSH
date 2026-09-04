@@ -154,6 +154,13 @@ export async function upsertCase(clubId, input = {}, actor = {}) {
 
   if (existing) {
     const merged = normalizeCase({ ...existing, ...fields, updatedAt: at, updatedBy: by });
+    // Heal-on-write: a case stored before the group was resolvable carries
+    // playerGroupId '' and is invisible to every group-scoped medic. The
+    // handler resolves the group from the MEMBERSHIP (never the client body)
+    // and passes it in `input`; adopt it ONLY when the case has none — a
+    // stored group is the group the player was in when the case was opened,
+    // and is never rewritten.
+    if (!merged.playerGroupId) merged.playerGroupId = text(input.playerGroupId, 64);
     merged.timeline = [...existing.timeline, { at, by, action: 'updated', note: text(input.timelineNote, 500) }];
     record.cases = record.cases.map(c => (c.id === existing.id ? merged : c));
     await saveMedicalRecord(clubId, record);
