@@ -63,6 +63,9 @@ function buildMedicalScope(gid) {
     ${fn('clubUsesPlayerGroups')}
     ${fn('playerGroupIdOf')}
     ${fn('operationalPlayers')}
+    function normalizeMedicalRecord(raw) { return raw || {}; }
+    ${fn('medicalRowCarriesCase')}
+    ${fn('medicalCanonicalPlayers')}
     ${fn('medicalPlayers')}
     return medicalPlayers();
   `;
@@ -96,6 +99,9 @@ test('Medical: legacy club (no grouped memberships) and player view keep the ful
     ${fn('clubUsesPlayerGroups')}
     ${fn('playerGroupIdOf')}
     ${fn('operationalPlayers')}
+    function normalizeMedicalRecord(raw) { return raw || {}; }
+    ${fn('medicalRowCarriesCase')}
+    ${fn('medicalCanonicalPlayers')}
     ${fn('medicalPlayers')}
     return medicalPlayers();
   `)();
@@ -104,6 +110,9 @@ test('Medical: legacy club (no grouped memberships) and player view keep the ful
   const playerView = new Function(`"use strict";
     const state = { activeView: 'player', operationalGroupId: ${JSON.stringify(U18)}, players: ${JSON.stringify(SENIORS_CASES)} };
     let _sharedMedical = { loaded: false, cases: [], players: [] };
+    function normalizeMedicalRecord(raw) { return raw || {}; }
+    ${fn('medicalRowCarriesCase')}
+    ${fn('medicalCanonicalPlayers')}
     ${fn('medicalPlayers')}
     return medicalPlayers();
   `)();

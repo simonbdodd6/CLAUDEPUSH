@@ -339,6 +339,14 @@ export function operationalGroupsFor(member, structure, { as = 'staff' } = {}) {
     const { group } = resolvePlayerGroup(member, structure);
     return group ? [group] : [];
   }
+  // Build AE — a member with no staff role has NO staff capacity, full stop.
+  // The legacy null-scope derivation below exists for STAFF who predate scoped
+  // access; letting it run for a role-'player' member handed every player a
+  // phantom staff side of [initial group] in their operational payload. No
+  // live route honoured it (each is permission-gated first), but the resolver
+  // must not answer a question the capacity does not exist to ask.
+  const role = canonicalRole(member);
+  if (role === 'player' || role === 'guest') return [];
   const scoped = getAccessibleGroups(member, structure);
   if (scoped.length) return scoped;
 
