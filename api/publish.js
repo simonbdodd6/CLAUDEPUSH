@@ -523,6 +523,28 @@ function sanitiseRosterPlayers(raw) {
   }).filter(p => p && p.id && p.name);
 }
 
+/**
+ * The caller's roster authority, resolved once per request.
+ *
+ * A roster row's group is its MEMBERSHIP playerGroupId — never a team name,
+ * age text, roster label or anything the request claims. `coversClub` is the
+ * whole-club test the squad slot already uses: the caller operates EVERY
+ * active group — Club Administration always, and any coach in a one-group
+ * club, so legacy single-group behaviour is preserved by construction.
+ */
+async function rosterScope(session) {
+  const structure = await loadClubStructure(session.teamId);
+  const asCapacity = canonicalRole(session.teamMember) === 'player' ? 'player' : 'staff';
+  const operable = new Set(
+    operationalGroupsFor(session.teamMember, structure, { as: asCapacity }).map(g => g.id));
+  const coversClub = activeGroups(structure).every(g => operable.has(g.id));
+  const members = await loadTeamMembers();
+  const mine = members.filter(m => String(m.teamId) === String(session.teamId));
+  const groupOf = p => mine.find(m => String(m.userId || '') === String(p.userId || '') && p.userId)?.playerGroupId || '';
+  const inScope = p => operable.has(String(groupOf(p)));
+  return { structure, asCapacity, operable, coversClub, groupOf, inScope };
+}
+
 async function rosterHandler(req, res) {
   let session;
   try {
@@ -536,21 +558,29 @@ async function rosterHandler(req, res) {
     const all = stored?.players || [];
 
     // ── D1b — OPERATIONAL group filtering, server-side ──
-    // Club administration legitimately reads the whole club, so a caller only
-    // gets a group-filtered roster when they ASK for a group. A named group is
-    // authorised against the caller's own capacity, so a forged ?group= cannot
-    // reach another squad. Omitting it preserves the existing club-wide read
-    // that Club Admin depends on.
+    // A named group is authorised against the caller's own capacity, so a
+    // forged ?group= cannot reach another squad. Omitting it is not a way to
+    // read everything either: the roster carries phone, email, birth dates,
+    // guardian and emergency contacts, so the club-wide read belongs to the
+    // callers whose scope covers the whole club — everyone else gets exactly
+    // the rows their groups own, with unassigned rows staying a
+    // club-administration surface.
     const requested = String(req.query?.group || '').trim();
     if (!requested) {
+      const { coversClub, inScope } = await rosterScope(session);
+      if (coversClub) {
+        return res.status(200).json({
+          ok: true, players: all,
+          updatedAt: stored?.updatedAt || null, updatedBy: stored?.updatedBy || null,
+        });
+      }
       return res.status(200).json({
-        ok: true, players: all,
+        ok: true, players: all.filter(inScope), scoped: true,
         updatedAt: stored?.updatedAt || null, updatedBy: stored?.updatedBy || null,
       });
     }
 
-    const structure = await loadClubStructure(session.teamId);
-    const asCapacity = canonicalRole(session.teamMember) === 'player' ? 'player' : 'staff';
+    const { structure, asCapacity, groupOf } = await rosterScope(session);
     let group;
     try {
       group = assertOperationalGroup(session, structure, requested, { as: asCapacity });
@@ -558,11 +588,6 @@ async function rosterHandler(req, res) {
       return res.status(error.status || 403).json({ ok: false, error: error.message });
     }
 
-    // playerGroupId on the MEMBERSHIP is the authority — never a team name,
-    // age text or roster label.
-    const members = await loadTeamMembers();
-    const mine = members.filter(m => String(m.teamId) === String(session.teamId));
-    const groupOf = p => mine.find(m => String(m.userId || '') === String(p.userId || '') && p.userId)?.playerGroupId || '';
     const players = all.filter(p => String(groupOf(p)) === group.id);
 
     return res.status(200).json({
@@ -574,8 +599,38 @@ async function rosterHandler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const players = sanitiseRosterPlayers(req.body?.players);
-    if (!players) return res.status(400).json({ error: 'players array required' });
+    const submitted = sanitiseRosterPlayers(req.body?.players);
+    if (!submitted) return res.status(400).json({ error: 'players array required' });
+
+    // A caller who covers the club replaces the record — the existing Club
+    // Administration workflow. A group-scoped caller's save is MERGED: rows
+    // outside their scope (other groups', and unassigned) are kept verbatim,
+    // because a submitted copy of them is a stale device echo, never an edit
+    // they were entitled to make; rows inside their scope are replaced, added
+    // or — when omitted — removed, which is the replace semantic they always
+    // had, now confined to what they operate. A new row may not reuse a kept
+    // row's id, so an in-scope submission can never masquerade as another
+    // group's record.
+    const { coversClub, inScope } = await rosterScope(session);
+    let players = submitted;
+    if (!coversClub) {
+      const stored = (await readScoped(rosterKey(session.teamId), 'roster', session.teamId)) || null;
+      const storedRows = stored?.players || [];
+      const submittedById = new Map(submitted.filter(inScope).map(p => [String(p.id), p]));
+      const keptIds = new Set();
+      players = [];
+      for (const row of storedRows) {
+        if (!inScope(row)) { players.push(row); keptIds.add(String(row.id)); continue; }
+        const next = submittedById.get(String(row.id));
+        if (next) { players.push(next); submittedById.delete(String(row.id)); }
+      }
+      for (const p of submittedById.values()) {
+        if (keptIds.has(String(p.id))) continue;           // id hijack of a kept row
+        if (players.length >= MAX_PLAYERS) break;          // kept rows are never dropped for new ones
+        players.push(p);
+      }
+    }
+
     const record = {
       players,
       updatedAt: new Date().toISOString(),
