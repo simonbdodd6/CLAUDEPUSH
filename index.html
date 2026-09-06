@@ -11784,7 +11784,7 @@
     // render site keeps working unchanged. Those locals are now a DERIVED
     // CACHE, overwritten from the server on every load — never the source of
     // truth, and never merged with whatever the private draft held.
-    let _sharedMedical = { loaded: false, cases: [], players: [] };
+    let _sharedMedical = { loaded: false, failed: false, cases: [], players: [] };
 
     /** One shared case → the legacy record/note shape the views already read. */
     function medicalCaseToLegacy(c) {
@@ -11831,13 +11831,57 @@
       try {
         const res = await fetch('/api/publish?resource=medical'
           + (gid ? `&group=${encodeURIComponent(gid)}` : ''));
-        if (!res.ok) return;
-        const d = await res.json();
         const nowGid = state.activeView !== 'player' ? (state.operationalGroupId || '') : '';
         if (nowGid !== gid) { loadMedicalFromServer().catch(() => {}); return; }   // stale reply — re-chase
-        _sharedMedical = { loaded: true, cases: d.cases || [], players: d.players || [] };
+        if (!res.ok) {
+          // A refused read is a FAILED read, never an empty caseload — but a
+          // failed background poll must not blank a caseload this same group
+          // already has on screen.
+          if (!_sharedMedical.loaded) {
+            _sharedMedical = { loaded: false, failed: true, cases: [], players: [] };
+            render();
+          }
+          return;
+        }
+        const d = await res.json();
+        // Adopting is only half the job: the screen painted before this reply
+        // landed (group switch, cold boot), so a landing that CHANGES what is
+        // shown must repaint — while an identical quiet poll must not, or a
+        // background session check could stamp on an open editor.
+        const before = _sharedMedical.loaded
+          ? JSON.stringify([_sharedMedical.cases, _sharedMedical.players]) : null;
+        _sharedMedical = { loaded: true, failed: false, cases: d.cases || [], players: d.players || [] };
         hydrateMedicalFromShared();
-      } catch { /* offline — keep whatever is already rendered */ }
+        if (before !== JSON.stringify([_sharedMedical.cases, _sharedMedical.players])) render();
+      } catch {
+        // Offline: keep whatever is already rendered; with nothing loaded yet,
+        // say so rather than painting a healthy-looking zero.
+        if (!_sharedMedical.loaded && !_sharedMedical.failed) {
+          _sharedMedical = { loaded: false, failed: true, cases: [], players: [] };
+          render();
+        }
+      }
+    }
+
+    /**
+     * What the Medical screen can honestly show right now. Before the server
+     * has answered, ZERO cases is a claim the screen cannot make — an
+     * unloaded store renders exactly like a perfectly healthy squad, which is
+     * the one thing a medic must never be told by accident. Without medical
+     * access there is no server read to wait for, so the roster-flag view
+     * renders as it always has.
+     */
+    function medicalScreenMode() {
+      if (typeof canI === 'function' && canI('medical_access') && !_sharedMedical.loaded) {
+        return _sharedMedical.failed ? 'failed' : 'loading';
+      }
+      return 'ready';
+    }
+
+    function retryMedicalLoad() {
+      _sharedMedical = { loaded: false, failed: false, cases: [], players: [] };
+      loadMedicalFromServer().catch(() => {});
+      render();
     }
 
     /** The ONE authoritative medical write path. */
@@ -17969,6 +18013,23 @@
       // dashboard/record/timeline) and has been removed, together with its
       // orphaned handlers (saveMedicalNote, setRehabProgress,
       // addTreatmentLog, saveCoachNotes) whose inputs existed only there.
+      // Until the server has answered for the CURRENT group, every tab would
+      // render the unloaded store as a healthy squad — after a group switch
+      // this painted "Injured 0" for a group that has open cases. Loading and
+      // failure are said out loud instead; the loader repaints on landing.
+      const _mMode = medicalScreenMode();
+      if (_mMode !== 'ready') {
+        const mount = medicalMountEl();
+        if (mount) {
+          mount.innerHTML = _medTabBar(false) +
+            '<div class="card" style="padding:18px">' +
+            (_mMode === 'failed'
+              ? '<p class="muted" style="font-size:13px;margin:0">The medical caseload could not be loaded — this is not a record of a healthy squad. <button type="button" class="ovw-retry" onclick="retryMedicalLoad()">Try again</button></p>'
+              : '<p class="muted" style="font-size:13px;margin:0">Loading medical records…</p>') +
+            '</div>';
+        }
+        return;
+      }
       const _mTab = _medActiveTab || 'dashboard';
       if (_mTab === 'record')   { _renderMedicalRecord(_medActivePlayerId); return; }
       if (_mTab === 'timeline') { _renderMedicalTimeline(_medActivePlayerId); return; }
@@ -39570,7 +39631,7 @@
       _trainingScheduleGroupId = '';
       _trainingPubState = {}; _trainingPubLoadedAt = 0;
       _publishedStateLoadedAt = 0;
-      _sharedMedical = { loaded: false, cases: [], players: [] };
+      _sharedMedical = { loaded: false, failed: false, cases: [], players: [] };
       // Resetting the store is not enough: state.medicalRecords/Notes are a
       // hydrated VIEW of it and would keep rendering the OLD group's caseload.
       // Drop them (hydrate from the now-empty store) and refetch under the new
