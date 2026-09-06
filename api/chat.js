@@ -384,6 +384,15 @@ function sessionIsConversationParticipant(sessionContext, conversation = {}, act
 export function sessionCanReadConversation(sessionContext, conversation = {}, actorIds = null, groupCtx = null) {
   if (!sessionContext?.user?.id) return true;
   if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
+  // A DIRECT conversation belongs to its participants and to nobody else —
+  // for EVERY authenticated role, decided before any role branching. The
+  // role branches below know only two standings (coach/admin staff, and
+  // players), so the club physio's OWN DM used to fall through them to the
+  // closed default: role 'medical' (or 'snc'/'analyst') could be direct-
+  // messaged by anyone yet could never read or answer the thread.
+  if (conversationIsDirect(conversation)) {
+    return sessionIsConversationParticipant(sessionContext, conversation, actorIds);
+  }
   // GROUP-TARGETED conversations are readable by exactly two standings:
   // the group's PLAYING members, and the staff who OPERATE the group. A
   // staff session's blanket channel access does NOT extend here — a U18
@@ -395,14 +404,12 @@ export function sessionCanReadConversation(sessionContext, conversation = {}, ac
   }
   if (isStaffSession(sessionContext)) {
     // Staff may access all GROUP / TEAM / SYSTEM channels (squad, coaching, announce,
-    // custom groups). Direct messages stay PRIVATE: a coach only sees a DM they are
-    // actually a participant of — never another coach's DM or a player-to-player DM.
-    // Previously staff returned true unconditionally, which leaked every DM in the club
-    // into a coach's conversation list and counted the whole backlog as that coach's own
-    // unread (the "Simon2Coach 9+" phantom + wrong row previews).
-    return conversationIsDirect(conversation)
-      ? sessionIsConversationParticipant(sessionContext, conversation, actorIds)
-      : true;
+    // custom groups). Direct messages are handled above: a coach only sees a DM they
+    // are actually a participant of — never another coach's DM or a player-to-player
+    // DM. (Staff once returned true unconditionally here, which leaked every DM in the
+    // club into a coach's conversation list and counted the whole backlog as that
+    // coach's own unread — the "Simon2Coach 9+" phantom + wrong row previews.)
+    return true;
   }
   const role = sessionRole(sessionContext);
   const type = String(conversation?.type || '').toUpperCase();
@@ -415,6 +422,12 @@ export function sessionCanReadConversation(sessionContext, conversation = {}, ac
 function sessionCanWriteConversation(sessionContext, conversation = {}, actorIds = null, groupCtx = null) {
   if (!sessionContext?.user?.id) return true;
   if (!sessionMatchesConversationTeam(sessionContext, conversation)) return false;
+  // The write mirror of the DIRECT rule above: a DM is writable by its
+  // participants, whatever their role — the physio answers their own thread,
+  // and nobody else posts into it.
+  if (conversationIsDirect(conversation)) {
+    return sessionIsConversationParticipant(sessionContext, conversation, actorIds);
+  }
   // GROUP-TARGETED writes: operating staff may always post. Beyond that,
   // a GROUP channel is the group's own chat — its playing members may post
   // (the squad-open rule, group-scoped). An ANNOUNCEMENT to a group is a
@@ -429,12 +442,10 @@ function sessionCanWriteConversation(sessionContext, conversation = {}, actorIds
     return ctx.playingGroupId === targetGroup;
   }
   if (isStaffSession(sessionContext)) {
-    // Mirror the read rule: staff can post to any group/team/system channel, but a DM
-    // is writable only by its participants — a coach cannot post into another coach's
-    // or two players' private thread.
-    return conversationIsDirect(conversation)
-      ? sessionIsConversationParticipant(sessionContext, conversation, actorIds)
-      : true;
+    // Staff can post to any group/team/system channel. DMs are handled above:
+    // writable only by their participants — a coach cannot post into another
+    // coach's or two players' private thread.
+    return true;
   }
   const role = sessionRole(sessionContext);
   if (role !== 'player') return false;
