@@ -742,8 +742,36 @@ async function medicalHandler(req, res) {
   if (req.method === 'POST') {
     const action = String(req.body?.action || '');
     const structureForWrite = await loadClubStructure(session.teamId);
+
+    // ── The write-side mirror of the read filter above ──
+    // Staff mutate cases in their OPERATIONAL groups; a player holding the
+    // Medical grant mutates the group they PLAY — the same capacity their
+    // read uses. A caller covering every active group keeps whole-club
+    // behaviour, and an unattributed (orphan) case is whole-club surface for
+    // writes exactly as it is for reads.
+    const assertMedicalGroupWritable = groupId => {
+      const asCapacity = canonicalRole(session.teamMember) === 'player' ? 'player' : 'staff';
+      const operable = new Set(
+        operationalGroupsFor(session.teamMember, structureForWrite, { as: asCapacity }).map(g => g.id));
+      const live = activeGroups(structureForWrite);
+      if (live.length > 0 && live.every(g => operable.has(g.id))) return;
+      if (!operable.has(String(groupId || ''))) {
+        const e = new Error(groupId
+          ? 'Only medical staff for this group can change this case'
+          : 'Only staff covering the whole club can change an unattributed case');
+        e.status = 403;
+        throw e;
+      }
+    };
+
     try {
       if (action === 'resolve_case') {
+        // Authorisation reads the CASE's stored group — the same field the
+        // group filter shows it under — never anything the request claims.
+        const stored = await loadMedicalRecord(session.teamId);
+        const target = stored.cases.find(c => c.id === String(req.body?.caseId || ''));
+        if (!target) return res.status(404).json({ error: 'Case not found' });
+        assertMedicalGroupWritable(target.playerGroupId);
         const resolved = await resolveCase(session.teamId, req.body?.caseId, { userId: session.user.id });
         return res.status(200).json({ ok: true, case: resolved });
       }
@@ -754,6 +782,20 @@ async function medicalHandler(req, res) {
         const members = await loadTeamMembers();
         const member = members.find(m => String(m.teamId) === String(session.teamId)
           && String(m.userId || '') === String(req.body?.userId || '') && req.body?.userId) || null;
+
+        // playerId names the roster record, userId the account — and when the
+        // record exists and an account is NAMED, the two must agree. Without
+        // this, a forged userId filed one player's case under ANOTHER
+        // player's group, pulling it inside the forger's own visibility.
+        // An omitted userId stays harmless: resolution then refuses in a
+        // multi-group club and uses the only group in a one-group club.
+        const rosterNow = await readScoped(rosterKey(session.teamId), 'roster', session.teamId);
+        const rosterRow = (rosterNow?.players || [])
+          .find(p => String(p.id) === String(req.body?.playerId || ''));
+        if (rosterRow && String(req.body?.userId || '')
+            && String(rosterRow.userId || '') !== String(req.body.userId)) {
+          return res.status(400).json({ error: 'That player record is not linked to the account named' });
+        }
 
         let groupId = member?.playerGroupId || '';
         if (!groupId) {
@@ -777,6 +819,15 @@ async function medicalHandler(req, res) {
             });
           }
         }
+
+        // An EXISTING case is authorised where it is stored (what you may see
+        // is what you may change); a new case where it will be stored. An
+        // orphan case heals under its player's membership group, so it is
+        // authorised there — the owner's own medic can still repair it.
+        const existingRecord = await loadMedicalRecord(session.teamId);
+        const existingCase = existingRecord.cases.find(c =>
+          c.playerId === String(req.body?.playerId || '') && c.status === 'active');
+        assertMedicalGroupWritable((existingCase && existingCase.playerGroupId) || groupId);
 
         const saved = await upsertCase(session.teamId, {
           ...req.body,
