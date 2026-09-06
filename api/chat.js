@@ -260,9 +260,14 @@ async function groupContextForSession(sessionContext) {
   if (!teamId || !member) return none;
   const structure = await loadClubStructure(teamId);
   const playingGroupId = resolvePlayerGroup(member, structure).groupId || '';
-  const staffGroupIds = new Set(isStaffSession(sessionContext)
-    ? operationalGroupsFor(member, structure, { as: 'staff' }).map(g => g.id)
-    : []);
+  // The groups this member OPERATES, straight from the canonical helper — it
+  // returns [] for players and guests (so this widens nothing for them) and
+  // the accessScope groups for EVERY staff role. Gating on isStaffSession
+  // (coach/admin only) starved Medical, S&C and Analyst staff of the group
+  // channels their scope names — the "Message this group" thread a physio who
+  // serves Seniors must be able to read and answer.
+  const staffGroupIds = new Set(
+    operationalGroupsFor(member, structure, { as: 'staff' }).map(g => g.id));
   return { playingGroupId, staffGroupIds };
 }
 

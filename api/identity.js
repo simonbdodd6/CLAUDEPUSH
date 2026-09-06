@@ -273,6 +273,30 @@ async function assertPlayerTargetOperable(session, target) {
   }
 }
 
+/**
+ * A group-scoped staff manager may administer a STAFF target only when their
+ * own groups COVER every group the target operates — so a Seniors head coach
+ * can re-rank a Seniors coach but not a U18 coach, and not anyone whose
+ * authority reaches a group Seniors does not. A club-wide caller covers
+ * everyone; the target's own groups come from the canonical staff resolver,
+ * never from anything the request supplies. This is the staff twin of
+ * assertPlayerTargetOperable, and deliberately narrower than the club-wide
+ * gate on access-scope administration.
+ */
+async function assertStaffTargetOperable(session, target) {
+  if (!target) return;
+  const { structure, operable, coversClub } = await callerGroupAuthority(session);
+  if (coversClub) return;
+  const targetGroups = operationalGroupsFor(target, structure, { as: 'staff' }).map(g => g.id);
+  // A target who operates nothing resolvable, or any group outside the
+  // caller's reach, is beyond a group-scoped manager's authority.
+  if (!targetGroups.length || !targetGroups.every(g => operable.has(String(g)))) {
+    const error = new Error("Only club-wide staff can manage a member outside your groups");
+    error.status = 403;
+    throw error;
+  }
+}
+
 // RC4.9B — after a permanent deletion, any still-unclaimed invitation for that
 // person must stop working, or the deleted member could simply re-join through
 // an old link. Claimed invites keep their record (audit history) untouched.
@@ -665,9 +689,15 @@ export default async function handler(req, res) {
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
         // Removing STAFF requires the manage-coaches permission (head coach,
         // club admin, DoR, owner); managing players needs only manage-players.
+        // "Staff" is EVERY non-player role — medical, S&C and analyst included:
+        // listing only coach/admin here let a manage-players-only holder
+        // archive the club physio, S&C or analyst as though they were a
+        // player. A player-type target (player/parent/guest) stays on the
+        // player path, group-gated by assertPlayerTargetOperable below.
         const members = await loadTeamMembers();
         const target = members.find(m => m.id === req.body?.memberId);
-        if (target && ['coach', 'admin'].includes(target.role) && !can(session, PERM.MANAGE_COACHES)) {
+        const targetIsStaff = target && !['player', 'parent', 'guest'].includes(String(target.role || '').toLowerCase());
+        if (targetIsStaff && !can(session, PERM.MANAGE_COACHES)) {
           return res.status(403).json({ ok: false, error: 'You are not allowed to remove staff' });
         }
         await assertPlayerTargetOperable(session, target);
@@ -892,6 +922,14 @@ export default async function handler(req, res) {
         if (!can(session, PERM.MANAGE_COACHES)) {
           return res.status(403).json({ ok: false, error: 'You are not allowed to change staff permissions' });
         }
+        // Managing staff is a head-coach power, not a club-wide-admin-only one,
+        // so it is deliberately NOT requireClubManage. But a GROUP-SCOPED
+        // manager of staff must stay inside their own groups: a Seniors head
+        // coach must not re-rank a U18 coach, nor anyone whose authority
+        // reaches beyond Seniors. A club-wide caller covers everyone.
+        const staffTarget = (await loadTeamMembers()).find(m =>
+          m.id === req.body?.memberId && m.teamId === session.teamId);
+        await assertStaffTargetOperable(session, staffTarget);
         const result = await setStaffLevel(req.body?.memberId, req.body?.staffLevel, session.user.id, session.teamId);
         await auditLog('staff_level_changed', {
           memberId: req.body?.memberId, staffLevel: req.body?.staffLevel,
