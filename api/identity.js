@@ -63,8 +63,8 @@ import { randomBytes } from 'node:crypto';
 import { kvConfigured, kvGet, kvSet } from './_kv.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
 import { assertSameTenant, requireTenantRole, requireTenantPermission, requireClubManage, can, PERM } from './_tenant.js';
-import { loadClubStructure, groupById, teamById } from './_structureStore.js';
-import { normalizeAccessScope, effectiveAccessScope } from './_accessScope.js';
+import { loadClubStructure, groupById, teamById, activeGroups } from './_structureStore.js';
+import { normalizeAccessScope, effectiveAccessScope, operationalGroupsFor } from './_accessScope.js';
 import { isClubOwner } from './_permissions.js';
 import { makeStripe } from './_stripe.js';
 
@@ -212,6 +212,67 @@ function sendError(res, error, fallbackStatus = 400) {
     ...(error?.code ? { code: error.code } : {}) });
 }
 
+/**
+ * The caller's operational authority, resolved once per request — the same
+ * covers-the-club rule the roster and squad boundaries use: a caller who
+ * operates EVERY active group (Club Administration, and any coach of a
+ * one-group club) keeps whole-club behaviour; everyone else is group-scoped.
+ */
+async function callerGroupAuthority(session) {
+  const structure = await loadClubStructure(session.teamId);
+  const operable = new Set(
+    operationalGroupsFor(session.teamMember, structure, { as: 'staff' }).map(g => g.id));
+  const coversClub = activeGroups(structure).every(g => operable.has(g.id));
+  return { structure, operable, coversClub };
+}
+
+/**
+ * The Members read for a group-scoped caller. STAFF identities stay whole-club
+ * — the pinned staff-visibility contract: club-wide staff, this group's staff
+ * and unscoped staff (the club physio) must all remain reachable, and a
+ * dual-role member is staff everywhere. PLAYER identities travel only for the
+ * caller's operable groups: other groups' memberships, user rows (emails) and
+ * playing profiles (phone/email) are absent from the response, not hidden in
+ * it. An unassigned player is a club-administration surface. The caller's own
+ * record always travels.
+ */
+function scopeIdentityState(state, session, operable) {
+  const selfId = String(session.user.id);
+  const team_members = (state.team_members || []).filter(m =>
+    String(m.userId) === selfId
+    || m.role !== 'player'
+    || operable.has(String(m.playerGroupId || '')));
+  const keptUserIds = new Set(team_members.map(m => String(m.userId)));
+  const playingUserIds = new Set(team_members
+    .filter(m => operable.has(String(m.playerGroupId || '')))
+    .map(m => String(m.userId)));
+  playingUserIds.add(selfId);
+  return {
+    ...state,
+    scoped: true,
+    team_members,
+    users: (state.users || []).filter(u => keptUserIds.has(String(u.id))),
+    player_profiles: (state.player_profiles || []).filter(p => playingUserIds.has(String(p.userId))),
+  };
+}
+
+/**
+ * Removing, archiving, permanently deleting or restoring a PLAYER requires
+ * operating that player's group; an unassigned player (no playerGroupId) is
+ * club administration. Staff targets are untouched here — their own gates
+ * (MANAGE_COACHES, owner protections) continue to apply unchanged.
+ */
+async function assertPlayerTargetOperable(session, target) {
+  if (!target || target.role !== 'player') return;
+  const { operable, coversClub } = await callerGroupAuthority(session);
+  if (coversClub) return;
+  if (!operable.has(String(target.playerGroupId || ''))) {
+    const error = new Error("Only staff for this player's group can do this");
+    error.status = 403;
+    throw error;
+  }
+}
+
 // RC4.9B — after a permanent deletion, any still-unclaimed invitation for that
 // person must stop working, or the deleted member could simply re-join through
 // an old link. Claimed invites keep their record (audit history) untouched.
@@ -295,7 +356,9 @@ export default async function handler(req, res) {
       const tenant = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
       if (req.query?.teamId) assertSameTenant(tenant, req.query.teamId);
       const state = await listIdentityState(tenant.teamId);
-      return res.status(200).json({ ok: true, ...state });
+      const { operable, coversClub } = await callerGroupAuthority(tenant);
+      if (coversClub) return res.status(200).json({ ok: true, ...state });
+      return res.status(200).json({ ok: true, ...scopeIdentityState(state, tenant, operable) });
     } catch (error) {
       return sendError(res, error);
     }
@@ -607,6 +670,7 @@ export default async function handler(req, res) {
         if (target && ['coach', 'admin'].includes(target.role) && !can(session, PERM.MANAGE_COACHES)) {
           return res.status(403).json({ ok: false, error: 'You are not allowed to remove staff' });
         }
+        await assertPlayerTargetOperable(session, target);
         const result = await removeTeamMember(req.body?.memberId, session.user.id, session.teamId, {
           archive: action === 'archive_member',
         });
@@ -628,6 +692,7 @@ export default async function handler(req, res) {
         const members = await loadTeamMembers();
         const target = members.find(m => m.id === memberId && m.teamId === session.teamId);
         if (!target) return res.status(404).json({ ok: false, error: 'Team member not found' });
+        await assertPlayerTargetOperable(session, target);
         const profiles = await loadPlayerProfiles();
         const targetUser = (await loadUsers()).find(u => u.id === target.userId) || {};
         const targetName = profiles.find(p => p.userId === target.userId)?.displayName
@@ -815,6 +880,9 @@ export default async function handler(req, res) {
       if (action === 'restore_member') {
         const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
+        const restoreTarget = (await loadTeamMembers()).find(m =>
+          m.id === req.body?.memberId && m.teamId === session.teamId);
+        await assertPlayerTargetOperable(session, restoreTarget);
         const result = await restoreTeamMember(req.body?.memberId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });
       }
