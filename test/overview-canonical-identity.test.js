@@ -176,11 +176,16 @@ test('the count follows: answers under the dated id are what Overview reports', 
   assert.equal(w.count('thu'), 2, 'counts the dated occurrence, not the bare id\'s 1');
 });
 
-test('a LEGACY slot (sessionId set) keeps the bare id — Seniors behaviour unchanged', () => {
-  const resolved = { a: { thu: { response: 'available', respondedAt: '2026-09-02T10:00:00Z' } } };
-  const w = trainingWorld({ slots: [SEN_SLOT], players: [P('a')], resolved, todayIso: TODAY });
-  assert.equal(w.mapId('thu'), 'thu');
-  assert.equal(w.count('thu'), 1);
+test('CUTOVER: a legacy slot (sessionId set) maps tonight to its DATED occurrence too', () => {
+  // Post legacy-id cutover the bare store is history — tonight's identity is
+  // the dated occurrence for EVERY slot, Seniors' legacy ones included.
+  const resolved = {
+    a: { thu: { response: 'available', respondedAt: '2026-09-02T10:00:00Z' } },      // bare = history
+    b: { 'slot_thu-20260903': { response: 'available', respondedAt: '2026-09-02T10:00:00Z' } },
+  };
+  const w = trainingWorld({ slots: [SEN_SLOT], players: [P('a'), P('b')], resolved, todayIso: TODAY });
+  assert.equal(w.mapId('thu'), 'slot_thu-20260903');
+  assert.equal(w.count('thu'), 1, 'only the dated answer counts as tonight');
 });
 
 test('no schedule loaded → bare id fallback (legacy clubs unchanged)', () => {

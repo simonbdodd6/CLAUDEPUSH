@@ -155,9 +155,10 @@ test('server: the Loic-shaped member is served the full Seniors schedule', async
   assert.deepEqual(r.body.slots.map(s => s.id), ['slot_tue', 'slot_thu'], 'legacy Seniors slots served');
 });
 
-test('current week works: tue/thu render under their legacy ids', () => {
+test('current week works: tue/thu render under their DATED occurrence ids (cutover)', () => {
   const events = feedFor('2026-08-10', SENIORS_CTX);
-  assert.deepEqual(events.filter(e => e.type === 'training').map(e => e.id), ['tue', 'thu']);
+  assert.deepEqual(events.filter(e => e.type === 'training').map(e => e.id),
+    ['slot_tue-20260811', 'slot_thu-20260813']);
 });
 
 test('future Seniors training visible: next week renders dated Tue/Thu events', () => {

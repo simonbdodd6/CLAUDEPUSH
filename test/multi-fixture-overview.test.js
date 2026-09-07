@@ -157,6 +157,9 @@ function buildScope({
     extractFn(html, 'availToday') + '\n' +
     extractFn(html, 'availSlotDateInWeek') + '\n' +
     extractFn(html, 'availTrainingEventId') + '\n' +
+    // Post legacy-id cutover availabilityWeekSessions derives the canonical
+    // current week from THE generator.
+    extractFn(html, 'availabilityEventsForWeek') + '\n' +
     extractFn(html, 'tonightAvailabilityEventId') + '\n' +
     extractFn(html, 'overviewAvailableCount') + '\n' +
     extractFn(html, 'overviewAnswerMap') + '\n' +

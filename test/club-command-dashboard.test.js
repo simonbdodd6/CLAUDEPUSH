@@ -194,6 +194,9 @@ function buildScope({
     extractFn(html, 'availToday') + '\n' +
     extractFn(html, 'availSlotDateInWeek') + '\n' +
     extractFn(html, 'availTrainingEventId') + '\n' +
+    // Post legacy-id cutover availabilityWeekSessions derives the canonical
+    // current week from THE generator.
+    extractFn(html, 'availabilityEventsForWeek') + '\n' +
     extractFn(html, 'tonightAvailabilityEventId') + '\n' +
     extractFn(html, 'overviewAvailableCount') + '\n' +
     extractFn(html, 'overviewAnswerMap') + '\n' +
@@ -358,10 +361,12 @@ test('recent activity renders real, server-stamped events', () => {
     players: [{ id: 'p1', name: 'Ana Silva', userId: 'u1' }],
     schedule: [{ id: 'tue', type: 'Training', title: 'Tuesday Session', date: 'Tue 19:00',
                  published: true, publishedAt: new Date(Date.now() - 90 * 60000).toISOString() }],
-    resolvedAvailability: { u1: { tue: { response: 'available', reason: '',
+    // Post legacy-id cutover the reply lives under a CANONICAL week event —
+    // for this slot-less, fixture-less scope that is the generic 'game' card.
+    resolvedAvailability: { u1: { game: { response: 'available', reason: '',
                  respondedAt: new Date(Date.now() - 12 * 60000).toISOString() } } },
   }).renderClubCommandDashboard();
-  assert.ok(out.includes('Ana Silva replied to Tuesday Session'), 'the availability reply renders');
+  assert.ok(out.includes('Ana Silva replied to Match'), 'the availability reply renders');
   assert.ok(out.includes('Tuesday Session published'),            'the publication renders');
   assert.ok(out.includes('12 min ago'), 'and each carries its own real elapsed time');
   assert.ok(out.includes('1h ago'));

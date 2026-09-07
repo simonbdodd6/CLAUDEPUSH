@@ -146,7 +146,11 @@ function buildScope({
     extractFn(html, 'normalizeFixture') + '\n' +
     extractFn(html, 'fixtureSortByDate') + '\n' +
     extractFn(html, 'overviewRoster') + '\n' +
-    'let _trainingSchedule = null; let _trainingScheduleGroupId = ""; let _trainingScheduleAttempted = false;\n' +
+    // Post legacy-id cutover the canonical week derives from the slot table,
+    // so the scope carries two recurring slots; their DATED occurrence ids
+    // (slot_tue-YYYYMMDD / slot_thu-YYYYMMDD) are what answers attach to.
+    'let _trainingSchedule = { slots: [{ id: "slot_tue", day: "Tue", active: true }, { id: "slot_thu", day: "Thu", active: true }] };\n' +
+    'let _trainingScheduleGroupId = ""; let _trainingScheduleAttempted = false;\n' +
     'function ensureTrainingSchedule() {}\n' +
     'const AVAIL_DAY_INDEX = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };\n' +
     extractFn(html, 'availWeekStart') + '\n' +
@@ -154,6 +158,8 @@ function buildScope({
     extractFn(html, 'availToday') + '\n' +
     extractFn(html, 'availSlotDateInWeek') + '\n' +
     extractFn(html, 'availTrainingEventId') + '\n' +
+    extractFn(html, 'availabilityEventsForWeek') + '\n' +
+    extractFn(html, 'availabilityWeekSessions') + '\n' +
     extractFn(html, 'tonightAvailabilityEventId') + '\n' +
     extractFn(html, 'overviewAvailableCount') + '\n' +
     extractFn(html, 'overviewAnswerMap') + '\n' +
@@ -167,6 +173,14 @@ function buildScope({
 }
 
 const iso = days => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+// This week's dated occurrence ids for the scope's two slots (clock-derived,
+// like the code under test).
+const _ws = (() => { const d = new Date(); const dow = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dow); return d; })();
+const _dated = (root, offset) => { const d = new Date(_ws); d.setUTCDate(d.getUTCDate() + offset);
+  return root + '-' + d.toISOString().slice(0, 10).replace(/-/g, ''); };
+const TUE_OCC = _dated('slot_tue', 1);
+const THU_OCC = _dated('slot_thu', 3);
 const named = (n, prefix, extra = {}) =>
   Array.from({ length: n }, (_, i) => ({ id: prefix + (i + 1), name: prefix.toUpperCase() + ' ' + (i + 1), ...extra }));
 
@@ -205,7 +219,7 @@ test('a player who answered through the server is not chased as a non-responder'
     clubPlayers: group,
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }],
     availabilityRequests: [{ id: 'r1', sessionId: 'tue', status: 'sent' }],
-    resolvedAvailability: serverAnswers(replied, 'tue', 'available'),
+    resolvedAvailability: serverAnswers(replied, TUE_OCC, 'available'),
   }).getNeedsAttentionItems();
 
   const nonResp = items.find(i => /replied/.test(i.text));
@@ -220,7 +234,7 @@ test('a squad that has fully replied on the server raises no chase at all', () =
     clubPlayers: group,
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }],
     availabilityRequests: [{ id: 'r1', sessionId: 'tue', status: 'sent' }],
-    resolvedAvailability: serverAnswers(group, 'tue', 'unavailable'),
+    resolvedAvailability: serverAnswers(group, TUE_OCC, 'unavailable'),
   }).getNeedsAttentionItems();
 
   assert.equal(items.find(i => /replied/.test(i.text)), undefined,
@@ -236,7 +250,7 @@ test('several sessions do not multiply one player into several non-responders', 
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' },
                { id: 'thu', title: 'Thursday', type: 'Training' }],
     availabilityRequests: [{ id: 'r1', sessionId: 'tue', status: 'sent' }],
-    resolvedAvailability: serverAnswers(group.slice(0, 3), 'tue', 'available'),
+    resolvedAvailability: serverAnswers(group.slice(0, 3), TUE_OCC, 'available'),
   }).getNeedsAttentionItems();
 
   const nonResp = items.find(i => /replied/.test(i.text));
@@ -487,12 +501,12 @@ test('"Chase all" is about exactly the players the card counted', () => {
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' },
                { id: 'thu', title: 'Thursday', type: 'Training' }],
     availabilityRequests: [{ id: 'r1', sessionId: 'tue', status: 'sent' }],
-    resolvedAvailability: serverAnswers(group.slice(0, 46), 'tue', 'available'),
+    resolvedAvailability: serverAnswers(group.slice(0, 46), TUE_OCC, 'available'),
   });
 
   const item    = scope.getNeedsAttentionItems().find(i => /replied/.test(i.text));
   const toChase = scope.availabilityNonResponders([
-    { id: 'tue' }, { id: 'thu' }]);
+    { id: TUE_OCC }, { id: THU_OCC }]);
 
   assert.match(item.text, /^11 players haven't replied$/);
   assert.equal(toChase.length, 11, 'the button must target the same eleven');

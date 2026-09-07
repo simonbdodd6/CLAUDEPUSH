@@ -1,13 +1,15 @@
 /**
- * BUILD Z — the non-responder list inspects the DATED occurrences.
+ * BUILD Z (revised at the legacy-id cutover) — the non-responder list
+ * inspects the CANONICAL DATED occurrences.
  *
- * availabilityNonResponders read only the passed schedule rows' bare ids.
- * Groups whose slots carry no legacy sessionId keep their answers under the
- * DATED occurrence ids — production U18: 53 answers under
- * slot_msvh0skf_1-20260903, 1 under bare `thu`, so the Overview chased 60 of
- * 61 players. The function now also inspects the current week's canonical
- * training event ids (slot.sessionId || dated id — the board's own rule,
- * the same one tonightAvailabilityEventId applies to tonight).
+ * availabilityNonResponders originally read only the passed schedule rows'
+ * bare ids and chased 60 of 61 U18 players whose answers lived under dated
+ * ids. Build Z made the function union the dated ids in itself. Since the
+ * legacy-id cutover (7 Sep 2026) the division of labour is cleaner: the
+ * callers pass availabilityWeekSessions() — the current week's canonical
+ * dated events — and the function trusts exactly that set. A bare-store
+ * answer (the accumulated legacy tue/thu/game records) is history and must
+ * NOT excuse a player from the current week's chase list.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -63,7 +65,18 @@ function world({ slots, players = [], resolved = {}, todayIso = '2026-09-03' }) 
     ${fn('resolvedAnswerFor')}
     ${fn('sessionRows')}
     ${fn('availabilityNonResponders')}
-    return { chase: () => availabilityNonResponders(state.schedule).map(p => p.id).sort() };
+    ${fn('availabilityEventsForWeek')}
+    // What availabilityWeekSessions() now feeds the callers: the CURRENT
+    // week's canonical events from the real generator (dated occurrences,
+    // real fixtures, and the generic game card only for fixture-less groups).
+    function canonicalWeek() {
+      return availabilityEventsForWeek(availWeekStart(availToday()), {
+        fixtures: cfg.fixtures || [],
+        slots: (_trainingSchedule && _trainingSchedule.slots) || [],
+        currentWeekStart: availWeekStart(availToday()),
+      });
+    }
+    return { chase: () => availabilityNonResponders(canonicalWeek()).map(p => p.id).sort() };
   `)({ slots, players, resolved, todayIso });
 }
 
@@ -101,20 +114,25 @@ test("an answer in a PAST week's occurrence does not excuse the current week", (
   assert.deepEqual(w.chase(), ['old'], 'last week is not this week');
 });
 
-test('legacy slots (sessionId set) keep the bare-id behaviour — Seniors unchanged', () => {
+test('CUTOVER: a legacy slot\'s bare-store answer no longer excuses the current week', () => {
   const legacy = [{ id: 'slot_thu', sessionId: 'thu', day: 'Thu', active: true }];
   const w = world({ slots: legacy, players: [P('a'), P('silent')],
     resolved: { a: ANS('thu', 'available') } });
-  assert.deepEqual(w.chase(), ['silent']);
+  assert.deepEqual(w.chase(), ['a', 'silent'],
+    'the accumulated bare store is history — both players are chased');
+  const w2 = world({ slots: legacy, players: [P('a'), P('silent')],
+    resolved: { a: ANS('slot_thu-20260903', 'available') } });
+  assert.deepEqual(w2.chase(), ['silent'],
+    'the same slot\'s DATED occurrence answer counts');
 });
 
-test('no schedule loaded → exactly the old behaviour (schedule-less clubs byte-identical)', () => {
+test('no slot table → only the generic game event can be answered (fixture-less group)', () => {
   const w = world({ slots: null, players: [P('a'), P('silent')],
-    resolved: { a: ANS('thu', 'available') } });
-  assert.deepEqual(w.chase(), ['silent'], 'bare ids from the passed sessions still count');
-  const w2 = world({ slots: null, players: [P('dated')],
-    resolved: { dated: ANS(DATED_THU, 'available') } });
-  assert.deepEqual(w2.chase(), ['dated'], 'without a slot table no dated id can be derived');
+    resolved: { a: ANS('game', 'available') } });
+  assert.deepEqual(w.chase(), ['silent'], 'the generic card is the week for a slot-less, fixture-less group');
+  const w2 = world({ slots: null, players: [P('bare')],
+    resolved: { bare: ANS('thu', 'available') } });
+  assert.deepEqual(w2.chase(), ['bare'], 'a bare training answer never counts without its occurrence');
 });
 
 test('an inactive slot contributes nothing', () => {
@@ -141,13 +159,16 @@ test('the production shape end-to-end: 4 of 6 answered dated, bare holds a stale
   const resolved = {
     a: ANS(DATED_THU, 'available'), b: ANS(DATED_THU, 'available'),
     c: ANS(DATED_TUE, 'maybe'),    d: ANS(DATED_THU, 'unavailable'),
-    e: ANS('thu', 'available'),    // the stale bare-id answer still counts too
+    e: ANS('thu', 'available'),    // a stale bare-store answer — history, not this week
   };
   const w = world({ slots: U18_SLOTS, players: [P('a'), P('b'), P('c'), P('d'), P('e'), P('f')], resolved });
-  assert.deepEqual(w.chase(), ['f'], 'union of canonical occurrences — nobody who answered is chased');
+  assert.deepEqual(w.chase(), ['e', 'f'],
+    'the four dated answerers are excused; the bare-store answer and true silence are both chased');
 });
 
-test('WIRING: the attention item and Chase-all both consume availabilityNonResponders(state.schedule)', () => {
-  assert.match(fn('getNeedsAttentionItems'), /availabilityNonResponders\(sessions\)/);
+test('WIRING: the attention item and Chase-all both consume the canonical availability week', () => {
+  assert.match(fn('getNeedsAttentionItems'), /availabilityNonResponders\(availabilityWeekSessions\(\)\)/);
   assert.match(fn('chaseAllNonResponders'), /availabilityNonResponders\(sessions\)/);
+  assert.match(fn('chaseAllNonResponders'), /availabilityWeekSessions\(\)/,
+    'Chase-all\'s sessions ARE the canonical week');
 });

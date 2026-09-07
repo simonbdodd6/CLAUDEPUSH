@@ -71,6 +71,9 @@ function client({ groups, opGid, players }) {
       return cfg.players.filter(p => p.groupId === cfg.opGid);
     }
     function isCoach() { return true; }
+    // These tests exercise CHANNEL isolation, not occurrence identity — the
+    // schedule rows stand in for the canonical week's events.
+    function coachAvailEvents() { return state.schedule; }
     function currentUser() { return { id: 'coach1', name: 'Head Coach', role: 'coach' }; }
     const ceConfirm = async (title, body) => { state._confirmBody = body; return true; };
     function showToast(m) { state._toast = m; }

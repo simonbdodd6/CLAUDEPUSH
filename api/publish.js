@@ -985,8 +985,15 @@ async function readGroupSessions(teamId, groupId) {
 
 const MAX_SCHEDULE_SLOTS = 14;
 const SCHEDULE_DAYS = new Set(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
-// The two slots that still back the legacy availability sessions. Everything
-// else is schedule information only until a later milestone connects it.
+// The two slots that carried the legacy bare availability session ids.
+// SINCE THE LEGACY-ID CUTOVER (7 Sep 2026) this field is INERT for
+// availability identity: the client names every occurrence — current week
+// included — by its dated id (slot_tue-YYYYMMDD), so no new answer is ever
+// written or read under the bare ids again. The field is deliberately KEPT
+// on the stored slots: the delete-guard below still refuses to remove a slot
+// whose bare stores hold historical answers, and trainingProtocolId /
+// attendanceOccurrenceId still use it to interpret historical keys. It must
+// never again become an occurrence identity.
 const LEGACY_SLOT_SESSION = { tue: 'tue', thu: 'thu' };
 
 function sanitiseScheduleSlot(raw, index = 0) {
