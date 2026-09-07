@@ -254,7 +254,8 @@ test('14. entitled athlete gets a Performance route; unentitled athlete does not
 
 test('15. the player route is gated by the same list setSection() enforces', () => {
   const set = extractFn(html, 'setSection');
-  assert.match(set, /view === "player" && !playerSectionsFor\(\)\.some\(\(\[id\]\) => id === section\)/);
+  assert.match(set, /view === "player" && !playerSectionAllowed\(section\)/);
+  assert.match(extractFn(html, 'playerSectionAllowed'), /playerSectionsFor\(\)\.some\(\(\[id\]\) => id === section\)/);
 });
 
 test('16. an athlete sees only athlete surfaces — never roster, programming or coach tools', () => {

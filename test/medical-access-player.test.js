@@ -294,8 +294,10 @@ test('the player Medical route and panel exist and are permission-gated', () => 
   assert.match(src, /safeRender\('player-medical',\s*\(\) => \{ if \(state\.activeView === 'player' && canI\('medical_access'\)\) renderMedical\(\); \}\)/,
     'rendered inside the player view, gated on the permission and on the active shell');
   const setSection = fn('setSection');
-  assert.match(setSection, /view === "player" && !playerSectionsFor\(\)\.some/,
+  assert.match(setSection, /view === "player" && !playerSectionAllowed\(section\)/,
     'direct player-route navigation is gated too');
+  assert.match(fn('playerSectionAllowed'), /playerSectionsFor\(\)\.some/,
+    'and the gate still consults the shared permission-aware section list');
   assert.match(fn('showSection'), /state\.activePlayerSection = "home"/,
     'a revoked grant falls back to Home rather than rendering a closed section');
 });

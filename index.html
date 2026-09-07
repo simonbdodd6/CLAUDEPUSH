@@ -5886,6 +5886,19 @@
       return base;
     }
 
+    /**
+     * May a PLAYER open this section? The nav list decides — plus the
+     * deep-link-only routes: 'fixtures' is deliberately absent from the nav
+     * (it duplicates Training there), but the Home quick action and both
+     * fixture cards route to it, exactly as the nav-removal comment promises.
+     * Gating it out turned three visible controls into a false
+     * "You do not have access" denial.
+     */
+    function playerSectionAllowed(section) {
+      if (section === 'fixtures') return true;
+      return playerSectionsFor().some(([id]) => id === section);
+    }
+
     // ── CoachEasier Performance — sub-screen registry (SC1) ───────────────────
     // The Performance section is one nav entry with an internal tab bar, same
     // pattern as Club (renderClubSection). Declared before loadState() because
@@ -10479,9 +10492,14 @@
       fetch('/api/publish?resource=matchday-teams')
         .then(r => (r && r.ok) ? r.json() : null)
         .then(d => {
-          if (d && d.ok) { _mcTeams = { groups: d.groups || [], teams: d.teams || [] }; render(); }
+          if (d && d.ok) { _mcTeams = { groups: d.groups || [], teams: d.teams || [] }; render(); return; }
+          // A FAILED FETCH MUST NOT LATCH (same fix as loadTrainingSchedule):
+          // one cold-start 500 left the side selector missing and the sheet
+          // sideless for the whole session. Releasing the latch lets the next
+          // render retry; the in-flight guard above still stops duplicates.
+          _mcTeamsAttempted = false;
         })
-        .catch(() => {});
+        .catch(() => { _mcTeamsAttempted = false; });
     }
     /**
      * ORDER OF SIDES WITHIN A GROUP — deterministic, never insertion order.
@@ -12957,7 +12975,9 @@
       }
       // Player-side sections are gated on the same permission map, so a
       // revoked grant closes the route as well as hiding the entry.
-      if (view === "player" && !playerSectionsFor().some(([id]) => id === section)) {
+      // playerSectionAllowed also admits the deep-link-only routes the Home
+      // cards use — see its comment.
+      if (view === "player" && !playerSectionAllowed(section)) {
         return showToast("You do not have access to that section");
       }
       state.activeView = view;
@@ -31206,11 +31226,35 @@
       render();
     }
 
+    /**
+     * The roster rows the fixture availability board may show — the
+     * OPERATIONAL pool in coach context (the same rule Match Day eligibility
+     * uses), the server-scoped device roster in the player view. This board
+     * was the one fixture surface that escaped Build S's group scoping and
+     * still drew the whole device roster.
+     */
+    function fixtureAvailBoardPlayers() {
+      const pool = (state.activeView !== 'player' && typeof operationalPlayers === 'function')
+        ? operationalPlayers()
+        : (state.players || []);
+      return activeRosterPlayers(pool);
+    }
+
+    /**
+     * The fixture the board may render — resolved through the group context,
+     * so a board id carried across a group switch fails closed to
+     * "Fixture not found" instead of painting another group's fixture.
+     */
+    function fixtureAvailBoardFixture(fixtureId) {
+      const pool = (typeof contextFixtures === 'function') ? contextFixtures() : (state.fixtures || []);
+      return pool.find(f => f.id === fixtureId) || null;
+    }
+
     function renderFixtureAvailBoard(fixtureId) {
-      const fx = (state.fixtures || []).find(f => f.id === fixtureId);
+      const fx = fixtureAvailBoardFixture(fixtureId);
       if (!fx) return '<div class="card">Fixture not found.</div>';
-      const players = activeRosterPlayers(state.players);
-      const summ    = fixtureAvailabilitySummary(fixtureId, state.players);
+      const players = fixtureAvailBoardPlayers();
+      const summ    = fixtureAvailabilitySummary(fixtureId, players);
       const { availMap, warnings, missingReplies } = summ;
       const group      = _fxAvailPosFilter || 'all';
       const filterSlots = group !== 'all' ? (POSITION_GROUP_SLOTS[group] || []) : null;
@@ -38563,10 +38607,23 @@
         if (!state.operationalGroupId && operationalGroups().length > 1) return;
         const _availGroupQ = state.operationalGroupId
           ? '&group=' + encodeURIComponent(state.operationalGroupId) : '';
-        const resolved = await fetch('/api/availability?resolveRoster=1' + _availGroupQ)
-          .then(r => r.ok ? r.json() : { resolved: {} })
-          .then(d => d.resolved || {})
-          .catch(() => ({}));
+        const reply = await fetch('/api/availability?resolveRoster=1' + _availGroupQ)
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null);
+        if (!reply) {
+          // A FAILED READ IS A FAILED READ — never an empty board. Collapsing
+          // a 500 / lapsed session / network drop into {} took the success
+          // path: it stamped the map, the group and a green "Synced HH:MM"
+          // chip, so one bad Monday-morning fetch painted the whole squad as
+          // No Reply, fed everyone to the chase list, and made the Overview
+          // read an outage as a quiet week. Stamp nothing: whatever map is in
+          // force stays (a stale one is already caught by
+          // currentResolvedAvailability's group check), the chip says what
+          // happened, and the next poll retries.
+          if (ts) { ts.textContent = 'Sync failed — will retry'; ts.className = 'msg-chip unavailable'; }
+          return;
+        }
+        const resolved = reply.resolved || {};
         // Source of truth for the coach board at render time (see sessionRows).
         const _prevResolvedSig = JSON.stringify(_resolvedAvailability);
         _resolvedAvailability = resolved;
@@ -39631,6 +39688,10 @@
       _trainingScheduleGroupId = '';
       _trainingPubState = {}; _trainingPubLoadedAt = 0;
       _publishedStateLoadedAt = 0;
+      // An open fixture availability board belongs to the OLD group's fixture;
+      // its renderer also fails closed via contextFixtures, but leaving the id
+      // set would paint "Fixture not found" inside the new group's screen.
+      if (typeof _fxAvailBoardId !== 'undefined') _fxAvailBoardId = null;
       _sharedMedical = { loaded: false, failed: false, cases: [], players: [] };
       // Resetting the store is not enough: state.medicalRecords/Notes are a
       // hydrated VIEW of it and would keep rendering the OLD group's caseload.

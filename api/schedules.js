@@ -3,6 +3,7 @@ import { kvGet, kvSet, kvConfigured } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
 import { setCors } from './_http.js';
 import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
+import { DEFAULT_TEAM } from './_identityStore.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -40,8 +41,18 @@ export default async function handler(req, res) {
   }
   const teamId = tenantTeamId(sessionContext);
 
+  // ── Tenant isolation ──
+  // Schedules live in one shared list, but a club may SEE and TOUCH only its
+  // own. A record with no teamId predates club tagging and belongs to the
+  // DEFAULT team — the documented owner of all pre-namespace data — whose
+  // next save attaches the club, exactly as the cron report promises. Without
+  // this, any club's coach (including a freshly self-provisioned trial club)
+  // could list, retime, deactivate or delete every other club's reminders.
+  const ownsSchedule = schedule =>
+    String(schedule?.teamId || DEFAULT_TEAM.id) === String(teamId);
+
   if (req.method === 'GET') {
-    return res.status(200).json({ schedules: await readSchedules() });
+    return res.status(200).json({ schedules: (await readSchedules()).filter(ownsSchedule) });
   }
 
   if (req.method === 'POST') {
@@ -55,6 +66,10 @@ export default async function handler(req, res) {
     }
     const schedules = await readSchedules();
     const existing = schedules.find(schedule => schedule.id === id);
+    // A foreign id must read as unknown, never as a record to overwrite.
+    if (existing && !ownsSchedule(existing)) {
+      return res.status(404).json({ error: 'Schedule not found' });
+    }
     const now = new Date().toISOString();
     const schedule = {
       id: String(id || `sch-${Date.now()}`),
@@ -86,7 +101,9 @@ export default async function handler(req, res) {
     if (!id) return res.status(400).json({ error: 'id required' });
     const schedules = await readSchedules();
     const index = schedules.findIndex(schedule => schedule.id === id);
-    if (index < 0) return res.status(404).json({ error: 'Schedule not found' });
+    if (index < 0 || !ownsSchedule(schedules[index])) {
+      return res.status(404).json({ error: 'Schedule not found' });
+    }
     const permitted = ['active', 'name', 'time', 'audience', 'days', 'coachName', 'sessionId'];
     const safePatch = Object.fromEntries(Object.entries(patch).filter(([field]) => permitted.includes(field)));
     if (safePatch.audience && !['all', 'no-reply'].includes(safePatch.audience)) {
@@ -105,7 +122,9 @@ export default async function handler(req, res) {
   if (req.method === 'DELETE') {
     const { id } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id required' });
-    const schedules = (await readSchedules()).filter(schedule => schedule.id !== id);
+    // Remove only a record this club owns — a foreign id deletes nothing.
+    const schedules = (await readSchedules()).filter(schedule =>
+      !(schedule.id === id && ownsSchedule(schedule)));
     await kvSet(SCHEDULES_KEY, schedules);
     return res.status(200).json({ ok: true, count: schedules.length });
   }
