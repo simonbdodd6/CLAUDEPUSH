@@ -9,6 +9,7 @@ import { resolveVariables } from './_variables.js';
 import { setCors, readSecret, vapidContact, notificationUrl } from './_http.js';
 import { OBSOLETE_LEGACY_ACCOUNT_IDS, loadNotificationPreferenceMap, notificationAllowed, loadTeamMembers, loadTeams } from './_identityStore.js';
 import { OBSOLETE_DM_PARTICIPANT_IDS } from './chat.js';
+import { templatesForClub } from './templates.js';
 
 const DAY_MAP = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
   sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
@@ -333,29 +334,36 @@ export default async function handler(req, res) {
   const now = new Date();
   const fireWindow = req.headers?.['x-vercel-cron'] === '1'
     ? VERCEL_FALLBACK_WINDOW_MINUTES : EXACT_WINDOW_MINUTES;
-  const [schedules, templates, subscribers] = await Promise.all([
-    readArray('schedules'), readArray('templates'), load(),
+  const [schedules, subscribers] = await Promise.all([
+    readArray('schedules'), load(),
   ]);
   const due = schedules.filter(schedule => scheduleIsDue(schedule, now, fireWindow));
   const automationMembers = await loadTeamMembers();
   const results = [];
   const expiredEndpoints = new Set();
+  // Templates are per-club (tenant isolation): a schedule's message body comes
+  // from ITS club's own list, so no other club's edit can reach these players.
+  const templatesByClub = new Map();
+  const clubTemplates = async teamId => {
+    if (!templatesByClub.has(teamId)) templatesByClub.set(teamId, await templatesForClub(teamId));
+    return templatesByClub.get(teamId);
+  };
 
   for (const schedule of due) {
     // Weekly Availability is fired from the club config (below); skip any legacy
     // client-synced sch-wk-* entries so they can never double-send.
     if (String(schedule.id || '').startsWith('sch-wk-')) continue;
-    const template = templates.find(item => item.id === schedule.templateId);
-    if (!template) {
-      results.push({ scheduleId: schedule.id, sent: 0, failed: 0, error: 'Template not found' });
-      continue;
-    }
     // Club isolation: a schedule's message is club-specific content, so it may
     // only reach ACTIVE members of the team that created it. A schedule with no
     // teamId predates club tagging — skip it (fail-closed) so it can never be
     // delivered across clubs; it heals automatically when the coach re-saves it.
     if (!schedule.teamId) {
       results.push({ scheduleId: schedule.id, sent: 0, failed: 0, skipped: 'no teamId — re-save to attach club' });
+      continue;
+    }
+    const template = (await clubTemplates(schedule.teamId)).find(item => item.id === schedule.templateId);
+    if (!template) {
+      results.push({ scheduleId: schedule.id, sent: 0, failed: 0, error: 'Template not found' });
       continue;
     }
     let targetSubscribers = subscriptionsForMembers(subscribers, activeMemberIdSet(automationMembers, schedule.teamId));
