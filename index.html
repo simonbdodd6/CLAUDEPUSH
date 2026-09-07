@@ -15989,9 +15989,12 @@
     }
     function availWeekShift(delta) {
       // Delegates to the ONE dated week the whole board renders from.
+      // Base resolves BEFORE the navigation stamp — a stale stored week snaps
+      // to the current week first (see coachAvailWeek).
       state.coachAvailWeekStart = delta === 0
         ? availWeekStart(availToday())
         : availAddDays(coachAvailWeek(), delta * 7);
+      _coachAvailWeekNavIn = availWeekStart(availToday());
       const events = coachAvailEvents();
       if (!events.some(e => e.id === state.messageDetail)) {
         state.messageDetail = events[0]?.id || null;
@@ -16009,13 +16012,23 @@
      * 22 August board at all. Same derivation as the player side, so both
      * agree on one event identity, with the coach's own viewed week.
      */
+    /**
+     * Same stale-week trap as the player side (see availViewedWeek): the
+     * stored week is persisted, so without the navigation stamp a coach who
+     * opened the board last week would chase, remind and clear against a week
+     * that has already ended. A stored week is honoured only while the week
+     * it was chosen in is still current; everything else snaps to today.
+     */
+    let _coachAvailWeekNavIn = ''; // current-week when the coach last navigated; '' = never
     function coachAvailWeek() {
-      if (!state.coachAvailWeekStart) state.coachAvailWeekStart = availWeekStart(availToday());
+      const cur = availWeekStart(availToday());
+      if (_coachAvailWeekNavIn !== cur || !state.coachAvailWeekStart) state.coachAvailWeekStart = cur;
       return state.coachAvailWeekStart;
     }
 
     function coachAvailShiftWeek(delta) {
       state.coachAvailWeekStart = availAddDays(coachAvailWeek(), delta * 7);
+      _coachAvailWeekNavIn = availWeekStart(availToday());
       const events = coachAvailEvents();
       // Keep a valid selection: the same event if it survives the move, else
       // the first of the new week. Never leave a dangling id.
@@ -19067,20 +19080,44 @@
     }
     let _availTodayOverride = '';
 
-    /** The week the player is currently looking at. Defaults to this week. */
+    /**
+     * The week the player is currently looking at. Defaults to this week.
+     *
+     * THE STALE-WEEK TRAP (production, week of 7 Sep 2026): availWeekStart is
+     * PERSISTED state, so a device that last opened this screen during week N
+     * still held week N as its "viewed week" in week N+1. The screen quietly
+     * rendered the previous week, and every tap — "Yes to all" included —
+     * wrote to the previous week's dated occurrence ids. The player then read
+     * "All sessions confirmed" while the coach board, on the current week,
+     * truthfully showed No reply; the current week's fixture card was not
+     * even reachable without spotting the small week label.
+     *
+     * A stored week is therefore honoured ONLY while the real-world week in
+     * which the player explicitly navigated (_availWeekNavIn) is still the
+     * current week. A fresh load, restored state, or a PWA left open across
+     * the Sunday→Monday rollover all snap to the current week. Prev/Next
+     * still browse other weeks exactly as before within the session.
+     */
+    let _availWeekNavIn = ''; // current-week when the player last navigated; '' = never
     function availViewedWeek() {
-      if (!state.availWeekStart) state.availWeekStart = availWeekStart(availToday());
+      const cur = availWeekStart(availToday());
+      if (_availWeekNavIn !== cur || !state.availWeekStart) state.availWeekStart = cur;
       return state.availWeekStart;
     }
 
     function availGoToThisWeek() {
       state.availWeekStart = availWeekStart(availToday());
+      _availWeekNavIn = state.availWeekStart;
       saveState('Availability week');
       renderPlayerAvailabilityV2();
     }
 
     function availShiftWeek(delta) {
+      // Resolve the base BEFORE stamping navigation, so a stale stored week
+      // snaps to the current week first and the arrows move relative to what
+      // the player is actually looking at.
       state.availWeekStart = availAddDays(availViewedWeek(), delta * 7);
+      _availWeekNavIn = availWeekStart(availToday());
       saveState('Availability week');
       renderPlayerAvailabilityV2();
     }
