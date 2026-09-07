@@ -1,3 +1,5 @@
+import { isStaffRole } from '../api/_permissions.js';
+
 export function normalizeIdentityName(value = '') {
   return String(value || '').trim().toLowerCase();
 }
@@ -381,7 +383,7 @@ function findUserForCanonicalPlayer(player = {}, users = []) {
 export function canonicalAccountOptions({ users = [], players = [] } = {}) {
   const accounts = [];
   const seen = new Set();
-  (Array.isArray(users) ? users : []).filter(user => ['coach', 'admin', 'medical'].includes(user.role)).forEach(user => {
+  (Array.isArray(users) ? users : []).filter(user => isStaffRole(user.role)).forEach(user => {
     const key = `staff:${user.id}`;
     if (seen.has(key)) return;
     seen.add(key);

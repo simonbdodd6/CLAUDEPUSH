@@ -25,6 +25,7 @@ import { DEFAULT_TEAM, clubInviteVerificationState, emailVerificationRequiredErr
 import { inviteEmail, sendTransactionalEmail } from './_email.js';
 import { auditLog, enforceRateLimit, requestIp } from './_security.js';
 import { assertSameTenant, requireTenantPermission, can, PERM } from './_tenant.js';
+import { isStaffRole } from './_permissions.js';
 import { loadClubStructure, groupById, teamById } from './_structureStore.js';
 import { effectiveAccessScope, getAccessibleGroups, canManageGroup, canManageTeam } from './_accessScope.js';
 import { randomBytes } from 'node:crypto';
@@ -111,8 +112,7 @@ async function resolveInviteScope(session, body = {}, role = 'player') {
   const raw = body.scope && typeof body.scope === 'object' ? body.scope : {};
   const level = String(raw.level || (raw.teamId ? 'team' : raw.groupId ? 'group' : '')).toLowerCase();
   const actorClubWide = effectiveAccessScope(session.teamMember).clubWide;
-  const isStaffRole = ['coach', 'admin', 'medical'].includes(role);
-  const invitePerm = isStaffRole ? PERM.MANAGE_COACHES : PERM.MANAGE_PLAYERS;
+  const invitePerm = isStaffRole(role) ? PERM.MANAGE_COACHES : PERM.MANAGE_PLAYERS;
 
   if (role === 'admin' && level && level !== 'club') {
     throw scopeError('Club Admin is a whole-club role — choose whole-club scope');
@@ -286,7 +286,7 @@ export default async function handler(req, res) {
       if (!VALID_ROLES.includes(groupRole)) {
         return res.status(400).json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` });
       }
-      if (['coach', 'admin', 'medical'].includes(groupRole) && !can(session, PERM.MANAGE_COACHES)) {
+      if (isStaffRole(groupRole) && !can(session, PERM.MANAGE_COACHES)) {
         return res.status(403).json({ error: 'You are not allowed to invite staff' });
       }
       // RC4.7 Phase C — the link may carry a scope; the creator must hold
@@ -348,7 +348,7 @@ export default async function handler(req, res) {
     // pre-Phase-C. A group-scoped Head Coach still passes (their role grants
     // it); resolveInviteScope then confines the invite to the scope they
     // actually manage, so this cannot be used to reach another group.
-    if (['coach', 'admin', 'medical'].includes(normRole) && !can(session, PERM.MANAGE_COACHES)) {
+    if (isStaffRole(normRole) && !can(session, PERM.MANAGE_COACHES)) {
       return res.status(403).json({ error: 'You are not allowed to invite staff' });
     }
     // RC4.7 Phase C — resolve + authorize the scope this invite will grant.

@@ -60,6 +60,30 @@ export const ROLES = [
   'guest',
 ];
 
+// ─── STAFF ROLE CLASSIFICATION ──────────────────────────────────────────────
+// The single canonical answer to "is this member's STORED role a staff role?"
+// — the one definition every staff-vs-player classification site consumes, so
+// a new staff role is added in exactly ONE place instead of ~20 hand-copied
+// ['coach','admin','medical'] lists (which silently omitted snc and analyst).
+//
+// These are legacy STORED role values (member.role / user.role), NOT canonical
+// roles: 'coach' still covers head coach / assistant / manager via staffLevel,
+// which is why the set keys on 'coach' rather than the expanded canonical ids.
+//
+// CLASSIFICATION ONLY. Membership here answers "is this person staff rather
+// than a player?" for visibility, messaging, the staff directory and the
+// player-roster projection. It grants NO authority whatsoever: what a staff
+// member may DO remains ROLE_PERMISSIONS, access profiles and
+// operationalGroupsFor — all unchanged. Adding snc and analyst here gives them
+// no Medical access, no club-wide reach, and no group they did not already
+// hold; those are governed elsewhere and are deliberately untouched.
+export const STAFF_ROLES = Object.freeze(['coach', 'admin', 'medical', 'snc', 'analyst']);
+
+/** True when a STORED member/user role string is a staff classification. */
+export function isStaffRole(role) {
+  return STAFF_ROLES.includes(String(role || '').toLowerCase());
+}
+
 const P = PERM;
 const STAFF_CORE = [P.MANAGE_PLAYERS, P.PUBLISH_TRAINING, P.PUBLISH_SQUADS, P.MESSAGING, P.REPORTS, P.CLUB_EXPORTS, P.MANAGE_TEAMS, P.MANAGE_FIXTURES];
 

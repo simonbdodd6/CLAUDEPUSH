@@ -16,6 +16,7 @@ import { DEFAULT_TEAM, resolveSessionFromRequest, loadHealedPlayerProfiles,
          loadTeamMembers, loadUsers } from './_identityStore.js';
 import { loadClubStructure } from './_structureStore.js';
 import { operationalGroupsFor, resolvePlayerGroup } from './_accessScope.js';
+import { isStaffRole } from './_permissions.js';
 import { tenantTeamId } from './_tenant.js';
 import { load as loadSubs, save as saveSubs } from './_lib.js';
 import { setCors, vapidContact, notificationUrl } from './_http.js';
@@ -660,8 +661,7 @@ async function handleGet(req, res) {
     const active = members.filter(m => m.teamId === teamId && m.status === 'active');
     const myMember = sessionContext.teamMember
       || active.find(m => String(m.userId) === meUserId) || null;
-    const STAFF_ROLES = ['coach', 'admin', 'medical'];
-    const isStaffMember = m => STAFF_ROLES.includes(String(m.role || '').toLowerCase());
+    const isStaffMember = m => isStaffRole(m.role);
 
     // The group this caller PLAYS in. Staff who do not play resolve to '',
     // which simply means no group narrowing is applied to them below.

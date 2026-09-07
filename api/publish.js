@@ -41,7 +41,7 @@ import {
   projectAssignmentForCoach, saveAuthoringProfile, authoringProfileFor,
 } from './_performanceStore.js';
 import { loadTeams } from './_identityStore.js';
-import { canonicalRole } from './_permissions.js';
+import { canonicalRole, isStaffRole } from './_permissions.js';
 import { gateRestrictionSignal } from '../performance/domain/authoring-profile.js';
 import { load, save } from './_lib.js';
 import { auditLog, requestIp } from './_security.js';
@@ -3304,7 +3304,7 @@ export default async function handler(req, res) {
           try { userId = decodeURIComponent(tail); } catch { userId = tail; }
         }
         const member = memberByUser.get(userId);
-        if (!member || !['coach', 'admin', 'medical'].includes(member.role)) continue; // current staff only
+        if (!member || !isStaffRole(member.role)) continue; // current staff only
         const user = userById.get(userId);
         drafts.push({
           userId,

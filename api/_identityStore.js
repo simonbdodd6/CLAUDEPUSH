@@ -3,7 +3,7 @@ import { findInviteByToken, persistInvite, appendClubInvite, loadAllInvites,
          listClubInvites } from './_inviteStore.js';
 import {
   permissionsFor, canonicalRole, accessProfileOf, isClubOwner,
-  accessProfileRank, ACCESS_PROFILES, PERM,
+  accessProfileRank, ACCESS_PROFILES, PERM, isStaffRole,
 } from './_permissions.js';
 import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope, effectiveEligibility, playerGroupIdOf,
          isPlayingMember, operationalGroupsFor, defaultOperationalGroup } from './_accessScope.js';
@@ -1265,7 +1265,7 @@ export async function claimInvite(input = {}) {
     ? effectiveEligibility(priorMember)
     : { teamIds: [], primaryTeamId: null };
   const inviteRole = String(invite.role || 'player');
-  const inviteIsStaff = ['coach', 'admin', 'medical'].includes(inviteRole);
+  const inviteIsStaff = isStaffRole(inviteRole);
   const member = await ensureTeamMember({
     teamId: invite.teamId || DEFAULT_TEAM.id,
     userId: user.id,
