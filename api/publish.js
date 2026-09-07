@@ -787,8 +787,6 @@ async function medicalHandler(req, res) {
         // record exists and an account is NAMED, the two must agree. Without
         // this, a forged userId filed one player's case under ANOTHER
         // player's group, pulling it inside the forger's own visibility.
-        // An omitted userId stays harmless: resolution then refuses in a
-        // multi-group club and uses the only group in a one-group club.
         const rosterNow = await readScoped(rosterKey(session.teamId), 'roster', session.teamId);
         const rosterRow = (rosterNow?.players || [])
           .find(p => String(p.id) === String(req.body?.playerId || ''));
@@ -797,12 +795,38 @@ async function medicalHandler(req, res) {
           return res.status(400).json({ error: 'That player record is not linked to the account named' });
         }
 
-        let groupId = member?.playerGroupId || '';
-        if (!groupId) {
+        // THE PHYSIO'S OWN SAVE PATH (production, 7 Sep 2026): a medical-role
+        // caller CANNOT send a userId at all. Their device has no roster (the
+        // roster read needs coach permissions) and the medical projection
+        // deliberately omits userId, so the client sends userId '' — and this
+        // handler then refused every save in a multi-group club with "That
+        // player is not linked to a squad". Eight retries in the production
+        // logs, and no new case stored since 14 Aug. The server never needed
+        // the client's word for it: the roster row it just looked up carries
+        // the CANONICAL account linkage. A named userId must still match that
+        // row (the coherence check above, unchanged); an omitted one now
+        // resolves through the server's own linkage instead of refusing.
+        const linkUserId = String(req.body?.userId || '') || String(rosterRow?.userId || '');
+        const linkMember = member || (linkUserId ? members.find(m =>
+          String(m.teamId) === String(session.teamId)
+          && String(m.userId || '') === linkUserId) || null : null);
+
+        // An EXISTING case is authorised where it is stored (what you may see
+        // is what you may change), so a case that already carries its group
+        // needs no membership resolution at all — a medic updating their own
+        // group's open case must not be refused because the ROSTER linkage is
+        // beyond their sight. Resolution is only required where the case will
+        // be STORED: a new case, or an orphan healing onto its player's group.
+        const existingRecord = await loadMedicalRecord(session.teamId);
+        const existingCase = existingRecord.cases.find(c =>
+          c.playerId === String(req.body?.playerId || '') && c.status === 'active');
+
+        let groupId = linkMember?.playerGroupId || '';
+        if (!groupId && !(existingCase && existingCase.playerGroupId)) {
           // A roster row added by hand and never linked to an account has no
-          // userId, so no membership matches. Previously the case was stored
-          // ungrouped and the group filter then hid it from EVERYONE — the
-          // physio's injuries vanished the moment they were saved.
+          // userId anywhere, so no membership matches. Previously the case was
+          // stored ungrouped and the group filter then hid it from EVERYONE —
+          // the physio's injuries vanished the moment they were saved.
           //
           // With exactly one active group the answer is not a guess: there is
           // only one group the player could be in. With several it IS a guess,
@@ -820,13 +844,10 @@ async function medicalHandler(req, res) {
           }
         }
 
-        // An EXISTING case is authorised where it is stored (what you may see
-        // is what you may change); a new case where it will be stored. An
-        // orphan case heals under its player's membership group, so it is
-        // authorised there — the owner's own medic can still repair it.
-        const existingRecord = await loadMedicalRecord(session.teamId);
-        const existingCase = existingRecord.cases.find(c =>
-          c.playerId === String(req.body?.playerId || '') && c.status === 'active');
+        // A new case is authorised where it will be stored; an existing case
+        // where it IS stored. An orphan case heals under its player's
+        // membership group, so it is authorised there — the owner's own medic
+        // can still repair it.
         assertMedicalGroupWritable((existingCase && existingCase.playerGroupId) || groupId);
 
         const saved = await upsertCase(session.teamId, {
