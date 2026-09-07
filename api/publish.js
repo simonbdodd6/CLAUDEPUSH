@@ -30,6 +30,7 @@ import {
 } from './_structureStore.js';
 import { effectiveAccessScope, resolveEligibility, resolvePlayerGroup, isPlayingMember,
          operationalGroupsFor, defaultOperationalGroup, assertOperationalGroup } from './_accessScope.js';
+import { protectCanonicalRows, reconcileMissingRows } from './_rosterProjection.js';
 import {
   loadMedicalRecord, activeCases, upsertCase, resolveCase, projectPlayer,
 } from './_medicalStore.js';
@@ -542,7 +543,7 @@ async function rosterScope(session) {
   const mine = members.filter(m => String(m.teamId) === String(session.teamId));
   const groupOf = p => mine.find(m => String(m.userId || '') === String(p.userId || '') && p.userId)?.playerGroupId || '';
   const inScope = p => operable.has(String(groupOf(p)));
-  return { structure, asCapacity, operable, coversClub, groupOf, inScope };
+  return { structure, asCapacity, operable, coversClub, groupOf, inScope, members: mine };
 }
 
 async function rosterHandler(req, res) {
@@ -607,15 +608,24 @@ async function rosterHandler(req, res) {
     // outside their scope (other groups', and unassigned) are kept verbatim,
     // because a submitted copy of them is a stale device echo, never an edit
     // they were entitled to make; rows inside their scope are replaced, added
-    // or — when omitted — removed, which is the replace semantic they always
-    // had, now confined to what they operate. A new row may not reuse a kept
-    // row's id, so an in-scope submission can never masquerade as another
-    // group's record.
-    const { coversClub, inScope } = await rosterScope(session);
+    // or — when omitted — removed. A new row may not reuse a kept row's id,
+    // so an in-scope submission can never masquerade as another group's
+    // record.
+    //
+    // ROSTER SYNC HARDENING carves ONE population out of removal-by-omission
+    // for every caller, club-wide included: rows of ACTIVE PLAYING
+    // memberships. Deleting such a player is a membership action (archive /
+    // remove / permanent delete) which de-activates the membership first, so
+    // a payload that still holds an active player's row yet omits it can only
+    // be a stale device snapshot — the omission is ignored and the stored row
+    // kept. Once the membership is archived/removed the row drops exactly as
+    // before, and nothing here re-creates it, so intentional removal stays
+    // intentional. Unlinked (trialist/CSV) rows keep their old semantics too.
+    const { coversClub, inScope, structure, members } = await rosterScope(session);
+    const stored = (await readScoped(rosterKey(session.teamId), 'roster', session.teamId)) || null;
+    const storedRows = stored?.players || [];
     let players = submitted;
     if (!coversClub) {
-      const stored = (await readScoped(rosterKey(session.teamId), 'roster', session.teamId)) || null;
-      const storedRows = stored?.players || [];
       const submittedById = new Map(submitted.filter(inScope).map(p => [String(p.id), p]));
       const keptIds = new Set();
       players = [];
@@ -630,6 +640,21 @@ async function rosterHandler(req, res) {
         players.push(p);
       }
     }
+
+    // Both halves of the projection invariant, at the one place the roster is
+    // written: stale omissions of active players are kept, and any active
+    // playing member with a resolvable group but no row at all gets the
+    // minimal canonical projection (heals historical new-joiner lag on the
+    // next organic save). Server-side canonical data only — nothing here is
+    // derived from, or widened by, what the caller sent.
+    const [users, profiles] = await Promise.all([loadUsers(), loadPlayerProfiles()]);
+    players = protectCanonicalRows({
+      storedRows, nextRows: players, members, profiles, teamId: session.teamId,
+    }).rows;
+    players = reconcileMissingRows({
+      rows: players, members, users, profiles, structure,
+      teamId: session.teamId, maxPlayers: MAX_PLAYERS,
+    }).rows;
 
     const record = {
       players,

@@ -8,6 +8,7 @@ import {
 import { normalizeAccessScope, normalizeEligibility, effectiveAccessScope, effectiveEligibility, playerGroupIdOf,
          isPlayingMember, operationalGroupsFor, defaultOperationalGroup } from './_accessScope.js';
 import { loadClubStructure, groupById, teamById, activeTeams, activeGroups } from './_structureStore.js';
+import { reconcileMissingRows } from './_rosterProjection.js';
 import { key } from './_keys.js';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
@@ -968,6 +969,38 @@ export async function listPendingJoinRequests(teamId = DEFAULT_TEAM.id) {
     }));
 }
 
+/**
+ * ROSTER SYNC HARDENING — make the roster projection true for one club, NOW,
+ * at the server boundary where canonical membership just changed (invite
+ * claimed, join request approved, member restored, player group assigned).
+ * A valid active player must never wait for an unrelated coach device to
+ * open and save the roster before existing on roster-backed screens.
+ *
+ * Delegates to the pure reconciler (_rosterProjection.js): active playing
+ * members with a resolvable group gain their minimal projection row, soft
+ * matched rows gain a durable userId link — and NOTHING else moves. No row
+ * is deleted, no archived member resurrected, no unlinked row touched.
+ * Idempotent; writes only when something actually changed.
+ */
+export async function ensureRosterProjection(teamId) {
+  const [members, users, profiles, structure] = await Promise.all([
+    loadTeamMembers(), loadUsers(), loadPlayerProfiles(), loadClubStructure(teamId),
+  ]);
+  const rosterK = key(`roster:${teamId}`);
+  const record = await kvGet(rosterK);
+  const { rows, changed, created } = reconcileMissingRows({
+    rows: record?.players || [], members, users, profiles, structure, teamId,
+  });
+  if (!changed) return { changed: false, created: 0 };
+  await kvSet(rosterK, {
+    ...(record || {}),
+    players: rows,
+    updatedAt: nowIso(),
+    updatedBy: 'system:roster-reconcile',
+  });
+  return { changed: true, created: created.length };
+}
+
 export async function approveJoinRequest(memberId, approvedBy = 'coach-demo', expectedTeamId = null) {
   const [users, members, profiles] = await Promise.all([
     loadUsers(),
@@ -1019,6 +1052,9 @@ export async function approveJoinRequest(memberId, approvedBy = 'coach-demo', ex
     saveTeamMembers(members),
     savePlayerProfiles(profiles),
   ]);
+  // Approval makes the membership active — the roster projection follows
+  // immediately, not on the next coach-device sync.
+  await ensureRosterProjection(member.teamId);
 
   return { user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile };
 }
@@ -1292,6 +1328,11 @@ export async function claimInvite(input = {}) {
   // A platform-provisioned club's first administrator IS its owner. No-op for
   // every ordinary invite.
   await applyFounderOwnership(member, invite);
+  // The player exists canonically NOW, so they exist on roster-backed screens
+  // NOW — before this, their row waited for an unrelated coach device to sync
+  // (the proven new-joiner lag). Runs before the invite is consumed, so a
+  // failure here leaves the claim retryable. Staff-only claims are a no-op.
+  await ensureRosterProjection(member.teamId);
   if (isGroup) {
     // Keep the link open; just track usage.
     invite.acceptedCount = (invite.acceptedCount || 0) + 1;
@@ -2936,6 +2977,10 @@ export async function setPlayerGroup(memberId, groupId, changedBy, expectedTeamI
     // No account behind the membership is a data-integrity state, not a
     // reason to fail the assignment — the capacity is still correct.
     if (user) playerProfile = await ensurePlayerProfile({ teamMember: member, user });
+    // A group-less member had no fabricated row (the model never guesses a
+    // group); the moment an admin resolves where they play, the projection
+    // exists without waiting for a coach-device sync.
+    await ensureRosterProjection(member.teamId);
   }
   return { teamMember: member, playerProfile };
 }
@@ -3315,6 +3360,9 @@ export async function restoreTeamMember(memberId, restoredBy, expectedTeamId) {
   member.restoredAt = nowIso();
   member.restoredBy = restoredBy;
   await saveTeamMembers(members);
+  // While archived, roster saves may legitimately have dropped their row;
+  // restoration re-establishes the projection for a playing member.
+  await ensureRosterProjection(member.teamId);
   return { teamMember: member };
 }
 
