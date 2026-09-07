@@ -13,6 +13,12 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+
+// Test shim: extracted client fns now consult the canonical isStaffRole (mirror of
+// api/_permissions.js STAFF_ROLES). new Function() sandboxes resolve free identifiers
+// against the global scope, so expose it there for them.
+globalThis.isStaffRole = role =>
+  ['coach', 'admin', 'medical', 'snc', 'analyst'].includes(String(role || '').toLowerCase());
 import fs from 'node:fs';
 
 process.env.UPSTASH_REDIS_REST_URL   = 'https://redis.mc-staff.test';

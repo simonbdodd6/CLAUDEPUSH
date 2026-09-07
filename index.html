@@ -5857,6 +5857,19 @@
     // that decides what the coach sidebar offers.
     const SECTION_FEATURE_MAP = { performance: 'performance' };
 
+    // ─── STAFF ROLE CLASSIFICATION ──────────────────────────────────────────
+    // Mirror of api/_permissions.js STAFF_ROLES (the single server-side source
+    // of truth). These are STORED role values (member.role / user.role), and
+    // the one list every "is this person staff rather than a player?" site on
+    // the client reads — visibility, messaging, the staff directory and the
+    // player-roster projection. It is CLASSIFICATION ONLY and grants no
+    // authority: what a staff member may do stays with canI()/permissions and
+    // operationalGroupsFor. snc (S&C Coach) and analyst were the roles the old
+    // hand-copied ['coach','admin','medical'] lists silently dropped; adding
+    // them here gives neither any Medical access nor any group reach.
+    const STAFF_ROLES = ['coach', 'admin', 'medical', 'snc', 'analyst'];
+    const isStaffRole = role => STAFF_ROLES.includes(String(role || '').toLowerCase());
+
     // ── Core Beta — commercial UX simplification (Phase 3) ────────────────────
     // Hides advanced/admin clutter from key coach pages (Availability, Training,
     // Match Centre) so the Beta reads as a simple, premium rugby tool. NOTHING is
@@ -8624,7 +8637,7 @@
       }
       const accounts = [];
       const seen = new Set();
-      (state.users || []).filter(user => ['coach','admin','medical'].includes(user.role)).forEach(user => {
+      (state.users || []).filter(user => isStaffRole(user.role)).forEach(user => {
         const key = `staff:${user.id}`;
         if (seen.has(key)) return;
         seen.add(key);
@@ -11100,7 +11113,7 @@
       // Every IN-SCOPE coach/staff identity on this team, de-duplicated.
       const seen = new Set();
       const staff = (state.users || [])
-        .filter(u => ['coach', 'admin', 'medical'].includes(u.role) && u.name)
+        .filter(u => isStaffRole(u.role) && u.name)
         .filter(_mcStaffInScope)
         .filter(u => { const k = String(u.id); if (seen.has(k)) return false; seen.add(k); return true; });
       const others = staff.filter(u => String(u.id) !== meId);
@@ -12550,7 +12563,7 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.ok === false) { const err = new Error(data.error || 'login failed'); err.status = res.status; throw err; }
-        const isStaffLogin = ['coach','admin','medical'].includes(data.user.role);
+        const isStaffLogin = isStaffRole(data.user.role);
         // Capacity, not role name: someone who PLAYS gets their own roster
         // record even when they also hold a staff role. Without this a club
         // physio who plays had no record on their own device at all, so their
@@ -13025,7 +13038,7 @@
         });
         const data = await res.json();
         if (!data.ok) return showToast('Dev login failed: ' + (data.error || 'unknown'));
-        const isStaff = ['coach','admin','medical'].includes(data.user?.role || data.teamMember?.role);
+        const isStaff = isStaffRole(data.user?.role || data.teamMember?.role);
         // See loginIdentityAccount: PLAYING is a capacity of its own, so a
         // member who plays keeps their own roster record whatever staff role
         // they also hold.
@@ -13129,7 +13142,7 @@
       const u = canonicalAccountForUserId(userId);
       if (!u) return;
       state.currentUserId = u.id;
-      const isStaff = ['coach','admin','medical'].includes(u.role);
+      const isStaff = isStaffRole(u.role);
       // Same capacity rule as login: medical is a permission, so a switched-to
       // account that PLAYS opens in the player portal, not the coach shell.
       state.activeView = landingViewFor(u.role, u);
@@ -13225,8 +13238,8 @@
         teamMembers.filter(m => membershipPlays(m)).map(m => String(m.userId || '')).filter(Boolean)
       );
       const staffUserIds = new Set([
-        ...teamMembers.filter(m => ['coach','admin','medical'].includes(m.role)).map(m => String(m.userId || '')),
-        ...state.users.filter(u => ['coach','admin','medical'].includes(u.role)).map(u => String(u.id || '')),
+        ...teamMembers.filter(m => isStaffRole(m.role)).map(m => String(m.userId || '')),
+        ...state.users.filter(u => isStaffRole(u.role)).map(u => String(u.id || '')),
       ].filter(id => id && !playingUserIds.has(id)));
       let changed = false;
 
@@ -13393,7 +13406,7 @@
       // coach/admin/medical users already in state.users.
       _allowedDmParticipantIds = new Set(['coach-demo']);
       (state.users || []).forEach(u => {
-        if (['coach', 'admin', 'medical'].includes(String(u.role || ''))) {
+        if (isStaffRole(u.role)) {
           _allowedDmParticipantIds.add(String(u.id || ''));
         }
       });
@@ -13475,7 +13488,7 @@
         // STAFF go into state.users with their role, like the login path; only players
         // get the roster row.
         const approvedRole = data.user?.role || data.teamMember?.role || 'player';
-        const approvedIsStaff = ['coach','admin','medical'].includes(approvedRole);
+        const approvedIsStaff = isStaffRole(approvedRole);
         if (approvedIsStaff && data.user?.id) {
           const staffName = data.user.displayName || data.user.email || data.user.id;
           const existingUser = state.users.find(u => u.id === data.user.id);
@@ -18412,7 +18425,7 @@
         && ((_acc?.clubWideStaffIds || []).includes(String(state.currentUserId || ''))
             || !(_acc?.clubWideStaffIds || []).length);
       const staffMembers = (state.users || [])
-        .filter(u => ['coach', 'admin', 'medical'].includes(u.role) && u.name)
+        .filter(u => isStaffRole(u.role) && u.name)
         .filter(_staffInScope)
         .filter(u => { const k = String(u.id); if (_staffSeen.has(k)) return false; _staffSeen.add(k); return true; })
         .map(u => ({
@@ -32597,7 +32610,7 @@
         const d = await res.json().catch(() => ({}));
         const members = Array.isArray(d.team_members) ? d.team_members : [];
         const users   = Array.isArray(d.users) ? d.users : [];
-        const STAFF   = ['coach', 'admin', 'medical'];
+        const STAFF   = STAFF_ROLES;
         members.forEach(m => {
           if (!STAFF.includes(m.role) || (m.status && m.status !== 'active')) return;
           const u  = users.find(x => String(x.id) === String(m.userId));
@@ -32694,7 +32707,7 @@
         return ((_acc.groupStaffIds || {})[_gid] || []).includes(String(u.id));
       };
       return (state.users || [])
-        .filter(u => ['coach', 'admin', 'medical'].includes(u.role) && u.name && String(u.id) !== String(meId))
+        .filter(u => isStaffRole(u.role) && u.name && String(u.id) !== String(meId))
         .filter(inScope)
         .filter(u => { const k = String(u.id); if (seen.has(k)) return false; seen.add(k); return true; })
         .map(u => ({ id: String(u.id), name: u.name, position: LABEL[u.role] || 'Staff', email: u.email || '', photo: '', _staff: true }));
@@ -32944,7 +32957,7 @@
         // Staff fallback: the target is another coach/admin/medical who lives in
         // state.users (not the roster). Open/create a DM keyed on their user id.
         const staff = (state.users || []).find(u =>
-          ['coach', 'admin', 'medical'].includes(u.role) && String(u.id) === String(playerId));
+          isStaffRole(u.role) && String(u.id) === String(playerId));
         if (staff) return chatStartStaffDm(staff);
         return showToast('Member not found');
       }
@@ -33000,7 +33013,7 @@
       // We don't have a direct "coachUserId" in _myMemberships, so we search
       // state.users for the first staff user that is not the current player.
       const coach = state.users.find(u =>
-        ['coach', 'admin', 'medical'].includes(String(u.role || '')) &&
+        isStaffRole(u.role) &&
         String(u.id || '') !== meUserId
       );
       // No legacy 'coach-demo' fallback. That account no longer exists, so
@@ -33609,7 +33622,7 @@
       const ids = new Set(['coach-demo', 'player-simon-test', 'inv-YxnjxnQa']);
       // Include any authenticated staff users so their DMs are visible immediately.
       (state.users || []).forEach(u => {
-        if (['coach', 'admin', 'medical'].includes(String(u.role || ''))) {
+        if (isStaffRole(u.role)) {
           ids.add(String(u.id || ''));
         }
       });
@@ -41522,8 +41535,8 @@
         // NEVER injected into state.players; players use applyApprovedIdentityLocally
         // (which adds the roster row). Mirrors the login path.
         const claimedRole = data.user?.role || data.teamMember?.role || role;
-        const isStaffRole = ['coach','admin','medical'].includes(claimedRole);
-        if (isStaffRole) {
+        const claimedIsStaff = isStaffRole(claimedRole);
+        if (claimedIsStaff) {
           const staffName = data.user.displayName || data.user.email || name;
           const existingUser = state.users.find(u => u.id === data.user.id);
           if (!existingUser) {
