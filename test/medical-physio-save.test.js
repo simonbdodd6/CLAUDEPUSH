@@ -69,12 +69,20 @@ const MEMBERS = [
   { id: 'm-sen-medic', teamId: CLUB, userId: 'u-sen-medic', role: 'medical', status: 'active', accessScope: scope(SEN) },
   { id: 'm-u18-medic', teamId: CLUB, userId: 'u-u18-medic', role: 'medical', status: 'active', accessScope: scope(U18) },
   { id: 'm-admin', teamId: CLUB, userId: 'u-admin', role: 'admin', status: 'active', isOwner: true },
+  // DUAL-CAPACITY (production reproduction, "test medical", 7 Sep 2026): a
+  // PLAYER who also holds the additive medicalAccess grant. canonicalRole is
+  // 'player', so the write authorises with PLAYER capacity (the group they
+  // play), not staff scope — and they may open a case for a player in their
+  // own group, including themselves.
+  { id: 'm-dual', teamId: CLUB, userId: 'u-dual', role: 'player', status: 'active',
+    playerGroupId: SEN, medicalAccess: true },
 ];
 
 // The roster rows carry the canonical account linkage (id === userId, as in prod).
 const ROSTER = [
   { id: 'u-sen-a', userId: 'u-sen-a', name: 'Senior A' },
   { id: 'u-u18-a', userId: 'u-u18-a', name: 'U18 A' },
+  { id: 'u-dual', userId: 'u-dual', name: 'Dual Cap' },
   { id: 'p-unlinked', name: 'No Account' },
 ];
 
@@ -140,6 +148,40 @@ test('the case the physio just saved is then visible to their group read', async
   assert.equal(g.result.code, 200);
   assert.ok(g.result.body.active.some(c => c.condition === 'VISIBLE-SENTINEL'),
     'the physio can read back the case they saved');
+});
+
+// ── DUAL-CAPACITY: a PLAYER holding the medicalAccess grant (prod repro) ─────
+
+test('a player WITH the medical grant opens a case for themselves (userId omitted, exact prod payload)', async () => {
+  await seed();
+  // Exactly what saveNewInjury() posts on the "test medical" device: the
+  // selected player is the caller's own roster row id, and userId '' because a
+  // player device never loads the coach roster to know the account id.
+  const r = await medical('u-dual', {
+    action: 'upsert_case',
+    playerId: 'u-dual',
+    userId: '',
+    condition: 'DUAL-CAP-SENTINEL',
+    severity: 'minor',
+    returnTarget: '2026-10-10',
+    dateInjured: '2026-09-07',
+    timelineNote: 'Injury logged',
+  });
+  assert.equal(r.code, 200, `the dual-capacity save must succeed, got ${JSON.stringify(r.body)}`);
+  const created = record().cases.find(c => c.condition === 'DUAL-CAP-SENTINEL');
+  assert.ok(created, 'the case is stored');
+  assert.equal(created.playerId, 'u-dual');
+  assert.equal(created.playerGroupId, SEN, 'group resolved from the caller\'s own membership via the roster row');
+  assert.equal(created.status, 'active');
+});
+
+test('the dual-capacity player still cannot open a case for another group\'s player', async () => {
+  await seed();
+  const before = kv.get(`app:medical:${CLUB}`);
+  const r = await medical('u-dual', {
+    action: 'upsert_case', playerId: 'u-u18-a', userId: '', condition: 'DUAL-CROSS-SENTINEL' });
+  assert.equal(r.code, 403, `player-capacity write stays in the caller's group, got ${JSON.stringify(r.body)}`);
+  assert.equal(kv.get(`app:medical:${CLUB}`), before, 'nothing written');
 });
 
 // ── GROUP ISOLATION IS UNCHANGED (an omitted userId does not widen anything) ─
