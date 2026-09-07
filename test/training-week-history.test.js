@@ -156,9 +156,12 @@ test('next week generates Tuesday and Thursday dated occurrences', () => {
   assert.deepEqual(events.map(e => e.date), ['2026-08-18', '2026-08-20']);
 });
 
-test('the current week keeps the legacy ids — existing answers keep working', () => {
+test('the current week is DATED like every other week (legacy-id cutover)', () => {
+  // trainingContentKey and attendanceOccurrenceId canonicalize both spellings
+  // to the same slot-rooted dated key, so plans and registers are unmoved.
   const c = ctx();
-  assert.deepEqual(c.trainingWeekOccurrences(THIS_WEEK).map(e => e.id), ['tue', 'thu']);
+  assert.deepEqual(c.trainingWeekOccurrences(THIS_WEEK).map(e => e.id),
+    ['slot_tue1-20260811', 'slot_thu1-20260813']);
 });
 
 test('week navigation changes the dated ids — 18 Aug is not 25 Aug', () => {

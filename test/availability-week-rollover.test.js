@@ -109,9 +109,10 @@ test('after the snap, every id a tap would POST is a current-week id — never l
   app.setToday('2026-09-07');
   const events = app.playerEvents();
   // "Yes to all" posts keyToSessionId(sessionKey(e.id)) for each card.
+  // Post legacy-id cutover: the current week is DATED like every other week.
   const postedIds = events.map(e => app.keyToSessionId(app.sessionKey(e.id)));
-  assert.deepEqual(postedIds.sort(), ['fx_frameries', 'thu', 'tue'],
-    'current-week legacy training ids plus the real fixture');
+  assert.deepEqual(postedIds.sort(), ['fx_frameries', 'slot_thu-20260910', 'slot_tue-20260908'],
+    'current-week dated training occurrences plus the real fixture');
   for (const id of postedIds) {
     assert.ok(!/-(20260901|20260903)$/.test(id), `${id} is not a dated id of the ended week`);
   }

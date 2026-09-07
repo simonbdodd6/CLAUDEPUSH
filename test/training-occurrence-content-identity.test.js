@@ -292,10 +292,14 @@ test('G: availability event ids are byte-for-byte unchanged — answers keep wor
     return availabilityEventsForWeek;`)();
   const ids = W('2026-08-31', { slots: SLOTS, fixtures: [], currentWeekStart: '2026-08-31' })
     .filter(e => e.type === 'training').map(e => e.id);
-  assert.deepEqual(ids, ['tue', 'thu'],
-    'the CURRENT week still answers to the legacy ids — trainingTuesday answers resolve');
+  // Legacy-id cutover: the CURRENT week answers under its dated occurrence
+  // ids too. Content keys are identical either way — trainingContentKey
+  // roots both spellings to the same slot-dated key (asserted elsewhere in
+  // this file) — so plans and registers do not move.
+  assert.deepEqual(ids, ['slot_tue-20260901', 'slot_thu-20260903'],
+    'the current week is dated like every other week');
   const sk = new Function(`${fn('sessionKey')} return sessionKey;`)();
-  assert.equal(sk('tue'), 'trainingTuesday', 'the availability field mapping is untouched');
+  assert.equal(sk('tue'), 'trainingTuesday', 'the legacy field mapping remains for historical fields');
 });
 
 test('G: the attendance panel and register identity are untouched', () => {

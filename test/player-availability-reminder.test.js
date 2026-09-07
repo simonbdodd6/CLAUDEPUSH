@@ -51,31 +51,48 @@ function extractFn(source, name) {
 
 // ───────────────────────── CLIENT: the week, and one player's place in it ────
 
-const SESSIONS = [
-  { id: 'tue',  title: 'Tuesday training' },
-  { id: 'thu',  title: 'Thursday training' },
-  { id: 'game', title: 'Match' },
+// Post legacy-id cutover the week is the CANONICAL current week from THE
+// generator: dated training occurrences plus real fixtures. Today is Tue
+// 2026-09-01 in these tests, so the three events of the week are:
+const TUE_ID = 'slot_tue1-20260901';
+const THU_ID = 'slot_thu1-20260903';
+const FX_ID  = 'fx_game';
+const SLOTS = [
+  { id: 'slot_tue1', day: 'Tue', active: true },
+  { id: 'slot_thu1', day: 'Thu', active: true },
 ];
+const FIXTURES = [{ id: FX_ID, date: '2026-09-05', opposition: 'Match', status: 'scheduled' }];
 
 /**
  * `answers` — { playerId: { sessionId: status } }. Anything absent is no-reply.
  * `roster`  — what operationalPlayers() returns, i.e. the OPERATING group only.
  */
-function scope({ schedule = SESSIONS, roster = [], answers = {} } = {}) {
-  return new Function('schedule', 'roster', 'answers', `
+function scope({ slots = SLOTS, fixtures = FIXTURES, roster = [], answers = {} } = {}) {
+  return new Function('slots', 'fixtures', 'roster', 'answers', `
     "use strict";
-    const state = { schedule };
+    const state = { schedule: [] };
     function operationalPlayers() { return roster; }
     function sessionRows(id) {
       return operationalPlayers().map(p => ({
         player: p, status: (answers[p.id] || {})[String(id)] || undefined,
       }));
     }
+    function availToday() { return '2026-09-01'; }
+    function ensureTrainingSchedule() {}
+    let _trainingSchedule = { slots };
+    function contextFixtures() { return fixtures; }
+    function normalizeFixture(fx) { return fx; }
+    const AVAIL_DAY_INDEX = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+    ${extractFn(html, 'availWeekStart')}
+    ${extractFn(html, 'availAddDays')}
+    ${extractFn(html, 'availSlotDateInWeek')}
+    ${extractFn(html, 'availTrainingEventId')}
+    ${extractFn(html, 'availabilityEventsForWeek')}
     ${extractFn(html, 'availabilityWeekSessions')}
     ${extractFn(html, 'playerAvailabilityWeek')}
     ${extractFn(html, 'availabilityReminderTarget')}
     return { availabilityWeekSessions, playerAvailabilityWeek, availabilityReminderTarget, sessionRows };
-  `)(schedule, roster, answers);
+  `)(slots, fixtures, roster, answers);
 }
 
 const ANA  = { id: 'p1', name: 'Ana Silva',      userId: 'u1' };
@@ -84,13 +101,15 @@ const CILL = { id: 'p3', name: 'Cillian Murphy', userId: 'u3' };
 const NOACC = { id: 'p4', name: 'Trial Player' };            // roster row, no account
 const SQUAD = [ANA, BEN, CILL, NOACC];
 
-test('the week is the app’s own week — state.schedule, nothing recomputed', () => {
+test('the week is THE canonical current week — the shared generator, nothing invented', () => {
   const s = scope({ roster: SQUAD });
-  assert.deepEqual(s.availabilityWeekSessions(), SESSIONS);
-  // No date arithmetic, no boundary of its own: if it computed a week it would
-  // eventually disagree with the board that shows it.
+  assert.deepEqual(s.availabilityWeekSessions().map(x => x.id), [TUE_ID, THU_ID, FX_ID]);
+  // One generator, one week rule: the accessor must consume
+  // availabilityEventsForWeek for the CURRENT week rather than keep a second
+  // opinion of what the week is.
   const src = extractFn(html, 'availabilityWeekSessions');
-  assert.ok(!/Date|getDay|setDate|\d{4}-/.test(src), 'must not derive a week of its own');
+  assert.match(src, /availabilityEventsForWeek\(/);
+  assert.match(src, /availWeekStart\(availToday\(\)\)/);
 });
 
 test('a player who has answered nothing is fully outstanding', () => {
@@ -102,29 +121,29 @@ test('a player who has answered nothing is fully outstanding', () => {
 });
 
 test('a partially answered player is outstanding only for what is missing', () => {
-  const w = scope({ roster: SQUAD, answers: { p1: { tue: 'available', game: 'unavailable' } } })
+  const w = scope({ roster: SQUAD, answers: { p1: { [TUE_ID]: 'available', [FX_ID]: 'unavailable' } } })
     .playerAvailabilityWeek(ANA);
   assert.equal(w.answeredCount, 2);
-  assert.deepEqual(w.outstanding.map(x => x.id), ['thu']);
+  assert.deepEqual(w.outstanding.map(x => x.id), [THU_ID]);
   assert.equal(w.complete, false);
 });
 
 test('"unavailable" and "maybe" are ANSWERS — a reply is a reply', () => {
-  const w = scope({ roster: SQUAD, answers: { p1: { tue: 'unavailable', thu: 'maybe', game: 'injured' } } })
+  const w = scope({ roster: SQUAD, answers: { p1: { [TUE_ID]: 'unavailable', [THU_ID]: 'maybe', [FX_ID]: 'injured' } } })
     .playerAvailabilityWeek(ANA);
   assert.equal(w.complete, true, 'saying no is answering');
   assert.equal(w.outstanding.length, 0);
 });
 
 test('an explicit no-reply is NOT an answer', () => {
-  const w = scope({ roster: SQUAD, answers: { p1: { tue: 'no-reply', thu: 'available', game: 'available' } } })
+  const w = scope({ roster: SQUAD, answers: { p1: { [TUE_ID]: 'no-reply', [THU_ID]: 'available', [FX_ID]: 'available' } } })
     .playerAvailabilityWeek(ANA);
-  assert.deepEqual(w.outstanding.map(x => x.id), ['tue']);
+  assert.deepEqual(w.outstanding.map(x => x.id), [TUE_ID]);
   assert.equal(w.complete, false);
 });
 
 test('a fully replied player is complete and must not be chased', () => {
-  const w = scope({ roster: SQUAD, answers: { p3: { tue: 'available', thu: 'available', game: 'available' } } })
+  const w = scope({ roster: SQUAD, answers: { p3: { [TUE_ID]: 'available', [THU_ID]: 'available', [FX_ID]: 'available' } } })
     .playerAvailabilityWeek(CILL);
   assert.equal(w.complete, true);
   assert.equal(w.answeredCount, 3);
@@ -132,14 +151,17 @@ test('a fully replied player is complete and must not be chased', () => {
 });
 
 test('no sessions this week → nothing open, and complete is FALSE not true', () => {
-  const w = scope({ schedule: [], roster: SQUAD }).playerAvailabilityWeek(ANA);
+  // A fixture-capable group (records exist) with no slots and nothing this
+  // week has an EMPTY week — the generic game card never pads it.
+  const w = scope({ slots: [], fixtures: [{ id: 'fx_far', date: '2026-11-01', status: 'scheduled' }],
+    roster: SQUAD }).playerAvailabilityWeek(ANA);
   assert.equal(w.total, 0);
   assert.equal(w.complete, false, 'an empty week is not an achievement');
   assert.equal(w.outstanding.length, 0);
 });
 
 test('one player’s state is their own — another player’s replies do not count for them', () => {
-  const s = scope({ roster: SQUAD, answers: { p2: { tue: 'available', thu: 'available', game: 'available' } } });
+  const s = scope({ roster: SQUAD, answers: { p2: { [TUE_ID]: 'available', [THU_ID]: 'available', [FX_ID]: 'available' } } });
   assert.equal(s.playerAvailabilityWeek(BEN).complete, true);
   assert.equal(s.playerAvailabilityWeek(ANA).complete, false);
   assert.equal(s.playerAvailabilityWeek(ANA).outstanding.length, 3);

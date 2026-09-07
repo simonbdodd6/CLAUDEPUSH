@@ -8216,24 +8216,13 @@
     function availabilityNonResponders(sessions) {
       const roster   = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
       // Answering ANY of this week's canonical occurrences is answering. The
-      // passed schedule rows carry bare protocol ids — but a group whose
-      // slots have no legacy sessionId keeps its answers under the DATED
-      // occurrence ids (production U18: 53 answers under the dated Thursday,
-      // 1 under bare `thu`; the bare-only read chased 60 of 61 players). The
-      // current week's canonical training event ids are added by the SAME
-      // rule the board and tonightAvailabilityEventId use:
-      // slot.sessionId (legacy) or the dated occurrence id.
-      ensureTrainingSchedule();
+      // passed sessions are availabilityWeekSessions() — already the current
+      // week's DATED occurrence ids plus its real fixtures — so nothing needs
+      // deriving here any more. Deliberately NO legacy bare ids: since the
+      // cutover a weeks-old answer sitting in the accumulated tue/thu/game
+      // stores is not an answer to THIS week, and must not spare its player
+      // from the chase list.
       const ids = new Set((sessions || []).map(s => String((s && s.id) || '')).filter(Boolean));
-      const slots = (_trainingSchedule && _trainingSchedule.slots) || [];
-      if (slots.length) {
-        const weekStart = availWeekStart(availToday());
-        for (const slot of slots) {
-          const date = availSlotDateInWeek(slot, weekStart);
-          if (!date) continue;
-          ids.add(String(slot.sessionId || '') || availTrainingEventId(slot, date));
-        }
-      }
       const answered = new Set();
       for (const id of ids) {
         (sessionRows(id) || []).forEach(r => {
@@ -8247,18 +8236,29 @@
     /**
      * THE AVAILABILITY WEEK — one accessor, so nothing invents a second one.
      *
-     * `state.schedule` IS the current availability week: it is what the board
-     * renders, what "Request Availability" asks about, what chaseAllNonResponders
-     * chases and what clearWeekAvailability clears. It is already group-scoped
-     * (the training partition swaps it on a group change), so a Seniors coach's
-     * week is Seniors' sessions.
+     * The CURRENT week's canonical dated events (training occurrences and real
+     * fixtures), from the same generator the board and the player screen use.
+     * It used to return `state.schedule` — the legacy tue/thu/game trio —
+     * whose bare ids resolved the accumulated bare stores, so a player who
+     * answered WEEKS ago still read as "answered this week" on the Overview,
+     * in the chase list and on their profile. Since the legacy-id cutover the
+     * current week's identity is dated, and this accessor says so.
+     *
+     * Deliberately the CURRENT week, never the coach's browsed board week:
+     * the Overview's "N haven't replied" and the chase button behind it are
+     * claims about this week, whichever week the board happens to be showing.
      *
      * This exists so an individual reminder can never disagree with the group
      * one about which week it is — the failure mode would be a coach chasing a
      * player for a session the board is not even showing.
      */
     function availabilityWeekSessions() {
-      return state.schedule || [];
+      ensureTrainingSchedule();
+      return availabilityEventsForWeek(availWeekStart(availToday()), {
+        fixtures: contextFixtures().map(normalizeFixture).filter(Boolean),
+        slots: (_trainingSchedule && _trainingSchedule.slots) || [],
+        currentWeekStart: availWeekStart(availToday()),
+      });
     }
 
     /**
@@ -8534,7 +8534,12 @@
     }
 
     function exportAvailabilityCSV(sessionId) {
-      const session = state.schedule.find(s => s.id === sessionId) || state.schedule[0];
+      // The board passes a canonical week-event id (dated occurrence or
+      // fixture); falling back to state.schedule[0] would export the WRONG
+      // session's answers for any id the legacy rows don't know.
+      const session = (typeof coachAvailEvents === 'function' ? coachAvailEvents() : [])
+        .find(e => e.id === sessionId)
+        || state.schedule.find(s => s.id === sessionId);
       if (!session) { showToast('No session selected'); return; }
       const rows = sessionRows(session.id);
       const header = ['Name', 'Position', 'Status', 'Reason', 'Attendance %'].join(',');
@@ -13664,7 +13669,11 @@
         //    non-responder. sessionRows() resolves server-first.
         //  · sessions.some(...) then counted one player once per unanswered
         //    session. Answering any session is answering.
-        const nonResponders = availabilityNonResponders(sessions);
+        // The population of sessions is the CANONICAL current week (dated
+        // occurrences + real fixtures) — the schedule rows' bare protocol ids
+        // would resolve the accumulated legacy stores and spare players who
+        // answered weeks ago.
+        const nonResponders = availabilityNonResponders(availabilityWeekSessions());
         if (nonResponders.length > 0) {
           const preview = nonResponders.slice(0, 3).map(p => (p.name || '').split(' ')[0]).join(' · ')
             + (nonResponders.length > 3 ? ` +${nonResponders.length - 3}` : '');
@@ -14617,7 +14626,9 @@
       const weekStart = availWeekStart(today);
       for (const slot of slots) {
         if (availSlotDateInWeek(slot, weekStart) !== today) continue;
-        return String(slot.sessionId || '') || availTrainingEventId(slot, today);
+        // Post-cutover: tonight's identity is the DATED occurrence, never the
+        // slot's legacy sessionId — the bare store is history, not tonight.
+        return availTrainingEventId(slot, today);
       }
       return sid;
     }
@@ -16635,7 +16646,11 @@
 
     async function sendAvailabilityRequest(sessionId) {
       if (!isCoach()) return showToast("Only coaches can send availability requests");
-      const session = state.schedule.find(s => s.id === sessionId);
+      // The board's cards are canonical week events (dated occurrences and
+      // fixtures) — state.schedule alone knows only the legacy protocol rows,
+      // so a dated card's Send button would silently do nothing.
+      const session = coachAvailEvents().find(e => e.id === sessionId)
+        || (state.schedule || []).find(s => s.id === sessionId);
       if (!session) return;
       // The audience is the OPERATING group's players — the same set the push
       // reaches (the server asserts the group) and the same set the board
@@ -16688,7 +16703,8 @@
 
     async function sendAllAvailabilityRequests() {
       if (!isCoach()) return showToast("Only coaches can send availability requests");
-      const sessions = state.schedule || [];
+      // The board's visible week — canonical dated occurrences + fixtures.
+      const sessions = coachAvailEvents();
       if (!sessions.length) return showToast('No sessions configured');
       // Group audience, exactly as the single-session request above.
       const audience = operationalPlayers();
@@ -16719,7 +16735,14 @@
     async function clearWeekAvailability() {
       if (!isCoach()) return showToast("Only coaches can clear responses");
       if (!(await ceConfirm('Clear this week\'s responses?', 'Session definitions are kept. Players will need to re-submit their availability.', { confirmLabel: 'Clear responses', danger: true }))) return;
-      const sessions = (state.schedule || []).map(s => s.id).filter(Boolean);
+      // Clear the CURRENT week's canonical TRAINING occurrences (and the
+      // legacy generic match card where a group still has one). Deliberately
+      // NOT real fixtures: a fixture's answers belong to that match, and
+      // "clear this week" has never wiped them. state.schedule's bare ids
+      // would clear the inert legacy stores and miss the live dated ones.
+      const sessions = availabilityWeekSessions()
+        .filter(e => e.type === 'training' || e.id === 'game')
+        .map(e => e.id).filter(Boolean);
       try {
         const res = await fetch('/api/availability', {
           method: 'POST',
@@ -16757,7 +16780,9 @@
     // in the push body so players know which session needs a response.
     async function remindNonResponders(sessionId) {
       if (!isCoach()) return showToast("Only coaches can send reminders");
-      const session = state.schedule.find(s => s.id === sessionId) || { title: 'this session' };
+      const session = coachAvailEvents().find(e => e.id === sessionId)
+        || (state.schedule || []).find(s => s.id === sessionId)
+        || { title: 'this session' };
       const btn = document.querySelector(`button[onclick*="remindNonResponders('${sessionId}')"]`);
       if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
       try {
@@ -16864,7 +16889,10 @@
 
     async function chaseAllNonResponders() {
       if (!isCoach()) return showToast("Only coaches can send reminders");
-      const sessions = state.schedule || [];
+      // The canonical current week — the same set the Overview card counted,
+      // and the same DATED identities the board renders. state.schedule's bare
+      // protocol ids would judge "replied" from the legacy stores.
+      const sessions = availabilityWeekSessions();
       if (!sessions.length) return;
       // The same set the Overview's "N players haven't replied" card counts —
       // so the toast cannot claim a different number from the card that sent
@@ -19013,14 +19041,28 @@
     /**
      * The availability events for one week, from the real sources.
      *
-     * Legacy compatibility, deliberately narrow: a training slot that still
-     * carries a legacy sessionId (tue/thu) renders under THAT id in the CURRENT
-     * week only — identity is provable there, so existing answers keep working
-     * untouched. Every other week uses the dated id.
+     * THE LEGACY-ID CUTOVER (7 Sep 2026): a slot's legacy sessionId (tue/thu)
+     * used to name the CURRENT week's occurrence, so ONE store was re-read as
+     * "this week" every week and answers accumulated across weeks — on the
+     * real Seniors board, 60 of 71 displayed Tuesday answers were history
+     * (some from five weeks earlier) presented as current. Every week now
+     * uses the dated occurrence id `<slot-id>-YYYYMMDD`, current week
+     * included, exactly as groups without legacy sessionIds always did. The
+     * bare stores stay untouched as history; they simply stop being anyone's
+     * current answer. Content/plan, publish-state and attendance identities
+     * are unaffected: trainingContentKey and attendanceOccurrenceId already
+     * canonicalize both spellings to the same slot-rooted dated key, and
+     * trainingProtocolId still maps the current week's dated id back to the
+     * protocol id that publish state is stored under.
      *
-     * The legacy `game` slot is shown only when the week holds no real fixture.
-     * A dated fixture is always authoritative and never inherits the generic
-     * `game` answer — that identity cannot be proven, so it is not claimed.
+     * The generic `game` card exists only for a group with NO fixture records
+     * at all — a club that never enters fixtures still needs somewhere to ask
+     * about the weekend. The moment a group has real fixtures, a match
+     * question is a specific fixture's question: the generic card invited
+     * answers that attached to no match (players believed they had answered
+     * an upcoming fixture — they had not). A dated fixture never inherits a
+     * generic `game` answer — that identity cannot be proven, so it is not
+     * claimed.
      */
     function availabilityEventsForWeek(weekStartIso, sources = {}) {
       const { fixtures = [], slots = [], currentWeekStart = '' } = sources;
@@ -19031,11 +19073,10 @@
       for (const slot of slots) {
         const date = availSlotDateInWeek(slot, weekStartIso);
         if (!date) continue;
-        const legacyId = isCurrentWeek ? String(slot.sessionId || '') : '';
         events.push({
-          id: legacyId || availTrainingEventId(slot, date),
+          id: availTrainingEventId(slot, date),
           type: 'training',
-          legacy: Boolean(legacyId),
+          legacy: false,
           date,
           time: slot.startTime || '',
           title: 'Training',
@@ -19061,8 +19102,12 @@
           sourceId: fx.id,
         });
       }
-      // The generic weekly match slot survives only where no real fixture exists.
-      if (isCurrentWeek && !weekFixtures.length) {
+      // The generic weekly match slot survives only for a group with NO
+      // fixture records at all. Any real fixture — any week, any status —
+      // proves this group identifies its matches, so a match question must
+      // name a fixture; the generic card would collect answers that attach
+      // to nothing.
+      if (isCurrentWeek && !weekFixtures.length && !(fixtures || []).length) {
         events.push({ id: 'game', type: 'match', legacy: true, date: '', time: '',
                       title: 'Match', opponent: '', venue: '', sourceId: 'game' });
       }

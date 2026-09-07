@@ -120,9 +120,13 @@ test('every generated id is a valid server sessionId and never a legacy word', (
 test('ACCEPTANCE — on 12 August the fixture is NOT in this week', () => {
   const now = week(THIS_WEEK);
   assert.equal(now.some(e => e.id === 'fx_aug22'), false, 'not wrongly pulled forward');
-  assert.deepEqual(now.filter(e => e.type === 'training').map(e => e.id), ['tue', 'thu'],
-    'this week still answers under the legacy ids, so existing answers keep working');
-  assert.equal(now.some(e => e.id === 'game'), true, 'and the generic match slot still shows');
+  // The legacy-id cutover (7 Sep 2026): the CURRENT week answers under dated
+  // occurrence ids too — the bare stores are history, never this week.
+  assert.deepEqual(now.filter(e => e.type === 'training').map(e => e.id),
+    ['slot_tue1-20260811', 'slot_thu1-20260813'],
+    'this week answers under the dated occurrence ids');
+  assert.equal(now.some(e => e.id === 'game'), false,
+    'a group with real fixture records never shows the generic match card');
 });
 
 test('ACCEPTANCE — navigating one week forward reveals the real 22 August fixture', () => {
@@ -152,10 +156,15 @@ test('the generic match slot yields to a real fixture in the CURRENT week too', 
   assert.equal(events.some(e => e.id === 'fx_now'), true, 'the dated fixture is authoritative');
 });
 
-// ── LEGACY COMPATIBILITY ───────────────────────────────────────────────────
-test('LEGACY — this week keeps tue/thu/game so stored answers still render', () => {
-  const now = week(THIS_WEEK).filter(e => e.legacy).map(e => e.id).sort();
-  assert.deepEqual(now, ['game', 'thu', 'tue']);
+// ── LEGACY COMPATIBILITY (post-cutover) ────────────────────────────────────
+test('LEGACY — the bare ids never name any week, current included; game only without fixtures', () => {
+  const now = week(THIS_WEEK);
+  assert.deepEqual(now.filter(e => e.legacy).map(e => e.id), [],
+    'no event answers under a legacy id any more');
+  const fixtureless = availabilityEventsForWeek(THIS_WEEK,
+    { fixtures: [], slots: SLOTS, currentWeekStart: THIS_WEEK });
+  assert.deepEqual(fixtureless.filter(e => e.legacy).map(e => e.id), ['game'],
+    'only a group with NO fixture records keeps the generic match card');
 });
 
 test('LEGACY — future weeks never reuse the legacy ids', () => {
