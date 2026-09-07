@@ -151,8 +151,12 @@ test('rosters are fully separate per team', async () => {
 
   const viewA = await call('GET', { resource: 'roster' }, null, { cookie: coachA.cookie });
   const viewB = await call('GET', { resource: 'roster' }, null, { cookie: coachB.cookie });
-  assert.deepEqual(viewA.body.players.map(p => p.name), ['Alpha Player']);
-  assert.deepEqual(viewB.body.players.map(p => p.name), ['Bravo Player', 'Bravo Two']);
+  // Each save also reconciles that club's ACTIVE playing members into its
+  // roster (ROSTER SYNC HARDENING) — and each projection row lands ONLY in
+  // its own club's record: player-team-a never appears in Team B, and
+  // vice versa.
+  assert.deepEqual(viewA.body.players.map(p => p.name).sort(), ['Alpha Player', 'player-team-a']);
+  assert.deepEqual(viewB.body.players.map(p => p.name).sort(), ['Bravo Player', 'Bravo Two', 'player-team-b']);
 });
 
 test('legacy un-scoped keys back-fill only the default team', async () => {

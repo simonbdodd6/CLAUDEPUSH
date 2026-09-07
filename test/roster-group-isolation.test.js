@@ -209,8 +209,13 @@ test('WRITE — the full-club payload attack: cross-group edits and deletions ne
   assert.ok(storedByName('Woman A'), 'Woman A survives');
   assert.ok(storedByName('Unlinked Player'), 'unassigned row survives');
   assert.equal(storedByName('U18 A').phone, 'U18-PHONE-UPDATED', 'own-group edit applied');
-  assert.ok(!storedByName('U18 B'), 'own-group omission removes the row (existing replace semantics, scoped)');
+  // u-u18-b is REPRESENTED in the payload under the new row id, so the old
+  // row's disappearance is a re-key (an edit), not a stale omission — the
+  // hardening deliberately lets it through and no duplicate is created.
+  assert.ok(!storedByName('U18 B'), 'own-group re-key replaces the row');
   assert.ok(storedByName('U18 New Row'), 'own-group addition applied');
+  assert.equal(after.filter(p => String(p.userId) === 'u-u18-b').length, 1,
+    'exactly one row for the re-keyed person — protection created no twin');
   assert.equal(after.length, ROSTER.length,
     'exactly the in-scope changes: U18 B out, U18 New Row in — nothing else moved');
 });
@@ -225,12 +230,15 @@ test('WRITE — the scoped client\'s normal save (own rows only) preserves every
     'nothing outside U18 changed');
 });
 
-test('WRITE — an empty scoped save clears only the caller\'s own groups', async () => {
+test('WRITE — an empty scoped save cannot delete active players (stale-echo protection)', async () => {
+  // ROSTER SYNC HARDENING: removal of a player is a MEMBERSHIP action, never
+  // a payload omission. U18 A and U18 B hold active playing memberships, so
+  // even the caller's own-group rows survive an empty (stale) save.
   await seed();
   const r = await roster('u-u18-coach', { method: 'POST', body: { players: [] } });
   assert.equal(r.code, 200);
   assert.deepEqual(storedRoster().map(p => p.name).sort(),
-    ['Senior A', 'Senior B', 'Unlinked Player', 'Woman A']);
+    ['Senior A', 'Senior B', 'U18 A', 'U18 B', 'Unlinked Player', 'Woman A']);
 });
 
 test('WRITE — a scoped coach cannot create rows for another group or for no group', async () => {
@@ -267,7 +275,11 @@ test('WRITE — the Seniors coach cannot modify U18 rows either', async () => {
   assert.equal(storedByName('U18 A').phone, 'U18-PHONE-SENTINEL-1', 'U18 row untouched');
 });
 
-test('WRITE — the club-wide admin keeps the full replace workflow', async () => {
+test('WRITE — the club-wide admin edits freely, but active players survive stale omission', async () => {
+  // Full replace still governs CONTENT (every submitted row lands verbatim)
+  // and unlinked rows; what it can no longer do is delete an ACTIVE player by
+  // omission — Senior B, U18 B and Woman A all hold active memberships, so
+  // their rows are kept. Removing a player is the membership workflow.
   await seed();
   const replaced = [
     { id: 'p-sen-a', userId: 'u-sen-a', name: 'Senior A', phone: 'ADMIN-UPDATED-PHONE' },
@@ -276,16 +288,35 @@ test('WRITE — the club-wide admin keeps the full replace workflow', async () =
   ];
   const r = await roster('u-admin', { method: 'POST', body: { players: replaced } });
   assert.equal(r.code, 200);
-  assert.equal(r.body.count, 3);
-  assert.deepEqual(storedRoster().map(p => p.name).sort(), ['Senior A', 'U18 A', 'Unlinked Player']);
-  assert.equal(storedByName('Senior A').phone, 'ADMIN-UPDATED-PHONE');
+  assert.equal(r.body.count, 6);
+  assert.deepEqual(storedRoster().map(p => p.name).sort(),
+    ['Senior A', 'Senior B', 'U18 A', 'U18 B', 'Unlinked Player', 'Woman A']);
+  assert.equal(storedByName('Senior A').phone, 'ADMIN-UPDATED-PHONE', 'edit landed');
 });
 
-test('WRITE — a one-group club\'s scoped coach keeps the full replace (legacy behaviour)', async () => {
+test('WRITE — the club-wide admin still removes UNLINKED rows by omission', async () => {
+  // Trialist/CSV rows have no membership behind them; "Remove from list" and
+  // the full-replace save remain the legitimate way to clear them out.
+  await seed();
+  const withoutOrphan = ROSTER.filter(p => p.id !== 'p-orphan');
+  const r = await roster('u-admin', { method: 'POST', body: { players: withoutOrphan } });
+  assert.equal(r.code, 200);
+  assert.ok(!storedByName('Unlinked Player'), 'unlinked row removed by the covering caller');
+  assert.equal(storedRoster().length, ROSTER.length - 1, 'everything else untouched');
+});
+
+test('WRITE — a one-group club\'s scoped coach covers the club, but cannot drop active players', async () => {
+  // The covers-the-club rule still grants the full-replace WORKFLOW; the
+  // stale-echo protection applies to every caller equally. u-sen-a is
+  // represented in the payload under a new row id (a re-key), so p-sen-a is
+  // replaced; every other active member's row survives; only the unlinked
+  // row is removable by omission.
   await seed(ONE_GROUP);
   const r = await roster('u-sen-coach', { method: 'POST', body: { players: [
     { id: 'p-only', userId: 'u-sen-a', name: 'Only Row' },
   ] } });
   assert.equal(r.code, 200);
-  assert.deepEqual(storedRoster().map(p => p.name), ['Only Row']);
+  assert.deepEqual(storedRoster().map(p => p.name).sort(),
+    ['Only Row', 'Senior B', 'U18 A', 'U18 B', 'Woman A']);
+  assert.ok(!storedByName('Unlinked Player'), 'unlinked row removed by the covering caller');
 });
