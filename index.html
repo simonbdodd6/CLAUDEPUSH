@@ -39787,7 +39787,17 @@
       if (!side) { state.operationalGroupId = null; return; }
       const allowed = new Set((side.groups || []).map(g => g.id));
       if (!state.operationalGroupId || !allowed.has(state.operationalGroupId)) {
-        state.operationalGroupId = side.defaultGroupId || null;
+        // Option B reconciliation — with several accessible groups the server
+        // default is null. Rather than strand a multi-group coach in a null
+        // "choose a group" context while a group's training/working state is
+        // already restored on screen (the U18-planner-shows-another-group
+        // divergence), re-adopt the LAST group they operated — the persisted
+        // trainingStateGroupId — but ONLY when it is still one THIS capacity may
+        // operate. A stale, revoked, malformed or missing value is rejected and
+        // the group stays null: never a widening past `allowed`, never a guess.
+        state.operationalGroupId = side.defaultGroupId
+          || (state.trainingStateGroupId && allowed.has(state.trainingStateGroupId)
+                ? state.trainingStateGroupId : null);
       }
       // Capacity changes route through HERE, not setOperationalGroup — a
       // dual-role member coaching U18 must not carry U18 working state into
