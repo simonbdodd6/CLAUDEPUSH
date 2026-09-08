@@ -613,7 +613,8 @@ test('training counts and the attendance register read the OPERATING group\'s pl
   assert.match(fn('renderTraining'), /operationalPlayers\(\)\.filter\(p => \(p\[sKey\]/,
     'session-card confirmed counts');
   const att = fn('_renderTrainingAttendance');
-  assert.match(att, /operationalPlayers\(\)/, 'register roster');
+  assert.match(att, /trainingAttendancePlayers\(\)/,
+    'register roster follows the TRAINING group (never operationalPlayers\'s whole-club fallback)');
   assert.equal(/activeRosterPlayers\(state\.players\)/.test(att), false,
     'the whole-club register list is gone');
 });

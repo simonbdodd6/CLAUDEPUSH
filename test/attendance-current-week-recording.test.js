@@ -81,6 +81,7 @@ function makeWorld({ slots = U18_SLOTS, today = TODAY, sessions = {},
     function canI() { return true; }
     function esc(s) { return String(s == null ? '' : s); }
     function operationalPlayers() { return cfg.roster; }
+    function trainingAttendancePlayers() { return cfg.roster; }
     function canonicalVisiblePlayers() { return cfg.roster; }
     function playerIsArchived() { return false; }
     const AVAIL_DAY_INDEX = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
