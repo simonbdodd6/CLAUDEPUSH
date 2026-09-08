@@ -291,7 +291,7 @@ test('PRODUCTION REPRO — revoking Medical removes it from the player nav', () 
 test('the player Medical route and panel exist and are permission-gated', () => {
   assert.match(src, /<section id="player-medical"\s+class="section"><\/section>/,
     'the player-side panel exists, so showSection() can activate it');
-  assert.match(src, /safeRender\('player-medical',\s*\(\) => \{ if \(state\.activeView === 'player' && canI\('medical_access'\)\) renderMedical\(\); \}\)/,
+  assert.match(src, /safeRender\('player-medical',\s*\(\) => \{ if \(state\.activeView === 'player' && canI\('medical_access'\)\) \{[\s\S]*?renderMedical\(\); \} \}\)/,
     'rendered inside the player view, gated on the permission and on the active shell');
   const setSection = fn('setSection');
   assert.match(setSection, /view === "player" && !playerSectionAllowed\(section\)/,
@@ -310,9 +310,13 @@ test('the Medical renderers mount on the active shell, not a hard-wired one', ()
   const mount = fn('medicalMountEl');
   assert.match(mount, /state\.activeView === 'player' \? 'player-medical' : 'coach-medical'/,
     'mount follows the active view');
-  assert.equal(/document\.getElementById\('coach-medical'\)/.test(src), false,
-    'no renderer is hard-wired to the coach container any more');
-  assert.equal(/document\.getElementById\("coach-medical"\)\.innerHTML/.test(src), false);
+  // No RENDERER is hard-wired to a fixed container — they all resolve through
+  // medicalMountEl(). (The render DISPATCH does reference the shells by id, to
+  // clear the inactive one — that is the duplicate-id fix, tested separately.)
+  for (const r of ['renderMedical', '_renderMedicalDashboard', '_renderMedicalRecord', '_renderMedicalTimeline']) {
+    assert.equal(/getElementById\((['"])coach-medical\1\)/.test(fn(r)), false,
+      `${r} is not hard-wired to the coach container`);
+  }
   // Every Medical renderer resolves its container through the shared helper.
   for (const r of ['_renderMedicalDashboard', '_renderMedicalRecord', '_renderMedicalTimeline']) {
     assert.match(fn(r), /medicalMountEl\(\)/, `${r} mounts on the active shell`);
@@ -322,9 +326,9 @@ test('the Medical renderers mount on the active shell, not a hard-wired one', ()
 test('Medical is not forked — the same renderer serves both shells', () => {
   const count = (src.match(/function renderMedical\(/g) || []).length;
   assert.equal(count, 1, 'exactly one Medical renderer exists');
-  assert.match(src, /safeRender\('player-medical',\s*\(\) => \{ if \(state\.activeView === 'player' && canI\('medical_access'\)\) renderMedical\(\); \}\)/,
+  assert.match(src, /safeRender\('player-medical',\s*\(\) => \{ if \(state\.activeView === 'player' && canI\('medical_access'\)\) \{[\s\S]*?renderMedical\(\); \} \}\)/,
     'player shell calls the shared renderer');
-  assert.match(src, /safeRender\('coach-medical',\s*\(\) => \{ if \(state\.activeView === 'coach'\) renderMedical\(\); \}\)/,
+  assert.match(src, /safeRender\('coach-medical',\s*\(\) => \{ if \(state\.activeView === 'coach'\) \{[\s\S]*?renderMedical\(\); \} \}\)/,
     'coach shell calls the same one; only the active view renders');
 });
 
