@@ -29280,6 +29280,26 @@
     }
 
     /**
+     * Wipe the CURRENTLY-INACTIVE Medical shell before the active one renders.
+     *
+     * Medical has two authorised shells — #coach-medical (staff) and
+     * #player-medical (a player holding MEDICAL_ACCESS) — and both emit the SAME
+     * element ids for the Add-Injury form (injType, injPlayer, injArea…). Only
+     * the active shell re-renders, so after the view resolves or switches the
+     * OTHER shell keeps a stale copy of that form. document.getElementById
+     * returns the FIRST match in document order (coach-medical sits above
+     * player-medical), so saveNewInjury's validation read the stale, empty
+     * injType while the coach typed into the visible one — "Enter an injury type
+     * or name" on a filled form. Clearing the inactive shell first removes the
+     * duplicate, exactly as the messages shells already do.
+     */
+    function clearInactiveMedicalShell() {
+      const inactive = state.activeView === 'player' ? 'coach-medical' : 'player-medical';
+      const el = document.getElementById(inactive);
+      if (el && el.innerHTML) el.innerHTML = '';
+    }
+
+    /**
      * Who Medical can see. Staff have the full roster; a player with
      * MEDICAL_ACCESS never loads it (loadRosterFromServer is coach-only), so
      * they use the medical-scoped projection the shared endpoint returns —
@@ -38710,7 +38730,16 @@
       safeRender('player-performance',  () => renderPerformance());
       safeRender('coach-matchday',      () => renderMatchday());
       safeRender('coach-tactics',       () => renderTactics());
-      safeRender('coach-medical',       () => { if (state.activeView === 'coach') renderMedical(); });
+      // Medical shares element IDs across its two shells (coach-medical /
+      // player-medical both emit injType, injPlayer, injArea…). If a shell
+      // rendered the Add-Injury form while active and the view later resolved
+      // or switched, its STALE injType stayed in the DOM — and
+      // document.getElementById('injType') returns the FIRST in document order
+      // (coach-medical, above player-medical), so validation read an EMPTY field
+      // while the user typed into the visible one ("Enter an injury type or
+      // name" on a filled form). Clear the opposing shell before rendering the
+      // active one, exactly as the messages shells do above.
+      safeRender('coach-medical',       () => { if (state.activeView === 'coach') { clearInactiveMedicalShell(); renderMedical(); } });
       safeRender('coach-players',       () => renderPlayers());
       safeRender('coach-admin',         () => renderClubAdmin());
       safeRender('coach-club',          () => renderClubSection());
@@ -38722,9 +38751,11 @@
       safeRender('coach-qa',            () => renderBetaQA());
       safeRender('coach-beta',          () => renderBetaLaunch());
       safeRender('coach-search',        () => renderSearch());
-      // One renderer, one mount: only the ACTIVE shell renders, so the two
-      // never write over each other.
-      safeRender('player-medical',      () => { if (state.activeView === 'player' && canI('medical_access')) renderMedical(); });
+      // One renderer, one mount: only the ACTIVE shell renders, and the
+      // opposing (now-inactive) shell is cleared first so a stale duplicate of
+      // the Add-Injury form's shared IDs can never shadow the visible one (see
+      // the coach-medical note above).
+      safeRender('player-medical',      () => { if (state.activeView === 'player' && canI('medical_access')) { clearInactiveMedicalShell(); renderMedical(); } });
       safeRender('player-home',         () => renderPlayerHome());
       safeRender('player-week',         () => renderPlayerWeek());
       safeRender('player-availability', () => renderPlayerAvailabilityV2());
