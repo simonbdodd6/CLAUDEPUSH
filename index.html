@@ -18230,6 +18230,35 @@
       const empty = document.getElementById('members-search-empty');
       if (empty) empty.style.display = (query && shown === 0) ? 'block' : 'none';
     }
+
+    // ── Members search survival across a repaint ──────────────────────────────
+    // renderPlayers() rebuilds #coach-players wholesale, so the search input the
+    // coach is using is torn down and recreated whenever a background load
+    // (admin data, identity requests) resolves mid-interaction. These two keep
+    // the coach's own query and caret alive across that rebuild. They touch ONLY
+    // the search control's own value/selection/focus — never which members are
+    // rendered — so group isolation and server-side filtering are unaffected.
+    function membersSearchSnapshot() {
+      const el = document.querySelector('#coach-players .members-search-input');
+      if (!el) return null;
+      const focused = document.activeElement === el;
+      if (!focused && !el.value) return null;   // nothing worth preserving
+      return { value: el.value, start: el.selectionStart, end: el.selectionEnd, focused };
+    }
+    function membersSearchRestore(snap) {
+      if (!snap) return;
+      const el = document.querySelector('#coach-players .members-search-input');
+      if (!el) return;
+      if (el.value !== snap.value) el.value = snap.value;
+      // Re-apply the same client-side row filter over the freshly rendered
+      // (already authorized) rows — this shows/hides existing rows, it never
+      // adds any, so it cannot reveal a member outside the rendered set.
+      if (snap.value) membersFilterRows(el.value);
+      if (snap.focused) {
+        el.focus();
+        try { el.setSelectionRange(snap.start ?? el.value.length, snap.end ?? el.value.length); } catch {}
+      }
+    }
     /**
      * "N players are not in any group" — the Members warning, and its remedy.
      *
@@ -18299,6 +18328,17 @@
     }
 
     function renderPlayers() {
+      // FOCUS/QUERY PRESERVATION — renderPlayers rebuilds the whole
+      // #coach-players subtree via innerHTML (the members search control
+      // included), and the background loads kicked off just below (identity
+      // requests, admin data) re-enter here when they resolve. Without this,
+      // that async rebuild destroyed the search input the coach had just
+      // focused and wiped what they had typed — the "search box disappears /
+      // needs several taps / clears itself" report. Snapshot BEFORE any
+      // rebuild; value/caret/focus are restored after the list re-renders
+      // below. Nothing about WHO is shown changes — this only keeps the
+      // coach's own search box alive across a repaint, so isolation is untouched.
+      const _searchPrev = membersSearchSnapshot();
       // Kick off a background sync of accepted invites each time this page renders
       if (isCoach()) loadInviteList().catch(()=>{});
       if (isCoach()) setTimeout(() => loadIdentityRequests().catch(()=>{}), 0);
@@ -18743,6 +18783,10 @@
           </details>
 
         </div>`;
+
+      // Re-apply the search the coach was in the middle of, so a background
+      // repaint neither clears their query nor drops focus/caret.
+      membersSearchRestore(_searchPrev);
     }
 
     // ─── PLAYER WEEK ─────────────────────────────────────────────────────────
