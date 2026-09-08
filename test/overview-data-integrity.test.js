@@ -31,6 +31,17 @@ import { dirname, join } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const html = await readFile(join(__dirname, '..', 'index.html'), 'utf8');
 
+// ── Determinism: a FIXED test "today" ────────────────────────────────────────
+// After the legacy-id cutover the tonight session resolves to its DATED
+// occurrence (slot_tue-YYYYMMDD) on a TRAINING weekday, and to the bare id on
+// any other day (tonightAvailabilityEventId). A deliberately TUESDAY fixed date
+// makes the tests exercise the real post-cutover path (dated occurrence) every
+// run, instead of depending on the real calendar — which is why these tests
+// silently passed on non-training days and failed on Tue/Thu. The scope feeds
+// this same date to the code under test via the app's own _availTodayOverride,
+// so the occurrence the fixtures key on is exactly the one the code reads.
+const FIXED_TODAY = '2026-09-08';   // a Tuesday — a real training weekday
+
 function extractFn(source, name) {
   let start = source.indexOf('    function ' + name + '(');
   if (start === -1) start = source.indexOf('    async function ' + name + '(');
@@ -113,6 +124,10 @@ function buildScope({
     'const _myPerms = ' + JSON.stringify(permissions) + ';\n' +
     'const _groupPlayers = ' + JSON.stringify(groupPlayers === null ? clubPlayers : groupPlayers) + ';\n' +
     'let _resolvedAvailability = ' + JSON.stringify(resolvedAvailability) + ';\n' +
+    // The app's own "pretend today is" hook (availToday reads it), so the code
+    // under test resolves the tonight occurrence against the SAME fixed date the
+    // fixtures key on — deterministic on every real weekday.
+    'let _availTodayOverride = ' + JSON.stringify(FIXED_TODAY) + ';\n' +
     'let _chatNavUnread = 0;\n' +
     'let _identityPendingRequests = [];\n' +
     'function operationalPlayers() { return _groupPlayers; }\n' +
@@ -173,14 +188,24 @@ function buildScope({
 }
 
 const iso = days => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
-// This week's dated occurrence ids for the scope's two slots (clock-derived,
-// like the code under test).
-const _ws = (() => { const d = new Date(); const dow = (d.getUTCDay() + 6) % 7;
+// The FIXED week's dated occurrence ids for the scope's two slots, derived with
+// the same Monday-based UTC week math the app uses (availWeekStart/
+// availSlotDateInWeek/availTrainingEventId). Because the scope pins
+// _availTodayOverride to FIXED_TODAY, these are exactly the ids the code under
+// test resolves the tonight session to — so answers keyed here are the answers
+// it reads. Deriving from FIXED_TODAY (not new Date()) removes the calendar
+// dependency that made these tests pass off-training-days and fail on Tue/Thu.
+const _ws = (() => { const d = new Date(FIXED_TODAY + 'T00:00:00.000Z'); const dow = (d.getUTCDay() + 6) % 7;
   d.setUTCDate(d.getUTCDate() - dow); return d; })();
 const _dated = (root, offset) => { const d = new Date(_ws); d.setUTCDate(d.getUTCDate() + offset);
   return root + '-' + d.toISOString().slice(0, 10).replace(/-/g, ''); };
 const TUE_OCC = _dated('slot_tue', 1);
 const THU_OCC = _dated('slot_thu', 3);
+// The device's PER-SESSION fallback field for the dated Tuesday occurrence — the
+// same key sessionKey()/sessionRows() read when a player answered on their
+// device but no server answer has arrived yet. Post-cutover this is
+// avail_<occurrence>, never the legacy `trainingTuesday`.
+const TUE_DEVICE_KEY = 'avail_' + TUE_OCC;
 const named = (n, prefix, extra = {}) =>
   Array.from({ length: n }, (_, i) => ({ id: prefix + (i + 1), name: prefix.toUpperCase() + ' ' + (i + 1), ...extra }));
 
@@ -336,15 +361,17 @@ test('position warnings for the fixture are derived from the same answers', () =
 
 test('session availability prefers the server answer over a stale device field', () => {
   const group = [
-    { id: 'p1', name: 'A', trainingTuesday: 'unavailable' },   // stale on device
-    { id: 'p2', name: 'B', trainingTuesday: 'available' },     // device only
+    { id: 'p1', name: 'A', [TUE_DEVICE_KEY]: 'unavailable' },   // stale on device for tonight's occurrence
+    { id: 'p2', name: 'B', [TUE_DEVICE_KEY]: 'available' },     // device only
     { id: 'p3', name: 'C' },
   ];
   const av = buildScope({
     clubPlayers: group,
     schedule: [{ id: 'tue', title: 'Tuesday Session', type: 'Training' }],
     stubTonightId: 'tue',
-    resolvedAvailability: serverAnswers([group[0]], 'tue', 'available'),
+    // Server answers land on the canonical dated occurrence the tonight session
+    // resolves to (slot_tue-YYYYMMDD), exactly as they do in production.
+    resolvedAvailability: serverAnswers([group[0]], TUE_OCC, 'available'),
   }).overviewAvailabilityContext();
 
   assert.equal(av.kind, 'session');
@@ -360,11 +387,11 @@ test('every reading balances: the four states always sum to the squad', () => {
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }],
     stubTonightId: 'tue',
     resolvedAvailability: {
-      ...serverAnswers(group.slice(0, 11), 'tue', 'available'),
-      ...serverAnswers(group.slice(11, 15), 'tue', 'maybe'),
-      ...serverAnswers(group.slice(15, 18), 'tue', 'unavailable'),
+      ...serverAnswers(group.slice(0, 11), TUE_OCC, 'available'),
+      ...serverAnswers(group.slice(11, 15), TUE_OCC, 'maybe'),
+      ...serverAnswers(group.slice(15, 18), TUE_OCC, 'unavailable'),
       // A value the UI has no bucket for must still be accounted for.
-      ...serverAnswers(group.slice(18, 20), 'tue', 'tentative'),
+      ...serverAnswers(group.slice(18, 20), TUE_OCC, 'tentative'),
     },
   }).overviewAvailabilityContext();
 
@@ -383,7 +410,7 @@ test('a medically unavailable player counts unavailable whatever they replied', 
     clubPlayers: group,
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }],
     stubTonightId: 'tue',
-    resolvedAvailability: serverAnswers(group, 'tue', 'available'),
+    resolvedAvailability: serverAnswers(group, TUE_OCC, 'available'),
   }).overviewAvailabilityContext();
 
   assert.equal(av.available, 1,   'only the fit player is available');
@@ -403,8 +430,10 @@ test('another group\'s answers never leak into this group\'s reading', () => {
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }],
     stubTonightId: 'tue',
     resolvedAvailability: {
-      ...serverAnswers(group.slice(0, 3), 'tue', 'available'),
-      ...serverAnswers(others, 'tue', 'available'),   // a different group answered too
+      ...serverAnswers(group.slice(0, 3), TUE_OCC, 'available'),
+      // A DIFFERENT group answered the SAME canonical occurrence — this is the
+      // isolation the test exists to prove: their answers must never be counted.
+      ...serverAnswers(others, TUE_OCC, 'available'),
     },
   }).overviewAvailabilityContext();
 
@@ -422,7 +451,7 @@ test('archived players are in nobody\'s squad total', () => {
     clubPlayers: group,
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }],
     stubTonightId: 'tue',
-    resolvedAvailability: serverAnswers(group, 'tue', 'available'),
+    resolvedAvailability: serverAnswers(group, TUE_OCC, 'available'),
   });
   assert.equal(scope.overviewAvailabilityContext().total, 1);
   assert.equal(scope.overviewAvailableCount('tue'), 1);
@@ -437,7 +466,7 @@ test('the confirmed count in an attention item equals the availability card', ()
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training', published: false }],
     trainingBlocks: { tue: ['b1'] },
     stubTonightId: 'tue',
-    resolvedAvailability: serverAnswers(group.slice(0, 9), 'tue', 'available'),
+    resolvedAvailability: serverAnswers(group.slice(0, 9), TUE_OCC, 'available'),
   });
   const av    = scope.overviewAvailabilityContext();
   const item  = scope.getNeedsAttentionItems().find(i => /not published/.test(i.text));
