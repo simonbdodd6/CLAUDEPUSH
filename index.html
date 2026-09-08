@@ -29388,6 +29388,104 @@
       return medicalCanonicalPlayers(src, state.medicalRecords, state.medicalNotes);
     }
 
+    // ── Medical injury details popup (READ-ONLY) ───────────────────────────────
+    // Presentation only. It consumes the SAME canonical case the dashboard has
+    // already loaded (state.medicalRecords / state.medicalNotes, projected from
+    // the shared store in hydrateMedicalFromShared) — no API call, no new model,
+    // no writes. Missing fields render "—" and are never fabricated.
+
+    /**
+     * How long the player has been out, from the canonical "Date injured"
+     * (dateInjured) — the field the Medical record explicitly treats as the
+     * injury start date. Only a real YYYY-MM-DD is trusted; anything missing or
+     * malformed, or a date in the future, yields "—" rather than a guess. Dates
+     * parse at midday so a timezone offset can never shift the day count.
+     */
+    function medicalDaysOut(dateInjured, todayISO) {
+      const s = String(dateInjured || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '—';
+      const t = String(todayISO || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return '—';
+      const start = new Date(s + 'T12:00:00');
+      const today = new Date(t + 'T12:00:00');
+      if (isNaN(start.getTime()) || isNaN(today.getTime())) return '—';
+      const days = Math.floor((today.getTime() - start.getTime()) / 86400000);
+      if (days < 0) return '—';
+      if (days === 0) return 'Today';
+      return days === 1 ? '1 day' : days + ' days';
+    }
+
+    /**
+     * The read-only display model for the popup, built from the canonical record
+     * (normalized) plus the condition note and the roster row. Pure: give it the
+     * data and today's date, it returns the six display strings. Every field
+     * falls back to "—"; severity shows a label only for a known level.
+     */
+    function medicalDetailsModel(player, rec, note, todayISO) {
+      const r = normalizeMedicalRecord(rec);
+      const n = note || {};
+      const p = player || {};
+      const injury = String(r.currentInjury || n.condition || p.medical || '').trim();
+      return {
+        name:           String(p.name || '').trim() || '—',
+        injury:         injury || '—',
+        bodyArea:       String(r.bodyLocation || '').trim() || '—',
+        severity:       (r.severity && MEDICAL_SEVERITY_LABELS[r.severity]) ? MEDICAL_SEVERITY_LABELS[r.severity] : '—',
+        expectedReturn: String(r.expectedReturn || '').trim() || '—',
+        timeOut:        medicalDaysOut(r.dateInjured, todayISO),
+      };
+    }
+
+    let _medDetailsKeyHandler = null;
+    function closeMedicalDetails() {
+      document.getElementById('medd-overlay')?.remove();
+      if (_medDetailsKeyHandler) { document.removeEventListener('keydown', _medDetailsKeyHandler); _medDetailsKeyHandler = null; }
+    }
+    function openMedicalDetails(playerId) {
+      // SCOPE = the existing authorization, unchanged. The player is resolved
+      // through medicalPlayers() — the same group-scoped canonical caseload the
+      // dashboard renders — never an arbitrary id lookup and never a fetch. An id
+      // outside the caller's authorized medical scope resolves to nothing, so the
+      // popup can only ever surface a case already visible on this screen.
+      if (typeof canI === 'function' && !canI('medical_access')) return;
+      const player = medicalPlayers().find(p => String(p.id) === String(playerId));
+      if (!player) return;
+      const m = medicalDetailsModel(
+        player, (state.medicalRecords || {})[player.id], (state.medicalNotes || {})[player.id],
+        new Date().toISOString().slice(0, 10));
+
+      const row = (label, value) =>
+        '<div style="margin-bottom:13px">' +
+          '<p class="ceap-section-label" style="margin:0 0 3px">' + esc(label) + '</p>' +
+          '<div style="font-size:14px;font-weight:600;color:var(--ink);word-break:break-word">' + esc(value) + '</div>' +
+        '</div>';
+
+      closeMedicalDetails();
+      const overlay = document.createElement('div');
+      overlay.id = 'medd-overlay';
+      overlay.className = 'ce-modal-overlay';
+      overlay.innerHTML =
+        '<div class="ce-modal ceap-card" role="dialog" aria-modal="true" aria-labelledby="medd-title">' +
+          '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px">' +
+            '<div style="min-width:0">' +
+              '<p class="ceap-section-label" style="margin:0 0 2px">Medical details</p>' +
+              '<strong id="medd-title" style="font-size:17px;display:block;line-height:1.2;word-break:break-word">' + esc(m.name) + '</strong>' +
+            '</div>' +
+            '<button class="btn" type="button" onclick="closeMedicalDetails()" aria-label="Close" style="min-height:36px;min-width:36px;padding:0 11px;font-size:14px;flex-shrink:0">✕</button>' +
+          '</div>' +
+          row('Injury', m.injury) +
+          row('Body area', m.bodyArea) +
+          row('Severity', m.severity) +
+          row('Expected return', m.expectedReturn) +
+          row('Time out', m.timeOut) +
+        '</div>';
+
+      _medDetailsKeyHandler = e => { if (e.key === 'Escape') closeMedicalDetails(); };
+      overlay.addEventListener('click', e => { if (e.target === overlay) closeMedicalDetails(); });
+      document.addEventListener('keydown', _medDetailsKeyHandler);
+      document.body.appendChild(overlay);
+    }
+
     function _renderMedicalDashboard() {
       const el = medicalMountEl();
       if (!el) return;
@@ -29457,7 +29555,7 @@
                 return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">' +
                   '<div style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;' +
                     'background:rgba(248,113,113,0.12);border:2px solid #f87171"></div>' +
-                  '<div style="flex:1;min-width:120px">' +
+                  '<div role="button" tabindex="0" title="View injury details" aria-label="View injury details for ' + esc(p.name) + '" style="flex:1;min-width:120px;cursor:pointer" onclick="openMedicalDetails(\'' + p.id + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openMedicalDetails(\'' + p.id + '\')}">' +
                     '<div style="font-size:13px;font-weight:700">' + esc(p.name) + '</div>' +
                     '<div style="font-size:11px;color:var(--muted);margin-top:2px">' +
                       esc(rec.currentInjury || mn.condition || p.medical || 'Under review') +
@@ -29491,7 +29589,7 @@
                 const tsColor = ts ? medicalTrainingStatusColor(ts) : '#34d399';
                 const tsLabel = ts ? medicalTrainingStatusLabel(ts) : 'Full Training';
                 return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">' +
-                  '<div style="flex:1;min-width:120px">' +
+                  '<div role="button" tabindex="0" title="View injury details" aria-label="View injury details for ' + esc(p.name) + '" style="flex:1;min-width:120px;cursor:pointer" onclick="openMedicalDetails(\'' + p.id + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openMedicalDetails(\'' + p.id + '\')}">' +
                     '<div style="font-size:13px;font-weight:700">' + esc(p.name) + '</div>' +
                     (rec.currentInjury || mn.condition || p.medical
                       ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + esc(rec.currentInjury || mn.condition || p.medical) + '</div>'
