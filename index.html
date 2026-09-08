@@ -17130,7 +17130,10 @@
       const att = currentAttendance();
       const occId = attendanceOccurrenceId(sessId, sessionDate);
       const recs = att && !att.denied && occId ? (att.sessions[occId] || {}).marks || {} : {};
-      const group = operationalPlayers().filter(p => p && p.id && !playerIsArchived(p));
+      // The register lists the TRAINING group's players (the group the planner
+      // is showing), never operationalPlayers()'s whole-club fallback — that is
+      // what surfaced Seniors under the U18 planner.
+      const group = trainingAttendancePlayers().filter(p => p && p.id && !playerIsArchived(p));
       const seen = new Set(group.map(p => playerMatchKey(p)).filter(Boolean));
       const alsoMarked = canonicalVisiblePlayers().filter(p => {
         const k = playerMatchKey(p);
@@ -30541,7 +30544,7 @@
           let subLine = '';
           if (mode === 'attendance') {
             const hasAtt = Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0;
-            subLine = hasAtt ? trainingAttendanceForSession(s.id, operationalPlayers()).pct + '% attendance' : 'No records yet';
+            subLine = hasAtt ? trainingAttendanceForSession(s.id, trainingAttendancePlayers()).pct + '% attendance' : 'No records yet';
           } else if (mode === 'notes') {
             const n = (state.sessionNotes||{})[s.id] || {};
             subLine = Object.values(n).some(v=>v) ? 'Notes saved' : 'No notes yet';
@@ -30583,7 +30586,7 @@
         .filter(s => s.type === 'Training' && Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0)
         .slice(-5);
       const avgPct = withData.length > 0
-        ? Math.round(withData.reduce((sum,s) => sum + trainingAttendanceForSession(s.id, operationalPlayers()).pct, 0) / withData.length)
+        ? Math.round(withData.reduce((sum,s) => sum + trainingAttendanceForSession(s.id, trainingAttendancePlayers()).pct, 0) / withData.length)
         : null;
       const noReplyCount = activeRosterPlayers(state.players).filter(p =>
         schedSessions.filter(s=>s.type==='Training').every(s => !p[sessionKey(s.id)] || p[sessionKey(s.id)] === 'no-reply')
@@ -30629,7 +30632,7 @@
               '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Attendance trend — last ' + withData.length + ' sessions</div>' +
               '<div style="display:flex;gap:8px;align-items:flex-end;height:64px">' +
                 withData.map(s => {
-                  const a = trainingAttendanceForSession(s.id, operationalPlayers());
+                  const a = trainingAttendanceForSession(s.id, trainingAttendancePlayers());
                   const h = Math.max(8, Math.round(a.pct*0.6));
                   const c = a.pct>=75?'#34d399':a.pct>=50?'#fbbf24':'#f87171';
                   return '<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:4px">' +
@@ -30671,7 +30674,7 @@
             : '') +
           '<div>' +
             schedSessions.map(s => {
-              const att = trainingAttendanceForSession(s.id, operationalPlayers());
+              const att = trainingAttendanceForSession(s.id, trainingAttendancePlayers());
               const hasAtt = Object.keys(((state.trainingAttendance||{})[s.id]||{})).length > 0;
               const canDel = !['tue','thu','game'].includes(s.id);
               return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">' +
@@ -30698,9 +30701,11 @@
       const rawId  = state.trainingActiveSession || (schedSessions[0]?.id ?? 'tue');
       const sessId = schedSessions.find(s => s.id === rawId) ? rawId : (schedSessions[0]?.id ?? 'tue');
       const sessObj = schedSessions.find(s => s.id === sessId);
-      // Register the OPERATING group's players only — an attendance register
-      // listing the whole club would let one group's coach mark another's.
-      const groupRows = operationalPlayers();
+      // Register the TRAINING group's players only — an attendance register
+      // listing the whole club would let one group's coach mark another's. This
+      // follows the group the planner is showing and fails closed, so it can
+      // never widen to the club (the U18-planner-shows-Seniors defect).
+      const groupRows = trainingAttendancePlayers();
       const att = trainingAttendanceForSession(sessId, groupRows);
       const players = activeRosterPlayers(groupRows);
       const STATUSES = ['present','late','excused','injured','absent'];
@@ -31113,7 +31118,7 @@
             '</div>'
           : '<div style="display:grid;gap:10px;margin-bottom:14px">' +
               shown.map(s => {           // already newest-first
-                const att = trainingAttendanceForSession(s.id, operationalPlayers(), s.date);
+                const att = trainingAttendanceForSession(s.id, trainingAttendancePlayers(), s.date);
                 // Three different answers, never collapsed: we do not know yet,
                 // nobody recorded anything, or here is what was recorded.
                 const attUnknown = att.unknown;
@@ -39637,6 +39642,51 @@
       // groups, the pool follows the OPERATING group — including for a
       // single-group coach, whose club may hold groups they never see.
       if (!clubUsesPlayerGroups()) return rows;
+      return rows.filter(p => String(playerGroupIdOf(p)) === gid);
+    }
+
+    /**
+     * The group whose training the planner is CURRENTLY showing.
+     *
+     * The planner adopts a group's training state, stamped as
+     * trainingStateGroupId; its attendance register must list THAT group's
+     * players. operationalGroupId can lag behind it — it is re-resolved to a
+     * default/null on load, while trainingStateGroupId is persisted and
+     * restored — so reading the population off operationalGroupId showed one
+     * group's planner over another group's (or the whole club's) attendance
+     * roster. Validated against the groups this identity actually operates, so
+     * it can never name a group outside scope; falls back to operationalGroupId.
+     */
+    function trainingContextGroupId() {
+      const owner = state.trainingStateGroupId;
+      if (owner && operationalGroups().some(g => g.id === owner)) return owner;
+      return state.operationalGroupId || '';
+    }
+
+    /**
+     * The attendance register's population: the training group's players and
+     * NOBODY else. This is the ONE place that must never widen to the whole
+     * club — showing Seniors under the U18 planner was exactly that widening.
+     *
+     * operationalPlayers() deliberately fails OPEN to the full roster in the
+     * legacy no-groups case; here we key off operationalGroups() (the server's
+     * list of groups this identity operates, available before the membership
+     * roster loads) so a grouped club is recognised even while _adminData is
+     * still loading. In a grouped club a group context filters STRICTLY and
+     * fails CLOSED — a not-yet-loaded membership list yields an empty register,
+     * never the club — and the load re-renders. Only a genuine club with no
+     * groups at all keeps the single whole-roster register.
+     */
+    function trainingAttendancePlayers() {
+      const rows = canonicalVisiblePlayers();
+      const grouped = operationalGroups().length > 0 || clubUsesPlayerGroups();
+      if (!grouped) return rows;                       // legacy, groupless club
+      const gid = trainingContextGroupId();
+      if (!gid) return [];                             // grouped club, no group in force → nothing, never all
+      if (!_adminData.loaded && (canI('manage_players') || canI('manage_teams'))) {
+        ensureAdminData();
+        return [];                                     // fail closed until memberships load
+      }
       return rows.filter(p => String(playerGroupIdOf(p)) === gid);
     }
 

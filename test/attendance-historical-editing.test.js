@@ -300,6 +300,7 @@ function panelScope({ sessions = {}, group = [], club = [], slots = [{ id: 'slot
     function esc(v) { return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
     function playerIsArchived(p) { return (p && p.lifecycleStatus) === 'archived'; }
     function operationalPlayers() { return cfg.group; }
+    function trainingAttendancePlayers() { return cfg.group; }
     function canonicalVisiblePlayers() { return cfg.club; }
     ${extractFn(html, 'playerMatchKey')}
     ${extractFn(html, 'attendanceOccurrenceId')}
@@ -382,8 +383,10 @@ test('the register includes an already-marked player who has left the group', ()
   const fn = strip(extractFn(html, 'attendancePanelHtml'));
   assert.match(fn, /canonicalVisiblePlayers\(\)\.filter/);
   assert.match(fn, /recs\[k\] && !seen\.has\(k\)/, 'only if they actually have a mark');
-  // and never the whole club by default
-  assert.match(fn, /const group = operationalPlayers\(\)/);
+  // and never the whole club by default — the base is the TRAINING group's
+  // players (trainingAttendancePlayers fails closed to the group, so a null/
+  // divergent operational group can no longer widen it to the club).
+  assert.match(fn, /const group = trainingAttendancePlayers\(\)/);
 });
 
 test('History still never reads the device-local store', () => {

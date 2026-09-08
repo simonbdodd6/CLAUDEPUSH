@@ -81,6 +81,7 @@ function makeWorld(cfg = {}) {
     function esc(s) { return String(s == null ? '' : s); }
     function activeRosterPlayers(p) { return (p || []).filter(x => x && x.id); }
     function operationalPlayers() { return cfg.roster; }
+    function trainingAttendancePlayers() { return cfg.roster; }
     function _trainingTabBar() { return '<TABBAR>'; }
     function attendancePanelHtml() { return '<PANEL>'; }
     function setTrainingTab(tab) { calls.tabs.push(tab); }
