@@ -67,7 +67,9 @@ test('the background unread poll only runs for an authenticated session', () => 
   const gate = fn('chatBackgroundPollAllowed');
   assert.match(gate, /_serverAuthState === 'authed'/, 'signed-out tabs never poll');
   assert.match(gate, /!document\.hidden/, 'hidden tabs never poll');
-  assert.match(src, /setInterval\(\(\) => \{ if \(chatBackgroundPollAllowed\(\)\) bgPollUnread\(\); \}, 5000\)/,
+  // The tick is still gated on the session/visibility check; it now ALSO has
+  // to be due (chatBackgroundPollDue throttles the off-Messages cadence).
+  assert.match(src, /setInterval\(\(\) => \{ if \(chatBackgroundPollAllowed\(\) && chatBackgroundPollDue\(\)\) bgPollUnread\(\); \}, 5000\)/,
     'the interval is gated, not unconditional');
   assert.equal(/setInterval\(\(\) => \{ if \(!document\.hidden\) bgPollUnread\(\); \}, 5000\)/.test(src), false,
     'the ungated loop must not return');
