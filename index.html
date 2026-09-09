@@ -1776,7 +1776,12 @@
     .player-photo-wrap { position:relative; width:36px; height:36px; flex-shrink:0; }
     .player-photo-wrap img { width:36px; height:36px; border-radius:50%; object-fit:cover; }
     .player-photo-wrap .photo-badge { position:absolute; bottom:-2px; right:-2px; width:16px; height:16px; border-radius:50%; background:var(--accent); border:2px solid var(--panel); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:9px; color:#060b12; }
-    .squad-player-drag { cursor:grab; padding:8px 10px; border:1px solid var(--line); border-radius:8px; display:flex; align-items:center; gap:8px; background:var(--panel); color:var(--ink); touch-action:none; }
+    /* touch-action: pan-y (not none) so a finger drag STARTING on an Available
+       Players row scrolls the list vertically on a real phone. touch-action only
+       governs touch input, so desktop mouse drag-and-drop (draggable="true" /
+       HTML5 DnD, which never fires from touch anyway) is unaffected. `none` here
+       was silently blocking the mc7 list from scrolling on device. */
+    .squad-player-drag { cursor:grab; padding:8px 10px; border:1px solid var(--line); border-radius:8px; display:flex; align-items:center; gap:8px; background:var(--panel); color:var(--ink); touch-action:pan-y; }
     .squad-player-drag:hover { box-shadow:var(--shadow); border-color:#263d52; }
     .squad-player-drag:active { cursor:grabbing; }
     .bench-strip { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:6px; margin-top:10px; }
@@ -4446,13 +4451,13 @@
 
     /* search box */
     .mc7-search-wrap { position: relative; margin: 4px 0 9px; }
-    .mc7-search { width: 100%; height: 36px; padding: 0 12px 0 32px; border-radius: 10px;
-      border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--ink); font-size: 16px;
-      box-sizing: border-box; line-height: 34px; white-space: nowrap; overflow: hidden; cursor: text; }
-    .mc7-search::placeholder { color: var(--faint); }
-    .mc7-search:empty:before { content: attr(data-placeholder); color: var(--faint); pointer-events: none; }
+    .mc7-search { width: 100%; min-height: 40px; padding: 0 12px 0 34px; border-radius: 10px;
+      border: 1px solid var(--line); background: rgba(255,255,255,.05); color: var(--ink); caret-color: var(--brand-2, #34d399); font-size: 16px;
+      box-sizing: border-box; line-height: 40px; white-space: nowrap; overflow-x: auto; overflow-y: hidden; cursor: text; }
+    .mc7-search::placeholder { color: var(--muted); }
+    .mc7-search:empty:before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
     .mc7-search:focus { outline: none; border-color: var(--brand-line, rgba(52,211,153,.5)); box-shadow: 0 0 0 2px var(--ring, rgba(52,211,153,.18)); }
-    .mc7-search-ic { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
+    .mc7-search-ic { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 
     /* click-to-pick popup */
     #mc-picker { position: absolute; z-index: 4000; width: 260px; max-height: 348px; display: flex; flex-direction: column;
@@ -4469,9 +4474,9 @@
        near-black — typed names and player rows became invisible against
        the popup's own background. Its text must never follow page tokens. */
     .mc-picker-x:hover { color: #ECEDF2; }
-    .mc-picker-search { margin: 0 13px 9px; height: 36px; padding: 0 12px; border-radius: 10px;
-      border: 1px solid var(--line); background: rgba(255,255,255,.04); color: #ECEDF2; caret-color: #ECEDF2; font-size: 13px;
-      box-sizing: border-box; line-height: 34px; white-space: nowrap; overflow: hidden; cursor: text; }
+    .mc-picker-search { margin: 0 13px 9px; min-height: 40px; padding: 0 12px; border-radius: 10px;
+      border: 1px solid var(--line); background: rgba(255,255,255,.06); color: #ECEDF2; caret-color: #ECEDF2; font-size: 14px;
+      box-sizing: border-box; line-height: 40px; white-space: nowrap; overflow-x: auto; overflow-y: hidden; cursor: text; }
     .mc-picker-search:empty:before { content: attr(data-placeholder); color: var(--faint); pointer-events: none; }
     .mc-picker-search:focus { outline: none; border-color: var(--brand-line, rgba(52,211,153,.5)); box-shadow: 0 0 0 2px var(--ring, rgba(52,211,153,.22)); }
     /* Selection filter: All / Not selected / Selected. Compact so the header stays short on a phone. */
@@ -4488,6 +4493,10 @@
     .mc-picker-row { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
       background: none; border: 0; border-radius: 10px; padding: 7px 8px; cursor: pointer; color: #ECEDF2; transition: background .12s; }
     .mc-picker-row:hover { background: rgba(255,255,255,.07); }
+    /* Locked = starting for the sibling side: shown for context, not pickable. */
+    .mc-picker-locked { opacity: .5; cursor: not-allowed; }
+    .mc-picker-locked:hover { background: none; }
+    .mc-picker-locked .mc-picker-pos { color: var(--brand-2, #34d399); font-weight: 700; }
     .mc-picker-av { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 9px; font-weight: 800; flex: 0 0 auto; }
     .mc-picker-nm { font-size: 13px; font-weight: 650; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .mc-picker-pos { font-size: 10px; color: var(--faint); white-space: nowrap; }
@@ -4508,6 +4517,11 @@
       .mc-picker-search { min-height: 44px; height: auto; line-height: 42px; font-size: 16px; }
       .mc-picker-seg button { min-height: 38px; font-size: 12px; }
       .mc-picker-row { padding: 10px 8px; }
+      /* A DEFINITE max-height on the scroll child (not only flex:1 inside a
+         content-sized fixed sheet) so iOS Safari reliably gives .mc-picker-list a
+         scrollable overflow — the flex:1/min-height:0 model alone can fail there.
+         Sheet max is 72dvh; ~140px is the header + search + selection filter. */
+      .mc-picker-list { max-height: calc(72dvh - 140px); }
     }
 
     /* Player training-session details modal (read-only, player-safe) */
@@ -5565,6 +5579,9 @@
       min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .mc7-filter { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 9px; }
+    .mc7-filterlbl { font-size: 9.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--faint); margin: 0 0 4px 2px; }
+    /* Selection is the primary filter: its active pill uses the solid brand fill. */
+    .mc7-filter-sel button.on { background: var(--brand-2, #34d399); color: #06140d; border-color: var(--brand-2, #34d399); }
     .mc7-filter button {
       flex: 0 1 auto; min-height: 30px; padding: 0 9px; white-space: nowrap;
       border: 1px solid var(--hair); background: rgba(255,255,255,0.02);
@@ -6263,6 +6280,15 @@
     let _mcAvailFilter = null;
     function mcSetAvailFilter(k) {
       _mcAvailFilter = ['all', 'available', 'maybe', 'unavailable', 'noreply'].includes(k) ? k : 'all';
+      render();
+    }
+    // Desktop Available-Players SELECTION filter (All / Not selected / Selected),
+    // the counterpart of the mobile picker's segmented control. Default 'all' so
+    // the panel is unchanged until used. Derived live from the same cross-team
+    // selection state — never a stored label.
+    let _mcRailSel = 'all';
+    function mcSetRailSel(k) {
+      _mcRailSel = ['all', 'unselected', 'selected'].includes(k) ? k : 'all';
       render();
     }
     /**
@@ -10865,6 +10891,19 @@
       if (_mcOtherSide.fixtureId !== fx || _mcOtherSide.sideId !== side) return new Set();
       return new Set(_mcOtherSide.names);
     }
+    // The sibling side's STARTING XV / BENCH as canonical person-key Sets, for the
+    // SAME fixture + side context only (same stale-guard as mcOtherSideNames). Used
+    // by the cross-team selection rules: a starter for the other side is
+    // unavailable here; a benched player there is still poachable here.
+    function _mcOtherSideKeySet(listName) {
+      const fx = matchCentreFixtureId(), side = matchCentreSideId();
+      if (!fx || !side || !_mcOtherSide || _mcOtherSide.fixtureId !== fx || _mcOtherSide.sideId !== side) return new Set();
+      const out = new Set();
+      (_mcOtherSide[listName] || []).forEach(n => { const k = mcPersonKey(n); if (k) out.add(k); });
+      return out;
+    }
+    function mcOtherSideStartingKeys() { return _mcOtherSideKeySet('startingNames'); }
+    function mcOtherSideBenchKeys()    { return _mcOtherSideKeySet('benchNames'); }
 
     /**
      * Load what the SIBLING side has selected for this fixture — its
@@ -10887,11 +10926,15 @@
         const oSquad = sRes?.ok ? (await sRes.json()).squad : null;
         const oDraft = dRes?.ok ? (await dRes.json()).draft : null;
         const src = oSquad || oDraft;
-        const names = src ? [
-          ...Object.values(src.formationNames || {}),
-          ...(Array.isArray(src.benchPlayers) ? src.benchPlayers : []),
-        ].map(n => String(n || '').trim()).filter(Boolean) : [];
-        _mcOtherSide = { fixtureId: String(fixtureId), sideId: side, teamName: String(other.name || ''), names };
+        const clean = arr => (arr || []).map(n => String(n || '').trim()).filter(Boolean);
+        // Keep the starting-XV vs bench SPLIT (not just a flat list): a player in
+        // the other side's STARTING XV is committed there and unavailable to this
+        // side, whereas one only on its BENCH stays poachable. `names` is retained
+        // flat for the existing duplicate-selection indicator.
+        const startingNames = src ? clean(Object.values(src.formationNames || {})) : [];
+        const benchNames    = src ? clean(Array.isArray(src.benchPlayers) ? src.benchPlayers : []) : [];
+        const names = [...startingNames, ...benchNames];
+        _mcOtherSide = { fixtureId: String(fixtureId), sideId: side, teamName: String(other.name || ''), names, startingNames, benchNames };
         render();
       } catch { /* indicator only — silence is safe */ }
     }
@@ -11598,6 +11641,15 @@
       _mcClearDragFx();
       if (!name) return;
       const srcTarget = _mcParseSource(event.dataTransfer.getData("mcSource"));
+      // Dragging a NEW player in from the Available list (no source slot) must
+      // obey the same cross-team rule as the picker: a player starting for the
+      // sibling side cannot be added here. Moving a player already on THIS sheet
+      // (srcTarget set) is never blocked.
+      if (!srcTarget && mcPickerLocked(name)) {
+        const t = (_mcOtherSide && _mcOtherSide.teamName) ? _mcOtherSide.teamName : 'the other team';
+        showToast(esc(String(name).split(' ')[0]) + ' is starting for ' + esc(t));
+        return;
+      }
       const destOld = _mcCurrentName(dest);
       _mcSetTarget(dest, name);
       if (srcTarget && !_mcSame(srcTarget, dest)) _mcSetTarget(srcTarget, destOld); // swap back
@@ -11704,18 +11756,38 @@
       (state.benchPlayers || []).forEach(v => { const n = String(v || '').trim(); if (n) placed.add(mcPersonKey(n)); });
       return placed;
     }
+    // ── CROSS-TEAM selection state (two sides of ONE fixture, same group) ──────
+    // Derived LIVE from canonical sheets — no second store, no roster change.
+    //   INELIGIBLE for this side  = the OTHER side's STARTING XV (committed there,
+    //     so it cannot be picked here and never appears under "Not selected").
+    //   SELECTED (this side's view) = placed on THIS sheet OR in the other side's
+    //     STARTING XV. The other side's BENCH is poachable: it neither blocks nor
+    //     counts as selected here until this side actually picks the player.
+    // Empty when there is no loaded sibling side (single-team fixtures unchanged).
+    function mcIneligibleKeys() { return mcOtherSideStartingKeys(); }
+    function mcSelectedKeys() {
+      const sel = mcPlacedKeys();
+      mcOtherSideStartingKeys().forEach(k => sel.add(k));
+      return sel;
+    }
     function mcPickerCandidates(sel) {
       // 'selected'/'all' share mcComputeAvailable's exact base — the operating
       // group's non-archived roster records — differing ONLY by the placed
       // filter, so no selection mode can widen past the group (matchdayPlayers
       // eligibility is preserved). 'unselected' defers to mcComputeAvailable so
-      // there is one authority for the default pool.
-      if (sel !== 'selected' && sel !== 'all') return mcComputeAvailable();
+      // there is one authority for the default pool, then drops the OTHER side's
+      // starting XV (ineligible for this side).
+      if (sel !== 'selected' && sel !== 'all') {
+        const ineligible = mcIneligibleKeys();
+        return mcComputeAvailable().filter(p => !ineligible.has(mcPersonKey(p.name)));
+      }
       const pool = operationalPlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus || 'active') !== 'archived');
       if (sel === 'all') return pool;
-      const placed = mcPlacedKeys();
-      return pool.filter(p => placed.has(mcPersonKey(p.name)));
+      const selected = mcSelectedKeys();   // this side's placed + the other side's XV
+      return pool.filter(p => selected.has(mcPersonKey(p.name)));
     }
+    // A player the OTHER side has starting cannot be picked for this side.
+    function mcPickerLocked(name) { return mcIneligibleKeys().has(mcPersonKey(name)); }
     let _mcPickTarget = null;
     function mcEnsurePicker() {
       if (document.getElementById('mc-picker')) return;
@@ -11763,9 +11835,12 @@
       const match = p => !q || String(p.name).toLowerCase().indexOf(q) !== -1 || String(p.position || '').toLowerCase().indexOf(q) !== -1;
       // Default (Not selected) keeps mcComputeAvailable as the single pool
       // authority; Selected/All read mcPickerCandidates, which is the same
-      // group-scoped set — search only ever narrows it, never widens it.
+      // group-scoped set — search only ever narrows it, never widens it. The
+      // OTHER side's starting XV is dropped from Not selected (ineligible here).
+      const ineligible = mcIneligibleKeys();
+      const otherTeam = (_mcOtherSide && _mcOtherSide.teamName) ? _mcOtherSide.teamName : 'the other team';
       const list = (_mcPickSel === 'unselected'
-          ? mcComputeAvailable().filter(match)
+          ? mcComputeAvailable().filter(match).filter(p => !ineligible.has(mcPersonKey(p.name)))
           : mcPickerCandidates(_mcPickSel).filter(match))
         .sort((a, b) => String(a.name).localeCompare(String(b.name)));
       const cur = _mcPickTarget ? _mcCurrentName(_mcPickTarget) : '';
@@ -11776,6 +11851,14 @@
           : 'Everyone available is already selected.');
       body.innerHTML = list.map(p => {
         const initials = String(p.name).split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+        const locked = ineligible.has(mcPersonKey(p.name));   // starting for the sibling side
+        if (locked) {
+          // Shown under Selected/All so the coach can SEE the commitment, but not
+          // pickable for this side — a vertical gesture still scrolls the list.
+          return '<div class="mc-picker-row mc-picker-locked" title="Starting for ' + esc(otherTeam) + '">' +
+            '<span class="mc-picker-av" style="background:' + playerAvatarColor(p.id || p.name) + '">' + esc(initials) + '</span>' +
+            '<span class="mc-picker-nm">' + esc(p.name) + '</span><span class="mc-picker-pos">' + esc(otherTeam) + ' XV</span></div>';
+        }
         return '<button type="button" class="mc-picker-row" data-pick="' + esc(p.name).replace(/"/g, '&quot;') + '" onclick="mcPick(this.dataset.pick)">' +
           '<span class="mc-picker-av" style="background:' + playerAvatarColor(p.id || p.name) + '">' + esc(initials) + '</span>' +
           '<span class="mc-picker-nm">' + esc(p.name) + '</span><span class="mc-picker-pos">' + esc(p.position || '') + '</span></button>';
@@ -11797,6 +11880,13 @@
     }
     function mcPick(name) {
       if (!_mcPickTarget) return;
+      // Never place a player the sibling side has starting — even if a stale or
+      // forged row reaches here. Clearing a slot (empty name) is always allowed.
+      if (name && mcPickerLocked(name)) {
+        const t = (_mcOtherSide && _mcOtherSide.teamName) ? _mcOtherSide.teamName : 'the other team';
+        showToast(esc(String(name).split(' ')[0]) + ' is starting for ' + esc(t));
+        return;
+      }
       _mcSetTarget(_mcPickTarget, name);
       saveState("Squad updated");
       saveCoachDraftDebounced();
@@ -17798,7 +17888,21 @@
         noreply:     _availStats.filter(s => s.match === 'noreply').length,
       };
       const _activeFilter  = _mcAvailFilter || (mcFx ? 'available' : 'all');
-      const _visibleStats  = _activeFilter === 'all' ? _availStats : _availStats.filter(s => s.match === _activeFilter);
+      const _availFiltered = _activeFilter === 'all' ? _availStats : _availStats.filter(s => s.match === _activeFilter);
+      // SELECTION filter (cross-team aware). The rail pool already excludes THIS
+      // side's placed players, so "Not selected" further drops anyone committed
+      // to the sibling side's XV, and "Selected" shows only those cross-committed
+      // players still visible here. Derived live; default 'all' = unchanged.
+      const _mcSelKeys = mcSelectedKeys();
+      const _selCounts = {
+        all:        _availFiltered.length,
+        unselected: _availFiltered.filter(s => !_mcSelKeys.has(mcPersonKey(s.p.name))).length,
+        selected:   _availFiltered.filter(s =>  _mcSelKeys.has(mcPersonKey(s.p.name))).length,
+      };
+      const _railSel = ['all', 'unselected', 'selected'].includes(_mcRailSel) ? _mcRailSel : 'all';
+      const _visibleStats = _railSel === 'selected' ? _availFiltered.filter(s => _mcSelKeys.has(mcPersonKey(s.p.name)))
+        : _railSel === 'unselected' ? _availFiltered.filter(s => !_mcSelKeys.has(mcPersonKey(s.p.name)))
+        : _availFiltered;
 
       const squadSelected = slotNames.filter(n=>n).length + bench.filter(n=>n).length;
 
@@ -18077,6 +18181,13 @@
                 <!-- Contenteditable element (NOT an <input>) so the browser/password manager cannot show saved login/email/password autofill. -->
                 <div class="mc7-search" id="mc-player-filter" role="searchbox" aria-label="Search players" data-placeholder="Search players…" contenteditable="true" inputmode="search" enterkeyhint="search" spellcheck="false" autocorrect="off" autocapitalize="off" oninput="mcAvailSearch(this.textContent)" onkeydown="if(event.key==='Enter')event.preventDefault();"></div>
               </div>
+              <div class="mc7-filterlbl">Selection</div>
+              <div class="mc7-filter mc7-filter-sel" role="group" aria-label="Filter candidates by selection status">
+                ${[['unselected','Not selected'],['selected','Selected'],['all','All']].map(([k, lbl]) => `
+                  <button type="button" class="${_railSel === k ? 'on' : ''}" data-sel="${k}"
+                    aria-pressed="${_railSel === k}" onclick="mcSetRailSel('${k}')">${lbl} <span class="mc7-fcount">${_selCounts[k]}</span></button>`).join('')}
+              </div>
+              <div class="mc7-filterlbl">Availability</div>
               <div class="mc7-filter" role="group" aria-label="Filter candidates by availability${mcFx ? ` for ${esc(mcFx.opposition)}` : ''}">
                 ${[['all','All'],['available','Available'],['maybe','Maybe'],['unavailable','Unavailable'],['noreply','No reply']].map(([k, lbl]) => `
                   <button type="button" class="${_activeFilter === k ? 'on' : ''}" data-filter="${k}"

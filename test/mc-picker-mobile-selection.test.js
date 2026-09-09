@@ -71,6 +71,10 @@ function club({ group = U18, placed = [] } = {}) {
     ${fn('operationalPlayers')}
     ${fn('mcComputeAvailable')}
     ${fn('mcPlacedKeys')}
+    // Single-side context (no sibling side loaded): the cross-team helpers no-op,
+    // so mcPickerCandidates behaves exactly as the single-team selection filter.
+    function mcIneligibleKeys() { return new Set(); }
+    function mcSelectedKeys() { return mcPlacedKeys(); }
     ${fn('mcPickerCandidates')}
     const names = arr => arr.map(p => p.name).sort();
     const searchIn = (base, q) => { q = String(q||'').trim().toLowerCase();
