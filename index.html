@@ -11773,6 +11773,28 @@
       mcOtherSideStartingKeys().forEach(k => sel.add(k));
       return sel;
     }
+    // ── AVAILABILITY (a SEPARATE dimension from selection) ─────────────────────
+    // The ONE availability source shared by the desktop rail and the mobile
+    // popup: the selected fixture's own dated-event answers (else the legacy
+    // weekly game slot when nothing is linked), read canonically via sessionRows
+    // and bucketed by mcAvailFilterBucket — exactly as the rail's _statusByPlayer.
+    // Returns Map(playerId → 'available'|'maybe'|'unavailable'|'noreply').
+    function mcAvailabilityBuckets() {
+      const fx = (typeof matchCentreSelectedFixture === 'function') ? matchCentreSelectedFixture() : null;
+      const sessions = state.schedule || [];
+      const gameSess = sessions.find(s => s.id === 'game') || sessions[sessions.length - 1];
+      const rows = (fx ? sessionRows(String(fx.id)) : (gameSess ? sessionRows(gameSess.id) : [])) || [];
+      const map = new Map();
+      rows.forEach(r => { if (r && r.player) map.set(String(r.player.id), mcAvailFilterBucket(String(r.status || ''))); });
+      return map;
+    }
+    // A player is offerable as a NOT-SELECTED (selectable) candidate only when
+    // AVAILABLE (or a soft "maybe"): Unavailable and No-reply are never selectable
+    // candidates. They stay inspectable via the availability filter and "All".
+    // This is the ONE predicate both surfaces use, so they agree.
+    function mcSelectableAvailBucket(bucket) {
+      return bucket !== 'unavailable' && bucket !== 'noreply';
+    }
     function mcPickerCandidates(sel) {
       // 'selected'/'all' share mcComputeAvailable's exact base — the operating
       // group's non-archived roster records — differing ONLY by the placed
@@ -11781,12 +11803,17 @@
       // there is one authority for the default pool, then drops the OTHER side's
       // starting XV (ineligible for this side).
       if (sel !== 'selected' && sel !== 'all') {
+        // Not selected = eligible + not the sibling side's starter + AVAILABLE.
+        // Unavailable / no-reply players are never selectable candidates (they
+        // remain visible under All and the availability filter).
         const ineligible = mcIneligibleKeys();
-        return mcComputeAvailable().filter(p => !ineligible.has(mcPersonKey(p.name)));
+        const buckets = mcAvailabilityBuckets();
+        return mcComputeAvailable().filter(p =>
+          !ineligible.has(mcPersonKey(p.name)) && mcSelectableAvailBucket(buckets.get(String(p.id)) || 'noreply'));
       }
       const pool = operationalPlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus || 'active') !== 'archived');
-      if (sel === 'all') return pool;
-      const selected = mcSelectedKeys();   // this side's placed + the other side's XV
+      if (sel === 'all') return pool;         // All = inspect everyone, availability aside
+      const selected = mcSelectedKeys();      // Selected = status view (this side placed + other-side XV), availability aside
       return pool.filter(p => selected.has(mcPersonKey(p.name)));
     }
     // A player the OTHER side has starting cannot be picked for this side.
@@ -11838,12 +11865,14 @@
       const match = p => !q || String(p.name).toLowerCase().indexOf(q) !== -1 || String(p.position || '').toLowerCase().indexOf(q) !== -1;
       // Default (Not selected) keeps mcComputeAvailable as the single pool
       // authority; Selected/All read mcPickerCandidates, which is the same
-      // group-scoped set — search only ever narrows it, never widens it. The
-      // OTHER side's starting XV is dropped from Not selected (ineligible here).
+      // group-scoped set — search only ever NARROWS the derived candidate set,
+      // never widens it (search is applied AFTER eligibility + availability). Not
+      // selected drops the other side's starting XV and unavailable/no-reply.
       const ineligible = mcIneligibleKeys();
+      const _availBuckets = mcAvailabilityBuckets();
       const otherTeam = (_mcOtherSide && _mcOtherSide.teamName) ? _mcOtherSide.teamName : 'the other team';
       const list = (_mcPickSel === 'unselected'
-          ? mcComputeAvailable().filter(match).filter(p => !ineligible.has(mcPersonKey(p.name)))
+          ? mcComputeAvailable().filter(match).filter(p => !ineligible.has(mcPersonKey(p.name)) && mcSelectableAvailBucket(_availBuckets.get(String(p.id)) || 'noreply'))
           : mcPickerCandidates(_mcPickSel).filter(match))
         .sort((a, b) => String(a.name).localeCompare(String(b.name)));
       const cur = _mcPickTarget ? _mcCurrentName(_mcPickTarget) : '';
@@ -17897,14 +17926,19 @@
       // to the sibling side's XV, and "Selected" shows only those cross-committed
       // players still visible here. Derived live; default 'all' = unchanged.
       const _mcSelKeys = mcSelectedKeys();
+      // "Not selected" is a SELECTABLE pool: not selected AND available (s.match
+      // is this player's availability bucket). Unavailable / no-reply are never
+      // selectable candidates — they stay visible under the availability filter
+      // and All. Same predicate (mcSelectableAvailBucket) the popup uses, so the
+      // rail and popup produce the same Not-selected set.
       const _selCounts = {
         all:        _availFiltered.length,
-        unselected: _availFiltered.filter(s => !_mcSelKeys.has(mcPersonKey(s.p.name))).length,
+        unselected: _availFiltered.filter(s => !_mcSelKeys.has(mcPersonKey(s.p.name)) && mcSelectableAvailBucket(s.match)).length,
         selected:   _availFiltered.filter(s =>  _mcSelKeys.has(mcPersonKey(s.p.name))).length,
       };
       const _railSel = ['all', 'unselected', 'selected'].includes(_mcRailSel) ? _mcRailSel : 'all';
       const _visibleStats = _railSel === 'selected' ? _availFiltered.filter(s => _mcSelKeys.has(mcPersonKey(s.p.name)))
-        : _railSel === 'unselected' ? _availFiltered.filter(s => !_mcSelKeys.has(mcPersonKey(s.p.name)))
+        : _railSel === 'unselected' ? _availFiltered.filter(s => !_mcSelKeys.has(mcPersonKey(s.p.name)) && mcSelectableAvailBucket(s.match))
         : _availFiltered;
 
       const squadSelected = slotNames.filter(n=>n).length + bench.filter(n=>n).length;

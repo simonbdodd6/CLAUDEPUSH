@@ -67,6 +67,9 @@ function scope({ formation = { '1': 'W Placed' }, bench = [],
     ${fn('mcOtherSideBenchKeys')}
     ${fn('mcIneligibleKeys')}
     ${fn('mcSelectedKeys')}
+    // Availability off here (cross-team tests fix eligibility, not availability).
+    function mcAvailabilityBuckets() { return new Map(); }
+    function mcSelectableAvailBucket() { return true; }
     ${fn('mcPickerCandidates')}
     ${fn('mcPickerLocked')}
     const names = arr => arr.map(p => p.name).sort();
