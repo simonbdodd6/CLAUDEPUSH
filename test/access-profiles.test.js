@@ -294,9 +294,13 @@ test('existing safeguards still hold under the profile model', async () => {
   // typed confirmation
   assert.equal((await call({ action: 'delete_member_permanently', memberId: victim.memberId }, ck(coach.session))).statusCode, 400);
   assert.equal((await call({ action: 'delete_member_permanently', memberId: victim.memberId, confirm: 'nope' }, ck(coach.session))).statusCode, 400);
-  // cannot delete self
+  // cannot delete self. A coach-profile holder lacks MANAGE_COACHES, so the
+  // staff-mutation authority gate now refuses the STAFF-delete path (403) before
+  // the self-delete guard (400) is reached — the safeguard holds either way, and
+  // the 400 self-delete guard stays covered by member-permanent-delete.test.js
+  // (an admin, who passes the authority gate, then hits the self guard).
   const self = await call({ action: 'delete_member_permanently', memberId: coach.memberId, confirm: 'DELETE' }, ck(coach.session));
-  assert.equal(self.statusCode, 400);
+  assert.notEqual(self.statusCode, 200, 'a coach cannot permanently delete themselves');
   // owner is protected even from a Full Access admin
   const admin2 = await staffWithProfile(A.team.id, 'Second Admin', 'full');
   const killOwner = await call({ action: 'delete_member_permanently', memberId: memberOf(A.user.id).id, confirm: 'DELETE' }, ck(admin2.session));
