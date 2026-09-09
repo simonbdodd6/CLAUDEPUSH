@@ -32913,6 +32913,11 @@
 
     // ── State ──────────────────────────────────────────
     let _chatConversations = [];   // from Redis
+    // True once the server has ANSWERED the conversations list at least once.
+    // Until then an unknown id means "not loaded yet", not "does not exist" —
+    // the difference chatIsUnresolvedPlaceholder needs to avoid refusing a real
+    // conversation during boot.
+    let _chatConversationsLoaded = false;
     let _chatFeedPaintedFor = null;  // conv id the #chatFeed DOM currently shows
     let _chatMessages      = {};   // { convId: [...msgs] }
     let _chatPollTimer     = null;
@@ -33944,6 +33949,25 @@
       // polling it produced a permanent 404 loop for every player. Once a real
       // DM exists, canonicalizePlayerSelectedChat swaps to it and this is false.
       if (id.startsWith('dm:') && id.includes('coach-demo')) return true;
+      // SYNTHETIC-CONVERSATION GUARD. A coach contact row (and the player's
+      // computed coach DM) exists in the UI before any server conversation
+      // does — it is only created on first send. Polling such an id answered
+      // 404 on every messages/typing/read request, for as long as the thread
+      // stayed open, at almost the full server cost of a 200.
+      //
+      // STATE-AWARE, never a permanent blacklist:
+      //   · only once the server has actually answered the conversations list
+      //     (before that, "unknown" means "not loaded yet" — refusing here
+      //     would block real threads during boot),
+      //   · only for the dm:/group: namespaces, which are created on demand.
+      //     Built-in channels (squad / coaching / announce) always exist
+      //     server-side and are never withheld.
+      // The moment the conversation becomes real — first send via
+      // chatEnsureCoachDmConversationExists, chatEnsureGroupChannel, or the
+      // next conversations poll — it enters _chatConversations, `known` above
+      // returns early, and polling resumes on its own.
+      const loaded = typeof _chatConversationsLoaded !== 'undefined' && _chatConversationsLoaded;
+      if (loaded && (id.startsWith('dm:') || id.startsWith('group:'))) return true;
       return false;
     }
 
@@ -34106,6 +34130,10 @@
           // from playerCoachDmId(), which derives from _chatConversations — a circular
           // dependency that previously discarded the valid server DM, leaving it [].
           _chatConversations = _filterCanonicalConversations(data.conversations || [], true);
+          // The server has now stated which conversations exist. Only a real
+          // answer sets this — a 401/500 or an offline failure must never let
+          // the synthetic-conversation guard start refusing live threads.
+          _chatConversationsLoaded = true;
           // Update nav badge for the current user's unread total
           chatSetUnreadTotal(chatVisibleUnreadTotal());
         } else {
@@ -34685,7 +34713,13 @@
           if (feed) { const atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80; if (atBottom) chatScrollToBottom(); }
         }
         await chatPollTyping(liveConvId);
-      }, 2500);
+        // CADENCE: 5s, not the original 2.5s. Every tick costs TWO /api/chat
+        // requests (messages + typing) and each one re-resolves the session
+        // against Redis, so one tab parked on an open thread was the single
+        // largest source of function invocations. 5s keeps a live-chat feel
+        // while halving that traffic; typing rides the same tick, so it is
+        // never requested more often than the messages it accompanies.
+      }, 5000);
     }
 
     function chatStopPolling() { if (_chatPollTimer) { clearInterval(_chatPollTimer); _chatPollTimer = null; } }
@@ -39892,6 +39926,10 @@
       state.selectedChatId = null;
       state.messages = [];                 // legacy local inbox is per-person
       _chatConversations = [];
+      // The list is gone, so what the server said about it no longer holds.
+      // Leaving this set would make the next identity's real threads look
+      // synthetic (loaded + empty) until their first conversations fetch.
+      _chatConversationsLoaded = false;
       _chatLastPoll = {};
       _chatFeedPaintedFor = null;
       // Server-resolved group recipient sets are identity/club-scoped too —
@@ -42599,16 +42637,34 @@
       const inMessages = (state.activeView === 'coach' && state.activeCoachSection === 'messages') ||
         (state.activeView === 'player' && state.activePlayerSection === 'messages');
       if (!convId || !inMessages || !document.getElementById('chatFeed')) return Promise.resolve(false);
-      const since = _chatLastPoll[convId] || 0;
-      return chatFetchMessages(convId, since).then(msgs => {
-        // bgPollUnread computes the badge BEFORE this runs, so a thread that is
-        // already open can be left showing unread. Mark it read whenever it is
-        // the open thread and still counted unread — not only when new messages
-        // happen to arrive, or the badge stays stuck while the user reads it.
+      // bgPollUnread computes the badge BEFORE this runs, so a thread that is
+      // already open can be left showing unread. Mark it read whenever it is
+      // the open thread and still counted unread — not only when new messages
+      // happen to arrive, or the badge stays stuck while the user reads it.
+      // Hoisted out of the fetch callback so it still runs on the no-fetch
+      // path below: the badge must clear whoever pulled the messages.
+      const markOpenThreadRead = () => {
         if (state.selectedChatId === convId && typeof _chatConversations !== 'undefined') {
           const conv = (_chatConversations || []).find(c => String(c?.id) === String(convId));
           if (conv && Number(conv.unread || 0) > 0) chatMarkRead(convId);
         }
+      };
+      // DUPLICATE-FETCH GUARD. The dedicated thread poll (chatStartPolling)
+      // already refreshes THIS conversation on its own timer, so while it is
+      // running this background path was issuing a second, identical messages
+      // request for the same thread — doubling the open-thread request rate
+      // for no extra freshness. The dedicated poll is the single source of
+      // live open-thread messages whenever it exists; this path stays as the
+      // fallback for when it has lapsed (its lifecycle is tied to
+      // render()/section transitions), which is why the guard tests the timer
+      // rather than being removed outright.
+      if (typeof _chatPollTimer !== 'undefined' && _chatPollTimer) {
+        markOpenThreadRead();
+        return Promise.resolve(false);
+      }
+      const since = _chatLastPoll[convId] || 0;
+      return chatFetchMessages(convId, since).then(msgs => {
+        markOpenThreadRead();
         if (!msgs || !msgs.length) return false;
         _chatLastPoll[convId] = Date.now();
         const mode = state.activeView === 'coach' ? 'coach' : 'player';
@@ -42647,8 +42703,27 @@
     function chatBackgroundPollAllowed() {
       return _serverAuthState === 'authed' && !document.hidden;
     }
+    // CADENCE: the tick stays at 5s, but a tick only REACHES the server when
+    // it is due. On the Messages screen the contact list must stay live, so
+    // every tick runs. Anywhere else in the app this poll exists solely to
+    // keep the nav unread badge fresh — that does not need second-level
+    // accuracy, and a 5s conversations request is the most expensive call the
+    // route serves (it reads a message window per visible conversation). Off
+    // Messages it therefore runs once every 5th tick (~25s).
+    // Freshness on arrival is unaffected: entering Messages renders through
+    // chatFetchConversations(), and returning to the tab calls bgPollUnread()
+    // directly from the visibilitychange handler.
+    let _chatBgPollTick = 0;
+    const CHAT_BG_POLL_IDLE_TICKS = 5;
+    function chatBackgroundPollDue() {
+      const inMessages = (state.activeView === 'coach' && state.activeCoachSection === 'messages') ||
+                         (state.activeView === 'player' && state.activePlayerSection === 'messages');
+      if (inMessages) { _chatBgPollTick = 0; return true; }
+      _chatBgPollTick = (_chatBgPollTick + 1) % CHAT_BG_POLL_IDLE_TICKS;
+      return _chatBgPollTick === 0;
+    }
     if (chatBackgroundPollAllowed()) setTimeout(bgPollUnread, 0);
-    setInterval(() => { if (chatBackgroundPollAllowed()) bgPollUnread(); }, 5000);
+    setInterval(() => { if (chatBackgroundPollAllowed() && chatBackgroundPollDue()) bgPollUnread(); }, 5000);
     // The coach Availability board went stale when the laptop tab was backgrounded
     // (browsers throttle/suspend the 30s poll while hidden) and a player changed a
     // reply on another device. The backend already serves the latest value; we just

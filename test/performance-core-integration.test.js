@@ -55,7 +55,7 @@ function playerAState() {
 
 function runIdentityReset(state) {
   const body = `"use strict";
-    let _chatConversations, _chatLastPoll, _chatFeedPaintedFor, _groupRecipients,
+    let _chatConversations, _chatConversationsLoaded, _chatLastPoll, _chatFeedPaintedFor, _groupRecipients,
         _trainingSchedule, _trainingScheduleAttempted, _trainingScheduleQueue,
         _trainingScheduleGroupId, _myPlatformRole,
         // Group context (added with the Player Home isolation fix), the
