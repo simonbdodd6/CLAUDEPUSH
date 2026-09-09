@@ -305,6 +305,21 @@ async function assertStaffTargetOperable(session, target) {
   }
 }
 
+/**
+ * Staff ADMINISTRATION authority (remove / archive / restore / permanently
+ * delete a staff member). The groups that decide who may administer a staff
+ * member are the ones they belong to — independent of whether they are
+ * currently active or archived. effectiveAccessScope deliberately zeroes an
+ * INACTIVE member's OPERATIONAL scope (an archived coach operates nothing), but
+ * that must not strip the authority a group-scoped manager needs to restore or
+ * erase their own group's archived staff. So resolve the target's home groups
+ * as if active, then apply the identical group-coverage gate. An active target
+ * is unaffected (its scope already reads the same way).
+ */
+async function assertStaffAdminTargetOperable(session, target) {
+  await assertStaffTargetOperable(session, target && { ...target, status: 'active' });
+}
+
 // RC4.9B — after a permanent deletion, any still-unclaimed invitation for that
 // person must stop working, or the deleted member could simply re-join through
 // an old link. Claimed invites keep their record (audit history) untouched.
@@ -716,6 +731,13 @@ export default async function handler(req, res) {
         if (targetIsStaff && !can(session, PERM.MANAGE_COACHES)) {
           return res.status(403).json({ ok: false, error: 'You are not allowed to remove staff' });
         }
+        // A staff target is also GROUP-gated: a group-scoped manager of staff
+        // may only remove/archive staff their own groups cover — the same
+        // assertStaffTargetOperable gate set_staff_level uses, so a Seniors head
+        // coach cannot archive a U18 medic/analyst. A club-wide caller covers
+        // everyone; players stay on the player group gate below (a no-op for
+        // staff). Both gates precede the mutation.
+        if (targetIsStaff) await assertStaffAdminTargetOperable(session, target);
         await assertPlayerTargetOperable(session, target);
         const result = await removeTeamMember(req.body?.memberId, session.user.id, session.teamId, {
           archive: action === 'archive_member',
@@ -728,17 +750,30 @@ export default async function handler(req, res) {
       // permission, plus a typed confirmation that matches the member's name (or
       // the word DELETE) so it can never fire from a stray click or replayed call.
       if (action === 'delete_member_permanently') {
-        // RC4.9C — gated ONLY on the PLAYER_DELETE permission, which every access
-        // profile (full / coach / manager) grants for its assigned teams. The
-        // session is already scoped to one team, so "assigned team" is enforced
-        // by the membership lookup itself: no membership → no permissions there.
+        // RC4.9C — a PLAYER deletion is gated on PLAYER_DELETE, which every
+        // access profile (full / coach / manager) grants for its assigned teams;
+        // the session is scoped to one team, so "assigned team" is enforced by
+        // the membership lookup itself. A STAFF target is a HIGHER authority:
+        // permanently erasing a coach/medic/S&C/analyst is staff administration,
+        // so — exactly like set_staff_level and remove_member — it additionally
+        // requires MANAGE_COACHES AND group coverage over the target. This
+        // authorization runs BEFORE the irreversible deletion, so a group-scoped
+        // coach can never erase another group's staff even with a valid confirm.
         const session = await requireTenantPermission(req, PERM.PLAYER_DELETE);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
         const memberId = String(req.body?.memberId || '');
         const members = await loadTeamMembers();
         const target = members.find(m => m.id === memberId && m.teamId === session.teamId);
         if (!target) return res.status(404).json({ ok: false, error: 'Team member not found' });
-        await assertPlayerTargetOperable(session, target);
+        const targetIsStaff = !['player', 'parent', 'guest'].includes(String(target.role || '').toLowerCase());
+        if (targetIsStaff) {
+          if (!can(session, PERM.MANAGE_COACHES)) {
+            return res.status(403).json({ ok: false, error: 'You are not allowed to delete staff' });
+          }
+          await assertStaffAdminTargetOperable(session, target);
+        } else {
+          await assertPlayerTargetOperable(session, target);
+        }
         const profiles = await loadPlayerProfiles();
         const targetUser = (await loadUsers()).find(u => u.id === target.userId) || {};
         const targetName = profiles.find(p => p.userId === target.userId)?.displayName
@@ -928,7 +963,19 @@ export default async function handler(req, res) {
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
         const restoreTarget = (await loadTeamMembers()).find(m =>
           m.id === req.body?.memberId && m.teamId === session.teamId);
-        await assertPlayerTargetOperable(session, restoreTarget);
+        // Restoring STAFF is staff administration — the same gate as removing
+        // them: MANAGE_COACHES plus group coverage over the target. Players keep
+        // the player group gate (a no-op for a staff target).
+        const restoreIsStaff = restoreTarget &&
+          !['player', 'parent', 'guest'].includes(String(restoreTarget.role || '').toLowerCase());
+        if (restoreIsStaff) {
+          if (!can(session, PERM.MANAGE_COACHES)) {
+            return res.status(403).json({ ok: false, error: 'You are not allowed to restore staff' });
+          }
+          await assertStaffAdminTargetOperable(session, restoreTarget);
+        } else {
+          await assertPlayerTargetOperable(session, restoreTarget);
+        }
         const result = await restoreTeamMember(req.body?.memberId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });
       }
