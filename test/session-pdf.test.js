@@ -11,7 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
-  buildSessionPdf, sessionPdfFilename, winAnsi, wrapText, textWidth, chronological,
+  buildSessionPdf, sessionPdfFilename, winAnsi, wrapText, textWidth, chronological, parseBlockTime,
 } from '../src/session-pdf.js';
 
 const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
@@ -73,6 +73,89 @@ test('PDF-3: blocks are chronological; untimed blocks keep order at the end', ()
     { time: 'x', activity: 'c' }, { time: '09:30', activity: 'd' },
   ]).map(b => b.activity);
   assert.deepEqual(order, ['d', 'b', 'a', 'c'], 'timed sorted; invalid stay stable at the end');
+});
+
+// ─── Dot / colon time separator — the production ordering bug ────────────────
+// A coach may type a block time with a DOT (18.00) or a COLON (18:30); both mean
+// the same clock time (the planner time field is free text). The export parsed
+// only ':' , so dot-times fell to the end as "untimed" and the lone colon-time
+// floated above them (18:30 above 18.00). Times now sort by minutes-since-
+// midnight regardless of separator, and print as a canonical HH:MM.
+
+const orderOf = arr => chronological(arr.map((t, i) => ({ time: t, activity: 'a' + i }))).map(b => b.time);
+
+test('TIME-1: the exact production session sorts chronologically (dot times + one colon)', () => {
+  const prod = ['18.00', '18.20', '18.28', '18:30', '18.40', '18.50', '19.02', '19.12', '19.30'];
+  const got = orderOf(prod);
+  assert.deepEqual(got, ['18.00', '18.20', '18.28', '18:30', '18.40', '18.50', '19.02', '19.12', '19.30'],
+    '18:30 sits between 18.28 and 18.40 — never floated to the top');
+  assert.notEqual(got[0], '18:30', 'the lone colon-time no longer leads the plan');
+});
+
+test('TIME-2: A/B/C — 18:00 < 18:20 < 18:30 and 18:30 after 18:20 (colon or dot)', () => {
+  assert.deepEqual(orderOf(['18:30', '18:00', '18:20']), ['18:00', '18:20', '18:30']);
+  assert.deepEqual(orderOf(['18.30', '18.00', '18.20']), ['18.00', '18.20', '18.30']);
+});
+
+test('TIME-3: D/E — 09:05 < 09:15 < 10:00 (colon or dot)', () => {
+  assert.deepEqual(orderOf(['10.00', '09.15', '09.05']), ['09.05', '09.15', '10.00']);
+  assert.deepEqual(orderOf(['10:00', '09:15', '09:05']), ['09:05', '09:15', '10:00']);
+});
+
+test('TIME-4: F — a single-digit hour parses (9.05 === 09:05) and orders correctly', () => {
+  assert.deepEqual(orderOf(['10.00', '9.05', '9.15']), ['9.05', '9.15', '10.00']);
+  assert.equal(parseBlockTime('9.05').mins, parseBlockTime('09:05').mins, 'same clock time, either notation');
+});
+
+test('TIME-5: G — same-hour minutes order strictly', () => {
+  assert.deepEqual(orderOf(['18.50', '18.05', '18.28', '18.00']), ['18.00', '18.05', '18.28', '18.50']);
+});
+
+test('TIME-6: H — a dot time and its colon twin are equal keys; entry order breaks the tie (stable)', () => {
+  const order = chronological([
+    { time: '18:00', activity: 'colon-first' }, { time: '18.00', activity: 'dot-second' },
+  ]).map(b => b.activity);
+  assert.deepEqual(order, ['colon-first', 'dot-second'], 'equal clock times keep their entry order');
+});
+
+test('TIME-7: I/J — the PDF prints canonical HH:MM in chronological order', () => {
+  const s = latin1(buildSessionPdf({ blocks: [
+    { time: '19.30', activity: 'Late' }, { time: '18.00', activity: 'First' }, { time: '18:30', activity: 'Middle' },
+  ] }));
+  assert.ok(s.includes('(18:00)') && s.includes('(18:30)') && s.includes('(19:30)'), 'canonical HH:MM printed');
+  assert.ok(!s.includes('(18.00)') && !s.includes('(19.30)'), 'no dot-separated times reach the page');
+  assert.ok(s.indexOf('(18:00)') < s.indexOf('(18:30)'), '18:00 before 18:30');
+  assert.ok(s.indexOf('(18:30)') < s.indexOf('(19:30)'), '18:30 before 19:30');
+  assert.ok(s.indexOf('(First)') < s.indexOf('(Middle)') && s.indexOf('(Middle)') < s.indexOf('(Late)'),
+    'activities follow their times');
+});
+
+test('TIME-8: K/M — content preserved; untimed/invalid stay stable at the end (em dash on the page)', () => {
+  const out = chronological([
+    { time: '', activity: 'no-time' },
+    { time: '18.00', activity: 'timed', keyFocus: 'kf', coach: 'C' },
+    { time: '99.99', activity: 'bad-time' },
+  ]);
+  assert.deepEqual(out.map(b => b.activity), ['timed', 'no-time', 'bad-time'], 'timed first; untimed stable after');
+  const timed = out.find(b => b.activity === 'timed');
+  assert.equal(timed.time, '18.00', 'the stored time value is not rewritten in state');
+  assert.equal(timed.keyFocus, 'kf'); assert.equal(timed.coach, 'C');
+  const s = latin1(buildSessionPdf({ blocks: [{ activity: 'solo' }] }));
+  assert.ok(s.includes('(' + String.fromCharCode(0x97) + ')'), 'untimed block prints an em dash, not a fabricated time');
+});
+
+test('TIME-9: L — session metadata and titles are unaffected by the time fix', () => {
+  const s = latin1(buildSessionPdf(SESSION));
+  for (const t of ['(Wenford RFC)', '(Seniors)', '(Attack Shape & Breakdown)']) assert.ok(s.includes(t), `${t} intact`);
+});
+
+test('TIME-10: out-of-range and malformed times are untimed, never mis-sorted', () => {
+  for (const bad of ['18.99', '25:00', '18.5', '9', '18:', '', 'x', '1.2.3']) {
+    assert.equal(parseBlockTime(bad), null, `${JSON.stringify(bad)} is not a valid clock time`);
+  }
+  assert.equal(parseBlockTime('00.00').mins, 0, 'midnight is 0, not falsy-dropped');
+  assert.equal(parseBlockTime('23:59').mins, 1439);
+  assert.equal(parseBlockTime('09.05').label, '09:05', 'canonical zero-padded label');
 });
 
 test('PDF-4: absent fields are omitted, never invented', () => {

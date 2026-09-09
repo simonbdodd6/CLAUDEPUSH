@@ -162,13 +162,28 @@ const lineOp = (x1, y1, x2, y2, colour, w = 0.75) =>
 
 // ── Document assembly ───────────────────────────────────────────────────────
 
+/**
+ * Canonical parse of a planner block time. A coach may type the separator as
+ * ':' or '.' (18:30 and 18.00 mean the same clock time) — the planner's time
+ * input is free text, so both reach the export. Returns minutes-since-midnight
+ * (the sort key) and a canonical HH:MM label (for display), or null for
+ * anything that is not H[:.]MM in range — which is kept verbatim on the page
+ * and, being untimed, sorts stably after the timed rows.
+ */
+export function parseBlockTime(t) {
+  const m = /^(\d{1,2})[:.](\d{2})$/.exec(String(t ?? '').trim());
+  if (!m) return null;
+  const h = +m[1], min = +m[2];
+  if (h > 23 || min > 59) return null;
+  return { mins: h * 60 + min, label: String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0') };
+}
+
 /** Sort blocks chronologically. Stable: invalid/absent times keep their
- *  relative order and follow the timed blocks. */
+ *  relative order and follow the timed blocks. A '.'-separated time (18.00) is
+ *  the same clock time as ':' (18:00) and parses too, so it is never stranded
+ *  at the end as "untimed" — the bug that floated a lone 18:30 above 18.00. */
 export function chronological(blocks) {
-  const mins = t => {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
-    return m ? Number(m[1]) * 60 + Number(m[2]) : Infinity;
-  };
+  const mins = t => parseBlockTime(t)?.mins ?? Infinity;
   return blocks
     .map((b, i) => ({ b, i }))
     .sort((p, q) => (mins(p.b.time) - mins(q.b.time)) || (p.i - q.i))
@@ -207,7 +222,9 @@ export function buildSessionPdf(data = {}) {
   // ── Measure every row first, so pagination is known before drawing ──
   const rows = blocks.map(b => {
     const cells = {
-      time:     [winAnsi(b.time || '—')],
+      // Display the canonical HH:MM so a session that mixes 18.00 and 18:30
+      // reads consistently; an untimed/unparseable value keeps its em dash.
+      time:     [winAnsi(parseBlockTime(b.time)?.label ?? (b.time || '—'))],
       activity: wrapText(winAnsi(b.activity || 'Untitled block'), 10.5, COLS[1].w - 10, true),
       keyFocus: wrapText(winAnsi(b.keyFocus || ''), 9.5, COLS[2].w - 10),
       coach:    wrapText(winAnsi(b.coach || ''), 9.5, COLS[3].w - 10),
