@@ -4473,8 +4473,18 @@
       border: 1px solid var(--line); background: rgba(255,255,255,.04); color: #ECEDF2; caret-color: #ECEDF2; font-size: 13px;
       box-sizing: border-box; line-height: 34px; white-space: nowrap; overflow: hidden; cursor: text; }
     .mc-picker-search:empty:before { content: attr(data-placeholder); color: var(--faint); pointer-events: none; }
-    .mc-picker-search:focus { outline: none; border-color: var(--brand-line, rgba(52,211,153,.5)); }
-    .mc-picker-list { overflow-y: auto; padding: 0 9px 9px; display: flex; flex-direction: column; gap: 2px; }
+    .mc-picker-search:focus { outline: none; border-color: var(--brand-line, rgba(52,211,153,.5)); box-shadow: 0 0 0 2px var(--ring, rgba(52,211,153,.22)); }
+    /* Selection filter: All / Not selected / Selected. Compact so the header stays short on a phone. */
+    .mc-picker-seg { display: flex; gap: 4px; margin: 0 13px 9px; }
+    .mc-picker-seg button { flex: 1; min-height: 30px; padding: 0 6px; border: 1px solid var(--line); border-radius: 8px;
+      background: rgba(255,255,255,.03); color: var(--faint); font-size: 11px; font-weight: 700; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mc-picker-seg button.on { background: var(--brand-soft, rgba(52,211,153,.14)); color: var(--brand-2, #34d399); border-color: var(--brand-line, rgba(52,211,153,.5)); }
+    /* The list is the ONE scroll region: flex:1 + min-height:0 lets it shrink inside the
+       fixed-height popup so its own overflow-y scrolls, instead of overflowing a parent
+       that clips it (overflow:hidden) and stranding the lower players out of reach. */
+    .mc-picker-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+      padding: 0 9px 9px; display: flex; flex-direction: column; gap: 2px; }
     .mc-picker-row { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
       background: none; border: 0; border-radius: 10px; padding: 7px 8px; cursor: pointer; color: #ECEDF2; transition: background .12s; }
     .mc-picker-row:hover { background: rgba(255,255,255,.07); }
@@ -4484,6 +4494,21 @@
     .mc-picker-clear { color: #f2718c; font-weight: 700; font-size: 12px; }
     .mc-picker-clear:hover { background: rgba(242,113,140,.12); }
     .mc-picker-empty { padding: 16px 8px; text-align: center; color: var(--faint); font-size: 12px; }
+    /* Phone: the popup becomes a bottom sheet so it is never covered by a slot,
+       clipped at a screen edge, or hidden behind the on-screen keyboard. The list
+       is the scroll region; the header + search + filter stay pinned above it.
+       Height tracks the DYNAMIC viewport (dvh) so it shrinks when the keyboard
+       opens. !important overrides the inline left/top mcOpenPicker sets for the
+       desktop near-the-slot placement. */
+    @media (max-width: 480px) {
+      #mc-picker { position: fixed !important; left: 8px !important; right: 8px !important;
+        top: auto !important; bottom: calc(8px + env(safe-area-inset-bottom)) !important;
+        width: auto !important; max-width: none !important;
+        max-height: min(72vh, 520px) !important; max-height: min(72dvh, 520px) !important; }
+      .mc-picker-search { min-height: 44px; height: auto; line-height: 42px; font-size: 16px; }
+      .mc-picker-seg button { min-height: 38px; font-size: 12px; }
+      .mc-picker-row { padding: 10px 8px; }
+    }
 
     /* Player training-session details modal (read-only, player-safe) */
     #ptm { position: fixed; inset: 0; z-index: 5000; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,0.55); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
@@ -11669,6 +11694,31 @@
       // than briefly showing the whole club.
       return operationalPlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus || 'active') !== 'archived' && !placed.has(mcPersonKey(p.name)));
     }
+    // Selection filter for the picker: 'unselected' (default — the pool minus the
+    // players already on the sheet), 'selected' (only those already placed), or
+    // 'all'. It is derived LIVE from the current Team Sheet selection state
+    // (formationNames + benchPlayers), so a player selected elsewhere leaves
+    // "Not selected" at once and reappears there the moment they are removed —
+    // no separate dataset, no change to selection or persistence.
+    let _mcPickSel = 'unselected';
+    function mcPlacedKeys() {
+      const placed = new Set();
+      Object.values(state.formationNames || {}).forEach(v => { const n = String(v || '').trim(); if (n) placed.add(mcPersonKey(n)); });
+      (state.benchPlayers || []).forEach(v => { const n = String(v || '').trim(); if (n) placed.add(mcPersonKey(n)); });
+      return placed;
+    }
+    function mcPickerCandidates(sel) {
+      // 'selected'/'all' share mcComputeAvailable's exact base — the operating
+      // group's non-archived roster records — differing ONLY by the placed
+      // filter, so no selection mode can widen past the group (matchdayPlayers
+      // eligibility is preserved). 'unselected' defers to mcComputeAvailable so
+      // there is one authority for the default pool.
+      if (sel !== 'selected' && sel !== 'all') return mcComputeAvailable();
+      const pool = operationalPlayers().filter(p => isRosterPlayerRecord(p) && (p.lifecycleStatus || 'active') !== 'archived');
+      if (sel === 'all') return pool;
+      const placed = mcPlacedKeys();
+      return pool.filter(p => placed.has(mcPersonKey(p.name)));
+    }
     let _mcPickTarget = null;
     function mcEnsurePicker() {
       if (document.getElementById('mc-picker')) return;
@@ -11679,6 +11729,11 @@
         // Contenteditable element — NOT an <input> — so no browser or password
         // manager can attach saved login/email/password autofill to it.
         '<div class="mc-picker-search" id="mc-slot-filter" role="searchbox" aria-label="Search players" data-placeholder="Search players…" contenteditable="true" inputmode="search" enterkeyhint="search" spellcheck="false" autocorrect="off" autocapitalize="off" oninput="mcRenderPickerList(this.textContent)" onkeydown="if(event.key===\'Enter\')event.preventDefault();"></div>' +
+        '<div class="mc-picker-seg" role="group" aria-label="Filter players by selection status">' +
+          '<button type="button" data-sel="unselected" aria-pressed="true" onclick="mcSetPickSel(\'unselected\')">Not selected</button>' +
+          '<button type="button" data-sel="selected" aria-pressed="false" onclick="mcSetPickSel(\'selected\')">Selected</button>' +
+          '<button type="button" data-sel="all" aria-pressed="false" onclick="mcSetPickSel(\'all\')">All</button>' +
+        '</div>' +
         '<div class="mc-picker-list"></div>';
       document.body.appendChild(d);
     }
@@ -11693,7 +11748,8 @@
         : ('Bench ' + (_mcPickTarget.idx + 16));
       const _ps = pop.querySelector('.mc-picker-search');
       _ps.textContent = '';
-      mcRenderPickerList('');
+      _mcPickSel = 'unselected';        // every open defaults to Not selected
+      mcSetPickSel('unselected');       // syncs the segmented control and renders
       pop.classList.remove('hidden');
       const host = el.closest('.j3-slot, .mcx2-bjersey') || el;
       const r = host.getBoundingClientRect(), pw = 260, ph = pop.offsetHeight || 320;
@@ -11707,18 +11763,40 @@
     function mcRenderPickerList(q) {
       const pop = document.getElementById('mc-picker'); if (!pop) return;
       q = String(q || '').trim().toLowerCase();
-      const list = mcComputeAvailable()
-        .filter(p => !q || String(p.name).toLowerCase().indexOf(q) !== -1 || String(p.position || '').toLowerCase().indexOf(q) !== -1)
+      const match = p => !q || String(p.name).toLowerCase().indexOf(q) !== -1 || String(p.position || '').toLowerCase().indexOf(q) !== -1;
+      // Default (Not selected) keeps mcComputeAvailable as the single pool
+      // authority; Selected/All read mcPickerCandidates, which is the same
+      // group-scoped set — search only ever narrows it, never widens it.
+      const list = (_mcPickSel === 'unselected'
+          ? mcComputeAvailable().filter(match)
+          : mcPickerCandidates(_mcPickSel).filter(match))
         .sort((a, b) => String(a.name).localeCompare(String(b.name)));
       const cur = _mcPickTarget ? _mcCurrentName(_mcPickTarget) : '';
       const body = pop.querySelector('.mc-picker-list');
+      const emptyMsg = q ? 'No players match.'
+        : (_mcPickSel === 'selected' ? 'No players selected yet.'
+          : _mcPickSel === 'all' ? 'No players in this group.'
+          : 'Everyone available is already selected.');
       body.innerHTML = list.map(p => {
         const initials = String(p.name).split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
         return '<button type="button" class="mc-picker-row" data-pick="' + esc(p.name).replace(/"/g, '&quot;') + '" onclick="mcPick(this.dataset.pick)">' +
           '<span class="mc-picker-av" style="background:' + playerAvatarColor(p.id || p.name) + '">' + esc(initials) + '</span>' +
           '<span class="mc-picker-nm">' + esc(p.name) + '</span><span class="mc-picker-pos">' + esc(p.position || '') + '</span></button>';
-      }).join('') || '<p class="mc-picker-empty">No available players match.</p>';
+      }).join('') || ('<p class="mc-picker-empty">' + emptyMsg + '</p>');
       if (cur) body.insertAdjacentHTML('afterbegin', '<button type="button" class="mc-picker-row mc-picker-clear" data-pick="" onclick="mcPick(\'\')">✕ Remove ' + esc(cur) + '</button>');
+    }
+    // Switch the selection filter (All / Not selected / Selected) and re-render,
+    // preserving whatever is typed in the search box. Presentation only.
+    function mcSetPickSel(sel) {
+      _mcPickSel = (sel === 'selected' || sel === 'all') ? sel : 'unselected';
+      const pop = document.getElementById('mc-picker'); if (!pop) return;
+      pop.querySelectorAll('.mc-picker-seg button').forEach(b => {
+        const on = b.dataset.sel === _mcPickSel;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      const s = pop.querySelector('.mc-picker-search');
+      mcRenderPickerList(s ? s.textContent : '');
     }
     function mcPick(name) {
       if (!_mcPickTarget) return;
