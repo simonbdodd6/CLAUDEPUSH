@@ -2780,7 +2780,10 @@ async function matchdayTeamsHandler(req, res) {
     .filter(t => t.status === 'active' && groupIds.has(String(t.groupId)))
     .map(t => ({ id: t.id, name: t.name, groupId: t.groupId }));
   return res.status(200).json({ ok: true,
-    groups: groups.map(g => ({ id: g.id, name: g.name })), teams });
+    // developmentCategory rides along (read-only, non-sensitive — already shown in
+    // Club Admin and Performance) so Match Centre can apply the age-grade matchday
+    // eligibility rule (youth = one game per day) without a second structure read.
+    groups: groups.map(g => ({ id: g.id, name: g.name, developmentCategory: g.developmentCategory })), teams });
 }
 
 // ── Club structure sub-resource (RC4.7 Phase C) ───────────────────────────

@@ -65,6 +65,9 @@ function scope({ formation = { '1': 'W Placed' }, bench = [],
     ${fn('_mcOtherSideKeySet')}
     ${fn('mcOtherSideStartingKeys')}
     ${fn('mcOtherSideBenchKeys')}
+    // Senior/adult policy here (bench poachable): the youth bench-lock is exercised
+    // in mc-matchday-eligibility.test.js.
+    function mcBenchLocksSibling() { return false; }
     ${fn('mcIneligibleKeys')}
     ${fn('mcSelectedKeys')}
     // Availability off here (cross-team tests fix eligibility, not availability).

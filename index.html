@@ -10556,7 +10556,7 @@
     // can publish squads gets the selector even without roster-management
     // rights. The structure-admin payload remains a fallback when already
     // loaded. Both sources are scope-filtered server-side.
-    let _mcTeams = null;               // { groups: [{id,name}], teams: [{id,name,groupId}] }
+    let _mcTeams = null;               // { groups: [{id,name,developmentCategory}], teams: [{id,name,groupId}] }
     let _mcTeamsAttempted = false;
     function ensureMatchCentreTeams() {
       if (_mcTeams || _mcTeamsAttempted || typeof fetch !== 'function') return;
@@ -11759,18 +11759,44 @@
       (state.benchPlayers || []).forEach(v => { const n = String(v || '').trim(); if (n) placed.add(mcPersonKey(n)); });
       return placed;
     }
+    // The operating group's canonical developmentCategory (youth_u16 / youth_u18 /
+    // adult / mixed_open / unknown). Read from the Match-Centre teams payload
+    // (publish-squads scoped), then the admin structure — never a display name.
+    function mcOperatingGroupDevCategory() {
+      const op = String(state.operationalGroupId || '');
+      const pick = groups => {
+        if (!Array.isArray(groups) || !groups.length) return null;
+        const g = (op && groups.find(x => String(x.id) === op)) || (groups.length === 1 ? groups[0] : null);
+        return g ? String(g.developmentCategory || '') : '';
+      };
+      const fromTeams = (typeof _mcTeams !== 'undefined' && _mcTeams) ? pick(_mcTeams.groups) : null;
+      if (fromTeams) return fromTeams;
+      const st = (typeof _adminData !== 'undefined' && _adminData && _adminData.structure) || null;
+      return (st ? pick(st.groups) : null) || 'unknown';
+    }
+    // The MATCHDAY ELIGIBILITY POLICY, from the group's developmentCategory. An
+    // AGE-GRADE (youth) player may play only ONE game per day, so being on EITHER
+    // sheet — starting XV OR bench — commits them and locks them from the sibling
+    // side. Senior/adult (and unclassified) groups lock only on the STARTING XV;
+    // the bench stays poachable. Canonical, no hard-coded group name.
+    function mcBenchLocksSibling() { return String(mcOperatingGroupDevCategory()).indexOf('youth_') === 0; }
+
     // ── CROSS-TEAM selection state (two sides of ONE fixture, same group) ──────
     // Derived LIVE from canonical sheets — no second store, no roster change.
-    //   INELIGIBLE for this side  = the OTHER side's STARTING XV (committed there,
-    //     so it cannot be picked here and never appears under "Not selected").
-    //   SELECTED (this side's view) = placed on THIS sheet OR in the other side's
-    //     STARTING XV. The other side's BENCH is poachable: it neither blocks nor
-    //     counts as selected here until this side actually picks the player.
+    //   INELIGIBLE for this side  = the OTHER side's STARTING XV, PLUS its bench
+    //     when the group's policy locks the bench (age-grade). A locked player can
+    //     never be picked here and never appears under "Not selected".
+    //   SELECTED (this side's view) = placed on THIS sheet OR locked to the sibling
+    //     side (so a committed sibling player shows, locked, rather than vanishing).
     // Empty when there is no loaded sibling side (single-team fixtures unchanged).
-    function mcIneligibleKeys() { return mcOtherSideStartingKeys(); }
+    function mcIneligibleKeys() {
+      const keys = mcOtherSideStartingKeys();
+      if (mcBenchLocksSibling()) mcOtherSideBenchKeys().forEach(k => keys.add(k));
+      return keys;
+    }
     function mcSelectedKeys() {
       const sel = mcPlacedKeys();
-      mcOtherSideStartingKeys().forEach(k => sel.add(k));
+      mcIneligibleKeys().forEach(k => sel.add(k));
       return sel;
     }
     // ── AVAILABILITY (a SEPARATE dimension from selection) ─────────────────────
@@ -11869,6 +11895,7 @@
       // never widens it (search is applied AFTER eligibility + availability). Not
       // selected drops the other side's starting XV and unavailable/no-reply.
       const ineligible = mcIneligibleKeys();
+      const _sibStartKeys = mcOtherSideStartingKeys();   // to label a locked row XV vs bench
       const _availBuckets = mcAvailabilityBuckets();
       const otherTeam = (_mcOtherSide && _mcOtherSide.teamName) ? _mcOtherSide.teamName : 'the other team';
       const list = (_mcPickSel === 'unselected'
@@ -11883,13 +11910,15 @@
           : 'Everyone available is already selected.');
       body.innerHTML = list.map(p => {
         const initials = String(p.name).split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-        const locked = ineligible.has(mcPersonKey(p.name));   // starting for the sibling side
+        const locked = ineligible.has(mcPersonKey(p.name));   // committed to the sibling side
         if (locked) {
-          // Shown under Selected/All so the coach can SEE the commitment, but not
-          // pickable for this side — a vertical gesture still scrolls the list.
-          return '<div class="mc-picker-row mc-picker-locked" title="Starting for ' + esc(otherTeam) + '">' +
+          // Committed to the other side of this matchday: shown under Selected/All
+          // so the coach SEES it, but not pickable here — a vertical gesture still
+          // scrolls. "XV" for its starters, "bench" for a locked age-grade bench.
+          const where = _sibStartKeys.has(mcPersonKey(p.name)) ? ' XV' : ' bench';
+          return '<div class="mc-picker-row mc-picker-locked" title="In ' + esc(otherTeam) + ' squad">' +
             '<span class="mc-picker-av" style="background:' + playerAvatarColor(p.id || p.name) + '">' + esc(initials) + '</span>' +
-            '<span class="mc-picker-nm">' + esc(p.name) + '</span><span class="mc-picker-pos">' + esc(otherTeam) + ' XV</span></div>';
+            '<span class="mc-picker-nm">' + esc(p.name) + '</span><span class="mc-picker-pos">' + esc(otherTeam) + where + '</span></div>';
         }
         return '<button type="button" class="mc-picker-row" data-pick="' + esc(p.name).replace(/"/g, '&quot;') + '" onclick="mcPick(this.dataset.pick)">' +
           '<span class="mc-picker-av" style="background:' + playerAvatarColor(p.id || p.name) + '">' + esc(initials) + '</span>' +
