@@ -77,6 +77,8 @@ function scope() {
     ${fn('_mcOtherSideKeySet')}
     ${fn('mcOtherSideStartingKeys')}
     ${fn('mcOtherSideBenchKeys')}
+    // Senior/adult policy (bench poachable) — youth bench-lock is in its own test.
+    function mcBenchLocksSibling() { return false; }
     ${fn('mcIneligibleKeys')}
     ${fn('mcSelectedKeys')}
     ${fn('mcAvailabilityBuckets')}
