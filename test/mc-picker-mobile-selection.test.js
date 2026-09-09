@@ -75,6 +75,9 @@ function club({ group = U18, placed = [] } = {}) {
     // so mcPickerCandidates behaves exactly as the single-team selection filter.
     function mcIneligibleKeys() { return new Set(); }
     function mcSelectedKeys() { return mcPlacedKeys(); }
+    // Availability off here (these tests fix the SELECTION dimension only).
+    function mcAvailabilityBuckets() { return new Map(); }
+    function mcSelectableAvailBucket() { return true; }
     ${fn('mcPickerCandidates')}
     const names = arr => arr.map(p => p.name).sort();
     const searchIn = (base, q) => { q = String(q||'').trim().toLowerCase();
