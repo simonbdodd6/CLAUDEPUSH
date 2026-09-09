@@ -18724,7 +18724,15 @@
           </div>` : ""}
 
           <!-- Player database table (or empty state) -->
-          ${members.length === 0 ? `
+          ${members.length === 0 ? (!_adminData.loaded ? `
+          <div class="card" style="padding:36px 24px;text-align:center">
+            <div style="font-size:40px;margin-bottom:14px;opacity:.55">${_adminData.failed ? '⚠️' : '👥'}</div>
+            <h2 style="margin:0 0 8px;font-size:18px">${_adminData.failed ? "Couldn't load your squad" : 'Loading your squad…'}</h2>
+            <p style="font-size:14px;color:var(--muted);margin:0 auto 22px;max-width:420px">
+              ${_adminData.failed ? 'This is not a record of an empty squad — the roster could not be loaded. Check your connection and try again.' : 'One moment…'}
+            </p>
+            ${_adminData.failed ? `<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button class="btn primary" type="button" onclick="loadAdminData(true)">Try again</button></div>` : ''}
+          </div>` : `
           <div class="card" style="padding:36px 24px;text-align:center">
             <div style="font-size:40px;margin-bottom:14px;opacity:.55">👥</div>
             <h2 style="margin:0 0 8px;font-size:18px">Invite your players</h2>
@@ -18734,7 +18742,7 @@
             <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
               <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Invite players</button>
             </div>
-          </div>` : `
+          </div>`) : `
           <div class="members-search-bar">
             <span class="members-search-ico" aria-hidden="true">⌕</span>
             <input type="search" class="members-search-input" placeholder="Search players by name or position…" aria-label="Search players" oninput="membersFilterRows(this.value)">
@@ -24012,7 +24020,7 @@
 
     const STAFF_LEVEL_LABELS = { head: 'Head Coach', assistant: 'Assistant Coach', manager: 'Team Manager' };
 
-    let _adminData = { invites: [], members: [], users: [], profiles: [], structure: null, counts: null, clubWideStaff: [], loaded: false, loading: false, attempted: false };
+    let _adminData = { invites: [], members: [], users: [], profiles: [], structure: null, counts: null, clubWideStaff: [], loaded: false, loading: false, attempted: false, failed: false };
 
     /**
      * RC4.7 — admin/structure data on demand.
@@ -24078,8 +24086,16 @@
             if (Array.isArray(club.fixtures)) state.fixtures = club.fixtures;
           }
         }
-        _adminData.loaded = true;
-      } catch(e) { console.warn('[loadAdminData]', e); }
+        // Only the IDENTITY fetch carries the roster (members/users/profiles). A
+        // 401/403/500 RESOLVES with ok:false — it does NOT throw — so setting
+        // loaded=true unconditionally here painted an HTTP error as an empty
+        // club AND defeated the group-scoped fail-closed guards that key on
+        // _adminData.loaded (operationalPlayers). Loaded now reflects a real
+        // identity success; a prior success is kept (stale data still shows on a
+        // transient refresh error), and `failed` records this attempt's outcome.
+        _adminData.loaded = _adminData.loaded || identityRes.ok;
+        _adminData.failed = !identityRes.ok;
+      } catch(e) { console.warn('[loadAdminData]', e); _adminData.failed = true; }
       finally {
         _adminData.loading = false;
         _adminData.attempted = true;
@@ -24210,7 +24226,7 @@
               <input id="adm-search" placeholder="Search players…" value="${esc(_adminSearch)}" style="${inputStyle};max-width:220px"
                 oninput="_adminSearch=this.value;renderClubAdmin();const i=document.getElementById('adm-search');i.focus();i.setSelectionRange(i.value.length,i.value.length)">
             </div>
-            ${!_adminData.loaded ? `<p class="muted" style="font-size:12px">Loading members…</p>` : `
+            ${!_adminData.loaded ? `<p class="muted" style="font-size:12px">${_adminData.failed ? `Couldn't load members — this is not an empty club. <button class="btn" type="button" style="min-height:26px;font-size:11px;padding:0 8px" onclick="loadAdminData(true)">Try again</button>` : 'Loading members…'}</p>` : `
             <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--accent);margin:6px 0">Active (${activePlayers.length})</div>
             ${activePlayers.length ? activePlayers.map(({ member, user }) => {
               const profile = (_adminData.profiles || []).find(p => p.userId === member.userId);
