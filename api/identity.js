@@ -253,6 +253,14 @@ function scopeIdentityState(state, session, operable) {
     team_members,
     users: (state.users || []).filter(u => keptUserIds.has(String(u.id))),
     player_profiles: (state.player_profiles || []).filter(p => playingUserIds.has(String(p.userId))),
+    // A pending join request is a player awaiting approval. A group-scoped
+    // caller sees only requests for the groups they operate — the same rule as
+    // team_members. A groupless pending request (a bare team-code join) is an
+    // unassigned player, and so a club-administration surface: it is withheld
+    // from scoped staff, exactly as an unassigned active player is. The
+    // club-wide GET path (coversClub) bypasses this and still returns every
+    // pending request.
+    pending: (state.pending || []).filter(r => operable.has(String(r.playerGroupId || ''))),
   };
 }
 
@@ -675,12 +683,20 @@ export default async function handler(req, res) {
       if (action === 'approve') {
         const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
+        // A pending request is a player; a group-scoped caller may only approve
+        // one for a group they operate (a groupless request is club-admin only).
+        // Mirrors remove_member — approve/reject were the one player action the
+        // group gate was never applied to. Club-wide callers are unaffected.
+        const target = (await loadTeamMembers()).find(m => m.id === req.body?.memberId);
+        await assertPlayerTargetOperable(session, target);
         const result = await approveJoinRequest(req.body?.memberId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });
       }
       if (action === 'reject') {
         const session = await requireTenantPermission(req, PERM.MANAGE_PLAYERS);
         if (req.body?.teamId) assertSameTenant(session, req.body.teamId);
+        const target = (await loadTeamMembers()).find(m => m.id === req.body?.memberId);
+        await assertPlayerTargetOperable(session, target);
         const result = await rejectJoinRequest(req.body?.memberId, session.user.id, session.teamId);
         return res.status(200).json({ ok: true, ...result });
       }
