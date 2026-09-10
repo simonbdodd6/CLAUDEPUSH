@@ -101,6 +101,21 @@ function fixtureSideDraftKey(teamId, fixtureId, sideId, userId) {
   return key(`publish:${teamId}:fixture:${fxSeg(fixtureId)}:side:${fxSeg(sideId)}:draft:${encodeURIComponent(String(userId))}`);
 }
 
+// ── COACH PUBLICATION ("Publish to coaches") ─────────────────────────────
+// One CURRENT coach-facing snapshot per fixture (and per side when sides are
+// in play): an explicit, frozen copy of the publisher's sheet at the moment
+// they pressed "Publish to coaches". Deliberately separate from the per-coach
+// DRAFT keys (live private working state, one per coach) and from the SQUAD
+// key (what players see): publishing to coaches never moves the player-facing
+// pointer, and editing a draft afterwards never alters this snapshot. There
+// is no version history — re-publishing replaces the current publication.
+function fixtureCoachSheetKey(teamId, fixtureId) {
+  return key(`publish:${teamId}:fixture:${fxSeg(fixtureId)}:coachsheet`);
+}
+function fixtureSideCoachSheetKey(teamId, fixtureId, sideId) {
+  return key(`publish:${teamId}:fixture:${fxSeg(fixtureId)}:side:${fxSeg(sideId)}:coachsheet`);
+}
+
 /**
  * The side must be one of THIS club's ACTIVE structure teams. Same strength
  * as fixture validation: a forged, foreign, unknown or archived id is 404 and
@@ -3270,6 +3285,42 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, draft });
     }
 
+    // Read the CURRENT coach publication for a fixture (and side). Same gate and
+    // same fixture/side/coherence/operational-group assertions as reading a
+    // squad draft, so an unauthorised staffer or a coach of another group is
+    // refused before any content is returned — a coach publication is never
+    // exposed to players (who lack PUBLISH_SQUADS) or to out-of-group staff.
+    // publishedBy is joined to a display name in the same style as ?type=drafts.
+    if (type === 'coach_sheet') {
+      let session;
+      try {
+        session = await requireTenantPermission(req, PERM.PUBLISH_SQUADS);
+      } catch (error) {
+        return sendAuthError(res, error);
+      }
+      let fixture = '', side = '';
+      try {
+        fixture = await assertFixtureBelongsToClub(session.teamId, req.query?.fixture);
+        side    = await assertSideBelongsToClub(session.teamId, req.query?.side);
+        await assertFixtureSideCoherence(session.teamId, fixture, side);
+        await assertFixtureOperationalGroup(session, fixture);
+      } catch (error) {
+        return res.status(error.status || 400).json({ error: error.message });
+      }
+      if (!fixture) return res.status(400).json({ error: 'A coach publication needs its fixture' });
+      const sheetKey = side
+        ? fixtureSideCoachSheetKey(session.teamId, fixture, side)
+        : fixtureCoachSheetKey(session.teamId, fixture);
+      const sheet = (await kvGet(sheetKey)) || null;
+      let publishedByName = '';
+      if (sheet && sheet.publishedBy) {
+        const users = await loadUsers();
+        const u = users.find(x => String(x.id) === String(sheet.publishedBy));
+        publishedByName = String(u?.displayName || u?.email || '');
+      }
+      return res.status(200).json({ ok: true, coachSheet: sheet, publishedByName });
+    }
+
     // Coach Draft Compare (Phase 2): list EVERY coach's draft for this team,
     // read-only. Coach/admin only — players never see other coaches' drafts.
     // Each entry is joined with the team member (role) and user (name); only
@@ -3418,7 +3469,7 @@ export default async function handler(req, res) {
     const { type, data } = req.body || {};
     let session;
     try {
-      session = await requireTenantPermission(req, (type === 'squad' || type === 'draft') ? PERM.PUBLISH_SQUADS : PERM.PUBLISH_TRAINING);
+      session = await requireTenantPermission(req, (type === 'squad' || type === 'draft' || type === 'coach_sheet') ? PERM.PUBLISH_SQUADS : PERM.PUBLISH_TRAINING);
     } catch (error) {
       return sendAuthError(res, error);
     }
@@ -3454,6 +3505,41 @@ export default async function handler(req, res) {
           : draftKey(session.teamId, session.user.id);
       await kvSet(draftDest, draft);
       return res.status(200).json({ ok: true, draft });
+    }
+
+    // Publish THIS coach's sheet TO THE COACHING STAFF — an explicit, frozen
+    // snapshot, separate from both the private draft and the player squad. It
+    // reuses the squad sanitiser and the exact same authorisation as a squad
+    // publish (PUBLISH_SQUADS + the fixture/side/coherence/operational-group
+    // quartet), but writes ONLY the coachsheet key: no player-facing pointer is
+    // moved and no player notification is sent, so a coach publication can
+    // never change what players see. publishedBy comes from the SESSION, never
+    // the body. Re-publishing overwrites the single current publication.
+    if (type === 'coach_sheet') {
+      const sheet = sanitiseSquad(data);
+      if (!sheet) return res.status(400).json({ error: 'data must be an object' });
+      try {
+        sheet.fixtureId = await assertFixtureBelongsToClub(session.teamId, sheet.fixtureId);
+        sheet.sideId    = await assertSideBelongsToClub(session.teamId, sheet.sideId);
+        await assertFixtureSideCoherence(session.teamId, sheet.fixtureId, sheet.sideId);
+        await assertFixtureOperationalGroup(session, sheet.fixtureId);
+      } catch (error) {
+        return res.status(error.status || 400).json({ error: error.message });
+      }
+      // A coach publication is meaningless without a fixture to scope its
+      // audience — unlike the legacy unlinked player squad, there is no
+      // club-wide coach-sheet slot.
+      if (!sheet.fixtureId) return res.status(400).json({ error: 'A coach publication needs its fixture' });
+      // Author and time are authoritative, never client-supplied. sanitiseSquad
+      // does not carry these fields through, so a body value cannot survive to
+      // here; setting them explicitly is belt-and-braces.
+      sheet.publishedBy = session.user.id;
+      sheet.coachPublishedAt = new Date().toISOString();
+      const dest = sheet.sideId
+        ? fixtureSideCoachSheetKey(session.teamId, sheet.fixtureId, sheet.sideId)
+        : fixtureCoachSheetKey(session.teamId, sheet.fixtureId);
+      await kvSet(dest, sheet);
+      return res.status(200).json({ ok: true, coachSheet: sheet });
     }
 
     if (type === 'sessions') {

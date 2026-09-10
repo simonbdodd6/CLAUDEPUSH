@@ -422,6 +422,9 @@ function draftsPanel(selectedFixtureId, coachDraftsList, users) {
     const CE_INITIAL_GROUP_ID = 'grp_initial';
     // loaded:true — models arrived admin data; pending now fails closed (group-isolation fix).
     const _adminData = { loaded: true };
+    // No coach publication in these draft-compare pins → the panel's Coach
+    // publication row renders its "not published yet" state.
+    function mcCurrentCoachPublication() { return null; }
     ${fn('matchCentreSelectedFixture')}
     ${fn('matchCentreFixtureId')}
     ${fn('mcFixtureDateLabel')}
