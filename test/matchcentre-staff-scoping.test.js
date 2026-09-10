@@ -132,6 +132,7 @@ function panelNames(access, fxGroupId, { linked = true, operationalGroupId = '' 
     function mcFixtureDateLabel(d) { return String(d); }
     ${fn('timeAgo')}
     const _MC_STAFF_ROLE_LABEL = { coach: 'Coach', admin: 'Admin', medical: 'Medical' };
+    function mcCurrentCoachPublication() { return null; }   // no coach publication in these staff-scope pins
     ${fn('mcComparePanelHTML')}
     return mcComparePanelHTML();
   `)();

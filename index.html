@@ -11204,11 +11204,20 @@
       const panelContext = (fxRec
         ? `${fxRec.opposition}${fxRec.date ? ' · ' + mcFixtureDateLabel(fxRec.date) : ''}`
         : 'No linked fixture') + (sideRec ? ` · ${sideRec.name}` : '');
+      // Coach publication — the frozen snapshot from "Publish to coaches",
+      // distinct from both the official Published Squad and My Draft.
+      const _cp = mcCurrentCoachPublication();
+      const coachPubRow = _cp
+        ? `<div class="mc-cmp-item"><div class="mc-cmp-item-main"><span class="mc-cmp-item-name">Coach publication</span><span class="mc-cmp-item-role">Coaches</span></div>
+            <div class="mc-cmp-item-right"><span class="mc-cmp-item-meta">${esc((_cp.publishedByName ? 'by ' + _cp.publishedByName + ' · ' : '') + timeAgo(_cp.coachSheet.coachPublishedAt))}</span><button class="btn" type="button" onclick="mcViewCoachPublication()">View</button></div></div>`
+        : `<div class="mc-cmp-item"><div class="mc-cmp-item-main"><span class="mc-cmp-item-name">Coach publication</span><span class="mc-cmp-item-role">Coaches</span></div>
+            <span class="mc-cmp-item-meta muted">Not published to coaches yet</span></div>`;
       return `<section class="card mc-cmp-panel" aria-label="Coach draft compare">
         <div class="mc-cmp-panel-head"><h3>Coach drafts — ${esc(panelContext)}</h3><span class="mc-cmp-hint">Each coach keeps their own draft per fixture · read-only</span></div>
         <div class="mc-cmp-list">
           <div class="mc-cmp-item reference"><div class="mc-cmp-item-main"><span class="mc-cmp-item-name">Published Squad</span><span class="mc-cmp-item-role official">Official</span></div>
             <div class="mc-cmp-item-right"><span class="mc-cmp-item-meta muted">What players see</span><button class="btn" type="button" onclick="mcViewPublishedSquad()">View</button></div></div>
+          ${coachPubRow}
           <div class="mc-cmp-item mine"><div class="mc-cmp-item-main"><span class="mc-cmp-item-name">My Draft</span><span class="mc-cmp-item-role me">Editable</span></div>
             <span class="mc-cmp-item-meta">${esc(mineUpdated)}</span></div>
           ${otherRows}
@@ -11317,6 +11326,93 @@
         showToast("Squad moved back to draft");
       }
       render();
+    }
+
+    // ─── PUBLISH TO COACHES (coach publication snapshot) ─────────────────────
+    // A SEPARATE act from Publish squad: it freezes the current sheet as the
+    // coaching version and notifies the coaching group. It never moves the
+    // player-facing squad or notifies players (the server writes only the
+    // coachsheet key), and the coach's own draft keeps auto-saving unchanged.
+    let _mcCoachPublication = null;   // { coachSheet, publishedByName, fixtureId, sideId } for the SELECTED fixture+side
+    let _mcCoachPubFetchedAt = 0;
+    async function loadCoachPublication(force) {
+      if (!isCoach()) return;
+      const fixtureId = matchCentreFixtureId();
+      if (!fixtureId) { _mcCoachPublication = null; return; }
+      const now = Date.now();
+      if (!force && now - _mcCoachPubFetchedAt < 12000) return;   // self-throttle, like loadCoachDraftsList
+      _mcCoachPubFetchedAt = now;
+      try {
+        const sideId = matchCentreSideId();
+        const q = 'type=coach_sheet&fixture=' + encodeURIComponent(fixtureId) + (sideId ? '&side=' + encodeURIComponent(sideId) : '');
+        const res = await fetch('/api/publish?' + q);
+        if (!res.ok) { _mcCoachPublication = null; return; }
+        const data = await res.json();
+        _mcCoachPublication = { coachSheet: data.coachSheet || null, publishedByName: data.publishedByName || '', fixtureId, sideId };
+        render();
+      } catch (e) { console.warn('[loadCoachPublication]', e); }
+    }
+    // The coach publication for the CURRENTLY selected fixture+side, or null.
+    function mcCurrentCoachPublication() {
+      const cp = _mcCoachPublication;
+      if (!cp || !cp.coachSheet) return null;
+      return (String(cp.fixtureId || '') === matchCentreFixtureId()
+        && String(cp.sideId || '') === matchCentreSideId()) ? cp : null;
+    }
+    function mcViewCoachPublication() {
+      const cp = mcCurrentCoachPublication();
+      if (!cp) { showToast('No coach publication yet'); return; }
+      const by = cp.publishedByName ? ` by ${cp.publishedByName}` : '';
+      // The subtitle names it clearly — this is neither My Draft nor the
+      // official Published Squad, and the viewer is read-only.
+      _mcOpenCompareViewer('Coach publication', `Coach publication${by} · ${timeAgo(cp.coachSheet.coachPublishedAt)}`, cp.coachSheet);
+    }
+    async function mcPublishToCoaches() {
+      if (!canI('publish_squads')) return;
+      const fixtureId = matchCentreFixtureId();
+      if (!fixtureId) { showToast('Select a fixture first'); return; }
+      const fx = matchCentreSelectedFixture();
+      const side = matchCentreSelectedSide();
+      const opp = fx
+        ? `${fx.opposition}${fx.date ? ' · ' + mcFixtureDateLabel(fx.date) : ''}`
+        : (state.matchCentre?.opposition || 'the match');
+      const what = side ? `the ${side.name} team sheet` : 'the team sheet';
+      const xv    = Object.values(state.formationNames || {}).filter(Boolean).length;
+      const bench = (state.benchPlayers || []).filter(n => String(n || '').trim()).length;
+      // Empty/partial sheets are allowed — the confirmation just makes the
+      // current completeness obvious so nothing is published by surprise.
+      if (!(await ceConfirm(
+        `Publish ${what} to your coaches for ${opp}?`,
+        `Coaches in this group will be notified. Players will not see this. Current sheet: ${xv}/15 starting · ${bench}/8 bench.`,
+        { confirmLabel: 'Publish to coaches' }))) return;
+      // Flush the live draft first so the snapshot is exactly what is on screen.
+      mcFlushDraftNow();
+      const mc = state.matchCentre || {};
+      const formationNames = state.formationNames || {};
+      const benchPlayers = state.benchPlayers || [];
+      const { formationKeys, benchKeys } = sheetPersonKeys(formationNames, benchPlayers);
+      const btn = document.getElementById('mc-pub-coaches');
+      if (btn) { btn.disabled = true; btn.textContent = 'Publishing…'; }
+      try {
+        const res = await fetch('/api/publish', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'coach_sheet',
+            data: { ...mc, formationNames, benchPlayers, formationKeys, benchKeys,
+                    fixtureId, sideId: matchCentreSideId() } }),
+        });
+        if (!res.ok) throw new Error('publish failed');
+        showToast('Team sheet published to coaches ✓');
+        // Notification via the SAME coaching-channel mechanism Training uses.
+        const team = side ? side.name : (fx?.team || 'The');
+        notifyCoachingGroup(`${team} team sheet for ${opp} has been published to coaches.`);
+        loadCoachPublication(true);   // refresh the compare-panel row + viewer
+      } catch (e) {
+        console.warn('[mcPublishToCoaches]', e);
+        showToast("Couldn't publish to coaches — try again");
+      } finally {
+        const b2 = document.getElementById('mc-pub-coaches');
+        if (b2) { b2.disabled = false; b2.textContent = 'Publish to coaches'; }
+      }
     }
 
     // ─── AVAILABILITY TEMPLATE HELPERS ───────────────────────────────────────
@@ -17778,6 +17874,9 @@
       // Coach Draft Compare (Phase 2): keep the other-coaches' draft list fresh
       // (self-throttled; re-renders when new data arrives). Coach-only.
       if (isCoach()) loadCoachDraftsList();
+      // The current coach publication (if any) for this fixture+side, so the
+      // compare panel's "Coach publication" row is fresh. Self-throttled.
+      if (isCoach()) loadCoachPublication();
       // The group's SIDES (Premier / Premier Development) arrive via the
       // minimal Match-Centre-scoped read — available to any coach who can
       // publish squads, with no roster-management requirement. The admin
@@ -18323,6 +18422,7 @@
           ${remindCount>0?`<button class="btn" type="button" onclick="${mcFx ? 'remindFixtureNonResponders()' : 'chaseAllNonResponders()'}">Remind ${remindCount} player${remindCount>1?'s':''}</button>`:''}
           ${mc.published?`<button class="btn" type="button" onclick="startNewWeek()">New week</button>`:''}
           <button class="btn" type="button" onclick="exportFormation()">Export</button>
+          ${canI('publish_squads') && matchCentreFixtureId() ? `<button class="btn" id="mc-pub-coaches" type="button" onclick="mcPublishToCoaches()">Publish to coaches</button>` : ''}
           <button class="mc5-publish ${mc.published?'published':''}" type="button" onclick="publishSquad()">${mc.published?'Squad published':'Publish squad'}</button>
         </div>
 
