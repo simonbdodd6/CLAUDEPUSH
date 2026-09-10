@@ -35089,6 +35089,20 @@
           && (state.selectedChatId === 'squad' || !state.selectedChatId)) {
         state.selectedChatId = `group:${state.operationalGroupId}`;
       }
+      // COACH SELECTION SEED: after the group re-point, a still-unresolved
+      // selection — null after an identity-scoped reset, or the player-only
+      // 'coach' placeholder — must resolve to a REAL channel BEFORE the shell
+      // paints. Otherwise the first-mount render below keys off that raw id,
+      // which chatRenderMessages' hard guard rejects (it renders through
+      // chatGetConvId), so nothing repaints and #chatFeed latches on "Loading…".
+      // chatGetConvId('coach') is the SAME canonical resolver the render, poll
+      // and refresh paths already use ('squad' for the initial group, this
+      // group's channel otherwise); seeding it here makes the existing
+      // first-mount path run correctly — no new resolver, no extra request.
+      // (The player path does the equivalent via canonicalizePlayerSelectedChat.)
+      if (_messagesActive && (!state.selectedChatId || state.selectedChatId === 'coach')) {
+        state.selectedChatId = chatGetConvId('coach');
+      }
       if (_messagesActive && String(state.selectedChatId || '').startsWith('group:')) {
         chatEnsureGroupChannel(state.selectedChatId).catch(() => {});
       }
