@@ -6762,7 +6762,6 @@
       trainingAutoSend: false,
       benchPlayers: ["","","","","","","",""],
       squadSelections: [],
-      fixtureAvailability: {},
       // Phase 16 — Club OS
       activeClubTab: 'dashboard',
       clubProfile: {
@@ -7434,7 +7433,6 @@
       next.trainingAutoSend = input.trainingAutoSend ?? false;
       next.benchPlayers     = input.benchPlayers     || Array(8).fill("");
       next.squadSelections  = Array.isArray(input.squadSelections) ? input.squadSelections : [];
-      next.fixtureAvailability = (typeof input.fixtureAvailability === 'object' && input.fixtureAvailability !== null) ? input.fixtureAvailability : {};
       // Phase 16 — Club OS normalization
       next.activeClubTab    = input.activeClubTab || 'dashboard';
       next.clubProfile      = normalizeClubProfile(input.clubProfile);
@@ -26411,7 +26409,7 @@
             ${fx.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:10px;padding:8px 12px;background:var(--panel);border-radius:6px">${esc(fx.notes)}</div>` : ''}
             <!-- Availability mini-strip (Phase 18) -->
             ${(() => {
-              const _avs  = fixtureAvailabilitySummary(fx.id, state.players);
+              const _avs  = fixtureAvailabilitySummary(fx.id, fixtureAvailBoardPlayers());
               const _crit = _avs.warnings.filter(w => w.severity === 'critical').length;
               return '<div style="margin-top:10px;padding:10px 12px;background:var(--panel-2);border-radius:8px;border:1px solid var(--line);display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
                 '<span style="font-size:12px;color:#34d399;font-weight:700">' + _avs.available + ' avail</span>' +
@@ -28636,18 +28634,17 @@
       };
     }
 
-    function generateAvailabilityReport(players, fixtures, fixtureAvailability, medRecords) {
+    function generateAvailabilityReport(players, fixtures, medRecords) {
       const active = activeRosterPlayers(players || []);
       const fxList = (fixtures || []).slice().sort((a, b) => (a.date||'').localeCompare(b.date||''));
       const medUnavailable = active.filter(p => p.trainingStatus === 'unavailable');
 
       const fixtureRows = fxList.map(fx => {
-        const availMap = ((fixtureAvailability||{})[fx.id]) || {};
-        const effectiveMap = {};
-        active.forEach(p => {
-          effectiveMap[p.id] = (p.trainingStatus === 'unavailable') ? 'unavailable'
-            : (availMap[p.id] || 'no-reply');
-        });
+        // Canonical per-fixture answers — the SAME overviewAnswerMap the fixture
+        // Availability board renders (seeds no-reply, overlays sessionRows(fx.id),
+        // keeps the medical override), so the export can never disagree with the
+        // board or invent a second interpretation.
+        const effectiveMap = overviewAnswerMap(fx.id, active);
         const avail    = active.filter(p => effectiveMap[p.id] === 'available').length;
         const unavail  = active.filter(p => effectiveMap[p.id] === 'unavailable').length;
         const maybe    = active.filter(p => effectiveMap[p.id] === 'maybe').length;
@@ -29050,7 +29047,7 @@
 
     function _renderAvailabilityReport() {
       // Canonical deduped roster, not raw state.players — see sessionRows().
-      const rpt = generateAvailabilityReport(canonicalVisiblePlayers(), state.fixtures, state.fixtureAvailability, state.medicalRecords);
+      const rpt = generateAvailabilityReport(canonicalVisiblePlayers(), state.fixtures, state.medicalRecords);
       window.__rptData_availability = rpt;
       const statusColor = { available:'#34d399', unavailable:'#f87171', maybe:'#fbbf24', 'no-reply':'#94a3b8' };
 
@@ -31714,16 +31711,16 @@
     }
 
     function fixtureAvailabilitySummary(fixtureId, players) {
-      const availMap = ((state.fixtureAvailability || {})[fixtureId]) || {};
       const active   = activeRosterPlayers(players);
       const total    = active.length;
-      // Phase 21 — medical override: trainingStatus 'unavailable' forces fixture unavailability
-      const effectiveMap = {};
-      active.forEach(p => {
-        effectiveMap[p.id] = (p.trainingStatus === 'unavailable')
-          ? 'unavailable'
-          : (availMap[p.id] || 'no-reply');
-      });
+      // Availability is PLAYER-DRIVEN with ONE source of truth: the canonical
+      // server-resolved answers. overviewAnswerMap seeds no-reply, overlays
+      // sessionRows(fixtureId) — the same per-fixture replies the Overview and
+      // Match Centre read — and preserves the medical (trainingStatus)
+      // override. The old device-local state.fixtureAvailability (coach taps,
+      // never on the server, empty on a real club) is gone, so a squad that HAS
+      // replied is no longer shown as "no reply".
+      const effectiveMap = overviewAnswerMap(fixtureId, active);
       const available      = active.filter(p => effectiveMap[p.id] === 'available').length;
       const unavailable    = active.filter(p => effectiveMap[p.id] === 'unavailable').length;
       const maybe          = active.filter(p => effectiveMap[p.id] === 'maybe').length;
@@ -31735,13 +31732,9 @@
       return { total, available, unavailable, maybe, noReply, responded, availPct, warnings, missingReplies, availMap: effectiveMap };
     }
 
-    function fixtureAvailSet(fixtureId, playerId, status) {
-      if (!state.fixtureAvailability)             state.fixtureAvailability = {};
-      if (!state.fixtureAvailability[fixtureId])  state.fixtureAvailability[fixtureId] = {};
-      state.fixtureAvailability[fixtureId][playerId] = status;
-      saveState('fixture availability updated');
-      render();
-    }
+    // (fixtureAvailSet removed — availability is PLAYER-DRIVEN; the board no
+    //  longer lets a coach set a player's status, and there is no device-local
+    //  availability write path to keep.)
 
     function fixtureAvailOpenBoard(id) {
       _fxAvailBoardId   = id;
@@ -31795,13 +31788,12 @@
         ? players.filter(p => { const n = positionSlotNumber(p); return n && filterSlots.includes(n); })
         : players;
 
-      const statusBtn = (pid, st) => {
-        const cfg    = FIXTURE_AVAIL_STATES[st] || FIXTURE_AVAIL_STATES['no-reply'];
-        const active = (availMap[pid] || 'no-reply') === st;
-        return '<button type="button" onclick="fixtureAvailSet(\'' + esc(fixtureId) + '\',\'' + esc(pid) + '\',\'' + st + '\')"' +
-          ' style="font-size:11px;padding:3px 9px;border-radius:999px;border:1.5px solid ' + (active ? cfg.color : 'var(--line)') + ';' +
-          'background:' + (active ? cfg.bg : 'transparent') + ';color:' + (active ? cfg.color : 'var(--muted)') + ';' +
-          'cursor:pointer;font-weight:' + (active ? 700 : 400) + ';white-space:nowrap">' + cfg.label + '</button>';
+      // READ-ONLY: the player's own canonical reply, shown as a status pill.
+      // A coach reads availability here; they never set it (player-driven rule).
+      const statusPill = (st) => {
+        const cfg = FIXTURE_AVAIL_STATES[st] || FIXTURE_AVAIL_STATES['no-reply'];
+        return '<span style="font-size:11px;padding:3px 10px;border-radius:999px;border:1.5px solid ' + cfg.color + ';' +
+          'background:' + cfg.bg + ';color:' + cfg.color + ';font-weight:700;white-space:nowrap">' + cfg.label + '</span>';
       };
 
       const playerRow = (p) => {
@@ -31816,8 +31808,8 @@
             '<div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(p.name) + '</div>' +
             '<div style="font-size:11px;color:var(--muted)">' + esc(posLabel) + '</div>' +
           '</div>' +
-          '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">' +
-            statusBtn(p.id, 'available') + statusBtn(p.id, 'maybe') + statusBtn(p.id, 'unavailable') +
+          '<div style="display:flex;justify-content:flex-end">' +
+            statusPill(cur) +
           '</div>' +
         '</div>';
       };

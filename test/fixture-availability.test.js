@@ -92,12 +92,17 @@ function extractConst(source, name) {
 
 // ── Scope builder ─────────────────────────────────────────────────────────────
 
-function buildScope({ players = [], fixtureAvailability = {}, fixtures = [] } = {}) {
-  const stateObj = { players, fixtureAvailability, fixtures };
+// `canonical` = the SERVER-RESOLVED availability answers { fixtureId: { playerId:
+// status } } — the same shape sessionRows()/_resolvedAvailability produces. The
+// fixed board reads these (via overviewAnswerMap → sessionRows), NOT a
+// device-local map. Injected here through a sessionRows() stub.
+function buildScope({ players = [], canonical = {}, fixtures = [] } = {}) {
+  const stateObj = { players, fixtures };
 
   const body =
     '"use strict";\n' +
     'const state = ' + JSON.stringify(stateObj) + ';\n' +
+    'const __CANON = ' + JSON.stringify(canonical) + ';\n' +
     // Phase 17 deps (needed by activeRosterPlayers)
     extractConst(html, 'PLAYER_LIFECYCLE_LABELS') + '\n' +
     extractFn(html, 'playerIsArchived') + '\n' +
@@ -109,8 +114,13 @@ function buildScope({ players = [], fixtureAvailability = {}, fixtures = [] } = 
     extractFn(html, 'positionSlotNumber') + '\n' +
     extractFn(html, 'fixtureCountdownDays') + '\n' +
     extractFn(html, 'fixturePositionWarnings') + '\n' +
+    // Canonical availability source of truth: sessionRows() is server-resolved;
+    // overviewAnswerMap overlays it and keeps the medical override — the exact
+    // path the fixed fixtureAvailabilitySummary uses.
+    'function sessionRows(id){ const m = __CANON[id] || {}; return (state.players||[]).map(p => ({ player:{id:p.id}, status: m[p.id] || "no-reply" })); }\n' +
+    extractFn(html, 'overviewAnswerMap') + '\n' +
     extractFn(html, 'fixtureAvailabilitySummary') + '\n' +
-    'return { positionSlotNumber, fixtureCountdownDays, fixturePositionWarnings, fixtureAvailabilitySummary };\n';
+    'return { positionSlotNumber, fixtureCountdownDays, fixturePositionWarnings, fixtureAvailabilitySummary, overviewAnswerMap, sessionRows };\n';
 
   return new Function(body)();
 }
@@ -268,7 +278,7 @@ test('fixturePositionWarnings: 22 available → no squad warning', () => {
 // ── 21–27. fixtureAvailabilitySummary ────────────────────────────────────────
 
 test('fixtureAvailabilitySummary: no players, empty state → all zeros', () => {
-  const { fixtureAvailabilitySummary } = buildScope({ players: [], fixtureAvailability: {} });
+  const { fixtureAvailabilitySummary } = buildScope({ players: [], canonical: {} });
   const s = fixtureAvailabilitySummary('fx1', []);
   assert.equal(s.total, 0);
   assert.equal(s.available, 0);
@@ -285,8 +295,8 @@ test('fixtureAvailabilitySummary: 3 players, 2 available, 1 no-reply', () => {
     { id: 'p2', lifecycleStatus: 'active' },
     { id: 'p3', lifecycleStatus: 'active' },
   ];
-  const fixtureAvailability = { fx1: { p1: 'available', p2: 'available' } };
-  const { fixtureAvailabilitySummary } = buildScope({ players, fixtureAvailability });
+  const canonical = { fx1: { p1: 'available', p2: 'available' } };
+  const { fixtureAvailabilitySummary } = buildScope({ players, canonical });
   const s = fixtureAvailabilitySummary('fx1', players);
   assert.equal(s.total, 3);
   assert.equal(s.available, 2);
@@ -301,8 +311,8 @@ test('fixtureAvailabilitySummary: availPct is rounded percentage', () => {
     { id: 'p2', lifecycleStatus: 'active' },
     { id: 'p3', lifecycleStatus: 'active' },
   ];
-  const fixtureAvailability = { fx1: { p1: 'available', p2: 'available' } };
-  const { fixtureAvailabilitySummary } = buildScope({ players, fixtureAvailability });
+  const canonical = { fx1: { p1: 'available', p2: 'available' } };
+  const { fixtureAvailabilitySummary } = buildScope({ players, canonical });
   const s = fixtureAvailabilitySummary('fx1', players);
   assert.equal(s.availPct, 67); // Math.round(100 * 2/3) = 67
 });
@@ -313,8 +323,8 @@ test('fixtureAvailabilitySummary: missingReplies only includes no-reply players'
     { id: 'p2', lifecycleStatus: 'active' },
     { id: 'p3', lifecycleStatus: 'active' },
   ];
-  const fixtureAvailability = { fx1: { p1: 'available', p2: 'unavailable' } };
-  const { fixtureAvailabilitySummary } = buildScope({ players, fixtureAvailability });
+  const canonical = { fx1: { p1: 'available', p2: 'unavailable' } };
+  const { fixtureAvailabilitySummary } = buildScope({ players, canonical });
   const s = fixtureAvailabilitySummary('fx1', players);
   assert.equal(s.missingReplies.length, 1);
   assert.equal(s.missingReplies[0].id, 'p3');
@@ -325,8 +335,8 @@ test('fixtureAvailabilitySummary: archived players excluded from total', () => {
     { id: 'p1', lifecycleStatus: 'active' },
     { id: 'p2', lifecycleStatus: 'archived' },
   ];
-  const fixtureAvailability = { fx1: { p1: 'available', p2: 'available' } };
-  const { fixtureAvailabilitySummary } = buildScope({ players, fixtureAvailability });
+  const canonical = { fx1: { p1: 'available', p2: 'available' } };
+  const { fixtureAvailabilitySummary } = buildScope({ players, canonical });
   const s = fixtureAvailabilitySummary('fx1', players);
   assert.equal(s.total, 1, 'archived player must not count in total');
   assert.equal(s.available, 1);
@@ -339,11 +349,11 @@ test('fixtureAvailabilitySummary: responded count = total - noReply', () => {
     { id: 'p3', lifecycleStatus: 'active' },
     { id: 'p4', lifecycleStatus: 'active' },
   ];
-  const fixtureAvailability = {
+  const canonical = {
     fx1: { p1: 'available', p2: 'maybe', p3: 'unavailable' }
     // p4 has no entry → no-reply
   };
-  const { fixtureAvailabilitySummary } = buildScope({ players, fixtureAvailability });
+  const { fixtureAvailabilitySummary } = buildScope({ players, canonical });
   const s = fixtureAvailabilitySummary('fx1', players);
   assert.equal(s.responded, 3);
   assert.equal(s.noReply, 1);
@@ -351,7 +361,93 @@ test('fixtureAvailabilitySummary: responded count = total - noReply', () => {
 
 test('fixtureAvailabilitySummary: warnings array included in result', () => {
   const players = [];
-  const { fixtureAvailabilitySummary } = buildScope({ players, fixtureAvailability: {} });
+  const { fixtureAvailabilitySummary } = buildScope({ players, canonical: {} });
   const s = fixtureAvailabilitySummary('fx1', players);
   assert.ok(Array.isArray(s.warnings), 'warnings should be an array');
+});
+
+// ── AVAILABILITY-BOARD-2: canonical replies, player-driven, one source ───────
+// The board derives status from the canonical server-resolved answers
+// (sessionRows → overviewAnswerMap), never a device-local coach-tap map.
+
+const AB2_THREE = [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }];
+
+test('AB2-1/2/3: canonical Available / Maybe / Unavailable each show on the board', () => {
+  const { fixtureAvailabilitySummary } = buildScope({
+    players: AB2_THREE,
+    canonical: { fx1: { p1: 'available', p2: 'maybe', p3: 'unavailable' } },
+  });
+  const s = fixtureAvailabilitySummary('fx1', AB2_THREE);
+  assert.equal(s.availMap.p1, 'available');
+  assert.equal(s.availMap.p2, 'maybe');
+  assert.equal(s.availMap.p3, 'unavailable');
+  assert.equal(s.available, 1);
+  assert.equal(s.maybe, 1);
+  assert.equal(s.unavailable, 1);
+  assert.equal(s.noReply, 0);
+});
+
+test('AB2-4: a player with no canonical reply reads No reply', () => {
+  const { fixtureAvailabilitySummary } = buildScope({
+    players: AB2_THREE, canonical: { fx1: { p1: 'available' } },
+  });
+  const s = fixtureAvailabilitySummary('fx1', AB2_THREE);
+  assert.equal(s.availMap.p2, 'no-reply');
+  assert.equal(s.availMap.p3, 'no-reply');
+  assert.equal(s.noReply, 2);
+});
+
+test('AB2-5: a reply to a DIFFERENT fixture/session never appears on this one', () => {
+  const { fixtureAvailabilitySummary } = buildScope({
+    players: AB2_THREE,
+    // every answer is filed under fx2 — none of them is an answer to fx1
+    canonical: { fx2: { p1: 'available', p2: 'available', p3: 'available' } },
+  });
+  const s = fixtureAvailabilitySummary('fx1', AB2_THREE);
+  assert.equal(s.available, 0, 'fx2 answers must not leak into fx1');
+  assert.equal(s.noReply, 3);
+});
+
+test('AB2-6/7: a canonical response maps to the correct player and is not misattributed', () => {
+  const { fixtureAvailabilitySummary } = buildScope({
+    players: AB2_THREE, canonical: { fx1: { p2: 'unavailable' } },
+  });
+  const s = fixtureAvailabilitySummary('fx1', AB2_THREE);
+  assert.equal(s.availMap.p2, 'unavailable', 'the reply lands on p2');
+  assert.equal(s.availMap.p1, 'no-reply', 'and never bleeds onto p1');
+  assert.equal(s.availMap.p3, 'no-reply');
+});
+
+test('AB2-12: medical trainingStatus=unavailable still overrides a canonical reply', () => {
+  const players = [{ id: 'p1', trainingStatus: 'unavailable' }, { id: 'p2' }];
+  const { fixtureAvailabilitySummary } = buildScope({
+    players, canonical: { fx1: { p1: 'available', p2: 'available' } },
+  });
+  const s = fixtureAvailabilitySummary('fx1', players);
+  assert.equal(s.availMap.p1, 'unavailable', 'medical override wins over the reply');
+  assert.equal(s.availMap.p2, 'available');
+});
+
+// ── Source contract: device-local model retired; ONE canonical source ────────
+
+test('AB2-10: the fixture board has NO manual coach availability controls', () => {
+  assert.ok(!/function fixtureAvailSet\b/.test(html), 'fixtureAvailSet (device-local writer) is removed');
+  const board = extractFn(html, 'renderFixtureAvailBoard');
+  assert.ok(!/fixtureAvailSet\(/.test(board), 'no control writes a player status');
+  assert.match(board, /statusPill/, 'a read-only status pill is rendered instead');
+});
+
+test('AB2-9: board and export read the SAME canonical source, not the device-local map', () => {
+  const summ = extractFn(html, 'fixtureAvailabilitySummary');
+  assert.match(summ, /overviewAnswerMap\(/, 'board summary reads canonical overviewAnswerMap');
+  assert.doesNotMatch(summ, /state\.fixtureAvailability\s*\|\|/, 'board no longer reads the device-local map');
+  const rpt = extractFn(html, 'generateAvailabilityReport');
+  assert.match(rpt, /overviewAnswerMap\(/, 'export reads the same canonical source');
+  assert.doesNotMatch(rpt, /fixtureAvailability/, 'export no longer references the device-local map');
+});
+
+test('AB2-source: no device-local availability state remains in the model', () => {
+  // No default init and no normalizer carry a fixtureAvailability field any more.
+  assert.doesNotMatch(html, /fixtureAvailability:\s*\{\}/, 'default state field removed');
+  assert.doesNotMatch(html, /next\.fixtureAvailability\s*=/, 'normalizer field removed');
 });

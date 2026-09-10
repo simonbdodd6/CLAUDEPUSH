@@ -50,6 +50,13 @@ function buildScope(stateOverride) {
     function activeRosterPlayers(players) {
       return (players || []).filter(p => !playerIsArchived(p));
     }
+    // Canonical availability injection (mirrors sessionRows / _resolvedAvailability).
+    // The availability export now reads canonical answers via overviewAnswerMap;
+    // tests seed them with __setCanon, and the medical (trainingStatus) override
+    // is applied by overviewAnswerMap itself.
+    let __canon = {};
+    function __setCanon(c){ __canon = c || {}; }
+    function sessionRows(id){ const m = __canon[id] || {}; return Object.keys(m).map(pid => ({ player:{id:pid}, status: m[pid] })); }
   `;
 
   const fns = [
@@ -59,6 +66,7 @@ function buildScope(stateOverride) {
     'trainingAttendanceForSession', 'playerAttendanceHistory', 'normalizeSessionNotes',
     'generatePlayerReport', 'generateAvailabilityReport', 'generateMatchReport',
     'generateMedicalReport', 'generateTrainingReport',
+    'overviewAnswerMap',
     'reportToText',
   ];
 
@@ -82,7 +90,7 @@ function buildScope(stateOverride) {
     return {
       generatePlayerReport, generateAvailabilityReport, generateMatchReport,
       generateMedicalReport, generateTrainingReport, reportToText,
-      normalizeMedicalRecord, matchComputeScore, activeRosterPlayers,
+      normalizeMedicalRecord, matchComputeScore, activeRosterPlayers, __setCanon,
     };
   `;
   return new Function(body)();
@@ -153,7 +161,7 @@ test('generatePlayerReport: does not mutate input state', () => {
 
 test('generateAvailabilityReport: empty squad and fixtures returns ok:true zeroes', () => {
   const scope = buildScope();
-  const r = scope.generateAvailabilityReport([], [], {}, {});
+  const r = scope.generateAvailabilityReport([], [], {});
   assert.equal(r.ok, true);
   assert.equal(r.players.length, 0);
   assert.equal(r.fixtures.length, 0);
@@ -166,7 +174,7 @@ test('generateAvailabilityReport: archived players excluded from squad count', (
     { id: 'p2', name: 'Bob', lifecycleStatus: 'archived' },
   ];
   const scope = buildScope();
-  const r = scope.generateAvailabilityReport(players, [], {}, {});
+  const r = scope.generateAvailabilityReport(players, [], {});
   assert.equal(r.players.length, 1);
   assert.equal(r.players[0].id, 'p1');
 });
@@ -177,7 +185,7 @@ test('generateAvailabilityReport: medUnavailable lists players with trainingStat
     { id: 'p2', name: 'Bob',   trainingStatus: 'full' },
   ];
   const scope = buildScope();
-  const r = scope.generateAvailabilityReport(players, [], {}, {});
+  const r = scope.generateAvailabilityReport(players, [], {});
   assert.equal(r.medUnavailable.length, 1);
   assert.equal(r.medUnavailable[0].id, 'p1');
 });
@@ -188,10 +196,11 @@ test('generateAvailabilityReport: trainingStatus=unavailable overrides availabil
     { id: 'p2', name: 'Bob',   trainingStatus: '' },
   ];
   const fixtures = [{ id: 'fx1', date: '2026-07-05', opposition: 'Team B' }];
-  // p1 marked available in fixture but med override should make them unavailable
-  const fixtureAvail = { fx1: { p1: 'available', p2: 'available' } };
+  // p1 replied available (canonical) but the med override should make them unavailable
+  const canonical = { fx1: { p1: 'available', p2: 'available' } };
   const scope = buildScope();
-  const r = scope.generateAvailabilityReport(players, fixtures, fixtureAvail, {});
+  scope.__setCanon(canonical);
+  const r = scope.generateAvailabilityReport(players, fixtures, {});
   const fxRow = r.fixtures[0];
   assert.equal(fxRow.avail,   1); // only p2
   assert.equal(fxRow.unavail, 1); // p1 overridden
@@ -201,7 +210,7 @@ test('generateAvailabilityReport: does not mutate input players array', () => {
   const players = [{ id: 'p1', name: 'Alice', trainingStatus: 'full' }];
   const before = JSON.stringify(players);
   const scope = buildScope();
-  scope.generateAvailabilityReport(players, [], {}, {});
+  scope.generateAvailabilityReport(players, [], {});
   assert.equal(JSON.stringify(players), before);
 });
 
@@ -424,7 +433,7 @@ test('reportToText: player report contains player name', () => {
 
 test('reportToText: availability report contains header', () => {
   const scope = buildScope();
-  const rpt = scope.generateAvailabilityReport([], [], {}, {});
+  const rpt = scope.generateAvailabilityReport([], [], {});
   const text = scope.reportToText('availability', rpt);
   assert.ok(text.includes('TEAM AVAILABILITY REPORT'));
 });
@@ -466,10 +475,11 @@ test('availability report: medical unavailable shows in medUnavailable and overr
     { id: 'p2', name: 'Fit Fred',    trainingStatus: 'full' },
   ];
   const fixtures = [{ id: 'fx1', date: '2026-07-05', opposition: 'Opponents' }];
-  // Ian says he's available in the fixture form — but medically he's unavailable
-  const fixtureAvail = { fx1: { p1: 'available', p2: 'available' } };
+  // Ian replied available (canonical) — but medically he's unavailable
+  const canonical = { fx1: { p1: 'available', p2: 'available' } };
   const scope = buildScope();
-  const rpt = scope.generateAvailabilityReport(players, fixtures, fixtureAvail, {});
+  scope.__setCanon(canonical);
+  const rpt = scope.generateAvailabilityReport(players, fixtures, {});
   // medUnavailable list
   assert.equal(rpt.medUnavailable.length, 1);
   assert.equal(rpt.medUnavailable[0].name, 'Injured Ian');
