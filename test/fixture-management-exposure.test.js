@@ -170,6 +170,13 @@ function renderEditForm({ team = 'U18 Second', sideId = 'team_u18_2' } = {}) {
     'function canI() { return true; }\n' +
     'function esc(s) { return String(s == null ? "" : s); }\n' +
     'function renderFixtureAvailBoard() { return ""; }\n' +
+    // The fixture-card availability mini-strip now reads canonical answers
+    // (fixtureAvailabilitySummary → overviewAnswerMap → sessionRows) over the
+    // operating group; no players here → empty canonical map, zero counts.
+    'function operationalPlayers() { return state.players || []; }\n' +
+    'function fixtureAvailBoardPlayers() { return activeRosterPlayers(operationalPlayers()); }\n' +
+    'function sessionRows() { return []; }\n' +
+    'function overviewAnswerMap(id, roster) { const m = {}; (roster||[]).forEach(p => { m[String(p.id)] = "no-reply"; }); return m; }\n' +
     'const el = { innerHTML: "" };\n' +
     'const document = { getElementById: () => el };\n' +
     extractConst(html, 'CE_INITIAL_GROUP_ID') + '\n' +
