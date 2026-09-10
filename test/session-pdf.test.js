@@ -278,3 +278,86 @@ test('WIRE-4: the stability contract survives this build', () => {
   const sizer = fn('trainingAutosizeBlocks');
   assert.doesNotMatch(sizer, /setTimeout\(size, 1[0-9]{2}\)/, 'no post-paint autosize pass');
 });
+
+// ── COMPACT TIMES (TRAINING-PDF-ORDER-FIX-1) ─────────────────────────────────
+// The planner time field is free text, so a coach may type a compact HMM/HHMM
+// (930, 1820) as well as the separated 9:30 / 18.30. The PDF is the only layer
+// that sorts, so a compact time it could not parse floated to the end of the
+// plan (production U18 "1820", Seniors "1830"). These pin that compact times
+// now sort — and print — as the same clock time as their separated form, while
+// bare and out-of-range values stay untimed. Behaviour-only (no source text).
+
+test('CPT-1: existing colon ordering still holds', () => {
+  assert.deepEqual(orderOf(['19:15', '19:00', '19:40']), ['19:00', '19:15', '19:40']);
+});
+
+test('CPT-2: existing dot ordering still holds', () => {
+  assert.deepEqual(orderOf(['19.15', '19.00', '19.40']), ['19.00', '19.15', '19.40']);
+});
+
+test('CPT-3: compact HHMM sorts chronologically', () => {
+  assert.deepEqual(orderOf(['19:00', '1830', '1820', '18:00']),
+    ['18:00', '1820', '1830', '19:00'], '1820 < 1830 < 19:00, in place');
+});
+
+test('CPT-4: a session mixing colon + dot + compact sorts as one clock line', () => {
+  assert.deepEqual(orderOf(['19.05', '1820', '18:00', '18.45', '1910']),
+    ['18:00', '1820', '18.45', '19.05', '1910']);
+});
+
+test('CPT-5: single-digit-hour compact (800, 930, 1000) parses and orders', () => {
+  assert.deepEqual(orderOf(['1000', '930', '800']), ['800', '930', '1000']);
+  assert.equal(parseBlockTime('800').mins, 480);
+  assert.equal(parseBlockTime('930').mins, 570);
+  assert.equal(parseBlockTime('1000').mins, 600);
+});
+
+test('CPT-6: invalid / untimed values are unchanged — bare and out-of-range stay untimed', () => {
+  for (const bad of ['8', '18', '60', '18.99', '25:00', '1899', '2500', '18.5', '1.2.3', '', 'x', '6pm']) {
+    assert.equal(parseBlockTime(bad), null, `${JSON.stringify(bad)} is not a clock time`);
+  }
+  // ...and an untimed value still sorts stably at the end, keeping its verbatim text.
+  assert.deepEqual(orderOf(['1830', '6pm', '1820']), ['1820', '1830', '6pm']);
+});
+
+test('CPT-7: equal times keep stable (insertion) order', () => {
+  const got = chronological([
+    { time: '1820', activity: 'first' },
+    { time: '18:20', activity: 'second' },
+    { time: '18.20', activity: 'third' },
+  ]).map(b => b.activity);
+  assert.deepEqual(got, ['first', 'second', 'third'], 'same clock time → original order preserved');
+});
+
+test('CPT-8: a chronologically entered planner session is unchanged by the PDF sort', () => {
+  const entered = ['09:00', '915', '09.30', '1000', '10:15'];
+  assert.deepEqual(orderOf(entered), entered, 'PDF order == planner insertion order when already chronological');
+});
+
+test('CPT-9: exact U18 reproduction sorts correctly', () => {
+  assert.deepEqual(
+    orderOf(['18:00', '1820', '18:32', '18:44', '18:50', '18:55', '19:05', '19:18', '19:30']),
+    ['18:00', '1820', '18:32', '18:44', '18:50', '18:55', '19:05', '19:18', '19:30'],
+    '1820 sits between 18:00 and 18:32, not at the end');
+});
+
+test('CPT-10: exact Seniors reproduction sorts correctly', () => {
+  assert.deepEqual(
+    orderOf(['18.00', '18.15', '1830', '18.45', '19.00']),
+    ['18.00', '18.15', '1830', '18.45', '19.00'],
+    '1830 sits between 18.15 and 18.45, not at the end');
+});
+
+test('CPT-11: compact and separated forms parse identically', () => {
+  assert.deepEqual(parseBlockTime('1820'), parseBlockTime('18:20'));
+  assert.deepEqual(parseBlockTime('1830'), parseBlockTime('18:30'));
+  assert.deepEqual(parseBlockTime('930'), parseBlockTime('9:30'));
+});
+
+test('CPT-12: compact times print the canonical HH:MM on the page (never the raw digits)', () => {
+  const s = latin1(buildSessionPdf({ blocks: [
+    { time: '1820', activity: 'A' }, { time: '930', activity: 'B' }, { time: '1830', activity: 'C' },
+  ] }));
+  assert.ok(s.includes('(18:20)') && s.includes('(09:30)') && s.includes('(18:30)'), 'canonical labels printed');
+  assert.ok(!s.includes('(1820)') && !s.includes('(930)') && !s.includes('(1830)'), 'raw compact digits never printed');
+});

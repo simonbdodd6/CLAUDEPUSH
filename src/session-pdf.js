@@ -163,17 +163,26 @@ const lineOp = (x1, y1, x2, y2, colour, w = 0.75) =>
 // ── Document assembly ───────────────────────────────────────────────────────
 
 /**
- * Canonical parse of a planner block time. A coach may type the separator as
- * ':' or '.' (18:30 and 18.00 mean the same clock time) — the planner's time
- * input is free text, so both reach the export. Returns minutes-since-midnight
- * (the sort key) and a canonical HH:MM label (for display), or null for
- * anything that is not H[:.]MM in range — which is kept verbatim on the page
- * and, being untimed, sorts stably after the timed rows.
+ * Canonical parse of a planner block time. The planner's time input is free
+ * text, so a coach may write the same clock time three ways and all reach the
+ * export:
+ *   - separated  H:MM / HH:MM / H.MM / HH.MM   (18:30, 18.00)
+ *   - compact    HMM / HHMM  (one run of digits, 930, 1820)
+ * Returns minutes-since-midnight (the sort key) and a canonical HH:MM label
+ * (for display), or null for anything that is not a valid clock time in range
+ * — which is kept verbatim on the page and, being untimed, sorts stably after
+ * the timed rows. A bare one/two-digit value (8, 18, 60) is ambiguous, so it
+ * stays untimed; the compact branch is exactly 3-4 digits (the last two are
+ * always the minutes) so it can never swallow one.
  */
 export function parseBlockTime(t) {
-  const m = /^(\d{1,2})[:.](\d{2})$/.exec(String(t ?? '').trim());
-  if (!m) return null;
-  const h = +m[1], min = +m[2];
+  const s = String(t ?? '').trim();
+  const sep = /^(\d{1,2})[:.](\d{2})$/.exec(s);        // 18:30 / 18.00
+  const compact = /^(\d{3,4})$/.exec(s);               // 930 / 1820 (HMM / HHMM)
+  let h, min;
+  if (sep)          { h = +sep[1]; min = +sep[2]; }
+  else if (compact) { h = +compact[1].slice(0, -2); min = +compact[1].slice(-2); }
+  else return null;
   if (h > 23 || min > 59) return null;
   return { mins: h * 60 + min, label: String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0') };
 }
