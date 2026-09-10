@@ -12151,7 +12151,18 @@
           physioNotes: c.notes || '', physiNotes: c.notes || '',
           clearanceStatus: c.status === 'resolved' ? 'cleared' : (c.clearanceStatus || ''),
           rehabProgress: c.rehabProgress || 0, concussionCount: c.concussionCount || 0,
-          timeline: Array.isArray(c.timeline) ? c.timeline : [],
+          // The server keeps an APPEND-ONLY audit timeline ({at,by,action,note},
+          // stamped server-side). Map it into the {id,date,type,notes} shape the
+          // timeline views read, so persisted entries render instead of blank —
+          // previously the raw server entries were passed straight through and
+          // showed empty date/type/notes because the fields did not line up.
+          timeline: (Array.isArray(c.timeline) ? c.timeline : []).map((e, i) => ({
+            id:    (e && e.at ? String(e.at) : 'mt') + '_' + i,
+            date:  (e && typeof e.at === 'string') ? e.at.slice(0, 10) : '',
+            type:  (e && e.action) || 'note',
+            notes: (e && e.note) || '',
+            by:    (e && e.by) || '',
+          })),
         },
         note: { condition: c.condition || '', notes: c.notes || '', returnTarget: c.returnTarget || '',
                 rehabProgress: c.rehabProgress || 0 },
@@ -29421,10 +29432,13 @@
     const MEDICAL_TIMELINE_LABELS = {
       injury:'Injury', physio:'Physio', clearance:'Clearance',
       return:'Return to Play', surgery:'Surgery', note:'Note',
+      // Server-stamped audit actions (append-only shared timeline).
+      opened:'Case opened', updated:'Update', resolved:'Cleared',
     };
     const MEDICAL_TIMELINE_COLORS = {
       injury:'#f87171', physio:'#60a5fa', clearance:'#34d399',
       return:'#34d399', surgery:'#f97316', note:'#94a3b8',
+      opened:'#f87171', updated:'#60a5fa', resolved:'#34d399',
     };
     const MEDICAL_BODY_LOCATIONS = [
       'Head','Neck','Shoulder','Collarbone','Chest','Ribs','Abdomen',
@@ -29588,28 +29602,34 @@
       }).then(ok => { if (ok) render(); });
     }
 
+    /**
+     * Add a medical timeline entry.
+     *
+     * The caseload is server-owned and state.medicalRecords is only a DERIVED
+     * CACHE, rebuilt from the server on every load. Writing the entry into that
+     * cache with saveState() (as this used to) persisted it to localStorage
+     * ONLY — the next server hydrate (group switch, poll, reload, another
+     * device) silently discarded it, so the entry LOOKED saved and then
+     * vanished, and no other medic ever saw it.
+     *
+     * It now goes through saveSharedMedicalCase — the ONE authoritative medical
+     * write path — which appends to the case's append-only audit timeline
+     * server-side (WHO and WHEN are stamped by the server) and only reports
+     * success once the server has accepted and re-served it. The chosen
+     * category and any event date ride along inside the note so nothing the
+     * physio typed is lost. There is deliberately no delete: a shared medical
+     * audit trail is append-only.
+     */
     function addMedTimelineEntry(playerId, type, notes, date) {
-      if (!state.medicalRecords)           state.medicalRecords = {};
-      if (!state.medicalRecords[playerId]) state.medicalRecords[playerId] = {};
-      const rec = state.medicalRecords[playerId];
-      if (!Array.isArray(rec.timeline)) rec.timeline = [];
-      rec.timeline.push({
-        id:    'mt_' + Date.now(),
-        date:  date || new Date().toISOString().slice(0,10),
-        type:  type || 'note',
-        notes: notes || '',
-      });
-      rec.timeline.sort((a,b) => (a.date||'').localeCompare(b.date||''));
-      saveState('medical timeline entry added');
-      render();
-    }
-
-    function deleteMedTimelineEntry(playerId, entryId) {
-      const rec = (state.medicalRecords||{})[playerId];
-      if (!rec || !Array.isArray(rec.timeline)) return;
-      rec.timeline = rec.timeline.filter(e => e.id !== entryId);
-      saveState('medical timeline entry deleted');
-      render();
+      const note = String(notes || '').trim();
+      if (!note) { showToast('Add a note before saving the entry'); return; }
+      const p = medicalPlayers().find(pl => String(pl.id) === String(playerId));
+      const label = MEDICAL_TIMELINE_LABELS[type] || 'Note';
+      const composed = label + (date ? ' (' + date + ')' : '') + ' — ' + note;
+      saveSharedMedicalCase({
+        action: 'upsert_case', playerId, userId: p?.userId || '',
+        timelineNote: composed,
+      }).then(ok => { if (ok) render(); });   // saveSharedMedicalCase toasts on failure
     }
 
     function _medTabBar(showPlayerTabs) {
@@ -30152,8 +30172,6 @@
                     '</div>' +
                     (ev.notes ? '<div style="font-size:13px;color:var(--text);line-height:1.4">' + esc(ev.notes) + '</div>' : '') +
                   '</div>' +
-                  '<button type="button" onclick="deleteMedTimelineEntry(\'' + playerId + '\',\'' + ev.id + '\')"' +
-                    ' style="font-size:11px;padding:2px 7px;border:1px solid rgba(248,113,113,0.3);border-radius:6px;background:transparent;color:#f87171;cursor:pointer;flex-shrink:0;align-self:flex-start">✕</button>' +
                 '</div>';
               }).join('')) +
         '</div>';
