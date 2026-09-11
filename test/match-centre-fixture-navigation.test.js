@@ -117,6 +117,9 @@ function client(server, initialState = {}) {
     // sideless mode, in which every pre-side behaviour must hold unchanged.
     const _adminData = { structure: null };
     let _mcOtherSide = null;
+    let _mcOtherSideResolvedKey = '';
+    let _mcOtherSideFetchedAt = 0;
+    function mcTeamsSidesKnown() { return true; }   // harness models teams as already known
     ${fn('matchCentreSides')}
     // Build N: the picker labels fixtures with their team; the label helper
     // reads matchCentreSides (extracted above) with an _adminData fallback.

@@ -10880,8 +10880,43 @@
      * lands, the reply is discarded rather than applied to the wrong fixture.
      */
     // What the OTHER side has selected for the SAME fixture — powers the
-    // duplicate-selection indicator. Names only, module-local, display-only.
+    // duplicate-selection indicator AND the cross-team locks. Names only,
+    // module-local.
     let _mcOtherSide = null;   // { fixtureId, sideId, teamName, names: [] }
+    // Which fixture|side the sibling question has been ANSWERED for — either a
+    // loaded snapshot or a confirmed "no sibling side exists". `_mcOtherSide`
+    // alone cannot carry this: null legitimately means BOTH "not looked yet"
+    // and "single-team group", and the cross-team locks must fail CLOSED while
+    // the answer is genuinely unknown, never silently assume no sibling.
+    let _mcOtherSideResolvedKey = '';
+    let _mcOtherSideFetchedAt = 0;    // self-throttle stamp (12s, like the drafts list)
+    // The sides answer is only trustworthy once a teams payload has landed —
+    // before that, matchCentreSidesActive() returns [] for EVERY group and a
+    // "no sibling" conclusion would be a guess.
+    function mcTeamsSidesKnown() {
+      return !!((typeof _mcTeams !== 'undefined' && _mcTeams) ||
+                (typeof _adminData !== 'undefined' && _adminData && _adminData.structure));
+    }
+    // Has the sibling question been answered for the CURRENT fixture + side?
+    // No linked fixture → no sibling dimension → trivially resolved.
+    function mcSiblingStateResolved() {
+      const fx = matchCentreFixtureId();
+      if (!fx) return true;
+      return _mcOtherSideResolvedKey === String(fx) + '|' + String(matchCentreSideId() || '');
+    }
+    // Render-driven safety net: a BOOT-RESTORED fixture never fires the
+    // fixture/side gesture, so without this the sibling snapshot stayed null
+    // all session and the cross-team locks failed open (the U18 desktop
+    // "available sibling starter" defect). Self-throttled like
+    // loadCoachDraftsList, so it also heals the teams race and picks up a
+    // sibling publish within ~12s on a long-lived desktop.
+    function mcRefreshOtherSideSelections() {
+      if (typeof isCoach === 'function' && !isCoach()) return;
+      const fx = matchCentreFixtureId();
+      if (!fx) return;
+      if (Date.now() - _mcOtherSideFetchedAt < 12000) return;
+      mcLoadOtherSideSelections(fx, matchCentreSideId());
+    }
     function mcOtherSideNames() {
       const fx = matchCentreFixtureId(), side = matchCentreSideId();
       if (!fx || !side || !_mcOtherSide) return new Set();
@@ -10910,9 +10945,23 @@
      * working sheet, and never writes anything.
      */
     async function mcLoadOtherSideSelections(fixtureId, side) {
+      _mcOtherSideFetchedAt = Date.now();
+      const sidesKnown = mcTeamsSidesKnown();
       const others = matchCentreSidesActive().filter(t => String(t.id) !== side);
       const other = side && others.length === 1 ? others[0] : null;
-      if (!other) { _mcOtherSide = null; return; }
+      if (!other) {
+        _mcOtherSide = null;
+        if (sidesKnown) {
+          // A trustworthy "no sibling side" (single-team group, no side
+          // dimension, or 3+ sides — outside this model) IS the answer.
+          _mcOtherSideResolvedKey = String(fixtureId) + '|' + String(side || '');
+        } else {
+          // Teams have not landed yet, so nothing was even asked — release the
+          // throttle so the next render retries as soon as sides are known.
+          _mcOtherSideFetchedAt = 0;
+        }
+        return;
+      }
       try {
         const q = encodeURIComponent(String(fixtureId));
         const oq = '&side=' + encodeURIComponent(String(other.id));
@@ -10933,8 +10982,13 @@
         const benchNames    = src ? clean(Array.isArray(src.benchPlayers) ? src.benchPlayers : []) : [];
         const names = [...startingNames, ...benchNames];
         _mcOtherSide = { fixtureId: String(fixtureId), sideId: side, teamName: String(other.name || ''), names, startingNames, benchNames };
+        _mcOtherSideResolvedKey = String(fixtureId) + '|' + String(side);
         render();
-      } catch { /* indicator only — silence is safe */ }
+      } catch (e) {
+        // Unresolved, NOT assumed empty: the cross-team locks stay closed and
+        // the render-driven refresh retries on the normal throttle.
+        console.warn('[mcLoadOtherSideSelections]', e);
+      }
     }
 
     async function mcHydrateSelectedFixture(id) {
@@ -11747,6 +11801,14 @@
       _mcClearDragFx();
       if (!name) return;
       const srcTarget = _mcParseSource(event.dataTransfer.getData("mcSource"));
+      // Fail CLOSED while the sibling side's selections are still unresolved:
+      // with the snapshot unknown, "not locked" would only mean "not checked".
+      // Adding a NEW player waits for the answer; rearranging players already
+      // on THIS sheet is never blocked.
+      if (!srcTarget && !mcSiblingStateResolved()) {
+        showToast("Checking the other team's selections — try again in a moment");
+        return;
+      }
       // Dragging a NEW player in from the Available list (no source slot) must
       // obey the same cross-team rule as the picker: a player starting for the
       // sibling side cannot be added here. Moving a player already on THIS sheet
@@ -12044,6 +12106,12 @@
     }
     function mcPick(name) {
       if (!_mcPickTarget) return;
+      // Fail CLOSED while the sibling snapshot is unresolved (see _mcDrop):
+      // placing a player must wait for the answer; clearing never does.
+      if (name && !mcSiblingStateResolved()) {
+        showToast("Checking the other team's selections — try again in a moment");
+        return;
+      }
       // Never place a player the sibling side has starting — even if a stale or
       // forged row reaches here. Clearing a slot (empty name) is always allowed.
       if (name && mcPickerLocked(name)) {
@@ -17897,6 +17965,12 @@
       // The current coach publication (if any) for this fixture+side, so the
       // compare panel's "Coach publication" row is fresh. Self-throttled.
       if (isCoach()) loadCoachPublication();
+      // The SIBLING side's selections power the cross-team locks. Loading them
+      // only on a fixture/side tap left a boot-restored desktop with no
+      // snapshot all session — the locks failed open and a Premier starter
+      // could be picked for Premier Development. Render-driven + self-throttled
+      // (12s) here heals boot-restore, the teams race, and a sibling publish.
+      if (isCoach()) mcRefreshOtherSideSelections();
       // The group's SIDES (Premier / Premier Development) arrive via the
       // minimal Match-Centre-scoped read — available to any coach who can
       // publish squads, with no roster-management requirement. The admin
@@ -18086,6 +18160,17 @@
       const _visibleStats = _railSel === 'selected' ? _availFiltered.filter(s => _mcSelKeys.has(mcPersonKey(s.p.name)))
         : _railSel === 'unselected' ? _availFiltered.filter(s => !_mcSelKeys.has(mcPersonKey(s.p.name)) && mcSelectableAvailBucket(s.match))
         : _availFiltered;
+      // Cross-team LOCKS for the rail. The default 'all' view used to consult
+      // mcIneligibleKeys only via the 'unselected'/'selected' branches, so a
+      // sibling starter rendered as an ordinary draggable "Available" row —
+      // the desktop leak. The lock sets are computed once per render and every
+      // row wears them; the youth policy (mcBenchLocksSibling) locks the
+      // sibling bench as well. `_railPending` = the sibling answer is still
+      // unresolved for this fixture+side — the drop/pick guards fail closed
+      // meanwhile, and the rail says so explicitly.
+      const _railLockXV    = mcOtherSideStartingKeys();
+      const _railLockBench = mcBenchLocksSibling() ? mcOtherSideBenchKeys() : new Set();
+      const _railPending   = !mcSiblingStateResolved();
 
       const squadSelected = slotNames.filter(n=>n).length + bench.filter(n=>n).length;
 
@@ -18381,17 +18466,26 @@
                 <button type="button" class="${_availSortKey==='pos'?'on':''}" onclick="mcSetAvailSort('pos')">Position</button>
                 <button type="button" class="${_availSortKey==='training'?'on':''}" onclick="mcSetAvailSort('training')">Training</button>
               </div>
+              ${_railPending ? `<p class="muted" style="padding:6px 8px 0;font-size:11.5px;margin:0">Checking the other team’s selections…</p>` : ''}
               <div class="mc7-table">
                 <div class="mc7-thead"><span>Player</span><span></span></div>
                 <div class="mc7-tbody">
                   ${_visibleStats.map(({p, match, attPct}) => {
                     const initials = p.name.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
                     const mLbl = match === 'available' ? 'Available' : match === 'maybe' ? 'Maybe' : (match === 'unavailable' ? 'Out' : 'No reply');
-                    const inOther = dupNames.has(String(p.name || '').trim());
-                    return `<div class="mc7-trow has-st squad-player-drag" draggable="true"
+                    // A player committed to the sibling side renders LOCKED in
+                    // every rail view: dimmed, not draggable, labelled with the
+                    // committing team — same rule the picker enforces. An adult
+                    // group's poachable bench player keeps the soft "Also:" tag.
+                    const _pk = mcPersonKey(p.name);
+                    const lockXV = _railLockXV.has(_pk), lockBench = _railLockBench.has(_pk);
+                    const locked = lockXV || lockBench;
+                    const inOther = !locked && dupNames.has(String(p.name || '').trim());
+                    const lockTag = locked ? ` <span class="mc7-alsotag mc7-locktag" title="Committed to ${esc(_mcOtherSide?.teamName || 'the other team')} — cannot be selected here">\u{1F512} ${esc(_mcOtherSide?.teamName || 'Other team')} ${lockXV ? 'XV' : 'bench'}</span>` : '';
+                    return `<div class="mc7-trow has-st${locked ? ' mc7-locked' : ' squad-player-drag'}" draggable="${locked ? 'false' : 'true'}"${locked ? ' style="opacity:.55;cursor:not-allowed"' : ''}
                       data-player-name="${esc(p.name)}" data-player-id="${esc(p.id)}" data-player-pos="${esc(p.position || '')}"
-                      ondragstart="handlePlayerDragStart(event)" ondragend="mcDragEnd(event)">
-                      <span class="mc7-pl"><span class="mc7-av" style="background:${playerAvatarColor(p.id||p.name)}">${esc(initials)}</span><span class="mc7-nm" title="${esc(p.name)}">${esc(p.name)}${inOther ? ` <span class="mc7-alsotag" title="Also selected for ${esc(_mcOtherSide?.teamName || 'the other team')}">Also: ${esc(_mcOtherSide?.teamName || 'other team')}</span>` : ''}</span></span>
+                      ${locked ? '' : 'ondragstart="handlePlayerDragStart(event)" ondragend="mcDragEnd(event)"'}>
+                      <span class="mc7-pl"><span class="mc7-av" style="background:${playerAvatarColor(p.id||p.name)}">${esc(initials)}</span><span class="mc7-nm" title="${esc(p.name)}">${esc(p.name)}${lockTag}${inOther ? ` <span class="mc7-alsotag" title="Also selected for ${esc(_mcOtherSide?.teamName || 'the other team')}">Also: ${esc(_mcOtherSide?.teamName || 'other team')}</span>` : ''}</span></span>
                       <span class="mc7-match ${match}">${esc(mLbl)}</span>
                       <span class="mc7-dot ${match}" title="${esc(mLbl)}" aria-label="${esc(mLbl)}"></span>
                     </div>`;
