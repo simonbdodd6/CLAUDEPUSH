@@ -11306,9 +11306,21 @@
         const what = side ? `the ${side.name} squad` : 'the squad';
         if (!(await ceConfirm(`Publish ${what} for ${opp}?`, 'Every player with notifications enabled will be notified immediately.', { confirmLabel: side ? `Publish ${side.name}` : 'Publish squad' }))) return;
       }
+      // Server-authoritative: the squad POST asserts group authority, so the
+      // published state is only committed, players only notified, and success
+      // only claimed AFTER the server confirms. A refusal (e.g. an assistant
+      // without authority over this group, or an offline device) keeps the
+      // working team sheet exactly as it is — it is never reported as published
+      // and NO player push is sent — and tells the coach why.
+      const result = await syncSquadToServer(isPublishing);
+      if (!result.ok) {
+        showToast(result.error || (isPublishing
+          ? "Couldn't publish the squad — please try again."
+          : "Couldn't move the squad back to draft — please try again."));
+        return;                            // published state + draft left untouched; no push
+      }
       state.matchCentre.published = isPublishing;
       saveState();
-      syncSquadToServer().catch(() => {});
       if (isPublishing) {
         const mc = state.matchCentre;
         const opp = mc.opposition || "the match";
@@ -39908,26 +39920,42 @@
       return { formationKeys, benchKeys };
     }
 
-    async function syncSquadToServer() {
-      if (!isCoach()) return;
+    // Returns { ok, status, error } so the CALLER can be honest about the
+    // result. The squad POST is server-authoritative — group authority is
+    // asserted there — so a 403/4xx/5xx must never read back as success. The
+    // two fire-and-forget callers (substitutions, selection) pass no override
+    // and ignore the result; publishSquad passes the intended published flag
+    // and awaits the result, only claiming success + notifying players on ok.
+    async function syncSquadToServer(publishedOverride) {
+      if (!isCoach()) return { ok: false, status: 0, error: 'Only coaches can publish a squad.' };
       const mc = state.matchCentre || {};
+      const published = (publishedOverride === undefined) ? !!mc.published : !!publishedOverride;
       const formationNames = state.formationNames || {};
       const benchPlayers = state.benchPlayers || [];
       const { formationKeys, benchKeys } = sheetPersonKeys(formationNames, benchPlayers);
       try {
-        await fetch('/api/publish', {
+        const res = await fetch('/api/publish', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'squad',
-            data: { ...mc, formationNames, benchPlayers,
+            data: { ...mc, published, formationNames, benchPlayers,
                     // Who those names meant, so a later rename cannot orphan
                     // this match. Names are kept untouched alongside.
                     formationKeys, benchKeys,
                     fixtureId: matchCentreFixtureId(), sideId: matchCentreSideId() },
           }),
         });
-      } catch(e) { console.warn('[syncSquadToServer]', e); }
+        if (!res.ok) {
+          let error = '';
+          try { error = (await res.json())?.error || ''; } catch {}
+          return { ok: false, status: res.status, error: error || `Publish failed (${res.status}).` };
+        }
+        return { ok: true, status: res.status };
+      } catch(e) {
+        console.warn('[syncSquadToServer]', e);
+        return { ok: false, status: 0, error: 'You appear to be offline — the squad was not published.' };
+      }
     }
 
     // ─── ROSTER SYNC ─────────────────────────────────────────────────────────

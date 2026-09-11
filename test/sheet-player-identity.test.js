@@ -270,7 +270,7 @@ test('publishing sends the keys, and still sends the names', () => {
   const src = extractFn(html, 'syncSquadToServer');
   assert.match(src, /sheetPersonKeys\(formationNames, benchPlayers\)/, 'resolved at publish time');
   assert.match(src, /formationKeys, benchKeys/, 'and sent');
-  assert.match(src, /data: \{ \.\.\.mc, formationNames, benchPlayers,/, 'names still sent, untouched');
+  assert.match(src, /data: \{ \.\.\.mc, published, formationNames, benchPlayers,/, 'names still sent, untouched (with the explicit published flag)');
 });
 
 test('resolution happens against this device\'s own club roster only', () => {
