@@ -70,7 +70,10 @@ const MEMBERS = [
   { id: 'm-u18-coach', teamId: CLUB, userId: 'u-u18-coach', role: 'coach', status: 'active',
     accessProfile: 'coach', accessScope: scope(U18) },
   { id: 'm-admin', teamId: CLUB, userId: 'u-admin', role: 'admin', status: 'active', isOwner: true },
+  // A Seniors player ("Samuel") and a U18 player ("Alpha") — the two capacities
+  // the group-scoped player read must keep apart.
   { id: 'm-player', teamId: CLUB, userId: 'u-player', role: 'player', status: 'active', playerGroupId: SEN },
+  { id: 'm-u18-player', teamId: CLUB, userId: 'u-u18-player', role: 'player', status: 'active', playerGroupId: U18 },
 ];
 
 const FIXTURES = [
@@ -90,7 +93,9 @@ const LEGACY_SHEET = { published: true, publishedAt: '2026-08-14T10:00:00.000Z',
 const senSheetKey    = `app:publish:${CLUB}:fixture:fx-sen:side:t-prem:squad`;
 const u18SheetKey    = `app:publish:${CLUB}:fixture:fx-u18:side:t-u18a:squad`;
 const legacySheetKey = `app:publish:${CLUB}:fixture:fx-legacy:squad`;
-const pointerKey     = `app:publish:${CLUB}:squad:current`;
+const pointerKey     = `app:publish:${CLUB}:squad:current`;               // pre-fix, group-less
+const senPointerKey  = `app:publish:${CLUB}:squad:current:${SEN}`;        // Seniors (= INITIAL)
+const u18PointerKey  = `app:publish:${CLUB}:squad:current:${U18}`;        // U18
 const legacySquadKey = `app:publish:${CLUB}:squad`;
 
 const cookies = new Map();
@@ -158,12 +163,14 @@ test('READ — a club-wide admin reads every group\'s sheet', async () => {
   }
 });
 
-test('READ — the player-facing pointer read is untouched by the staff boundary', async () => {
+test('READ — the player-facing pointer read is scoped to the reader\'s group', async () => {
   await seed();
-  kv.set(pointerKey, JSON.stringify({ mode: 'fixture', fixtureId: 'fx-sen' }));
+  // The pointer is now per-group: a Seniors player reads the Seniors pointer.
+  kv.set(senPointerKey, JSON.stringify({ mode: 'fixture', fixtureId: 'fx-sen', groupId: SEN }));
   const r = await call('u-player', { query: { type: 'squad' } });
   assert.equal(r.code, 200, JSON.stringify(r.body));
   assert.equal(r.body.publishedSheets?.length, 1);
+  assert.equal(r.body.publishedSheets[0].fixtureId, 'fx-sen');
 });
 
 // ── PUBLISH ─────────────────────────────────────────────────────────────────
@@ -239,24 +246,26 @@ test('WITHDRAW — own group allowed; another group\'s sheet survives the attemp
 
 test('UNLINKED — in a multi-group club only all-group authority may touch the club-wide slot', async () => {
   await seed();
+  // The unlinked/legacy slot is the INITIAL group's pointer (only initial-group
+  // players ever saw it), so all-group authority is still what governs it.
   kv.set(legacySquadKey, JSON.stringify({ published: true, formationNames: { 1: 'Legacy Slot Sentinel' } }));
-  kv.set(pointerKey, JSON.stringify({ mode: 'legacy', fixtureId: '' }));
+  kv.set(senPointerKey, JSON.stringify({ mode: 'legacy', fixtureId: '', groupId: SEN }));
 
   // A scoped coach can neither hijack the slot with an unlinked publish…
   const hijack = await call('u-u18-coach', { method: 'POST',
     body: { type: 'squad', data: { published: true, formationNames: { 1: 'Hijack' } } } });
   assert.equal(hijack.code, 403, JSON.stringify(hijack.body));
 
-  // …nor blank every group's view with an unlinked withdraw.
+  // …nor blank the initial group's view with an unlinked withdraw.
   const blank = await call('u-u18-coach', { method: 'DELETE', body: { type: 'squad' } });
   assert.equal(blank.code, 403, JSON.stringify(blank.body));
   assert.ok(kv.get(legacySquadKey), 'club-wide squad survives');
-  assert.equal(JSON.parse(kv.get(pointerKey)).mode, 'legacy', 'pointer untouched');
+  assert.equal(JSON.parse(kv.get(senPointerKey)).mode, 'legacy', 'pointer untouched');
 
   // The club-wide admin retains both.
   const adminBlank = await call('u-admin', { method: 'DELETE', body: { type: 'squad' } });
   assert.equal(adminBlank.code, 200, JSON.stringify(adminBlank.body));
-  assert.equal(JSON.parse(kv.get(pointerKey)).mode, 'none');
+  assert.equal(JSON.parse(kv.get(senPointerKey)).mode, 'none');
 });
 
 test('UNLINKED — a one-group club keeps its documented legacy behaviour for a scoped coach', async () => {
@@ -322,4 +331,160 @@ test('SEASON — a forged ?group= is refused; the own group works; the admin see
   const admin = await call('u-admin', { query: { resource: 'season-sheets' } });
   assert.equal(admin.code, 200, JSON.stringify(admin.body));
   assert.deepEqual(admin.body.sheets.map(s => s.fixtureId).sort(), ['fx-legacy', 'fx-sen', 'fx-u18']);
+});
+
+// ── PLAYER GROUP ISOLATION (PUBLISHED-SQUAD-GROUP-SCOPE-FIX-1, P0) ────────────
+// The pointer is per-group, so publishing one group's squad moves ONLY that
+// group's players' view. A player is never shown another group's publication —
+// the intra-club cross-group leak this fix closes.
+//
+// These drive REAL publishes through the handler and read as REAL players.
+// Fresh empty pointers each seed(): no group sees anything until its coach
+// publishes (no fallback to the pre-fix club-wide key).
+
+const pub = k => { try { return JSON.parse(kv.get(k)); } catch { return kv.get(k) ?? null; } };
+const playerSheets = async userId => {
+  const r = await call(userId, { query: { type: 'squad' } });
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  return (r.body.publishedSheets || []).map(s => ({ fixtureId: s.fixtureId, side: s.sideId }));
+};
+
+test('P0 — group A publishes; A player sees it, B player does NOT', async () => {
+  await seed();
+  const p = await call('u-u18-coach', { method: 'POST', body: publishBody('fx-u18', 't-u18a') });
+  assert.equal(p.code, 200, JSON.stringify(p.body));
+
+  assert.deepEqual(await playerSheets('u-u18-player'), [{ fixtureId: 'fx-u18', side: 't-u18a' }], 'U18 player sees U18');
+  assert.deepEqual(await playerSheets('u-player'), [], 'Seniors player sees NOTHING of the U18 publish');
+  assert.equal(pub(u18PointerKey)?.mode, 'fixture', 'only the U18 pointer moved');
+  assert.equal(kv.get(senPointerKey), undefined, 'the Seniors pointer was never written');
+  assert.equal(kv.get(pointerKey), undefined, 'the pre-fix club-wide pointer is never written');
+});
+
+test('P0 — B then publishes; A keeps A, B sees B; neither pointer replaces the other', async () => {
+  await seed();
+  await call('u-u18-coach', { method: 'POST', body: publishBody('fx-u18', 't-u18a') });
+  await call('u-sen-coach', { method: 'POST', body: publishBody('fx-sen', 't-prem') });
+
+  assert.deepEqual(await playerSheets('u-player'), [{ fixtureId: 'fx-sen', side: 't-prem' }], 'Seniors sees Seniors');
+  assert.deepEqual(await playerSheets('u-u18-player'), [{ fixtureId: 'fx-u18', side: 't-u18a' }], 'U18 still sees U18');
+  assert.equal(pub(senPointerKey)?.fixtureId, 'fx-sen');
+  assert.equal(pub(u18PointerKey)?.fixtureId, 'fx-u18', 'publishing Seniors did not touch the U18 pointer');
+});
+
+test('P0 — SAMUEL regression: U18 publish never shows a Seniors player a U18 card', async () => {
+  await seed();
+  // U18 Premier is published. "Samuel" (Seniors, not on any U18 sheet) must see nothing.
+  await call('u-u18-coach', { method: 'POST', body: publishBody('fx-u18', 't-u18a') });
+  const samuelAfterU18 = await playerSheets('u-player');
+  assert.deepEqual(samuelAfterU18, [], 'Samuel sees NO "not selected for U18 Premier" card');
+  assert.equal(JSON.stringify(samuelAfterU18).includes('u18'), false);
+  // A U18 player DOES see the U18 publication.
+  assert.deepEqual(await playerSheets('u-u18-player'), [{ fixtureId: 'fx-u18', side: 't-u18a' }]);
+
+  // Then Seniors publishes: Samuel sees Seniors; U18 players still see U18.
+  await call('u-sen-coach', { method: 'POST', body: publishBody('fx-sen', 't-prem') });
+  assert.deepEqual(await playerSheets('u-player'), [{ fixtureId: 'fx-sen', side: 't-prem' }], 'Samuel now sees Seniors');
+  assert.deepEqual(await playerSheets('u-u18-player'), [{ fixtureId: 'fx-u18', side: 't-u18a' }], 'U18 unchanged');
+});
+
+test('P0 — ALPHA regression: a player sees his own group\'s publication card', async () => {
+  await seed();
+  // Alpha is the U18 player; when U18 is the published group he sees the U18 card.
+  await call('u-u18-coach', { method: 'POST', body: publishBody('fx-u18', 't-u18a') });
+  const alpha = await playerSheets('u-u18-player');
+  assert.deepEqual(alpha, [{ fixtureId: 'fx-u18', side: 't-u18a' }], 'Alpha sees the correct U18 card');
+});
+
+test('P0 — an arbitrary ?group= cannot expose another group\'s publication', async () => {
+  await seed();
+  await call('u-u18-coach', { method: 'POST', body: publishBody('fx-u18', 't-u18a') });
+  // A Seniors player supplies ?group=U18. A group is only honoured for a caller
+  // who OPERATES it (staff); a player operates none, so the forged group is
+  // REFUSED — never served — and U18's publication stays invisible.
+  const r = await call('u-player', { query: { type: 'squad', group: U18 } });
+  assert.equal(r.code, 403, JSON.stringify(r.body));
+  assert.equal(JSON.stringify(r.body).includes('Sentinel'), false, 'refusal carries no sheet content');
+  // Without the forged parameter the same player sees their own (empty) group.
+  const plain = await call('u-player', { query: { type: 'squad' } });
+  assert.equal(plain.code, 200, JSON.stringify(plain.body));
+  assert.deepEqual(plain.body.publishedSheets || [], []);
+});
+
+test('P0 — a known group with no pointer does NOT fall back to the club-wide legacy squad', async () => {
+  await seed();
+  // A pre-fix club-wide legacy squad exists, naming a U18 fixture. A U18 player
+  // whose group pointer is absent must NOT inherit it.
+  kv.set(legacySquadKey, JSON.stringify({ published: true, fixtureId: 'fx-u18',
+    formationNames: { 1: 'Leaked Name' }, benchPlayers: [] }));
+  assert.deepEqual(await playerSheets('u-u18-player'), [], 'no club-wide fallback for a non-initial group');
+  assert.equal(JSON.stringify(await call('u-u18-player', { query: { type: 'squad' } })).includes('Leaked'), false);
+});
+
+test('P0 — the legacy sideless publish is the INITIAL group only, never a newer group', async () => {
+  await seed();
+  kv.delete(senSheetKey); kv.delete(u18SheetKey); kv.delete(legacySheetKey);
+  // An admin (whole-club authority) publishes an unlinked, sideless squad.
+  const r = await call('u-admin', { method: 'POST', body: { type: 'squad',
+    data: { published: true, formationNames: { 1: 'Legacy Only' }, benchPlayers: [] } } });
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  assert.equal(pub(senPointerKey)?.mode, 'legacy', 'the legacy pointer is the INITIAL group\'s');
+  assert.equal(kv.get(u18PointerKey), undefined, 'no U18 legacy pointer');
+  // Seniors (initial) sees it; U18 does not.
+  assert.equal((await playerSheets('u-player')).length, 1, 'initial-group player sees the sideless squad');
+  assert.deepEqual(await playerSheets('u-u18-player'), [], 'U18 player never sees the legacy sideless squad');
+});
+
+test('P0 — withdraw settles ONLY the withdrawing group\'s pointer', async () => {
+  await seed();
+  await call('u-u18-coach', { method: 'POST', body: publishBody('fx-u18', 't-u18a') });
+  await call('u-sen-coach', { method: 'POST', body: publishBody('fx-sen', 't-prem') });
+  // Withdraw the U18 side sheet.
+  const w = await call('u-u18-coach', { method: 'POST',
+    body: { type: 'squad', data: { published: false, fixtureId: 'fx-u18', sideId: 't-u18a' } } });
+  assert.equal(w.code, 200, JSON.stringify(w.body));
+  assert.equal(pub(u18PointerKey)?.mode, 'none', 'U18 pointer settled to none');
+  assert.equal(pub(senPointerKey)?.fixtureId, 'fx-sen', 'Seniors pointer untouched by the U18 withdrawal');
+  assert.deepEqual(await playerSheets('u-u18-player'), [], 'U18 player now sees nothing');
+  assert.deepEqual(await playerSheets('u-player'), [{ fixtureId: 'fx-sen', side: 't-prem' }], 'Seniors still sees Seniors');
+});
+
+test('P0 — four groups: a publish in one is invisible to the other three', async () => {
+  // Extend the structure to four groups with an admin publishing each fixture.
+  const FOUR = {
+    version: 1,
+    groups: [
+      { id: SEN, name: 'Seniors', type: 'general', status: 'active' },
+      { id: U18, name: 'U18', type: 'age-grade', status: 'active' },
+      { id: 'grp-w', name: 'Women', type: 'general', status: 'active' },
+      { id: 'grp-u16', name: 'U16', type: 'age-grade', status: 'active' },
+    ],
+    teams: [
+      { id: 't-prem', groupId: SEN, name: 'Premier', status: 'active' },
+      { id: 't-u18a', groupId: U18, name: 'U18 Premier', status: 'active' },
+      { id: 't-w', groupId: 'grp-w', name: 'Women 1', status: 'active' },
+      { id: 't-u16', groupId: 'grp-u16', name: 'U16 A', status: 'active' },
+    ],
+  };
+  await seed(FOUR);
+  // Only U18 publishes.
+  await call('u-admin', { method: 'POST', body: publishBody('fx-u18', 't-u18a') });
+  // The Seniors player (u-player) and any non-U18 player see nothing.
+  assert.deepEqual(await playerSheets('u-player'), [], 'Seniors sees nothing of the U18 publish');
+  assert.deepEqual(await playerSheets('u-u18-player'), [{ fixtureId: 'fx-u18', side: 't-u18a' }], 'only U18 sees it');
+  assert.equal(kv.get(senPointerKey), undefined);
+  assert.equal(kv.get(`app:publish:${CLUB}:squad:current:grp-w`), undefined);
+  assert.equal(kv.get(`app:publish:${CLUB}:squad:current:grp-u16`), undefined);
+});
+
+test('P0 — a crossed pointer (group A naming a group B fixture) leaks nothing', async () => {
+  await seed();
+  // Force the pathological state the write path can never produce: the U18
+  // group pointer naming a SENIORS fixture. The read's defence-in-depth guard
+  // must still refuse to serve another group's sheets.
+  kv.set(u18PointerKey, JSON.stringify({ mode: 'fixture', fixtureId: 'fx-sen', groupId: U18 }));
+  const sheets = await playerSheets('u-u18-player');
+  assert.deepEqual(sheets, [], 'the U18 player never receives the Seniors fixture\'s sheets');
+  const raw = await call('u-u18-player', { query: { type: 'squad' } });
+  assert.equal(JSON.stringify(raw.body).includes('Sen Prop Sentinel'), false, 'no Seniors content leaks');
 });
