@@ -93,6 +93,9 @@ function client(server) {
     function isCoach() { return true; }
     let _coachDraftSaveTimer = null;
     let _mcOtherSide = null;
+    let _mcOtherSideResolvedKey = '';
+    let _mcOtherSideFetchedAt = 0;
+    function mcTeamsSidesKnown() { return true; }   // harness models teams as already known
     ${fn('mcSideRank')}
     ${fn('matchCentreSides')}
     // Build N: the picker labels fixtures with their team; the label helper
