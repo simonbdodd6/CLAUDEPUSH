@@ -8,8 +8,9 @@ import { assertOperationalGroup, operationalGroupsFor, resolvePlayerGroup } from
 import { setCors } from './_http.js';
 import { kvConfigured, kvGet } from './_kv.js';
 import { key } from './_keys.js';
-import { DEFAULT_TEAM, resolveSessionFromRequest, listIdentityState, loadTeamMembers } from './_identityStore.js';
+import { DEFAULT_TEAM, resolveSessionFromRequest, requireSession, listIdentityState, loadTeamMembers } from './_identityStore.js';
 import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
+import { gatherClubExport } from './_clubExportSource.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -109,6 +110,14 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet' });
 
+  // The club export is a read. Refuse a write method carrying it outright,
+  // rather than letting it fall through and be handled as an availability
+  // write by a caller who believed they were exporting.
+  if (req.query?.view === 'club-export' && req.method !== 'GET') {
+    res.setHeader('Allow', 'GET, OPTIONS');
+    return res.status(405).json({ ok: false, error: 'Method not allowed. The club export is read-only.' });
+  }
+
   // ── Dev-only seed/reset actions ─────────────────────────────────────────────
   if (req.method === 'POST' && process.env.DEV_LOGIN === 'true') {
     const { action, sessions: rawSessions, players: rawPlayers } = req.body || {};
@@ -178,6 +187,27 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'GET') {
+    // ── Scoped club export (CE-EXPORT-001) ───────────────────────────────────
+    // Read-only snapshot of this club's operational state for the AI CEO
+    // integration. Served here rather than as its own endpoint because the
+    // deployment ceiling is twelve functions and this is a read of club state.
+    //
+    // The club is the CALLER'S SESSION. ?clubId= is never read: a caller
+    // cannot name a club, only be one. A caller outside any group is refused
+    // rather than handed an empty success.
+    if (req.query?.view === 'club-export') {
+      let sessionContext;
+      try { sessionContext = await requireSession(req); }
+      catch (error) { return sendAuthError(res, error); }
+      try {
+        const document = await gatherClubExport(sessionContext);
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(200).json(document);
+      } catch (error) {
+        return sendAuthError(res, error);
+      }
+    }
+
     // Player self-GET: returns the logged-in player's own responses across all sessions.
     if (req.query?.myResponse === '1') {
       const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
