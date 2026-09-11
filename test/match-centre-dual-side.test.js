@@ -46,7 +46,9 @@ const PREM = 'team_premier', DEV = 'team_dev', OLD = 'team_old', FOREIGN_SIDE = 
 const MEMBERS = [
   { id: 'm-coach',  teamId: CLUB,  userId: 'u-coach',  role: 'coach',  status: 'active', accessProfile: 'full' },
   { id: 'm-coach2', teamId: CLUB,  userId: 'u-coach2', role: 'coach',  status: 'active', accessProfile: 'full' },
-  { id: 'm-player', teamId: CLUB,  userId: 'u-player', role: 'player', status: 'active' },
+  // The player-facing read is now group-scoped: this player is in the INITIAL
+  // group, where the Premier / Premier Development sides play.
+  { id: 'm-player', teamId: CLUB,  userId: 'u-player', role: 'player', status: 'active', playerGroupId: 'grp_initial' },
   { id: 'm-other',  teamId: OTHER, userId: 'u-other',  role: 'coach',  status: 'active', accessProfile: 'full' },
   { id: 'm-owner',  teamId: CLUB,  userId: 'u-owner',  role: 'admin',  status: 'active', isOwner: true },
   // Manager access: MANAGE_PLAYERS without PUBLISH_SQUADS — proves the

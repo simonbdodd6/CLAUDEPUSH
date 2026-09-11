@@ -198,7 +198,8 @@ test('a fixture-linked save touches exactly the fixture-scoped keys', async () =
   assert.deepEqual(touched, [
     `app:publish:${CLUB}:fixture:${MONS}:draft:u-coach`,
     `app:publish:${CLUB}:fixture:${MONS}:squad`,
-    `app:publish:${CLUB}:squad:current`,
+    // The pointer is per-group; MONS has no groupId, so it is the INITIAL group's.
+    `app:publish:${CLUB}:squad:current:grp_initial`,
   ].sort(), 'the fixture\'s own draft and squad, plus the player-facing pointer');
   assert.equal(touched.includes(`app:publish:${CLUB}:squad`), false,
     'the legacy club-wide squad key is never written by a fixture-linked save');
@@ -213,13 +214,14 @@ test('an UNLINKED save keeps the original keys and invents no fixture', async ()
   assert.deepEqual(touched, [
     `app:publish:${CLUB}:draft:u-coach`,
     `app:publish:${CLUB}:squad`,
-    `app:publish:${CLUB}:squad:current`,
+    // The legacy sideless slot is the INITIAL group's pointer.
+    `app:publish:${CLUB}:squad:current:grp_initial`,
   ].sort(), 'the original keys, plus the player-facing mode record');
   assert.equal(writes.some(k => k.includes(':fixture:')), false,
     'no fixture, so no fixture-scoped key is invented');
   // Pass A.1: an unlinked publish is still a publish, so it claims the
   // player-facing slot in LEGACY mode rather than being left overridable.
-  const pointer = JSON.parse(kv.get(`app:publish:${CLUB}:squad:current`));
+  const pointer = JSON.parse(kv.get(`app:publish:${CLUB}:squad:current:grp_initial`));
   assert.equal(pointer.mode, 'legacy');
   assert.equal(pointer.fixtureId, '', 'and is given no fixture identity');
 });

@@ -103,9 +103,12 @@ async function del(userId, type, fixtureId) {
 const squad = extra => ({ published: true, opposition: 'Mons', kickoffDate: '2026-08-22', ...extra });
 const named = (fixtureId, opposition) => squad({ fixtureId, opposition, published: true });
 const keysMatching = re => [...kv.keys()].filter(k => re.test(k));
+// The pointer is per-group; every fixture here has no groupId, so it belongs to
+// the club's INITIAL group and its pointer lives under that group's key.
+const POINTER_KEY = `app:publish:${CLUB}:squad:current:grp_initial`;
 /** The player-facing mode: 'fixture' | 'legacy' | 'none', or null when unset. */
 const pointerMode = () => {
-  const raw = kv.get(`app:publish:${CLUB}:squad:current`);
+  const raw = kv.get(POINTER_KEY);
   return raw ? (JSON.parse(raw)?.mode ?? null) : null;
 };
 
@@ -185,7 +188,7 @@ test('publishing sets the pointer, and players see that fixture', async () => {
   seed(); await login('u-coach'); await login('u-player');
   await post('u-coach', { type: 'squad', data: named(MONS, 'Mons') });
 
-  const pointer = JSON.parse(kv.get(`app:publish:${CLUB}:squad:current`));
+  const pointer = JSON.parse(kv.get(POINTER_KEY));
   assert.equal(pointer.fixtureId, MONS);
   assert.equal((await get('u-player', 'squad')).body.squad.opposition, 'Mons');
 });
@@ -289,7 +292,7 @@ test('DELETE removes one fixture squad and clears the pointer only if it named i
   assert.equal((await del('u-coach', 'squad', MONS)).code, 200);
   assert.equal((await get('u-coach', 'squad', MONS)).body.squad, null);
   assert.equal(pointerMode(), 'fixture', 'players were not seeing Mons, so nothing moved');
-  assert.equal(JSON.parse(kv.get(`app:publish:${CLUB}:squad:current`)).fixtureId, AMSTEL);
+  assert.equal(JSON.parse(kv.get(POINTER_KEY)).fixtureId, AMSTEL);
 
   assert.equal((await del('u-coach', 'squad', AMSTEL)).code, 200);
   assert.equal(pointerMode(), 'none', 'deleting what players saw leaves them with nothing');

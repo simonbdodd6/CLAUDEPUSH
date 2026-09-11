@@ -254,13 +254,37 @@ async function publishedSheetsForFixture(teamId, fixtureId) {
 // 'none' is why withdrawal is safe: without it, clearing the record would fall
 // back to whatever legacy squad happened to remain and resurrect a side the
 // coach had just taken down.
-function currentSquadPointerKey(teamId) { return key(`publish:${teamId}:squad:current`); }
+// The pointer is PER GROUP: publishing the U18 squad moves only U18 players'
+// view, never Seniors'. `publish:<team>:squad:current:<group>`. The bare,
+// group-less key is the pre-fix club-wide record — it is no longer written or
+// read on the player path (a known group never falls back to it), and is only
+// swept on a club reset. The group is always the fixture's OWN group
+// (fixturePointerGroup), never a query/body/team-name.
+function currentSquadPointerKey(teamId, groupId) {
+  const g = String(groupId || '').trim();
+  return g ? key(`publish:${teamId}:squad:current:${g}`)
+           : key(`publish:${teamId}:squad:current`);
+}
+
+/**
+ * The group a squad pointer belongs to. A fixture pointer belongs to the
+ * fixture's OWN group (fixtureGroupOf, with its documented legacy rule); the
+ * legacy sideless slot belongs to the club's INITIAL group — never a newer
+ * one. Resolved server-side from the fixture's stored groupId, never from a
+ * query parameter, body field or team name.
+ */
+async function fixturePointerGroup(teamId, fixtureId) {
+  if (!fixtureId) return INITIAL_GROUP_ID;
+  const { fixtures } = await readClubFixtures(teamId);
+  const fx = fixtures.find(f => String(f?.id || '') === String(fixtureId));
+  return fixtureGroupOf(fx);
+}
 
 const POINTER_MODES = new Set(['fixture', 'legacy', 'none']);
 
-/** Reads the mode record, tolerating an early Pass A record that carried a bare id. */
-async function readSquadPointer(teamId) {
-  const raw = (await kvGet(currentSquadPointerKey(teamId))) || null;
+/** Reads a GROUP's mode record, tolerating an early Pass A record that carried a bare id. */
+async function readSquadPointer(teamId, groupId) {
+  const raw = (await kvGet(currentSquadPointerKey(teamId, groupId))) || null;
   if (!raw || typeof raw !== 'object') return null;
   const fixtureId = String(raw.fixtureId || '').trim();
   const mode = POINTER_MODES.has(raw.mode) ? raw.mode : (fixtureId ? 'fixture' : null);
@@ -268,10 +292,11 @@ async function readSquadPointer(teamId) {
   return { mode, fixtureId };
 }
 
-function writeSquadPointer(teamId, mode, fixtureId, userId) {
-  return kvSet(currentSquadPointerKey(teamId), {
+function writeSquadPointer(teamId, mode, fixtureId, userId, groupId) {
+  return kvSet(currentSquadPointerKey(teamId, groupId), {
     mode,
     fixtureId: mode === 'fixture' ? String(fixtureId) : '',
+    groupId: String(groupId || ''),
     updatedAt: new Date().toISOString(),
     updatedBy: String(userId || ''),
   });
@@ -292,23 +317,25 @@ function writeSquadPointer(teamId, mode, fixtureId, userId) {
  * published, the pointer keeps naming the fixture and that sheet stays on
  * show — withdrawing Premier must never take Premier Development down.
  */
-async function settlePointerAfterWithdraw(teamId, fixtureId, userId) {
-  const pointer = await readSquadPointer(teamId);
+async function settlePointerAfterWithdraw(teamId, fixtureId, userId, groupId) {
+  const pointer = await readSquadPointer(teamId, groupId);
   if (!pointer || pointer.mode !== 'fixture' || pointer.fixtureId !== String(fixtureId)) return;
   const remaining = await publishedSheetsForFixture(teamId, fixtureId);
-  if (!remaining.length) await writeSquadPointer(teamId, 'none', '', userId);
+  if (!remaining.length) await writeSquadPointer(teamId, 'none', '', userId, groupId);
 }
 
 /** Withdraw ONE side's sheet. Real deletion; the sibling side is untouched. */
 async function retireSideSquad(teamId, fixtureId, sideId, userId) {
   await kvDel(fixtureSideSquadKey(teamId, fixtureId, sideId));
-  await settlePointerAfterWithdraw(teamId, fixtureId, userId);
+  const groupId = await fixturePointerGroup(teamId, fixtureId);
+  await settlePointerAfterWithdraw(teamId, fixtureId, userId, groupId);
 }
 
 async function retireFixtureSquad(teamId, fixtureId, userId) {
   await kvDel(fixtureSquadKey(teamId, fixtureId));
 
-  const pointer = await readSquadPointer(teamId);
+  const groupId = await fixturePointerGroup(teamId, fixtureId);
+  const pointer = await readSquadPointer(teamId, groupId);
   const legacy = (await kvGet(squadKey(teamId))) || null;
   const legacyNamesIt = legacy && String(legacy.fixtureId || '') === fixtureId;
 
@@ -318,17 +345,18 @@ async function retireFixtureSquad(teamId, fixtureId, userId) {
 
   if (pointer) {
     // A still-published SIDE sheet keeps the fixture on show (settle checks).
-    await settlePointerAfterWithdraw(teamId, fixtureId, userId);
+    await settlePointerAfterWithdraw(teamId, fixtureId, userId, groupId);
   } else if (legacyNamesIt) {
-    // no pointer yet: the legacy record was what players saw
-    await writeSquadPointer(teamId, 'none', '', userId);
+    // no pointer yet: the legacy record was what THIS group's players saw
+    await writeSquadPointer(teamId, 'none', '', userId, groupId);
   }
 }
 
-/** Withdraw the unlinked club-wide squad. Players are left with nothing. */
+/** Withdraw the unlinked club-wide squad. The legacy slot belongs to the
+ *  INITIAL group, so only that group's players are left with nothing. */
 async function retireLegacySquad(teamId, userId) {
   await kvDel(squadKey(teamId));
-  await writeSquadPointer(teamId, 'none', '', userId);
+  await writeSquadPointer(teamId, 'none', '', userId, INITIAL_GROUP_ID);
 }
 // Per-coach PRIVATE match-day draft — scoped to teamId + the owning userId, so
 // each coach has their own working squad that no other coach can overwrite. This
@@ -1256,8 +1284,15 @@ async function downstreamContext(teamId) {
     let id; try { id = decodeURIComponent(m[1]); } catch { id = m[1]; }
     selectionIds.add(id);
   }
-  const pointer = await readSquadPointer(teamId);
-  if (pointer?.mode === 'fixture' && pointer.fixtureId) selectionIds.add(pointer.fixtureId);
+  // Every GROUP's current pointer can pin its fixture, exactly as the squad
+  // records above do — the pointer is now per-group, so all of them are read.
+  const pointerKeys = await kvScanKeys(`${APP_PREFIX}:publish:${teamId}:squad:current*`);
+  for (const pk of pointerKeys) {
+    const raw = await kvGet(pk);
+    if (raw && typeof raw === 'object' && raw.mode === 'fixture' && String(raw.fixtureId || '')) {
+      selectionIds.add(String(raw.fixtureId));
+    }
+  }
   const adjustments = (await kvGet(key(`appearance_adj:${teamId}`))) || [];
   const appearanceIds = new Set(
     (Array.isArray(adjustments) ? adjustments : []).map(a => String(a.fixtureId || '')).filter(Boolean));
@@ -2601,10 +2636,12 @@ async function clubHandler(req, res) {
       // per group) live under publish:<team>:group:* — the wipe enumerates
       // them the same way it does fixture-scoped squads, so no group's
       // training survives a club reset.
-      const [scopedKeys, legacyDraftKeys, groupKeys] = await Promise.all([
+      const [scopedKeys, legacyDraftKeys, groupKeys, pointerKeys] = await Promise.all([
         kvScanKeys(`${APP_PREFIX}:publish:${session.teamId}:fixture:*`),
         kvScanKeys(key(`publish:${session.teamId}:draft:*`)),
         kvScanKeys(`${APP_PREFIX}:publish:${session.teamId}:group:*`),
+        // Every per-group current-squad pointer, plus the bare pre-fix one.
+        kvScanKeys(`${APP_PREFIX}:publish:${session.teamId}:squad:current*`),
       ]);
       await Promise.all([
         kvSet(clubKey(session.teamId), null),
@@ -2615,6 +2652,7 @@ async function clubHandler(req, res) {
         ...scopedKeys.map(k => kvDel(k)),
         ...legacyDraftKeys.map(k => kvDel(k)),
         ...groupKeys.map(k => kvDel(k)),
+        ...pointerKeys.map(k => kvDel(k)),
       ]);
       return res.status(200).json({
         ok: true,
@@ -3431,22 +3469,35 @@ export default async function handler(req, res) {
       } else if (asked) {
         result.squad = (await kvGet(fixtureSquadKey(session.teamId, asked))) || await legacySquadFor(asked);
       } else {
-        // PLAYER-FACING READ. Exactly one mode is active at a time; within
-        // 'fixture' mode each SIDE publishes and withdraws independently, so
-        // the answer is a LIST of sheets. `squad` is kept for older cached
-        // clients: it carries the sheet only when exactly ONE exists — with
-        // two sheets on show a single `squad` could only masquerade as one of
-        // them, so it is null and `publishedSheets` is the whole truth.
-        const pointer = await readSquadPointer(session.teamId);
+        // PLAYER-FACING READ — scoped to the reader's group. The pointer is
+        // per-group, so a player in group A can never be shown group B's
+        // publication (the P0 this fix closes). The group is resolved by
+        // trainingViewGroup, the same trusted server-side resolver the sessions
+        // read uses: a player gets their OWN group (players never send ?group=),
+        // a staff caller gets a group they operate (their default, or an
+        // asserted ?group=), and a forged group a caller may not see is refused
+        // — never trusted to widen visibility. Exactly one mode is active per
+        // group at a time; within 'fixture' mode each SIDE publishes and
+        // withdraws independently, so the answer is a LIST of sheets. `squad` is
+        // kept for older cached clients: it carries the sheet only when exactly
+        // ONE exists.
+        let groupId;
+        try { groupId = await trainingViewGroup(session, req.query?.group); }
+        catch (error) { return res.status(error.status || 403).json({ error: error.message }); }
         let sheets = [];
+        const pointer = await readSquadPointer(session.teamId, groupId);
         if (!pointer) {
-          // Nothing has been published or withdrawn under Pass A: the club-wide
-          // record still answers, exactly as it did before.
-          const legacy = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
-          if (legacy) sheets = [{ fixtureId: String(legacy.fixtureId || ''), sideId: '', teamName: '', squad: legacy }];
+          // No Pass A action for this group. The pre-Pass-A club-wide record
+          // belongs to the INITIAL group only (production's Seniors) — a newer
+          // group with no pointer sees nothing, never the legacy slot.
+          if (groupId === INITIAL_GROUP_ID) {
+            const legacy = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
+            if (legacy) sheets = [{ fixtureId: String(legacy.fixtureId || ''), sideId: '', teamName: '', squad: legacy }];
+          }
         } else if (pointer.mode === 'none') {
           sheets = [];                               // withdrawn, and stays withdrawn
         } else if (pointer.mode === 'legacy') {
+          // The legacy sideless slot is only ever the INITIAL group's pointer.
           const legacy = (await readScoped(squadKey(session.teamId), 'publish:squad', session.teamId)) || null;
           if (legacy) sheets = [{ fixtureId: String(legacy.fixtureId || ''), sideId: '', teamName: '', squad: legacy }];
         } else {
@@ -3455,7 +3506,12 @@ export default async function handler(req, res) {
           // and it does not fall through to the legacy record either.
           let live = '';
           try { live = await assertFixtureBelongsToClub(session.teamId, pointer.fixtureId); } catch { live = ''; }
-          sheets = live ? await publishedSheetsForFixture(session.teamId, live) : [];
+          // Defence in depth: the pointed fixture must actually belong to the
+          // reader's group. Writes guarantee this, but a crossed pointer must
+          // never leak another group's sheets.
+          if (live && (await fixturePointerGroup(session.teamId, live)) === groupId) {
+            sheets = await publishedSheetsForFixture(session.teamId, live);
+          }
         }
         result.publishedSheets = sheets;
         result.squad = sheets.length === 1 ? sheets[0].squad : null;
@@ -3603,22 +3659,27 @@ export default async function handler(req, res) {
       if (squad.fixtureId && squad.sideId) {
         // One key per fixture+side: publishing Premier can never overwrite
         // Premier Development. The pointer names the FIXTURE context only —
-        // which sheets are on show is answered per side by the records.
+        // which sheets are on show is answered per side by the records — and
+        // it is scoped to the fixture's OWN group, so it moves only that
+        // group's players, never a sibling group's.
+        const g = await fixturePointerGroup(session.teamId, squad.fixtureId);
         await kvSet(fixtureSideSquadKey(session.teamId, squad.fixtureId, squad.sideId), squad);
-        await writeSquadPointer(session.teamId, 'fixture', squad.fixtureId, session.user.id);
+        await writeSquadPointer(session.teamId, 'fixture', squad.fixtureId, session.user.id, g);
       } else if (squad.fixtureId) {
+        const g = await fixturePointerGroup(session.teamId, squad.fixtureId);
         await kvSet(fixtureSquadKey(session.teamId, squad.fixtureId), squad);
         // The publish IS the decision about what players see. No dates, no
         // "newest wins" — publishing Amstelveense leaves Mons stored and
         // retrievable, it just stops being the one on show.
-        await writeSquadPointer(session.teamId, 'fixture', squad.fixtureId, session.user.id);
+        await writeSquadPointer(session.teamId, 'fixture', squad.fixtureId, session.user.id, g);
       } else {
         // An unlinked publish is still a publish. It keeps the legacy key and
         // is given NO fixture identity, but it must take over the player-facing
         // slot — otherwise a pointer left by an earlier fixture would keep
-        // showing last week's side while this call answered 200.
+        // showing last week's side while this call answered 200. The legacy
+        // slot belongs to the INITIAL group only.
         await kvSet(squadKey(session.teamId), squad);
-        await writeSquadPointer(session.teamId, 'legacy', '', session.user.id);
+        await writeSquadPointer(session.teamId, 'legacy', '', session.user.id, INITIAL_GROUP_ID);
       }
       return res.status(200).json({ ok: true, squad });
     }
