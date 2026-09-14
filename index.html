@@ -8370,6 +8370,62 @@
     }
 
     /**
+     * THE MEMBERS AVAILABILITY DOTS' DATA — the SAME canonical week and the
+     * SAME server-first resolver the Availability board renders from, so the
+     * two surfaces cannot disagree.
+     *
+     * The dots used to read the bare legacy roster fields (p.game /
+     * p.trainingTuesday / p.trainingThursday). Since the legacy-id cutover,
+     * answers land under DATED occurrence ids — refreshLiveAvailability
+     * patches p[sessionKey(datedId)], never the bare trio — so those fields
+     * froze at whatever they held weeks ago: Members showed green/red for
+     * players the board truthfully showed as Available (Alexandre, Victor,
+     * Sasha, Theo — the production mismatches).
+     *
+     * Three cells, fixed order: Match, Tuesday, Thursday — resolved from
+     * availabilityWeekSessions(), the operating group's CURRENT week (its own
+     * fixtures, its own slots). A weekday without a session this week yields
+     * status null: the dot renders neutral and claims nothing, rather than
+     * inventing green or red. Deliberately NO legacy-field fallback anywhere.
+     */
+    function membersAvailabilityCells() {
+      const sessions = availabilityWeekSessions();
+      // Parse at MIDDAY UTC so the weekday can never shift across timezones.
+      const dayOf = iso => iso ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(iso + 'T12:00:00Z').getUTCDay()] : '';
+      const firstMatch = sessions.find(e => e.type === 'match') || null;   // events are date-sorted
+      const cells = [
+        { lbl: 'M',  name: 'Match',    sess: firstMatch },
+        { lbl: 'T1', name: 'Tuesday',  sess: sessions.find(e => e.type === 'training' && dayOf(e.date) === 'Tue') || null },
+        { lbl: 'T2', name: 'Thursday', sess: sessions.find(e => e.type === 'training' && dayOf(e.date) === 'Thu') || null },
+      ];
+      return cells.map(c => {
+        // sessionRows guarantees a canonical status on every row — no default here.
+        const byId = new Map((c.sess ? (sessionRows(String(c.sess.id)) || []) : [])
+          .map(r => [String(r.player?.id || ''), r.status]));
+        return { lbl: c.lbl, name: c.name, present: !!c.sess,
+                 statusFor: pid => c.sess ? (byId.get(String(pid)) || 'no-reply') : null };
+      });
+    }
+
+    // Once per group: make sure the canonical availability data behind the
+    // Members dots has actually been FETCHED. Same guard as
+    // ensureRecentActivity — when the Overview or the board already loaded
+    // the resolved map for this group, this fetches nothing.
+    let _membersAvailFetchedFor = null;
+    function ensureMembersAvailability() {
+      const gid = state.operationalGroupId || '';
+      if (!isCoach()) return;
+      if (_membersAvailFetchedFor === gid) return;
+      if (currentResolvedAvailability() !== null) { _membersAvailFetchedFor = gid; return; }
+      _membersAvailFetchedFor = gid;
+      if (typeof refreshLiveAvailability === 'function') {
+        refreshLiveAvailability({ boardOnly: true })
+          .then(() => { if (state.activeView === 'coach' && state.activeCoachSection === 'players') renderPlayers(); })
+          .catch(() => {});
+      }
+    }
+
+    /**
      * CAN THIS PLAYER BE SENT A REMINDER, AND UNDER WHICH IDENTITY?
      *
      * The durable membership identity (userId) or nothing. A roster row with no
@@ -18931,6 +18987,9 @@
       if (isCoach()) setTimeout(() => loadIdentityRequests().catch(()=>{}), 0);
       // RC4.7 — the member access + eligibility editor needs _adminData.
       if (isCoach() && typeof ensureAdminData === 'function') ensureAdminData();
+      // The availability dots read the canonical resolved map — fetch it once
+      // per group if nothing else has (repaints this list when it lands).
+      ensureMembersAvailability();
 
       // Phase 17 — show player detail panel if one is open
       // Phase 31 — premium Member Centre (overview) is the default view; the
@@ -19013,6 +19072,10 @@
       const _isArchivedMember = p => (p.lifecycleStatus || 'active') === 'archived';
       const members    = _showArchivedPlayers ? allMembers : allMembers.filter(p => !_isArchivedMember(p));
       const archivedCount = allMembers.filter(_isArchivedMember).length;
+      // Availability dots: the three canonical cells (Match / Tue / Thu) for
+      // the operating group's current week, computed ONCE per render — each
+      // row then does three map lookups, not three roster resolutions.
+      const availCells = membersAvailabilityCells();
 
       // ── Coaches & staff — sourced from user identity (state.users), NEVER the player
       // roster. Load staff on the Members render too (not just Messages) so they always
@@ -19282,10 +19345,15 @@
                   <td data-label="Position"><span class="pill" style="font-size:11px">${p.position}</span></td>
                   <td data-label="Availability">
                     ${(() => {
-                      const cells = [['game', 'M'], ['trainingTuesday', 'T1'], ['trainingThursday', 'T2']];
+                      // CANONICAL availability — the same sessionRows() answers
+                      // the Availability board shows, resolved in availCells
+                      // above. Never the legacy p.game/p.trainingTuesday/
+                      // p.trainingThursday fields, which stopped updating at
+                      // the dated-id cutover and disagreed with the board.
                       const dotColor = st => st === 'available' ? 'var(--green)' : st === 'maybe' ? 'var(--amber)' : (st === 'unavailable' || st === 'injured') ? 'var(--red)' : 'var(--line)';
-                      const replied = cells.filter(([k]) => p[k] && p[k] !== 'no-reply').length;
-                      const dots = cells.map(([k, lbl]) => `<span title="${lbl}: ${statusLabel(p[k] || 'no-reply')}" style="width:10px;height:10px;border-radius:50%;background:${dotColor(p[k])};display:inline-block"></span>`).join('');
+                      const sts = availCells.map(c => ({ c, st: c.statusFor(p.id) }));
+                      const replied = sts.filter(({ st }) => st && st !== 'no-reply').length;
+                      const dots = sts.map(({ c, st }) => `<span title="${c.lbl}: ${st === null ? 'No ' + c.name.toLowerCase() + ' session this week' : statusLabel(st)}" style="width:10px;height:10px;border-radius:50%;background:${st === null ? 'var(--line)' : dotColor(st)};display:inline-block"></span>`).join('');
                       return `<div style="display:flex;align-items:center;gap:7px"><span style="display:inline-flex;gap:5px">${dots}</span><span style="font-size:11px;color:var(--muted);font-weight:700">${replied}/3</span></div>`;
                     })()}
                   </td>
