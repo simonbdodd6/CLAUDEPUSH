@@ -123,6 +123,7 @@ function buildScope({
     'function getInjuredNoReturnDate() { return []; }\n' +
     'function setSection() {}\n' +
     'function operationalGroups() { return []; }\n' +
+    'function contextResolved() { return true; }\n' +
     'function canI(perm) { return _myPerms.includes(perm); }\n' +
     'function esc(s) { return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }\n' +
     // Real code from here down.

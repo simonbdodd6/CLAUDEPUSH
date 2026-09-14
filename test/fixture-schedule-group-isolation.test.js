@@ -80,6 +80,7 @@ function boundary({ gid, groups = STRUCTURE.groups, fixtures = FIXTURES }) {
     "use strict";
     const state = { operationalGroupId: cfg.gid, fixtures: cfg.fixtures };
     function operationalGroups() { return cfg.groups; }
+    function contextResolved() { return true; }
     ${extractConst(html, 'CE_INITIAL_GROUP_ID')}
     ${fn('fixtureBelongsToGroup')}
     ${fn('contextFixtures')}
@@ -115,6 +116,7 @@ function renderScreen({ gid }) {
     '  players: [], squadSelections: [], fixtureAvailability: {} };\n' +
     'const _adminData = { structure: ' + JSON.stringify(STRUCTURE) + ' };\n' +
     'function operationalGroups() { return ' + JSON.stringify(STRUCTURE.groups) + '; }\n' +
+    'function contextResolved() { return true; }\n' +
     'let _fixtureFilter = "all", _fixtureCompFilter = "", _fixtureEditId = null, _fixtureDraft = {}, _fxAvailBoardId = null;\n' +
     'function isCoach() { return true; }\n' +
     'function canI() { return true; }\n' +
