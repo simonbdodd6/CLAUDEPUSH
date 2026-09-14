@@ -33374,6 +33374,14 @@
     let _chatConversationsLoaded = false;
     let _chatFeedPaintedFor = null;  // conv id the #chatFeed DOM currently shows
     let _chatMessages      = {};   // { convId: [...msgs] }
+    // ts of the last SUCCESSFUL full-history load per conversation. THE proof
+    // that a thread's history is on this device — never the truthiness of
+    // _chatMessages[convId]: an empty array there can mean "opened while
+    // empty" or "an empty poll merge wrote []", and treating it as proof
+    // latched threads on "No messages yet" while the list showed a fresh
+    // preview (the Seniors players channel, Sep 2026). Absent here = never
+    // loaded = the full fetch may retry.
+    let _chatHistoryLoadedAt = {}; // { convId: ts }
     let _chatPollTimer     = null;
     let _chatLastPoll      = {};   // { convId: ts }
     let _chatTyping        = [];   // [{ userId, userName }] in current conv
@@ -34440,15 +34448,24 @@
             _chatMessages[convId] = mergeMessages(_chatMessages[convId] || [], fetched);
           } else if (since > 0) {
             const existing = _chatMessages[convId] || [];
-            const seen = new Set(existing.map(m => m.id).filter(Boolean));
-            const merged = existing.slice();
-            fetched.forEach(m => {
-              if (m.id && seen.has(m.id)) return;
-              if (m.id) seen.add(m.id);
-              merged.push(m);
-            });
-            merged.sort((a, b) => (a.ts || 0) - (b.ts || 0));
-            _chatMessages[convId] = merged;
+            // AN EMPTY INCREMENTAL POLL PROVES NOTHING. Writing the merged
+            // (empty) array here minted `[]` for a thread whose full history
+            // had never loaded — and [] is truthy, so every "fetch history?"
+            // guard then believed the thread was loaded: permanently "No
+            // messages yet" while the list preview stayed fresh. Only write
+            // when there is actually something to keep, or history has
+            // genuinely loaded (then [] is a true statement).
+            if (fetched.length || existing.length || _chatHistoryLoadedAt[convId]) {
+              const seen = new Set(existing.map(m => m.id).filter(Boolean));
+              const merged = existing.slice();
+              fetched.forEach(m => {
+                if (m.id && seen.has(m.id)) return;
+                if (m.id) seen.add(m.id);
+                merged.push(m);
+              });
+              merged.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+              _chatMessages[convId] = merged;
+            }
           } else {
             // MERGE, never replace. The server returns only the newest page
             // (limit 60) of up to 500 retained messages, so assigning the
@@ -34466,10 +34483,31 @@
               _chatMessages[convId] = mergeMessages(existing, fetched);
             }
           }
+          if (!(since > 0)) {
+            // FULL history answered — the one fact the retry guards trust
+            // (an empty result is a true "this thread is empty", never a
+            // latch). Establish the incremental poll cursor HERE and never
+            // earlier: seeding it before a successful full load put the
+            // cursor at NOW while the cache held nothing, so the existing
+            // server history was permanently unreachable by polling.
+            _chatHistoryLoadedAt[convId] = Date.now();
+            if (!_chatLastPoll[convId]) _chatLastPoll[convId] = Date.now();
+          }
           return data.messages;
         }
-      } catch(e) { /* offline */ }
+      } catch(e) { /* offline — no marker: a failed load must stay retryable */ }
       return [];
+    }
+
+    /** Should opening/rendering this thread (re)fetch its FULL history?
+     *  YES while no full-history load has ever SUCCEEDED for it — a failed or
+     *  never-attempted load stays retryable on every select/re-entry, so one
+     *  offline moment can no longer freeze a thread on "No messages yet".
+     *  NO once a full load succeeded (even as genuinely empty — no refetch
+     *  loops), and NO for phantom ids the CHAT-CPU-OPT-1 guard refuses:
+     *  retrying a conversation that cannot be fetched is just a spin. */
+    function chatNeedsHistory(convId) {
+      return !_chatHistoryLoadedAt[convId] && !chatIsUnresolvedPlaceholder(convId);
     }
 
     let _chatNavUnread = 0; // total unread across all conversations — drives nav badge
@@ -35102,7 +35140,9 @@
       // Coach must not let local fallback cache hide Simon Test Player's Redis history.
       if (mode === 'coach' && chatId === 'dm:coach-demo:inv-YxnjxnQa') {
         await chatFetchMessages(chatId);
-      } else if (!_chatMessages[chatId]) {
+      } else if (chatNeedsHistory(chatId)) {
+        // Explicit success marker, NOT cache truthiness: a [] left behind by
+        // an empty poll merge or an empty-era open must not stop the retry.
         await chatFetchMessages(chatId);
       }
       chatRenderContactList(mode);
@@ -35142,11 +35182,16 @@
       // resurrect it. Gating the timer itself is what makes "hidden ⇒ not
       // polling" hold. The handler restarts polling on return.
       if (document.hidden) return;
-      // Seed the poll cursor so the first tick only fetches NEW messages.
-      // renderCoachMessages / renderPlayerMessages already called chatFetchMessages(convId, 0)
-      // to load the full history; without this the first 2500ms tick re-fetches everything,
-      // triggers chatRenderMessages(), and causes a visible scroll jump.
-      if (!_chatLastPoll[convId]) _chatLastPoll[convId] = Date.now();
+      // Seed the poll cursor so the first tick only fetches NEW messages —
+      // but ONLY once a full history load has actually SUCCEEDED (the fetch
+      // itself establishes the cursor on success). Seeding unconditionally
+      // put the cursor at NOW after a FAILED history load, which made every
+      // existing server message permanently unreachable: the thread sat on
+      // "No messages yet" while the list preview stayed fresh. With no
+      // cursor, the next tick's since=0 read IS the history retry — the same
+      // single messages request the tick was going to make anyway, so the
+      // CHAT-CPU-OPT-1 cadence is unchanged.
+      if (!_chatLastPoll[convId] && _chatHistoryLoadedAt[convId]) _chatLastPoll[convId] = Date.now();
       _chatPollTimer = setInterval(async () => {
         // Poll the conversation that is actually open now. The convId captured when
         // polling started can be a pre-fetch coach-demo id (selected before the server
@@ -35503,7 +35548,7 @@
         chatFetchConversations().then(() => chatRenderContactList('coach'));
         if (state.selectedChatId === 'dm:coach-demo:inv-YxnjxnQa') {
           chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'coach'));
-        } else if (state.selectedChatId && !_chatMessages[state.selectedChatId]) {
+        } else if (state.selectedChatId && chatNeedsHistory(state.selectedChatId)) {
           chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'coach'));
         }
       } else {
@@ -35542,7 +35587,7 @@
             saveState('Player chat ID updated');
           }
           chatRenderContactList('player');
-          if (!_chatMessages[newConvId]?.length) {
+          if (chatNeedsHistory(newConvId)) {
             chatFetchMessages(newConvId).then(() => chatRenderMessages(newConvId, 'player'));
           }
         }
@@ -35567,8 +35612,8 @@
           // server DM rather than the stale id selected before conversations loaded.
           if (canonicalizePlayerSelectedChat()) chatStartPolling(state.selectedChatId);
           chatRenderContactList('player');
-          // If we have a selected conv with no messages yet, fetch now
-          if (state.selectedChatId && !(_chatMessages[state.selectedChatId]?.length)) {
+          // If the selected conv's history never successfully loaded, fetch now
+          if (state.selectedChatId && chatNeedsHistory(state.selectedChatId)) {
             chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'player'));
           }
         });
@@ -35582,7 +35627,7 @@
           // 'coach'/coach-demo id onto the real server DM, then repoint reads to it.
           if (canonicalizePlayerSelectedChat()) {
             chatStartPolling(state.selectedChatId);
-            if (!(_chatMessages[state.selectedChatId]?.length)) {
+            if (chatNeedsHistory(state.selectedChatId)) {
               chatFetchMessages(state.selectedChatId).then(() => chatRenderMessages(state.selectedChatId, 'player'));
             }
           }
@@ -40507,6 +40552,9 @@
       // synthetic (loaded + empty) until their first conversations fetch.
       _chatConversationsLoaded = false;
       _chatLastPoll = {};
+      // History-success markers are identity-scoped too: the next identity
+      // must prove its own history loads, never inherit this one's.
+      _chatHistoryLoadedAt = {};
       _chatFeedPaintedFor = null;
       // Server-resolved group recipient sets are identity/club-scoped too —
       // the next identity must resolve its own, never inherit these.

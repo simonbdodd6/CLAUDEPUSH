@@ -27,7 +27,7 @@ const COACH_DEMO = 'dm:coach-demo:user_1781985675283_8sr7et';
 // Run chatStartPolling, then fire ONE tick manually (setInterval is stubbed).
 function runPollTick({ selectedChatId, startedWith }) {
   const body = `"use strict";
-    let captured = null; let _chatPollTimer = null; const _chatLastPoll = {}; let _intervalFn = null;
+    let captured = null; let _chatPollTimer = null; const _chatLastPoll = {}; const _chatHistoryLoadedAt = { squad: 1, announce: 1 }; let _intervalFn = null;
     const state = { activeView: 'player', activePlayerSection: 'messages', selectedChatId: ${JSON.stringify(selectedChatId)} };
     function setInterval(fn){ _intervalFn = fn; return 1; }
     function clearInterval(){ _chatPollTimer = null; }

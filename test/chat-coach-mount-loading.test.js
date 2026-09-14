@@ -63,6 +63,12 @@ function mountCoach({ selectedChatId, operationalGroupId = 'grp_initial', warm =
     'function chatMarkRead(){}\n' +
     'function chatFetchConversations(){ return Promise.resolve(); }\n' +
     'function chatFetchMessages(){ return Promise.resolve([]); }\n' +
+    // MESSAGES-PREVIEW-THREAD-MISMATCH-2: renderCoachMessages now decides the
+    // history refetch via the explicit success marker, not cache truthiness.
+    // Mirror the shape: history counts as loaded when the cache has content.
+    'const _chatHistoryLoadedAt = Object.fromEntries(Object.keys(' + JSON.stringify(cache) + ').map(k => [k, 1]));\n' +
+    'function chatIsUnresolvedPlaceholder(){ return false; }\n' +
+    'function chatNeedsHistory(convId){ return !_chatHistoryLoadedAt[convId] && !chatIsUnresolvedPlaceholder(convId); }\n' +
     fn('chatGetConvId') + '\n' +
     fn('renderCoachMessages') + '\n' +
     'renderCoachMessages();\n' +
