@@ -180,6 +180,7 @@ function runRefresh({ pollTimerActive, conversations = [], fetchResult = [] }) {
     const calls = { fetch: [], render: [], markRead: [] };
     const state = { selectedChatId: 'dm:a:b', activeView: 'coach', activeCoachSection: 'messages' };
     const _chatLastPoll = {};
+    const _chatHistoryLoadedAt = { squad: 1 }; // MESSAGES-PREVIEW-THREAD-MISMATCH-2: chatStartPolling gates its seed on this
     const _chatConversations = ${JSON.stringify(conversations)};
     let _chatPollTimer = ${pollTimerActive ? '1234' : 'null'};
     const feedEl = { scrollHeight: 100, scrollTop: 0, clientHeight: 100 };
@@ -231,6 +232,7 @@ test('TEST 10 — the thread poll ticks every 5s, and typing rides the same tick
     const calls = { messages: [], typing: [] };
     let _registeredMs = null, _intervalFn = null, _chatPollTimer = null;
     const _chatLastPoll = {};
+    const _chatHistoryLoadedAt = { squad: 1 }; // MESSAGES-PREVIEW-THREAD-MISMATCH-2: chatStartPolling gates its seed on this
     const state = { activeView: 'coach', activeCoachSection: 'messages', selectedChatId: 'squad' };
     function setInterval(fn, ms) { _intervalFn = fn; _registeredMs = ms; return 7; }
     function clearInterval() { _chatPollTimer = null; }
