@@ -8861,9 +8861,15 @@
     function setTrainingSession(id) {
       state.trainingActiveSession = id;
       // A dated session (slot_x-YYYYMMDD) lives in its own week — follow it,
-      // so opening one from History lands on the planner that shows it.
+      // so opening one from History lands on the planner that shows it. This
+      // is explicit week navigation: stamp it, or the very next render's
+      // stale-week rollover would snap a past session's planner straight
+      // back to the current week.
       const d = trainingDateFromSessionId(id);
-      if (d) state.trainingWeekStart = availWeekStart(d);
+      if (d) {
+        state.trainingWeekStart = availWeekStart(d);
+        _trainingWeekNavIn = availWeekStart(availToday());
+      }
       saveState();
       render();
     }
@@ -31523,21 +31529,42 @@
     // current week → the slot's legacy sessionId (tue / thu), other weeks →
     // slot_<id>-<YYYYMMDD>. One event, one identity.
 
-    /** The Training week being viewed (Monday ISO). Bad stored values reset. */
+    /** The Training week being viewed (Monday ISO). Bad stored values reset.
+     *
+     *  THE STALE-WEEK TRAP, coach edition (production, Mon 14 Sep 2026): the
+     *  viewed week is PERSISTED state, so a planner last opened during the
+     *  week of 7 Sep still held 2026-09-07 and quietly rendered LAST week on
+     *  Monday morning — the same defect availViewedWeek fixed for players
+     *  (Build AQ), with the same repair. A stored PAST week is honoured only
+     *  while the coach explicitly navigated to it during the current real
+     *  week (_trainingWeekNavIn); a fresh load, restored state or a PWA left
+     *  open across the Sunday→Monday rollover snaps to the current week.
+     *  A stored FUTURE week is always kept — planning ahead is a feature,
+     *  and its content lives safely under dated occurrence keys. */
+    let _trainingWeekNavIn = ''; // current-week when the coach last chose a week; '' = never
     function trainingViewedWeek() {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(state.trainingWeekStart || ''))) {
-        state.trainingWeekStart = availWeekStart(availToday());
+      const cur = availWeekStart(availToday());
+      const stored = String(state.trainingWeekStart || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(stored)) {
+        state.trainingWeekStart = cur;                   // none, or malformed
+      } else if (stored < cur && _trainingWeekNavIn !== cur) {
+        state.trainingWeekStart = cur;                   // stale past week: roll over
       }
       return state.trainingWeekStart;
     }
     function trainingIsCurrentWeek() { return trainingViewedWeek() === availWeekStart(availToday()); }
     function trainingShiftWeek(delta) {
+      // Resolve the base BEFORE stamping navigation, so a stale stored week
+      // snaps to the current week first and the arrows move relative to what
+      // the coach is actually looking at (availShiftWeek's rule).
       state.trainingWeekStart = availAddDays(trainingViewedWeek(), delta * 7);
+      _trainingWeekNavIn = availWeekStart(availToday());
       saveState('Training week');
       render();
     }
     function trainingGoToThisWeek() {
       state.trainingWeekStart = availWeekStart(availToday());
+      _trainingWeekNavIn = state.trainingWeekStart;
       saveState('Training week');
       render();
     }
@@ -40769,6 +40796,10 @@
       state.trainingActiveSession  = fresh.trainingActiveSession;
       state.lastWeekTrainingBlocks = fresh.lastWeekTrainingBlocks;
       state.trainingStateGroupId   = gid;
+      // The adopted group's stored week was not chosen in THIS session — a
+      // restoration boundary. Clearing the stamp lets trainingViewedWeek
+      // roll a stale past week to the current week for the incoming group.
+      _trainingWeekNavIn = '';
     }
 
     /**

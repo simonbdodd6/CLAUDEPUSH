@@ -190,6 +190,7 @@ function ownerWorld(state) {
     const loadMedicalFromServer = () => Promise.resolve();
     let _trainingSchedule=null,_trainingScheduleAttempted=false,_trainingScheduleGroupId='';
     let _trainingPubState={},_trainingPubLoadedAt=0,_publishedStateLoadedAt=0,_sharedMedical={};
+    let _trainingWeekNavIn=''; // TRAINING-WEEK-ROLLOVER-1: adoptTrainingState clears the nav stamp
     ${html.match(/const TRAINING_UNOWNED_KEY = '[^']+';/)[0]}
     ${fn('trainingStateOwner')}
     ${fn('captureTrainingState')}
