@@ -16889,7 +16889,7 @@
           </section>
 
           <section class="msg-card${BETA_SIMPLE_UI ? ' beta-hidden' : ''}" style="padding:0;overflow:hidden">
-            <details class="srv-panel" open ontoggle="if(this.open) loadLiveSchedules()">
+            <details class="srv-panel" open ontoggle="if(this.open) loadLiveSchedulesOnToggle()">
               <summary>Active automations</summary>
               <div id="live-schedules-panel" class="srv-panel-body"><p class="muted" style="font-size:13px">Loading...</p></div>
             </details>
@@ -39540,10 +39540,16 @@
       safeRender('player-fixtures',     () => renderPlayerFixtures());
       safeRender(null,                  () => renderAuthBanner());
       safeRender(null,                  () => renderDebugOverlay());
-      // Async live-data panels — non-blocking, fills in after render
+      // Async live-data panels — non-blocking, fills in after render.
+      // loadLiveMessaging() throttles itself (see the cycle guard): this runs
+      // on every render, so without that guard ordinary use re-ran the whole
+      // network cycle repeatedly. Leaving the section re-arms it, so coming
+      // back always loads fresh data.
       if (state.activeCoachSection === "message") {
         loadLiveMessaging();
         setTimeout(renderAudiencePicker, 50);
+      } else {
+        liveMessagingArmReload();
       }
     }
 
@@ -39551,14 +39557,58 @@
     let _availPollTimer  = null;
     let _availLastSync   = null; // ISO string of last successful refresh
 
-    async function loadLiveMessaging() {
-      renderPushStatusCard();
-      loadLiveSchedules();
-      loadLiveTemplates();
-      loadLiveLog();
-      loadLiveResponses();
-      // Pull live availability from Redis into the session detail panels
-      await refreshLiveAvailability();
+    // LIVE-DATA CYCLE GUARD (coach Availability/Messaging screen).
+    // render() calls loadLiveMessaging() on EVERY render while this section is
+    // open, and the cycle is all network: the schedules panel alone fetches
+    // /api/schedules + /api/templates, and the board fetches the resolved
+    // availability map. render() runs on far more than a section change (every
+    // saveState, every nav badge update, every poll repaint), so a few seconds
+    // of ordinary use re-ran the whole cycle several times over — the repeated
+    // request bursts visible in production logs.
+    //
+    // The guard is deliberately NOT a cache: it only stops a SECOND cycle
+    // starting while one is in flight or moments after the last one, and it
+    // re-arms the moment the coach leaves the section, so entering it always
+    // loads fresh data. The 5s board poll below is unaffected and keeps the
+    // board itself live.
+    let _liveMessagingLoadedAt = 0;      // 0 = armed; a cycle will run on the next call
+    let _liveMessagingInFlight = false;
+    const LIVE_MESSAGING_MIN_INTERVAL_MS = 15000;
+
+    /** True when a full live-data cycle may start now. */
+    function liveMessagingCycleDue(now = Date.now()) {
+      if (_liveMessagingInFlight) return false;     // one cycle at a time
+      if (!_liveMessagingLoadedAt) return true;     // armed: first entry, or re-entry
+      return (now - _liveMessagingLoadedAt) >= LIVE_MESSAGING_MIN_INTERVAL_MS;
+    }
+
+    /** Leaving the section arms the next entry to load fresh data. */
+    function liveMessagingArmReload() { _liveMessagingLoadedAt = 0; }
+
+    async function loadLiveMessaging(opts = {}) {
+      if (!opts.force && !liveMessagingCycleDue()) return;
+      _liveMessagingInFlight = true;
+      _liveMessagingLoadedAt = Date.now();
+      try {
+        renderPushStatusCard();
+        loadLiveSchedules();
+        loadLiveTemplates();
+        loadLiveLog();
+        loadLiveResponses();
+        // Pull live availability from Redis into the session detail panels.
+        // skipPanelReload: this function has just loaded those panels itself;
+        // without it refreshLiveAvailability re-ran them 50ms later, fetching
+        // /api/schedules + /api/templates a second time every single cycle.
+        await refreshLiveAvailability({ skipPanelReload: true });
+      } catch (e) {
+        // A failed cycle must never latch the guard shut. Re-arm so the next
+        // render retries instead of waiting out the window, and say so — the
+        // individual loaders already surface their own errors in the UI.
+        _liveMessagingLoadedAt = 0;
+        console.warn('[loadLiveMessaging]', e);
+      } finally {
+        _liveMessagingInFlight = false;
+      }
       // Live board refresh while the Availability section is open. Board-only
       // ticks are cheap: they fetch the resolved map and repaint the selected
       // board ONLY when the data actually changed (skipping the side-panel
@@ -39698,9 +39748,16 @@
           setTimeout(() => {
             renderAudiencePicker();
             renderPushStatusCard();
-            loadLiveSchedules();
-            loadLiveTemplates();
-            loadLiveLog();
+            // The side panels re-fetch /api/schedules + /api/templates. A
+            // caller that has just loaded them itself (loadLiveMessaging)
+            // passes skipPanelReload, so one cycle no longer pays for that
+            // pair twice. A manual refresh, and the refresh on returning to
+            // the tab, still reload them — that is the point of asking.
+            if (!opts.skipPanelReload) {
+              loadLiveSchedules();
+              loadLiveTemplates();
+              loadLiveLog();
+            }
           }, 50);
         }
       } catch(e) {
@@ -39975,9 +40032,38 @@
       }
     }
 
+    // When the schedules panel last actually loaded, and the markup it last
+    // showed. Only the <details> toggle path consults these — every explicit
+    // caller still reloads unconditionally.
+    let _liveSchedulesLoadedAt = 0;
+    let _liveSchedulesHtml = '';
+
+    /**
+     * The panel's <details> is re-created by every render of this screen, and
+     * the browser fires `toggle` when an already-open <details> is parsed in —
+     * so the raw ontoggle re-fetched /api/schedules + /api/templates on EVERY
+     * render, independently of the live-data cycle.
+     *
+     * Within the window the data we already have is still current, but the
+     * rebuilt panel is showing its "Loading..." placeholder, so repaint the
+     * markup we already hold rather than either re-fetching it or leaving the
+     * coach looking at a spinner. Past the window — or with nothing held — a
+     * genuine expand still loads.
+     */
+    function loadLiveSchedulesOnToggle() {
+      const fresh = (Date.now() - _liveSchedulesLoadedAt) < LIVE_MESSAGING_MIN_INTERVAL_MS;
+      if (fresh && _liveSchedulesHtml) {
+        const panel = document.getElementById("live-schedules-panel");
+        if (panel) panel.innerHTML = _liveSchedulesHtml;
+        return;
+      }
+      loadLiveSchedules();
+    }
+
     async function loadLiveSchedules() {
       const panel = document.getElementById("live-schedules-panel");
       if (!panel) return;
+      _liveSchedulesLoadedAt = Date.now();
       try {
         const [schedRes, tplRes] = await Promise.all([
           fetch('/api/schedules').then(r => r.json()),
@@ -39993,6 +40079,7 @@
 
         if (!ordered.length) {
           panel.innerHTML = `<p class="muted" style="font-size:13px">No scheduled sends yet — create one using the Template messages builder above.</p>`;
+          _liveSchedulesHtml = panel.innerHTML;
           return;
         }
 
@@ -40030,8 +40117,13 @@
             <div style="font-size:11px;color:var(--muted);margin-top:3px">Last fired: ${lastSent}</div>
           </div>`;
         }).join('');
+        _liveSchedulesHtml = panel.innerHTML;
       } catch (err) {
         panel.innerHTML = `<p class="muted" style="font-size:13px;color:#f87171">Could not load schedules — ${err.message}</p>`;
+        // Never hold a failure as the panel's content. Clearing this is what
+        // makes the next toggle retry the load instead of repainting the
+        // error — the throttle only repaints when there is content to repaint.
+        _liveSchedulesHtml = '';
       }
     }
 
