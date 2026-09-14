@@ -7470,6 +7470,12 @@
       // Per-group stash of the training working state (schedule, blocks,
       // attendance, notes…) — the group partition's local half.
       next.trainingByGroup    = (typeof input.trainingByGroup === 'object' && input.trainingByGroup !== null) ? input.trainingByGroup : {};
+      // What this device last ADOPTED per training content key: the server
+      // publication revision and a content fingerprint of the blocks as
+      // adopted. Adoption is revision-aware — local blocks identical to the
+      // last adoption are safe to replace with a NEWER publication, while any
+      // local divergence is unsynced work and is never overwritten.
+      next.trainingAdopted    = (typeof input.trainingAdopted === 'object' && input.trainingAdopted !== null) ? input.trainingAdopted : {};
       // The owner stamp is normalised EXPLICITLY: a malformed value must become
       // null (unknown) rather than survive as junk, because trainingStateOwner()
       // fails closed on unknown — it must never be tricked into a real group.
@@ -8938,12 +8944,62 @@
       return `<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:${label.bg};color:${label.fg}">${who}: ${esc(label.text)}${esc(when)}</span>`;
     }
 
+    /** CONTENT fingerprint of a block list — what the coach actually typed,
+     *  nothing volatile. Block ids are minted per device (tb<timestamp>), so a
+     *  fingerprint over raw objects would call identical plans different on
+     *  every device; the tuple below is the plan's substance. */
+    function trainingBlocksFingerprint(blocks) {
+      return JSON.stringify((Array.isArray(blocks) ? blocks : []).map(b => [
+        String(b?.time || ''), String(b?.activity || ''),
+        String(b?.keyFocus || b?.tag || ''), String(b?.coach || ''),
+      ]));
+    }
+
+    /** ONE-TIME bridge per occurrence: content keyed under a bare legacy id
+     *  (`tue`) becomes readable under the dated key the planner now uses.
+     *  Copies (never moves — the bare key stays as inert history) and records
+     *  the copy as an adoption-equivalent {rev:null, fp} so revision-aware
+     *  adoption may later replace it with a clean publication — but only
+     *  while the copy is untouched AND nothing anywhere is unrepublished
+     *  (status 'published'): pre-fix, a bare key could equally hold LAST
+     *  week's leftovers or this week's genuine work, and only the server's
+     *  publication state can tell those apart safely. */
+    function trainingBridgeBareContent() {
+      let bridged = false;
+      (state.schedule || []).forEach(row => {
+        if (!row || !row.id) return;
+        const bare = String(row.id);
+        const ck = trainingContentKey(bare);
+        if (ck === bare) return;                          // no dated resolution — nothing to bridge
+        const blocks = state.trainingBlocks || {};
+        const local = blocks[ck];
+        const legacy = blocks[bare];
+        if ((Array.isArray(local) && local.length) || !Array.isArray(legacy) || !legacy.length) return;
+        state.trainingBlocks = blocks;
+        blocks[ck] = structuredClone(legacy);
+        state.trainingAdopted = state.trainingAdopted || {};
+        state.trainingAdopted[ck] = { rev: null, fp: trainingBlocksFingerprint(legacy) };
+        bridged = true;
+      });
+      return bridged;
+    }
+
     /** Adopt published COACH plans into the dated content keys the planner
      *  reads. Returns true when anything was adopted. Pure state-in/state-out
-     *  apart from state.trainingBlocks; guards documented at the call site. */
+     *  apart from state.trainingBlocks/trainingAdopted.
+     *
+     *  REVISION-AWARE, never one-shot: what this device last adopted is
+     *  recorded per content key as {rev: server publishedRevision, fp: content
+     *  fingerprint}. Local blocks whose fingerprint still equals that record
+     *  are exactly what the server gave us — safe to replace when the server
+     *  publishes a NEWER revision. Any divergence is unsynced local work and
+     *  is never overwritten; the server's own revision string is the
+     *  authority, never the device clock. */
     function trainingAdoptCoachPlans(sessions) {
       let adopted = false;
       const weekStartIso = availWeekStart(availToday());
+      state.trainingBlocks  = state.trainingBlocks  || {};
+      state.trainingAdopted = state.trainingAdopted || {};
       (Array.isArray(sessions) ? sessions : []).forEach(s => {
         if (!s || !Array.isArray(s.blocks) || !s.blocks.length) return;
         // Only sessions in the CURRENT week's planner — the schedule rows are
@@ -8951,15 +9007,48 @@
         // can never re-enter the planner through adoption.
         if (!(state.schedule || []).some(row => row && row.id === s.id)) return;
         const ck = trainingContentKey(s.id);
-        const belongs = s.occurrenceKey
+        // A snapshot's occurrenceKey proves WHICH dated occurrence it is. A
+        // BARE occurrenceKey equal to the session's own id proves nothing —
+        // it is the pre-fix payload shape (production U18 records carry
+        // occurrenceKey 'thu') — so it falls to the legacy rule: publishing
+        // only opens in its own week, so published-this-week IS this week's
+        // occurrence.
+        const provenKey = s.occurrenceKey && String(s.occurrenceKey) !== String(s.id);
+        const belongs = provenKey
           ? String(s.occurrenceKey) === ck
           : String(s.publishedAt || '').slice(0, 10) >= weekStartIso;
         if (!belongs) return;
-        const local = (state.trainingBlocks || {})[ck];
-        if (Array.isArray(local) && local.length) return;   // never clobber local work
-        state.trainingBlocks = state.trainingBlocks || {};
-        state.trainingBlocks[ck] = s.blocks;
-        adopted = true;
+        const srvRev = s.publishedRevision ? String(s.publishedRevision) : null;
+        const srvFp  = trainingBlocksFingerprint(s.blocks);
+        const local  = state.trainingBlocks[ck];
+        if (!Array.isArray(local) || !local.length) {
+          // Empty here → the publication IS the plan.
+          state.trainingBlocks[ck] = s.blocks;
+          state.trainingAdopted[ck] = { rev: srvRev, fp: srvFp };
+          adopted = true;
+          return;
+        }
+        const localFp = trainingBlocksFingerprint(local);
+        if (localFp === srvFp) {
+          // Identical content (the author's own device, or an already-adopted
+          // copy) — align the record so FUTURE revisions can flow.
+          state.trainingAdopted[ck] = { rev: srvRev, fp: srvFp };
+          return;
+        }
+        const ad = state.trainingAdopted[ck];
+        if (ad && localFp === String(ad.fp || '')) {
+          // Untouched since the last adoption/bridge — no unsynced work here.
+          const newerRevision = srvRev && ad.rev && srvRev !== String(ad.rev);
+          const bridgedClean  = ad.rev === null && String(s.status || '') === 'published';
+          if (newerRevision || bridgedClean) {
+            state.trainingBlocks[ck] = s.blocks;
+            state.trainingAdopted[ck] = { rev: srvRev, fp: srvFp };
+            adopted = true;
+          }
+          return;
+        }
+        // Local content differs from anything this device adopted: unsynced
+        // work. Never overwritten — the coach's own edits outrank a snapshot.
       });
       return adopted;
     }
@@ -8980,7 +9069,12 @@
         }
         (data.sessions || []).forEach(s => {
           _trainingPubState[s.id] = _trainingPubState[s.id] || {};
-          _trainingPubState[s.id].coach = { status: s.status, publishedAt: s.publishedAt, publishedBy: s.publishedBy };
+          // publishedRevision is the server's content fingerprint of the
+          // publication — the authority revision-aware adoption compares
+          // against. It used to be discarded here, which is what made phone
+          // adoption one-shot.
+          _trainingPubState[s.id].coach = { status: s.status, publishedAt: s.publishedAt,
+            publishedBy: s.publishedBy, publishedRevision: s.publishedRevision || null };
         });
         // THE OTHER COACH'S VIEW. The server has returned the full published
         // staff plan (blocks included) for every session — until now the
@@ -8992,9 +9086,13 @@
         //     by its own occurrenceKey, or (legacy records without one) by
         //     being published during the current week, which is the only week
         //     the planner allows publishing from;
-        //   · local work is never clobbered — a device that already holds
-        //     blocks for the occurrence keeps its own richer draft.
-        if (trainingAdoptCoachPlans(data.sessions || [])) saveState('Published staff plan loaded');
+        //   · UNSYNCED local work is never clobbered — only blocks that still
+        //     fingerprint-match this device's last adoption may be replaced,
+        //     and only by a NEWER server revision (see trainingAdoptCoachPlans).
+        // Bare-key content is bridged to its dated occurrence BEFORE adoption,
+        // so the revision rules see the device's real local plan.
+        const _bridged = trainingBridgeBareContent();
+        if (trainingAdoptCoachPlans(data.sessions || []) || _bridged) saveState('Published staff plan loaded');
         const pres = await fetch(`/api/publish?resource=training&audience=player${gq}`);
         if (pres.ok) {
           const pdata = await pres.json();
@@ -17590,7 +17688,13 @@
     }
     function renderTraining() {
       // Refresh each audience's publication status when the planner is opened,
-      // so a colleague's publish shows up without a page reload.
+      // so a colleague's publish shows up without a page reload. The schedule
+      // is kicked off FIRST: adoption resolves dated occurrence keys from the
+      // slot table, so a publication reply landing before the schedule used to
+      // fail its occurrence check and sit unadopted behind the 20s throttle
+      // (loadTrainingSchedule's success path now also releases that throttle,
+      // so the first schedule-aware render re-fetches and adopts).
+      ensureTrainingSchedule();
       if (canI('publish_training') && Date.now() - _trainingPubLoadedAt > 20000) {
         _trainingPubLoadedAt = Date.now();
         loadTrainingPublicationState();
@@ -17608,6 +17712,10 @@
       if (_tab === 'history')    { _renderTrainingHistory();    return; }
 
       ensureTrainingSchedule();
+      // With the slot table in hand, any content still keyed under a bare
+      // legacy id is bridged to its dated occurrence so the planner shows the
+      // device's existing work under the key it now reads.
+      if (trainingBridgeBareContent()) saveState('Training plan re-keyed to this week');
       // The planner plans ONE WEEK at a time. The current week keeps the real
       // schedule sessions exactly as before — publishing included. Any other
       // week shows that week's dated training occurrences, generated by the
@@ -23304,6 +23412,11 @@
         }
         _trainingSchedule = data;
         _trainingScheduleGroupId = gid;
+        // The slot table just arrived, so dated occurrence keys are now
+        // resolvable. Any publication state fetched BEFORE this reply was
+        // checked against unresolvable keys — release the 20s throttle so the
+        // next planner render refetches and adopts against the real keys.
+        _trainingPubLoadedAt = 0;
         render();
         return _trainingSchedule;
       } catch { _trainingScheduleAttempted = false; return null; }
@@ -31474,9 +31587,25 @@
     function trainingContentKey(sessionId) {
       const id = String(sessionId || '').trim();
       if (!id || /-\d{8}$/.test(id)) return id;          // already an occurrence
-      const slots = (_trainingSchedule && _trainingSchedule.slots) || [];
-      const slot = slots.find(sl => sl && String(sl.sessionId || '') === id);
-      if (!slot) return id;                              // not a recurring slot: durable already
+      const slots = ((_trainingSchedule && _trainingSchedule.slots) || [])
+        .filter(sl => sl && sl.active !== false);
+      let slot = slots.find(sl => String(sl.sessionId || '') === id) || null;
+      if (!slot) {
+        // Non-initial groups' slots carry sessionId '' (the field is pinned as
+        // inert server-side), so the sessionId link above never matches and
+        // U18's content stayed under the bare `tue`/`thu` — a key that changes
+        // MEANING every Monday, which is why a phone holding last week's plan
+        // could never adopt this week's publication. Resolve the two legacy
+        // seeds by WEEKDAY instead — exactly trainingAttendanceOccurrence's
+        // rule, so planning, attendance and availability share ONE dated
+        // identity per occurrence. Refusal stays refusal: no slot table, an
+        // unknown id, or an ambiguous weekday keeps the durable bare id.
+        const day = { tue: 'Tue', thu: 'Thu' }[id];
+        if (!day) return id;
+        const daySlots = slots.filter(sl => String(sl.day || '') === day);
+        if (daySlots.length !== 1) return id;            // none, or ambiguous: refuse
+        slot = daySlots[0];
+      }
       const date = availSlotDateInWeek(slot, availWeekStart(availToday()));
       if (!date) return id;                              // no provable date: stay put
       return String(slot.id) + '-' + date.replace(/-/g, '');
@@ -31494,11 +31623,17 @@
       const m = /^(.+)-(\d{8})$/.exec(String(id || ''));
       if (!m) return String(id || '');
       const slots = (_trainingSchedule && _trainingSchedule.slots) || [];
-      const slot = slots.find(sl => sl && String(sl.id) === m[1] && sl.sessionId);
+      const slot = slots.find(sl => sl && String(sl.id) === m[1]);
       if (!slot) return String(id);
       const iso = m[2].slice(0, 4) + '-' + m[2].slice(4, 6) + '-' + m[2].slice(6, 8);
-      return iso === availSlotDateInWeek(slot, availWeekStart(availToday()))
-        ? String(slot.sessionId) : String(id);
+      if (iso !== availSlotDateInWeek(slot, availWeekStart(availToday()))) return String(id);
+      if (slot.sessionId) return String(slot.sessionId);
+      // A sessionId-less slot (non-initial groups) answers to the legacy seed
+      // row of its WEEKDAY — the same mapping trainingContentKey uses forward,
+      // so a dated U18 occurrence still finds its schedule row and publish
+      // state. Only mapped when that row actually exists.
+      const seed = { Tue: 'tue', Thu: 'thu' }[String(slot.day || '')];
+      return (seed && (state.schedule || []).some(r => r && r.id === seed)) ? seed : String(id);
     }
 
     /** The PREVIOUS week's occurrence key for a recurring session — '' when
@@ -31520,9 +31655,17 @@
         if (!trainingDateLabel(iso)) return '';          // malformed date: no claim
         return dated[1] + '-' + availAddDays(iso, -7).replace(/-/g, '');
       }
-      const slots = (_trainingSchedule && _trainingSchedule.slots) || [];
-      const slot = slots.find(sl => sl && String(sl.sessionId || '') === raw);
-      if (!slot) return '';
+      const slots = ((_trainingSchedule && _trainingSchedule.slots) || [])
+        .filter(sl => sl && sl.active !== false);
+      let slot = slots.find(sl => String(sl.sessionId || '') === raw) || null;
+      if (!slot) {
+        // Same weekday resolution as trainingContentKey, so U18's legacy seed
+        // rows also offer "last week's plan" under their dated identity.
+        const day = { tue: 'Tue', thu: 'Thu' }[raw];
+        const daySlots = day ? slots.filter(sl => String(sl.day || '') === day) : [];
+        if (daySlots.length !== 1) return '';
+        slot = daySlots[0];
+      }
       const date = availSlotDateInWeek(slot, availAddDays(availWeekStart(availToday()), -7));
       return date ? String(slot.id) + '-' + date.replace(/-/g, '') : '';
     }
@@ -40551,6 +40694,7 @@
       return {
         schedule:               structuredClone(state.schedule || []),
         trainingBlocks:         structuredClone(state.trainingBlocks || {}),
+        trainingAdopted:        structuredClone(state.trainingAdopted || {}),
         trainingAttendance:     structuredClone(state.trainingAttendance || {}),
         sessionNotes:           structuredClone(state.sessionNotes || {}),
         tacticsDrawings:        structuredClone(state.tacticsDrawings || {}),
@@ -40599,6 +40743,7 @@
       const fresh = saved || {
         schedule:               structuredClone(defaultState.schedule),
         trainingBlocks:         structuredClone(defaultState.trainingBlocks),
+        trainingAdopted:        {},
         trainingAttendance:     {},
         sessionNotes:           {},
         tacticsDrawings:        structuredClone(defaultState.tacticsDrawings),
@@ -40608,6 +40753,7 @@
       };
       state.schedule               = fresh.schedule;
       state.trainingBlocks         = fresh.trainingBlocks;
+      state.trainingAdopted        = fresh.trainingAdopted || {};
       state.trainingAttendance     = fresh.trainingAttendance;
       state.sessionNotes           = fresh.sessionNotes;
       state.tacticsDrawings        = fresh.tacticsDrawings;
@@ -41394,6 +41540,7 @@
       // The per-group training stash belongs to THIS club's groups — another
       // club's Seniors must never inherit it.
       state.trainingByGroup = {};
+      state.trainingAdopted = {};
       state.trainingStateGroupId = null;
       state.trainingAttendance = {}; state.sessionNotes = {};
       state.availabilityRequests = [];

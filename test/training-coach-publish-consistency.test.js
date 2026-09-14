@@ -234,6 +234,7 @@ function adoptScope({ schedule, trainingBlocks, weekStart = '2026-08-31', conten
     'function trainingContentKey(id) { return CK[id] || String(id); }\n' +
     'function availWeekStart() { return ' + JSON.stringify(weekStart) + '; }\n' +
     'function availToday() { return "' + weekStart + '"; }\n' +
+    extractFn(html, 'trainingBlocksFingerprint') + '\n' +      // TRAINING-SYNC-1: adoption is revision-aware
     extractFn(html, 'trainingAdoptCoachPlans') + '\n' +
     'return { run: s => trainingAdoptCoachPlans(s), state };\n';
   return new Function(body)();
@@ -346,6 +347,8 @@ test('WIRING: loadTrainingPublicationState itself ADOPTS the returned plan — n
     '  const sessions = String(url).includes("audience=coach") ? PUB : [];\n' +
     '  return Promise.resolve({ ok: true, json: async () => ({ sessions }) });\n' +
     '}\n' +
+    extractFn(html, 'trainingBlocksFingerprint') + '\n' +      // TRAINING-SYNC-1
+    extractFn(html, 'trainingBridgeBareContent') + '\n' +      // TRAINING-SYNC-1
     extractFn(html, 'trainingAdoptCoachPlans') + '\n' +
     extractFn(html, 'loadTrainingPublicationState') + '\n' +
     'return (async () => { await loadTrainingPublicationState();\n' +
