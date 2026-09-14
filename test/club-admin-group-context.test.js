@@ -179,7 +179,12 @@ test('10: the server’s operational answer repaints ONLY when the group changed
     const state = { operationalGroupId: cfg.before };
     let _myPermissions = null, _myPlatformRole = '', _myMembership = null,
         _myMemberships = [], _verifyNotice = null;
-    let _myOperational = null;
+    // priorResolved models whether identity had ALREADY resolved before this
+    // payload (a genuine "quiet poll" has _myOperational already set; only the
+    // FIRST load is pending). PLAYER-GROUP-CONTEXT-ISOLATION-FIX-1 repaints on
+    // the pending→resolved edge too, so the two must be distinguished.
+    let _myOperational = cfg.priorResolved ? { staff: {}, player: {} } : null;
+    function contextResolved() { return _myOperational !== null; }
     const calls = { renders: 0, resolves: 0 };
     function resolveOperationalGroup() { calls.resolves++; state.operationalGroupId = cfg.resolvesTo; }
     function render() { calls.renders++; }
@@ -188,9 +193,14 @@ test('10: the server’s operational answer repaints ONLY when the group changed
     adoptIdentityPayload({ operational: { staff: {}, player: {} } });
     return calls;
   `);
-  const changed = run({ before: null, resolvesTo: 'grp_u18' });
+  const changed = run({ before: null, resolvesTo: 'grp_u18', priorResolved: false });
   assert.equal(changed.renders, 1, 'a NEW answer repaints — the stuck-until-refresh symptom');
-  const same = run({ before: 'grp_u18', resolvesTo: 'grp_u18' });
-  assert.equal(same.renders, 0, 'a quiet poll with the same answer never repaints mid-edit');
+  const same = run({ before: 'grp_u18', resolvesTo: 'grp_u18', priorResolved: true });
+  assert.equal(same.renders, 0, 'a quiet poll (already resolved) with the same answer never repaints mid-edit');
   assert.equal(same.resolves, 1, 'but still resolves, exactly as before');
+  // The pending→resolved edge DOES repaint even when the group is unchanged —
+  // a correctly persisted group must still flip the group-scoped surfaces out
+  // of their fail-closed boot state.
+  const firstLoad = run({ before: 'grp_u18', resolvesTo: 'grp_u18', priorResolved: false });
+  assert.equal(firstLoad.renders, 1, 'first resolution repaints even with an unchanged persisted group');
 });

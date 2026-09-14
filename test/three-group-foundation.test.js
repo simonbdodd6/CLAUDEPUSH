@@ -347,6 +347,7 @@ function clientPool(groupId, memberCount) {
     const _players = arguments[1];
     function operationalGroups() { return [
       { id: '${SEN}', name: 'Seniors' }, { id: '${U18}', name: 'U18' }, { id: '${WOM}', name: "Women's" }]; }
+    function contextResolved() { return true; }
     ${fn('clubUsesPlayerGroups')}
     ${fn('playerGroupIdOf')}
     ${fn('operationalPlayers').replace('canonicalVisiblePlayers()', '_players')}
@@ -372,6 +373,7 @@ test('contextFixtures: each context sees its own fixtures; legacy = Seniors', ()
     const state = { operationalGroupId: arguments[0], fixtures: arguments[1] };
     function operationalGroups() { return [
       { id: '${SEN}' }, { id: '${U18}' }, { id: '${WOM}' }]; }
+    function contextResolved() { return true; }
     const CE_INITIAL_GROUP_ID = 'grp_initial';
     ${fn('fixtureBelongsToGroup')}
     ${fn('contextFixtures')}

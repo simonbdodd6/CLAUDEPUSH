@@ -340,7 +340,11 @@ test('draft and squad payloads always carry the side', () => {
 
 // ── PLAYER MULTI-SHEET UI ─────────────────────────────────────────────────
 test('the player view renders one labelled card per published sheet', () => {
-  assert.match(src, /state\.playerPublishedSheets \|\| \[\]\)\.length/, 'multi-sheet branch exists');
+  // PLAYER-GROUP-CONTEXT-ISOLATION-FIX-1: the availability card now maps the
+  // GROUP-GATED playerVisiblePublishedSheets() (a stale cross-group sheet is
+  // filtered out) — still one labelled card per visible sheet.
+  assert.match(src, /playerVisiblePublishedSheets\(\)/, 'sheets sourced via the group-gated helper');
+  assert.match(fn('playerVisiblePublishedSheets'), /state\.playerPublishedSheets \|\| \[\]/, 'from the persisted sheets');
   assert.match(src, /renderPublishedTeamSheetCard\(player, sh\)/, 'one card per sheet');
   const card = fn('renderPublishedTeamSheetCard');
   assert.match(card, /teamName \? .*Published/, 'each card is badged with its team name');

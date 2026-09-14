@@ -154,6 +154,9 @@ function adoptOnClient(payload, { activeView = 'coach', priorGroupId = null } = 
     let _myPermissions = null, _myPlatformRole = '', _myOperational = null;
     let _myMembership = null, _myMemberships = [];
     let _verifyNotice = null;
+    // PLAYER-GROUP-CONTEXT-ISOLATION-FIX-1: adoptIdentityPayload's repaint edge
+    // now also reads contextResolved() (=_myOperational !== null).
+    function contextResolved() { return _myOperational !== null; }
     function render() { renders.push(state.operationalGroupId); }
     function renderVerifyEmailBanner() {}
     function syncTrainingStateToGroup() {}

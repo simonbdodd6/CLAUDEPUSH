@@ -19935,10 +19935,15 @@
           <!-- Published team sheets. With the dual-team model there can be
                MORE than one: one card per published side, each labelled with
                its team, so the player always knows which side selected them.
-               Falls back to the legacy single-squad card otherwise. -->
-          ${(state.playerPublishedSheets || []).length
-            ? (state.playerPublishedSheets || []).map(sh => renderPublishedTeamSheetCard(player, sh)).join('')
-            : (mc.published ? renderPublishedTeamSheetCard(player) : '')}
+               Group-gated (playerVisiblePublishedSheets): a sheet renders only
+               for the player's resolved group, so a stale U18 sheet never shows
+               to a Seniors player. Falls back to the legacy single-squad card
+               only when the working match belongs to the player's group. -->
+          ${(() => {
+            const visibleSheets = playerVisiblePublishedSheets();
+            if (visibleSheets.length) return visibleSheets.map(sh => renderPublishedTeamSheetCard(player, sh)).join('');
+            return contextMatchCentre().published ? renderPublishedTeamSheetCard(player) : '';
+          })()}
 
           <!-- Summary banner -->
           <div style="border:1.5px solid ${allAvailable ? '#16a34a' : pendingCount > 0 ? 'var(--line)' : 'var(--accent)'};border-radius:14px;padding:18px 20px;margin-bottom:16px;background:${allAvailable ? 'rgba(var(--accent-rgb), 0.08)' : 'var(--panel)'}">
@@ -41134,15 +41139,41 @@
       return (String(fx?.groupId || '').trim() || CE_INITIAL_GROUP_ID) === String(groupId || '');
     }
     /**
+     * Has the operational context RESOLVED at least once this session?
+     *
+     * `_myOperational` is the server's answer to "which groups may I operate
+     * in, in each capacity", adopted in adoptIdentityPayload. It is a module
+     * var — NOT persisted — so it is null on every reload until /api/identity
+     * lands, while state.operationalGroupId IS persisted. That asymmetry is
+     * the whole bug: an unresolved context (`_myOperational === null`) must be
+     * told apart from a genuinely group-less RESOLVED context, because the
+     * first must fail CLOSED (never leak another group's data into the boot
+     * window) while the second keeps the pre-groups "show everything" rule.
+     */
+    function contextResolved() {
+      return _myOperational !== null;
+    }
+
+    /**
      * The fixtures of the CURRENT operational context (coach: the group being
-     * administered; player: the group they play in). With no resolved context
-     * — legacy clients, anonymous states — the full list answers, exactly as
-     * before groups existed.
+     * administered; player: the group they play in).
+     *
+     * RESOLVED WITH A GROUP → that group's fixtures only.
+     * RESOLVED WITHOUT A GROUP (legacy/anonymous, or a multi-group coach still
+     *   choosing) → the whole list, exactly as before groups existed.
+     * PENDING (identity not yet loaded) → FAIL CLOSED with []. Previously this
+     *   returned the whole club here too, which is how a Seniors player saw
+     *   U18 fixtures during the boot window (operationalGroups() is empty until
+     *   _myOperational lands, even when the persisted operationalGroupId is
+     *   already the player's real group). adoptIdentityPayload repaints the
+     *   moment context resolves, so the empty window is transient.
      */
     function contextFixtures() {
       const gid = state.operationalGroupId;
-      if (!gid || !operationalGroups().length) return state.fixtures || [];
-      return (state.fixtures || []).filter(fx => fixtureBelongsToGroup(fx, gid));
+      if (gid && operationalGroups().length) {
+        return (state.fixtures || []).filter(fx => fixtureBelongsToGroup(fx, gid));
+      }
+      return contextResolved() ? (state.fixtures || []) : [];
     }
 
     /**
@@ -41154,11 +41185,36 @@
      */
     function contextMatchCentre() {
       const mc = state.matchCentre || {};
-      if (!state.operationalGroupId || !operationalGroups().length) return mc;
+      if (!state.operationalGroupId || !operationalGroups().length) {
+        // Same rule as contextFixtures: legacy/anonymous RESOLVED context keeps
+        // the working match; a PENDING context fails closed so a stale
+        // cross-group match cannot flash during boot.
+        return contextResolved() ? mc : {};
+      }
       const inGroup = mc.fixtureId
         ? contextFixtures().some(f => String(f.id) === String(mc.fixtureId))
         : fixtureBelongsToGroup({}, state.operationalGroupId);
       return inGroup ? mc : {};
+    }
+
+    /**
+     * The published team sheets this PLAYER may actually see — a stale/persisted
+     * sheet is rendered only when its fixture's server-authoritative group
+     * matches the player's resolved group. state.playerPublishedSheets persists
+     * in localStorage and is only replaced by a SUCCESSFUL type=all fetch, so
+     * without this a device that once held a U18 sheet kept showing it to a
+     * Seniors player. PENDING context shows nothing; a fixture that cannot be
+     * resolved is never displayed.
+     */
+    function playerVisiblePublishedSheets() {
+      const sheets = state.playerPublishedSheets || [];
+      if (!sheets.length || !contextResolved()) return [];
+      const gid = state.operationalGroupId;
+      if (!gid || !operationalGroups().length) return sheets;   // resolved, group-less: legacy
+      return sheets.filter(sh => {
+        const fx = (state.fixtures || []).find(f => String(f.id) === String(sh.fixtureId));
+        return fx ? fixtureBelongsToGroup(fx, gid) : false;
+      });
     }
 
     // Platform authority (provisioning new clubs) — delivered on the session
@@ -41180,9 +41236,15 @@
         // Same-answer payloads (session polls) change nothing and skip the
         // render, so no mid-edit repaint is ever triggered by a quiet poll.
         const _beforeGid = state.operationalGroupId;
+        // Context PENDING → RESOLVED is itself a repaint trigger: with a
+        // correctly persisted operationalGroupId the resolved group can EQUAL
+        // the one already in force, so nothing "changes" — yet the group-scoped
+        // surfaces were failing closed (empty) while context was pending and
+        // must now repaint into the real filtered view.
+        const _wasPending = !contextResolved();
         _myOperational = d.operational;
         resolveOperationalGroup();
-        if (state.operationalGroupId !== _beforeGid) render();
+        if (state.operationalGroupId !== _beforeGid || _wasPending) render();
       }
       // The stored membership answers "which capacities do I hold here?".
       // Medical is a permission on it, never a replacement for it.

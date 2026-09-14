@@ -360,6 +360,7 @@ function mc(matchCentre, formationNames = {}, benchPlayers = []) {
     // operational context — the unfiltered legacy mode every prior pin assumes.
     const CE_INITIAL_GROUP_ID = 'grp_initial';
     function operationalGroups() { return []; }
+    function contextResolved() { return true; }
     ${fn('fixtureBelongsToGroup')}
     ${fn('contextFixtures')}
     ${fn('matchCentreFixtureList')}

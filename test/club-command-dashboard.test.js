@@ -131,6 +131,7 @@ function buildScope({
     'let _resolvedAvailabilityGroup = ' + JSON.stringify(resolvedAvailabilityGroup) + ';\n' +
     'let _activityFetchedFor = null;\n' +
     'function operationalGroups() { return _groups; }\n' +
+    'function contextResolved() { return true; }\n' +
     'function operationalPlayers() { return state.players || []; }\n' +
     // The server-resolved availability model, exactly as loadAvailability sets it:
     // { <player identifier>: { <sessionId>: {response, reason, respondedAt} } }.

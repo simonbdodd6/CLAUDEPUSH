@@ -178,11 +178,19 @@ test('14+15: an identity switch cannot inherit the previous person\'s group', ()
 });
 
 // ─── 18+19+20: nothing else moved ──────────────────────────────────────────
-test('18: the coach fixture context is untouched', () => {
+test('18: the resolved coach fixture context is untouched (group filter unchanged; pending now fails closed)', () => {
+  // PLAYER-GROUP-CONTEXT-ISOLATION-FIX-1 intentionally replaced the whole-club
+  // fail-open with a resolved-context gate. A RESOLVED coach still filters by
+  // the operating group exactly as before; only the no-group branch changed —
+  // PENDING (identity not loaded) fails closed, a genuinely group-less RESOLVED
+  // context keeps the legacy whole-club list.
   const coach = fn('contextFixtures');
-  assert.match(coach, /state\.operationalGroupId/, 'coach still resolves by operating group');
-  assert.match(coach, /if \(!gid \|\| !operationalGroups\(\)\.length\) return state\.fixtures \|\| \[\];/,
-    'coach behaviour byte-identical');
+  assert.match(coach, /if \(gid && operationalGroups\(\)\.length\) \{/, 'resolved-with-group still filters by operating group');
+  assert.match(coach, /filter\(fx => fixtureBelongsToGroup\(fx, gid\)\)/, 'group filter unchanged');
+  assert.match(coach, /return contextResolved\(\) \? \(state\.fixtures \|\| \[\]\) : \[\];/,
+    'no-group branch: resolved→legacy show-all, pending→fail closed');
+  assert.doesNotMatch(coach, /if \(!gid \|\| !operationalGroups\(\)\.length\) return state\.fixtures \|\| \[\];/,
+    'the old whole-club fail-open is gone');
 });
 
 test('19+20: Performance/SC8 entitlement and commercial flags are untouched', () => {
