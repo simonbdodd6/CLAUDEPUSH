@@ -7078,6 +7078,26 @@
       return !had;
     }
 
+    /**
+     * DUAL ROLE — keep the authenticated member's OWN player record present
+     * whenever the server says they play (membership playerGroupId, or a club
+     * role of player). The record is the identity the player portal renders
+     * (getPlayer → ownPlayerRecordForUser), and for a coach it used to exist
+     * only until the first roster load: the roster a coach receives is scoped
+     * to the group they COACH, so a U18 coach who PLAYS for Seniors had no row
+     * in it, the adoption dropped the record hydrated at boot, and the player
+     * portal told them "no player profile is linked" — trapped in the coach
+     * experience. Membership is the authority for whether they play; nothing
+     * here widens what the server permits. Returns true when a record was
+     * created. Safe for the roster sync: the server's scoped merge ignores any
+     * row outside the caller's coaching scope.
+     */
+    function ensureOwnPlayerRecord() {
+      const user = currentUser();
+      if (!user || !state.currentUserId || String(user.id || '') !== String(state.currentUserId)) return false;
+      return hydrateSessionPlayerRecord(state, user, membershipPlays(_myMembership, user.role));
+    }
+
     function identityNameKey(value = '') {
       return String(value || '').trim().toLowerCase();
     }
@@ -13618,6 +13638,12 @@
 
     function setView(view) {
       if (view === "coach" && !isCoach()) return showToast("Player accounts cannot open coach tools");
+      // Switching capacity re-resolves the group in force — setSection's rule,
+      // which this entry point skipped: a dual-role member coaches one group
+      // and plays in another, and every group-scoped screen (the portal's
+      // messages, availability, training) reads state.operationalGroupId.
+      // Left un-resolved, the player portal kept the COACHING group.
+      if (view !== state.activeView) { state.activeView = view; resolveOperationalGroup(); }
       state.activeView = view;
       if (view === 'player' && isCoach()) {
         // A staff account entering the player view resolves an EXPLICIT owned
@@ -24732,6 +24758,8 @@
             <div style="${rowCss}"><span style="color:var(--muted)">Account</span><strong style="color:var(--ink);text-align:right;word-break:break-all">${esc(email || '—')}</strong></div>
             <div style="${rowCss};border-bottom:none"><span style="color:var(--muted)">Club</span><strong style="color:var(--ink);text-align:right">${esc(club)}</strong></div>
           </div>
+          ${isCoach() ? `<button class="btn primary" type="button" onclick="document.getElementById('player-account-menu')?.remove();setView('coach')"
+            style="width:100%;min-height:46px;font-weight:700;margin-bottom:8px">Switch to coach view</button>` : ''}
           <button class="btn" type="button" onclick="document.getElementById('player-account-menu')?.remove();settingsSignOut()"
             style="width:100%;min-height:46px;font-weight:700;color:#dc2626;border-color:rgba(220,38,38,0.32)">Sign out</button>
           <button class="btn" type="button" onclick="document.getElementById('player-account-menu')?.remove()"
@@ -40673,6 +40701,12 @@
           return photo ? { ...p, photo } : p;
         });
         state.users = ensurePlayerUsersForRoster(state.players, state.users);
+        // The list above is the roster of the group this member COACHES. A
+        // dual-role member's own record belongs to the group they PLAY in and
+        // may not be in it — restore it from the server identity, BEFORE the
+        // fingerprint, so its presence is the synced baseline and never a
+        // pending roster push (see ensureOwnPlayerRecord).
+        ensureOwnPlayerRecord();
         _rosterLastSyncedFp = rosterFingerprint();
         saveState('Roster loaded from server');
         render();
@@ -41404,7 +41438,18 @@
       }
       // The stored membership answers "which capacities do I hold here?".
       // Medical is a permission on it, never a replacement for it.
-      if (d?.teamMember !== undefined) _myMembership = d.teamMember || null;
+      if (d?.teamMember !== undefined) {
+        _myMembership = d.teamMember || null;
+        // The membership just answered "does this account play?" — make sure
+        // the account's own player record exists for the player portal (a
+        // coach who plays in a group other than the one they coach has no row
+        // in their scoped roster). Only for the account in force: on login the
+        // payload can precede the currentUserId switch, and loadRosterFromServer
+        // then covers it.
+        if (d?.user?.id === undefined || String(d.user.id || '') === String(state.currentUserId || '')) {
+          if (ensureOwnPlayerRecord()) saveState('Player identity hydrated');
+        }
+      }
       if (Array.isArray(d?.memberships)) _myMemberships = d.memberships;
       if (d?.teamPlan       !== undefined) state.teamPlan       = d.teamPlan;
       if (d?.teamPlanStatus !== undefined) state.teamPlanStatus = d.teamPlanStatus;

@@ -382,6 +382,10 @@ test('13b: the adopted membership keeps the field the capacity is read from', ()
         _myPlatformRole = '', _verifyNotice = null, _myMembership = null;
     function resolveOperationalGroup() {}
     function renderVerifyEmailBanner() {}
+    // COACH-PLAYER-DUAL-ROLE-ACCESS-1: adoption now also hydrates the account's
+    // own player record; that path is pinned in its own suite, inert here.
+    function ensureOwnPlayerRecord() { return false; }
+    function saveState() {}
     ${fn('adoptIdentityPayload')}
     return d => { adoptIdentityPayload(d); return _myMembership; };
   `);
