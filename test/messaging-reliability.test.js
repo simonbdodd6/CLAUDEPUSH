@@ -48,7 +48,13 @@ test('a cold load merges into cached history instead of replacing it', () => {
   // The shared merger is used, not a local id-only merge: as well as
   // de-duplicating it reconciles an optimistic bubble with the server message
   // it became (an id-only merge rendered one send twice).
-  assert.match(fetchFn, /mergeMessages\(existing, fetched\)/, 'uses the shared optimistic-aware merger');
+  // MESSAGES-NEW-CONVERSATION-FIX-1 routes it through chatMergeMessages, which
+  // delegates to that same shared merger — and, only when the module is
+  // genuinely unavailable, de-duplicates by id rather than throwing mid-fetch
+  // (a rejected module import is what silently broke Messages in production).
+  assert.match(fetchFn, /chatMergeMessages\(existing, fetched\)/, 'merges through the shared helper');
+  assert.match(fn('chatMergeMessages'), /if \(mod\?\.mergeMessages\) return mod\.mergeMessages\(existing \|\| \[\], incoming \|\| \[\]\);/,
+    'and that helper uses the shared optimistic-aware merger whenever it is there');
 });
 
 test('merge de-duplicates by stable message id', async () => {

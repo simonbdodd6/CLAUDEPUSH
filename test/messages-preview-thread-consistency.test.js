@@ -71,6 +71,9 @@ function makeEnv({ serverScript, conversations, loaded = true, store = MSGS } = 
       return { json: async () => ({ ok: true, messages: since > 0 ? all.filter(m => m.ts > since) : all }) };
     }
     ${fn('chatIsUnresolvedPlaceholder')}
+    // MESSAGES-NEW-CONVERSATION-FIX-1: chatFetchMessages merges through this
+    // helper now (the module may be unavailable), so the sandbox needs it.
+    ${fn('chatMergeMessages')}
     ${fn('chatFetchMessages')}
     ${fn('chatNeedsHistory')}
     // The select/mount decision (selectChat + renderCoachMessages, post-fix):
