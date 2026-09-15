@@ -77,12 +77,14 @@ export const ROLES = [
 // operationalGroupsFor — all unchanged. Adding snc and analyst here gives them
 // no Medical access, no club-wide reach, and no group they did not already
 // hold; those are governed elsewhere and are deliberately untouched.
-export const STAFF_ROLES = Object.freeze(['coach', 'admin', 'medical', 'snc', 'analyst']);
-
-/** True when a STORED member/user role string is a staff classification. */
-export function isStaffRole(role) {
-  return STAFF_ROLES.includes(String(role || '').toLowerCase());
-}
+// The list itself now lives in src/staff-roles.js so the BROWSER can import it
+// too: vercel.json blocks every /api/*.js file request (source exposure), so a
+// browser module importing this file resolved to the 404 HTML page and the
+// whole chat-state chain failed to load. Re-exported here, unchanged, so every
+// server import of STAFF_ROLES / isStaffRole keeps working and there is still
+// exactly ONE definition.
+export { STAFF_ROLES, isStaffRole } from '../src/staff-roles.js';
+import { isStaffRole } from '../src/staff-roles.js';
 
 const P = PERM;
 const STAFF_CORE = [P.MANAGE_PLAYERS, P.PUBLISH_TRAINING, P.PUBLISH_SQUADS, P.MESSAGING, P.REPORTS, P.CLUB_EXPORTS, P.MANAGE_TEAMS, P.MANAGE_FIXTURES];

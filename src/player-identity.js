@@ -1,4 +1,6 @@
-import { isStaffRole } from '../api/_permissions.js';
+// From /src, never /api: vercel.json redirects every /api/*.js request to the
+// 404 page, so importing it here broke this module in the browser.
+import { isStaffRole } from './staff-roles.js';
 
 export function normalizeIdentityName(value = '') {
   return String(value || '').trim().toLowerCase();

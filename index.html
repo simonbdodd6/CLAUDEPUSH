@@ -842,6 +842,42 @@
     /* Contenteditable chat search fields — NOT <input>, so no browser/password-manager autofill can attach. */
     .chat-ce-search:empty:before { content: attr(data-placeholder); color: var(--faint, #64748b); pointer-events: none; }
     .chat-ce-search:focus { outline: none; border-color: rgba(52,211,153,.5); }
+
+    /* ── NEW MESSAGE picker ──────────────────────────────────────────────────
+       The dialog is a column flex container, and its three children carried no
+       flex-shrink. With a real squad in the list (76 players at Boitsfort) the
+       results' content far exceeds the dialog's max-height, so the browser
+       shrank every sibling proportionally and the 38px search box was squeezed
+       to FIVE PIXELS — present, focusable, and to the coach invisible. The
+       header and the field are fixed; only the results list may shrink and it
+       scrolls. Styling matches the conversation search so the two read as one
+       control, with a 44px touch target on phones. */
+    .chat-newdm-head { flex: 0 0 auto; }
+    .chat-newdm-search-wrap { flex: 0 0 auto; padding: 12px 16px 10px; }
+    .chat-newdm-results { flex: 1 1 auto; min-height: 0; }
+    .chat-newdm-search {
+      display: block;
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 40px;
+      padding: 10px 12px 10px 34px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel-2);
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.45;
+      white-space: nowrap;
+      overflow: hidden;
+      cursor: text;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: 12px center;
+    }
+    .chat-newdm-search:focus { border-color: var(--brand-line, rgba(52,211,153,.5)); box-shadow: 0 0 0 3px var(--ring, rgba(52,211,153,.25)); }
+    @media (max-width: 640px) {
+      .chat-newdm-search { min-height: 44px; font-size: 16px; }   /* 16px: iOS must not zoom on focus */
+    }
     .chat-contact-list {
       flex: 1 1 0px;
       min-height: 0;        /* allow list to shrink and scroll, not inflate parent */
@@ -33718,14 +33754,55 @@
     let _seasonSortDir = 'desc';
     let _seasonQuery   = '';
 
+    /**
+     * The chat state module, or NULL — this promise never rejects.
+     *
+     * Production, 15 Sep 2026: the module chain reached ../api/_permissions.js,
+     * which vercel.json redirects to the 404 page, so the import rejected on
+     * every device. Each `await chatLoadStateModule()` then threw INSIDE an
+     * async handler with no catch, which aborted the flow silently — clicking
+     * a member in New Message did nothing at all, and opening an existing DM
+     * as a coach did nothing either (chatResolveCoachDirectChatId awaits it on
+     * the way into selectChat). The import path is fixed; this makes the
+     * failure survivable rather than silent, because every reader of the
+     * module already has a documented fallback and must be allowed to use it.
+     *
+     * A failure is not latched: the next call retries, at most once a minute,
+     * so one dropped request cannot disable Messages for the whole session
+     * while a poll tick cannot turn a persistent failure into a request storm.
+     */
+    let _chatStateFailedAt = 0;
+    const CHAT_STATE_RETRY_MS = 60000;
     function chatLoadStateModule() {
       if (!_chatStatePromise) {
+        if (_chatStateFailedAt && Date.now() - _chatStateFailedAt < CHAT_STATE_RETRY_MS) {
+          return Promise.resolve(_chatStateModule);      // cooling down: answer with what we have
+        }
         _chatStatePromise = import('./src/chat-state.js').then(mod => {
           _chatStateModule = mod;
+          _chatStateFailedAt = 0;
           return mod;
+        }).catch(err => {
+          console.warn('[chat] state module unavailable — using fallbacks', err && err.message);
+          _chatStatePromise = null;                      // allow a later retry
+          _chatStateFailedAt = Date.now();
+          return null;
         });
       }
       return _chatStatePromise;
+    }
+
+    /**
+     * Merge server messages into the cache through the SHARED merger, which
+     * also reconciles an optimistic bubble with the message it became. Without
+     * the module, de-duplicate by id — degraded but never a thrown error in
+     * the middle of a fetch, which is what used to strand a thread.
+     */
+    async function chatMergeMessages(existing, incoming) {
+      const mod = await chatLoadStateModule();
+      if (mod?.mergeMessages) return mod.mergeMessages(existing || [], incoming || []);
+      const seen = new Set((existing || []).map(m => m && m.id).filter(Boolean));
+      return [...(existing || []), ...(incoming || []).filter(m => !(m && m.id && seen.has(m.id)))];
     }
 
     function chatIsCoachDirectConversation(convId, mode = (state.activeView === 'coach' ? 'coach' : 'player')) {
@@ -34012,23 +34089,42 @@
       const players = chatCoachDmPickerPlayers();
       return `<div class="chat-new-msg-modal" onclick="if(event.target===this)chatCloseNewDmPicker()">
         <div class="chat-new-msg-dialog" role="dialog" aria-modal="true" aria-label="New message">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)">
+        <div class="chat-newdm-head" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)">
           <strong style="font-size:15px;color:var(--ink)">New message</strong>
           <button class="chat-icon-btn" type="button" onclick="chatCloseNewDmPicker()" title="Close">✕</button>
         </div>
-        <div class="chat-ce-search" id="message-recipient-picker" role="searchbox" aria-label="Search members" data-placeholder="Search members..." contenteditable="true" spellcheck="false" autocorrect="off" autocapitalize="off"
-          oninput="chatSetNewDmQuery(this.textContent)" onkeydown="if(event.key==='Enter')event.preventDefault();"
-          style="box-sizing:border-box;width:calc(100% - 32px);height:38px;line-height:36px;border-radius:7px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);padding:0 10px;font-size:13px;margin:12px 16px;white-space:nowrap;overflow:hidden;cursor:text">${esc(_chatNewDmQuery)}</div>
-        <div id="chatNewDmResults" style="display:grid;gap:4px;overflow:auto;padding:0 10px 12px">
+        <div class="chat-newdm-search-wrap">
+          <div class="chat-ce-search chat-newdm-search" id="message-recipient-picker" role="searchbox" aria-label="Search players" data-placeholder="Search players..." contenteditable="true" spellcheck="false" autocorrect="off" autocapitalize="off"
+            oninput="chatSetNewDmQuery(this.textContent)" onkeydown="if(event.key==='Enter')event.preventDefault();">${esc(_chatNewDmQuery)}</div>
+        </div>
+        <div id="chatNewDmResults" class="chat-newdm-results" style="display:grid;gap:4px;overflow:auto;padding:0 10px 12px">
           ${chatNewDmPickerResultsHtml(players)}
         </div>
         </div>
       </div>`;
     }
 
+    /**
+     * Bind the picker's result rows. Every render of the rows re-binds, because
+     * the markup is replaced wholesale on each keystroke.
+     *
+     * The handler is guarded: chatStartDmWith is async, so a rejection inside
+     * it used to disappear into an unhandled promise — the coach clicked a
+     * member and NOTHING happened, with nothing on screen to say why. A
+     * failure now says so.
+     */
     function chatBindNewDmRows(root = document) {
       root.querySelectorAll('[data-chat-new-dm-player]').forEach(row => {
-        row.addEventListener('click', () => chatStartDmWith(row.dataset.chatNewDmPlayer));
+        if (row.dataset.chatNewDmBound === '1') return;      // idempotent: never stack handlers
+        row.dataset.chatNewDmBound = '1';
+        row.addEventListener('click', () => {
+          Promise.resolve()
+            .then(() => chatStartDmWith(row.dataset.chatNewDmPlayer))
+            .catch(err => {
+              console.warn('[chatStartDmWith]', err);
+              showToast('Could not open that conversation — please try again');
+            });
+        });
       });
     }
 
@@ -34150,8 +34246,14 @@
       await selectChat(immediateConvId);
       chatFocusComposerSoon();
       try {
-        const { createCoachDmConversationRequestForPlayerId } = await chatLoadStateModule();
-        const request = createCoachDmConversationRequestForPlayerId(visiblePlayers, player.id, me.id, { users: state.users, players: visiblePlayers });
+        const mod = await chatLoadStateModule();
+        // Without the module, build the SAME request from the participant id
+        // already resolved above (createCoachDmConversationRequest's shape,
+        // and the id selectChat just opened) rather than abandoning the DM.
+        const request = mod?.createCoachDmConversationRequestForPlayerId
+          ? mod.createCoachDmConversationRequestForPlayerId(visiblePlayers, player.id, me.id, { users: state.users, players: visiblePlayers })
+          : (participantId ? { action: 'create_conv', id: immediateConvId, name: String(player.name || 'Direct message'),
+                               type: 'DIRECT', participants: [String(me.id), String(participantId)] } : null);
         if (!request) return showToast('Could not open direct message');
         if (!_chatConversations.some(conv => conv.id === request.id)) {
           const res = await fetch('/api/chat', {
@@ -34717,8 +34819,7 @@
         if (data.ok) {
           const fetched = data.messages || [];
           if (chatIsCoachDirectConversation(convId)) {
-            const { mergeMessages } = await chatLoadStateModule();
-            _chatMessages[convId] = mergeMessages(_chatMessages[convId] || [], fetched);
+            _chatMessages[convId] = await chatMergeMessages(_chatMessages[convId] || [], fetched);
           } else if (since > 0) {
             const existing = _chatMessages[convId] || [];
             // AN EMPTY INCREMENTAL POLL PROVES NOTHING. Writing the merged
@@ -34752,8 +34853,7 @@
               // Use the SHARED merger: as well as de-duplicating by id it
               // reconciles an optimistic bubble with the server message it
               // became. An id-only merge left both, so one send rendered twice.
-              const { mergeMessages } = await chatLoadStateModule();
-              _chatMessages[convId] = mergeMessages(existing, fetched);
+              _chatMessages[convId] = await chatMergeMessages(existing, fetched);
             }
           }
           if (!(since > 0)) {
@@ -35071,8 +35171,7 @@
         const data = await res.json();
         if (data.ok) {
           if (chatIsCoachDirectConversation(convId, mode)) {
-            const { mergeMessages } = await chatLoadStateModule();
-            _chatMessages[convId] = mergeMessages(_chatMessages[convId] || [], [data.message]);
+            _chatMessages[convId] = await chatMergeMessages(_chatMessages[convId] || [], [data.message]);
             await chatFetchMessages(convId, 0);
           } else {
             // Replace optimistic with real message
