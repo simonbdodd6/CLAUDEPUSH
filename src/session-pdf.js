@@ -73,6 +73,11 @@ export function winAnsi(str) {
     const code = ch.codePointAt(0);
     if (code >= 0x20 && code <= 0x7E) out += ch;
     else if (code >= 0xA0 && code <= 0xFF) out += ch;
+    // 0x80–0x9F is an ALREADY-ENCODED WinAnsi byte (an en dash that went
+    // through here once, in a header that is assembled from encoded parts
+    // and then encoded again). Passing it through makes the encoder
+    // idempotent; as Unicode these are C1 controls that never occur in text.
+    else if (code >= 0x80 && code <= 0x9F) out += ch;
     else if (WINANSI_HIGH[ch] !== undefined) out += String.fromCharCode(WINANSI_HIGH[ch]);
     else if (ASCII_FALLBACK[ch] !== undefined) out += ASCII_FALLBACK[ch];
     else if (code === 0x0A || code === 0x0D || code === 0x09) out += ' ';
@@ -187,16 +192,17 @@ export function parseBlockTime(t) {
   return { mins: h * 60 + min, label: String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0') };
 }
 
-/** Sort blocks chronologically. Stable: invalid/absent times keep their
- *  relative order and follow the timed blocks. A '.'-separated time (18.00) is
- *  the same clock time as ':' (18:00) and parses too, so it is never stranded
- *  at the end as "untimed" — the bug that floated a lone 18:30 above 18.00. */
-export function chronological(blocks) {
-  const mins = t => parseBlockTime(t)?.mins ?? Infinity;
-  return blocks
-    .map((b, i) => ({ b, i }))
-    .sort((p, q) => (mins(p.b.time) - mins(q.b.time)) || (p.i - q.i))
-    .map(p => p.b);
+/** Wrap a cell that may hold several LINES. The planner's Activity, Key Focus
+ *  and Lead Coach cells are textareas: a coach who writes one coach or cue per
+ *  line sees them as separate lines on screen, and the paper must show the
+ *  same — winAnsi alone turned every newline into a space, so "Doddsy / Tom /
+ *  Xavier / Flo" printed as one run of names. Each source line is wrapped to
+ *  the column on its own; a blank source line stays a blank line. */
+export function wrapMultiline(s, size, width, bold = false) {
+  const src = String(s ?? '').replace(/\r\n?/g, '\n').split('\n');
+  const out = [];
+  src.forEach(line => { wrapText(winAnsi(line), size, width, bold).forEach(l => out.push(l)); });
+  return out.length ? out : [''];
 }
 
 const STATUS_STYLE = {
@@ -213,7 +219,7 @@ const STATUS_LABEL = { published: 'PUBLISHED', stale: 'EDITED SINCE PUBLISH', dr
  *   clubName, groupName, sessionTitle, sessionLabel, venue, preparedBy,
  *   generatedOn,                       // preformatted date string
  *   statuses: [{ audience, status, publishedAt }],   // status: draft|published|stale
- *   blocks:   [{ time, activity, keyFocus, coach }],
+ *   blocks:   [{ time, activity, keyFocus, coach }],   // printed in THIS order
  * }
  * Returns Uint8Array of a complete PDF file.
  */
@@ -226,7 +232,10 @@ export function buildSessionPdf(data = {}) {
   const preparedBy = winAnsi(data.preparedBy || '');
   const generatedOn = winAnsi(data.generatedOn || '');
   const statuses = Array.isArray(data.statuses) ? data.statuses : [];
-  const blocks = chronological(Array.isArray(data.blocks) ? data.blocks : []);
+  // PLANNER ORDER, exactly. The blocks used to be re-sorted by parsed time,
+  // so an untimed or oddly-timed block moved relative to what the coach saw
+  // on screen. The stored array IS the plan's order; the page follows it.
+  const blocks = Array.isArray(data.blocks) ? data.blocks : [];
 
   // ── Measure every row first, so pagination is known before drawing ──
   const rows = blocks.map(b => {
@@ -234,9 +243,9 @@ export function buildSessionPdf(data = {}) {
       // Display the canonical HH:MM so a session that mixes 18.00 and 18:30
       // reads consistently; an untimed/unparseable value keeps its em dash.
       time:     [winAnsi(parseBlockTime(b.time)?.label ?? (b.time || '—'))],
-      activity: wrapText(winAnsi(b.activity || 'Untitled block'), 10.5, COLS[1].w - 10, true),
-      keyFocus: wrapText(winAnsi(b.keyFocus || ''), 9.5, COLS[2].w - 10),
-      coach:    wrapText(winAnsi(b.coach || ''), 9.5, COLS[3].w - 10),
+      activity: wrapMultiline(b.activity || 'Untitled block', 10.5, COLS[1].w - 10, true),
+      keyFocus: wrapMultiline(b.keyFocus || '', 9.5, COLS[2].w - 10),
+      coach:    wrapMultiline(b.coach || '', 9.5, COLS[3].w - 10),
     };
     const lines = Math.max(cells.activity.length, cells.keyFocus.length, cells.coach.length, 1);
     return { cells, h: lines * ROW_LEADING + CELL_PAD_Y * 2 };
