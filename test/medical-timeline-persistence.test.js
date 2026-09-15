@@ -174,3 +174,50 @@ test('TEST 8: no client auth decision is introduced — the add relies on the ga
   assert.equal(/canI\(|_permissions|medicalAccess\s*=/.test(src), false, 'no local permission gate added or weakened');
   assert.doesNotMatch(src, /saveState/, 'no device-local persistence path remains');
 });
+
+// ── THE AUTHORITATIVE WRITE PATH ITSELF: server-backed, re-hydrated, fail-closed
+//    (MEDICAL-TIMELINE-REAL-DEVICE-VERIFICATION-1: the focused add-tests above
+//    STUB saveSharedMedicalCase, so its own contract — POST → on-success
+//    re-hydrate from the server → return true; on-failure return false WITHOUT
+//    re-hydrating — was unpinned. These drive the REAL function so a regression
+//    that drops the re-hydrate or ignores res.ok cannot pass unnoticed.) ───────
+
+// Run the REAL saveSharedMedicalCase against a controllable fetch. `httpOk` is
+// the server response's res.ok; the spies record the fetch and any re-hydrate.
+async function runSave({ httpOk = true } = {}) {
+  const calls = { fetch: [], hydrate: 0, toast: [] };
+  const body =
+    '"use strict";\n' +
+    'const CALLS = arguments[0], HTTP_OK = arguments[1];\n' +
+    'async function fetch(url, opts){ CALLS.fetch.push({ url, body: JSON.parse(opts.body) }); return { ok: HTTP_OK }; }\n' +
+    'async function loadMedicalFromServer(){ CALLS.hydrate++; }\n' +
+    'function showToast(m){ CALLS.toast.push(m); }\n' +
+    fn('saveSharedMedicalCase') + '\n' +
+    'return saveSharedMedicalCase({ action: "upsert_case", playerId: "p1", timelineNote: "x" });\n';
+  const ok = await new Function(body)(calls, httpOk);
+  return { ok, calls };
+}
+
+test('TEST 9: a SUCCESSFUL medical write posts to the server AND re-hydrates from it (no device-local shadow of truth)', async () => {
+  const { ok, calls } = await runSave({ httpOk: true });
+  assert.equal(ok, true, 'reports success only after the server accepted');
+  assert.equal(calls.fetch.length, 1, 'exactly one server write');
+  assert.match(calls.fetch[0].url, /\/api\/publish\?resource=medical/, 'the ONE gated medical endpoint');
+  assert.equal(calls.hydrate, 1, 'the client re-reads the server — the server is the source of truth, not the local cache');
+  assert.equal(calls.toast.length, 0, 'no failure toast on success');
+});
+
+test('TEST 10: a FAILED medical write fails CLOSED — returns false, never re-hydrates, and never claims success', async () => {
+  const { ok, calls } = await runSave({ httpOk: false });
+  assert.equal(ok, false, 'a rejected write is reported as failure — never a false success');
+  assert.equal(calls.hydrate, 0, 'no re-hydrate on failure (nothing was persisted to reload)');
+  assert.ok(calls.toast.some(t => /could not save/i.test(t)), 'the physio is told it failed');
+});
+
+test('TEST 11: saveSharedMedicalCase source contract — res.ok gate before the re-hydrate', () => {
+  const src = fn('saveSharedMedicalCase');
+  assert.match(src, /if \(!res\.ok\)[\s\S]*return false;/, 'the HTTP status is inspected and failure short-circuits');
+  const okGuard = src.indexOf('!res.ok');
+  const hydrate = src.indexOf('loadMedicalFromServer');
+  assert.ok(okGuard > 0 && hydrate > okGuard, 're-hydrate only runs past the success gate');
+});
