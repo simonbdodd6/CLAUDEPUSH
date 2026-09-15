@@ -43653,19 +43653,13 @@
     // follows their device when it switches at sunset.
     initAppearance();
 
-    document.addEventListener('keydown', event => {
-      const target = event.target;
-      const typing = target && (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.tagName === 'SELECT' ||
-        target.isContentEditable
-      );
-      if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
-      if (event.key && event.key.toLowerCase() === 'm') {
-        window.location.href = '/mission-control';
-      }
-    });
+    // A global "m" shortcut used to navigate to /mission-control here — a
+    // June dev convenience for a page the Core deployment does not ship
+    // (.vercelignore excludes it), so on production any plain "m" keypress
+    // outside a text field left the app for its own 404 page. Reproduced on
+    // the live site on 15 Sep 2026 while a dual-role member switched to the
+    // player portal; the switch itself is state on "/" and never navigates.
+    // The app has exactly one route: "/". No keyboard shortcut may leave it.
   </script>
 </body>
 </html>
