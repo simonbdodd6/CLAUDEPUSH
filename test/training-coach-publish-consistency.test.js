@@ -348,7 +348,7 @@ test('WIRING: loadTrainingPublicationState itself ADOPTS the returned plan — n
     '  return Promise.resolve({ ok: true, json: async () => ({ sessions }) });\n' +
     '}\n' +
     extractFn(html, 'trainingBlocksFingerprint') + '\n' +      // TRAINING-SYNC-1
-    extractFn(html, 'trainingBridgeBareContent') + '\n' +      // TRAINING-SYNC-1
+    extractFn(html, 'trainingRetractBridgedCopies') + '\n' +   // bridge retired; its withdrawal runs before adopt
     extractFn(html, 'trainingAdoptCoachPlans') + '\n' +
     extractFn(html, 'loadTrainingPublicationState') + '\n' +
     'return (async () => { await loadTrainingPublicationState();\n' +

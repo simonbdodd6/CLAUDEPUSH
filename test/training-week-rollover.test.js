@@ -11,7 +11,8 @@
  * explicitly navigated during the current real week (_trainingWeekNavIn,
  * session-lexical, never persisted); a fresh load / restored state / PWA
  * left open across the Sunday→Monday rollover snaps to the current week.
- * A stored FUTURE week is always preserved — planning ahead is a feature.
+ * A stored FUTURE week follows the same rule (a silent reopen on a future week
+ * is how a plan for 15 Sep landed under 22 Sep); its content is untouched.
  * Malformed or missing values reset to the current week.
  *
  * All tests drive the REAL functions extracted from index.html.
@@ -36,7 +37,7 @@ if (!NAV_DECL) throw new Error('_trainingWeekNavIn declaration not found');
 /** Real trainingViewedWeek/Shift/GoTo + setTrainingSession under a controlled
  *  clock. `today` is mutable via env.setToday — the same session living
  *  across a rollover. */
-function makeEnv({ stored = null, today = '2026-09-14' } = {}) {
+function makeEnv({ stored = null, today = '2026-09-14', blocks = {} } = {}) {
   const body =
     '"use strict";\n' +
     'const CFG = arguments[0];\n' +
@@ -59,7 +60,7 @@ function makeEnv({ stored = null, today = '2026-09-14' } = {}) {
     '  open: setTrainingSession,\n' +
     '  setToday: t => { TODAY = t; },\n' +
     '  navIn: () => _trainingWeekNavIn, counts: () => ({ saves, renders }) };';
-  return new Function(body)({ stored, today });
+  return new Function(body)({ stored, today, blocks });
 }
 
 // ---- A–E: initialization / restoration ------------------------------------
@@ -90,10 +91,26 @@ test('D. MALFORMED STORED VALUE — resets to the current week', () => {
   }
 });
 
-test('E. FUTURE WEEK — a deliberately planned-ahead week is preserved on restore', () => {
-  const env = makeEnv({ stored: '2026-09-21', today: '2026-09-14' });
-  assert.equal(env.viewed(), '2026-09-21', 'planning ahead survives a reload');
-  assert.equal(env.isCurrent(), false);
+test('E. FUTURE WEEK — a fresh load opens on the CURRENT week; the planned-ahead content is untouched and Next › reaches it', () => {
+  // Production, Mon 14 Sep 2026: a planner silently reopened on 21–27 Sep and
+  // collected Tuesday 15 Sep's plan under slot_tue-20260922. A stored future
+  // week is now honoured only while navigated to in this real week.
+  const env = makeEnv({ stored: '2026-09-21', today: '2026-09-14',
+    blocks: { 'slot_tue-20260922': [{ id: 'b1', activity: 'Planned ahead' }] } });
+  assert.equal(env.viewed(), '2026-09-14', 'fresh load: this week');
+  assert.equal(env.isCurrent(), true);
+  assert.equal(env.state.trainingBlocks['slot_tue-20260922'][0].activity, 'Planned ahead', 'nothing deleted or moved');
+  env.shift(1);
+  assert.equal(env.viewed(), '2026-09-21', 'explicit Next › reaches it');
+  for (let i = 0; i < 5; i++) assert.equal(env.viewed(), '2026-09-21', 'and it stays while chosen this week');
+});
+
+test('E2. FUTURE WEEK — opening a planned-ahead session (the current-week banner link) is explicit navigation', () => {
+  const env = makeEnv({ stored: '2026-09-14', today: '2026-09-15',
+    blocks: { 'slot_tue-20260922': [{ id: 'b1', activity: 'Planned ahead' }] } });
+  env.open('slot_tue-20260922');
+  assert.equal(env.viewed(), '2026-09-21');
+  assert.equal(env.state.trainingActiveSession, 'slot_tue-20260922');
 });
 
 // ---- F–G: manual navigation and the rollover boundary ----------------------

@@ -5678,6 +5678,16 @@
     @media (max-width: 420px) {
       .tw-nav-btn { padding: 0 10px; font-size: 12px; }
     }
+    /* The week banner (trainingWeekBannerHTML): a future or past week must be
+       impossible to mistake for this week; on the current week it lists the
+       weeks already planned ahead. */
+    .tw-week-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -4px 0 14px; padding: 10px 14px; border-radius: 11px; border: 1px solid var(--line); background: var(--panel-2); }
+    .tw-week-banner.is-future { border-color: #d97706; background: rgba(245, 158, 11, .14); }
+    .tw-week-banner-text { flex: 1; min-width: 200px; display: grid; gap: 3px; }
+    .tw-week-banner-text strong { font-size: 13.5px; color: var(--ink); }
+    .tw-week-banner-text span { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+    .tw-week-banner .btn { flex-shrink: 0; }
+    .tw-ahead-link { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; cursor: pointer; margin: 2px 4px 2px 0; min-height: 32px; }
   </style>
   <script>
   /* ── Appearance, resolved before the first paint ─────────────────────────────
@@ -9017,33 +9027,51 @@
       ]));
     }
 
-    /** ONE-TIME bridge per occurrence: content keyed under a bare legacy id
-     *  (`tue`) becomes readable under the dated key the planner now uses.
-     *  Copies (never moves — the bare key stays as inert history) and records
-     *  the copy as an adoption-equivalent {rev:null, fp} so revision-aware
-     *  adoption may later replace it with a clean publication — but only
-     *  while the copy is untouched AND nothing anywhere is unrepublished
-     *  (status 'published'): pre-fix, a bare key could equally hold LAST
-     *  week's leftovers or this week's genuine work, and only the server's
-     *  publication state can tell those apart safely. */
-    function trainingBridgeBareContent() {
-      let bridged = false;
+    /** REVERSAL of the retired bare-key bridge (TRAINING-SYNC-1, live cd-69 to
+     *  cd-74). That bridge copied a bare legacy key's blocks (`tue` / `thu`)
+     *  into the CURRENT week's dated key whenever the dated key was empty and
+     *  recorded the copy as {rev:null, fp}. The dated key changes every Monday
+     *  and the bare key was never cleared, so the same content re-appeared in
+     *  each new week as if it had been planned — last week's Thursday shown as
+     *  this week's (production, 15 Sep 2026). Nothing is copied between
+     *  occurrence keys automatically any more: bare legacy content stays where
+     *  it is and History still lists it.
+     *
+     *  This withdraws ONLY the bridge's own untouched output: a dated key whose
+     *  adoption record is the bridge marker (rev === null) AND whose blocks
+     *  still fingerprint-match both that record and the bare source they were
+     *  copied from. A copy the coach has edited no longer matches and is kept
+     *  as their work; a copy they published was re-recorded with the server
+     *  revision and is kept. The bare source is never touched. The marker is
+     *  deleted with the copy, so each withdrawal happens exactly once and the
+     *  function is inert on every device that never bridged. */
+    function trainingRetractBridgedCopies() {
+      let changed = false;
+      const blocks  = state.trainingBlocks  || {};
+      const adopted = state.trainingAdopted || {};
       (state.schedule || []).forEach(row => {
         if (!row || !row.id) return;
         const bare = String(row.id);
         const ck = trainingContentKey(bare);
-        if (ck === bare) return;                          // no dated resolution — nothing to bridge
-        const blocks = state.trainingBlocks || {};
-        const local = blocks[ck];
-        const legacy = blocks[bare];
-        if ((Array.isArray(local) && local.length) || !Array.isArray(legacy) || !legacy.length) return;
-        state.trainingBlocks = blocks;
-        blocks[ck] = structuredClone(legacy);
-        state.trainingAdopted = state.trainingAdopted || {};
-        state.trainingAdopted[ck] = { rev: null, fp: trainingBlocksFingerprint(legacy) };
-        bridged = true;
+        if (ck === bare) return;                          // no dated resolution: never bridged
+        const source = blocks[bare];
+        if (!Array.isArray(source) || !source.length) return;
+        const srcFp = trainingBlocksFingerprint(source);
+        const prefix = ck.replace(/-\d{8}$/, '') + '-';  // this slot's key in ANY week
+        Object.keys(adopted).forEach(key => {
+          if (!key.startsWith(prefix) || !/-\d{8}$/.test(key)) return;
+          const rec = adopted[key];
+          if (!rec || rec.rev !== null) return;           // not a bridge marker
+          const copy = blocks[key];
+          if (!Array.isArray(copy) || !copy.length) return;
+          const fp = trainingBlocksFingerprint(copy);
+          if (fp !== String(rec.fp || '') || fp !== srcFp) return;   // edited, or another source
+          blocks[key] = [];
+          delete adopted[key];
+          changed = true;
+        });
       });
-      return bridged;
+      return changed;
     }
 
     /** Adopt published COACH plans into the dated content keys the planner
@@ -9151,10 +9179,11 @@
         //   · UNSYNCED local work is never clobbered — only blocks that still
         //     fingerprint-match this device's last adoption may be replaced,
         //     and only by a NEWER server revision (see trainingAdoptCoachPlans).
-        // Bare-key content is bridged to its dated occurrence BEFORE adoption,
-        // so the revision rules see the device's real local plan.
-        const _bridged = trainingBridgeBareContent();
-        if (trainingAdoptCoachPlans(data.sessions || []) || _bridged) saveState('Published staff plan loaded');
+        // Any leftover output of the retired bare-key bridge is withdrawn
+        // BEFORE adoption, so an emptied occurrence can adopt this week's real
+        // publication in the same pass.
+        const _retracted = trainingRetractBridgedCopies();
+        if (trainingAdoptCoachPlans(data.sessions || []) || _retracted) saveState('Published staff plan loaded');
         const pres = await fetch(`/api/publish?resource=training&audience=player${gq}`);
         if (pres.ok) {
           const pdata = await pres.json();
@@ -9920,10 +9949,8 @@
       // The button passes the CONTENT key. The schedule row lives under the
       // protocol id; a dated occurrence with no row (a planned week) still
       // prints, titled from its own date.
-      const pid = trainingProtocolId(sessionId);
-      const sess = (state.schedule || []).find(x => x.id === sessionId)
-        || (state.schedule || []).find(x => x.id === pid)
-        || { title: trainingOccurrenceTitle(trainingDateFromSessionId(sessionId)), date: trainingDateFromSessionId(sessionId) };
+      const occ = trainingPdfOccurrence(sessionId);
+      const sess = occ.session;
       const blocks = (state.trainingBlocks || {})[sessionId] || [];
       if (!sess || !blocks.length) return showToast('Add blocks to the plan first');
       _tpPdfBusy = true;
@@ -9937,9 +9964,9 @@
         const bytes = _SessionPdfMod.buildSessionPdf({
           clubName:     state.clubName || '',
           groupName:    group?.name || '',
-          sessionTitle: sess.title || coachTrainingSessionLabel(sess),
-          sessionLabel: [sess.date, sess.startTime].filter(Boolean).join(' '),
-          venue:        sess.venue || sess.location || '',
+          sessionTitle: occ.title,
+          sessionLabel: occ.label,
+          venue:        occ.venue,
           preparedBy:   currentUser()?.name || '',
           generatedOn,
           statuses: canI('publish_training') ? ['coach', 'player'].map(aud => ({
@@ -9953,8 +9980,10 @@
           })),
         });
         const name = _SessionPdfMod.sessionPdfFilename({
-          clubName: state.clubName, sessionTitle: sess.title || sessionId,
-          dateISO: now.toISOString().slice(0, 10),
+          clubName: state.clubName, sessionTitle: occ.title,
+          // The OCCURRENCE date names the file. The generation date used to,
+          // which made a plan for 22 Sep look like a 14 Sep plan on disk.
+          dateISO: occ.dateISO || now.toISOString().slice(0, 10),
         });
         const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
         const a = Object.assign(document.createElement('a'), { href: url, download: name });
@@ -9969,6 +9998,46 @@
         const b2 = document.getElementById('tp-pdf-btn');
         if (b2) { b2.disabled = false; b2.textContent = 'Download PDF'; }
       }
+    }
+
+    /**
+     * WHAT THE PDF IS ABOUT — resolved from the occurrence, never from today.
+     * The content key carries the occurrence date (slot_x-YYYYMMDD) in every
+     * week, the current one included; a coach-created dated session carries
+     * its own ISO date; only an undated ad-hoc session has no date, and then
+     * none is invented. The title is the schedule row's own title where a row
+     * exists (the coach's name for the session), else the weekday title.
+     */
+    function trainingPdfOccurrence(sessionId) {
+      const id = String(sessionId || '');
+      const pid = trainingProtocolId(id);
+      const rows = state.schedule || [];
+      const row = rows.find(x => x.id === id) || rows.find(x => x.id === pid) || null;
+      const dateISO = trainingDateFromSessionId(id)
+        || (/^\d{4}-\d{2}-\d{2}/.test(String(row?.date || '')) && trainingDateLabel(String(row.date).slice(0, 10))
+              ? String(row.date).slice(0, 10) : '');
+      const slot = ((_trainingSchedule && _trainingSchedule.slots) || [])
+        .find(sl => sl && String(sl.id) === id.replace(/-\d{8}$/, '')) || null;
+      const hhmm = v => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '')) ? String(v) : '';
+      const startTime = hhmm(row?.startTime) || hhmm(slot?.startTime);
+      const title = (row && (row.title || coachTrainingSessionLabel(row)))
+        || (dateISO ? trainingOccurrenceTitle(dateISO) : 'Training session');
+      const parts = [];
+      if (dateISO) parts.push(trainingOccurrenceLongLabel(dateISO));
+      else if (row && row.date) parts.push(String(row.date));
+      if (startTime) parts.push(startTime);
+      if (dateISO) parts.push('Week of ' + availDatedWeekLabel(availWeekStart(dateISO)));
+      return { session: row || { title, date: dateISO }, title, dateISO, startTime,
+               label: parts.join(' · '), venue: row?.venue || row?.location || slot?.venue || '' };
+    }
+    /** "Tuesday 15 September 2026" from an ISO date, else ''. */
+    function trainingOccurrenceLongLabel(iso) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+      if (!m || !trainingDateLabel(iso)) return '';
+      const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+      const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const day = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
+      return `${day} ${d} ${MONTHS[mo - 1]} ${y}`;
     }
 
     // Monotonic tie-breaker for block ids created within the same millisecond.
@@ -17818,10 +17887,11 @@
       if (_tab === 'history')    { _renderTrainingHistory();    return; }
 
       ensureTrainingSchedule();
-      // With the slot table in hand, any content still keyed under a bare
-      // legacy id is bridged to its dated occurrence so the planner shows the
-      // device's existing work under the key it now reads.
-      if (trainingBridgeBareContent()) saveState('Training plan re-keyed to this week');
+      // Nothing is copied between occurrence keys on render. The retired
+      // bare-key bridge's leftover copies are withdrawn once (see
+      // trainingRetractBridgedCopies); bare legacy content itself stays put
+      // and is reachable from History.
+      if (trainingRetractBridgedCopies()) saveState('Training plan restored to its own week');
       // The planner plans ONE WEEK at a time. The current week keeps the real
       // schedule sessions exactly as before — publishing included. Any other
       // week shows that week's dated training occurrences, generated by the
@@ -17829,6 +17899,7 @@
       // availability answers share one identity (slot_<id>-<YYYYMMDD>).
       const twWeek    = trainingViewedWeek();
       const twCurrent = trainingIsCurrentWeek();
+      const twKind    = trainingWeekKind(twWeek);
       const schedSessions = twCurrent ? (state.schedule || []) : trainingWeekOccurrences(twWeek).map(e => ({
         id: e.id, type: 'Training', title: trainingOccurrenceTitle(e.date), date: e.date,
         startTime: e.time, location: e.venue, published: false, occurrence: true,
@@ -17856,11 +17927,14 @@
         <div class="tw-nav" role="group" aria-label="Training week">
           <button class="tw-nav-btn" type="button" onclick="trainingShiftWeek(-1)" aria-label="Previous week">‹ Previous</button>
           <button class="tw-nav-now${twCurrent?' is-now':''}" type="button" onclick="trainingGoToThisWeek()" title="Back to this week">
-            <span class="tw-nav-week">${esc(twCurrent ? 'This week' : availDatedWeekLabel(twWeek))}</span>
+            <span class="tw-nav-week">${esc(twCurrent ? 'This week' : (twKind === 'future' ? 'Future week · ' : 'Past week · ') + availDatedWeekLabel(twWeek))}</span>
             <span class="tw-nav-range">${esc(twCurrent ? availDatedWeekLabel(twWeek) : 'Tap for this week')}</span>
           </button>
           <button class="tw-nav-btn" type="button" onclick="trainingShiftWeek(1)" aria-label="Next week">Next ›</button>
         </div>`;
+      // The week banner: unmistakable on a future or past week, and on the
+      // current week a list of weeks already planned ahead on this device.
+      const twBanner = trainingWeekBannerHTML(twWeek, twKind);
 
       if (!twCurrent && !schedSessions.length) {
         // Honest empty week: no slots are scheduled (or the schedule is still
@@ -17868,6 +17942,7 @@
         document.getElementById("coach-training").innerHTML = `
           ${_trainingTabBar()}
           ${twNav}
+          ${twBanner}
           <div class="card" style="text-align:center;padding:36px 20px">
             <div style="font-size:30px;margin-bottom:8px;opacity:.5">📅</div>
             <p style="font-size:14px;font-weight:700;margin:0 0 4px">No training scheduled this week</p>
@@ -17879,6 +17954,7 @@
       document.getElementById("coach-training").innerHTML = `
         ${_trainingTabBar()}
         ${twNav}
+        ${twBanner}
 
         <!-- Session card tabs — this week's real sessions, or the viewed week's dated occurrences -->
         <div class="session-card-row">
@@ -17920,7 +17996,6 @@
                 ${trainingAudienceBadge(sessId, 'player')}
                 <button class="btn primary" type="button" id="pub-player-${esc(sessId)}" onclick="trainingPublishTo('${sessId}','player')">Publish to players</button>
               </div>` : ''}
-              ${twCurrent ? '' : `<span class="muted" style="font-size:11px">Planned week — publish opens when the week arrives</span>`}
             </div>
           </div>
           ${trainingImportPanelHTML(ck)}
@@ -31720,16 +31795,20 @@
      *  while the coach explicitly navigated to it during the current real
      *  week (_trainingWeekNavIn); a fresh load, restored state or a PWA left
      *  open across the Sunday→Monday rollover snaps to the current week.
-     *  A stored FUTURE week is always kept — planning ahead is a feature,
-     *  and its content lives safely under dated occurrence keys. */
+     *  A stored FUTURE week is treated the same way (production, Mon 14 Sep
+     *  2026: a planner that silently reopened on 21–27 Sep collected a plan
+     *  meant for Tuesday 15 Sep). Planning ahead is still a feature: the
+     *  planned week's content is untouched under its dated keys, the
+     *  current-week banner lists it (trainingPlannedAheadHTML) and Next ›
+     *  reaches it — it just never becomes the silent default view. */
     let _trainingWeekNavIn = ''; // current-week when the coach last chose a week; '' = never
     function trainingViewedWeek() {
       const cur = availWeekStart(availToday());
       const stored = String(state.trainingWeekStart || '');
       if (!/^\d{4}-\d{2}-\d{2}$/.test(stored)) {
         state.trainingWeekStart = cur;                   // none, or malformed
-      } else if (stored < cur && _trainingWeekNavIn !== cur) {
-        state.trainingWeekStart = cur;                   // stale past week: roll over
+      } else if (stored !== cur && _trainingWeekNavIn !== cur) {
+        state.trainingWeekStart = cur;                   // not chosen this week: open on today's week
       }
       return state.trainingWeekStart;
     }
@@ -31748,6 +31827,62 @@
       _trainingWeekNavIn = state.trainingWeekStart;
       saveState('Training week');
       render();
+    }
+
+    /** 'current' | 'future' | 'past' for a viewed week (Monday ISO). */
+    function trainingWeekKind(weekStartIso) {
+      const cur = availWeekStart(availToday());
+      return weekStartIso === cur ? 'current' : (weekStartIso > cur ? 'future' : 'past');
+    }
+
+    /**
+     * THE WEEK BANNER. On any week but the current one the planner says, in
+     * words that cannot be read as "this week", which week is on screen, that
+     * blocks added here belong to that week, and whether publishing is open.
+     * Production, Mon 14 Sep 2026: a coach planned Tuesday's session on a
+     * planner quietly sitting on 21–27 Sep; the only cues were a small date
+     * range and an 11px "Planned week" note, and the plan was looked for under
+     * 15 Sep the next day. On the current week the banner instead lists the
+     * weeks already planned ahead on this device, so a plan written for a
+     * later week is one tap away rather than silently out of view.
+     */
+    function trainingWeekBannerHTML(weekStartIso, kind) {
+      const cur = availWeekStart(availToday());
+      if (kind === 'current') return trainingPlannedAheadHTML(cur);
+      const label = availDatedWeekLabel(weekStartIso);
+      const future = kind === 'future';
+      return `
+        <div class="tw-week-banner ${future ? 'is-future' : 'is-past'}" role="status" data-week="${esc(weekStartIso)}">
+          <div class="tw-week-banner-text">
+            <strong>${future ? 'Planning a future week' : 'Viewing a past week'} — ${esc(label)}</strong>
+            <span>${future
+              ? `This is not this week (${esc(availDatedWeekLabel(cur))}). Blocks you add here belong to ${esc(label)}. Publishing opens when that week arrives.`
+              : `Plans here are history. To plan this week, go back to ${esc(availDatedWeekLabel(cur))}.`}</span>
+          </div>
+          <button class="btn" type="button" onclick="trainingGoToThisWeek()">Go to this week</button>
+        </div>`;
+    }
+
+    /** Occurrences AFTER the current week that already hold a plan on this
+     *  device (dated content keys with blocks), earliest first. Group-local:
+     *  the content map is the operating group's own stash. */
+    function trainingPlannedAheadOccurrences(curWeekStartIso) {
+      const weekEnd = availAddDays(curWeekStartIso, 6);
+      return Object.entries(state.trainingBlocks || {})
+        .filter(([id, blocks]) => Array.isArray(blocks) && blocks.length && trainingDateFromSessionId(id) > weekEnd)
+        .map(([id, blocks]) => ({ id, date: trainingDateFromSessionId(id), blocks: blocks.length }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    }
+    function trainingPlannedAheadHTML(curWeekStartIso) {
+      const ahead = trainingPlannedAheadOccurrences(curWeekStartIso);
+      if (!ahead.length) return '';
+      return `
+        <div class="tw-week-banner is-ahead" role="status">
+          <div class="tw-week-banner-text">
+            <strong>Planned ahead on this device</strong>
+            <span>${ahead.map(o => `<button type="button" class="tw-ahead-link" onclick="setTrainingSession('${esc(o.id)}')">${esc(trainingOccurrenceTitle(o.date))} · ${esc(trainingDateLabel(o.date, true))} (${o.blocks} block${o.blocks === 1 ? '' : 's'})</button>`).join(' ')}</span>
+          </div>
+        </div>`;
     }
 
     /**

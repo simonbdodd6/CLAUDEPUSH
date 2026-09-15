@@ -17,7 +17,7 @@
  * adopted; local blocks that still fingerprint-match that record are safe to
  * replace with a NEWER server revision, while any divergence is unsynced work
  * and is never overwritten. The server's own revision string is the authority
- * — never the device clock. Bare-key content is bridged once to its dated
+ * — never the device clock. Bare-key content is NEVER copied to a dated
  * occurrence; U18 bare seeds resolve by WEEKDAY (trainingAttendanceOccurrence's
  * rule); the schedule loads before publication state and releases the
  * publication throttle when it lands.
@@ -56,13 +56,13 @@ function makeEnv({ slots = [], schedule = [], blocks = {}, adopted = {}, today =
     fn('trainingDateLabel') + '\n' +
     fn('trainingContentKey') + '\n' + fn('trainingProtocolId') + '\n' +
     fn('trainingPreviousOccurrenceKey') + '\n' +
-    fn('trainingBlocksFingerprint') + '\n' + fn('trainingBridgeBareContent') + '\n' +
+    fn('trainingBlocksFingerprint') + '\n' + fn('trainingRetractBridgedCopies') + '\n' +
     fn('trainingAdoptCoachPlans') + '\n' +
     fn('trainingSessionPayload') + '\n' +
     'return { state,\n' +
     '  contentKey: trainingContentKey, protocolId: trainingProtocolId,\n' +
     '  previousKey: trainingPreviousOccurrenceKey, fingerprint: trainingBlocksFingerprint,\n' +
-    '  bridge: trainingBridgeBareContent, adopt: trainingAdoptCoachPlans,\n' +
+    '  retract: trainingRetractBridgedCopies, adopt: trainingAdoptCoachPlans,\n' +
     '  payload: trainingSessionPayload };';
   return new Function(body)({ slots, schedule, blocks, adopted, today });
 }
@@ -233,59 +233,82 @@ test('CASE D — fingerprints ignore volatile block ids (identical plans match a
                env.fingerprint([{ time: '1', activity: 'x', keyFocus: 'T' }]));
 });
 
-// ---- CASE B + G: U18 stale bare-key phone / bridge -------------------------
+// ---- CASE B: U18 stale bare-key phone — NO bridge any more ------------------
+// The bridge that copied bare content into the current week's dated key was
+// the cross-week duplication bug (production 15 Sep 2026: last week's Thursday
+// shown as this week's). Bare content now stays put; an empty dated key adopts
+// the publication directly, which is all phone adoption ever needed.
 
-test('CASE B — U18 phone with LAST WEEK\'s plan bridged under the bare key adopts this week\'s publication', () => {
-  // Pre-fix shape: the phone's only content sits under bare `tue` — last
-  // week's plan, untouched since. The bridge copies it to the dated key with
-  // {rev:null, fp}; a clean publication (status published = nothing awaiting
-  // republish) may then replace the bridged copy.
+test('CASE B — U18 phone with LAST WEEK\'s plan under the bare key: nothing is copied, and the empty dated key adopts this week\'s publication', () => {
   const env = makeEnv({ slots: U18_SLOTS, schedule: WEEK_ROWS,
     blocks: { tue: B('Last week leftovers') } });
-  assert.equal(env.bridge(), true, 'bare content bridged to the dated key');
-  assert.equal(env.state.trainingBlocks[CK_TUE][0].activity, 'Last week leftovers');
-  assert.equal(env.state.trainingAdopted[CK_TUE].rev, null, 'a bridge is NOT a server adoption');
+  assert.equal(env.retract(), false, 'nothing to withdraw on a device that never bridged');
+  assert.equal(env.state.trainingBlocks[CK_TUE], undefined, 'bare content is NOT copied to the dated key');
   const changed = env.adopt([{ id: 'tue', occurrenceKey: CK_TUE, publishedRevision: 'rev1', status: 'published', blocks: B('This week plan') }]);
-  assert.equal(changed, true, 'the stale phone finally adopts');
+  assert.equal(changed, true, 'the phone adopts straight into the empty dated key');
   assert.equal(env.state.trainingBlocks[CK_TUE][0].activity, 'This week plan');
   assert.equal(env.state.trainingBlocks.tue[0].activity, 'Last week leftovers', 'the bare key stays as inert history');
 });
 
-test('CASE B — a bridged copy is NOT replaced while the publication is stale (unrepublished edits exist somewhere)', () => {
+test('CASE B — with NO publication, bare content never becomes this week\'s plan (Tue and Thu, this week and the next)', () => {
   const env = makeEnv({ slots: U18_SLOTS, schedule: WEEK_ROWS,
-    blocks: { tue: B('Genuine work this week') } });
-  env.bridge();
-  // status 'stale' = someone's edits are NOT in this publication; the bridged
-  // local copy could be that someone's work reaching us sideways — keep it.
-  const changed = env.adopt([{ id: 'tue', occurrenceKey: CK_TUE, publishedRevision: 'rev1', status: 'stale', blocks: B('Older snapshot') }]);
-  assert.equal(changed, false);
-  assert.equal(env.state.trainingBlocks[CK_TUE][0].activity, 'Genuine work this week');
+    blocks: { tue: B('Old Tuesday'), thu: B('Old Thursday') } });
+  env.retract(); env.adopt([]);
+  assert.equal(env.state.trainingBlocks[CK_TUE], undefined);
+  assert.equal(env.state.trainingBlocks[CK_THU], undefined);
+  const next = makeEnv({ slots: U18_SLOTS, schedule: WEEK_ROWS, today: '2026-09-17',
+    blocks: { tue: B('Old Tuesday'), thu: B('Old Thursday') } });
+  next.retract(); next.adopt([]);
+  assert.equal(next.state.trainingBlocks['slot_tue-20260915'], undefined);
+  assert.equal(next.state.trainingBlocks['slot_thu-20260917'], undefined);
 });
 
-test('CASE B — a bridged copy the user then EDITS becomes unsynced work and is preserved', () => {
+test('RETRACT — an UNTOUCHED bridged copy (marker rev:null, fingerprint = bare source) is withdrawn; the bare source is kept', () => {
+  const copy = B('Last week leftovers');
   const env = makeEnv({ slots: U18_SLOTS, schedule: WEEK_ROWS,
-    blocks: { tue: B('Bridged plan') } });
-  env.bridge();
-  env.state.trainingBlocks[CK_TUE] = B('Edited after bridge');
-  const changed = env.adopt([{ id: 'tue', occurrenceKey: CK_TUE, publishedRevision: 'rev1', status: 'published', blocks: B('Server plan') }]);
-  assert.equal(changed, false);
-  assert.equal(env.state.trainingBlocks[CK_TUE][0].activity, 'Edited after bridge');
+    blocks: { thu: copy, [CK_THU]: structuredClone(copy) },
+    adopted: { [CK_THU]: { rev: null, fp: JSON.stringify([['18:00', 'Last week leftovers', 'kf', 'SD']]) } } });
+  assert.equal(env.retract(), true);
+  assert.deepEqual(env.state.trainingBlocks[CK_THU], [], 'the copy is gone — an honest empty Thursday');
+  assert.equal(env.state.trainingAdopted[CK_THU], undefined, 'marker removed: never runs twice');
+  assert.equal(env.state.trainingBlocks.thu[0].activity, 'Last week leftovers', 'source untouched');
+  assert.equal(env.retract(), false, 'idempotent');
 });
 
-test('BRIDGE — never overwrites dated content, never runs without a dated resolution, is idempotent', () => {
-  // Dated key already holds content → the bridge must not touch it.
+test('RETRACT — a bridged copy the coach EDITED is their work and is kept', () => {
   const env = makeEnv({ slots: U18_SLOTS, schedule: WEEK_ROWS,
-    blocks: { tue: B('Bare'), [CK_TUE]: B('Dated wins') } });
-  assert.equal(env.bridge(), false);
-  assert.equal(env.state.trainingBlocks[CK_TUE][0].activity, 'Dated wins');
-  // No slot table → contentKey refuses → nothing bridged, nothing lost.
-  const bare = makeEnv({ slots: [], schedule: WEEK_ROWS, blocks: { tue: B('Bare only') } });
-  assert.equal(bare.bridge(), false);
+    blocks: { thu: B('Bridged plan'), [CK_THU]: B('Edited after bridge') },
+    adopted: { [CK_THU]: { rev: null, fp: JSON.stringify([['18:00', 'Bridged plan', 'kf', 'SD']]) } } });
+  assert.equal(env.retract(), false);
+  assert.equal(env.state.trainingBlocks[CK_THU][0].activity, 'Edited after bridge');
+});
+
+test('RETRACT — a SERVER-adopted plan (rev recorded) is never withdrawn, even if the bare key holds the same content', () => {
+  const plan = B('Published plan');
+  const env = makeEnv({ slots: U18_SLOTS, schedule: WEEK_ROWS,
+    blocks: { thu: structuredClone(plan), [CK_THU]: structuredClone(plan) },
+    adopted: { [CK_THU]: { rev: 'rev7', fp: env0fp(plan) } } });
+  assert.equal(env.retract(), false);
+  assert.equal(env.state.trainingBlocks[CK_THU][0].activity, 'Published plan');
+});
+function env0fp(blocks) { return JSON.stringify(blocks.map(b => [b.time, b.activity, b.keyFocus, b.coach])); }
+
+test('RETRACT — copies bridged in EARLIER weeks under the same slot are withdrawn too; other slots and dated content are untouched', () => {
+  const copy = B('Old Thursday');
+  const env = makeEnv({ slots: U18_SLOTS, schedule: WEEK_ROWS, today: '2026-09-24',
+    blocks: { thu: copy, 'slot_thu-20260917': structuredClone(copy), 'slot_thu-20260910': B('Real 10 Sep plan'), tue: B('Old Tue'), 'slot_tue-20260922': B('Real Tue') },
+    adopted: { 'slot_thu-20260917': { rev: null, fp: env0fp(copy) } } });
+  assert.equal(env.retract(), true);
+  assert.deepEqual(env.state.trainingBlocks['slot_thu-20260917'], []);
+  assert.equal(env.state.trainingBlocks['slot_thu-20260910'][0].activity, 'Real 10 Sep plan');
+  assert.equal(env.state.trainingBlocks['slot_tue-20260922'][0].activity, 'Real Tue');
+  assert.equal(env.state.trainingBlocks.thu[0].activity, 'Old Thursday');
+});
+
+test('RETRACT — no slot table → no dated resolution → nothing happens, nothing lost', () => {
+  const bare = makeEnv({ slots: [], schedule: WEEK_ROWS, blocks: { tue: B('Bare only') }, adopted: { 'slot_tue-20260908': { rev: null, fp: 'x' } } });
+  assert.equal(bare.retract(), false);
   assert.equal(bare.state.trainingBlocks.tue[0].activity, 'Bare only');
-  // Idempotent: a second run changes nothing.
-  const env2 = makeEnv({ slots: U18_SLOTS, schedule: WEEK_ROWS, blocks: { tue: B('Once') } });
-  assert.equal(env2.bridge(), true);
-  assert.equal(env2.bridge(), false);
 });
 
 // ---- CASE G: U18 dated occurrence end-to-end -------------------------------
@@ -379,10 +402,10 @@ test('CASE F — a landing schedule releases the publication throttle (the race 
 test('PIN — loadTrainingPublicationState KEEPS publishedRevision (it used to be discarded)', () => {
   const src = fn('loadTrainingPublicationState');
   assert.match(src, /publishedRevision: s\.publishedRevision \|\| null/, 'the server revision reaches _trainingPubState');
-  assert.match(src, /trainingBridgeBareContent\(\)/, 'bare content is bridged before adoption');
-  const bridgeAt = src.indexOf('trainingBridgeBareContent()');
+  assert.doesNotMatch(src, /trainingBridgeBareContent/, 'the bare-key bridge is gone from the loader');
+  const retractAt = src.indexOf('trainingRetractBridgedCopies()');
   const adoptAt = src.indexOf('trainingAdoptCoachPlans(data.sessions');
-  assert.ok(bridgeAt > 0 && adoptAt > bridgeAt, 'bridge BEFORE adopt');
+  assert.ok(retractAt > 0 && adoptAt > retractAt, 'leftover copies are withdrawn BEFORE adopt');
 });
 
 test('PIN — trainingAdopted is device state: defaulted, captured per group, cleared on club switch', () => {
