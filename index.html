@@ -12680,6 +12680,50 @@
       showToast(`${state.players.length} players exported ✓`);
     }
 
+    /**
+     * CURRENT-SEASON ATTENDANCE + STATS CSV — one row per operating-group
+     * player, from the SAME two authoritative aggregations the on-screen
+     * reports use (seasonPlayerStats over the season sheets; attendanceStats
+     * over the group register), season-windowed by club.seasonStart/End. No
+     * second stats engine, no fabricated zeros: an unknown attendance rate is
+     * left blank, never 0%. Coach-only — both underlying reads are already
+     * server-gated (season sheets on publish_squads, attendance on
+     * publish_training).
+     */
+    function exportSeasonStatsCSV() {
+      if (!isCoach()) return showToast('Season stats need coach access');
+      const season = currentSeasonSheets();
+      const stats  = seasonPlayerStats(season.sheets);
+      const joined = seasonTableRows(operationalPlayers(), stats);
+      if (!joined.rows.length) return showToast('No players to export');
+      const att = currentAttendance();   // group register (lazy-loads if cold)
+      const attFor = key => {
+        if (!att || att.denied || !key) return { pct: null, present: 0, held: 0 };
+        const s = attendanceStats(att.sessions, key, state.seasonStart, state.seasonEnd, availToday());
+        return { pct: s.attendancePct, present: s.present, held: s.held };
+      };
+      const rows = [['Player','Position','Attendance %','Sessions present','Sessions held',
+        'Appearances','Starts','Bench','Subs on','Subs off','Minutes','Playing time %']];
+      joined.rows.forEach(r => {
+        const a = attFor(r.key);
+        rows.push([
+          r.name, r.position,
+          a.pct === null ? '' : a.pct + '%', a.present, a.held,
+          r.appearances || 0, r.starts || 0, r.benchAppearances || 0,
+          r.subsOn || 0, r.subsOff || 0, r.minutes || 0,
+          (r.playingTimePct || 0) + '%',
+        ]);
+      });
+      const csv  = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a    = document.createElement('a');
+      a.href     = URL.createObjectURL(blob);
+      const win  = state.seasonStart && state.seasonEnd ? '-' + state.seasonStart + '-to-' + state.seasonEnd : '';
+      a.download = (state.clubName || 'club').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-season-stats' + win + '.csv';
+      a.click();
+      showToast(joined.rows.length + ' players exported ✓');
+    }
+
     function copyTeamInviteMessage() {
       const club = state.clubName || 'our team';
       const code = state.teamCode || 'TEAM';
@@ -18814,6 +18858,29 @@
     }
 
     /**
+     * A PLAYER's own current-season attendance, for their portal — the same
+     * server-held registers, the same ONE aggregation, self-scoped. Returns the
+     * rate plus the decision counts (present/absent) and the season denominator
+     * (held), or a `reason` when there is no rate to show. Reuses
+     * playerAttendancePct's exact guards, so a player can only ever read their
+     * own record and never invents a percentage. currentAttendance() lazy-loads
+     * the register, so simply calling this from a render kicks off the fetch and
+     * the screen repaints when it lands.
+     */
+    function playerSelfAttendanceStats(player = {}) {
+      const att = currentAttendance();
+      if (!att || att.denied) return { pct: null, present: 0, absent: 0, held: 0, reason: attendanceUnknownReason() };
+      const key = playerMatchKey(player);
+      if (!key || (att.scope === 'self' && key !== _attendanceSelfKey)) {
+        return { pct: null, present: 0, absent: 0, held: 0, reason: 'No attendance recorded yet' };
+      }
+      const s = attendanceStats(att.sessions, key, state.seasonStart, state.seasonEnd,
+        availToday(), att.scope === 'self' ? Number(att.held) : undefined);
+      return { pct: s.attendancePct, present: s.present, absent: s.absent, held: s.held,
+        reason: s.attendancePct === null ? attendanceUnknownReason() : '' };
+    }
+
+    /**
      * WHY there is no percentage. Four states that all render as "—" in a dense
      * cell, kept distinct in the words beside it so a coach is never left to
      * read "nothing recorded" into what is actually a failed read.
@@ -22122,7 +22189,10 @@
 
       const header = `
         <div>
-          <h3 style="margin:0 0 3px;font-size:15px;color:var(--ink)">Season statistics${operationalGroupName() ? ` · ${esc(operationalGroupName())}` : ''}</h3>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <h3 style="margin:0 0 3px;font-size:15px;color:var(--ink)">Season statistics${operationalGroupName() ? ` · ${esc(operationalGroupName())}` : ''}</h3>
+            <button class="btn ghost" type="button" style="font-size:12px;padding:4px 12px;flex-shrink:0" onclick="exportSeasonStatsCSV()">Export CSV</button>
+          </div>
           <p class="muted" style="font-size:12.5px;margin:0">Who has played, how much, and how often they started — from your published team sheets. ${esc(coverage)}</p>
           ${gapsHtml}
         </div>`;
@@ -23754,6 +23824,8 @@
                   <option value="">Not set</option>
                   ${Object.entries(DAY_LABELS).map(([d, l]) => `<option value="${d}" ${state.matchDayDefault === d ? 'selected' : ''}>${l}</option>`).join('')}
                 </select></label>
+              <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin:4px 0 -2px">Current season</div>
+              <p class="muted" style="font-size:11px;margin:0 0 2px">Sets the window every attendance and season statistic is counted within. Leave blank to count everything.</p>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                 <label style="${labelStyle}">Season start
                   <input id="set-season-start" type="date" value="${esc(state.seasonStart || '')}" style="${inputStyle}" onchange="settingsSaveSeason()"></label>
@@ -24424,11 +24496,20 @@
     }
 
     function settingsSaveSeason() {
-      state.seasonStart = document.getElementById('set-season-start')?.value || '';
-      state.seasonEnd = document.getElementById('set-season-end')?.value || '';
+      const start = document.getElementById('set-season-start')?.value || '';
+      const end   = document.getElementById('set-season-end')?.value || '';
+      // The current-season window drives every season-scoped stat; a reversed
+      // window would silently blank them. Refuse it here (the server refuses it
+      // too) and leave the stored dates untouched so nothing is half-applied.
+      if (start && end && start > end) {
+        showToast('Season start must be on or before season end');
+        return;
+      }
+      state.seasonStart = start;
+      state.seasonEnd = end;
       saveState('Season saved');
       saveClubConfigToServer({ seasonStart: state.seasonStart, seasonEnd: state.seasonEnd }).then(saved =>
-        showToast(saved ? 'Season dates saved ✓' : '⚠️ Saved on this device — server sync failed'));
+        showToast(saved ? 'Current season saved ✓' : '⚠️ Saved on this device — server sync failed'));
     }
 
     async function settingsForceSync(btn) {
@@ -28325,6 +28406,29 @@
       );
 
       // ── Assemble ──────────────────────────────────────────────────────────
+      // ── My attendance card (this season) ─────────────────────────────────
+      // The player's OWN recorded training attendance — what the coach marked,
+      // not their availability answers. Self-scoped and season-windowed; honest
+      // "—" states never fabricated to 0%. (Match appearances/minutes are not
+      // shown here: the season-sheets read is squad-publishing-gated, so a
+      // player cannot yet read their own appearance history — a separate,
+      // permission-sensitive addition, deliberately not smuggled in.)
+      const att = playerSelfAttendanceStats(player);
+      const attCard = pCard(
+        pCardHead('My attendance · this season') +
+        (att.pct === null
+          ? '<div style="font-size:13px;color:var(--muted)">' + esc(att.reason) + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:4px">This is what your coach recorded on the day — not your availability answers.</div>'
+          : '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">' +
+              '<strong style="font-size:26px">' + att.pct + '%</strong>' +
+              '<span style="font-size:12px;color:var(--muted)">present at ' + att.present + ' of ' + att.held + ' session' + (att.held === 1 ? '' : 's') + ' held</span>' +
+            '</div>' +
+            '<div style="margin-top:8px;height:8px;border-radius:999px;background:var(--panel-2);overflow:hidden">' +
+              '<span style="display:block;height:100%;width:' + attendanceBarWidth(att.pct) + '%;background:' + (att.pct >= 80 ? 'var(--status-available,#16a34a)' : att.pct >= 60 ? 'var(--amber,#f59e0b)' : 'var(--status-unavailable,#dc2626)') + '"></span>' +
+            '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:6px">What your coach recorded — separate from availability. Missed ' + att.absent + '.</div>')
+      );
+
       el.innerHTML =
         '<div style="max-width:600px;margin:0 auto">' +
           '<div class="training-hero" style="margin:0 0 4px">' +
@@ -28338,6 +28442,7 @@
           '<div style="display:grid;grid-template-columns:1fr;gap:12px">' +
             nextFxCard +
             nextTrainCard +
+            attCard +
             squadCard +
             medCard +
             annCard +

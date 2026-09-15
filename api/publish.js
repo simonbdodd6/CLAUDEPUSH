@@ -2749,6 +2749,16 @@ async function clubHandler(req, res) {
 
     const club = sanitiseClubConfig(req.body?.club);
     if (!club) return res.status(400).json({ error: 'club.clubName is required' });
+    // THE CURRENT SEASON WINDOW governs every season-scoped read (attendance
+    // held-count, appearances, minutes, season sheets), all of which filter
+    // `date >= start && date <= end`. A start AFTER end makes that predicate
+    // permanently false, silently blanking every stat — so a reversed window
+    // is refused here rather than persisted. Either date alone is allowed
+    // (an open-ended/unconfigured season stays honest); both present must be
+    // in order. sanitiseClubConfig already rejects non-ISO dates.
+    if (club.seasonStart && club.seasonEnd && club.seasonStart > club.seasonEnd) {
+      return res.status(400).json({ error: 'Season start must be on or before season end' });
+    }
     const existing = (await kvGet(clubKey(session.teamId))) || null;
     const record = {
       ...club,
