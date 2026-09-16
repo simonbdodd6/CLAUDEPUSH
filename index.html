@@ -18538,8 +18538,10 @@
         </div>
 
         <!-- ATTENDANCE — one register, shared with History so a past
-             session opens exactly the same thing. -->
-        ${canI('publish_training') ? `<div class="card" style="margin-bottom:14px">${
+             session opens exactly the same thing.
+             Beta: manual marking retired (read-only summary tab remains).
+             Markup and handlers are retained; flip BETA_SIMPLE_UI to restore. -->
+        ${(canI('publish_training') && !BETA_SIMPLE_UI) ? `<div class="card" style="margin-bottom:14px">${
           // BUILD AG — the ONE derivation site. The stored current-week rows
           // can carry junk dates ("" / "19.45"), which left the panel unable
           // to name an occurrence and recording inert in production. Resolve
@@ -32755,7 +32757,7 @@
                       '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="setTrainingSession(\''+s.id+'\');setTrainingTab(\'attendance\')">Attendance</button>' +
                       '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="setTrainingSession(\''+s.id+'\');setTrainingTab(\'notes\')">Notes</button>') +
                   '</div>' +
-                  (_historyOpenSession === s.id
+                  (_historyOpenSession === s.id && !BETA_SIMPLE_UI
                     ? '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">' +
                         attendancePanelHtml(s.id, s.date) + '</div>'
                     : '') +
