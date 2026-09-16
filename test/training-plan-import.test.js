@@ -265,7 +265,7 @@ test('1+2: both routes are offered — the manual planner is untouched and impor
   assert.match(src, /onclick="addTimeBlock\('\$\{ck\}'\)/, 'manual Add block still there');
   assert.ok(!/trainingImportPanelHTML\(sessId\)/.test(src),
     'no import mount writes under the protocol id');
-  assert.match(fn('addTimeBlock'), /activity: ""/, '7247036 empty-block behaviour intact');
+  assert.match(fn('trainingNewBlock'), /activity: ""/, '7247036 empty-block behaviour intact (now in the shared factory)');
   assert.match(fn('trainingPlannedStartTime'), /_trainingScheduleGroupId !== trainingGroupParam/, 'group-time rule intact');
 });
 

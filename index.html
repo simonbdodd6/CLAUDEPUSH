@@ -1814,6 +1814,38 @@
        worked. A block still gets all the room it needs: tbAutosize grows it to
        its content as the coach types. */
     .training-gs-table textarea.tb-auto { min-height:40px; overflow:hidden; }
+
+    /* ── INSERT BLOCK affordance ──────────────────────────────────────────────
+       One before every block row, so every position in the plan is reachable
+       (appending stays with the single "+ Add block" button under the table).
+       Quiet by default so a ten-block plan does not turn into a wall of
+       buttons: a hairline and a small plus, which name themselves on hover or
+       keyboard focus. Touch gets the full label and a 44px target instead,
+       since there is no hover to reveal anything. */
+    .training-gs-table tr.tb-insert td { padding:0; border-bottom:0; background:transparent !important; }
+    .tb-insert-btn {
+      display:flex; align-items:center; gap:10px;
+      width:100%; min-height:24px; padding:1px 4px;
+      border:0; background:transparent; cursor:pointer;
+      font:inherit; font-size:11.5px; font-weight:700; color:var(--muted);
+    }
+    .tb-insert-btn::before, .tb-insert-btn::after {
+      content:''; flex:1 1 0; height:1px; background:var(--line); transition:background .14s ease;
+    }
+    .tb-insert-plus {
+      display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto;
+      width:18px; height:18px; border-radius:50%;
+      border:1px solid var(--line); color:var(--muted);
+      font-size:13px; line-height:1; transition:border-color .14s ease, color .14s ease, background .14s ease;
+    }
+    .tb-insert-label { flex:0 0 auto; opacity:0; white-space:nowrap; transition:opacity .14s ease, color .14s ease; }
+    .training-gs-table tr.tb-insert:hover .tb-insert-label,
+    .tb-insert-btn:focus-visible .tb-insert-label { opacity:1; color:var(--accent); }
+    .training-gs-table tr.tb-insert:hover .tb-insert-plus,
+    .tb-insert-btn:focus-visible .tb-insert-plus { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+    .training-gs-table tr.tb-insert:hover .tb-insert-btn::before,
+    .training-gs-table tr.tb-insert:hover .tb-insert-btn::after { background:var(--accent-soft); }
+    .tb-insert-btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:8px; }
     .gs-time-input { width:84px; border:2px solid var(--line); border-radius:7px; padding:8px 10px; font-size:15px; font-weight:800; color:var(--accent); text-align:center; background:var(--panel-2); }
     /* The planner's save-state chip. Updated by tpSavePing via a direct
        textContent write — never a render — so telling the coach "saved" can
@@ -2457,6 +2489,17 @@
       .training-gs-table td textarea:not(.tb-auto) { min-height: 92px !important; height: auto !important; }
       .training-gs-table td textarea.tb-auto { min-height: 44px; }
       .training-gs-table td[data-label=""] { text-align: right; padding-top: 2px; }
+      /* The stacked layout turns every row into a bordered card — the insert
+         affordance is not one. It keeps its label (no hover on touch) and a
+         44px target between the cards it sits between. */
+      .training-gs-table tr.tb-insert {
+        display: block; border: 0; border-radius: 0;
+        padding: 0; margin: -4px 0 8px;
+      }
+      .training-gs-table tr.tb-insert td { display: block; padding: 0; }
+      .tb-insert-btn { min-height: 44px; font-size: 12.5px; padding: 0 4px; }
+      .tb-insert-label { opacity: 1; }
+      .tb-insert-plus { width: 22px; height: 22px; font-size: 15px; }
     }
 
     /* ── Players roster mobile view ───────────────────────────────────────────────
@@ -10288,22 +10331,83 @@
     // Monotonic tie-breaker for block ids created within the same millisecond.
     let _tbSeq = 0;
 
-    function addTimeBlock(sessionId) {
-      state.trainingBlocks = state.trainingBlocks || {};
-      const blocks = state.trainingBlocks[sessionId] = state.trainingBlocks[sessionId] || [];
-      const last = blocks[blocks.length-1];
+    /**
+     * A brand-new, genuinely empty planner block.
+     *
+     * `after` is the block this one FOLLOWS, or undefined when it opens the
+     * session. There is exactly one rule for a new block's opening time and it
+     * lives here, so appending and inserting can never drift apart: half an
+     * hour after the block before it, or the planned group's own start time
+     * when there is nothing before it. The guidance a coach sees is placeholder
+     * text on the inputs, never content they have to delete first.
+     */
+    function trainingNewBlock(sessionId, after) {
       const addMins = (t,m) => { const [h,mn]=t.split(":").map(Number),tot=h*60+mn+m; return `${String(Math.floor(tot/60)%24).padStart(2,"0")}:${String(tot%60).padStart(2,"0")}`; };
-      const lastTime = String(last?.time || '').trim();
-      // A NEW block is genuinely empty — the guidance is placeholder text on
-      // the inputs, never content the coach has to delete first. The opening
-      // time follows the PLANNED GROUP's own schedule (was hard-coded 19:45,
-      // which is why a U18 session inherited the Seniors evening).
-      const time = /^\d{1,2}:\d{2}$/.test(lastTime) ? addMins(lastTime, 30) : trainingPlannedStartTime(sessionId);
-      // Date.now() alone collides when two blocks are added inside the same
+      const prevTime = String(after?.time || '').trim();
+      const time = /^\d{1,2}:\d{2}$/.test(prevTime) ? addMins(prevTime, 30) : trainingPlannedStartTime(sessionId);
+      // Date.now() alone collides when two blocks are created inside the same
       // millisecond (a double-tap, or a fast "add three blocks"), and two rows
       // sharing an id means editing one edits the other.
       const id = "tb" + Date.now() + "-" + (_tbSeq++).toString(36);
-      const block = { id, time, activity: "", tag: "General" };
+      return { id, time, activity: "", tag: "General" };
+    }
+
+    /** Put the coach in a block and bring it into view. Shared by add + insert:
+     *  without the scroll a new row is created below the fold and the click
+     *  looks as though it did nothing at all. */
+    function trainingFocusBlock(id) {
+      requestAnimationFrame(() => {
+        const row = document.querySelector(`#coach-training tr[data-block-id="${CSS.escape(String(id))}"]`);
+        const el = row && row.querySelector('textarea.tb-auto');
+        if (!el) return;
+        tbAutosize(el);
+        row.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+        el.focus({ preventScroll: true });
+      });
+    }
+
+    /**
+     * INSERT a block immediately BEFORE an existing one.
+     *
+     * The planner's order IS the array's order — the payload published to
+     * players, the PDF and the session all read that one array — so inserting
+     * is a splice into it and nothing else. No second ordering field, no
+     * re-sorting, no re-keying: every other block keeps its identity, its
+     * content and its position relative to its neighbours.
+     *
+     * Addressed by the id of the block to insert BEFORE, never by a row index:
+     * an index captured in markup goes stale the moment anything above it
+     * changes, and the whole training model already addresses blocks by id.
+     * An id that is no longer there (a stale row, a block removed on another
+     * device) appends instead of guessing a position.
+     */
+    function trainingInsertBlockBefore(sessionId, beforeBlockId) {
+      state.trainingBlocks = state.trainingBlocks || {};
+      const blocks = state.trainingBlocks[sessionId] = state.trainingBlocks[sessionId] || [];
+      const at = blocks.findIndex(b => b && String(b.id) === String(beforeBlockId));
+      if (at < 0) return addTimeBlock(sessionId);          // unknown anchor: append, never guess
+      const block = trainingNewBlock(sessionId, blocks[at - 1]);
+      blocks.splice(at, 0, block);
+
+      // Insert the two rows the new block owns — its own insert affordance and
+      // its row — immediately before the anchor's affordance. Every other row
+      // is left exactly as it is, so a coach mid-edit elsewhere keeps their
+      // cursor. Falls back to the canonical render if the anchor has gone.
+      const anchor = document.querySelector(`#coach-training tr.tb-insert[data-insert-before="${CSS.escape(String(beforeBlockId))}"]`);
+      if (anchor) anchor.insertAdjacentHTML('beforebegin', trainingInsertRowHTML(sessionId, block) + trainingBlockRowHTML(sessionId, block));
+      else renderTraining();
+
+      saveState('Time block inserted');
+      showToast('Block inserted');
+      syncPublishedSessionEdit(sessionId);
+      trainingFocusBlock(block.id);
+    }
+
+    function addTimeBlock(sessionId) {
+      state.trainingBlocks = state.trainingBlocks || {};
+      const blocks = state.trainingBlocks[sessionId] = state.trainingBlocks[sessionId] || [];
+      const block = trainingNewBlock(sessionId, blocks[blocks.length - 1]);
+      const id = block.id;
       blocks.push(block);
 
       // Append ONE row rather than calling notify(), which rebuilt the entire
@@ -10313,26 +10417,16 @@
       // from scratch for the FIRST block, when the empty state is on screen.
       const tbody = document.querySelector(`#coach-training .training-gs-table tbody`);
       if (tbody && blocks.length > 1) {
-        tbody.insertAdjacentHTML('beforeend', trainingBlockRowHTML(sessionId, block));
+        // The appended block owns an insert affordance too, so a later block
+        // can always be placed in front of it.
+        tbody.insertAdjacentHTML('beforeend', trainingInsertRowHTML(sessionId, block) + trainingBlockRowHTML(sessionId, block));
       } else {
         renderTraining();
       }
       saveState('Time block added');
       showToast('Time block added');
       syncPublishedSessionEdit(sessionId);
-
-      // Put the coach in the new block AND bring it into view. Without the
-      // scroll the row was created below the fold while the "+ Add block"
-      // button jumped ~400px down the page, so the click looked like it had
-      // done nothing at all.
-      requestAnimationFrame(() => {
-        const row = document.querySelector(`#coach-training tr[data-block-id="${CSS.escape(String(id))}"]`);
-        const el = row && row.querySelector('textarea.tb-auto');
-        if (!el) return;
-        tbAutosize(el);
-        row.scrollIntoView({ block: 'nearest', behavior: 'auto' });
-        el.focus({ preventScroll: true });
-      });
+      trainingFocusBlock(id);
     }
 
     // The single floor a planner block sits at, focused or not. It matches the
@@ -10384,6 +10478,34 @@
      * `data-block-id` is what lets add/remove find their own row without a
      * render.
      */
+    /**
+     * The "insert a block here" affordance that precedes EVERY block row.
+     *
+     * One before each block covers every position in the plan: before the
+     * first, between any two, and before the last. Appending stays with the
+     * single "+ Add block" button under the table, so there is exactly one
+     * control per position and no duplicate call to action.
+     *
+     * Quiet on a desktop — a hairline and a small plus that name themselves on
+     * hover — and a full-width 44px target on a phone, where there is no hover
+     * to reveal anything.
+     */
+    function trainingInsertRowHTML(sessId, b) {
+      const what = String(b.activity || '').trim();
+      return `
+                <tr class="tb-insert" data-insert-before="${esc(String(b.id))}">
+                  <td colspan="5">
+                    <button class="tb-insert-btn" type="button"
+                      onclick="trainingInsertBlockBefore('${sessId}','${esc(String(b.id))}');tpSavePing()"
+                      title="Insert a block here"
+                      aria-label="Insert a new block before ${esc(what || 'this block')}">
+                      <span class="tb-insert-plus" aria-hidden="true">+</span>
+                      <span class="tb-insert-label">Insert block here</span>
+                    </button>
+                  </td>
+                </tr>`;
+    }
+
     function trainingBlockRowHTML(sessId, b) {
       const ta = (field, placeholder, value, size, extra = '') => `
                     <textarea class="tb-auto"
@@ -10423,7 +10545,10 @@
       // last block is the exception: its removal has to bring back the empty
       // state, which means rebuilding the card.
       const row = document.querySelector(`#coach-training tr[data-block-id="${CSS.escape(String(blockId))}"]`);
-      if (row && state.trainingBlocks[sessionId].length) row.remove();
+      // The block's own insert affordance goes with it — leaving it behind
+      // would offer a position in front of a block that no longer exists.
+      const affordance = document.querySelector(`#coach-training tr.tb-insert[data-insert-before="${CSS.escape(String(blockId))}"]`);
+      if (row && state.trainingBlocks[sessionId].length) { affordance?.remove(); row.remove(); }
       else renderTraining();
       syncPublishedSessionEdit(sessionId);
     }
@@ -18261,7 +18386,7 @@
               <th style="width:36px"></th>
             </tr></thead>
             <tbody>
-              ${blocks.map(b => trainingBlockRowHTML(ck, b)).join("")}
+              ${blocks.map(b => trainingInsertRowHTML(ck, b) + trainingBlockRowHTML(ck, b)).join("")}
             </tbody>
           </table></div>
           <!-- THE add control lives immediately under the last block (which is
