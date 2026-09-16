@@ -11,6 +11,7 @@
 // than one that stops.
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -125,6 +126,92 @@ export function verifyExclusionIntegrity(resolved) {
     }
   }
   return problems;
+}
+
+// ── adapted cherry-pick detection ────────────────────────────────────────
+//
+// Production is built by cherry-picking, and a cherry-pick applied against
+// different surrounding code produces a DIFFERENT patch-id for identical
+// work. `git cherry` therefore reports such a commit as "not in production",
+// and re-applying it conflicts — which is exactly what stopped the first
+// rehearsal (e5fe0f20 was already live as c4c2ea09, byte-identical changes,
+// different patch-id).
+//
+// The signature below is what a patch actually CHANGES, with line numbers and
+// surrounding context removed: per file, the ordered sequence of added and
+// removed lines. Two commits with the same signature made the same change,
+// wherever it landed in the file.
+
+/** Normalised change signature for one commit: { hash, lines }. */
+export function changeSignature(sha, cwd = REPO_ROOT) {
+  const out = execFileSync('git', ['show', '--format=', '--no-color', '-U0', sha],
+    { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  const files = new Map();
+  let current = null;
+  for (const line of out.split('\n')) {
+    const m = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    if (m) { current = m[2]; files.set(current, []); continue; }
+    if (!current) continue;
+    // Drop headers and hunk markers; keep only real content changes.
+    if (/^(\+\+\+|---|index |new file|deleted file|old mode|new mode|similarity|rename|copy|Binary|@@)/.test(line)) continue;
+    if (/^[+-]/.test(line)) files.get(current).push(line);
+  }
+  const body = [...files.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([f, ls]) => `${f}\n${ls.join('\n')}`)
+    .join('\n--\n');
+  return { hash: createHash('sha256').update(body).digest('hex'), lines: [...files.values()].flat() };
+}
+
+/** Jaccard overlap of two changed-line collections. */
+export function lineOverlap(a, b) {
+  const A = new Set(a), B = new Set(b);
+  if (!A.size && !B.size) return 1;
+  let shared = 0;
+  for (const x of A) if (B.has(x)) shared++;
+  const union = A.size + B.size - shared;
+  return union === 0 ? 0 : shared / union;
+}
+
+/**
+ * PURE. Is this candidate already in production, genuinely new, or unclear?
+ *
+ *   'already-in-production' — an exact signature match exists. Safe to skip.
+ *   'ambiguous'             — overlapping or same-subject work whose content
+ *                             differs. We cannot prove equivalence, so we stop.
+ *   'new'                   — nothing comparable in production. Ship it.
+ *
+ * Subject is used only to RAISE suspicion, never to skip on its own: two
+ * commits sharing a subject but not content are precisely the dangerous case.
+ */
+export function classifyAgainstProduction({ candidate, production, ambiguityThreshold = 0.5 }) {
+  const exact = production.find(p => p.hash === candidate.hash);
+  if (exact) {
+    return {
+      verdict: 'already-in-production',
+      match: exact,
+      reason: `identical changes already in production as ${exact.sha.slice(0, 8)} "${exact.subject}" (adapted cherry-pick: same content, different patch-id)`,
+    };
+  }
+  const sameSubject = production.find(p => p.subject === candidate.subject);
+  if (sameSubject) {
+    return {
+      verdict: 'ambiguous',
+      match: sameSubject,
+      reason: `production commit ${sameSubject.sha.slice(0, 8)} has the same subject but DIFFERENT content — cannot prove whether this work is already live`,
+    };
+  }
+  for (const p of production) {
+    const overlap = lineOverlap(candidate.lines, p.lines);
+    if (overlap >= ambiguityThreshold) {
+      return {
+        verdict: 'ambiguous',
+        match: p,
+        reason: `${Math.round(overlap * 100)}% of these changes overlap production commit ${p.sha.slice(0, 8)} "${p.subject}" without matching it exactly`,
+      };
+    }
+  }
+  return { verdict: 'new' };
 }
 
 // ── PURE: baseline-relative test comparison ──────────────────────────────

@@ -12,6 +12,7 @@
 import {
   loadConfig, git, patchIdOf, subjectOf, commitExists,
   verifyExclusionIntegrity, classifyCandidates, nextDeployNumber,
+  changeSignature, classifyAgainstProduction,
   h1, ok, bad, info, die,
 } from './deploy-lib.mjs';
 
@@ -75,9 +76,34 @@ const candidates = cherry.map(l => {
 info(`${candidates.length} commit(s) on ${source} not represented in ${production}`);
 
 const exclusionsForMatching = cfg.exclusions.map(e => ({ id: e.id, commit: e.commit, subject: e.subject, patchId: e.patchId }));
-const { include, exclude, ambiguous } = classifyCandidates({ candidates, exclusions: exclusionsForMatching });
-
+const { include: notExcluded, exclude, ambiguous } = classifyCandidates({ candidates, exclusions: exclusionsForMatching });
 exclude.forEach(c => info(`EXCLUDED  ${c.sha.slice(0, 8)} ${c.subject}  [${c.exclusionId}, ${c.reason}]`));
+
+// ── 4b. is any remaining candidate ALREADY in production under a different
+// patch-id? Production is built by cherry-picking, so identical work can
+// carry a different patch identity; re-applying it conflicts.
+const mergeBase = git(['merge-base', production, source]);
+const prodShas = git(['rev-list', `${mergeBase}..${production}`]).split('\n').filter(Boolean);
+info(`comparing against ${prodShas.length} production commit(s) since divergence for adapted cherry-picks…`);
+const productionSignatures = prodShas.map(sha => {
+  const sig = changeSignature(sha);
+  return { sha, subject: subjectOf(sha), hash: sig.hash, lines: sig.lines };
+});
+
+const include = [];
+const alreadyPresent = [];
+for (const c of notExcluded) {
+  const sig = changeSignature(c.sha);
+  const verdict = classifyAgainstProduction({
+    candidate: { ...c, hash: sig.hash, lines: sig.lines },
+    production: productionSignatures,
+  });
+  if (verdict.verdict === 'already-in-production') { alreadyPresent.push({ ...c, ...verdict }); continue; }
+  if (verdict.verdict === 'ambiguous') { ambiguous.push({ ...c, reason: verdict.reason }); continue; }
+  include.push(c);
+}
+
+alreadyPresent.forEach(c => info(`ALREADY LIVE  ${c.sha.slice(0, 8)} ${c.subject}\n      ${c.reason}`));
 include.forEach(c => ok(`include   ${c.sha.slice(0, 8)} ${c.subject}`));
 
 if (ambiguous.length) {
@@ -120,6 +146,8 @@ console.log(`  commits included:   ${include.length}`);
 include.forEach(c => console.log(`      + ${c.subject}`));
 console.log(`  commits excluded:   ${exclude.length}`);
 exclude.forEach(c => console.log(`      - ${c.subject}  [${c.exclusionId}]`));
+console.log(`  already in production (adapted cherry-pick): ${alreadyPresent.length}`);
+alreadyPresent.forEach(c => console.log(`      = ${c.subject}  [live as ${c.match.sha.slice(0, 8)}]`));
 console.log('\n  diff vs production:');
 console.log(git(['diff', '--stat', `${production}..${target}`]).split('\n').map(l => `      ${l}`).join('\n'));
 
