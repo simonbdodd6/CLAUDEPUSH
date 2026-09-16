@@ -178,6 +178,7 @@ function scope(opts = {}) {
     ${extractFn(html, 'seasonRowMatches')}
     ${extractFn(html, 'loadSeasonSheets')}
     ${extractFn(html, 'currentSeasonSheets')}
+    ${extractFn(html, 'seasonSheetsFailed')}
     ${extractFn(html, 'clubUsesPlayerGroups')}
     ${extractFn(html, 'playerGroupIdOf')}
     ${extractFn(html, 'operationalPlayers')}
@@ -195,7 +196,7 @@ function scope(opts = {}) {
 
     return {
       state, seasonTableRows, seasonSortRows, seasonRowMatches, seasonPlayerStats,
-      operationalPlayers, currentSeasonSheets, loadSeasonSheets, seasonStatsHtml,
+      operationalPlayers, currentSeasonSheets, loadSeasonSheets, seasonStatsHtml, seasonSheetsFailed,
       membersViewTabs, setMembersView, seasonStatsSort, seasonSearchInput, seasonApplySearch,
       renderPlayers, playerMatchKey,
       setGroup: g => { state.operationalGroupId = g; },
@@ -393,7 +394,11 @@ test('a failed read is unknown, not an empty season', async () => {
   await renderFor(s);
   const markup = s.seasonStatsHtml();
   assert.equal(s.peek().sheets, null, 'a 500 leaves the season unknown');
-  assert.match(textOf(markup), /Loading this season/);
+  // It says the read FAILED, not that it is still arriving. "Loading…" that
+  // never resolves is its own small lie, and the Appearances card has always
+  // drawn this distinction — the table now draws the same one.
+  assert.match(textOf(markup), /could not be loaded/);
+  assert.ok(!/Loading this season/.test(textOf(markup)), 'a failed read is not described as in flight');
   assert.ok(!/data-label="Apps"/.test(markup), 'a server failure never becomes 0 appearances');
 });
 

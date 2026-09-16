@@ -13247,7 +13247,13 @@
       if (!joined.rows.length) return showToast('No players to export');
       const att = currentAttendance();   // group register (lazy-loads if cold)
       const attFor = key => {
-        if (!att || att.denied || !key) return { pct: null, present: 0, held: 0 };
+        // UNKNOWN REGISTER — cold read, denied, or no key. The rate column has
+        // always gone out blank here; the two count columns beside it went out
+        // as a hard 0, which reads as "held no sessions, attended none" — an
+        // unknown stated as a fact. Blank means the same thing in all three.
+        // A register that IS loaded still prints its real zeros: 0 of 0 held is
+        // something we know.
+        if (!att || att.denied || !key) return { pct: null, present: '', held: '' };
         const s = attendanceStats(att.sessions, key, state.seasonStart, state.seasonEnd, availToday());
         return { pct: s.attendancePct, present: s.present, held: s.held };
       };
@@ -22748,8 +22754,20 @@
       if (season && season.denied) return shell(note('Season statistics need squad-publishing access.'));
       // null is NOT an empty season. The read has not landed, or it failed —
       // either way nobody has looked yet, and a zero would be a claim about a
-      // season nobody has read. Same distinction the Appearances card makes.
-      if (season === null) return shell(note('Loading this season’s team sheets…'));
+      // season nobody has read. Same distinction the Appearances card makes —
+      // and the same wording, because a failed read told as "Loading…" for ever
+      // is its own small lie. seasonSheetsFailed() separates the two.
+      if (season === null) {
+        return seasonSheetsFailed()
+          ? shell(note('This season’s team sheets could not be loaded — this is not a record of no appearances. '
+              // The flag is deliberately NOT cleared here: it records that the
+              // LAST attempt failed, which stays true while this one runs. A
+              // success clears it and re-renders; a second failure leaves the
+              // message it already shows, rather than a "Loading…" that nothing
+              // would come back to correct.
+              + '<button type="button" class="ovw-retry" onclick="loadSeasonSheets(true)">Try again</button>'))
+          : shell(note('Loading this season’s team sheets…'));
+      }
       // operationalPlayers() fails CLOSED while the membership list loads, so an
       // empty roster mid-load means "not known yet", never "nobody plays here".
       if (!_adminData.loaded && (canI('manage_players') || canI('manage_teams'))) {
