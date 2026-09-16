@@ -1,29 +1,136 @@
 # Deploying Coach's Eye to Production
 
 **Status (2026-06-11): GitHub auto-deploy is BROKEN.** Pushing to `main` does
-NOT deploy. Every release must be deployed manually until the integration is
-reconnected.
+NOT deploy. Every release is manual.
 
-## Manual deploy (current required process)
+**Prerequisite:** the Vercel CLI must be installed and logged in as
+`simonbdodd-9233` (`vercel whoami`). Without it nothing here works.
+
+## What production actually is
+
+Production is **not** the feature branch. It is a `core-deploy-NN` branch:
+the previous `core-deploy-NN` plus the feature commits that are cleared to
+ship, **minus the production-only exclusions**. Each release increments NN.
+
+The exclusions, their reasons and every protection rule live in
+**`config/production-exclusions.json`** — deliberately data, so you can read
+and challenge them without opening a script. In one sentence:
+
+> **Production = feature branch − the excluded commits.**
+
+It is *not* a list of files to strip by hand; the file differences people used
+to copy manually are simply what those commits happened to touch.
+
+Currently excluded:
+
+| Exclusion | Commit | Why |
+|---|---|---|
+| Tactics Board | `292916b7` *feat: mount the Tactics Board as a coach section* | Separate product, own repository and release cycle. Its absence is what makes `/tactics/tactics-board.mjs` return 404. |
+| Club export | `e3762b6c` *feat: add scoped club export for AI CEO* | For a future AI CEO integration that is not live; adds an endpoint to a production API for no current benefit. |
+
+**Performance / S&C:** `performance/` is legacy shell code from the removed
+integration — the real product lives in its own repository. A release must
+never move it: the gate blocks any deploy where `performance/` differs from
+the previous production branch.
+
+## The release workflow
 
 ```bash
-# from the repo root, on main, with a clean tree and green tests
-npm test                       # must be 216/216 (or current count) green
-vercel deploy --prod --yes     # CLI must be logged in as simonbdodd-9233
+npm run deploy:prepare     # 1. build the next core-deploy-NN branch
+#                            inspect the printed include/exclude list and diff
+npm run deploy:check       # 2. run the full gate (takes a few minutes)
+#                            review the output
+npm run deploy:release     # 3. deploy, re-point the legacy alias, verify
 ```
 
-The deploy output prints the new deployment URL and aliases
-`https://boitsfort-coachseye.vercel.app` automatically.
+Each step is separate and human-initiated. **No script deploys on its own.**
 
-The legacy domain `boitsfort-coachseye-gpt.vercel.app` does **not** follow
-production automatically (it was manually alias-pinned in May). After each
-deploy, re-point it:
+### 1. `npm run deploy:prepare`
+
+Verifies a clean tree, confirms the newest `core-deploy-NN` is what
+`https://www.coacheasier.com/api/config` is actually serving, then creates the
+next branch and cherry-picks every feature commit not yet in production,
+skipping the configured exclusions. It prints exactly what was included and
+excluded.
+
+It **fails closed**: if an exclusion no longer matches the repository, if a
+commit's subject matches an exclusion but its patch differs (an adapted
+cherry-pick of work that must never ship), or if a cherry-pick conflicts, it
+stops and restores the repository rather than guessing. Use `--dry-run` to see
+the plan without creating anything.
+
+### 2. `npm run deploy:check`
+
+The gate. Runnable standalone against any branch
+(`npm run deploy:check -- core-deploy-83`). It verifies the excluded commits
+are absent, the Tactics and club-export protections hold, `performance/` has
+not moved, the API function count is within the Vercel cap of 12,
+`api/mission-control.js` is unchanged, there are no hardcoded secrets, the
+Core/Intelligence boundary holds, and `git diff --check` is clean.
+
+**Baseline-relative test gating.** The suite is not zero-failure on
+production, and pretending otherwise would make the gate meaningless. The gate
+runs the full suite on the previous production branch — in a throwaway
+`git worktree`, so your checkout is untouched — and again on the candidate,
+then blocks only on failures *this release introduces*. Pre-existing failures
+are reported separately, never hidden.
+
+Two failures are known and accepted (both documented in the config): the
+traveller-twin fixture's unpinned clock, and a `BETA_NAV_IDS` assertion in
+`test/pre-v2-messaging-removed.test.js` that expects `"tactics"` — the tactics
+commit never touched that file, so excluding it leaves an assertion that
+contradicts production by construction. Fixing that one would make "green
+suite" a meaningful signal again.
+
+> Never delete or weaken a test to pass this gate. If a new failure appears,
+> fix the cause or abandon the release.
+
+`--skip-tests` runs structural checks only and exits 2 — useful while
+iterating, never sufficient for a release.
+
+### 3. `npm run deploy:release`
+
+Runs the gate again and refuses to continue if it fails. Then
+`vercel deploy --prod --yes`, re-points the legacy alias, and verifies with
+read-only requests that all three hostnames report the new version, the
+homepage is 200, `devLogin` is false, and the Tactics asset is 404.
+
+## Aliases
+
+Three hostnames serve production:
+
+| Host | Follows a deploy? |
+|---|---|
+| `www.coacheasier.com` | yes |
+| `boitsfort-coachseye.vercel.app` | yes (aliased by the deploy) |
+| `boitsfort-coachseye-gpt.vercel.app` | **no — manual re-point required** |
+
+The legacy domain was alias-pinned by hand in May 2026 and was found serving a
+stale build during the `1718a90` release. `deploy:release` now re-points and
+verifies it every time; if you ever deploy by hand, do it yourself:
 
 ```bash
 vercel alias set <new-deployment-url> boitsfort-coachseye-gpt.vercel.app
 ```
 
-…or retire that domain entirely so there is only one production hostname.
+…or retire that domain so there is only one production hostname.
+
+## Emergency / manual fallback
+
+If the scripts are unavailable or broken, the underlying process is still just:
+
+```bash
+git checkout -b core-deploy-NN core-deploy-<NN-1>   # branch from production
+git cherry-pick <commits>                           # NEVER the excluded ones
+npm test                                            # compare to the previous branch
+vercel deploy --prod --yes
+vercel alias set <new-deployment-url> boitsfort-coachseye-gpt.vercel.app
+```
+
+Before doing that, read `config/production-exclusions.json` and check by hand
+that no `tactics/` files, no `!/tactics` line in `.vercelignore`, no Tactics
+mount in `index.html`, and no `api/_clubExport*.js` files are present. To roll
+back instead, see **Rollback procedure** below.
 
 ## Post-deploy smoke check (~30 seconds)
 
