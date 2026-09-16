@@ -14,6 +14,7 @@ import {
   nextDeployNumber, classifyCandidates, verifyExclusionIntegrity,
   parseTestFailures, parseTestCounts, compareFailures,
   evaluateProtections, isBlocking, loadConfig, CONFIG_PATH,
+  classifyAgainstProduction, lineOverlap,
 } from '../scripts/deploy-lib.mjs';
 
 const TACTICS = { id: 'tactics-mount', commit: 'aaa111', subject: 'feat: mount the Tactics Board as a coach section', patchId: 'pt-tactics' };
@@ -110,6 +111,81 @@ test('the committed config is valid and declares both production exclusions', ()
   for (const needle of ['tactics', 'club-export', 'performance', 'apiFunctionCap', 'baselineRelativeTesting', 'aliases']) {
     assert.ok(raw.includes(needle), `${needle} policy is documented in the config`);
   }
+});
+
+// ── adapted cherry-pick detection ────────────────────────────────────────
+//
+// Production is built by cherry-picking, so identical work can carry a
+// different patch-id. The real case: e5fe0f20 was already live as c4c2ea09 —
+// byte-identical changes, different patch-id — and re-applying it conflicted.
+
+const MEDICAL_LINES = ['+  if (!injury.date) return false;', '-  return true;', '+  return validate(injury);'];
+const LIVE = {
+  sha: 'c4c2ea09aaaa', subject: 'fix(core): repair medical injury form validation',
+  hash: 'sig-medical', lines: MEDICAL_LINES,
+};
+const OTHER_LIVE = { sha: 'bbb111222333', subject: 'feat: reorder training blocks', hash: 'sig-blocks', lines: ['+  moveBlock(id);'] };
+const PRODUCTION = [LIVE, OTHER_LIVE];
+
+test('an exact adapted cherry-pick is recognised as already live and skipped', () => {
+  const candidate = { sha: 'e5fe0f20ffff', subject: LIVE.subject, hash: 'sig-medical', lines: [...MEDICAL_LINES] };
+  const v = classifyAgainstProduction({ candidate, production: PRODUCTION });
+  assert.equal(v.verdict, 'already-in-production');
+  assert.equal(v.match.sha, LIVE.sha);
+  assert.match(v.reason, /adapted cherry-pick|already in production/);
+});
+
+test('a genuinely new commit is included', () => {
+  const candidate = { sha: '15865a6a0000', subject: 'feat(beta): hide manual training attendance recording', hash: 'sig-brand-new', lines: ['+  const hidden = true;'] };
+  assert.equal(classifyAgainstProduction({ candidate, production: PRODUCTION }).verdict, 'new');
+});
+
+test('FAIL CLOSED: same subject but different content is ambiguous, never skipped', () => {
+  // The dangerous case — looks like the live fix, is not the live fix.
+  const candidate = { sha: 'dddd44445555', subject: LIVE.subject, hash: 'sig-DIFFERENT', lines: ['+  something else entirely;'] };
+  const v = classifyAgainstProduction({ candidate, production: PRODUCTION });
+  assert.equal(v.verdict, 'ambiguous');
+  assert.match(v.reason, /same subject but DIFFERENT content/);
+});
+
+test('FAIL CLOSED: a near-match by content overlap is ambiguous, not included', () => {
+  // Two of three lines shared: clearly related, provably not identical.
+  const candidate = {
+    sha: 'eeee55556666', subject: 'fix: a partially overlapping change', hash: 'sig-near',
+    lines: [MEDICAL_LINES[0], MEDICAL_LINES[1], '+  brand new line;'],
+  };
+  const v = classifyAgainstProduction({ candidate, production: PRODUCTION });
+  assert.equal(v.verdict, 'ambiguous');
+  assert.match(v.reason, /overlap/);
+});
+
+test('an unrelated commit is NOT falsely skipped by incidental overlap', () => {
+  const candidate = { sha: 'ffff66667777', subject: 'fix: unrelated work', hash: 'sig-unrelated', lines: ['+  unrelated();', '+  alsoUnrelated();'] };
+  assert.equal(classifyAgainstProduction({ candidate, production: PRODUCTION }).verdict, 'new');
+});
+
+test('subject alone never causes a skip, and content alone never causes ambiguity', () => {
+  // Same content, different subject → still already live (content is what ships).
+  const renamed = { sha: 'aaaa11112222', subject: 'totally different wording', hash: 'sig-medical', lines: [...MEDICAL_LINES] };
+  assert.equal(classifyAgainstProduction({ candidate: renamed, production: PRODUCTION }).verdict, 'already-in-production');
+  // Empty production can never mark anything as live.
+  assert.equal(classifyAgainstProduction({ candidate: renamed, production: [] }).verdict, 'new');
+});
+
+test('line overlap is a deterministic Jaccard ratio', () => {
+  assert.equal(lineOverlap(['a', 'b'], ['a', 'b']), 1);
+  assert.equal(lineOverlap(['a', 'b'], ['c', 'd']), 0);
+  assert.equal(lineOverlap(['a', 'b'], ['a', 'c']), 1 / 3);
+  assert.equal(lineOverlap([], []), 1, 'two empty changes are trivially equivalent');
+});
+
+test('exclusions and already-live detection compose without double-handling', () => {
+  // A Tactics commit must be caught by the EXCLUSION layer and never reach
+  // production comparison, even if production somehow contained similar lines.
+  const candidates = [{ sha: 'zzz999', subject: TACTICS.subject, patchId: 'pt-tactics' }];
+  const { include, exclude } = classifyCandidates({ candidates, exclusions: EXCLUSIONS });
+  assert.equal(exclude.length, 1);
+  assert.deepEqual(include, [], 'excluded work never reaches the already-live comparison');
 });
 
 // ── baseline-relative testing ────────────────────────────────────────────
