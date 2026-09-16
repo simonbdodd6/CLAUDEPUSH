@@ -385,7 +385,17 @@ test('21. the completion payload is the minimised projection — usable, no heal
   assert.equal(sent.kind, 'authoring_profile');
   assert.equal(authoringProfileUsable(sent), true, 'the server copy can drive generation');
   assert.equal(sent.profileComplete, true);
-  const json = JSON.stringify(sent);
+  // The search over VALUES is deliberately blunt — a leak anywhere is a leak.
+  // `updatedAt` is excluded because it is a clock reading, not athlete data,
+  // and its millisecond field made this assertion fail roughly twice in a
+  // thousand runs whenever it happened to land on .104 or .188 — the athlete's
+  // weight and height. That was a false positive about a real guard, which is
+  // the worst kind: it trains you to ignore it. The timestamp is asserted to
+  // BE a timestamp instead, so nothing can hide in the field now skipped.
+  assert.ok(sent.updatedAt === null || /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(sent.updatedAt),
+    'updatedAt is a timestamp and nothing else');
+  const { updatedAt, ...searchable } = sent;
+  const json = JSON.stringify(searchable);
   for (const secret of ['left knee', 'sore after match', 'ACL 2024', 'no deep squats', '104', '188']) {
     assert.ok(!json.includes(secret), `must not sync "${secret}"`);
   }

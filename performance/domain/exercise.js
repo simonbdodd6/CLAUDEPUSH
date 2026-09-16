@@ -14,6 +14,10 @@ import {
   SEASON_PHASE_IDS, SETUP_COMPLEXITY, SPACE_REQUIREMENTS,
   SURFACE_REQUIREMENTS, YOUTH_SUITABILITY,
 } from '../types/exercise.js';
+// The athlete's equipment LOCATIONS are an athlete-profile vocabulary, not an
+// exercise one, so they are read from where they are actually defined.
+import { EQUIPMENT_LOCATIONS as ATHLETE_EQUIPMENT_LOCATIONS } from '../types/athlete-profile.js';
+const EQUIPMENT_LOCATION_IDS = ATHLETE_EQUIPMENT_LOCATIONS.map((l) => l.id || l);
 
 const ids = (list) => new Set(list.map((x) => (typeof x === 'string' ? x : x.id)));
 const CATEGORY_IDS = ids(EXERCISE_CATEGORIES);
@@ -222,18 +226,48 @@ export function filterCatalogue(list, f = {}) {
 const EQUIP_TO_ATHLETE = Object.fromEntries(EQUIPMENT_CATALOGUE.map((e) => [e.id, e.athleteItem]));
 
 /**
+ * Locations that imply a stocked gym rather than a specific item list.
+ *
+ * The item list is the standard INDOOR strength-training kit. Resistance
+ * bands, kettlebells and medicine balls belong here: they are present in any
+ * commercial or club gym, and omitting them made the engine behave as if a
+ * "full commercial gym" had none — which left anti-rotation trunk work
+ * unfillable in most programmes because its only exercise needs bands.
+ *
+ * Sled, turf and sprint space are deliberately NOT included. They are pitch /
+ * outdoor resources that a gym does not imply, and granting them would make
+ * the engine start prescribing sprint and conditioning work — a product-scope
+ * decision, not an equipment-model correction.
+ */
+const STOCKED_GYM_LOCATIONS = new Set(['commercial_gym', 'team_gym']);
+const STOCKED_GYM_ITEMS = [
+  'barbell', 'rack', 'bench', 'dumbbells', 'kettlebells',
+  'machines', 'bands', 'med_balls', 'cardio',
+];
+
+/**
  * Which required equipment an athlete's SC2 equipment access does not cover.
+ *
  * Gym locations already imply the standard kit (mirrors SC2
  * equipmentCapability). Items with no athlete mapping (partner, wall,
  * pull-up bar, plyo box…) are reported as `unmapped` for coach judgement,
  * never as hard blockers.
- * @returns {{missing:string[], unmapped:string[]}}
+ *
+ * `invalidLocations` exists because an unrecognised location used to be
+ * IGNORED. A profile saying `full_gym` — not a value the vocabulary defines —
+ * silently behaved as if the athlete had only their explicit item list: 38
+ * eligible exercises where the valid `commercial_gym` gives 49. A typo quietly
+ * removed a fifth of the library and nothing said so. Unknown values are now
+ * returned to the caller rather than absorbed.
+ *
+ * @returns {{missing:string[], unmapped:string[], invalidLocations:string[]}}
  */
 export function equipmentGap(ex, athleteEquipment = {}) {
   const locations = athleteEquipment.locations || [];
   const items = new Set(athleteEquipment.items || []);
-  if (locations.includes('commercial_gym') || locations.includes('team_gym')) {
-    ['barbell', 'rack', 'bench', 'dumbbells', 'machines', 'cardio'].forEach((i) => items.add(i));
+  const invalidLocations = locations.filter((l) => !EQUIPMENT_LOCATION_IDS.includes(l));
+  if (locations.some((l) => STOCKED_GYM_LOCATIONS.has(l))) {
+    STOCKED_GYM_ITEMS.forEach((i) => items.add(i));
   }
   const missing = [];
   const unmapped = [];
@@ -243,7 +277,7 @@ export function equipmentGap(ex, athleteEquipment = {}) {
     if (mapped === null || mapped === undefined) { unmapped.push(req); continue; }
     if (!items.has(mapped)) missing.push(req);
   }
-  return { missing, unmapped };
+  return { missing, unmapped, invalidLocations };
 }
 
 // ── Review & staleness ──────────────────────────────────────────────────────

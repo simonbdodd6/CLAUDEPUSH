@@ -38626,19 +38626,22 @@
     // produced by the deterministic rules from the athlete's own profile.
     let _perfAuthor = { step: null, athleteUserId: null, draft: null, provenance: null, athleteProfile: null,
                         programmeId: null, weeks: 4, ack: false, busy: false, error: null,
-                        startDate: null, intent: 'assign', assignProgrammeId: null };
+                        startDate: null, intent: 'assign', assignProgrammeId: null,
+                        release: null, engineContractVersion: null };
 
     function perfResetAuthoring() {
       _perfAuthor = { step: null, athleteUserId: null, draft: null, provenance: null, athleteProfile: null,
                       programmeId: null, weeks: 4, ack: false, busy: false, error: null,
-                      startDate: null, intent: 'assign', assignProgrammeId: null };
+                      startDate: null, intent: 'assign', assignProgrammeId: null,
+                      release: null, engineContractVersion: null };
       renderPerformance();
     }
 
     function perfStartAuthoring(athleteUserId = null) {
       _perfAuthor = { ..._perfAuthor, step: athleteUserId ? 'generate' : 'pick',
                       athleteUserId, draft: null, provenance: null, athleteProfile: null,
-                      programmeId: null, error: null, ack: false };
+                      programmeId: null, error: null, ack: false,
+                      release: null, engineContractVersion: null };
       if (!_perfAssign.loaded) perfLoadAssignments();
       renderPerformance();
     }
@@ -38647,6 +38650,49 @@
       _perfAuthor = { ..._perfAuthor, step: 'assign', assignProgrammeId: programmeId,
                       startDate: perfToday(), intent: 'assign', error: null };
       renderPerformance();
+    }
+
+    // ═══ SC9.36 — THE CANONICAL PERFORMANCE ENGINE ═══════════════════════════
+    //
+    // performance/engine.js is the ONE module Core generates through. Until
+    // SC9.36 this screen assembled the chain by hand — engineInput →
+    // generateBlueprint → programmeDraftFromBlueprint — against Core's own
+    // year-old copy of the domain modules. That path predates the Gate 2
+    // coaching decisions, the youth strength-frequency floor, and the athlete
+    // state pathway, which meant a coach could author and publish a programme
+    // in which a declared restriction excluded nothing at all.
+    //
+    // Loaded on demand: only a coach authoring a programme needs it, and
+    // import() is memoised by the module system, so this runs once per session.
+    let _perfEnginePromise = null;
+    function perfEngine() {
+      if (!_perfEnginePromise) _perfEnginePromise = import('./performance/engine.js');
+      return _perfEnginePromise;
+    }
+
+    /**
+     * Engine refusals, in words a coach can act on.
+     *
+     * The engine fails BY NAME — `athlete_unavailable`,
+     * `blueprint_has_no_sessions` — which is correct for a contract and no use
+     * to a person. The raw name is kept in brackets so a failure can still be
+     * traced from a screenshot, and anything unrecognised passes through
+     * untouched rather than being replaced by a reassuring generic.
+     *
+     * Nothing here retries, degrades or substitutes: a refusal is final.
+     */
+    function perfEngineErrorText(e) {
+      const raw = String(e?.message || '');
+      const name = raw.split(':')[0].trim();
+      const said = {
+        athlete_unavailable: 'This athlete\'s record says they are not currently available to train, so no programme was generated. Update their availability before building one.',
+        blueprint_has_no_sessions: 'The coaching rules produced no sessions for this athlete — check their availability and schedule.',
+        profile_required: 'No athlete profile reached the engine.',
+        profile_must_be_an_object: 'This athlete\'s profile is not in a form the engine can read.',
+        author_required: 'You must be signed in as a coach to author a programme.',
+        not_an_authoring_profile: 'This athlete\'s profile is not the coach-readable projection the engine expects.',
+      }[name];
+      return said ? `${said} (${name})` : (raw || 'Could not generate a programme.');
     }
 
     /**
@@ -38677,19 +38723,53 @@
         }
         _perfAuthor.athleteProfile = ap;
         const profile = ap;
-        const input = _perfWkMod.engineInputFromAuthoringProfile(ap, { teamCategory: athlete.developmentCategory || null });
-        const blueprint = _perfWkMod.generateBlueprint(input, { catalogue: _perfWkMod.getCatalogue() });
-        if (!blueprint.frequency) throw new Error('The coaching rules produced no sessions for this athlete — check their availability and schedule.');
-        const built = _perfWkMod.programmeDraftFromBlueprint(blueprint, {
-          catalogue: _perfWkMod.getCatalogue(), athleteName: athlete.name, athleteUserId: athlete.userId,
-          author: state.currentUserId || 'coach', clubId: null, weeks: _perfAuthor.weeks,
-          schedule: profile.schedule || {}, now: perfWkNow(),
+
+        // ONE call. The projection goes in WHOLE — Core does not build engine
+        // inputs, does not assemble a blueprint, and does not reinterpret what
+        // comes back. Everything the engine needs is a named argument here;
+        // everything it decides is internal to it.
+        //
+        // athleteState is NOT supplied, and that is deliberate rather than
+        // unfinished. It describes what an authorised system knows about this
+        // athlete's availability and restrictions right now, and Core has no
+        // defensible source for it yet: session availability answers "can you
+        // make Tuesday", which is not a statement about fitness to train, and
+        // the medical record is out of this endpoint's scope by design. The
+        // engine records its absence as `supplied: false` — never as clearance
+        // — so omitting it is safe, and inventing it would not be.
+        const engine = await perfEngine();
+        const built = engine.generateProgramme({
+          profile: ap,
+          catalogue: _perfWkMod.getCatalogue(),
+          teamCategory: athlete.developmentCategory || null,
+          athleteName: athlete.name, athleteUserId: athlete.userId,
+          author: state.currentUserId || 'coach', clubId: null,
+          weeks: _perfAuthor.weeks, schedule: profile.schedule || {}, now: perfWkNow(),
         });
+
+        // SC9.34 release semantics, READ from the engine rather than restated
+        // here. `releasable` and `requiresCoachReview` are different questions:
+        // a review signal travels with a programme, never in front of it, so
+        // only a blocking severity stops anything. Nothing in Core honoured
+        // that distinction before — this is the one place it is decided.
+        const release = engine.releaseDecision(built.blueprint);
+        if (!release.releasable) {
+          throw new Error(`This programme was held rather than released: ${release.blockedBy.map(f => f.label).join('; ')}.`);
+        }
+
         _perfAuthor.draft = built.programme;
         _perfAuthor.provenance = built.provenance;
+        _perfAuthor.release = release;
+        // The contract STRING only. `built.context` carries eligibility sets
+        // and the resolved athlete state, and none of that is Core's to hold.
+        _perfAuthor.engineContractVersion = built.context.contractVersion;
         _perfAuthor.step = 'review';
       } catch (e) {
-        _perfAuthor.error = e.message || 'Could not generate a programme.';
+        // NO FALLBACK. If the engine refuses, the generation fails and says so.
+        // Reaching for the old generator here would hand the coach a programme
+        // built without the safety decisions, which is the whole defect SC9.36
+        // exists to close.
+        _perfAuthor.error = perfEngineErrorText(e);
       }
       _perfAuthor.busy = false; renderPerformance();
     }
@@ -38713,6 +38793,9 @@
           athleteUserId: _perfAuthor.athleteUserId, athleteName: athlete?.name || '',
           groupId: athlete?.groupId || '', source: 'blueprint_generated',
           programme: draft, provenance: _perfAuthor.provenance, requiresReview,
+          // SC9.36 — which Performance contract produced this. The version
+          // string only: `context` never leaves the generating call.
+          engineContractVersion: _perfAuthor.engineContractVersion,
         });
         const programmeId = saved.programme.programmeId;
         // SC4 freezes the training content; the server records the published fact.

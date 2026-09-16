@@ -90,6 +90,17 @@ export const PHYSICAL_QUALITIES = [
   { id: 'technical_skill',  label: 'Technical Skill' },
 ];
 
+/**
+ * Categories that describe PREPARATION or assessment work rather than a
+ * working exercise. A bodyweight hip hinge is a movement-prep drill: valuable
+ * in a warm-up, wrong as somebody's main strength lift. Selection admits these
+ * only into preparation blocks (SC9.10).
+ *
+ * Derived from EXERCISE_CATEGORIES above — the catalogue's own vocabulary, not
+ * a second taxonomy.
+ */
+export const PREPARATION_CATEGORIES = ['warmup', 'activation', 'mobility', 'cooldown', 'recovery', 'testing'];
+
 export const BODY_REGIONS = ['lower', 'upper', 'trunk', 'neck', 'full_body'];
 export const PLANES = ['sagittal', 'frontal', 'transverse', 'multi'];
 export const LATERALITY = ['bilateral', 'unilateral', 'alternating'];

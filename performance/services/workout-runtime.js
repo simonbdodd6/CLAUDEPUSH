@@ -4,6 +4,24 @@
 // exercise-catalogue.js for the library): index.html imports THIS module
 // once and gets every pure workout capability. index.html stays
 // integration + rendering; the modules below are the source of truth.
+//
+// ── THE ONE CORE-OWNED FILE UNDER performance/ (SC9.36) ─────────────────────
+//
+// Every other file in this directory is a VERBATIM copy of the standalone
+// Performance Intelligence repository and must never be edited here. This one
+// is a composition barrel for index.html's dynamic import, so it is Core's.
+//
+// It deliberately does NOT re-export `generateBlueprint`,
+// `programmeDraftFromBlueprint` or `engineInputFromAuthoringProfile`.
+//
+// Those three were how index.html generated programmes until SC9.36, and they
+// are the PRE-GATE-2 path: assembled by hand, they skip the Gate 2 coaching
+// decisions, the SC9.29 youth strength-frequency floor, and the SC9.31/9.32
+// athlete-state pathway — so a supplied restriction excluded nothing. Core now
+// generates through `performance/engine.js` and only through it.
+//
+// They are withheld rather than merely unused because an export nothing calls
+// is still a door. Generation has exactly one door, and this is not it.
 
 export {
   createWorkoutSession, startWorkout, pauseWorkout, resumeWorkout,
@@ -43,8 +61,6 @@ export {
   planAssignmentConflict, validateAssignmentRequest, attachProgressionSuggestion,
   reviewProgressionSuggestion, daysBetween, parseDate, catalogueFromSnapshot,
 } from '../domain/programme-assignment.js';
-export { programmeDraftFromBlueprint, chooseTrainingDays } from '../domain/blueprint-to-programme.js';
-export { generateBlueprint, validateBlueprint } from '../domain/programme-blueprint.js';
 export { validateProgrammeVersion, validateProgramme } from '../domain/programme.js';
 export { publishProgrammeVersion, beginEdit, snapshotForProgrammeAssignment } from '../domain/programme-versioning.js';
 export { COLLECTIONS } from './exercise-collections-catalogue.js';
@@ -55,9 +71,11 @@ export {
 
 // SC8 — the athlete AUTHORING PROFILE: the small, coach-readable projection of
 // an SC2 profile. Coach authoring consumes this and never a full profile.
+// `engineInputFromAuthoringProfile` is NOT among these: Core hands the
+// projection to `generateProgramme` whole, and the engine maps it. Core does
+// not build engine inputs.
 export {
   authoringProfileFrom, authoringProfileUsable, missingAuthoringInputs,
-  restrictionSignalAllowed,
-  engineInputFromAuthoringProfile, AUTHORING_PROFILE_VERSION,
+  restrictionSignalAllowed, AUTHORING_PROFILE_VERSION,
   FORBIDDEN_PROFILE_SECTIONS,
 } from '../domain/authoring-profile.js';

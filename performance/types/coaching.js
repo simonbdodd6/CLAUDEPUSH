@@ -129,6 +129,28 @@ export const REVIEW_FLAGS = [
   { id: 'goal_conflict',                 severity: 'info',            label: 'Goals pull in different directions — priorities balanced' },
   { id: 'return_to_general_training_review', severity: 'requires_review', label: 'Return to general training — coach review before starting' },
   { id: 'pattern_coverage_gap',          severity: 'warning',         label: 'A movement pattern could not be covered this week' },
+  // SC9.28. Distinct from the gap above, which means "the week did not include
+  // it". This means the engine asked for the pattern and NO exercise eligible
+  // for this athlete can satisfy it — a safeguard, the catalogue or the
+  // archetype plans made it unreachable. A coach must source it elsewhere, and
+  // needs to be told rather than shown a clean coverage report.
+  { id: 'pattern_unavailable_for_athlete', severity: 'requires_review', label: 'A pattern the engine asked for has no exercise this athlete may be prescribed' },
+  // SC9.29. Raised when the youth frequency floor kept a session the
+  // structured-day cap would have removed. The engine has no view on whether
+  // the resulting week is too much for this athlete — it cannot see session
+  // duration, rugby intensity, or commitments outside the club.
+  { id: 'youth_week_density_review',     severity: 'requires_review', label: 'Dense training week for a youth athlete — coach review of total load' },
+  // SC9.31 — athlete state. Every one of these fires only when state WAS
+  // supplied and something about it needs a human: absence is recorded on the
+  // blueprint as `athleteState.supplied: false` rather than as a flag, because
+  // a flag on every programme ever generated says nothing.
+  { id: 'athlete_availability_unknown',  severity: 'warning',         label: 'Athlete state supplied without an availability declaration' },
+  { id: 'athlete_state_undated',         severity: 'warning',         label: 'Athlete state carries no capture date — its age cannot be established' },
+  { id: 'athlete_state_contradictory',   severity: 'requires_review', label: 'Athlete state disagrees with itself — the narrower reading was applied' },
+  { id: 'athlete_state_stale_restriction', severity: 'requires_review', label: 'A restriction past its own effective window is still in force — applied, needs review' },
+  { id: 'athlete_restriction_review',    severity: 'requires_review', label: 'A restriction is awaiting review and has been applied meanwhile' },
+  { id: 'athlete_restriction_not_mappable', severity: 'requires_review', label: 'A restriction cannot be applied to exercise selection — a coach must apply it' },
+  { id: 'external_training_reported',    severity: 'info',            label: 'Training outside this programme was reported — total load is a coaching judgement' },
 ];
 
 export const FLAG_SEVERITIES = ['info', 'warning', 'requires_review', 'blocking'];
@@ -147,6 +169,9 @@ export const REASON_TEMPLATES = {
   freq_training_age: (p) => `Capped at ${p.frequency} while training experience is ${p.experience.replace(/_/g, ' ')}.`,
   freq_youth_cap: (p) => `Capped at ${p.frequency} under ${p.context.replace(/_/g, ' ').toUpperCase()} safeguards.`,
   freq_two_matches: (p) => `Reduced to ${p.frequency} because there are two matches this week.`,
+  freq_youth_floor: (p) => `Held at ${p.frequency} sessions rather than fewer: the youth guidance the engine `
+    + `follows does not go below ${p.frequency} strength sessions a week. With ${p.rugbyLoad} rugby `
+    + `commitment${p.rugbyLoad === 1 ? '' : 's'} that is ${p.total} structured days — a dense week a coach should see.`,
   dose_phase: (p) => `${cap(p.kind)} set to ${label(p.value)} for the ${p.phase.replace(/_/g, ' ')} phase.`,
   dose_youth_cap: (p) => `${cap(p.kind)} capped at ${label(p.value)} under youth safeguards.`,
   dose_experience: (p) => `${cap(p.kind)} adjusted to ${label(p.value)} for ${p.experience.replace(/_/g, ' ')} training experience.`,
@@ -163,6 +188,8 @@ export const REASON_TEMPLATES = {
   excl_high_load_youth: (p) => `${p.name} excluded — high-load lifting is reviewed case-by-case under ${p.context.replace(/_/g, ' ').toUpperCase()} safeguards.`,
   rank_pattern: (p) => `${p.name} satisfies the ${p.pattern.replace(/_/g, ' ')} requirement.`,
   rank_goal: (p) => `${p.name} serves the ${p.goal.replace(/_/g, ' ')} goal.`,
+  rank_quality: (p) => `${p.name} is primarily ${p.quality.replace(/_/g, ' ')} work, which is what this slot is for.`,
+  slot_quality_unmet: (p) => `No eligible exercise is primarily ${p.quality.replace(/_/g, ' ')} work in the ${p.pattern.replace(/_/g, ' ')} pattern.`,
   rank_position: (p) => `${p.name} is ${p.level} relevance for ${p.position.replace(/_/g, ' ')}.`,
   rank_phase: (p) => `${p.name} suits the ${p.phase.replace(/_/g, ' ')} phase.`,
   rank_level_fit: (p) => `${p.name} matches the athlete's ${p.level.replace(/_/g, ' ')} level.`,
@@ -172,6 +199,22 @@ export const REASON_TEMPLATES = {
   ctx_conflict_adult_in_youth: () => 'Adult athlete registered with a youth team — classified from age, not team name.',
   ctx_unknown: () => 'No reliable age or team information — conservative safeguards applied and review requested.',
   pattern_required: (p) => `${p.pattern.replace(/_/g, ' ')} coverage required this week (${p.driver.replace(/_/g, ' ')}).`,
+  // SC9.28. Neck and contact coverage for a forward was added to the
+  // RECOMMENDED list and announced with the code above, so the engine told a
+  // coach neck work was "required this week" for a pattern it had classified
+  // as optional — and then reported full coverage, because `missing` is
+  // computed from the required list alone. Same reason code, two different
+  // strengths of claim, is how that survived. A recommendation now says so.
+  // Deliberately worded around the forbidden-claim guard, which bans the word
+  // this concept is internally named after. The guard is right that the engine
+  // must not be heard recommending an exercise; "on the optional list" says
+  // what actually happened without making that claim.
+  pattern_optional: (p) => `${p.pattern.replace(/_/g, ' ')} coverage is on this week's optional list (${p.driver.replace(/_/g, ' ')}).`,
+  // Names the pattern AND the context, because the reason a pattern is
+  // unreachable is usually the athlete's development context rather than the
+  // catalogue — and a coach reading "not available" deserves to know which.
+  pattern_unavailable: (p) => `${p.pattern.replace(/_/g, ' ')} was asked for but no exercise this `
+    + `${p.context.replace(/_/g, ' ')} athlete may be prescribed can cover it — a coach must supply it separately.`,
   optional_work: (p) => p.enabled ? 'Optional extras included — schedule has spare capacity.' : 'No optional work — the week is already full.',
 };
 

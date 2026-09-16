@@ -240,8 +240,18 @@ test('12. THE DEFECT — coach authoring uses the ATHLETE\'s profile, never the 
     'generation must not read this device\'s profile — that is the coach\'s own');
   assert.match(gen, /athleteProfile=\$\{encodeURIComponent\(athlete\.userId\)\}/,
     'it fetches the SELECTED athlete\'s projection from the server');
-  assert.match(gen, /engineInputFromAuthoringProfile/, 'and feeds the projection to SC5');
   assert.match(gen, /authoringProfileUsable/, 'incomplete profiles are refused');
+
+  // SC9.36 — the projection now goes to the CANONICAL engine, whole. Core no
+  // longer builds an engine input, assembles a blueprint, or reinterprets what
+  // comes back, and the pre-Gate-2 chain is not reachable from here.
+  assert.match(code, /engine\.generateProgramme\(/, 'generation goes through the engine contract');
+  assert.match(code, /profile:\s*ap,/, 'and the projection goes in whole');
+  for (const banned of ['engineInputFromAuthoringProfile', 'generateBlueprint', 'programmeDraftFromBlueprint']) {
+    assert.ok(!code.includes(banned), `${banned} is the pre-Gate-2 path and must not be called`);
+  }
+  // NO FALLBACK: a refusal must not be answered by generating something weaker.
+  assert.ok(!/catch[\s\S]*generateBlueprint/.test(code), 'no fallback to the stale generator');
 });
 
 test('13. HARD CASE — coach has a local profile, athlete has none on the server → blocked', async () => {
@@ -494,8 +504,10 @@ test('31. another club\'s coach still cannot save into this club', async () => {
 // no profile → completion sync → coach sees ready → generate → publish →
 // assign → the player retrieves their programme.
 
-const { generateBlueprint } = await import('../performance/domain/programme-blueprint.js');
-const { programmeDraftFromBlueprint } = await import('../performance/domain/blueprint-to-programme.js');
+// SC9.36 — the E2E walks the path production now walks: ONE call to the
+// canonical engine contract, not the hand-assembled pre-Gate-2 chain.
+const { generateProgramme, releaseDecision, ENGINE_CONTRACT_VERSION } =
+  await import('../performance/engine.js');
 const { publishProgrammeVersion, snapshotForProgrammeAssignment } =
   await import('../performance/domain/programme-versioning.js');
 const { validateProgrammeVersion } = await import('../performance/domain/programme.js');
@@ -528,13 +540,15 @@ test('32. E2E — a new player completes their profile and ends up with a progra
   // GENERATE from the server projection — the seam no test previously walked.
   const ap = (await call('u-sen-coach', { query: { athleteProfile: 'u-sen-player' } })).body.profile;
   assert.equal(authoringProfileUsable(ap), true);
-  const input = engineInputFromAuthoringProfile(ap, { teamCategory: 'adult' });
-  const blueprint = generateBlueprint(input, { catalogue: getCatalogue() });
-  assert.ok(blueprint.frequency > 0, 'the rules produce real sessions');
-  const built = programmeDraftFromBlueprint(blueprint, {
-    catalogue: getCatalogue(), athleteName: 'Senior Player', athleteUserId: 'u-sen-player',
+  const built = generateProgramme({
+    profile: ap, catalogue: getCatalogue(), teamCategory: 'adult',
+    athleteName: 'Senior Player', athleteUserId: 'u-sen-player',
     author: 'u-sen-coach', weeks: 4, schedule: ap.schedule, now: '2026-08-26T00:00:00.000Z',
   });
+  assert.ok(built.blueprint.frequency > 0, 'the rules produce real sessions');
+  assert.equal(built.context.contractVersion, ENGINE_CONTRACT_VERSION);
+  // SC9.34 — released, with any signals travelling alongside rather than in front.
+  assert.equal(releaseDecision(built.blueprint).releasable, true);
   const check = validateProgrammeVersion(built.programme.versions[0],
     { catalogue: getCatalogue(), collections: COLLECTIONS });
   assert.equal(check.ok, true, `generated programme is valid: ${JSON.stringify(check.errors || [])}`);

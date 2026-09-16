@@ -90,6 +90,12 @@ export function normalizeProgramme(raw = {}) {
     source: text(p.source, 40) || 'coach_authored',
     programme: p.programme && typeof p.programme === 'object' ? p.programme : null,
     provenance: p.provenance && typeof p.provenance === 'object' ? p.provenance : null,
+    // WHICH Performance contract generated this (SC9.36). The coaching rules
+    // change between builds, so "what produced this programme" is not
+    // answerable from the programme itself. Stored as the version STRING only:
+    // the engine's `context` carries eligibility sets and the resolved athlete
+    // state, and none of that belongs in a record a coach's device reads back.
+    engineContractVersion: text(p.engineContractVersion, 40) || null,
     requiresReview: p.requiresReview === true,
     reviewAcknowledgedBy: text(p.reviewAcknowledgedBy, 64) || null,
     reviewAcknowledgedAt: text(p.reviewAcknowledgedAt, 40) || null,
@@ -312,6 +318,7 @@ export async function saveProgrammeDraft(clubId, input = {}, actor = {}) {
     source: text(input.source, 40) || existing?.source || 'coach_authored',
     programme: input.programme && typeof input.programme === 'object' ? input.programme : existing?.programme || null,
     provenance: input.provenance && typeof input.provenance === 'object' ? input.provenance : existing?.provenance || null,
+    engineContractVersion: text(input.engineContractVersion, 40) || existing?.engineContractVersion || null,
     requiresReview: input.requiresReview === true ? true : existing?.requiresReview === true,
     publishedVersion: existing?.publishedVersion ?? null,
     notes: input.notes !== undefined ? text(input.notes, 1000) : existing?.notes || '',

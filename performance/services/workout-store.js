@@ -13,6 +13,13 @@
 export const WORKOUT_STATE_VERSION = 1;
 export const HISTORY_MAX = 40;
 
+/**
+ * Honest sync states. 'synced' is only ever set from an explicit SERVER
+ * acknowledgement (SC9.3a), and 'error' exists so a failed attempt can say so
+ * instead of silently sitting in 'pending' as though nothing had gone wrong.
+ */
+export const SYNC_STATES = ['device', 'pending', 'synced', 'error'];
+
 export function createInitialWorkoutState() {
   return {
     stateVersion: WORKOUT_STATE_VERSION,
@@ -41,7 +48,7 @@ export function normalizeWorkoutState(raw) {
     active,
     history,
     syncQueue: Array.isArray(raw.syncQueue) ? raw.syncQueue.filter((x) => typeof x === 'string').slice(-HISTORY_MAX) : [],
-    syncStatus: ['device', 'pending', 'synced'].includes(raw.syncStatus) ? raw.syncStatus : 'device',
+    syncStatus: SYNC_STATES.includes(raw.syncStatus) ? raw.syncStatus : 'device',
   };
 }
 
@@ -114,4 +121,39 @@ export function priorExposuresForExercise(stateIn, exerciseId, exposuresFromWork
     }
   }
   return out;
+}
+
+// ── Evidence sync queue (SC9.3a) ────────────────────────────────────────────
+
+/**
+ * Completed workouts still awaiting server acknowledgement, oldest first.
+ * History is the source of truth: a queued id with no archived workout is
+ * stale and simply does not appear.
+ */
+export function pendingSyncWorkouts(stateIn) {
+  const state = normalizeWorkoutState(stateIn);
+  const queued = new Set(state.syncQueue);
+  return state.history.filter((w) => queued.has(w.workoutSessionId));
+}
+
+/**
+ * Record a SERVER acknowledgement. Only ids the server actually confirmed
+ * leave the queue, so a partial acknowledgement retries the remainder rather
+ * than losing it. The workout itself is NEVER removed from history — evidence
+ * is the athlete's own record of what they did.
+ */
+export function markEvidenceSynced(stateIn, acknowledgedWorkoutIds = []) {
+  const state = normalizeWorkoutState(stateIn);
+  const done = new Set((acknowledgedWorkoutIds || []).filter((x) => typeof x === 'string'));
+  const syncQueue = state.syncQueue.filter((id) => !done.has(id));
+  return { ...state, syncQueue, syncStatus: syncQueue.length ? 'pending' : 'synced' };
+}
+
+/**
+ * Record a FAILED attempt. Nothing is dropped: the queue is intact and the
+ * status says error rather than claiming a sync that did not happen.
+ */
+export function markSyncFailed(stateIn) {
+  const state = normalizeWorkoutState(stateIn);
+  return { ...state, syncStatus: state.syncQueue.length ? 'error' : state.syncStatus };
 }
