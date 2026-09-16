@@ -1,0 +1,118 @@
+{
+  "$comment": [
+    "CANONICAL CoachEasier Core production deployment rules.",
+    "",
+    "This file is the single source of truth for what production is NOT allowed to",
+    "contain. It is deliberately data, not code: every rule here must be readable",
+    "and challengeable by a human without opening a .mjs file.",
+    "",
+    "THE PRODUCTION MODEL, in one sentence: production is the feature branch minus",
+    "the commits listed in `exclusions`. It is NOT a file strip list — the file",
+    "differences people used to copy by hand are simply what those commits touched.",
+    "",
+    "Edited by a human only. scripts/deploy-*.mjs read it and FAIL CLOSED when the",
+    "repository does not match what is declared here."
+  ],
+
+  "version": 1,
+  "lastVerifiedAgainst": {
+    "productionBranch": "core-deploy-82",
+    "productionVersion": "1718a90",
+    "date": "2026-09-16"
+  },
+
+  "sourceBranch": "feature/core-beta-simplification",
+  "deployBranchPrefix": "core-deploy-",
+
+  "exclusions": [
+    {
+      "id": "tactics-mount",
+      "commit": "292916b70eec8f1a3ff7d10a8133b07b90639753",
+      "subject": "feat: mount the Tactics Board as a coach section",
+      "patchId": "77ebb5cc479a86ee4d2afe46e3bf0444683025e4",
+      "purpose": "Tactics Board is a separate product with its own repository and release cycle. It is not part of the Core Beta product and must never reach Core production.",
+      "accountsFor": [
+        ".vercelignore: the `!/tactics` allowlist line (its absence is what makes /tactics/tactics-board.mjs return 404)",
+        "index.html: the Tactics mount block, the coach-tactics section and the tactics nav entry (~88 lines)",
+        "tactics/tactics-board.mjs and tactics/BUNDLE_INFO.json",
+        "test/core-beta-nav.test.js, test/structure-admin-ui.test.js, test/season-statistics-view.test.js: their tactics nav assertions"
+      ]
+    },
+    {
+      "id": "club-export",
+      "commit": "e3762b6c356f20698568267bc0cc0a4f900f0aee",
+      "subject": "feat: add scoped club export for AI CEO",
+      "patchId": "360737c99457698156f151f2699327771ba2956c",
+      "purpose": "The scoped club export exists for a future AI CEO integration that is not live. It adds a read endpoint to a production API surface for no current product benefit, so it stays out of production until that integration is approved.",
+      "accountsFor": [
+        "api/_clubExport.js and api/_clubExportSource.js",
+        "api/availability.js: the ?view=club-export branch and its method guard (~32 lines)",
+        "test/club-export.test.js"
+      ]
+    }
+  ],
+
+  "policies": {
+    "tactics": {
+      "rule": "Core production must contain no tactics/ files, no Tactics mount or nav in index.html, and no `!/tactics` line in .vercelignore.",
+      "verify": "/tactics/tactics-board.mjs must return HTTP 404 on production after every deploy."
+    },
+    "clubExport": {
+      "rule": "Core production must contain no api/_clubExport*.js files and no club-export branch in api/availability.js.",
+      "verify": "api/ must be byte-identical to the previous production branch unless an API change was explicitly approved for this release."
+    },
+    "performance": {
+      "rule": "performance/ is LEGACY SHELL CODE from the removed S&C integration. The real Performance product lives in its own repository. A deploy must never introduce performance/ changes as a side effect: the directory must be byte-identical to the previous production branch unless a performance change is the explicit, approved purpose of the release.",
+      "knownOpenFinding": "index.html perfGenerateDraft() reaches Core's pre-Gate-2 copy of the engine, which has no restriction pathway. Tracked separately; NOT a deployment-gate concern."
+    },
+    "apiFunctionCap": {
+      "max": 12,
+      "rule": "Vercel Hobby allows at most 12 non-underscore .js files in api/. We sit at exactly 12. Adding one makes EVERY production deploy fail. Fold new server logic into an existing handler plus a vercel.json rewrite.",
+      "countCommand": "ls api/*.js | grep -v '^api/_' | wc -l"
+    },
+    "missionControl": {
+      "rule": "api/mission-control.js must be zero-diff against the previous production branch in every release."
+    },
+    "secrets": {
+      "rule": "No hardcoded credentials in shipped files.",
+      "patterns": ["ghp_[A-Za-z0-9]{20}", "sk-[A-Za-z0-9]{20}", "AKIA[0-9A-Z]{16}", "AIza[0-9A-Za-z_-]{30}"]
+    },
+    "coreIntelligenceBoundary": {
+      "rule": "Core must keep working with every AI service offline. api/*.js must not reference the executive/consciousness/command-centre layers.",
+      "patterns": ["executive", "consciousness", "command-centre"],
+      "appliesTo": ["api/"],
+      "note": "index.html carries one long-standing pre-existing match that predates this gate and is NOT introduced by any release; index.html is therefore not scanned here."
+    },
+    "baselineRelativeTesting": {
+      "rule": "The suite is NOT zero-failure on production and pretending otherwise would make the gate meaningless. The gate runs the full suite on the previous production branch (in a throwaway git worktree) and on the candidate, then blocks only on failures the candidate INTRODUCES.",
+      "knownBaselineFailures": [
+        {
+          "test": "composes a full deterministic traveller twin",
+          "file": "test/travel-traveller-digital-twin-platform.test.js",
+          "cause": "Unpinned clock in a travel-platform fixture; red since July 2026. Unrelated to CoachEasier.",
+          "status": "accepted, tracked separately"
+        },
+        {
+          "test": "permissions, navigation and group isolation are unchanged",
+          "file": "test/pre-v2-messaging-removed.test.js",
+          "cause": "Asserts BETA_NAV_IDS contains \"tactics\". The tactics-mount commit never touched this file, so excluding that commit leaves an assertion that contradicts production's stripped nav. Fails on EVERY production branch by construction.",
+          "status": "accepted, should be fixed so that a green suite becomes a meaningful signal again"
+        }
+      ],
+      "warning": "Never delete or weaken a test to make this gate pass. If a NEW failure appears, fix the cause or abandon the release."
+    },
+    "aliases": {
+      "rule": "Three hostnames serve production. Two follow a deploy automatically; the legacy one does not and must be re-pointed on every release.",
+      "primary": "www.coacheasier.com",
+      "autoAliased": "boitsfort-coachseye.vercel.app",
+      "manualRepointRequired": "boitsfort-coachseye-gpt.vercel.app",
+      "note": "This domain was manually alias-pinned in May 2026. It was found stale on an old build during the 1718a90 release; deploy:release now re-points and verifies it every time."
+    },
+    "deployment": {
+      "command": "vercel deploy --prod --yes",
+      "account": "simonbdodd-9233",
+      "prerequisite": "Vercel CLI must be installed and logged in. GitHub auto-deploy has been broken since 2026-06-06; every release is manual.",
+      "neverAutomatic": "No script in this repository may deploy without an explicit human-run `npm run deploy:release`."
+    }
+  }
+}

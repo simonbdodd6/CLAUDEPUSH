@@ -6,6 +6,9 @@
   "scripts": {
     "build": "node build-inject.js",
     "test": "node --test test/*.test.js",
+    "deploy:prepare": "node scripts/deploy-prepare.mjs",
+    "deploy:check": "node scripts/deploy-check.mjs",
+    "deploy:release": "node scripts/deploy-release.mjs",
     "backfill:player-groups": "node scripts/backfill-player-groups.js",
     "market:pipeline": "node qa/market-intel/pipeline.js",
     "market:import": "node qa/market-intel/pipeline.js --import",
