@@ -37,6 +37,10 @@ function makeSessionRows(resolved, players) {
     ${extractFn('normalizeSessionId')}
     ${extractFn('liveAvailabilityPlayerKeys')}
     ${extractFn('resolvedAnswerFor')}
+    // AVAILABILITY-PENDING-1: sessionRows now reports whether an answer is
+    // SERVER-CONFIRMED. These cases are about server/local resolution, so this
+    // device is holding nothing unsent.
+    function availabilityPendingFor() { return null; }
     ${extractFn('sessionRows')}
     return sessionRows;
   `;

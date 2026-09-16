@@ -288,6 +288,9 @@ function clientScope({ status: httpStatus }) {
     'let _lastBody = null;\n' +
     'let _availAuthPromptedAt = 0;\n' +
     'function fetch(url, init) { _lastBody = JSON.parse(init.body); return Promise.resolve({ status: ' + httpStatus + ', ok: ' + (httpStatus === 200) + ' }); }\n' +
+    '// pending bookkeeping — inert in these cases\n' +
+    'function availabilityMarkPending() { return null; }\n' +
+    'function availabilityClearPending() { return false; }\n' +
     extractFn(html, 'captureAvailabilityFields') + '\n' +
     extractFn(html, 'saveAvailabilityResponseToServer') + '\n' +
     'return { save: saveAvailabilityResponseToServer, capture: captureAvailabilityFields,\n' +

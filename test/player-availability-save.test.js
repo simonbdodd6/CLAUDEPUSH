@@ -32,6 +32,11 @@ test('saveAvailabilityResponseToServer POSTs even when serviceWorker.ready never
     let posted = null;
     const navigator = { serviceWorker: { ready: new Promise(() => {}) } }; // never resolves
     const fetch = (url, opts) => { posted = { url, body: JSON.parse(opts.body) }; return Promise.resolve({ ok: true, catch(){ return this; } }); };
+    // AVAILABILITY-PENDING-1: the save records the answer as PENDING before the
+    // request leaves and clears it only on a 2xx. These cases are about the POST
+    // itself, so the bookkeeping is inert here.
+    function availabilityMarkPending() { return null; }
+    function availabilityClearPending() { return false; }
     ${extractFn('saveAvailabilityResponseToServer')}
     return (async () => { await saveAvailabilityResponseToServer('tue', 'available', ''); return posted; })();
   `);
@@ -48,6 +53,11 @@ test("'injured' maps to unavailable + reason injury in the POST body", { timeout
     let posted = null;
     const navigator = { serviceWorker: { ready: new Promise(() => {}) } };
     const fetch = (url, opts) => { posted = JSON.parse(opts.body); return Promise.resolve({ ok: true, catch(){ return this; } }); };
+    // AVAILABILITY-PENDING-1: the save records the answer as PENDING before the
+    // request leaves and clears it only on a 2xx. These cases are about the POST
+    // itself, so the bookkeeping is inert here.
+    function availabilityMarkPending() { return null; }
+    function availabilityClearPending() { return false; }
     ${extractFn('saveAvailabilityResponseToServer')}
     return (async () => { await saveAvailabilityResponseToServer('game', 'injured', ''); return posted; })();
   `);
