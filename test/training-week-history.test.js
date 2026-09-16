@@ -133,6 +133,13 @@ function ctx(initial = {}) {
     ${fn('trainingSessionHasData')}
     ${fn('trainingHistorySessions')}
     ${fn('setTrainingSession')}
+    // INSERT-BLOCK: a new block's shape and opening time now come from ONE shared
+    // factory (trainingNewBlock), and focus from trainingFocusBlock, so appending
+    // and inserting can never drift apart. Every block row is preceded by its
+    // insert affordance.
+    function trainingInsertRowHTML() { return ''; }
+    function trainingFocusBlock() {}
+    ${fn('trainingNewBlock')}
     ${fn('addTimeBlock')}
     ${fn('updateTimeBlock')}
     ${fn('removeTimeBlock')}

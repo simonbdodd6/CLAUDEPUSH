@@ -145,8 +145,10 @@ test('8+9: guidance is placeholder text on the inputs and can never become saved
   assert.match(PLANNER, /ta\('activity', 'Short title \(e\.g\. Ruck drill\)'/);
   assert.match(PLANNER, /ta\('keyFocus', 'Key coaching points, cues and targets[^']*'/);
   assert.match(PLANNER, /ta\('coach', 'Lead coach, assistants, responsibilities…'/);
-  assert.doesNotMatch(fn('addTimeBlock'), /activity: *"New session block"/, 'no starter content is written into the block');
-  assert.match(fn('addTimeBlock'), /activity: ""/, 'block content genuinely starts empty');
+  assert.doesNotMatch(fn('trainingNewBlock'), /activity: *"New session block"/, 'no starter content is written into the block');
+  assert.match(fn('trainingNewBlock'), /activity: ""/, 'block content genuinely starts empty');
+  assert.match(fn('addTimeBlock'), /trainingNewBlock\(sessionId/, 'appending uses the one shared factory');
+  assert.match(fn('trainingInsertBlockBefore'), /trainingNewBlock\(sessionId/, 'and so does inserting');
   // Placeholders live only in the markup attribute, never in the value slot.
   assert.doesNotMatch(PLANNER, />\$\{placeholder\}</, 'no placeholder string is ever rendered as a value');
 });
@@ -174,7 +176,14 @@ function plannerHarness({ blocks = [], schedule = [], slots = null, scheduleGrou
     const requestAnimationFrame = f => f();
     const CSS = { escape: v => String(v) };
     function tbAutosize() {}
+    // INSERT-BLOCK: a new block's shape and opening time now come from ONE shared
+    // factory (trainingNewBlock), and focus from trainingFocusBlock, so appending
+    // and inserting can never drift apart. Every block row is preceded by its
+    // insert affordance.
+    function trainingInsertRowHTML() { return ''; }
+    function trainingFocusBlock() {}
     ${fn('trainingPlannedStartTime')}
+    ${fn('trainingNewBlock')}
     ${fn('addTimeBlock')}
     return {
       addTimeBlock, trainingPlannedStartTime, notes, renders,
@@ -201,7 +210,7 @@ test('14+15+16+17+18: every group opens at ITS OWN configured start time — nev
     h.addTimeBlock('sess-1');
     assert.equal(h.blocks()[0].time, expected, `${gid} opens at its own time`);
   }
-  assert.doesNotMatch(fn('addTimeBlock'), /"19:45"/, 'the hard-coded Seniors evening is gone');
+  assert.doesNotMatch(fn('trainingNewBlock'), /"19:45"/, 'the hard-coded Seniors evening is gone');
 });
 
 test('15/16 (the reported bug): a Seniors-cached schedule can never answer for U18, and vice versa', () => {
@@ -257,7 +266,11 @@ test('10+12: existing populated blocks render their stored content, in order, un
   // CONTRACT CHANGE (occurrence-identity fix): rows now carry the dated
   // CONTENT key, so a keystroke edits the occurrence it belongs to. The
   // rendering invariants below are byte-for-byte unchanged.
-  assert.match(PLANNER, /blocks\.map\(b => trainingBlockRowHTML\(ck, b\)\)/, 'rows come from the stored block list, in order');
+  // INSERT-BLOCK: every block row is preceded by its own insert affordance, so
+  // a block can be placed in front of any of them. The row source and its order
+  // are otherwise unchanged — still the stored list, still in order.
+  assert.match(PLANNER, /blocks\.map\(b => trainingInsertRowHTML\(ck, b\) \+ trainingBlockRowHTML\(ck, b\)\)/,
+    'rows come from the stored block list, in order, each behind its insert affordance');
   assert.match(PLANNER, /value="\$\{esc\(String\(b\.time \|\| ''\)\)\}"/, 'stored time rendered (escaped)');
   assert.match(PLANNER, /ta\('activity',/, 'stored activity rendered');
   assert.match(PLANNER, /ta\('keyFocus',/, 'stored key focus rendered');
@@ -269,13 +282,15 @@ test('10+12: existing populated blocks render their stored content, in order, un
 
 test('the coach lands in the new block, and adding still marks the session edited', () => {
   const add = fn('addTimeBlock');
-  assert.match(add, /el\.focus\(/, 'focus moves into the new block');
+  const focus = fn('trainingFocusBlock');
+  assert.match(add, /trainingFocusBlock\(id\)/, 'the coach is put into the new block');
+  assert.match(focus, /el\.focus\(/, 'focus moves into the new block');
   // The row is now found by its own id and the first autosizing field inside
   // it focused — the old attribute-substring selector could not survive the
   // row markup moving into trainingBlockRowHTML.
-  assert.match(add, /tr\[data-block-id="/, 'the new row is located by its own id');
-  assert.match(add, /querySelector\('textarea\.tb-auto'\)/, 'specifically its first field');
-  assert.match(add, /scrollIntoView/, 'and the new block is brought into view');
+  assert.match(focus, /tr\[data-block-id="/, 'the new row is located by its own id');
+  assert.match(focus, /querySelector\('textarea\.tb-auto'\)/, 'specifically its first field');
+  assert.match(focus, /scrollIntoView/, 'and the new block is brought into view');
   assert.match(add, /syncPublishedSessionEdit\(sessionId\)/, 'published sessions still flip to "changes not republished"');
   const h = plannerHarness({});
   h.addTimeBlock('sess-1');
@@ -355,10 +370,18 @@ function stabilityHarness({ blocks = [], domRows = null } = {}) {
     const CSS = { escape: v => String(v) };
     const requestAnimationFrame = f => f();
     let _tbSeq = 0;
+    // INSERT-BLOCK: a new block's shape and opening time now come from ONE shared
+    // factory (trainingNewBlock), and focus from trainingFocusBlock, so appending
+    // and inserting can never drift apart. Every block row is preceded by its
+    // insert affordance.
+    function trainingInsertRowHTML(sid, b) { return '<tr class="tb-insert" data-insert-before="' + b.id + '"></tr>'; }
     ${fn('trainingPlannedStartTime')}
+    ${fn('trainingNewBlock')}
+    ${fn('trainingFocusBlock')}
     ${fn('addTimeBlock')}
     ${fn('removeTimeBlock')}
-    return { addTimeBlock, removeTimeBlock, blocks: () => state.trainingBlocks.s1 };
+    ${fn('trainingInsertBlockBefore')}
+    return { addTimeBlock, removeTimeBlock, trainingInsertBlockBefore, blocks: () => state.trainingBlocks.s1 };
   `)(doc, calls);
   return { ...scope, calls, rows, doc };
 }

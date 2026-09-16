@@ -29,7 +29,11 @@ function buildHarness({ coach = true } = {}) {
   // trainingPlannedStartTime is extracted REAL, not stubbed: addTimeBlock grew a
   // dependency on it (group-specific opening time, 7247036f) after this harness
   // was written, and a fake would hide what the product actually does.
-  const names = ['trainingPlannedStartTime', 'syncPublishedSessionEdit', 'addTimeBlock',
+  // INSERT-BLOCK: trainingNewBlock is the one factory a new block comes from, and
+  // trainingInsertBlockBefore is the insert path — both extracted REAL so this
+  // harness keeps proving what the product actually does.
+  const names = ['trainingPlannedStartTime', 'trainingNewBlock', 'trainingFocusBlock',
+                 'syncPublishedSessionEdit', 'addTimeBlock', 'trainingInsertBlockBefore',
                  'removeTimeBlock', 'updateTimeBlock', 'autopilotDuplicateSession'];
   const fns = names.map(n => extractFn(html, n)).join('\n\n');
   const body = `
@@ -55,6 +59,7 @@ function buildHarness({ coach = true } = {}) {
     const requestAnimationFrame = f => f();
     const CSS = { escape: v => String(v) };
     function trainingBlockRowHTML(sid, b) { return '<tr data-block-id="' + b.id + '"></tr>'; }
+    function trainingInsertRowHTML(sid, b) { return '<tr class="tb-insert" data-insert-before="' + b.id + '"></tr>'; }
     function renderTraining() {}
     function tbAutosize() {}
     function autopilotReceipt() {}
@@ -85,7 +90,7 @@ function buildHarness({ coach = true } = {}) {
     // and the same answer the product gives before a schedule arrives.
     let _trainingSchedule = null, _trainingScheduleGroupId = '';
     ${fns}
-    return { state, spy: _spy, addTimeBlock, removeTimeBlock, updateTimeBlock, autopilotDuplicateSession };
+    return { state, spy: _spy, addTimeBlock, trainingInsertBlockBefore, removeTimeBlock, updateTimeBlock, autopilotDuplicateSession };
   `;
   return new Function(body)();
 }
