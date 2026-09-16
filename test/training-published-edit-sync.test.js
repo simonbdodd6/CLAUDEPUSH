@@ -60,6 +60,7 @@ function buildHarness({ coach = true } = {}) {
     const CSS = { escape: v => String(v) };
     function trainingBlockRowHTML(sid, b) { return '<tr data-block-id="' + b.id + '"></tr>'; }
     function trainingInsertRowHTML(sid, b) { return '<tr class="tb-insert" data-insert-before="' + b.id + '"></tr>'; }
+    function trainingRefreshMoveButtons() {}
     function renderTraining() {}
     function tbAutosize() {}
     function autopilotReceipt() {}

@@ -182,6 +182,10 @@ function plannerHarness({ blocks = [], schedule = [], slots = null, scheduleGrou
     // insert affordance.
     function trainingInsertRowHTML() { return ''; }
     function trainingFocusBlock() {}
+    // REORDER: the planner keeps its move controls honest from live row position
+    // after every structural change. Button state is not what these cases are
+    // about, so it is inert here.
+    function trainingRefreshMoveButtons() {}
     ${fn('trainingPlannedStartTime')}
     ${fn('trainingNewBlock')}
     ${fn('addTimeBlock')}
@@ -375,6 +379,10 @@ function stabilityHarness({ blocks = [], domRows = null } = {}) {
     // and inserting can never drift apart. Every block row is preceded by its
     // insert affordance.
     function trainingInsertRowHTML(sid, b) { return '<tr class="tb-insert" data-insert-before="' + b.id + '"></tr>'; }
+    // REORDER: the planner keeps its move controls honest from live row position
+    // after every structural change. Button state is not what these cases are
+    // about, so it is inert here.
+    function trainingRefreshMoveButtons() {}
     ${fn('trainingPlannedStartTime')}
     ${fn('trainingNewBlock')}
     ${fn('trainingFocusBlock')}

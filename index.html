@@ -1815,6 +1815,28 @@
        its content as the coach types. */
     .training-gs-table textarea.tb-auto { min-height:40px; overflow:hidden; }
 
+    /* ── MOVE BLOCK controls ──────────────────────────────────────────────────
+       Move up / move down beside the existing remove, rather than drag and
+       drop. One mechanism that behaves identically with a mouse, a finger and
+       a keyboard: the planner's cells are textareas a coach is constantly
+       editing, and Core's own drag surfaces (Match Centre) are mouse-only with
+       a separate tap path on touch — a dragged row here would need the same
+       split and would fight text selection for no gain. A move is one step, so
+       a press is unambiguous. The control at each end is disabled rather than
+       hidden, so the row never changes shape as blocks move. */
+    .tb-row-actions { display:flex; align-items:center; justify-content:flex-end; gap:4px; }
+    .tb-move {
+      display:inline-flex; align-items:center; justify-content:center;
+      width:30px; min-height:36px; flex:0 0 auto;
+      border:1px solid var(--line); border-radius:7px;
+      background:var(--panel-2); color:var(--muted);
+      font-size:11px; line-height:1; cursor:pointer;
+      transition:border-color .14s ease, color .14s ease, background .14s ease;
+    }
+    .tb-move:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+    .tb-move:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    .tb-move:disabled { opacity:.32; cursor:default; }
+
     /* ── INSERT BLOCK affordance ──────────────────────────────────────────────
        One before every block row, so every position in the plan is reachable
        (appending stays with the single "+ Add block" button under the table).
@@ -2489,6 +2511,11 @@
       .training-gs-table td textarea:not(.tb-auto) { min-height: 92px !important; height: auto !important; }
       .training-gs-table td textarea.tb-auto { min-height: 44px; }
       .training-gs-table td[data-label=""] { text-align: right; padding-top: 2px; }
+      /* Real touch targets for the block's own controls, kept on one line at
+         the foot of the stacked card. */
+      .tb-row-actions { gap: 8px; }
+      .tb-move { width: 44px; min-height: 44px; font-size: 13px; }
+      .training-gs-table td[data-label=""] .btn.tb-remove { min-height: 44px; padding: 0 16px; }
       /* The stacked layout turns every row into a bordered card — the insert
          affordance is not one. It keeps its label (no hover on touch) and a
          44px target between the cards it sits between. */
@@ -10397,10 +10424,79 @@
       if (anchor) anchor.insertAdjacentHTML('beforebegin', trainingInsertRowHTML(sessionId, block) + trainingBlockRowHTML(sessionId, block));
       else renderTraining();
 
+      trainingRefreshMoveButtons();
       saveState('Time block inserted');
       showToast('Block inserted');
       syncPublishedSessionEdit(sessionId);
       trainingFocusBlock(block.id);
+    }
+
+    /**
+     * MOVE an existing block one position up or down.
+     *
+     * The plan's order IS the array's order, so a move is a splice out and a
+     * splice back in — the SAME object, never a copy: its id, its content, its
+     * session and whatever the coach has typed into it all travel with it
+     * untouched. Only its index changes.
+     *
+     * Deliberately NOT a sort. A coach mid-plan may legitimately have times out
+     * of sequence, and the planner must never quietly rearrange their work or
+     * rewrite a time to justify a position. `delta` is normalised to exactly
+     * one step so no caller can make a block jump.
+     *
+     * Addressed by block id, like insertion: a row index captured in markup is
+     * stale the moment anything above it moves. Boundaries answer false and do
+     * nothing — the first block cannot rise and the last cannot fall.
+     */
+    function trainingMoveBlock(sessionId, blockId, delta) {
+      const blocks = state.trainingBlocks?.[sessionId];
+      if (!Array.isArray(blocks) || blocks.length < 2) return false;
+      const from = blocks.findIndex(b => b && String(b.id) === String(blockId));
+      if (from < 0) return false;
+      const to = from + (Number(delta) < 0 ? -1 : 1);
+      if (to < 0 || to >= blocks.length) return false;     // already at that end
+      const [moved] = blocks.splice(from, 1);
+      blocks.splice(to, 0, moved);
+
+      // Move the two rows this block owns — its insert affordance and its row —
+      // in front of whichever block now follows it, or to the end when it is
+      // last. Same primitive insertion uses, so every other row is untouched
+      // and the affordance invariant holds. Falls back to the canonical render
+      // if any of it is missing.
+      const rowEl = document.querySelector(`#coach-training tr[data-block-id="${CSS.escape(String(blockId))}"]`);
+      const insEl = document.querySelector(`#coach-training tr.tb-insert[data-insert-before="${CSS.escape(String(blockId))}"]`);
+      const next = blocks[to + 1];
+      const anchor = next ? document.querySelector(`#coach-training tr.tb-insert[data-insert-before="${CSS.escape(String(next.id))}"]`) : null;
+      const tbody = document.querySelector('#coach-training .training-gs-table tbody');
+      if (rowEl && insEl && (anchor || (!next && tbody))) {
+        if (anchor) anchor.insertAdjacentElement('beforebegin', insEl);
+        else tbody.appendChild(insEl);
+        insEl.insertAdjacentElement('afterend', rowEl);
+        trainingRefreshMoveButtons();
+      } else {
+        renderTraining();
+      }
+
+      saveState('Block moved');
+      showToast(to < from ? 'Moved up' : 'Moved down');
+      syncPublishedSessionEdit(sessionId);
+      return true;
+    }
+
+    /**
+     * Which move controls are available, read from the rows actually on screen.
+     *
+     * Derived from live position rather than baked into the markup, so it can
+     * never go stale behind an add, an insert, a remove or another move: the
+     * first block cannot move up and the last cannot move down.
+     */
+    function trainingRefreshMoveButtons() {
+      const rows = document.querySelectorAll('#coach-training tr[data-block-id]');
+      rows.forEach((row, i) => {
+        const up = row.querySelector('.tb-move-up'), down = row.querySelector('.tb-move-down');
+        if (up)   up.disabled   = (i === 0);
+        if (down) down.disabled = (i === rows.length - 1);
+      });
     }
 
     function addTimeBlock(sessionId) {
@@ -10423,6 +10519,7 @@
       } else {
         renderTraining();
       }
+      trainingRefreshMoveButtons();
       saveState('Time block added');
       showToast('Time block added');
       syncPublishedSessionEdit(sessionId);
@@ -10528,7 +10625,17 @@
                       `\n                      name="session-plan-coach" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"\n                      data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore`)}
                   </td>
                   <td data-label="" style="vertical-align:middle">
-                    <button class="btn ghost" type="button" style="padding:0 10px;min-height:36px;color:var(--muted)" onclick="removeTimeBlock('${sessId}','${b.id}');tpSavePing()">✕</button>
+                    <div class="tb-row-actions">
+                      <button class="tb-move tb-move-up" type="button"
+                        onclick="trainingMoveBlock('${sessId}','${esc(String(b.id))}',-1);tpSavePing()"
+                        title="Move up" aria-label="Move ${esc(String(b.activity || '').trim() || 'this block')} up">▲</button>
+                      <button class="tb-move tb-move-down" type="button"
+                        onclick="trainingMoveBlock('${sessId}','${esc(String(b.id))}',1);tpSavePing()"
+                        title="Move down" aria-label="Move ${esc(String(b.activity || '').trim() || 'this block')} down">▼</button>
+                      <button class="btn ghost tb-remove" type="button" style="padding:0 10px;min-height:36px;color:var(--muted)"
+                        onclick="removeTimeBlock('${sessId}','${b.id}');tpSavePing()"
+                        title="Remove block" aria-label="Remove ${esc(String(b.activity || '').trim() || 'this block')}">✕</button>
+                    </div>
                   </td>
                 </tr>`;
     }
@@ -10548,7 +10655,7 @@
       // The block's own insert affordance goes with it — leaving it behind
       // would offer a position in front of a block that no longer exists.
       const affordance = document.querySelector(`#coach-training tr.tb-insert[data-insert-before="${CSS.escape(String(blockId))}"]`);
-      if (row && state.trainingBlocks[sessionId].length) { affordance?.remove(); row.remove(); }
+      if (row && state.trainingBlocks[sessionId].length) { affordance?.remove(); row.remove(); trainingRefreshMoveButtons(); }
       else renderTraining();
       syncPublishedSessionEdit(sessionId);
     }
@@ -18383,7 +18490,7 @@
               <th style="font-size:12px">Activity</th>
               <th style="font-size:12px">Key Focus</th>
               <th style="width:220px;font-size:12px">Lead Coach</th>
-              <th style="width:36px"></th>
+              <th style="width:104px"></th>
             </tr></thead>
             <tbody>
               ${blocks.map(b => trainingInsertRowHTML(ck, b) + trainingBlockRowHTML(ck, b)).join("")}
@@ -18551,6 +18658,7 @@
 
       // Freshly-painted blocks size to their own content, so a finished block
       // is as tall as what is written in it and nothing more.
+      trainingRefreshMoveButtons();
       trainingAutosizeBlocks();
     }
 

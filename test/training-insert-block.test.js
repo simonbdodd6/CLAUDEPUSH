@@ -79,6 +79,10 @@ function planner({ blocks = [], startTime = '19:45' } = {}) {
     }, querySelectorAll: () => [] };
     ${fn('trainingInsertRowHTML')}
     ${fn('trainingBlockRowHTML')}
+    // REORDER: the planner keeps its move controls honest from live row position
+    // after every structural change. Button state is not what these cases are
+    // about, so it is inert here.
+    function trainingRefreshMoveButtons() {}
     ${fn('trainingNewBlock')}
     ${fn('trainingInsertBlockBefore')}
     ${fn('addTimeBlock')}
