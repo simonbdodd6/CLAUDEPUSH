@@ -59,6 +59,10 @@ function world({ players = [], resolved = {}, group = 'grp_u18' } = {}) {
     fn('liveAvailabilityPlayerKeys') + '\n' +
     fn('currentResolvedAvailability') + '\n' +
     fn('resolvedAnswerFor') + '\n' +
+    // AVAILABILITY-PENDING-1: sessionRows now reports whether an answer is
+    // SERVER-CONFIRMED. These cases are about server/local resolution, so this
+    // device is holding nothing unsent.
+    'function availabilityPendingFor() { return null; }\n' +
     fn('sessionRows') + '\n' +
     fn('availabilityNonResponders') + '\n' +
     'return { rows: id => sessionRows(id), nonResponders: s => availabilityNonResponders(s) };\n';

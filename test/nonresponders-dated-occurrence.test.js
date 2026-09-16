@@ -63,6 +63,10 @@ function world({ slots, players = [], resolved = {}, todayIso = '2026-09-03' }) 
     ${fn('liveAvailabilityPlayerKeys')}
     ${fn('currentResolvedAvailability')}
     ${fn('resolvedAnswerFor')}
+    // AVAILABILITY-PENDING-1: sessionRows now reports whether an answer is
+    // SERVER-CONFIRMED. These cases are about server/local resolution, so this
+    // device is holding nothing unsent.
+    function availabilityPendingFor() { return null; }
     ${fn('sessionRows')}
     ${fn('availabilityNonResponders')}
     ${fn('availabilityEventsForWeek')}

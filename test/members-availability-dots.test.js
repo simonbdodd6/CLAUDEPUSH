@@ -57,6 +57,10 @@ function makeEnv({ slots, fixtures = [], players, resolved = {}, group = 'grp_x'
     fn('normalizeSessionId') + '\n' + fn('sessionKey') + '\n' + fn('sessionReasonKey') + '\n' +
     fn('liveAvailabilityPlayerKeys') + '\n' +
     fn('currentResolvedAvailability') + '\n' + fn('resolvedAnswerFor') + '\n' +
+    // AVAILABILITY-PENDING-1: sessionRows now reports whether an answer is
+    // SERVER-CONFIRMED. These cases are about server/local resolution, so this
+    // device is holding nothing unsent.
+    'function availabilityPendingFor() { return null; }\n' +
     fn('sessionRows') + '\n' + fn('availabilityWeekSessions') + '\n' +
     fn('membersAvailabilityCells') + '\n' +
     'return { cells: membersAvailabilityCells, rows: sessionRows, sessions: availabilityWeekSessions };';

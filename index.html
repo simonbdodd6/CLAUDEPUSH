@@ -839,6 +839,19 @@
       background-repeat: no-repeat;
       background-position: 10px center;
     }
+    /* An availability answer this device is still holding. Deliberately quiet
+       but unmissable: the player keeps seeing their own choice, and is told
+       plainly that the coach cannot see it yet. */
+    .avail-pending-note {
+      display: flex; align-items: flex-start; gap: 8px;
+      margin-top: 10px; padding: 9px 11px;
+      border: 1px solid var(--amber, #b45309);
+      border-radius: 9px;
+      background: rgba(245, 158, 11, .12);
+      color: var(--ink);
+      font-size: 12px; line-height: 1.45;
+    }
+
     /* Contenteditable chat search fields — NOT <input>, so no browser/password-manager autofill can attach. */
     .chat-ce-search:empty:before { content: attr(data-placeholder); color: var(--faint, #64748b); pointer-events: none; }
     .chat-ce-search:focus { outline: none; border-color: rgba(52,211,153,.5); }
@@ -6698,6 +6711,13 @@
       </div>`;
     }
 
+    // Declared HERE, not beside the availability helpers below: normalizeState
+    // runs while `state` is first loaded, far earlier in this file, and a const
+    // read before its declaration is a load-time ReferenceError that takes the
+    // whole app down. See normalizeAvailabilityPending.
+    const AVAIL_PENDING_MAX = 40;          // bounded: a week of sessions, many times over
+    const AVAIL_RESPONSES = ['available', 'maybe', 'unavailable'];
+
     const defaultState = {
       activeView: "coach",
       activeCoachSection: "overview",
@@ -6768,6 +6788,12 @@
       fixtures: [],
       messages: [],
       availabilityRequests: [],
+      // UNSENT availability submissions, keyed by canonical session id. A
+      // player's answer is only an ANSWER once the server has it; until then it
+      // lives here so the app can retry it and can tell the player the truth.
+      // One entry per session — the player's LATEST choice, never a queue of
+      // stale ones. See availabilityMarkPending.
+      availabilityPending: {},
       automationRules: [
         { id: "auto-tue",  sessionId: "tue",  title: "Session 1 availability", schedule: "Sunday 18:00",  enabled: false, template: "Hi! Please confirm your availability for training this week. Thanks, Coach." },
         { id: "auto-thu",  sessionId: "thu",  title: "Session 2 availability", schedule: "Tuesday 21:00", enabled: false, template: "Hi! Please confirm your availability for training this week. Thanks, Coach." },
@@ -7484,6 +7510,7 @@
       next.availabilityRequests = (input.availabilityRequests || defaultState.availabilityRequests).map(r => ({
         messageIds: [], status: "sent", ...r
       }));
+      next.availabilityPending = normalizeAvailabilityPending(input.availabilityPending);
       next.masterFeed       = input.masterFeed       || structuredClone(defaultState.masterFeed);
       next.trainingActiveSession = input.trainingActiveSession || "tue";
       next.trainingBlocks   = input.trainingBlocks   || structuredClone(defaultState.trainingBlocks);
@@ -8219,6 +8246,96 @@
     // Pure helper: write a single session's availability onto a player record,
     // touching ONLY that session's status + reason. Guarantees changing one
     // session can never mutate another session's stored value.
+    /**
+     * PENDING AVAILABILITY — the difference between "I answered" and "the
+     * server has my answer".
+     *
+     * Production, 15–16 Sep 2026: a player taps Available, the POST fails at
+     * the transport layer, and the old code's empty catch let the optimistic
+     * local write stand while the toast still said "Availability saved". The
+     * device then showed that answer for ever (sessionRows falls back to the
+     * local field, and mergeServerAvailabilityIntoRecord never overwrites a
+     * local answer), while the coach board correctly showed No reply. 24 such
+     * failures were logged in two days. Nothing was corrupted — the app simply
+     * claimed a save that had not happened, and never tried again.
+     *
+     * The model is deliberately small and reuses the existing persisted state:
+     *   CONFIRMED  the server answered 2xx — resolvedAnswerFor / the coach board
+     *   PENDING    an entry here: chosen on this device, not yet accepted
+     *   NO ANSWER  neither
+     *
+     * Keyed by the CANONICAL session id the POST needs, so a retry targets the
+     * exact occurrence the player answered — never a re-derived "current week".
+     * One entry per session: a second tap overwrites the first, so a retry can
+     * never resurrect a stale choice. Stamped with the account that made it, so
+     * a shared device cannot attribute one player's unsent answer to another.
+     */
+    function normalizeAvailabilityPending(input) {
+      if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
+      const out = {};
+      for (const [sessionId, entry] of Object.entries(input)) {
+        if (Object.keys(out).length >= AVAIL_PENDING_MAX) break;
+        // The server's own sessionId charset — an id it would refuse is an id
+        // no retry can ever land, so it is not kept.
+        if (!/^[a-z0-9_-]{1,80}$/i.test(String(sessionId || ''))) continue;
+        if (!entry || typeof entry !== 'object') continue;
+        if (!AVAIL_RESPONSES.includes(String(entry.response || ''))) continue;
+        if (!String(entry.owner || '')) continue;           // unattributable: cannot be retried safely
+        out[sessionId] = {
+          response: String(entry.response),
+          reason:   String(entry.reason || ''),
+          at:       String(entry.at || ''),
+          owner:    String(entry.owner),
+        };
+      }
+      return out;
+    }
+
+    /** Record an unsent answer (latest choice wins). Returns the entry. */
+    function availabilityMarkPending(sessionId, response, reason) {
+      const id = String(sessionId || '');
+      if (!id || !AVAIL_RESPONSES.includes(String(response || ''))) return null;
+      state.availabilityPending = state.availabilityPending || {};
+      const store = state.availabilityPending;
+      // Bounded: drop the oldest when full, so a long offline spell cannot grow
+      // device storage without limit.
+      if (!store[id] && Object.keys(store).length >= AVAIL_PENDING_MAX) {
+        const oldest = Object.entries(store).sort((a, b) => String(a[1]?.at || '').localeCompare(String(b[1]?.at || '')))[0];
+        if (oldest) delete store[oldest[0]];
+      }
+      store[id] = { response: String(response), reason: String(reason || ''),
+                    at: new Date().toISOString(), owner: String(state.currentUserId || '') };
+      return store[id];
+    }
+
+    function availabilityClearPending(sessionId) {
+      const store = state.availabilityPending;
+      if (!store) return false;
+      const id = String(sessionId || '');
+      if (!(id in store)) return false;
+      delete store[id];
+      return true;
+    }
+
+    /**
+     * The unsent answer for THIS session belonging to THIS account — or null.
+     *
+     * Two gates, both required: the entry must have been made by the account in
+     * force, and the row it is being read against must be that account's own
+     * player record. So a pending answer can never be read onto another
+     * player's row, another group's board, or another club's.
+     */
+    function availabilityPendingFor(sessionId, player) {
+      const store = (typeof state !== 'undefined' && state.availabilityPending) || null;
+      if (!store) return null;
+      const entry = store[String(sessionId || '')];
+      if (!entry || !entry.owner) return null;
+      const me = String(state.currentUserId || '');
+      if (!me || String(entry.owner) !== me) return null;
+      const ids = [player?.id, player?.userId, player?.legacyPlayerId].map(v => String(v || '')).filter(Boolean);
+      return ids.includes(String(entry.owner)) ? entry : null;
+    }
+
     function availabilityApplyToRecord(record, key, status, reason) {
       if (!record || !key) return record;
       record[key] = status;
@@ -8531,17 +8648,26 @@
         // the exact-match buckets then dropped them from every bucket AND
         // counted them as "answered" (status !== 'no-reply'). Absence has one
         // spelling, normalized here at the single row source.
+        // `confirmed` says the SERVER holds this answer; `pending` says this
+        // device is still carrying it. A row read from the local field alone is
+        // never confirmed, so nothing downstream can present an unsent answer
+        // as one the coach can rely on. Status itself is unchanged, so every
+        // existing bucket, filter and count behaves exactly as before.
         if (live) return {
           player:         p,
           status:         live.response || 'no-reply',
           reason:         live.reason || '',
           respondedAt:    live.respondedAt || null,
+          confirmed:      true,
+          pending:        false,
         };
         return {
           player:         p,
           status:         p[key] || 'no-reply',
           reason:         p[rKey] || '',
           respondedAt:    p[key + 'RespondedAt'] || null,
+          confirmed:      false,
+          pending:        Boolean(availabilityPendingFor(id, p)),
         };
       });
     }
@@ -8866,10 +8992,23 @@
     }
 
     let _availAuthPromptedAt = 0; // one auth prompt per burst, not one per session
+    /**
+     * Send one availability answer. Returns WHAT HAPPENED, so the caller can
+     * tell the player the truth instead of assuming:
+     *   { ok: true }                 the server accepted it
+     *   { ok: false, pending: true } transport failure or 5xx — kept for retry
+     *   { ok: false, auth: true }    401/403 — reverted, the player is told
+     *   { ok: false }                refused for a reason a retry cannot fix
+     *
+     * The intent is recorded as PENDING before the request leaves, not after it
+     * fails: a tab closed mid-request would otherwise lose the answer with no
+     * trace, which is the same silent loss in a different disguise.
+     */
     async function saveAvailabilityResponseToServer(sessionId, response, reason, revert) {
       // 'injured' is a legacy local-only status — map to unavailable + reason:injury for server.
       const sendResponse = response === 'injured' ? 'unavailable' : response;
       const sendReason   = response === 'injured' ? 'injury'     : (reason || '');
+      availabilityMarkPending(sessionId, sendResponse, sendReason);
       // Availability writes are AUTHENTICATED-ONLY. The old push-endpoint
       // identity fallback is gone server-side (it let an expired session write
       // into the default club), so a lapsed session now answers 401 — say so
@@ -8882,6 +9021,11 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ response: sendResponse, reason: sendReason, sessionId })
         });
+        if (res.ok) {
+          // The ONLY thing that turns an answer into an answer.
+          availabilityClearPending(sessionId);
+          return { ok: true };
+        }
         if (res.status === 401 || res.status === 403) {
           // The server REFUSED this write — the just-applied local value is a
           // claim of persistence that did not happen. Put back what was there
@@ -8895,9 +9039,57 @@
             checkServerSession().catch(() => {});   // flips the app into its signed-out presentation
             setAuthTab('login');                    // the same entry the Welcome screen / banner use
           }
+          // A refused write is not a pending one: retrying it would fail again
+          // for the same reason, and the local answer has just been put back.
+          availabilityClearPending(sessionId);
+          return { ok: false, auth: true };
         }
-        return res;
-      } catch {}
+        // 5xx is the server having a bad moment — worth retrying. Any other
+        // refusal (a malformed session id, say) never will be, so it is not
+        // kept as pending and the caller reports the failure plainly.
+        if (res.status >= 500) return { ok: false, pending: true };
+        availabilityClearPending(sessionId);
+        return { ok: false };
+      } catch {
+        // OFFLINE / transport failure — the answer is kept exactly as the
+        // player left it, marked pending, and retried. This is the case that
+        // used to fall into an empty catch and be reported as a save.
+        return { ok: false, pending: true };
+      }
+    }
+
+    /**
+     * Send whatever this account has not managed to send yet. Event-driven and
+     * bounded: one pass, one request at a time, stopping at the first answer
+     * that is still unreachable — no polling and no retry storm. Called when
+     * the browser reports connectivity, when the app is reopened or returned
+     * to, and once at boot.
+     */
+    let _availFlushInFlight = false;
+    async function availabilityFlushPending() {
+      if (_availFlushInFlight) return 0;
+      const store = state.availabilityPending || {};
+      const me = String(state.currentUserId || '');
+      const mine = Object.entries(store).filter(([, e]) => e && me && String(e.owner || '') === me);
+      if (!mine.length) return 0;
+      _availFlushInFlight = true;
+      let sent = 0;
+      try {
+        for (const [sessionId, entry] of mine) {
+          // entry.response is the LATEST choice for this session — a second tap
+          // overwrote the first, so no stale answer can be resurrected here.
+          const out = await saveAvailabilityResponseToServer(sessionId, entry.response, entry.reason || '', null);
+          if (out && out.ok) { sent++; continue; }
+          if (out && out.pending) break;     // still unreachable: stop, try again on the next event
+        }
+      } catch { /* never let a retry throw into a lifecycle handler */ }
+      finally { _availFlushInFlight = false; }
+      if (sent) {
+        saveState('Pending availability sent');
+        render();
+        showToast(sent === 1 ? 'Your availability has now been sent ✓' : `${sent} availability answers have now been sent ✓`);
+      }
+      return sent;
     }
     function row(title, subtitle, right) {
       return `<div class="row"><div><strong>${title}</strong><small>${subtitle}</small></div><div>${right}</div></div>`;
@@ -19906,6 +20098,10 @@
         reason: player[key + 'Reason'] || '',
         respondedAt: player[key + 'RespondedAt'] || null,
         isOpenReasonPicker: !!_availReasonOpenByKey[key],
+        // Chosen on this device but not yet accepted by the server. The card
+        // shows the player's own choice either way — it just stops calling an
+        // unsent answer a saved one.
+        pending: Boolean(availabilityPendingFor(session.id, player)),
       };
     }
 
@@ -20189,7 +20385,7 @@
     }
 
     function availabilityCardV2(model, session) {
-      const { key, status, reason, isOpenReasonPicker } = model;
+      const { key, status, reason, isOpenReasonPicker, pending } = model;
       const borderColors = { available:'#16a34a', unavailable:'#dc2626', maybe:'#d97706', 'no-reply':'var(--line)' };
       const border = borderColors[status] || 'var(--line)';
 
@@ -20246,8 +20442,12 @@
               ${meta ? `<div class="avail-player-card-meta">${esc(meta)}</div>` : ''}
               ${session.deadline ? `<div class="avail-player-card-meta" style="margin-top:3px;color:var(--amber)">Reply by ${esc(session.deadline)}</div>` : ''}
             </div>
-            <span class="avail-status-chip" style="border:1px solid ${border};color:${border === 'var(--line)' ? 'var(--muted)' : border};background:${status === 'no-reply' ? 'transparent' : border + '20'}">${statusLabel(status)}</span>
+            <span class="avail-status-chip" style="border:1px solid ${border};color:${border === 'var(--line)' ? 'var(--muted)' : border};background:${status === 'no-reply' ? 'transparent' : border + '20'}">${statusLabel(status)}${pending ? ' · not sent' : ''}</span>
           </div>
+          ${pending ? `<div class="avail-pending-note" role="status">
+            <span aria-hidden="true">⏳</span>
+            <span>Not sent yet — your coach cannot see this answer. Saved on this device; we'll send it automatically when you're back online.</span>
+          </div>` : ''}
           <div class="avail-btns">
             ${selBtn('available',   'Available',     '#16a34a')}
             ${selBtn('maybe',       'Maybe',         '#d97706')}
@@ -20258,10 +20458,11 @@
         </div>`;
     }
 
-    function setAllAvailable() {
+    async function setAllAvailable() {
       const player = getPlayer();
       if (!player.id) return;
       _availReasonOpenByKey = {}; // all become Available — no reason pickers needed
+      const _sends = [];
       const liveRecords = findLiveAvailabilityRecords(state.players, player);
       // The REAL dated events for the viewed week — never the legacy demo
       // trio in state.schedule, whose tue/thu/game ids don't exist on this
@@ -20271,16 +20472,25 @@
         const _revert = captureAvailabilityFields([player, ...liveRecords], k);
         availabilityApplyToRecord(player, k, 'available', '');
         liveRecords.forEach(rec => availabilityApplyToRecord(rec, k, 'available', ''));
-        saveAvailabilityResponseToServer(session.id, 'available', '', _revert);
+        _sends.push(saveAvailabilityResponseToServer(session.id, 'available', '', _revert));
       });
       if (player.history[0] !== 'available') player.history.unshift('available');
       player.history = player.history.slice(0, 5);
       saveState('All available set');
       render();
+      const outcomes = await Promise.all(_sends);
+      if (outcomes.some(o => o && o.auth)) return;                 // already reverted and reported
+      if (outcomes.some(o => o && o.pending)) {
+        saveState('Availability pending');
+        render();
+        return showToast("Not sent yet — saved on this device. We'll send them as soon as you're back online.");
+      }
+      if (outcomes.some(o => o && o.ok === false)) return showToast("Couldn't save every session — please try again.");
+      render();
       showToast("All set — see you this week!");
     }
 
-    function setPlayerAvailability(key, status, reason) {
+    async function setPlayerAvailability(key, status, reason) {
       // Surgical save — writes ONLY this session key (+ reason/respondedAt) onto
       // every matching record. AvailabilityV2 owns reason-picker visibility via
       // _availReasonOpenByKey, so this never touches any picker or other session.
@@ -20300,9 +20510,22 @@
       addMasterFeed(`${player.name} updated ${sessionTitle(sessionId)}`, statusLabel(status));
       upsertAvailabilityResponseMessage(player, sessionId, status);
       // POST to server so coach sees it in real time; authenticated users do not need push enabled.
-      saveAvailabilityResponseToServer(sessionId, status, reason, _revert);
-      saveState("Player availability saved");
+      // The local write above is optimistic and stays synchronous, so the card
+      // responds to the tap at once; the RESULT decides what the player is
+      // told. Saying "saved" before the server answered is the defect this
+      // build exists to remove.
+      const _savePromise = saveAvailabilityResponseToServer(sessionId, status, reason, _revert);
+      saveState("Player availability saved");     // persists the pending mark too
       render();
+      const outcome = await _savePromise;
+      if (outcome && outcome.auth) return;        // the save path has already reverted, toasted and re-rendered
+      if (outcome && outcome.pending) {
+        saveState('Availability pending');
+        render();
+        return showToast("Not sent yet — saved on this device. We'll send it as soon as you're back online.");
+      }
+      if (outcome && outcome.ok === false) return showToast("Couldn't save — please try again.");
+      render();                                    // confirmed: drop the pending chip
       showToast(reason ? `Saved — ${REASON_LABELS[reason] || 'reason noted'}` : "Availability saved");
     }
 
@@ -40919,6 +41142,10 @@
      * it is club-scoped, and sign-out promises to keep it.
      */
     function resetIdentityScopedState() {
+      // An unsent availability answer belongs to the account that chose it.
+      // A different person signing in on this device must never inherit it —
+      // nor have it sent under their name by a later retry.
+      state.availabilityPending = {};
       state.selectedPlayerId = '';
       state.selectedPlayerOwnerId = '';
       state.selectedMessagePlayerId = '';
@@ -43811,7 +44038,13 @@
       if (state.activeView === 'coach' && state.activeCoachSection === 'message' && typeof refreshLiveAvailability === 'function') {
         refreshLiveAvailability();
       }
+      // Returning to the app is the cheapest honest moment to send anything
+      // this device is still holding. No timer, no polling.
+      availabilityFlushPending().catch(() => {});
     }
+    // Connectivity came back: send what we could not send. The browser fires
+    // this once per transition, so it is a signal, not a loop.
+    window.addEventListener('online', () => { availabilityFlushPending().catch(() => {}); });
     // The 2.5s thread poll (chatStartPolling) had no visibility gate of its own,
     // unlike bgPollUnread above, whose chatBackgroundPollAllowed() checks
     // document.hidden. A tab left open on Messages therefore kept issuing its
@@ -43830,6 +44063,9 @@
       if (inMessages && !_chatPollTimer && state.selectedChatId) chatStartPolling(state.selectedChatId);
     });
     window.addEventListener('focus', refreshAvailabilityOnReturn);
+    // APP OPEN. A pending answer must survive a reload as pending and be
+    // retried — never quietly promoted by the act of reloading.
+    availabilityFlushPending().catch(() => {});
 
     // Appearance is already applied (the <head> boot script did it before the
     // first paint). This only attaches the OS listener, so a coach on System

@@ -147,6 +147,10 @@ function buildScope({
     extractFn(html, 'normalizeSessionId') + '\n' +
     extractFn(html, 'liveAvailabilityPlayerKeys') + '\n' +
     extractFn(html, 'resolvedAnswerFor') + '\n' +
+    // AVAILABILITY-PENDING-1: sessionRows now reports whether an answer is
+    // SERVER-CONFIRMED. These cases are about server/local resolution, so this
+    // device is holding nothing unsent.
+    'function availabilityPendingFor() { return null; }\n' +
     extractFn(html, 'sessionRows') + '\n' +
     extractConst(html, 'PLAYER_LIFECYCLE_LABELS') + '\n' +
     extractFn(html, 'playerIsArchived') + '\n' +

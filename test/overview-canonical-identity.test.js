@@ -146,6 +146,10 @@ function trainingWorld({ slots, players = [], resolved = {}, todayIso }) {
     ${fn('liveAvailabilityPlayerKeys')}
     ${fn('currentResolvedAvailability')}
     ${fn('resolvedAnswerFor')}
+    // AVAILABILITY-PENDING-1: sessionRows now reports whether an answer is
+    // SERVER-CONFIRMED. These cases are about server/local resolution, so this
+    // device is holding nothing unsent.
+    function availabilityPendingFor() { return null; }
     ${fn('sessionRows')}
     ${fn('overviewRoster') ? '' : ''}
     function overviewRoster() { return state.players; }
@@ -234,6 +238,10 @@ test('the availability CARD (overviewAvailabilityContext) counts the dated occur
     ${fn('liveAvailabilityPlayerKeys')}
     ${fn('currentResolvedAvailability')}
     ${fn('resolvedAnswerFor')}
+    // AVAILABILITY-PENDING-1: sessionRows now reports whether an answer is
+    // SERVER-CONFIRMED. These cases are about server/local resolution, so this
+    // device is holding nothing unsent.
+    function availabilityPendingFor() { return null; }
     ${fn('sessionRows')}
     ${fn('overviewAnswerMap')}
     ${fn('overviewAnswerCounts')}
