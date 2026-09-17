@@ -65,7 +65,7 @@ function client({ user, member, operational = OPERATIONAL, players = [], adminMe
     'let _rosterSyncPending = false, _rosterLastSyncedFp = ""; function queueRosterSync(){ rosterPosts.push(rosterFingerprint()); }\n' +
     'const window = {}; const document = { getElementById: () => null, querySelector: () => null };\n' +
     'function fetch(){ return Promise.resolve({ ok: true, json: async () => ({ players: CFG.serverRoster || [] }) }); }\n' +
-    ['membershipPlays','landingViewFor','isCoach','currentUser','isPermanentPlayerUserId','canonicalPlayerIdForUser','ensureCanonicalPlayerRecord','hydrateSessionPlayerRecord','ensureOwnPlayerRecord',
+    ['sessionSignedOut','membershipPlays','landingViewFor','isCoach','currentUser','isPermanentPlayerUserId','canonicalPlayerIdForUser','ensureCanonicalPlayerRecord','hydrateSessionPlayerRecord','ensureOwnPlayerRecord',
      'ownPlayerRecordForUser','staffPreviewPlayerId','getPlayer','operationalCapacity','operationalGroups','resolveOperationalGroup','captureTrainingState','trainingStateOwner','stashTrainingState','adoptTrainingState','syncTrainingStateToGroup',
      'setView','adoptIdentityPayload','rosterFingerprint','loadRosterFromServer'].map(fn).join('\n') + '\n' +
     'const EMPTY_PLAYER = { id: "", name: "\\u2014" };\n' +

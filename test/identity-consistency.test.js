@@ -80,6 +80,7 @@ function ctx({ currentUserId = 'user_florian', users = [FLORIAN, JULIEN], player
     let _chatNavUnread = 3;
     function updateNavBadge() {}
     function chatSetUnreadTotal(total) { _chatNavUnread = Math.max(0, Number(total || 0)); calls.unreadTotals.push(_chatNavUnread); }
+    ${fn('sessionSignedOut')}   // shared session gate: currentUser/canI call it
     ${fn('currentUser')}
     ${fn('isCoach')}
     ${fn('canonicalPlayerIdForUser')}

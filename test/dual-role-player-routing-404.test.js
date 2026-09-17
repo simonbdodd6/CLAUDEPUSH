@@ -86,7 +86,7 @@ function shell() {
     'const playerSections = [["home","Home"],["messages","Messages"],["availability","Availability"],["training","Training"]]; const coachSections = [["overview","Overview"],["training","Training"],["settings","Settings"]]; const SECTION_PERM_MAP = {}; const SECTION_FEATURE_MAP = {}; const BETA_HIDE_COMMERCIAL = true; function _isLocalDemoHost(){ return false; }\n' +
     'function canonicalAccountForUserId(id){ return state.users.find(u => u.id === id) || null; }\n' +
     'function identityEmailKey(v){ return String(v || "").trim().toLowerCase(); } function canonicalVisiblePlayers(){ return state.players; } function resolveRosterMessagingId(p){ return p.userId || p.id; } function canonicalIdentityNameKey(v){ return String(v||"").toLowerCase().replace(/[^a-z]/g,""); }\n' +
-    ['membershipPlays','isCoach','currentUser','isPermanentPlayerUserId','canonicalPlayerIdForUser','ensureCanonicalPlayerRecord','hydrateSessionPlayerRecord','ensureOwnPlayerRecord','ownPlayerRecordForUser','staffPreviewPlayerId','getPlayer',
+    ['sessionSignedOut','membershipPlays','isCoach','currentUser','isPermanentPlayerUserId','canonicalPlayerIdForUser','ensureCanonicalPlayerRecord','hydrateSessionPlayerRecord','ensureOwnPlayerRecord','ownPlayerRecordForUser','staffPreviewPlayerId','getPlayer',
      'operationalCapacity','operationalGroups','resolveOperationalGroup','captureTrainingState','trainingStateOwner','stashTrainingState','adoptTrainingState','syncTrainingStateToGroup','playerSectionsFor','playerSectionAllowed','allowedCoachSections','setView','setSection'].map(fn).join('\n') + '\n' +
     'const EMPTY_PLAYER = { id: "", name: "\\u2014" };\n' +
     'ensureOwnPlayerRecord();\n' +

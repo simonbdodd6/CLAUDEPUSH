@@ -7071,9 +7071,11 @@
     // into an empty dashboard.
     function renderWelcome() {
       const existing = document.getElementById('ce-welcome');
-      const deviceEmpty = !(state.players || []).length && !(state.clubName || '').trim() &&
-        !(state.users || []).some(u => u.role === 'player');
-      const show = _serverAuthState === 'anon' && deviceEmpty && !_welcomeDismissed;
+      // Previously this also required the device to be EMPTY, which is exactly
+      // backwards for a sign-out: the club data that sign-out promises to keep
+      // was what suppressed the front door, so a signed-out coach kept looking
+      // at their own dashboard. Having local data is not having a session.
+      const show = sessionSignedOut() && !_welcomeDismissed;
       if (!show) { existing?.remove(); return; }
       if (existing) return;
       const el = document.createElement('div');
@@ -8218,7 +8220,14 @@
       ) : null;
       return chosen || ownPlayerRecordForUser(user) || EMPTY_PLAYER;
     }
-    function currentUser()  { return canonicalAccountForUserId(state.currentUserId) || state.users.find(u => u.id === state.currentUserId) || state.users[0]; }
+    function currentUser()  {
+      // No proven session ⇒ no identity. The `|| state.users[0]` fallback below
+      // is for a signed-IN device whose id has drifted; after sign-out it kept
+      // answering as the coach who just left (their record stays in
+      // state.users), so isCoach() and every canI() still said yes.
+      if (sessionSignedOut()) return null;
+      return canonicalAccountForUserId(state.currentUserId) || state.users.find(u => u.id === state.currentUserId) || state.users[0];
+    }
 
     /**
      * THE TWO CAPACITIES, client side — the mirror of api/_accessScope.js
@@ -13798,7 +13807,7 @@
       if (_serverSessionPromise) return _serverSessionPromise;
       _serverSessionPromise = (async () => {
         try {
-          const current = await fetch('/api/identity?action=session').then(r => r.ok ? r.json() : null).catch(() => null);
+          const current = await fetch('/api/identity?action=session', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
           if (current?.ok && current.user?.id && current.user.id === user.id) {
             _serverSessionReadyFor = current.user.id;
             return true;
@@ -20235,7 +20244,7 @@
     let _myDetails = null;
     async function loadMyDetails() {
       try {
-        const res = await fetch('/api/identity?action=session');
+        const res = await fetch('/api/identity?action=session', { cache: 'no-store' });
         if (!res.ok) return;
         const d = await res.json();
         _myDetails = d.playerProfile?.details || {};
@@ -21190,7 +21199,7 @@
       try {
         const [cfgRes, sessRes] = await Promise.all([
           fetch('/api/config'),
-          fetch('/api/identity?action=session'),
+          fetch('/api/identity?action=session', { cache: 'no-store' }),
         ]);
         if (cfgRes.ok) _settingsVersion = (await cfgRes.json()).version || 'unknown';
         if (sessRes.ok) {
@@ -25222,7 +25231,18 @@
       resetIdentityScopedState();
       _myPermissions = null;
       _myMemberships = [];
+      _myMembership = null;
       _serverSessionReadyFor = '';
+      // Caches populated ONLY by authenticated responses. resetIdentityScopedState
+      // does not reach these, so the signed-out device kept the previous
+      // account's thread bodies, medical caseload and member PII in memory.
+      _chatMessages = {};
+      _sharedMedical = { loaded: false, failed: false, cases: [], players: [] };
+      _adminData = { invites: [], members: [], users: [], profiles: [], structure: null, counts: null,
+                     clubWideStaff: [], loaded: false, loading: false, attempted: false, failed: false };
+      // The front door was dismissed earlier in this page session; sign-out must
+      // bring it back, or the shell would be blanked with no way forward.
+      _welcomeDismissed = false;
       // Remove testAccount placeholders — they are only meaningful when logged in.
       const demoIds = new Set(testAccounts.map(a => a.id));
       if (prevId && demoIds.has(prevId)) {
@@ -40385,6 +40405,17 @@
       }
 
       safeRender(null,                () => renderNav());
+      // ── SESSION BOUNDARY ──
+      // Without a session, paint the unauthenticated entry screen and nothing
+      // else. renderNav still ran above so the sidebar keeps its Log in / Join
+      // panel; every authenticated section is emptied rather than left holding
+      // the previous account's Overview, messages, squad and member details.
+      // Club data stays on disk as sign-out promises — it simply never paints.
+      if (sessionSignedOut()) {
+        safeRender(null,              () => clearAuthenticatedSections());
+        safeRender(null,              () => renderAuthBanner());
+        return;
+      }
       safeRender(null,                () => showSection());
       safeRender('coach-overview',    () => renderCoachOverview());
       safeRender(null,                () => renderMessageCenter());
@@ -41383,6 +41414,35 @@
     // never look like a production login — when the server says no session, a
     // banner makes the offline/stale status unmissable.
     let _serverAuthState = 'unknown'; // 'unknown' | 'authed' | 'anon'
+
+    // ─── SESSION BOUNDARY ────────────────────────────────────────────────────
+    // The ONE question every authenticated surface asks. Two independent
+    // signals, because each covers a case the other cannot:
+    //
+    //   state.currentUserId === ''  — the PERSISTED marker. Blank by default and
+    //     blanked by sign-out, so a reload decides synchronously, before the
+    //     async session check has answered. Without it the shell painted from
+    //     localStorage first and only corrected itself on the 401.
+    //   _serverAuthState === 'anon' — the server has DEFINITIVELY refused this
+    //     device mid-session (cookie expired, or signed out in another tab).
+    //
+    // Offline is deliberately NOT signed out: a failed session check leaves
+    // 'unknown', so losing the network never locks a coach out of their own
+    // device. The read is wrapped because this binding is initialised late in a
+    // single-file app and callers are hoisted above it.
+    function sessionSignedOut() {
+      let anon = false;
+      try { anon = _serverAuthState === 'anon'; } catch { anon = false; }
+      return anon || !String((typeof state !== 'undefined' && state && state.currentUserId) || '').trim();
+    }
+
+    // Empty every authenticated section. Queried live rather than from a fixed
+    // id list, so a section added later cannot silently keep painting the last
+    // account's data after sign-out.
+    function clearAuthenticatedSections() {
+      document.querySelectorAll('.section').forEach(el => { el.innerHTML = ''; });
+      try { _chatShellRendered = null; } catch {}
+    }
     // Identity & Permissions: computed server-side (single source of truth in
     // api/_permissions.js) and delivered on every session/login response.
     let _myPermissions = null;   // array of permission ids, or null = not loaded
@@ -42568,6 +42628,11 @@
     // The one question every client surface asks. Offline / pre-load falls
     // back to the legacy role check so nothing breaks without a server.
     function canI(perm) {
+      // Sign-out sets _myPermissions to null, which sent every check down the
+      // legacy isCoach() path — the one answer that must not survive the
+      // session. Offline ('unknown') still falls back, so nothing breaks
+      // without a server.
+      if (sessionSignedOut()) return false;
       if (state.features?.permissionsV2 === false || _myPermissions === null) return isCoach();
       return _myPermissions.includes(perm);
     }
@@ -42640,8 +42705,18 @@
     }
 
     async function checkServerSession() {
+      // The shell is chosen synchronously at boot from the persisted marker, so
+      // a device that turns out to BE signed in (a cookie with empty local
+      // state) — or one whose cookie has just expired — must repaint when the
+      // answer lands. renderAuthBanner/renderNav below are not enough: they do
+      // not paint the sections.
+      const wasSignedOut = sessionSignedOut();
       try {
-        const res = await fetch('/api/identity?action=session');
+        // no-store is load-bearing, not hygiene: the session answer carries no
+        // cache directive, so a Back/Forward navigation replayed a CACHED 200
+        // and the device re-authenticated itself from the browser cache after
+        // the real session had already ended. Always ask the server.
+        const res = await fetch('/api/identity?action=session', { cache: 'no-store' });
         if (res.ok) {
           const d = await res.json();
           _serverAuthState = 'authed';
@@ -42695,6 +42770,7 @@
           _serverAuthState = 'anon';
         }
       } catch { _serverAuthState = 'unknown'; } // offline — stay quiet
+      if (wasSignedOut !== sessionSignedOut()) { render(); }
       renderAuthBanner();
       renderNav();
       // The operational context may have just arrived (adoptIdentityPayload
@@ -43167,6 +43243,16 @@
     }
     window.doFullReset = doFullReset;
 
+    // Back/Forward can restore a whole page from the bfcache WITHOUT re-running
+    // any of the boot code, which would hand back the authenticated shell exactly
+    // as it looked before sign-out. Re-evaluate the boundary on restore, and
+    // re-ask the server, since the cookie may have died while the page was frozen.
+    window.addEventListener('pageshow', event => {
+      if (!event.persisted) return;
+      try { render(); } catch {}
+      try { checkServerSession(); } catch {}
+    });
+
     window.addEventListener("storage", event => {
       if (event.key !== STORAGE_KEY || !event.newValue) return;
       const incoming = safeParseState(event.newValue, "storage event");
@@ -43176,6 +43262,14 @@
       if (incomingRev <= currentRev) return;
       // Critical multi-tab guard: newer revision in another tab refreshes this tab's state
       state = normalizeState(incoming);
+      // Another tab signed out. Its blanked currentUserId arrives here, but this
+      // tab's own _serverAuthState is still 'authed' and would keep polling a
+      // dead cookie, so mark it refused too before the render below.
+      if (!String(state.currentUserId || '').trim()) {
+        _serverAuthState = 'anon';
+        _welcomeDismissed = false;
+        if (typeof chatStopPolling === 'function') { try { chatStopPolling(); } catch {} }
+      }
       const el = document.getElementById("saveStatus");
       if (el) el.textContent = `Synced newer browser tab · rev ${incomingRev}`;
       render();
