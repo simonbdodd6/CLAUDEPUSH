@@ -3,11 +3,17 @@
 import { setCors, vapidKeyStatus } from './_http.js';
 import { kvConfigured, kvHealthCheck, kvLrange, kvLpush, kvLtrim } from './_kv.js';
 import { key, legacyKey } from './_keys.js';
-import { requireTenantPermission, PERM } from './_tenant.js';
+import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
+import { DEFAULT_TEAM } from './_identityStore.js';
 import { enforceRateLimit, requestIp } from './_security.js';
 import { normalizeErrorReport, MAX_ENTRIES } from './_errorLog.js';
 
 const ERROR_LOG_KEY = () => key('error_log');
+// Every message_log writer trims the list to 500, so reading that whole window
+// is bounded. The tenant filter runs across it BEFORE the caller's limit is
+// applied — otherwise a busy neighbour's entries would fill the first `limit`
+// rows and a club would see an empty log while its own entries sat just below.
+const LOG_SCAN_LIMIT = 500;
 const deploymentVersion = () => (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || 'local';
 
 function sendAuthError(res, error) {
@@ -67,16 +73,34 @@ export default async function handler(req, res) {
   // Activity log sub-route — requires coach auth.
   if (req.query?.log === '1') {
     if (!kvConfigured()) return res.status(503).json({ error: 'Message storage not configured yet', log: [] });
+    let sessionContext;
     try {
-      await requireTenantPermission(req, PERM.REPORTS);
+      sessionContext = await requireTenantPermission(req, PERM.REPORTS);
     } catch (error) {
       return sendAuthError(res, error);
     }
     const requested = Number.parseInt(req.query?.limit || '10', 10);
     const limit = Number.isFinite(requested) ? Math.max(1, Math.min(requested, 100)) : 10;
-    let log = await kvLrange(key('message_log'), 0, limit - 1);
-    if (!log.length) log = await kvLrange(legacyKey('message_log'), 0, limit - 1);
-    return res.status(200).json({ log });
+
+    // ── Tenant isolation ──
+    // The activity log is ONE global list, but a club may read only its own
+    // entries: they carry push titles and the first 200 characters of message
+    // bodies. The club is taken from the caller's SESSION — never from a query
+    // parameter — so naming another club cannot widen the read.
+    //
+    // A record with no teamId predates club tagging and belongs to the DEFAULT
+    // team, the documented owner of all pre-namespace data; this is the same
+    // rule schedules.js already applies to the other shared global list. Real
+    // clubs therefore never match those legacy rows, which is the intended
+    // fail-closed outcome — an unstamped entry is not evidence of ownership.
+    const callerTeamId = String(tenantTeamId(sessionContext));
+    const ownsEntry = entry => String(entry?.teamId || DEFAULT_TEAM.id) === callerTeamId;
+
+    let log = (await kvLrange(key('message_log'), 0, LOG_SCAN_LIMIT - 1)).filter(ownsEntry);
+    if (!log.length) {
+      log = (await kvLrange(legacyKey('message_log'), 0, LOG_SCAN_LIMIT - 1)).filter(ownsEntry);
+    }
+    return res.status(200).json({ log: log.slice(0, limit) });
   }
 
   const vapidPublicKey = (process.env.VAPID_PUBLIC_KEY || '').trim();
