@@ -189,6 +189,12 @@ test('10: the server’s operational answer repaints ONLY when the group changed
     function resolveOperationalGroup() { calls.resolves++; state.operationalGroupId = cfg.resolvesTo; }
     function render() { calls.renders++; }
     function renderVerifyEmailBanner() {}
+    // CLUB-STATE-ISOLATION-1: adoption settles the club first; no club named here.
+    let _clubContextId = '', _rosterSyncDeferred = false, _rosterLastSyncedFp = null;
+    function saveState() {} function rosterFingerprint() { return '[]'; } function queueRosterSync() {}
+    function resetClubScopedState() {} function hydrateClubFromServer() { return Promise.resolve(); }
+    ${fn('clubStateOwned')}
+    ${fn('adoptClubContext')}
     ${fn('adoptIdentityPayload')}
     adoptIdentityPayload({ operational: { staff: {}, player: {} } });
     return calls;

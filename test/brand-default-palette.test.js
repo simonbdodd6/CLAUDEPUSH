@@ -132,7 +132,10 @@ test('switching clubs cannot leak colours between tenants', () => {
   assert.match(apply, /\['--brand', '--brand-2'[\s\S]*?\]\.forEach/, 'all brand vars are reapplied together');
   // Club switching resets team-scoped state before re-applying branding.
   const sw = src.slice(src.indexOf('async function switchTeamTo'), src.indexOf('async function switchTeamTo') + 1800);
-  assert.match(sw, /resetTeamScopedState\(\)/, 'team-scoped state is cleared on switch');
+  assert.match(sw, /resetClubScopedState\(\)/, 'team-scoped state is cleared on switch (via the shared club transition)');
+  const shared = src.slice(src.indexOf('function resetClubScopedState()'), src.indexOf('async function hydrateClubFromServer'));
+  assert.match(shared, /resetTeamScopedState\(\)/, 'the shared transition clears team-scoped state');
+  assert.match(shared, /_appearanceAdjustments = null/, 'and drops the per-club appearance adjustments');
 });
 
 test('a club\'s stored colours are never overwritten by the defaults', () => {

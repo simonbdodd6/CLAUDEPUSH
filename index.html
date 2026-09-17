@@ -6882,6 +6882,14 @@
       // states saved before the group partition — trainingStateOwner() decides
       // what an absent stamp means, and it never guesses a group.
       trainingStateGroupId: null,
+      // WHICH CLUB this device's club-scoped state belongs to (the server's
+      // teamId as adopted by adoptClubContext). null = never proven (a state
+      // saved before the marker existed, or one just wiped by a club change).
+      // Compared against every authenticated identity answer: a different club
+      // runs the club transition BEFORE any of the old state can be shown as,
+      // or written into, the new club. Nothing else reads this field —
+      // state.teamId (Performance's teamRef) is deliberately NOT reused.
+      stateTeamId: null,
       trainingAttendance: {},
       sessionNotes: {},
       activeTrainingTab: 'planner',
@@ -6990,6 +6998,10 @@
 
     // ─── STATE ────────────────────────────────────────────────────────────────
     let state = loadState();
+    // The club the SERVER has named in THIS page lifetime ('' until an
+    // authenticated identity answer lands). Declared beside `state` so no
+    // hoisted caller can hit its temporal dead zone. See clubStateOwned().
+    let _clubContextId = '';
 
     // ─── TOAST ────────────────────────────────────────────────────────────────
     let toastTimer = null;
@@ -7646,6 +7658,11 @@
       // fails closed on unknown — it must never be tricked into a real group.
       next.trainingStateGroupId = (typeof input.trainingStateGroupId === 'string' && input.trainingStateGroupId)
         ? input.trainingStateGroupId : null;
+      // The club-ownership marker follows the same rule: junk becomes null
+      // (unproven), and unproven state is never treated as the current club's
+      // for seeding — see clubStateOwned().
+      next.stateTeamId = (typeof input.stateTeamId === 'string' && input.stateTeamId.trim())
+        ? input.stateTeamId.trim() : null;
 
       // Ensure trainingBlocks has an entry for every schedule session
       next.schedule.forEach(s => {
@@ -13745,6 +13762,10 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.ok === false) { const err = new Error(data.error || 'login failed'); err.status = res.status; throw err; }
+        // The server has named the club this session belongs to. If this
+        // device's club state is another club's, it is wiped HERE — before a
+        // single field of it can be shown as, or synced into, this club.
+        adoptClubContext(data.teamMember?.teamId);
         const isStaffLogin = isStaffRole(data.user.role);
         // Capacity, not role name: someone who PLAYS gets their own roster
         // record even when they also hold a staff role. Without this a club
@@ -14226,6 +14247,7 @@
         });
         const data = await res.json();
         if (!data.ok) return showToast('Dev login failed: ' + (data.error || 'unknown'));
+        adoptClubContext(data.teamMember?.teamId);   // club transition first — see loginIdentityAccount
         const isStaff = isStaffRole(data.user?.role || data.teamMember?.role);
         // See loginIdentityAccount: PLAYING is a capacity of its own, so a
         // member who plays keeps their own roster record whatever staff role
@@ -20940,6 +20962,11 @@
         if (!res.ok || data.ok === false) {
           throw new Error(clubWizErrorMessage(res.status, data.error, data.code));
         }
+        // The NEW club is now the session's club. A device that held another
+        // club's state (a coach founding a second club on the same browser)
+        // is wiped before the new club's name, roster sync or session sync
+        // can pick any of it up.
+        adoptClubContext(data.team?.id || data.teamMember?.teamId);
 
         // Local identity: the new coach IS this device's user now.
         state.users = (state.users || []).filter(u => u.id !== data.user.id);
@@ -41316,6 +41343,11 @@
     // debounced push to the server. Guards loadRosterFromServer from adopting a
     // stale server copy mid-edit and making the new player vanish ~1s later.
     let _rosterSyncPending = false;
+    // True when a push was requested while the local roster was NOT yet proven
+    // to belong to the club the session names (boot before the session answer,
+    // or the window inside a club transition). The push is deferred, never
+    // dropped: adoptClubContext re-queues it once ownership is established.
+    let _rosterSyncDeferred = false;
 
     function rosterFingerprint() {
       return JSON.stringify((state.players || []).map(({ photo, ...p }) => p));
@@ -41326,10 +41358,18 @@
       if (!isCoach()) return;
       const fp = rosterFingerprint();
       if (fp === _rosterLastSyncedFp) return;
+      // The roster is only ever pushed to the club it is PROVEN to belong to.
+      // Unproven (boot before the session answer, or mid club-transition) it
+      // is held: the session cookie may already name a different club, and a
+      // push now would seed that club with this one's players.
+      if (!clubStateOwned()) { _rosterSyncDeferred = true; return; }
       _rosterSyncPending = true;
       clearTimeout(_rosterSyncTimer);
       _rosterSyncTimer = setTimeout(async () => {
         _rosterSyncPending = false;   // the push is now in progress
+        // Re-checked at send time: a club transition between queue and fire
+        // clears the timer, but the request itself must never leave unproven.
+        if (!clubStateOwned()) { _rosterSyncDeferred = true; return; }
         const sending = rosterFingerprint();
         try {
           const res = await fetch('/api/roster', {
@@ -41351,6 +41391,8 @@
       _rosterSyncPending = false;
       const sending = rosterFingerprint();
       if (sending === _rosterLastSyncedFp) return;
+      // Same ownership gate as the debounced push (see queueRosterSync).
+      if (!clubStateOwned()) { _rosterSyncDeferred = true; return; }
       try {
         const res = await fetch('/api/roster', {
           method: 'POST',
@@ -41377,8 +41419,14 @@
         if (_rosterSyncPending) { queueRosterSync(); return; }
         const serverPlayers = Array.isArray(data.players) ? data.players : [];
         if (!serverPlayers.length) {
-          // Server roster empty — seed it from this device if we have players.
-          if ((state.players || []).length) queueRosterSync();
+          // Server roster empty. An empty answer is a valid EMPTY roster for
+          // the club the cookie names — never permission to copy this device's
+          // players into it. Seeding from local state (the legacy beta path)
+          // runs ONLY when the local state is proven to be THIS club's; an
+          // unproven device (boot before the session answer, or a club the
+          // marker has not confirmed) seeds nothing and keeps waiting for the
+          // transition that adoptClubContext will run.
+          if (clubStateOwned() && (state.players || []).length) queueRosterSync();
           return;
         }
         // Adopt the server roster; photos are device-local, so carry over any
@@ -42135,6 +42183,14 @@
     let _myPlatformRole = '';
 
     function adoptIdentityPayload(d) {
+      // FIRST: the club. Every field below is adopted INTO club-scoped state
+      // (operational group, membership, own player record), so a club change
+      // must be settled before any of them lands. This is the chokepoint for
+      // the session-restore path (checkServerSession): a cookie that now names
+      // a different club — claimed or switched in another tab, or a device
+      // whose last save was under the previous club — wipes the old club's
+      // state and re-hydrates from the server. Same club: a no-op.
+      if (adoptClubContext(d?.teamMember?.teamId)) hydrateClubFromServer().catch(() => {});
       if (Array.isArray(d?.permissions)) _myPermissions = d.permissions;
       if (d?.user?.platformRole !== undefined) _myPlatformRole = String(d.user.platformRole || '');
       // D1b — the SERVER decides which groups this identity may operate in, in
@@ -42727,34 +42783,135 @@
           body: JSON.stringify({ action: 'switch_team', teamId }) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Could not switch team');
-        // Team-scoped local state must not bleed between clubs.
-        resetTeamScopedState();
-        _appearanceAdjustments = null; // adjustments are per-club — refetch after switch
-        // Season sheets are per GROUP: a Seniors season must never be shown
-        // under U18. Dropped on any switch and re-read for the new group.
-        _seasonSheets = null; _seasonSheetsGroup = null;
-        _trainingPubState = {}; _trainingPubLoadedAt = 0; // training publication is per-club too
-        _trainingSchedule = null;      // the training schedule is per-club too
-        _trainingScheduleAttempted = false;
-        _groupRecipients = {};         // group ids are per-club (grp_initial collides across clubs)
-        _clubConfigChecked = false; _publishedStateLoadedAt = 0;
-        if (typeof _adminData === 'object') _adminData.loaded = false;
-        _autopilotEnsured = false; _autopilotLogAt = 0; _autopilotLog = [];
+        // Team-scoped local state must not bleed between clubs. The session
+        // answer then stamps the new club (adoptClubContext, via
+        // adoptIdentityPayload) and the loaders re-hydrate from the server.
+        resetClubScopedState();
         await checkServerSession();
-        await Promise.all([
-          loadClubConfigFromServer().catch(() => {}),
-          loadRosterFromServer().catch(() => {}),
-          loadPublishedStateForPlayer().catch(() => {}),
-          loadCoachDraft().catch(() => {}),
-          loadMedicalFromServer().catch(() => {}),
-        ]);
-        markSynced();
-        render();
+        await hydrateClubFromServer();
         showToast(`Switched to ${_myMemberships.find(m => m.teamId === teamId)?.teamName || 'team'} ✓`);
       } catch(e) { showToast(e.message || 'Could not switch team'); }
     }
 
+    // ─── CLUB TRANSITION BOUNDARY ────────────────────────────────────────────
+    // ONE reset, ONE detection, ONE ownership question. Every path that moves a
+    // device into a club runs through adoptClubContext: login, dev login,
+    // invite claim, club creation, session restore (adoptIdentityPayload) and
+    // the explicit team switch (which resets unconditionally, then lets the
+    // session answer stamp the new club).
+
+    /**
+     * The persisted state is PROVEN to be the current club's: the server has
+     * named a club in this page lifetime AND the state's marker is that club.
+     * The marker is only ever written by adoptClubContext, which refuses to
+     * stamp populated state it cannot vouch for — so a match here means the
+     * state was either built under this club or wiped clean for it.
+     * '' / null on either side fails closed — an unproven device seeds nothing
+     * and pushes no roster (see loadRosterFromServer, loadClubConfigFromServer,
+     * queueRosterSync). Wrapped like sessionSignedOut(): hoisted callers may
+     * run before `state` exists.
+     */
+    function clubStateOwned() {
+      try {
+        return !!_clubContextId && String(state?.stateTeamId || '').trim() === _clubContextId;
+      } catch { return false; }
+    }
+
+    /**
+     * Adopt the club a trusted server answer names. Returns true when a club
+     * TRANSITION was run (the device held another club's state, now wiped).
+     *
+     *   no club named            → no-op: offline, signed-out and membership-
+     *                              less answers are never a club change.
+     *   marker === club          → stamp/no-op (reload, session poll, login).
+     *   marker !== club          → resetClubScopedState() FIRST, stamp AFTER:
+     *                              the wiped state is what becomes this club's.
+     *   marker null + EMPTY      → stamp only. Nothing to leak, and this is how
+     *                              a fresh device adopts its first club.
+     *   marker null + POPULATED  → TREATED AS A CHANGE. A state saved before the
+     *                              marker existed cannot prove which club it
+     *                              belongs to, and every device in the field is
+     *                              in exactly that position on the first load
+     *                              after this ships. Stamping it would declare
+     *                              another club's roster to BE this club's and
+     *                              make it seedable on the next load, which is
+     *                              the contamination this whole boundary exists
+     *                              to stop. Unprovable club data is therefore
+     *                              treated as foreign and dropped; everything
+     *                              server-backed re-hydrates immediately from
+     *                              the club the session actually names.
+     */
+    function adoptClubContext(teamId) {
+      const id = String(teamId || '').trim();
+      if (!id) return false;
+      const prev = String(state.stateTeamId || '').trim();
+      // Inlined deliberately: a named helper would be another global that every
+      // sandbox splicing adoptClubContext has to declare, and this is the only
+      // caller. Club data = anything that identifies a club's squad or setup.
+      const hasClubData = !!((state.players || []).length
+        || String(state.clubName || '').trim()
+        || (state.fixtures || []).length
+        || Object.keys(state.trainingByGroup || {}).length);
+      const unprovable = !prev && hasClubData;
+      const changed = (!!prev && prev !== id) || unprovable;
+      if (changed) resetClubScopedState();
+      state.stateTeamId = id;
+      _clubContextId = id;
+      // A device that has never synced anything and holds no players has
+      // nothing the server could need: the empty roster is its synced
+      // baseline, so the first save never POSTs `[]` at a fresh club.
+      if (_rosterLastSyncedFp === null && !(state.players || []).length) _rosterLastSyncedFp = rosterFingerprint();
+      if (prev !== id) saveState(changed ? 'Club changed' : 'Club adopted');
+      // A push held while ownership was unproven can now go — to THIS club.
+      if (_rosterSyncDeferred) { _rosterSyncDeferred = false; queueRosterSync(); }
+      return changed;
+    }
+
+    /**
+     * The whole club transition: persisted club state AND every in-memory
+     * per-club cache. Shared by the explicit team switch and by
+     * adoptClubContext, so there is exactly one list to keep complete.
+     */
+    function resetClubScopedState() {
+      // A roster push queued under the previous club must never fire — the
+      // session cookie may already name the next one.
+      clearTimeout(_rosterSyncTimer);
+      _rosterSyncPending = false; _rosterSyncDeferred = false;
+      resetTeamScopedState();
+      // The wiped (empty) roster is the synced baseline of the new club, so
+      // the stamp's save cannot POST `[]` over the new club's real roster
+      // before loadRosterFromServer has read it.
+      _rosterLastSyncedFp = rosterFingerprint();
+      _appearanceAdjustments = null; // adjustments are per-club — refetch after switch
+      // Season sheets are per GROUP: a Seniors season must never be shown
+      // under U18. Dropped on any switch and re-read for the new group.
+      _seasonSheets = null; _seasonSheetsGroup = null;
+      _trainingPubState = {}; _trainingPubLoadedAt = 0; // training publication is per-club too
+      _trainingSchedule = null;      // the training schedule is per-club too
+      _trainingScheduleAttempted = false;
+      _groupRecipients = {};         // group ids are per-club (grp_initial collides across clubs)
+      _clubConfigChecked = false; _publishedStateLoadedAt = 0;
+      if (typeof _adminData === 'object') _adminData.loaded = false;
+      _autopilotEnsured = false; _autopilotLogAt = 0; _autopilotLog = [];
+    }
+
+    /** Re-read everything club-scoped from the server after a transition. */
+    async function hydrateClubFromServer() {
+      await Promise.all([
+        loadClubConfigFromServer().catch(() => {}),
+        loadRosterFromServer().catch(() => {}),
+        loadPublishedStateForPlayer().catch(() => {}),
+        loadCoachDraft().catch(() => {}),
+        loadMedicalFromServer().catch(() => {}),
+      ]);
+      markSynced();
+      render();
+    }
+
     function resetTeamScopedState() {
+      // Wiped state is NOBODY's until adoptClubContext stamps the club it is
+      // being prepared for — so a save in between can never seed or push.
+      state.stateTeamId = null;
       state.players = [];
       state.fixtures = [];
       state.clubName = ''; state.teamName = ''; state.seasonName = '';
@@ -42928,7 +43085,13 @@
         }
         if (!isCoach()) return;
         if ((state.clubName || '').trim()) {
-          // Existing beta coach: seed the server record from local state once.
+          // Existing beta coach: seed the server record from local state once
+          // — ONLY when that local state is proven to be THIS club's. An
+          // unproven device (boot before the session answer, or a club the
+          // marker has not confirmed) must not write its name, colours or
+          // season into whatever club the cookie names; a no-club answer is a
+          // valid empty club, never a request to be seeded from a previous one.
+          if (!clubStateOwned()) return;
           await saveClubConfigToServer();
           return;
         }
@@ -43805,6 +43968,12 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.ok === false) { const err = new Error(data.error || 'claim failed'); err.status = res.status; throw err; }
+        // The claim moved this session into the invite's club. A device that
+        // held ANOTHER club's state (the production case: an existing user
+        // joining a second club in the same browser) is wiped here — before
+        // the save below could push the old roster into the new club, and
+        // before the loaders could read an empty new club as "seed me".
+        adoptClubContext(data.teamMember?.teamId);
 
         // Apply the SERVER identity. Staff go into state.users with their role and are
         // NEVER injected into state.players; players use applyApprovedIdentityLocally
