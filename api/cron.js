@@ -323,6 +323,11 @@ export default async function handler(req, res) {
       }
     });
     if (expired.size) await save(subscribers.filter(item => !expired.has(item.subscription.endpoint)));
+    // Deliberately NO teamId: this weekly reminder unions the active members of
+    // EVERY club into one send, so its counts belong to no single tenant and
+    // attributing them to one would misreport the others. The reader treats an
+    // unstamped entry as DEFAULT_TEAM's, so it stays out of every real club's
+    // log — correct here, since the content is generic and the totals global.
     await kvLpush(key('message_log'), {
       type: 'reminder', title, body: body.slice(0, 200), sentAt: new Date().toISOString(),
       audience: 'no-reply', sent, failed, total: targets.length, skipped: responded.size,
@@ -399,6 +404,9 @@ export default async function handler(req, res) {
     });
     schedule.lastSentAt = now.toISOString();
     await kvLpush(key('message_log'), {
+      // schedule.teamId is guaranteed non-empty: an untagged schedule is
+      // skipped fail-closed above, so this entry always names its club.
+      teamId: schedule.teamId,
       type: 'scheduled', scheduleId: schedule.id, scheduleName: schedule.name,
       templateId: template.id, templateName: template.name,
       title: resolveVariables(template.title, { coachName: schedule.coachName || 'Coach' }),

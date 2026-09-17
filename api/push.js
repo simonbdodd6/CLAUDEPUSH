@@ -207,6 +207,10 @@ export default async function handler(req, res) {
   }
 
   await kvLpush(key('message_log'), {
+    // The sender's club, resolved from their session above — never from the
+    // request body. Without it this entry is unreadable by any real club and
+    // (before the reader was scoped) was readable by all of them.
+    teamId,
     type: 'adhoc',
     title: String(title || "CoachEasier").slice(0, 120),
     body: String(body).slice(0, 200),
