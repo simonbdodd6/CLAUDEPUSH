@@ -387,6 +387,12 @@ test('13b: the adopted membership keeps the field the capacity is read from', ()
     // own player record; that path is pinned in its own suite, inert here.
     function ensureOwnPlayerRecord() { return false; }
     function saveState() {}
+    // CLUB-STATE-ISOLATION-1: adoption settles the club first (no teamId here → no-op).
+    let _clubContextId = '', _rosterSyncDeferred = false, _rosterLastSyncedFp = null;
+    function rosterFingerprint() { return '[]'; } function queueRosterSync() {}
+    function resetClubScopedState() {} function hydrateClubFromServer() { return Promise.resolve(); }
+    ${fn('clubStateOwned')}
+    ${fn('adoptClubContext')}
     ${fn('adoptIdentityPayload')}
     return d => { adoptIdentityPayload(d); return _myMembership; };
   `);

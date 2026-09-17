@@ -63,11 +63,14 @@ function client({ user, member, operational = OPERATIONAL, players = [], adminMe
     'function canonicalIdentityNameKey(v){ return String(v||"").toLowerCase().replace(/[^a-z]/g,""); }\n' +
     'function ensurePlayerUsersForRoster(players, users){ return users; }\n' +
     'let _rosterSyncPending = false, _rosterLastSyncedFp = ""; function queueRosterSync(){ rosterPosts.push(rosterFingerprint()); }\n' +
+    // CLUB-STATE-ISOLATION-1: adoption settles the club first. The sandbox has
+    // no prior marker, so adoptClubContext stamps without a transition.
+    'let _clubContextId = "", _rosterSyncDeferred = false; function resetClubScopedState(){} function hydrateClubFromServer(){ return Promise.resolve(); }\n' +
     'const window = {}; const document = { getElementById: () => null, querySelector: () => null };\n' +
     'function fetch(){ return Promise.resolve({ ok: true, json: async () => ({ players: CFG.serverRoster || [] }) }); }\n' +
     ['sessionSignedOut','membershipPlays','landingViewFor','isCoach','currentUser','isPermanentPlayerUserId','canonicalPlayerIdForUser','ensureCanonicalPlayerRecord','hydrateSessionPlayerRecord','ensureOwnPlayerRecord',
      'ownPlayerRecordForUser','staffPreviewPlayerId','getPlayer','operationalCapacity','operationalGroups','resolveOperationalGroup','captureTrainingState','trainingStateOwner','stashTrainingState','adoptTrainingState','syncTrainingStateToGroup',
-     'setView','adoptIdentityPayload','rosterFingerprint','loadRosterFromServer'].map(fn).join('\n') + '\n' +
+     'setView','clubStateOwned','adoptClubContext','adoptIdentityPayload','rosterFingerprint','loadRosterFromServer'].map(fn).join('\n') + '\n' +
     'const EMPTY_PLAYER = { id: "", name: "\\u2014" };\n' +
     'function apply(){ _myMembership = CFG.member || null; }\n' +
     'return { get state(){ return state; }, adopt: d => adoptIdentityPayload(d), setView, getPlayer, own: () => ownPlayerRecordForUser(currentUser()), isCoach, landing: landingViewFor, plays: () => membershipPlays(_myMembership, currentUser()?.role), groups: operationalGroups, capacity: operationalCapacity, loadRoster: loadRosterFromServer, ensureOwn: ensureOwnPlayerRecord, counts: () => ({ saves, renders, rosterPosts: rosterPosts.length }), toasts: () => toasts, membership: () => _myMembership, syncedFp: () => _rosterLastSyncedFp, fp: rosterFingerprint };';

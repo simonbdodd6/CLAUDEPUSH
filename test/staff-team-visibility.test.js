@@ -161,6 +161,11 @@ function adoptOnClient(payload, { activeView = 'coach', priorGroupId = null } = 
     function renderVerifyEmailBanner() {}
     function syncTrainingStateToGroup() {}
     function operationalCapacity() { return state.activeView === 'player' ? 'player' : 'staff'; }
+    // CLUB-STATE-ISOLATION-1: adoptIdentityPayload now settles the CLUB before
+    // adopting anything club-scoped. These cases are about GROUP adoption
+    // within one club, so the transition is a no-op here.
+    function adoptClubContext() { return false; }
+    function hydrateClubFromServer() { return Promise.resolve(); }
     ${extractFn(html, 'resolveOperationalGroup')}
     ${extractFn(html, 'operationalGroups')}
     ${extractFn(html, 'adoptIdentityPayload')}
