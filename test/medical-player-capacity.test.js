@@ -153,6 +153,7 @@ function shell({ role, permissions = [], membership = null, players = [], users 
     ${fn('ensureCanonicalPlayerRecord')}
     ${fn('membershipPlays')}
     ${fn('landingViewFor')}
+    ${fn('sessionSignedOut')}   // shared session gate: currentUser/canI call it
     ${fn('canI')}
     ${fn('isCoach')}
     ${fn('playerSectionsFor')}

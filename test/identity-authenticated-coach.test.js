@@ -38,6 +38,7 @@ function clientScope({ users = [], currentUserId = '', sessionPayload = null } =
     const canonicalIdentityNameKey = v => { const c = identityCompactKey(v); return ({simontestplayer:'simontestplayer'})[c] || c; };
     const isPermanentPlayerUserId = v => Boolean(v) && String(v).startsWith('user_');
     globalThis.fetch = async () => ({ ok: ${sessionPayload ? 'true' : 'false'}, json: async () => (${JSON.stringify(sessionPayload || {})}) });
+    ${extractFn('sessionSignedOut')}   // shared session gate: checkServerSession/currentUser call it
     ${'async ' + extractFn('checkServerSession')}
     ${extractFn('canonicalAccountForUserId')}
     ${extractFn('currentUser')}
