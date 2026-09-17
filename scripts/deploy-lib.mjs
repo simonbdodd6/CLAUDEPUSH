@@ -230,10 +230,70 @@ export function parseTestCounts(output) {
   return { total: grab(/ℹ tests (\d+)/), passed: grab(/ℹ pass (\d+)/), failed: grab(/ℹ fail (\d+)/) };
 }
 
+// ── test-environment validity ────────────────────────────────────────────
+//
+// A baseline measured in a broken environment is worse than no baseline: it
+// invents failures, reports them as "fixed", and can HIDE a real regression
+// by making it look pre-existing. That happened — a git worktree checks out
+// tracked files only, and because node_modules is gitignored but partially
+// tracked, the baseline ran without `stripe` and produced 45 phantom
+// failures. So the environments are now proven equivalent BEFORE any
+// comparison, and the comparison refuses to run otherwise.
+
+/** Runtime dependencies a test environment must be able to resolve. */
+export function requiredRuntimeDependencies(pkg) {
+  return Object.keys(pkg?.dependencies || {}).sort();
+}
+
+/** IO: which of `packages` resolve from `dir`. */
+export function probeDependencyResolution(dir, packages) {
+  const resolved = [];
+  const missing = [];
+  for (const name of packages) {
+    try {
+      execFileSync(process.execPath, ['--input-type=module', '-e', `import.meta.resolve(${JSON.stringify(name)})`],
+        { cwd: dir, stdio: 'ignore', timeout: 60_000 });
+      resolved.push(name);
+    } catch { missing.push(name); }
+  }
+  return { dir, resolved, missing };
+}
+
+/**
+ * PURE. Are the two test environments valid and equivalent?
+ * Returns { ok, reason }. Anything other than ok:true must abort the gate.
+ */
+export function assessTestEnvironments({ baseline, candidate }) {
+  if (!baseline || !candidate) return { ok: false, reason: 'a test environment was not probed at all' };
+  if (baseline.missing.length) {
+    return { ok: false, reason: `baseline environment cannot resolve: ${baseline.missing.join(', ')} — a baseline measured here would invent failures and could hide a real regression` };
+  }
+  if (candidate.missing.length) {
+    return { ok: false, reason: `candidate environment cannot resolve: ${candidate.missing.join(', ')}` };
+  }
+  const a = [...baseline.resolved].sort().join(',');
+  const b = [...candidate.resolved].sort().join(',');
+  if (a !== b) {
+    return { ok: false, reason: `baseline and candidate resolve different dependency sets — the comparison would not be like-for-like (baseline: ${a || 'none'}; candidate: ${b || 'none'})` };
+  }
+  return { ok: true, reason: `both environments resolve ${baseline.resolved.length} required dependency/dependencies` };
+}
+
 /**
  * The gate: only failures the candidate INTRODUCES block a release.
  * Pre-existing failures are reported, never hidden, never used as an excuse.
+ *
+ * `environment` is REQUIRED and must be ok. Making it an argument rather than
+ * a convention means an invalid baseline cannot produce a "known" or "fixed"
+ * classification even if a future caller forgets to check first.
  */
+export function compareFailuresChecked({ baseline, candidate, environment }) {
+  if (!environment || environment.ok !== true) {
+    throw new Error(`refusing to compare test results: ${environment?.reason || 'test environment validity was never established'}`);
+  }
+  return compareFailures({ baseline, candidate });
+}
+
 export function compareFailures({ baseline, candidate }) {
   const b = new Set(baseline);
   const c = new Set(candidate);

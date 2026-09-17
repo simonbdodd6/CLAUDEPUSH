@@ -18,7 +18,8 @@ import { execFileSync } from 'node:child_process';
 import {
   REPO_ROOT, loadConfig, git, patchIdOf, subjectOf, commitExists,
   verifyExclusionIntegrity, evaluateProtections, isBlocking,
-  parseTestFailures, parseTestCounts, compareFailures,
+  parseTestFailures, parseTestCounts, compareFailuresChecked,
+  requiredRuntimeDependencies, probeDependencyResolution, assessTestEnvironments,
   h1, ok, bad, info, die,
 } from './deploy-lib.mjs';
 
@@ -152,6 +153,7 @@ violations.forEach(x => (x.severity === 'block' ? bad : info)(`[${x.severity}] $
 
 // ── baseline-relative tests ──────────────────────────────────────────────
 let testVerdict = null;
+let environment = null;
 if (skipTests) {
   info('tests SKIPPED (--skip-tests): structural checks only, NOT sufficient for a release');
 } else {
@@ -170,6 +172,24 @@ if (skipTests) {
   let baseResult;
   try {
     git(['worktree', 'add', '--detach', wt, baseline]);
+
+    // A worktree checks out TRACKED files only. node_modules is gitignored but
+    // partially tracked, so the worktree gets an incomplete copy — without
+    // `stripe`, 45 test files fail to load and the baseline becomes fiction.
+    // Point the worktree at the same installed dependencies the candidate uses.
+    fs.rmSync(path.join(wt, 'node_modules'), { recursive: true, force: true });
+    fs.symlinkSync(path.join(REPO_ROOT, 'node_modules'), path.join(wt, 'node_modules'), 'dir');
+
+    const required = requiredRuntimeDependencies(JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')));
+    const baseEnv = probeDependencyResolution(wt, required);
+    const candEnv = probeDependencyResolution(REPO_ROOT, required);
+    environment = assessTestEnvironments({ baseline: baseEnv, candidate: candEnv });
+    if (!environment.ok) {
+      bad(environment.reason);
+      die('the baseline and candidate test environments are not provably valid and equivalent — no comparison was made, and nothing was classified as known or fixed');
+    }
+    ok(environment.reason);
+
     baseResult = runSuite(wt, baseline);
   } finally {
     git(['worktree', 'remove', '--force', wt], { allowFail: true });
@@ -177,7 +197,8 @@ if (skipTests) {
   }
   const candResult = runSuite(REPO_ROOT, `${candidate} (current checkout)`);
 
-  testVerdict = compareFailures({ baseline: baseResult.failures, candidate: candResult.failures });
+  // Throws unless the environment was proven valid above.
+  testVerdict = compareFailuresChecked({ baseline: baseResult.failures, candidate: candResult.failures, environment });
   info(`baseline  ${baseline}: ${baseResult.counts.passed}/${baseResult.counts.total} passed, ${baseResult.counts.failed} failing`);
   info(`candidate ${candidate}: ${candResult.counts.passed}/${candResult.counts.total} passed, ${candResult.counts.failed} failing`);
   testVerdict.knownFailures.forEach(f => info(`known pre-existing failure (not caused by this release): ${f}`));
