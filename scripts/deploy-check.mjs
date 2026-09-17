@@ -133,6 +133,7 @@ const facts = {
   clubExportFileCount: (git(['ls-tree', '-r', '--name-only', candidate], { allowFail: true }) || '')
     .split('\n').filter(f => /^api\/_clubExport/.test(f)).length,
   availabilityHasClubExport: show(candidate, 'api/availability.js').includes('club-export'),
+  candidateBranch: candidate,
   performanceChangedFiles: changedFiles(baseline, candidate, 'performance/').length,
   apiChangedFiles: changedFiles(baseline, candidate, 'api/').length,
   apiFunctionCount: (git(['ls-tree', '-r', '--name-only', candidate], { allowFail: true }) || '')
