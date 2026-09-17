@@ -88,6 +88,55 @@ Also: `catalogue`, `teamCategory` (the operational group's structured
 `developmentCategory`), `athleteName`, `athleteUserId`, `author`, `clubId`,
 `weeks`, `schedule`, `now`.
 
+### The two callers (SC9.37)
+
+Generation happens in exactly two places, and both call the same contract:
+
+| Caller | Where | For whom |
+|---|---|---|
+| `perfGenerateDraft()` | `index.html`, client | a COACH authoring for an athlete |
+| `op: 'generate_own_programme'` | `api/publish.js`, **server** | an ATHLETE, for themselves |
+
+The athlete's path is server-side deliberately. A player may not author
+programme content — the server refuses every other programme write from a
+player — so their request carries nothing but the ask, and the server generates
+from its own copy of their profile. It is also the only way the profile can be
+read without the coach-facing minors gate, which would otherwise withhold an
+athlete's own restriction signal from their own programme.
+
+The athlete's path does NOT go through `save_draft` → `publishProgramme`:
+that middle step requires an explicit coach acknowledgement for a flagged
+programme, which is right for coach authoring and would mean most youth
+athletes never receive anything. `createSelfGeneratedProgramme` writes a
+published programme and an active assignment in one step, gated on
+`releaseDecision(...).releasable` and nothing else. The review signals are
+stamped on the record for the coach. Source is `athlete_generated`, never
+`blueprint_generated` — that value means a coach reviewed it.
+
+### What reaches a player
+
+`playerProgramme()` from the contract, stored on the assignment as
+`playerView`, and projected through `PLAYER_ASSIGNMENT_FIELDS`. That is two
+whitelists in series. `requiresReview`, `reviewFlags`, `provenance`,
+`profileFingerprint` and `engineContractVersion` are all deliberately absent
+from the player projection: review is a conversation between the engine and the
+coach, and the athlete is not its subject.
+
+`developmentContextSnapshot` IS sent and predates SC9.37 — it is the athlete's
+own squad classification, which is why youth programming applies to them.
+
+### Regeneration
+
+One live programme at a time. A second request is refused with
+`active_assignment_exists` rather than quietly replacing a block the athlete is
+part-way through, because losing an active programme and the progression built
+on it is worse than any programme the second request would have produced.
+
+Changing the profile does NOT rebuild. The server compares a fingerprint of the
+programming inputs and returns `profileChangedSinceBuild`, so the athlete is
+told their programme predates a change they made and can talk to their coach.
+The fingerprint itself stays on the server.
+
 ### What Core must never import
 
 Anything under `domain/`. Those modules compose in an order that matters and

@@ -128,6 +128,13 @@ export function normalizeAssignment(raw = {}) {
     versionNumber: Number.isInteger(a.versionNumber) ? a.versionNumber : null,
     programmeTitle: text(a.programmeTitle, 120),
     snapshot: a.snapshot && typeof a.snapshot === 'object' ? a.snapshot : null,
+    // SC9.37 — the player-safe projection (a WHITELIST built by the engine),
+    // stored because it needs the blueprint and the blueprint is never stored.
+    playerView: a.playerView && typeof a.playerView === 'object' ? a.playerView : null,
+    // A hash of the programming inputs this was built from. Internal: it tells
+    // the athlete their programme predates a profile change, and it is never
+    // projected to them.
+    profileFingerprint: text(a.profileFingerprint, 64) || null,
     assignedBy: text(a.assignedBy, 64),
     assignedAt: text(a.assignedAt, 40),
     startDate: isIsoDate(a.startDate) ? a.startDate : '',
@@ -442,6 +449,114 @@ export async function createAssignmentRecord(clubId, input = {}, actor = {}) {
   return { record, assignment, replaced: intent === 'replace' ? occupying.map(o => o.assignmentId) : [] };
 }
 
+/**
+ * SC9.37 — persist a programme the ATHLETE generated for themselves.
+ *
+ * WHY THIS IS NOT save_draft + publish + assign
+ *
+ * That sequence exists for a coach, and its middle step refuses to publish a
+ * flagged programme without an explicit coach acknowledgement. That gate is
+ * correct for coach authoring and is left exactly as it is. It cannot be the
+ * gate here, because a healthy sixteen-year-old raises review flags — SC9.33
+ * measured three on an athlete with nothing wrong with him — so gating release
+ * on them would mean most youth athletes open Performance and find nothing.
+ *
+ * The gate here is the ENGINE's release decision, which the caller must have
+ * already taken: `releasable` is a different question from
+ * `requiresCoachReview`, and only the first one holds a programme back. The
+ * review signals still travel — they are stamped on the record below, for the
+ * coach, alongside the programme rather than in front of it.
+ *
+ * The athlete never supplies programme content. This is called only by the
+ * server, with what the server generated from the server's own copy of the
+ * athlete's profile.
+ */
+export async function createSelfGeneratedProgramme(clubId, input = {}, actor = {}) {
+  const record = await loadPerformanceRecord(clubId);
+  const athleteUserId = text(input.athleteUserId, 64);
+  if (!athleteUserId) { const e = new Error('Athlete required'); e.status = 400; throw e; }
+  if (!input.programme || typeof input.programme !== 'object') {
+    const e = new Error('Generated programme required'); e.status = 400; throw e;
+  }
+  if (!input.snapshot || typeof input.snapshot !== 'object'
+      || input.snapshot.kind !== 'programme_assignment_snapshot') {
+    const e = new Error('Assignment snapshot required'); e.status = 400; throw e;
+  }
+  if (!isIsoDate(input.startDate)) { const e = new Error('Start date required'); e.status = 400; throw e; }
+
+  // One live programme at a time. An athlete who already has one gets it back
+  // rather than a second: losing an active block (and the progression built on
+  // it) to a stray tap is worse than any programme this would have produced.
+  const occupying = occupyingAssignments(record, athleteUserId);
+  if (occupying.length) {
+    const e = new Error('You already have an active programme'); e.status = 409;
+    e.code = 'active_assignment_exists'; throw e;
+  }
+
+  const at = nowIso();
+  const programmeId = newProgrammeId();
+  const versionNumber = Number.isInteger(input.versionNumber) ? input.versionNumber : 1;
+
+  const wrapper = normalizeProgramme({
+    programmeId, clubId,
+    title: input.title || 'Strength & Conditioning Programme',
+    goal: text(input.goal, 40), phase: text(input.phase, 40),
+    athleteUserId, athleteName: input.athleteName || '',
+    groupId: input.groupId || '',
+    // Published on creation: the engine released it, so there is no draft state
+    // for it to wait in.
+    status: 'published',
+    source: 'athlete_generated',
+    programme: input.programme,
+    provenance: input.provenance && typeof input.provenance === 'object' ? input.provenance : null,
+    engineContractVersion: text(input.engineContractVersion, 40) || null,
+    // Recorded for the COACH. It does not gate anything on this path.
+    requiresReview: input.requiresReview === true,
+    publishedVersion: versionNumber,
+    createdBy: athleteUserId, createdAt: at,
+    updatedBy: athleteUserId, updatedAt: at,
+    audit: appendAudit([], {
+      action: 'programme_published', actor: athleteUserId, at,
+      detail: `athlete_generated v${versionNumber}`,
+    }),
+  });
+
+  const assignmentId = newAssignmentId();
+  const assignment = normalizeAssignment({
+    assignmentId, clubId, athleteUserId,
+    athleteMemberId: input.athleteMemberId || null,
+    athleteName: input.athleteName || '',
+    groupId: input.groupId || '', groupName: input.groupName || '',
+    teamId: input.teamId || '', teamName: input.teamName || '',
+    programmeId, programmeVersionId: input.programmeVersionId,
+    versionNumber, programmeTitle: wrapper.title,
+    snapshot: input.snapshot,
+    // The PLAYER-SAFE projection (SC9.34), computed once at generation because
+    // it needs the blueprint and the blueprint is never stored.
+    playerView: input.playerView && typeof input.playerView === 'object' ? input.playerView : null,
+    // What the profile looked like when this was built, so the athlete can be
+    // told their programme predates a change they made. Never the profile.
+    profileFingerprint: text(input.profileFingerprint, 64) || null,
+    assignedBy: athleteUserId, assignedAt: at,
+    startDate: input.startDate, endDate: input.endDate || null,
+    status: 'active',
+    source: 'athlete_generated',
+    developmentContextSnapshot: input.developmentContextSnapshot || null,
+    reviewFlags: Array.isArray(input.reviewFlags) ? input.reviewFlags : [],
+    requiresReview: input.requiresReview === true,
+    createdAt: at, updatedAt: at,
+    audit: appendAudit([], {
+      action: 'assignment_created', actor: athleteUserId, at,
+      detail: `athlete_generated ${wrapper.title}`,
+    }),
+  });
+
+  record.programmes = [...(record.programmes || []), wrapper].slice(-MAX_PROGRAMMES);
+  record.assignments = [...(record.assignments || []), assignment].slice(-MAX_ASSIGNMENTS);
+  await savePerformanceRecord(clubId, record);
+  return { record, programme: wrapper, assignment };
+}
+
 const STATUS_ACTIONS = {
   pause:  { to: 'paused',    from: ['scheduled', 'active'],           action: 'assignment_paused',    stamp: 'pausedAt' },
   resume: { to: 'active',    from: ['paused'],                        action: 'assignment_resumed',   stamp: 'resumedAt' },
@@ -504,6 +619,11 @@ export const PLAYER_ASSIGNMENT_FIELDS = [
   'assignmentId', 'programmeId', 'programmeVersionId', 'versionNumber', 'programmeTitle',
   'snapshot', 'startDate', 'endDate', 'status', 'assignedBy', 'assignedAt',
   'developmentContextSnapshot', 'pausedAt', 'endedAt', 'groupName', 'teamName',
+  // SC9.37. The player-safe projection is itself a whitelist, so what reaches a
+  // player is whitelisted twice. `requiresReview`, `reviewFlags`, `provenance`
+  // and `profileFingerprint` are deliberately absent: review is a conversation
+  // between the engine and the coach, and an athlete is not its subject.
+  'playerView',
 ];
 
 export function projectAssignmentForPlayer(a = {}) {

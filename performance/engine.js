@@ -36,6 +36,7 @@
 import { engineInputFromProfile, generateBlueprint } from './domain/programme-blueprint.js';
 import { engineInputFromAuthoringProfile } from './domain/authoring-profile.js';
 import { releaseDecision, RELEASE_POLICY_VERSION } from './domain/release-policy.js';
+import { playerProgramme, PLAYER_PROGRAMME_VERSION, PLAYER_FIELDS } from './domain/player-programme.js';
 import { resolveAthleteState, availableDaysAfterState } from './domain/athlete-state.js';
 import { programmeDraftFromBlueprint } from './domain/blueprint-to-programme.js';
 import { resolveDevelopmentContext } from './domain/development-context.js';
@@ -324,3 +325,21 @@ export { renderProgrammeTrace, renderReviewPackage, renderPractitionerReview };
  * Pass the `blueprint` from `generateProgramme`.
  */
 export { releaseDecision, RELEASE_POLICY_VERSION };
+
+/**
+ * The player-safe view of a generated programme (SC9.34).
+ *
+ * Re-exported here because SC9.37 gives a player their own programme, and the
+ * host rendering it may not import `domain/`. It is a WHITELIST, not a filter:
+ * every field a player may see is named in `PLAYER_FIELDS`, so a field added to
+ * the blueprint tomorrow cannot reach a player by default. Clinical free text,
+ * ranking scores, contraindication tags, review flags, provenance and every
+ * engine identifier are absent by construction.
+ *
+ * Refuses a programme the release policy holds, rather than showing a player
+ * something that was not cleared to reach them.
+ *
+ * Pass `programme` and `blueprint` from `generateProgramme`. Never pass
+ * `context` — this layer does not take it, and it is not the host's to hold.
+ */
+export { playerProgramme, PLAYER_PROGRAMME_VERSION, PLAYER_FIELDS };
