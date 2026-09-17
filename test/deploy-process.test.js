@@ -15,6 +15,7 @@ import {
   parseTestFailures, parseTestCounts, compareFailures,
   evaluateProtections, isBlocking, loadConfig, CONFIG_PATH,
   classifyAgainstProduction, lineOverlap,
+  requiredRuntimeDependencies, assessTestEnvironments, compareFailuresChecked,
 } from '../scripts/deploy-lib.mjs';
 
 const TACTICS = { id: 'tactics-mount', commit: 'aaa111', subject: 'feat: mount the Tactics Board as a coach section', patchId: 'pt-tactics' };
@@ -231,6 +232,84 @@ test('a release that FIXES a baseline failure is credited and still passes', () 
 test('a zero-failure baseline still blocks any new failure', () => {
   assert.equal(compareFailures({ baseline: [], candidate: ['boom'] }).ok, false);
   assert.equal(compareFailures({ baseline: [], candidate: [] }).ok, true);
+});
+
+// ── test-environment validity ────────────────────────────────────────────
+//
+// The real failure this guards against: a git worktree checks out tracked
+// files only, node_modules is gitignored but partially tracked, so the
+// baseline ran without `stripe` — 45 test files failed to load, 43 were
+// reported as "fixed by this release", and a genuine regression could have
+// hidden among the phantom failures.
+
+const VALID_ENV = { dir: '/repo', resolved: ['stripe', 'web-push'], missing: [] };
+const BROKEN_ENV = { dir: '/worktree', resolved: ['web-push'], missing: ['stripe'] };
+
+test('a valid, equivalent pair of environments is accepted', () => {
+  const v = assessTestEnvironments({ baseline: { ...VALID_ENV, dir: '/wt' }, candidate: VALID_ENV });
+  assert.equal(v.ok, true);
+  assert.match(v.reason, /both environments resolve/);
+});
+
+test('an incomplete baseline environment fails the gate — the exact node_modules bug', () => {
+  const v = assessTestEnvironments({ baseline: BROKEN_ENV, candidate: VALID_ENV });
+  assert.equal(v.ok, false);
+  assert.match(v.reason, /baseline environment cannot resolve: stripe/);
+  assert.match(v.reason, /hide a real regression/);
+});
+
+test('an incomplete candidate environment also fails the gate', () => {
+  const v = assessTestEnvironments({ baseline: VALID_ENV, candidate: BROKEN_ENV });
+  assert.equal(v.ok, false);
+  assert.match(v.reason, /candidate environment cannot resolve: stripe/);
+});
+
+test('environments that resolve different dependency sets are not like-for-like', () => {
+  const v = assessTestEnvironments({
+    baseline: { dir: '/wt', resolved: ['web-push'], missing: [] },
+    candidate: { dir: '/repo', resolved: ['stripe', 'web-push'], missing: [] },
+  });
+  assert.equal(v.ok, false);
+  assert.match(v.reason, /different dependency sets|not be like-for-like/);
+});
+
+test('a missing probe is treated as unproven, never as valid', () => {
+  assert.equal(assessTestEnvironments({ baseline: null, candidate: VALID_ENV }).ok, false);
+  assert.equal(assessTestEnvironments({ baseline: VALID_ENV, candidate: null }).ok, false);
+});
+
+test('an INVALID baseline can never produce a comparison — no "known", no "fixed"', () => {
+  const broken = assessTestEnvironments({ baseline: BROKEN_ENV, candidate: VALID_ENV });
+  assert.throws(() => compareFailuresChecked({
+    baseline: ['test/stripe-phase4.test.js', 'composes a full deterministic traveller twin'],
+    candidate: ['composes a full deterministic traveller twin'],
+    environment: broken,
+  }), /refusing to compare test results/,
+  'without this guard the phantom stripe failure would have been reported as "fixed by this release"');
+
+  // And an omitted environment is refused too, so a future caller cannot
+  // reintroduce the bug by simply forgetting to check.
+  assert.throws(() => compareFailuresChecked({ baseline: [], candidate: [], environment: undefined }),
+    /validity was never established/);
+});
+
+test('with a VALID environment the comparison behaves exactly as before', () => {
+  const good = assessTestEnvironments({ baseline: { ...VALID_ENV, dir: '/wt' }, candidate: VALID_ENV });
+  const known = 'composes a full deterministic traveller twin';
+  const v = compareFailuresChecked({ baseline: [known], candidate: [known, 'brand new breakage'], environment: good });
+  assert.equal(v.ok, false, 'a candidate-only failure is NEW and blocks');
+  assert.deepEqual(v.newFailures, ['brand new breakage']);
+  assert.deepEqual(v.knownFailures, [known], 'a genuine baseline failure stays known');
+  assert.deepEqual(v.fixedFailures, []);
+});
+
+test('required runtime dependencies come from package.json dependencies', () => {
+  assert.deepEqual(requiredRuntimeDependencies({ dependencies: { stripe: '1', 'web-push': '2' }, devDependencies: { playwright: '3' } }),
+    ['stripe', 'web-push'], 'devDependencies are not needed to run the suite');
+  assert.deepEqual(requiredRuntimeDependencies({}), []);
+  // The real package.json must declare the two the api/ modules import.
+  const real = requiredRuntimeDependencies(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')));
+  assert.ok(real.includes('stripe') && real.includes('web-push'));
 });
 
 // ── production protections ───────────────────────────────────────────────
