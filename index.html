@@ -4112,8 +4112,16 @@
     .mc7-rail { display: flex !important; flex-direction: column; align-self: stretch; height: 100%; min-width: 0; }
     .mc7-tools { flex: 1 1 auto; height: auto; display: flex; flex-direction: column; min-height: 0; }
     .mc7-table { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
-    .mc7-tbody { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
-    @media (max-width: 1040px) { .mc7-rail { height: auto; } .mc7-tools { flex: none; } .mc7-tbody { max-height: 360px; } }
+    .mc7-tbody { flex: 1 1 auto; overflow-y: auto; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+    /* Side by side, the rail must not SIZE the board row: without containment a
+       large squad grew the row (and the page) to the list's full height, so the
+       list itself never scrolled. contain:size takes the rail's content out of
+       the row height; it stretches to the pitch column and the list scrolls
+       inside it while the header and filters stay put. */
+    @media (min-width: 1041px) { .mc7-rail { contain: size; } }
+    /* Stacked, the list scrolls inside most of the viewport rather than a fixed box. */
+    @media (max-width: 1040px) { .mc7-rail { height: auto; } .mc7-tools { flex: none; } .mc7-tbody { max-height: 60vh; max-height: 60dvh; } }
+    .mc7-posnote { padding: 0 2px; margin: -4px 0 8px; font-size: 11px; }
 
     /* ═══════════════════════════════════════════════════════════════════════════
        MATCH CENTRE V9 — premium pitch (presentation only)
@@ -6400,9 +6408,12 @@
       </svg>`;
     }
 
-    // Match Centre — Available Players table sort (presentation-only view state): 'pos' | 'training'.
-    let _mcAvailSort = 'training';
-    function mcSetAvailSort(k) { _mcAvailSort = k; render(); }
+    // Match Centre — Available Players POSITION filter (presentation-only view
+    // state): 'all' | 'forwards' | 'backs', classified by the canonical
+    // availabilityGroupForPlayer. It only narrows which candidate rows render;
+    // eligibility, availability, the XV and the bench are never touched.
+    let _mcRailPos = 'all';
+    function mcSetRailPos(k) { _mcRailPos = ['all', 'forwards', 'backs'].includes(k) ? k : 'all'; render(); }
     // Candidate-list availability filter (Pass B). null = not chosen yet, which
     // resolves to 'available' when a fixture is selected (explicit product
     // decision: the default view shows only players who said Available for the
@@ -17208,7 +17219,9 @@
       const number = numberMatch ? Number(numberMatch[1]) : null;
       if (number && number >= 1 && number <= 8) return "forwards";
       if (number && number >= 9 && number <= 15) return "backs";
-      if (/(prop|hooker|lock|flanker|number 8|no\.?\s*8|back row|front row|second row|scrum)/.test(raw)) return "forwards";
+      // `scrum` alone is a forward word, but never when it is "scrum half" /
+      // "scrum-half" — that name-only value (no jersey number) is a back.
+      if (/(prop|hooker|lock|flanker|number 8|no\.?\s*8|back row|front row|second row|scrum(?![- ]?half))/.test(raw)) return "forwards";
       if (/(scrum[- ]?half|fly[- ]?half|centre|center|wing|fullback|back three|outside back)/.test(raw)) return "backs";
       return "";
     }
@@ -18989,29 +19002,17 @@
       // Available list excludes by PERSON (every record of a placed member is hidden).
       const available = matchdayPlayers.filter(p => !_seenPersons.has(mcPersonKey(p.name)));
 
-      // Available Players table — selected-fixture availability + Training
-      // attendance % (season). Read-only. Statuses come from the SAME rows as
-      // the KPIs above (the fixture's dated event when linked), so a player
-      // who answered Available for Mons shows Available while Mons is
-      // selected — never red because of training or some other fixture.
-      // Attendance comes from the SERVER register via the one aggregation, not
-      // from the device-local map this used to walk. Unknown stays unknown:
-      // attPct is null when the read has not landed, never 0%.
-      const _attSrc = currentAttendance();
+      // Available Players table — selected-fixture availability. Read-only.
+      // Statuses come from the SAME rows as the KPIs above (the fixture's dated
+      // event when linked), so a player who answered Available for Mons shows
+      // Available while Mons is selected — never red because of training or
+      // some other fixture. Listed in rugby order (1–15, then forwards/backs
+      // without a number, then unknown) by the Availability board's own
+      // availabilityPositionOrder.
       const _statusByPlayer = new Map(gameRows.map(r => [String(r.player.id), String(r.status || '')]));
-      const _posRank = p => { const m = { prop:1, hooker:2, lock:4, flanker:6, 'no.8':8, 'number 8':8, 'scrum-half':9, 'fly-half':10, 'fly half':10, centre:12, wing:11, 'full-back':15, fullback:15 }; return m[String(p.position||'').toLowerCase().trim()] || 99; };
-      const _availStats = available.map(p => {
-        const match = mcAvailFilterBucket(_statusByPlayer.get(String(p.id)));
-        const _st = (_attSrc && !_attSrc.denied)
-          ? attendanceStats(_attSrc.sessions, playerMatchKey(p), state.seasonStart, state.seasonEnd, availToday())
-          : null;
-        const attPct = _st ? _st.attendancePct : null;
-        return { p, match, attPct };
-      });
-      const _availSortKey = (_mcAvailSort === 'pos' || _mcAvailSort === 'training') ? _mcAvailSort : 'training';
-      _availStats.sort((a, b) => _availSortKey === 'pos'
-        ? (_posRank(a.p) - _posRank(b.p)) || String(a.p.name).localeCompare(String(b.p.name))
-        : (b.attPct ?? -1) - (a.attPct ?? -1));
+      const _availStats = available.map(p => ({ p, match: mcAvailFilterBucket(_statusByPlayer.get(String(p.id))) }));
+      _availStats.sort((a, b) => (availabilityPositionOrder(a.p) - availabilityPositionOrder(b.p))
+        || String(a.p.name).localeCompare(String(b.p.name)));
       // Compact availability filters (Pass B). Counts are over the CANDIDATE
       // pool (eligible players not already placed). Default = Available when a
       // fixture is linked — the explicit product decision that shortens the
@@ -19044,6 +19045,18 @@
       const _visibleStats = _railSel === 'selected' ? _availFiltered.filter(s => _mcSelKeys.has(mcPersonKey(s.p.name)))
         : _railSel === 'unselected' ? _availFiltered.filter(s => !_mcSelKeys.has(mcPersonKey(s.p.name)) && mcSelectableAvailBucket(s.match))
         : _availFiltered;
+      // POSITION filter — last, over whatever the two filters above left. A
+      // player whose position is missing or unrecognised is neither a forward
+      // nor a back: they appear under All only, and the rail says how many.
+      const _posOf    = s => availabilityGroupForPlayer(s.p);
+      const _posCounts = {
+        all:      _visibleStats.length,
+        forwards: _visibleStats.filter(s => _posOf(s) === 'forwards').length,
+        backs:    _visibleStats.filter(s => _posOf(s) === 'backs').length,
+      };
+      const _posUnknown = _posCounts.all - _posCounts.forwards - _posCounts.backs;
+      const _railPos  = ['all', 'forwards', 'backs'].includes(_mcRailPos) ? _mcRailPos : 'all';
+      const _railStats = _railPos === 'all' ? _visibleStats : _visibleStats.filter(s => _posOf(s) === _railPos);
       // Cross-team LOCKS for the rail. The default 'all' view used to consult
       // mcIneligibleKeys only via the 'unselected'/'selected' branches, so a
       // sibling starter rendered as an ordinary draggable "Available" row —
@@ -19345,16 +19358,18 @@
                   <button type="button" class="${_activeFilter === k ? 'on' : ''}" data-filter="${k}"
                     aria-pressed="${_activeFilter === k}" onclick="mcSetAvailFilter('${k}')">${lbl} <span class="mc7-fcount">${_filterCounts[k]}</span></button>`).join('')}
               </div>
-              <div class="mc7-sort">
-                <span class="mc7-sortlbl">Sort</span>
-                <button type="button" class="${_availSortKey==='pos'?'on':''}" onclick="mcSetAvailSort('pos')">Position</button>
-                <button type="button" class="${_availSortKey==='training'?'on':''}" onclick="mcSetAvailSort('training')">Training</button>
+              <div class="mc7-filterlbl">Position</div>
+              <div class="mc7-filter mc7-filter-pos" role="group" aria-label="Filter candidates by position">
+                ${[['all','All'],['forwards','Forwards'],['backs','Backs']].map(([k, lbl]) => `
+                  <button type="button" class="${_railPos === k ? 'on' : ''}" data-pos="${k}"
+                    aria-pressed="${_railPos === k}" onclick="mcSetRailPos('${k}')">${lbl} <span class="mc7-fcount">${_posCounts[k]}</span></button>`).join('')}
               </div>
+              ${_railPos !== 'all' && _posUnknown > 0 ? `<p class="muted mc7-posnote">${_posUnknown} without a recognised position — shown under All.</p>` : ''}
               ${_railPending ? `<p class="muted" style="padding:6px 8px 0;font-size:11.5px;margin:0">Checking the other team’s selections…</p>` : ''}
               <div class="mc7-table">
                 <div class="mc7-thead"><span>Player</span><span></span></div>
                 <div class="mc7-tbody">
-                  ${_visibleStats.map(({p, match, attPct}) => {
+                  ${_railStats.map(({p, match}) => {
                     const initials = p.name.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
                     const mLbl = match === 'available' ? 'Available' : match === 'maybe' ? 'Maybe' : (match === 'unavailable' ? 'Out' : 'No reply');
                     // A player committed to the sibling side renders LOCKED in

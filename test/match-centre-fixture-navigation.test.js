@@ -365,11 +365,11 @@ test('changing the filter is view-only — it cannot touch state at all', () => 
   assert.match(body, /render\(\)/, 'it only re-renders');
 });
 
-test('search and sort still compose with the filter', () => {
+test('search and the position filter still compose with the filter', () => {
   const body = fn('renderMatchday');
   assert.match(body, /mcAvailSearch\(this\.textContent\)/, 'search box intact');
-  assert.match(body, /mcSetAvailSort\('pos'\)/, 'position sort intact');
-  assert.match(body, /_visibleStats/, 'rows render from the FILTERED list');
+  assert.match(body, /mcSetRailPos\('\$\{k\}'\)/, 'position filter present (replaced the Position/Training sort)');
+  assert.match(body, /_railStats = _railPos === 'all' \? _visibleStats/, 'rows render from the FILTERED list');
   assert.match(fn('mcAvailSearch'), /mc7-trow/, 'search filters the same rows the filter renders');
 });
 
