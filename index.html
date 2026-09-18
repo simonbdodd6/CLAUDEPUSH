@@ -17347,7 +17347,9 @@
         </button>`;
       }).join("") || `<p class="muted" style="font-size:12px;padding:10px">No players in this group.</p>`;
 
-      const sessionDisplayTitle = session => session.title || session.id;
+      // Both the session cards and the Live Response Board name a session
+      // through this one helper, so they cannot disagree.
+      const sessionDisplayTitle = session => availabilitySessionLabel(session);
 
       const sessionCardsHTML = coachEvents.map(session => {
         const rRows   = sessionRows(session.id);
@@ -17366,7 +17368,10 @@
             <strong><span style="margin-right:5px">${icon}</span>${esc(sessionDisplayTitle(session))}</strong>
             <span class="msg-chip ${chase === 0 && total > 0 ? 'available' : chase > 0 ? 'no-reply' : ''}">${yes}/${total}</span>
           </div>
-          <small style="color:var(--muted)">${esc(session.date || "Availability open")}${session.deadline ? ' · <span style="color:var(--amber)">by ' + esc(session.deadline) + '</span>' : ''}</small>
+          <small style="color:var(--muted)">${[
+            session.date ? '' : esc("Availability open"),   // the weekday now leads the title; an undated session keeps its old line
+            session.deadline ? '<span style="color:var(--amber)">by ' + esc(session.deadline) + '</span>' : '',
+          ].filter(Boolean).join(' · ')}</small>
           <div class="avail-progress"><div class="avail-progress-fill" style="width:${pct}%"></div></div>
           <div class="msg-pill-row" style="margin-top:8px">
             <span class="msg-chip available">${yes} ✓</span>
@@ -17506,7 +17511,7 @@
                 <div class="msg-card-head">
                   <div>
                     <h2>Live Response Board</h2>
-                    <p>${esc(sessionDisplayTitle(selected || {}))}${selected?.date ? ' · ' + esc(selected.date) : ''}${selected?.focus ? ' · <span style="color:var(--amber)">' + esc(selected.focus) + '</span>' : ''} · tap a player for details.</p>
+                    <p>${esc(sessionDisplayTitle(selected || {}))}${selected?.focus ? ' · <span style="color:var(--amber)">' + esc(selected.focus) + '</span>' : ''} · tap a player for details.</p>
                   </div>
                   <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
                     <span class="msg-chip ${boardNoReply.length ? "no-reply" : "available"}">${boardAnswered.length}/${boardRows.length} shown</span>
@@ -20502,6 +20507,38 @@
       }
 
       return events.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
+    }
+
+    /**
+     * A session's name on the Availability screen: "Tuesday Training",
+     * "Saturday Match". Replaces the raw ISO date the cards and the Live
+     * Response Board used to show — the week's date range is already on
+     * screen, so the date added nothing a coach could scan.
+     *
+     * Presentation only. It reads an event from availabilityEventsForWeek and
+     * returns text; the event, its id and its date are untouched, so every
+     * answer, count and action keyed on them is unaffected.
+     *
+     *   weekday — from the occurrence's OWN date, never assumed. Built with
+     *             Date.UTC so no timezone can shift it, and ROUND-TRIPPED: an
+     *             impossible date (30 Feb) rolls into the next month in JS and
+     *             would print a confident, wrong weekday. It prints none.
+     *   kind    — from the canonical type ('training' | 'match').
+     *
+     * Anything it cannot vouch for falls back to what this screen already
+     * showed (title, then id): an unrecognised type is never renamed, and an
+     * undated session (the legacy generic match) gets no invented weekday.
+     */
+    function availabilitySessionLabel(session) {
+      const kind = { training: 'Training', match: 'Match' }[String(session?.type || '').toLowerCase()];
+      const fallback = kind || session?.title || session?.id || '';
+      const m = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(String(session?.date || '').trim());
+      if (!kind || !m) return fallback;
+      const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+      const at = new Date(Date.UTC(y, mo - 1, d));
+      if (at.getUTCFullYear() !== y || at.getUTCMonth() !== mo - 1 || at.getUTCDate() !== d) return fallback;
+      const weekday = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][at.getUTCDay()];
+      return `${weekday} ${kind}`;
     }
 
     /** Today as YYYY-MM-DD. Injectable so tests never depend on the clock. */
