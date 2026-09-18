@@ -8853,7 +8853,14 @@
 
     function sessionTypeIcon(type) {
       // Clean monochrome SVG markers (no emoji): rugby ball for match, cone for training.
-      return type === 'Match'
+      //
+      // Two vocabularies reach this. Canonical availability events
+      // (availabilityEventsForWeek) say 'match'; legacy schedule records
+      // (state.schedule, Manage Sessions) say 'Match'. Testing only 'Match'
+      // gave every match on the coach AND player Availability screens the
+      // training cone. Compared case-insensitively HERE — presentation only;
+      // no caller's stored type is changed.
+      return String(type || '').toLowerCase() === 'match'
         ? '<svg class="sess-ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><ellipse cx="12" cy="12" rx="9" ry="5.4" transform="rotate(-45 12 12)"/><path d="M9.2 14.8l5.6-5.6M10.8 13.2l1.2 1.2M13.2 10.8l1.2 1.2"/></svg>'
         : '<svg class="sess-ico" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M10 4h4l3 15H7L10 4Z"/><path d="M8.2 12.5h7.6M9 8.5h6"/><path d="M5 19h14"/></svg>';
     }
@@ -17499,7 +17506,7 @@
                 <div class="avail-request-cta" style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
                   <button class="btn primary" type="button" onclick="sendAvailabilityRequest('${selected.id}')" style="width:100%;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;line-height:1.2;font-weight:800">
                     <span style="font-size:15px">Request Availability</span>
-                    <span style="font-size:11px;font-weight:600;opacity:.85">${esc(selected.title || selected.id)} • ${esc(selected.date || 'Date to be confirmed')}</span>
+                    <span style="font-size:11px;font-weight:600;opacity:.85">${esc(sessionDisplayTitle(selected))}${selected.date ? '' : ' • ' + esc('Date to be confirmed')}</span>
                   </button>
                   <button class="btn ghost" type="button" onclick="sendAllAvailabilityRequests()" style="width:100%;min-height:44px;font-size:13px;font-weight:700">Ask All Sessions</button>
                 </div>` : ''}
