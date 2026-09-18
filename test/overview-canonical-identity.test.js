@@ -246,7 +246,7 @@ test('the availability CARD (overviewAvailabilityContext) counts the dated occur
     ${fn('overviewAnswerMap')}
     ${fn('overviewAnswerCounts')}
     ${fn('overviewAvailabilityContext')}
-    return overviewAvailabilityContext();
+    return overviewAvailabilityContext('training');
   `)({
     players: [P('a'), P('b'), P('c')],
     slots: [U18_SLOT],

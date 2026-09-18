@@ -15946,33 +15946,50 @@
     }
 
     /**
-     * The ONE availability reading the Overview shows. The snapshot card and
-     * the donut both call this, so those two can never disagree with each
-     * other or with the Availability board.
+     * The availability reading behind ONE Overview card:
      *
-     * "Relevant" follows the coach's day: tonight's session if there is one,
-     * otherwise the next fixture. Both answer through overviewAnswerMap, which
-     * reads sessionRows() — the same server-resolved answers the Availability
-     * board and the Match Centre show — and keeps the medical override.
+     *   'training' — Training Availability: tonight's session if there is one,
+     *                otherwise the next dated training occurrence (this week or
+     *                next), from the same generator the Availability board and
+     *                the Training planner use.
+     *   'match'    — Match Availability (the default): the next fixture.
+     *
+     * The two cards used to share a single reading — tonight's session, else
+     * the next fixture — so on most days both showed the same match. Both
+     * readings answer through overviewAnswerMap, which reads sessionRows() —
+     * the same server-resolved answers the Availability board and the Match
+     * Centre show — and keeps the medical override.
      *
      * Nothing here is estimated, projected or filled in. A squad that has not
      * replied reads as "no reply", and a club with no players reads as empty
      * rather than as a row of zeroes pretending to be information.
      */
-    function overviewAvailabilityContext() {
+    function overviewAvailabilityContext(focus = 'match') {
       const roster = overviewRoster();
       const none   = { kind: 'none', label: '', total: 0, available: 0, maybe: 0,
                        unavailable: 0, noReply: 0, responded: 0, availPct: 0,
                        respondedPct: 0, warnings: [] };
       if (!roster.length) return none;
 
-      const tonightId   = getTonightSessionId();
-      const tonightSess = tonightId ? (state.schedule || []).find(s => s.id === tonightId) : null;
-      if (tonightSess) {
-        // Same canonical occurrence the Availability board counts — see
-        // tonightAvailabilityEventId. The label stays the session's own.
-        const c = overviewAnswerCounts(roster, overviewAnswerMap(tonightAvailabilityEventId(tonightId), roster));
-        return { kind: 'session', label: tonightSess.title || 'Training', ...c, warnings: [] };
+      if (focus === 'training') {
+        const tonightId   = getTonightSessionId();
+        const tonightSess = tonightId ? (state.schedule || []).find(s => s.id === tonightId) : null;
+        if (tonightSess) {
+          // Same canonical occurrence the Availability board counts — see
+          // tonightAvailabilityEventId. The label stays the session's own.
+          const c = overviewAnswerCounts(roster, overviewAnswerMap(tonightAvailabilityEventId(tonightId), roster));
+          return { kind: 'session', label: tonightSess.title || 'Training', ...c, warnings: [] };
+        }
+        // No session tonight: the next dated occurrence, named the way the
+        // Availability screen names it ("Thursday Training").
+        ensureTrainingSchedule();
+        const today = availToday();
+        const week  = availWeekStart(today);
+        const next  = [...trainingWeekOccurrences(week), ...trainingWeekOccurrences(availAddDays(week, 7))]
+          .find(e => e.date >= today);
+        if (!next) return none;
+        const c = overviewAnswerCounts(roster, overviewAnswerMap(next.id, roster));
+        return { kind: 'session', label: availabilitySessionLabel(next), ...c, warnings: [] };
       }
 
       const todayIso = new Date().toISOString().slice(0, 10);
@@ -16044,8 +16061,8 @@
      * The Overview command centre — two rows that answer "what is happening
      * with my team?" without the coach opening anything.
      *
-     *   Row 1, act on today:  Upcoming fixture · Training · Availability
-     *   Row 2, context:       Recent activity · Squad availability · Messages
+     *   Row 1, act on today:  Upcoming fixture · Training · Training Availability
+     *   Row 2, context:       Recent activity · Match Availability · Messages
      *
      * Every value is read from state another screen already owns. This
      * function computes nothing the product does not already know, and where
@@ -16177,28 +16194,38 @@
            </div>
            ${sessions.length > 1 ? `<div class="ovw-foot"><span class="muted">${sessions.length} sessions scheduled</span></div>` : ''}`;
 
-      // ── 3 & 5. Availability (shared reading) ─────────────────────────────
-      const av = overviewAvailabilityContext();
-      const availEmpty = !roster.length
+      // ── 3. Training Availability · 5. Match Availability ────────────────
+      // Each card has its OWN reading: training answers the next training
+      // session, match answers the next fixture.
+      const av  = overviewAvailabilityContext('training');
+      const avM = overviewAvailabilityContext('match');
+      const availEmpty = what => !roster.length
         ? `<p class="ovw-empty"><strong>No players yet</strong>${
             canI('manage_players')
               ? 'Invite your players and their answers will appear here.'
               : 'Availability appears once players have been added.'}</p>`
-        : `<p class="ovw-empty"><strong>Nothing to respond to</strong>Availability shows here once a session or fixture is scheduled.</p>`;
+        : `<p class="ovw-empty"><strong>Nothing to respond to</strong>Availability shows here once ${what} is scheduled.</p>`;
 
-      const critical = (av.warnings || []).filter(w => w.severity === 'critical').length;
-      const warning  = (av.warnings || []).filter(w => w.severity === 'warning').length;
+      const warningsOf = ctx => ({
+        critical: (ctx.warnings || []).filter(w => w.severity === 'critical').length,
+        warning:  (ctx.warnings || []).filter(w => w.severity === 'warning').length,
+      });
+      const warningText = ({ critical, warning }) => critical
+        ? `${critical} critical position warning${critical === 1 ? '' : 's'}`
+        : `${warning} position warning${warning === 1 ? '' : 's'}`;
+      const { critical, warning } = warningsOf(av);
 
       // Nobody has answered yet. "0 Available · 0 Maybe · 0 Unavailable · 0%"
       // is arithmetically true and reads as a broken placeholder, which is how
       // this card was reported. Say the real thing instead: the squad exists,
       // the answers do not.
-      const availNoReplies = av.kind !== 'none' && av.responded === 0;
-      const noRepliesBody  = `<p class="ovw-empty"><strong>No responses yet</strong>${
-        esc(av.label)} — none of the ${av.total} player${av.total === 1 ? ' has' : 's have'} replied.${
+      const noReplies      = ctx => ctx.kind !== 'none' && ctx.responded === 0;
+      const noRepliesBodyOf = ctx => `<p class="ovw-empty"><strong>No responses yet</strong>${
+        esc(ctx.label)} — none of the ${ctx.total} player${ctx.total === 1 ? ' has' : 's have'} replied.${
         canI('publish_training') ? ' Send an availability request to ask them.' : ''}</p>`;
+      const availNoReplies = noReplies(av);
 
-      const availabilityBody = av.kind === 'none' ? availEmpty : availNoReplies ? noRepliesBody : `
+      const availabilityBody = av.kind === 'none' ? availEmpty('a training session') : availNoReplies ? noRepliesBodyOf(av) : `
         <div>
           <div class="ovw-meta" style="margin-bottom:12px">${esc(av.label)}</div>
           <div class="ovw-stat-row">
@@ -16209,27 +16236,30 @@
         </div>
         <div class="ovw-foot">
           ${critical || warning
-            ? `<span style="color:${critical ? 'var(--status-unavailable)' : 'var(--status-maybe)'};font-weight:700">${
-                critical ? `${critical} critical position warning${critical === 1 ? '' : 's'}`
-                         : `${warning} position warning${warning === 1 ? '' : 's'}`}</span>`
+            ? `<span style="color:${critical ? 'var(--status-unavailable)' : 'var(--status-maybe)'};font-weight:700">${warningText({ critical, warning })}</span>`
             : av.noReply === 0
               ? `<span style="color:var(--status-available);font-weight:700">Everyone has replied</span>`
               : `<span class="muted">${av.noReply} still to reply</span>`}
         </div>`;
 
-      const squadAvailBody = av.kind === 'none' ? availEmpty : availNoReplies ? noRepliesBody : `
+      // The match card names its fixture and carries that fixture's position
+      // warnings — both used to live on the shared card above.
+      const mWarn = warningsOf(avM);
+      const squadAvailBody = avM.kind === 'none' ? availEmpty('a fixture') : noReplies(avM) ? noRepliesBodyOf(avM) : `
+        <div class="ovw-meta" style="margin-bottom:10px">${esc(avM.label)}${mWarn.critical || mWarn.warning
+          ? ` · <span style="color:${mWarn.critical ? 'var(--status-unavailable)' : 'var(--status-maybe)'};font-weight:700">${warningText(mWarn)}</span>` : ''}</div>
         <div class="ovw-donut-wrap">
-          ${overviewDonutSvg(av, 96)}
+          ${overviewDonutSvg(avM, 96)}
           <div class="ovw-legend" style="flex:1;min-width:0">
-            ${overviewLegendRow('Available',   'var(--status-available)',   av.available,   av.total)}
-            ${overviewLegendRow('Maybe',       'var(--status-maybe)',       av.maybe,       av.total)}
-            ${overviewLegendRow('Unavailable', 'var(--status-unavailable)', av.unavailable, av.total)}
-            ${av.noReply ? overviewLegendRow('No reply', 'var(--status-noreply)', av.noReply, av.total) : ''}
+            ${overviewLegendRow('Available',   'var(--status-available)',   avM.available,   avM.total)}
+            ${overviewLegendRow('Maybe',       'var(--status-maybe)',       avM.maybe,       avM.total)}
+            ${overviewLegendRow('Unavailable', 'var(--status-unavailable)', avM.unavailable, avM.total)}
+            ${avM.noReply ? overviewLegendRow('No reply', 'var(--status-noreply)', avM.noReply, avM.total) : ''}
           </div>
         </div>
         <div class="ovw-foot">
-          <span class="muted">${av.responded} of ${av.total} replied</span>
-          <span style="font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums">${av.respondedPct}%</span>
+          <span class="muted">${avM.responded} of ${avM.total} replied</span>
+          <span style="font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums">${avM.respondedPct}%</span>
         </div>`;
 
       // ── 4. Recent activity ───────────────────────────────────────────────
@@ -16275,11 +16305,11 @@
         <div class="ovw-row">
           ${card('Upcoming fixture', upcomingFx.length > 1 ? `<span class="ovw-pill" style="background:var(--accent-soft);color:var(--accent)">${upcomingFx.length}</span>` : '', fixtureBody, "setSection('coach','fixtures')", 'Upcoming fixture — open Fixtures')}
           ${card('Training', tonightSess ? '<span class="ovw-pill" style="background:var(--accent-soft);color:var(--accent)">Tonight</span>' : '', trainingBody, "setSection('coach','training')", 'Training — open Training')}
-          ${card('Availability', av.kind !== 'none' && !availNoReplies ? `<span style="font-size:12px;font-weight:800;color:var(--status-available)">${av.availPct}%</span>` : '', availabilityBody, "setSection('coach','message')", 'Availability — open Availability')}
+          ${card('Training Availability', av.kind !== 'none' && !availNoReplies ? `<span style="font-size:12px;font-weight:800;color:var(--status-available)">${av.availPct}%</span>` : '', availabilityBody, "setSection('coach','message')", 'Training Availability — open Availability')}
         </div>
         <div class="ovw-row" style="margin-top:14px">
           ${card('Recent activity', '', activityBody, null, null)}
-          ${card('Squad availability', '', squadAvailBody, "setSection('coach','message')", 'Squad availability — open Availability')}
+          ${card('Match Availability', '', squadAvailBody, "setSection('coach','message')", 'Match Availability — open Availability')}
           ${card('Messages', unread ? `<span class="ovw-pill" style="background:var(--status-unavailable-soft);color:var(--status-unavailable)">${unread} new</span>` : '', messagesBody, "setSection('coach','messages')", 'Messages — open Messages')}
         </div>`;
     }
