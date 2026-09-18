@@ -211,7 +211,13 @@ export function changeSignature(sha, cwd = REPO_ROOT) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([f, ls]) => `${f}\n${ls.join('\n')}`)
     .join('\n--\n');
-  return { hash: createHash('sha256').update(body).digest('hex'), lines: [...files.values()].flat() };
+  return {
+    hash: createHash('sha256').update(body).digest('hex'),
+    lines: [...files.values()].flat(),
+    // Per file, so containment is judged WITHIN a file: an identical line in a
+    // different file is a different change.
+    files: Object.fromEntries(files),
+  };
 }
 
 /** Jaccard overlap of two changed-line collections. */
@@ -222,6 +228,53 @@ export function lineOverlap(a, b) {
   for (const x of A) if (B.has(x)) shared++;
   const union = A.size + B.size - shared;
   return union === 0 ? 0 : shared / union;
+}
+
+/**
+ * A candidate's changes need this many meaningful lines before containment may
+ * claim them. One coincidental line proves nothing, and a commit too small to
+ * clear this falls through to the ordinary checks — where an empty cherry-pick
+ * is still caught, and explained, when the branch is built.
+ */
+export const MIN_CONTAINED_LINES = 2;
+
+/**
+ * PURE. Is EVERY change in `candidate` already made by the single commit `prod`?
+ *
+ * Jaccard (lineOverlap) measures how alike two commits are, so a small commit
+ * living inside a large one scores low: 48f50d72's 6 lines all sit inside
+ * 65326e14's 47, yet overlap is 0.13. Containment asks the question that
+ * matters — is all of the candidate's change already there?
+ *
+ * Deliberately strict, because a false "already live" silently drops real work
+ * from a release:
+ *   - judged per FILE: the same line in another file is a different change;
+ *   - a file production never touched means the change is not there;
+ *   - with multiplicity: a line added twice needs production to add it twice;
+ *   - at least MIN_CONTAINED_LINES lines with real content (not just
+ *     punctuation or whitespace) must be contained.
+ *
+ * Returns how many lines are contained, or 0 when containment does not hold.
+ */
+export function containedChangeLines(candidateFiles, prodFiles) {
+  const names = Object.keys(candidateFiles || {});
+  if (!names.length || !prodFiles) return 0;
+  let contained = 0, meaningful = 0;
+  for (const file of names) {
+    const need = candidateFiles[file] || [];
+    const have = prodFiles[file];
+    if (!have) return 0;
+    const pool = new Map();
+    for (const l of have) pool.set(l, (pool.get(l) || 0) + 1);
+    for (const l of need) {
+      const left = pool.get(l) || 0;
+      if (!left) return 0;
+      pool.set(l, left - 1);
+      contained++;
+      if (/[A-Za-z0-9]/.test(l.slice(1))) meaningful++;
+    }
+  }
+  return meaningful >= MIN_CONTAINED_LINES ? contained : 0;
 }
 
 /**
@@ -240,6 +293,7 @@ export function classifyAgainstProduction({ candidate, production, ambiguityThre
   if (exact) {
     return {
       verdict: 'already-in-production',
+      basis: 'exact',
       match: exact,
       reason: `identical changes already in production as ${exact.sha.slice(0, 8)} "${exact.subject}" (adapted cherry-pick: same content, different patch-id)`,
     };
@@ -252,6 +306,22 @@ export function classifyAgainstProduction({ candidate, production, ambiguityThre
       reason: `production commit ${sameSubject.sha.slice(0, 8)} has the same subject but DIFFERENT content — cannot prove whether this work is already live`,
     };
   }
+  // Contained: every change here is already made by ONE production commit. Only
+  // when both sides carry per-file data. `basis: 'contained'` asks the caller
+  // to confirm it against the real production TREE before skipping anything.
+  if (candidate.files) {
+    for (const p of production) {
+      const n = containedChangeLines(candidate.files, p.files);
+      if (n) {
+        return {
+          verdict: 'already-in-production',
+          basis: 'contained',
+          match: p,
+          reason: `all ${n} changed line(s) are already made inside production commit ${p.sha.slice(0, 8)} "${p.subject}" (contained in a larger commit)`,
+        };
+      }
+    }
+  }
   for (const p of production) {
     const overlap = lineOverlap(candidate.lines, p.lines);
     if (overlap >= ambiguityThreshold) {
@@ -263,6 +333,50 @@ export function classifyAgainstProduction({ candidate, production, ambiguityThre
     }
   }
   return { verdict: 'new' };
+}
+
+// ── git-backed: is a change really in the tree, and applying one safely ────
+/**
+ * Does applying `sha` to `target` change NOTHING? The proof behind a
+ * containment claim: commit-to-commit comparison cannot see a line that
+ * production added and a LATER production commit removed again, but the tree
+ * can. A three-way merge onto the target that yields the target's own tree
+ * means the change is present. Anything else — a difference, a conflict, an
+ * unsupported git — is not proof, and returns false.
+ */
+export function changeAlreadyIn(sha, target, cwd = REPO_ROOT) {
+  const out = git(['merge-tree', '--write-tree', `--merge-base=${sha}^`, target, sha], { cwd, allowFail: true });
+  if (out === null) return false;
+  const merged = out.split('\n')[0].trim();
+  const targetTree = git(['rev-parse', `${target}^{tree}`], { cwd, allowFail: true });
+  return !!merged && merged === targetTree;
+}
+
+/**
+ * Cherry-pick one commit onto the current branch and say what happened.
+ *
+ *   'applied'          — committed normally.
+ *   'already-present'  — git reports an EMPTY result: the change is already in
+ *                        this branch. Skipped explicitly, never committed.
+ *   'conflict'         — anything else, including any failure that cannot be
+ *                        shown to be empty. The pick is aborted.
+ *
+ * "Empty" is proven, not inferred from failure: a cherry-pick must still be in
+ * progress, with no unmerged paths and nothing staged. A failure that is not
+ * that — a bad revision, a genuine conflict — is a conflict, and stops.
+ */
+export function applyCherryPick(sha, cwd = REPO_ROOT) {
+  if (git(['cherry-pick', sha], { cwd, allowFail: true }) !== null) return { outcome: 'applied' };
+  const inProgress = git(['rev-parse', '--verify', '--quiet', 'CHERRY_PICK_HEAD'], { cwd, allowFail: true });
+  const unmerged = (git(['diff', '--name-only', '--diff-filter=U'], { cwd, allowFail: true }) || '')
+    .split('\n').filter(Boolean);
+  const staged = git(['diff', '--cached', '--name-only'], { cwd, allowFail: true });
+  if (inProgress && !unmerged.length && staged === '') {
+    git(['cherry-pick', '--skip'], { cwd, allowFail: true });
+    return { outcome: 'already-present' };
+  }
+  git(['cherry-pick', '--abort'], { cwd, allowFail: true });
+  return { outcome: 'conflict', unmerged };
 }
 
 // ── PURE: baseline-relative test comparison ──────────────────────────────
