@@ -1,12 +1,12 @@
 // api/subscribe.js — Player push subscription management (Redis-backed)
-// POST  { subscription: PushSubscription, label: string } → saves / updates
+// POST  { subscription: PushSubscription } → saves / updates the caller's device (session required)
 // GET   → returns { count }
 // DELETE { endpoint: string } → removes
 
 import { load, save } from './_lib.js';
 import { setCors } from './_http.js';
 import { kvConfigured } from './_kv.js';
-import { resolveSessionFromRequest } from './_identityStore.js';
+import { requireSession } from './_identityStore.js';
 
 function displayNameFromSession(sessionContext = {}) {
   const user = sessionContext?.user || {};
@@ -57,27 +57,34 @@ export default async function handler(req, res) {
 
   // ── POST: add / refresh subscription ────────────────────────────────────
   if (req.method === 'POST') {
-    const sessionContext = await resolveSessionFromRequest(req).catch(() => null);
-    const { subscription, label, userId, playerId, legacyPlayerId: clientLegacyId } = req.body || {};
+    // The stored ids and label are what push.js and chat.js deliver by, so they
+    // come from the authenticated session and nowhere else. Identity fields in
+    // the body (userId, playerId, legacyPlayerId, label, role) are ignored: a
+    // caller could otherwise register a device as someone else and receive
+    // their notifications. No session means no subscription.
+    let sessionContext;
+    try {
+      sessionContext = await requireSession(req);
+    } catch {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    const { subscription } = req.body || {};
     if (!subscription?.endpoint) {
       return res.status(400).json({ error: 'Missing subscription endpoint' });
     }
     const subs  = await load();
     const idx   = subs.findIndex(s => s.subscription.endpoint === subscription.endpoint);
-    // Preserve any IDs already stored for this endpoint so that a session-less
-    // save (e.g. iOS PWA where the cookie is not forwarded) cannot overwrite
-    // previously-known routing IDs with empty strings.
-    const existing = idx >= 0 ? subs[idx] : null;
-    const sessionUserId   = sessionContext?.user?.id || '';
-    const sessionLegacyId = sessionContext?.playerProfile?.legacyPlayerId || '';
-    const resolvedPlayerId = messagingPlayerIdFromSession(sessionContext);
+    // The row is rebuilt wholly from the session: re-saving an endpoint another
+    // user registered (a shared device) rebinds it to the caller, and none of
+    // the previous owner's ids survive onto it.
+    const sessionUserId = sessionContext.user.id;
     const entry = {
       subscription,
-      label:         displayNameFromSession(sessionContext) || label || existing?.label || 'Player',
-      userId:        sessionUserId || userId || existing?.userId || '',
-      playerId:      resolvedPlayerId || playerId || existing?.playerId || sessionUserId || '',
-      legacyPlayerId: sessionLegacyId || clientLegacyId || existing?.legacyPlayerId || '',
-      role:          sessionContext?.teamMember?.role || sessionContext?.user?.role || existing?.role || '',
+      label:         displayNameFromSession(sessionContext) || 'Player',
+      userId:        sessionUserId,
+      playerId:      messagingPlayerIdFromSession(sessionContext) || sessionUserId,
+      legacyPlayerId: sessionContext.playerProfile?.legacyPlayerId || '',
+      role:          sessionContext.teamMember?.role || sessionContext.user?.role || '',
       savedAt:       new Date().toISOString(),
     };
     if (idx >= 0) subs[idx] = entry; else subs.push(entry);
