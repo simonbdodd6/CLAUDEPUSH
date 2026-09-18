@@ -10,7 +10,7 @@
 // abort and leave the repository as it was found.
 
 import {
-  loadConfig, git, patchIdOf, subjectOf, commitExists,
+  loadConfig, git, patchIdOf, subjectOf, commitExists, listDeployBranches,
   verifyExclusionIntegrity, classifyCandidates, nextDeployNumber,
   changeSignature, classifyAgainstProduction,
   h1, ok, bad, info, die,
@@ -35,7 +35,7 @@ if (!git(['rev-parse', '--verify', '--quiet', source], { allowFail: true })) die
 ok(`source branch: ${source} @ ${git(['rev-parse', '--short', source])}`);
 
 // ── 2. current production branch, verified against LIVE production ───────
-const branches = git(['branch', '--list', `${prefix}*`]).split('\n').map(s => s.replace(/^\*?\s*/, '').trim()).filter(Boolean);
+const branches = listDeployBranches(prefix);
 const nextNum = nextDeployNumber(branches, prefix);
 const production = `${prefix}${nextNum - 1}`;
 const productionShort = git(['rev-parse', '--short=7', production]);

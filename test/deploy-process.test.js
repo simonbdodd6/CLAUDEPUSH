@@ -16,6 +16,7 @@ import {
   evaluateProtections, isBlocking, loadConfig, CONFIG_PATH,
   classifyAgainstProduction, lineOverlap,
   requiredRuntimeDependencies, assessTestEnvironments, compareFailuresChecked,
+  stripBranchMarker, selectBaseline,
 } from '../scripts/deploy-lib.mjs';
 
 const TACTICS = { id: 'tactics-mount', commit: 'aaa111', subject: 'feat: mount the Tactics Board as a coach section', patchId: 'pt-tactics' };
@@ -23,6 +24,89 @@ const EXPORT = { id: 'club-export', commit: 'bbb222', subject: 'feat: add scoped
 const EXCLUSIONS = [TACTICS, EXPORT];
 
 // ── branch numbering ─────────────────────────────────────────────────────
+// ── branch-name markers ──────────────────────────────────────────────────
+// `git branch` prints `* ` for the branch checked out here and `+ ` for one
+// checked out in ANOTHER worktree. The gate once stripped only `*`: with
+// production (core-deploy-85) held open in a linked worktree, it read the name
+// as "+ core-deploy-85", could not resolve it, and compared core-deploy-87
+// against the STALE core-deploy-86 — reporting 59 phantom performance-drift
+// files and blocking a correct release.
+
+test('a plain deploy branch name resolves unchanged', () => {
+  assert.equal(stripBranchMarker('core-deploy-85'), 'core-deploy-85');
+  assert.equal(stripBranchMarker('  core-deploy-85  '), 'core-deploy-85', 'surrounding whitespace only');
+});
+
+test("the current-branch marker '*' is never part of the name", () => {
+  assert.equal(stripBranchMarker('* core-deploy-87'), 'core-deploy-87');
+  assert.equal(stripBranchMarker('*core-deploy-87'), 'core-deploy-87');
+});
+
+test("the linked-worktree marker '+' is never part of the name", () => {
+  assert.equal(stripBranchMarker('+ core-deploy-85'), 'core-deploy-85');
+  assert.equal(stripBranchMarker('+core-deploy-85'), 'core-deploy-85');
+  assert.equal(stripBranchMarker('  + core-deploy-85'), 'core-deploy-85', 'indented, as git prints it');
+});
+
+test('a marker is stripped ONCE: a name is never eaten past its first character', () => {
+  assert.equal(stripBranchMarker('core-deploy-85+'), 'core-deploy-85+', 'a trailing + is part of a (hypothetical) name');
+  // Only the marker goes — never text after it. Names that do not start with
+  // the deploy prefix prove the stripper is general, not tuned to one shape.
+  assert.equal(stripBranchMarker('+ my-core-deploy-85'), 'my-core-deploy-85');
+  assert.equal(stripBranchMarker('* feature/core-beta-simplification'), 'feature/core-beta-simplification');
+  assert.equal(stripBranchMarker('+ main'), 'main');
+  assert.equal(stripBranchMarker(''), '');
+  assert.equal(stripBranchMarker(undefined), '');
+});
+
+// The exact shape of the incident, with the real short SHAs.
+const INCIDENT_SHAS = { 'core-deploy-84': 'ecdc466', 'core-deploy-85': '65326e1',
+                        'core-deploy-86': 'eef5add', 'core-deploy-87': 'edb5133' };
+const shaOf = name => INCIDENT_SHAS[name] ?? null;   // only a CLEAN name resolves, exactly like rev-parse
+
+test('production held in another worktree still resolves as the baseline', () => {
+  const r = selectBaseline({
+    branches: ['core-deploy-84', '+ core-deploy-85', 'core-deploy-86', '* core-deploy-87'],
+    candidate: 'core-deploy-87', live: '65326e1', shortShaOf: shaOf,
+  });
+  assert.deepEqual(r, { baseline: 'core-deploy-85', reason: 'live' });
+});
+
+test('the stale core-deploy-86 is NOT chosen when production is core-deploy-85', () => {
+  const r = selectBaseline({
+    branches: ['core-deploy-84', '+ core-deploy-85', 'core-deploy-86', '* core-deploy-87'],
+    candidate: 'core-deploy-87', live: '65326e1', shortShaOf: shaOf,
+  });
+  assert.notEqual(r.baseline, 'core-deploy-86', 'positional NN-1 is exactly the wrong answer here');
+  assert.notEqual(r.reason, 'no-match', 'production WAS found — this must never fall back');
+});
+
+test('the candidate is never its own baseline, even if it matches production', () => {
+  const r = selectBaseline({ branches: ['core-deploy-84', '* core-deploy-85'],
+    candidate: 'core-deploy-85', live: '65326e1', shortShaOf: shaOf });
+  assert.equal(r.baseline, 'core-deploy-84');
+});
+
+test('an unmatched or unreachable production falls back to position, and says why', () => {
+  const branches = ['core-deploy-84', 'core-deploy-85', 'core-deploy-86'];
+  assert.deepEqual(selectBaseline({ branches, candidate: 'core-deploy-87', live: 'deadbee', shortShaOf: shaOf }),
+    { baseline: 'core-deploy-86', reason: 'no-match' });
+  assert.deepEqual(selectBaseline({ branches, candidate: 'core-deploy-87', live: null, shortShaOf: shaOf }),
+    { baseline: 'core-deploy-86', reason: 'unreachable' });
+});
+
+test('with nothing below the candidate, there is no baseline — never a guess', () => {
+  assert.deepEqual(selectBaseline({ branches: ['core-deploy-90'], candidate: 'core-deploy-85', live: null, shortShaOf: shaOf }),
+    { baseline: null, reason: 'none' });
+});
+
+test('numbering counts a branch held in another worktree', () => {
+  // Before the fix, "+ core-deploy-85" failed startsWith(prefix) and was
+  // silently DROPPED: with 85 the highest, prepare would have proposed 85 again.
+  assert.equal(nextDeployNumber(['core-deploy-84', '+ core-deploy-85']), 86);
+  assert.equal(nextDeployNumber(['+ core-deploy-85', '* core-deploy-84']), 86);
+});
+
 test('next deploy number follows the highest existing branch', () => {
   assert.equal(nextDeployNumber(['core-deploy-80', 'core-deploy-81', 'core-deploy-82']), 83);
   assert.equal(nextDeployNumber(['* core-deploy-82', '  core-deploy-9']), 83, 'numeric, not lexical; tolerates git markers');
