@@ -127,9 +127,11 @@ test('there is ONE per-player aggregation, and History no longer runs its own', 
   assert.equal(html.split('function attendanceStats(').length - 1, 1, 'one aggregation, not two');
 });
 
-test('Match Centre’s attendance figure comes from the same source', () => {
+test('Match Centre keeps no attendance figure of its own', () => {
+  // Its only attendance figure fed the Available Players "Training" sort,
+  // which is gone; nothing in the Match Centre may re-derive attendance.
   const mc = strip(extractFn(html, 'renderMatchday'));
-  assert.match(mc, /attendanceStats\(_attSrc\.sessions, playerMatchKey\(p\)/);
+  assert.ok(!/attendanceStats\(|currentAttendance\(|attPct/.test(mc), 'no attendance read in the Match Centre');
   assert.ok(!/_attBySession/.test(mc), 'the local walk is gone');
 });
 

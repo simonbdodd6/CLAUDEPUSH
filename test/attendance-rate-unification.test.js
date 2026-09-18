@@ -280,8 +280,10 @@ test('every rate surface passes the day and, for self, the server count', () => 
   const profileCard = html.slice(html.indexOf('<!-- ATTENDANCE CARD'), html.indexOf('<!-- AVAILABILITY THIS WEEK'));
   assert.match(strip(profileCard), /attendanceStats\(att\.sessions, playerMatchKey\(p\), state\.seasonStart, state\.seasonEnd, availToday\(\)\)/);
   assert.ok(!/where attendance was taken/.test(profileCard));
+  // The Match Centre's only attendance figure (the removed Available Players
+  // "Training" sort) is gone, so it holds no second aggregation either.
   const mc = strip(extractFn(html, 'renderMatchday'));
-  assert.match(mc, /attendanceStats\(_attSrc\.sessions, playerMatchKey\(p\), state\.seasonStart, state\.seasonEnd, availToday\(\)\)/);
+  assert.ok(!/attendanceStats\(|attendanceRate|attPct/.test(mc));
 });
 
 test('History reintroduces nothing, and nothing here writes', () => {
