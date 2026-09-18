@@ -56,11 +56,62 @@ export function commitExists(sha, cwd = REPO_ROOT) {
   return git(['cat-file', '-t', sha], { cwd, allowFail: true }) === 'commit';
 }
 
+// ── deploy branch names ──────────────────────────────────────────────────
+/**
+ * `git branch` decorates its output: `* ` for the branch checked out HERE and
+ * `+ ` for one checked out in ANOTHER worktree. Stripping only `*` once turned
+ * `+ core-deploy-85` — production, held open in a linked worktree — into an
+ * unresolvable name, so the gate could not find production and fell back to a
+ * stale branch. Any display marker, either kind, never part of the name.
+ */
+export function stripBranchMarker(line) {
+  return String(line || '').trim().replace(/^[*+]\s*/, '');
+}
+
+/**
+ * The deploy branches, by NAME. Asked of `for-each-ref`, which prints ref names
+ * and nothing else — no current-branch or worktree markers to strip at all.
+ * stripBranchMarker still runs over the result: a harmless no-op here, and the
+ * one normaliser every caller shares.
+ */
+export function listDeployBranches(prefix = 'core-deploy-', cwd = REPO_ROOT) {
+  const out = git(['for-each-ref', '--format=%(refname:short)', `refs/heads/${prefix}*`], { cwd, allowFail: true }) || '';
+  return out.split('\n').map(stripBranchMarker).filter(Boolean);
+}
+
+/**
+ * Which deploy branch is production? PURE: the caller supplies the branch
+ * names, how to read a branch's short SHA, and what production reported.
+ *
+ *   production answered + a branch serves it  → that branch   (reason 'live')
+ *   production answered, no branch matches     → highest below the candidate
+ *                                                (reason 'no-match' — loud)
+ *   production unreachable                     → highest below the candidate
+ *                                                (reason 'unreachable' — loud)
+ *   nothing below the candidate                → null        (reason 'none')
+ *
+ * The candidate itself is never its own baseline.
+ */
+export function selectBaseline({ branches, candidate, live, shortShaOf, prefix = 'core-deploy-' }) {
+  const all = branches.map(stripBranchMarker).filter(b => b && b !== candidate);
+  const tail = String(candidate || '').startsWith(prefix) ? String(candidate).slice(prefix.length) : '';
+  const num = /^\d+$/.test(tail) ? Number(tail) : null;
+
+  if (live) {
+    const match = all.find(b => shortShaOf(b) === live);
+    if (match) return { baseline: match, reason: 'live' };
+  }
+  const nums = all.map(b => Number(b.slice(prefix.length))).filter(n => Number.isInteger(n));
+  const below = num === null ? nums : nums.filter(n => n < num);
+  if (!below.length) return { baseline: null, reason: 'none' };
+  return { baseline: `${prefix}${Math.max(...below)}`, reason: live ? 'no-match' : 'unreachable' };
+}
+
 // ── PURE: next deploy branch number ──────────────────────────────────────
 /** Highest existing <prefix>N plus one. Ignores anything not strictly numeric. */
 export function nextDeployNumber(branchNames, prefix = 'core-deploy-') {
   const nums = branchNames
-    .map(b => b.trim().replace(/^\*?\s*/, ''))
+    .map(stripBranchMarker)
     .filter(b => b.startsWith(prefix))
     .map(b => b.slice(prefix.length))
     .filter(s => /^\d+$/.test(s))

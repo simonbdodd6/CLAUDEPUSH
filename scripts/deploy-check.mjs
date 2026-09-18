@@ -20,6 +20,7 @@ import {
   verifyExclusionIntegrity, evaluateProtections, isBlocking,
   parseTestFailures, parseTestCounts, compareFailuresChecked,
   requiredRuntimeDependencies, probeDependencyResolution, assessTestEnvironments,
+  listDeployBranches, selectBaseline,
   h1, ok, bad, info, die,
 } from './deploy-lib.mjs';
 
@@ -35,8 +36,7 @@ console.log(`candidate branch: ${candidate}`);
 
 // ── baseline: the previous deploy branch below the candidate ─────────────
 function deployBranches() {
-  return git(['branch', '--list', `${prefix}*`]).split('\n')
-    .map(s => s.replace(/^\*?\s*/, '').trim()).filter(Boolean);
+  return listDeployBranches(prefix);
 }
 /**
  * The baseline is WHAT PRODUCTION IS SERVING, not simply NN-1.
@@ -49,28 +49,24 @@ function deployBranches() {
  * only when production cannot be reached — saying so loudly.
  */
 async function baselineFor(branch) {
-  const all = deployBranches().filter(b => b !== branch);
-  const num = branch.startsWith(prefix) && /^\d+$/.test(branch.slice(prefix.length))
-    ? Number(branch.slice(prefix.length)) : null;
-
   let live = null;
   try {
     const res = await fetch('https://www.coacheasier.com/api/config', { signal: AbortSignal.timeout(20_000) });
     live = (await res.json())?.version ?? null;
   } catch { /* fall through to the positional fallback */ }
 
-  if (live) {
-    const match = all.find(b => git(['rev-parse', '--short=7', b], { allowFail: true }) === live);
-    if (match) { info(`live production serves ${live} → baseline ${match}`); return match; }
-    info(`live production serves ${live}, which matches no local deploy branch — falling back to position`);
-  } else {
-    info('could not reach production to identify the baseline — falling back to position');
-  }
-
-  const nums = all.map(b => Number(b.slice(prefix.length))).filter(n => Number.isInteger(n));
-  const below = num === null ? nums : nums.filter(n => n < num);
-  if (!below.length) die(`cannot determine a production baseline below ${branch}`);
-  return `${prefix}${Math.max(...below)}`;
+  const { baseline, reason } = selectBaseline({
+    branches: deployBranches(),
+    candidate: branch,
+    live,
+    shortShaOf: b => git(['rev-parse', '--short=7', b], { allowFail: true }),
+    prefix,
+  });
+  if (reason === 'live') info(`live production serves ${live} → baseline ${baseline}`);
+  if (reason === 'no-match') info(`live production serves ${live}, which matches no local deploy branch — falling back to position`);
+  if (reason === 'unreachable') info('could not reach production to identify the baseline — falling back to position');
+  if (!baseline) die(`cannot determine a production baseline below ${branch}`);
+  return baseline;
 }
 const baseline = await baselineFor(candidate);
 console.log(`production baseline: ${baseline}`);
