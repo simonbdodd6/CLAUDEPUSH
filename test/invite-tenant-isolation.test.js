@@ -146,7 +146,7 @@ test('C. filling one club past the cap leaves another club\'s invitation intact'
   assert.equal(tokens.includes(`alpha-${MAX_INVITES_PER_CLUB + 24}`), true, 'its newest kept');
   assert.equal(tokens.includes('alpha-0'), false, 'its own oldest displaced');
   // And Bravo's record is still claimable, which is the whole point.
-  const claimed = await identity({ action: 'claim_invite', token: bravoToken,
+  const claimed = await identity({ position: '2 — Hooker', action: 'claim_invite', token: bravoToken,
     email: 'bp@bravo.test', name: 'Bravo Player', password: 'longEnough123' });
   assert.equal(claimed.code, 201, JSON.stringify(claimed.body));
   assert.equal(claimed.body.teamMember.teamId, B, 'and lands in the right club');
@@ -275,7 +275,7 @@ test('G. migrating twice changes nothing the second time', async () => {
 
 test('H+K. a pre-namespace link still claims, and records who claimed it', async () => {
   seedLegacy();
-  const claimed = await identity({ action: 'claim_invite', token: 'legacy-b',
+  const claimed = await identity({ position: '2 — Hooker', action: 'claim_invite', token: 'legacy-b',
     email: 'lb@bravo.test', name: 'Legacy Bravo', password: 'longEnough123' });
   assert.equal(claimed.code, 201, JSON.stringify(claimed.body));
   // They land in the club the INVITATION named, not one they chose.
@@ -286,7 +286,7 @@ test('H+K. a pre-namespace link still claims, and records who claimed it', async
   assert.equal(record.acceptedBy, claimed.body.user.id, 'acceptedBy still recorded');
   assert.ok(record.acceptedAt);
   // And it cannot be claimed twice.
-  const twice = await identity({ action: 'claim_invite', token: 'legacy-b',
+  const twice = await identity({ position: '2 — Hooker', action: 'claim_invite', token: 'legacy-b',
     email: 'lb@bravo.test', name: 'Legacy Bravo', password: 'longEnough123' });
   assert.equal(twice.code >= 400, true, `second claim refused (HTTP ${twice.code})`);
 });
@@ -298,7 +298,7 @@ test('H2. a migrated link claims against its CLUB copy, never the stale one', as
   const admin = await store.createSession({ userId: 'u-plat', teamId: A, role: 'coach' });
   await identity({ action: 'migrate_invites' }, admin.token);
 
-  const claimed = await identity({ action: 'claim_invite', token: 'legacy-a',
+  const claimed = await identity({ position: '2 — Hooker', action: 'claim_invite', token: 'legacy-a',
     email: 'la@alpha.test', name: 'Legacy Alpha', password: 'longEnough123' });
   assert.equal(claimed.code, 201, JSON.stringify(claimed.body));
   assert.equal(clubList(A)[0].status, 'accepted', 'the club copy took the claim');
@@ -306,7 +306,7 @@ test('H2. a migrated link claims against its CLUB copy, never the stale one', as
   // The stale legacy copy still reads pending — and is inert, because the club
   // copy wins on lookup, so it can never be claimed a second time through it.
   assert.equal(legacyList().find(i => i.token === 'legacy-a').status, 'pending');
-  const twice = await identity({ action: 'claim_invite', token: 'legacy-a',
+  const twice = await identity({ position: '2 — Hooker', action: 'claim_invite', token: 'legacy-a',
     email: 'la@alpha.test', name: 'Legacy Alpha', password: 'longEnough123' });
   assert.equal(twice.code >= 400, true, 'the inert copy cannot be claimed');
 });
@@ -610,10 +610,10 @@ test('LOG-2. only the established short reference is logged, and it is not a cre
   assert.ok(token.length - last8.length >= 16, 'the great majority of the token is never logged');
 
   // Claiming still requires the WHOLE token — the logged fragment is useless.
-  const withFragment = await identity({ action: 'claim_invite', token: last8,
+  const withFragment = await identity({ position: '2 — Hooker', action: 'claim_invite', token: last8,
     email: 'ref@alpha.test', name: 'Ref Player', password: 'longEnough123' });
   assert.ok(withFragment.code >= 400, `the logged fragment cannot claim (HTTP ${withFragment.code})`);
-  const withPrefixStripped = await identity({ action: 'claim_invite', token: `inv-${last8}`,
+  const withPrefixStripped = await identity({ position: '2 — Hooker', action: 'claim_invite', token: `inv-${last8}`,
     email: 'ref@alpha.test', name: 'Ref Player', password: 'longEnough123' });
   assert.ok(withPrefixStripped.code >= 400, 'nor does the log line pasted verbatim');
 });
@@ -654,7 +654,7 @@ test('LOG-4. the token the caller receives is unchanged, and still claims', asyn
 
   // And the real token still works end to end.
   assert.equal((await validate(token)).code, 200);
-  const claimed = await identity({ action: 'claim_invite', token,
+  const claimed = await identity({ position: '2 — Hooker', action: 'claim_invite', token,
     email: 'wp@alpha.test', name: 'Whole Player', password: 'longEnough123' });
   assert.equal(claimed.code, 201, JSON.stringify(claimed.body));
   assert.equal(claimed.body.teamMember.teamId, A);

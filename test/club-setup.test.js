@@ -171,11 +171,11 @@ test('players join only the team their invite was issued for and read that club 
     { token: 'invite-team-b-tok', name: 'Team B Joiner', role: 'player', status: 'pending', teamId: 'rival-club' },
   ]));
 
-  const joinA = await claimInvite({ token: 'invite-team-a-tok', email: 'joiner.a@club.test', password: 'password123', name: 'Team A Joiner' });
+  const joinA = await claimInvite({ position: '2 — Hooker', token: 'invite-team-a-tok', email: 'joiner.a@club.test', password: 'password123', name: 'Team A Joiner' });
   assert.equal(joinA.teamMember.teamId, 'boitsfort-rfc', 'invite must bind the player to the issuing team');
   assert.equal(joinA.session.teamId, 'boitsfort-rfc');
 
-  const joinB = await claimInvite({ token: 'invite-team-b-tok', email: 'joiner.b@club.test', password: 'password123', name: 'Team B Joiner' });
+  const joinB = await claimInvite({ position: '2 — Hooker', token: 'invite-team-b-tok', email: 'joiner.b@club.test', password: 'password123', name: 'Team B Joiner' });
   assert.equal(joinB.teamMember.teamId, 'rival-club');
 
   // Team A's player reads Team A's club config; Team B's player gets null

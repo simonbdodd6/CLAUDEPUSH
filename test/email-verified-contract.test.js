@@ -141,7 +141,7 @@ test('claimInvite: newly created player has emailVerified: false', async () => {
   ]));
   await seedInvite(kv, { token: 'INVITE_TOKEN_01', teamId: 'invite-club', role: 'player' });
 
-  const result = await claimInvite({
+  const result = await claimInvite({ position: '2 — Hooker',
     token: 'INVITE_TOKEN_01',
     name: 'Invited Player',
     email: 'invited@player.test',

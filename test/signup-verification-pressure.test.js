@@ -167,7 +167,7 @@ test('after 48h unverified: NEW invites refused (incl. by a verified second admi
   assert.equal(preLink.statusCode, 200);
   const adminInvite = await call(invite, 'POST', { name: 'Second Admin', role: 'admin', sendEmail: false }, { cookie });
   assert.equal(adminInvite.statusCode, 201);
-  const admin = await store.claimInvite({ token: adminInvite.body.token, email: 'second@verify.test', name: 'Second Admin', password: 'password123' });
+  const admin = await store.claimInvite({ position: '2 — Hooker', token: adminInvite.body.token, email: 'second@verify.test', name: 'Second Admin', password: 'password123' });
   { const u = users(); u.find(x => x.id === admin.user.id).emailVerified = true; kv.set('app:identity:users', JSON.stringify(u)); }
 
   backdateClub(club.team.id);
@@ -186,7 +186,7 @@ test('after 48h unverified: NEW invites refused (incl. by a verified second admi
   const existingLink = await call(invite, 'POST', { group: true, role: 'player' }, { cookie });
   assert.equal(existingLink.statusCode, 200, 'the EXISTING reusable link is still returned');
   assert.equal(existingLink.body.token, preLink.body.token, 'same link, nothing new minted');
-  const claimed = await store.claimInvite({ token: preLink.body.token, email: 'latecomer@verify.test', name: 'Late Comer', password: 'password123' });
+  const claimed = await store.claimInvite({ position: '2 — Hooker', token: preLink.body.token, email: 'latecomer@verify.test', name: 'Late Comer', password: 'password123' });
   assert.ok(claimed.user.id, 'existing links still claim normally after the wall');
 
   // Verify the founder through the REAL token path → instantly restored.
@@ -209,7 +209,7 @@ test('after the wall, non-invite features keep working; the gate is consulted ON
   const club = await selfServiceClub();
   const cookie = ck(club.founderSession);
   const pl = await call(invite, 'POST', { name: 'Only Player', role: 'player', sendEmail: false }, { cookie });
-  const player = await store.claimInvite({ token: pl.body.token, email: 'op@verify.test', name: 'Only Player', password: 'password123' });
+  const player = await store.claimInvite({ position: '2 — Hooker', token: pl.body.token, email: 'op@verify.test', name: 'Only Player', password: 'password123' });
   backdateClub(club.team.id);
 
   const avail = await call(availability, 'POST', { sessionId: 'tue', response: 'available' }, { cookie: ck(player.session) });
@@ -253,7 +253,7 @@ test('Boitsfort, provisioned clubs and legacy unverified users are untouched by 
 
   // Platform-provisioned club: first admin claims, stays unverified, still exempt.
   const prov = await store.provisionClub({ clubName: 'Provisioned Verify FC', adminEmail: 'first@pv.test' });
-  const firstAdmin = await store.claimInvite({ token: prov.invite.token, email: 'first@pv.test', name: 'First Admin', password: 'password123' });
+  const firstAdmin = await store.claimInvite({ position: '2 — Hooker', token: prov.invite.token, email: 'first@pv.test', name: 'First Admin', password: 'password123' });
   const t = JSON.parse(kv.get('app:identity:teams')); t.find(x => x.id === prov.team.id).createdAt = '2026-07-01T00:00:00.000Z';
   kv.set('app:identity:teams', JSON.stringify(t));
   const r2 = await call(invite, 'POST', { name: 'P One', role: 'player', sendEmail: false }, { cookie: ck(firstAdmin.session) });

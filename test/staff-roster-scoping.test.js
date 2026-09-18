@@ -175,7 +175,7 @@ test('a U18 manager INVITE (coach/manager + U18 scope) produces U18-only staff �
     headers: { 'content-type': 'application/json', cookie: `ce_session=${token}`, host: 'test.local' },
     body: { name: 'New Manager', email: 'mgr@c.test', role: 'coach', staffLevel: 'manager',
       scope: { level: 'group', groupId: U18 } }, on() {} }, inv);
-  const claim = await store.claimInvite({ token: inv.body.invite?.token || inv.body.token,
+  const claim = await store.claimInvite({ position: '2 — Hooker', token: inv.body.invite?.token || inv.body.token,
     name: 'New Manager', email: 'mgr@c.test', password: 'freshPassword12' });
   const sc = effectiveAccessScope(claim.teamMember);
   assert.equal(sc.clubWide, false, 'no clubWide');
@@ -195,7 +195,7 @@ test('the REUSABLE coach link now binds to the operating group (the Isabelle-cla
     headers: { 'content-type': 'application/json', cookie: `ce_session=${token}`, host: 'test.local' },
     body: { group: true, role: 'coach', staffLevel: 'assistant', scope: { groupId: U18 } }, on() {} }, link);
   assert.equal(link.code, 200, JSON.stringify(link.body));
-  const claim = await store.claimInvite({ token: link.body.token, name: 'Link Coach',
+  const claim = await store.claimInvite({ position: '2 — Hooker', token: link.body.token, name: 'Link Coach',
     email: 'linkcoach@c.test', password: 'freshPassword12' });
   const sc = effectiveAccessScope(claim.teamMember);
   assert.equal(sc.clubWide, false);

@@ -993,7 +993,7 @@ test('Y24+Y25+Y26. provisioning, platform-admin management and Change Plan still
     adminEmail: 'first@newer.test', plan: 'pro' }, simon.token);
   assert.equal(prov.code, 201, JSON.stringify(prov.body));
   assert.equal(prov.body.team.plan, 'pro');
-  const claimed = await identity({ action: 'claim_invite',
+  const claimed = await identity({ position: '2 — Hooker', action: 'claim_invite',
     token: decodeURIComponent(String(prov.body.inviteUrl).split('inv=')[1]),
     email: 'first@newer.test', name: 'New Founder', password: 'longEnough123' });
   assert.equal(claimed.code, 201, JSON.stringify(claimed.body));

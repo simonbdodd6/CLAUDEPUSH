@@ -58,7 +58,7 @@ async function joinPlayer(teamId, name) {
   const invites = JSON.parse(kv.get('ce:invites') || '[]');
   invites.push({ token, email, name, role: 'player', teamId, status: 'pending', expiresAt: new Date(Date.now() + 9e7).toISOString() });
   kv.set('ce:invites', JSON.stringify(invites));
-  return { ...(await store.claimInvite({ token, email, name, password: 'password123' })), email };
+  return { ...(await store.claimInvite({ position: '2 — Hooker', token, email, name, password: 'password123' })), email };
 }
 /** Promote a member to staff with an explicit access profile, and return a session. */
 async function staffWithProfile(teamId, name, profile) {

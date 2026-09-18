@@ -205,7 +205,7 @@ test('claiming a U18 invite yields a U18 player eligible for both U18 teams', as
   created(made);
   const token = made.body.token;
 
-  const claimed = await store.claimInvite({
+  const claimed = await store.claimInvite({ position: '2 — Hooker',
     token, email: 'u18player@c.test', password: 'Str0ngPass!23', displayName: 'U18 Player',
   });
   assert.ok(claimed, 'claim succeeded');

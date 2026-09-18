@@ -190,7 +190,7 @@ test('the new group\'s scoped player invite stamps playerGroupId and full team e
     { group: true, playerGroupId: gid, scope: { groupId: gid } }, admin.token);
   assert.equal(link.code, 200, JSON.stringify(link.body));
 
-  await store.claimInvite({ token: link.body.token, name: 'New U16 Player',
+  await store.claimInvite({ position: '2 — Hooker', token: link.body.token, name: 'New U16 Player',
     email: 'u16kid@club.test', password: 'realPassword12' });
   const member = JSON.parse(kv.get('app:identity:team_members'))
     .find(m => m.teamId === CLUB && m.role === 'player' && m.playerGroupId === gid);
@@ -219,7 +219,7 @@ test('a staff invite scoped to the new group grants that group only', async () =
       scope: { level: 'group', groupId: gid } }, admin.token);
   assert.equal([200, 201].includes(inv.code), true, JSON.stringify(inv.body));
   const token = inv.body.invite?.token || inv.body.token;
-  await store.claimInvite({ token, name: 'U16 Coach', email: 'u16coach@club.test', password: 'realPassword12' });
+  await store.claimInvite({ position: '2 — Hooker', token, name: 'U16 Coach', email: 'u16coach@club.test', password: 'realPassword12' });
   const coach = JSON.parse(kv.get('app:identity:team_members'))
     .find(m => m.teamId === CLUB && m.role === 'coach' && m.userId !== 'u-simon' && m.userId !== 'u-scoped');
   const eff = effectiveAccessScope(coach);

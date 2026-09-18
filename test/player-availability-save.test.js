@@ -126,7 +126,7 @@ test('reason then no-reason POST still overwrites; self-read and coach board sho
   kv.set(`app:publish:${club.team.id}:sessions`, JSON.stringify([{ id: 'tue', title: 'Tuesday' }]));
   const token = 'TK' + String(++_t).padStart(8, '0');
   kv.set('ce:invites', JSON.stringify([{ token, email: 'psp@ps.test', name: 'PS Player', role: 'player', teamId: club.team.id, status: 'pending', expiresAt: new Date(Date.now() + 9e7).toISOString() }]));
-  const player = await store.claimInvite({ token, email: 'psp@ps.test', name: 'PS Player', password: 'password123' });
+  const player = await store.claimInvite({ position: '2 — Hooker', token, email: 'psp@ps.test', name: 'PS Player', password: 'password123' });
   const uid = player.user.id.toLowerCase();
 
   // unavailable WITH reason, then available WITHOUT reason

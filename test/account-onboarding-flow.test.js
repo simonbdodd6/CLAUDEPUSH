@@ -172,7 +172,7 @@ test('coach invite to claimed player creates one permanent userId across auth ch
   assert.match(sentEmails[0].subject, /invited/i);
 
   const claimed = await callApi(identityHandler, 'POST', {
-    body: {
+    body: { position: '2 — Hooker',
       action: 'claim_invite',
       token: invite.payload.token,
       name: 'Test Registered Player',
@@ -308,7 +308,7 @@ test('claimed invite subscription uses the same permanent userId as coach DM rou
   assert.equal(invite.statusCode, 201);
 
   const claimed = await callApi(identityHandler, 'POST', {
-    body: {
+    body: { position: '2 — Hooker',
       action: 'claim_invite',
       token: invite.payload.token,
       name: 'Push Identity Player',

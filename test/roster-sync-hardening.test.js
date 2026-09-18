@@ -115,7 +115,7 @@ test('NEW JOINER — a claimed player invite creates the roster projection immed
   seed();
   kv.set('ce:invites', JSON.stringify([{ status: 'pending', teamId: CLUB, token: 'JoinTok000000001',
     role: 'player', name: 'Nora Newjoiner', playerGroupId: U18, createdAt: '2026-09-01T00:00:00.000Z' }]));
-  const { teamMember } = await claimInvite({
+  const { teamMember } = await claimInvite({ position: '2 — Hooker',
     token: 'JoinTok000000001', name: 'Nora Newjoiner', email: 'nora@rsh.test', password: 'realPassword12',
   });
   const row = rowFor(teamMember.userId);
@@ -123,7 +123,8 @@ test('NEW JOINER — a claimed player invite creates the roster projection immed
   assert.equal(row.id, teamMember.userId, 'row keyed by the permanent user id');
   assert.equal(row.name, 'Nora Newjoiner');
   assert.equal(row.registrationStatus, 'registered');
-  assert.equal(row.position, 'TBC');
+  // A player now joins with the position they picked (claimInvite requires one).
+  assert.equal(row.position, '2 — Hooker');
   assert.ok(!('dateOfBirth' in row) && !('parentGuardianName' in row) && !('emergencyContact' in row),
     'no sensitive fields fabricated');
 });
@@ -143,7 +144,7 @@ test('NEW JOINER — a staff-only claim creates no roster row', async () => {
   seed();
   kv.set('ce:invites', JSON.stringify([{ status: 'pending', teamId: CLUB, token: 'MedicTok00000001',
     role: 'medical', name: 'Club Physio', createdAt: '2026-09-01T00:00:00.000Z' }]));
-  await claimInvite({ token: 'MedicTok00000001', name: 'Club Physio',
+  await claimInvite({ position: '2 — Hooker', token: 'MedicTok00000001', name: 'Club Physio',
     email: 'physio@rsh.test', password: 'realPassword12' });
   assert.equal(rosterRows().length, 0, 'staff never sit in the roster');
 });

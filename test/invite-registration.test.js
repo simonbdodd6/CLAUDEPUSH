@@ -219,10 +219,10 @@ test('invite token cannot be claimed twice', async () => {
     },
   ]));
 
-  await claimInvite({ token: 'OneTimeToken123', name: 'Once Player', email: 'once@example.com', password: 'password123' });
+  await claimInvite({ position: '2 — Hooker', token: 'OneTimeToken123', name: 'Once Player', email: 'once@example.com', password: 'password123' });
 
   await assert.rejects(
-    () => claimInvite({ token: 'OneTimeToken123', name: 'Once Player', email: 'once@example.com', password: 'password123' }),
+    () => claimInvite({ position: '2 — Hooker', token: 'OneTimeToken123', name: 'Once Player', email: 'once@example.com', password: 'password123' }),
     (err) => { assert.equal(err.status, 409); return true; }
   );
 });
@@ -241,7 +241,7 @@ test('player account gets a permanent user_XXXX userId after claiming invite', a
     },
   ]));
 
-  const claimed = await claimInvite({
+  const claimed = await claimInvite({ position: '2 — Hooker',
     token: 'PermanentIdToken',
     name: 'Permanent Player',
     email: 'permanent@example.com',
@@ -270,7 +270,7 @@ test('legacyPlayerId is inv-{last8 of token} after invite claim', async () => {
     },
   ]));
 
-  const claimed = await claimInvite({
+  const claimed = await claimInvite({ position: '2 — Hooker',
     token,
     name: 'Legacy Id Player',
     email: 'legacy.id@example.com',
@@ -296,7 +296,7 @@ test('invited player appears in GET /api/identity (Members list)', async () => {
     },
   ]));
 
-  const claimed = await claimInvite({
+  const claimed = await claimInvite({ position: '2 — Hooker',
     token,
     name: 'Members Player',
     email: 'members@example.com',
@@ -329,7 +329,7 @@ test('invited player can log in with email and password', async () => {
     },
   ]));
 
-  await claimInvite({
+  await claimInvite({ position: '2 — Hooker',
     token: 'LoginToken0001',
     name: 'Login Player',
     email: 'login.player@example.com',
@@ -355,7 +355,7 @@ test('coach can open a DM conversation channel with an invited player', async ()
     },
   ]));
 
-  const claimed = await claimInvite({
+  const claimed = await claimInvite({ position: '2 — Hooker',
     token: 'DmToken0001234',
     name: 'DM Player',
     email: 'dm.player@example.com',
@@ -401,7 +401,7 @@ test('invited player can reply to coach DM', async () => {
     },
   ]));
 
-  const claimed = await claimInvite({
+  const claimed = await claimInvite({ position: '2 — Hooker',
     token: 'ReplyToken012345',
     name: 'Reply Player',
     email: 'reply.player@example.com',
@@ -484,7 +484,7 @@ test('Simon Test Player baseline is unaffected after new player invite', async (
       createdAt: new Date().toISOString(),
     },
   ]));
-  const claimed = await claimInvite({
+  const claimed = await claimInvite({ position: '2 — Hooker',
     token: 'NewPlayerToken11',
     name: 'New Player',
     email: 'new.player@example.com',
@@ -551,8 +551,8 @@ test('multiple players register with the SAME group link (no single-use 409)', a
   const headers = { ...coach.headers, host: 'test.example.com', 'x-forwarded-proto': 'https' };
   const token = (await callApi(inviteHandler, 'POST', { headers, body: { group: true } })).payload.token;
 
-  const a = await claimInvite({ token, name: 'Alpha Player', email: 'alpha@squad.test', password: 'password123' });
-  const b = await claimInvite({ token, name: 'Bravo Player', email: 'bravo@squad.test', password: 'password123' });
+  const a = await claimInvite({ position: '2 — Hooker', token, name: 'Alpha Player', email: 'alpha@squad.test', password: 'password123' });
+  const b = await claimInvite({ position: '2 — Hooker', token, name: 'Bravo Player', email: 'bravo@squad.test', password: 'password123' });
 
   assert.notEqual(a.user.id, b.user.id, 'two distinct real accounts');
   assert.match(a.user.id, /^user_/);
@@ -574,7 +574,7 @@ test('group claim requires the player to enter their own name', async () => {
   const token = (await callApi(inviteHandler, 'POST', { headers, body: { group: true } })).payload.token;
 
   await assert.rejects(
-    () => claimInvite({ token, name: '   ', email: 'noname@squad.test', password: 'password123' }),
+    () => claimInvite({ position: '2 — Hooker', token, name: '   ', email: 'noname@squad.test', password: 'password123' }),
     /name is required/i,
   );
 });

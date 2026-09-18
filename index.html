@@ -6333,6 +6333,11 @@
       // ["fixtures",  "Calendar"],
     ];
 
+    // THE player position choices (Members add/edit forms, player sign-up).
+    // "SUB — Squad player" is a squad status, not a position: a player joining
+    // must pick one of the fifteen (see isRecognisedPlayerPosition).
+    const PLAYER_POSITION_OPTIONS = ["1 — Loosehead prop","2 — Hooker","3 — Tighthead prop","4 — Lock","5 — Lock","6 — Blindside flanker","7 — Openside flanker","8 — Number 8","9 — Scrum half","10 — Fly half","11 — Left wing","12 — Inside centre","13 — Outside centre","14 — Right wing","15 — Fullback","SUB — Squad player"];
+
     // V14 — formation read from the approved reference image, then 3 requested edits:
     //   • 14 moved onto 7's vertical line (identical X) → 7 stacked above 14
     //   • 8 nudged slightly deeper (back row 39 → 42)
@@ -19881,6 +19886,7 @@
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               <button class="btn primary" type="button" onclick="openInvitePlayersModal()">Invite players</button>
               <button class="btn" type="button" onclick="openCoachGroupInviteModal()">Invite coaches / staff</button>
+              <button class="btn" type="button" onclick="membersJumpToStaff()" aria-controls="members-staff">Jump to Staff</button>
               ${canI('manage_teams') ? `<button class="btn" type="button" onclick="setSection('coach','admin')"
                 title="Club structure, staff access and member permissions">Club Admin →</button>` : ''}
             </div>
@@ -20022,7 +20028,7 @@
             <div class="add-player-grid">
               <label>Full name *<input id="apName" placeholder="Simon Dodd"></label>
               <label>Position<select id="apPos">
-                ${["1 — Loosehead prop","2 — Hooker","3 — Tighthead prop","4 — Lock","5 — Lock","6 — Blindside flanker","7 — Openside flanker","8 — Number 8","9 — Scrum half","10 — Fly half","11 — Left wing","12 — Inside centre","13 — Outside centre","14 — Right wing","15 — Fullback","SUB — Squad player"].map(p=>`<option>${p}</option>`).join("")}
+                ${PLAYER_POSITION_OPTIONS.map(p=>`<option>${p}</option>`).join("")}
               </select></label>
               <label>Phone<input id="apPhone" placeholder="+32470000000" type="tel"></label>
               <label>Email<input id="apEmail" placeholder="player@example.com" type="email"></label>
@@ -20150,9 +20156,9 @@
 
           <!-- Coaches & staff — read-only; sourced from user identity, not the roster.
                No attendance / availability / archive controls (staff are not players). -->
-          <div class="card" style="padding:0;overflow:hidden">
+          <div class="card" id="members-staff" style="padding:0;overflow:hidden;scroll-margin-top:16px">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)">
-              <strong style="font-size:14px;color:var(--ink)">Coaches &amp; staff</strong>
+              <strong id="members-staff-title" tabindex="-1" style="font-size:14px;color:var(--ink);outline:none">Coaches &amp; staff</strong>
               <span class="pill" style="font-size:11px">${staffMembers.length}</span>
             </div>
             ${staffMembers.length ? `<div style="padding:8px 10px;display:grid;gap:4px">
@@ -21679,7 +21685,7 @@
           </select>
         </div>`;
 
-      const posOptions = ["1 — Loosehead prop","2 — Hooker","3 — Tighthead prop","4 — Lock","5 — Lock","6 — Blindside flanker","7 — Openside flanker","8 — Number 8","9 — Scrum half","10 — Fly half","11 — Left wing","12 — Inside centre","13 — Outside centre","14 — Right wing","15 — Fullback","SUB — Squad player"];
+      const posOptions = PLAYER_POSITION_OPTIONS;
       const lcOptions = PLAYER_LIFECYCLE_STATUSES.map(s => ({ v: s, l: PLAYER_LIFECYCLE_LABELS[s]?.label || s }));
       const regOptions = [
         { v:'unregistered', l:'Unregistered' }, { v:'pending', l:'Pending' }, { v:'registered', l:'Registered' }
@@ -22830,6 +22836,20 @@
     // EVERY NUMBER comes from seasonPlayerStats() over the server's read-only,
     // club-scoped, group-authorised, season-bounded team-sheet resource. Nothing
     // on this screen counts anything.
+
+    /**
+     * "Jump to Staff" — scrolls the Members page to its existing Coaches &
+     * staff card, below what can be a long squad list, and moves keyboard
+     * focus to its heading. Navigation only: the card, its rows and who may
+     * open a staff editor are exactly as before.
+     */
+    function membersJumpToStaff() {
+      const card = document.getElementById('members-staff');
+      if (!card) return;
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const title = document.getElementById('members-staff-title');
+      if (title) title.focus({ preventScroll: true });
+    }
 
     /** Segmented Squad / Season stats control — the pattern the member detail already uses. */
     function membersViewTabs(active) {
@@ -43997,6 +44017,20 @@
     }
 
     // ── Player: claim an invite (per-name or group/open club link) ─────────────
+    /**
+     * A recognised rugby position: one the app's single forwards/backs rule
+     * (availabilityGroupForPlayer) can place — jersey 1–15 or a named position.
+     * "SUB — Squad player", "TBC" and blank are not positions. The server
+     * (isRecognisedRugbyPosition, api/_identityStore.js) applies the same rule.
+     */
+    function isRecognisedPlayerPosition(value) {
+      return availabilityGroupForPlayer({ position: String(value || '').trim() }) !== '';
+    }
+    function inviteClearPositionError() {
+      const err = document.getElementById('invite-position-error');
+      if (err) err.hidden = true;
+    }
+
     function showInviteModal(invite) {
       const isGroup = !!invite.group;
       const club = esc(invite.teamName || state.clubName || 'the team');
@@ -44009,11 +44043,19 @@
            </div>`
         : `<label style="${labelCss};margin-top:4px">Your name<input id="invite-name-input" value="${esc(invite.name)}" style="${fieldCss}"></label>`;
       const optionalFields = isGroup
-        ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-             <label style="${labelCss}">Mobile <span style="font-weight:500;color:var(--faint)">(optional)</span><input id="invite-mobile-input" type="tel" autocomplete="tel" style="${fieldCss}"></label>
-             <label style="${labelCss}">Position <span style="font-weight:500;color:var(--faint)">(optional)</span><input id="invite-position-input" placeholder="e.g. Fly-half" style="${fieldCss}"></label>
-           </div>`
+        ? `<label style="${labelCss}">Mobile <span style="font-weight:500;color:var(--faint)">(optional)</span><input id="invite-mobile-input" type="tel" autocomplete="tel" style="${fieldCss}"></label>`
         : '';
+      // Every PLAYER joining picks a real position (group link or personal
+      // invite). Staff invites never ask. The server applies the same rule, so
+      // skipping this form cannot join a player without one.
+      const positionField = isStaffRole(invite.role || 'player') ? '' : `
+          <label style="${labelCss}">Position
+            <select id="invite-position-input" required aria-required="true" aria-describedby="invite-position-error"
+              onchange="inviteClearPositionError()" style="${fieldCss}">
+              <option value="">Select your position</option>
+              ${PLAYER_POSITION_OPTIONS.filter(isRecognisedPlayerPosition).map(p => `<option>${esc(p)}</option>`).join('')}
+            </select></label>
+          <p id="invite-position-error" role="alert" hidden style="margin:6px 0 0;font-size:12.5px;font-weight:700;color:var(--status-unavailable)">Please select your position.</p>`;
       const el = document.createElement('div');
       el.id = 'invite-modal';
       el.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;backdrop-filter:blur(5px)';
@@ -44027,6 +44069,7 @@
           <label style="${labelCss}">Email<input id="invite-email-input" type="email" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(invite.email || '')}" placeholder="you@example.com" autocomplete="email" style="${fieldCss}"></label>
           <label style="${labelCss}"><span id="invite-password-label">Password</span><input id="invite-password-input" type="password" placeholder="New password — or your existing one" autocomplete="new-password" style="${fieldCss}"></label>
           ${optionalFields}
+          ${positionField}
           <button id="invite-accept-btn" class="btn primary" type="button" onclick="acceptInvite()" style="width:100%;min-height:48px;font-size:15px;font-weight:700;margin-top:18px">Continue &amp; join →</button>
           <button class="btn" type="button" style="width:100%;font-size:13px;margin-top:8px"
             onclick="document.getElementById('invite-modal')?.remove();window.history.replaceState({},'','/')">Cancel</button>
@@ -44052,6 +44095,14 @@
       const position  = document.getElementById('invite-position-input')?.value.trim() || '';
       const role      = _inviteData.role;
       if (!name) { showToast('Enter your name first'); return; }
+      // A player cannot finish joining without a recognised position. Checked
+      // before anything is sent: no account, membership or profile is created.
+      if (!isStaffRole(role || 'player') && !isRecognisedPlayerPosition(position)) {
+        const err = document.getElementById('invite-position-error');
+        if (err) err.hidden = false;
+        document.getElementById('invite-position-input')?.focus();
+        return;
+      }
       // Every role now creates a REAL server account via claim_invite (staff no longer
       // take a local-only path), so email + a valid password are required for all roles.
       if (!email) { showToast('Enter your email'); return; }
