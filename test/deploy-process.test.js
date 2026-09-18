@@ -16,7 +16,7 @@ import {
   evaluateProtections, isBlocking, loadConfig, CONFIG_PATH,
   classifyAgainstProduction, lineOverlap,
   requiredRuntimeDependencies, assessTestEnvironments, compareFailuresChecked,
-  stripBranchMarker, selectBaseline,
+  stripBranchMarker, selectBaseline, containedChangeLines, MIN_CONTAINED_LINES,
 } from '../scripts/deploy-lib.mjs';
 
 const TACTICS = { id: 'tactics-mount', commit: 'aaa111', subject: 'feat: mount the Tactics Board as a coach section', patchId: 'pt-tactics' };
@@ -454,4 +454,192 @@ test('api and out-of-surface changes warn for human attention without blocking',
 test('several violations are all reported, not just the first', () => {
   const v = evaluateProtections({ ...CLEAN, tacticsFileCount: 1, clubExportFileCount: 1, apiFunctionCount: 13 }, POLICIES);
   assert.deepEqual(ids(v).sort(), ['api-function-cap', 'club-export-files', 'tactics-files']);
+});
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ALREADY LIVE BY CONTAINMENT — a small commit inside a larger production one
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// PRODUCTION INCIDENT (core-deploy-88 preparation). deploy:prepare selected
+// 48f50d72, whose 6 changed lines are ALL made by the larger production commit
+// 65326e14 (47 lines). Jaccard scored the pair 6/47 = 0.13, below the 0.5
+// threshold, so the commit was classified "new", its cherry-pick came out
+// EMPTY, and the workflow stopped. Jaccard asks how alike two commits are; the
+// question is whether all of the candidate's change is already there.
+//
+// INCIDENT below is the real per-file data from changeSignature(), captured
+// from the repository, so this test needs no git.
+
+const INCIDENT = {
+  "48f50d72": {
+    "subject": "chore(deploy): record core-deploy-84 as the verified production branch",
+    "hash": "501002bcfbb979190e3f020911992fe3fb08fa5a28b8a85ee5a629338eb226c4",
+    "files": {
+      "config/production-exclusions.json": [
+        "-    \"productionBranch\": \"core-deploy-82\",",
+        "-    \"productionVersion\": \"1718a90\",",
+        "-    \"date\": \"2026-09-16\"",
+        "+    \"productionBranch\": \"core-deploy-84\",",
+        "+    \"productionVersion\": \"ecdc466\",",
+        "+    \"date\": \"2026-09-17\""
+      ]
+    }
+  },
+  "65326e14": {
+    "subject": "fix(deploy): allow approved performance integration release",
+    "hash": "ef15f0383dd3b1eca5f451f8ccb7bcd954c44ff663f8d0c25147b3ce4791dff9",
+    "files": {
+      "config/production-exclusions.json": [
+        "-    \"productionBranch\": \"core-deploy-82\",",
+        "-    \"productionVersion\": \"1718a90\",",
+        "-    \"date\": \"2026-09-16\"",
+        "+    \"productionBranch\": \"core-deploy-84\",",
+        "+    \"productionVersion\": \"ecdc466\",",
+        "+    \"date\": \"2026-09-17\"",
+        "-      \"rule\": \"performance/ is LEGACY SHELL CODE from the removed S&C integration. The real Performance product lives in its own repository. A deploy must never introduce performance/ changes as a side effect: the directory must be byte-identical to the previous production branch unless a performance change is the explicit, approved purpose of the release.\",",
+        "-      \"knownOpenFinding\": \"index.html perfGenerateDraft() reaches Core's pre-Gate-2 copy of the engine, which has no restriction pathway. Tracked separately; NOT a deployment-gate concern.\"",
+        "+      \"rule\": \"performance/ is a VERBATIM MIRROR of the canonical Performance Intelligence repository \u2014 the subset Core physically serves, because index.html loads ./performance/... as same-origin ES modules and a sibling repository is not servable. It is no longer legacy shell code. A deploy must never introduce performance/ changes as a SIDE EFFECT: the directory must be byte-identical to the previous production branch unless a performance change is the explicit, approved purpose of the release, declared in `approvedChange` below.\",",
+        "+      \"sourceOfTruth\": \"~/Developer/active/CoachEasier-Performance-Intelligence \u2014 fixes are made THERE and re-copied. A fix made in Core is a fork.\",",
+        "+      \"coreOwnedException\": \"performance/services/workout-runtime.js is Core's own composition barrel for index.html's dynamic import. Every other file is a verbatim copy.\",",
+        "+      \"approvedChange\": {",
+        "+        \"release\": \"core-deploy-85\",",
+        "+        \"purpose\": \"SC9.35-SC9.37. Replace Core's pre-Gate-2 copy of the engine with the canonical one, route both generation paths through performance/engine.js, and give an athlete their own programme.\",",
+        "+        \"commits\": [",
+        "+          \"59a00b3fdda8e34ea1a744bb84a30c7630828949\",",
+        "+          \"d5c2e5ae437e075a50ce702ffb9d4693da04ddfd\",",
+        "+          \"14c555313cf216d73bc4e0247a0576df0e81a37a\"",
+        "+        ],",
+        "+        \"closes\": \"The knownOpenFinding recorded against this policy: index.html perfGenerateDraft() reached Core's pre-Gate-2 copy of the engine, which had no restriction pathway. It now calls performance/engine.js and the pre-Gate-2 chain is not reachable from any live route.\",",
+        "+        \"note\": \"This approval is PINNED to the release branch named above. It does not carry forward: the next release re-arms the byte-identical rule automatically, and shipping performance/ again needs a new, deliberate entry here.\"",
+        "+      }"
+      ],
+      "scripts/deploy-check.mjs": [
+        "+  candidateBranch: candidate,"
+      ],
+      "scripts/deploy-lib.mjs": [
+        "+  //",
+        "+  // The rule is \"never as a SIDE EFFECT\", not \"never\". The policy has always",
+        "+  // said so in words; until SC9.38A the code said \"never\", so the one release",
+        "+  // the exception exists for could not have shipped.",
+        "+  //",
+        "+  // An approval is PINNED to a named release branch. It therefore cannot leak",
+        "+  // into the next one: ship performance/ again and this blocks again, which is",
+        "+  // the point \u2014 the protection stays armed by default and opting out costs a",
+        "+  // deliberate, reviewable edit to the config naming the exact branch.",
+        "-    block('performance-drift', `performance/ differs from the production baseline in ${facts.performanceChangedFiles} file(s) \u2014 legacy S&C shell code must not change as a release side effect`);",
+        "+    const approved = policies?.performance?.approvedChange;",
+        "+    const pinnedToThisRelease = !!approved",
+        "+      && typeof approved.release === 'string'",
+        "+      && approved.release === facts.candidateBranch;",
+        "+    if (pinnedToThisRelease) {",
+        "+      warn('performance-approved-change',",
+        "+        `performance/ differs from the production baseline in ${facts.performanceChangedFiles} file(s) \u2014 APPROVED for ${approved.release}: ${approved.purpose}`);",
+        "+    } else if (approved) {",
+        "+      block('performance-drift',",
+        "+        `performance/ differs from the production baseline in ${facts.performanceChangedFiles} file(s). An approvedChange exists but names ${approved.release}, not ${facts.candidateBranch} \u2014 approvals do not carry forward.`);",
+        "+    } else {",
+        "+      block('performance-drift',",
+        "+        `performance/ differs from the production baseline in ${facts.performanceChangedFiles} file(s) \u2014 the vendored Performance engine must not change as a release side effect`);",
+        "+    }"
+      ]
+    }
+  }
+};
+const sig = (sha, over = {}) => {
+  const d = INCIDENT[sha];
+  return { sha, subject: d.subject, hash: d.hash, files: d.files, lines: Object.values(d.files).flat(), ...over };
+};
+// A synthetic signature: files → lines, flat lines derived.
+const S = (sha, subject, files) => ({ sha, subject, hash: 'h-' + sha, files, lines: Object.values(files).flat() });
+
+test('CONTAINED 1. an exact match is still recognised, and says so', () => {
+  const v = classifyAgainstProduction({ candidate: { ...PRODUCTION[0], sha: 'adapted', subject: 'other' }, production: PRODUCTION });
+  assert.equal(v.verdict, 'already-in-production');
+  assert.equal(v.basis, 'exact', 'an exact match is the strongest evidence and is reported as such');
+});
+
+test('CONTAINED 2. a small commit wholly inside a larger production commit is already live', () => {
+  const prod = S('big', 'feat: a large release', {
+    'config/app.json': ['-  "a": 1', '+  "a": 2', '-  "b": 1', '+  "b": 2', '+  "c": 3'],
+    'scripts/x.mjs': ['+export const X = 1;', '+export const Y = 2;'],
+  });
+  const cand = S('small', 'chore: bump a', { 'config/app.json': ['-  "a": 1', '+  "a": 2'] });
+  const v = classifyAgainstProduction({ candidate: cand, production: [prod] });
+  assert.equal(v.verdict, 'already-in-production');
+  assert.equal(v.basis, 'contained', 'flagged for tree confirmation before anything is skipped');
+  assert.equal(v.match.sha, 'big');
+});
+
+test('CONTAINED 3. THE INCIDENT: 48f50d72 is recognised as already live inside 65326e14', () => {
+  const candidate = sig('48f50d72');
+  const production = [sig('65326e14')];
+  assert.ok(lineOverlap(candidate.lines, production[0].lines) < 0.5, 'Jaccard alone misses it (the bug)');
+  const v = classifyAgainstProduction({ candidate, production });
+  assert.equal(v.verdict, 'already-in-production', 'no longer "new" — it would cherry-pick to nothing');
+  assert.equal(v.basis, 'contained');
+  assert.equal(v.match.sha, '65326e14');
+  assert.equal(containedChangeLines(candidate.files, production[0].files), 6, 'all 6 lines, in the same file');
+});
+
+test('CONTAINED 4. partial overlap that is NOT fully contained is never "already live"', () => {
+  const prod = S('p', 'feat: p', { 'config/app.json': ['-  "a": 1', '+  "a": 2', '+  "b": 2'] });
+  const cand = S('c', 'feat: c', { 'config/app.json': ['-  "a": 1', '+  "a": 2', '+  "z": 9'] });   // "z" is new work
+  const v = classifyAgainstProduction({ candidate: cand, production: [prod] });
+  assert.notEqual(v.verdict, 'already-in-production', 'one line of genuinely new work keeps it in the release');
+});
+
+test('CONTAINED 5. an unrelated commit is new', () => {
+  const prod = S('p', 'feat: p', { 'config/app.json': ['+  "a": 2', '+  "b": 2'] });
+  const cand = S('c', 'feat: c', { 'index.html': ['+<p>hello world</p>', '+<p>second line</p>'] });
+  assert.equal(classifyAgainstProduction({ candidate: cand, production: [prod] }).verdict, 'new');
+});
+
+test('CONTAINED: the same line in a DIFFERENT file is a different change', () => {
+  const prod = S('p', 'feat: p', { 'a.mjs': ['+export const flag = true;', '+export const other = 1;'] });
+  const cand = S('c', 'feat: c', { 'b.mjs': ['+export const flag = true;', '+export const other = 1;'] });
+  assert.equal(containedChangeLines(cand.files, prod.files), 0);
+  assert.notEqual(classifyAgainstProduction({ candidate: cand, production: [prod] }).verdict, 'already-in-production');
+});
+
+test('CONTAINED: multiplicity counts — a line added twice is not covered by one', () => {
+  const prod = S('p', 'feat: p', { 'a.mjs': ['+  register(handlerA);', '+  const k = 1;'] });
+  const cand = S('c', 'feat: c', { 'a.mjs': ['+  register(handlerA);', '+  register(handlerA);', '+  const k = 1;'] });
+  assert.equal(containedChangeLines(cand.files, prod.files), 0);
+});
+
+test('CONTAINED: a file production never touched means the change is not there', () => {
+  const prod = S('p', 'feat: p', { 'a.mjs': ['+const a = 1;', '+const b = 2;'] });
+  const cand = S('c', 'feat: c', { 'a.mjs': ['+const a = 1;', '+const b = 2;'], 'c.mjs': ['+const c = 3;'] });
+  assert.equal(containedChangeLines(cand.files, prod.files), 0);
+});
+
+test('CONTAINED: punctuation and whitespace alone never prove anything', () => {
+  // A commit of braces and blank lines would be "contained" in almost any large
+  // commit. It must not be skipped on that evidence.
+  const prod = S('p', 'feat: p', { 'a.mjs': ['+}', '+', '+  });', '+const real = 1;'] });
+  const cand = S('c', 'style: braces', { 'a.mjs': ['+}', '+', '+  });'] });
+  assert.equal(containedChangeLines(cand.files, prod.files), 0);
+  assert.notEqual(classifyAgainstProduction({ candidate: cand, production: [prod] }).verdict, 'already-in-production');
+});
+
+test(`CONTAINED: one coincidental line is not enough (minimum ${MIN_CONTAINED_LINES})`, () => {
+  const prod = S('p', 'feat: p', { 'a.mjs': ['+const enabled = true;', '+const more = 2;'] });
+  const cand = S('c', 'feat: c', { 'a.mjs': ['+const enabled = true;'] });
+  assert.equal(containedChangeLines(cand.files, prod.files), 0, 'below the minimum, containment makes no claim');
+});
+
+test('CONTAINED: a same-subject commit stays AMBIGUOUS, exactly as before', () => {
+  // Existing behaviour preserved: shared subject + differing content stops.
+  const prod = S('p', 'chore: same subject', { 'a.mjs': ['+const a = 1;', '+const b = 2;', '+const c = 3;'] });
+  const cand = S('c', 'chore: same subject', { 'a.mjs': ['+const a = 1;', '+const b = 2;'] });
+  assert.equal(classifyAgainstProduction({ candidate: cand, production: [prod] }).verdict, 'ambiguous');
+});
+
+test('CONTAINED: signatures without per-file data behave exactly as before', () => {
+  // Callers that pass only { hash, lines } see no containment rule at all.
+  const { files, ...noFiles } = sig('48f50d72');
+  const { files: pf, ...prodNoFiles } = sig('65326e14');
+  assert.equal(classifyAgainstProduction({ candidate: noFiles, production: [prodNoFiles] }).verdict, 'new',
+    'the old Jaccard-only path is untouched when per-file data is absent');
 });

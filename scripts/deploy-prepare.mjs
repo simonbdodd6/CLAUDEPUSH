@@ -12,7 +12,7 @@
 import {
   loadConfig, git, patchIdOf, subjectOf, commitExists, listDeployBranches,
   verifyExclusionIntegrity, classifyCandidates, nextDeployNumber,
-  changeSignature, classifyAgainstProduction,
+  changeSignature, classifyAgainstProduction, changeAlreadyIn, applyCherryPick,
   h1, ok, bad, info, die,
 } from './deploy-lib.mjs';
 
@@ -87,7 +87,7 @@ const prodShas = git(['rev-list', `${mergeBase}..${production}`]).split('\n').fi
 info(`comparing against ${prodShas.length} production commit(s) since divergence for adapted cherry-picks…`);
 const productionSignatures = prodShas.map(sha => {
   const sig = changeSignature(sha);
-  return { sha, subject: subjectOf(sha), hash: sig.hash, lines: sig.lines };
+  return { sha, subject: subjectOf(sha), hash: sig.hash, lines: sig.lines, files: sig.files };
 });
 
 const include = [];
@@ -95,9 +95,16 @@ const alreadyPresent = [];
 for (const c of notExcluded) {
   const sig = changeSignature(c.sha);
   const verdict = classifyAgainstProduction({
-    candidate: { ...c, hash: sig.hash, lines: sig.lines },
+    candidate: { ...c, hash: sig.hash, lines: sig.lines, files: sig.files },
     production: productionSignatures,
   });
+  // Containment is judged commit against commit; the TREE has the last word. A
+  // claim the production tree does not bear out is never a reason to skip —
+  // skipping it would silently drop real work — so it stops instead.
+  if (verdict.basis === 'contained' && !changeAlreadyIn(c.sha, production)) {
+    ambiguous.push({ ...c, reason: `${verdict.reason} — but applying it to ${production} would still change the tree, so it cannot be proven live` });
+    continue;
+  }
   if (verdict.verdict === 'already-in-production') { alreadyPresent.push({ ...c, ...verdict }); continue; }
   if (verdict.verdict === 'ambiguous') { ambiguous.push({ ...c, reason: verdict.reason }); continue; }
   include.push(c);
@@ -126,15 +133,28 @@ h1(`creating ${target}`);
 git(['checkout', '-q', '-b', target, production]);
 ok(`created ${target} from ${production}`);
 
+const applied = [];
+const emptyPicks = [];
 for (const c of include) {
-  const res = git(['cherry-pick', c.sha], { allowFail: true });
-  if (res === null) {
-    git(['cherry-pick', '--abort'], { allowFail: true });
-    git(['checkout', '-q', startBranch], { allowFail: true });
-    git(['branch', '-D', target], { allowFail: true });
-    die(`cherry-pick of ${c.sha.slice(0, 8)} "${c.subject}" conflicted. ${target} was removed and the repository restored to ${startBranch}. Resolve the conflict manually.`);
+  const r = applyCherryPick(c.sha);
+  if (r.outcome === 'applied') { applied.push(c); ok(`applied ${c.sha.slice(0, 8)} ${c.subject}`); continue; }
+  if (r.outcome === 'already-present') {
+    // Proven empty: the change is already in this branch. Not an error, and
+    // never committed as an empty commit — but always said out loud.
+    emptyPicks.push(c);
+    info(`ALREADY PRESENT ${c.sha.slice(0, 8)} ${c.subject}\n      applying it to ${production} changes nothing — skipped, not committed`);
+    continue;
   }
-  ok(`applied ${c.sha.slice(0, 8)} ${c.subject}`);
+  git(['checkout', '-q', startBranch], { allowFail: true });
+  git(['branch', '-D', target], { allowFail: true });
+  die(`cherry-pick of ${c.sha.slice(0, 8)} "${c.subject}" conflicted${r.unmerged?.length ? ` in ${r.unmerged.join(', ')}` : ''}. ${target} was removed and the repository restored to ${startBranch}. Resolve the conflict manually.`);
+}
+// Every selected commit proved to be already present: the branch would be a
+// copy of production. That is nothing to release, not a release.
+if (!applied.length) {
+  git(['checkout', '-q', startBranch], { allowFail: true });
+  git(['branch', '-D', target], { allowFail: true });
+  die(`nothing to release: every selected commit was already present in ${production}. ${target} was removed.`);
 }
 
 // ── 6. summary ───────────────────────────────────────────────────────────
@@ -142,8 +162,12 @@ h1('result');
 console.log(`  source branch:      ${source}`);
 console.log(`  production base:    ${production} (${productionShort})`);
 console.log(`  new deploy branch:  ${target} (${git(['rev-parse', '--short', 'HEAD'])})`);
-console.log(`  commits included:   ${include.length}`);
-include.forEach(c => console.log(`      + ${c.subject}`));
+console.log(`  commits included:   ${applied.length}`);
+applied.forEach(c => console.log(`      + ${c.subject}`));
+if (emptyPicks.length) {
+  console.log(`  already present (empty cherry-pick, skipped): ${emptyPicks.length}`);
+  emptyPicks.forEach(c => console.log(`      = ${c.subject}`));
+}
 console.log(`  commits excluded:   ${exclude.length}`);
 exclude.forEach(c => console.log(`      - ${c.subject}  [${c.exclusionId}]`));
 console.log(`  already in production (adapted cherry-pick): ${alreadyPresent.length}`);
