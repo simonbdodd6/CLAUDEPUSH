@@ -384,3 +384,166 @@ test('R6: the CSV path and the manual planner are untouched by this change', () 
   // Import remains preview-then-apply, writing ordinary planner state.
   assert.match(fn('trainingImportApply'), /state\.trainingBlocks\[sessionId\]/);
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// REGRESSION: an Excel workbook whose Start times carry seconds or AM/PM
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// PRODUCTION BUG. Excel stores a time as a fraction of a day, and SheetJS
+// renders it through the cell's OWN display format. So one typed "19:00"
+// reaches the planner as "19:00", "19:00:00" or "7:00 PM" depending on the
+// workbook's locale and format — and Excel's own Save-as-CSV writes those same
+// displayed values. The start-time check accepted only H:MM, so every row of a
+// seconds or AM/PM sheet was dropped as an "invalid start time".
+//
+// The grid below is EXACTLY what the real SheetJS 0.20.3 emitted, in a real
+// browser under production's CSP, for one 19:00 serial (0.79166…) under four
+// formats. Before the fix the planner kept 1 of the 4 rows.
+
+const SHEETJS_EMITTED = [
+  ['Start', 'Duration', 'Activity', 'Details', 'Lead coach'],
+  ['0.791666667', '15', 'Row2 General', 'x', 'Nick'],   // General: no time format
+  ['19:00',       '15', 'Row3 h:mm',    'x', 'Nick'],   // Excel's default
+  ['19:00:00',    '15', 'Row4 h:mm:ss', 'x', 'Nick'],
+  ['7:00 PM',     '15', 'Row5 AM/PM',   'x', 'Nick'],
+];
+const startOf = raw => {
+  const p = core.trainingImportPlan([['Start', 'Activity'], [raw, 'Drill']], { firstStart: '18:00' });
+  return p.blocks[0]?.time ?? null;       // null = row refused
+};
+
+test('XLSX-1: the real SheetJS grid now imports 3 rows, not 1', () => {
+  const plan = core.trainingImportPlan(SHEETJS_EMITTED, { firstStart: '18:00' });
+  assert.equal(plan.usable, 3, 'h:mm, h:mm:ss and AM/PM all import');
+  assert.deepEqual(plan.blocks.map(b => b.time), ['19:00', '19:00', '19:00'], 'every one of them IS 19:00');
+  assert.deepEqual(plan.blocks.map(b => b.activity), ['Row3 h:mm', 'Row4 h:mm:ss', 'Row5 AM/PM']);
+});
+
+test('XLSX-2: a General-format serial is still refused, with the unchanged message', () => {
+  // Nothing in a General cell says it is a time; reading 0.79 as 19:00 would be a guess.
+  const plan = core.trainingImportPlan(SHEETJS_EMITTED, { firstStart: '18:00' });
+  assert.deepEqual(plan.errors, ['Row 2 — invalid start time "0.791666667".']);
+  assert.equal(startOf('0.791666667'), null);
+  assert.equal(startOf('0.5'), null, 'no decimal is ever promoted to a clock time');
+});
+
+test('XLSX-3: seconds are dropped, never rounded into the next minute', () => {
+  assert.equal(startOf('19:00:00'), '19:00');
+  assert.equal(startOf('06:45:30'), '06:45');
+  assert.equal(startOf('9:05:59'), '09:05');
+});
+
+test('XLSX-4: the 12-hour clock converts correctly, including both midnights', () => {
+  const cases = { '12:00 AM': '00:00', '12:30 AM': '00:30', '12:00 PM': '12:00', '12:30 PM': '12:30',
+                  '1:15 PM': '13:15', '7:00 PM': '19:00', '11:59 PM': '23:59', '7:00 AM': '07:00',
+                  '7:00pm': '19:00', '7:00 p.m.': '19:00', '7:00:00 PM': '19:00' };
+  for (const [raw, want] of Object.entries(cases)) assert.equal(startOf(raw), want, raw);
+});
+
+test('XLSX-5: every start time H:MM accepted BEFORE the fix is read exactly as before', () => {
+  // The CSV-unchanged guarantee: the widening is strictly additive.
+  for (const [raw, want] of Object.entries({ '19:00': '19:00', '9:05': '09:05', '00:00': '00:00',
+                                             '23:59': '23:59', '7:30': '07:30', '06:00': '06:00' })) {
+    assert.equal(startOf(raw), want, raw);
+  }
+});
+
+test('XLSX-6: everything refused before is still refused', () => {
+  for (const raw of ['24:00', '19:60', '19:0', '1900', 'abc', '19:00:60', '13:00 PM', '0:30 AM',
+                     '7:00 P', 'noon', '19.00', '19:00 GMT']) {
+    assert.equal(startOf(raw), null, `${JSON.stringify(raw)} must still be refused`);
+  }
+});
+
+test('XLSX-7: headers map and blocks are built exactly as for any other sheet', () => {
+  const plan = core.trainingImportPlan(SHEETJS_EMITTED, { firstStart: '18:00' });
+  assert.deepEqual(plan.map, { time: 0, duration: 1, activity: 2, keyFocus: 3, coach: 4 }, 'every heading recognised');
+  const blocks = core.trainingImportToBlocks(plan.blocks);
+  assert.equal(blocks.length, 3, 'one block per usable row — no duplicates');
+  assert.deepEqual(blocks.map(b => b.time), ['19:00', '19:00', '19:00']);
+  assert.deepEqual(blocks.map(b => b.coach), ['Nick', 'Nick', 'Nick']);
+});
+
+// ── the file path, EXECUTED: trainingImportFile + xlsxParse, SheetJS stubbed ──
+function importer({ xlsx } = {}) {
+  return new Function('XLSX_STUB', `
+    "use strict";
+    ${fn('csvParse')}
+    ${fn('addMinutesHHMM')}
+    ${constant('TRAINING_IMPORT_FIELDS')}
+    const TRAINING_IMPORT_MAX_ROWS = 200;
+    const normHead = h => String(h || '').trim().toLowerCase().replace(/\\s+/g, ' ');
+    ${fn('trainingImportPlan')}
+    const XLSX = XLSX_STUB;
+    async function ensureSheetJS() { if (!XLSX) throw new Error('SheetJS load failed'); }
+    ${fn('xlsxParse')}
+    let _trainingImportBusy = false, _trainingImport = null;
+    const toasts = [];
+    function showToast(t) { toasts.push(t); }
+    function render() {}
+    function trainingPlannedStartTime() { return '18:00'; }
+    ${fn('trainingImportFile')}
+    return { run: async file => { await trainingImportFile({ files: [file], value: 'x' }, 'slot_tue'); return { imp: _trainingImport, toasts }; } };
+  `)(xlsx);
+}
+const fakeFile = (name, { text = '', bytes = new Uint8Array([80, 75]) } = {}) =>
+  ({ name, size: 100, text: async () => text, arrayBuffer: async () => bytes.buffer });
+// A SheetJS stand-in with the real library's shape: read() → workbook, sheet_to_json(sheet) → grid.
+const sheetJsWith = sheets => ({
+  read: () => ({ SheetNames: Object.keys(sheets), Sheets: Object.fromEntries(Object.entries(sheets).map(([k, v]) => [k, { __rows: v }])) }),
+  utils: { sheet_to_json: sh => sh.__rows },
+});
+
+test('XLSX-8: a valid .xlsx imports end to end through the real import function', async () => {
+  const { imp } = await importer({ xlsx: sheetJsWith({ Plan: SHEETJS_EMITTED }) }).run(fakeFile('plan.xlsx'));
+  assert.equal(imp.kind, 'xlsx');
+  assert.equal(imp.plan.usable, 3);
+  assert.deepEqual(imp.plan.blocks.map(b => b.time), ['19:00', '19:00', '19:00']);
+});
+
+test('XLSX-9: several sheets → the FIRST in workbook order is read, never another', async () => {
+  const other = [['Start', 'Activity'], ['20:00', 'SHOULD NOT APPEAR']];
+  const { imp } = await importer({ xlsx: sheetJsWith({ Plan: SHEETJS_EMITTED, Notes: other }) }).run(fakeFile('two-sheets.xlsx'));
+  assert.equal(imp.plan.usable, 3, 'the first sheet only');
+  assert.ok(!imp.plan.blocks.some(b => /SHOULD NOT APPEAR/.test(b.activity)), 'the second sheet is ignored');
+});
+
+test('XLSX-10: a malformed .xlsx gives a controlled error, never a crash or a silent pass', async () => {
+  const throwing = { read: () => { throw new Error('Unsupported file'); }, utils: { sheet_to_json: () => [] } };
+  const { imp } = await importer({ xlsx: throwing }).run(fakeFile('broken.xlsx'));
+  assert.equal(imp.plan.ok, false);
+  assert.equal(imp.plan.usable, 0);
+  assert.match(imp.plan.errors[0], /could not be loaded/, 'the controlled, actionable message');
+
+  const empty = await importer({ xlsx: sheetJsWith({}) }).run(fakeFile('empty.xlsx'));
+  assert.equal(empty.imp.plan.ok, false);
+  assert.match(empty.imp.plan.errors[0], /no readable sheet/);
+});
+
+test('XLSX-11: a reader that cannot load still degrades honestly', async () => {
+  const { imp } = await importer({ xlsx: null }).run(fakeFile('plan.xlsx'));
+  assert.equal(imp.plan.ok, false);
+  assert.match(imp.plan.errors[0], /could not be loaded.*CSV/, 'offers the CSV route, blames nothing');
+});
+
+test('XLSX-12: unsupported file types stay rejected by the picker', () => {
+  const panel = src.slice(src.indexOf('<input type="file" id="ti-file-'), src.indexOf('<input type="file" id="ti-file-') + 260);
+  assert.match(panel, /accept="\.csv,\.xlsx,text\/csv,application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet"/,
+    'only CSV and XLSX are offered — unchanged');
+});
+
+test('XLSX-13: CSV still goes through the CSV parser and imports exactly as before', async () => {
+  const { imp } = await importer({ xlsx: sheetJsWith({}) }).run(fakeFile('plan.csv', { text: CSV_OK }));
+  assert.equal(imp.kind, 'csv', 'never routed to the workbook reader');
+  assert.equal(imp.plan.usable, 3);
+  assert.deepEqual(imp.plan.blocks.map(b => b.time), ['19:00', '19:15', '19:40']);
+  assert.deepEqual(imp.plan.blocks.map(b => b.activity), ['Warm-up', 'Ruck contest', 'Attack shape']);
+});
+
+test('XLSX-14: an Excel Save-as-CSV of a seconds/AM-PM sheet now imports too', async () => {
+  // The app's own fallback advice is "Save As CSV" — which writes the SAME
+  // displayed values, so that route had the same bug and is fixed by the same change.
+  const csv = 'Start,Activity\r\n19:00:00,Warm up\r\n7:15 PM,Lineout\r\n';
+  const { imp } = await importer({ xlsx: sheetJsWith({}) }).run(fakeFile('export.csv', { text: csv }));
+  assert.deepEqual(imp.plan.blocks.map(b => b.time), ['19:00', '19:15']);
+});
