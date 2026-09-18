@@ -9981,7 +9981,31 @@
       if (body.length > TRAINING_IMPORT_MAX_ROWS) {
         errors.push(`That file has ${body.length} rows — CoachEasier imports up to ${TRAINING_IMPORT_MAX_ROWS} per session.`);
       }
-      const HHMM = /^([0-9]{1,2}):([0-9]{2})$/;
+      // A start time, as HH:MM, or '' when the cell is not a time.
+      //
+      // Excel stores a time as a fraction of a day and SheetJS renders it
+      // through the cell's OWN display format, so one typed "19:00" arrives as
+      // "19:00", "19:00:00" or "7:00 PM" depending on the workbook's locale and
+      // format — and Excel's own Save-as-CSV writes those same displayed values.
+      // Only H:MM was accepted, so every row in a seconds or AM/PM sheet was
+      // dropped as an "invalid start time" and the import looked broken.
+      //
+      // Those unambiguous clock shapes are now read. Everything H:MM already
+      // accepted produces exactly the same result. A bare General-format serial
+      // ("0.791666667") is still refused: nothing in the cell says it is a time,
+      // so reading it as one would be a guess.
+      const toHHMM = raw => {
+        const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*([AaPp])\.?\s*[Mm]\.?)?$/.exec(raw);
+        if (!m) return '';
+        let h = +m[1];
+        const mm = +m[2], ss = m[3] === undefined ? 0 : +m[3];
+        if (mm > 59 || ss > 59) return '';
+        if (m[4]) {                                   // 12-hour clock
+          if (h < 1 || h > 12) return '';
+          h = (h % 12) + (/[Pp]/.test(m[4]) ? 12 : 0);
+        } else if (h > 23) return '';
+        return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+      };
       const blocks = [];
       let prev = '';
       body.forEach((r, idx) => {
@@ -9995,9 +10019,9 @@
         }
         let time = cell('time');
         if (time) {
-          const m = HHMM.exec(time);
-          if (!m || +m[1] > 23 || +m[2] > 59) { errors.push(`Row ${rowNo} — invalid start time "${time}".`); return; }
-          time = `${String(+m[1]).padStart(2, '0')}:${m[2]}`;
+          const hhmm = toHHMM(time);
+          if (!hhmm) { errors.push(`Row ${rowNo} — invalid start time "${time}".`); return; }
+          time = hhmm;
         }
         const durRaw = cell('duration');
         let duration = 0;
