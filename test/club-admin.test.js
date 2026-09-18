@@ -234,7 +234,7 @@ test('staff invite with staffLevel lands on the claimed member record', async ()
   assert.equal(createRes.statusCode, 201);
   assert.equal(createRes.body.invite.staffLevel, 'assistant');
 
-  const claim = await claimInvite({
+  const claim = await claimInvite({ position: '2 — Hooker',
     token: createRes.body.token,
     email: 'new.assistant@admin.test',
     password: 'password123',

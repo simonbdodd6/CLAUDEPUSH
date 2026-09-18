@@ -287,7 +287,7 @@ test('a player invite carries its group, and the claim stamps it', async () => {
   assert.equal(u18.statusCode, 201, JSON.stringify(u18.body));
   assert.equal(u18.body.invite.playerGroupId, U18);
 
-  const claimed = await store.claimInvite({ token: u18.body.token, name: 'U18 Kid',
+  const claimed = await store.claimInvite({ position: '2 — Hooker', token: u18.body.token, name: 'U18 Kid',
     email: 'u18kid@c.test', password: 'Group-2026-Pass!' });
   assert.equal(claimed.teamMember.playerGroupId, U18, 'membership plays for U18');
   const structure = JSON.parse(kv.get(`app:structure:${CLUB}`));
@@ -321,12 +321,12 @@ test('a U18 player who later claims a staff invite keeps their player group', as
   seedClub(TWO_GROUPS);
   const { token } = await store.createSession({ userId: 'u-owner', teamId: CLUB, role: 'coach' });
   const p = await invite(token, { name: 'Dual', role: 'player', playerGroupId: U18, sendEmail: false });
-  await store.claimInvite({ token: p.body.token, name: 'Dual', email: 'dual@c.test', password: 'Group-2026-Pass!' });
+  await store.claimInvite({ position: '2 — Hooker', token: p.body.token, name: 'Dual', email: 'dual@c.test', password: 'Group-2026-Pass!' });
 
   // Now a Seniors coaching invite for the same person.
   const c = await invite(token, { name: 'Dual', role: 'coach', staffLevel: 'head',
     scope: { level: 'group', groupId: SEN }, sendEmail: false });
-  const after = await store.claimInvite({ token: c.body.token, name: 'Dual',
+  const after = await store.claimInvite({ position: '2 — Hooker', token: c.body.token, name: 'Dual',
     email: 'dual@c.test', password: 'Group-2026-Pass!' });
 
   const stored = JSON.parse(kv.get('app:identity:team_members'))
@@ -350,10 +350,10 @@ test('a conflicting second player-group claim never moves the player silently', 
   seedClub(TWO_GROUPS);
   const { token } = await store.createSession({ userId: 'u-owner', teamId: CLUB, role: 'coach' });
   const first = await invite(token, { name: 'Mover', role: 'player', playerGroupId: U18, sendEmail: false });
-  await store.claimInvite({ token: first.body.token, name: 'Mover', email: 'mover@c.test', password: 'Group-2026-Pass!' });
+  await store.claimInvite({ position: '2 — Hooker', token: first.body.token, name: 'Mover', email: 'mover@c.test', password: 'Group-2026-Pass!' });
 
   const second = await invite(token, { name: 'Mover', role: 'player', playerGroupId: SEN, sendEmail: false });
-  const after = await store.claimInvite({ token: second.body.token, name: 'Mover',
+  const after = await store.claimInvite({ position: '2 — Hooker', token: second.body.token, name: 'Mover',
     email: 'mover@c.test', password: 'Group-2026-Pass!' });
 
   assert.equal(after.teamMember.playerGroupId, U18, 'original group retained');

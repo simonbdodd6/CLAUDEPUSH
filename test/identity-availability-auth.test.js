@@ -38,7 +38,7 @@ let _t = 0;
 async function inviteAndRegister(teamId, name, email) {
   const token = 'TOK' + (++_t) + 'ABCDEFGH';
   kv.set('ce:invites', JSON.stringify([{ token, email, name, role: 'player', teamId, status: 'pending', expiresAt: new Date(Date.now() + 9e7).toISOString() }]));
-  return store.claimInvite({ token, email, name, password: 'password123' });
+  return store.claimInvite({ position: '2 — Hooker', token, email, name, password: 'password123' });
 }
 
 test('Availability GET requires an authenticated coach (no session → rejected)', async () => {

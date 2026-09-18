@@ -251,7 +251,7 @@ test('coach invite claim creates permanent player account profile and login sess
     },
   ]));
 
-  const claimed = await claimInvite({
+  const claimed = await claimInvite({ position: '2 — Hooker',
     token: 'InviteToken1',
     name: 'Dodsy Player',
     email: 'dodsy.invited@example.com',
@@ -369,7 +369,7 @@ test('successful login and invite claim write audit log entries without exposing
   ]));
   const claim = await callApi(identityHandler, 'POST', {
     headers: { 'x-forwarded-for': '203.0.113.12' },
-    body: {
+    body: { position: '2 — Hooker',
       action: 'claim_invite',
       token: 'AuditInviteToken',
       name: 'Audit Invite',

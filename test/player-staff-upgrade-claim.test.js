@@ -74,7 +74,7 @@ async function seedWithBenjamin() {
   // Benjamin registers as a Seniors PLAYER first (real claim path).
   const admin = await store.createSession({ userId: 'u-simon', teamId: CLUB, role: 'coach' });
   const link = await inviteApi({ group: true, playerGroupId: SEN, scope: { groupId: SEN } }, admin.token);
-  const claim = await store.claimInvite({ token: link.body.token, name: 'Benjamin Rossignol',
+  const claim = await store.claimInvite({ position: '2 — Hooker', token: link.body.token, name: 'Benjamin Rossignol',
     email: 'benjamin@club.test', password: 'benExisting12' });
   return { admin, benjamin: claim };
 }
@@ -99,7 +99,7 @@ test('an existing Seniors player claims a U18 staff invite onto the SAME account
   const token = inv.body.invite?.token || inv.body.token;
 
   // 1+10 setup: correct EXISTING password claims; (wrong password tested below).
-  const upgraded = await store.claimInvite({ token, name: 'Benjamin Rossignol',
+  const upgraded = await store.claimInvite({ position: '2 — Hooker', token, name: 'Benjamin Rossignol',
     email: 'benjamin@club.test', password: 'benExisting12' });
 
   // 2+7(no dup): same user, same member row.
@@ -144,7 +144,7 @@ test('a wrong existing password is refused — the guard is not weakened', async
   const inv = await inviteApi(staffInviteBody, admin.token);
   const token = inv.body.invite?.token || inv.body.token;
   await assert.rejects(
-    store.claimInvite({ token, name: 'Benjamin Rossignol',
+    store.claimInvite({ position: '2 — Hooker', token, name: 'Benjamin Rossignol',
       email: 'benjamin@club.test', password: 'wrongPassword99' }),
     err => { assert.equal(err.status, 403); return true; });
   const m = membersNow().find(x => x.teamId === CLUB && x.role !== 'coach' || false);
@@ -156,7 +156,7 @@ test('a fresh new staff user claims a scoped invite normally', async () => {
   const { admin } = await seedWithBenjamin();
   const inv = await inviteApi({ ...staffInviteBody, name: 'Brand New Coach', email: 'newcoach@club.test' }, admin.token);
   const token = inv.body.invite?.token || inv.body.token;
-  const claim = await store.claimInvite({ token, name: 'Brand New Coach',
+  const claim = await store.claimInvite({ position: '2 — Hooker', token, name: 'Brand New Coach',
     email: 'newcoach@club.test', password: 'freshPassword12' });
   assert.equal(claim.teamMember.role, 'coach');
   assert.equal(claim.teamMember.playerGroupId, undefined, 'staff-only — no playing group invented');
@@ -168,11 +168,11 @@ test('re-claiming (double submit) never duplicates membership or widens scope', 
   const { admin, benjamin } = await seedWithBenjamin();
   const inv = await inviteApi(staffInviteBody, admin.token);
   const token = inv.body.invite?.token || inv.body.token;
-  await store.claimInvite({ token, name: 'Benjamin Rossignol', email: 'benjamin@club.test', password: 'benExisting12' });
+  await store.claimInvite({ position: '2 — Hooker', token, name: 'Benjamin Rossignol', email: 'benjamin@club.test', password: 'benExisting12' });
   // Single-use invite: a second submit is refused as already claimed —
   // and even that refusal changes nothing about the membership.
   await assert.rejects(
-    store.claimInvite({ token, name: 'Benjamin Rossignol', email: 'benjamin@club.test', password: 'benExisting12' }),
+    store.claimInvite({ position: '2 — Hooker', token, name: 'Benjamin Rossignol', email: 'benjamin@club.test', password: 'benExisting12' }),
     err => { assert.equal(err.status, 409); return true; });
   const rows = membersNow().filter(m => m.teamId === CLUB && m.userId === benjamin.user.id);
   assert.equal(rows.length, 1);
@@ -187,7 +187,7 @@ test('a foreign club\'s staff invite never alters the Boitsfort member', async (
   const inv = await inviteApi({ name: 'Benjamin Rossignol', email: 'benjamin@club.test',
     role: 'coach', staffLevel: 'assistant', scope: { level: 'group', groupId: 'grp_o' } }, other.token);
   const token = inv.body.invite?.token || inv.body.token;
-  await store.claimInvite({ token, name: 'Benjamin Rossignol',
+  await store.claimInvite({ position: '2 — Hooker', token, name: 'Benjamin Rossignol',
     email: 'benjamin@club.test', password: 'benExisting12' });
   const after = JSON.stringify(membersNow().find(m => m.teamId === CLUB && m.userId === benjamin.user.id));
   assert.equal(after, before, 'the Boitsfort membership is byte-identical');

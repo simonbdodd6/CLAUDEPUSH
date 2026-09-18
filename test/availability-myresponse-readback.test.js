@@ -45,7 +45,7 @@ async function reg(teamId, name, email) {
   // player (production invite tokens are unique); pad the counter into them.
   const token = 'TK' + String(++_t).padStart(8, '0');
   kv.set('ce:invites', JSON.stringify([{ token, email, name, role:'player', teamId, status:'pending', expiresAt:new Date(Date.now()+9e7).toISOString() }]));
-  return store.claimInvite({ token, email, name, password: 'password123' });
+  return store.claimInvite({ position: '2 — Hooker', token, email, name, password: 'password123' });
 }
 function publish(teamId, sessions) { kv.set(`app:publish:${teamId}:sessions`, JSON.stringify(sessions)); }
 const my = r => r.body?.responses || {};

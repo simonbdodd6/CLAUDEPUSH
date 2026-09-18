@@ -84,7 +84,7 @@ async function seedEstablishedPlayer(email = 'dual@club.test') {
   // The shipped invite creator ALWAYS stamps playerGroupId on player invites
   // (derived from the scope when needed) — model exactly that shape.
   const token = putInvite({ role: 'player', scope: { groupId: 'grp-senior-men' }, playerGroupId: 'grp-senior-men' });
-  const claimed = await store.claimInvite({ token, name: 'Dual Role Person', email, password: PASSWORD });
+  const claimed = await store.claimInvite({ position: '2 — Hooker', token, name: 'Dual Role Person', email, password: PASSWORD });
   const members = read('app:identity:team_members');
   const member = members.find(m => m.id === claimed.teamMember.id);
   member.playerEligibility = { teamIds: ['team-senior-1', 'team-senior-2'], primaryTeamId: 'team-senior-2' };
@@ -107,7 +107,7 @@ for (const [label, invite] of [
     const legacyIdBefore = profileBefore.legacyPlayerId;
 
     const token = putInvite(invite);
-    const claimed = await store.claimInvite({
+    const claimed = await store.claimInvite({ position: '2 — Hooker',
       token, name: 'Dual Role Person', email: 'dual@club.test', password: PASSWORD,
     });
 
@@ -137,7 +137,7 @@ test('a legacy player with only DERIVED eligibility keeps it after a staff claim
   // playerGroupId to model the true pre-D1a legacy member (a group-less
   // player invite is no longer claimable in a multi-group club by design).
   const token = putInvite({ role: 'player', scope: { groupId: 'grp-senior-men' }, playerGroupId: 'grp-senior-men' });
-  const player = await store.claimInvite({
+  const player = await store.claimInvite({ position: '2 — Hooker',
     token, name: 'Legacy Player', email: 'legacy@club.test', password: PASSWORD });
   const members = read('app:identity:team_members');
   const m = members.find(x => x.id === player.teamMember.id);
@@ -149,7 +149,7 @@ test('a legacy player with only DERIVED eligibility keeps it after a staff claim
   assert.ok(derivedBefore.teamIds.length, 'derives the initial team as a player');
 
   const staffToken = putInvite({ role: 'coach', staffLevel: 'assistant' });
-  const claimed = await store.claimInvite({
+  const claimed = await store.claimInvite({ position: '2 — Hooker',
     token: staffToken, name: 'Legacy Player', email: 'legacy@club.test', password: PASSWORD });
 
   assert.equal(profilesOf(player.user.id).length, 1, 'profile preserved');
@@ -160,7 +160,7 @@ test('a legacy player with only DERIVED eligibility keeps it after a staff claim
 // ── 6: staff later gains player eligibility ─────────────────────────────────
 test('an existing staff member can gain player eligibility without losing staff access', async () => {
   const token = putInvite({ role: 'coach', staffLevel: 'head', scope: { groupId: 'grp-u18' } });
-  const coach = await store.claimInvite({
+  const coach = await store.claimInvite({ position: '2 — Hooker',
     token, name: 'Playing Coach', email: 'coach@club.test', password: PASSWORD });
   const scopeBefore = effectiveAccessScope(coach.teamMember);
 
@@ -177,7 +177,7 @@ test('an existing staff member can gain player eligibility without losing staff 
 // ── 7-8: brand-new invitees ─────────────────────────────────────────────────
 test('a brand-new staff-only invitee gets NO player profile', async () => {
   const token = putInvite({ role: 'coach', staffLevel: 'head', scope: { groupId: 'grp-u18' } });
-  const claimed = await store.claimInvite({
+  const claimed = await store.claimInvite({ position: '2 — Hooker',
     token, name: 'Fresh Coach', email: 'fresh.coach@club.test', password: PASSWORD });
   assert.equal(profilesOf(claimed.user.id).length, 0, 'no roster profile created');
   assert.equal(claimed.playerProfile, null, 'claim reports no profile');
@@ -200,7 +200,7 @@ test('a brand-new player invitee gets the right profile and eligibility', async 
 test('existing access grants are merged, never reduced', async () => {
   const player = await seedEstablishedPlayer();   // group: senior men
   const token = putInvite({ role: 'coach', staffLevel: 'head', scope: { groupId: 'grp-u18' } });
-  const claimed = await store.claimInvite({
+  const claimed = await store.claimInvite({ position: '2 — Hooker',
     token, name: 'Dual Role Person', email: 'dual@club.test', password: PASSWORD });
 
   const scope = effectiveAccessScope(claimed.teamMember);
@@ -216,7 +216,7 @@ test('existing access grants are merged, never reduced', async () => {
 
 test('a client cannot elevate scope through the claim request', async () => {
   const token = putInvite({ role: 'coach', staffLevel: 'head', scope: { groupId: 'grp-u18' } });
-  const claimed = await store.claimInvite({
+  const claimed = await store.claimInvite({ position: '2 — Hooker',
     token, name: 'Sneaky', email: 'sneaky@club.test', password: PASSWORD,
     // All ignored — only the STORED invite scope is applied.
     scope: { level: 'club' }, accessScope: { clubWide: true },
@@ -240,7 +240,7 @@ test('archived and cross-club scopes on an invite are ignored, never granted', a
   const structure = JSON.parse(kv.get(`app:structure:${CLUB}`));
 
   const archived = putInvite({ role: 'coach', staffLevel: 'head', scope: { groupId: 'grp-old' } });
-  const a = await store.claimInvite({
+  const a = await store.claimInvite({ position: '2 — Hooker',
     token: archived, name: 'Arch', email: 'arch@club.test', password: PASSWORD });
   assert.equal(effectiveAccessScope(a.teamMember).groups.some(g => g.groupId === 'grp-old'), false,
     'the archived group was never granted');
@@ -249,7 +249,7 @@ test('archived and cross-club scopes on an invite are ignored, never granted', a
     false, 'archived scope remains unreachable');
 
   const foreign = putInvite({ role: 'coach', staffLevel: 'head', scope: { groupId: 'grp-of-another-club' } });
-  const f = await store.claimInvite({
+  const f = await store.claimInvite({ position: '2 — Hooker',
     token: foreign, name: 'Foreign', email: 'foreign@club.test', password: PASSWORD });
   assert.equal(effectiveAccessScope(f.teamMember).groups.some(g => g.groupId === 'grp-of-another-club'),
     false, 'the cross-club group was never granted');
@@ -261,7 +261,7 @@ test('archived and cross-club scopes on an invite are ignored, never granted', a
   // claim-but-grant-nothing behaviour).
   const foreignTeam = putInvite({ role: 'player', scope: { teamId: 'team-of-another-club' } });
   await assert.rejects(
-    () => store.claimInvite({
+    () => store.claimInvite({ position: '2 — Hooker',
       token: foreignTeam, name: 'Foreign Two', email: 'foreign2@club.test', password: PASSWORD }),
     err => err.status === 410);
   assert.equal(usersWith('foreign2@club.test').length, 0, 'no account was created');
@@ -270,9 +270,9 @@ test('archived and cross-club scopes on an invite are ignored, never granted', a
 test('claiming twice creates no duplicate user, membership or profile', async () => {
   const player = await seedEstablishedPlayer();
   const t1 = putInvite({ role: 'coach', staffLevel: 'head', scope: { groupId: 'grp-u18' } });
-  await store.claimInvite({ token: t1, name: 'Dual Role Person', email: 'dual@club.test', password: PASSWORD });
+  await store.claimInvite({ position: '2 — Hooker', token: t1, name: 'Dual Role Person', email: 'dual@club.test', password: PASSWORD });
   const t2 = putInvite({ role: 'medical', scope: { groupId: 'grp-senior-men' } });
-  await store.claimInvite({ token: t2, name: 'Dual Role Person', email: 'dual@club.test', password: PASSWORD });
+  await store.claimInvite({ position: '2 — Hooker', token: t2, name: 'Dual Role Person', email: 'dual@club.test', password: PASSWORD });
 
   assert.equal(usersWith('dual@club.test').length, 1, 'one user');
   assert.equal(membersOf(player.user.id).length, 1, 'one membership');

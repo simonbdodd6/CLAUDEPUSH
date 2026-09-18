@@ -158,7 +158,7 @@ test('Club A starts empty (no Boitsfort members/fixtures/training/medical) and i
   assert.equal(invite.email, 'clubadmin@a.test');
 
   // 12: claiming attaches a CLUB-WIDE admin of Club A (existing claim flow).
-  const claim = await store.claimInvite({ token: invite.token, name: 'Club A Admin',
+  const claim = await store.claimInvite({ position: '2 — Hooker', token: invite.token, name: 'Club A Admin',
     email: 'clubadmin@a.test', password: 'realPassword12' });
   assert.equal(claim.teamMember.teamId, clubA, 'membership belongs to Club A only');
   assert.equal(claim.teamMember.role, 'coach');
@@ -188,7 +188,7 @@ test('Club A\'s admin manages Club A only; Boitsfort admins never see Club A', a
   const a = await provision(platform.token, 'Club A', 'clubadmin@a.test');
   const b = await provision(platform.token, 'Club B', 'clubadmin@b.test');
   const invA = allStoredInvites(kv).find(i => i.teamId === a.body.team.id);
-  const claimA = await store.claimInvite({ token: invA.token, name: 'Admin A', email: 'clubadmin@a.test', password: 'realPassword12' });
+  const claimA = await store.claimInvite({ position: '2 — Hooker', token: invA.token, name: 'Admin A', email: 'clubadmin@a.test', password: 'realPassword12' });
 
   // 13+17: admin A manages Club A — creates a group via the shipped flow.
   const g = await publish('POST', { resource: 'structure' }, { op: 'create_group', name: 'U16' }, claimA.session.token);
@@ -217,7 +217,7 @@ test('a Club A player invite claims into Club A only, and Boitsfort is byte-iden
   const a = await provision(platform.token, 'Club A', 'clubadmin@a.test');
   const clubA = a.body.team.id;
   const invA = allStoredInvites(kv).find(i => i.teamId === clubA);
-  const claimA = await store.claimInvite({ token: invA.token, name: 'Admin A', email: 'clubadmin@a.test', password: 'realPassword12' });
+  const claimA = await store.claimInvite({ position: '2 — Hooker', token: invA.token, name: 'Admin A', email: 'clubadmin@a.test', password: 'realPassword12' });
   const g = await publish('POST', { resource: 'structure' }, { op: 'create_group', name: 'U16' }, claimA.session.token);
 
   // The Members player-link path, exactly as the UI requests it.
@@ -227,7 +227,7 @@ test('a Club A player invite claims into Club A only, and Boitsfort is byte-iden
     body: { group: true, playerGroupId: g.body.group.id, scope: { groupId: g.body.group.id } }, on() {} }, linkRes);
   assert.equal(linkRes.code, 200, JSON.stringify(linkRes.body));
 
-  await store.claimInvite({ token: linkRes.body.token, name: 'Club A Kid', email: 'kid@a.test', password: 'realPassword12' });
+  await store.claimInvite({ position: '2 — Hooker', token: linkRes.body.token, name: 'Club A Kid', email: 'kid@a.test', password: 'realPassword12' });
   const kid = JSON.parse(kv.get('app:identity:team_members'))
     .find(m => m.teamId === clubA && m.role === 'player');
   assert.ok(kid, 'player landed in Club A');

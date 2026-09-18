@@ -121,7 +121,7 @@ async function freshClub(clubName = 'Newbridge RFC', adminEmail = 'founder@newbr
     adminName: 'Frankie Founder', ...(plan === undefined ? {} : { plan }) }, platform.token);
   assert.equal(provisioned.code, 201, JSON.stringify(provisioned.body));
   const inviteToken = decodeURIComponent(String(provisioned.body.inviteUrl).split('inv=')[1]);
-  const claimed = await identity({ action: 'claim_invite', token: inviteToken, email: adminEmail,
+  const claimed = await identity({ position: '2 — Hooker', action: 'claim_invite', token: inviteToken, email: adminEmail,
     name: 'Frankie Founder', password: 'longEnough123' });
   assert.equal(claimed.code, 201, JSON.stringify(claimed.body));
   return { clubId: provisioned.body.team.id, founder: claimed.body, provisioned: provisioned.body,
@@ -164,7 +164,7 @@ test('1. day zero: a brand-new club runs a session without a single seeded recor
     'the synthesized group is stamped on the invite');
 
   // (d) …and claims into that group as an active member with a roster profile.
-  const claim = await identity({ action: 'claim_invite', token: playerInvite.body.token,
+  const claim = await identity({ position: '2 — Hooker', action: 'claim_invite', token: playerInvite.body.token,
     email: 'poppy@newbridge.test', name: 'Poppy Player', password: 'longEnough123' });
   assert.equal(claim.code, 201, JSON.stringify(claim.body));
   const playerToken = tokenOf(claim);
@@ -231,7 +231,7 @@ test('2. the synthesized structure becomes REAL on the first admin action, and k
   const scoped = await invite({ name: 'Colt One', role: 'player', sendEmail: false,
     playerGroupId: colts.id }, club.token);
   assert.equal(scoped.code, 201, JSON.stringify(scoped.body));
-  const claim = await identity({ action: 'claim_invite', token: scoped.body.token,
+  const claim = await identity({ position: '2 — Hooker', action: 'claim_invite', token: scoped.body.token,
     email: 'colt@riverside.test', name: 'Colt One', password: 'longEnough123' });
   assert.equal(claim.code, 201, JSON.stringify(claim.body));
   assert.equal(claim.body.teamMember.playerGroupId, colts.id);
@@ -261,7 +261,7 @@ test('3. a rejected invite email never hides the invitation — the link still c
     assert.equal(asText.includes('player@sendfail.test'), false, 'the recipient is not echoed');
 
     // And the link genuinely works: the player can claim it.
-    const claim = await identity({ action: 'claim_invite', token: r.body.token,
+    const claim = await identity({ position: '2 — Hooker', action: 'claim_invite', token: r.body.token,
       email: 'player@sendfail.test', name: 'Emailed Player', password: 'longEnough123' });
     assert.equal(claim.code, 201, JSON.stringify(claim.body));
     assert.equal(claim.body.teamMember.status, 'active');
@@ -316,7 +316,7 @@ test('5. a rejected RE-SEND is reported, and leaves the invite claimable', async
     assert.equal(res.body.invite.status, 'pending', 'the invite is untouched and still claimable');
   } finally { delete process.env.RESEND_API_KEY; emailFailure = null; }
 
-  const claim = await identity({ action: 'claim_invite', token: created.body.token,
+  const claim = await identity({ position: '2 — Hooker', action: 'claim_invite', token: created.body.token,
     email: 'resend@resend.test', name: 'Resend Player', password: 'longEnough123' });
   assert.equal(claim.code, 201, JSON.stringify(claim.body));
 });
@@ -341,7 +341,7 @@ test('6. ownership reaches the provisioned founder and NO other invitation', asy
   for (const [label, body, email] of cases) {
     const created = await invite({ ...body, email, sendEmail: false }, club.token);
     assert.equal(created.code, 201, `${label}: ${JSON.stringify(created.body)}`);
-    const claim = await identity({ action: 'claim_invite', token: created.body.token,
+    const claim = await identity({ position: '2 — Hooker', action: 'claim_invite', token: created.body.token,
       email, name: body.name, password: 'longEnough123' });
     assert.equal(claim.code, 201, `${label}: ${JSON.stringify(claim.body)}`);
     assert.equal(isClubOwner(claim.body.teamMember), false, `${label} must not become an owner`);
@@ -365,7 +365,7 @@ test('7. a forged founder marker in a request body is ignored', async () => {
   assert.equal(stored.founderInvite, undefined, 'the marker is not accepted from a body');
   assert.notEqual(stored.createdBy, 'platform-provisioning', 'createdBy is the real actor');
 
-  const claim = await identity({ action: 'claim_invite', token: hostile.body.token,
+  const claim = await identity({ position: '2 — Hooker', action: 'claim_invite', token: hostile.body.token,
     email: 'sneak@forge.test', name: 'Sneaky Coach', password: 'longEnough123' });
   assert.equal(claim.code, 201, JSON.stringify(claim.body));
   assert.equal(isClubOwner(claim.body.teamMember), false, 'no ownership from a forged marker');
@@ -380,7 +380,7 @@ test('8. owner protections cover the provisioned founder', async () => {
   // does the protecting here.
   const adminInvite = await invite({ name: 'Second Admin', role: 'admin',
     email: 'second@protected.test', sendEmail: false }, club.token);
-  const adminClaim = await identity({ action: 'claim_invite', token: adminInvite.body.token,
+  const adminClaim = await identity({ position: '2 — Hooker', action: 'claim_invite', token: adminInvite.body.token,
     email: 'second@protected.test', name: 'Second Admin', password: 'longEnough123' });
   const adminMemberId = adminClaim.body.teamMember.id;
   await store.setAccessProfile(adminMemberId, 'full', founder.userId, club.clubId);
@@ -412,7 +412,7 @@ test('9. a stale founder invite can never mint a SECOND owner', async () => {
     status: 'pending', acceptedAt: null, acceptedBy: undefined });
   kv.set('ce:invites', JSON.stringify(legacy));
 
-  const claim = await identity({ action: 'claim_invite', token: 'DUPLICATE_FOUNDER_TOKEN',
+  const claim = await identity({ position: '2 — Hooker', action: 'claim_invite', token: 'DUPLICATE_FOUNDER_TOKEN',
     email: 'second@single.test', name: 'Second Person', password: 'longEnough123' });
   assert.equal(claim.code, 201, JSON.stringify(claim.body));
   assert.equal(isClubOwner(claim.body.teamMember), false,
@@ -572,7 +572,7 @@ test('15. only a PLATFORM admin may choose a plan; nobody else can provision at 
 
   // A player, and an anonymous caller.
   const playerInvite = await invite({ name: 'Plain Player', role: 'player', sendEmail: false }, club.token);
-  const playerClaim = await identity({ action: 'claim_invite', token: playerInvite.body.token,
+  const playerClaim = await identity({ position: '2 — Hooker', action: 'claim_invite', token: playerInvite.body.token,
     email: 'plain@guarded.test', name: 'Plain Player', password: 'longEnough123' });
   for (const [label, token] of [['player', tokenOf(playerClaim)], ['anonymous', '']]) {
     const r = await identity({ action: 'provision_club', clubName: `${label} RFC`,

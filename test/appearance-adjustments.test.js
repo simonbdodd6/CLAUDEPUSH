@@ -64,7 +64,7 @@ async function reg(teamId, name) {
   const invites = JSON.parse(kv.get('ce:invites') || '[]');
   invites.push({ token, email: `p${_t}@app.test`, name, role: 'player', teamId, status: 'pending', expiresAt: new Date(Date.now() + 9e7).toISOString() });
   kv.set('ce:invites', JSON.stringify(invites));
-  return store.claimInvite({ token, email: `p${_t}@app.test`, name, password: 'password123' });
+  return store.claimInvite({ position: '2 — Hooker', token, email: `p${_t}@app.test`, name, password: 'password123' });
 }
 
 // ── Server ───────────────────────────────────────────────────────────────────

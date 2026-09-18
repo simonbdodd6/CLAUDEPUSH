@@ -40,7 +40,7 @@ async function cleanClub() { return store.createClub({ clubName: 'REPEAT test cl
 async function reg(teamId, name, email) {
   const token = 'TK' + String(++_t).padStart(8, '0'); // legacyPlayerId = inv-<last8>, unique
   kv.set('ce:invites', JSON.stringify([{ token, email, name, role: 'player', teamId, status: 'pending', expiresAt: new Date(Date.now() + 9e7).toISOString() }]));
-  return store.claimInvite({ token, email, name, password: 'password123' });
+  return store.claimInvite({ position: '2 — Hooker', token, email, name, password: 'password123' });
 }
 const publish = (teamId, sessions) => kv.set(`app:publish:${teamId}:sessions`, JSON.stringify(sessions));
 const selfView = r => r.body?.responses || {};

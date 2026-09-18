@@ -149,7 +149,7 @@ async function setup() {
   const club = await store.createClub({ clubName: 'Cleanup RFC', teamName: 'Seniors', sport: 'rugby', name: 'Cleanup Coach', email: `c${++_t}@lc.test`, password: 'password123' });
   const token = 'TK' + String(++_t).padStart(8, '0');
   kv.set('ce:invites', JSON.stringify([{ token, email: 'p@lc.test', name: 'Cleanup Player', role: 'player', teamId: club.team.id, status: 'pending', expiresAt: new Date(Date.now() + 9e7).toISOString() }]));
-  const player = await store.claimInvite({ token, email: 'p@lc.test', name: 'Cleanup Player', password: 'password123' });
+  const player = await store.claimInvite({ position: '2 — Hooker', token, email: 'p@lc.test', name: 'Cleanup Player', password: 'password123' });
   return { club, player };
 }
 

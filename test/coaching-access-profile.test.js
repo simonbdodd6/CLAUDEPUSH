@@ -172,7 +172,7 @@ test('profile grant and staff-invite upgrade produce the SAME shape', async () =
   // Benjamin needs a password for the claim path.
   const users = JSON.parse(kv.get('app:identity:users'));
   const claimToken = invRes.body.invite?.token || invRes.body.token;
-  await store.claimInvite({ token: claimToken, name: 'Benjamin', email: 'ben@c.test', password: 'freshPassword12' });
+  await store.claimInvite({ position: '2 — Hooker', token: claimToken, name: 'Benjamin', email: 'ben@c.test', password: 'freshPassword12' });
   const viaInvite = { role: benNow().role, pg: benNow().playerGroupId,
     groups: effectiveAccessScope(benNow()).groups.filter(g => g.status === 'active').map(g => g.groupId) };
   assert.deepEqual(viaProfile, viaInvite, 'both admin flows converge on one safe shape');

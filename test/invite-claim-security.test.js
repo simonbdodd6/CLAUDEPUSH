@@ -70,14 +70,14 @@ test('existing account + WRONG password claim → 403, password unchanged, no se
   store.clear(); lists.clear();
   // Victim creates their account by claiming their own player invite.
   seedInvite({ token: 'VictimTok0000001', name: 'Vic Tim', role: 'player', email: 'victim@club.test' });
-  await claimInvite({ token: 'VictimTok0000001', name: 'Vic Tim', email: 'victim@club.test', password: 'victimRealPass1' });
+  await claimInvite({ position: '2 — Hooker', token: 'VictimTok0000001', name: 'Vic Tim', email: 'victim@club.test', password: 'victimRealPass1' });
   const before = userByEmail('victim@club.test').passwordHash;
   assert.ok(before, 'victim has a stored password hash');
 
   // Attacker holds ANY live invite link and tries to claim the victim's email with a chosen password.
   seedInvite({ token: 'AttackerTok00001', kind: 'group', role: 'player', status: 'open', expiresAt: null });
   await assert.rejects(
-    () => claimInvite({ token: 'AttackerTok00001', name: 'Attacker', email: 'victim@club.test', password: 'attackerChosen9' }),
+    () => claimInvite({ position: '2 — Hooker', token: 'AttackerTok00001', name: 'Attacker', email: 'victim@club.test', password: 'attackerChosen9' }),
     (err) => { assert.equal(err.status, 403); return true; },
     'claim into an existing account with the wrong password must be rejected',
   );
@@ -88,12 +88,12 @@ test('existing account + WRONG password claim → 403, password unchanged, no se
 test('existing account + CORRECT password claim (coach upgrade) → succeeds, role upgraded, password unchanged', async () => {
   store.clear(); lists.clear();
   seedInvite({ token: 'PlayerTok0000001', name: 'Bob Player', role: 'player', email: 'bob@club.test' });
-  await claimInvite({ token: 'PlayerTok0000001', name: 'Bob Player', email: 'bob@club.test', password: 'bobRealPass12' });
+  await claimInvite({ position: '2 — Hooker', token: 'PlayerTok0000001', name: 'Bob Player', email: 'bob@club.test', password: 'bobRealPass12' });
   const before = userByEmail('bob@club.test').passwordHash;
 
   // Reusable coach/staff group link — Bob upgrades himself using his REAL password.
   seedInvite({ token: 'CoachGroupTok001', kind: 'group', role: 'coach', staffLevel: 'assistant', status: 'open', expiresAt: null });
-  const res = await claimInvite({ token: 'CoachGroupTok001', name: 'Bob Player', email: 'bob@club.test', password: 'bobRealPass12' });
+  const res = await claimInvite({ position: '2 — Hooker', token: 'CoachGroupTok001', name: 'Bob Player', email: 'bob@club.test', password: 'bobRealPass12' });
 
   assert.equal(res.teamMember.role, 'coach', 'existing player upgraded to coach');
   assert.ok(res.session?.token, 'legitimate owner gets a session');
@@ -104,7 +104,7 @@ test('existing account + CORRECT password claim (coach upgrade) → succeeds, ro
 test('new email claim → account created, password set, session issued', async () => {
   store.clear(); lists.clear();
   seedInvite({ token: 'NewTok000000001', name: 'New Person', role: 'player', email: 'new@club.test' });
-  const res = await claimInvite({ token: 'NewTok000000001', name: 'New Person', email: 'new@club.test', password: 'newRealPass123' });
+  const res = await claimInvite({ position: '2 — Hooker', token: 'NewTok000000001', name: 'New Person', email: 'new@club.test', password: 'newRealPass123' });
   assert.match(res.user.id, /^user_/);
   assert.ok(res.session?.token);
   assert.equal(userByEmail('new@club.test').passwordSet, true);
@@ -114,9 +114,9 @@ test('new email claim → account created, password set, session issued', async 
 test('allowExisting:true re-claim of an accepted single-use invite → 409', async () => {
   store.clear(); lists.clear();
   seedInvite({ token: 'SingleUseTok0001', name: 'Solo Player', role: 'player', email: 'solo@club.test' });
-  await claimInvite({ token: 'SingleUseTok0001', name: 'Solo Player', email: 'solo@club.test', password: 'soloRealPass1' });
+  await claimInvite({ position: '2 — Hooker', token: 'SingleUseTok0001', name: 'Solo Player', email: 'solo@club.test', password: 'soloRealPass1' });
   await assert.rejects(
-    () => claimInvite({ token: 'SingleUseTok0001', allowExisting: true, name: 'Solo Player', email: 'solo@club.test', password: 'soloRealPass1' }),
+    () => claimInvite({ position: '2 — Hooker', token: 'SingleUseTok0001', allowExisting: true, name: 'Solo Player', email: 'solo@club.test', password: 'soloRealPass1' }),
     (err) => { assert.equal(err.status, 409); return true; },
     'allowExisting must not let an accepted single-use invite be replayed',
   );
@@ -126,7 +126,7 @@ test('allowExisting:true re-claim of an accepted single-use invite → 409', asy
 test('claim_invite is rate limited — 6th attempt in the window → 429', async () => {
   store.clear(); lists.clear();
   seedInvite({ token: 'RateGroupTok0001', kind: 'group', role: 'player', status: 'open', expiresAt: null });
-  const body = { action: 'claim_invite', token: 'RateGroupTok0001', name: 'Rate Tester', email: 'rate@club.test', password: 'rateRealPass12' };
+  const body = { position: '2 — Hooker', action: 'claim_invite', token: 'RateGroupTok0001', name: 'Rate Tester', email: 'rate@club.test', password: 'rateRealPass12' };
   let last;
   for (let i = 1; i <= 6; i++) {
     last = await callApi(identityHandler, 'POST', { body, headers: { 'x-forwarded-for': '9.9.9.9' } });

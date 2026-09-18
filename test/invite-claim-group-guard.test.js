@@ -67,7 +67,7 @@ const inviteByToken = t => store('ce:invites').find(i => i.token === t);
 test('a SCOPED player invite claims normally in a 3-group club', async () => {
   seed(THREE_GROUPS);
   seedInvite({ token: 'ScopedTok0000001', role: 'player', name: 'New U18', playerGroupId: U18 });
-  await claimInvite({ token: 'ScopedTok0000001', name: 'New U18', email: 'u18@club.test', password: 'realPassword12' });
+  await claimInvite({ position: '2 — Hooker', token: 'ScopedTok0000001', name: 'New U18', email: 'u18@club.test', password: 'realPassword12' });
   const m = membersOf()[0];
   assert.equal(m.role, 'player');
   assert.equal(m.playerGroupId, U18, 'group stamped from the invite');
@@ -78,7 +78,7 @@ test('a SCOPED player invite claims normally in a 3-group club', async () => {
 test('an UNSCOPED player invite still claims in a single-group club (legacy)', async () => {
   seed(ONE_GROUP);
   seedInvite({ token: 'LegacyTok0000001', role: 'player', name: 'Legacy Player' });
-  await claimInvite({ token: 'LegacyTok0000001', name: 'Legacy Player', email: 'legacy@club.test', password: 'realPassword12' });
+  await claimInvite({ position: '2 — Hooker', token: 'LegacyTok0000001', name: 'Legacy Player', email: 'legacy@club.test', password: 'realPassword12' });
   const m = membersOf()[0];
   assert.equal(m.role, 'player');
   assert.equal(String(m.playerGroupId || ''), '', 'legacy claims stay unstamped');
@@ -94,7 +94,7 @@ test('an UNSCOPED player invite in a MULTI-group club is refused before any writ
   const membersBefore = kv.get('app:identity:team_members');
 
   await assert.rejects(
-    () => claimInvite({ token: 'GrouplessTok0001', name: 'Mystery Player', email: 'mystery@club.test', password: 'realPassword12' }),
+    () => claimInvite({ position: '2 — Hooker', token: 'GrouplessTok0001', name: 'Mystery Player', email: 'mystery@club.test', password: 'realPassword12' }),
     err => {
       assert.equal(err.status, 410);
       assert.match(err.message, /no longer valid for this club/i, 'client-safe message');
@@ -113,7 +113,7 @@ test('a rejected REUSABLE group link is not incremented either', async () => {
   seed(THREE_GROUPS);
   seedInvite({ token: 'OpenLinkTok00001', kind: 'group', status: 'open', role: 'player', name: '', acceptedCount: 53 });
   await assert.rejects(
-    () => claimInvite({ token: 'OpenLinkTok00001', name: 'Walk Up', email: 'walkup@club.test', password: 'realPassword12' }),
+    () => claimInvite({ position: '2 — Hooker', token: 'OpenLinkTok00001', name: 'Walk Up', email: 'walkup@club.test', password: 'realPassword12' }),
     err => err.status === 410);
   const inv = inviteByToken('OpenLinkTok00001');
   assert.equal(inv.acceptedCount, 53, 'accept count untouched');
@@ -125,7 +125,7 @@ test('a rejected REUSABLE group link is not incremented either', async () => {
 test('an UNSCOPED COACH invite in a multi-group club still claims (staff rules unchanged)', async () => {
   seed(THREE_GROUPS);
   seedInvite({ token: 'CoachTok00000001', role: 'coach', staffLevel: 'assistant', name: 'New Coach' });
-  await claimInvite({ token: 'CoachTok00000001', name: 'New Coach', email: 'coach@club.test', password: 'realPassword12' });
+  await claimInvite({ position: '2 — Hooker', token: 'CoachTok00000001', name: 'New Coach', email: 'coach@club.test', password: 'realPassword12' });
   const m = membersOf()[0];
   assert.equal(m.role, 'coach');
   assert.equal(m.accessScope, undefined, 'no scope stamped — legacy null derivation applies (Seniors-only)');
@@ -135,7 +135,7 @@ test('an UNSCOPED COACH invite in a multi-group club still claims (staff rules u
 test('an UNSCOPED MEDICAL invite in a multi-group club still claims', async () => {
   seed(THREE_GROUPS);
   seedInvite({ token: 'MedicTok00000001', role: 'medical', name: 'New Medic' });
-  await claimInvite({ token: 'MedicTok00000001', name: 'New Medic', email: 'medic@club.test', password: 'realPassword12' });
+  await claimInvite({ position: '2 — Hooker', token: 'MedicTok00000001', name: 'New Medic', email: 'medic@club.test', password: 'realPassword12' });
   assert.equal(membersOf()[0].role, 'medical');
 });
 
@@ -144,7 +144,7 @@ test('a SCOPED reusable player link claims normally — the shipped scoped-links
   seed(THREE_GROUPS);
   seedInvite({ token: 'ScopedLinkTok001', kind: 'group', status: 'open', role: 'player', name: '',
     scope: { groupId: WOM }, playerGroupId: WOM, acceptedCount: 2 });
-  await claimInvite({ token: 'ScopedLinkTok001', name: "New Women's Player", email: 'wom@club.test', password: 'realPassword12' });
+  await claimInvite({ position: '2 — Hooker', token: 'ScopedLinkTok001', name: "New Women's Player", email: 'wom@club.test', password: 'realPassword12' });
   const m = membersOf()[0];
   assert.equal(m.playerGroupId, WOM);
   assert.equal(inviteByToken('ScopedLinkTok001').acceptedCount, 3, 'reusable link counts the accept');

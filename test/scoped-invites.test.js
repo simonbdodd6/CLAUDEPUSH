@@ -189,7 +189,7 @@ test('unscoped invite: auto-scoped for a single-group coach, must choose for mul
 test('claiming a scoped coach invite stamps exactly the stored group grant', async () => {
   const created = await create(ownerToken, { name: 'Ladies Coach', role: 'coach',
     scope: { level: 'group', groupId: 'grp-senior-men' }, sendEmail: false });
-  const result = await store.claimInvite({
+  const result = await store.claimInvite({ position: '2 — Hooker',
     token: created.body.token, email: 'sen.coach@club.test', password: 'Claim-2026-Pass!',
     // Elevation attempt: the request asks for club-wide — it must be IGNORED.
     scope: { level: 'club' }, accessScope: { clubWide: true },
@@ -203,7 +203,7 @@ test('claiming a team-scoped player invite grants the team + eligibility with pr
   const created = await create(ownerToken, { name: 'S2 Player', role: 'player',
     playerGroupId: 'grp-senior-men',
     scope: { level: 'team', teamId: 'team-senior-2' }, sendEmail: false });
-  const result = await store.claimInvite({
+  const result = await store.claimInvite({ position: '2 — Hooker',
     token: created.body.token, email: 's2.player@club.test', password: 'Claim-2026-Pass!',
   });
   // A PLAYER invite's scope drives ELIGIBILITY only — it never stamps
@@ -220,7 +220,7 @@ test('claiming a group-scoped player invite defaults eligibility to the group\'s
   const created = await create(ownerToken, { name: 'Senior Pool Player', role: 'player',
     playerGroupId: 'grp-senior-men',
     scope: { level: 'group', groupId: 'grp-senior-men' }, sendEmail: false });
-  const result = await store.claimInvite({
+  const result = await store.claimInvite({ position: '2 — Hooker',
     token: created.body.token, email: 'pool.player@club.test', password: 'Claim-2026-Pass!',
   });
   const raw = JSON.parse(kv.get('app:identity:team_members')).find(m => m.id === result.teamMember.id);
@@ -236,7 +236,7 @@ test('claiming a group-scoped player invite defaults eligibility to the group\'s
 test('a legacy unscoped invite claims exactly as before — no scope stamped', async () => {
   const created = await create(ownerToken, { name: 'Legacy Player', role: 'player',
     playerGroupId: 'grp-senior-men', sendEmail: false });
-  const result = await store.claimInvite({
+  const result = await store.claimInvite({ position: '2 — Hooker',
     token: created.body.token, email: 'legacy.player@club.test', password: 'Claim-2026-Pass!',
   });
   const raw = JSON.parse(kv.get('app:identity:team_members')).find(m => m.id === result.teamMember.id);
@@ -258,7 +258,7 @@ test('a reusable scoped group link exists per role+scope and claims for many use
   assert.notEqual(other.body.token, link.body.token, 'different scope → different link');
 
   for (const n of [1, 2]) {
-    const result = await store.claimInvite({
+    const result = await store.claimInvite({ position: '2 — Hooker',
       token: link.body.token, name: `U18 Player ${n}`,
       email: `u18.player${n}@club.test`, password: 'Claim-2026-Pass!',
     });

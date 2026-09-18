@@ -399,7 +399,7 @@ test('UPGRADE: an existing Seniors player claiming a U18-coach invite stays ONE 
   // s1 already exists as a Seniors player with an account.
   seedInvite({ token: 'U18CoachTok00001', role: 'coach', staffLevel: 'assistant', name: 'Name u-s1',
     email: 'u-s1@c.test', scope: { groupId: U18 } });
-  await claimInvite({ token: 'U18CoachTok00001', name: 'Name u-s1', email: 'u-s1@c.test', password: 'realPassword12', allowExisting: true });
+  await claimInvite({ position: '2 — Hooker', token: 'U18CoachTok00001', name: 'Name u-s1', email: 'u-s1@c.test', password: 'realPassword12', allowExisting: true });
   const rows = memberOf('u-s1');
   assert.equal(rows.length, 1, 'no duplicate membership');
   const m = rows[0];
@@ -418,7 +418,7 @@ test('UPGRADE: the U18+Women\'s combination merges into one identity the same wa
   await seed();
   seedInvite({ token: 'UWCoachTok000001', role: 'coach', staffLevel: 'assistant', name: 'Name u-s1',
     email: 'u-s1@c.test', scope: { groupIds: [U18, WOM] } });
-  await claimInvite({ token: 'UWCoachTok000001', name: 'Name u-s1', email: 'u-s1@c.test', password: 'realPassword12', allowExisting: true });
+  await claimInvite({ position: '2 — Hooker', token: 'UWCoachTok000001', name: 'Name u-s1', email: 'u-s1@c.test', password: 'realPassword12', allowExisting: true });
   const m = memberOf('u-s1')[0];
   assert.equal(m.playerGroupId, SEN);
   assert.deepEqual(effectiveAccessScope(m).groups.filter(g => g.status === 'active').map(g => g.groupId).sort(),
@@ -430,7 +430,7 @@ test('UPGRADE: an existing U18 coach claiming a Women\'s invite MERGES scope —
   await seed();
   seedInvite({ token: 'WomAddTok0000001', role: 'coach', staffLevel: 'assistant', name: 'Name u-u18-m',
     email: 'u-u18-m@c.test', scope: { groupId: WOM } });
-  await claimInvite({ token: 'WomAddTok0000001', name: 'Name u-u18-m', email: 'u-u18-m@c.test', password: 'realPassword12', allowExisting: true });
+  await claimInvite({ position: '2 — Hooker', token: 'WomAddTok0000001', name: 'Name u-u18-m', email: 'u-u18-m@c.test', password: 'realPassword12', allowExisting: true });
   const m = memberOf('u-u18-m')[0];
   assert.deepEqual(effectiveAccessScope(m).groups.filter(g => g.status === 'active').map(g => g.groupId).sort(),
     [U18, WOM].sort(), 'U18 kept, Women\'s added — never all groups');
@@ -528,15 +528,15 @@ test('DRY RUN: create U18 + Women\'s with four teams, invite and upgrade — eve
     { token: tokenOf('New U18 Coach'), name: 'New U18 Coach', email: 'u18c@c.test' },
     { token: tokenOf('New Wom Coach'), name: 'New Wom Coach', email: 'womc@c.test' },
   ];
-  for (const c of claims) await claimInvite({ ...c, password: 'realPassword12' });
+  for (const c of claims) await claimInvite({ position: '2 — Hooker', ...c, password: 'realPassword12' });
 
   // 4: upgrades — existing Seniors players become U18 / U18+Women's coaches.
   seedInvite({ token: 'UpgradeTok000001', role: 'coach', staffLevel: 'assistant', name: 'Name u-s1',
     email: 'u-s1@c.test', scope: { groupId: u18id } });
-  await claimInvite({ token: 'UpgradeTok000001', name: 'Name u-s1', email: 'u-s1@c.test', password: 'realPassword12', allowExisting: true });
+  await claimInvite({ position: '2 — Hooker', token: 'UpgradeTok000001', name: 'Name u-s1', email: 'u-s1@c.test', password: 'realPassword12', allowExisting: true });
   seedInvite({ token: 'UpgradeTok000002', role: 'coach', staffLevel: 'assistant', name: 'Name u-alex',
     email: 'u-alex@c.test', scope: { groupIds: [u18id, womid] } });
-  await claimInvite({ token: 'UpgradeTok000002', name: 'Name u-alex', email: 'u-alex@c.test', password: 'realPassword12', allowExisting: true });
+  await claimInvite({ position: '2 — Hooker', token: 'UpgradeTok000002', name: 'Name u-alex', email: 'u-alex@c.test', password: 'realPassword12', allowExisting: true });
 
   // 5: verify identities and scopes.
   const structure = last.body.structure;

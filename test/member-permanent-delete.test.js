@@ -58,7 +58,7 @@ async function addPlayer(teamId, name) {
   const invites = JSON.parse(kv.get('ce:invites') || '[]');
   invites.push({ token, email, name, role: 'player', teamId, status: 'pending', expiresAt: new Date(Date.now() + 9e7).toISOString() });
   kv.set('ce:invites', JSON.stringify(invites));
-  const claimed = await store.claimInvite({ token, email, name, password: 'password123' });
+  const claimed = await store.claimInvite({ position: '2 — Hooker', token, email, name, password: 'password123' });
   return { ...claimed, email, inviteToken: token };
 }
 const memberIdFor = (userId) => JSON.parse(kv.get('app:identity:team_members') || '[]').find(m => m.userId === userId)?.id;

@@ -1176,6 +1176,20 @@ export async function loginUser(input = {}) {
   return withIdentityComputed({ user: publicUserWithRole(user, member), teamMember: member, playerProfile: profile, session }, member);
 }
 
+/**
+ * A recognised rugby position — the SAME rule as the client's
+ * availabilityGroupForPlayer / isRecognisedPlayerPosition (index.html; a
+ * parity test holds the two together): a jersey number 1–15 (the canonical
+ * "N — Label" choices) or a named forward/back position. "SUB — Squad
+ * player", "TBC", blank and free text that names no position are not.
+ */
+export function isRecognisedRugbyPosition(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw || raw.length > 40) return false;
+  if (/\b(1[0-5]|[1-9])\b/.test(raw)) return true;
+  return /(prop|hooker|lock|flanker|number 8|no\.?\s*8|back row|front row|second row|scrum|fly[- ]?half|centre|center|wing|fullback|back three|outside back)/.test(raw);
+}
+
 export async function claimInvite(input = {}) {
   const token = String(input.token || '').trim();
   if (!token) throw new Error('Invite token is required');
@@ -1241,6 +1255,23 @@ export async function claimInvite(input = {}) {
     if (!verifyPassword(input.password, existingUser).ok) {
       const error = new Error('An account already exists for this email. Please log in to accept this invite.');
       error.status = 403;
+      throw error;
+    }
+  }
+  // A claim that makes someone a PLAYER must name a recognised position —
+  // the join form requires it, and this is where skipping the form stops.
+  // Checked before any account, membership or profile is written. A staff
+  // invite never asks, and a staff member who opens a player link keeps their
+  // staff role (ensureTeamMember never downgrades), so they are not asked
+  // either.
+  if (!isStaffRole(String(invite.role || 'player'))) {
+    const priorRole = existingUser
+      ? ((await loadTeamMembers()).find(m => m.teamId === (invite.teamId || DEFAULT_TEAM.id) && m.userId === existingUser.id)?.role || '')
+      : '';
+    if (!isStaffRole(priorRole) && !isRecognisedRugbyPosition(input.position)) {
+      const error = new Error('Please select your position.');
+      error.status = 400;
+      error.code = 'position_required';
       throw error;
     }
   }

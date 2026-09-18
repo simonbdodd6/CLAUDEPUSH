@@ -130,7 +130,7 @@ test('fresh claim: active Boitsfort member, playerGroupId U18, portal access at 
   seed();
   const coach = await sessionFor('u-u18c');
   const link = await inviteApi(u18LinkBody, coach.token);
-  const claim = await store.claimInvite({ token: link.body.token, name: 'Real U18 Kid',
+  const claim = await store.claimInvite({ position: '2 — Hooker', token: link.body.token, name: 'Real U18 Kid',
     email: 'realkid@u18.test', password: 'freshPassword12' });
   assert.equal(claim.teamMember.teamId, CLUB, 'session tenant is Boitsfort');
   assert.equal(claim.teamMember.status, 'active', 'recognised immediately — no approval gate');
@@ -147,7 +147,7 @@ test('a club-wide admin\'s U18 link claims identically', async () => {
   seed();
   const admin = await sessionFor('u-simon');
   const link = await inviteApi(u18LinkBody, admin.token);
-  const claim = await store.claimInvite({ token: link.body.token, name: 'Second Kid',
+  const claim = await store.claimInvite({ position: '2 — Hooker', token: link.body.token, name: 'Second Kid',
     email: 'second@u18.test', password: 'freshPassword12' });
   assert.equal(claim.teamMember.playerGroupId, U18);
   assert.equal(claim.teamMember.status, 'active');
@@ -178,10 +178,10 @@ test('an existing account claiming with its CORRECT password joins fine (re-subm
   seed();
   const coach = await sessionFor('u-u18c');
   const link = await inviteApi(u18LinkBody, coach.token);
-  const first = await store.claimInvite({ token: link.body.token, name: 'Twice Kid',
+  const first = await store.claimInvite({ position: '2 — Hooker', token: link.body.token, name: 'Twice Kid',
     email: 'twice@u18.test', password: 'samePassword12' });
   // Same person submits the form again (didn't realise it worked).
-  const again = await store.claimInvite({ token: link.body.token, name: 'Twice Kid',
+  const again = await store.claimInvite({ position: '2 — Hooker', token: link.body.token, name: 'Twice Kid',
     email: 'twice@u18.test', password: 'samePassword12' });
   assert.equal(again.teamMember.id, first.teamMember.id, 'same membership — idempotent');
   assert.equal(again.teamMember.playerGroupId, U18);
@@ -195,10 +195,10 @@ test('existing email + wrong password 403s with the real reason, and the client 
   seed();
   const coach = await sessionFor('u-u18c');
   const link = await inviteApi(u18LinkBody, coach.token);
-  await store.claimInvite({ token: link.body.token, name: 'First Kid',
+  await store.claimInvite({ position: '2 — Hooker', token: link.body.token, name: 'First Kid',
     email: 'shared@family.test', password: 'firstPassword12' });
   await assert.rejects(
-    store.claimInvite({ token: link.body.token, name: 'Sibling Kid',
+    store.claimInvite({ position: '2 — Hooker', token: link.body.token, name: 'Sibling Kid',
       email: 'shared@family.test', password: 'differentPass12' }),
     err => {
       assert.equal(err.status, 403);
@@ -230,7 +230,7 @@ test('a claim ignores whoever is logged in on the device — the invite alone de
   seed();
   const coach = await sessionFor('u-u18c');
   const link = await inviteApi(u18LinkBody, coach.token);
-  const claim = await store.claimInvite({ token: link.body.token, name: 'Clean Kid',
+  const claim = await store.claimInvite({ position: '2 — Hooker', token: link.body.token, name: 'Clean Kid',
     email: 'clean@u18.test', password: 'freshPassword12' });
   assert.notEqual(claim.user.id, 'u-u18c', 'a brand-new identity, never the device session');
   assert.equal(claim.teamMember.playerGroupId, U18);

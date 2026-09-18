@@ -49,7 +49,7 @@ test('coach DM is visible to the player and replies thread back to the coach', a
   const club = await store.createClub({ clubName: 'Chat Club', teamName: 'Seniors', sport: 'rugby', name: 'Chat Coach', email: 'cc@chat.test', password: 'password123' });
   const token = 'TK00000001';
   kv.set('ce:invites', JSON.stringify([{ token, email: 'cp@chat.test', name: 'Chat Player', role: 'player', teamId: club.team.id, status: 'pending', expiresAt: new Date(Date.now() + 9e7).toISOString() }]));
-  const player = await store.claimInvite({ token, email: 'cp@chat.test', name: 'Chat Player', password: 'password123' });
+  const player = await store.claimInvite({ position: '2 — Hooker', token, email: 'cp@chat.test', name: 'Chat Player', password: 'password123' });
   const coachId = club.user.id, playerId = player.user.id;
   const DM = dmId(coachId, playerId);
 
@@ -87,7 +87,7 @@ test('player conversations carry the canonical server id (no client recomputatio
   const club = await store.createClub({ clubName: 'Chat Club 2', teamName: 'Seniors', sport: 'rugby', name: 'Coach Two', email: 'c2@chat.test', password: 'password123' });
   const token = 'TK00000002';
   kv.set('ce:invites', JSON.stringify([{ token, email: 'p2@chat.test', name: 'Player Two', role: 'player', teamId: club.team.id, status: 'pending', expiresAt: new Date(Date.now() + 9e7).toISOString() }]));
-  const player = await store.claimInvite({ token, email: 'p2@chat.test', name: 'Player Two', password: 'password123' });
+  const player = await store.claimInvite({ position: '2 — Hooker', token, email: 'p2@chat.test', name: 'Player Two', password: 'password123' });
   const DM = dmId(club.user.id, player.user.id);
   await chatPost({ action: 'create_conv', id: DM, name: 'Player Two', type: 'DIRECT', participants: [club.user.id, player.user.id] }, ck(club.session));
   await chatPost({ action: 'send', convId: DM, text: 'hi' }, ck(club.session));
