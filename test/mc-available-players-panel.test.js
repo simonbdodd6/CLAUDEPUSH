@@ -51,8 +51,9 @@ const group = new Function(`${fn('availabilityGroupForPlayer')}; return availabi
 const order = new Function(`${fn('availabilityGroupForPlayer')}; ${fn('availabilityPositionOrder')}; return availabilityPositionOrder;`)();
 const matchday = fn('renderMatchday');
 
-// The app's canonical option list, read from the Members add-player form.
-const CANON = JSON.parse(/const posOptions = (\[[^\]]+\]);/.exec(html)[1]);
+// The app's canonical option list: the shared constant the Members forms and
+// player sign-up both use.
+const CANON = JSON.parse(/const PLAYER_POSITION_OPTIONS = (\[[^\]]+\]);/.exec(html)[1]);
 
 // The rail's markup: from the panel header to the end of the <aside>.
 const rail = (() => {

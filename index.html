@@ -5717,8 +5717,15 @@
     .mc7-filter button.on { background: var(--brand-soft); color: var(--brand-2); border-color: var(--brand-line); }
     .mc7-fcount { opacity: .75; font-weight: 800; margin-left: 2px; }
     /* Candidate rows now carry a visible status label beside the dot, so the
-       colour never has to be guessed. */
-    .mc7-trow.has-st { grid-template-columns: minmax(0,1fr) auto 16px; }
+       colour never has to be guessed. Two columns: the name takes the flexible
+       space, and the status label + dot travel as ONE group (.mc7-st) at their
+       natural width. This rule used to ask for three columns, but the later
+       "scannable team sheet" rule's !important two-column template won — so
+       the label was squeezed into the 16px dot column (clipping "Available")
+       and the dot wrapped onto a second row. */
+    .mc7-trow.has-st { grid-template-columns: minmax(0,1fr) auto !important; }
+    .mc7-st { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; white-space: nowrap; }
+    .mc7-st .mc7-dot { justify-self: auto; }
     .mc7-match.maybe { color: #fbbf24; }
     .mc7-dot.maybe { background: #fbbf24; }
     @media (pointer: coarse) {
@@ -19390,8 +19397,7 @@
                       data-player-name="${esc(p.name)}" data-player-id="${esc(p.id)}" data-player-pos="${esc(p.position || '')}"
                       ${locked ? '' : 'ondragstart="handlePlayerDragStart(event)" ondragend="mcDragEnd(event)"'}>
                       <span class="mc7-pl"><span class="mc7-av" style="background:${playerAvatarColor(p.id||p.name)}">${esc(initials)}</span><span class="mc7-nm" title="${esc(p.name)}">${esc(p.name)}${lockTag}${inOther ? ` <span class="mc7-alsotag" title="Also selected for ${esc(_mcOtherSide?.teamName || 'the other team')}">Also: ${esc(_mcOtherSide?.teamName || 'other team')}</span>` : ''}</span></span>
-                      <span class="mc7-match ${match}">${esc(mLbl)}</span>
-                      <span class="mc7-dot ${match}" title="${esc(mLbl)}" aria-label="${esc(mLbl)}"></span>
+                      <span class="mc7-st"><span class="mc7-match ${match}">${esc(mLbl)}</span><span class="mc7-dot ${match}" title="${esc(mLbl)}" aria-label="${esc(mLbl)}"></span></span>
                     </div>`;
                   }).join("") || (_availStats.length
                     ? `<p class="muted" style="padding:18px 8px;font-size:12px;text-align:center">No players in this view — tap All to see the whole candidate pool.</p>`
