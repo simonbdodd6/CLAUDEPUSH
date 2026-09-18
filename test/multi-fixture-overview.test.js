@@ -160,6 +160,8 @@ function buildScope({
     // Post legacy-id cutover availabilityWeekSessions derives the canonical
     // current week from THE generator.
     extractFn(html, 'availabilityEventsForWeek') + '\n' +
+    extractFn(html, 'trainingWeekOccurrences') + '\n' +
+    extractFn(html, 'availabilitySessionLabel') + '\n' +
     extractFn(html, 'tonightAvailabilityEventId') + '\n' +
     extractFn(html, 'overviewAvailableCount') + '\n' +
     extractFn(html, 'overviewAnswerMap') + '\n' +
@@ -220,9 +222,10 @@ test('two same-day fixtures for one group BOTH render — and one availability p
   assert.ok(out.includes('vs Kituro'),   'First-team fixture missing');
   assert.ok(out.includes('vs La Hulpe'), 'Second-team fixture missing');
   assert.equal((out.match(/class="ovw-fixrow"/g) || []).length, 2, 'expected two fixture rows');
-  // Requirement H: fixtures multiplied, the availability card did NOT — one
-  // group pool, one card.
-  assert.equal((out.match(/>Availability</g) || []).length, 1, 'exactly one availability card');
+  // Requirement H: fixtures multiplied, the availability cards did NOT — one
+  // group pool, one Training and one Match Availability card.
+  assert.equal((out.match(/>Training Availability</g) || []).length, 1, 'exactly one training availability card');
+  assert.equal((out.match(/>Match Availability</g) || []).length, 1, 'exactly one match availability card');
 });
 
 test('fixture rows are chronological — earliest kick-off first', () => {

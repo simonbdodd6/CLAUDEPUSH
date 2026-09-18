@@ -103,6 +103,10 @@ function buildScope({
   // so a club with no group in force stamps the empty string, and the harness
   // must match or currentResolvedAvailability() reads every scope as stale.
   resolvedAvailabilityGroup = '',
+  // Training Availability's next-occurrence fallback: the recurring slots and
+  // a pinned "today" (availToday's override), so the week is deterministic.
+  trainingSlots = null,
+  todayIso = '',
 } = {}) {
   const stateObj = {
     players, schedule, fixtures, messages, matchCentre, masterFeed,
@@ -191,7 +195,8 @@ function buildScope({
     // The functions under test
     extractFn(html, 'overviewRoster') + '\n' +
     // Build Y: the count maps tonight through the board's event identity.
-    'let _trainingSchedule = null; let _trainingScheduleGroupId = ""; let _trainingScheduleAttempted = false;\n' +
+    'let _trainingSchedule = ' + JSON.stringify(trainingSlots ? { slots: trainingSlots } : null) + '; let _trainingScheduleGroupId = ""; let _trainingScheduleAttempted = false;\n' +
+    'let _availTodayOverride = ' + JSON.stringify(todayIso) + ';\n' +
     'function ensureTrainingSchedule() {}\n' +
     'const AVAIL_DAY_INDEX = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };\n' +
     extractFn(html, 'availWeekStart') + '\n' +
@@ -202,6 +207,10 @@ function buildScope({
     // Post legacy-id cutover availabilityWeekSessions derives the canonical
     // current week from THE generator.
     extractFn(html, 'availabilityEventsForWeek') + '\n' +
+    // Training Availability's fallback: the next dated training occurrence,
+    // named the way the Availability screen names it.
+    extractFn(html, 'trainingWeekOccurrences') + '\n' +
+    extractFn(html, 'availabilitySessionLabel') + '\n' +
     extractFn(html, 'tonightAvailabilityEventId') + '\n' +
     extractFn(html, 'overviewAvailableCount') + '\n' +
     extractFn(html, 'overviewAnswerMap') + '\n' +
@@ -220,14 +229,18 @@ function buildScope({
 
 const iso = days => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
 
-/** A populated club: 6 players, a fixture next week, tonight's session. */
+/**
+ * A populated club: 6 players, a fixture next week, tonight's session.
+ * Tonight's training and the fixture carry DIFFERENT answers
+ * (training 3/1/1/1, match 2/1/1/2), so a card reading the wrong one shows.
+ */
 function fullClub(extra = {}) {
   return buildScope({
     players: [
-      { id: 'p1', name: 'A One',   position: 'Hooker',     trainingTuesday: 'available' },
-      { id: 'p2', name: 'B Two',   position: 'Scrum-half', trainingTuesday: 'available' },
-      { id: 'p3', name: 'C Three', position: 'Fly-half',   trainingTuesday: 'maybe' },
-      { id: 'p4', name: 'D Four',  position: 'Lock',       trainingTuesday: 'unavailable' },
+      { id: 'p1', name: 'A One',   position: 'Hooker',     trainingTuesday: 'available',   avail_fx1: 'available' },
+      { id: 'p2', name: 'B Two',   position: 'Scrum-half', trainingTuesday: 'available',   avail_fx1: 'unavailable' },
+      { id: 'p3', name: 'C Three', position: 'Fly-half',   trainingTuesday: 'maybe',       avail_fx1: 'available' },
+      { id: 'p4', name: 'D Four',  position: 'Lock',       trainingTuesday: 'unavailable', avail_fx1: 'maybe' },
       { id: 'p5', name: 'E Five',  position: 'Prop' },
       { id: 'p6', name: 'F Six',   position: 'Wing',       trainingTuesday: 'available' },
     ],
@@ -314,20 +327,23 @@ test('availability renders the four recorded answers from real data', () => {
   assert.ok(out.includes('Unavailable'), 'unavailable row missing');
   assert.ok(out.includes('No reply'),    'no-reply row missing');
 
-  const { available, maybe, unavailable, noReply, total } = fullClub().overviewAvailabilityContext();
+  const { available, maybe, unavailable, noReply, total } = fullClub().overviewAvailabilityContext('training');
   assert.equal(total, 6);
   assert.equal(available, 3);
   assert.equal(maybe, 1);
   assert.equal(unavailable, 1);
   assert.equal(noReply, 1);
   assert.equal(available + maybe + unavailable + noReply, total, 'the four answers must account for the whole squad');
+
+  const m = fullClub().overviewAvailabilityContext('match');
+  assert.deepEqual([m.total, m.available, m.maybe, m.unavailable, m.noReply], [6, 2, 1, 1, 2]);
 });
 
 test('the availability reading and the donut cannot disagree', () => {
   const scope = fullClub();
-  const ctx = scope.overviewAvailabilityContext();
+  const ctx = scope.overviewAvailabilityContext('match');
   const out = scope.renderClubCommandDashboard();
-  // Both cards are rendered from the one context object, so the donut's
+  // The Match Availability donut is drawn from the match reading, so its
   // aria-label carries exactly the counts the legend lists.
   assert.ok(out.includes(`${ctx.available} available, ${ctx.maybe} maybe, ${ctx.unavailable} unavailable, ${ctx.noReply} no reply`),
     'donut description must match the availability reading');
@@ -545,8 +561,8 @@ test('a group with no fixtures of its own shows the empty state, not another gro
 
 test('the command centre renders the seven blocks in the intended order', () => {
   const out = fullClub().renderClubCommandDashboard();
-  const order = ['Upcoming fixture', 'Training', 'Availability',
-                 'Recent activity', 'Squad availability', 'Messages'];
+  const order = ['Upcoming fixture', 'Training', 'Training Availability',
+                 'Recent activity', 'Match Availability', 'Messages'];
   let cursor = -1;
   for (const label of order) {
     const at = out.indexOf('>' + label + '<');
@@ -616,7 +632,7 @@ test('availability is read as three figures, not scanned down a list', () => {
 
 test('the donut carries the squad total it is drawn from', () => {
   const scope = fullClub();
-  const ctx = scope.overviewAvailabilityContext();
+  const ctx = scope.overviewAvailabilityContext('match');
   const out = scope.renderClubCommandDashboard();
   assert.match(out, new RegExp('>' + ctx.total + '</text>'), 'donut centre must show the real total');
   assert.ok(out.includes('>Squad</text>'), 'and say what the total counts');
@@ -710,7 +726,7 @@ test('the availability figures come from the resolved answers, not the device fi
       p2: { tue: { response: 'maybe',       respondedAt: '2026-08-27T10:00:00.000Z' } },
       p3: { tue: { response: 'unavailable', respondedAt: '2026-08-27T10:00:00.000Z' } },
     },
-  }).overviewAvailabilityContext();
+  }).overviewAvailabilityContext('training');
 
   assert.deepEqual(
     { available: av.available, maybe: av.maybe, unavailable: av.unavailable, noReply: av.noReply },
@@ -726,4 +742,144 @@ test('the card header shows no percentage when there is no percentage to show', 
 
   assert.ok(out.includes('No responses yet'));
   assert.ok(!/>0%</.test(out), '0% beside "No responses yet" reads as a broken card');
+});
+
+
+// ── 10. Training Availability · Match Availability ───────────────────────────
+// The two availability cards used to share ONE reading — tonight's session,
+// otherwise the next fixture — so on most days both showed the same match
+// under two different names. Each card now reads its own subject.
+
+const SLOTS = [{ id: 'slot_tue', day: 'Tue', startTime: '19:00', active: true },
+               { id: 'slot_thu', day: 'Thu', startTime: '19:00', active: true }];
+const answered = (ids, sessionId, response) => Object.fromEntries(ids.map(id =>
+  [id, { [sessionId]: { response, reason: '', respondedAt: '2026-09-15T10:00:00.000Z' } }]));
+const cardOf = (out, label) => {
+  const card = out.split('<div class="ovw-card').find(c => c.includes(`<span class="ovw-label">${label}</span>`));
+  assert.ok(card, `card "${label}" missing`);
+  return card;
+};
+
+test('the Overview names its availability cards Training Availability and Match Availability', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  assert.ok(out.includes('<span class="ovw-label">Training Availability</span>'));
+  assert.ok(out.includes('<span class="ovw-label">Match Availability</span>'));
+  assert.ok(!out.includes('>Availability<'), 'the bare "Availability" card title is gone');
+  assert.ok(!out.includes('>Squad availability<'), 'the "Squad availability" card title is gone');
+  // Every other card keeps its name.
+  for (const label of ['Upcoming fixture', 'Training', 'Recent activity', 'Messages']) {
+    assert.ok(out.includes(`<span class="ovw-label">${label}</span>`), label);
+  }
+});
+
+test('each card reads its own subject: tonight\'s training, and the next fixture', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  const training = cardOf(out, 'Training Availability');
+  const match    = cardOf(out, 'Match Availability');
+  // Training 3/1/1/1 (tonight), match 2/1/1/2 (fx1) — see fullClub.
+  assert.match(training, /Tuesday Session/);
+  assert.match(training, /<b[^>]*>3<\/b><span>Available<\/span>/);
+  assert.ok(!training.includes('Acton Town'), 'the training card never shows the fixture');
+  assert.match(match, /vs Acton Town/, 'the match card names its fixture');
+  assert.match(match, /2 available, 1 maybe, 1 unavailable, 2 no reply/);
+  assert.match(match, /4 of 6 replied/);
+  assert.ok(!match.includes('Tuesday Session'), 'the match card never shows the training session');
+});
+
+test('the counting is unchanged: each card equals overviewAnswerCounts over the canonical rows', () => {
+  const scope = fullClub();
+  const t = scope.overviewAvailabilityContext('training');
+  const m = scope.overviewAvailabilityContext('match');
+  const roster = scope.overviewRoster();
+  const count = map => ['available', 'maybe', 'unavailable'].map(v => roster.filter(p => map[p.id] === v).length);
+  assert.deepEqual([t.available, t.maybe, t.unavailable], count(scope.overviewAnswerMap('tue', roster)));
+  assert.deepEqual([m.available, m.maybe, m.unavailable], count(scope.overviewAnswerMap('fx1', roster)));
+  assert.equal(t.availPct, 50);
+  assert.equal(m.respondedPct, 67);
+});
+
+test('with no session tonight, Training Availability reads the next dated training occurrence', () => {
+  const players = Array.from({ length: 4 }, (_, i) => ({ id: 'p' + i, name: 'P ' + i }));
+  const scope = buildScope({
+    players,
+    trainingSlots: SLOTS,
+    todayIso: '2026-09-16',                                   // a Wednesday
+    fixtures: [{ id: 'fx9', opposition: 'Rivals RFC', date: '2099-01-01' }],
+    resolvedAvailability: answered(['p0', 'p1'], 'slot_thu-20260917', 'available'),
+  });
+  const t = scope.overviewAvailabilityContext('training');
+  assert.deepEqual([t.kind, t.label, t.available, t.noReply], ['session', 'Thursday Training', 2, 2]);
+  const out = scope.renderClubCommandDashboard();
+  assert.match(cardOf(out, 'Training Availability'), /Thursday Training/);
+  assert.match(cardOf(out, 'Match Availability'), /Rivals RFC/, 'the fixture stays on the match card');
+});
+
+test('after the week\'s last session, Training Availability moves to next week\'s first', () => {
+  const t = buildScope({
+    players: [{ id: 'p0', name: 'P 0' }],
+    trainingSlots: SLOTS,
+    todayIso: '2026-09-18',                                   // Friday, after Thursday
+    resolvedAvailability: answered(['p0'], 'slot_tue-20260922', 'maybe'),
+  }).overviewAvailabilityContext('training');
+  assert.deepEqual([t.label, t.maybe], ['Tuesday Training', 1]);
+});
+
+test('today\'s own occurrence counts as the next one', () => {
+  const t = buildScope({
+    players: [{ id: 'p0', name: 'P 0' }],
+    trainingSlots: SLOTS,
+    todayIso: '2026-09-17',                                   // Thursday
+    resolvedAvailability: answered(['p0'], 'slot_thu-20260917', 'available'),
+  }).overviewAvailabilityContext('training');
+  assert.deepEqual([t.label, t.available], ['Thursday Training', 1]);
+});
+
+test('each card has its own empty state', () => {
+  const players = [{ id: 'p0', name: 'P 0' }];
+  const onlyFixture = buildScope({ players, fixtures: [{ id: 'fx1', opposition: 'Acton Town', date: iso(6) }] })
+    .renderClubCommandDashboard();
+  assert.match(cardOf(onlyFixture, 'Training Availability'), /once a training session is scheduled/);
+  assert.match(cardOf(onlyFixture, 'Match Availability'), /vs Acton Town/);
+
+  const onlyTraining = buildScope({ players, trainingSlots: SLOTS, todayIso: '2026-09-16' }).renderClubCommandDashboard();
+  assert.match(cardOf(onlyTraining, 'Training Availability'), /Thursday Training/);
+  assert.match(cardOf(onlyTraining, 'Match Availability'), /once a fixture is scheduled/);
+});
+
+test('position warnings follow the fixture onto the Match Availability card', () => {
+  // Only two players, both available: the fixture is short of a full XV.
+  const out = buildScope({
+    players: [{ id: 'p0', name: 'P 0', position: 'Hooker' }, { id: 'p1', name: 'P 1', position: 'Wing' }],
+    fixtures: [{ id: 'fx1', opposition: 'Acton Town', date: iso(6) }],
+    resolvedAvailability: answered(['p0', 'p1'], 'fx1', 'available'),
+  }).renderClubCommandDashboard();
+  const ctx = buildScope({
+    players: [{ id: 'p0', name: 'P 0', position: 'Hooker' }, { id: 'p1', name: 'P 1', position: 'Wing' }],
+    fixtures: [{ id: 'fx1', opposition: 'Acton Town', date: iso(6) }],
+    resolvedAvailability: answered(['p0', 'p1'], 'fx1', 'available'),
+  }).overviewAvailabilityContext('match');
+  assert.ok(ctx.warnings.length > 0, 'the scenario must actually raise a warning');
+  assert.match(cardOf(out, 'Match Availability'), /position warning/);
+  assert.ok(!/position warning/.test(cardOf(out, 'Training Availability')));
+});
+
+test('both cards still open Availability, by mouse and by keyboard', () => {
+  const out = fullClub().renderClubCommandDashboard();
+  for (const label of ['Training Availability', 'Match Availability']) {
+    const card = cardOf(out, label);
+    assert.match(card, /onclick="setSection\('coach','message'\)"/, label);
+    assert.match(card, /onkeydown="if\(event\.key==='Enter'\|\|event\.key===' '\)\{event\.preventDefault\(\);setSection\('coach','message'\)\}"/, label);
+    assert.ok(card.includes(`aria-label="${label} — open Availability"`), label);
+  }
+});
+
+test('Availability labels elsewhere in the app are untouched', () => {
+  // The rename is the Overview's two card titles only.
+  assert.ok(html.includes("description: 'Squad availability tracking and player check-ins before every session.'"));
+  const overview = html.slice(html.indexOf('function renderClubCommandDashboard('), html.indexOf('function renderOverviewQuickActions('));
+  const rest = html.replace(overview, '');
+  assert.ok(!overview.includes("card('Availability'") && !overview.includes("card('Squad availability'"));
+  // (Doc comments may mention the cards; no other UI string may use the titles.)
+  assert.ok(!/['"`>](Training|Match) Availability/.test(rest),
+    'the new titles appear in no UI string outside the Overview');
 });

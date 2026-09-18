@@ -180,6 +180,8 @@ function buildScope({
     extractFn(html, 'availTrainingEventId') + '\n' +
     extractFn(html, 'availabilityEventsForWeek') + '\n' +
     extractFn(html, 'availabilityWeekSessions') + '\n' +
+    extractFn(html, 'trainingWeekOccurrences') + '\n' +
+    extractFn(html, 'availabilitySessionLabel') + '\n' +
     extractFn(html, 'tonightAvailabilityEventId') + '\n' +
     extractFn(html, 'overviewAvailableCount') + '\n' +
     extractFn(html, 'overviewAnswerMap') + '\n' +
@@ -312,7 +314,7 @@ test('fixture availability reads the fixture\'s own answers, not the device-loca
     // server never writes it. The answers are in the resolved model.
     fixtureAvailability: {},
     resolvedAvailability: serverAnswers(group.slice(0, 14), 'fx1', 'available'),
-  }).overviewAvailabilityContext();
+  }).overviewAvailabilityContext('match');
 
   assert.equal(av.kind, 'fixture');
   assert.equal(av.total, 20);
@@ -333,7 +335,7 @@ test('the fixture card and the Match Centre read the same rows', () => {
       ...serverAnswers(group.slice(9, 10), 'fx9', 'unavailable'),
     },
   });
-  const av   = scope.overviewAvailabilityContext();
+  const av   = scope.overviewAvailabilityContext('match');
   const rows = scope.sessionRows('fx9');
 
   assert.equal(av.available,   rows.filter(r => r.status === 'available').length);
@@ -353,7 +355,7 @@ test('position warnings for the fixture are derived from the same answers', () =
     clubPlayers: group,
     fixtures: [{ id: 'fx1', opposition: 'Rivals', date: iso(4) }],
     resolvedAvailability: serverAnswers(group, 'fx1', 'available'),
-  }).overviewAvailabilityContext();
+  }).overviewAvailabilityContext('match');
 
   const messages = av.warnings.map(w => w.message).join(' | ');
   assert.ok(!/No hooker available/.test(messages),     'the hooker replied available');
@@ -362,7 +364,7 @@ test('position warnings for the fixture are derived from the same answers', () =
     'the genuine shortfall is still reported');
 });
 
-// ── 3. Squad Availability / session card ──────────────────────────────────────
+// ── 3. Training / Match Availability cards ──────────────────────────────────────
 
 test('session availability prefers the server answer over a stale device field', () => {
   const group = [
@@ -377,7 +379,7 @@ test('session availability prefers the server answer over a stale device field',
     // Server answers land on the canonical dated occurrence the tonight session
     // resolves to (slot_tue-YYYYMMDD), exactly as they do in production.
     resolvedAvailability: serverAnswers([group[0]], TUE_OCC, 'available'),
-  }).overviewAvailabilityContext();
+  }).overviewAvailabilityContext('training');
 
   assert.equal(av.kind, 'session');
   assert.equal(av.available, 2, 'p1\'s newer server answer wins; p2\'s device field still counts');
@@ -398,7 +400,7 @@ test('every reading balances: the four states always sum to the squad', () => {
       // A value the UI has no bucket for must still be accounted for.
       ...serverAnswers(group.slice(18, 20), TUE_OCC, 'tentative'),
     },
-  }).overviewAvailabilityContext();
+  }).overviewAvailabilityContext('training');
 
   assert.equal(av.available + av.maybe + av.unavailable + av.noReply, av.total);
   assert.equal(av.responded + av.noReply, av.total);
@@ -416,7 +418,7 @@ test('a medically unavailable player counts unavailable whatever they replied', 
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }],
     stubTonightId: 'tue',
     resolvedAvailability: serverAnswers(group, TUE_OCC, 'available'),
-  }).overviewAvailabilityContext();
+  }).overviewAvailabilityContext('training');
 
   assert.equal(av.available, 1,   'only the fit player is available');
   assert.equal(av.unavailable, 1, 'the medical override stands');
@@ -440,7 +442,7 @@ test('another group\'s answers never leak into this group\'s reading', () => {
       // isolation the test exists to prove: their answers must never be counted.
       ...serverAnswers(others, TUE_OCC, 'available'),
     },
-  }).overviewAvailabilityContext();
+  }).overviewAvailabilityContext('training');
 
   assert.equal(av.total, 8, 'the population is the operating group');
   assert.equal(av.available, 3, 'twelve other-group answers must not be counted');
@@ -458,7 +460,7 @@ test('archived players are in nobody\'s squad total', () => {
     stubTonightId: 'tue',
     resolvedAvailability: serverAnswers(group, TUE_OCC, 'available'),
   });
-  assert.equal(scope.overviewAvailabilityContext().total, 1);
+  assert.equal(scope.overviewAvailabilityContext('training').total, 1);
   assert.equal(scope.overviewAvailableCount('tue'), 1);
 });
 
@@ -473,7 +475,7 @@ test('the confirmed count in an attention item equals the availability card', ()
     stubTonightId: 'tue',
     resolvedAvailability: serverAnswers(group.slice(0, 9), TUE_OCC, 'available'),
   });
-  const av    = scope.overviewAvailabilityContext();
+  const av    = scope.overviewAvailabilityContext('training');
   const item  = scope.getNeedsAttentionItems().find(i => /not published/.test(i.text));
 
   assert.equal(av.available, 9);
@@ -486,7 +488,7 @@ test('the confirmed count in an attention item equals the availability card', ()
 test('an empty group reads as no data rather than a row of zeroes', () => {
   const av = buildScope({ clubPlayers: named(40, 'p'), groupPlayers: [],
     schedule: [{ id: 'tue', title: 'Tuesday', type: 'Training' }], stubTonightId: 'tue' })
-    .overviewAvailabilityContext();
+    .overviewAvailabilityContext('training');
   assert.equal(av.kind, 'none');
 });
 
@@ -495,7 +497,7 @@ test('nothing is filled in when nobody has answered', () => {
   const av = buildScope({
     clubPlayers: group,
     fixtures: [{ id: 'fx1', opposition: 'Rivals', date: iso(6) }],
-  }).overviewAvailabilityContext();
+  }).overviewAvailabilityContext('match');
 
   assert.equal(av.total, 57,       'the squad is real and is reported');
   assert.equal(av.available, 0);
