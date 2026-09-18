@@ -20392,16 +20392,10 @@
     function availabilityCardModel(player, session) {
       const key = sessionKey(session.id);
       const raw = player[key] || 'no-reply';
-      // A dated event names itself: "Match · Kituro · 22 Aug". Legacy weekly
-      // slots keep their existing wording so nothing shifts under players who
-      // are mid-week.
-      const dated = session.date
-        ? [session.title, session.opponent, availDayLabel(session.date), session.time]
-            .filter(Boolean).join(' · ')
-        : '';
+      // The card's title is not part of the model: availabilityCardV2 names the
+      // session with availabilitySessionLabel, exactly as the coach cards do.
       return {
         key,
-        label: dated || session.title || session.id,
         status: raw === 'injured' ? 'unavailable' : raw,
         reason: player[key + 'Reason'] || '',
         respondedAt: player[key + 'RespondedAt'] || null,
@@ -20573,12 +20567,6 @@
     }
 
     /** Today as YYYY-MM-DD. Injectable so tests never depend on the clock. */
-    /** "22 Aug" — short, unambiguous, no locale surprises. */
-    function availDayLabel(iso) {
-      const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
-      return d + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1];
-    }
-
     function availToday() {
       return (typeof _availTodayOverride === 'string' && _availTodayOverride)
         || new Date().toISOString().slice(0, 10);
@@ -20730,8 +20718,11 @@
       const border = borderColors[status] || 'var(--line)';
 
       const icon  = sessionTypeIcon(session.type);
-      const title = model.label;
-      const meta  = [session.date, session.focus].filter(Boolean).join(' · ');
+      // Same name as the coach card ("Tuesday Training"). The kick-off time and
+      // opponent the old title carried move to the meta line, so nothing the
+      // player could see before is lost.
+      const title = availabilitySessionLabel(session);
+      const meta  = [session.date, session.time, session.opponent, session.focus].filter(Boolean).join(' · ');
 
       // Every button acts ONLY on this card's key. isActive reflects this card's
       // own saved status — there is no shared pending status to read.
