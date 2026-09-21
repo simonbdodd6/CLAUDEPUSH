@@ -2551,6 +2551,15 @@
     /* ── Core Beta (Phase 3): hide advanced clutter — DOM + logic stay intact ── */
     .beta-hidden { display: none !important; }
 
+    /* SETTINGS — grouped sections (SETTINGS-RESTRUCTURE-1). Presentation only:
+       a small uppercase heading over each group of existing cards. */
+    .set-wrap { display: grid; gap: 22px; max-width: 620px; }
+    .set-group { display: grid; gap: 12px; }
+    .set-group-title { margin: 0 0 2px 2px; font-size: 11px; font-weight: 800; letter-spacing: .09em;
+      text-transform: uppercase; color: var(--faint); }
+    @media (max-width: 480px) { .set-wrap { gap: 18px; } }
+
+
     /* ── Base typography polish ───────────────────────────────────────────────── */
     body { letter-spacing: -0.011em; font-feature-settings: 'cv05','ss01'; }
     h1 { font-weight: 760; letter-spacing: -0.028em; font-size: clamp(28px, 3.4vw, 40px); line-height: 1.04; }
@@ -24571,11 +24580,32 @@
       // cards above: nothing is on sale. state.teamPlan / teamPlanStatus and
       // every entitlement gate still work exactly as before.
 
-      el.innerHTML = `
-        <div style="display:grid;gap:16px;max-width:620px">
-
-          ${_betaUI ? "" : renderFeatureDiscovery()}
-
+      // ── ONE card per subject, gathered into labelled groups below ────────
+      // SETTINGS-RESTRUCTURE-1 — every card below is the EXISTING card, moved
+      // whole: same markup, same controls, same permission gate, same storage
+      // key. Only the order and the group headings around them are new, so no
+      // setting can appear for someone who could not already see it, and none
+      // can go missing. setGroup() drops a group whose cards all render empty,
+      // so a heading never stands over nothing.
+      /**
+       * A labelled Settings group. It renders only when at least one of its
+       * cards produced markup, so a permission-gated card that returns ''
+       * (Club structure, Platform, Production health…) never leaves an empty
+       * heading behind. `hidden` marks a group whose cards are all present in
+       * the DOM but hidden by class (the Beta UI's Danger zone), so the
+       * heading hides with them rather than labelling a blank space.
+       */
+      const setGroup = (title, cards, opts) => {
+        const body = (cards || []).filter(h => String(h || '').trim()).join('\n');
+        if (!body.trim()) return '';
+        const hidden = opts && opts.hidden ? ' beta-hidden' : '';
+        return `<section class="set-group${hidden}">
+            <h2 class="set-group-title">${esc(title)}</h2>
+            ${body}
+          </section>`;
+      };
+      const _diagOn = (typeof _diagnosticsOn === 'function' && _diagnosticsOn());
+      const cardAccount       = `
           <!-- Coach account -->
           <div class="card">
             <h2 style="margin-bottom:4px">Coach account</h2>
@@ -24602,8 +24632,8 @@
               </details>
               <button class="btn" type="button" onclick="settingsLogoutAll()" style="min-height:40px;font-size:13px;border-color:rgba(245,158,11,0.4);color:#fbbf24">Log out of all other devices</button>
             </div>
-          </div>
-
+          </div>`;
+      const cardClub          = `
           <!-- Club settings -->
           <div class="card">
             <h2 style="margin-bottom:4px">Club settings</h2>
@@ -24645,10 +24675,9 @@
               </div>
               <p class="muted" style="font-size:11px;margin:4px 0 0">Changes here save automatically and apply your branding across the app.</p>
             </div>
-          </div>
-
-          <!-- Appearance — a DEVICE preference, saved locally (see setAppearance) -->
-          ${!appearanceChoices.length ? '' : `
+          </div>`;
+      // <!-- Appearance — a DEVICE preference, saved locally (see setAppearance) -->
+      const cardAppearance    = !appearanceChoices.length ? '' : `
           <div class="card">
             <h2 style="margin-bottom:4px">Appearance</h2>
             <p class="muted" style="font-size:12px;margin-bottom:12px">How CoachEasier looks on this device. Saved here, not to your account, so each of your devices can differ.</p>
@@ -24668,8 +24697,8 @@
               }).join('')}
             </div>
             <p class="muted" style="font-size:11px;margin:10px 0 0">${esc(appearanceHint[appearancePref] || '')}</p>
-          </div>`}
-
+          </div>`;
+      const cardNotifications = `
           <!-- Notifications -->
           <div class="card">
             <h2 style="margin-bottom:4px">Notifications</h2>
@@ -24679,17 +24708,14 @@
             ${toggle('matchReminders', 'Match reminders', 'Availability chasers for match day')}
             ${toggle('trainingReminders', 'Training reminders', 'Availability chasers for training sessions')}
             ${!canUseFeature('unlimited_push') ? `<div style="margin-top:12px">${renderUnavailableNotice('unlimited_push', { compact: true })}</div>` : ''}
-          </div>
-
-          <!-- Teams → Training schedule (RC4.10C) -->
-          ${(typeof renderTrainingScheduleCard === 'function' ? renderTrainingScheduleCard() : '')}
-
-          <!-- Club structure: groups and teams (RC4.7 Phase C) -->
-          ${(typeof renderClubStructureCard === 'function' ? renderClubStructureCard() : '')}
-
-          <!-- Platform provisioning — platform administrators only -->
-          ${(typeof renderPlatformAdminCard === 'function' ? renderPlatformAdminCard() : '')}
-
+          </div>`;
+      // <!-- Teams → Training schedule (RC4.10C) -->
+      const cardTraining      = (typeof renderTrainingScheduleCard === 'function' ? renderTrainingScheduleCard() : '');
+      // <!-- Club structure: groups and teams (RC4.7 Phase C) -->
+      const cardStructure     = (typeof renderClubStructureCard === 'function' ? renderClubStructureCard() : '');
+      // <!-- Platform provisioning — platform administrators only -->
+      const cardPlatform      = (typeof renderPlatformAdminCard === 'function' ? renderPlatformAdminCard() : '');
+      const cardSupport       = `
           <!-- Support — always visible so beta coaches can reach a human -->
           <div class="card">
             <h2 style="margin-bottom:4px"><img src="/brand/svg/coacheasier-mark-on-light.svg" alt="" class="ce-support-mark" onerror="this.remove()">CoachEasier Support</h2>
@@ -24701,8 +24727,8 @@
             <p class="muted" style="font-size:11.5px;margin:10px 0 0">
               <a href="/privacy" style="color:inherit">Privacy</a> · <a href="/terms" style="color:inherit">Terms</a>
             </p>
-          </div>
-
+          </div>`;
+      const cardDevice        = `
           <!-- Device (hidden in the commercial Beta UI; functions retained) -->
           <div class="card${_betaUI ? " beta-hidden" : ""}">
             <h2 style="margin-bottom:4px">Device</h2>
@@ -24720,10 +24746,10 @@
               <button class="btn" type="button" onclick="settingsForceSync(this)" style="min-height:40px;font-size:13px">↺ Force sync now</button>
               <button class="btn" type="button" onclick="clearDeviceState()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.3)">Clear cached data on this device</button>
             </div>
-          </div>
-
+          </div>`;
+      const cardBeta          = `
           <!-- Beta Readiness — build/session diagnostics. RC4.10D: authorised
-               diagnostics mode only, never normal UI in any environment. -->
+               diagnostics mode only, never normal UI in any environment. -->               diagnostics mode only, never normal UI in any environment. -->
           ${(typeof _diagnosticsOn === 'function' && _diagnosticsOn()) ? `
           <div class="card">
             <h2 style="margin-bottom:4px">Beta Readiness</h2>
@@ -24741,8 +24767,8 @@
                 <span style="color:var(--muted);flex-shrink:0;margin-right:12px">${label}</span>
                 <span style="font-weight:700;color:${ok ? 'var(--green)' : '#f87171'};font-family:monospace;text-align:right">${value}</span>
               </div>`).join('')}
-          </div>` : ''}
-
+          </div>` : ''}`;
+      const cardDanger        = `
           <!-- Danger zone (hidden in the commercial Beta UI; functions retained) -->
           <div class="card${_betaUI ? " beta-hidden" : ""}" style="border-color:rgba(248,113,113,0.35)">
             <h2 style="margin-bottom:4px;color:#f87171">Danger zone</h2>
@@ -24752,10 +24778,12 @@
               ${(typeof _diagnosticsOn === 'function' && _diagnosticsOn()) ? `<button class="btn" type="button" onclick="settingsCleanTestData()" style="min-height:40px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,0.4)">Delete test data…</button>` : ''}
             </div>
             <p class="muted" style="font-size:11px;margin:10px 0 0">Deleting club data clears the club profile, published sessions, squad and roster for this club only. Player accounts and message history are kept.</p>
-          </div>
-
+          </div>`;
+      const cardAdvanced      = `
           <!-- Advanced → device reset. RC4.9B: this wipes ALL local club state on the
                device, so it is no longer part of normal production use. It appears only
+               in the authorised-admin diagnostics mode (?diagnostics=1 + danger_zone),
+               which support can talk a club admin into when a device needs clearing. -->               device, so it is no longer part of normal production use. It appears only
                in the authorised-admin diagnostics mode (?diagnostics=1 + danger_zone),
                which support can talk a club admin into when a device needs clearing. -->
           ${(typeof _diagnosticsOn === 'function' && _diagnosticsOn()) ? `
@@ -24770,10 +24798,13 @@
                 </div>
               </div>
             </details>
-          </div>` : ''}
-
+          </div>` : ''}`;
+      const cardHealth        = `
           <!-- H3 — production health. Gated on the same permission the server
                enforces for the read (PERM.REPORTS), so what the UI offers and
+               what the API allows can never drift apart. Deliberately NOT
+               inside the developer diagnostics panel: that is off by default,
+               and an error log nobody can find is not monitoring. -->               enforces for the read (PERM.REPORTS), so what the UI offers and
                what the API allows can never drift apart. Deliberately NOT
                inside the developer diagnostics panel: that is off by default,
                and an error log nobody can find is not monitoring. -->
@@ -24783,22 +24814,37 @@
             <p class="muted" style="font-size:12.5px;margin:0 0 12px;line-height:1.55">Unexpected failures the app has reported, newest first. Nothing listed is the healthy answer.</p>
             <button class="btn" type="button" id="err-log-btn" onclick="settingsLoadErrorLog()" style="min-height:44px;font-size:13px">Check for errors</button>
             <div id="err-log-out" style="margin-top:10px"></div>
-          </div>` : ''}
-
+          </div>` : ''}`;
+      const cardSignOut       = `
           <!-- Sign out — kept available for normal operation -->
           <div class="card">
             <button class="btn" type="button" onclick="settingsSignOut()" style="width:100%;min-height:44px;font-size:13px">Sign out</button>
-          </div>
-
+          </div>`;
+      const cardDeleteAccount = `
           <!-- H4 — self-service account deletion (App Store requirement).
                A quiet, honest card: the destructive ceremony lives in the
+               modal, not here. -->               A quiet, honest card: the destructive ceremony lives in the
                modal, not here. -->
           <div class="card" style="border-color:rgba(220,38,38,0.25)">
             <h3 style="font-size:13px;font-weight:800;margin:0 0 4px;color:#dc2626">Delete account</h3>
             <p class="muted" style="font-size:12.5px;margin:0 0 12px;line-height:1.55">Permanently deletes your CoachEasier account and signs you out everywhere. Your club's shared records stay with the club.</p>
             <button class="btn" type="button" onclick="settingsDeleteAccountOpen()"
               style="min-height:44px;font-size:13px;color:#dc2626;border-color:rgba(220,38,38,0.4)">Delete my account…</button>
-          </div>
+          </div>`;
+
+      el.innerHTML = `
+        <div class="set-wrap">
+
+          ${_betaUI ? "" : renderFeatureDiscovery()}
+
+          ${setGroup('General', [cardClub, cardTraining, cardStructure])}
+          ${setGroup('Personal', [cardAccount])}
+          ${setGroup('Appearance', [cardAppearance])}
+          ${setGroup('Notifications', [cardNotifications])}
+          ${setGroup('Platform', [cardPlatform])}
+          ${setGroup('Support & diagnostics', [cardSupport, cardHealth, cardDevice, cardBeta])}
+          ${setGroup('Account', [cardSignOut, cardDeleteAccount])}
+          ${setGroup('Danger zone', [cardDanger, cardAdvanced], { hidden: _betaUI && !_diagOn })}
         </div>`;
     }
 
