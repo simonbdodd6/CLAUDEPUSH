@@ -4378,6 +4378,20 @@
 
     /* ── Redesigned player markers — premium jersey, sleeves, collar, name plate ── */
     .mc12-pitch .mc12-slot { width: 96px !important; z-index: 2; }
+    /* MATCHDAY-JERSEY-ALIGNMENT-1 — the name plate is wider than its slot (108
+       vs 96; 62 vs 56 on a phone). A grid track sizes to its widest item and
+       overflows to the END edge, so the whole marker — jersey, number and
+       plate — was drawn 6px RIGHT of the coordinate it is positioned on (3px
+       at phone size). Slots meant to mirror each other (6/7, 11/14) therefore
+       sat 12px apart in their margins, off the pitch's centre line. Pin the
+       track to the slot width and centre the wider plate on it: the jersey now
+       sits exactly on its coordinate at every breakpoint, and the plate keeps
+       its designed width. */
+    .mc12-pitch .mc12-slot { grid-template-columns: minmax(0, 1fr); }
+    /* margin-inline:0 because the plate's `margin: 3px auto 0` (base rule) wins
+       over justify-self for an item wider than its track, which would leave the
+       plate 6px right of the jersey it labels. */
+    .mc12-pitch .j12-name  { justify-self: center; margin-inline: 0; }
     .mc12-pitch .mc12-slot.filled { z-index: 3; }
     .j12-shirt { position: relative; width: 60px; height: 56px; margin: 0 auto;
       filter: drop-shadow(0 11px 13px rgba(0,0,0,0.55)) drop-shadow(0 2px 3px rgba(0,0,0,0.45)); }
