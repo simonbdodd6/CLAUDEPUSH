@@ -183,10 +183,10 @@ test('exclusion integrity: missing commit, subject drift and patch drift all rep
   assert.match(problems[2], /patch-id drift/);
 });
 
-test('the committed config is valid and declares both production exclusions', () => {
+test('the committed config is valid and declares all three production exclusions', () => {
   const cfg = loadConfig(CONFIG_PATH);
-  assert.equal(cfg.exclusions.length, 2);
-  assert.deepEqual(cfg.exclusions.map(e => e.id).sort(), ['club-export', 'tactics-mount']);
+  assert.equal(cfg.exclusions.length, 3);
+  assert.deepEqual(cfg.exclusions.map(e => e.id).sort(), ['club-export', 'stamp-cd84-superseded', 'tactics-mount']);
   assert.equal(cfg.policies.apiFunctionCap.max, 12);
   assert.equal(cfg.policies.baselineRelativeTesting.knownBaselineFailures.length, 2,
     'the two known failures stay declared, not quietly dropped');
