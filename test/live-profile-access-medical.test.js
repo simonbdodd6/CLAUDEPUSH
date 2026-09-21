@@ -389,11 +389,20 @@ test('a healthy player is not a medical case; a recorded injury makes one', () =
     ['currentInjury', { p1: { currentInjury: 'Hamstring' } }, {}, healthy],
     ['severity',      { p1: { severity: 'moderate' } }, {}, healthy],
     ['dateInjured',   { p1: { dateInjured: '2026-08-01' } }, {}, healthy],
-    ['condition note', {}, { p1: { condition: 'Ankle sprain' } }, healthy],
-    ['injured flag',  {}, {}, { id: 'p1', game: 'injured' }],
-    ['restricted training', {}, {}, { id: 'p1', trainingStatus: 'modified' }],
   ]) {
     assert.equal(hasActiveMedicalCase(p, recs, notes), true, `${label} opens a case`);
+  }
+  // MEDICAL-AUDIT-1 — a case is a projected SHARED case (state.medicalRecords
+  // holds one only for server-active cases). A condition note without a
+  // record, or a legacy roster flag, is not a case: nothing writes p.game
+  // 'injured' any more and the roster trainingStatus outlives the case it
+  // mirrored, so counting them inflated the current caseload.
+  for (const [label, recs, notes, p] of [
+    ['condition note alone', {}, { p1: { condition: 'Ankle sprain' } }, healthy],
+    ['injured flag alone',  {}, {}, { id: 'p1', game: 'injured' }],
+    ['roster training flag alone', {}, {}, { id: 'p1', trainingStatus: 'modified' }],
+  ]) {
+    assert.equal(hasActiveMedicalCase(p, recs, notes), false, `${label} is not a case`);
   }
 });
 
@@ -403,37 +412,53 @@ test('clearing a case removes it from the active list without deleting history',
   const injured = { p1: { currentInjury: 'Hamstring', severity: 'moderate', timeline: [{ at: '2026-08-01' }] } };
   assert.equal(hasActiveMedicalCase(player, injured, {}), true);
 
-  const cleared = { p1: { ...injured.p1, clearanceStatus: 'cleared' } };
-  assert.equal(hasActiveMedicalCase(player, cleared, {}), false, 'resolved cases drop off');
-  // The record itself — including its timeline — is untouched.
-  assert.equal(cleared.p1.currentInjury, 'Hamstring');
-  assert.equal(cleared.p1.timeline.length, 1, 'history preserved');
+  // MEDICAL-AUDIT-1 — clearing RESOLVES the shared case, and a resolved case
+  // is not projected into state.medicalRecords (hydrateMedicalFromShared
+  // skips it): the active list is simply the projection without it.
+  const afterClear = {};
+  assert.equal(hasActiveMedicalCase(player, afterClear, {}), false, 'resolved cases drop off');
+  // The source record itself — including its timeline — is untouched.
+  assert.equal(injured.p1.currentInjury, 'Hamstring');
+  assert.equal(injured.p1.timeline.length, 1, 'history preserved');
+  // A case cleared TO PLAY (RTP status) but not yet closed is still open.
+  const rtpCleared = { p1: { ...injured.p1, clearanceStatus: 'cleared' } };
+  assert.equal(hasActiveMedicalCase(player, rtpCleared, {}), true, 'cleared to play ≠ case closed');
 });
 
 test('the Medical page lists the caseload, not the roster', () => {
   const { medicalDashboardSummary } = scope(
-    ['normalizeMedicalRecord', 'hasActiveMedicalCase', 'activeRosterPlayers', 'medicalDashboardSummary'], {},
+    ['normalizeMedicalRecord', 'hasActiveMedicalCase', 'activeRosterPlayers', 'medicalCaseTrainingStatus',
+     'availWeekStart', 'availAddDays', 'medicalRtpTiming', 'medicalIsReturningThisWeek',
+     'medicalNotTrainingThisWeek', 'medicalDashboardSummary'], {},
     // activeRosterPlayers filters archived rows via this helper.
-    ['const playerIsArchived = p => p.lifecycleStatus === "archived" || !!p.archivedDate;']);
+    ['const playerIsArchived = p => p.lifecycleStatus === "archived" || !!p.archivedDate;',
+     "const MEDICAL_REHAB_STATUSES = ['modified', 'gymOnly', 'noContact'];",
+     "function availToday() { return '2026-09-21'; }"]);
   const players = [
     { id: 'p1', name: 'Fit One', game: 'available', lifecycleStatus: 'active' },
     { id: 'p2', name: 'Fit Two', game: 'available', lifecycleStatus: 'active' },
     { id: 'p3', name: 'Injured', game: 'injured', lifecycleStatus: 'active' },
   ];
-  const summ = medicalDashboardSummary(players, {}, {});
+  // MEDICAL-AUDIT-1 — the caseload is the projected shared cases; p3's legacy
+  // roster flag alone lists nobody, its recorded case lists p3.
+  assert.deepEqual(medicalDashboardSummary(players, {}, {}).all, [], 'a roster flag is not a case');
+  const summ = medicalDashboardSummary(players, { p3: { currentInjury: 'Hamstring' } }, {});
   assert.deepEqual(summ.all.map(p => p.id), ['p3'], 'only the injured player is listed');
   assert.equal(summ.roster.length, 3, 'the full roster is still available separately');
   assert.equal(summ.all.length < summ.roster.length, true, 'the page is not the roster');
 
   // Reading the page must not manufacture records.
-  const summ2 = medicalDashboardSummary(players, {}, {});
+  const summ2 = medicalDashboardSummary(players, { p3: { currentInjury: 'Hamstring' } }, {});
   assert.deepEqual(summ2.all.map(p => p.id), ['p3'], 'repeat reads are stable');
 });
 
 test('the Medical listing heading and empty state describe cases, not availability', () => {
-  assert.match(src, /Active medical cases \(/, 'heading names the caseload');
+  // MEDICAL-AUDIT-1 — one caseload list ("Active cases"); the duplicate
+  // "Medical alerts" list is gone.
+  assert.match(src, /Active cases \(/, 'heading names the caseload');
   assert.equal(src.includes('Squad medical status ('), false, 'old roster heading gone');
-  assert.match(src, /No active medical cases\. Players appear here once an injury is recorded\./,
+  assert.equal(src.includes('Medical alerts ('), false, 'the duplicate alerts list is gone');
+  assert.match(src, /No open medical cases\. Players appear here once an injury is recorded\./,
     'empty state explains the model');
   // The unreachable pre-Phase-21 legacy body has been REMOVED: renderMedical
   // is now pure tab delegation, so the tabbed views (whose caseload is

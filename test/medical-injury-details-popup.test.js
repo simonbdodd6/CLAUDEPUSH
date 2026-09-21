@@ -139,7 +139,8 @@ test('the model wires dateInjured through to "Time out"', () => {
 test('8. a player with no active case fabricates nothing — every field is "—"', () => {
   const { medicalDetailsModel } = make();
   const m = medicalDetailsModel({ name: 'Healthy Harry', id: 'h1' }, {}, {}, TODAY);
-  assert.deepEqual(m, { name: 'Healthy Harry', injury: '—', bodyArea: '—', severity: '—', expectedReturn: '—', timeOut: '—' });
+  // MEDICAL-AUDIT-1 added rtpStatus + trainingStatus; with no record both are "—".
+  assert.deepEqual(m, { name: 'Healthy Harry', injury: '—', bodyArea: '—', severity: '—', expectedReturn: '—', timeOut: '—', rtpStatus: '—', trainingStatus: '—' });
 });
 
 // ── read-only ────────────────────────────────────────────────────────────────
