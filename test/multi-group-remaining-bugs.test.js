@@ -43,22 +43,30 @@ const SEN = 'grp_initial', U18 = 'grp_2b0aa7f9', WOM = 'grp_1b0fb56b';
 
 // ── OVERVIEW 1-3: setup checklist is initial-group only ───────────────────
 test('the club-setup checklist shows in Seniors and never in U18/Women\'s', () => {
-  const i = src.indexOf('const showOnboarding =');
-  assert.ok(i > 0);
-  const expr = src.slice(i, src.indexOf(';', i));
-  assert.match(expr, /operationalGroupId === CE_INITIAL_GROUP_ID/,
-    'gated on the initial group');
-  const evalGate = (gid, dismissed, done, total) => new Function(`
-    const state = { onboardingDismissed: arguments[1], operationalGroupId: arguments[0] };
+  // The group rule now lives in showClubSetupChecklist() with the rest of the
+  // gate (it also requires the club's FOUNDER — an existing user joining an
+  // established club is not a first-time user). Same rule, one place.
+  assert.match(src, /const showOnboarding = showClubSetupChecklist\(obSteps\);/);
+  const body = src.slice(src.indexOf('function showClubSetupChecklist('));
+  const gate = body.slice(0, body.indexOf('\n    }') + 6);
+  assert.match(gate, /operationalGroupId !== CE_INITIAL_GROUP_ID/, 'gated on the initial group');
+  const evalGate = (gid, dismissed, done, total) => new Function('gid', 'dismissed', 'done', 'total', `
+    const state = { onboardingDismissed: dismissed, operationalGroupId: gid };
     const CE_INITIAL_GROUP_ID = 'grp_initial';
-    const obDone = arguments[2], obSteps = { length: arguments[3] };
-    return ${expr.replace('const showOnboarding =', '')};
+    // The founder of this club — the only person this first-run card is for.
+    const _myMembership = { status: 'active', role: 'coach', isOwner: true };
+    function clubSetupFounder(member = _myMembership) {
+      return Boolean(member && member.status === 'active' && member.isOwner === true);
+    }
+    ${gate}
+    return showClubSetupChecklist(Array.from({ length: total }, (_, i) => ({ done: i < done })));
   `)(gid, dismissed, done, total);
   assert.equal(evalGate(SEN, false, 4, 5), true, 'Seniors keeps the checklist');
   assert.equal(evalGate(null, false, 4, 5), true, 'no group context (legacy) keeps it');
   assert.equal(evalGate(U18, false, 4, 5), false, 'U18 never shows it');
   assert.equal(evalGate(WOM, false, 4, 5), false, "Women's never shows it");
   assert.equal(evalGate(SEN, false, 5, 5), false, 'completed checklist stays hidden');
+  assert.equal(evalGate(SEN, true, 4, 5), false, 'dismissed stays hidden');
 });
 
 // ── COMMERCIAL 4-7: no visible Pro/trial/subscription UI in the beta ──────
