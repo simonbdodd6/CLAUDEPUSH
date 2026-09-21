@@ -1032,6 +1032,15 @@
     .chat-header h2 { margin: 0; font-size: 15px; font-weight: 700; }
     .chat-header small { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
     .chat-header-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    /* Custom messaging groups — the create/manage picker rows. */
+    .chat-group-row { display: flex; align-items: center; gap: 10px; padding: 8px 9px; border-radius: 8px; cursor: pointer; }
+    .chat-group-row:hover { background: var(--panel-2); }
+    .chat-group-row input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent); }
+    .chat-group-row-main { min-width: 0; display: grid; }
+    .chat-group-row-main strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chat-group-row-main small { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chat-group-name-input { width: 100%; min-height: 40px; padding: 0 11px; font-size: 14px; box-sizing: border-box;
+      border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); color: var(--ink); }
     .chat-icon-btn {
       width: 36px; height: 36px; border-radius: 50%; border: none; background: transparent;
       color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center;
@@ -35102,6 +35111,142 @@
       chatBindNewDmRows(el);
     }
 
+    // ─── CUSTOM MESSAGING GROUPS (coach-managed) ─────────────────────────────
+    // A group is an ordinary conversation with an explicit member list; the
+    // server mints it (create_group), validates every member against the club
+    // and decides who may read it. This is only the picker: it never decides
+    // access, and it offers exactly the people this device already knows from
+    // the club directory it is allowed to see.
+    let _chatGroupModal = null;   // { mode:'create'|'edit', convId, name, selected:Set }
+
+    /** Mirrors the server gate (messaging permission); the server re-checks. */
+    function chatCanManageGroups() {
+      return typeof canI === 'function' && canI('messaging');
+    }
+    function chatIsCustomGroup(conv) {
+      return String(conv?.type || '').toUpperCase() === 'CUSTOM' || String(conv?.id || '').startsWith('cg_');
+    }
+    function chatCustomGroupById(convId) {
+      return (_chatConversations || []).find(c => String(c.id) === String(convId) && chatIsCustomGroup(c)) || null;
+    }
+    /** Club people this device can offer: the roster it sees plus known staff. */
+    function chatGroupCandidates() {
+      const me = chatMe();
+      const out = new Map();
+      (typeof chatDirectoryPlayers === 'function' ? chatDirectoryPlayers() : []).forEach(p => {
+        const id = String(chatResolvePlayerParticipantId(p) || p.id || '');
+        if (id && id !== me.id) out.set(id, { id, name: p.name || id, sub: p.position || 'Player' });
+      });
+      (typeof chatStaffDmCandidates === 'function' ? chatStaffDmCandidates(me.id) : []).forEach(sm => {
+        const id = String(sm.id || '');
+        if (id && id !== me.id) out.set(id, { id, name: sm.name || id, sub: sm.position || 'Staff' });
+      });
+      return [...out.values()].sort((x, y) => x.name.localeCompare(y.name));
+    }
+
+    /**
+     * Reveal "Manage members" for the open thread when it is a custom group
+     * the viewer belongs to AND they hold the messaging permission. The server
+     * re-checks both; this only decides whether to offer the control.
+     */
+    /** Show the "New group" action only where the server would accept it. */
+    function chatSyncGroupControls() {
+      const btn = document.getElementById('chatNewGroupBtn');
+      if (btn) btn.style.display = chatCanManageGroups() ? '' : 'none';
+    }
+
+    function chatSyncGroupManageBtn(convId) {
+      const wrap = document.getElementById('chatGroupManageWrap');
+      const btn  = document.getElementById('chatGroupManageBtn');
+      if (!wrap || !btn) return;
+      const conv = chatCustomGroupById(convId);
+      const show = Boolean(conv) && chatCanManageGroups();
+      wrap.style.display = show ? '' : 'none';
+      btn.onclick = show ? () => chatOpenGroupModal(String(conv.id)) : null;
+    }
+
+    function chatOpenGroupModal(convId) {
+      if (!chatCanManageGroups()) return showToast('You cannot manage messaging groups');
+      const conv = convId ? chatCustomGroupById(convId) : null;
+      const me = chatMe();
+      _chatGroupModal = conv
+        ? { mode: 'edit', convId: conv.id, name: conv.name || '',
+            selected: new Set((conv.participants || []).map(String).filter(id => id !== me.id)) }
+        : { mode: 'create', convId: '', name: '', selected: new Set() };
+      chatRenderGroupModal();
+      setTimeout(() => document.getElementById('chatGroupName')?.focus(), 30);
+    }
+    function chatCloseGroupModal() { _chatGroupModal = null; chatRenderGroupModal(); }
+    function chatSetGroupName(v) { if (_chatGroupModal) _chatGroupModal.name = String(v || '').slice(0, 60); }
+    function chatToggleGroupMember(id) {
+      if (!_chatGroupModal) return;
+      const key = String(id);
+      if (_chatGroupModal.selected.has(key)) _chatGroupModal.selected.delete(key);
+      else _chatGroupModal.selected.add(key);
+      chatRenderGroupModal();
+    }
+    function chatRenderGroupModal() {
+      const host = document.getElementById('chatGroupModal');
+      if (host) host.innerHTML = chatGroupModalHtml();
+    }
+    function chatGroupModalHtml() {
+      const m = _chatGroupModal;
+      if (!m) return '';
+      const people = chatGroupCandidates();
+      const rows = people.map(p => `
+        <label class="chat-group-row">
+          <input type="checkbox" ${m.selected.has(String(p.id)) ? 'checked' : ''}
+            onchange="chatToggleGroupMember('${esc(String(p.id))}')" aria-label="${esc(p.name)}">
+          <span class="chat-group-row-main"><strong>${esc(p.name)}</strong><small>${esc(p.sub)}</small></span>
+        </label>`).join('') || `<p class="muted" style="font-size:12px;margin:6px 2px">No club members to add yet.</p>`;
+      return `<div class="chat-new-msg-modal" onclick="if(event.target===this)chatCloseGroupModal()">
+        <div class="chat-new-msg-dialog" role="dialog" aria-modal="true" aria-label="${m.mode === 'edit' ? 'Manage group' : 'New group'}">
+          <div class="chat-newdm-head" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)">
+            <strong style="font-size:15px;color:var(--ink)">${m.mode === 'edit' ? 'Manage group' : 'New group'}</strong>
+            <button class="chat-icon-btn" type="button" onclick="chatCloseGroupModal()" title="Close">✕</button>
+          </div>
+          <div style="padding:12px 16px 0">
+            <label style="display:grid;gap:5px;font-size:12px;font-weight:700;color:var(--muted)">Group name
+              <input id="chatGroupName" value="${esc(m.name)}" maxlength="60" placeholder="Forwards"
+                oninput="chatSetGroupName(this.value)" class="chat-group-name-input"></label>
+            <div style="font-size:12px;font-weight:700;color:var(--muted);margin:12px 2px 4px">Members
+              <span class="muted" style="font-weight:600">· you are always in</span></div>
+          </div>
+          <div class="chat-newdm-results" style="display:grid;gap:2px;overflow:auto;padding:0 12px 8px">${rows}</div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line)">
+            <button class="btn" type="button" onclick="chatCloseGroupModal()">Cancel</button>
+            <button class="btn primary" type="button" id="chatGroupSaveBtn" onclick="chatSaveGroup()">${m.mode === 'edit' ? 'Save changes' : 'Create group'}</button>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    async function chatSaveGroup() {
+      const m = _chatGroupModal;
+      if (!m) return;
+      const name = String(m.name || '').trim();
+      if (!name) { showToast('Give the group a name'); document.getElementById('chatGroupName')?.focus(); return; }
+      const btn = document.getElementById('chatGroupSaveBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      try {
+        const body = m.mode === 'edit'
+          ? { action: 'update_group', convId: m.convId, name, memberIds: [...m.selected] }
+          : { action: 'create_group', name, memberIds: [...m.selected] };
+        const res  = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not save the group');
+        _chatGroupModal = null;
+        chatRenderGroupModal();
+        await chatFetchConversations();                 // the server list is authoritative
+        if (data.conversation?.id) selectChat(data.conversation.id);
+        else chatRenderContactList(state.activeView === 'coach' ? 'coach' : 'player');
+        showToast(m.mode === 'edit' ? 'Group updated' : `${name} created`);
+      } catch (e) {
+        showToast(e.message || 'Could not save the group');
+        if (btn) { btn.disabled = false; btn.textContent = m.mode === 'edit' ? 'Save changes' : 'Create group'; }
+      }
+    }
+
     function chatOpenNewDmPicker() {
       // Players open this too — their candidate list is the staff the server
       // authorised in dm_candidates, not the roster.
@@ -35291,6 +35436,17 @@
       // stay invisible (and the server refuses them anyway).
       const myPg = _myOperational?.player?.groups?.[0]?.id || '';
       if (myPg) ids.add(`group:${myPg}`);
+      // Coach-managed groups this player is a MEMBER of. The list comes from
+      // the server, which returns a custom group only to its members, so this
+      // adds nothing a player could not already read. typeof-guarded like the
+      // other cross-helper calls on this screen, so the isolated render
+      // harnesses that evaluate this function alone still work.
+      if (typeof chatIsCustomGroup === 'function' && typeof chatMe === 'function') {
+        const meId = String(chatMe().id || '');
+        (typeof _chatConversations !== 'undefined' ? _chatConversations || [] : []).forEach(c => {
+          if (chatIsCustomGroup(c) && (c.participants || []).map(String).includes(meId)) ids.add(String(c.id));
+        });
+      }
       return ids;
     }
 
@@ -36456,6 +36612,7 @@
       if (h2)  h2.textContent  = contact.name;
       if (sub) sub.textContent = contact.sub || (contact.type === 'DIRECT' ? 'Direct message' : 'Group chat');
       if (av)  av.innerHTML    = chatAvatarEl(contact.name, contact.photo, contact.icon, 40, _chatOnline[contact.playerId]);
+      chatSyncGroupManageBtn(chatId);
 
       // Show composer for all channels except announce (players only)
       const isAnn = (chatId === 'announce') && !isCoach();
@@ -36592,6 +36749,7 @@
     function chatRenderContactList(mode) {
       const el = document.getElementById('chatContactList');
       if (!el) return;
+      chatSyncGroupControls();
       if (mode === 'coach') chatRenderGroupSwitcher();
       const contacts = chatBuildContacts(mode);
       const q = _chatSearchQuery.toLowerCase().trim();
@@ -36765,6 +36923,13 @@
                    to start one (they could only ever reply to a DM the coach
                    had opened). Their picker offers STAFF only. -->
               <button class="chat-new-msg-btn" type="button" onclick="chatOpenNewDmPicker()" title="New message"><span>+</span><span>New</span></button>
+              <!-- Always in the DOM, revealed by chatSyncGroupControls: the shell
+                   renders once per view activation, and canI() answers from the
+                   legacy role path until the session's permissions land — so a
+                   render-time gate could leave this showing for someone the
+                   server will refuse (or hidden for someone it would allow). -->
+              <button class="chat-new-msg-btn" type="button" id="chatNewGroupBtn" style="display:none"
+                onclick="chatOpenGroupModal('')" title="New group"><span>+</span><span>Group</span></button>
             </div>
           </div>
           <div id="chatNewDmPicker">${chatNewDmPickerHtml()}</div>
@@ -36788,6 +36953,12 @@
                 <small id="chatHeaderSub">${selected ? esc(selected.sub || (selected.type==='DIRECT'?'Direct message':'Group chat')) : ''}</small>
               </div>
             </div>
+            <!-- Manage members — always in the DOM (the header is updated in
+                 place when a thread is opened, not re-rendered) and revealed
+                 by chatSyncGroupManageBtn for a custom group the viewer is in. -->
+            <div class="chat-header-actions" id="chatGroupManageWrap" style="display:none">
+              <button class="chat-icon-btn" type="button" id="chatGroupManageBtn" title="Manage members" aria-label="Manage members">👥</button>
+            </div>
             ${mode==='player'?`<div class="chat-header-actions"><button class="chat-icon-btn" type="button" onclick="setSection('player','availability')" title="Availability" aria-label="Availability"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg></button></div>`:''}
           </header>
           <div class="chat-feed" id="chatFeed" onscroll="chatOnFeedScroll(this)">
@@ -36810,6 +36981,11 @@
           <div class="chat-no-send" id="chatNoSend" style="${canSend ? 'display:none' : ''}">Announcements — coaches post here, players can react.</div>
           <button class="chat-scroll-btn" id="chatScrollBtn" type="button" onclick="chatScrollToBottom()" title="Scroll to bottom">↓</button>
         </div>
+
+        <!-- Group picker — hosted OUTSIDE the contact sidebar: a phone hides
+             the sidebar while a thread is open, and a modal inside it would
+             have been invisible exactly when "Manage members" is used. -->
+        <div id="chatGroupModal">${chatGroupModalHtml()}</div>
       </div>`;
     }
 
