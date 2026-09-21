@@ -416,7 +416,12 @@ test('week boundaries: Monday anchoring is exact at the Sunday edge', () => {
 test('the planner renders the viewed week and gates publishing to the current week', () => {
   const body = fn('renderTraining');
   assert.match(body, /trainingViewedWeek\(\)/);
-  assert.match(body, /trainingWeekOccurrences\(twWeek\)/, 'other weeks use the dated occurrences');
+  // Other weeks use the dated occurrences — now via trainingWeekPlannerSessions,
+  // which is the slot-derived list PLUS the occurrences that week left evidence
+  // of (a schedule change must not hide a session that really happened).
+  assert.match(body, /trainingWeekPlannerSessions\(twWeek\)/, 'other weeks use the dated occurrences');
+  assert.match(fn('trainingWeekPlannerSessions'), /trainingWeekOccurrences\(weekStartIso\)/);
+  assert.match(fn('trainingWeekPlannerSessions'), /trainingWeekEvidenceOccurrences\(weekStartIso\)/);
   assert.match(body, /twCurrent && canI\('publish_training'\)/, 'publish stays a current-week action');
   assert.match(body, /trainingShiftWeek\(-1\)/); assert.match(body, /trainingShiftWeek\(1\)/);
   assert.match(body, /ensureTrainingSchedule\(\)/, 'slots load on entry, not only from Settings');
