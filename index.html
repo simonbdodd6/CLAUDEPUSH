@@ -15314,6 +15314,44 @@
     // First-session checklist — five concrete firsts, one tap each.
     let _obDoneState = {};
 
+    /**
+     * WHO IS SETTING UP A CLUB.
+     *
+     * The "Set up your club" checklist is first-run work: it belongs to the
+     * person who CREATED the club, not to everyone who later joins it. It used
+     * to be gated on nothing but empty device state, so any existing user
+     * granted a coaching role at an established club was treated as a
+     * first-time user — they landed in the coach shell and were told to create
+     * their club, invite their first player and send their first message.
+     * (Two of the five steps also read data that is only ever written locally,
+     * so they could never complete and the card never went away by itself.)
+     *
+     * Ownership is read from the TRUSTED session membership the server just
+     * returned for the club in force — never from local state, never from
+     * another club's membership, and never inferred from how much data this
+     * device happens to hold. Before the server has answered (_myMembership
+     * null, e.g. first paint or offline) this answers NO: showing a joiner a
+     * first-run checklist is the defect, so the unknown state stays quiet and
+     * the card appears once the session confirms a founder.
+     *
+     * Mirrors the server's isClubOwner() (api/_permissions.js): the explicit
+     * flag, the owner role, or the membership minted by club creation.
+     */
+    function clubSetupFounder(member = _myMembership) {
+      if (!member || member.status !== 'active') return false;
+      return member.isOwner === true
+        || String(member.role || '').toLowerCase() === 'owner'
+        || member.approvedBy === 'club-creation';
+    }
+
+    /** The checklist shows only to a founder, in the initial group, until done or dismissed. */
+    function showClubSetupChecklist(steps = getOnboardingSteps()) {
+      if (state.onboardingDismissed) return false;
+      if (!clubSetupFounder()) return false;
+      if (state.operationalGroupId && state.operationalGroupId !== CE_INITIAL_GROUP_ID) return false;
+      return steps.filter(s => s.done).length < steps.length;
+    }
+
     function getOnboardingSteps() {
       return [
         { key: 'club',     done: !!(state.clubName && state.clubName.trim()),                       title: 'Create club',            subtitle: 'Set your club name and badge — players will see this in their app.',        action: `setSection('coach','admin')` },
@@ -17122,11 +17160,11 @@
       // Onboarding checklist (unchanged) — renders above NOW until complete.
       const obSteps  = getOnboardingSteps();
       const obDone   = obSteps.filter(s => s.done).length;
-      // Club setup is CLUB-level work: the checklist lives in the initial
-      // group's Overview only. U18/Women's never repeat it (and switching
-      // groups never touches its progress).
-      const showOnboarding = !state.onboardingDismissed && obDone < obSteps.length
-        && (!state.operationalGroupId || state.operationalGroupId === CE_INITIAL_GROUP_ID);
+      // Club setup is CLUB-level FIRST-RUN work: the club's FOUNDER only (see
+      // clubSetupFounder), in the initial group's Overview only, until it is
+      // complete or dismissed. U18/Women's never repeat it, and an existing
+      // user who later joins the club is not shown it at all.
+      const showOnboarding = showClubSetupChecklist(obSteps);
       obSteps.forEach(s => { s.justDone = s.done && _obDoneState[s.key] === false; _obDoneState[s.key] = s.done; });
 
       // Context strip: today + what today IS (training night / match day / next match)
