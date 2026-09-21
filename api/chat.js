@@ -238,6 +238,31 @@ function storageConvId(sessionContext, convId) {
 //   STAFF        coaching                — the existing all-staff channel
 // Legacy conversations carry no groupId and are NEVER assigned one — their
 // audience stays exactly what it always was.
+/**
+ * CUSTOM MESSAGING GROUPS (coach-managed: "Forwards", "Leadership", …).
+ *
+ * A custom group is an ordinary conversation with an explicit member list:
+ *   id           cg_<ts>_<rand>      — minted by the server, never the client
+ *   type         'CUSTOM'
+ *   teamId       the creator's session club (never a client-supplied value)
+ *   participants the member user ids, validated as ACTIVE members of that club
+ *
+ * Its audience is EXACTLY those members. That is the one thing it does not
+ * share with the other channels: a club's staff can read every squad/announce
+ * channel, but a custom group is private to the people in it, whatever their
+ * role — so "Leadership" is not readable by every coach in the club.
+ */
+const CUSTOM_GROUP_ID_PREFIX = 'cg_';
+function isCustomGroupConversation(conversation = {}) {
+  return String(conversation?.type || '').toUpperCase() === 'CUSTOM'
+    || String(conversation?.id || '').startsWith(CUSTOM_GROUP_ID_PREFIX);
+}
+
+/** Managing a custom group needs the club's messaging permission AND membership. */
+function sessionHasMessagingPermission(sessionContext = {}) {
+  return Array.isArray(sessionContext?.permissions) && sessionContext.permissions.includes('messaging');
+}
+
 function conversationGroupId(conversation = {}) {
   const explicit = String(conversation?.groupId || '').trim();
   if (explicit) return explicit;
@@ -403,6 +428,11 @@ export function sessionCanReadConversation(sessionContext, conversation = {}, ac
   // the group's PLAYING members, and the staff who OPERATE the group. A
   // staff session's blanket channel access does NOT extend here — a U18
   // coach has no window into the Seniors players' channel.
+  // A CUSTOM group is its members' room. No staff bypass: a coach who is not
+  // in "Leadership" has no window into it, exactly like a DM they are not in.
+  if (isCustomGroupConversation(conversation)) {
+    return sessionIsConversationParticipant(sessionContext, conversation, actorIds);
+  }
   const targetGroup = conversationGroupId(conversation);
   if (targetGroup) {
     const ctx = groupCtx || { playingGroupId: '', staffGroupIds: new Set() };
@@ -439,6 +469,10 @@ function sessionCanWriteConversation(sessionContext, conversation = {}, actorIds
   // (the squad-open rule, group-scoped). An ANNOUNCEMENT to a group is a
   // BROADCAST: staff scope only — playing there grants NO send authority,
   // so a Seniors player who coaches U18 can never broadcast to Seniors.
+  // Only members post to a custom group — again for every role.
+  if (isCustomGroupConversation(conversation)) {
+    return sessionIsConversationParticipant(sessionContext, conversation, actorIds);
+  }
   const targetGroup = conversationGroupId(conversation);
   if (targetGroup) {
     const ctx = groupCtx || { playingGroupId: '', staffGroupIds: new Set() };
@@ -941,6 +975,12 @@ async function handlePost(req, res) {
     if (!isStaffSession(sessionContext) && convType !== 'DIRECT') {
       return err(res, 403, 'Players can only create direct conversations');
     }
+    // Custom groups are minted ONLY by create_group, which validates the name,
+    // the members and the caller's permission. Without this, create_conv would
+    // be a way to fabricate one with an arbitrary member list.
+    if (convType === 'CUSTOM' || String(id || '').startsWith(CUSTOM_GROUP_ID_PREFIX)) {
+      return err(res, 400, 'Use create_group to create a messaging group');
+    }
 
     const teamId = tenantTeamId(sessionContext);
     const convId = id || `conv_${Date.now()}`;
@@ -954,6 +994,71 @@ async function handlePost(req, res) {
       await saveConvs(convs);
     }
     return ok(res, { convId });
+  }
+
+  // ── CUSTOM MESSAGING GROUPS ───────────────────────────────────────────
+  // create_group { name, memberIds[] }            → mint a group in MY club
+  // update_group { convId, name?, memberIds[]? }  → rename / change members
+  //
+  // Everything that decides WHO is in the group is resolved server-side from
+  // the caller's session: the club comes from tenantTeamId (never the body),
+  // and every member id must be an ACTIVE member of that same club, so a
+  // forged teamId or another club's user id cannot enter a group.
+  if (action === 'create_group' || action === 'update_group') {
+    if (!sessionContext?.user?.id) return err(res, 401, 'Authentication required');
+    const teamId = tenantTeamId(sessionContext);
+    if (!teamId || sessionContext?.teamMember?.status !== 'active') {
+      return err(res, 403, 'No active club membership');
+    }
+    if (!sessionHasMessagingPermission(sessionContext)) {
+      return err(res, 403, 'You cannot manage messaging groups');
+    }
+    const me = String(sessionContext.user.id);
+    const rawName = String(body.name ?? '').trim().slice(0, 60);
+    const hasMembers = Object.prototype.hasOwnProperty.call(body, 'memberIds');
+    let members = null;
+    if (hasMembers) {
+      if (!Array.isArray(body.memberIds)) return err(res, 400, 'memberIds must be a list');
+      const clubMemberIds = new Set((await loadTeamMembers())
+        .filter(m => String(m.teamId) === String(teamId) && m.status === 'active')
+        .map(m => String(m.userId || ''))
+        .filter(Boolean));
+      const asked = [...new Set(body.memberIds.map(v => String(v || '')).filter(Boolean))];
+      const foreign = asked.filter(idv => !clubMemberIds.has(idv));
+      if (foreign.length) return err(res, 403, 'Every member must be an active member of this club');
+      // The manager is always in the group they manage: it is their room too,
+      // and it keeps a group from being left with nobody who can maintain it.
+      members = [...new Set([me, ...asked])];
+    }
+
+    const convs = await getConvs();
+    if (action === 'create_group') {
+      if (!rawName) return err(res, 400, 'A group name is required');
+      const conv = {
+        id: `${CUSTOM_GROUP_ID_PREFIX}${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        teamId, type: 'CUSTOM', name: rawName, icon: '', description: '',
+        participants: members || [me],
+        createdBy: me, createdAt: Date.now(), updatedAt: Date.now(), lastActivity: Date.now(), pinned: false,
+      };
+      convs.push(conv);
+      await saveConvs(convs);
+      return ok(res, { conversation: conv });
+    }
+
+    // update_group — the record is found by id AND club, and the caller must
+    // already be a member: a group id alone never grants access to it.
+    const convId = String(body.convId || '');
+    const idx = convs.findIndex(c => String(c.id) === convId && String(c.teamId || '') === String(teamId));
+    if (idx < 0) return err(res, 404, 'Group not found');
+    const conv = convs[idx];
+    if (!isCustomGroupConversation(conv)) return err(res, 400, 'That conversation is not a messaging group');
+    if (!conversationParticipants(conv).includes(me)) return err(res, 403, 'You are not a member of that group');
+    if (rawName) conv.name = rawName;
+    if (members) conv.participants = members;
+    conv.updatedAt = Date.now();
+    convs[idx] = conv;
+    await saveConvs(convs);
+    return ok(res, { conversation: conv });
   }
 
   return err(res, 400, 'Unknown action');
