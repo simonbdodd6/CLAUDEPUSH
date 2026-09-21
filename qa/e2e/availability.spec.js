@@ -221,8 +221,11 @@ test('T06-T09 — Coach sees responses + injury badge + Remind non-responders', 
   // Refresh the coach dashboard to pull them from Redis.
   await step(page, 't06-coach-refresh-availability', async () => {
     await navigateToAvailability(page);
-    // Click the specific Refresh replies button (by id to avoid ambiguity)
-    const refreshBtn = page.locator('#avail-refresh-btn').first();
+    // Click the live-sync control (by id to avoid ambiguity). This used to name
+    // #avail-refresh-btn, which went with the legacy Message Centre body — the
+    // locator never matched, so this step silently did nothing. The chip itself
+    // is the button now.
+    const refreshBtn = page.locator('#avail-refresh-ts').first();
     if (await refreshBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
       await refreshBtn.click();
       await page.waitForTimeout(1_500); // wait for fetch

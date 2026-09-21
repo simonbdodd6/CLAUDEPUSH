@@ -17321,11 +17321,29 @@
      * of it, sitting after this return and so unreachable from the moment V2
      * landed. It was not harmless: two honesty fixes were applied to attendance
      * sites inside it, in a body no coach could ever see, and it held the only
-     * markup for seven element ids that live code still looks up (messageBody,
+     * markup for seven element ids that live code still looked up (messageBody,
      * messageAudience, audience-picker-slot, avail-refresh-btn, avail-debug-btn,
-     * live-templates-panel, live-log-panel). Every one of those lookups is
-     * null-guarded and has been dormant since V2, so removing the body changes
-     * nothing that runs — it only stops the file claiming those screens exist.
+     * live-templates-panel, live-log-panel).
+     *
+     * Those seven were audited one by one. NONE was a broken control a coach
+     * could reach and press: every lookup was null-guarded and has been dormant
+     * since V2. The one that did cost something was avail-refresh-btn, and it
+     * was the Live Sync chip's missing other half — fixed by making the chip
+     * itself the button (avail-refresh-ts), after which the old lookup could
+     * only ever return null. It is now gone.
+     *
+     * THE OTHER SIX ARE LEFT ALONE, on purpose:
+     *   messageBody, avail-debug-btn — already had no lookup left; nothing to do.
+     *   messageAudience, audience-picker-slot — read by renderAudiencePicker,
+     *     which is PARKED for the full build (see pre-v2-messaging-removed).
+     *   live-templates-panel, live-log-panel — read by loadLiveTemplates /
+     *     loadLiveLog, parked the same way; see the note on the Beta
+     *     Availability UI.
+     * Each parked reader returns at its null guard BEFORE fetching, so a dormant
+     * cycle costs no request. Retiring any of them is a product decision about
+     * the full build, not a cleanup — and renderAudiencePicker in particular
+     * reads the RETIRED per-player availability keys, so whoever un-parks it
+     * must port it to sessionRows() first.
      */
     function renderMessageCenter() {
       return renderMessageCenterV2();
@@ -41459,9 +41477,10 @@
     }
 
     async function refreshLiveAvailability(opts = {}) {
-      const btn = document.getElementById('avail-refresh-btn');
+      // The chip IS the control (avail-refresh-ts). The separate avail-refresh-btn
+      // went with the legacy Message Centre body, so the lookup that used to
+      // disable it could only ever return null.
       const ts  = document.getElementById('avail-refresh-ts');
-      if (btn && !opts.boardOnly) { btn.disabled = true; btn.textContent = '↺ Refreshing…'; }
       try {
         // Link saved roster rows to their server identity BEFORE matching, so a
         // pre-registration row (no userId/legacyPlayerId, divergent name) gains the
@@ -41557,8 +41576,6 @@
       } catch(e) {
         console.warn('[refreshLiveAvailability]', e);
         if (ts) { ts.textContent = 'Sync failed'; ts.className = 'msg-chip unavailable'; }
-      } finally {
-        if (btn && !opts.boardOnly) { btn.disabled = false; btn.textContent = '↺ Refresh'; }
       }
     }
 

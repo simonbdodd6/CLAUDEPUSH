@@ -109,7 +109,11 @@ test('the deleted screen took nothing live with it', () => {
   }
   // And the ids whose last reader went with the deleted functions are now
   // unreferenced entirely — no markup, no lookup.
-  for (const id of ['messageBody', 'templateSelect', 'requestType', 'avail-debug-btn']) {
+  // avail-refresh-btn joined this list in the stale-reference audit: the Live
+  // Sync control is the avail-refresh-ts chip itself, so the old button lookup
+  // inside refreshLiveAvailability could only ever return null and was removed.
+  for (const id of ['messageBody', 'templateSelect', 'requestType', 'avail-debug-btn',
+                    'avail-refresh-btn']) {
     const code = strip(html);
     assert.ok(!new RegExp(`id="${id}"`).test(code), `${id} must not be rendered`);
     assert.ok(!code.includes(`getElementById('${id}')`) && !code.includes(`getElementById("${id}")`),
