@@ -16,9 +16,9 @@
 
   "version": 1,
   "lastVerifiedAgainst": {
-    "productionBranch": "core-deploy-87",
-    "productionVersion": "5dfeca4",
-    "date": "2026-09-18"
+    "productionBranch": "core-deploy-88",
+    "productionVersion": "a8d44cc",
+    "date": "2026-09-21"
   },
 
   "sourceBranch": "feature/core-beta-simplification",
