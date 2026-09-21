@@ -49,6 +49,16 @@
         "api/availability.js: the ?view=club-export branch and its method guard (~32 lines)",
         "test/club-export.test.js"
       ]
+    },
+    {
+      "id": "stamp-cd84-superseded",
+      "commit": "48f50d721d6d15892bd5c475eadb3dd19d51f2eb",
+      "subject": "chore(deploy): record core-deploy-84 as the verified production branch",
+      "patchId": "ba5fe6baa8260fdadf289f05b6d994c98b95273d",
+      "purpose": "Superseded bookkeeping. Its only content (lastVerifiedAgainst 82 -> 84) already reached production inside 65326e14, and the stamp has since moved on to core-deploy-88 on both branches, so re-applying it would REVERT lastVerifiedAgainst to an older release. It can never be proven live by the tree check, so without this entry it blocks every future release as AMBIGUOUS. It must never ship.",
+      "accountsFor": [
+        "config/production-exclusions.json: the lastVerifiedAgainst block moving from core-deploy-82 to core-deploy-84 (6 lines)"
+      ]
     }
   ],
 
