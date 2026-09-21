@@ -32,10 +32,16 @@ function buildScope() {
     function playerIsArchived(p) {
       return !!(p && (p.lifecycleStatus === 'archived' || p._archived === true));
     }
+    const MEDICAL_REHAB_STATUSES = ['modified', 'gymOnly', 'noContact'];
+    function availToday() { return '2026-09-21'; }
   `;
 
   const fns = [
     'normalizeMedicalRecord',
+    // MEDICAL-AUDIT-1 — clubMedicalSnapshot reads the shared CASE, via the
+    // same helpers as the Medical dashboard.
+    'hasActiveMedicalCase', 'availWeekStart', 'availAddDays',
+    'medicalRtpTiming', 'medicalIsReturningThisWeek',
     'matchComputeScore',
     'clubOverviewSummary',
     'clubTeamsSummary',
@@ -339,40 +345,49 @@ test('clubMedicalSnapshot: no players returns zeroes', () => {
   assert.equal(r.total, 0);
 });
 
-test('clubMedicalSnapshot: unavailable status counts as injured', () => {
+// MEDICAL-AUDIT-1 — the snapshot reads the projected shared CASE
+// (medRecords[pid]); a roster flag alone is not a case.
+test('clubMedicalSnapshot: an open case with trainingStatus unavailable counts as injured', () => {
   const { clubMedicalSnapshot } = buildScope();
-  const players = [{ id: 'p1', name: 'A', trainingStatus: 'unavailable' }];
-  const r = clubMedicalSnapshot(players, {});
+  const players = [{ id: 'p1', name: 'A' }];
+  const r = clubMedicalSnapshot(players, { p1: { currentInjury: 'Knee', trainingStatus: 'unavailable' } });
   assert.equal(r.injured, 1);
   assert.equal(r.total,   1);
 });
 
-test('clubMedicalSnapshot: game=injured counts as injured', () => {
+test('clubMedicalSnapshot: a legacy roster flag (game=injured / trainingStatus) alone is NOT injured', () => {
   const { clubMedicalSnapshot } = buildScope();
-  const players = [{ id: 'p1', name: 'A', game: 'injured' }];
+  const players = [{ id: 'p1', name: 'A', game: 'injured' }, { id: 'p2', name: 'B', trainingStatus: 'unavailable' }];
   const r = clubMedicalSnapshot(players, {});
-  assert.equal(r.injured, 1);
+  assert.equal(r.injured, 0);
+  assert.equal(r.available, 2);
 });
 
-test('clubMedicalSnapshot: modified/gymOnly/noContact count as rehab', () => {
+test('clubMedicalSnapshot: modified/gymOnly/noContact on the case count as rehab', () => {
   const { clubMedicalSnapshot } = buildScope();
-  const players = [
-    { id: 'p1', name: 'A', trainingStatus: 'modified'  },
-    { id: 'p2', name: 'B', trainingStatus: 'gymOnly'   },
-    { id: 'p3', name: 'C', trainingStatus: 'noContact' },
-  ];
-  const r = clubMedicalSnapshot(players, {});
+  const players = [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }, { id: 'p3', name: 'C' }];
+  const r = clubMedicalSnapshot(players, {
+    p1: { trainingStatus: 'modified' }, p2: { trainingStatus: 'gymOnly' }, p3: { trainingStatus: 'noContact' },
+  });
   assert.equal(r.rehab, 3);
 });
 
-test('clubMedicalSnapshot: players with no status count as available', () => {
+test('clubMedicalSnapshot: no case, or a case at full training, counts as available', () => {
   const { clubMedicalSnapshot } = buildScope();
-  const players = [
-    { id: 'p1', name: 'A', trainingStatus: 'full' },
-    { id: 'p2', name: 'B' },
-  ];
-  const r = clubMedicalSnapshot(players, {});
+  const players = [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }];
+  const r = clubMedicalSnapshot(players, { p1: { trainingStatus: 'full' } });
   assert.equal(r.available, 2);
+});
+
+test('clubMedicalSnapshot: returning this week = open case with RTP date in the Mon–Sun week (not a rolling 7 days)', () => {
+  const { clubMedicalSnapshot } = buildScope();
+  const players = [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }, { id: 'p3', name: 'C' }];
+  const r = clubMedicalSnapshot(players, {
+    p1: { trainingStatus: 'unavailable', expectedReturn: '2026-09-27' },   // Sunday this week
+    p2: { trainingStatus: 'unavailable', expectedReturn: '2026-09-28' },   // next Monday (inside today+7!)
+    p3: { trainingStatus: 'modified',    expectedReturn: '2026-09-20' },   // last Sunday
+  }, '2026-09-21');
+  assert.equal(r.returningThisWeek, 1);
 });
 
 test('clubMedicalSnapshot: archived players excluded', () => {
@@ -506,7 +521,11 @@ test('integration: populated club returns non-trivial summaries', () => {
   assert.equal(snap.sessionsCompleted, 1);
   assert.equal(snap.sessionsScheduled, 1);
 
-  const med = clubMedicalSnapshot(players, {});
+  // MEDICAL-AUDIT-1 — statuses live on the shared case, not the roster row.
+  const med = clubMedicalSnapshot(players, {
+    p2: { currentInjury: 'Knee', trainingStatus: 'unavailable' },
+    p3: { currentInjury: 'Calf', trainingStatus: 'modified' },
+  });
   assert.equal(med.total,     3); // 4 - 1 archived
   assert.equal(med.available, 1);
   assert.equal(med.injured,   1);

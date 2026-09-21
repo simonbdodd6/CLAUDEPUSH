@@ -38,7 +38,9 @@ function buildScope(stateOverride) {
   ];
   const fns = [
     'medicalSeverityColor', 'medicalTrainingStatusColor', 'medicalTrainingStatusLabel',
-    'normalizeMedicalRecord', 'medicalDashboardSummary',
+    'normalizeMedicalRecord', 'hasActiveMedicalCase', 'medicalCaseTrainingStatus',
+    'availWeekStart', 'availAddDays', 'medicalRtpTiming', 'medicalIsReturningThisWeek',
+    'medicalNotTrainingThisWeek', 'medicalDashboardSummary',
   ];
   const helpers = `
     function playerIsArchived(p) {
@@ -47,6 +49,8 @@ function buildScope(stateOverride) {
     function activeRosterPlayers(players) {
       return (players || []).filter(p => !playerIsArchived(p));
     }
+    const MEDICAL_REHAB_STATUSES = ['modified', 'gymOnly', 'noContact'];
+    function availToday() { return '2026-09-21'; }   // Monday; week = 21–27 Sep 2026
   `;
 
   const constSrcs = objectConsts.map(extractObjectConst).join(';\n') + ';\n' + arrayConsts.join('\n');
@@ -164,7 +168,9 @@ test('normalizeMedicalRecord: null returns complete empty record', () => {
   assert.deepEqual(r, {
     currentInjury:'', bodyLocation:'', severity:'', dateInjured:'',
     expectedReturn:'', clearanceStatus:'', physiNotes:'', surgeryHistory:'',
-    allergies:'', medication:'', concussionCount:0, concussionNotes:'', timeline:[],
+    allergies:'', medication:'', concussionCount:0, concussionNotes:'',
+    trainingStatus:'', caseId:'',            // MEDICAL-AUDIT-1: projected from the case
+    timeline:[],
   });
 });
 
@@ -214,6 +220,9 @@ test('normalizeMedicalRecord: all 13 fields are present', () => {
 });
 
 // ── medicalDashboardSummary ───────────────────────────────────────────────────
+// MEDICAL-AUDIT-1 — every metric is read from the projected SHARED CASE
+// (medRecords[pid]); roster flags (p.game / p.trainingStatus / p.medical)
+// are no longer a case. The fixtures below carry the status on the record.
 
 test('medicalDashboardSummary: empty squad returns zeroes', () => {
   const scope = buildScope({ players:[], medicalRecords:{}, medicalNotes:{} });
@@ -227,46 +236,48 @@ test('medicalDashboardSummary: empty squad returns zeroes', () => {
 
 test('medicalDashboardSummary: archived players are excluded', () => {
   const players = [
+    { id:'p1', name:'Alice' },
+    { id:'p2', name:'Bob', lifecycleStatus:'archived' },
+  ];
+  const recs = { p1: { currentInjury:'Knee', trainingStatus:'unavailable' },
+                 p2: { currentInjury:'Knee', trainingStatus:'unavailable' } };
+  const scope = buildScope({ players, medicalRecords:recs, medicalNotes:{} });
+  const r = scope.medicalDashboardSummary(players, recs, {});
+  assert.equal(r.injured.length, 1);
+  assert.equal(r.injured[0].id, 'p1');
+});
+
+test('medicalDashboardSummary: case trainingStatus unavailable counts as injured; full does not', () => {
+  const players = [{ id:'p1', name:'Alice' }, { id:'p2', name:'Bob' }];
+  const recs = { p1: { currentInjury:'Knee', trainingStatus:'unavailable' },
+                 p2: { currentInjury:'Knee', trainingStatus:'full' } };
+  const scope = buildScope({ players, medicalRecords:recs, medicalNotes:{} });
+  const r = scope.medicalDashboardSummary(players, recs, {});
+  assert.equal(r.injured.length, 1);
+  assert.equal(r.injured[0].id, 'p1');
+  assert.equal(r.all.length, 2, 'both cases are open');
+});
+
+test('medicalDashboardSummary: a roster flag alone (p.game / p.trainingStatus) is NOT a case', () => {
+  const players = [
     { id:'p1', name:'Alice', trainingStatus:'unavailable', game:'injured' },
-    { id:'p2', name:'Bob',   trainingStatus:'unavailable', lifecycleStatus:'archived' },
+    { id:'p2', name:'Bob',   trainingStatus:'modified',    game:'available' },
   ];
   const scope = buildScope({ players, medicalRecords:{}, medicalNotes:{} });
   const r = scope.medicalDashboardSummary(players, {}, {});
-  assert.equal(r.injured.length, 1);
-  assert.equal(r.injured[0].id, 'p1');
+  assert.equal(r.injured.length, 0);
+  assert.equal(r.rehab.length, 0);
+  assert.equal(r.all.length, 0);
 });
 
-test('medicalDashboardSummary: trainingStatus unavailable counts as injured', () => {
-  const players = [
-    { id:'p1', name:'Alice', trainingStatus:'unavailable', game:'available' },
-    { id:'p2', name:'Bob',   trainingStatus:'full',        game:'available' },
-  ];
-  const scope = buildScope({ players, medicalRecords:{}, medicalNotes:{} });
-  const r = scope.medicalDashboardSummary(players, {}, {});
-  assert.equal(r.injured.length, 1);
-  assert.equal(r.injured[0].id, 'p1');
-});
-
-test('medicalDashboardSummary: p.game injured counts as injured', () => {
-  const players = [
-    { id:'p1', name:'Alice', trainingStatus:'', game:'injured' },
-    { id:'p2', name:'Bob',   trainingStatus:'', game:'available' },
-  ];
-  const scope = buildScope({ players, medicalRecords:{}, medicalNotes:{} });
-  const r = scope.medicalDashboardSummary(players, {}, {});
-  assert.equal(r.injured.length, 1);
-});
-
-test('medicalDashboardSummary: modified/gymOnly/noContact count as rehab', () => {
-  const players = [
-    { id:'p1', name:'A', trainingStatus:'modified',  game:'available' },
-    { id:'p2', name:'B', trainingStatus:'gymOnly',   game:'available' },
-    { id:'p3', name:'C', trainingStatus:'noContact', game:'available' },
-    { id:'p4', name:'D', trainingStatus:'full',      game:'available' },
-  ];
-  const scope = buildScope({ players, medicalRecords:{}, medicalNotes:{} });
-  const r = scope.medicalDashboardSummary(players, {}, {});
+test('medicalDashboardSummary: modified/gymOnly/noContact on the case count as rehab', () => {
+  const players = [{ id:'p1', name:'A' }, { id:'p2', name:'B' }, { id:'p3', name:'C' }, { id:'p4', name:'D' }];
+  const recs = { p1: { trainingStatus:'modified' }, p2: { trainingStatus:'gymOnly' },
+                 p3: { trainingStatus:'noContact' }, p4: { trainingStatus:'full' } };
+  const scope = buildScope({ players, medicalRecords:recs, medicalNotes:{} });
+  const r = scope.medicalDashboardSummary(players, recs, {});
   assert.equal(r.rehab.length, 3);
+  assert.equal(r.injured.length, 0, 'rehab and full are not "injured"');
 });
 
 test('medicalDashboardSummary: clearanceStatus cleared appears in cleared list', () => {
@@ -277,15 +288,14 @@ test('medicalDashboardSummary: clearanceStatus cleared appears in cleared list',
   assert.equal(r.cleared.length, 1);
 });
 
-test('medicalDashboardSummary: p.medical string generates alert', () => {
+test('medicalDashboardSummary: a legacy p.medical note alone generates no alert (not a case)', () => {
   const players = [
     { id:'p1', name:'Alice', trainingStatus:'', game:'available', medical:'Known knee condition' },
     { id:'p2', name:'Bob',   trainingStatus:'', game:'available', medical:'' },
   ];
   const scope = buildScope({ players, medicalRecords:{}, medicalNotes:{} });
   const r = scope.medicalDashboardSummary(players, {}, {});
-  assert.equal(r.alerts.length, 1);
-  assert.equal(r.alerts[0].id, 'p1');
+  assert.equal(r.alerts.length, 0);
 });
 
 test('medicalDashboardSummary: severe medicalRecord generates alert', () => {
@@ -296,24 +306,21 @@ test('medicalDashboardSummary: severe medicalRecord generates alert', () => {
   assert.equal(r.alerts.length, 1);
 });
 
-test('medicalDashboardSummary: returning requires expectedReturn + non-cleared + in rehab/injured', () => {
-  const players = [
-    { id:'p1', name:'Alice', trainingStatus:'noContact', game:'available' },
-    { id:'p2', name:'Bob',   trainingStatus:'full',      game:'available' },
-  ];
+test('medicalDashboardSummary: returning = open case + RTP date inside THIS Mon–Sun week + not cleared', () => {
+  const players = [{ id:'p1', name:'Alice' }, { id:'p2', name:'Bob' }, { id:'p3', name:'Cy' }];
   const medRecs = {
-    p1: { expectedReturn:'2026-06-30', clearanceStatus:'pending' },
-    p2: { expectedReturn:'2026-06-30', clearanceStatus:'pending' },
+    p1: { currentInjury:'Knee', trainingStatus:'noContact', expectedReturn:'2026-09-26' },   // Sat this week
+    p2: { currentInjury:'Knee', trainingStatus:'noContact', expectedReturn:'2026-06-30' },   // months ago
+    p3: { currentInjury:'Knee', trainingStatus:'noContact', expectedReturn:'2026-09-28' },   // next Monday
   };
   const scope = buildScope({ players, medicalRecords: medRecs, medicalNotes:{} });
   const r = scope.medicalDashboardSummary(players, medRecs, {});
-  assert.equal(r.returning.length, 1);
-  assert.equal(r.returning[0].id, 'p1');
+  assert.deepEqual(r.returning.map(p => p.id), ['p1']);
 });
 
 test('medicalDashboardSummary: already cleared player not in returning', () => {
   const players = [{ id:'p1', name:'Alice', trainingStatus:'unavailable', game:'injured' }];
-  const medRecs = { p1: { expectedReturn:'2026-06-30', clearanceStatus:'cleared' } };
+  const medRecs = { p1: { expectedReturn:'2026-09-26', clearanceStatus:'cleared' } };
   const scope = buildScope({ players, medicalRecords: medRecs, medicalNotes:{} });
   const r = scope.medicalDashboardSummary(players, medRecs, {});
   assert.equal(r.returning.length, 0);

@@ -60,6 +60,15 @@ function makeWorld(cfg = {}) {
                dateInjured: r.dateInjured || '', expectedReturn: r.expectedReturn || '',
                clearanceStatus: r.clearanceStatus || '', timeline: [] };
     }
+    const MEDICAL_REHAB_STATUSES = ['modified', 'gymOnly', 'noContact'];
+    function availToday() { return '2026-09-21'; }
+    ${extractFn(html, 'availWeekStart')}
+    ${extractFn(html, 'availAddDays')}
+    ${extractFn(html, 'hasActiveMedicalCase')}
+    ${extractFn(html, 'medicalCaseTrainingStatus')}
+    ${extractFn(html, 'medicalRtpTiming')}
+    ${extractFn(html, 'medicalIsReturningThisWeek')}
+    ${extractFn(html, 'medicalNotTrainingThisWeek')}
     ${extractFn(html, 'medicalRowCarriesCase')}
     ${extractFn(html, 'medicalCanonicalPlayers')}
     ${extractFn(html, 'medicalPlayers')}
@@ -108,7 +117,10 @@ test('roster injury flags count as signals too — the flagged twin survives', (
     const rows = w.medicalPlayers();
     assert.equal(rows.length, 1);
     assert.equal(rows[0].id, 'u-marc', 'the row the product flagged injured is the one kept');
-    assert.equal(w.summary().injured.length, 1, 'Injured once');
+    // MEDICAL-AUDIT-1 — the flag decides which twin SURVIVES, but a roster
+    // flag is not a shared case, so it opens nothing on the caseload.
+    assert.equal(w.summary().injured.length, 0, 'a legacy flag alone is not an open case');
+    assert.equal(w.summary().all.length, 0);
   }
 });
 

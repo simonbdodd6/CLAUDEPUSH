@@ -1681,6 +1681,7 @@
     .training-stat .lbl { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.09em; color:var(--accent); display:block; margin-bottom:4px; }
     .training-stat strong { display:block; font-size:30px; font-weight:400; font-family:var(--font-display); line-height:1; color:var(--ink); }
     .training-stat small { color:var(--muted); font-size:11px; display:block; margin-top:4px; }
+    .training-hero-stats.med-four { grid-template-columns:repeat(4,110px); }
 
     /* ── SESSION CARD TABS ── */
     .session-card-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:18px; }
@@ -2429,6 +2430,9 @@
       .pkg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .video-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .med-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .training-hero-stats.med-four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .med-record-grid { grid-template-columns: 1fr !important; }
+      .med-timeline-form { grid-template-columns: 1fr !important; }
       .session-card-row { grid-template-columns: 1fr; }
       .training-hero { grid-template-columns: 1fr; }
       .training-hero-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
@@ -13023,6 +13027,13 @@
           physioNotes: c.notes || '', physiNotes: c.notes || '',
           clearanceStatus: c.status === 'resolved' ? 'cleared' : (c.clearanceStatus || ''),
           rehabProgress: c.rehabProgress || 0, concussionCount: c.concussionCount || 0,
+          // MEDICAL-AUDIT-1 — the case's OWN training status. It is written to
+          // the shared case by setPlayerTrainingStatus but was never read back:
+          // every metric read the roster row's p.trainingStatus instead, which
+          // a Medical-scoped user has no roster to carry, and which outlives
+          // the case it described. The case is the club record; project it.
+          trainingStatus: c.trainingStatus || '',
+          caseId: c.id || '',
           // The server keeps an APPEND-ONLY audit timeline ({at,by,action,note},
           // stamped server-side). Map it into the {id,date,type,notes} shape the
           // timeline views read, so persisted entries render instead of blank —
@@ -13185,13 +13196,31 @@
       });
     }
 
-    /** Clear a case: it leaves the active caseload, the history is retained. */
+    /**
+     * Clear a case: it leaves the active caseload, the history is retained.
+     *
+     * MEDICAL-AUDIT-1 — this RESOLVES the case (server action resolve_case:
+     * status 'resolved', resolvedAt/By stamped, timeline += 'resolved'). It
+     * never deletes: every case the player ever had stays in the shared
+     * record and renders under Case history. Clearing an already-cleared
+     * player is a no-op with a toast — no second resolve, no new case.
+     *
+     * The roster row's trainingStatus is the DEVICE mirror the training-status
+     * buttons write alongside the case (setPlayerTrainingStatus). It described
+     * THIS case, so it is released with it — otherwise the Availability board
+     * kept overriding the player to "unavailable" for a case that no longer
+     * exists. Only that one medical field is touched; nothing else on the row,
+     * and no saveState here — exactly as the setter, the row rides along with
+     * the next ordinary save (this path never persists case data locally).
+     */
     function clearSharedMedicalCase(playerId) {
       const open = _sharedMedical.cases.find(c =>
         String(c.playerId) === String(playerId) && c.status === 'active');
       if (!open) return showToast('No active case for this player');
       saveSharedMedicalCase({ action: 'resolve_case', caseId: open.id }).then(ok => {
         if (!ok) return;
+        const row = medicalRosterRow(playerId);
+        if (row && row.trainingStatus) row.trainingStatus = '';
         showToast('Case cleared — history kept');
         render();
       });
@@ -14851,14 +14880,17 @@
       return null;
     }
 
+    /**
+     * MEDICAL-AUDIT-1 — Overview "players with no return date": players with an
+     * ACTIVE shared medical case and no return-to-play date on it. It used to
+     * read the legacy roster flags (p.status / p.game / p.medical), which no
+     * screen writes any more, so real open cases never raised it and stale
+     * flags did.
+     */
     function getInjuredNoReturnDate() {
-      return state.players.filter(p => {
-        const isInjured = (p.status === 'injured') || (p.game === 'injured') ||
-                          (typeof p.medical === 'string' && p.medical.trim().length > 0);
-        if (!isInjured) return false;
-        const notes = (state.medicalNotes || {})[p.id];
-        return !(notes?.returnTarget);
-      });
+      const recs = state.medicalRecords || {};
+      return activeRosterPlayers(state.players || []).filter(p =>
+        hasActiveMedicalCase(p, recs) && !normalizeMedicalRecord(recs[p.id]).expectedReturn);
     }
 
     function getNeedsAttentionItems() {
@@ -28316,23 +28348,25 @@
       };
     }
 
-    function clubMedicalSnapshot(players, medRecords) {
+    /**
+     * MEDICAL-AUDIT-1 — the Club Directory's Medical Summary, from the SAME
+     * case-based rules as the Medical dashboard (medicalDashboardSummary):
+     * no active case ⇒ available; active case in rehab ⇒ rehab; any other
+     * active case ⇒ injured (a case cleared to 'full' training is available).
+     * "Returning this week" is the app's Monday–Sunday week, not a rolling
+     * seven days, and reads the case's RTP date. Roster flags are not read.
+     */
+    function clubMedicalSnapshot(players, medRecords, todayISO) {
       const active = (players || []).filter(p => !playerIsArchived(p));
-      const REHAB  = ['modified', 'gymOnly', 'noContact'];
+      const today  = String(todayISO || (typeof availToday === 'function' ? availToday() : new Date().toISOString())).slice(0, 10);
       let available = 0, injured = 0, rehab = 0, returningCount = 0;
-      const _today = new Date().toISOString().slice(0, 10);
-      const _weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
       active.forEach(p => {
+        if (!hasActiveMedicalCase(p, medRecords)) { available++; return; }
         const med = normalizeMedicalRecord((medRecords || {})[p.id]);
-        if (p.trainingStatus === 'unavailable' || p.game === 'injured') {
-          injured++;
-        } else if (REHAB.includes(p.trainingStatus)) {
-          rehab++;
-          const ret = med.expectedReturn || '';
-          if (ret >= _today && ret <= _weekEnd) returningCount++;
-        } else {
-          available++;
-        }
+        if (MEDICAL_REHAB_STATUSES.includes(med.trainingStatus)) rehab++;
+        else if (med.trainingStatus === 'full') available++;
+        else injured++;
+        if (medicalIsReturningThisWeek(med, today)) returningCount++;
       });
       return { available, injured, rehab, returningThisWeek: returningCount, total: active.length };
     }
@@ -30616,8 +30650,11 @@
 
     const MEDICAL_SEVERITY_LABELS = { minor:'Minor', moderate:'Moderate', severe:'Severe', '':'Unknown' };
     const MEDICAL_SEVERITY_COLORS = { minor:'#fbbf24', moderate:'#f97316', severe:'#f87171', '':'#94a3b8' };
-    const MEDICAL_CLEARANCE_LABELS = { pending:'Pending', cleared:'Cleared', restricted:'Restricted', '':'Not set' };
-    const MEDICAL_CLEARANCE_COLORS = { pending:'#fbbf24', cleared:'#34d399', restricted:'#f87171', '':'#94a3b8' };
+    // MEDICAL-AUDIT-1 — the shared record stores '' or 'cleared' (the server
+    // enum also names injured/rehab/modified, which no screen writes). The
+    // old pending/restricted entries were never storable and are gone.
+    const MEDICAL_CLEARANCE_LABELS = { cleared:'Cleared to play', '':'Not cleared' };
+    const MEDICAL_CLEARANCE_COLORS = { cleared:'#34d399', '':'#94a3b8' };
     const MEDICAL_TRAINING_LABELS = {
       '':'Not set', full:'Full Training', modified:'Modified Training',
       gymOnly:'Gym Only', noContact:'No Contact', unavailable:'Unavailable',
@@ -30671,34 +30708,50 @@
         medication:      rec.medication       || '',
         concussionCount: Number(rec.concussionCount) || 0,
         concussionNotes: rec.concussionNotes  || '',
+        // MEDICAL-AUDIT-1 — projected from the shared case (see
+        // medicalCaseToLegacy). '' when the case has none / legacy record.
+        trainingStatus:  rec.trainingStatus   || '',
+        caseId:          rec.caseId           || '',
         timeline:        Array.isArray(rec.timeline) ? rec.timeline : [],
       };
     }
 
+    // ── MEDICAL-AUDIT-1 — the ONE medical state model, read from the CASE ────
+    //
+    //   ACTIVE CASE   the player has a shared case with status 'active'. On the
+    //                 client that is exactly "state.medicalRecords holds a record
+    //                 for this player" — hydrateMedicalFromShared projects active
+    //                 cases and nothing else. Roster flags (p.game, p.medical,
+    //                 p.trainingStatus) are NOT a case: p.game 'injured' has no
+    //                 writer left in the product, p.medical has no editor, and
+    //                 p.trainingStatus is the device mirror of a case field that
+    //                 used to outlive the case it described. Counting them made
+    //                 cleared and legacy injuries inflate every current metric.
+    //   TRAINING      the case's trainingStatus — '', full, modified, gymOnly,
+    //   STATUS        noContact, unavailable (MEDICAL_TRAINING_LABELS).
+    //   IN REHAB      active case AND training status modified / gymOnly /
+    //                 noContact — the same three statuses the product has
+    //                 always called rehab, now read from the case.
+    //   INJURED (OUT) active case AND training status not rehab and not 'full'
+    //                 (unavailable, or not yet set).
+    //   RTP DATE      expectedReturn (server returnTarget) — the only return
+    //                 date the model stores.
+    //   RTP STATUS    clearanceStatus — '' (not cleared) or 'cleared'. A case
+    //                 can be cleared to play and still OPEN until it is cleared
+    //                 (resolved); resolving forces 'cleared'.
+    //   RESOLVED      status 'resolved' server-side: never projected as active;
+    //                 kept, with its full timeline, in the shared history.
+    const MEDICAL_REHAB_STATUSES = ['modified', 'gymOnly', 'noContact'];
+
     /**
-     * RC4.7 — does this player have an ACTIVE medical case?
-     *
-     * Built from the existing record model, not a parallel one: a case is open
-     * when medical staff have recorded an injury (currentInjury / severity /
-     * dateInjured), a condition note, or the player is flagged injured or
-     * training-restricted — AND it has not been cleared. Setting
-     * clearanceStatus to 'cleared' resolves it and drops the player off the
-     * active list while the record and its timeline are preserved in full.
+     * Does this player have an ACTIVE medical case? True exactly when the
+     * derived cache holds a projected (active) record for them. The third
+     * argument is kept for the existing call shape and is not consulted.
      */
     function hasActiveMedicalCase(player, medRecords, medNotes) {
-      if (!player) return false;
-      const rec = normalizeMedicalRecord((medRecords || {})[player.id]);
-      const note = (medNotes || {})[player.id] || {};
-      if (rec.clearanceStatus === 'cleared') return false;      // resolved
-      return Boolean(
-        String(rec.currentInjury || '').trim() ||
-        String(rec.severity || '').trim() ||
-        String(rec.dateInjured || '').trim() ||
-        String(note.condition || '').trim() ||
-        String(player.medical || '').trim() ||
-        player.game === 'injured' ||
-        ['unavailable', 'modified', 'gymOnly', 'noContact'].includes(player.trainingStatus)
-      );
+      if (!player || !medRecords || typeof medRecords !== 'object') return false;
+      const rec = medRecords[player.id];
+      return Boolean(rec && typeof rec === 'object');
     }
 
     /** Players with an open medical case — the Medical page's actual subject. */
@@ -30706,45 +30759,129 @@
       return activeRosterPlayers(players).filter(p => hasActiveMedicalCase(p, medRecords, medNotes));
     }
 
-    function medicalDashboardSummary(players, medRecords, medNotes) {
+    /** The case's training status for a player ('' when none). */
+    function medicalCaseTrainingStatus(medRecords, playerId) {
+      return normalizeMedicalRecord((medRecords || {})[playerId]).trainingStatus;
+    }
+
+    /**
+     * Where a return-to-play date sits against the app's CURRENT WEEK. The
+     * week is the canonical Monday–Sunday week every Availability and
+     * Training screen uses (availWeekStart / availAddDays) — never a rolling
+     * seven days, never a second calculation. Dates are compared as ISO
+     * strings, so no timezone can move a day.
+     *   'none'      no valid YYYY-MM-DD date
+     *   'this-week' Monday ≤ date ≤ Sunday of the week containing today
+     *   'past'      before this week
+     *   'upcoming'  after this week
+     */
+    function medicalRtpTiming(expectedReturn, todayISO) {
+      const d = String(expectedReturn || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'none';
+      const t = String(todayISO || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return 'none';
+      const start = availWeekStart(t);
+      const end   = availAddDays(start, 6);
+      if (d >= start && d <= end) return 'this-week';
+      return d < start ? 'past' : 'upcoming';
+    }
+
+    /**
+     * Human wording for the RTP date + status of one record: what the
+     * dashboard rows, the record header and the history cards all print.
+     * Pure; reads only the record and today's date.
+     */
+    function medicalRtpSummary(rec, todayISO) {
+      const r = normalizeMedicalRecord(rec);
+      const timing = medicalRtpTiming(r.expectedReturn, todayISO);
+      const status = r.clearanceStatus === 'cleared' ? 'cleared' : 'not-cleared';
+      const t = String(todayISO || '').slice(0, 10);
+      let when = 'No return date';
+      if (timing !== 'none') {
+        const pretty = medicalDateLabel(r.expectedReturn, { year: false });
+        const rel = timing === 'this-week' ? 'this week'
+          : (r.expectedReturn < t ? 'overdue' : timing === 'past' ? 'past' : 'upcoming');
+        when = 'Return ' + pretty + ' · ' + rel;
+      }
+      return {
+        date: r.expectedReturn, timing, status,
+        statusLabel: status === 'cleared' ? 'Cleared to play' : 'Not cleared',
+        when,
+      };
+    }
+
+    /**
+     * "Returning this week": an ACTIVE case whose return-to-play date falls in
+     * the current Monday–Sunday week and that is not yet cleared to play (a
+     * cleared player is back, not returning). A date alone is not enough — a
+     * case with no date, or a date in another week, is not "this week".
+     */
+    function medicalIsReturningThisWeek(rec, todayISO) {
+      const r = normalizeMedicalRecord(rec);
+      return r.clearanceStatus !== 'cleared' && medicalRtpTiming(r.expectedReturn, todayISO) === 'this-week';
+    }
+
+    /**
+     * "Injured and not training this week" — from THIS WEEK'S real training
+     * occurrences and the players' actual availability answers to them.
+     *
+     *   sessions  the canonical dated training occurrences in the current week
+     *             (trainingWeekOccurrences(availWeekStart(availToday())) — the
+     *             same helper the planner, attendance and availability use).
+     *   players   active-case players who are not training this week: the
+     *             case says 'unavailable' (the medical override the
+     *             Availability board itself applies), OR they answered
+     *             'unavailable' to EVERY training occurrence this week
+     *             (overviewAnswerMap → sessionRows, server-first).
+     *
+     * Nothing is assumed: no training this week ⇒ nobody is "not training";
+     * an unanswered session is unknown, not a no; 'available'/'maybe' to any
+     * session is training. `supported` is false when the slot table has not
+     * loaded yet, so the tile can say so rather than print a confident zero.
+     */
+    function medicalNotTrainingThisWeek(players, medRecords, todayISO) {
+      const active = (players || []).filter(p => hasActiveMedicalCase(p, medRecords));
+      const t = String(todayISO || (typeof availToday === 'function' ? availToday() : '')).slice(0, 10);
+      const canRead = typeof trainingWeekOccurrences === 'function'
+        && typeof overviewAnswerMap === 'function'
+        && typeof _trainingSchedule !== 'undefined' && _trainingSchedule
+        && /^\d{4}-\d{2}-\d{2}$/.test(t);
+      if (!canRead) return { supported: false, sessions: 0, players: [] };
+      let occ;
+      try { occ = trainingWeekOccurrences(availWeekStart(t)) || []; } catch { return { supported: false, sessions: 0, players: [] }; }
+      if (!occ.length) return { supported: true, sessions: 0, players: [] };
+      let maps;
+      try { maps = occ.map(o => overviewAnswerMap(String(o.id), active)); } catch { return { supported: false, sessions: occ.length, players: [] }; }
+      const out = active.filter(p =>
+        medicalCaseTrainingStatus(medRecords, p.id) === 'unavailable'
+        || maps.every(m => m[p.id] === 'unavailable'));
+      return { supported: true, sessions: occ.length, players: out };
+    }
+
+    /**
+     * The Medical dashboard's numbers. Every list is a subset of `all`, the
+     * ACTIVE CASELOAD (see the state model above), so a resolved or legacy
+     * injury can never reach a current metric. `todayISO` is injectable for
+     * tests and week-boundary checks; it defaults to the app's availToday().
+     */
+    function medicalDashboardSummary(players, medRecords, medNotes, todayISO) {
       const active = activeRosterPlayers(players);
+      const today  = String(todayISO || (typeof availToday === 'function' ? availToday() : new Date().toISOString())).slice(0, 10);
       const rec = pid => normalizeMedicalRecord((medRecords||{})[pid]);
-      const mn  = pid => (medNotes||{})[pid] || {};
-      const injured = active.filter(p =>
-        p.game === 'injured' || p.trainingStatus === 'unavailable' ||
-        rec(p.id).severity === 'severe'
-      );
-      const returning = active.filter(p => {
-        const r = rec(p.id);
-        return r.expectedReturn && r.clearanceStatus !== 'cleared' &&
-               (p.game === 'injured' || p.trainingStatus === 'unavailable' ||
-                p.trainingStatus === 'noContact' || p.trainingStatus === 'modified');
-      });
-      const cleared = active.filter(p => rec(p.id).clearanceStatus === 'cleared');
-      const rehab   = active.filter(p =>
-        p.trainingStatus === 'modified' || p.trainingStatus === 'gymOnly' || p.trainingStatus === 'noContact'
-      );
-      const alerts = active.filter(p =>
-        p.game === 'injured' || p.trainingStatus === 'unavailable' ||
-        (p.medical && String(p.medical).trim()) ||
-        (mn(p.id).condition && String(mn(p.id).condition).trim()) ||
-        rec(p.id).severity === 'severe' || rec(p.id).severity === 'moderate'
-      );
-      // RC4.7 — `all` is the ACTIVE CASELOAD, not the roster. The Medical page
-      // previously listed every player and rendered healthy ones as
-      // "available", which made the roster and the medical record look like the
-      // same thing. A player with no recorded case simply does not appear.
-      const cases = active.filter(p => {
-        const r = rec(p.id), n = mn(p.id);
-        if (r.clearanceStatus === 'cleared') return false;       // resolved
-        return Boolean(
-          String(r.currentInjury || '').trim() || String(r.severity || '').trim() ||
-          String(r.dateInjured || '').trim() || String(n.condition || '').trim() ||
-          String(p.medical || '').trim() || p.game === 'injured' ||
-          ['unavailable', 'modified', 'gymOnly', 'noContact'].includes(p.trainingStatus)
-        );
-      });
-      return { injured, returning, cleared, rehab, alerts, all: cases, roster: active };
+      const cases = active.filter(p => hasActiveMedicalCase(p, medRecords));
+      const ts = p => rec(p.id).trainingStatus;
+      const rehab     = cases.filter(p => MEDICAL_REHAB_STATUSES.includes(ts(p)));
+      const injured   = cases.filter(p => !MEDICAL_REHAB_STATUSES.includes(ts(p)) && ts(p) !== 'full');
+      const cleared   = cases.filter(p => rec(p.id).clearanceStatus === 'cleared');
+      const returning = cases.filter(p => medicalIsReturningThisWeek(rec(p.id), today));
+      const nt        = medicalNotTrainingThisWeek(cases, medRecords, today);
+      return {
+        injured, returning, cleared, rehab,
+        // Every open case needs medical attention; there is no second list.
+        alerts: cases, all: cases,
+        notTraining: nt.players, sessionsThisWeek: nt.sessions, notTrainingSupported: nt.supported,
+        roster: active, today,
+      };
     }
 
     function setMedicalTab(tab) {
@@ -30777,9 +30914,23 @@
       physioNotes: 'notes', physiNotes: 'notes', clearanceStatus: 'clearanceStatus',
       rehabProgress: 'rehabProgress', concussionCount: 'concussionCount',
     };
+    /**
+     * MEDICAL-AUDIT-1 — every editor write goes to the player's OPEN case.
+     * The server's upsert opens a NEW case when none is active, so an edit
+     * made from a history view (or a stale screen after Clear case) would
+     * silently reopen the player. Only Add Injury opens a case; the editors
+     * refuse when there is nothing open and say so.
+     */
+    function medicalRequireOpenCase(playerId) {
+      if (hasActiveMedicalCase({ id: playerId }, state.medicalRecords)) return true;
+      showToast('No open case for this player — use Add Injury to open one');
+      return false;
+    }
+
     function saveMedRecord(playerId, field, value) {
       const mapped = MED_FIELD_MAP[field];
       if (!mapped) return;                      // not part of the shared model
+      if (!medicalRequireOpenCase(playerId)) return;
       const player = medicalPlayers().find(p => String(p.id) === String(playerId));
       saveSharedMedicalCase({
         action: 'upsert_case', playerId, userId: player?.userId || '',
@@ -30790,6 +30941,7 @@
     function setPlayerTrainingStatus(playerId, status) {
       const p = medicalPlayers().find(pl => String(pl.id) === String(playerId));
       if (!p) return;
+      if (!medicalRequireOpenCase(playerId)) return;
       if (Array.isArray(state.players)) {
         const row = state.players.find(pl => pl.id === playerId);
         if (row) row.trainingStatus = status;   // staff's local roster row, if present
@@ -30821,6 +30973,7 @@
     function addMedTimelineEntry(playerId, type, notes, date) {
       const note = String(notes || '').trim();
       if (!note) { showToast('Add a note before saving the entry'); return; }
+      if (!medicalRequireOpenCase(playerId)) return;
       const p = medicalPlayers().find(pl => String(pl.id) === String(playerId));
       const label = MEDICAL_TIMELINE_LABELS[type] || 'Note';
       const composed = label + (date ? ' (' + date + ')' : '') + ' — ' + note;
@@ -31016,6 +31169,11 @@
         severity:       (r.severity && MEDICAL_SEVERITY_LABELS[r.severity]) ? MEDICAL_SEVERITY_LABELS[r.severity] : '—',
         expectedReturn: String(r.expectedReturn || '').trim() || '—',
         timeOut:        medicalDaysOut(r.dateInjured, todayISO),
+        // MEDICAL-AUDIT-1 — RTP status and the case's training status, from
+        // the same record; both stored fields, nothing derived.
+        rtpStatus:      !(rec && typeof rec === 'object' && Object.keys(rec).length) ? '—'
+                          : r.clearanceStatus === 'cleared' ? 'Cleared to play' : 'Not cleared',
+        trainingStatus: (r.trainingStatus && typeof MEDICAL_TRAINING_LABELS === 'object' && MEDICAL_TRAINING_LABELS[r.trainingStatus]) || '—',
       };
     }
 
@@ -31060,6 +31218,8 @@
           row('Body area', m.bodyArea) +
           row('Severity', m.severity) +
           row('Expected return', m.expectedReturn) +
+          row('Return-to-play status', m.rtpStatus) +
+          row('Training status', m.trainingStatus) +
           row('Time out', m.timeOut) +
         '</div>';
 
@@ -31069,22 +31229,121 @@
       document.body.appendChild(overlay);
     }
 
+    /**
+     * 'YYYY-MM-DD' (or an ISO timestamp) → 'Sat 26 Sep 2026'; '' otherwise.
+     * Built with Date.UTC and fixed English names — no locale, no ICU
+     * ("Sept" vs "Sep"), no timezone can shift the day; an impossible date
+     * (30 Feb) rolls over in JS and so prints nothing rather than a wrong day.
+     */
+    function medicalDateLabel(iso, opts) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '').trim());
+      if (!m) return '';
+      const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+      const at = new Date(Date.UTC(y, mo - 1, d));
+      if (at.getUTCFullYear() !== y || at.getUTCMonth() !== mo - 1 || at.getUTCDate() !== d) return '';
+      const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return DOW[at.getUTCDay()] + ' ' + d + ' ' + MON[mo - 1] + ((opts && opts.year === false) ? '' : ' ' + y);
+    }
+
+    const _MED_PILL = (col, text) =>
+      '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + col + '1a;color:' + col + ';white-space:nowrap">' + esc(text) + '</span>';
+
+    /**
+     * MEDICAL-AUDIT-1 — one shared case, rendered READ-ONLY: its details, its
+     * return-to-play date and status, and its full append-only timeline.
+     * Used for every case in Case history and for the open case on the
+     * Timeline tab. Nothing here writes; nothing here is a form.
+     */
+    function _medicalCaseCard(c, todayISO) {
+      const rec  = normalizeMedicalRecord(medicalCaseToLegacy(c).record);
+      const open = c.status === 'active';
+      const rtp  = medicalRtpSummary(rec, todayISO);
+      const ts   = rec.trainingStatus;
+      const cell = (label, value) =>
+        '<div><p class="ceap-section-label" style="margin:0 0 2px">' + esc(label) + '</p>' +
+        '<div style="font-size:13px;font-weight:600;color:var(--ink);word-break:break-word">' + esc(value || '—') + '</div></div>';
+      const events = [...rec.timeline].reverse();
+      return '<div class="card" style="margin-bottom:12px;border:1px solid ' + (open ? 'var(--brand-line)' : 'var(--line)') + '">' +
+        '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">' +
+          '<div style="min-width:0">' +
+            '<div style="font-size:14px;font-weight:700;word-break:break-word">' + esc(rec.currentInjury || 'Injury not described') + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">' +
+              (rec.dateInjured ? 'Injured ' + esc(medicalDateLabel(rec.dateInjured)) : 'Date injured not recorded') +
+              (open ? '' : ' · Cleared ' + esc(medicalDateLabel(c.resolvedAt) || 'date unknown')) +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+            (open ? _MED_PILL('#f87171', 'Open case') : _MED_PILL('#34d399', 'Cleared')) +
+            (open ? _MED_PILL(rtp.status === 'cleared' ? '#34d399' : '#94a3b8', rtp.statusLabel) : '') +
+          '</div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:12px">' +
+          cell('Body area', rec.bodyLocation) +
+          cell('Severity', rec.severity ? MEDICAL_SEVERITY_LABELS[rec.severity] : '') +
+          cell('Training status', ts ? medicalTrainingStatusLabel(ts) : '') +
+          cell('Return to play', rec.expectedReturn ? medicalDateLabel(rec.expectedReturn) + (open && rtp.timing === 'this-week' ? ' (this week)' : '') : '') +
+          (open ? '' : cell('Outcome', 'Cleared to play')) +
+        '</div>' +
+        (rec.physiNotes ? '<div style="font-size:13px;line-height:1.45;margin-bottom:12px;white-space:pre-wrap;word-break:break-word">' + esc(rec.physiNotes) + '</div>' : '') +
+        '<div style="font-size:12px;font-weight:700;margin-bottom:6px">Timeline (' + events.length + ')</div>' +
+        (events.length === 0
+          ? '<div style="font-size:12px;color:var(--muted)">No timeline entries.</div>'
+          : events.map(ev => {
+              const col = MEDICAL_TIMELINE_COLORS[ev.type] || '#94a3b8';
+              return '<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)">' +
+                '<div style="width:10px;height:10px;border-radius:50%;background:' + col + ';margin-top:4px;flex-shrink:0"></div>' +
+                '<div style="flex:1;min-width:0">' +
+                  '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+                    _MED_PILL(col, MEDICAL_TIMELINE_LABELS[ev.type] || ev.type) +
+                    '<span style="font-size:11px;color:var(--muted)">' + esc(ev.date || '') + '</span>' +
+                  '</div>' +
+                  (ev.notes ? '<div style="font-size:13px;line-height:1.4;margin-top:2px;word-break:break-word">' + esc(ev.notes) + '</div>' : '') +
+                '</div>' +
+              '</div>';
+            }).join('')) +
+      '</div>';
+    }
+
+    /** Every case this player has ever had, open first, then newest cleared first. */
+    function medicalPlayerCases(playerId) {
+      return sharedMedicalHistory(playerId).slice().sort((a, b) => {
+        if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
+        return String(b.resolvedAt || b.updatedAt || '').localeCompare(String(a.resolvedAt || a.updatedAt || ''));
+      });
+    }
+
     function _renderMedicalDashboard() {
       const el = medicalMountEl();
       if (!el) return;
-      const summ    = medicalDashboardSummary(medicalPlayers(), state.medicalRecords, state.medicalNotes);
-      const medNotes = state.medicalNotes || {};
-      const medRecs  = state.medicalRecords || {};
+      const players = medicalPlayers();
+      const today   = availToday();
+      // The "not training this week" stat reads this week's training
+      // occurrences, which need the slot table; the loader is latched and
+      // repaints on landing, exactly as the Availability screens use it.
+      if (typeof ensureTrainingSchedule === 'function') { try { ensureTrainingSchedule(); } catch {} }
+      const summ    = medicalDashboardSummary(players, state.medicalRecords, state.medicalNotes, today);
+      const medRecs = state.medicalRecords || {};
       const INP = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);width:100%;box-sizing:border-box';
+
+      // Cleared (resolved) cases for the players in scope — the history that
+      // Clear case keeps. Newest cleared first.
+      const history = players.flatMap(p => sharedMedicalHistory(p.id).filter(c => c.status === 'resolved').map(c => ({ p, c })))
+        .sort((a, b) => String(b.c.resolvedAt || '').localeCompare(String(a.c.resolvedAt || '')));
+
+      const ntSmall = !summ.notTrainingSupported ? 'schedule not loaded'
+        : summ.sessionsThisWeek === 0 ? 'no training this week'
+        : 'of ' + summ.sessionsThisWeek + ' session' + (summ.sessionsThisWeek === 1 ? '' : 's');
 
       el.innerHTML =
         '<div class="training-hero">' +
           '<div><div class="eyebrow">Medical Centre</div><h1>Medical Dashboard</h1>' +
-          '<p>Squad health overview, injury tracking and return-to-play management.</p></div>' +
-          '<div class="training-hero-stats">' +
-            '<div class="training-stat"><span class="lbl">Injured</span><strong style="color:#f87171">' + summ.injured.length + '</strong><small>unavailable</small></div>' +
+          '<p>Open cases, return-to-play dates and this week\'s training picture — from the club\'s shared medical record.</p></div>' +
+          '<div class="training-hero-stats med-four">' +
+            '<div class="training-stat"><span class="lbl">Active</span><strong style="color:#f87171">' + summ.all.length + '</strong><small>open cases</small></div>' +
             '<div class="training-stat"><span class="lbl">Rehab</span><strong style="color:#fbbf24">' + summ.rehab.length + '</strong><small>in rehab</small></div>' +
-            '<div class="training-stat"><span class="lbl">Cleared</span><strong style="color:#34d399">' + summ.cleared.length + '</strong><small>cleared</small></div>' +
+            '<div class="training-stat"><span class="lbl">Returning</span><strong style="color:#60a5fa">' + summ.returning.length + '</strong><small>this week</small></div>' +
+            '<div class="training-stat"><span class="lbl">Not training</span><strong style="color:#f97316">' + (summ.notTrainingSupported ? summ.notTraining.length : '—') + '</strong><small>' + esc(ntSmall) + '</small></div>' +
           '</div>' +
         '</div>' +
         _medTabBar(false) +
@@ -31098,7 +31357,7 @@
           '<div class="card" style="border:1px solid var(--brand-line)">' +
             '<div style="font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px">' + icon('medical') + 'Add injury</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
-              '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Player<select id="injPlayer" style="' + INP + '">' + (medicalPlayers().length ? medicalPlayers().map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>').join('') : '<option value="">No players yet — add players first</option>') + '</select></label>' +
+              '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Player<select id="injPlayer" style="' + INP + '">' + (players.length ? players.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>').join('') : '<option value="">No players yet — add players first</option>') + '</select></label>' +
               '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Injury type / name<input id="injType" placeholder="e.g. Hamstring strain" style="' + INP + '"></label>' +
               '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Body area<select id="injArea" style="' + INP + '">' + ['','Head','Neck','Shoulder','Arm','Elbow','Wrist / Hand','Chest','Ribs','Back','Hip','Groin','Hamstring','Quad','Knee','Calf','Ankle','Foot','Other'].map(a => '<option value="' + a + '">' + (a || 'Select…') + '</option>').join('') + '</select></label>' +
               '<label style="font-size:12px;font-weight:600;display:grid;gap:4px">Severity<select id="injSeverity" style="' + INP + '"><option value="">Select…</option><option value="minor">Minor</option><option value="moderate">Moderate</option><option value="severe">Severe</option></select></label>' +
@@ -31111,78 +31370,63 @@
             '</div>' +
           '</div>' +
         '</div>' +
-        // "Active injuries" removed: it duplicated the hero "Injured" stat and is
-        // a strict subset of Medical alerts (every injury already appears there).
-        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">' +
-          [
-            ['In rehabilitation', summ.rehab.length,  '#fbbf24'],
-            ['Returning this week', summ.returning.length, '#60a5fa'],
-            ['Medical alerts', summ.alerts.length,    '#f97316'],
-          ].map(([lbl, val, col]) =>
-            '<div class="card" style="padding:14px 16px;text-align:center">' +
-              '<div style="font-size:28px;font-weight:900;color:' + col + '">' + val + '</div>' +
-              '<div style="font-size:11px;color:var(--muted);margin-top:4px">' + lbl + '</div>' +
-            '</div>'
-          ).join('') +
-        '</div>' +
-        (summ.alerts.length > 0
-          ? '<div class="card" style="margin-bottom:14px">' +
-              '<div style="font-size:13px;font-weight:700">Medical alerts (' + summ.alerts.length + ')</div>' +
-              '<div style="font-size:11px;color:var(--muted);margin:2px 0 12px">Everyone needing medical attention — injuries, conditions and players to monitor.</div>' +
-              summ.alerts.map(p => {
-                const mn  = medNotes[p.id] || {};
+        // ── MEDICAL-AUDIT-1: ONE active caseload list. "Medical alerts" and
+        // "Active medical cases" were the same players twice with different
+        // buttons; every open case is by definition the medical caseload.
+        '<div class="card" style="margin-bottom:14px" id="med-active-cases">' +
+          '<div style="font-size:13px;font-weight:700">Active cases (' + summ.all.length + ')</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin:2px 0 12px">' +
+            (summ.cleared.length
+              ? summ.cleared.length + ' cleared to play — clear the case to close ' + (summ.cleared.length === 1 ? 'it' : 'them') + '.'
+              : 'Open the record to edit, the timeline to add notes, or clear the case when the player is back.') +
+          '</div>' +
+          (summ.all.length === 0
+            ? '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No open medical cases. Players appear here once an injury is recorded.</div>'
+            : summ.all.map(p => {
                 const rec = normalizeMedicalRecord(medRecs[p.id]);
-                const ts  = p.trainingStatus || '';
-                const tsColor = medicalTrainingStatusColor(ts);
+                const ts  = rec.trainingStatus;
+                const rtp = medicalRtpSummary(rec, today);
                 const sevColor = medicalSeverityColor(rec.severity);
-                return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">' +
-                  '<div style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;' +
-                    'background:rgba(248,113,113,0.12);border:2px solid #f87171"></div>' +
-                  '<div role="button" tabindex="0" title="View injury details" aria-label="View injury details for ' + esc(p.name) + '" style="flex:1;min-width:120px;cursor:pointer" onclick="openMedicalDetails(\'' + p.id + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openMedicalDetails(\'' + p.id + '\')}">' +
+                const rtpColor = rtp.status === 'cleared' ? '#34d399' : rtp.timing === 'this-week' ? '#60a5fa' : rtp.timing === 'none' ? '#94a3b8' : (rec.expectedReturn < today ? '#f97316' : '#94a3b8');
+                return '<div class="med-case-row" data-player="' + esc(p.id) + '" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">' +
+                  '<div role="button" tabindex="0" title="View injury details" aria-label="View injury details for ' + esc(p.name) + '" style="flex:1;min-width:140px;cursor:pointer" onclick="openMedicalDetails(\'' + esc(p.id) + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openMedicalDetails(\'' + esc(p.id) + '\')}">' +
                     '<div style="font-size:13px;font-weight:700">' + esc(p.name) + '</div>' +
                     '<div style="font-size:11px;color:var(--muted);margin-top:2px">' +
-                      esc(rec.currentInjury || mn.condition || p.medical || 'Under review') +
+                      esc(rec.currentInjury || 'Injury not described') +
                       (rec.bodyLocation ? ' · ' + esc(rec.bodyLocation) : '') +
+                      (rec.dateInjured ? ' · out ' + esc(medicalDaysOut(rec.dateInjured, today)) : '') +
                     '</div>' +
+                    '<div class="med-rtp" style="font-size:11px;font-weight:600;color:' + rtpColor + ';margin-top:3px">' + esc(rtp.when) + ' · ' + esc(rtp.statusLabel) + '</div>' +
                   '</div>' +
-                  (p.game === 'injured' ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(248,113,113,0.14);color:#f87171">Injured</span>' : '') +
-                  (ts ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + tsColor + '1a;color:' + tsColor + '">' + esc(medicalTrainingStatusLabel(ts)) + '</span>' : '') +
-                  (rec.severity ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + sevColor + '1a;color:' + sevColor + '">' + MEDICAL_SEVERITY_LABELS[rec.severity] + '</span>' : '') +
-                  (rec.expectedReturn ? '<span style="font-size:11px;color:var(--muted)">Return: ' + esc(rec.expectedReturn) + '</span>' : '') +
+                  '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+                    _MED_PILL(ts ? medicalTrainingStatusColor(ts) : '#94a3b8', ts ? medicalTrainingStatusLabel(ts) : 'Training status not set') +
+                    (rec.severity ? _MED_PILL(sevColor, MEDICAL_SEVERITY_LABELS[rec.severity]) : '') +
+                  '</div>' +
                   '<div style="display:flex;gap:6px">' +
-                    '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="openMedicalRecord(\'' + p.id + '\')">Record</button>' +
-                    '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="openMedicalTimeline(\'' + p.id + '\')">Timeline</button>' +
-                    // RC4.7 — clearing a case had no control at all: the case
-                    // could be opened but never closed. It leaves the active
-                    // caseload; the record and its timeline are retained.
-                    '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="clearSharedMedicalCase(\'' + p.id + '\')">Clear case</button>' +
+                    '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="openMedicalRecord(\'' + esc(p.id) + '\')">Record</button>' +
+                    '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="openMedicalTimeline(\'' + esc(p.id) + '\')">Timeline</button>' +
+                    '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="clearSharedMedicalCase(\'' + esc(p.id) + '\')">Clear case</button>' +
                   '</div>' +
-                '</div>';
-              }).join('') +
-            '</div>'
-          : '') +
-        '<div class="card" style="margin-bottom:14px">' +
-          '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Active medical cases (' + summ.all.length + ')</div>' +
-          (summ.all.length === 0
-            ? '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No active medical cases. Players appear here once an injury is recorded.</div>'
-            : summ.all.map(p => {
-                const mn  = medNotes[p.id] || {};
-                const rec = normalizeMedicalRecord(medRecs[p.id]);
-                const ts  = p.trainingStatus || '';
-                const tsColor = ts ? medicalTrainingStatusColor(ts) : '#34d399';
-                const tsLabel = ts ? medicalTrainingStatusLabel(ts) : 'Full Training';
-                return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">' +
-                  '<div role="button" tabindex="0" title="View injury details" aria-label="View injury details for ' + esc(p.name) + '" style="flex:1;min-width:120px;cursor:pointer" onclick="openMedicalDetails(\'' + p.id + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openMedicalDetails(\'' + p.id + '\')}">' +
-                    '<div style="font-size:13px;font-weight:700">' + esc(p.name) + '</div>' +
-                    (rec.currentInjury || mn.condition || p.medical
-                      ? '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + esc(rec.currentInjury || mn.condition || p.medical) + '</div>'
-                      : '') +
-                  '</div>' +
-                  '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + tsColor + '1a;color:' + tsColor + '">' + esc(tsLabel) + '</span>' +
-                  (rec.clearanceStatus ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + MEDICAL_CLEARANCE_COLORS[rec.clearanceStatus] + '1a;color:' + MEDICAL_CLEARANCE_COLORS[rec.clearanceStatus] + '">' + MEDICAL_CLEARANCE_LABELS[rec.clearanceStatus] + '</span>' : '') +
-                  '<button class="btn" type="button" style="font-size:11px;padding:3px 8px" onclick="openMedicalRecord(\'' + p.id + '\')">Edit</button>' +
                 '</div>';
               }).join('')) +
+        '</div>' +
+        // ── MEDICAL-AUDIT-1: the history Clear case keeps. Read-only.
+        '<div class="card" style="margin-bottom:14px" id="med-case-history">' +
+          '<div style="font-size:13px;font-weight:700">Case history (' + history.length + ')</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin:2px 0 12px">Cleared cases stay on record with their full timeline. Nothing here counts towards the numbers above.</div>' +
+          (history.length === 0
+            ? '<div style="font-size:12px;color:var(--muted);padding:6px 0">No cleared cases yet.</div>'
+            : history.map(({ p, c }) =>
+                '<div class="med-history-row" data-case="' + esc(c.id) + '" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">' +
+                  '<div style="flex:1;min-width:140px">' +
+                    '<div style="font-size:13px;font-weight:700">' + esc(p.name) + '</div>' +
+                    '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + esc(c.condition || 'Injury not described') +
+                      (c.dateInjured ? ' · injured ' + esc(medicalDateLabel(c.dateInjured)) : '') +
+                      ' · cleared ' + esc(medicalDateLabel(c.resolvedAt) || 'date unknown') + '</div>' +
+                  '</div>' +
+                  _MED_PILL('#34d399', 'Cleared') +
+                  '<button class="btn" type="button" style="font-size:11px;padding:3px 9px" onclick="openMedicalTimeline(\'' + esc(p.id) + '\')">View history</button>' +
+                '</div>').join('')) +
         '</div>';
     }
 
@@ -31196,8 +31440,26 @@
       }
       const p    = medicalPlayers().find(pl => pl.id === playerId);
       if (!p) { el.innerHTML = _medTabBar(true) + '<div class="card" style="padding:24px;text-align:center;color:var(--muted)">Player not found.</div>'; return; }
+      const today = availToday();
+
+      // MEDICAL-AUDIT-1 — no open case: the editor would silently OPEN one on
+      // the first keystroke (server upsert). Show the read-only history instead.
+      if (!hasActiveMedicalCase(p, state.medicalRecords)) {
+        const cases = medicalPlayerCases(playerId);
+        el.innerHTML =
+          '<div class="training-hero" style="margin-bottom:0">' +
+            '<div><div class="eyebrow">Medical Centre</div><h1 style="margin:0;font-size:20px">' + esc(p.name) + '</h1>' +
+            '<p style="color:var(--muted);font-size:13px;margin:4px 0 0">No open case · ' + cases.length + ' cleared case' + (cases.length === 1 ? '' : 's') + ' on record</p></div>' +
+          '</div>' +
+          _medTabBar(true) +
+          '<div class="card" style="margin-bottom:12px;font-size:13px;color:var(--muted)">This player has no open medical case, so there is nothing to edit. Their history below is read-only. Use <strong>Add Injury</strong> on the Dashboard to open a new case.</div>' +
+          (cases.length ? cases.map(c => _medicalCaseCard(c, today)).join('') : '<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:13px">No medical history for this player.</div>');
+        return;
+      }
+
       const rec  = normalizeMedicalRecord((state.medicalRecords||{})[playerId]);
-      const ts   = p.trainingStatus || '';
+      const ts   = rec.trainingStatus;
+      const rtp  = medicalRtpSummary(rec, today);
       const INP  = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);width:100%;box-sizing:border-box';
       const TA   = INP + ';font-family:inherit;resize:vertical;min-height:72px';
 
@@ -31228,15 +31490,16 @@
           '<div>' +
             '<div class="eyebrow">Medical Centre</div>' +
             '<h1 style="margin:0;font-size:20px">' + esc(p.name) + '</h1>' +
-            '<p style="color:var(--muted);font-size:13px;margin:4px 0 0">' + esc(p.position||'No position') + '</p>' +
+            '<p style="color:var(--muted);font-size:13px;margin:4px 0 0">' + esc(p.position||'No position') + ' · ' + esc(rec.currentInjury || 'Injury not described') + '</p>' +
+            '<p id="med-rtp-line" style="font-size:13px;font-weight:700;margin:6px 0 0;color:' + (rtp.status === 'cleared' ? '#34d399' : rtp.timing === 'this-week' ? '#60a5fa' : 'var(--ink)') + '">Return to play: ' + esc(rtp.when) + ' · ' + esc(rtp.statusLabel) + '</p>' +
           '</div>' +
           '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
-            (ts ? '<span style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:999px;background:' + medicalTrainingStatusColor(ts) + '1a;color:' + medicalTrainingStatusColor(ts) + '">' + esc(medicalTrainingStatusLabel(ts)) + '</span>' : '') +
-            '<button class="btn" type="button" style="font-size:11px" onclick="openMedicalTimeline(\'' + playerId + '\')">View timeline →</button>' +
+            _MED_PILL('#f87171', 'Open case') +
+            (ts ? _MED_PILL(medicalTrainingStatusColor(ts), medicalTrainingStatusLabel(ts)) : _MED_PILL('#94a3b8', 'Training status not set')) +
           '</div>' +
         '</div>' +
         _medTabBar(true) +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">' +
+        '<div class="med-record-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">' +
           '<div style="display:grid;gap:14px">' +
             '<div class="card">' +
               '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Training status</div>' +
@@ -31261,20 +31524,32 @@
                 selectField('Severity', 'severity', rec.severity,
                   [['','— Select severity —'],['minor','Minor'],['moderate','Moderate'],['severe','Severe']]) +
                 field('Date injured', 'dateInjured', rec.dateInjured, 'date', '') +
-                field('Expected return', 'expectedReturn', rec.expectedReturn, 'date', '') +
-                selectField('Clearance status', 'clearanceStatus', rec.clearanceStatus,
-                  [['','— Not set —'],['pending','Pending clearance'],['cleared','Cleared to play'],['restricted','Restricted']]) +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:grid;gap:14px;align-content:start">' +
+            '<div class="card">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Return to play</div>' +
+              '<div style="display:grid;gap:10px">' +
+                field('Expected return date', 'expectedReturn', rec.expectedReturn, 'date', '') +
+                // MEDICAL-AUDIT-1 — only the values the shared record STORES.
+                // "Pending" and "Restricted" were offered before and silently
+                // saved as blank by the server's allow-list.
+                selectField('Return-to-play status', 'clearanceStatus', rec.clearanceStatus,
+                  [['','Not cleared'],['cleared','Cleared to play']]) +
+                '<div style="font-size:11px;color:var(--muted)">Cleared to play keeps the case open until you clear it from the Dashboard — its history is kept either way.</div>' +
               '</div>' +
             '</div>' +
             '<div class="card">' +
               '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Physio & clinical notes</div>' +
               '<div style="display:grid;gap:10px">' +
                 taField('Physio notes', 'physiNotes', rec.physiNotes) +
-                taField('Surgery history', 'surgeryHistory', rec.surgeryHistory) +
+                '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Number of concussions' +
+                  '<input type="number" min="0" style="' + INP + '" value="' + rec.concussionCount + '"' +
+                  ' onchange="saveMedRecord(\'' + playerId + '\',\'concussionCount\',Number(this.value))">' +
+                '</label>' +
               '</div>' +
             '</div>' +
-          '</div>' +
-          '<div style="display:grid;gap:14px;align-content:start">' +
             (medicalRosterRow(playerId)
               ? '<div class="card">' +
                   '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Emergency contact</div>' +
@@ -31284,30 +31559,16 @@
                   '</div>' +
                 '</div>'
               : '') +
-            '<div class="card">' +
-              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Medications & allergies</div>' +
-              '<div style="display:grid;gap:10px">' +
-                taField('Known allergies', 'allergies', rec.allergies) +
-                taField('Current medication', 'medication', rec.medication) +
-              '</div>' +
-            '</div>' +
-            '<div class="card">' +
-              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Concussion history</div>' +
-              '<div style="display:grid;gap:10px">' +
-                '<label style="display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)">Number of concussions' +
-                  '<input type="number" min="0" style="' + INP + '" value="' + rec.concussionCount + '"' +
-                  ' onchange="saveMedRecord(\'' + playerId + '\',\'concussionCount\',Number(this.value))">' +
-                '</label>' +
-                taField('Concussion notes / dates', 'concussionNotes', rec.concussionNotes) +
-              '</div>' +
-            '</div>' +
           '</div>' +
         '</div>';
     }
-    // (The old duplicate rehab card is gone: its two fields duplicated the
-    //  authoritative editor's Injury description and Expected return, and its
-    //  local-only medicalNotes writes were silently overwritten by every
-    //  server hydrate — edits made there LOOKED saved and then vanished.)
+    // MEDICAL-AUDIT-1 — the Surgery history, Known allergies, Current
+    // medication and Concussion notes fields are gone from the editor: the
+    // shared case model has no such fields (api/_medicalStore.js
+    // WRITABLE_CASE_FIELDS), so saveMedRecord dropped them and the next
+    // hydrate wiped what the physio had typed. An input that discards what is
+    // typed into it is worse than no input. (The old duplicate rehab card went
+    // earlier for the same reason.)
 
     function _renderMedicalTimeline(playerId) {
       const el = medicalMountEl();
@@ -31319,60 +31580,46 @@
       }
       const p   = medicalPlayers().find(pl => pl.id === playerId);
       if (!p) { el.innerHTML = _medTabBar(true) + '<div class="card" style="padding:24px;text-align:center;color:var(--muted)">Player not found.</div>'; return; }
-      const rec = normalizeMedicalRecord((state.medicalRecords||{})[playerId]);
+      const today = availToday();
+      const cases = medicalPlayerCases(playerId);
+      const open  = hasActiveMedicalCase(p, state.medicalRecords);
+      const eventCount = cases.reduce((n, c) => n + (Array.isArray(c.timeline) ? c.timeline.length : 0), 0);
       const INP = 'padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel-2);color:var(--text);box-sizing:border-box';
 
       el.innerHTML =
         '<div class="training-hero" style="margin-bottom:0">' +
           '<div><div class="eyebrow">Medical Centre</div><h1 style="margin:0;font-size:20px">' + esc(p.name) + ' — Timeline</h1>' +
-          '<p style="color:var(--muted);font-size:13px;margin:4px 0 0">' + rec.timeline.length + ' event' + (rec.timeline.length!==1?'s':'') + ' on record</p></div>' +
-          '<button class="btn" type="button" onclick="openMedicalRecord(\'' + playerId + '\')">View record →</button>' +
+          '<p style="color:var(--muted);font-size:13px;margin:4px 0 0">' + cases.length + ' case' + (cases.length!==1?'s':'') + ' · ' + eventCount + ' event' + (eventCount!==1?'s':'') + ' on record</p></div>' +
         '</div>' +
         _medTabBar(true) +
-        '<div class="card" style="margin-bottom:14px">' +
-          '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Add timeline entry</div>' +
-          '<div style="display:grid;grid-template-columns:120px 1fr 1fr auto;gap:8px;align-items:end">' +
-            '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Date' +
-              '<input type="date" id="mtl-date" style="' + INP + '">' +
-            '</label>' +
-            '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Type' +
-              '<select id="mtl-type" style="' + INP + ';width:100%">' +
-                MEDICAL_TIMELINE_TYPES.map(t => '<option value="' + t + '">' + MEDICAL_TIMELINE_LABELS[t] + '</option>').join('') +
-              '</select>' +
-            '</label>' +
-            '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Notes' +
-              '<input type="text" id="mtl-notes" style="' + INP + '" placeholder="Brief note…">' +
-            '</label>' +
-            '<button class="btn primary" type="button" style="height:38px;white-space:nowrap"' +
-              ' onclick="(function(){' +
-                'const d=document.getElementById(\'mtl-date\')?.value;' +
-                'const t=document.getElementById(\'mtl-type\')?.value||\'note\';' +
-                'const n=document.getElementById(\'mtl-notes\')?.value||\'\';;' +
-                'addMedTimelineEntry(\'' + playerId + '\',t,n,d);' +
-              '})()">Add entry</button>' +
-          '</div>' +
-        '</div>' +
-        '<div class="card">' +
-          '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Chronological history</div>' +
-          (rec.timeline.length === 0
-            ? '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No timeline entries yet. Use the form above to log injuries, physio sessions, clearances and return to play.</div>'
-            : [...rec.timeline].reverse().map(ev => {
-                const col = MEDICAL_TIMELINE_COLORS[ev.type] || '#94a3b8';
-                return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">' +
-                  '<div style="display:flex;flex-direction:column;align-items:center;gap:0;flex-shrink:0">' +
-                    '<div style="width:10px;height:10px;border-radius:50%;background:' + col + ';margin-top:4px"></div>' +
-                    '<div style="width:1px;flex:1;background:var(--line);margin-top:4px"></div>' +
-                  '</div>' +
-                  '<div style="flex:1;min-width:0">' +
-                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">' +
-                      '<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;background:' + col + '1a;color:' + col + '">' + (MEDICAL_TIMELINE_LABELS[ev.type]||ev.type) + '</span>' +
-                      '<span style="font-size:11px;color:var(--muted)">' + esc(ev.date||'') + '</span>' +
-                    '</div>' +
-                    (ev.notes ? '<div style="font-size:13px;color:var(--text);line-height:1.4">' + esc(ev.notes) + '</div>' : '') +
-                  '</div>' +
-                '</div>';
-              }).join('')) +
-        '</div>';
+        (open
+          ? '<div class="card" style="margin-bottom:14px">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:12px">Add timeline entry</div>' +
+              '<div class="med-timeline-form" style="display:grid;grid-template-columns:120px 1fr 1fr auto;gap:8px;align-items:end">' +
+                '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Date' +
+                  '<input type="date" id="mtl-date" style="' + INP + '">' +
+                '</label>' +
+                '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Type' +
+                  '<select id="mtl-type" style="' + INP + ';width:100%">' +
+                    MEDICAL_TIMELINE_TYPES.map(t => '<option value="' + t + '">' + MEDICAL_TIMELINE_LABELS[t] + '</option>').join('') +
+                  '</select>' +
+                '</label>' +
+                '<label style="display:grid;gap:3px;font-size:11px;font-weight:700;color:var(--muted)">Notes' +
+                  '<input type="text" id="mtl-notes" style="' + INP + '" placeholder="Brief note…">' +
+                '</label>' +
+                '<button class="btn primary" type="button" style="height:38px;white-space:nowrap"' +
+                  ' onclick="(function(){' +
+                    'const d=document.getElementById(\'mtl-date\')?.value;' +
+                    'const t=document.getElementById(\'mtl-type\')?.value||\'note\';' +
+                    'const n=document.getElementById(\'mtl-notes\')?.value||\'\';;' +
+                    'addMedTimelineEntry(\'' + playerId + '\',t,n,d);' +
+                  '})()">Add entry</button>' +
+              '</div>' +
+            '</div>'
+          : '<div class="card" style="margin-bottom:14px;font-size:13px;color:var(--muted)">No open case — this history is read-only. Use <strong>Add Injury</strong> on the Dashboard to open a new case.</div>') +
+        (cases.length === 0
+          ? '<div class="card" style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No medical history for this player yet.</div>'
+          : cases.map(c => _medicalCaseCard(c, today)).join(''));
     }
 
     // ─── PHASE 20 — MATCH CENTRE ─────────────────────────────────────────────

@@ -38,19 +38,23 @@ const LABELS = { injury:'Injury', physio:'Physio', clearance:'Clearance',
 
 // Run the REAL addMedTimelineEntry with spied choke points. `saveOk` is what
 // the (stubbed) authoritative write path resolves to.
-function makeAdd({ players = [{ id: 'p1', userId: 'u1' }], saveOk = true } = {}) {
+function makeAdd({ players = [{ id: 'p1', userId: 'u1' }], saveOk = true, openCase = true } = {}) {
   const calls = { save: [], toast: [], render: 0, saveState: 0 };
   const body =
     '"use strict";\n' +
     'const SAVE = arguments[0], TOAST = arguments[1], RENDER = arguments[2], STATE = arguments[3];\n' +
     'const MEDICAL_TIMELINE_LABELS = ' + JSON.stringify(LABELS) + ';\n' +
     'const _players = ' + JSON.stringify(players) + ';\n' +
-    'const state = { medicalRecords: {} };\n' +
+    // MEDICAL-AUDIT-1 — an entry is appended to the player's OPEN case; the
+    // projected record stands in for it (an absent record = no open case).
+    'const state = { medicalRecords: ' + (openCase ? '{ p1: { currentInjury: "Hamstring" } }' : '{}') + ' };\n' +
     'function medicalPlayers(){ return _players; }\n' +
     'function showToast(m){ TOAST(m); }\n' +
     'function saveState(m){ STATE(m); }\n' +          // must NOT be called by the add
     'function saveSharedMedicalCase(b){ return SAVE(b); }\n' +
     'function render(){ RENDER(); }\n' +
+    fn('hasActiveMedicalCase') + '\n' +
+    fn('medicalRequireOpenCase') + '\n' +
     fn('addMedTimelineEntry') + '\n' +
     'return { add: addMedTimelineEntry };\n';
   const api = new Function(body)(
@@ -101,6 +105,17 @@ test('TEST 3: an empty note is refused (no phantom entry, honest toast)', async 
   assert.equal(calls.save.length, 0, 'no server write for an empty note');
   assert.equal(calls.saveState, 0);
   assert.equal(calls.toast.length, 1, 'the user is told, not silently no-oped');
+});
+
+test('TEST 3b (MEDICAL-AUDIT-1): no open case → the entry is refused, never a silent new case', async () => {
+  // The server's upsert OPENS a case when none is active, so an add against a
+  // cleared player would have quietly reopened them.
+  const { api, calls } = makeAdd({ openCase: false });
+  api.add('p1', 'physio', 'Rehab', '2026-02-01');
+  await tick();
+  assert.equal(calls.save.length, 0, 'no server write — nothing to append to');
+  assert.equal(calls.toast.length, 1, 'the user is told');
+  assert.match(calls.toast[0], /No open case/);
 });
 
 test('TEST 5: a persistence FAILURE is not presented as success', async () => {

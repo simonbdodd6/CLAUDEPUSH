@@ -78,13 +78,19 @@ const RECORDED = { id: 'p3', name: 'Recorded', game: 'available' };
 test('a healthy player with no active case never appears in Medical active cases', () => {
   assert.deepEqual(casesFor([HEALTHY], {}, {}).map(p => p.id), []);
 });
-test('players with an active case DO appear (roster flag or recorded injury)', () => {
+test('players with an active case DO appear — a recorded case, never a roster flag alone', () => {
+  // MEDICAL-AUDIT-1 — p2's legacy game:'injured' flag is not a shared case
+  // (nothing writes it any more); only p3, whose case is projected, is listed.
   const out = casesFor([HEALTHY, INJURED, RECORDED], { p3: { currentInjury: 'Hamstring' } }, {});
-  assert.deepEqual(out.map(p => p.id).sort(), ['p2', 'p3']);
+  assert.deepEqual(out.map(p => p.id).sort(), ['p3']);
 });
 test('a cleared/resolved case leaves the active list', () => {
+  // MEDICAL-AUDIT-1 — resolving removes the case from the projection
+  // (hydrateMedicalFromShared skips status 'resolved'); an OPEN case that is
+  // merely cleared to play stays listed until it is cleared.
+  assert.deepEqual(casesFor([RECORDED], {}, {}).map(p => p.id), []);
   const out = casesFor([RECORDED], { p3: { currentInjury: 'Hamstring', clearanceStatus: 'cleared' } }, {});
-  assert.deepEqual(out.map(p => p.id), []);
+  assert.deepEqual(out.map(p => p.id), ['p3']);
 });
 
 // ── 4-6 + 7 + 10: the real server handler — group isolation + persistence ──
