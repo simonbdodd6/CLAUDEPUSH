@@ -2308,6 +2308,11 @@
       white-space: nowrap;
       border: 1px solid transparent;
     }
+    /* A chip that IS a control: same pill, but a real button — pointer cursor,
+       no inherited form styling, and a focus ring for the keyboard. */
+    button.msg-chip { font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; background: transparent; }
+    button.msg-chip:hover { filter: brightness(1.08); }
+    button.msg-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .msg-chip.available { color: var(--status-available); background: var(--status-available-soft); border-color: rgba(16,185,129,0.22); }
     .msg-chip.unavailable, .msg-chip.injured { color: var(--status-unavailable); background: var(--status-unavailable-soft); border-color: rgba(248,113,113,0.22); }
     .msg-chip.maybe { color: var(--status-maybe); background: var(--status-maybe-soft); border-color: rgba(251,191,36,0.24); }
@@ -5765,6 +5770,8 @@
     .mc7-match.maybe { color: #fbbf24; }
     .mc7-dot.maybe { background: #fbbf24; }
     @media (pointer: coarse) {
+      /* A finger needs a target: the status chips stay 22px, the CONTROL does not. */
+      button.msg-chip { min-height: 34px; padding: 0 14px; }
       .mc7-filter button { min-height: 40px; }
       .mc-fixnav-btn { min-height: 44px; }
       .mc-side-btn { min-height: 44px; }
@@ -17646,7 +17653,16 @@
                   <h2>Sessions</h2>
                   <p>Pick the training or match view.</p>
                 </div>
-                <span id="avail-refresh-ts" class="msg-chip ${_availLastSync ? 'available' : 'no-reply'}">${_availLastSync ? 'Synced ' + new Date(_availLastSync).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : 'Live sync'}</span>
+                <!-- LIVE SYNC — the board's live-data control AND its status.
+                     It was a <span>: inert text that looked like a control, so a
+                     tap did nothing and a press handed the gesture to the phone,
+                     which offered its own text-selection menu ("Search Web") —
+                     the control appeared to leave CoachEasier. It is a real
+                     button now, running the availability refresh this same chip
+                     already reports the result of (avail-refresh-ts). -->
+                <button type="button" id="avail-refresh-ts" class="msg-chip msg-chip-btn ${_availLastSync ? 'available' : 'no-reply'}"
+                  onclick="availRefreshNow()" title="Refresh live availability now"
+                  aria-label="Refresh live availability now">${_availLastSync ? 'Synced ' + new Date(_availLastSync).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : 'Live sync'}</button>
               </div>
               ${opPlayers.length > 0 ? `
               <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(var(--accent-rgb), 0.04);border-bottom:1px solid var(--line);font-size:12px;flex-wrap:wrap">
@@ -41420,6 +41436,26 @@
           saveState('Roster identity linked for availability');
         }
       } catch { /* non-critical — board still shows local state */ }
+    }
+
+    /**
+     * The Live Sync control: refresh the board's live availability NOW.
+     *
+     * A thin wrapper over refreshLiveAvailability — the read, the group scope
+     * and the data model are untouched. It exists so the control has an
+     * explicit in-app action, and so a second tap while a refresh is in flight
+     * joins the one already running instead of starting another.
+     */
+    let _availRefreshInFlight = null;
+    function availRefreshNow() {
+      if (_availRefreshInFlight) return _availRefreshInFlight;
+      const ts = document.getElementById('avail-refresh-ts');
+      if (ts) { ts.textContent = 'Syncing…'; ts.className = 'msg-chip msg-chip-btn no-reply'; }
+      _availRefreshInFlight = Promise.resolve()
+        .then(() => refreshLiveAvailability())
+        .catch(() => {})
+        .finally(() => { _availRefreshInFlight = null; });
+      return _availRefreshInFlight;
     }
 
     async function refreshLiveAvailability(opts = {}) {
