@@ -1,7 +1,7 @@
 // api/subscribe.js — Player push subscription management (Redis-backed)
 // POST  { subscription: PushSubscription } → saves / updates the caller's device (session required)
 // GET   → returns { count }
-// DELETE { endpoint: string } → removes
+// DELETE { endpoint: string } → removes the caller's own device (session required)
 
 import { load, save } from './_lib.js';
 import { setCors } from './_http.js';
@@ -14,6 +14,10 @@ function displayNameFromSession(sessionContext = {}) {
   return profile.displayName || user.displayName ||
     [user.firstName, user.lastName].filter(Boolean).join(' ') ||
     user.name || user.email || '';
+}
+
+async function hasActiveSession(req) {
+  try { await requireSession(req); return true; } catch { return false; }
 }
 
 function messagingPlayerIdFromSession(sessionContext = {}) {
@@ -35,7 +39,10 @@ export default async function handler(req, res) {
   // ── GET: subscription count (or full debug list in dev mode) ─────────────
   if (req.method === 'GET') {
     const subs = await load();
-    if (req.query?.debug === '1' && process.env.DEV_LOGIN === 'true') {
+    // The debug listing prints every device's endpoint, ids and label across
+    // all clubs. DEV_LOGIN alone is not authorisation: it also needs a signed-in
+    // caller, and an anonymous request gets the plain count like everyone else.
+    if (req.query?.debug === '1' && process.env.DEV_LOGIN === 'true' && await hasActiveSession(req)) {
       return res.status(200).json({
         count: subs.length,
         subscriptions: subs.map(s => ({
@@ -92,11 +99,23 @@ export default async function handler(req, res) {
     return res.status(201).json({ ok: true, count: subs.length });
   }
 
-  // ── DELETE: remove subscription ──────────────────────────────────────────
+  // ── DELETE: remove the caller's own subscription ─────────────────────────
   if (req.method === 'DELETE') {
+    // Removing a row silences a device. An endpoint URL is unguessable but it
+    // is not a credential (the debug listing and push reports carry it), so
+    // knowing one proves nothing. The caller must be signed in, and the only
+    // row they may remove is one POST bound to their own session user. No
+    // session means no deletion — and no write at all.
+    let sessionContext;
+    try {
+      sessionContext = await requireSession(req);
+    } catch {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
     const { endpoint, action } = req.body || {};
     // Dev-only: purge all subscriptions that have empty userId, playerId, AND legacyPlayerId
-    // so they can be cleanly re-registered with correct IDs.
+    // so they can be cleanly re-registered with correct IDs. DEV_LOGIN alone is
+    // not authorisation (the session check above still applies).
     if (action === 'purge_empty' && process.env.DEV_LOGIN === 'true') {
       const subs = await load();
       const before = subs.length;
@@ -104,10 +123,22 @@ export default async function handler(req, res) {
       await save(cleaned);
       return res.status(200).json({ ok: true, purged: before - cleaned.length, remaining: cleaned.length });
     }
-    if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
-    const subs = (await load()).filter(s => s.subscription.endpoint !== endpoint);
-    await save(subs);
-    return res.status(200).json({ ok: true, count: subs.length });
+    if (typeof endpoint !== 'string' || !endpoint) {
+      return res.status(400).json({ error: 'Missing endpoint' });
+    }
+    // Ownership is the stored userId that POST derived from the session; body
+    // and query identity are ignored. A row bound to someone else and a row
+    // that does not exist get the same answer, so the response never confirms
+    // whether a given endpoint is registered. A legacy row with an empty
+    // userId has no owner and is removed by nobody through this path.
+    const sessionUserId = String(sessionContext.user.id);
+    const subs = await load();
+    const kept = subs.filter(s =>
+      !(s.subscription?.endpoint === endpoint && s.userId && String(s.userId) === sessionUserId)
+    );
+    const removed = subs.length - kept.length;
+    if (removed > 0) await save(kept);
+    return res.status(200).json({ ok: true, removed, count: kept.length });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
