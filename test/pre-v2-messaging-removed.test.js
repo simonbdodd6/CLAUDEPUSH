@@ -147,7 +147,50 @@ test('permissions, navigation and group isolation are unchanged', () => {
   // Pinned literally: this build must not have moved a section between gates.
   assert.match(code, /message: 'reports'/, 'Availability stays reports-gated');
   assert.match(code, /messages: 'messaging'/, 'Messages stays messaging-gated');
-  assert.match(code, /const BETA_NAV_IDS = \["overview", "message", "training", "tactics", "performance", "matchday", "messages", "players", "medical", "settings"\]/);
+
+  /**
+   * The nav is asserted as a CONTRACT, not as one branch's literal array.
+   *
+   * This repository ships two builds of the same file. Core Beta production is
+   * the development branch MINUS the declared exclusions, and `tactics-mount`
+   * is one of them: the Tactics Board is a separate product with its own
+   * repository and release cycle, and it must never reach Core production
+   * (config/production-exclusions.json). So `tactics` is present in the nav
+   * here and absent from every release branch, both correctly.
+   *
+   * This file was written after that mount landed and hardcoded the ten-entry
+   * array, which the mount commit could not revert because it never touched
+   * this file. The assertion therefore contradicted production by
+   * construction and failed on EVERY release branch — a permanently red test
+   * that the deployment gate had to carry as an accepted baseline failure,
+   * which is precisely how a real regression would have hidden.
+   *
+   * What is actually invariant, and is asserted below, is stronger than the
+   * literal ever was: the nine Core Beta sections, in this exact order, with
+   * no strangers; and `tactics` appearing in the nav IF AND ONLY IF the
+   * Tactics section is mounted in the same file. That last coupling is new
+   * coverage — a half-stripped build, with the nav entry but no mount or the
+   * mount but no nav entry, is exactly what an exclusion could produce and is
+   * now a failure rather than a silent dead button.
+   */
+  const CORE_BETA_NAV = ['overview', 'message', 'training', 'performance',
+                         'matchday', 'messages', 'players', 'medical', 'settings'];
+  const navSource = code.match(/const BETA_NAV_IDS = (\[[^\]]*\]);/);
+  assert.ok(navSource, 'BETA_NAV_IDS is still declared as a literal array');
+  const navIds = new Function(`return ${navSource[1]};`)();
+
+  assert.deepEqual(navIds.filter(id => id !== 'tactics'), CORE_BETA_NAV,
+    'the nine Core Beta sections, in workflow order, with nothing added or removed');
+
+  const tacticsMounted = code.includes('id="coach-tactics"');
+  assert.equal(navIds.includes('tactics'), tacticsMounted,
+    tacticsMounted
+      ? 'the Tactics section is mounted, so it must appear in the nav'
+      : 'Tactics is excluded from this build, so it must NOT appear in the nav');
+  if (tacticsMounted) {
+    assert.equal(navIds.indexOf('tactics'), navIds.indexOf('training') + 1,
+      'Tactics sits directly after Training when it is mounted');
+  }
   // The group-scoped channel path a coach actually uses.
   assert.ok(html.includes('async function chatEnsureGroupChannel('), 'group channels still created');
   assert.match(extractFn(html, 'chatEnsureGroupChannel'), /operationalGroups\(\)\.find/,
