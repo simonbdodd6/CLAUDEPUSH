@@ -101,15 +101,19 @@
           "file": "test/travel-traveller-digital-twin-platform.test.js",
           "cause": "Unpinned clock in a travel-platform fixture; red since July 2026. Unrelated to CoachEasier.",
           "status": "accepted, tracked separately"
-        },
+        }
+      ],
+      "retired": [
         {
           "test": "permissions, navigation and group isolation are unchanged",
           "file": "test/pre-v2-messaging-removed.test.js",
-          "cause": "Asserts BETA_NAV_IDS contains \"tactics\". The tactics-mount commit never touched this file, so excluding that commit leaves an assertion that contradicts production's stripped nav. Fails on EVERY production branch by construction.",
-          "status": "accepted, should be fixed so that a green suite becomes a meaningful signal again"
+          "was": "Asserted BETA_NAV_IDS contains \"tactics\". The tactics-mount commit never touched this file, so excluding that commit left an assertion that contradicted production's stripped nav, and it failed on EVERY production branch by construction.",
+          "fixedBy": "a1d7f003a09879eea39a56dd16bf3db19984a0bb",
+          "status": "FIXED. The nav is now asserted as a contract — the nine Core Beta sections in order, plus \"tactics\" if and only if the Tactics section is mounted in the same file — so it is correct on both the development branch and every release branch. Kept here as the record of why a permanently-red test was tolerated, and of the shape to avoid: a test written after a mounted-but-excluded feature cannot be reverted by that feature's exclusion."
         }
       ],
-      "warning": "Never delete or weaken a test to make this gate pass. If a NEW failure appears, fix the cause or abandon the release."
+      "warning": "Never delete or weaken a test to make this gate pass. If a NEW failure appears, fix the cause or abandon the release.",
+      "note": "knownBaselineFailures is DOCUMENTATION, not an input: no script reads it. The gate runs the suite on both branches and derives known / fixed / new from the actual results, so a fixed test is reported as \"this release FIXES a previously failing test\" whether or not it is listed here. Keep the list true so a human reading it learns what the gate is carrying."
     },
     "aliases": {
       "rule": "Three hostnames serve production. Two follow a deploy automatically; the legacy one does not and must be re-pointed on every release.",

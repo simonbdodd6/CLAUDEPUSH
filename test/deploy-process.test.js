@@ -188,8 +188,20 @@ test('the committed config is valid and declares all three production exclusions
   assert.equal(cfg.exclusions.length, 3);
   assert.deepEqual(cfg.exclusions.map(e => e.id).sort(), ['club-export', 'stamp-cd84-superseded', 'tactics-mount']);
   assert.equal(cfg.policies.apiFunctionCap.max, 12);
-  assert.equal(cfg.policies.baselineRelativeTesting.knownBaselineFailures.length, 2,
-    'the two known failures stay declared, not quietly dropped');
+  // One known failure remains: the unrelated travel-platform clock fixture.
+  // The pre-v2 nav failure was FIXED (a1d7f003) and moved to `retired`, which
+  // keeps the record of why it was tolerated. The pin guards both lists so a
+  // failure cannot be quietly dropped OR quietly reclassified as fixed.
+  const baseline = cfg.policies.baselineRelativeTesting;
+  assert.equal(baseline.knownBaselineFailures.length, 1,
+    'known failures stay declared, not quietly dropped');
+  assert.deepEqual(baseline.knownBaselineFailures.map(f => f.file),
+    ['test/travel-traveller-digital-twin-platform.test.js']);
+  assert.deepEqual((baseline.retired || []).map(f => f.file),
+    ['test/pre-v2-messaging-removed.test.js'],
+    'a retired exception keeps its record, with the commit that fixed it');
+  assert.match(baseline.retired[0].fixedBy, /^[0-9a-f]{40}$/,
+    'retirement names the fixing commit in full');
   assert.ok(cfg.policies.performance.rule.includes('byte-identical'));
   // Critical rules must be inspectable as data, not buried in code.
   const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
