@@ -243,20 +243,28 @@ test('a legacy row with an empty userId has no owner and is removed by nobody', 
   assert.equal(subsWrites, 0);
 });
 
-test('a shared device rebound to another user belongs to that user', async () => {
+/**
+ * CONTRACT CHANGE. This used to let a second user rebind a shared device by
+ * re-POSTing its endpoint, and pinned that the new owner could then delete it.
+ * That rebind was the takeover path (POST then DELETE), so POST now refuses it
+ * — which means the device's FIRST owner keeps it until the browser issues a
+ * fresh endpoint. See test/api-subscribe-ownership.js.
+ */
+test('a device stays with its owner; a second user cannot take it over', async () => {
   await seed();
   await post({ as: 'u-victim', body: { subscription: sub('ep-shared') } });
-  await post({ as: 'u-att', body: { subscription: sub('ep-shared') } });
-  assert.equal(row('ep-shared').userId, 'u-att');
+  const rebind = await post({ as: 'u-att', body: { subscription: sub('ep-shared') } });
+  assert.equal(rebind.code, 409, 'the rebind is refused');
+  assert.equal(row('ep-shared').userId, 'u-victim', 'ownership never moved');
   subsWrites = 0;
-  // The previous user of the device cannot remove the current user's binding…
-  const stale = await del({ as: 'u-victim', body: { endpoint: 'ep-shared' } });
-  assert.equal(stale.body?.removed, 0);
-  assert.equal(row('ep-shared').userId, 'u-att');
+  // The would-be taker cannot remove it either…
+  const taker = await del({ as: 'u-att', body: { endpoint: 'ep-shared' } });
+  assert.equal(taker.body?.removed, 0);
+  assert.equal(row('ep-shared').userId, 'u-victim');
   assert.equal(subsWrites, 0);
-  // …but the current user can.
-  const current = await del({ as: 'u-att', body: { endpoint: 'ep-shared' } });
-  assert.equal(current.body.removed, 1);
+  // …and the real owner still can.
+  const owner = await del({ as: 'u-victim', body: { endpoint: 'ep-shared' } });
+  assert.equal(owner.body.removed, 1);
   assert.deepEqual(endpoints(), []);
 });
 

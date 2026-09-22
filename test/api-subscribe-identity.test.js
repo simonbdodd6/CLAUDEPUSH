@@ -16,8 +16,8 @@
  *   - every identity field of the stored row — userId, playerId,
  *     legacyPlayerId, label, role — comes from that session; body and query
  *     values are ignored
- *   - re-saving an endpoint another user registered rebinds it WHOLLY to the
- *     caller; none of the previous owner's ids survive onto it
+ *   - re-saving an endpoint another user registered is REFUSED (409) and
+ *     changes nothing; ownership is never transferred by possession
  *   - a member of one club cannot become deliverable inside another club
  *   - the legitimate authenticated save is unchanged.
  */
@@ -180,15 +180,24 @@ test('the attacker device is never routed the victim\'s pushes', async () => {
   assert.deepEqual(byLabel, ['ep-victim']);
 });
 
-test('re-saving another user\'s endpoint rebinds it wholly to the caller', async () => {
+/**
+ * CONTRACT CHANGE. This used to assert that re-saving another user's endpoint
+ * rebound the row wholly to the caller, described as shared-device support. It
+ * was a takeover path: possession of an endpoint string is not ownership, and
+ * a rebound row could then be deleted by the taker, silently ending the
+ * victim's notifications. A device that has genuinely changed hands now gets a
+ * fresh endpoint instead. Full contract in test/api-subscribe-ownership.js.
+ */
+test('re-saving another user\'s endpoint is refused, not rebound', async () => {
   await seed();
   await post({ as: 'u-victim', body: { subscription: sub('ep-shared') } });
   const out = await post({ as: 'u-att', body: { subscription: sub('ep-shared') } });
-  assert.equal(out.code, 201);
+  assert.equal(out.code, 409, 'the caller does not own this endpoint');
   assert.equal(stored().length, 1, 'one row per endpoint');
   const r = row('ep-shared');
-  assert.deepEqual([r.userId, r.playerId, r.legacyPlayerId, r.label], ['u-att', 'u-att', '', 'Atty Attacker'],
-    'no id of the previous owner may survive onto the rebound row');
+  assert.deepEqual([r.userId, r.playerId, r.legacyPlayerId, r.label],
+    ['u-victim', 'u-victim', 'inv-victim', 'Victor Victim'],
+    'every id of the real owner survives the attempt');
 });
 
 test('a member of another club cannot become deliverable in this club', async () => {

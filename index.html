@@ -8087,24 +8087,65 @@
       }
     }
 
-    async function refreshPushSubscriptionMetadata(playerName = '') {
-      if (!pushSubscription) return;
+    function _pushRegistrationBody(playerName = '') {
       const user = currentUser();
       const player = user?.role === 'player' ? getPlayer() : null;
-      // Send all available ID aliases. The server will overlay session-derived IDs where
-      // it can, but these client values are the fallback for iOS PWA where the session
-      // cookie is not forwarded — preventing subscriptions with all-empty routing IDs.
+      // Send all available ID aliases. The server derives every stored id from
+      // the session and ignores these, but they are harmless and kept so an
+      // older server build still routes correctly.
+      return JSON.stringify({
+        subscription:   pushSubscription.toJSON(),
+        label:          playerName || player?.name || user?.name || 'Player',
+        userId:         user?.id || '',
+        playerId:       player?.userId || player?.id || user?.playerId || user?.id || '',
+        legacyPlayerId: player?.legacyPlayerId || player?.id || '',
+      });
+    }
+
+    function _postPushRegistration(playerName) {
       return fetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subscription:   pushSubscription.toJSON(),
-          label:          playerName || player?.name || user?.name || 'Player',
-          userId:         user?.id || '',
-          playerId:       player?.userId || player?.id || user?.playerId || user?.id || '',
-          legacyPlayerId: player?.legacyPlayerId || player?.id || '',
-        })
+        body: _pushRegistrationBody(playerName),
       });
+    }
+
+    /**
+     * Register this device against the CURRENT account.
+     *
+     * The browser hands back the same endpoint for the lifetime of a push
+     * subscription, so a device that changes hands — a shared club tablet, or
+     * simply logging out and in as someone else — arrives here still carrying
+     * the previous user's endpoint. The server refuses to rebind it (409
+     * endpoint_owned), because possession of an endpoint is not ownership and
+     * rebinding was a device-takeover path.
+     *
+     * A genuine change of hands is resolved by ROTATING rather than seizing:
+     * unsubscribe locally (only this browser can) and subscribe again, which
+     * mints a fresh endpoint and registers it cleanly to the new account. The
+     * previous owner's row is left alone; it dies on its next 410 Gone.
+     */
+    async function refreshPushSubscriptionMetadata(playerName = '', { allowRotate = true } = {}) {
+      if (!pushSubscription) return;
+      const res = await _postPushRegistration(playerName);
+      if (res.status !== 409 || !allowRotate) return res;
+
+      const conflict = await res.clone().json().catch(() => ({}));
+      if (conflict?.code !== 'endpoint_owned') return res;
+      if (!swRegistration || !vapidPublicKey) return res;
+      try {
+        await pushSubscription.unsubscribe().catch(() => {});
+        pushSubscription = await swRegistration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        });
+      } catch (e) {
+        console.warn('[push] could not rotate a conflicting endpoint:', e?.message || e);
+        return res;
+      }
+      // One retry only: if the browser handed back the same endpoint the
+      // second 409 is the honest answer rather than a loop.
+      return _postPushRegistration(playerName);
     }
 
     async function subscribePush(playerName) {
