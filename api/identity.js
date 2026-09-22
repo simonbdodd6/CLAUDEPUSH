@@ -648,7 +648,7 @@ export default async function handler(req, res) {
           try {
             const resetUrl = `${appBaseUrl(req)}/?reset=${encodeURIComponent(result.token)}`;
             const message = passwordResetEmail({ name: result.user.displayName || result.user.email, url: resetUrl });
-            const delivery = await sendTransactionalEmail({ to: result.user.email, ...message });
+            const delivery = await sendTransactionalEmail({ to: result.user.email, ...message, purpose: 'password_reset' });
             if (!delivery.sent) console.warn('[reset] email not delivered', { reason: delivery.reason || 'unknown' });
           } catch {
             // A provider rejection must NOT become an enumeration oracle via HTTP status

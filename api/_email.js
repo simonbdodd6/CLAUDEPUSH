@@ -1,3 +1,7 @@
+import { kvConfigured, kvLpush, kvLtrim } from './_kv.js';
+import { key } from './_keys.js';
+import { normalizeErrorReport, MAX_ENTRIES } from './_errorLog.js';
+
 const DEFAULT_FROM = 'CoachEasier <noreply@coacheasier.com>';
 // Replies to a transactional (noreply) send should reach a monitored human inbox.
 // Env-configurable via EMAIL_REPLY_TO; falls back to the verified support address so
@@ -13,7 +17,34 @@ export function appBaseUrl(req = {}) {
   return process.env.APP_URL || 'https://www.coacheasier.com';
 }
 
-export async function sendTransactionalEmail({ to, subject, html, text } = {}) {
+/**
+ * A provider rejection is the one failure the recovery flow cannot show anyone:
+ * the public response stays a constant { ok: true } on purpose (anti-enumeration),
+ * and the console warning below lives only as long as the platform keeps runtime
+ * logs — an hour on the current plan. A sender domain that stops verifying, or
+ * a revoked key, therefore made every password-reset and invite email vanish
+ * with nothing an operator could find afterwards. Record the rejection in the
+ * existing staff-gated Production health log instead: purpose and provider
+ * status only — never the recipient, subject, body or any link — through the
+ * same scrubber every stored error passes. It must never throw: telemetry
+ * cannot be allowed to change the caller's contract.
+ */
+async function recordDeliveryFailure(purpose, providerStatus) {
+  try {
+    if (!kvConfigured()) return;
+    const entry = normalizeErrorReport({
+      kind: 'api_failure',
+      status: 502,
+      message: `Email provider rejected a ${String(purpose || 'transactional')} email (provider HTTP ${Number(providerStatus) || 'unknown'})`,
+      source: 'api/_email.js',
+    }, { version: (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || 'local' });
+    if (!entry) return;
+    await kvLpush(key('error_log'), entry);
+    await kvLtrim(key('error_log'), MAX_ENTRIES);
+  } catch { /* observability must never break delivery or its error contract */ }
+}
+
+export async function sendTransactionalEmail({ to, subject, html, text, purpose = 'transactional' } = {}) {
   const recipient = String(to || '').trim();
   if (!recipient) return { ok: true, sent: false, skipped: true, reason: 'missing_recipient' };
   const apiKey = process.env.RESEND_API_KEY;
@@ -46,6 +77,7 @@ export async function sendTransactionalEmail({ to, subject, html, text } = {}) {
     // Log only the provider HTTP status (no key, no recipient, no payload body) so a
     // rejected send (e.g. unverified sender domain) is diagnosable from logs.
     console.warn('[email] provider rejected delivery', { status: response.status });
+    await recordDeliveryFailure(purpose, response.status);
     const error = new Error(payload?.message || payload?.error || 'Email delivery failed');
     error.status = 502;
     throw error;

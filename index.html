@@ -14196,6 +14196,18 @@
           <details style="margin-top:6px">
             <summary style="font-size:12px;color:var(--muted);cursor:pointer">Trouble signing in?</summary>
             <div style="margin-top:8px">
+              <!-- A player stuck at this form had NO way to reach a human: the
+                   welcome card that carried the support address is removed the
+                   moment "Log in" is tapped, and this section offered only the
+                   destructive-looking device wipe. Forgotten password first,
+                   then support — as a link for devices with a mail app and as
+                   a copyable address for the ones without one, so a tap that
+                   silently does nothing is never the end of the road. -->
+              <p class="muted" style="font-size:11px;margin:0 0 8px;line-height:1.55">Forgotten your password? Enter your email above and tap <strong>Forgot password?</strong> — we email you a link to set a new one. Check your spam folder if it does not arrive.</p>
+              <p class="muted" style="font-size:11px;margin:0 0 8px;line-height:1.55">Still stuck? Email
+                <a href="mailto:support@coacheasier.com" style="color:var(--accent);font-weight:700">support@coacheasier.com</a>
+                <button class="auth-tab" type="button" onclick="copySupportAddress(this)" aria-label="Copy the support email address" style="font-size:11px;padding:3px 8px;min-height:28px;margin-left:4px">Copy address</button>
+              </p>
               <button class="auth-tab" type="button" onclick="clearDeviceState()" style="font-size:11px;padding:5px 8px;color:#f87171;border-color:rgba(248,113,113,0.3)">Log out &amp; clear this device</button>
               <p class="muted" style="font-size:11px;margin:6px 0 0">Removes CoachEasier data from this device only. Your account and team data are safe.</p>
             </div>
@@ -14400,6 +14412,25 @@
       if (state.activeView === "coach")
         return (coachSections.find(([id]) => id === state.activeCoachSection) || coachSections[0])[1];
       return (playerSectionsFor().find(([id]) => id === state.activePlayerSection) || playerSections[0])[1];
+    }
+
+    /**
+     * The support address as a clipboard action. A mailto: link is only a route
+     * on a device with a configured mail app; on the rest it does nothing and
+     * says nothing. Copying works everywhere the app does, and the fallback
+     * message names the address so it can still be typed out by hand.
+     */
+    function copySupportAddress(btn) {
+      const address = 'support@coacheasier.com';
+      const done = () => {
+        showToast('Support address copied ✓');
+        if (btn) { const t = btn.textContent; btn.textContent = '✓ Copied'; setTimeout(() => { btn.textContent = t; }, 2000); }
+      };
+      const failed = () => showToast(`Could not copy — the address is ${address}`);
+      try {
+        if (!navigator.clipboard?.writeText) return failed();
+        navigator.clipboard.writeText(address).then(done, failed);
+      } catch { failed(); }
     }
 
     function devCopyCredential(label, btn) {
