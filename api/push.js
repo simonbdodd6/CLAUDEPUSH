@@ -9,7 +9,7 @@ import { key } from './_keys.js';
 import { resolveVariables } from './_variables.js';
 import { setCors, vapidContact, vapidKeyStatus, notificationUrl } from './_http.js';
 import { requireTenantPermission, tenantTeamId, PERM } from './_tenant.js';
-import { loadNotificationPreferenceMap, notificationAllowed, loadTeamMembers } from './_identityStore.js';
+import { loadNotificationPreferenceMap, notificationAllowed, loadTeamMembers, requireSession } from './_identityStore.js';
 
 function sendAuthError(res, error) {
   return res.status(error?.status || 403).json({ ok: false, error: error?.message || 'Not authorized' });
@@ -43,14 +43,46 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // Dev-only direct test: bypasses Redis lookup and auth, sends to a subscription
-  // object provided in the request body so every stage can be isolated.
+  // Dev-only device diagnostic: sends one push to the CALLER'S OWN registered
+  // device so every stage (server → push service → service worker) can be
+  // isolated. It used to bypass authentication entirely and send to whatever
+  // subscription object the body carried, which made it an open relay wherever
+  // DEV_LOGIN was true: no session at all, any endpoint the caller had learned,
+  // the club's own VAPID identity, and the push service's status code handed
+  // back as an oracle for whether that endpoint was still alive.
+  //
+  // Three gates now, in this order. DEV_LOGIN stays FIRST so production — where
+  // it is off — answers identically to everyone and reveals nothing further.
+  // But DEV_LOGIN is an environment flag: it names no user, names no club and
+  // grants no permission, exactly as api/availability.js and api/subscribe.js
+  // already record. So a real session is required too, and the target is then
+  // looked up in the store BY THAT SESSION'S USER. Testing your own device
+  // needs no further privilege — a player may do it as much as a head coach —
+  // but no caller may reach anyone else's.
   if (req.body?.action === 'test_device') {
     if (process.env.DEV_LOGIN !== 'true') return res.status(403).json({ ok: false, error: 'Dev only' });
+    let devSession;
+    try {
+      devSession = await requireSession(req);
+    } catch {
+      return res.status(401).json({ ok: false, error: 'Authentication required' });
+    }
     const devPushConfig = configurePush();
     if (!devPushConfig.ok) return res.status(500).json({ ok: false, error: devPushConfig.error });
-    const { subscription } = req.body;
-    if (!subscription?.endpoint) return res.status(400).json({ ok: false, error: 'subscription.endpoint required' });
+    const requestedEndpoint = String(req.body?.subscription?.endpoint || req.body?.endpoint || '').trim();
+    if (!requestedEndpoint) return res.status(400).json({ ok: false, error: 'subscription.endpoint required' });
+    // Ownership comes from the stored row, never from the request. The body's
+    // keys are ignored with it: the push is encrypted for the device as the
+    // server knows it, so a supplied key pair cannot redirect or reshape it.
+    // A row belonging to someone else, an ownerless legacy row and an endpoint
+    // that was never registered all give the same answer, so the response
+    // cannot be used to probe which endpoints exist.
+    const callerUserId = String(devSession.user.id);
+    const ownRow = (await load()).find(item =>
+      item.subscription?.endpoint === requestedEndpoint &&
+      item.userId && String(item.userId) === callerUserId);
+    if (!ownRow) return res.status(403).json({ ok: false, error: 'Not your device' });
+    const subscription = ownRow.subscription;
     const sentAt = new Date().toISOString();
     const payload = JSON.stringify({
       title: 'Push Diagnostics Test',
