@@ -72,8 +72,20 @@
       "verify": "api/ must be byte-identical to the previous production branch unless an API change was explicitly approved for this release."
     },
     "performance": {
-      "rule": "performance/ is LEGACY SHELL CODE from the removed S&C integration. The real Performance product lives in its own repository. A deploy must never introduce performance/ changes as a side effect: the directory must be byte-identical to the previous production branch unless a performance change is the explicit, approved purpose of the release.",
-      "knownOpenFinding": "index.html perfGenerateDraft() reaches Core's pre-Gate-2 copy of the engine, which has no restriction pathway. Tracked separately; NOT a deployment-gate concern."
+      "rule": "performance/ is a VERBATIM MIRROR of the canonical Performance Intelligence repository — the subset Core physically serves, because index.html loads ./performance/... as same-origin ES modules and a sibling repository is not servable. It is no longer legacy shell code. A deploy must never introduce performance/ changes as a SIDE EFFECT: the directory must be byte-identical to the previous production branch unless a performance change is the explicit, approved purpose of the release, declared in `approvedChange` below.",
+      "sourceOfTruth": "~/Developer/active/CoachEasier-Performance-Intelligence — fixes are made THERE and re-copied. A fix made in Core is a fork.",
+      "coreOwnedException": "performance/services/workout-runtime.js is Core's own composition barrel for index.html's dynamic import. Every other file is a verbatim copy.",
+      "approvedChange": {
+        "release": "core-deploy-85",
+        "purpose": "SC9.35-SC9.37. Replace Core's pre-Gate-2 copy of the engine with the canonical one, route both generation paths through performance/engine.js, and give an athlete their own programme.",
+        "commits": [
+          "59a00b3fdda8e34ea1a744bb84a30c7630828949",
+          "d5c2e5ae437e075a50ce702ffb9d4693da04ddfd",
+          "14c555313cf216d73bc4e0247a0576df0e81a37a"
+        ],
+        "closes": "The knownOpenFinding recorded against this policy: index.html perfGenerateDraft() reached Core's pre-Gate-2 copy of the engine, which had no restriction pathway. It now calls performance/engine.js and the pre-Gate-2 chain is not reachable from any live route.",
+        "note": "This approval is PINNED to the release branch named above. It does not carry forward: the next release re-arms the byte-identical rule automatically, and shipping performance/ again needs a new, deliberate entry here."
+      }
     },
     "apiFunctionCap": {
       "max": 12,

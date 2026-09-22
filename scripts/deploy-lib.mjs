@@ -494,8 +494,30 @@ export function evaluateProtections(facts, policies) {
   if (facts.availabilityHasClubExport) block('club-export-endpoint', 'api/availability.js contains the club-export branch');
 
   // Performance / S&C
+  //
+  // The rule is "never as a SIDE EFFECT", not "never". The policy has always
+  // said so in words; until SC9.38A the code said "never", so the one release
+  // the exception exists for could not have shipped.
+  //
+  // An approval is PINNED to a named release branch. It therefore cannot leak
+  // into the next one: ship performance/ again and this blocks again, which is
+  // the point — the protection stays armed by default and opting out costs a
+  // deliberate, reviewable edit to the config naming the exact branch.
   if (facts.performanceChangedFiles > 0) {
-    block('performance-drift', `performance/ differs from the production baseline in ${facts.performanceChangedFiles} file(s) — legacy S&C shell code must not change as a release side effect`);
+    const approved = policies?.performance?.approvedChange;
+    const pinnedToThisRelease = !!approved
+      && typeof approved.release === 'string'
+      && approved.release === facts.candidateBranch;
+    if (pinnedToThisRelease) {
+      warn('performance-approved-change',
+        `performance/ differs from the production baseline in ${facts.performanceChangedFiles} file(s) — APPROVED for ${approved.release}: ${approved.purpose}`);
+    } else if (approved) {
+      block('performance-drift',
+        `performance/ differs from the production baseline in ${facts.performanceChangedFiles} file(s). An approvedChange exists but names ${approved.release}, not ${facts.candidateBranch} — approvals do not carry forward.`);
+    } else {
+      block('performance-drift',
+        `performance/ differs from the production baseline in ${facts.performanceChangedFiles} file(s) — the vendored Performance engine must not change as a release side effect`);
+    }
   }
 
   // Hard platform constraints
