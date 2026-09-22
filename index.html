@@ -4386,6 +4386,16 @@
        cascaded into a diagonal (the inline top:Y% was added to a stacked flow origin).
        Re-assert absolute so every slot sits exactly on its rugby anchor. */
     .mcx2-pitch .slot-big, #matchday-pitch .slot-big { position: absolute !important; }
+    /* The same V9 demotion caught the In-goal labels, and the V13 repair above
+       only covered .slot-big. `.mc5-ingoal` declares position:absolute at the
+       same specificity as `.mcx2-pitch > *` (both 0,1,0) but earlier in the
+       file, so the layering rule won and both labels dropped into document
+       flow: they rendered inline, side by side in the pitch's top-left corner
+       — overlapping the artwork and each other instead of sitting one in each
+       in-goal zone — and their top/bottom percentages became flow offsets
+       rather than anchors. Re-assert absolute so each label returns to its own
+       end of the pitch. */
+    .mcx2-pitch .mc5-ingoal, #matchday-pitch .mc5-ingoal { position: absolute !important; }
     .mc12-pitch > .mc5-ingoal { z-index: 1; }
     .mc12-pitch .mc5-ingoal { color: rgba(255,255,255,0.5) !important; letter-spacing: .42em !important; font-weight: 800 !important; font-size: 10px !important; text-shadow: 0 1px 4px rgba(0,0,0,0.7); }
     .mc12-pitch .mc5-ingoal.top { top: 7% !important; } .mc12-pitch .mc5-ingoal.bot { bottom: 7% !important; }
