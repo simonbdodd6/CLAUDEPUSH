@@ -81,10 +81,28 @@ export default async function handler(req, res) {
     }
     const subs  = await load();
     const idx   = subs.findIndex(s => s.subscription.endpoint === subscription.endpoint);
-    // The row is rebuilt wholly from the session: re-saving an endpoint another
-    // user registered (a shared device) rebinds it to the caller, and none of
-    // the previous owner's ids survive onto it.
-    const sessionUserId = sessionContext.user.id;
+    const sessionUserId = String(sessionContext.user.id);
+    // A row may only be written by the user it already belongs to. Re-saving an
+    // endpoint used to rebind it wholly to the caller, which made possession of
+    // an endpoint string — unguessable, but not a credential — enough to take
+    // another member's device: the row became the attacker's, so DELETE would
+    // then remove it legitimately and the victim silently lost notifications.
+    //
+    // An ownerless legacy row (empty userId, saved before this handler required
+    // a session) is NOT free to claim: that is precisely the shape an attacker
+    // would want to adopt, and the device behind it may be someone else's. It
+    // is already undeliverable, and dev-only purge_empty remains the way out.
+    //
+    // The refusal names nobody — no id, label, club or role — and happens
+    // before any write. A device that has genuinely changed hands gets a fresh
+    // endpoint from the browser (the client rotates it on this response), which
+    // creates a new row rather than seizing the old one.
+    if (idx >= 0 && String(subs[idx].userId || '') !== sessionUserId) {
+      return res.status(409).json({
+        error: 'This device is registered to another account',
+        code:  'endpoint_owned',
+      });
+    }
     const entry = {
       subscription,
       label:         displayNameFromSession(sessionContext) || 'Player',
