@@ -385,7 +385,9 @@ test("ISOLATION — another group's schedule resolves DIFFERENT keys, so its pub
 test('CASE F — renderTraining ensures the schedule BEFORE loading publication state', () => {
   const idx = html.indexOf('so a colleague\'s publish shows up without a page reload');
   assert.ok(idx > 0, 'the planner pub-load block exists');
-  const region = html.slice(idx, idx + 900);
+  // Window widened when the pub-load call gained its section gate + comment;
+  // the assertion below is unchanged — ensure still precedes load in the block.
+  const region = html.slice(idx, idx + 1600);
   const ensureAt = region.indexOf('ensureTrainingSchedule()');
   const loadAt = region.indexOf('loadTrainingPublicationState()');
   assert.ok(ensureAt > 0 && loadAt > ensureAt,

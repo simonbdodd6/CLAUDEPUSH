@@ -14405,7 +14405,51 @@
           m.to === "Coach" ? { ...m, unread: false, delivery: "read by coach" } : m);
       }
       saveState("Tab saved");
+      // typeof-guarded: several suites extract setSection() on its own.
+      if (typeof coachSectionEntered === 'function') coachSectionEntered(view === 'coach' ? section : null);
       render();
+    }
+
+    /**
+     * Is this coach section the one actually ON SCREEN?
+     *
+     * render() re-runs EVERY section renderer on every pass, hidden ones
+     * included, and several of those renderers kick off a background sync for
+     * their own data. Because a dozen loaders call render() when they land, a
+     * cold load re-entered those syncs eight to ten times: measured, 33 of a
+     * cold Availability load's 45 requests came from renderers, almost none of
+     * them for anything on screen. A background sync belongs to the section
+     * the coach is looking at; the in-flight latches keep the ACTIVE section's
+     * calls from duplicating, and this keeps the INACTIVE sections quiet.
+     *
+     * Entering a section runs render(), so its data still loads on arrival —
+     * one pass later than before, with nothing visible depending on it.
+     */
+    function coachSectionActive(section) {
+      return state.activeView === 'coach' && state.activeCoachSection === section;
+    }
+
+    /**
+     * Entering a coach section. The ONE place where opening a section may do
+     * more than paint — kept out of the renderers deliberately: provisioning
+     * is an action, and an action must never be a side effect of painting.
+     *
+     * Also called once at startup for the restored landing section, because a
+     * returning coach lands on their last section without setSection() ever
+     * running.
+     */
+    function coachSectionEntered(section) {
+      if (section !== 'overview') return;
+      // Autopilot's weekly availability schedule is created server-side. That
+      // POST used to fire from renderCoachOverview — i.e. from any render at
+      // all, on any screen. It is idempotent (_autopilotEnsured, plus the
+      // existing-schedule check inside), and it stays idempotent here.
+      //
+      // Startup is already covered without a render: clubWizFinish() provisions
+      // a brand-new club, and loadClubConfigFromServer() provisions once per
+      // session for a returning coach. This adds the navigation entry, which is
+      // what the Overview renderer used to stand in for.
+      if (typeof ensureAutopilotSchedule === 'function') ensureAutopilotSchedule().catch(() => {});
     }
 
     function pageTitle() {
@@ -17226,10 +17270,14 @@
       if (state.features?.coachTimeline      && isCoach()) { renderCoachTimeline();        return; }
       if (state.features?.executiveDashboard && isCoach()) { renderExecutiveDashboard();   return; }
       if (state.features?.matchReadiness     && isCoach()) { renderMatchReadinessPack();   return; }
-      if (autopilotOn() && isCoach()) {
+      // Autopilot's render-time work is for the coach LOOKING at the Overview:
+      // it fills the Match Centre from the next fixture and reads today's
+      // automation receipts. Gated so a hidden Overview stops doing it on
+      // every pass. The schedule PROVISIONING that used to sit here has moved
+      // to coachSectionEntered() — a write must not be a render side effect.
+      if (autopilotOn() && isCoach() && coachSectionActive('overview')) {
         autopilotFillMatchFromFixture();
         loadAutopilotLog();
-        ensureAutopilotSchedule().catch(() => {});
       }
       const phase  = matchCentrePhase();
       const mc     = state.matchCentre || {};
@@ -18702,7 +18750,12 @@
       // (loadTrainingSchedule's success path now also releases that throttle,
       // so the first schedule-aware render re-fetches and adopts).
       ensureTrainingSchedule();
-      if (canI('publish_training') && Date.now() - _trainingPubLoadedAt > 20000) {
+      // Only for the planner on screen: _trainingPubState is read by the
+      // Training tabs, badges and PDF alone, and its 20s throttle is released
+      // by every landing schedule — which made this the single biggest
+      // render-driven source on a cold load (7 requests, none of them visible).
+      if (canI('publish_training') && coachSectionActive('training')
+          && Date.now() - _trainingPubLoadedAt > 20000) {
         _trainingPubLoadedAt = Date.now();
         loadTrainingPublicationState();
       }
@@ -19088,10 +19141,10 @@
       if (autopilotOn() && isCoach()) autopilotFillMatchFromFixture();
       // Coach Draft Compare (Phase 2): keep the other-coaches' draft list fresh
       // (self-throttled; re-renders when new data arrives). Coach-only.
-      if (isCoach()) loadCoachDraftsList();
+      if (isCoach() && coachSectionActive('matchday')) loadCoachDraftsList();
       // The current coach publication (if any) for this fixture+side, so the
       // compare panel's "Coach publication" row is fresh. Self-throttled.
-      if (isCoach()) loadCoachPublication();
+      if (isCoach() && coachSectionActive('matchday')) loadCoachPublication();
       // The SIBLING side's selections power the cross-team locks. Loading them
       // only on a fixture/side tap left a boot-restored desktop with no
       // snapshot all session — the locks failed open and a Premier starter
@@ -19960,14 +20013,18 @@
       // below. Nothing about WHO is shown changes — this only keeps the
       // coach's own search box alive across a repaint, so isolation is untouched.
       const _searchPrev = membersSearchSnapshot();
+      // Background syncs for THIS page, only while it is the page on screen.
+      // They used to run on every render() pass — including the eight to ten
+      // passes of a cold load spent on another section entirely.
+      const _membersOnScreen = coachSectionActive('players');
       // Kick off a background sync of accepted invites each time this page renders
-      if (isCoach()) loadInviteList().catch(()=>{});
-      if (isCoach()) setTimeout(() => loadIdentityRequests().catch(()=>{}), 0);
+      if (isCoach() && _membersOnScreen) loadInviteList().catch(()=>{});
+      if (isCoach() && _membersOnScreen) setTimeout(() => loadIdentityRequests().catch(()=>{}), 0);
       // RC4.7 — the member access + eligibility editor needs _adminData.
-      if (isCoach() && typeof ensureAdminData === 'function') ensureAdminData();
+      if (isCoach() && _membersOnScreen && typeof ensureAdminData === 'function') ensureAdminData();
       // The availability dots read the canonical resolved map — fetch it once
       // per group if nothing else has (repaints this list when it lands).
-      ensureMembersAvailability();
+      if (_membersOnScreen) ensureMembersAvailability();
 
       // Phase 17 — show player detail panel if one is open
       // Phase 31 — premium Member Centre (overview) is the default view; the
@@ -41587,6 +41644,8 @@
      * joins the one already running instead of starting another.
      */
     let _availRefreshInFlight = null;
+    /** The board read in flight: { key, weight, promise } — see refreshLiveAvailability. */
+    let _liveAvailabilityInFlight = null;
     function availRefreshNow() {
       if (_availRefreshInFlight) return _availRefreshInFlight;
       const ts = document.getElementById('avail-refresh-ts');
@@ -41599,6 +41658,26 @@
     }
 
     async function refreshLiveAvailability(opts = {}) {
+      // IN-FLIGHT SHARING. Three entry points can ask for this read at the same
+      // moment on a cold load — the live cycle, the Overview's recent-activity
+      // pull and the Members dots — and it was the one critical-path endpoint
+      // with no guard: measured, three concurrent /api/availability reads.
+      //
+      // A caller joins the request already out only when that request does at
+      // least as much as it needs. The work sets are nested: a board-only tick
+      // repaints the board, skipPanelReload adds the picker and push card, and
+      // a full refresh also reloads the side panels. So a cheap caller may join
+      // an expensive request, never the reverse — an explicit "Sync now" still
+      // reloads the panels rather than silently inheriting a poll tick.
+      //
+      // Keyed on the group in force, so a read for another group is never
+      // shared; the reply's own group stamp and stale checks are untouched.
+      // typeof-guarded for the sandboxes that extract this function alone.
+      const _weight = opts.boardOnly ? 0 : (opts.skipPanelReload ? 1 : 2);
+      const _key = String(state.operationalGroupId || '');
+      const _inFlight = typeof _liveAvailabilityInFlight !== 'undefined' ? _liveAvailabilityInFlight : null;
+      if (_inFlight && _inFlight.key === _key && _inFlight.weight >= _weight) return _inFlight.promise;
+      const _promise = (async () => {
       // The chip IS the control (avail-refresh-ts). The separate avail-refresh-btn
       // went with the legacy Message Centre body, so the lookup that used to
       // disable it could only ever return null.
@@ -41698,6 +41777,15 @@
       } catch(e) {
         console.warn('[refreshLiveAvailability]', e);
         if (ts) { ts.textContent = 'Sync failed'; ts.className = 'msg-chip unavailable'; }
+      }
+      })();
+      const _latch = { key: _key, weight: _weight, promise: _promise };
+      if (typeof _liveAvailabilityInFlight !== 'undefined') _liveAvailabilityInFlight = _latch;
+      try { return await _promise; }
+      finally {
+        // Only the request that set the latch may clear it: a heavier request
+        // that replaced it while this one was out must stay joinable.
+        if (typeof _liveAvailabilityInFlight !== 'undefined' && _liveAvailabilityInFlight === _latch) _liveAvailabilityInFlight = null;
       }
     }
 

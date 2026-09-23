@@ -133,7 +133,9 @@ test('a different identity or club never shares, and a reply for a context no lo
 });
 
 test('render-driven callers share; every write path and the Refresh button force', () => {
-  assert.match(fn('renderPlayers'), /if \(isCoach\(\)\) loadInviteList\(\)\.catch/, 'the per-render background sync joins the in-flight request');
+  // The per-render background sync now also waits for Members to be the section
+  // on screen (render-path network reduction) — it still joins, never forces.
+  assert.match(fn('renderPlayers'), /if \(isCoach\(\) && _membersOnScreen\) loadInviteList\(\)\.catch/, 'the per-render background sync joins the in-flight request');
   assert.equal((fn('renderPlayers').match(/ontoggle="if\(this\.open\) loadInviteList\(\)"/g) || []).length, 2, 'both <details> toggles join it');
   assert.match(fn('renderPlayers'), /onclick="loadInviteList\(true\)">↺ Refresh/, 'Refresh forces');
   assert.match(fn('revokeInvite'), /loadInviteList\(true\)/, 'revoke forces');
